@@ -71,17 +71,23 @@ fn cold_index_baseline() {
 
     assert_eq!(stats.documents, DOCS);
     assert_eq!(warm_stats.cache_hits, DOCS, "warm run is fully cached");
-    assert!(
-        cold_ms < CEILING_MS,
-        "cold index regressed: {cold_ms}ms > {CEILING_MS}ms ceiling"
-    );
-    // Warm gets the same generous ceiling; a strict warm<=cold assertion
-    // is load-sensitive (the two run within ~2% of each other because
-    // resolution dominates and is uncached) and flakes under parallel
-    // test machinery — the cache-hit assertion above is the real warmth
-    // proof.
-    assert!(
-        warm_ms < CEILING_MS,
-        "warm index regressed: {warm_ms}ms > {CEILING_MS}ms ceiling"
-    );
+    // Wall-clock ceilings are STRICT-MODE only (audit backlog item): on
+    // shared CI runners and under parallel test load they flake without
+    // signalling a real regression. The default suite keeps the
+    // deterministic assertions (doc counts, cache hits) and the printed
+    // baseline; `just dev test bench` sets the flag for the gated run.
+    // (A strict warm<=cold ordering is load-sensitive either way — the
+    // cache-hit assertion above is the real warmth proof.)
+    if std::env::var("VAULTSPEC_BENCH_STRICT").as_deref() == Ok("1") {
+        assert!(
+            cold_ms < CEILING_MS,
+            "cold index regressed: {cold_ms}ms > {CEILING_MS}ms ceiling"
+        );
+        assert!(
+            warm_ms < CEILING_MS,
+            "warm index regressed: {warm_ms}ms > {CEILING_MS}ms ceiling"
+        );
+    } else {
+        eprintln!("bench ceilings advisory (set VAULTSPEC_BENCH_STRICT=1 to enforce)");
+    }
 }

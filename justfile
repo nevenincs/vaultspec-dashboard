@@ -226,7 +226,7 @@ _dev-test-rust:
   cargo test --manifest-path engine/Cargo.toml --workspace
 
 _dev-test-bench:
-  cargo test --manifest-path engine/Cargo.toml -p engine-e2e --test bench -- --nocapture
+  @{{ if os() == "windows" { "$env:VAULTSPEC_BENCH_STRICT='1'; cargo test --manifest-path engine/Cargo.toml -p engine-e2e --test bench -- --nocapture" } else { "VAULTSPEC_BENCH_STRICT=1 cargo test --manifest-path engine/Cargo.toml -p engine-e2e --test bench -- --nocapture" } }}
 
 _dev-test-frontend:
   npm --prefix frontend run test
