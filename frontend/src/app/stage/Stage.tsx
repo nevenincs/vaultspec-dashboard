@@ -6,12 +6,20 @@
 
 import { useEffect, useMemo, useRef } from "react";
 
+import { useQueries } from "@tanstack/react-query";
+
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { sliceToScene } from "../../scene/sceneMapping";
-import { useGraphSlice, useWorkspaceMap } from "../../stores/server/queries";
+import { engineClient } from "../../stores/server/engine";
+import {
+  engineKeys,
+  useGraphSlice,
+  useWorkspaceMap,
+} from "../../stores/server/queries";
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
+import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene per app lifetime — survives route remounts; destroyed never.
 const scene = createDashboardScene();
@@ -36,6 +44,16 @@ export function Stage() {
   const scope = useActiveScope();
   const slice = useGraphSlice(scope);
   const openNode = useViewStore((s) => s.openNode);
+  const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
+  const workingSet = useViewStore((s) => s.workingSet);
+
+  // Each working-set entry materializes its ego network on stage (G3.b).
+  const expansions = useQueries({
+    queries: workingSet.map((id) => ({
+      queryKey: engineKeys.neighbors(id, 1),
+      queryFn: () => engineClient.nodeNeighbors(id, { depth: 1 }),
+    })),
+  });
 
   // Mount the field into the host; resize observation keeps it fitted.
   useEffect(() => {
@@ -59,6 +77,7 @@ export function Stage() {
         selectFromScene(event.id);
         openNode(event.id);
       }
+      if (event.kind === "expand") addToWorkingSet(event.id);
     });
     const offBind = bindSelectionToScene(scene.controller);
     return () => {
@@ -67,21 +86,28 @@ export function Stage() {
     };
   }, [openNode]);
 
-  // Constellation data → seam command (set-data keyframe path).
+  // Constellation + working-set expansions → seam command (keyframe path).
+  const expansionData = expansions
+    .map((q) => q.data)
+    .filter((d): d is NonNullable<typeof d> => d !== undefined);
   useEffect(() => {
     if (!slice.data || !scope) return;
     scene.field.setPersistenceScope("default", scope);
-    const mapped = sliceToScene(slice.data);
+    const merged = mergeSlices(slice.data, expansionData);
+    const mapped = sliceToScene(merged);
     scene.controller.command({
       kind: "set-data",
       nodes: mapped.nodes,
       edges: mapped.edges,
     });
-  }, [slice.data, scope]);
+    // expansionData is identity-unstable per render; length plus the base
+    // slice identity capture every meaningful change.
+  }, [slice.data, scope, expansionData.length]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={hostRef} className="absolute inset-0" data-stage-host />
+      <WorkingSet />
       <IslandLayer scene={scene.controller} />
       {!slice.data && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">

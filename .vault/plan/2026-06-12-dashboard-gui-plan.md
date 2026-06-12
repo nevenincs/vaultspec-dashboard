@@ -84,7 +84,7 @@ Implements the details-first interaction model per G3.b: constellation, ego high
 - [x] `W02.P06.S22` - implement hover ego-highlight with field recede and DOI label culling per G3.b; `frontend/src/scene/field/egoHighlight.ts`.
 - [x] `W02.P06.S23` - implement the shared selection concept syncing stage, view store, browser, timeline, and inspector per G2.b; `frontend/src/stores/view/selection.ts`.
 - [x] `W02.P06.S24` - implement open-in-place feature lifecycle and plan interior islands with canonical lifecycle-axis and tier layouts per G3.b and G3.e; `frontend/src/app/islands/NodeInterior.tsx`.
-- [ ] `W02.P06.S25` - implement expand-ego working set with breadcrumb chips, collapse, and clear-to-constellation per G3.b; `frontend/src/app/stage/WorkingSet.tsx`.
+- [x] `W02.P06.S25` - implement expand-ego working set with breadcrumb chips, collapse, and clear-to-constellation per G3.b; `frontend/src/app/stage/WorkingSet.tsx`.
 - [ ] `W02.P06.S26` - implement the node-scoped discover flow with visually quarantined, session-pinned-only semantic candidates per G3.c; `frontend/src/app/stage/Discover.tsx`.
 - [ ] `W02.P06.S27` - implement node pinning, layout-fixed and always-labelled, with client-side persistence per G5.d; `frontend/src/stores/view/pins.ts`.
 
