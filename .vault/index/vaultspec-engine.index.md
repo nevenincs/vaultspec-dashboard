@@ -50,6 +50,10 @@ related:
   - '[[2026-06-12-vaultspec-engine-W02-P08-S36]]'
   - '[[2026-06-12-vaultspec-engine-W02-P08-S37]]'
   - '[[2026-06-12-vaultspec-engine-W02-P08-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P09-S38]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P09-S39]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P09-S40]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P09-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -116,6 +120,10 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W02-P08-S36` - Implement node detail with interior structure, neighbors with depth and tier filters, and evidence queries
 - `2026-06-12-vaultspec-engine-W02-P08-S37` - Implement cursor pagination and the per-tier degradation block carried on every response envelope
 - `2026-06-12-vaultspec-engine-W02-P08-summary` - `vaultspec-engine` `W02.P08` summary
+- `2026-06-12-vaultspec-engine-W02-P09-S38` - Implement rag service discovery via service json and the bearer loopback HTTP client with truthful absent and down states
+- `2026-06-12-vaultspec-engine-W02-P09-S39` - Implement node-scoped semantic discovery queries with TTL cache, 0.7 confidence cap and ephemeral never-persisted edges
+- `2026-06-12-vaultspec-engine-W02-P09-S40` - Implement rag search forwarding with engine node-id annotation on each result
+- `2026-06-12-vaultspec-engine-W02-P09-summary` - `vaultspec-engine` `W02.P09` summary
 
 ### plan
 

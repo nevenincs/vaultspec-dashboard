@@ -103,9 +103,9 @@ Deliver the single shared query implementation: filter validation and vocabulary
 
 Deliver the optional loopback rag client: service discovery, node-scoped discovery queries with TTL cache and capped confidence, and search forwarding with node-id annotation, degrading truthfully when rag is absent.
 
-- [ ] `W02.P09.S38` - Implement rag service discovery via service json and the bearer loopback HTTP client with truthful absent and down states; `engine/crates/rag-client/src/client.rs`.
-- [ ] `W02.P09.S39` - Implement node-scoped semantic discovery queries with TTL cache, 0.7 confidence cap and ephemeral never-persisted edges; `engine/crates/rag-client/src/discover.rs`.
-- [ ] `W02.P09.S40` - Implement rag search forwarding with engine node-id annotation on each result; `engine/crates/rag-client/src/search.rs`.
+- [x] `W02.P09.S38` - Implement rag service discovery via service json and the bearer loopback HTTP client with truthful absent and down states; `engine/crates/rag-client/src/client.rs`.
+- [x] `W02.P09.S39` - Implement node-scoped semantic discovery queries with TTL cache, 0.7 confidence cap and ephemeral never-persisted edges; `engine/crates/rag-client/src/discover.rs`.
+- [x] `W02.P09.S40` - Implement rag search forwarding with engine node-id annotation on each result; `engine/crates/rag-client/src/search.rs`.
 
 ## Wave `W03` - surfaces: CLI verbs and serve mode
 
