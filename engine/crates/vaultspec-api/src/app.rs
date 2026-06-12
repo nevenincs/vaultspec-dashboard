@@ -73,23 +73,34 @@ impl AppState {
         fresh
     }
 
-    /// Rebuild the scope's graph fresh, swap it in, and emit the diff on
-    /// the delta clock (the watcher's path; also used at startup).
+    /// Rebuild the scope's graph fresh and commit it (the watcher's path;
+    /// also used at startup).
     pub fn rebuild_and_swap(&self) -> Result<usize, String> {
         let store = self.store.lock().map_err(|_| "store lock".to_string())?;
         let (fresh, _stats) =
             engine_graph::index::index_worktree(&self.root, &self.scope, &store, now_ms())
                 .map_err(|e| e.to_string())?;
         drop(store);
+        Ok(self.commit_graph(fresh))
+    }
 
+    /// THE single commit path for a new graph (audit N3+N4): one function
+    /// owns the ordering — (1) diff against the outgoing graph and advance
+    /// the shared delta clock, (2) append to the ring and broadcast, (3)
+    /// swap the graph, (4) bump the generation (invalidating projections).
+    /// Steps 1–2 happen under the ring lock so concurrent committers
+    /// serialize; the clock is only ever advanced here.
+    pub fn commit_graph(&self, fresh: LinkageGraph) -> usize {
         let old = self.graph_arc();
         let t = now_ms();
+
+        // Ring lock taken FIRST: it is the commit-section mutex.
+        let mut ring = self.ring.lock().expect("ring lock");
         let seq_start = self.seq.load(Ordering::SeqCst);
         let log = engine_graph::diff::diff(&old, &fresh, t, seq_start);
         let emitted = log.entries.len();
         if emitted > 0 {
             self.seq.store(log.last_seq + 1, Ordering::SeqCst);
-            let mut ring = self.ring.lock().expect("ring lock");
             for entry in &log.entries {
                 if ring.len() == RING_CAP {
                     ring.pop_front();
@@ -104,7 +115,8 @@ impl AppState {
         }
         *self.graph.write().expect("graph lock") = Arc::new(fresh);
         self.generation.fetch_add(1, Ordering::SeqCst);
-        Ok(emitted)
+        drop(ring);
+        emitted
     }
 }
 
@@ -130,12 +142,21 @@ pub async fn bearer_gate(
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .is_some_and(|token| token == state.bearer);
+        .is_some_and(|token| constant_time_eq(token.as_bytes(), state.bearer.as_bytes()));
     if authorized {
         Ok(next.run(request).await)
     } else {
         Err(StatusCode::UNAUTHORIZED)
     }
+}
+
+/// Constant-time byte comparison (audit low rider): the bearer check must
+/// not leak prefix length through timing, loopback or not.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Write the discovery file (rag's pattern, contract §1).

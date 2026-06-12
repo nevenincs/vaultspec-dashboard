@@ -3,7 +3,6 @@
 //! single delta clock.
 
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use axum::Json;
 use axum::extract::{Query, State};
@@ -17,10 +16,6 @@ use crate::app::AppState;
 use crate::routes::query::validate_scope;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
-
-fn bad_request(message: String) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": message})))
-}
 
 #[derive(Deserialize)]
 pub struct EventsParams {
@@ -42,15 +37,19 @@ pub async fn events(
     validate_scope(&state, &params.scope)?;
     let mode = match params.bucket.as_deref() {
         None => BucketMode::Raw,
-        Some(p) => {
-            parse_bucket_param(p).ok_or_else(|| bad_request(format!("unknown bucket `{p}`")))?
-        }
+        Some(p) => parse_bucket_param(p).ok_or_else(|| {
+            super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown bucket `{p}`"),
+            )
+        })?,
     };
     // Event sourcing shared with the CLI verb via the query core (G7).
     let workspace = ingest_git::workspace::Workspace::discover(&state.root)
-        .map_err(|e| bad_request(e.to_string()))?;
-    let mut rows: Vec<EventRow> =
-        engine_query::events::commit_rows(&workspace, "HEAD", 5000).map_err(bad_request)?;
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+    let mut rows: Vec<EventRow> = engine_query::events::commit_rows(&workspace, "HEAD", 5000)
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e))?;
     if let Some(kinds) = &params.kinds {
         let wanted: Vec<&str> = kinds.split(',').collect();
         rows.retain(|r| wanted.contains(&r.kind.as_str()));
@@ -79,20 +78,22 @@ pub async fn graph_asof(
         name: params.t.clone(),
     };
     let graph = engine_graph::asof::asof_graph(&state.root, &params.t, &scope, 0)
-        .map_err(|e| bad_request(e.to_string()))?;
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let slice = engine_query::graph::graph_query(
         &graph,
         &scope,
         engine_query::filter::Filter::default(),
         engine_query::graph::Granularity::Document,
     )
-    .map_err(|e| bad_request(e.to_string()))?;
+    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(json!({
         "t": params.t,
         "nodes": slice.nodes,
         "edges": slice.edges,
-        // Keyframe position on the delta clock, for client splicing.
-        "last_seq": state.seq.load(Ordering::SeqCst).saturating_sub(1),
+        // A HISTORICAL keyframe carries no live-clock position (audit N2):
+        // splicing to LIVE requires a present keyframe (/graph/query
+        // without as_of) whose deltas arrive on the stream's sequence.
+        "last_seq": Value::Null,
         "tiers": serde_json::to_value(engine_query::envelope::asof_tiers_block())
             .expect("tiers serialize"),
     })))
@@ -117,20 +118,20 @@ pub async fn graph_diff(
         name: params.to.clone(),
     };
     let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope_from, 0)
-        .map_err(|e| bad_request(e.to_string()))?;
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope_to, 0)
-        .map_err(|e| bad_request(e.to_string()))?;
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    // One monotonic delta clock shared with the live stream (REDLINE-3):
-    // historical diff entries consume positions on the same sequence.
-    let seq_start = state.seq.load(Ordering::SeqCst);
-    let log = engine_graph::diff::diff(&from_graph, &to_graph, crate::app::now_ms(), seq_start);
-    if !log.entries.is_empty() {
-        state.seq.store(log.last_seq + 1, Ordering::SeqCst);
-    }
+    // Historical diffs number RESULT-LOCALLY (audit N2): a scrub must
+    // never burn live-clock positions or manufacture stream gaps. Only
+    // `commit_graph` advances the shared atomic; `last_seq` here is the
+    // local log's end, and splicing to LIVE goes through a present
+    // keyframe + the stream's own sequence space.
+    let log = engine_graph::diff::diff(&from_graph, &to_graph, crate::app::now_ms(), 0);
     Ok(Json(json!({
         "deltas": log.entries,
         "last_seq": log.last_seq,
+        "clock": "result-local",
         "tiers": serde_json::to_value(engine_query::envelope::asof_tiers_block())
             .expect("tiers serialize"),
     })))

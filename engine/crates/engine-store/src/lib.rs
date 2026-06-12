@@ -118,6 +118,10 @@ impl Store {
     /// Open the store at an explicit database path (tests, tooling).
     pub fn open_at(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        // A concurrent one-shot CLI and a resident serve process may both
+        // hold write connections briefly (dogfood finding DF-4): WAL plus
+        // a busy timeout makes contention a wait, never a crash.
+        conn.busy_timeout(std::time::Duration::from_secs(10))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;

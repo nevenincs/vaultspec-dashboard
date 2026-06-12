@@ -16,26 +16,23 @@ use crate::app::AppState;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
-fn bad_request(message: String) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": message})))
-}
-
-fn not_found(message: String) -> (StatusCode, Json<Value>) {
-    (StatusCode::NOT_FOUND, Json(json!({"error": message})))
-}
-
 /// Validate the stateless per-request scope (contract §3). v1 serves one
 /// workspace view (the launch worktree); other scopes 400 honestly.
 pub fn validate_scope(state: &AppState, scope: &str) -> Result<(), (StatusCode, Json<Value>)> {
-    let served = state.root.to_string_lossy().replace('\\', "/");
-    let normalized = scope.replace('\\', "/");
+    let strip = |s: String| s.strip_prefix("//?/").unwrap_or(&s).to_string();
+    let served = strip(state.root.to_string_lossy().replace('\\', "/"));
+    let normalized = strip(scope.replace('\\', "/"));
     if normalized == served || normalized.trim_end_matches('/') == served.trim_end_matches('/') {
         Ok(())
     } else {
-        Err(bad_request(format!(
-            "scope `{scope}` is not served by this instance (serving `{served}`); \
+        Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "scope `{scope}` is not served by this instance (serving `{served}`); \
              v1 serves the launch worktree only"
-        )))
+            ),
+        ))
     }
 }
 
@@ -58,10 +55,10 @@ pub struct ScopeParam {
 
 pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
     let workspace = ingest_git::workspace::Workspace::discover(&state.root)
-        .map_err(|e| bad_request(e.to_string()))?;
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let config = ingest_git::branches::ClassifyConfig::default();
     let worktrees: Vec<Value> = ingest_git::worktrees::enumerate(&workspace)
-        .map_err(|e| bad_request(e.to_string()))?
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
         .into_iter()
         .map(|wt| {
             json!({
@@ -79,12 +76,12 @@ pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
         ingest_git::branches::BranchClass::Other => "other",
     };
     let branches: Vec<Value> = ingest_git::branches::local_branches(&workspace, &config)
-        .map_err(|e| bad_request(e.to_string()))?
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
         .into_iter()
         .map(|b| json!({"name": b.name, "class": class(b.class)}))
         .collect();
     let remotes: Vec<Value> = ingest_git::branches::remote_refs(&workspace, &config)
-        .map_err(|e| bad_request(e.to_string()))?
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
         .into_iter()
         .map(|b| json!({"name": b.name, "class": class(b.class), "degraded": b.degraded_tiers}))
         .collect();
@@ -99,9 +96,18 @@ pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
 
 // --- GET /vault-tree?scope= ---------------------------------------------------
 
+#[derive(Deserialize)]
+pub struct VaultTreeParams {
+    pub scope: String,
+    #[serde(default)]
+    pub cursor: Option<String>,
+    #[serde(default)]
+    pub page_size: Option<usize>,
+}
+
 pub async fn vault_tree(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<ScopeParam>,
+    Query(params): Query<VaultTreeParams>,
 ) -> ApiResult {
     validate_scope(&state, &params.scope)?;
     let graph = state.graph_arc();
@@ -117,9 +123,18 @@ pub async fn vault_tree(
         })
         .collect();
     entries.sort_by_key(|e| e["stem"].as_str().unwrap_or_default().to_string());
-    Ok(Json(
-        json!({"entries": entries, "tiers": rag_tiers(&state)}),
-    ))
+    // Cursor pagination on the unbounded listing (contract §2, audit N8).
+    let (page, next_cursor) = engine_query::envelope::paginate(
+        &entries,
+        |e| e["stem"].as_str().unwrap_or_default(),
+        params.cursor.as_deref(),
+        params.page_size.unwrap_or(500),
+    );
+    Ok(Json(json!({
+        "entries": page,
+        "next_cursor": next_cursor,
+        "tiers": rag_tiers(&state),
+    })))
 }
 
 // --- POST /graph/query ----------------------------------------------------------
@@ -143,7 +158,13 @@ pub async fn graph_query_route(
     let granularity = match body.granularity.as_deref() {
         None | Some("document") => Granularity::Document,
         Some("feature") => Granularity::Feature,
-        Some(other) => return Err(bad_request(format!("unknown granularity `{other}`"))),
+        Some(other) => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown granularity `{other}`"),
+            ));
+        }
     };
     let filter = body.filter.unwrap_or_default();
 
@@ -154,9 +175,9 @@ pub async fn graph_query_route(
                 name: reference.clone(),
             };
             let graph = engine_graph::asof::asof_graph(&state.root, reference, &scope, 0)
-                .map_err(|e| bad_request(e.to_string()))?;
+                .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             let slice = graph_query(&graph, &scope, filter, granularity)
-                .map_err(|e| bad_request(e.to_string()))?;
+                .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             let tiers = serde_json::to_value(engine_query::envelope::asof_tiers_block())
                 .expect("tiers serialize");
             (slice, tiers)
@@ -164,7 +185,7 @@ pub async fn graph_query_route(
         None => {
             let graph = state.graph_arc();
             let mut slice = graph_query(&graph, &state.scope, filter, granularity)
-                .map_err(|e| bad_request(e.to_string()))?;
+                .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             // Constellation meta-edges come from the memoized projection
             // (W02P05-203) — same content, one aggregation per rebuild.
             if granularity == Granularity::Feature {
@@ -201,8 +222,13 @@ pub async fn filters(
 
 pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> ApiResult {
     let graph = state.graph_arc();
-    let detail = engine_query::node::node_detail(&graph, &NodeId(id.clone()))
-        .ok_or_else(|| not_found(format!("unknown node `{id}`")))?;
+    let detail = engine_query::node::node_detail(&graph, &NodeId(id.clone())).ok_or_else(|| {
+        super::api_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            format!("unknown node `{id}`"),
+        )
+    })?;
     Ok(Json(json!({"detail": detail, "tiers": rag_tiers(&state)})))
 }
 
@@ -230,7 +256,11 @@ pub async fn node_neighbors(
             "structural" => Ok(Tier::Structural),
             "temporal" => Ok(Tier::Temporal),
             "semantic" => Ok(Tier::Semantic),
-            other => Err(bad_request(format!("unknown tier `{other}`"))),
+            other => Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("unknown tier `{other}`"),
+            )),
         })
         .collect::<Result<_, _>>()?;
     let graph = state.graph_arc();
@@ -240,7 +270,13 @@ pub async fn node_neighbors(
         params.depth.unwrap_or(1),
         &tiers,
     )
-    .ok_or_else(|| not_found(format!("unknown node `{id}`")))?;
+    .ok_or_else(|| {
+        super::api_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            format!("unknown node `{id}`"),
+        )
+    })?;
     Ok(Json(json!({"ego": ego, "tiers": rag_tiers(&state)})))
 }
 
@@ -249,8 +285,13 @@ pub async fn node_evidence(
     Path(id): Path<String>,
 ) -> ApiResult {
     let graph = state.graph_arc();
-    let evidence = engine_query::node::evidence(&graph, &NodeId(id.clone()))
-        .ok_or_else(|| not_found(format!("unknown node `{id}`")))?;
+    let evidence = engine_query::node::evidence(&graph, &NodeId(id.clone())).ok_or_else(|| {
+        super::api_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            format!("unknown node `{id}`"),
+        )
+    })?;
     Ok(Json(
         json!({"evidence": evidence, "tiers": rag_tiers(&state)}),
     ))
@@ -305,7 +346,13 @@ pub async fn node_discover(
         &state.scope,
         crate::app::now_ms(),
     )
-    .map_err(|e| bad_request(rag_client::search::degradation_reason(&e)))?;
+    .map_err(|e| {
+        super::api_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            rag_client::search::degradation_reason(&e),
+        )
+    })?;
     Ok(Json(json!({
         "candidates": candidates,
         "tiers": rag_tiers(&state),

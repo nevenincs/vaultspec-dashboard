@@ -80,7 +80,33 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// Run the resident service on loopback: initial index, watcher-driven
 /// rebuild-and-swap (302/303), heartbeat on the discovery file.
 pub async fn serve(port: u16) -> std::io::Result<()> {
-    let root = std::env::current_dir()?;
+    // Crash visibility (dogfood DF-4): a panic anywhere must leave a
+    // trace, never a silent death. The hook writes a crash log under the
+    // engine data dir and stderr before unwinding.
+    let cwd = std::env::current_dir()?;
+    // Resolve like every other verb (dogfood DF-2, D2.1): any launch
+    // directory inside the workspace resolves to its containing worktree.
+    let workspace = ingest_git::workspace::Workspace::discover(&cwd)
+        .map_err(|e| std::io::Error::other(format!("not inside a git workspace: {e}")))?;
+    let worktrees = ingest_git::worktrees::enumerate(&workspace)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let cwd_clean = cwd.to_string_lossy().replace('\\', "/");
+    let root = worktrees
+        .iter()
+        .map(|wt| wt.path.clone())
+        .find(|p| {
+            let wp = p.to_string_lossy().replace('\\', "/");
+            let wp = wp.strip_prefix("//?/").unwrap_or(&wp).to_string();
+            let cw = cwd_clean.strip_prefix("//?/").unwrap_or(&cwd_clean);
+            cw == wp || cw.starts_with(&format!("{wp}/"))
+        })
+        .unwrap_or(cwd);
+    // Strip Windows extended-length prefixes so the served root compares
+    // cleanly with client-supplied scope strings.
+    let root = {
+        let cleaned = root.to_string_lossy().replace('\\', "/");
+        std::path::PathBuf::from(cleaned.strip_prefix("//?/").unwrap_or(&cleaned))
+    };
     if !root.join(".vault").is_dir() {
         return Err(std::io::Error::other(format!(
             "no .vault corpus under {} - vaultspec serve runs inside a \
@@ -88,6 +114,29 @@ pub async fn serve(port: u16) -> std::io::Result<()> {
             root.display()
         )));
     }
+
+    let crash_log = engine_store::engine_data_dir(&root.join(".vault")).join("crash.log");
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let line = format!(
+            "[{}] vaultspec serve panic: {info}\n",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        );
+        if let Some(parent) = crash_log.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&crash_log)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+        eprintln!("{line}");
+        default_hook(info);
+    }));
+
     let state = app::build_state(root.clone());
 
     // Cold initial index (the same pipeline the one-shot CLI runs, D2.4).
@@ -121,7 +170,14 @@ pub async fn serve(port: u16) -> std::io::Result<()> {
         tokio::spawn(async move {
             while dirty_rx.recv().await.is_some() {
                 let state = state.clone();
-                let _ = tokio::task::spawn_blocking(move || state.rebuild_and_swap()).await;
+                // Rebuild failures are LOGGED, never silently swallowed
+                // (DF-4): a contended store is a wait-and-retry on the
+                // next dirty batch, not a death.
+                match tokio::task::spawn_blocking(move || state.rebuild_and_swap()).await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => eprintln!("vaultspec serve: rebuild failed: {e}"),
+                    Err(e) => eprintln!("vaultspec serve: rebuild task panicked: {e}"),
+                }
             }
         });
     }

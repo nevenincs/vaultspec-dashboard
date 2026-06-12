@@ -67,15 +67,21 @@ pub async fn stream(
         .map(str::to_string)
         .collect();
 
-    // Replay-or-gap (contract §7): `since=` resumes from the ring when the
-    // requested position is still buffered; otherwise an explicit `gap`
-    // event tells the client to re-keyframe.
+    // Splice order matters (audit N1): SUBSCRIBE FIRST, snapshot the ring
+    // SECOND — a rebuild landing between the two is then present in the
+    // live receiver's queue rather than silently lost. De-duplication by
+    // sequence threshold removes the overlap between snapshot and queue.
+    let receiver = state.tx.subscribe();
+
     let mut backlog: Vec<Event> = Vec::new();
+    let mut emitted_up_to: u64 = params.since.unwrap_or(0);
     if let Some(since) = params.since {
         let ring = state.ring.lock().expect("ring lock");
         let oldest = ring.front().map(|e| e.seq);
         match oldest {
             Some(oldest) if since + 1 < oldest => {
+                // Replay impossible: explicit gap, client re-keyframes
+                // (contract §7).
                 backlog.push(
                     Event::default()
                         .event("gap")
@@ -84,6 +90,7 @@ pub async fn stream(
             }
             _ => {
                 for entry in ring.iter().filter(|e| e.seq > since) {
+                    emitted_up_to = emitted_up_to.max(entry.seq);
                     backlog.push(
                         Event::default()
                             .event("graph")
@@ -95,9 +102,21 @@ pub async fn stream(
         }
     }
 
-    let live = BroadcastStream::new(state.tx.subscribe()).filter_map(move |item| {
+    let dedup_threshold = if params.since.is_some() {
+        Some(emitted_up_to)
+    } else {
+        None
+    };
+    let live = BroadcastStream::new(receiver).filter_map(move |item| {
         let event = item.ok()?;
         if !wanted.iter().any(|c| c == event.channel) {
+            return None;
+        }
+        // Drop graph deltas already replayed from the snapshot.
+        if event.channel == "graph"
+            && let Some(threshold) = dedup_threshold
+            && event.seq <= threshold
+        {
             return None;
         }
         Some(Ok(Event::default()

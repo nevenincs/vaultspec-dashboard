@@ -43,9 +43,40 @@ const PLACEHOLDER: &str = "<!doctype html><html><head><title>vaultspec</title></
 (<code>npm run build</code> in <code>frontend/</code>) or set \
 <code>VAULTSPEC_SPA_DIR</code>.</p></body></html>";
 
+/// API path prefixes: unknown paths under these are JSON 404s, never
+/// index.html (audit N6 / dogfood DF-3 — R2's fallback is for NON-API
+/// paths only; an API typo must fail loud, not render the SPA).
+const API_PREFIXES: &[&str] = &[
+    "/map",
+    "/vault-tree",
+    "/graph",
+    "/filters",
+    "/nodes",
+    "/events",
+    "/status",
+    "/stream",
+    "/search",
+    "/ops",
+    "/health",
+];
+
 /// The SPA fallback handler: serve the asset when it exists, otherwise
 /// `index.html` (deep links resolve client-side, contract R2).
 pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Response {
+    let path = uri.path();
+    if API_PREFIXES
+        .iter()
+        .any(|p| path == *p || path.starts_with(&format!("{p}/")))
+    {
+        return (
+            StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({
+                "error": format!("unknown API path `{path}`"),
+                "tiers": crate::routes::query_tiers(&state),
+            })),
+        )
+            .into_response();
+    }
     let Some(dist) = spa_dir(&state) else {
         return (
             [(header::CONTENT_TYPE, "text/html; charset=utf-8")],

@@ -6,6 +6,10 @@ pub mod spa;
 pub mod stream;
 pub mod temporal;
 
+use axum::Json;
+use axum::http::StatusCode;
+use serde_json::{Value, json};
+
 use crate::app::AppState;
 
 /// The present-view tier block as JSON (rag truthfully stated).
@@ -17,4 +21,17 @@ pub(crate) fn query_tiers(state: &AppState) -> serde_json::Value {
         }
     };
     serde_json::to_value(block).expect("tiers serialize")
+}
+
+/// THE shared error response (audit N7, contract §2): every error carries
+/// the tiers block too — absence of a tier is data even on failures.
+pub(crate) fn api_error(
+    state: &AppState,
+    status: StatusCode,
+    message: String,
+) -> (StatusCode, Json<Value>) {
+    (
+        status,
+        Json(json!({"error": message, "tiers": query_tiers(state)})),
+    )
 }
