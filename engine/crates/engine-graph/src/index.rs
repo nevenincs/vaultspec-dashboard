@@ -165,6 +165,13 @@ pub(crate) fn structural_edge_for(
     scope: &ScopeRef,
     observed_at: Timestamp,
 ) -> Edge {
+    // Identity from the MENTION TEXT alone (audit W02P06-301): resolution
+    // output updates only `state` (and the resolved target attribute),
+    // never identity — a broken→resolved transition keeps the same edge id
+    // (D3.3 retained-edge-with-mutable-state; contract §2 animate-by-id).
+    // Step mentions key by canonical identifier alone (plan-stem
+    // qualification belongs to plan-container nodes minted from plans, not
+    // to mention targets); symbols key by the unqualified `#symbol` form.
     let src = node_id(&CanonicalKey::Document { stem: src_stem });
     let (dst, target_key): (NodeId, String) = match &resolved.mention.kind {
         MentionKind::Path(p) => (
@@ -175,16 +182,10 @@ pub(crate) fn structural_edge_for(
             p.clone(),
         ),
         MentionKind::WikiLink(stem) => (node_id(&CanonicalKey::Document { stem }), stem.clone()),
-        MentionKind::StepId(s) => (
-            node_id(&CanonicalKey::PlanContainer {
-                plan_stem: resolved.target.as_deref().unwrap_or("unresolved"),
-                container_id: s,
-            }),
-            s.clone(),
-        ),
+        MentionKind::StepId(s) => (NodeId::derive(&NodeKind::PlanContainer, s), s.clone()),
         MentionKind::Symbol(sym) => (
             node_id(&CanonicalKey::CodeArtifact {
-                path: resolved.target.as_deref().unwrap_or("unresolved"),
+                path: "",
                 symbol: Some(sym),
             }),
             sym.clone(),
@@ -308,4 +309,59 @@ fn vault_documents(root: &Path) -> Result<Vec<String>> {
     }
     out.sort();
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ingest_struct::extract::ExtractedMention;
+    use ingest_struct::resolve::ResolvedMention;
+
+    fn scope() -> ScopeRef {
+        ScopeRef::Ref {
+            name: "main".into(),
+        }
+    }
+
+    fn mention(kind: MentionKind, state: ResolutionState, target: Option<&str>) -> ResolvedMention {
+        ResolvedMention {
+            mention: ExtractedMention {
+                kind,
+                span: (0, 10),
+            },
+            state,
+            target: target.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn resolution_transitions_never_change_edge_identity() {
+        // Audit W02P06-301: identity from mention text alone - a
+        // broken-to-resolved transition mutates state, never the edge id.
+        for (kind, resolved_target) in [
+            (MentionKind::StepId("W01.P02.S03".into()), "some-plan.md"),
+            (
+                MentionKind::Symbol("engine::graph::insert".into()),
+                "src/graph.rs",
+            ),
+            (MentionKind::Path("src/lib.rs".into()), "src/lib.rs"),
+        ] {
+            let broken = structural_edge_for(
+                "doc-a",
+                "blob1",
+                &mention(kind.clone(), ResolutionState::Broken, None),
+                &scope(),
+                0,
+            );
+            let healed = structural_edge_for(
+                "doc-a",
+                "blob1",
+                &mention(kind, ResolutionState::Resolved, Some(resolved_target)),
+                &scope(),
+                99,
+            );
+            assert_eq!(broken.id, healed.id, "identity survives resolution");
+            assert_ne!(broken.state, healed.state, "state carries the signal");
+        }
+    }
 }
