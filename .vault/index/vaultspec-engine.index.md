@@ -34,6 +34,11 @@ related:
   - '[[2026-06-12-vaultspec-engine-W02-P05-S23]]'
   - '[[2026-06-12-vaultspec-engine-W02-P05-S24]]'
   - '[[2026-06-12-vaultspec-engine-W02-P05-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P06-S25]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P06-S26]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P06-S27]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P06-S28]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P06-S29]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -84,6 +89,11 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W02-P05-S23` - Implement feature-level meta-edge aggregation with count and per-tier breakdown per contract section 4
 - `2026-06-12-vaultspec-engine-W02-P05-S24` - Implement context assembly as a pure serializable read returning the tier-labelled bundle for any node
 - `2026-06-12-vaultspec-engine-W02-P05-summary` - `vaultspec-engine` `W02.P05` summary
+- `2026-06-12-vaultspec-engine-W02-P06-S25` - Implement the cold full-index orchestration with parallel per-view and per-source fan-out
+- `2026-06-12-vaultspec-engine-W02-P06-S26` - Implement incremental re-index with content-hash skip against the store cache
+- `2026-06-12-vaultspec-engine-W02-P06-S27` - Implement the debounced filesystem watcher over vault and git dirs driving partial re-ingestion of dirtied views
+- `2026-06-12-vaultspec-engine-W02-P06-S28` - Implement temporal event log persistence correlating events to node ids
+- `2026-06-12-vaultspec-engine-W02-P06-S29` - Add the re-derivability test proving a full index from a deleted cache converges to the identical graph
 
 ### plan
 
