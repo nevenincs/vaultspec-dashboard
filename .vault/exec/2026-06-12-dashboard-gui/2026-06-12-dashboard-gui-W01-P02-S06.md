@@ -48,6 +48,13 @@ The log holds raw deltas unbounded for the loaded range; range eviction and
 re-keyframe policy (when scrub jumps outside the held range) belong to the
 timeline's time-travel driver (W02.P08.S34), which owns asof/diff fetching.
 
+Fixed per audit finding replay-clock-conflation-005 (before S34): the
+replay cursor is driven by sequence position only - t resolves once to a
+target index (the prefix through the LAST delta labelled at or below t, so
+ts-collision groups replay atomically and non-monotonic labels inside a
+monotonic-seq batch can never strand the cursor); both cases are covered by
+dedicated tests.
+
 Resolution of audit finding delta-remove-shape-002 (deliberate, canonical):
 a `remove` delta carries the entity payload in the same `node`/`edge` slot
 as `add`/`change` - symmetric with the contract's diff entry shape - and

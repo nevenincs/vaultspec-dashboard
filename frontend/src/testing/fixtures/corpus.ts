@@ -130,7 +130,6 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         src: docId,
         dst: featureId,
         relation: "declares",
-        direction: "forward",
         tier: "declared",
         confidence: 1,
         provenance: "frontmatter",
@@ -145,7 +144,6 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
           src: docId,
           dst: prev,
           relation,
-          direction: "forward",
           tier: "declared",
           confidence: 1,
           provenance: "wiki-link",
@@ -157,16 +155,20 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
     // Structural edge to a code artifact, state varies.
     const codeId = `code:src/${feature}/mod.rs`;
     nodes.push({ id: codeId, kind: "code", title: `src/${feature}/mod.rs` });
+    // Deterministic state spread: every fifth feature carries a broken
+    // link so the degradation surfaces always have data to show.
     const structuralState =
-      rand() < 0.15 ? "broken" : rand() < 0.3 ? "stale" : "resolved";
+      fi % 5 === 3 ? "broken" : rand() < 0.3 ? "stale" : "resolved";
     edges.push({
       id: `e:${docIds.plan}->${codeId}:mentions`,
       src: docIds.plan!,
       dst: codeId,
       relation: "mentions",
-      direction: "forward",
       tier: "structural",
-      confidence: 1,
+      // Broken structural edges carry confidence 0.0 on the wire
+      // (engine-architect ruling W02P05-201): broken-ness is STATE, not
+      // low confidence — selection rides the state facet, never a floor.
+      confidence: structuralState === "broken" ? 0 : 1,
       state: structuralState,
       provenance: "path-extraction",
       observed_at: iso(startTs + 3 * DAY),

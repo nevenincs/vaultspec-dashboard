@@ -54,6 +54,12 @@ prettier; production build passes with the worker chunk emitted.
 
 ## Notes
 
+Retiring audit finding 008 (per finding 014): the meta-edge encoding
+(paper-mixed ink, log2-of-count ribbon width) was verified at S21 against
+the mock's real aggregation payloads (counts 1-3 across the fixture
+constellation) and kept unchanged - the ribbon reads distinctly from every
+tier treatment at constellation scale.
+
 Two locked-seam additions made here, both contract-aligned and flagged for
 experience-architect review: `SceneEdgeData.meta` (optional aggregation
 payload mirroring contract §4) and the renderer-side `command` member on

@@ -108,16 +108,21 @@ export class DashboardField implements SceneFieldRenderer {
         this.anchors?.update();
       });
 
-      // Visibility fades tick on the app ticker while animating.
+      // Visibility fades tick on the app ticker while animating — nodes
+      // fade/shrink, edges fade through their transition groups (017).
       const tick = () => {
-        const sample = this.nodeVisibility.sample(performance.now());
-        if (sample.animating || this.lastAnimating) {
+        const now = performance.now();
+        const nodeSample = this.nodeVisibility.sample(now);
+        const edgeSample = this.edgeVisibility.sample(now);
+        if (nodeSample.animating || edgeSample.animating || this.lastAnimating) {
           this.sprites?.applyVisibility(
-            sample.progress,
+            nodeSample.progress,
             this.nodeVisibility.visibleIds,
+            Date.now(),
           );
+          this.edges?.applyVisibility(edgeSample.progress);
         }
-        this.lastAnimating = sample.animating;
+        this.lastAnimating = nodeSample.animating || edgeSample.animating;
       };
       app.ticker.add(tick);
 
@@ -215,10 +220,7 @@ export class DashboardField implements SceneFieldRenderer {
         const now = performance.now();
         this.nodeVisibility.setVisible(cmd.visibleNodeIds, now);
         this.edgeVisibility.setVisible(cmd.visibleEdgeIds, now);
-        // Edges snap on membership (rebuild); nodes fade via the ticker.
-        this.edges?.setEdges(
-          [...this.model.edges].filter((e) => cmd.visibleEdgeIds.has(e.id)),
-        );
+        // Both entity classes fade through their trackers on the ticker.
         this.lastAnimating = true;
         break;
       }

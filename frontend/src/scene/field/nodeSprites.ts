@@ -196,10 +196,11 @@ export class NodeSpriteLayer {
   applyVisibility(
     progress: ReadonlyMap<string, number>,
     settledVisible: ReadonlySet<string>,
+    now: number,
   ): void {
     for (const [id, visual] of this.visuals) {
       const p = progress.get(id) ?? (settledVisible.has(id) ? 1 : 0);
-      const base = freshnessAlpha(visual.node.dates?.modified, Date.now());
+      const base = freshnessAlpha(visual.node.dates?.modified, now);
       visual.sprite.visible = p > 0;
       visual.sprite.alpha = base * p;
       const size = NODE_RADIUS * 2 * (0.6 + 0.4 * p);

@@ -196,6 +196,8 @@ interface MeshGroup {
   positions: Float32Array;
   geometry: MeshGeometry;
   mesh: Mesh;
+  /** Treatment alpha before fade/recede modulation. */
+  baseAlpha: number;
 }
 
 export interface EdgeSetResult {
@@ -208,6 +210,9 @@ export class EdgeMeshLayer {
   private groups = new Map<string, MeshGroup>();
   private lastEdges: readonly SceneEdgeData[] = [];
   private highlight: ReadonlySet<string> | null = null;
+  /** Latest visibility sample: id → presentation progress (0..1]. */
+  private visProgress: ReadonlyMap<string, number> | null = null;
+  private visSignature = "";
 
   constructor(world: Container) {
     // Edges draw under nodes: insert at the back of the world.
@@ -217,6 +222,8 @@ export class EdgeMeshLayer {
   /** Rebuild mesh topology for a new edge set (edge-set changes only). */
   setEdges(edges: readonly SceneEdgeData[]): EdgeSetResult {
     this.lastEdges = edges;
+    this.visProgress = null;
+    this.visSignature = "";
     return this.rebuild();
   }
 
@@ -229,13 +236,46 @@ export class EdgeMeshLayer {
     this.rebuild();
   }
 
+  /**
+   * Visibility fades (G3.f, audit finding edge-fade-snaps-017): edges in
+   * transition rebuild into `+fade` groups whose mesh alpha tracks the
+   * sampled progress per frame; topology rebuilds only when the
+   * membership/transition partition changes, alpha updates are per-call.
+   */
+  applyVisibility(progress: ReadonlyMap<string, number>): void {
+    this.visProgress = progress;
+    let signature = "";
+    for (const [id, p] of progress) {
+      signature += p >= 1 ? id : `${id}~`;
+      signature += "|";
+    }
+    if (signature !== this.visSignature) {
+      this.visSignature = signature;
+      this.rebuild();
+    }
+    for (const group of this.groups.values()) {
+      if (!group.key.includes("+fade")) continue;
+      let sum = 0;
+      for (const edge of group.edges) {
+        sum += progress.get(edge.id) ?? 0;
+      }
+      group.mesh.alpha = group.baseAlpha * (sum / Math.max(1, group.edges.length));
+    }
+  }
+
   private rebuild(): EdgeSetResult {
     const rejected: UnknownTierError[] = [];
     const byGroup = new Map<string, SceneEdgeData[]>();
-    for (const edge of this.lastEdges) {
+    const drawable = this.visProgress
+      ? this.lastEdges.filter((e) => (this.visProgress!.get(e.id) ?? 0) > 0)
+      : this.lastEdges;
+    for (const edge of drawable) {
       try {
         let key = edgeGroupKey(edge);
         if (this.highlight?.has(edge.id)) key = `${key}+lift`;
+        if (this.visProgress && (this.visProgress.get(edge.id) ?? 0) < 1) {
+          key = `${key}+fade`;
+        }
         let list = byGroup.get(key);
         if (!list) {
           list = [];
@@ -310,7 +350,7 @@ export class EdgeMeshLayer {
 
   private buildGroup(key: string, edges: SceneEdgeData[]): MeshGroup {
     const base = key.split("+")[0];
-    const lifted = key.endsWith("+lift");
+    const lifted = key.includes("+lift");
     const isTemporal = base.startsWith("temporal");
     const isSemantic = base.startsWith("semantic") || base === "meta";
     const topology = isSemantic ? "triangle-list" : "line-list";
@@ -333,9 +373,11 @@ export class EdgeMeshLayer {
     mesh.tint = groupColor(base);
     // Alpha supports the treatment but never carries confidence alone;
     // while an ego is lifted, non-lifted groups recede (G3.b).
-    const baseAlpha = isSemantic ? 0.45 : 0.8;
-    mesh.alpha = this.highlight && !lifted ? baseAlpha * 0.25 : baseAlpha;
+    const treatmentAlpha = isSemantic ? 0.45 : 0.8;
+    const baseAlpha =
+      this.highlight && !lifted ? treatmentAlpha * 0.25 : treatmentAlpha;
+    mesh.alpha = baseAlpha;
     this.container.addChild(mesh);
-    return { key, edges, topology, vertsPerEdge, positions, geometry, mesh };
+    return { key, edges, topology, vertsPerEdge, positions, geometry, mesh, baseAlpha };
   }
 }

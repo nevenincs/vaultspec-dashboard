@@ -58,3 +58,22 @@ delta-remove-shape-002 required. The mock's `push()` lets tests and demos
 drive live SSE events; the live splice path is exercised end-to-end in S34
 time travel.
 
+REVISED before W02.P08 per the P05 review (findings 009-012 + the §4
+direction amendment), all with tests:
+
+- 009: feature nodes enter the delta timeline at their creation dates and
+  constellation meta-edges when both endpoints exist - historical slices
+  carry the default species; doc-level edges observed after their source's
+  creation (semantic discoveries) enter at their own observed_at.
+- 010: the diff window is keyed on seq (ts boundaries resolve to sequence
+  positions first), mirroring the stream's since= splice - ts-collision
+  siblings can never drop at a window boundary (collision-spanning test).
+- 011: degradation gates CONTENT, not just the block - degraded tiers'
+  edges and exclusively-degraded meta-edges drop from query, asof, and
+  neighbors responses.
+- 012: historical classification runs against the corpus's own max event
+  ts, never the wall clock.
+- The dead `direction` field was stripped from the wire edge type and the
+  fixtures (contract §4 as amended by engine audit W03P10-602; direction is
+  src→dst ordering).
+

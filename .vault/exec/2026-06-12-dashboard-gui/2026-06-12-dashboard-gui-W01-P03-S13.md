@@ -49,6 +49,10 @@ build passes.
 
 ## Notes
 
+Fixed per audit finding fa2-init-collision-006: init now guards duplicate
+edge ids exactly like change does, logging a diagnostic instead of dying
+silently on a malformed keyframe.
+
 The rider's production-bundle worker verification is half-done: the build is
 green, but no app-entry code reaches `createFa2Worker` yet, so Vite emits no
 worker chunk to inspect. Re-verify the emitted worker chunk when S21 mounts

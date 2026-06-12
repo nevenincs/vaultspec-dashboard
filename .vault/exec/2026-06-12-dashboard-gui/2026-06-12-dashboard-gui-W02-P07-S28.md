@@ -48,3 +48,20 @@ vitest (140 passed), prettier.
 Facet values are never hardcoded - the controls (S29/S30) enumerate the
 engine vocabulary endpoint; this store only holds choices.
 
+Broken-edge consumption ruling (engine-architect W02P05-201, forwarded by
+experience-architect): broken structural edges carry confidence 0.0 on the
+wire - broken-ness is STATE, not low confidence. The model already
+complies: confidence floors apply to the temporal and semantic tiers only
+(never structural), so no floor can hide a broken edge, and the
+show-broken lens selects purely on the state facet. The dial exposes no
+structural confidence slider. Per the same ruling the S18 fixtures were
+touched in this phase to carry confidence 0.0 on broken edges (with a
+deterministic broken spread and a guard test) - noted here rather than
+silently editing the P05 records.
+
+Audit finding edge-fade-snaps-017 (transferred from P06) is closed in this
+phase: edge visibility now fades through transition mesh groups whose
+alpha tracks the sampled progress per frame - membership rebuilds only at
+partition changes, alpha updates are per-frame, and nodes and edges share
+the one 200ms G3.f band.
+

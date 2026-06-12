@@ -105,19 +105,33 @@ export class DeltaLog {
    * 60fps scrub path); backward motion rebuilds from the keyframe — large
    * backward jumps are exactly the contract's re-keyframe case, and the
    * rebuild keeps small ones correct in the meantime.
+   *
+   * The CURSOR is driven by sequence position, never by timestamp: the
+   * contract guarantees seq monotonicity only — equal or non-monotonic
+   * timestamps inside a monotonic-seq batch are legal (audit finding
+   * replay-clock-conflation-005). `t` selects the target seq (the last
+   * delta whose label is ≤ t, including its whole ts-collision group);
+   * everything after is pure seq arithmetic.
    */
   replayTo(t: number | "live"): SceneGraphModel {
     if (this.keyframe === null) {
       throw new Error("DeltaLog.replayTo before setKeyframe");
     }
-    const target = t === "live" ? Number.POSITIVE_INFINITY : t;
-    const appliedUpTo = this.cursor > 0 ? this.deltas[this.cursor - 1].t : -Infinity;
-    if (target < appliedUpTo) {
+    // Resolve t → target index: the count of deltas with label ≤ t. A
+    // single backward scan from the end handles non-monotonic labels by
+    // including every delta up to the LAST one satisfying the bound.
+    let targetIndex = this.deltas.length;
+    if (t !== "live") {
+      while (targetIndex > 0 && this.deltas[targetIndex - 1].t > t) {
+        targetIndex -= 1;
+      }
+    }
+    if (targetIndex < this.cursor) {
       // Backward: rebuild from the keyframe.
       this.model.setData(this.keyframe.nodes, this.keyframe.edges);
       this.cursor = 0;
     }
-    while (this.cursor < this.deltas.length && this.deltas[this.cursor].t <= target) {
+    while (this.cursor < targetIndex) {
       this.model.applyDelta(this.deltas[this.cursor]);
       this.cursor += 1;
     }

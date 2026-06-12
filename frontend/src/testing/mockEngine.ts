@@ -48,6 +48,26 @@ export interface TimelineDelta extends GraphDeltaEntry {
 export function buildDeltaTimeline(corpus: FixtureCorpus): TimelineDelta[] {
   const nodeById = new Map(corpus.nodes.map((n) => [n.id, n]));
   const deltas: TimelineDelta[] = [];
+  // Feature nodes (the default stage species) enter the timeline at their
+  // creation date — historical slices must carry them (audit finding
+  // mock-asof-omits-feature-nodes-009).
+  const featureCreated = new Map<string, number>();
+  for (const node of corpus.nodes) {
+    if (node.kind !== "feature") continue;
+    const ts = Date.parse(node.dates?.created ?? corpus.events[0]?.ts ?? "");
+    if (!Number.isFinite(ts)) continue;
+    featureCreated.set(node.id, ts);
+    deltas.push({ op: "add", node, t: ts, ts, seq: 0 });
+  }
+  // Constellation meta-edges appear once both endpoint features exist.
+  for (const meta of corpus.metaEdges) {
+    const ts = Math.max(
+      featureCreated.get(meta.src) ?? 0,
+      featureCreated.get(meta.dst) ?? 0,
+    );
+    if (ts > 0) deltas.push({ op: "add", edge: meta, t: ts, ts, seq: 0 });
+  }
+  const emittedEdges = new Set<string>();
   for (const event of corpus.events) {
     const ts = Date.parse(event.ts);
     const primary = event.node_ids[0];
@@ -58,11 +78,20 @@ export function buildDeltaTimeline(corpus: FixtureCorpus): TimelineDelta[] {
       for (const edge of corpus.edges) {
         if (edge.src === primary && Date.parse(edge.observed_at ?? event.ts) <= ts) {
           deltas.push({ op: "add", edge, t: ts, ts, seq: 0 });
+          emittedEdges.add(edge.id);
         }
       }
     } else if (event.kind === "step-checked") {
       deltas.push({ op: "change", node, t: ts, ts, seq: 0 });
     }
+  }
+  // Edges observed after their source's creation event (e.g. semantic
+  // discoveries) enter the timeline at their own observed_at — every
+  // corpus edge exists somewhere on the clock.
+  for (const edge of corpus.edges) {
+    if (emittedEdges.has(edge.id) || !edge.observed_at) continue;
+    const ts = Date.parse(edge.observed_at);
+    if (Number.isFinite(ts)) deltas.push({ op: "add", edge, t: ts, ts, seq: 0 });
   }
   deltas.sort((a, b) => a.ts - b.ts);
   deltas.forEach((d, i) => {
@@ -113,6 +142,21 @@ export class MockEngine {
     return this.timeline.length;
   }
 
+  /** The corpus's edge of history — the LIVE boundary on the data's clock. */
+  get maxEventTs(): number {
+    return this.timeline.length > 0 ? this.timeline[this.timeline.length - 1].ts : 0;
+  }
+
+  /** Sequence position of the last delta at or before a ms timestamp. */
+  seqAt(t: number): number {
+    let seq = 0;
+    for (const delta of this.timeline) {
+      if (delta.ts > t) break;
+      seq = delta.seq;
+    }
+    return seq;
+  }
+
   /** Slice as of a ms timestamp (or now for live). */
   sliceAsOf(t: number): { nodes: EngineNode[]; edges: EngineEdge[]; seq: number } {
     const nodes = new Map<string, EngineNode>();
@@ -131,11 +175,27 @@ export class MockEngine {
       }
     }
     // Historical views: declared + structural + temporal only (§5).
-    const historical = t < Date.now() - 1000;
-    const edgeList = [...edges.values()].filter(
-      (e) => !historical || e.tier !== "semantic",
-    );
+    // Classified against the CORPUS's clock, never the wall clock (audit
+    // finding asof-wallclock-historical-012).
+    const historical = t < this.maxEventTs;
+    const edgeList = [...edges.values()]
+      .filter((e) => !historical || e.tier !== "semantic")
+      .filter((e) => this.tierServed(e));
     return { nodes: [...nodes.values()], edges: edgeList, seq };
+  }
+
+  /**
+   * Degradation gates CONTENT, not just the block (audit finding
+   * degraded-tier-still-served-011): a degraded tier's edges — and
+   * meta-edges whose breakdown is exclusively that tier — drop out.
+   */
+  private tierServed(edge: EngineEdge): boolean {
+    if (edge.meta) {
+      return Object.keys(edge.meta.breakdown_by_tier).some(
+        (tier) => !this.degradations.has(tier),
+      );
+    }
+    return !this.degradations.has(edge.tier);
   }
 
   /** The fetch-shaped transport the EngineClient plugs into. */
@@ -212,10 +272,11 @@ export class MockEngine {
     }
     if (path === "/graph/query") {
       // Constellation granularity: feature nodes + engine-aggregated
-      // meta-edges; doc-level arrives on descent (contract §4).
+      // meta-edges; doc-level arrives on descent (contract §4). Degraded
+      // tiers gate content here too (011).
       return {
         nodes: c.nodes.filter((n) => n.kind === "feature"),
-        edges: c.metaEdges,
+        edges: c.metaEdges.filter((e) => this.tierServed(e)),
         filter: init?.body ? JSON.parse(String(init.body)).filter : undefined,
         tiers,
       };
@@ -245,7 +306,9 @@ export class MockEngine {
         return { node, interior: this.interiorOf(id), tiers };
       }
       if (sub === "neighbors") {
-        const incident = c.edges.filter((e) => e.src === id || e.dst === id);
+        const incident = c.edges.filter(
+          (e) => (e.src === id || e.dst === id) && this.tierServed(e),
+        );
         const ids = new Set([id, ...incident.flatMap((e) => [e.src, e.dst])]);
         return {
           nodes: c.nodes.filter((n) => ids.has(n.id)),
@@ -300,10 +363,14 @@ export class MockEngine {
     }
     if (path === "/graph/diff") {
       requireScope(params);
-      const from = Number(params.get("from"));
-      const to = Number(params.get("to"));
+      // The window is keyed on SEQ, mirroring the stream's since= splice:
+      // ts boundaries resolve to sequence positions first, so ts-collision
+      // siblings can never be dropped at the boundary (audit finding
+      // diff-splice-lossy-ts-010).
+      const fromSeq = this.seqAt(Number(params.get("from")));
+      const toSeq = this.seqAt(Number(params.get("to")));
       const deltas = this.timeline
-        .filter((d) => d.ts > from && d.ts <= to)
+        .filter((d) => d.seq > fromSeq && d.seq <= toSeq)
         .map(({ op, node, edge, t, seq }) => ({ op, node, edge, t, seq }));
       return { deltas, last_seq: this.lastSeq, tiers };
     }

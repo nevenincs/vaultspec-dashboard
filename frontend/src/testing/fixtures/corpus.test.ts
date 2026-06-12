@@ -35,6 +35,15 @@ describe("buildFixtureCorpus", () => {
         .filter((e) => e.tier === "structural")
         .every((e) => e.state !== undefined),
     ).toBe(true);
+    // Broken-ness is state, not low confidence: broken edges carry 0.0 on
+    // the wire (ruling W02P05-201) and intact ones carry full confidence.
+    const structural = corpus.edges.filter((e) => e.tier === "structural");
+    expect(structural.some((e) => e.state === "broken")).toBe(true);
+    expect(
+      structural.every((e) =>
+        e.state === "broken" ? e.confidence === 0 : e.confidence === 1,
+      ),
+    ).toBe(true);
     expect(
       corpus.edges.filter((e) => e.tier === "semantic").every((e) => e.confidence < 1),
     ).toBe(true);

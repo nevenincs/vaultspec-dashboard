@@ -75,9 +75,15 @@ onmessage = (event: MessageEvent<LayoutInMessage>) => {
       graph.clear();
       for (const seed of msg.nodes) addNode(seed);
       for (const e of msg.edges) {
-        if (graph.hasNode(e.src) && graph.hasNode(e.dst)) {
-          graph.addEdgeWithKey(e.id, e.src, e.dst);
+        // Guard duplicates exactly like `change` does: a malformed keyframe
+        // must degrade to a surfaced diagnostic, never a silently dead
+        // worker (audit finding fa2-init-collision-006).
+        if (!graph.hasNode(e.src) || !graph.hasNode(e.dst)) continue;
+        if (graph.hasEdge(e.id)) {
+          console.error(`fa2 worker: duplicate edge id in keyframe: ${e.id}`);
+          continue;
         }
+        graph.addEdgeWithKey(e.id, e.src, e.dst);
       }
       postPositions();
       break;

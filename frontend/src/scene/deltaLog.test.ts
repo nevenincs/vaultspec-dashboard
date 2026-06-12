@@ -92,6 +92,39 @@ describe("DeltaLog", () => {
     expect(log.lastSeq).toBe(14);
   });
 
+  it("drives the cursor by seq: ts-collision groups replay atomically (005)", () => {
+    const log = new DeltaLog();
+    log.setKeyframe(keyframe());
+    // Three deltas share one timestamp inside a monotonic-seq batch.
+    log.append([
+      addNode("b", 110, 11),
+      addNode("c", 110, 12),
+      addNode("d", 110, 13),
+      addNode("e", 120, 14),
+    ]);
+    const at110 = log.replayTo(110);
+    expect(at110.getNode("b")).toBeDefined();
+    expect(at110.getNode("c")).toBeDefined();
+    expect(at110.getNode("d")).toBeDefined();
+    expect(at110.getNode("e")).toBeUndefined();
+  });
+
+  it("tolerates non-monotonic timestamps inside a monotonic-seq batch (005)", () => {
+    const log = new DeltaLog();
+    log.setKeyframe(keyframe());
+    // Legal per contract: seq strictly increases, t does not.
+    log.append([addNode("b", 130, 11), addNode("c", 110, 12), addNode("d", 140, 13)]);
+    // t=110 bounds at the LAST delta labelled ≤ 110 (seq 12), so the whole
+    // prefix through seq 12 applies — never a stranded mid-batch cursor.
+    const at110 = log.replayTo(110);
+    expect(at110.getNode("b")).toBeDefined();
+    expect(at110.getNode("c")).toBeDefined();
+    expect(at110.getNode("d")).toBeUndefined();
+    // Forward to live, back again — pure seq arithmetic both ways.
+    expect(log.replayTo("live").getNode("d")).toBeDefined();
+    expect(log.replayTo(110).getNode("d")).toBeUndefined();
+  });
+
   it("anchors lastSeq at the keyframe when the log is empty", () => {
     const log = new DeltaLog();
     log.setKeyframe(keyframe());

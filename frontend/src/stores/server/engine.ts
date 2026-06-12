@@ -84,7 +84,8 @@ export interface EngineEdge {
   src: string;
   dst: string;
   relation: string;
-  direction?: "forward" | "none";
+  // No direction field on the wire: direction is carried entirely by
+  // src→dst ordering (contract §4 as amended by engine audit W03P10-602).
   tier: "declared" | "structural" | "temporal" | "semantic";
   confidence: number;
   state?: "resolved" | "stale" | "broken";

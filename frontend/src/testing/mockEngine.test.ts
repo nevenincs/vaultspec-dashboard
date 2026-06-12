@@ -71,11 +71,72 @@ describe("MockEngine routes", () => {
     expect(diff.last_seq).toBe(mock.lastSeq);
   });
 
-  it("excludes the semantic tier from historical slices (§5)", async () => {
+  it("excludes the semantic tier from historical slices (§5), classified on the corpus clock (012)", async () => {
     const mock = new MockEngine();
-    const mid = mock.timeline[mock.timeline.length - 1].ts;
+    const c = client(mock);
+    const mid = mock.timeline[Math.floor(mock.timeline.length / 2)].ts;
+    const historical = await c.graphAsof({ scope: "wt-main", t: mid });
+    expect(
+      historical.edges.every((e) => e.tier !== "semantic" || e.meta !== undefined),
+    ).toBe(true);
+    expect(historical.edges.some((e) => e.tier === "semantic" && !e.meta)).toBe(false);
+    // At the corpus's own LIVE edge, semantic serves again — wall clock
+    // plays no part in the classification.
+    const live = await c.graphAsof({ scope: "wt-main", t: mock.maxEventTs });
+    expect(live.edges.some((e) => e.tier === "semantic" && !e.meta)).toBe(true);
+  });
+
+  it("carries feature nodes in historical slices (009)", async () => {
+    const mock = new MockEngine();
+    const mid = mock.timeline[Math.floor(mock.timeline.length / 2)].ts;
     const asof = await client(mock).graphAsof({ scope: "wt-main", t: mid });
-    expect(asof.edges.every((e) => e.tier !== "semantic")).toBe(true);
+    expect(asof.nodes.some((n) => n.kind === "feature")).toBe(true);
+    // Scrubbing from the constellation never vanishes the default species:
+    // at any T past the first feature's creation, features exist.
+  });
+
+  it("windows the diff on seq so ts-collision siblings always splice (010)", async () => {
+    const mock = new MockEngine();
+    const c = client(mock);
+    // Find a ts shared by multiple deltas (collision group).
+    const byTs = new Map<number, number>();
+    for (const d of mock.timeline) byTs.set(d.ts, (byTs.get(d.ts) ?? 0) + 1);
+    const collisionTs = [...byTs.entries()].find(([, n]) => n > 1)?.[0];
+    expect(collisionTs).toBeDefined();
+    const group = mock.timeline.filter((d) => d.ts === collisionTs);
+    // A diff window ending exactly at the collision ts includes the WHOLE
+    // sibling group, and the follow-up window starting there drops none.
+    const before = await c.graphDiff({
+      scope: "wt-main",
+      from: collisionTs! - 1,
+      to: collisionTs!,
+    });
+    for (const sibling of group) {
+      expect(before.deltas.some((d) => d.seq === sibling.seq)).toBe(true);
+    }
+    const after = await c.graphDiff({
+      scope: "wt-main",
+      from: collisionTs!,
+      to: mock.maxEventTs,
+    });
+    const seqs = new Set(after.deltas.map((d) => d.seq));
+    for (const sibling of group) {
+      expect(seqs.has(sibling.seq)).toBe(false);
+    }
+    expect(after.deltas[0]?.seq).toBe(group[group.length - 1].seq + 1);
+  });
+
+  it("gates degraded tier CONTENT, not just the block (011)", async () => {
+    const mock = new MockEngine();
+    mock.degrade("semantic", "rag service down");
+    const c = client(mock);
+    const constellation = await c.graphQuery({ scope: "wt-main" });
+    // Fixture meta-edges aggregate semantic-only breakdowns: all gated.
+    expect(constellation.edges).toHaveLength(0);
+    const asof = await c.graphAsof({ scope: "wt-main", t: mock.maxEventTs });
+    expect(asof.edges.some((e) => e.tier === "semantic")).toBe(false);
+    mock.degrade("semantic", null);
+    expect((await c.graphQuery({ scope: "wt-main" })).edges.length).toBeGreaterThan(0);
   });
 
   it("degrades truthfully: rag down → 502 with reasoned tier block", async () => {
