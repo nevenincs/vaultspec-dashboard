@@ -45,6 +45,11 @@ related:
   - '[[2026-06-12-vaultspec-engine-W02-P07-S32]]'
   - '[[2026-06-12-vaultspec-engine-W02-P07-S33]]'
   - '[[2026-06-12-vaultspec-engine-W02-P07-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P08-S34]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P08-S35]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P08-S36]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P08-S37]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P08-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -106,6 +111,11 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W02-P07-S32` - Implement ordered diff-log generation between two times with monotonic sequence numbers and last-seq reporting
 - `2026-06-12-vaultspec-engine-W02-P07-S33` - Implement event bucketing with auto, raw and fixed-interval modes returning per-bucket counts by kind
 - `2026-06-12-vaultspec-engine-W02-P07-summary` - `vaultspec-engine` `W02.P07` summary
+- `2026-06-12-vaultspec-engine-W02-P08-S34` - Implement filter-object validation and normalization plus scoped filter-vocabulary enumeration
+- `2026-06-12-vaultspec-engine-W02-P08-S35` - Implement the scoped graph query over scope, filter and as-of against the in-memory graph
+- `2026-06-12-vaultspec-engine-W02-P08-S36` - Implement node detail with interior structure, neighbors with depth and tier filters, and evidence queries
+- `2026-06-12-vaultspec-engine-W02-P08-S37` - Implement cursor pagination and the per-tier degradation block carried on every response envelope
+- `2026-06-12-vaultspec-engine-W02-P08-summary` - `vaultspec-engine` `W02.P08` summary
 
 ### plan
 

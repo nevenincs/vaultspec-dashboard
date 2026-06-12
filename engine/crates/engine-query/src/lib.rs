@@ -77,4 +77,8 @@ mod tests {
     }
 }
 
+pub mod envelope;
 pub mod events;
+pub mod filter;
+pub mod graph;
+pub mod node;

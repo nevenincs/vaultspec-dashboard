@@ -94,10 +94,10 @@ Deliver the four named temporal correlation rules, blob-true as-of reconstructio
 
 Deliver the single shared query implementation: filter validation and vocabulary enumeration, scoped graph queries, node detail, neighbors and evidence queries, pagination cursors, and the per-tier degradation envelope.
 
-- [ ] `W02.P08.S34` - Implement filter-object validation and normalization plus scoped filter-vocabulary enumeration; `engine/crates/engine-query/src/filter.rs`.
-- [ ] `W02.P08.S35` - Implement the scoped graph query over scope, filter and as-of against the in-memory graph; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W02.P08.S36` - Implement node detail with interior structure, neighbors with depth and tier filters, and evidence queries; `engine/crates/engine-query/src/node.rs`.
-- [ ] `W02.P08.S37` - Implement cursor pagination and the per-tier degradation block carried on every response envelope; `engine/crates/engine-query/src/envelope.rs`.
+- [x] `W02.P08.S34` - Implement filter-object validation and normalization plus scoped filter-vocabulary enumeration; `engine/crates/engine-query/src/filter.rs`.
+- [x] `W02.P08.S35` - Implement the scoped graph query over scope, filter and as-of against the in-memory graph; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W02.P08.S36` - Implement node detail with interior structure, neighbors with depth and tier filters, and evidence queries; `engine/crates/engine-query/src/node.rs`.
+- [x] `W02.P08.S37` - Implement cursor pagination and the per-tier degradation block carried on every response envelope; `engine/crates/engine-query/src/envelope.rs`.
 
 ### Phase `W02.P09` - rag semantic client
 
