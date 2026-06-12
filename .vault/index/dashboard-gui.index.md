@@ -25,6 +25,11 @@ related:
   - '[[2026-06-12-dashboard-gui-W01-P04-S15]]'
   - '[[2026-06-12-dashboard-gui-W01-P04-S16]]'
   - '[[2026-06-12-dashboard-gui-W01-P04-summary]]'
+  - '[[2026-06-12-dashboard-gui-W02-P05-S17]]'
+  - '[[2026-06-12-dashboard-gui-W02-P05-S18]]'
+  - '[[2026-06-12-dashboard-gui-W02-P05-S19]]'
+  - '[[2026-06-12-dashboard-gui-W02-P05-S20]]'
+  - '[[2026-06-12-dashboard-gui-W02-P05-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -66,6 +71,11 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W01-P04-S15` - implement the React island layer rendering opened nodes at tracked anchors per G6.a
 - `2026-06-12-dashboard-gui-W01-P04-S16` - create the placeholder programmatic glyph set for doc types, tiers, and states as sprite and SDF textures pending the commissioned family per G7.c
 - `2026-06-12-dashboard-gui-W01-P04-summary` - `dashboard-gui` `W01.P04` summary
+- `2026-06-12-dashboard-gui-W02-P05-S17` - implement the typed engine API client covering the contract query families map, vault-tree, graph query, nodes, filters, events, asof, diff, status, search, ops
+- `2026-06-12-dashboard-gui-W02-P05-S18` - build the synthetic vault corpus fixtures with features, documents, plan interiors, tiered edges, and an event log mirroring contract shapes
+- `2026-06-12-dashboard-gui-W02-P05-S19` - implement the mock engine with HTTP handlers and SSE channels carrying sequence numbers and tier degradation blocks, toggled by env flag
+- `2026-06-12-dashboard-gui-W02-P05-S20` - wire TanStack Query hooks with streamedQuery SSE consumption and cache keys of scope, filter, as-of per G5.b and the stateless-scope contract guarantee
+- `2026-06-12-dashboard-gui-W02-P05-summary` - `dashboard-gui` `W02.P05` summary
 
 ### plan
 
