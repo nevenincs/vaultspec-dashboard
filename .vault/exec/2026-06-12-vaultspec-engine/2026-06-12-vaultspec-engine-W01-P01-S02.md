@@ -8,9 +8,6 @@ related:
   - "[[2026-06-12-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Implement stable NodeId derivation from kind plus canonical key (feature tag, vault stem, plan stem plus step id, commit sha, repo path plus symbol) with unit tests
 
 ## Scope

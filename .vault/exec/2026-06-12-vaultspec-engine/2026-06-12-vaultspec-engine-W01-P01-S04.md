@@ -8,9 +8,6 @@ related:
   - "[[2026-06-12-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Implement the SQLite schema for derived artifacts keyed by input content hash, the temporal event log, and the semantic TTL cache
 
 ## Scope

@@ -10,7 +10,6 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---
 
-
 # `vaultspec-engine` plan
 
 Build the `vaultspec` Rust engine from the committed cargo workspace scaffold to a contract-complete backend: ingestion, tiered linkage graph, query core, CLI verbs and serve mode.
@@ -150,12 +149,6 @@ Implements the accepted engine architecture ADR (the primary authorizing documen
 Scoping is deliberately loose by direction: where implementation teaches that an ADR decision is wrong, the executor must not silently deviate - flag the specific decision id for an ADR modification or a superseding ADR, then proceed per the resolution. The decisions register ADR and the contract reference in `related:` carry the cross-feature constraints; the contract is binding at capability level, endpoint shapes are illustrative.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

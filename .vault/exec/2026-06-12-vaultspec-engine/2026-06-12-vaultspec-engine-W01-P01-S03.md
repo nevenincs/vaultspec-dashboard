@@ -8,9 +8,6 @@ related:
   - "[[2026-06-12-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Implement stable EdgeId content-hash derivation over src, dst, relation, tier and provenance key with determinism unit tests
 
 ## Scope

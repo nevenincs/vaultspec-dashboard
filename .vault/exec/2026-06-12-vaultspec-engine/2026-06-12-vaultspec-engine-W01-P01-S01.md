@@ -8,9 +8,6 @@ related:
   - "[[2026-06-12-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Define Node, NodeKind, Edge, RelationKind, Tier, Provenance and ScopeRef types per ADR section 3 as pure no-IO types
 
 ## Scope

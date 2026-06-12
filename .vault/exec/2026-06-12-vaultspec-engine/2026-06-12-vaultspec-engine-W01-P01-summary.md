@@ -33,8 +33,7 @@ WAL journaling, and a single-writer / concurrent-reader API enforced by
 connection flags and the type system rather than convention.
 
 Verification at the phase boundary: `cargo build`, `cargo test` (19 suites,
-all green; 14 unit tests across the two touched crates), `cargo fmt
---check` and `cargo clippy --all-targets -- -D warnings` all pass in
+all green; 14 unit tests across the two touched crates), `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` all pass in
 `engine/`. One design call flagged for the phase review (S03 record): the
 edge-id hash uses the provenance stable key rather than full provenance,
 read as the contract's re-derivation clause intent.

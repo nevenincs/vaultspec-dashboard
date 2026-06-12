@@ -8,9 +8,6 @@ related:
   - "[[2026-06-12-vaultspec-engine-plan]]"
 ---
 
-
-
-
 # Implement the store read and write API with single-writer discipline and concurrent-reader tests
 
 ## Scope
