@@ -132,7 +132,7 @@ Implements the activity rail per G2: now strip, the whitelisted ops surface with
 Implements the universal verb surface and pillar-3 search with the rag-down fallback.
 
 - [x] `W03.P11.S43` - build the command palette fronting navigation, lenses, and ops verbs on the committed primitives per G2.a and G5.c; `frontend/src/app/palette/CommandPalette.tsx`.
-- [ ] `W03.P11.S44` - build the search tab over the search pass-through with typed filter chips and node-id click-through to the stage; `frontend/src/app/right/SearchTab.tsx`.
+- [x] `W03.P11.S44` - build the search tab over the search pass-through with typed filter chips and node-id click-through to the stage; `frontend/src/app/right/SearchTab.tsx`.
 - [ ] `W03.P11.S45` - implement the rag-down text-match fallback with the explicit semantic-search-offline state per G8.a; `frontend/src/app/right/searchFallback.ts`.
 
 ### Phase `W03.P12` - degradation, visual language, live integration

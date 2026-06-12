@@ -1,9 +1,12 @@
+import { useState } from "react";
+
 import { useViewStore } from "../stores/view/viewStore";
 import { VaultBrowser } from "./left/VaultBrowser";
 import { CommandPalette } from "./palette/CommandPalette";
 import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
 import { OpsPanel } from "./right/OpsPanel";
+import { SearchTab } from "./right/SearchTab";
 import { WorktreePicker } from "./left/WorktreePicker";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
@@ -71,11 +74,34 @@ export function AppShell() {
 }
 
 function ActivityRail() {
+  const [tab, setTab] = useState<"activity" | "search">("activity");
   return (
     <div className="mt-2 space-y-3 overflow-y-auto">
-      <NowStrip />
-      <OpsPanel />
-      <Inspector />
+      <div className="flex gap-1 text-xs" role="tablist" aria-label="rail tabs">
+        {(["activity", "search"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className={`rounded px-2 py-0.5 ${
+              tab === t ? "bg-stone-200 text-stone-900" : "text-stone-500"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      {tab === "activity" ? (
+        <>
+          <NowStrip />
+          <OpsPanel />
+          <Inspector />
+        </>
+      ) : (
+        <SearchTab />
+      )}
     </div>
   );
 }
