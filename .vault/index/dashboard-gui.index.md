@@ -43,6 +43,12 @@ related:
   - '[[2026-06-12-dashboard-gui-W02-P07-S30]]'
   - '[[2026-06-12-dashboard-gui-W02-P07-S31]]'
   - '[[2026-06-12-dashboard-gui-W02-P07-summary]]'
+  - '[[2026-06-12-dashboard-gui-W02-P08-S32]]'
+  - '[[2026-06-12-dashboard-gui-W02-P08-S33]]'
+  - '[[2026-06-12-dashboard-gui-W02-P08-S34]]'
+  - '[[2026-06-12-dashboard-gui-W02-P08-S35]]'
+  - '[[2026-06-12-dashboard-gui-W02-P08-S36]]'
+  - '[[2026-06-12-dashboard-gui-W02-P08-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -103,6 +109,12 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W02-P07-S30` - build the facet chip bar for doc type, feature, relation, structural status, text match, with the hidden-count chip per G3.f
 - `2026-06-12-dashboard-gui-W02-P07-S31` - implement named lenses saved client-side and exposed to the command palette per G3.f and G5.d
 - `2026-06-12-dashboard-gui-W02-P07-summary` - `dashboard-gui` `W02.P07` summary
+- `2026-06-12-dashboard-gui-W02-P08-S32` - build the timeline lanes with engine-bucketed density rendering resolving to event marks at fine zoom per G4.a
+- `2026-06-12-dashboard-gui-W02-P08-S33` - implement the playhead with LIVE docking and unmistakable time-travel mode entry and exit per G4.b
+- `2026-06-12-dashboard-gui-W02-P08-S34` - drive scene set-time from the playhead via asof keyframes and client diff-log replay with re-keyframe on large jumps per G4.b
+- `2026-06-12-dashboard-gui-W02-P08-S35` - implement range selection as the product's single date-range filter with play-the-range growth animation per G4.c
+- `2026-06-12-dashboard-gui-W02-P08-S36` - implement event-mark click selection with node-ids cross-highlight pulse on the stage per G2.b and the contract event shape
+- `2026-06-12-dashboard-gui-W02-P08-summary` - `dashboard-gui` `W02.P08` summary
 
 ### plan
 
