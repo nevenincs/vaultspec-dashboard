@@ -2,19 +2,78 @@
 // the renderer owns positions, LOD, and per-frame animation. React never
 // renders the field's nodes; it sends commands and subscribes to events.
 // This module is framework-free by design — no React imports, ever.
+//
+// Interface shape reviewed by experience-architect (2026-06-12 redline);
+// RL-1/RL-2 folded, RL-3/RL-4/RL-5 present as typed placeholders below.
+// NOT locked: final lock happens together with the field component work.
 
-export interface SceneNode {
+/**
+ * Graph data for one node — visual-anatomy inputs only (RL-1).
+ *
+ * Positions are scene-internal: the FA2 worker computes them inside the
+ * scene layer and the warm-start cache restores them. React can never set
+ * a position; `seedPosition` is at most an optional warm-start hint.
+ */
+export interface SceneNodeData {
   id: string;
-  x: number;
-  y: number;
+  /** Node species/doc type — drives the silhouette glyph (gui-spec §3.1). */
+  kind: string;
+  /** Lifecycle state + progress — drives ring/fill treatment. */
+  lifecycle?: { state: string; progress?: { done: number; total: number } };
+  /** Per-tier degree counts — drives tier badges (contract §4). */
+  degreeByTier?: Partial<
+    Record<"declared" | "structural" | "temporal" | "semantic", number>
+  >;
+  /** Created/modified timestamps — drives the freshness halo. */
+  dates?: { created?: string; modified?: string };
+  /** Optional warm-start seed only; the renderer owns positions (RL-1). */
+  seedPosition?: { x: number; y: number };
+}
+
+/**
+ * Graph data for one edge — mirrors the contract §4 edge shape (RL-2).
+ * The tier encoding is the product's headline; the scene interface must be
+ * able to express it from day one.
+ */
+export interface SceneEdgeData {
+  id: string;
+  src: string;
+  dst: string;
+  relation: string;
+  tier: "declared" | "structural" | "temporal" | "semantic";
+  confidence: number;
+  /** Structural tier only. */
+  state?: "resolved" | "stale" | "broken";
+}
+
+/**
+ * RL-3 placeholder: one delta shape shared by the live `graph` SSE channel
+ * and `/graph/diff` (contract §5). `set-data` is the keyframe;
+ * `apply-deltas` is everything else — scrubbing replays the held delta log.
+ */
+export interface SceneDelta {
+  op: "add" | "remove" | "change";
+  node?: SceneNodeData;
+  edge?: SceneEdgeData;
+  t: number;
+  seq: number;
 }
 
 export type SceneCommand =
-  | { kind: "set-data"; nodes: SceneNode[]; edges: [string, string][] }
+  | { kind: "set-data"; nodes: SceneNodeData[]; edges: SceneEdgeData[] }
+  | { kind: "apply-deltas"; deltas: SceneDelta[]; seq: number }
   | { kind: "focus-node"; id: string }
-  | { kind: "set-filter"; filterKey: string }
+  // RL-5a: filter SEMANTICS live engine/view-side; the scene receives only
+  // the computed visibility membership and animates the diff (§3.5 fade).
+  | {
+      kind: "set-visibility";
+      visibleNodeIds: ReadonlySet<string>;
+      visibleEdgeIds: ReadonlySet<string>;
+    }
   | { kind: "set-time"; at: number | "live" };
 
+// Events will grow `expand` (keyboard E / context menu, distinct from open)
+// and `pin` when the field lands (RL-5c) — the union is open by design.
 export type SceneEvent =
   | { kind: "hover"; id: string | null }
   | { kind: "select"; id: string | null }
@@ -22,26 +81,68 @@ export type SceneEvent =
 
 type SceneEventListener = (event: SceneEvent) => void;
 
+/** Screen-space anchor for a DOM island (RL-4). */
+export interface SceneAnchor {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+type SceneAnchorListener = (anchor: SceneAnchor | null) => void;
+
 /**
  * The renderer-owned scene store. The foundation scaffold keeps it
  * renderer-agnostic: the PixiJS field (chosen per gui-spec §6.1, gated by
- * the week-one spike) plugs in behind `mount`, and the sigma.js fallback
- * would implement the same surface — this interface is what makes the swap
- * cheap.
+ * the week-one spike) plugs in behind this surface, and the sigma.js
+ * fallback (layers system) must be able to implement the same surface —
+ * this interface is what makes the swap cheap.
  */
 export class SceneController {
   private listeners = new Set<SceneEventListener>();
-  private nodes: SceneNode[] = [];
-  private edges: [string, string][] = [];
+  private trackedNodes = new Map<string, Set<SceneAnchorListener>>();
+  private nodes: SceneNodeData[] = [];
+  private edges: SceneEdgeData[] = [];
+
+  // --- lifecycle (RL-5b) — implemented by the field renderer ---------------
+
+  /** TODO(field): attach the renderer's canvas into the host element. */
+  mount(_host: HTMLElement): void {
+    // placeholder until the field component lands
+  }
+
+  /** TODO(field): propagate host resize to the renderer viewport. */
+  resize(_width: number, _height: number): void {
+    // placeholder until the field component lands
+  }
+
+  /** TODO(field): tear down renderer, workers, and subscriptions. */
+  destroy(): void {
+    this.listeners.clear();
+    this.trackedNodes.clear();
+  }
+
+  // --- commands in ----------------------------------------------------------
 
   /** React (or the spike harness) sends commands; never per-frame state. */
   command(cmd: SceneCommand): void {
-    if (cmd.kind === "set-data") {
-      this.nodes = cmd.nodes;
-      this.edges = cmd.edges;
+    switch (cmd.kind) {
+      case "set-data":
+        this.nodes = cmd.nodes;
+        this.edges = cmd.edges;
+        break;
+      case "apply-deltas":
+        // TODO(field): apply the ordered delta log (RL-3); set-time replays
+        // held deltas to T using the same code path as liveness.
+        break;
+      case "focus-node":
+      case "set-visibility":
+      case "set-time":
+        // Renderer concerns; wired when the field lands.
+        break;
     }
-    // focus/filter/time are renderer concerns; wired when the field lands.
   }
+
+  // --- events out ------------------------------------------------------------
 
   /** Subscribe to interaction events (hover, select, open). */
   on(listener: SceneEventListener): () => void {
@@ -49,10 +150,38 @@ export class SceneController {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * RL-4: anchor subscription for DOM islands — fires on camera or position
+   * change with the node's screen-space anchor ({x, y, scale}) or null when
+   * the node leaves the stage. Subscription form keeps per-frame polling
+   * out of React.
+   */
+  trackNode(id: string, listener: SceneAnchorListener): () => void {
+    let set = this.trackedNodes.get(id);
+    if (!set) {
+      set = new Set();
+      this.trackedNodes.set(id, set);
+    }
+    set.add(listener);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) this.trackedNodes.delete(id);
+    };
+  }
+
   /** Renderer-side dispatch — exposed for the spike and for tests. */
   emit(event: SceneEvent): void {
     for (const listener of this.listeners) {
       listener(event);
+    }
+  }
+
+  /** Renderer-side anchor dispatch (RL-4) — exposed for tests. */
+  emitAnchor(id: string, anchor: SceneAnchor | null): void {
+    const set = this.trackedNodes.get(id);
+    if (!set) return;
+    for (const listener of set) {
+      listener(anchor);
     }
   }
 
