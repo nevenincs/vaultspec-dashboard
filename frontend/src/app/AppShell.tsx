@@ -1,5 +1,6 @@
 import { useEngineStatus } from "../stores/server/engine";
 import { useViewStore } from "../stores/view/viewStore";
+import { Stage } from "./stage/Stage";
 
 // Four-region skeleton in the converged agentic-desktop idiom (gui-spec §2):
 // left scope rail, center stage, right activity rail, bottom timeline.
@@ -47,20 +48,6 @@ export function AppShell() {
         timeline — movie idiom: lanes · zoom · playhead (scaffold){" "}
         <span className="float-right">▶ LIVE</span>
       </footer>
-    </div>
-  );
-}
-
-function Stage() {
-  // The GPU field mounts here via the scene layer (src/scene) — never as
-  // React-rendered nodes. The spike (spike.html) exercises the real
-  // renderer; the shell keeps a placeholder mount point.
-  return (
-    <div
-      id="stage-mount"
-      className="flex h-full items-center justify-center text-stone-300"
-    >
-      the stage — GPU graph field mounts here (see spike.html for the renderer spike)
     </div>
   );
 }

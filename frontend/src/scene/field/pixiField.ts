@@ -21,6 +21,7 @@ export class PixiField implements SceneFieldRenderer {
   private mounting: Promise<void> | null = null;
   private destroyed = false;
   private pendingResize: { width: number; height: number } | null = null;
+  private readyListeners = new Set<(app: Application) => void>();
 
   /**
    * Attach the renderer's canvas into the host element. Pixi v8 init is
@@ -52,7 +53,22 @@ export class PixiField implements SceneFieldRenderer {
           this.resize(this.pendingResize.width, this.pendingResize.height);
           this.pendingResize = null;
         }
+        for (const listener of this.readyListeners) {
+          listener(app);
+        }
       });
+  }
+
+  /** Fires once per successful mount, with the live Application. */
+  onReady(listener: (app: Application) => void): () => void {
+    this.readyListeners.add(listener);
+    if (this.app) listener(this.app);
+    return () => this.readyListeners.delete(listener);
+  }
+
+  /** The live Application, once mounted. */
+  get application(): Application | null {
+    return this.app;
   }
 
   /** Propagate host resize to the renderer viewport. */

@@ -116,6 +116,9 @@ export class NodeSpriteLayer {
       if (!visual) {
         const sprite = new Sprite(this.glyphs.textureFor(node.kind));
         sprite.anchor.set(0.5);
+        // Glyph textures are supersampled; sprites draw at node size in
+        // world units regardless of texture resolution.
+        sprite.setSize(NODE_RADIUS * 2, NODE_RADIUS * 2);
         this.container.addChild(sprite);
         visual = { node, sprite, anatomy: null };
         this.visuals.set(node.id, visual);
@@ -174,7 +177,8 @@ export class NodeSpriteLayer {
       const base = freshnessAlpha(visual.node.dates?.modified, Date.now());
       visual.sprite.visible = p > 0;
       visual.sprite.alpha = base * p;
-      visual.sprite.scale.set(0.6 + 0.4 * p);
+      const size = NODE_RADIUS * 2 * (0.6 + 0.4 * p);
+      visual.sprite.setSize(size, size);
       if (visual.anatomy) {
         visual.anatomy.visible = visual.anatomy.visible && p > 0;
         visual.anatomy.alpha = p;

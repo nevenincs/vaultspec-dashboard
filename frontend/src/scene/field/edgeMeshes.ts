@@ -61,6 +61,9 @@ export class UnknownTierError extends Error {
  * tiers — the caller surfaces the error, never re-buckets.
  */
 export function edgeGroupKey(edge: SceneEdgeData): string {
+  // Constellation meta-edges are their own treatment: an aggregation
+  // ribbon (quad, width by count), not a tier line (G3.d).
+  if (edge.meta) return "meta";
   switch (edge.tier) {
     case "declared":
       return "declared";
@@ -98,6 +101,7 @@ export function bucketLightness(bucket: number): number {
 
 /** Resolved colour for a group key. */
 export function groupColor(key: string): number {
+  if (key === "meta") return mixTowardPaper(TIER_BASE_COLORS.declared, 0.35);
   const [head, sub] = key.split(":");
   if (head === "structural") return TIER_BASE_COLORS[`structural:${sub}`];
   const base = TIER_BASE_COLORS[head];
@@ -110,6 +114,11 @@ export function groupColor(key: string): number {
 /** Semantic haze half-width from the score (width by score per G3.c). */
 export function hazeHalfWidth(confidence: number): number {
   return 0.75 + 1.25 * Math.max(0, Math.min(1, confidence));
+}
+
+/** Meta-edge ribbon half-width from the aggregated count (G3.d). */
+export function metaHalfWidth(count: number): number {
+  return Math.min(6, 1 + Math.log2(Math.max(1, count)) * 1.5);
 }
 
 /** Write one solid segment (4 floats) into `out` at `offset`. */
@@ -244,6 +253,16 @@ export class EdgeMeshLayer {
         const offset = i * group.vertsPerEdge * 2;
         if (group.key.startsWith("temporal")) {
           writeDashedSegments(positions, offset, a.x, a.y, b.x, b.y);
+        } else if (group.key === "meta") {
+          writeQuadCorners(
+            positions,
+            offset,
+            a.x,
+            a.y,
+            b.x,
+            b.y,
+            metaHalfWidth(edge.meta?.count ?? 1),
+          );
         } else if (group.key.startsWith("semantic")) {
           writeQuadCorners(
             positions,
@@ -273,7 +292,7 @@ export class EdgeMeshLayer {
 
   private buildGroup(key: string, edges: SceneEdgeData[]): MeshGroup {
     const isTemporal = key.startsWith("temporal");
-    const isSemantic = key.startsWith("semantic");
+    const isSemantic = key.startsWith("semantic") || key === "meta";
     const topology = isSemantic ? "triangle-list" : "line-list";
     const vertsPerEdge = isSemantic ? 4 : isTemporal ? DASHES_PER_EDGE * 2 : 2;
     const positions = new Float32Array(edges.length * vertsPerEdge * 2);

@@ -11,6 +11,15 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-gui` plan
 
@@ -71,7 +80,7 @@ Builds the typed engine client and a mock engine mirroring the foundation refere
 
 Implements the details-first interaction model per G3.b: constellation, ego highlight, shared selection, open-in-place interiors, working set, discover, and pins.
 
-- [ ] `W02.P06.S21` - render the initial feature constellation with engine-aggregated meta-edges per G3.a and G3.d; `frontend/src/app/stage/Stage.tsx`.
+- [x] `W02.P06.S21` - render the initial feature constellation with engine-aggregated meta-edges per G3.a and G3.d; `frontend/src/app/stage/Stage.tsx`.
 - [ ] `W02.P06.S22` - implement hover ego-highlight with field recede and DOI label culling per G3.b; `frontend/src/scene/field/egoHighlight.ts`.
 - [ ] `W02.P06.S23` - implement the shared selection concept syncing stage, view store, browser, timeline, and inspector per G2.b; `frontend/src/stores/view/selection.ts`.
 - [ ] `W02.P06.S24` - implement open-in-place feature lifecycle and plan interior islands with canonical lifecycle-axis and tier layouts per G3.b and G3.e; `frontend/src/app/islands/NodeInterior.tsx`.
@@ -175,8 +184,11 @@ block on the engine plan's serve wave - the only cross-plan hard dependency.
 - `vaultspec-core vault plan check` passes on this document and every Step is
   closed (`- [x]`).
 - The W01.P01 gate record exists: frame-time numbers at 1k/5k and 10k/50k on
-  integrated graphics, with the renderer verdict recorded against ADR row
-  G6.b and any deviation flagged to the ADR, never silently absorbed.
+  the dedicated-GPU hardware baseline (the integrated-GPU literal run was
+  waived by human decision 2026-06-12, recorded in the decisions ADR G6.b
+  flag; iGPU is best-effort, non-gating), with the renderer verdict recorded
+  against ADR row G6.b and any deviation flagged to the ADR, never silently
+  absorbed.
 - Frontend quality gates stay green at every phase boundary: vitest suite,
   eslint, typecheck, and prettier check over `frontend/`.
 - The scene seam holds: no React import appears under `frontend/src/scene/`,

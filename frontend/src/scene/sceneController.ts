@@ -50,6 +50,11 @@ export interface SceneEdgeData {
   confidence: number;
   /** Structural tier only. */
   state?: "resolved" | "stale" | "broken";
+  /**
+   * Engine-aggregated constellation meta-edges only (contract §4): the
+   * ribbon's thickness is the count, the breakdown unfolds on hover.
+   */
+  meta?: { count: number; breakdownByTier: Record<string, number> };
 }
 
 /**
@@ -112,6 +117,8 @@ export interface SceneFieldRenderer {
   mount(host: HTMLElement): void;
   resize(width: number, height: number): void;
   destroy(): void;
+  /** Forwarded scene commands (renderer concerns: data, visibility, time). */
+  command?(cmd: SceneCommand): void;
 }
 
 /**
@@ -168,9 +175,10 @@ export class SceneController {
       case "set-visibility":
       case "set-time":
       case "set-pinned":
-        // Renderer concerns; wired when the field lands (W01.P03).
+        // Renderer concerns — forwarded below.
         break;
     }
+    this.field?.command?.(cmd);
   }
 
   // --- events out ------------------------------------------------------------
