@@ -153,6 +153,16 @@ Eleventh entry: final phase boundary, W03.P12 at `f190083` (plan 56/56 pending t
 
 WITHHELD on three items that crossed in flight (the final-queue message landed after the P12 build began; none are present at `f190083`): DF-6 implementation (index.html token injection, Host validation, 401-after-restart test - contract section 1 amendment already agreed and committed), L1 (HTTP routes carry the contract section 2 envelope; `/map` live-confirmed bare), and L2 (scope-token normalization is applied in validate_scope but NOT on the `/map` output wire - the verbatim-prefix inconsistency team-lead observed persists - plus the scope-token format documentation). All three are pre-ruled with no open questions; P12.1 is the last gate before plan completion.
 
+## W03P12-802 | none | P12 CLOSED - plan complete at 56/56 - FINAL FEATURE VERDICT: PASS
+
+Twelfth and final entry (2026-06-13): P12.1 verified at `17ace0e` (DF-6 injection + Host validation + 401-generation test; the L1 envelope sweep on every route; L2 canonical scope tokens with documented grammar and corpus_views parity), the DF-7 follow-on verified at `40fa7ba` (bearer bounds the API prefix set exactly; static shell ungated behind loopback + Host validation; in-suite and live acceptance flows), the L1 test-lag failure fixed, and a clean serial run confirms 27 suites / 118 tests / 0 failures with fmt and clippy clean. Team-lead's independent wire verification concurs. **W03.P12 closes; the 2026-06-12-vaultspec-engine plan is complete at 56/56; the engine backend feature passes review.**
+
+Verification-clause scorecard: green gates held at every boundary; D8.2 re-derivability proven mechanically including incremental-vs-cold; contract conformance exercised end-to-end including degradation paths; identity stability asserted across queries, scopes, time, and resolution transitions; tier integrity enforced at the type and boundary level; CLI/serve parity asserted on identical id sets; per-phase review conducted on all twelve phases (two closures initially withheld, both subsequently earned); the perf baseline is recorded.
+
+One advisory carried forward (non-blocking, for the backlog): the bench's wall-clock ceiling assertion runs in the default test suite and is load-sensitive (observed flaking under parallel local load, passing serial) - shared CI runners will eventually flake it; gate it behind the bench target or relax the ceiling.
+
+Review-cycle statistics for the record: 12 phases, 30+ findings logged, 11 hard gates issued and all closed, 9 executor-flagged design calls ruled (8 accepted, 1 with an ADR margin amendment), 2 contract amendments and 2 clarifications, 1 upstream filing (vaultspec-rag#190), 7 dogfood findings dispositioned. The flag-don't-deviate discipline held for the entire cycle.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
@@ -204,4 +214,14 @@ W02.P08 + W02.P09 boundary - Wave W02 closes (sixth entry):
 
 
 
-No codification candidates from this phase. W01P01-001's "stable_key is identity-bearing" constraint is a candidate-in-waiting, but this is its first encounter; per the codify discipline a lesson qualifies only after holding across at least one full execution cycle. Revisit at the W03 contract-surface reviews.
+Final assessment (2026-06-13, plan complete): two candidates now satisfy all three durability criteria, each having held across multiple execution cycles within this feature; both are flagged to team-lead for the codify decision per the team mandate, not self-authored.
+
+- **Source:** findings W01P01-001 and W02P07-401 (the stable-key consequence, exercised twice: the edge-id design call and the temporal-identity redline).
+  **Rule slug:** `provenance-stable-keys-are-identity-bearing`.
+  **Rule:** Any change to the composition of a provenance stable key (the identity-bearing part of edge provenance) is an id-breaking change requiring contract review, never a refactor; identity derives from what a relationship IS (mention text, commit-record pair), never from volatile inputs or resolution/rule outcomes.
+
+- **Source:** findings G1 (CLI), N7 (API - the same bug reproduced independently on the second wire surface), and the L1 sweep.
+  **Rule slug:** `every-wire-response-carries-the-tiers-block`.
+  **Rule:** Every response on every engine wire surface - success AND error, CLI and HTTP - carries the per-tier degradation block; new wire surfaces must route through the shared envelope helper of their layer, never hand-build response bodies.
+
+The W02P06-303 prune-on-reingest lesson was considered and rejected for codification: it is now structurally enforced by `commit_graph` plus the convergence tests (the constraint lives in code, not discipline), so a rule would describe rather than bind.
