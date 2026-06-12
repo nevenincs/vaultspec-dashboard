@@ -3,9 +3,13 @@
 // renders the field's nodes; it sends commands and subscribes to events.
 // This module is framework-free by design — no React imports, ever.
 //
-// Interface shape reviewed by experience-architect (2026-06-12 redline);
-// RL-1/RL-2 folded, RL-3/RL-4/RL-5 present as typed placeholders below.
-// NOT locked: final lock happens together with the field component work.
+// Interface shape reviewed by experience-architect (2026-06-12 redline).
+// LOCKED (W01.P01.S04, 2026-06-12): the RL-1 to RL-5 fold is final. The
+// command, event, and anchor surface below is the seam every consumer
+// builds against; the PixiJS v8 field (G6.b verdict: confirmed, S03) plugs
+// in behind it, and the sigma.js v3 fallback must keep implementing the
+// same surface. Surface changes from here on are ADR-flagged redlines, not
+// drive-by edits.
 
 /**
  * Graph data for one node — visual-anatomy inputs only (RL-1).
@@ -70,14 +74,20 @@ export type SceneCommand =
       visibleNodeIds: ReadonlySet<string>;
       visibleEdgeIds: ReadonlySet<string>;
     }
-  | { kind: "set-time"; at: number | "live" };
+  | { kind: "set-time"; at: number | "live" }
+  // Pins are layout-fixed and always-labelled (G5.d); the view store owns
+  // pin persistence and tells the scene which nodes are fixed.
+  | { kind: "set-pinned"; ids: ReadonlySet<string> };
 
-// Events will grow `expand` (keyboard E / context menu, distinct from open)
-// and `pin` when the field lands (RL-5c) — the union is open by design.
+// RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
+// menu, distinct from open) and `pin` are part of the locked union — a
+// locked seam cannot carry an "open by design" event set.
 export type SceneEvent =
   | { kind: "hover"; id: string | null }
   | { kind: "select"; id: string | null }
-  | { kind: "open"; id: string };
+  | { kind: "open"; id: string }
+  | { kind: "expand"; id: string }
+  | { kind: "pin"; id: string; pinned: boolean };
 
 type SceneEventListener = (event: SceneEvent) => void;
 
@@ -91,11 +101,11 @@ export interface SceneAnchor {
 type SceneAnchorListener = (anchor: SceneAnchor | null) => void;
 
 /**
- * The renderer-owned scene store. The foundation scaffold keeps it
- * renderer-agnostic: the PixiJS field (chosen per gui-spec §6.1, gated by
- * the week-one spike) plugs in behind this surface, and the sigma.js
- * fallback (layers system) must be able to implement the same surface —
- * this interface is what makes the swap cheap.
+ * The renderer-owned scene store, kept renderer-agnostic: the PixiJS v8
+ * field (gui-spec §6.1; spike gate closed and verdict confirmed,
+ * W01.P01.S03) plugs in behind this surface, and the sigma.js fallback
+ * (layers system) must be able to implement the same surface — this
+ * interface is what makes the swap cheap.
  */
 export class SceneController {
   private listeners = new Set<SceneEventListener>();
@@ -137,7 +147,8 @@ export class SceneController {
       case "focus-node":
       case "set-visibility":
       case "set-time":
-        // Renderer concerns; wired when the field lands.
+      case "set-pinned":
+        // Renderer concerns; wired when the field lands (W01.P03).
         break;
     }
   }

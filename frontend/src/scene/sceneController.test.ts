@@ -66,6 +66,18 @@ describe("SceneController", () => {
     expect(seen).toEqual(["select"]);
   });
 
+  it("carries the locked RL-5c event union: expand and pin (W01.P01.S04)", () => {
+    const scene = new SceneController();
+    const seen: string[] = [];
+    scene.on((event) => {
+      seen.push(event.kind);
+    });
+    scene.emit({ kind: "expand", id: "feature:editor-demo" });
+    scene.emit({ kind: "pin", id: "feature:editor-demo", pinned: true });
+    scene.command({ kind: "set-pinned", ids: new Set(["feature:editor-demo"]) });
+    expect(seen).toEqual(["expand", "pin"]);
+  });
+
   it("anchors DOM islands via subscription, not polling (RL-4)", () => {
     const scene = new SceneController();
     const anchors: ({ x: number; y: number; scale: number } | null)[] = [];
