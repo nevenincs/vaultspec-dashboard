@@ -121,6 +121,22 @@ Routed elsewhere: G6's store-vs-walk parity decision lands with the P11 `/events
 
 The review surfaced that contract section 4 lists `direction` among edge fields, but the engine edge model has no such field - direction is fully encoded by the `src`/`dst` ordering, which the model has carried since W01.P01 and every tier populates meaningfully. RULED as a contract clarification, not a model change: a redundant direction field invites disagreement between it and the ordering. The shared contract reference gains one line saying direction is the src-to-dst ordering; GUI side notified.
 
+## W03P11-701 | medium | P11 closure WITHHELD - four high-severity wire defects on the contract-critical surface
+
+Eighth entry: boundary review of W03.P11 (serve mode, commit `c692c5b`), delegated deep first-pass with live smoke verification; reviewer re-confirmed the two heaviest defects in code. The substance is strong - and the carried gates are genuinely CLOSED: 302/303 (rebuild-at-scope with wholesale Arc swap, real edit-that-removes-a-mention convergence test), 203 (per-generation memoization with pointer-equality test), bearer gating covers every route with /health alone exempt, the 402 as-of tiers note ships, the S49 scope bound returns honest typed 400s, and feature-granularity meta-edges work live. Both executor flags RULED ACCEPTED: dist-dir SPA serving for v1 (embedding rides D9.2; traversal guard verified holding), and the single-scope serving bound (honest capability bound, /map still reports the full landscape, composes later without contract change). Closure is withheld on the following.
+
+P11.1 fix set (blocking closure), descending severity:
+
+- N2 (high) - historical diffs corrupt the live delta clock: `/graph/diff` reads seq_start from and stores last_seq+1 back into the shared atomic, so a scrub between two old refs burns live sequence numbers; an unrelated scrub can manufacture a gap for a live stream client. The one-clock guarantee is about LIVE splice continuity; historical diff results must be numbered result-locally, and the shared atomic mutated exclusively by the rebuild path. Also `/graph/asof` reports the live clock as a historical keyframe position.
+- N7 (high) - error responses omit the tiers block: the CLI's G1 bug reproduced in the API layer (404/400 live-confirmed bare; ops 502s DO carry tiers, proving oversight, not choice). One shared error helper; contract section 2 says every response.
+- N6 (high) - the SPA fallback swallows unknown API-shaped paths as index.html 200; R2 says non-API paths only. A typo'd API route hands the GUI HTML to parse as JSON. Fallback must JSON-404 known API prefixes.
+- N1 (high) - SSE since= splice race: the handler snapshots the ring, drops the lock, then subscribes - a rebuild landing between is silently lost with no gap event. Subscribe first, then snapshot, then de-dup by seq.
+- N12 (medium, cross-package, most user-visible) - the rag-client service.json parser expects an i64 heartbeat but the live rag service writes ISO-8601 strings, so discovery reports rag DOWN while it is up: the entire semantic tier, /search, /discover and /ops/rag degrade spuriously. Accept both forms (and pin the schema with rag upstream per D5.3).
+- N5 (medium) - rag ops whitelist diverges from R1: allows read-only `watcher-status` (not in R1), lacks watcher TUNING and service lifecycle; verb names not validated against rag's real route surface. Reconcile against the agreed list exactly.
+- N8 (medium) - cursor pagination is contract section 2 mandatory on unbounded listings; `paginate()` exists, is tested, and is called by no route (/vault-tree, /events, /graph/query, /map all unbounded). Wire it or record an explicit bound-rationale deferral.
+- N3+N4 (medium, one fix) - swap atomicity is emergent from the single watcher consumer, and generation-bump-on-swap is undocumented discipline: introduce one `commit_graph(fresh)` helper that diffs, swaps, bumps generation and broadcasts under one ordering, so no future path can do these partially.
+- Low riders: constant-time bearer compare; token entropy from pid+time rather than getrandom (transitively present); heartbeat staleness semantics unhandled by consumers; /events emits only commit events (doc-modification and lifecycle kinds owed - may legitimately ride P12/the store path decision from G6).
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
