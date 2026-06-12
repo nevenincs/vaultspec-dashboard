@@ -59,3 +59,13 @@ its own ok/command/status vocabulary by ruling. L2 - one canonical
 scope-token form everywhere (absolute worktree path, forward slashes, no
 extended-length prefix) with the grammar documented in the map payload;
 serve map gains corpus views for front-door parity.
+
+DF-7 (dogfood, ruled): the DF-6 gating initially made the bootstrap
+circular - the bearer gate covered the SPA shell, so a clean browser
+could never load the page that delivers its token. The bearer boundary is
+now the API prefix set exactly: static shell routes (root, assets, SPA
+fallback) are ungated with loopback bind + Host validation as their trust
+boundary; every API route stays bearer-gated. The acceptance flow is
+tested AND live-verified: clean GET / renders the shell with the injected
+token and the first authenticated API call succeeds (32-char token, 137
+nodes, watcher resident); bare API requests still 401.

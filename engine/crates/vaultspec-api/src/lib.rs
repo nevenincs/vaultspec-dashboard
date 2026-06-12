@@ -256,7 +256,7 @@ mod tests {
         let (status, body) = get_with_token(router, "/status", Some(&token)).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
-            body["watcher"]["mode"], "starting",
+            body["data"]["watcher"]["mode"], "starting",
             "no watcher in test state"
         );
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
@@ -412,6 +412,42 @@ mod tests {
             )),
             "DF-6 token bootstrap injected"
         );
+    }
+
+    #[tokio::test]
+    async fn clean_browser_bootstrap_flow_works_end_to_end() {
+        // DF-7 acceptance (team-lead's exact flow): from a clean browser
+        // (no headers beyond Host), GET / renders the shell WITH the
+        // injected token, and the first authenticated API call with that
+        // token succeeds.
+        let (_dir, state) = fixture_state();
+        let router = build_router(state);
+
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get("/")
+                    .header("host", "127.0.0.1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "shell is ungated (DF-7)");
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let html = String::from_utf8_lossy(&bytes);
+        let token = html
+            .split(r#"<meta name="vaultspec-token" content=""#)
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("token meta tag present")
+            .to_string();
+
+        let (status, body) = get_with_token(router, "/status", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "injected token authenticates");
+        assert_eq!(body["data"]["ok"], true);
     }
 
     #[test]

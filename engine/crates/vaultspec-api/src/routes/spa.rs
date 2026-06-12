@@ -63,8 +63,12 @@ pub fn inject_token(html: &str, token: &str) -> String {
 
 /// API path prefixes: unknown paths under these are JSON 404s, never
 /// index.html (audit N6 / dogfood DF-3 — R2's fallback is for NON-API
-/// paths only; an API typo must fail loud, not render the SPA).
-const API_PREFIXES: &[&str] = &[
+/// paths only; an API typo must fail loud, not render the SPA). The same
+/// list is the BEARER boundary (dogfood DF-7): API paths are gated, the
+/// static shell is not — it carries the token bootstrap and must be
+/// reachable by a clean browser; loopback bind + Host validation is its
+/// trust boundary.
+pub(crate) const API_PREFIXES: &[&str] = &[
     "/map",
     "/vault-tree",
     "/graph",

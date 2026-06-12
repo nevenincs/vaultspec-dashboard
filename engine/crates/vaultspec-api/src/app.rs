@@ -149,7 +149,17 @@ pub async fn bearer_gate(
     if !host_ok {
         return Err(StatusCode::FORBIDDEN);
     }
-    if request.uri().path() == "/health" {
+    // Bearer boundary (dogfood DF-7): only API paths are gated. The
+    // static shell (/, assets, SPA fallback) must be reachable by a clean
+    // browser — it DELIVERS the token via the DF-6 meta tag; gating it
+    // makes the bootstrap circular and the dashboard unreachable.
+    // /health stays ungated as the liveness ping.
+    let path = request.uri().path();
+    let is_api = path != "/health"
+        && crate::routes::spa::API_PREFIXES
+            .iter()
+            .any(|p| path == *p || path.starts_with(&format!("{p}/")));
+    if !is_api {
         return Ok(next.run(request).await);
     }
     let authorized = headers
