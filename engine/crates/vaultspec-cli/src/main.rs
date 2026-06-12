@@ -2,11 +2,17 @@
 //! (engine-spec §1).
 //!
 //! One Rust binary, two front doors: one-shot CLI verbs and a resident
-//! `serve` mode (D1.1). Every verb is a thin shell over `engine-query`
-//! (D6.1); `--json` envelopes follow core's result vocabulary (D6.2).
+//! `serve` mode (D1.1). Every verb is a thin shell over the shared query
+//! core (D6.1); `--json` envelopes follow core's result vocabulary (D6.2).
 //! Strictly read-and-infer: no `.vault/` writes, ever (D1.2).
 
+mod cmd;
+mod envelope;
+
 use clap::{Parser, Subcommand};
+use serde_json::Value;
+
+use cmd::Ctx;
 
 #[derive(Parser)]
 #[command(
@@ -22,8 +28,8 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
-    /// Scope the query to a worktree path or ref (default: launch worktree).
-    #[arg(long, global = true, value_name = "WORKTREE|REF")]
+    /// Scope the query to a worktree path (default: launch worktree).
+    #[arg(long, global = true, value_name = "WORKTREE")]
     scope: Option<String>,
 
     #[command(subcommand)]
@@ -36,22 +42,22 @@ enum Command {
     Map,
     /// Run or refresh the index pipeline (incremental by default).
     Index {
-        /// Full re-index instead of the incremental, content-hash-keyed pass.
+        /// Force full re-extraction instead of the content-hash skip.
         #[arg(long)]
         full: bool,
     },
     /// Export the linkage graph (node-link JSON, tier-labelled edges).
     Graph {
-        /// Filter expression (engine-owned vocabulary).
+        /// Filter object (engine-owned vocabulary), as JSON.
         #[arg(long)]
         filter: Option<String>,
-        /// Render the graph as it stood at a timestamp or commit.
-        #[arg(long, value_name = "TS|SHA")]
+        /// Render the graph as it stood at a ref or commit (blob-true).
+        #[arg(long, value_name = "REF|SHA")]
         as_of: Option<String>,
     },
     /// Node detail / full context assembly.
     Node {
-        /// Node id (kind + canonical key).
+        /// Node id (kind:key, e.g. `doc:2026-06-12-x-plan`).
         id: String,
         /// Assemble the node's full tier-labelled context bundle.
         #[arg(long)]
@@ -62,14 +68,16 @@ enum Command {
     },
     /// The temporal event stream (commits, doc events, lifecycle events).
     Events {
-        #[arg(long, value_name = "TS")]
-        from: Option<String>,
-        #[arg(long, value_name = "TS")]
-        to: Option<String>,
+        /// Range start, ms since epoch.
+        #[arg(long)]
+        from: Option<i64>,
+        /// Range end, ms since epoch.
+        #[arg(long)]
+        to: Option<i64>,
         /// Event kinds to include (comma-separated).
         #[arg(long, value_delimiter = ',')]
         kinds: Vec<String>,
-        /// Bucketing: auto|raw|1h|1d|…
+        /// Bucketing: raw|auto|30s|15m|1h|1d (default raw).
         #[arg(long)]
         bucket: Option<String>,
     },
@@ -83,74 +91,84 @@ enum Command {
     Status,
 }
 
-/// Exit code for not-yet-implemented verbs: distinct from success and from
-/// argument errors so scripts can detect the scaffold honestly.
-const EXIT_UNIMPLEMENTED: u8 = 3;
-
-fn unimplemented_verb(verb: &str, json: bool) -> u8 {
-    if json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "ok": false,
-                "command": verb,
-                "status": "failed",
-                "error": "unimplemented",
-                "message": format!(
-                    "`vaultspec {verb}` is a foundation scaffold; the engine is not yet implemented"
-                ),
-            })
-        );
-    } else {
-        eprintln!("vaultspec {verb}: not yet implemented (foundation scaffold)");
+fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -> u8 {
+    match result {
+        Ok(data) => {
+            let tiers = envelope::tiers_json(ctx.rag_reason().as_deref());
+            if ctx.json {
+                envelope::emit_json(&envelope::ok(command_name, data, tiers));
+            } else {
+                // Human rendering: the same payload, pretty-printed —
+                // verbs are agent-facing first (engine-spec §6).
+                envelope::emit_json(&data);
+            }
+            0
+        }
+        Err(error) => {
+            if ctx.json {
+                envelope::emit_json(&envelope::fail(
+                    command_name,
+                    "command-failed",
+                    &error.to_string(),
+                ));
+            } else {
+                eprintln!("vaultspec {command_name}: {error}");
+            }
+            1
+        }
     }
-    EXIT_UNIMPLEMENTED
 }
 
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
-    let code = match cli.command {
-        Command::Map => unimplemented_verb("map", cli.json),
-        Command::Index { .. } => unimplemented_verb("index", cli.json),
-        Command::Graph { .. } => unimplemented_verb("graph", cli.json),
-        Command::Node { .. } => unimplemented_verb("node", cli.json),
-        Command::Events { .. } => unimplemented_verb("events", cli.json),
-        Command::Status => {
-            let report = engine_query::QueryCore::new().status();
+
+    // Serve mode short-circuits: it owns its own lifecycle.
+    if let Command::Serve { port } = cli.command {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        return match runtime.block_on(vaultspec_api::serve(port)) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("vaultspec serve: {err}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+
+    let ctx = match Ctx::resolve(cli.scope.as_deref(), cli.json) {
+        Ok(ctx) => ctx,
+        Err(error) => {
             if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "ok": true,
-                        "command": "status",
-                        "status": "success",
-                        "data": {
-                            "nodes": report.node_count,
-                            "edges": report.edge_count,
-                            "degradations": report.degradations,
-                        },
-                    })
-                );
+                envelope::emit_json(&envelope::fail("scope", "bad-scope", &error.to_string()));
             } else {
-                println!("vaultspec status (foundation scaffold)");
-                println!("  nodes: {}", report.node_count);
-                println!("  edges: {}", report.edge_count);
-                for d in &report.degradations {
-                    println!("  degraded: {d}");
-                }
+                eprintln!("vaultspec: {error}");
             }
-            0
+            return std::process::ExitCode::from(2);
         }
-        Command::Serve { port } => {
-            let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-            match runtime.block_on(vaultspec_api::serve(port)) {
-                Ok(()) => 0,
-                Err(err) => {
-                    eprintln!("vaultspec serve: {err}");
-                    1
-                }
-            }
+    };
+
+    let code = match &cli.command {
+        Command::Map => render(&ctx, "map", cmd::map::run(&ctx)),
+        Command::Index { full } => render(&ctx, "index", cmd::index::run(&ctx, *full)),
+        Command::Graph { filter, as_of } => render(
+            &ctx,
+            "graph",
+            cmd::graph::run(&ctx, filter.as_deref(), as_of.as_deref()),
+        ),
+        Command::Node { id, context, tiers } => {
+            render(&ctx, "node", cmd::node::run(&ctx, id, *context, tiers))
         }
+        Command::Events {
+            from,
+            to,
+            kinds,
+            bucket,
+        } => render(
+            &ctx,
+            "events",
+            cmd::events::run(&ctx, *from, *to, kinds, bucket.as_deref()),
+        ),
+        Command::Status => render(&ctx, "status", cmd::status::run(&ctx)),
+        Command::Serve { .. } => unreachable!("handled above"),
     };
     std::process::ExitCode::from(code)
 }

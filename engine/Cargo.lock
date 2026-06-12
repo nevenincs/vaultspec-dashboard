@@ -2553,9 +2553,15 @@ name = "vaultspec-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "engine-graph",
  "engine-model",
  "engine-query",
+ "engine-store",
+ "ingest-core",
+ "ingest-git",
+ "rag-client",
  "serde_json",
+ "thiserror",
  "tokio",
  "vaultspec-api",
 ]

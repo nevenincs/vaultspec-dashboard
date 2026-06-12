@@ -115,13 +115,13 @@ Expose the query core through the two front doors: the one-shot CLI verbs and th
 
 Deliver the one-shot CLI front door: map, index, graph, node, events and status verbs as thin shells over the query core with core-compatible JSON envelopes and stateless scope.
 
-- [ ] `W03.P10.S41` - Implement the map verb listing repo, branches, worktrees, corpus views and classification with json and scope flags; `engine/crates/vaultspec-cli/src/cmd/map.rs`.
-- [ ] `W03.P10.S42` - Implement the index verb, incremental by default with a full flag; `engine/crates/vaultspec-cli/src/cmd/index.rs`.
-- [ ] `W03.P10.S43` - Implement the graph verb exporting tier-labelled node-link JSON with filter and as-of flags; `engine/crates/vaultspec-cli/src/cmd/graph.rs`.
-- [ ] `W03.P10.S44` - Implement the node verb with context and tiers flags returning detail or full context assembly; `engine/crates/vaultspec-cli/src/cmd/node.rs`.
-- [ ] `W03.P10.S45` - Implement the events verb with from, to, kinds and bucket flags matching the contract event shape; `engine/crates/vaultspec-cli/src/cmd/events.rs`.
-- [ ] `W03.P10.S46` - Implement the status verb reporting index state, backend health rollup and watcher state; `engine/crates/vaultspec-cli/src/cmd/status.rs`.
-- [ ] `W03.P10.S47` - Implement the shared json envelope following the core result vocabulary across all verbs; `engine/crates/vaultspec-cli/src/envelope.rs`.
+- [x] `W03.P10.S41` - Implement the map verb listing repo, branches, worktrees, corpus views and classification with json and scope flags; `engine/crates/vaultspec-cli/src/cmd/map.rs`.
+- [x] `W03.P10.S42` - Implement the index verb, incremental by default with a full flag; `engine/crates/vaultspec-cli/src/cmd/index.rs`.
+- [x] `W03.P10.S43` - Implement the graph verb exporting tier-labelled node-link JSON with filter and as-of flags; `engine/crates/vaultspec-cli/src/cmd/graph.rs`.
+- [x] `W03.P10.S44` - Implement the node verb with context and tiers flags returning detail or full context assembly; `engine/crates/vaultspec-cli/src/cmd/node.rs`.
+- [x] `W03.P10.S45` - Implement the events verb with from, to, kinds and bucket flags matching the contract event shape; `engine/crates/vaultspec-cli/src/cmd/events.rs`.
+- [x] `W03.P10.S46` - Implement the status verb reporting index state, backend health rollup and watcher state; `engine/crates/vaultspec-cli/src/cmd/status.rs`.
+- [x] `W03.P10.S47` - Implement the shared json envelope following the core result vocabulary across all verbs; `engine/crates/vaultspec-cli/src/envelope.rs`.
 
 ### Phase `W03.P11` - serve mode
 

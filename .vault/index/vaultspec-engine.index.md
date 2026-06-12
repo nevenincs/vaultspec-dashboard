@@ -54,6 +54,14 @@ related:
   - '[[2026-06-12-vaultspec-engine-W02-P09-S39]]'
   - '[[2026-06-12-vaultspec-engine-W02-P09-S40]]'
   - '[[2026-06-12-vaultspec-engine-W02-P09-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S41]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S42]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S43]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S44]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S45]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S46]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-S47]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P10-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -124,6 +132,14 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W02-P09-S39` - Implement node-scoped semantic discovery queries with TTL cache, 0.7 confidence cap and ephemeral never-persisted edges
 - `2026-06-12-vaultspec-engine-W02-P09-S40` - Implement rag search forwarding with engine node-id annotation on each result
 - `2026-06-12-vaultspec-engine-W02-P09-summary` - `vaultspec-engine` `W02.P09` summary
+- `2026-06-12-vaultspec-engine-W03-P10-S41` - Implement the map verb listing repo, branches, worktrees, corpus views and classification with json and scope flags
+- `2026-06-12-vaultspec-engine-W03-P10-S42` - Implement the index verb, incremental by default with a full flag
+- `2026-06-12-vaultspec-engine-W03-P10-S43` - Implement the graph verb exporting tier-labelled node-link JSON with filter and as-of flags
+- `2026-06-12-vaultspec-engine-W03-P10-S44` - Implement the node verb with context and tiers flags returning detail or full context assembly
+- `2026-06-12-vaultspec-engine-W03-P10-S45` - Implement the events verb with from, to, kinds and bucket flags matching the contract event shape
+- `2026-06-12-vaultspec-engine-W03-P10-S46` - Implement the status verb reporting index state, backend health rollup and watcher state
+- `2026-06-12-vaultspec-engine-W03-P10-S47` - Implement the shared json envelope following the core result vocabulary across all verbs
+- `2026-06-12-vaultspec-engine-W03-P10-summary` - `vaultspec-engine` `W03.P10` summary
 
 ### plan
 

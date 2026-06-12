@@ -60,6 +60,20 @@ pub fn index_worktree(
     Ok((graph, stats))
 }
 
+/// Full re-index: bypasses the extraction cache (every document is
+/// re-extracted and the cache rewritten). The `vaultspec index --full`
+/// path; converges to the incremental graph by D8.2.
+pub fn index_worktree_full(
+    root: &Path,
+    scope: &ScopeRef,
+    store: &engine_store::Store,
+    observed_at: Timestamp,
+) -> Result<(LinkageGraph, IndexStats)> {
+    let mut graph = LinkageGraph::new();
+    let stats = index_documents(&mut graph, root, scope, store, observed_at, true)?;
+    Ok((graph, stats))
+}
+
 /// Index one worktree scope into an existing graph — the watcher's partial
 /// re-ingestion path. **Idempotent** (audit W02P05-202): re-ingesting the
 /// same documents converges to the cold rebuild, never inflates.
@@ -69,6 +83,17 @@ pub fn index_worktree_into(
     scope: &ScopeRef,
     store: &engine_store::Store,
     observed_at: Timestamp,
+) -> Result<IndexStats> {
+    index_documents(graph, root, scope, store, observed_at, false)
+}
+
+fn index_documents(
+    graph: &mut LinkageGraph,
+    root: &Path,
+    scope: &ScopeRef,
+    store: &engine_store::Store,
+    observed_at: Timestamp,
+    force_extract: bool,
 ) -> Result<IndexStats> {
     let docs = vault_documents(root)?;
     let mut stats = IndexStats {
@@ -106,7 +131,12 @@ pub fn index_worktree_into(
 
         // Content-hash skip: reuse cached extraction when the blob is
         // unchanged (D2.4 cache discipline).
-        let mentions: Vec<ExtractedMention> = match store.get_artifact(EXTRACT_KIND, &blob_hash)? {
+        let cached = if force_extract {
+            None
+        } else {
+            store.get_artifact(EXTRACT_KIND, &blob_hash)?
+        };
+        let mentions: Vec<ExtractedMention> = match cached {
             Some(cached) => {
                 stats.cache_hits += 1;
                 serde_json::from_str(&cached)?
