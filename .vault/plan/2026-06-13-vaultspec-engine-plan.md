@@ -38,16 +38,4 @@ S01 through S05 are independent and may run in any order or in parallel; S06 is 
 
 Green cargo build, test, clippy at the boundary; every S49-record divergence reproduced as a failing assertion in S06 first, then green; the GUI's time-travel smoke unblocked (S01); feature-granularity responses carry synthesized feature nodes with the contract section 4 fields; the node-ids bound recorded in the contract reference; review per the standing per-phase discipline before closure.
 
-## Steps
-
-
-
-
-
-
-
-## Parallelization
-
-
-## Verification
 
