@@ -51,10 +51,10 @@ Deliver the vaultspec-core subprocess adapter: schema-pinned vault graph JSON in
 
 Deliver document-body reading from working tree and git blobs, the four structural extractors with byte-span provenance, and the working-tree resolver with resolved, stale and broken states.
 
-- [ ] `W01.P04.S15` - Implement document body reading from the working tree and from git blobs for ref-only scopes; `engine/crates/ingest-struct/src/reader.rs`.
-- [ ] `W01.P04.S16` - Implement extractors for file paths, canonical step identifiers, wiki-link stems and code symbols, each recording byte-span provenance; `engine/crates/ingest-struct/src/extract.rs`.
-- [ ] `W01.P04.S17` - Implement the working-tree resolver assigning resolved, stale or broken state to every structural edge, retaining broken edges; `engine/crates/ingest-struct/src/resolve.rs`.
-- [ ] `W01.P04.S18` - Add fixture-document tests covering all four extractors and the three resolution states; `engine/crates/ingest-struct/tests/`.
+- [x] `W01.P04.S15` - Implement document body reading from the working tree and from git blobs for ref-only scopes; `engine/crates/ingest-struct/src/reader.rs`.
+- [x] `W01.P04.S16` - Implement extractors for file paths, canonical step identifiers, wiki-link stems and code symbols, each recording byte-span provenance; `engine/crates/ingest-struct/src/extract.rs`.
+- [x] `W01.P04.S17` - Implement the working-tree resolver assigning resolved, stale or broken state to every structural edge, retaining broken edges; `engine/crates/ingest-struct/src/resolve.rs`.
+- [x] `W01.P04.S18` - Add fixture-document tests covering all four extractors and the three resolution states; `engine/crates/ingest-struct/tests/`.
 
 ## Wave `W02` - graph, index pipeline, and query core
 

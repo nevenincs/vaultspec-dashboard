@@ -22,6 +22,11 @@ related:
   - '[[2026-06-12-vaultspec-engine-W01-P03-S13]]'
   - '[[2026-06-12-vaultspec-engine-W01-P03-S14]]'
   - '[[2026-06-12-vaultspec-engine-W01-P03-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P04-S15]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P04-S16]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P04-S17]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P04-S18]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P04-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -60,6 +65,11 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W01-P03-S13` - Implement inventory adapters for vault list, vault stats and vault feature list JSON envelopes
 - `2026-06-12-vaultspec-engine-W01-P03-S14` - Record live core JSON payloads as fixtures and add parser and runner tests against them
 - `2026-06-12-vaultspec-engine-W01-P03-summary` - `vaultspec-engine` `W01.P03` summary
+- `2026-06-12-vaultspec-engine-W01-P04-S15` - Implement document body reading from the working tree and from git blobs for ref-only scopes
+- `2026-06-12-vaultspec-engine-W01-P04-S16` - Implement extractors for file paths, canonical step identifiers, wiki-link stems and code symbols, each recording byte-span provenance
+- `2026-06-12-vaultspec-engine-W01-P04-S17` - Implement the working-tree resolver assigning resolved, stale or broken state to every structural edge, retaining broken edges
+- `2026-06-12-vaultspec-engine-W01-P04-S18` - Add fixture-document tests covering all four extractors and the three resolution states
+- `2026-06-12-vaultspec-engine-W01-P04-summary` - `vaultspec-engine` `W01.P04` summary
 
 ### plan
 

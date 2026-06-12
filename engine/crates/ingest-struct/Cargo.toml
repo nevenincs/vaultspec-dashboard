@@ -9,6 +9,11 @@ rust-version.workspace = true
 
 [dependencies]
 engine-model.workspace = true
+gix = "0.84.0"
+thiserror = "2.0.18"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

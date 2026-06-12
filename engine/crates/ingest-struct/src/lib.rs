@@ -6,6 +6,10 @@
 //! resolution is a v2 upgrade, not a v1 gate. Resolution state is signal:
 //! stale/broken edges are kept and surfaced, not dropped (D3.3).
 
+pub mod extract;
+pub mod reader;
+pub mod resolve;
+
 /// Fixed structural confidence bands (engine-spec §3, D3.2).
 pub const CONFIDENCE_RESOLVED: f32 = 0.9;
 pub const CONFIDENCE_STALE: f32 = 0.5;
