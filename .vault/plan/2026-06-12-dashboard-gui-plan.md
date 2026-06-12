@@ -142,7 +142,7 @@ Implements the degradation matrix as a tested feature, applies the design-token 
 - [x] `W03.P12.S46` - implement the degradation matrix states with a debug switch making every state reachable, and tests per G8.a; `frontend/src/app/degradation`.
 - [x] `W03.P12.S47` - implement the design token layer, paper-warm light and dark themes, fixed tier hues and treatments, type scale, motion durations, in Tailwind CSS-first config per G7.a and G7.d; `frontend/src/styles.css`.
 - [x] `W03.P12.S48` - implement reduced-motion support and full keyboard operability, arrow-walk the graph and bracket-step the playhead, per G7.d; `frontend/src/app/a11y`.
-- [ ] `W03.P12.S49` - swap the mock engine for the live serve origin behind the env flag and verify contract shapes against the real API, requires the engine plan serve wave landed; `frontend/src/stores/server/engine.ts`.
+- [x] `W03.P12.S49` - swap the mock engine for the live serve origin behind the env flag and verify contract shapes against the real API, requires the engine plan serve wave landed; `frontend/src/stores/server/engine.ts`.
 - [ ] `W03.P12.S50` - add the end-to-end smoke launching against live engine serve verifying constellation render, scrub, and search round-trip, requires the engine plan serve wave landed; `frontend/e2e/smoke.spec.ts`.
 
 ## Description

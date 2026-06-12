@@ -10,6 +10,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import {
+  adaptFilters,
+  adaptMap,
+  adaptStatus,
+  adaptVaultTree,
+  unwrapEnvelope,
+} from "./liveAdapters";
+
 // In development Vite proxies /api to the engine (vite.config.ts); in
 // production the SPA is served by the engine itself, so the API shares the
 // origin (contract §1) and the prefix collapses.
@@ -223,6 +231,30 @@ export interface SearchResponse {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/**
+ * Production token bootstrap (DF-6 amendment): the engine injects a
+ * `vaultspec-token` meta tag into the served index.html; the default
+ * transport carries it as the bearer. In dev the Vite proxy injects the
+ * header instead (vite.config.ts), so an absent tag is not an error.
+ */
+export function bearerToken(): string | null {
+  if (typeof document === "undefined") return null;
+  return (
+    document.querySelector('meta[name="vaultspec-token"]')?.getAttribute("content") ??
+    null
+  );
+}
+
+const defaultTransport: FetchLike = (input, init) => {
+  const token = bearerToken();
+  if (!token) return fetch(input, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has("authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers });
+};
+
 export interface EngineClientOptions {
   baseUrl?: string;
   fetchImpl?: FetchLike;
@@ -234,7 +266,7 @@ export class EngineClient {
 
   constructor(options: EngineClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? API_BASE;
-    this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
+    this.fetchImpl = options.fetchImpl ?? defaultTransport;
   }
 
   /**
@@ -247,12 +279,12 @@ export class EngineClient {
   }
 
   // §3
-  map(): Promise<MapResponse> {
-    return this.get("/map");
+  async map(): Promise<MapResponse> {
+    return adaptMap(await this.get("/map"));
   }
 
-  vaultTree(scope: string): Promise<VaultTreeResponse> {
-    return this.get("/vault-tree", { scope });
+  async vaultTree(scope: string): Promise<VaultTreeResponse> {
+    return adaptVaultTree(await this.get("/vault-tree", { scope }));
   }
 
   // §4
@@ -264,8 +296,8 @@ export class EngineClient {
     return this.post("/graph/query", body);
   }
 
-  filters(scope: string): Promise<FiltersVocabulary> {
-    return this.get("/filters", { scope });
+  async filters(scope: string): Promise<FiltersVocabulary> {
+    return adaptFilters(await this.get("/filters", { scope }));
   }
 
   node(id: string): Promise<NodeDetail> {
@@ -316,8 +348,8 @@ export class EngineClient {
   }
 
   // §6
-  status(): Promise<EngineStatus> {
-    return this.get("/status");
+  async status(): Promise<EngineStatus> {
+    return adaptStatus(await this.get("/status"));
   }
 
   opsCore(verb: string, body: unknown = {}): Promise<OpsResult> {
@@ -370,7 +402,7 @@ export class EngineClient {
     }
     const response = await this.fetchImpl(url);
     if (!response.ok) throw new EngineError(path, response.status);
-    return (await response.json()) as T;
+    return unwrapEnvelope(await response.json()) as T;
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
@@ -380,7 +412,7 @@ export class EngineClient {
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new EngineError(path, response.status);
-    return (await response.json()) as T;
+    return unwrapEnvelope(await response.json()) as T;
   }
 }
 
