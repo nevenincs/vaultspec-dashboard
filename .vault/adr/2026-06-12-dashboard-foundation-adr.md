@@ -134,7 +134,15 @@ Base UI committed, citation nits fixed).
 ## Items flagged for the human ⚑
 
 - G6.b — renderer pick (PixiJS v8) is gated by a week-one frame-time spike;
-  sigma.js v3 is the named fallback. Spike outcome will be reported.
+  sigma.js v3 is the named fallback. **Verdict (2026-06-12, gui plan
+  W01.P01.S01–S03): PixiJS v8 CONFIRMED; fallback not invoked.** Mesh-based
+  edge rendering (in-place position-buffer uploads, replacing per-frame
+  re-tessellation) closed the only soft spot: 10k/50k settled-animating
+  7.5 → 59.3 fps, continuous-layout 8.7 → 36 fps; 1k/5k vsync-locked
+  throughout. *Open condition:* measured on a discrete RTX 4080 SUPER, so
+  numbers are an upper bound; the gate's literal integrated-GPU run remains
+  a five-minute manual pass (`npm run dev` in frontend/, open
+  `/spike.html?nodes=10000&edges=50000`, read the HUD).
 - G7.c — the hand-drawn glyph family is commissioned design work with a real
   budget/schedule; needs your go/no-go when design phase starts.
 - D9.2 — per-platform wheels bundling a Rust binary raise packaging/CI cost;
