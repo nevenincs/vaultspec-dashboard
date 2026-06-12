@@ -30,9 +30,18 @@ related:
   - '[[2026-06-12-dashboard-gui-W02-P05-S19]]'
   - '[[2026-06-12-dashboard-gui-W02-P05-S20]]'
   - '[[2026-06-12-dashboard-gui-W02-P05-summary]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S21]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S22]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S23]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S24]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S25]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S26]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-S27]]'
+  - '[[2026-06-12-dashboard-gui-W02-P06-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
+  - '[[2026-06-12-dashboard-gui-reference]]'
 ---
 
 # `dashboard-gui` feature index
@@ -76,7 +85,19 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W02-P05-S19` - implement the mock engine with HTTP handlers and SSE channels carrying sequence numbers and tier degradation blocks, toggled by env flag
 - `2026-06-12-dashboard-gui-W02-P05-S20` - wire TanStack Query hooks with streamedQuery SSE consumption and cache keys of scope, filter, as-of per G5.b and the stateless-scope contract guarantee
 - `2026-06-12-dashboard-gui-W02-P05-summary` - `dashboard-gui` `W02.P05` summary
+- `2026-06-12-dashboard-gui-W02-P06-S21` - render the initial feature constellation with engine-aggregated meta-edges per G3.a and G3.d
+- `2026-06-12-dashboard-gui-W02-P06-S22` - implement hover ego-highlight with field recede and DOI label culling per G3.b
+- `2026-06-12-dashboard-gui-W02-P06-S23` - implement the shared selection concept syncing stage, view store, browser, timeline, and inspector per G2.b
+- `2026-06-12-dashboard-gui-W02-P06-S24` - implement open-in-place feature lifecycle and plan interior islands with canonical lifecycle-axis and tier layouts per G3.b and G3.e
+- `2026-06-12-dashboard-gui-W02-P06-S25` - implement expand-ego working set with breadcrumb chips, collapse, and clear-to-constellation per G3.b
+- `2026-06-12-dashboard-gui-W02-P06-S26` - implement the node-scoped discover flow with visually quarantined, session-pinned-only semantic candidates per G3.c
+- `2026-06-12-dashboard-gui-W02-P06-S27` - implement node pinning, layout-fixed and always-labelled, with client-side persistence per G5.d
+- `2026-06-12-dashboard-gui-W02-P06-summary` - `dashboard-gui` `W02.P06` summary
 
 ### plan
 
 - `2026-06-12-dashboard-gui-plan` - `dashboard-gui` plan
+
+### reference
+
+- `2026-06-12-dashboard-gui-reference` - `dashboard-gui` reference: `glyph family design`
