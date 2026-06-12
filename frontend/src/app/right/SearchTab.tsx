@@ -6,13 +6,15 @@
 
 import { useState } from "react";
 
-import { useEngineSearch } from "../../stores/server/queries";
 import { selectNode } from "../../stores/view/selection";
+import { useActiveScope } from "../stage/Stage";
+import { useSearchWithFallback } from "./searchFallback";
 
 export function SearchTab() {
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState<"vault" | "code">("vault");
-  const search = useEngineSearch(query, target);
+  const scope = useActiveScope();
+  const search = useSearchWithFallback(query, target, scope);
 
   return (
     <div className="space-y-2 text-xs" data-search-tab>
@@ -43,11 +45,17 @@ export function SearchTab() {
         ))}
       </div>
       {query && search.isPending && <p className="text-stone-400">searching…</p>}
-      {search.isError && (
-        <p className="text-amber-700">search failed — see the rag card</p>
+      {search.semanticOffline && (
+        <p
+          className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800"
+          data-semantic-offline
+        >
+          semantic search offline — showing title/text matches
+          {target === "code" ? " (vault only; no code fallback)" : ""}
+        </p>
       )}
       <ul className="space-y-1">
-        {search.data?.results.map((result) => (
+        {search.results.map((result) => (
           <li key={`${result.source}:${result.score}`}>
             <button
               type="button"
