@@ -11,6 +11,7 @@ import forceatlas2 from "graphology-layout-forceatlas2";
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 
 import { generateCorpus } from "./corpus";
+import { createEdgeMeshField } from "./edgeMesh";
 
 interface SpikeResults {
   params: { nodes: number; edges: number; islands: number; measureS: number };
@@ -90,11 +91,20 @@ async function main() {
     /* ignore */
   }
 
+  // Mesh-based edges (W01.P01.S01): static line-list topology built once,
+  // position buffer re-uploaded in place per frame — replaces the foundation
+  // spike's per-frame Graphics re-tessellation (the named 10k/50k bottleneck).
+  const nodeIndex = new Map<string, number>();
+  corpus.nodes.forEach((n, i) => nodeIndex.set(n.id, i));
+  const nodePositions = new Float32Array(corpus.nodes.length * 2);
+  const edgeField = createEdgeMeshField(corpus.edges, nodeIndex, TIER_COLORS);
+  for (const mesh of edgeField.meshes) {
+    world.addChild(mesh);
+  }
+
   // Node sprites from one shared circle texture per kind — batched draw.
   const circle = new Graphics().circle(0, 0, 4).fill(0xffffff);
   const circleTexture: Texture = app.renderer.generateTexture(circle);
-  const edgeGfx = new Graphics();
-  world.addChild(edgeGfx);
   const sprites = new Map<string, Sprite>();
   for (const n of corpus.nodes) {
     const sprite = new Sprite(circleTexture);
@@ -142,30 +152,28 @@ async function main() {
     );
   };
 
-  // While `dynamic` is true the field re-syncs and re-tessellates per frame
-  // (layout running / scrubbing). When false, the scene is static and the
-  // ticker only renders — the realistic settled steady-state.
+  // While `dynamic` is true the field re-syncs node positions and re-uploads
+  // the edge position buffers per frame (layout running / scrubbing). When
+  // false, the scene is static and the ticker only renders — the realistic
+  // settled steady-state.
   let dynamic = true;
 
   app.ticker.add(() => {
     if (!dynamic) return;
-    // Sync sprite positions from graphology (FA2 worker mutates attrs).
+    // Sync sprite positions from graphology (FA2 worker mutates attrs) and
+    // fill the shared node-position array the edge meshes read from.
     graph.forEachNode((id, attrs) => {
       const sprite = sprites.get(id)!;
-      sprite.position.set(attrs.x as number, attrs.y as number);
+      const x = attrs.x as number;
+      const y = attrs.y as number;
+      sprite.position.set(x, y);
+      const i = nodeIndex.get(id)! * 2;
+      nodePositions[i] = x;
+      nodePositions[i + 1] = y;
     });
-    // Full edge redraw per frame, batched into one path per tier — the
-    // minimal sensible implementation (one stroke per line treatment).
-    edgeGfx.clear();
-    for (let tier = 0; tier < 4; tier++) {
-      graph.forEachEdge((_, attrs, _s, _t, sa, ta) => {
-        if ((attrs.tier as number) % 4 !== tier) return;
-        edgeGfx
-          .moveTo(sa.x as number, sa.y as number)
-          .lineTo(ta.x as number, ta.y as number);
-      });
-      edgeGfx.stroke({ width: 0.5, color: TIER_COLORS[tier], alpha: 0.35 });
-    }
+    // Mesh edges: in-place position write + one buffer upload per tier — no
+    // per-frame tessellation, no allocation.
+    edgeField.update(nodePositions);
     fit();
     // DOM islands track their node through the world transform.
     for (const { id, el } of islands) {
@@ -231,8 +239,9 @@ async function main() {
   await measure("layout-running", MEASURE_S);
   layout.stop();
 
-  // Phase 2: settled field, still re-tessellating per frame (worst case for
-  // scrub-style interactions where every position changes every frame).
+  // Phase 2: settled field, still re-uploading every position per frame
+  // (worst case for scrub-style interactions where every position changes
+  // every frame). Phase key kept from the foundation run for comparability.
   await measure("settled-rebuild", MEASURE_S / 2);
 
   // Phase 3: static field — geometry uploaded once, ticker renders only.
