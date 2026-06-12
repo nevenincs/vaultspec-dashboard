@@ -1,0 +1,3691 @@
+{
+  "schema": "vaultspec.vault.graph.v2",
+  "status": "unchanged",
+  "data": {
+    "directed": true,
+    "multigraph": false,
+    "graph": {},
+    "nodes": [
+      {
+        "name": "2026-06-12-dashboard-foundation-adr",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\adr\\2026-06-12-dashboard-foundation-adr.md",
+        "doc_type": "adr",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "title": "`dashboard-foundation` adr: `kickoff decisions register` | (**status:** `accepted`)",
+        "tags": [
+          "#adr",
+          "#dashboard-foundation"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#adr",
+            "#dashboard-foundation"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-dashboard-foundation-research]]",
+            "[[2026-06-12-vaultspec-engine-adr]]",
+            "[[2026-06-12-dashboard-gui-adr]]",
+            "[[2026-06-12-dashboard-foundation-reference]]"
+          ]
+        },
+        "word_count": 1762,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-reference",
+          "2026-06-12-dashboard-foundation-research",
+          "2026-06-12-dashboard-gui-adr",
+          "2026-06-12-vaultspec-engine-adr"
+        ],
+        "in_links": [
+          "2026-06-12-dashboard-foundation-audit",
+          "2026-06-12-dashboard-gui-plan",
+          "2026-06-12-vaultspec-engine-plan",
+          "dashboard-foundation.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.07305671041780247,
+        "in_degree": 4,
+        "id": "2026-06-12-dashboard-foundation-adr"
+      },
+      {
+        "name": "2026-06-12-dashboard-gui-adr",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\adr\\2026-06-12-dashboard-gui-adr.md",
+        "doc_type": "adr",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "title": "`dashboard-gui` adr: `dashboard GUI architecture` | (**status:** `accepted`)",
+        "tags": [
+          "#adr",
+          "#dashboard-gui"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#adr",
+            "#dashboard-gui"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-dashboard-foundation-research]]"
+          ]
+        },
+        "word_count": 6028,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-research"
+        ],
+        "in_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-reference",
+          "2026-06-12-dashboard-gui-plan",
+          "dashboard-gui.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.07916400518667599,
+        "in_degree": 4,
+        "id": "2026-06-12-dashboard-gui-adr"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-adr",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\adr\\2026-06-12-vaultspec-engine-adr.md",
+        "doc_type": "adr",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "`vaultspec-engine` adr: `vaultspec engine architecture` | (**status:** `accepted`)",
+        "tags": [
+          "#adr",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#adr",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-dashboard-foundation-research]]"
+          ]
+        },
+        "word_count": 4034,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-research"
+        ],
+        "in_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-reference",
+          "2026-06-12-vaultspec-engine-audit",
+          "2026-06-12-vaultspec-engine-plan",
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.11520607379803766,
+        "in_degree": 5,
+        "id": "2026-06-12-vaultspec-engine-adr"
+      },
+      {
+        "name": "2026-06-12-dashboard-foundation-audit",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\audit\\2026-06-12-dashboard-foundation-audit.md",
+        "doc_type": "audit",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "title": "`dashboard-foundation` audit: `foundation rollout`",
+        "tags": [
+          "#audit",
+          "#dashboard-foundation"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#audit",
+            "#dashboard-foundation"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-dashboard-foundation-adr]]",
+            "[[2026-06-12-dashboard-foundation-reference]]"
+          ]
+        },
+        "word_count": 2103,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-reference"
+        ],
+        "in_links": [
+          "dashboard-foundation.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.015085229826671097,
+        "in_degree": 1,
+        "id": "2026-06-12-dashboard-foundation-audit"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-audit",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\audit\\2026-06-12-vaultspec-engine-audit.md",
+        "doc_type": "audit",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "`vaultspec-engine` audit: `W01.P01 model and store review`",
+        "tags": [
+          "#audit",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#audit",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]",
+            "[[2026-06-12-vaultspec-engine-adr]]"
+          ]
+        },
+        "word_count": 762,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-adr",
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-audit"
+      },
+      {
+        "name": "dashboard-foundation.index",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\index\\dashboard-foundation.index.md",
+        "doc_type": "index",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "title": "`dashboard-foundation` feature index",
+        "tags": [
+          "#dashboard-foundation",
+          "#index"
+        ],
+        "frontmatter": {
+          "generated": true,
+          "tags": [
+            "#index",
+            "#dashboard-foundation"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-dashboard-foundation-adr]]",
+            "[[2026-06-12-dashboard-foundation-audit]]",
+            "[[2026-06-12-dashboard-foundation-reference]]",
+            "[[2026-06-12-dashboard-foundation-research]]"
+          ]
+        },
+        "word_count": 57,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-audit",
+          "2026-06-12-dashboard-foundation-reference",
+          "2026-06-12-dashboard-foundation-research"
+        ],
+        "in_links": [],
+        "phantom": false,
+        "pagerank": 0.012441502287022132,
+        "in_degree": 0,
+        "id": "dashboard-foundation.index"
+      },
+      {
+        "name": "dashboard-gui.index",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\index\\dashboard-gui.index.md",
+        "doc_type": "index",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "title": "`dashboard-gui` feature index",
+        "tags": [
+          "#dashboard-gui",
+          "#index"
+        ],
+        "frontmatter": {
+          "generated": true,
+          "tags": [
+            "#index",
+            "#dashboard-gui"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-dashboard-gui-adr]]",
+            "[[2026-06-12-dashboard-gui-plan]]"
+          ]
+        },
+        "word_count": 34,
+        "out_links": [
+          "2026-06-12-dashboard-gui-adr",
+          "2026-06-12-dashboard-gui-plan"
+        ],
+        "in_links": [],
+        "phantom": false,
+        "pagerank": 0.012441502287022132,
+        "in_degree": 0,
+        "id": "dashboard-gui.index"
+      },
+      {
+        "name": "vaultspec-engine.index",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\index\\vaultspec-engine.index.md",
+        "doc_type": "index",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "`vaultspec-engine` feature index",
+        "tags": [
+          "#index",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "generated": true,
+          "tags": [
+            "#index",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-W01-P01-S01]]",
+            "[[2026-06-12-vaultspec-engine-W01-P01-S02]]",
+            "[[2026-06-12-vaultspec-engine-W01-P01-S03]]",
+            "[[2026-06-12-vaultspec-engine-W01-P01-S04]]",
+            "[[2026-06-12-vaultspec-engine-W01-P01-S05]]",
+            "[[2026-06-12-vaultspec-engine-W01-P01-summary]]",
+            "[[2026-06-12-vaultspec-engine-W01-P02-S06]]",
+            "[[2026-06-12-vaultspec-engine-W01-P02-S07]]",
+            "[[2026-06-12-vaultspec-engine-W01-P02-S08]]",
+            "[[2026-06-12-vaultspec-engine-W01-P02-S09]]",
+            "[[2026-06-12-vaultspec-engine-W01-P02-S10]]",
+            "[[2026-06-12-vaultspec-engine-W01-P02-summary]]",
+            "[[2026-06-12-vaultspec-engine-adr]]",
+            "[[2026-06-12-vaultspec-engine-audit]]",
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 261,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-W01-P01-S01",
+          "2026-06-12-vaultspec-engine-W01-P01-S02",
+          "2026-06-12-vaultspec-engine-W01-P01-S03",
+          "2026-06-12-vaultspec-engine-W01-P01-S04",
+          "2026-06-12-vaultspec-engine-W01-P01-S05",
+          "2026-06-12-vaultspec-engine-W01-P01-summary",
+          "2026-06-12-vaultspec-engine-W01-P02-S06",
+          "2026-06-12-vaultspec-engine-W01-P02-S07",
+          "2026-06-12-vaultspec-engine-W01-P02-S08",
+          "2026-06-12-vaultspec-engine-W01-P02-S09",
+          "2026-06-12-vaultspec-engine-W01-P02-S10",
+          "2026-06-12-vaultspec-engine-W01-P02-summary",
+          "2026-06-12-vaultspec-engine-adr",
+          "2026-06-12-vaultspec-engine-audit",
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [],
+        "phantom": false,
+        "pagerank": 0.012441502287022132,
+        "in_degree": 0,
+        "id": "vaultspec-engine.index"
+      },
+      {
+        "name": "2026-06-12-dashboard-gui-plan",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\plan\\2026-06-12-dashboard-gui-plan.md",
+        "doc_type": "plan",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "title": "`dashboard-gui` plan",
+        "tags": [
+          "#dashboard-gui",
+          "#plan"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#plan",
+            "#dashboard-gui"
+          ],
+          "date": "2026-06-12",
+          "tier": "L3",
+          "related": [
+            "[[2026-06-12-dashboard-gui-adr]]",
+            "[[2026-06-12-dashboard-foundation-adr]]",
+            "[[2026-06-12-dashboard-foundation-reference]]",
+            "[[2026-06-12-dashboard-foundation-research]]"
+          ]
+        },
+        "word_count": 2257,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-reference",
+          "2026-06-12-dashboard-foundation-research",
+          "2026-06-12-dashboard-gui-adr"
+        ],
+        "in_links": [
+          "2026-06-12-dashboard-gui-W01-P01-S01",
+          "2026-06-12-dashboard-gui-W01-P01-S02",
+          "dashboard-gui.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.03887877768351177,
+        "in_degree": 3,
+        "id": "2026-06-12-dashboard-gui-plan"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-plan",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\plan\\2026-06-12-vaultspec-engine-plan.md",
+        "doc_type": "plan",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "`vaultspec-engine` plan",
+        "tags": [
+          "#plan",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#plan",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "tier": "L3",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-adr]]",
+            "[[2026-06-12-dashboard-foundation-adr]]",
+            "[[2026-06-12-dashboard-foundation-reference]]"
+          ]
+        },
+        "word_count": 2431,
+        "out_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-reference",
+          "2026-06-12-vaultspec-engine-adr"
+        ],
+        "in_links": [
+          "2026-06-12-vaultspec-engine-W01-P01-S01",
+          "2026-06-12-vaultspec-engine-W01-P01-S02",
+          "2026-06-12-vaultspec-engine-W01-P01-S03",
+          "2026-06-12-vaultspec-engine-W01-P01-S04",
+          "2026-06-12-vaultspec-engine-W01-P01-S05",
+          "2026-06-12-vaultspec-engine-W01-P01-summary",
+          "2026-06-12-vaultspec-engine-W01-P02-S06",
+          "2026-06-12-vaultspec-engine-W01-P02-S07",
+          "2026-06-12-vaultspec-engine-W01-P02-S08",
+          "2026-06-12-vaultspec-engine-W01-P02-S09",
+          "2026-06-12-vaultspec-engine-W01-P02-S10",
+          "2026-06-12-vaultspec-engine-W01-P02-summary",
+          "2026-06-12-vaultspec-engine-audit",
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.15282324336187378,
+        "in_degree": 14,
+        "id": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "name": "2026-06-12-dashboard-foundation-reference",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\reference\\2026-06-12-dashboard-foundation-reference.md",
+        "doc_type": "reference",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "title": "`dashboard-foundation` reference: `engine-GUI contract`",
+        "tags": [
+          "#dashboard-foundation",
+          "#reference"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#reference",
+            "#dashboard-foundation"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-adr]]",
+            "[[2026-06-12-dashboard-gui-adr]]"
+          ]
+        },
+        "word_count": 1370,
+        "out_links": [
+          "2026-06-12-dashboard-gui-adr",
+          "2026-06-12-vaultspec-engine-adr"
+        ],
+        "in_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-foundation-audit",
+          "2026-06-12-dashboard-gui-plan",
+          "2026-06-12-vaultspec-engine-plan",
+          "dashboard-foundation.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.08858171216336135,
+        "in_degree": 5,
+        "id": "2026-06-12-dashboard-foundation-reference"
+      },
+      {
+        "name": "2026-06-12-dashboard-foundation-research",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\research\\2026-06-12-dashboard-foundation-research.md",
+        "doc_type": "research",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "title": "`dashboard-foundation` research: `project definition and kickoff ideation`",
+        "tags": [
+          "#dashboard-foundation",
+          "#research"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#research",
+            "#dashboard-foundation"
+          ],
+          "date": "2026-06-12",
+          "related": []
+        },
+        "word_count": 2496,
+        "out_links": [],
+        "in_links": [
+          "2026-06-12-dashboard-foundation-adr",
+          "2026-06-12-dashboard-gui-adr",
+          "2026-06-12-dashboard-gui-plan",
+          "2026-06-12-vaultspec-engine-adr",
+          "dashboard-foundation.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.20409228425821774,
+        "in_degree": 5,
+        "id": "2026-06-12-dashboard-foundation-research"
+      },
+      {
+        "name": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-dashboard-gui\\2026-06-12-dashboard-gui-W01-P01-S01.md",
+        "doc_type": "exec",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "title": "replace per-frame edge re-tessellation with mesh-based edge rendering in the spike harness per the G6.b spike finding",
+        "tags": [
+          "#dashboard-gui",
+          "#exec"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#dashboard-gui"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S01",
+          "related": [
+            "[[2026-06-12-dashboard-gui-plan]]"
+          ]
+        },
+        "word_count": 247,
+        "out_links": [
+          "2026-06-12-dashboard-gui-plan"
+        ],
+        "in_links": [],
+        "phantom": false,
+        "pagerank": 0.012441502287022132,
+        "in_degree": 0,
+        "id": "2026-06-12-dashboard-gui-W01-P01-S01"
+      },
+      {
+        "name": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-dashboard-gui\\2026-06-12-dashboard-gui-W01-P01-S02.md",
+        "doc_type": "exec",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "title": "run the integrated-GPU frame-time gate at 1k/5k and 10k/50k synthetic corpora and record results against the G6.b gate criteria",
+        "tags": [
+          "#dashboard-gui",
+          "#exec"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#dashboard-gui"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S02",
+          "related": [
+            "[[2026-06-12-dashboard-gui-plan]]"
+          ]
+        },
+        "word_count": 30,
+        "out_links": [
+          "2026-06-12-dashboard-gui-plan"
+        ],
+        "in_links": [],
+        "phantom": false,
+        "pagerank": 0.012441502287022132,
+        "in_degree": 0,
+        "id": "2026-06-12-dashboard-gui-W01-P01-S02"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S01.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Define Node, NodeKind, Edge, RelationKind, Tier, Provenance and ScopeRef types per ADR section 3 as pure no-IO types",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S01",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 145,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P01-S01"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S02.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement stable NodeId derivation from kind plus canonical key (feature tag, vault stem, plan stem plus step id, commit sha, repo path plus symbol) with unit tests",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S02",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 128,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P01-S02"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S03.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement stable EdgeId content-hash derivation over src, dst, relation, tier and provenance key with determinism unit tests",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S03",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 175,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P01-S03"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S04.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement the SQLite schema for derived artifacts keyed by input content hash, the temporal event log, and the semantic TTL cache",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S04",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 145,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P01-S04"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S05.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement the store read and write API with single-writer discipline and concurrent-reader tests",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S05",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 131,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P01-S05"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-summary.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "`vaultspec-engine` `W01.P01` summary",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 217,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P01-summary"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S06.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement workspace discovery resolving any launch directory to the repository common git dir via gix, with fixture-repo tests",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S06",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 130,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P02-S06"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S07.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement worktree enumeration capturing checkout path, HEAD ref and dirty state",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S07",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 134,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P02-S07"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S08.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement local-branch enumeration with advisory default, feature and other classification and a lazy cached corpus-diff confirmation hook",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S08",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 132,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P02-S08"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S09.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement remote-ref mapping flagged with degraded tiers (declared and temporal only, no working tree)",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S09",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 108,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P02-S09"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S10.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "Implement the commit-log walk producing temporal event records with timestamp, kind, ref and touched paths",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "step_id": "S10",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 133,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P02-S10"
+      },
+      {
+        "name": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-summary.md",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "title": "`vaultspec-engine` `W01.P02` summary",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ],
+        "frontmatter": {
+          "tags": [
+            "#exec",
+            "#vaultspec-engine"
+          ],
+          "date": "2026-06-12",
+          "related": [
+            "[[2026-06-12-vaultspec-engine-plan]]"
+          ]
+        },
+        "word_count": 231,
+        "out_links": [
+          "2026-06-12-vaultspec-engine-plan"
+        ],
+        "in_links": [
+          "vaultspec-engine.index"
+        ],
+        "phantom": false,
+        "pagerank": 0.013146496297595189,
+        "in_degree": 1,
+        "id": "2026-06-12-vaultspec-engine-W01-P02-summary"
+      }
+    ],
+    "edges": [
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-foundation-research"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-gui-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-foundation-reference"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-adr",
+        "target": "2026-06-12-dashboard-foundation-research"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-adr",
+        "target": "2026-06-12-dashboard-foundation-research"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-dashboard-foundation-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-dashboard-foundation-reference"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-audit",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-audit",
+        "target": "2026-06-12-vaultspec-engine-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "dashboard-foundation.index",
+        "target": "2026-06-12-dashboard-foundation-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "dashboard-foundation.index",
+        "target": "2026-06-12-dashboard-foundation-audit"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "dashboard-foundation.index",
+        "target": "2026-06-12-dashboard-foundation-reference"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "dashboard-foundation.index",
+        "target": "2026-06-12-dashboard-foundation-research"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "dashboard-gui.index",
+        "target": "2026-06-12-dashboard-gui-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "dashboard-gui.index",
+        "target": "2026-06-12-dashboard-gui-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S01"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S02"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S03"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S04"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-audit"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "vaultspec-engine.index",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "2026-06-12-dashboard-gui-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "2026-06-12-dashboard-foundation-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "2026-06-12-dashboard-foundation-reference"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "2026-06-12-dashboard-foundation-research"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-plan",
+        "target": "2026-06-12-vaultspec-engine-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-plan",
+        "target": "2026-06-12-dashboard-foundation-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-plan",
+        "target": "2026-06-12-dashboard-foundation-reference"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-dashboard-gui-adr"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "target": "2026-06-12-dashboard-gui-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "target": "2026-06-12-dashboard-gui-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      },
+      {
+        "kind": "related",
+        "multiplicity": 1,
+        "weight": 1.0,
+        "source": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "target": "2026-06-12-vaultspec-engine-plan"
+      }
+    ],
+    "derived_edges": [
+      {
+        "source": "2026-06-12-vaultspec-engine-plan",
+        "target": "vaultspec-engine.index",
+        "kind": "adamic_adar",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.7777777777777778,
+          "adamic_adar": 18.780690343845645
+        },
+        "weight": 3.155846812162342
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-foundation-reference",
+        "kind": "co_citation",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 3.67788677441669,
+          "co_citation": 4.0
+        },
+        "weight": 2.7344553441083352
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-dashboard-foundation-research",
+        "kind": "co_citation",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.7142857142857143,
+          "adamic_adar": 2.8955897708880793,
+          "co_citation": 3.0
+        },
+        "weight": 2.4038446913745224
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.8722225496933615
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-foundation-research",
+        "kind": "co_citation",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.4444444444444444,
+          "adamic_adar": 2.4146914239250914,
+          "co_citation": 2.0
+        },
+        "weight": 1.7859135868369536
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-adr",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.5,
+          "adamic_adar": 3.058826664781314,
+          "co_citation": 1.0
+        },
+        "weight": 1.6058826664781314
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 1.0,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 1.551389834236975
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.6666666666666666,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.538889216360028
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-adr",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "co_citation",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.21052631578947367,
+          "adamic_adar": 2.274305289028431,
+          "co_citation": 2.0
+        },
+        "weight": 1.5379568446923169
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-dashboard-foundation-research",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 1.2022458674074694,
+          "co_citation": 1.0
+        },
+        "weight": 1.2535579200740803
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.2055558830266948
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-dashboard-foundation-reference",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.25,
+          "adamic_adar": 1.2022458674074694,
+          "co_citation": 1.0
+        },
+        "weight": 1.170224586740747
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-adr",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.2857142857142857,
+          "adamic_adar": 0.7222254969336162,
+          "co_citation": 1.0
+        },
+        "weight": 1.1579368354076474
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-foundation-audit",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.2222222222222222,
+          "adamic_adar": 1.2352458628142324,
+          "co_citation": 1.0
+        },
+        "weight": 1.1457468085036455
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-adr",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "co_citation",
+        "signals": {
+          "jaccard": 0.375,
+          "adamic_adar": 1.6161316238923504,
+          "co_citation": 2.0
+        },
+        "weight": 1.136613162389235
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "target": "dashboard-gui.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.5,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 1.051389834236975
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "target": "dashboard-gui.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.5,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 1.051389834236975
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "dashboard-foundation.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 2.0454725035562
+        },
+        "weight": 1.0378805836889533
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-audit",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.9273799996201022,
+          "co_citation": 1.0
+        },
+        "weight": 1.0038491110731214
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "dashboard-foundation.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.4,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.9994796689332739
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-dashboard-gui-adr",
+        "kind": "co_citation",
+        "signals": {
+          "jaccard": 0.25,
+          "adamic_adar": 0.9947966893327386,
+          "co_citation": 2.0
+        },
+        "weight": 0.9494796689332738
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-dashboard-gui-adr",
+        "kind": "co_citation",
+        "signals": {
+          "jaccard": 0.2,
+          "adamic_adar": 0.9947966893327386,
+          "co_citation": 2.0
+        },
+        "weight": 0.8994796689332738
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.05555555555555555,
+          "adamic_adar": 0.36926937306885504,
+          "co_citation": 1.0
+        },
+        "weight": 0.8924824928624411
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "co_citation",
+        "signals": {
+          "jaccard": 0.18181818181818182,
+          "adamic_adar": 0.833854470827749,
+          "co_citation": 2.0
+        },
+        "weight": 0.8652036289009567
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "dashboard-foundation.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.2222222222222222,
+          "adamic_adar": 1.391137573589825
+        },
+        "weight": 0.8613359795812048
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-gui-adr",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.3,
+          "adamic_adar": 1.6491316192991134,
+          "co_citation": 1.0
+        },
+        "weight": 0.7649131619299113
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "target": "2026-06-12-dashboard-gui-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.2,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.751389834236975
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "target": "2026-06-12-dashboard-gui-adr",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.2,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.751389834236975
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-adr",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.10526315789473684,
+          "adamic_adar": 1.2631953504915985
+        },
+        "weight": 0.7315826929438967
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "co_citation",
+        "signals": {
+          "jaccard": 0.2727272727272727,
+          "adamic_adar": 1.4881894007941239,
+          "co_citation": 1.0
+        },
+        "weight": 0.7215462128066852
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-adr",
+        "target": "dashboard-gui.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.16666666666666666,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.7180565009036417
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-audit",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.125,
+          "adamic_adar": 0.9110667504160084
+        },
+        "weight": 0.7161066750416009
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "dashboard-gui.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.125,
+          "adamic_adar": 0.6213349345596119
+        },
+        "weight": 0.6871334934559612
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "dashboard-foundation.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.125,
+          "adamic_adar": 0.48089834696298783
+        },
+        "weight": 0.6730898346962988
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-adr",
+        "target": "dashboard-foundation.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.5,
+          "adamic_adar": 1.6161316238923504
+        },
+        "weight": 0.6616131623892351
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "target": "vaultspec-engine.index",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0,
+          "jaccard": 0.0625,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.5977956123864762
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-adr",
+        "target": "dashboard-foundation.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.42857142857142855,
+          "adamic_adar": 1.6161316238923504
+        },
+        "weight": 0.5901845909606636
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "dashboard-foundation.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.375,
+          "adamic_adar": 1.6161316238923504
+        },
+        "weight": 0.5366131623892351
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "dashboard-gui.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.4,
+          "adamic_adar": 1.1352332769293625
+        },
+        "weight": 0.5135233276929363
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0
+        },
+        "weight": 0.5
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "shared_feature",
+        "signals": {
+          "shared_feature": 1.0
+        },
+        "weight": 0.5
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.3,
+          "adamic_adar": 1.6161316238923504
+        },
+        "weight": 0.46161316238923505
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "co_citation",
+        "signals": {
+          "jaccard": 0.1,
+          "adamic_adar": 0.48089834696298783,
+          "co_citation": 1.0
+        },
+        "weight": 0.4480898346962988
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-dashboard-gui-adr",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.3333333333333333,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.4328130022666072
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.25,
+          "adamic_adar": 1.7565682114889745
+        },
+        "weight": 0.42565682114889747
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "dashboard-gui.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.2857142857142857,
+          "adamic_adar": 1.1352332769293625
+        },
+        "weight": 0.39923761340722197
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-vaultspec-engine-adr",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.2857142857142857,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.38519395464755957
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "dashboard-gui.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.25,
+          "adamic_adar": 1.1352332769293625
+        },
+        "weight": 0.36352332769293627
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.25,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.34947966893327387
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.25,
+          "adamic_adar": 0.9110667504160084
+        },
+        "weight": 0.34110667504160086
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.2222222222222222,
+          "adamic_adar": 0.9110667504160084
+        },
+        "weight": 0.31332889726382307
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.2,
+          "adamic_adar": 1.1022332815225997
+        },
+        "weight": 0.31022332815226
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-dashboard-gui-plan",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.16666666666666666,
+          "adamic_adar": 1.1022332815225997
+        },
+        "weight": 0.2768899948189266
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.2,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.2513898342369751
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.2,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.2513898342369751
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-audit",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.21059078004438497
+      },
+      {
+        "source": "2026-06-12-vaultspec-engine-plan",
+        "target": "dashboard-foundation.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.10526315789473684,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.2047428268280107
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "adamic_adar",
+        "signals": {
+          "jaccard": 0.1,
+          "adamic_adar": 1.039008973514235
+        },
+        "weight": 0.2039008973514235
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-adr",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.19947966893327387
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "2026-06-12-vaultspec-engine-audit",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.14285714285714285,
+          "adamic_adar": 0.5581106265512472
+        },
+        "weight": 0.19866820551226758
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "adamic_adar",
+        "signals": {
+          "jaccard": 0.09090909090909091,
+          "adamic_adar": 1.039008973514235
+        },
+        "weight": 0.1948099882605144
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.14285714285714285,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.19424697709411792
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.14285714285714285,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.19424697709411792
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "adamic_adar",
+        "signals": {
+          "jaccard": 0.08695652173913043,
+          "adamic_adar": 1.072008968920998
+        },
+        "weight": 0.19415741863123023
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "vaultspec-engine.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1,
+          "adamic_adar": 0.9110667504160084
+        },
+        "weight": 0.19110667504160084
+      },
+      {
+        "source": "2026-06-12-dashboard-gui-plan",
+        "target": "2026-06-12-vaultspec-engine-plan",
+        "kind": "adamic_adar",
+        "signals": {
+          "jaccard": 0.09090909090909091,
+          "adamic_adar": 0.9947966893327386
+        },
+        "weight": 0.19038875984236478
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "vaultspec-engine.index",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.09523809523809523,
+          "adamic_adar": 0.9110667504160084
+        },
+        "weight": 0.1863447702796961
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.17638983423697507
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.5138983423697507
+        },
+        "weight": 0.17638983423697507
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-reference",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.125,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1602956123864761
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-adr",
+        "target": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "kind": "jaccard",
+        "signals": {
+          "jaccard": 0.1111111111111111,
+          "adamic_adar": 0.35295612386476116
+        },
+        "weight": 0.1464067234975872
+      },
+      {
+        "source": "2026-06-12-dashboard-foundation-research",
+        "target": "vaultspec-engine.index",
+        "kind": "adamic_adar",
+        "signals": {
+          "jaccard": 0.05263157894736842,
+          "adamic_adar": 0.5581106265512472
+        },
+        "weight": 0.10844264160249314
+      }
+    ],
+    "root": "Y:\\code\\vaultspec-dashboard-worktrees\\main",
+    "feature": null,
+    "metrics": {
+      "total_nodes": 26,
+      "total_edges": 54,
+      "total_features": 3,
+      "total_words": 25681,
+      "density": 0.08307692307692308,
+      "avg_in_degree": 2.076923076923077,
+      "avg_out_degree": 2.076923076923077,
+      "max_in_degree": {
+        "node": "2026-06-12-vaultspec-engine-plan",
+        "count": 14
+      },
+      "max_out_degree": {
+        "node": "vaultspec-engine.index",
+        "count": 15
+      },
+      "in_degree_centrality": {
+        "2026-06-12-vaultspec-engine-plan": 0.56,
+        "2026-06-12-vaultspec-engine-adr": 0.2,
+        "2026-06-12-dashboard-foundation-reference": 0.2,
+        "2026-06-12-dashboard-foundation-research": 0.2,
+        "2026-06-12-dashboard-foundation-adr": 0.16,
+        "2026-06-12-dashboard-gui-adr": 0.16,
+        "2026-06-12-dashboard-gui-plan": 0.12,
+        "2026-06-12-dashboard-foundation-audit": 0.04,
+        "2026-06-12-vaultspec-engine-audit": 0.04,
+        "2026-06-12-vaultspec-engine-W01-P01-S01": 0.04
+      },
+      "betweenness_centrality": {
+        "2026-06-12-vaultspec-engine-plan": 0.11,
+        "2026-06-12-dashboard-foundation-adr": 0.03166666666666667,
+        "2026-06-12-dashboard-gui-plan": 0.022500000000000003,
+        "2026-06-12-dashboard-foundation-reference": 0.01916666666666667,
+        "2026-06-12-vaultspec-engine-adr": 0.015000000000000001,
+        "2026-06-12-dashboard-gui-adr": 0.0016666666666666668,
+        "2026-06-12-dashboard-foundation-audit": 0.0,
+        "2026-06-12-vaultspec-engine-audit": 0.0,
+        "dashboard-foundation.index": 0.0,
+        "dashboard-gui.index": 0.0
+      },
+      "phantom_count": 0,
+      "orphan_count": 0,
+      "dangling_link_count": 0,
+      "connected_components": 1,
+      "nodes_by_type": {
+        "adr": 3,
+        "audit": 2,
+        "exec": 14,
+        "index": 3,
+        "plan": 2,
+        "reference": 1,
+        "research": 1
+      },
+      "nodes_by_feature": {
+        "dashboard-foundation": 5,
+        "dashboard-gui": 5,
+        "vaultspec-engine": 16
+      }
+    }
+  }
+}

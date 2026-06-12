@@ -42,10 +42,10 @@ Deliver workspace discovery, worktree and branch enumeration with advisory class
 
 Deliver the vaultspec-core subprocess adapter: schema-pinned vault graph JSON ingestion into declared edges plus the inventory verb adapters, fixture-tested.
 
-- [ ] `W01.P03.S11` - Implement the core subprocess runner for vault graph JSON with pinned schema versions and loud failure on unknown schema; `engine/crates/ingest-core/src/runner.rs`.
-- [ ] `W01.P03.S12` - Implement the graph v2 payload parser producing declared edges preserving kind, multiplicity and weight, with core-derived edges as a distinct relation at 0.8 confidence; `engine/crates/ingest-core/src/graph_v2.rs`.
-- [ ] `W01.P03.S13` - Implement inventory adapters for vault list, vault stats and vault feature list JSON envelopes; `engine/crates/ingest-core/src/inventory.rs`.
-- [ ] `W01.P03.S14` - Record live core JSON payloads as fixtures and add parser and runner tests against them; `engine/crates/ingest-core/tests/`.
+- [x] `W01.P03.S11` - Implement the core subprocess runner for vault graph JSON with pinned schema versions and loud failure on unknown schema; `engine/crates/ingest-core/src/runner.rs`.
+- [x] `W01.P03.S12` - Implement the graph v2 payload parser producing declared edges preserving kind, multiplicity and weight, with core-derived edges as a distinct relation at 0.8 confidence; `engine/crates/ingest-core/src/graph_v2.rs`.
+- [x] `W01.P03.S13` - Implement inventory adapters for vault list, vault stats and vault feature list JSON envelopes; `engine/crates/ingest-core/src/inventory.rs`.
+- [x] `W01.P03.S14` - Record live core JSON payloads as fixtures and add parser and runner tests against them; `engine/crates/ingest-core/tests/`.
 
 ### Phase `W01.P04` - structural extraction
 

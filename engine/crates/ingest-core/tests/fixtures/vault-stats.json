@@ -1,0 +1,19 @@
+{
+  "schema": "vaultspec.vault.stats.v1",
+  "status": "unchanged",
+  "data": {
+    "total_docs": 26,
+    "total_features": 3,
+    "counts_by_type": {
+      "adr": 3,
+      "audit": 2,
+      "index": 3,
+      "plan": 2,
+      "reference": 1,
+      "research": 1,
+      "exec": 14
+    },
+    "orphaned_count": 0,
+    "dangling_link_count": 0
+  }
+}

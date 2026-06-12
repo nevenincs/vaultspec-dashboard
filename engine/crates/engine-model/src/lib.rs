@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod id;
 
-pub use id::{CanonicalKey, edge_id, node_id};
+pub use id::{CanonicalKey, content_hash, edge_id, node_id};
 
 /// Stable node identity: kind + canonical key (contract §2).
 ///

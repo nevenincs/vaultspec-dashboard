@@ -17,6 +17,11 @@ related:
   - '[[2026-06-12-vaultspec-engine-W01-P02-S09]]'
   - '[[2026-06-12-vaultspec-engine-W01-P02-S10]]'
   - '[[2026-06-12-vaultspec-engine-W01-P02-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P03-S11]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P03-S12]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P03-S13]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P03-S14]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P03-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -50,6 +55,11 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W01-P02-S09` - Implement remote-ref mapping flagged with degraded tiers (declared and temporal only, no working tree)
 - `2026-06-12-vaultspec-engine-W01-P02-S10` - Implement the commit-log walk producing temporal event records with timestamp, kind, ref and touched paths
 - `2026-06-12-vaultspec-engine-W01-P02-summary` - `vaultspec-engine` `W01.P02` summary
+- `2026-06-12-vaultspec-engine-W01-P03-S11` - Implement the core subprocess runner for vault graph JSON with pinned schema versions and loud failure on unknown schema
+- `2026-06-12-vaultspec-engine-W01-P03-S12` - Implement the graph v2 payload parser producing declared edges preserving kind, multiplicity and weight, with core-derived edges as a distinct relation at 0.8 confidence
+- `2026-06-12-vaultspec-engine-W01-P03-S13` - Implement inventory adapters for vault list, vault stats and vault feature list JSON envelopes
+- `2026-06-12-vaultspec-engine-W01-P03-S14` - Record live core JSON payloads as fixtures and add parser and runner tests against them
+- `2026-06-12-vaultspec-engine-W01-P03-summary` - `vaultspec-engine` `W01.P03` summary
 
 ### plan
 

@@ -1604,6 +1604,9 @@ name = "ingest-core"
 version = "0.1.0"
 dependencies = [
  "engine-model",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

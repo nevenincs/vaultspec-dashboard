@@ -1,0 +1,46 @@
+{
+  "schema": "vaultspec.vault.feature.list.v1",
+  "status": "unchanged",
+  "data": {
+    "features": [
+      {
+        "name": "dashboard-foundation",
+        "doc_count": 5,
+        "types": [
+          "adr",
+          "audit",
+          "index",
+          "reference",
+          "research"
+        ],
+        "earliest_date": "2026-06-12",
+        "has_plan": false
+      },
+      {
+        "name": "dashboard-gui",
+        "doc_count": 5,
+        "types": [
+          "adr",
+          "exec",
+          "index",
+          "plan"
+        ],
+        "earliest_date": "2026-06-12",
+        "has_plan": true
+      },
+      {
+        "name": "vaultspec-engine",
+        "doc_count": 16,
+        "types": [
+          "adr",
+          "audit",
+          "exec",
+          "index",
+          "plan"
+        ],
+        "earliest_date": "2026-06-12",
+        "has_plan": true
+      }
+    ]
+  }
+}

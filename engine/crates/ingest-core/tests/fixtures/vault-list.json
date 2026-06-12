@@ -1,0 +1,294 @@
+{
+  "schema": "vaultspec.vault.list.v1",
+  "status": "unchanged",
+  "data": {
+    "documents": [
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\adr\\2026-06-12-dashboard-foundation-adr.md",
+        "name": "2026-06-12-dashboard-foundation-adr",
+        "doc_type": "adr",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "tags": [
+          "#adr",
+          "#dashboard-foundation"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\adr\\2026-06-12-dashboard-gui-adr.md",
+        "name": "2026-06-12-dashboard-gui-adr",
+        "doc_type": "adr",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "tags": [
+          "#adr",
+          "#dashboard-gui"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\adr\\2026-06-12-vaultspec-engine-adr.md",
+        "name": "2026-06-12-vaultspec-engine-adr",
+        "doc_type": "adr",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#adr",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\audit\\2026-06-12-dashboard-foundation-audit.md",
+        "name": "2026-06-12-dashboard-foundation-audit",
+        "doc_type": "audit",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "tags": [
+          "#audit",
+          "#dashboard-foundation"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\audit\\2026-06-12-vaultspec-engine-audit.md",
+        "name": "2026-06-12-vaultspec-engine-audit",
+        "doc_type": "audit",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#audit",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\index\\dashboard-foundation.index.md",
+        "name": "dashboard-foundation.index",
+        "doc_type": "index",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "tags": [
+          "#index",
+          "#dashboard-foundation"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\index\\dashboard-gui.index.md",
+        "name": "dashboard-gui.index",
+        "doc_type": "index",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "tags": [
+          "#index",
+          "#dashboard-gui"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\index\\vaultspec-engine.index.md",
+        "name": "vaultspec-engine.index",
+        "doc_type": "index",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#index",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\plan\\2026-06-12-dashboard-gui-plan.md",
+        "name": "2026-06-12-dashboard-gui-plan",
+        "doc_type": "plan",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "tags": [
+          "#plan",
+          "#dashboard-gui"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\plan\\2026-06-12-vaultspec-engine-plan.md",
+        "name": "2026-06-12-vaultspec-engine-plan",
+        "doc_type": "plan",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#plan",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\reference\\2026-06-12-dashboard-foundation-reference.md",
+        "name": "2026-06-12-dashboard-foundation-reference",
+        "doc_type": "reference",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "tags": [
+          "#reference",
+          "#dashboard-foundation"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\research\\2026-06-12-dashboard-foundation-research.md",
+        "name": "2026-06-12-dashboard-foundation-research",
+        "doc_type": "research",
+        "feature": "dashboard-foundation",
+        "date": "2026-06-12",
+        "tags": [
+          "#research",
+          "#dashboard-foundation"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-dashboard-gui\\2026-06-12-dashboard-gui-W01-P01-S01.md",
+        "name": "2026-06-12-dashboard-gui-W01-P01-S01",
+        "doc_type": "exec",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#dashboard-gui"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-dashboard-gui\\2026-06-12-dashboard-gui-W01-P01-S02.md",
+        "name": "2026-06-12-dashboard-gui-W01-P01-S02",
+        "doc_type": "exec",
+        "feature": "dashboard-gui",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#dashboard-gui"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S01.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S01",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S02.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S02",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S03.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S03",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S04.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S04",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-S05.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P01-S05",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P01-summary.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P01-summary",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S06.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S06",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S07.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S07",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S08.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S08",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S09.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S09",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-S10.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P02-S10",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      },
+      {
+        "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\.vault\\exec\\2026-06-12-vaultspec-engine\\2026-06-12-vaultspec-engine-W01-P02-summary.md",
+        "name": "2026-06-12-vaultspec-engine-W01-P02-summary",
+        "doc_type": "exec",
+        "feature": "vaultspec-engine",
+        "date": "2026-06-12",
+        "tags": [
+          "#exec",
+          "#vaultspec-engine"
+        ]
+      }
+    ]
+  }
+}

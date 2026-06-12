@@ -144,6 +144,13 @@ fn fnv1a_128(bytes: &[u8]) -> u128 {
     hash
 }
 
+/// Stable content hash of arbitrary bytes, as a 32-hex-digit string.
+/// Used for content-hash cache keys and payload identity (engine-spec §2.4
+/// cache discipline). Same determinism rationale as [`edge_id`].
+pub fn content_hash(bytes: &[u8]) -> String {
+    format!("{:032x}", fnv1a_128(bytes))
+}
+
 /// Derive a stable edge id: content hash of
 /// `(src, dst, relation, tier, provenance stable key)` (contract §2).
 pub fn edge_id(

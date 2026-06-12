@@ -7,9 +7,18 @@
 //! are read directly from disk/object-DB by `ingest-struct`; this crate owns
 //! only the core CLI adapter.
 
+pub mod graph_v2;
+pub mod inventory;
+pub mod runner;
+
 /// Graph payload schema versions this engine understands. Unknown versions
 /// surface as a loud `/status` failure, never a silent guess.
 pub const SUPPORTED_GRAPH_SCHEMAS: &[&str] = &["vaultspec.vault.graph.v2"];
+
+/// Inventory schema versions this engine understands (one per verb).
+pub const SUPPORTED_LIST_SCHEMAS: &[&str] = &[inventory::LIST_SCHEMA];
+pub const SUPPORTED_STATS_SCHEMAS: &[&str] = &[inventory::STATS_SCHEMA];
+pub const SUPPORTED_FEATURE_LIST_SCHEMAS: &[&str] = &[inventory::FEATURE_LIST_SCHEMA];
 
 /// Returns true when the engine can ingest the given core graph schema.
 pub fn schema_supported(schema: &str) -> bool {
