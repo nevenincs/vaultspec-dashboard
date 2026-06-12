@@ -68,6 +68,14 @@ The executor's flagged call (the ADR's structural band names no number for broke
 
 `meta_edges` walks every edge and cross-products endpoint feature tags on each invocation. Fine at vault scale today and correct-by-construction; once the serve mode makes this the constellation hot path (W03.P11), consider memoizing per index generation rather than per request. No action in W02.
 
+## W02P06-301 | medium | unresolved-target identity is minted from resolution output, churning ids across state transitions
+
+In the structural edge builder, the destination node id for step and symbol mentions embeds the resolution *result*: an unresolved step mention mints `plan:unresolved/{step}` and an unresolved symbol mints `code:unresolved#{symbol}`, while the same mention once resolved mints the real plan-stem or path key. Two consequences: (a) a mention transitioning broken to resolved (the file appears, the plan lands) changes its destination node id and therefore its edge id - but the design treats resolution state as a mutable property of a *retained* edge (D3.3), and the contract promises ids stable across time for the GUI's animate-by-id; a state transition should re-state the edge, not delete-and-mint; (b) all unresolved step mentions across different intended plans share the `unresolved` placeholder namespace. Decide before W02.P08 exposes ids on the query surface, and record the choice in the step record: either derive destination identity from the mention text alone (resolution only updates state and a `target` attribute - matches how path and wiki-link mentions already behave), or introduce an explicit unresolved-target node kind keyed by mention text and accept id churn at the moment a link first becomes real, documented as such. The first option is more consistent with the retained-edge model; the second is more honest about "this node did not exist yet". Reviewer leans first option.
+
+## W02P06-302 | low | the idempotence property now lives in the pipeline shape - protect it at the serve seam
+
+W02P05-202 is closed structurally: every index run builds a fresh graph, so same-id re-observation inflation cannot occur across runs, and S29 proves convergence including warm-cache runs. The property is currently a consequence of pipeline shape, not an enforced invariant: the watcher hands dirty batches to a consumer that re-runs the indexer fresh. When the serve mode wires partial re-ingestion (W03.P11), it must preserve rebuild-at-scope granularity (or scope-scoped edge replacement) rather than ingesting deltas into a live graph - otherwise 202 returns. Recorded as a named constraint for the serve-mode step.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
@@ -89,6 +97,13 @@ W02.P05 boundary (third entry):
 - W02P05-201: broken confidence 0.0 approved; the state facet is the broken-surfacing channel - no confidence floor on the broken lens (GUI side notified).
 - HARD GATE into W02.P06.S26: resolve W02P05-202 (idempotent re-ingestion) before incremental re-index lands; the S29 re-derivability test must assert convergence of incremental-vs-cold builds, not only cold-vs-cold.
 - W02P05-203: no action until W03.P11; revisit at the serve-mode review.
+
+W02.P06 boundary (fourth entry):
+
+- Close W02.P06. Carries W01P01-002 (loud corrupt-row error, typed and tested) and the W02P05-202 gate (fresh-graph-per-run, S29 proves cold/warm/deleted convergence with id stability) are CLOSED. The S29 test is exactly the D8.2 verification clause the plan demanded.
+- W02P06-301 (medium): decide unresolved-target identity before W02.P08 exposes ids; reviewer leans mention-derived identity with resolution as mutable state. Record the choice in the consuming step record.
+- W02P06-302: rebuild-at-scope granularity is a named constraint for the W03.P11 serve wiring.
+- W01P04-104: agreed - fold into the W03.P12 hardening pass (per-call memoization plus gitignore honoring), now formally routed there.
 
 ## Codification candidates
 
