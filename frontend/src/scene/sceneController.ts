@@ -101,6 +101,18 @@ export interface SceneAnchor {
 type SceneAnchorListener = (anchor: SceneAnchor | null) => void;
 
 /**
+ * The renderer side of the seam. The PixiJS v8 field implements it (G6.b,
+ * confirmed); the named sigma.js fallback would implement the same
+ * interface. Injected into the SceneController, which delegates lifecycle —
+ * the seam's public surface is unchanged by the injection.
+ */
+export interface SceneFieldRenderer {
+  mount(host: HTMLElement): void;
+  resize(width: number, height: number): void;
+  destroy(): void;
+}
+
+/**
  * The renderer-owned scene store, kept renderer-agnostic: the PixiJS v8
  * field (gui-spec §6.1; spike gate closed and verdict confirmed,
  * W01.P01.S03) plugs in behind this surface, and the sigma.js fallback
@@ -112,21 +124,27 @@ export class SceneController {
   private trackedNodes = new Map<string, Set<SceneAnchorListener>>();
   private nodes: SceneNodeData[] = [];
   private edges: SceneEdgeData[] = [];
+  private field: SceneFieldRenderer | null;
 
-  // --- lifecycle (RL-5b) — implemented by the field renderer ---------------
-
-  /** TODO(field): attach the renderer's canvas into the host element. */
-  mount(_host: HTMLElement): void {
-    // placeholder until the field component lands
+  constructor(field: SceneFieldRenderer | null = null) {
+    this.field = field;
   }
 
-  /** TODO(field): propagate host resize to the renderer viewport. */
-  resize(_width: number, _height: number): void {
-    // placeholder until the field component lands
+  // --- lifecycle (RL-5b) — delegated to the field renderer ------------------
+
+  /** Attach the renderer's canvas into the host element. */
+  mount(host: HTMLElement): void {
+    this.field?.mount(host);
   }
 
-  /** TODO(field): tear down renderer, workers, and subscriptions. */
+  /** Propagate host resize to the renderer viewport. */
+  resize(width: number, height: number): void {
+    this.field?.resize(width, height);
+  }
+
+  /** Tear down renderer, workers, and subscriptions. */
   destroy(): void {
+    this.field?.destroy();
     this.listeners.clear();
     this.trackedNodes.clear();
   }

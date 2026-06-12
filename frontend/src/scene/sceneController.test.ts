@@ -90,6 +90,20 @@ describe("SceneController", () => {
     expect(anchors).toEqual([{ x: 10, y: 20, scale: 1.5 }, null]);
   });
 
+  it("delegates lifecycle to an injected field renderer (W01.P03.S09)", () => {
+    const calls: string[] = [];
+    const fake = {
+      mount: () => calls.push("mount"),
+      resize: (w: number, h: number) => calls.push(`resize:${w}x${h}`),
+      destroy: () => calls.push("destroy"),
+    };
+    const scene = new SceneController(fake);
+    scene.mount({} as HTMLElement);
+    scene.resize(800, 600);
+    scene.destroy();
+    expect(calls).toEqual(["mount", "resize:800x600", "destroy"]);
+  });
+
   it("destroy clears all subscriptions (RL-5b)", () => {
     const scene = new SceneController();
     let calls = 0;

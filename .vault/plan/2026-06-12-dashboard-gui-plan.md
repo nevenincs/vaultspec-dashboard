@@ -11,6 +11,15 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-gui` plan
 
@@ -40,7 +49,7 @@ Builds the renderer-agnostic scene model: contract-shaped graph slices, keyframe
 
 Implements the WebGL field behind the SceneController seam: LOD node sprites, tier-treated edges, camera and hit-testing, and the ForceAtlas2 worker.
 
-- [ ] `W01.P03.S09` - mount the PixiJS application behind the SceneController lifecycle of mount, resize, destroy per G6.b; `frontend/src/scene/field/pixiField.ts`.
+- [x] `W01.P03.S09` - mount the PixiJS application behind the SceneController lifecycle of mount, resize, destroy per G6.b; `frontend/src/scene/field/pixiField.ts`.
 - [ ] `W01.P03.S10` - render node sprites with LOD discipline, silhouette and state colour far, full anatomy near, per G3.a and the ADR section 3.1 node anatomy; `frontend/src/scene/field/nodeSprites.ts`.
 - [ ] `W01.P03.S11` - render edges with the fixed tier treatments, solid, status-coloured, dotted, haze, and grayscale-safe confidence encoding per G3.c and G7.d; `frontend/src/scene/field/edgeMeshes.ts`.
 - [ ] `W01.P03.S12` - implement camera pan and zoom with semantic-zoom thresholds and pointer hit-testing emitting hover, select, open events per G3.b; `frontend/src/scene/field/camera.ts`.
