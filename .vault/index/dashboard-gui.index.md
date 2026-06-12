@@ -38,6 +38,11 @@ related:
   - '[[2026-06-12-dashboard-gui-W02-P06-S26]]'
   - '[[2026-06-12-dashboard-gui-W02-P06-S27]]'
   - '[[2026-06-12-dashboard-gui-W02-P06-summary]]'
+  - '[[2026-06-12-dashboard-gui-W02-P07-S28]]'
+  - '[[2026-06-12-dashboard-gui-W02-P07-S29]]'
+  - '[[2026-06-12-dashboard-gui-W02-P07-S30]]'
+  - '[[2026-06-12-dashboard-gui-W02-P07-S31]]'
+  - '[[2026-06-12-dashboard-gui-W02-P07-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -93,6 +98,11 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W02-P06-S26` - implement the node-scoped discover flow with visually quarantined, session-pinned-only semantic candidates per G3.c
 - `2026-06-12-dashboard-gui-W02-P06-S27` - implement node pinning, layout-fixed and always-labelled, with client-side persistence per G5.d
 - `2026-06-12-dashboard-gui-W02-P06-summary` - `dashboard-gui` `W02.P06` summary
+- `2026-06-12-dashboard-gui-W02-P07-S28` - implement the filter model bound to the engine-enumerated filters vocabulary with per-tier confidence floats per G3.f and contract redline R3
+- `2026-06-12-dashboard-gui-W02-P07-S29` - build the tier dial control with per-tier toggles and confidence thresholds, semantic rendered inapplicable in time-travel, per G3.f and G4.b
+- `2026-06-12-dashboard-gui-W02-P07-S30` - build the facet chip bar for doc type, feature, relation, structural status, text match, with the hidden-count chip per G3.f
+- `2026-06-12-dashboard-gui-W02-P07-S31` - implement named lenses saved client-side and exposed to the command palette per G3.f and G5.d
+- `2026-06-12-dashboard-gui-W02-P07-summary` - `dashboard-gui` `W02.P07` summary
 
 ### plan
 
