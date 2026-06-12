@@ -207,6 +207,11 @@ export class SceneController {
     }
   }
 
+  /** Renderer-side registry read (RL-4) — the anchor driver's input. */
+  trackedNodeIds(): IterableIterator<string> {
+    return this.trackedNodes.keys();
+  }
+
   /** Renderer-side anchor dispatch (RL-4) — exposed for tests. */
   emitAnchor(id: string, anchor: SceneAnchor | null): void {
     const set = this.trackedNodes.get(id);
