@@ -85,10 +85,10 @@ Deliver the cold parallel full-index pass, content-hash incremental re-index, th
 
 Deliver the four named temporal correlation rules, blob-true as-of reconstruction, the ordered diff log on one monotonic delta clock, and event bucketing.
 
-- [ ] `W02.P07.S30` - Implement the four named temporal correlation rules with per-rule confidence and independent provenance attribution; `engine/crates/ingest-git/src/correlate.rs`.
-- [ ] `W02.P07.S31` - Implement blob-true as-of graph reconstruction reading document blobs as committed at T from the git object DB; `engine/crates/engine-graph/src/asof.rs`.
-- [ ] `W02.P07.S32` - Implement ordered diff-log generation between two times with monotonic sequence numbers and last-seq reporting; `engine/crates/engine-graph/src/diff.rs`.
-- [ ] `W02.P07.S33` - Implement event bucketing with auto, raw and fixed-interval modes returning per-bucket counts by kind; `engine/crates/engine-query/src/events.rs`.
+- [x] `W02.P07.S30` - Implement the four named temporal correlation rules with per-rule confidence and independent provenance attribution; `engine/crates/ingest-git/src/correlate.rs`.
+- [x] `W02.P07.S31` - Implement blob-true as-of graph reconstruction reading document blobs as committed at T from the git object DB; `engine/crates/engine-graph/src/asof.rs`.
+- [x] `W02.P07.S32` - Implement ordered diff-log generation between two times with monotonic sequence numbers and last-seq reporting; `engine/crates/engine-graph/src/diff.rs`.
+- [x] `W02.P07.S33` - Implement event bucketing with auto, raw and fixed-interval modes returning per-bucket counts by kind; `engine/crates/engine-query/src/events.rs`.
 
 ### Phase `W02.P08` - query core
 

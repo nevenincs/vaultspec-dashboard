@@ -31,6 +31,8 @@ pub enum IndexError {
     Edge(#[from] crate::edges::EdgeError),
     #[error("cache: {0}")]
     Cache(#[from] serde_json::Error),
+    #[error("git: {0}")]
+    Git(String),
 }
 
 pub type Result<T> = std::result::Result<T, IndexError>;
@@ -132,7 +134,7 @@ pub fn index_worktree_into(
         let mut by_id: std::collections::BTreeMap<String, (Edge, u32)> =
             std::collections::BTreeMap::new();
         for resolved in resolve(root, mentions) {
-            let edge = structural_edge(&stem, &blob_hash, &resolved, scope, observed_at);
+            let edge = structural_edge_for(&stem, &blob_hash, &resolved, scope, observed_at);
             by_id
                 .entry(edge.id.0.clone())
                 .and_modify(|(_, count)| *count += 1)
@@ -153,8 +155,10 @@ pub fn index_worktree_into(
     Ok(stats)
 }
 
-/// Build the structural edge for one resolved mention.
-fn structural_edge(
+/// Build the structural edge for one resolved mention. Shared with the
+/// blob-true as-of path so present and historical views mint identical
+/// edge identities for identical content.
+pub(crate) fn structural_edge_for(
     src_stem: &str,
     blob_hash: &str,
     resolved: &ingest_struct::resolve::ResolvedMention,
@@ -251,7 +255,7 @@ fn doc_stem(rel_path: &str) -> String {
 
 /// Feature tags from vault frontmatter: `- '#tag'` entries that are not
 /// directory tags.
-fn frontmatter_feature_tags(text: &str) -> Vec<String> {
+pub(crate) fn frontmatter_feature_tags(text: &str) -> Vec<String> {
     const DIRECTORY_TAGS: &[&str] = &[
         "adr",
         "audit",

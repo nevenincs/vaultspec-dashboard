@@ -10,6 +10,7 @@ rust-version.workspace = true
 [dependencies]
 engine-model.workspace = true
 engine-store.workspace = true
+gix = "0.84.0"
 ingest-core.workspace = true
 ingest-git.workspace = true
 ingest-struct.workspace = true

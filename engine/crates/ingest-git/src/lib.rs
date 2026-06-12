@@ -54,3 +54,5 @@ mod tests {
         assert!(confidences.windows(2).all(|w| w[0] >= w[1]));
     }
 }
+
+pub mod correlate;

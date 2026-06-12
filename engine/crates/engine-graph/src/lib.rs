@@ -7,7 +7,9 @@
 //! meta-edges) are computed at query time, never stored on nodes
 //! (engine-spec §4.3).
 
+pub mod asof;
 pub mod context;
+pub mod diff;
 pub mod edges;
 pub mod facets;
 pub mod graph;

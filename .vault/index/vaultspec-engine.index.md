@@ -40,6 +40,11 @@ related:
   - '[[2026-06-12-vaultspec-engine-W02-P06-S28]]'
   - '[[2026-06-12-vaultspec-engine-W02-P06-S29]]'
   - '[[2026-06-12-vaultspec-engine-W02-P06-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P07-S30]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P07-S31]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P07-S32]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P07-S33]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P07-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -96,6 +101,11 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W02-P06-S28` - Implement temporal event log persistence correlating events to node ids
 - `2026-06-12-vaultspec-engine-W02-P06-S29` - Add the re-derivability test proving a full index from a deleted cache converges to the identical graph
 - `2026-06-12-vaultspec-engine-W02-P06-summary` - `vaultspec-engine` `W02.P06` summary
+- `2026-06-12-vaultspec-engine-W02-P07-S30` - Implement the four named temporal correlation rules with per-rule confidence and independent provenance attribution
+- `2026-06-12-vaultspec-engine-W02-P07-S31` - Implement blob-true as-of graph reconstruction reading document blobs as committed at T from the git object DB
+- `2026-06-12-vaultspec-engine-W02-P07-S32` - Implement ordered diff-log generation between two times with monotonic sequence numbers and last-seq reporting
+- `2026-06-12-vaultspec-engine-W02-P07-S33` - Implement event bucketing with auto, raw and fixed-interval modes returning per-bucket counts by kind
+- `2026-06-12-vaultspec-engine-W02-P07-summary` - `vaultspec-engine` `W02.P07` summary
 
 ### plan
 

@@ -380,6 +380,7 @@ version = "0.1.0"
 dependencies = [
  "engine-model",
  "engine-store",
+ "gix",
  "ingest-core",
  "ingest-git",
  "ingest-struct",
@@ -406,6 +407,10 @@ version = "0.1.0"
 dependencies = [
  "engine-graph",
  "engine-model",
+ "engine-store",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
