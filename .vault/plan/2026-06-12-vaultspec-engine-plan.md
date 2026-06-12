@@ -32,11 +32,11 @@ Deliver the shared engine-model type vocabulary (Node, Edge, Tier, Provenance, S
 
 Deliver workspace discovery, worktree and branch enumeration with advisory classification, remote-ref degraded mapping, and the commit-log walk, all on gix.
 
-- [ ] `W01.P02.S06` - Implement workspace discovery resolving any launch directory to the repository common git dir via gix, with fixture-repo tests; `engine/crates/ingest-git/src/workspace.rs`.
-- [ ] `W01.P02.S07` - Implement worktree enumeration capturing checkout path, HEAD ref and dirty state; `engine/crates/ingest-git/src/worktrees.rs`.
-- [ ] `W01.P02.S08` - Implement local-branch enumeration with advisory default, feature and other classification and a lazy cached corpus-diff confirmation hook; `engine/crates/ingest-git/src/branches.rs`.
-- [ ] `W01.P02.S09` - Implement remote-ref mapping flagged with degraded tiers (declared and temporal only, no working tree); `engine/crates/ingest-git/src/branches.rs`.
-- [ ] `W01.P02.S10` - Implement the commit-log walk producing temporal event records with timestamp, kind, ref and touched paths; `engine/crates/ingest-git/src/log.rs`.
+- [x] `W01.P02.S06` - Implement workspace discovery resolving any launch directory to the repository common git dir via gix, with fixture-repo tests; `engine/crates/ingest-git/src/workspace.rs`.
+- [x] `W01.P02.S07` - Implement worktree enumeration capturing checkout path, HEAD ref and dirty state; `engine/crates/ingest-git/src/worktrees.rs`.
+- [x] `W01.P02.S08` - Implement local-branch enumeration with advisory default, feature and other classification and a lazy cached corpus-diff confirmation hook; `engine/crates/ingest-git/src/branches.rs`.
+- [x] `W01.P02.S09` - Implement remote-ref mapping flagged with degraded tiers (declared and temporal only, no working tree); `engine/crates/ingest-git/src/branches.rs`.
+- [x] `W01.P02.S10` - Implement the commit-log walk producing temporal event records with timestamp, kind, ref and touched paths; `engine/crates/ingest-git/src/log.rs`.
 
 ### Phase `W01.P03` - core declared-graph adapter
 

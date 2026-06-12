@@ -1612,6 +1612,8 @@ version = "0.1.0"
 dependencies = [
  "engine-model",
  "gix",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

@@ -16,6 +16,7 @@ related:
   - '[[2026-06-12-vaultspec-engine-W01-P02-S08]]'
   - '[[2026-06-12-vaultspec-engine-W01-P02-S09]]'
   - '[[2026-06-12-vaultspec-engine-W01-P02-S10]]'
+  - '[[2026-06-12-vaultspec-engine-W01-P02-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -48,6 +49,7 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W01-P02-S08` - Implement local-branch enumeration with advisory default, feature and other classification and a lazy cached corpus-diff confirmation hook
 - `2026-06-12-vaultspec-engine-W01-P02-S09` - Implement remote-ref mapping flagged with degraded tiers (declared and temporal only, no working tree)
 - `2026-06-12-vaultspec-engine-W01-P02-S10` - Implement the commit-log walk producing temporal event records with timestamp, kind, ref and touched paths
+- `2026-06-12-vaultspec-engine-W01-P02-summary` - `vaultspec-engine` `W01.P02` summary
 
 ### plan
 

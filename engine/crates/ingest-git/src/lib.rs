@@ -8,6 +8,11 @@
 
 use engine_model::ScopeRef;
 
+pub mod branches;
+pub mod log;
+pub mod workspace;
+pub mod worktrees;
+
 /// Advisory branch classification — heuristic, configurable, never a gate
 /// (engine-spec D2.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
