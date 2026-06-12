@@ -80,6 +80,18 @@ W02P05-202 is closed structurally: every index run builds a fresh graph, so same
 
 Follow-up to the W02P05-202 closure at `f63f92e` (verified: extraction-granularity multiplicity aggregation, REPLACE-never-increment ingestion, and a double re-ingestion convergence test - the gate is closed for same-id re-observation). The residual: nothing prunes. When an *edited* document is re-ingested through the re-entrant partial path, edges whose mentions were REMOVED from the body persist in the live graph, while a cold rebuild would not contain them - the same D8.2 divergence as 202, through disappearance instead of inflation. Invisible today (the one-shot CLI builds fresh graphs); bites exactly when the watcher wires the re-entrant path onto a long-lived graph. Gate for that wiring (W03.P11 or wherever the watcher consumes the partial path): before re-ingesting a document, drop the graph's edges whose provenance names that source document (per-document replacement, the granularity the provenance blob already identifies), and extend the convergence test with an edit-that-removes-a-mention case - the current test only re-ingests identical content.
 
+## W02P07-401 | medium | strongest-rule-wins APPROVED - with an identity redline on the provenance key
+
+The executor's flag: the ADR says temporal rules are "additive", but emitting one edge per fired rule double-counts the (commit, record) relationship in every degree count and meta-edge; the implementation emits only the strongest fired rule. RULED: strongest-rule-wins is approved - "additive" in the ADR means the rule set grows independently and each fired attribution is independently auditable, not that all matching rules emit edges; one relationship, one edge, strongest evidence. The ADR's D3.4 wording is amended at the margins to say so (edit in place, same decision center). REDLINE required with it: `CommitCorrelation::stable_key` currently includes the rule name, so when a stronger rule starts firing for an existing pair - exactly the U2 enrichment-adoption event, which upgrades rule 2 matches to rule 1 corpus-wide - every affected edge id churns, violating animate-by-id at scale. Temporal edge identity must be per (commit, record): drop the rule from the stable key (the sha already names the commit; the record is the edge dst); the fired rule stays in provenance as attribution and confidence updates in place on upgrade. This is precisely the W01P01-001 consequence ("stable_key composition change is a contract-review event") - the review is conducted here, approved, pre-exposure: ids are not yet on any query surface, so the change is free today and corpus-breaking after W02.P08. Fix before P08 exposes ids, alongside W02P06-301.
+
+## W02P07-402 | low | v1 as-of resolution bound APPROVED - must be declared in the response envelope
+
+The second flag: at time T, path and wiki-stem mentions resolve fully against the tree-at-T, while step-id and symbol mentions mark stale (their blob-true verification needs plan/code blob scans not built in v1). Approved - honest degradation in the D2.2 spirit, and stale is the correct state ("decayed, not provably wrong"). Consequence: as-of responses must say so - the per-tier degradation block (contract section 2) should carry a structural-tier note on historical views (e.g. "step/symbol resolution degraded to stale at T") so the GUI renders the bound truthfully instead of users reading mass-stale as decay. Route to the W02.P08 envelope work, which owns the degradation block.
+
+## W02P07-403 | low | rule 4's name overclaims its predicate
+
+`same-day-same-branch` checks same-day within the window but carries no branch predicate (records are not branch-attributed; the scope on the edge is the only branch context). Either rename the rule (`same-day-co-activity`) or note in the rule doc that branch identity rides the edge scope. Naming only - the confidence and provenance mechanics are correct.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
@@ -109,6 +121,14 @@ W02.P06 boundary (fourth entry):
 - W02P06-302: rebuild-at-scope granularity is a named constraint for the W03.P11 serve wiring.
 - W01P04-104: agreed - fold into the W03.P12 hardening pass (per-call memoization plus gitignore honoring), now formally routed there.
 - Post-crossing addendum: W02P05-202 verified CLOSED at `f63f92e` (replace semantics, extraction-granularity aggregation, incremental-vs-cold convergence test). W02P06-302 is superseded by that invariant for same-id re-observation; its remaining substance is narrowed into W02P06-303 (prune-on-re-ingest), the gate for the watcher wiring.
+
+W02.P07 boundary (fifth entry):
+
+- Close W02.P07. Reviewer independently re-ran the temporal crate suites: green. Blob-true as-of with semantic excluded by construction, the single delta clock with last_seq, and loud-on-corrupt bucketing all conform to contract sections 5 and the D7.3/D7.4 commitments.
+- W02P07-401: strongest-rule-wins approved; ADR D3.4 wording amended in place; REDLINE - drop the rule name from the temporal provenance stable key (identity per (commit, record)) before W02.P08 exposes ids, alongside the W02P06-301 decision.
+- W02P07-402: v1 as-of bound approved; the structural-tier degradation note on historical views is owed by the P08 envelope work.
+- W02P07-403: naming nit, executor's discretion.
+- Standing before P08 ids freeze: W02P06-301 (unresolved-target identity) and the 401 redline are the two id-shape decisions; settle both first, they are the last cheap moment.
 
 ## Codification candidates
 

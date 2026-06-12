@@ -210,9 +210,15 @@ simplicity over false precision):
   (the opt-in core enrichment, when adopted — 0.9); commit touches both a
   vault document and code files within one commit (0.7); path-overlap within
   a time window around a record's date (0.4); same-day same-branch
-  co-activity (0.3). Rules are additive and independently attributable in
-  provenance. The enrichment upgrades confidence where adopted; absence of
-  the convention degrades confidence, never breaks the tier.
+  co-activity (0.3). Rules are evaluated independently and each fired
+  attribution is independently auditable, but one (commit, record) pair
+  yields one edge: the strongest fired rule provides the edge's confidence
+  and attribution, and edge identity is per (commit, record) - never per
+  rule - so a stronger rule firing later upgrades the edge in place instead
+  of minting a new id (amended at the margins per the W02.P07 review,
+  finding W02P07-401 in the feature audit). The enrichment upgrades
+  confidence where adopted; absence of the convention degrades confidence,
+  never breaks the tier.
 - **Semantic** (rag score, capped at 0.7) — RAG matches between a node's
   content/linkage and code or doc chunks. Lazily computed (on node expansion
   or explicit discovery, not during bulk indexing), cached with TTL,
@@ -230,8 +236,10 @@ simplicity over false precision):
 - D3.3 — Structural resolution state (resolved/stale/broken) is a retained,
   surfaced property — broken edges are signal, not garbage.
 - D3.4 — Temporal correlation is a set of named, independently-attributed
-  rules; the core commit-metadata enrichment is an upgrade path consumed
-  opportunistically, never required.
+  rules; one edge per (commit, record) at the strongest fired rule's
+  confidence, with identity per pair rather than per rule; the core
+  commit-metadata enrichment is an upgrade path consumed opportunistically,
+  never required.
 - D3.5 — Semantic edges are ephemeral, lazily computed, TTL-cached, capped
   below structural confidence, and excluded from historical views.
 
