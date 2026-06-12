@@ -236,6 +236,15 @@ export class EngineClient {
     this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
   }
 
+  /**
+   * Swap the transport at runtime — the app bootstrap installs the mock
+   * engine here when `VITE_MOCK_ENGINE=1` (S19), and S49 swaps the live
+   * origin back behind the same flag.
+   */
+  useTransport(fetchImpl: FetchLike): void {
+    this.fetchImpl = fetchImpl;
+  }
+
   // §3
   map(): Promise<MapResponse> {
     return this.get("/map");
