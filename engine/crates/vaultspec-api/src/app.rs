@@ -138,6 +138,17 @@ pub async fn bearer_gate(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    // Host validation on EVERY request (contract DF-6 amendment): a
+    // loopback service is still reachable by name from a browser, and a
+    // foreign Host header is the DNS-rebinding signature.
+    let host_ok = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .map(|h| h.split(':').next().unwrap_or(h))
+        .is_some_and(|h| matches!(h, "127.0.0.1" | "localhost" | "[::1]"));
+    if !host_ok {
+        return Err(StatusCode::FORBIDDEN);
+    }
     if request.uri().path() == "/health" {
         return Ok(next.run(request).await);
     }

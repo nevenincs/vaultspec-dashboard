@@ -46,7 +46,14 @@ pub const CONTRACT_ROUTES: &[&str] = &[
 ];
 
 async fn health() -> Json<Value> {
-    Json(json!({"ok": true, "service": "vaultspec", "status": "running"}))
+    // Liveness ping; enveloped like everything else (L1) with a static
+    // all-available tiers block (no per-ping rag discovery on the
+    // ungated path).
+    Json(json!({
+        "data": {"ok": true, "service": "vaultspec", "status": "running"},
+        "tiers": serde_json::to_value(engine_query::envelope::tiers_block(&[]))
+            .expect("tiers serialize"),
+    }))
 }
 
 /// Assemble the full single-origin router (contract §1).
@@ -218,7 +225,7 @@ mod tests {
         path: &str,
         token: Option<&str>,
     ) -> (StatusCode, Value) {
-        let mut builder = Request::get(path);
+        let mut builder = Request::get(path).header("host", "127.0.0.1");
         if let Some(token) = token {
             builder = builder.header("authorization", format!("Bearer {token}"));
         }
@@ -268,7 +275,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
-            body["detail"]["bundle"]["node"]["id"],
+            body["data"]["detail"]["bundle"]["node"]["id"],
             "doc:2026-06-12-srv-plan"
         );
 
@@ -296,7 +303,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        assert!(body["vocabulary"]["tiers"].is_array());
+        assert!(body["data"]["vocabulary"]["tiers"].is_array());
     }
 
     #[tokio::test]
@@ -307,6 +314,7 @@ mod tests {
         let response = router
             .oneshot(
                 Request::post("/ops/core/vault-archive")
+                    .header("host", "127.0.0.1")
                     .header("authorization", format!("Bearer {token}"))
                     .body(Body::empty())
                     .unwrap(),
@@ -324,6 +332,7 @@ mod tests {
         let response = router
             .oneshot(
                 Request::get("/some/deep/link")
+                    .header("host", "localhost")
                     .header("authorization", format!("Bearer {token}"))
                     .body(Body::empty())
                     .unwrap(),
@@ -343,6 +352,66 @@ mod tests {
 
     fn urlencode(s: &str) -> String {
         s.replace(':', "%3A").replace('/', "%2F")
+    }
+
+    #[tokio::test]
+    async fn stale_tokens_and_foreign_hosts_are_rejected() {
+        // DF-6: a token from a previous process generation (restart) is a
+        // 401 — the canonical stale-token reload signal — and a foreign
+        // Host header is a 403 on every path, /health included.
+        let (_dir_a, state_a) = fixture_state();
+        let stale_token = state_a.bearer.clone();
+        drop(state_a);
+        let (_dir_b, state_b) = fixture_state();
+        let router = build_router(state_b);
+
+        let (status, _) = get_with_token(router.clone(), "/status", Some(&stale_token)).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "stale token after restart"
+        );
+
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get("/health")
+                    .header("host", "evil.example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "DNS-rebinding guard"
+        );
+
+        // The served index.html carries the token bootstrap meta tag.
+        let (_dir_c, state_c) = fixture_state();
+        let token_c = state_c.bearer.clone();
+        let router_c = build_router(state_c);
+        let response = router_c
+            .oneshot(
+                Request::get("/")
+                    .header("host", "127.0.0.1")
+                    .header("authorization", format!("Bearer {token_c}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let html = String::from_utf8_lossy(&bytes);
+        assert!(
+            html.contains(&format!(
+                r#"<meta name="vaultspec-token" content="{token_c}">"#
+            )),
+            "DF-6 token bootstrap injected"
+        );
     }
 
     #[test]

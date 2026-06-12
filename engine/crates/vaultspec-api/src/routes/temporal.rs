@@ -59,7 +59,11 @@ pub async fn events(
     rows.retain(|r| r.ts >= from && r.ts <= to);
     let upper = to.min(rows.last().map_or(from, |r| r.ts));
     let payload = bucket_events(&rows, from, upper, mode);
-    Ok(Json(json!({"payload": payload})))
+    Ok(super::envelope(
+        json!({"payload": payload}),
+        super::query_tiers(&state),
+        None,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -86,17 +90,19 @@ pub async fn graph_asof(
         engine_query::graph::Granularity::Document,
     )
     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
-    Ok(Json(json!({
-        "t": params.t,
-        "nodes": slice.nodes,
-        "edges": slice.edges,
-        // A HISTORICAL keyframe carries no live-clock position (audit N2):
-        // splicing to LIVE requires a present keyframe (/graph/query
-        // without as_of) whose deltas arrive on the stream's sequence.
-        "last_seq": Value::Null,
-        "tiers": serde_json::to_value(engine_query::envelope::asof_tiers_block())
-            .expect("tiers serialize"),
-    })))
+    Ok(super::envelope(
+        json!({
+            "t": params.t,
+            "nodes": slice.nodes,
+            "edges": slice.edges,
+            // A HISTORICAL keyframe carries no live-clock position (N2):
+            // splicing to LIVE requires a present keyframe whose deltas
+            // arrive on the stream's sequence.
+            "last_seq": Value::Null,
+        }),
+        serde_json::to_value(engine_query::envelope::asof_tiers_block()).expect("tiers serialize"),
+        None,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -128,11 +134,13 @@ pub async fn graph_diff(
     // local log's end, and splicing to LIVE goes through a present
     // keyframe + the stream's own sequence space.
     let log = engine_graph::diff::diff(&from_graph, &to_graph, crate::app::now_ms(), 0);
-    Ok(Json(json!({
-        "deltas": log.entries,
-        "last_seq": log.last_seq,
-        "clock": "result-local",
-        "tiers": serde_json::to_value(engine_query::envelope::asof_tiers_block())
-            .expect("tiers serialize"),
-    })))
+    Ok(super::envelope(
+        json!({
+            "deltas": log.entries,
+            "last_seq": log.last_seq,
+            "clock": "result-local",
+        }),
+        serde_json::to_value(engine_query::envelope::asof_tiers_block()).expect("tiers serialize"),
+        None,
+    ))
 }

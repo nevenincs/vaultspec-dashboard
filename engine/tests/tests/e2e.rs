@@ -243,13 +243,13 @@ fn cli_and_serve_agree_on_the_graph() {
         Some(&format!(r#"{{"scope": "{scope}"}}"#)),
     );
     assert_eq!(status, 200);
-    let serve_nodes: Vec<&str> = serve["nodes"]
+    let serve_nodes: Vec<&str> = serve["data"]["nodes"]
         .as_array()
         .unwrap()
         .iter()
         .filter_map(|n| n["id"].as_str())
         .collect();
-    let serve_edges: Vec<&str> = serve["edges"]
+    let serve_edges: Vec<&str> = serve["data"]["edges"]
         .as_array()
         .unwrap()
         .iter()
@@ -272,7 +272,10 @@ fn cli_and_serve_agree_on_the_graph() {
         &token,
         Some(&format!(r#"{{"scope": "{scope}"}}"#)),
     );
-    assert_eq!(serve["nodes"], again["nodes"], "byte-stable across queries");
+    assert_eq!(
+        serve["data"]["nodes"], again["data"]["nodes"],
+        "byte-stable across queries"
+    );
 }
 
 #[test]
@@ -287,9 +290,9 @@ fn concurrent_cli_index_does_not_kill_serve() {
     }
     let (status, body) = http_get(8822, "/status", &token);
     assert_eq!(status, 200, "serve survives concurrent writers");
-    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["ok"], true);
     assert_eq!(
-        body["watcher"]["running"], true,
+        body["data"]["watcher"]["running"], true,
         "watcher alive, not zombie"
     );
 }

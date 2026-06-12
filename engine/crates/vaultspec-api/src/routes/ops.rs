@@ -89,10 +89,11 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
     };
     let runner = ingest_core::runner::CoreRunner::detect();
     let envelope = run_sibling(&state, &runner.invocation, args)?;
-    Ok(Json(json!({
-        "envelope": envelope,
-        "tiers": super::query_tiers(&state),
-    })))
+    Ok(super::envelope(
+        json!({"envelope": envelope}),
+        super::query_tiers(&state),
+        None,
+    ))
 }
 
 pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String>) -> ApiResult {
@@ -104,10 +105,11 @@ pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String
         ));
     };
     let envelope = run_sibling(&state, &rag_invocation(), args)?;
-    Ok(Json(json!({
-        "envelope": envelope,
-        "tiers": super::query_tiers(&state),
-    })))
+    Ok(super::envelope(
+        json!({"envelope": envelope}),
+        super::query_tiers(&state),
+        None,
+    ))
 }
 
 #[derive(serde::Deserialize)]
@@ -126,14 +128,15 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     if let rag_client::RagAvailability::Unavailable { reason } =
         rag_client::client::discover(&state.root.join(".vault")).0
     {
-        return Ok(Json(json!({
-            "results": [],
-            "tiers": serde_json::to_value(engine_query::envelope::tiers_block(&[(
+        return Ok(super::envelope(
+            json!({"results": []}),
+            serde_json::to_value(engine_query::envelope::tiers_block(&[(
                 "semantic",
                 reason.as_str(),
             )]))
             .expect("tiers serialize"),
-        })));
+            None,
+        ));
     }
 
     // rag's CLI search with --json, vocabulary forwarded intact.
@@ -167,8 +170,9 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
             }
         }
     }
-    Ok(Json(json!({
-        "envelope": envelope,
-        "tiers": super::query_tiers(&state),
-    })))
+    Ok(super::envelope(
+        json!({"envelope": envelope}),
+        super::query_tiers(&state),
+        None,
+    ))
 }

@@ -43,6 +43,24 @@ const PLACEHOLDER: &str = "<!doctype html><html><head><title>vaultspec</title></
 (<code>npm run build</code> in <code>frontend/</code>) or set \
 <code>VAULTSPEC_SPA_DIR</code>.</p></body></html>";
 
+/// Token bootstrap (contract DF-6 amendment): the engine injects the
+/// service token into served `index.html` as a meta tag, so the SPA can
+/// authenticate without reading `service.json` (which a browser cannot).
+/// Dev proxies inject Authorization themselves; meta-tag absence is legal.
+pub fn inject_token(html: &str, token: &str) -> String {
+    let meta = format!(r#"<meta name="vaultspec-token" content="{token}">"#);
+    if let Some(pos) = html.find("</head>") {
+        let mut out = String::with_capacity(html.len() + meta.len());
+        out.push_str(&html[..pos]);
+        out.push_str(&meta);
+        out.push_str(&html[pos..]);
+        out
+    } else {
+        // Headless HTML: prepend, never drop the bootstrap.
+        format!("{meta}{html}")
+    }
+}
+
 /// API path prefixes: unknown paths under these are JSON 404s, never
 /// index.html (audit N6 / dogfood DF-3 — R2's fallback is for NON-API
 /// paths only; an API typo must fail loud, not render the SPA).
@@ -80,7 +98,7 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
     let Some(dist) = spa_dir(&state) else {
         return (
             [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            PLACEHOLDER,
+            inject_token(PLACEHOLDER, &state.bearer),
         )
             .into_response();
     };
@@ -94,11 +112,37 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
         dist.join("index.html")
     };
     match std::fs::read(&target) {
-        Ok(bytes) => (
-            [(header::CONTENT_TYPE, mime_for(&target.to_string_lossy()))],
-            bytes,
-        )
-            .into_response(),
+        Ok(bytes) => {
+            // index.html gets the token bootstrap meta tag (DF-6); other
+            // assets pass through untouched.
+            if target.file_name().and_then(|n| n.to_str()) == Some("index.html") {
+                let html = String::from_utf8_lossy(&bytes);
+                return (
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    inject_token(&html, &state.bearer),
+                )
+                    .into_response();
+            }
+            (
+                [(header::CONTENT_TYPE, mime_for(&target.to_string_lossy()))],
+                bytes,
+            )
+                .into_response()
+        }
         Err(_) => (StatusCode::NOT_FOUND, "no index.html in SPA dir").into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_injects_before_head_close_and_survives_headless_html() {
+        let html = "<html><head><title>x</title></head><body></body></html>";
+        let out = inject_token(html, "tok-123");
+        assert!(out.contains(r#"<meta name="vaultspec-token" content="tok-123"></head>"#));
+        let headless = inject_token("<body>bare</body>", "tok-9");
+        assert!(headless.starts_with(r#"<meta name="vaultspec-token""#));
     }
 }

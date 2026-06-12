@@ -27,9 +27,9 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         }
     };
     let core = ingest_core::runner::CoreRunner::detect();
-    Json(json!({
+    let data = json!({
         "ok": true,
-        "scope": state.root.to_string_lossy().replace('\\', "/"),
+        "scope": super::scope_token(&state.root),
         "index": {
             "nodes": graph.node_count(),
             "edges": graph.edge_count(),
@@ -52,8 +52,9 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
             None => json!({"running": false, "mode": "starting"}),
         },
         "last_seq": state.seq.load(Ordering::SeqCst).saturating_sub(1),
-        "tiers": super::query_tiers(&state),
-    }))
+    });
+    // Contract §2 envelope (audit L1).
+    super::envelope(data, super::query_tiers(&state), None)
 }
 
 // --- GET /stream?channels=&since= -----------------------------------------------

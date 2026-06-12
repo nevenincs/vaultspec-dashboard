@@ -62,7 +62,7 @@ pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
         .into_iter()
         .map(|wt| {
             json!({
-                "path": wt.path.to_string_lossy().replace('\\', "/"),
+                "path": super::scope_token(&wt.path),
                 "head_ref": wt.head_ref,
                 "dirty": wt.dirty,
                 "is_main": wt.is_main,
@@ -85,13 +85,27 @@ pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
         .into_iter()
         .map(|b| json!({"name": b.name, "class": class(b.class), "degraded": b.degraded_tiers}))
         .collect();
-    Ok(Json(json!({
-        "workspace": workspace.common_dir.to_string_lossy().replace('\\', "/"),
-        "worktrees": worktrees,
-        "branches": branches,
-        "remote_refs": remotes,
-        "tiers": rag_tiers(&state),
-    })))
+    // Corpus views + scope-token documentation (L2 + D6.1 parity with the
+    // CLI map verb).
+    let corpus_views: Vec<Value> = worktrees
+        .iter()
+        .filter(|wt| wt["has_vault"].as_bool().unwrap_or(false))
+        .map(|wt| json!({"worktree": wt["path"], "head_ref": wt["head_ref"]}))
+        .collect();
+    Ok(super::envelope(
+        json!({
+            "workspace": super::scope_token(&workspace.common_dir),
+            "worktrees": worktrees,
+            "branches": branches,
+            "remote_refs": remotes,
+            "corpus_views": corpus_views,
+            // The documented scope-token grammar (L2): what every
+            // scope= parameter accepts.
+            "scope_token_format": "absolute worktree path, forward slashes, no extended-length prefix",
+        }),
+        rag_tiers(&state),
+        None,
+    ))
 }
 
 // --- GET /vault-tree?scope= ---------------------------------------------------
@@ -130,11 +144,11 @@ pub async fn vault_tree(
         params.cursor.as_deref(),
         params.page_size.unwrap_or(500),
     );
-    Ok(Json(json!({
-        "entries": page,
-        "next_cursor": next_cursor,
-        "tiers": rag_tiers(&state),
-    })))
+    Ok(super::envelope(
+        json!({"entries": page}),
+        rag_tiers(&state),
+        next_cursor,
+    ))
 }
 
 // --- POST /graph/query ----------------------------------------------------------
@@ -194,14 +208,17 @@ pub async fn graph_query_route(
             (slice, rag_tiers(&state))
         }
     };
-    Ok(Json(json!({
-        "nodes": slice.nodes,
-        "edges": slice.edges,
-        "meta_edges": slice.meta_edges,
-        "filter": slice.filter,
-        "as_of": body.as_of,
-        "tiers": tiers,
-    })))
+    Ok(super::envelope(
+        json!({
+            "nodes": slice.nodes,
+            "edges": slice.edges,
+            "meta_edges": slice.meta_edges,
+            "filter": slice.filter,
+            "as_of": body.as_of,
+        }),
+        tiers,
+        None,
+    ))
 }
 
 // --- GET /filters?scope= ----------------------------------------------------------
@@ -212,10 +229,11 @@ pub async fn filters(
 ) -> ApiResult {
     validate_scope(&state, &params.scope)?;
     let vocab = vocabulary(&state.graph_arc());
-    Ok(Json(json!({
-        "vocabulary": vocab,
-        "tiers": rag_tiers(&state),
-    })))
+    Ok(super::envelope(
+        json!({"vocabulary": vocab}),
+        rag_tiers(&state),
+        None,
+    ))
 }
 
 // --- /nodes/{id} family --------------------------------------------------------------
@@ -229,7 +247,11 @@ pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<Stri
             format!("unknown node `{id}`"),
         )
     })?;
-    Ok(Json(json!({"detail": detail, "tiers": rag_tiers(&state)})))
+    Ok(super::envelope(
+        json!({"detail": detail}),
+        rag_tiers(&state),
+        None,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -277,7 +299,11 @@ pub async fn node_neighbors(
             format!("unknown node `{id}`"),
         )
     })?;
-    Ok(Json(json!({"ego": ego, "tiers": rag_tiers(&state)})))
+    Ok(super::envelope(
+        json!({"ego": ego}),
+        rag_tiers(&state),
+        None,
+    ))
 }
 
 pub async fn node_evidence(
@@ -315,11 +341,12 @@ pub async fn node_discover(
             unreachable!()
         };
         // Degrades to the §2 tier block, never an error (contract §4).
-        return Ok(Json(json!({
-            "candidates": [],
-            "tiers": serde_json::to_value(tiers_block(&[("semantic", reason.as_str())]))
+        return Ok(super::envelope(
+            json!({"candidates": []}),
+            serde_json::to_value(tiers_block(&[("semantic", reason.as_str())]))
                 .expect("tiers serialize"),
-        })));
+            None,
+        ));
     };
     let info = info.expect("available implies info");
     let transport = rag_client::client::LoopbackTransport {
@@ -353,8 +380,9 @@ pub async fn node_discover(
             rag_client::search::degradation_reason(&e),
         )
     })?;
-    Ok(Json(json!({
-        "candidates": candidates,
-        "tiers": rag_tiers(&state),
-    })))
+    Ok(super::envelope(
+        json!({"candidates": candidates}),
+        rag_tiers(&state),
+        None,
+    ))
 }

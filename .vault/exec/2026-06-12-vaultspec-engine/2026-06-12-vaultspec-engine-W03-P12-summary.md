@@ -46,3 +46,16 @@ fixtures pin it off, real repositories should know.
 
 Verification at the plan boundary: full workspace green — 140+ tests
 including e2e and bench, fmt clean, clippy -D warnings clean, hooks pass.
+
+Post-queue additions (ruled by the phase review before closure, all
+landed): DF-6 - the served `index.html` carries the service token as a
+`vaultspec-token` meta tag (dist-dir and placeholder paths; assets
+untouched), Host-header validation rejects foreign hosts on every request
+including health (DNS-rebinding guard), and the 401-after-restart case is
+tested (stale token from a previous process generation rejects - the
+canonical reload signal). L1 - every HTTP route now travels in the
+contract section 2 envelope ({data, tiers, next_cursor?}); the CLI keeps
+its own ok/command/status vocabulary by ruling. L2 - one canonical
+scope-token form everywhere (absolute worktree path, forward slashes, no
+extended-length prefix) with the grammar documented in the map payload;
+serve map gains corpus views for front-door parity.
