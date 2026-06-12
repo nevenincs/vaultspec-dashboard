@@ -21,6 +21,10 @@ related:
   - '[[2026-06-12-dashboard-gui-W01-P03-S12]]'
   - '[[2026-06-12-dashboard-gui-W01-P03-S13]]'
   - '[[2026-06-12-dashboard-gui-W01-P03-summary]]'
+  - '[[2026-06-12-dashboard-gui-W01-P04-S14]]'
+  - '[[2026-06-12-dashboard-gui-W01-P04-S15]]'
+  - '[[2026-06-12-dashboard-gui-W01-P04-S16]]'
+  - '[[2026-06-12-dashboard-gui-W01-P04-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -58,6 +62,10 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W01-P03-S12` - implement camera pan and zoom with semantic-zoom thresholds and pointer hit-testing emitting hover, select, open events per G3.b
 - `2026-06-12-dashboard-gui-W01-P03-S13` - integrate the graphology ForceAtlas2 web worker with warm-start and local-perturbation re-layout per G3.e, using Vite worker imports per the foundation report rider
 - `2026-06-12-dashboard-gui-W01-P03-summary` - `dashboard-gui` `W01.P03` summary
+- `2026-06-12-dashboard-gui-W01-P04-S14` - implement trackNode screen-space anchor subscriptions driven by camera and layout updates per G6.a
+- `2026-06-12-dashboard-gui-W01-P04-S15` - implement the React island layer rendering opened nodes at tracked anchors per G6.a
+- `2026-06-12-dashboard-gui-W01-P04-S16` - create the placeholder programmatic glyph set for doc types, tiers, and states as sprite and SDF textures pending the commissioned family per G7.c
+- `2026-06-12-dashboard-gui-W01-P04-summary` - `dashboard-gui` `W01.P04` summary
 
 ### plan
 
