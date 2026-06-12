@@ -74,7 +74,7 @@ Builds the typed engine client and a mock engine mirroring the foundation refere
 - [x] `W02.P05.S17` - implement the typed engine API client covering the contract query families map, vault-tree, graph query, nodes, filters, events, asof, diff, status, search, ops; `frontend/src/stores/server/engine.ts`.
 - [x] `W02.P05.S18` - build the synthetic vault corpus fixtures with features, documents, plan interiors, tiered edges, and an event log mirroring contract shapes; `frontend/src/testing/fixtures`.
 - [x] `W02.P05.S19` - implement the mock engine with HTTP handlers and SSE channels carrying sequence numbers and tier degradation blocks, toggled by env flag; `frontend/src/testing/mockEngine.ts`.
-- [ ] `W02.P05.S20` - wire TanStack Query hooks with streamedQuery SSE consumption and cache keys of scope, filter, as-of per G5.b and the stateless-scope contract guarantee; `frontend/src/stores/server/queries.ts`.
+- [x] `W02.P05.S20` - wire TanStack Query hooks with streamedQuery SSE consumption and cache keys of scope, filter, as-of per G5.b and the stateless-scope contract guarantee; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `W02.P06` - stage interactions
 

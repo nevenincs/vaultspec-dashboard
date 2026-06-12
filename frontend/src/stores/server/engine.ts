@@ -327,6 +327,15 @@ export class EngineClient {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
   }
 
+  /** §7 — open the multiplexed SSE stream through the same transport. */
+  openStream(
+    channels: string[],
+    since?: number,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    return this.fetchImpl(this.streamUrl(channels, since), { signal });
+  }
+
   // §7 — the SSE endpoint URL; consumption lives in queries.ts (S20).
   streamUrl(channels: string[], since?: number): string {
     const params = new URLSearchParams({ channels: channels.join(",") });
