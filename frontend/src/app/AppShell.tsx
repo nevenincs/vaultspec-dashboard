@@ -1,6 +1,7 @@
 import { useEngineStatus } from "../stores/server/engine";
 import { useViewStore } from "../stores/view/viewStore";
 import { Stage } from "./stage/Stage";
+import { Timeline } from "./timeline/Timeline";
 
 // Four-region skeleton in the converged agentic-desktop idiom (gui-spec §2):
 // left scope rail, center stage, right activity rail, bottom timeline.
@@ -44,9 +45,8 @@ export function AppShell() {
           {!rightCollapsed && <ActivityRail />}
         </aside>
       </div>
-      <footer className="border-t border-stone-200 p-2 text-sm text-stone-400">
-        timeline — movie idiom: lanes · zoom · playhead (scaffold){" "}
-        <span className="float-right">▶ LIVE</span>
+      <footer className="border-t border-stone-200">
+        <Timeline />
       </footer>
     </div>
   );

@@ -11,6 +11,15 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-gui` plan
 
@@ -92,7 +101,7 @@ Implements the single filter model spanning stage and timeline per G3.f: engine-
 
 Implements the bottom-docked movie-idiom timeline per G4: lanes and density buckets, playhead with LIVE docking, time-travel scrubbing driving the scene, and range selection.
 
-- [ ] `W02.P08.S32` - build the timeline lanes with engine-bucketed density rendering resolving to event marks at fine zoom per G4.a; `frontend/src/app/timeline/Timeline.tsx`.
+- [x] `W02.P08.S32` - build the timeline lanes with engine-bucketed density rendering resolving to event marks at fine zoom per G4.a; `frontend/src/app/timeline/Timeline.tsx`.
 - [ ] `W02.P08.S33` - implement the playhead with LIVE docking and unmistakable time-travel mode entry and exit per G4.b; `frontend/src/app/timeline/Playhead.tsx`.
 - [ ] `W02.P08.S34` - drive scene set-time from the playhead via asof keyframes and client diff-log replay with re-keyframe on large jumps per G4.b; `frontend/src/app/timeline/timeTravel.ts`.
 - [ ] `W02.P08.S35` - implement range selection as the product's single date-range filter with play-the-range growth animation per G4.c; `frontend/src/app/timeline/RangeSelect.tsx`.
