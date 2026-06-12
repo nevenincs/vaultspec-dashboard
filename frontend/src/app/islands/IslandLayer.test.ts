@@ -24,6 +24,25 @@ describe("islandStyle", () => {
   });
 });
 
+describe("viewStore discovery pinning (G3.c, session-only)", () => {
+  it("pins candidates once and unpins by id", () => {
+    const edge = {
+      id: "cand-1",
+      src: "a",
+      dst: "b",
+      relation: "similar-to",
+      tier: "semantic" as const,
+      confidence: 0.6,
+    };
+    const { pinDiscovery, unpinDiscovery } = useViewStore.getState();
+    pinDiscovery(edge);
+    pinDiscovery(edge);
+    expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(1);
+    unpinDiscovery("cand-1");
+    expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(0);
+  });
+});
+
 describe("viewStore opened nodes", () => {
   it("opens once and closes by id", () => {
     const { openNode, closeNode } = useViewStore.getState();

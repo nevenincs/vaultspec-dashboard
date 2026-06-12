@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import type { EngineEdge } from "../server/engine";
+
 // View state (gui-spec §5.2): selection, working set, filters/lens,
 // timeline mode, panel layout. This store is the shared brain that keeps
 // browser / stage / timeline / inspector in sync — "selection is one
@@ -36,6 +38,12 @@ export interface ViewState {
   workingSet: string[];
   /** Nodes opened in place — rendered as DOM islands above the field (G6.a). */
   openedIds: string[];
+  /**
+   * Session-pinned discovery candidates (G3.c): probabilistic suggestions
+   * never join the persistent graph — pinning keeps them on stage for THIS
+   * session only; nothing is written anywhere.
+   */
+  pinnedDiscoveries: EngineEdge[];
   /** The tier dial — the signature filter control (gui-spec §3.5). */
   tierFilter: TierFilter;
   timelineMode: TimelineMode;
@@ -48,6 +56,8 @@ export interface ViewState {
   selectEntity: (selection: Selection) => void;
   openNode: (id: string) => void;
   closeNode: (id: string) => void;
+  pinDiscovery: (edge: EngineEdge) => void;
+  unpinDiscovery: (edgeId: string) => void;
   addToWorkingSet: (id: string) => void;
   removeFromWorkingSet: (id: string) => void;
   clearWorkingSet: () => void;
@@ -62,6 +72,7 @@ export const useViewStore = create<ViewState>((set) => ({
   selectedId: null,
   workingSet: [],
   openedIds: [],
+  pinnedDiscoveries: [],
   tierFilter: {
     declared: true,
     structural: true,
@@ -86,6 +97,16 @@ export const useViewStore = create<ViewState>((set) => ({
   closeNode: (id) =>
     set((state) => ({
       openedIds: state.openedIds.filter((entry) => entry !== id),
+    })),
+  pinDiscovery: (edge) =>
+    set((state) =>
+      state.pinnedDiscoveries.some((e) => e.id === edge.id)
+        ? state
+        : { pinnedDiscoveries: [...state.pinnedDiscoveries, edge] },
+    ),
+  unpinDiscovery: (edgeId) =>
+    set((state) => ({
+      pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== edgeId),
     })),
   addToWorkingSet: (id) =>
     set((state) =>

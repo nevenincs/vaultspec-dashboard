@@ -19,6 +19,7 @@ import {
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
+import { Discover } from "./Discover";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene per app lifetime — survives route remounts; destroyed never.
@@ -46,6 +47,7 @@ export function Stage() {
   const openNode = useViewStore((s) => s.openNode);
   const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
   const workingSet = useViewStore((s) => s.workingSet);
+  const pinnedDiscoveries = useViewStore((s) => s.pinnedDiscoveries);
 
   // Each working-set entry materializes its ego network on stage (G3.b).
   const expansions = useQueries({
@@ -93,7 +95,11 @@ export function Stage() {
   useEffect(() => {
     if (!slice.data || !scope) return;
     scene.field.setPersistenceScope("default", scope);
-    const merged = mergeSlices(slice.data, expansionData);
+    const merged = mergeSlices(slice.data, [
+      ...expansionData,
+      // Session-pinned discovery candidates ride the semantic haze (G3.c).
+      { nodes: [], edges: pinnedDiscoveries },
+    ]);
     const mapped = sliceToScene(merged);
     scene.controller.command({
       kind: "set-data",
@@ -102,12 +108,13 @@ export function Stage() {
     });
     // expansionData is identity-unstable per render; length plus the base
     // slice identity capture every meaningful change.
-  }, [slice.data, scope, expansionData.length]);
+  }, [slice.data, scope, expansionData.length, pinnedDiscoveries]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={hostRef} className="absolute inset-0" data-stage-host />
       <WorkingSet />
+      <Discover />
       <IslandLayer scene={scene.controller} />
       {!slice.data && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">
