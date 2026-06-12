@@ -129,6 +129,7 @@ W02.P07 boundary (fifth entry):
 - W02P07-402: v1 as-of bound approved; the structural-tier degradation note on historical views is owed by the P08 envelope work.
 - W02P07-403: naming nit, executor's discretion.
 - Standing before P08 ids freeze: W02P06-301 (unresolved-target identity) and the 401 redline are the two id-shape decisions; settle both first, they are the last cheap moment.
+- Post-crossing addendum: W02P06-301 verified CLOSED at `f19b13d` - mention-derived identity per the reviewer lean (step mentions `plan:` + canonical identifier alone, symbols by unqualified `#symbol` form, paths/wiki unchanged; per-kind broken-vs-resolved identity test). Namespaces verified disjoint from real plan-container and code-artifact ids, so no collision - but also no automatic join: a mention-target node never id-equals the real container/file node it resolves to. Consequence for W02.P08 node detail and evidence: the resolved-target attribute is the bridge and must be surfaced as a navigable link to the real node, or step/symbol mentions become dead ends in the GUI. W02P06-303 confirmed as a named gate at the W03.P11 watcher wiring.
 
 ## Codification candidates
 
