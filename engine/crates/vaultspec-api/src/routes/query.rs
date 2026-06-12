@@ -1,0 +1,313 @@
+//! Landscape and graph query endpoints (contract §3–§4, W03.P11.S49).
+
+use std::sync::Arc;
+
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use engine_model::{NodeId, Tier};
+use engine_query::envelope::tiers_block;
+use engine_query::filter::{Filter, vocabulary};
+use engine_query::graph::{Granularity, graph_query};
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use crate::app::AppState;
+
+type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
+
+fn bad_request(message: String) -> (StatusCode, Json<Value>) {
+    (StatusCode::BAD_REQUEST, Json(json!({"error": message})))
+}
+
+fn not_found(message: String) -> (StatusCode, Json<Value>) {
+    (StatusCode::NOT_FOUND, Json(json!({"error": message})))
+}
+
+/// Validate the stateless per-request scope (contract §3). v1 serves one
+/// workspace view (the launch worktree); other scopes 400 honestly.
+pub fn validate_scope(state: &AppState, scope: &str) -> Result<(), (StatusCode, Json<Value>)> {
+    let served = state.root.to_string_lossy().replace('\\', "/");
+    let normalized = scope.replace('\\', "/");
+    if normalized == served || normalized.trim_end_matches('/') == served.trim_end_matches('/') {
+        Ok(())
+    } else {
+        Err(bad_request(format!(
+            "scope `{scope}` is not served by this instance (serving `{served}`); \
+             v1 serves the launch worktree only"
+        )))
+    }
+}
+
+fn rag_tiers(state: &AppState) -> Value {
+    let block = match rag_client::client::discover(&state.root.join(".vault")).0 {
+        rag_client::RagAvailability::Available => tiers_block(&[]),
+        rag_client::RagAvailability::Unavailable { reason } => {
+            tiers_block(&[("semantic", reason.as_str())])
+        }
+    };
+    serde_json::to_value(block).expect("tiers serialize")
+}
+
+#[derive(Deserialize)]
+pub struct ScopeParam {
+    pub scope: String,
+}
+
+// --- GET /map ----------------------------------------------------------------
+
+pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
+    let workspace = ingest_git::workspace::Workspace::discover(&state.root)
+        .map_err(|e| bad_request(e.to_string()))?;
+    let config = ingest_git::branches::ClassifyConfig::default();
+    let worktrees: Vec<Value> = ingest_git::worktrees::enumerate(&workspace)
+        .map_err(|e| bad_request(e.to_string()))?
+        .into_iter()
+        .map(|wt| {
+            json!({
+                "path": wt.path.to_string_lossy().replace('\\', "/"),
+                "head_ref": wt.head_ref,
+                "dirty": wt.dirty,
+                "is_main": wt.is_main,
+                "has_vault": wt.path.join(".vault").is_dir(),
+            })
+        })
+        .collect();
+    let class = |c: ingest_git::branches::BranchClass| match c {
+        ingest_git::branches::BranchClass::Default => "default",
+        ingest_git::branches::BranchClass::Feature => "feature",
+        ingest_git::branches::BranchClass::Other => "other",
+    };
+    let branches: Vec<Value> = ingest_git::branches::local_branches(&workspace, &config)
+        .map_err(|e| bad_request(e.to_string()))?
+        .into_iter()
+        .map(|b| json!({"name": b.name, "class": class(b.class)}))
+        .collect();
+    let remotes: Vec<Value> = ingest_git::branches::remote_refs(&workspace, &config)
+        .map_err(|e| bad_request(e.to_string()))?
+        .into_iter()
+        .map(|b| json!({"name": b.name, "class": class(b.class), "degraded": b.degraded_tiers}))
+        .collect();
+    Ok(Json(json!({
+        "workspace": workspace.common_dir.to_string_lossy().replace('\\', "/"),
+        "worktrees": worktrees,
+        "branches": branches,
+        "remote_refs": remotes,
+        "tiers": rag_tiers(&state),
+    })))
+}
+
+// --- GET /vault-tree?scope= ---------------------------------------------------
+
+pub async fn vault_tree(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ScopeParam>,
+) -> ApiResult {
+    validate_scope(&state, &params.scope)?;
+    let graph = state.graph_arc();
+    let mut entries: Vec<Value> = graph
+        .nodes()
+        .filter(|n| n.id.0.starts_with("doc:"))
+        .map(|n| {
+            json!({
+                "stem": n.key,
+                "node_id": n.id.0,
+                "feature_tags": n.feature_tags,
+            })
+        })
+        .collect();
+    entries.sort_by_key(|e| e["stem"].as_str().unwrap_or_default().to_string());
+    Ok(Json(
+        json!({"entries": entries, "tiers": rag_tiers(&state)}),
+    ))
+}
+
+// --- POST /graph/query ----------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct GraphQueryBody {
+    pub scope: String,
+    #[serde(default)]
+    pub filter: Option<Filter>,
+    #[serde(default)]
+    pub granularity: Option<String>,
+    #[serde(default)]
+    pub as_of: Option<String>,
+}
+
+pub async fn graph_query_route(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<GraphQueryBody>,
+) -> ApiResult {
+    validate_scope(&state, &body.scope)?;
+    let granularity = match body.granularity.as_deref() {
+        None | Some("document") => Granularity::Document,
+        Some("feature") => Granularity::Feature,
+        Some(other) => return Err(bad_request(format!("unknown granularity `{other}`"))),
+    };
+    let filter = body.filter.unwrap_or_default();
+
+    let (slice, tiers) = match &body.as_of {
+        // Blob-true historical view (D7.3) with its fidelity-stating block.
+        Some(reference) => {
+            let scope = engine_model::ScopeRef::Ref {
+                name: reference.clone(),
+            };
+            let graph = engine_graph::asof::asof_graph(&state.root, reference, &scope, 0)
+                .map_err(|e| bad_request(e.to_string()))?;
+            let slice = graph_query(&graph, &scope, filter, granularity)
+                .map_err(|e| bad_request(e.to_string()))?;
+            let tiers = serde_json::to_value(engine_query::envelope::asof_tiers_block())
+                .expect("tiers serialize");
+            (slice, tiers)
+        }
+        None => {
+            let graph = state.graph_arc();
+            let mut slice = graph_query(&graph, &state.scope, filter, granularity)
+                .map_err(|e| bad_request(e.to_string()))?;
+            // Constellation meta-edges come from the memoized projection
+            // (W02P05-203) — same content, one aggregation per rebuild.
+            if granularity == Granularity::Feature {
+                slice.meta_edges = (*state.meta_edges()).clone();
+            }
+            (slice, rag_tiers(&state))
+        }
+    };
+    Ok(Json(json!({
+        "nodes": slice.nodes,
+        "edges": slice.edges,
+        "meta_edges": slice.meta_edges,
+        "filter": slice.filter,
+        "as_of": body.as_of,
+        "tiers": tiers,
+    })))
+}
+
+// --- GET /filters?scope= ----------------------------------------------------------
+
+pub async fn filters(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ScopeParam>,
+) -> ApiResult {
+    validate_scope(&state, &params.scope)?;
+    let vocab = vocabulary(&state.graph_arc());
+    Ok(Json(json!({
+        "vocabulary": vocab,
+        "tiers": rag_tiers(&state),
+    })))
+}
+
+// --- /nodes/{id} family --------------------------------------------------------------
+
+pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> ApiResult {
+    let graph = state.graph_arc();
+    let detail = engine_query::node::node_detail(&graph, &NodeId(id.clone()))
+        .ok_or_else(|| not_found(format!("unknown node `{id}`")))?;
+    Ok(Json(json!({"detail": detail, "tiers": rag_tiers(&state)})))
+}
+
+#[derive(Deserialize)]
+pub struct NeighborParams {
+    #[serde(default)]
+    pub depth: Option<usize>,
+    #[serde(default)]
+    pub tiers: Option<String>,
+}
+
+pub async fn node_neighbors(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<NeighborParams>,
+) -> ApiResult {
+    let tiers: Vec<Tier> = params
+        .tiers
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter(|t| !t.is_empty())
+        .map(|t| match t {
+            "declared" => Ok(Tier::Declared),
+            "structural" => Ok(Tier::Structural),
+            "temporal" => Ok(Tier::Temporal),
+            "semantic" => Ok(Tier::Semantic),
+            other => Err(bad_request(format!("unknown tier `{other}`"))),
+        })
+        .collect::<Result<_, _>>()?;
+    let graph = state.graph_arc();
+    let ego = engine_query::node::neighbors(
+        &graph,
+        &NodeId(id.clone()),
+        params.depth.unwrap_or(1),
+        &tiers,
+    )
+    .ok_or_else(|| not_found(format!("unknown node `{id}`")))?;
+    Ok(Json(json!({"ego": ego, "tiers": rag_tiers(&state)})))
+}
+
+pub async fn node_evidence(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult {
+    let graph = state.graph_arc();
+    let evidence = engine_query::node::evidence(&graph, &NodeId(id.clone()))
+        .ok_or_else(|| not_found(format!("unknown node `{id}`")))?;
+    Ok(Json(
+        json!({"evidence": evidence, "tiers": rag_tiers(&state)}),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct DiscoverBody {
+    #[serde(default)]
+    pub query: Option<String>,
+}
+
+pub async fn node_discover(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<DiscoverBody>,
+) -> ApiResult {
+    let vault_root = state.root.join(".vault");
+    let (availability, info) = rag_client::client::discover(&vault_root);
+    let rag_client::RagAvailability::Available = availability else {
+        let rag_client::RagAvailability::Unavailable { reason } = availability else {
+            unreachable!()
+        };
+        // Degrades to the §2 tier block, never an error (contract §4).
+        return Ok(Json(json!({
+            "candidates": [],
+            "tiers": serde_json::to_value(tiers_block(&[("semantic", reason.as_str())]))
+                .expect("tiers serialize"),
+        })));
+    };
+    let info = info.expect("available implies info");
+    let transport = rag_client::client::LoopbackTransport {
+        port: info.port,
+        bearer: info.service_token,
+        timeout: std::time::Duration::from_secs(30),
+    };
+    let node = NodeId(id.clone());
+    // Node-scoped query: built from the node's own key plus its feature
+    // tags (its content + linkage, engine-spec §4.3).
+    let graph = state.graph_arc();
+    let query = body.query.unwrap_or_else(|| {
+        graph
+            .node(&node)
+            .map(|n| format!("{} {}", n.key, n.feature_tags.join(" ")))
+            .unwrap_or_else(|| id.clone())
+    });
+    let store = state.store.lock().expect("store lock");
+    let candidates = rag_client::discover::discover(
+        &transport,
+        &store,
+        &node,
+        &query,
+        &state.scope,
+        crate::app::now_ms(),
+    )
+    .map_err(|e| bad_request(rag_client::search::degradation_reason(&e)))?;
+    Ok(Json(json!({
+        "candidates": candidates,
+        "tiers": rag_tiers(&state),
+    })))
+}

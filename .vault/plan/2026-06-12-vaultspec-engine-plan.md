@@ -127,12 +127,12 @@ Deliver the one-shot CLI front door: map, index, graph, node, events and status 
 
 Deliver the single-origin axum serve mode per the contract: discovery and auth, query and temporal endpoints, the multiplexed SSE stream with delta-clock resume, SPA static serving, and the transparent ops and search pass-throughs.
 
-- [ ] `W03.P11.S48` - Implement the axum app skeleton with loopback-only bind, port flag failing loud on conflict, service json discovery with bearer token and heartbeat, ungated health route and bearer gating elsewhere; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `W03.P11.S49` - Implement the landscape and graph query endpoints: map, vault-tree, graph query, filters, node detail, neighbors, evidence and discover; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P11.S50` - Implement the temporal endpoints: events, graph as-of and graph diff sharing the monotonic delta clock; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
-- [ ] `W03.P11.S51` - Implement the status snapshot and the multiplexed SSE stream with channels, sequence numbers and since resume or gap signal; `engine/crates/vaultspec-api/src/routes/stream.rs`.
-- [ ] `W03.P11.S52` - Implement SPA static serving with embedded assets, fallback routing to index html, correct MIME types and dev-mode filesystem passthrough; `engine/crates/vaultspec-api/src/routes/spa.rs`.
-- [ ] `W03.P11.S53` - Implement the whitelisted transparent ops proxies for core and rag verbs and the search pass-through with node-id annotation; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W03.P11.S48` - Implement the axum app skeleton with loopback-only bind, port flag failing loud on conflict, service json discovery with bearer token and heartbeat, ungated health route and bearer gating elsewhere; `engine/crates/vaultspec-api/src/app.rs`.
+- [x] `W03.P11.S49` - Implement the landscape and graph query endpoints: map, vault-tree, graph query, filters, node detail, neighbors, evidence and discover; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P11.S50` - Implement the temporal endpoints: events, graph as-of and graph diff sharing the monotonic delta clock; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
+- [x] `W03.P11.S51` - Implement the status snapshot and the multiplexed SSE stream with channels, sequence numbers and since resume or gap signal; `engine/crates/vaultspec-api/src/routes/stream.rs`.
+- [x] `W03.P11.S52` - Implement SPA static serving with embedded assets, fallback routing to index html, correct MIME types and dev-mode filesystem passthrough; `engine/crates/vaultspec-api/src/routes/spa.rs`.
+- [x] `W03.P11.S53` - Implement the whitelisted transparent ops proxies for core and rag verbs and the search pass-through with node-id annotation; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
 ### Phase `W03.P12` - integration hardening
 

@@ -62,6 +62,13 @@ related:
   - '[[2026-06-12-vaultspec-engine-W03-P10-S46]]'
   - '[[2026-06-12-vaultspec-engine-W03-P10-S47]]'
   - '[[2026-06-12-vaultspec-engine-W03-P10-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-S48]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-S49]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-S50]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-S51]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-S52]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-S53]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P11-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -140,6 +147,13 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W03-P10-S46` - Implement the status verb reporting index state, backend health rollup and watcher state
 - `2026-06-12-vaultspec-engine-W03-P10-S47` - Implement the shared json envelope following the core result vocabulary across all verbs
 - `2026-06-12-vaultspec-engine-W03-P10-summary` - `vaultspec-engine` `W03.P10` summary
+- `2026-06-12-vaultspec-engine-W03-P11-S48` - Implement the axum app skeleton with loopback-only bind, port flag failing loud on conflict, service json discovery with bearer token and heartbeat, ungated health route and bearer gating elsewhere
+- `2026-06-12-vaultspec-engine-W03-P11-S49` - Implement the landscape and graph query endpoints: map, vault-tree, graph query, filters, node detail, neighbors, evidence and discover
+- `2026-06-12-vaultspec-engine-W03-P11-S50` - Implement the temporal endpoints: events, graph as-of and graph diff sharing the monotonic delta clock
+- `2026-06-12-vaultspec-engine-W03-P11-S51` - Implement the status snapshot and the multiplexed SSE stream with channels, sequence numbers and since resume or gap signal
+- `2026-06-12-vaultspec-engine-W03-P11-S52` - Implement SPA static serving with embedded assets, fallback routing to index html, correct MIME types and dev-mode filesystem passthrough
+- `2026-06-12-vaultspec-engine-W03-P11-S53` - Implement the whitelisted transparent ops proxies for core and rag verbs and the search pass-through with node-id annotation
+- `2026-06-12-vaultspec-engine-W03-P11-summary` - `vaultspec-engine` `W03.P11` summary
 
 ### plan
 
