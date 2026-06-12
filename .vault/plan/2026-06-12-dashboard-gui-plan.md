@@ -117,7 +117,7 @@ Implements orientation and scope per G2: worktree picker, vault-scoped read-only
 
 - [x] `W03.P09.S37` - build the worktree picker over the map endpoint with corpus-bearing worktrees primary and bare refs dimmed per G2.a; `frontend/src/app/left/WorktreePicker.tsx`.
 - [x] `W03.P09.S38` - build the vault-scoped read-only file browser over the vault-tree endpoint with doc-type glyphs and freshness per G2.c; `frontend/src/app/left/VaultBrowser.tsx`.
-- [ ] `W03.P09.S39` - wire bidirectional selection between browser and stage per G2.b; `frontend/src/app/left/browserSelection.ts`.
+- [x] `W03.P09.S39` - wire bidirectional selection between browser and stage per G2.b; `frontend/src/app/left/browserSelection.ts`.
 
 ### Phase `W03.P10` - right rail
 

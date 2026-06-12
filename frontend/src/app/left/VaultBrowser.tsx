@@ -9,6 +9,7 @@ import { useState } from "react";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import { useVaultTree } from "../../stores/server/queries";
 import { useActiveScope } from "../stage/Stage";
+import { handleEntryClick, useHighlightedPath } from "./browserSelection";
 
 // --- pure helpers (unit-tested) ---------------------------------------------------
 
@@ -82,6 +83,11 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
   const scope = useActiveScope();
   const tree = useVaultTree(scope);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Bidirectional selection by default (S39): clicks select, selections
+  // highlight; explicit props override for embedding contexts.
+  const sharedHighlight = useHighlightedPath(tree.data?.entries);
+  const clickHandler = onEntryClick ?? handleEntryClick;
+  const highlight = highlightedPath ?? sharedHighlight;
 
   if (tree.isPending) return <p className="text-xs text-stone-400">reading vault…</p>;
   if (tree.isError) {
@@ -118,13 +124,13 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
               <ul className="mt-0.5 ml-3 space-y-0.5">
                 {entries.map((entry) => {
                   const fresh = freshnessLabel(entry.dates.modified, now);
-                  const highlighted = entry.path === highlightedPath;
+                  const highlighted = entry.path === highlight;
                   return (
                     <li key={entry.path}>
                       <button
                         type="button"
                         title={entry.path}
-                        onClick={() => onEntryClick?.(entry)}
+                        onClick={() => clickHandler(entry)}
                         className={`flex w-full items-center gap-1 truncate rounded px-1 text-left ${
                           highlighted
                             ? "bg-stone-200 text-stone-900"
