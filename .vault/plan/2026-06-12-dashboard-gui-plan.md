@@ -125,7 +125,7 @@ Implements the activity rail per G2: now strip, the whitelisted ops surface with
 
 - [x] `W03.P10.S40` - build the now strip showing git, core in-flight, and rag rollup from the status snapshot plus SSE backends and git channels; `frontend/src/app/right/NowStrip.tsx`.
 - [x] `W03.P10.S41` - build the ops surface with confirmation flows over the whitelisted ops proxy verbs, disabled in time-travel mode per G4.b; `frontend/src/app/right/OpsPanel.tsx`.
-- [ ] `W03.P10.S42` - build the inspector with metadata, content preview, evidence, correlated commits, and the per-tier edge list with unfold-on-selection per G2.b and G3.c; `frontend/src/app/right/Inspector.tsx`.
+- [x] `W03.P10.S42` - build the inspector with metadata, content preview, evidence, correlated commits, and the per-tier edge list with unfold-on-selection per G2.b and G3.c; `frontend/src/app/right/Inspector.tsx`.
 
 ### Phase `W03.P11` - command palette and search
 
