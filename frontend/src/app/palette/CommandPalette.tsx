@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { engineClient } from "../../stores/server/engine";
 import { useFiltersVocabulary } from "../../stores/server/queries";
-import { useLensStore } from "../../stores/view/lenses";
+import { BUILTIN_LENSES, useLensStore } from "../../stores/view/lenses";
 import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { OPS_WHITELIST } from "../right/OpsPanel";
@@ -91,9 +91,16 @@ export function CommandPalette() {
   const [cursor, setCursor] = useState(0);
   const [armed, setArmed] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Focus restore (038): the palette returns focus to wherever the user
+  // was when it opened.
+  const previousFocus = useRef<HTMLElement | null>(null);
   const scope = useActiveScope();
   const vocabulary = useFiltersVocabulary(scope);
-  const lenses = useLensStore((s) => s.all());
+  // Select the stable slice and compose builtins memoized: a selector
+  // returning a fresh array per snapshot loops useSyncExternalStore
+  // (caught by the 032 interactive test).
+  const saved = useLensStore((s) => s.saved);
+  const lenses = useMemo(() => [...BUILTIN_LENSES, ...saved], [saved]);
   const timeTravel = useViewStore((s) => s.timelineMode.kind === "time-travel");
 
   useEffect(() => {
@@ -113,7 +120,14 @@ export function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (open) {
+      previousFocus.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      inputRef.current?.focus();
+    } else {
+      previousFocus.current?.focus();
+      previousFocus.current = null;
+    }
   }, [open]);
 
   const commands = useMemo(() => {
@@ -158,6 +172,14 @@ export function CommandPalette() {
       <div
         className="w-[28rem] rounded-lg border border-stone-300 bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          // Focus trap (038): the modal owns Tab while open; arrows walk
+          // the list, Escape closes (window handler), focus stays inside.
+          if (e.key === "Tab") {
+            e.preventDefault();
+            inputRef.current?.focus();
+          }
+        }}
       >
         <input
           ref={inputRef}

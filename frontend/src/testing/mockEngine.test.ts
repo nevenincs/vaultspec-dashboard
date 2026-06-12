@@ -153,6 +153,29 @@ describe("MockEngine routes", () => {
     expect((await c.status()).tiers.semantic.available).toBe(true);
   });
 
+  it("serves an empty corpus end-to-end under no-vault, git still live (035)", async () => {
+    const mock = new MockEngine();
+    mock.setNoVault(true);
+    const c = client(mock);
+    expect((await c.graphQuery({ scope: "wt-main" })).nodes).toHaveLength(0);
+    expect((await c.vaultTree("wt-main")).entries).toHaveLength(0);
+    expect((await c.status()).nodes).toBe(0);
+    const events = await c.events({ scope: "wt-main" });
+    expect(events.events!.length).toBeGreaterThan(0);
+    expect(events.events!.every((e) => e.kind === "commit")).toBe(true);
+    mock.setNoVault(false);
+    expect((await c.graphQuery({ scope: "wt-main" })).nodes.length).toBeGreaterThan(0);
+  });
+
+  it("drops lifecycle-lane events under date-mandate-missing (035)", async () => {
+    const mock = new MockEngine();
+    mock.setLifecycleSparse(true);
+    const events = await client(mock).events({ scope: "wt-main" });
+    expect(events.events!.some((e) => e.kind === "step-checked")).toBe(false);
+    expect(events.events!.some((e) => e.kind === "commit")).toBe(true);
+    expect(events.events!.some((e) => e.kind.startsWith("doc-"))).toBe(true);
+  });
+
   it("streams SSE frames with seq carried on graph deltas", async () => {
     const mock = new MockEngine();
     const sinceSeq = mock.lastSeq - 2;

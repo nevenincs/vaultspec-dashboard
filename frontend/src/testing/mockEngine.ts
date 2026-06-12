@@ -110,6 +110,21 @@ export class MockEngine {
   readonly timeline: TimelineDelta[];
   private degradations = new Map<string, string>();
   private subscribers = new Set<StreamSubscriber>();
+  // Debug-switch conditions that degrade SERVED data (finding 035): the
+  // corpus disappears (no vault) or the lifecycle lane runs dry (core
+  // date-mandate not landed).
+  private noVault = false;
+  private lifecycleSparse = false;
+
+  /** No vault in the worktree: the served corpus is empty (035). */
+  setNoVault(on: boolean): void {
+    this.noVault = on;
+  }
+
+  /** Date-mandate missing: lifecycle-lane events drop from serving (035). */
+  setLifecycleSparse(on: boolean): void {
+    this.lifecycleSparse = on;
+  }
 
   constructor(corpus: FixtureCorpus = buildFixtureCorpus()) {
     this.corpus = corpus;
@@ -225,8 +240,8 @@ export class MockEngine {
     if (path === "/status") {
       return {
         ok: true,
-        nodes: c.nodes.length,
-        edges: c.edges.length,
+        nodes: this.noVault ? 0 : c.nodes.length,
+        edges: this.noVault ? 0 : c.edges.length,
         degradations: [...this.degradations.keys()],
         tiers,
         git: { branch: "main", ahead: 0, behind: 0, dirty: [] },
@@ -268,12 +283,16 @@ export class MockEngine {
     }
     if (path === "/vault-tree") {
       requireScope(params);
-      return { entries: c.vaultTree, tiers };
+      return { entries: this.noVault ? [] : c.vaultTree, tiers };
     }
     if (path === "/graph/query") {
       // Constellation granularity: feature nodes + engine-aggregated
       // meta-edges; doc-level arrives on descent (contract §4). Degraded
-      // tiers gate content here too (011).
+      // tiers gate content here too (011); an absent corpus serves
+      // nothing (035).
+      if (this.noVault) {
+        return { nodes: [], edges: [], tiers };
+      }
       return {
         nodes: c.nodes.filter((n) => n.kind === "feature"),
         edges: c.metaEdges.filter((e) => this.tierServed(e)),
@@ -353,7 +372,12 @@ export class MockEngine {
       requireScope(params);
       const from = params.get("from") ? Date.parse(params.get("from")!) : -Infinity;
       const to = params.get("to") ? Date.parse(params.get("to")!) : Infinity;
-      const within = c.events.filter((e) => {
+      const source = this.noVault
+        ? c.events.filter((e) => e.kind === "commit") // git still live (§8)
+        : this.lifecycleSparse
+          ? c.events.filter((e) => e.kind === "commit" || e.kind.startsWith("doc-"))
+          : c.events;
+      const within = source.filter((e) => {
         const ts = Date.parse(e.ts);
         return ts >= from && ts <= to;
       });

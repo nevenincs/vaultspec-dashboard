@@ -33,7 +33,7 @@ const PAPER = { r: 0xfa, g: 0xf9, b: 0xf7 };
 const TIER_BASE_COLORS: Record<string, number> = {
   declared: 0x3a342c,
   "structural:resolved": 0x2f7d4f,
-  "structural:stale": 0xc28e2d,
+  "structural:stale": 0xa07520,
   "structural:broken": 0xb3502d,
   temporal: 0x4a4137,
   semantic: 0x7d6f9e,

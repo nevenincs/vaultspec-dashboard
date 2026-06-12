@@ -18,8 +18,17 @@ const CONDITIONS = [
 async function driveMock(key: string, on: boolean): Promise<void> {
   if (import.meta.env.VITE_MOCK_ENGINE !== "1") return;
   const { getMockEngine } = await import("../../testing/mockEngine");
+  const mock = getMockEngine();
+  // Served-data degradation per condition (finding 035): rag-down,
+  // no-vault, and date-mandate degrade what the mock SERVES; stream-lost
+  // is a transport condition and remains a declared UI overlay until the
+  // stream consumer's reconnect detection lands.
   if (key === "ragDown") {
-    getMockEngine().degrade("semantic", on ? "rag service down (debug)" : null);
+    mock.degrade("semantic", on ? "rag service down (debug)" : null);
+  } else if (key === "noVault") {
+    mock.setNoVault(on);
+  } else if (key === "dateMandateMissing") {
+    mock.setLifecycleSparse(on);
   }
 }
 
@@ -67,6 +76,8 @@ export function DegradationDebugSwitch() {
             onClick={() => {
               clearOverrides();
               void driveMock("ragDown", false);
+              void driveMock("noVault", false);
+              void driveMock("dateMandateMissing", false);
             }}
           >
             clear all

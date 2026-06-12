@@ -34,7 +34,7 @@ const STATE_COLORS: Record<string, number> = {
   complete: 0x4a4137,
   archived: 0x9a938a,
   broken: 0xb3502d,
-  stale: 0xc28e2d,
+  stale: 0xa07520,
 };
 const DEFAULT_STATE_COLOR = 0x6a6258;
 

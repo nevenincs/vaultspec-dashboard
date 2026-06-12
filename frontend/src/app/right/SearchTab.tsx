@@ -64,11 +64,16 @@ export function SearchTab() {
               className="w-full rounded border border-stone-100 px-2 py-1 text-left hover:border-stone-300 disabled:cursor-default"
               title={result.node_id ?? "no graph node for this result"}
             >
-              <span className="flex items-center justify-between">
+              <span className="flex items-center justify-between gap-1">
                 <span className="truncate font-medium text-stone-700">
                   {result.source}
                 </span>
-                <span className="text-stone-400">
+                <span className="flex items-center gap-1 text-stone-400">
+                  {search.semanticOffline && (
+                    <span className="rounded bg-stone-100 px-1 text-[9px] text-stone-500">
+                      text match
+                    </span>
+                  )}
                   {Math.round(result.score * 100)}%
                 </span>
               </span>

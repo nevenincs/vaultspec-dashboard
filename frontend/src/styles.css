@@ -28,7 +28,7 @@
   --color-state-active: #2f7d4f;
   --color-state-complete: #4a4137;
   --color-state-archived: #9a938a;
-  --color-state-stale: #c28e2d;
+  --color-state-stale: #a07520; /* darkened to clear the 3:1 floor (038) */
   --color-state-broken: #b3502d; /* the warning hue */
   --color-state-live: #1f8a5d;
 

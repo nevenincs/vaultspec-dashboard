@@ -88,5 +88,11 @@ export function KeyboardNav() {
     return () => window.removeEventListener("keydown", onKey);
   }, [neighbors.data, vocabulary.data, selectedId]);
 
-  return null;
+  // Live region (038): arrow-walk selection changes are announced to
+  // assistive tech; visually hidden, polite.
+  return (
+    <div aria-live="polite" className="sr-only">
+      {selectedId ? `selected ${selectedId.replace(/^(feature|doc):/, "")}` : ""}
+    </div>
+  );
 }

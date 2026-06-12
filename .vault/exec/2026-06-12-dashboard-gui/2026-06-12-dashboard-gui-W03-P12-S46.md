@@ -50,3 +50,14 @@ stream consumers own; the matrix, the override path, and the visible
 states are complete now. The §7.4 illustrations replace the interim
 text/tone treatments when the commissioned art lands.
 
+CORRECTED per audit finding debug-switch-overclaim-035 (revision): the
+original claim that the debug switch degrades the mock's served data was
+true for rag-down only. The revision extends served-data degradation
+end-to-end for two more conditions - no-vault (the mock serves an empty
+corpus: no nodes, no tree, zero status counts, commit events only - git
+still live per §8) and date-mandate-missing (lifecycle-lane events drop
+from event serving) - both covered by mock tests. Stream-lost remains,
+DECLARED PLAINLY, a UI overlay: it models a transport condition (a lost
+connection), not served content, and its end-to-end form is the stream
+consumer's reconnect detection, which stays the named follow-up above.
+
