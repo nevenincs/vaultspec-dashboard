@@ -10,7 +10,6 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use engine_query::events::{BucketMode, bucket_events, parse_bucket_param};
 use engine_store::EventRow;
-use engine_store::events::node_ids_for_paths;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -47,26 +46,11 @@ pub async fn events(
             parse_bucket_param(p).ok_or_else(|| bad_request(format!("unknown bucket `{p}`")))?
         }
     };
+    // Event sourcing shared with the CLI verb via the query core (G7).
     let workspace = ingest_git::workspace::Workspace::discover(&state.root)
         .map_err(|e| bad_request(e.to_string()))?;
-    let commits =
-        ingest_git::log::walk(&workspace, "HEAD", 5000).map_err(|e| bad_request(e.to_string()))?;
-    let mut rows: Vec<EventRow> = commits
-        .iter()
-        .enumerate()
-        .map(|(i, c)| EventRow {
-            seq: i as i64 + 1,
-            ts: c.ts,
-            kind: c.kind.to_string(),
-            git_ref: c.git_ref.clone(),
-            node_ids: {
-                let mut ids = node_ids_for_paths(c.touched_paths.iter().map(String::as_str));
-                ids.insert(0, format!("commit:{}", c.sha));
-                ids
-            },
-        })
-        .collect();
-    rows.sort_by_key(|r| r.ts);
+    let mut rows: Vec<EventRow> =
+        engine_query::events::commit_rows(&workspace, "HEAD", 5000).map_err(bad_request)?;
     if let Some(kinds) = &params.kinds {
         let wanted: Vec<&str> = kinds.split(',').collect();
         rows.retain(|r| wanted.contains(&r.kind.as_str()));

@@ -16,14 +16,16 @@ pub fn ok(command: &str, data: Value, tiers: Value) -> Value {
     })
 }
 
-/// Failure envelope.
-pub fn fail(command: &str, error: &str, message: &str) -> Value {
+/// Failure envelope — carries the tier block too: contract §2 says EVERY
+/// response states per-tier availability (audit G1).
+pub fn fail(command: &str, error: &str, message: &str, tiers: Value) -> Value {
     json!({
         "ok": false,
         "command": command,
         "status": "failed",
         "error": error,
         "message": message,
+        "tiers": tiers,
     })
 }
 
@@ -63,9 +65,18 @@ mod tests {
         assert_eq!(success["command"], "map");
         assert!(success["tiers"]["semantic"]["available"].as_bool().unwrap());
 
-        let failure = fail("graph", "bad-filter", "unknown tier `psychic`");
+        let failure = fail(
+            "graph",
+            "bad-filter",
+            "unknown tier `psychic`",
+            tiers_json(None),
+        );
         assert_eq!(failure["ok"], false);
         assert_eq!(failure["status"], "failed");
+        assert!(
+            failure["tiers"]["declared"]["available"].is_boolean(),
+            "tiers on EVERY response, failures included (contract sec 2)"
+        );
 
         let degraded = tiers_json(Some("rag service down"));
         assert_eq!(degraded["semantic"]["available"], false);

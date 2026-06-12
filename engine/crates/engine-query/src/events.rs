@@ -125,6 +125,36 @@ pub fn parse_bucket_param(param: &str) -> Option<BucketMode> {
     }
 }
 
+/// Source commit events from a workspace ref into contract-shaped rows
+/// (audit G7: event sourcing lives in the query core; both front doors
+/// delegate here — D6.1, no capability in only one door).
+pub fn commit_rows(
+    workspace: &ingest_git::workspace::Workspace,
+    reference: &str,
+    limit: usize,
+) -> Result<Vec<EventRow>, String> {
+    let commits = ingest_git::log::walk(workspace, reference, limit).map_err(|e| e.to_string())?;
+    let mut rows: Vec<EventRow> = commits
+        .iter()
+        .enumerate()
+        .map(|(i, c)| EventRow {
+            seq: i as i64 + 1,
+            ts: c.ts,
+            kind: c.kind.to_string(),
+            git_ref: c.git_ref.clone(),
+            node_ids: {
+                let mut ids = engine_store::events::node_ids_for_paths(
+                    c.touched_paths.iter().map(String::as_str),
+                );
+                ids.insert(0, format!("commit:{}", c.sha));
+                ids
+            },
+        })
+        .collect();
+    rows.sort_by_key(|r| r.ts);
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

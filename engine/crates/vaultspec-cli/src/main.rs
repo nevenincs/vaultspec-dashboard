@@ -54,6 +54,10 @@ enum Command {
         /// Render the graph as it stood at a ref or commit (blob-true).
         #[arg(long, value_name = "REF|SHA")]
         as_of: Option<String>,
+        /// `document` (doc-level edges) or `feature` (engine-aggregated
+        /// meta-edges — the constellation surface, contract §4).
+        #[arg(long, default_value = "document")]
+        granularity: String,
     },
     /// Node detail / full context assembly.
     Node {
@@ -92,9 +96,9 @@ enum Command {
 }
 
 fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -> u8 {
+    let tiers = envelope::tiers_json(ctx.rag_reason().as_deref());
     match result {
         Ok(data) => {
-            let tiers = envelope::tiers_json(ctx.rag_reason().as_deref());
             if ctx.json {
                 envelope::emit_json(&envelope::ok(command_name, data, tiers));
             } else {
@@ -105,16 +109,19 @@ fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -
             0
         }
         Err(error) => {
+            // Tier block on EVERY response, failures included (audit G1);
+            // typed exit codes — scope/corpus errors are usage-class 2.
             if ctx.json {
                 envelope::emit_json(&envelope::fail(
                     command_name,
-                    "command-failed",
+                    error.kind(),
                     &error.to_string(),
+                    tiers,
                 ));
             } else {
                 eprintln!("vaultspec {command_name}: {error}");
             }
-            1
+            error.exit_code()
         }
     }
 }
@@ -134,25 +141,47 @@ fn main() -> std::process::ExitCode {
         };
     }
 
+    // The envelope names the INVOKED verb even on resolve failure (audit
+    // rider): scope errors belong to the command the user ran.
+    let command_name = match &cli.command {
+        Command::Map => "map",
+        Command::Index { .. } => "index",
+        Command::Graph { .. } => "graph",
+        Command::Node { .. } => "node",
+        Command::Events { .. } => "events",
+        Command::Status => "status",
+        Command::Serve { .. } => "serve",
+    };
     let ctx = match Ctx::resolve(cli.scope.as_deref(), cli.json) {
         Ok(ctx) => ctx,
         Err(error) => {
             if cli.json {
-                envelope::emit_json(&envelope::fail("scope", "bad-scope", &error.to_string()));
+                envelope::emit_json(&envelope::fail(
+                    command_name,
+                    error.kind(),
+                    &error.to_string(),
+                    // No resolved scope yet: tier availability is unknown,
+                    // stated as semantic-degraded with the reason.
+                    envelope::tiers_json(Some("scope unresolved")),
+                ));
             } else {
-                eprintln!("vaultspec: {error}");
+                eprintln!("vaultspec {command_name}: {error}");
             }
-            return std::process::ExitCode::from(2);
+            return std::process::ExitCode::from(error.exit_code());
         }
     };
 
     let code = match &cli.command {
         Command::Map => render(&ctx, "map", cmd::map::run(&ctx)),
         Command::Index { full } => render(&ctx, "index", cmd::index::run(&ctx, *full)),
-        Command::Graph { filter, as_of } => render(
+        Command::Graph {
+            filter,
+            as_of,
+            granularity,
+        } => render(
             &ctx,
             "graph",
-            cmd::graph::run(&ctx, filter.as_deref(), as_of.as_deref()),
+            cmd::graph::run(&ctx, filter.as_deref(), as_of.as_deref(), granularity),
         ),
         Command::Node { id, context, tiers } => {
             render(&ctx, "node", cmd::node::run(&ctx, id, *context, tiers))

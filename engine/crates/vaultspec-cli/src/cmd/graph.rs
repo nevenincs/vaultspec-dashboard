@@ -7,7 +7,21 @@ use serde_json::{Value, json};
 
 use super::{CliError, Ctx};
 
-pub fn run(ctx: &Ctx, filter_json: Option<&str>, as_of: Option<&str>) -> Result<Value, CliError> {
+pub fn run(
+    ctx: &Ctx,
+    filter_json: Option<&str>,
+    as_of: Option<&str>,
+    granularity: &str,
+) -> Result<Value, CliError> {
+    let granularity = match granularity {
+        "document" => Granularity::Document,
+        "feature" => Granularity::Feature,
+        other => {
+            return Err(CliError::Other(format!(
+                "unknown granularity `{other}` (document|feature)"
+            )));
+        }
+    };
     let filter: Filter = match filter_json {
         Some(raw) => serde_json::from_str(raw)
             .map_err(|e| CliError::Other(format!("filter is not valid JSON: {e}")))?,
@@ -30,11 +44,14 @@ pub fn run(ctx: &Ctx, filter_json: Option<&str>, as_of: Option<&str>) -> Result<
         }
     };
 
-    let slice = graph_query(&graph, &scope, filter, Granularity::Document)?;
+    let slice = graph_query(&graph, &scope, filter, granularity)?;
     Ok(json!({
         "as_of": as_of,
         "nodes": slice.nodes,
         "edges": slice.edges,
+        // The constellation surface (contract §4): engine-aggregated
+        // meta-edges, never client-side flattening (audit G4).
+        "meta_edges": slice.meta_edges,
         "filter": slice.filter,
     }))
 }

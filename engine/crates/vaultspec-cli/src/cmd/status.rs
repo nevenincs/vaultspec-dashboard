@@ -27,6 +27,18 @@ pub fn run(ctx: &Ctx) -> Result<Value, CliError> {
     // Rag availability (truthful absent/down states, D5.2).
     let rag_reason = ctx.rag_reason();
 
+    // Git status of the active worktree (contract §6, audit G5).
+    let git = ingest_git::workspace::Workspace::discover(&ctx.root)
+        .ok()
+        .and_then(|ws| ingest_git::worktrees::enumerate(&ws).ok())
+        .and_then(|wts| {
+            let cleaned = super::clean_path(&ctx.root);
+            wts.into_iter()
+                .find(|wt| super::clean_path(&wt.path) == cleaned)
+        })
+        .map(|wt| json!({"head_ref": wt.head_ref, "dirty": wt.dirty}))
+        .unwrap_or(json!(null));
+
     Ok(json!({
         "scope": super::clean_path(&ctx.root),
         "index": {
@@ -44,6 +56,7 @@ pub fn run(ctx: &Ctx) -> Result<Value, CliError> {
                 Some(reason) => json!({"available": false, "reason": reason}),
             },
         },
+        "git": git,
         // One-shot CLI: no resident watcher by definition (D2.4 — the
         // resident mode is an optimization, not a requirement).
         "watcher": {"running": false, "mode": "one-shot"},

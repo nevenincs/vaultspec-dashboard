@@ -46,6 +46,12 @@ pub struct IndexStats {
     pub cache_hits: usize,
     pub extracted: usize,
     pub edges: usize,
+    /// Per-document outcome in core's sync vocabulary (D6.2 / audit G2):
+    /// `unchanged` (cache hit) or `updated` (re-extracted). `created` and
+    /// `removed` are inapplicable to a rebuild-from-truth pipeline — the
+    /// graph is derived wholly each pass, so blob novelty and blob change
+    /// are indistinguishable and both report as `updated`.
+    pub outcomes: Vec<(String, &'static str)>,
 }
 
 /// Index one worktree scope into a fresh graph (the cold path).
@@ -139,10 +145,12 @@ fn index_documents(
         let mentions: Vec<ExtractedMention> = match cached {
             Some(cached) => {
                 stats.cache_hits += 1;
+                stats.outcomes.push((rel_path.clone(), "unchanged"));
                 serde_json::from_str(&cached)?
             }
             None => {
                 stats.extracted += 1;
+                stats.outcomes.push((rel_path.clone(), "updated"));
                 let fresh = ingest_struct::extract::extract(&text);
                 store.put_artifact(
                     EXTRACT_KIND,

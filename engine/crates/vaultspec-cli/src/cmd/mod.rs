@@ -41,9 +41,31 @@ pub enum CliError {
     Other(String),
 }
 
+impl CliError {
+    /// Exit code: scope/corpus errors are usage-class (2); everything else
+    /// is a command failure (1).
+    pub fn exit_code(&self) -> u8 {
+        match self {
+            CliError::BadScope(_) | CliError::NoVault(_) => 2,
+            _ => 1,
+        }
+    }
+
+    /// Stable machine-readable error kind for the envelope.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            CliError::BadScope(_) => "bad-scope",
+            CliError::NoVault(_) => "no-vault",
+            _ => "command-failed",
+        }
+    }
+}
+
 impl Ctx {
     /// Resolve the per-request scope: an explicit `--scope` worktree path,
-    /// or the launch directory as the advertised fallback.
+    /// or the launch directory as the advertised fallback. The scope is
+    /// validated against the discovered workspace's worktree set
+    /// (contract §3) — an arbitrary directory is not a scope.
     pub fn resolve(scope_arg: Option<&str>, json: bool) -> Result<Ctx, CliError> {
         let root = match scope_arg {
             Some(path) => {
@@ -55,6 +77,22 @@ impl Ctx {
             }
             None => std::env::current_dir().map_err(|e| CliError::Other(e.to_string()))?,
         };
+        // Validate against discover + enumerate: the scope must resolve to
+        // a git workspace AND name (or sit inside) one of its worktrees.
+        let workspace = ingest_git::workspace::Workspace::discover(&root)
+            .map_err(|_| CliError::BadScope(clean_path(&root)))?;
+        let worktrees = ingest_git::worktrees::enumerate(&workspace)?;
+        let cleaned = clean_path(&root);
+        let worktree = worktrees
+            .iter()
+            .find(|wt| {
+                let wt_path = clean_path(&wt.path);
+                cleaned == wt_path || cleaned.starts_with(&format!("{wt_path}/"))
+            })
+            .ok_or_else(|| CliError::BadScope(cleaned.clone()))?;
+        // The scope is the WORKTREE root, even when launched from deep
+        // inside it.
+        let root = worktree.path.clone();
         let scope = ScopeRef::Worktree {
             path: clean_path(&root),
         };
@@ -69,7 +107,7 @@ impl Ctx {
         if self.vault_root().is_dir() {
             Ok(())
         } else {
-            Err(CliError::NoVault(self.root.to_string_lossy().into_owned()))
+            Err(CliError::NoVault(clean_path(&self.root)))
         }
     }
 

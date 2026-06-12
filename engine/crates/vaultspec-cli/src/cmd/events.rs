@@ -3,7 +3,6 @@
 
 use engine_query::events::{BucketMode, bucket_events, parse_bucket_param};
 use engine_store::EventRow;
-use engine_store::events::node_ids_for_paths;
 use ingest_git::workspace::Workspace;
 use serde_json::{Value, json};
 
@@ -25,27 +24,14 @@ pub fn run(
         })?,
     };
 
-    // Live commit events from the scope's HEAD (the temporal source; the
-    // persisted event log is the serve mode's accumulator).
+    // Event sourcing lives in the query core (audit G7 / D6.1): both
+    // front doors delegate to the same function. The one-shot verb reads
+    // the live walk by design (cold start is a feature); the serve mode's
+    // persisted event log is its resident accumulator — that parity
+    // rationale is recorded in the S45 record (G6).
     let workspace = Workspace::discover(&ctx.root)?;
-    let head = "HEAD";
-    let commits = ingest_git::log::walk(&workspace, head, WALK_LIMIT)?;
-    let mut rows: Vec<EventRow> = commits
-        .iter()
-        .enumerate()
-        .map(|(i, c)| EventRow {
-            seq: i as i64 + 1,
-            ts: c.ts,
-            kind: c.kind.to_string(),
-            git_ref: c.git_ref.clone(),
-            node_ids: {
-                let mut ids = node_ids_for_paths(c.touched_paths.iter().map(String::as_str));
-                ids.insert(0, format!("commit:{}", c.sha));
-                ids
-            },
-        })
-        .collect();
-    rows.sort_by_key(|r| r.ts);
+    let mut rows: Vec<EventRow> = engine_query::events::commit_rows(&workspace, "HEAD", WALK_LIMIT)
+        .map_err(CliError::Other)?;
 
     if !kinds.is_empty() {
         rows.retain(|r| kinds.contains(&r.kind));

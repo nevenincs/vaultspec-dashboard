@@ -27,12 +27,34 @@ pub enum RagError {
 pub type Result<T> = std::result::Result<T, RagError>;
 
 /// Rag's resident-service discovery file (the pattern the engine mirrors).
+/// Project-relative candidate; see [`service_json_candidates`].
 pub fn service_json_path(vault_root: &Path) -> PathBuf {
     vault_root
         .join("data")
         .join("search-data")
         .join("service.json")
 }
+
+/// Discovery candidates in precedence order. The LIVE rag service writes
+/// its discovery file under the user home (`~/.vaultspec-rag/service.json`
+/// — confirmed by lead dogfooding against the running service); the
+/// project-relative path is kept as a forward-compatible candidate.
+pub fn service_json_candidates(vault_root: &Path) -> Vec<PathBuf> {
+    let mut candidates = vec![service_json_path(vault_root)];
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+    if let Some(home) = home {
+        candidates.push(
+            PathBuf::from(home)
+                .join(".vaultspec-rag")
+                .join("service.json"),
+        );
+    }
+    candidates
+}
+
+/// Heartbeat staleness threshold: rag refreshes every 15s with a 60s stale
+/// bound; we allow 120s before declaring the service dead.
+pub const HEARTBEAT_STALE_MS: i64 = 120_000;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServiceInfo {
@@ -41,6 +63,63 @@ pub struct ServiceInfo {
     pub service_token: Option<String>,
     #[serde(default)]
     pub pid: Option<u32>,
+    /// The live rag service writes ISO-8601 strings; ms-since-epoch is
+    /// also accepted. Absent in older files.
+    #[serde(default)]
+    pub last_heartbeat: Option<Heartbeat>,
+}
+
+/// Heartbeat in either wire format.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Heartbeat {
+    Millis(i64),
+    Iso(String),
+}
+
+impl Heartbeat {
+    /// Ms since epoch; `None` when an ISO string cannot be parsed (treated
+    /// as fresh — availability must not break on a format we half-know).
+    pub fn as_millis(&self) -> Option<i64> {
+        match self {
+            Heartbeat::Millis(ms) => Some(*ms),
+            Heartbeat::Iso(s) => parse_iso8601_ms(s),
+        }
+    }
+}
+
+/// Parse `YYYY-MM-DDTHH:MM:SS[(+|-)HH:MM|Z]` to ms since epoch,
+/// dependency-free (days-from-civil, Hinnant's algorithm).
+fn parse_iso8601_ms(s: &str) -> Option<i64> {
+    let bytes = s.as_bytes();
+    if bytes.len() < 19 {
+        return None;
+    }
+    let num = |range: std::ops::Range<usize>| s.get(range)?.parse::<i64>().ok();
+    let (year, month, day) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (hour, minute, second) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    // Offset suffix: Z, +HH:MM, or -HH:MM (seconds fraction not emitted by rag).
+    let rest = &s[19..];
+    let offset_minutes = if rest.is_empty() || rest == "Z" {
+        0
+    } else if rest.len() == 6 && (rest.starts_with('+') || rest.starts_with('-')) {
+        let sign = if rest.starts_with('-') { -1 } else { 1 };
+        let h = rest.get(1..3)?.parse::<i64>().ok()?;
+        let m = rest.get(4..6)?.parse::<i64>().ok()?;
+        sign * (h * 60 + m)
+    } else {
+        return None;
+    };
+    // days_from_civil (Hinnant): days since 1970-01-01.
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let seconds = days * 86_400 + hour * 3_600 + minute * 60 + second - offset_minutes * 60;
+    Some(seconds * 1000)
 }
 
 /// Pluggable transport so discovery/search logic tests without a live
@@ -129,28 +208,49 @@ fn dechunk(raw: &str) -> Result<String> {
 /// discovery file is the truthful "absent" state, never an error: all
 /// other tiers, and the whole engine, function fully without rag.
 pub fn discover(vault_root: &Path) -> (RagAvailability, Option<ServiceInfo>) {
-    let path = service_json_path(vault_root);
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(_) => {
-            return (
-                RagAvailability::Unavailable {
-                    reason: "rag service not installed or not started (no service.json)"
-                        .to_string(),
-                },
-                None,
-            );
+    discover_at(&service_json_candidates(vault_root))
+}
+
+/// Discovery over an explicit candidate list (hermetic for tests).
+pub fn discover_at(candidates: &[PathBuf]) -> (RagAvailability, Option<ServiceInfo>) {
+    let mut parse_error: Option<String> = None;
+    for path in candidates {
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        match serde_json::from_str::<ServiceInfo>(&raw) {
+            Ok(info) => {
+                // A present file with a stale heartbeat is a dead or
+                // crashed service — truthfully degraded, not available.
+                if let Some(heartbeat) = info.last_heartbeat.as_ref().and_then(Heartbeat::as_millis)
+                {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as i64)
+                        .unwrap_or(0);
+                    if now.saturating_sub(heartbeat) > HEARTBEAT_STALE_MS {
+                        return (
+                            RagAvailability::Unavailable {
+                                reason: "rag service heartbeat stale (service crashed or stopped)"
+                                    .to_string(),
+                            },
+                            None,
+                        );
+                    }
+                }
+                return (RagAvailability::Available, Some(info));
+            }
+            Err(e) => parse_error = Some(format!("rag service.json unreadable: {e}")),
         }
-    };
-    match serde_json::from_str::<ServiceInfo>(&raw) {
-        Ok(info) => (RagAvailability::Available, Some(info)),
-        Err(e) => (
-            RagAvailability::Unavailable {
-                reason: format!("rag service.json unreadable: {e}"),
-            },
-            None,
-        ),
     }
+    (
+        RagAvailability::Unavailable {
+            reason: parse_error.unwrap_or_else(|| {
+                "rag service not installed or not started (no service.json)".to_string()
+            }),
+        },
+        None,
+    )
 }
 
 #[cfg(test)]
@@ -197,7 +297,8 @@ mod tests {
     #[test]
     fn missing_service_json_is_truthful_absence_not_an_error() {
         let dir = tempfile::tempdir().unwrap();
-        let (availability, info) = discover(dir.path());
+        // Hermetic candidate list: the project-relative path only.
+        let (availability, info) = discover_at(&[service_json_path(dir.path())]);
         assert!(matches!(
             availability,
             RagAvailability::Unavailable { ref reason } if reason.contains("service.json")
@@ -215,11 +316,40 @@ mod tests {
             r#"{"port": 8766, "service_token": "tok-1", "pid": 1234}"#,
         )
         .unwrap();
-        let (availability, info) = discover(dir.path());
+        let (availability, info) = discover_at(&[p]);
         assert_eq!(availability, RagAvailability::Available);
         let info = info.unwrap();
         assert_eq!(info.port, 8766);
         assert_eq!(info.service_token.as_deref(), Some("tok-1"));
+    }
+
+    #[test]
+    fn home_dir_candidate_is_searched_and_stale_heartbeats_degrade() {
+        let dir = tempfile::tempdir().unwrap();
+        // The user-home convention (the path the LIVE rag service uses).
+        let home_style = dir.path().join(".vaultspec-rag").join("service.json");
+        std::fs::create_dir_all(home_style.parent().unwrap()).unwrap();
+        std::fs::write(&home_style, r#"{"port": 8766, "last_heartbeat": 1000}"#).unwrap();
+        let missing_project = dir.path().join("nope").join("service.json");
+        let (availability, _) = discover_at(&[missing_project, home_style.clone()]);
+        // Heartbeat from 1970: stale → truthfully degraded, not available.
+        assert!(matches!(
+            availability,
+            RagAvailability::Unavailable { ref reason } if reason.contains("stale")
+        ));
+        // Fresh heartbeat: available via the home candidate.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        std::fs::write(
+            &home_style,
+            format!(r#"{{"port": 8766, "last_heartbeat": {now}}}"#),
+        )
+        .unwrap();
+        let (availability, info) = discover_at(&[home_style]);
+        assert_eq!(availability, RagAvailability::Available);
+        assert_eq!(info.unwrap().port, 8766);
     }
 
     #[test]

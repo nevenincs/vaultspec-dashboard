@@ -14,11 +14,24 @@ pub fn run(ctx: &Ctx, full: bool) -> Result<Value, CliError> {
     } else {
         engine_graph::index::index_worktree(&ctx.root, &ctx.scope, &store, now_ms())?
     };
+    // Core's sync vocabulary on a mutating verb (D6.2, audit G2): items
+    // report unchanged/updated per document; created/removed are
+    // inapplicable to a rebuild-from-truth pipeline (interpretation
+    // recorded in the S47 step record).
+    let items: Vec<Value> = stats
+        .outcomes
+        .iter()
+        .map(|(path, outcome)| json!({"path": path, "status": outcome}))
+        .collect();
     Ok(json!({
         "mode": if full { "full" } else { "incremental" },
+        "status": if stats.extracted == 0 { "unchanged" } else { "mixed" },
+        "counts": {
+            "unchanged": stats.cache_hits,
+            "updated": stats.extracted,
+        },
+        "items": items,
         "documents": stats.documents,
-        "cache_hits": stats.cache_hits,
-        "extracted": stats.extracted,
         "edges": stats.edges,
         "nodes": graph.node_count(),
     }))

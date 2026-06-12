@@ -53,10 +53,25 @@ pub fn run(ctx: &Ctx) -> Result<Value, CliError> {
         })
         .collect();
 
+    // Corpus views (engine-spec §2.3, audit G3): each (workspace,
+    // worktree) pair under which a vault corpus exists.
+    let corpus_views: Vec<Value> = worktrees
+        .iter()
+        .filter(|wt| wt["has_vault"].as_bool().unwrap_or(false))
+        .map(|wt| {
+            json!({
+                "worktree": wt["path"],
+                "vault_root": format!("{}/.vault", wt["path"].as_str().unwrap_or_default()),
+                "head_ref": wt["head_ref"],
+            })
+        })
+        .collect();
+
     Ok(json!({
         "workspace": clean_path(&workspace.common_dir),
         "worktrees": worktrees,
         "branches": branches,
         "remote_refs": remotes,
+        "corpus_views": corpus_views,
     }))
 }
