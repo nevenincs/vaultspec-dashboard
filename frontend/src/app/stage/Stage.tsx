@@ -22,6 +22,7 @@ import { bindSelectionToScene, selectFromScene } from "../../stores/view/selecti
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
 import { Discover } from "./Discover";
+import { FilterBar } from "./FilterBar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene per app lifetime — survives route remounts; destroyed never.
@@ -124,19 +125,29 @@ export function Stage() {
   // One filter model, applied as a visibility membership diff (RL-5a):
   // the scene animates what the filter removed (G3.f).
   const filterChoices = useFilterStore();
+  const membership = useMemo(
+    () =>
+      merged ? computeVisibility(merged.nodes, merged.edges, filterChoices) : null,
+    [merged, filterChoices],
+  );
   useEffect(() => {
-    if (!merged) return;
-    const membership = computeVisibility(merged.nodes, merged.edges, filterChoices);
+    if (!membership) return;
     scene.controller.command({
       kind: "set-visibility",
       visibleNodeIds: membership.visibleNodeIds,
       visibleEdgeIds: membership.visibleEdgeIds,
     });
-  }, [merged, filterChoices]);
+  }, [membership]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={hostRef} className="absolute inset-0" data-stage-host />
+      <FilterBar
+        hidden={{
+          nodes: membership?.hiddenNodeCount ?? 0,
+          edges: membership?.hiddenEdgeCount ?? 0,
+        }}
+      />
       <WorkingSet />
       <Discover />
       <IslandLayer scene={scene.controller} />

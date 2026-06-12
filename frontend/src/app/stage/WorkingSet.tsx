@@ -61,7 +61,7 @@ export function WorkingSet() {
   if (workingSet.length === 0) return null;
   return (
     <nav
-      className="pointer-events-auto absolute top-2 left-2 z-10 flex flex-wrap items-center gap-1"
+      className="pointer-events-auto absolute top-9 left-2 z-10 flex flex-wrap items-center gap-1"
       aria-label="working set"
     >
       {workingSet.map((id) => (
