@@ -49,6 +49,10 @@ related:
   - '[[2026-06-12-dashboard-gui-W02-P08-S35]]'
   - '[[2026-06-12-dashboard-gui-W02-P08-S36]]'
   - '[[2026-06-12-dashboard-gui-W02-P08-summary]]'
+  - '[[2026-06-12-dashboard-gui-W03-P09-S37]]'
+  - '[[2026-06-12-dashboard-gui-W03-P09-S38]]'
+  - '[[2026-06-12-dashboard-gui-W03-P09-S39]]'
+  - '[[2026-06-12-dashboard-gui-W03-P09-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -115,6 +119,10 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W02-P08-S35` - implement range selection as the product's single date-range filter with play-the-range growth animation per G4.c
 - `2026-06-12-dashboard-gui-W02-P08-S36` - implement event-mark click selection with node-ids cross-highlight pulse on the stage per G2.b and the contract event shape
 - `2026-06-12-dashboard-gui-W02-P08-summary` - `dashboard-gui` `W02.P08` summary
+- `2026-06-12-dashboard-gui-W03-P09-S37` - build the worktree picker over the map endpoint with corpus-bearing worktrees primary and bare refs dimmed per G2.a
+- `2026-06-12-dashboard-gui-W03-P09-S38` - build the vault-scoped read-only file browser over the vault-tree endpoint with doc-type glyphs and freshness per G2.c
+- `2026-06-12-dashboard-gui-W03-P09-S39` - wire bidirectional selection between browser and stage per G2.b
+- `2026-06-12-dashboard-gui-W03-P09-summary` - `dashboard-gui` `W03.P09` summary
 
 ### plan
 
