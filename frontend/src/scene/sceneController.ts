@@ -84,7 +84,10 @@ export type SceneCommand =
   | { kind: "set-time"; at: number | "live" }
   // Pins are layout-fixed and always-labelled (G5.d); the view store owns
   // pin persistence and tells the scene which nodes are fixed.
-  | { kind: "set-pinned"; ids: ReadonlySet<string> };
+  | { kind: "set-pinned"; ids: ReadonlySet<string> }
+  // Transient cross-highlight (G2.b): lift the named nodes briefly — the
+  // timeline's event-click pulse. Additive seam amendment at S36.
+  | { kind: "pulse"; ids: ReadonlySet<string> };
 
 // RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
@@ -175,6 +178,7 @@ export class SceneController {
       case "set-visibility":
       case "set-time":
       case "set-pinned":
+      case "pulse":
         // Renderer concerns — forwarded below.
         break;
     }

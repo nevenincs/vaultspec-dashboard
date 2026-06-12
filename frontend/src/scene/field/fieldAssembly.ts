@@ -25,6 +25,8 @@ import { NodeSpriteLayer } from "./nodeSprites";
 import { PixiField } from "./pixiField";
 
 const POSITION_SAVE_INTERVAL_MS = 5_000;
+/** Cross-highlight pulse duration (G2.b event click). */
+export const PULSE_MS = 1200;
 
 export class DashboardField implements SceneFieldRenderer {
   private base = new PixiField();
@@ -202,6 +204,7 @@ export class DashboardField implements SceneFieldRenderer {
   // --- seam commands ------------------------------------------------------------
 
   private lastAnimating = false;
+  private pulseToken = 0;
 
   command(cmd: SceneCommand): void {
     switch (cmd.kind) {
@@ -251,6 +254,20 @@ export class DashboardField implements SceneFieldRenderer {
         // Time travel (S34) drives the scene through set-data/apply-deltas;
         // the mode itself carries no renderer state yet.
         break;
+      case "pulse": {
+        // Transient lift of the named nodes (timeline cross-highlight):
+        // borrows the ego treatment, then clears unless superseded.
+        this.pulseToken += 1;
+        const token = this.pulseToken;
+        this.sprites?.setHighlight(new Set(cmd.ids));
+        this.edges?.setHighlight(new Set());
+        setTimeout(() => {
+          if (token !== this.pulseToken) return;
+          this.sprites?.setHighlight(null);
+          this.edges?.setHighlight(null);
+        }, PULSE_MS);
+        break;
+      }
     }
   }
 
