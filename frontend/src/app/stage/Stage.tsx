@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { sliceToScene } from "../../scene/sceneMapping";
 import { useGraphSlice, useWorkspaceMap } from "../../stores/server/queries";
+import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
 
@@ -34,7 +35,6 @@ export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
   const scope = useActiveScope();
   const slice = useGraphSlice(scope);
-  const select = useViewStore((s) => s.select);
   const openNode = useViewStore((s) => s.openNode);
 
   // Mount the field into the host; resize observation keeps it fitted.
@@ -50,16 +50,22 @@ export function Stage() {
     return () => observer.disconnect();
   }, []);
 
-  // Seam events → the shared view state (selection is one concept, G2.b).
+  // Seam events → the shared view state (selection is one concept, G2.b);
+  // store selections from OTHER regions flow back as focus commands.
   useEffect(() => {
-    return scene.controller.on((event) => {
-      if (event.kind === "select") select(event.id);
+    const offEvents = scene.controller.on((event) => {
+      if (event.kind === "select") selectFromScene(event.id);
       if (event.kind === "open") {
-        select(event.id);
+        selectFromScene(event.id);
         openNode(event.id);
       }
     });
-  }, [select, openNode]);
+    const offBind = bindSelectionToScene(scene.controller);
+    return () => {
+      offEvents();
+      offBind();
+    };
+  }, [openNode]);
 
   // Constellation data → seam command (set-data keyframe path).
   useEffect(() => {

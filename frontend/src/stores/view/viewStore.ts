@@ -17,8 +17,20 @@ export interface TierFilter {
   minConfidence: Partial<Record<"temporal" | "semantic", number>>;
 }
 
+/**
+ * The single shared selection (G2.b): one concept across browser, stage,
+ * timeline, and inspector — selecting anywhere focuses everywhere. Event
+ * selections carry their node ids so the stage can cross-highlight.
+ */
+export type Selection =
+  | { kind: "node"; id: string }
+  | { kind: "edge"; id: string }
+  | { kind: "event"; id: string; nodeIds: string[] }
+  | null;
+
 export interface ViewState {
-  /** The single shared selection across all regions (node/edge/event id). */
+  /** The shared selection; `selectedId` mirrors its id for convenience. */
+  selection: Selection;
   selectedId: string | null;
   /** The stage's explicit working set — "why is this node on my screen?" */
   workingSet: string[];
@@ -30,7 +42,10 @@ export interface ViewState {
   leftRailCollapsed: boolean;
   rightRailCollapsed: boolean;
 
+  /** Select a node by id (the common path); null clears. */
   select: (id: string | null) => void;
+  /** Select any entity kind (edge, event with node ids, …). */
+  selectEntity: (selection: Selection) => void;
   openNode: (id: string) => void;
   closeNode: (id: string) => void;
   addToWorkingSet: (id: string) => void;
@@ -43,6 +58,7 @@ export interface ViewState {
 }
 
 export const useViewStore = create<ViewState>((set) => ({
+  selection: null,
   selectedId: null,
   workingSet: [],
   openedIds: [],
@@ -57,7 +73,12 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailCollapsed: false,
   rightRailCollapsed: false,
 
-  select: (id) => set({ selectedId: id }),
+  select: (id) =>
+    set({
+      selection: id === null ? null : { kind: "node", id },
+      selectedId: id,
+    }),
+  selectEntity: (selection) => set({ selection, selectedId: selection?.id ?? null }),
   openNode: (id) =>
     set((state) =>
       state.openedIds.includes(id) ? state : { openedIds: [...state.openedIds, id] },
