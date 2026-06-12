@@ -22,9 +22,20 @@ pub struct DocumentBody {
     /// Repo-relative path of the document.
     pub path: String,
     pub text: String,
-    /// Content hash of the bytes (working tree) or the git blob id (ref
-    /// scope) — the provenance `blob_hash`.
+    /// **One namespace on both read paths (audit W01P04-101):** the
+    /// git-style blob object id (SHA-1 over `blob {len}\0` + bytes),
+    /// whether the bytes came from the working tree or the object DB.
+    /// Identical content always gets the identical identity, so facet
+    /// divergence (D4.2) and cache dedup (D2.4) compare truthfully.
     pub blob_hash: String,
+}
+
+/// Git-style blob object id over raw bytes — the unified `blob_hash`
+/// namespace for both read paths.
+pub fn blob_oid(bytes: &[u8]) -> String {
+    gix::objs::compute_hash(gix::hash::Kind::Sha1, gix::objs::Kind::Blob, bytes)
+        .expect("sha1 blob hash over in-memory bytes cannot fail")
+        .to_string()
 }
 
 /// Read a document from a worktree checkout.
@@ -32,7 +43,7 @@ pub fn read_from_worktree(worktree_root: &Path, rel_path: &str) -> Result<Docume
     let bytes = std::fs::read(worktree_root.join(rel_path))?;
     Ok(DocumentBody {
         path: rel_path.to_string(),
-        blob_hash: engine_model::content_hash(&bytes),
+        blob_hash: blob_oid(&bytes),
         text: String::from_utf8_lossy(&bytes).into_owned(),
     })
 }
@@ -107,6 +118,25 @@ mod tests {
         assert_ne!(
             wt.blob_hash, blob.blob_hash,
             "different bytes, different identity"
+        );
+    }
+
+    #[test]
+    fn identical_content_has_one_identity_across_both_read_paths() {
+        // Audit W01P04-101: worktree reads and ref reads must share one
+        // blob_hash namespace, or facet divergence trips falsely.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::write(root.join("doc.md"), "same bytes\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "init"]);
+
+        let wt = read_from_worktree(root, "doc.md").unwrap();
+        let blob = read_from_ref(root, "main", "doc.md").unwrap();
+        assert_eq!(
+            wt.blob_hash, blob.blob_hash,
+            "identical content, identical identity"
         );
     }
 

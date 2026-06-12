@@ -10,8 +10,11 @@ use crate::workspace::{GitError, Result, Workspace};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitEvent {
     pub sha: String,
-    /// Commit time, seconds since the Unix epoch.
-    pub ts: i64,
+    /// Commit time in **milliseconds** since the Unix epoch — the
+    /// engine-wide `engine_model::Timestamp` unit. gix reports seconds;
+    /// the conversion happens here, at the seam, so no downstream surface
+    /// ever sees mixed units (audit W01P02-102).
+    pub ts: engine_model::Timestamp,
     /// Event kind; always `commit` for this source (contract §5 kinds).
     pub kind: &'static str,
     /// The ref the walk started from (short name).
@@ -35,10 +38,13 @@ pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<C
     for info in walk.take(limit) {
         let info = info.map_err(|e| GitError::Other(e.to_string()))?;
         let commit = info.object().map_err(|e| GitError::Other(e.to_string()))?;
+        // gix reports seconds; engine_model::Timestamp is milliseconds.
+        // Convert at the seam (audit W01P02-102).
         let ts = commit
             .time()
             .map_err(|e| GitError::Other(e.to_string()))?
-            .seconds;
+            .seconds
+            * 1000;
         let touched_paths = touched_paths(&repo, &commit)?;
         out.push(CommitEvent {
             sha: commit.id.to_string(),
@@ -104,7 +110,9 @@ mod tests {
         assert_eq!(events.len(), 3);
         assert!(events.iter().all(|e| e.kind == "commit"));
         assert!(events.iter().all(|e| e.git_ref == "main"));
-        assert!(events.iter().all(|e| e.ts > 0));
+        // Millisecond scale (audit W01P02-102): a 2026 commit in seconds
+        // would be ~1.7e9; in milliseconds it must exceed 1e12.
+        assert!(events.iter().all(|e| e.ts > 1_000_000_000_000));
 
         // Newest first.
         assert_eq!(events[0].touched_paths, vec!["README.md", "src/lib.rs"]);

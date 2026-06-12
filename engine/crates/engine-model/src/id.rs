@@ -23,6 +23,12 @@ pub enum CanonicalKey<'a> {
     /// Commit SHA — inherently ref-scoped.
     Commit { sha: &'a str },
     /// Repo-relative path, optionally qualified by a symbol.
+    ///
+    /// Key form is `{path}#{symbol}` (audit W01P01-004): this assumes repo
+    /// paths do not contain `#`. Paths that do would alias a symbol
+    /// qualifier; such paths are vanishingly rare in practice and not
+    /// produced by any vaultspec convention. Revisit with an escaped
+    /// separator if a real corpus ever violates the assumption.
     CodeArtifact {
         path: &'a str,
         symbol: Option<&'a str>,
