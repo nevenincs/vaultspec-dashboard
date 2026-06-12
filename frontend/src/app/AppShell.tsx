@@ -1,5 +1,6 @@
 import { useEngineStatus } from "../stores/server/engine";
 import { useViewStore } from "../stores/view/viewStore";
+import { VaultBrowser } from "./left/VaultBrowser";
 import { WorktreePicker } from "./left/WorktreePicker";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
@@ -30,8 +31,9 @@ export function AppShell() {
             {leftCollapsed ? "»" : "« scope"}
           </button>
           {!leftCollapsed && (
-            <div className="mt-2 space-y-3">
+            <div className="mt-2 space-y-3 overflow-y-auto">
               <WorktreePicker />
+              <VaultBrowser />
             </div>
           )}
         </aside>
