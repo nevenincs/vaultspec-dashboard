@@ -16,6 +16,7 @@ import {
   useGraphSlice,
   useWorkspaceMap,
 } from "../../stores/server/queries";
+import { computeVisibility, useFilterStore } from "../../stores/view/filters";
 import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -95,24 +96,43 @@ export function Stage() {
   const expansionData = expansions
     .map((q) => q.data)
     .filter((d): d is NonNullable<typeof d> => d !== undefined);
+  const merged = useMemo(
+    () =>
+      slice.data
+        ? mergeSlices(slice.data, [
+            ...expansionData,
+            // Session-pinned discovery candidates ride the haze (G3.c).
+            { nodes: [], edges: pinnedDiscoveries },
+          ])
+        : null,
+    // expansionData is identity-unstable per render; length plus the base
+    // slice identity capture every meaningful change.
+    [slice.data, expansionData.length, pinnedDiscoveries],
+  );
   useEffect(() => {
-    if (!slice.data || !scope) return;
+    if (!merged || !scope) return;
     scene.field.setPersistenceScope("default", scope);
     usePinStore.getState().setScopeKey("default", scope);
-    const merged = mergeSlices(slice.data, [
-      ...expansionData,
-      // Session-pinned discovery candidates ride the semantic haze (G3.c).
-      { nodes: [], edges: pinnedDiscoveries },
-    ]);
     const mapped = sliceToScene(merged);
     scene.controller.command({
       kind: "set-data",
       nodes: mapped.nodes,
       edges: mapped.edges,
     });
-    // expansionData is identity-unstable per render; length plus the base
-    // slice identity capture every meaningful change.
-  }, [slice.data, scope, expansionData.length, pinnedDiscoveries]);
+  }, [merged, scope]);
+
+  // One filter model, applied as a visibility membership diff (RL-5a):
+  // the scene animates what the filter removed (G3.f).
+  const filterChoices = useFilterStore();
+  useEffect(() => {
+    if (!merged) return;
+    const membership = computeVisibility(merged.nodes, merged.edges, filterChoices);
+    scene.controller.command({
+      kind: "set-visibility",
+      visibleNodeIds: membership.visibleNodeIds,
+      visibleEdgeIds: membership.visibleEdgeIds,
+    });
+  }, [merged, filterChoices]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">

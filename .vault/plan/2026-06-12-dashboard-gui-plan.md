@@ -11,6 +11,15 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-gui` plan
 
@@ -83,7 +92,7 @@ Implements the details-first interaction model per G3.b: constellation, ego high
 
 Implements the single filter model spanning stage and timeline per G3.f: engine-enumerated vocabulary, tier dial, facet chips, and named lenses.
 
-- [ ] `W02.P07.S28` - implement the filter model bound to the engine-enumerated filters vocabulary with per-tier confidence floats per G3.f and contract redline R3; `frontend/src/stores/view/filters.ts`.
+- [x] `W02.P07.S28` - implement the filter model bound to the engine-enumerated filters vocabulary with per-tier confidence floats per G3.f and contract redline R3; `frontend/src/stores/view/filters.ts`.
 - [ ] `W02.P07.S29` - build the tier dial control with per-tier toggles and confidence thresholds, semantic rendered inapplicable in time-travel, per G3.f and G4.b; `frontend/src/app/stage/TierDial.tsx`.
 - [ ] `W02.P07.S30` - build the facet chip bar for doc type, feature, relation, structural status, text match, with the hidden-count chip per G3.f; `frontend/src/app/stage/FilterBar.tsx`.
 - [ ] `W02.P07.S31` - implement named lenses saved client-side and exposed to the command palette per G3.f and G5.d; `frontend/src/stores/view/lenses.ts`.
