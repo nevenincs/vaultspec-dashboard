@@ -21,6 +21,7 @@ import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
+import { TimeTravelChip } from "../timeline/Playhead";
 import { Discover } from "./Discover";
 import { FilterBar } from "./FilterBar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
@@ -150,6 +151,7 @@ export function Stage() {
       />
       <WorkingSet />
       <Discover />
+      <TimeTravelChip />
       <IslandLayer scene={scene.controller} />
       {!slice.data && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">

@@ -1,6 +1,7 @@
 import { useEngineStatus } from "../stores/server/engine";
 import { useViewStore } from "../stores/view/viewStore";
 import { Stage } from "./stage/Stage";
+import { Playhead } from "./timeline/Playhead";
 import { Timeline } from "./timeline/Timeline";
 
 // Four-region skeleton in the converged agentic-desktop idiom (gui-spec §2):
@@ -46,7 +47,7 @@ export function AppShell() {
         </aside>
       </div>
       <footer className="border-t border-stone-200">
-        <Timeline />
+        <Timeline overlay={<Playhead />} />
       </footer>
     </div>
   );
