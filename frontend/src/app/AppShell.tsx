@@ -1,5 +1,6 @@
 import { useViewStore } from "../stores/view/viewStore";
 import { VaultBrowser } from "./left/VaultBrowser";
+import { CommandPalette } from "./palette/CommandPalette";
 import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
 import { OpsPanel } from "./right/OpsPanel";
@@ -22,6 +23,7 @@ export function AppShell() {
 
   return (
     <div className="grid h-screen grid-rows-[1fr_8rem] bg-stone-50 text-stone-900">
+      <CommandPalette />
       <div
         className="grid min-h-0"
         style={{
