@@ -64,9 +64,13 @@ impl LinkageGraph {
     pub(crate) fn insert_validated_edge(&mut self, edge: Edge, attrs: EdgeAttrs) {
         let id = edge.id.clone();
         if let Some(existing) = self.edges.get_mut(&id) {
-            // Same stable id = same logical edge: aggregate multiplicity,
-            // keep the freshest observation (audit W01P01-003 decision).
-            existing.attrs.multiplicity += attrs.multiplicity.max(1);
+            // Same stable id = same logical edge. REPLACE semantics (audit
+            // W02P05-202): multiplicity is aggregated upstream at
+            // extraction granularity and arrives as a single value, so
+            // re-ingestion of the same source is idempotent — the
+            // incrementally-maintained graph converges to the cold rebuild
+            // (D8.2). Incrementing here would inflate per re-index.
+            existing.attrs.multiplicity = attrs.multiplicity.max(1);
             if attrs.weight.is_some() {
                 existing.attrs.weight = attrs.weight;
             }

@@ -87,10 +87,10 @@ pub fn validate(edge: &Edge) -> Result<(), EdgeError> {
     Ok(())
 }
 
-/// Validate and insert. Same-id re-observations aggregate multiplicity and
-/// keep the freshest observation (audit W01P01-003: multiplicity is
-/// explicitly tracked at ingestion; audit W01P03-103: core's weight is
-/// explicitly carried on [`EdgeAttrs`]).
+/// Validate and insert. Same-id re-ingestion REPLACES (idempotent, audit
+/// W02P05-202): multiplicity is aggregated at extraction granularity and
+/// passed once via [`EdgeAttrs`] (audit W01P01-003); core's weight is
+/// explicitly carried (audit W01P03-103). The freshest observation wins.
 pub fn ingest(graph: &mut LinkageGraph, edge: Edge, attrs: EdgeAttrs) -> Result<(), EdgeError> {
     validate(&edge)?;
     graph.insert_validated_edge(edge, attrs);
@@ -191,16 +191,35 @@ mod tests {
     }
 
     #[test]
-    fn same_id_reobservation_aggregates_multiplicity() {
+    fn same_id_reingestion_is_idempotent_replace_not_increment() {
+        // Audit W02P05-202: re-ingesting the same logical edge (dirtied
+        // doc re-extract, double watcher fire) must not inflate
+        // multiplicity — the value is aggregated upstream and replaces.
         let mut g = LinkageGraph::new();
         let e = edge(Tier::Declared, 1.0, None);
-        ingest(&mut g, e.clone(), EdgeAttrs::default()).unwrap();
+        ingest(
+            &mut g,
+            e.clone(),
+            EdgeAttrs {
+                multiplicity: 3,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let mut later = e.clone();
         later.observed_at = 99;
-        ingest(&mut g, later, EdgeAttrs::default()).unwrap();
+        ingest(
+            &mut g,
+            later,
+            EdgeAttrs {
+                multiplicity: 3,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(g.edge_count(), 1, "one logical edge");
         let stored = g.edge(&e.id).unwrap();
-        assert_eq!(stored.attrs.multiplicity, 2, "observations aggregated");
+        assert_eq!(stored.attrs.multiplicity, 3, "replace, never inflate");
         assert_eq!(stored.edge.observed_at, 99, "freshest observation kept");
     }
 }

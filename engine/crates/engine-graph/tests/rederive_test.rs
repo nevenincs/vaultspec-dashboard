@@ -57,6 +57,20 @@ fn full_index_from_deleted_cache_converges_to_the_identical_graph() {
     // D8.2: identical graph, byte-equal under canonical serialization.
     assert_eq!(snapshot_a, canonical_snapshot(&graph_c));
 
+    // Incremental-vs-cold convergence (audit W02P05-202): re-ingesting the
+    // same documents INTO the already-populated graph must be idempotent —
+    // the maintained graph converges to the cold rebuild, never inflates.
+    let mut graph_incremental = graph_c;
+    engine_graph::index::index_worktree_into(&mut graph_incremental, root, &scope, &store, 0)
+        .unwrap();
+    engine_graph::index::index_worktree_into(&mut graph_incremental, root, &scope, &store, 0)
+        .unwrap();
+    assert_eq!(
+        snapshot_a,
+        canonical_snapshot(&graph_incremental),
+        "double re-ingestion converges to the cold rebuild"
+    );
+
     // Warm graph differs only in observed_at, never in identity/topology:
     // node and edge ids are stable across runs (contract sec 2).
     let ids = |snap: &str| {

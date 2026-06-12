@@ -46,15 +46,28 @@ pub struct IndexStats {
     pub edges: usize,
 }
 
-/// Index one worktree scope: vault documents → document nodes + structural
-/// edges, parallel per-document extraction, content-hash skip via the
-/// store cache.
+/// Index one worktree scope into a fresh graph (the cold path).
 pub fn index_worktree(
     root: &Path,
     scope: &ScopeRef,
     store: &engine_store::Store,
     observed_at: Timestamp,
 ) -> Result<(LinkageGraph, IndexStats)> {
+    let mut graph = LinkageGraph::new();
+    let stats = index_worktree_into(&mut graph, root, scope, store, observed_at)?;
+    Ok((graph, stats))
+}
+
+/// Index one worktree scope into an existing graph — the watcher's partial
+/// re-ingestion path. **Idempotent** (audit W02P05-202): re-ingesting the
+/// same documents converges to the cold rebuild, never inflates.
+pub fn index_worktree_into(
+    graph: &mut LinkageGraph,
+    root: &Path,
+    scope: &ScopeRef,
+    store: &engine_store::Store,
+    observed_at: Timestamp,
+) -> Result<IndexStats> {
     let docs = vault_documents(root)?;
     let mut stats = IndexStats {
         documents: docs.len(),
@@ -72,7 +85,6 @@ pub fn index_worktree(
         })
         .collect::<Result<_>>()?;
 
-    let mut graph = LinkageGraph::new();
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
         let feature_tags = frontmatter_feature_tags(&text);
@@ -112,13 +124,33 @@ pub fn index_worktree(
 
         // Resolution always runs against the *current* tree (resolution
         // state is live signal, not cacheable fact).
+        //
+        // Multiplicity aggregates at extraction granularity (audit
+        // W02P05-202 / W01P01-003): repeated same-target mentions in one
+        // document collapse to one edge carrying the count, ingested once
+        // — so re-ingestion replaces instead of inflating.
+        let mut by_id: std::collections::BTreeMap<String, (Edge, u32)> =
+            std::collections::BTreeMap::new();
         for resolved in resolve(root, mentions) {
             let edge = structural_edge(&stem, &blob_hash, &resolved, scope, observed_at);
+            by_id
+                .entry(edge.id.0.clone())
+                .and_modify(|(_, count)| *count += 1)
+                .or_insert((edge, 1));
+        }
+        for (_, (edge, multiplicity)) in by_id {
             stats.edges += 1;
-            crate::edges::ingest(&mut graph, edge, EdgeAttrs::default())?;
+            crate::edges::ingest(
+                graph,
+                edge,
+                EdgeAttrs {
+                    multiplicity,
+                    ..Default::default()
+                },
+            )?;
         }
     }
-    Ok((graph, stats))
+    Ok(stats)
 }
 
 /// Build the structural edge for one resolved mention.
