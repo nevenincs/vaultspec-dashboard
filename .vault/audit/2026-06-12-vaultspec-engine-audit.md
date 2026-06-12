@@ -92,6 +92,14 @@ The second flag: at time T, path and wiki-stem mentions resolve fully against th
 
 `same-day-same-branch` checks same-day within the window but carries no branch predicate (records are not branch-attributed; the scope on the edge is the only branch context). Either rename the rule (`same-day-co-activity`) or note in the rule doc that branch identity rides the edge scope. Naming only - the confidence and provenance mechanics are correct.
 
+## W02P08-501 | medium | the 401 redline did not land before P08 - now a hard gate at the serve boundary
+
+The W02.P07 review's 401 redline (drop the rule name from `CommitCorrelation::stable_key`; temporal edge identity per (commit, record)) crossed in flight with the P08 build: the stable key still reads `commit:{sha}:{rule}`, and P08 has now frozen ids on the internal query surface with rule-bearing temporal identity. Still cheap: no external consumer exists until the serve mode ships ids over HTTP. Elevated to a HARD GATE at W03.P11: apply the redline (one-line stable-key change plus an id-stability test across a rule upgrade) before any endpoint serves an edge id. After P11 it is corpus-breaking against live GUI caches.
+
+## W02P09-502 | low | in-crate loopback transport ACCEPTED - with a chunked-framing redline
+
+The executor's S38 flag: no HTTP client crate; a ~40-line loopback HTTP/1.1 POST behind a pluggable `RagTransport` trait. RULED: accepted for v1 - the dependency frugality is defensible (the ADR's deliberately-few list names no client; the service is loopback JSON, not an auth boundary), and the trait seam means a crate swap later is contained. Redline with it: the transport assumes `Content-Length` + `Connection: close` framing and reads to EOF; if the rag service ever responds `Transfer-Encoding: chunked` (uvicorn may, for responses without a known length), the body handed to the JSON parser contains chunk framing and fails as a confusing parse error. Required: detect `Transfer-Encoding: chunked` in the response head and either de-chunk (small) or fail with a typed error naming the limitation, plus a test; revisit a real client crate (`ureq`-class) only if rag ever streams.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
@@ -129,6 +137,13 @@ W02.P07 boundary (fifth entry):
 - W02P07-402: v1 as-of bound approved; the structural-tier degradation note on historical views is owed by the P08 envelope work.
 - W02P07-403: naming nit, executor's discretion.
 - Standing before P08 ids freeze: W02P06-301 (unresolved-target identity) and the 401 redline are the two id-shape decisions; settle both first, they are the last cheap moment.
+W02.P08 + W02.P09 boundary - Wave W02 closes (sixth entry):
+
+- Close W02.P08 and W02.P09; Wave W02 is complete (40/56 steps). Reviewer independently re-ran the full workspace suite: 22 suites, zero failures. Verified in code: the structural-state facet powers the broken lens with deny-unknown validation; the envelope carries the always-present tier block with a reason mechanism (the 402 historical-view note is now a wiring obligation on the P11 as-of endpoints); `resolved_target` rides the edge attributes into evidence responses, satisfying the 301 bridge requirement at the data level; semantic ephemerality is type-enforced; the rag TTL cache proves at-most-one live call per window.
+- W02P08-501: the 401 stable-key redline is the standing HARD GATE at W03.P11 - apply before any endpoint serves an edge id.
+- W02P09-502: in-crate transport accepted; chunked-framing redline owed (typed error or de-chunking, plus test).
+- Carries into W03 now consolidated: 501 (temporal stable key, P11 gate), 303 (prune-on-reingest, P11 watcher wiring), 502 (chunked framing, P11-or-sooner), 402-note (as-of envelope reason, P11), 203 (meta-edge memoization, P11 if hot), 104 (memoization + gitignore, P12).
+
 - Post-crossing addendum: W02P06-301 verified CLOSED at `f19b13d` - mention-derived identity per the reviewer lean (step mentions `plan:` + canonical identifier alone, symbols by unqualified `#symbol` form, paths/wiki unchanged; per-kind broken-vs-resolved identity test). Namespaces verified disjoint from real plan-container and code-artifact ids, so no collision - but also no automatic join: a mention-target node never id-equals the real container/file node it resolves to. Consequence for W02.P08 node detail and evidence: the resolved-target attribute is the bridge and must be surfaced as a navigable link to the real node, or step/symbol mentions become dead ends in the GUI. W02P06-303 confirmed as a named gate at the W03.P11 watcher wiring.
 
 ## Codification candidates
