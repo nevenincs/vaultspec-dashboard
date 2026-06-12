@@ -7,8 +7,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-research]]"
 ---
 
-
-
 # `vaultspec-engine` adr: `vaultspec engine architecture` | (**status:** `accepted`)
 
 Migrated from the kickoff working set (`tmp/kickoff/`) on 2026-06-12; this
@@ -252,13 +250,13 @@ gets entity identity for free by standing on that convention.
 
 Node kinds, with their identity keys:
 
-| Kind            | Identity key                              | Branch-variant? |
-| --------------- | ----------------------------------------- | --------------- |
-| Feature         | feature tag                               | no (key) — yes (facets) |
-| Document        | vault stem (filename sans `.md`)          | no — yes        |
-| Plan container  | plan stem + canonical id (`W##/P##/S##`)  | no — yes        |
-| Commit          | SHA                                       | inherently ref-scoped |
-| Code artifact   | repo-relative path (+ symbol qualifier)   | yes per ref     |
+| Kind           | Identity key                             | Branch-variant?         |
+| -------------- | ---------------------------------------- | ----------------------- |
+| Feature        | feature tag                              | no (key) — yes (facets) |
+| Document       | vault stem (filename sans `.md`)         | no — yes                |
+| Plan container | plan stem + canonical id (`W##/P##/S##`) | no — yes                |
+| Commit         | SHA                                      | inherently ref-scoped   |
+| Code artifact  | repo-relative path (+ symbol qualifier)  | yes per ref             |
 
 ### 4.2 Identity across branches: key vs. facet
 
@@ -536,17 +534,17 @@ ______________________________________________________________________
 
 ## 10. Decision register (rollup)
 
-| ID | Decision |
-| --- | --- |
-| D1.1–D1.3 | One Rust binary, CLI + serve; engine core strictly read-and-infer (sole exception: the namespaced `/ops/*` pass-through); inferences never written back |
-| D2.1–D2.5 | Workspace = common git dir; worktrees privileged, remote refs degraded; advisory branch classification; incremental hash-keyed indexing; `gix` |
-| D3.1–D3.5 | One edge schema; fixed confidence bands; broken-edge retention; named temporal rules with opportunistic enrichment; ephemeral semantic tier |
-| D4.1–D4.4 | Feature-convergence as primary entity; key+facet cross-branch identity; no v1 rename detection; `context()` as orchestration seam |
-| D5.1–D5.3 | Core via CLI `--json` + direct body reads; rag via optional loopback HTTP; sibling gaps filed upstream |
-| D6.1–D6.2 | One query core behind both front doors; core-compatible JSON envelopes |
+| ID        | Decision                                                                                                                                                                                                                                      |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1.1–D1.3 | One Rust binary, CLI + serve; engine core strictly read-and-infer (sole exception: the namespaced `/ops/*` pass-through); inferences never written back                                                                                       |
+| D2.1–D2.5 | Workspace = common git dir; worktrees privileged, remote refs degraded; advisory branch classification; incremental hash-keyed indexing; `gix`                                                                                                |
+| D3.1–D3.5 | One edge schema; fixed confidence bands; broken-edge retention; named temporal rules with opportunistic enrichment; ephemeral semantic tier                                                                                                   |
+| D4.1–D4.4 | Feature-convergence as primary entity; key+facet cross-branch identity; no v1 rename detection; `context()` as orchestration seam                                                                                                             |
+| D5.1–D5.3 | Core via CLI `--json` + direct body reads; rag via optional loopback HTTP; sibling gaps filed upstream                                                                                                                                        |
+| D6.1–D6.2 | One query core behind both front doors; core-compatible JSON envelopes                                                                                                                                                                        |
 | D7.1–D7.5 | Single-origin loopback HTTP+JSON+SSE serving the SPA; stateless per-request scope; engine-owned filter objects; semantic excluded from `as_of`; blob-true keyframe+diff time-travel on one delta clock; transparent whitelisted pass-throughs |
-| D8.1–D8.2 | In-memory graph + SQLite derived cache; full re-derivability |
-| D9.1–D9.2 | Cargo workspace here; per-platform wheels bundle the binary |
+| D8.1–D8.2 | In-memory graph + SQLite derived cache; full re-derivability                                                                                                                                                                                  |
+| D9.1–D9.2 | Cargo workspace here; per-platform wheels bundle the binary                                                                                                                                                                                   |
 
 **Upstream dependencies (register inputs — tracked against the siblings, not
 decided here):**

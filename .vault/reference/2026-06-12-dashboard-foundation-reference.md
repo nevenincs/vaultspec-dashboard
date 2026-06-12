@@ -8,8 +8,6 @@ related:
   - "[[2026-06-12-dashboard-gui-adr]]"
 ---
 
-
-
 # `dashboard-foundation` reference: `engine-GUI contract`
 
 Migrated from the kickoff working set (`tmp/kickoff/`) on 2026-06-12; this
@@ -69,12 +67,8 @@ until implementation.
   (float 0..1, per R3), edge relation types, **structural edge state
   (resolved|stale|broken — powers the "show broken" lens)**, node kinds/doc
   types, feature tags, date range, text match. Response: nodes + edges.
-  - Edge fields: `id, src, dst, relation, direction, tier, confidence,
-    state (structural only: resolved|stale|broken), provenance,
-    observed_at`.
-  - Node fields: `id, kind, doc_type?, feature_tags[], title, dates
-    {created, modified}, lifecycle {state, progress?: {done, total}},
-    degree_by_tier {declared, structural, temporal, semantic}`.
+  - Edge fields: `id, src, dst, relation, direction, tier, confidence, state (structural only: resolved|stale|broken), provenance, observed_at`.
+  - Node fields: `id, kind, doc_type?, feature_tags[], title, dates {created, modified}, lifecycle {state, progress?: {done, total}}, degree_by_tier {declared, structural, temporal, semantic}`.
   - **Constellation granularity:** queries at feature level return
     feature↔feature edges as **engine-aggregated meta-edges**
     `{count, breakdown_by_tier}` derived from the underlying document-level
@@ -101,8 +95,7 @@ until implementation.
   (commits, doc modifications, vault lifecycle events). **Engine-side
   bucketing committed**: `bucket=auto|raw|1h|1d|…`. The engine owns
   downsampling.
-  - Raw event fields: `{id (stable), ts, kind, ref (sha|path|stem),
-    node_ids[]}` — `node_ids` is load-bearing: timeline click → pulse the
+  - Raw event fields: `{id (stable), ts, kind, ref (sha|path|stem), node_ids[]}` — `node_ids` is load-bearing: timeline click → pulse the
     corresponding stage nodes; range-select → highlight; both join on it.
   - Bucketed response: per-bucket `{from, to, counts_by_kind}`.
 - **Time-travel: keyframe + diff (option (b), committed).**

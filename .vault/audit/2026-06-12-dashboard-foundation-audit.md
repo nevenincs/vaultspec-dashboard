@@ -8,8 +8,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-
-
 # `dashboard-foundation` audit: `foundation rollout`
 
 Migrated from the kickoff working set (`tmp/kickoff/`) on 2026-06-12; this
@@ -30,18 +28,18 @@ One workspace, ten crates, dependency arrow always pointing at
 `engine-model`. All crates compile; 12 unit tests pass; `cargo fmt --check`
 and `cargo clippy --workspace --all-targets -- -D warnings` are clean.
 
-| Crate | Role | External deps |
-| --- | --- | --- |
-| `engine-model` | Pure types: Node, Edge, Tier, Provenance, ScopeRef, Facet — zero I/O, the dependency sink | serde 1.0.228 |
-| `engine-store` | SQLite derived-artifact cache at `.vault/data/engine-data/` (D8.1) | rusqlite 0.40.1 (bundled) |
-| `ingest-core` | core CLI `--json` adapter; pins `vaultspec.vault.graph.v2`, loud failure on unknown schema (D5.1) | — |
-| `ingest-git` | gix-based workspace/worktree/ref discovery + the four named temporal rules (D2.5, D3.4) | gix 0.84.0 |
-| `ingest-struct` | body extraction: paths, `W##.P##.S##` step ids (working recognizer + tests), wiki-links, symbols | — |
-| `rag-client` | semantic tier over loopback HTTP; 0.7 confidence cap enforced in code (D3.5) | — |
-| `engine-graph` | in-memory graph; `degree_by_tier` implemented as a query-time projection (contract §4) | — |
-| `engine-query` | the one shared query core behind both front doors (D6.1); status rollup | — |
+| Crate           | Role                                                                                                                                                                    | External deps                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `engine-model`  | Pure types: Node, Edge, Tier, Provenance, ScopeRef, Facet — zero I/O, the dependency sink                                                                               | serde 1.0.228                      |
+| `engine-store`  | SQLite derived-artifact cache at `.vault/data/engine-data/` (D8.1)                                                                                                      | rusqlite 0.40.1 (bundled)          |
+| `ingest-core`   | core CLI `--json` adapter; pins `vaultspec.vault.graph.v2`, loud failure on unknown schema (D5.1)                                                                       | —                                  |
+| `ingest-git`    | gix-based workspace/worktree/ref discovery + the four named temporal rules (D2.5, D3.4)                                                                                 | gix 0.84.0                         |
+| `ingest-struct` | body extraction: paths, `W##.P##.S##` step ids (working recognizer + tests), wiki-links, symbols                                                                        | —                                  |
+| `rag-client`    | semantic tier over loopback HTTP; 0.7 confidence cap enforced in code (D3.5)                                                                                            | —                                  |
+| `engine-graph`  | in-memory graph; `degree_by_tier` implemented as a query-time projection (contract §4)                                                                                  | —                                  |
+| `engine-query`  | the one shared query core behind both front doors (D6.1); status rollup                                                                                                 | —                                  |
 | `vaultspec-api` | axum serve skeleton: `/health` + `/status` live (with truthful per-tier degradation block per contract §2); full contract route inventory recorded as a tested constant | axum 0.8.9, tokio 1.52, serde_json |
-| `vaultspec-cli` | the `vaultspec` bin: clap skeletons for map / index / graph / node / events / serve / status, global `--json` + `--scope` | clap 4.6.1, tokio, serde_json |
+| `vaultspec-cli` | the `vaultspec` bin: clap skeletons for map / index / graph / node / events / serve / status, global `--json` + `--scope`                                               | clap 4.6.1, tokio, serde_json      |
 
 Behavior verified live:
 
@@ -123,13 +121,13 @@ Playwright, 2026-06-12. **This is a discrete GPU — the spec's gate is
 "on integrated GPUs", which this machine cannot provide.** Numbers below
 are therefore an upper bound; the integrated-GPU pass remains open (§4).
 
-| Corpus | Phase | avg fps | avg ms | p95 ms |
-| --- | --- | --- | --- | --- |
-| 1k / 5k | layout running (FA2 worker, full per-frame re-sync + edge re-tessellation) | 59.5 | 16.8 | 18.6 |
-| 1k / 5k | settled, still rebuilding per frame | 60.1 | 16.6 | 18.7 |
-| 10k / 50k | layout running (full per-frame rebuild) | 8.7 | 114.7 | 181.1 |
-| 10k / 50k | settled, still rebuilding per frame | 7.5 | 134.0 | 260.6 |
-| 10k / 50k | **static field (geometry uploaded once, render only)** | **60.4** | **16.6** | **17.7** |
+| Corpus    | Phase                                                                      | avg fps  | avg ms   | p95 ms   |
+| --------- | -------------------------------------------------------------------------- | -------- | -------- | -------- |
+| 1k / 5k   | layout running (FA2 worker, full per-frame re-sync + edge re-tessellation) | 59.5     | 16.8     | 18.6     |
+| 1k / 5k   | settled, still rebuilding per frame                                        | 60.1     | 16.6     | 18.7     |
+| 10k / 50k | layout running (full per-frame rebuild)                                    | 8.7      | 114.7    | 181.1    |
+| 10k / 50k | settled, still rebuilding per frame                                        | 7.5      | 134.0    | 260.6    |
+| 10k / 50k | **static field (geometry uploaded once, render only)**                     | **60.4** | **16.6** | **17.7** |
 
 (1k/5k with naive per-edge strokes — before batching strokes per tier — was
 51–54 fps; batching restored vsync lock. Kept as a data point on how
@@ -169,28 +167,28 @@ ______________________________________________________________________
 
 ## 3. Version verifications (delegated to a Sonnet subagent, live registries, 2026-06-12)
 
-| Spec named | Verified current | Action taken |
-| --- | --- | --- |
-| React 19.x | 19.2.7 | as specified |
-| Vite 6 | **8.0.16 (Vite 6 is two majors behind; `previous` dist-tag)** | **DEVIATION: scaffolded on Vite 8** (see §5) |
-| TypeScript (unpinned) | 6.0.3 | TS 6 adopted |
-| TanStack Router | 1.170.x | as specified |
-| TanStack Query v5 | 5.101.0 | as specified |
-| Zustand | 5.0.14 | as specified |
-| Tailwind v4 | 4.3.0 (+ @tailwindcss/vite) | as specified |
-| Base UI | **1.0.0-rc.0 — still RC, no stable GA** | not installed (no primitives needed yet); flag against G5.c at implementation |
-| pixi.js v8 | 8.19.0 | as specified |
-| @pixi/react v8 | 8.0.5 (React ≥19 only) | installed, unused yet (islands are plain DOM in the spike) |
-| graphology / FA2 | 0.26.0 / 0.10.1 (worker is a path export, not a separate package) | as specified |
-| sigma v3 (fallback) | 3.0.3 | installed as named fallback |
-| d3-interpolate / d3-ease | 3.0.1 / 3.0.1 | as specified |
-| vitest | 4.1.8 (v4, aligns with Vite 8) | adopted |
-| eslint / typescript-eslint | 10.4.1 / 8.61.0 (@eslint/js is 10.0.1, versioned separately) | adopted |
-| gix | 0.84.0 | as specified (pure Rust, D2.5) |
-| tokio / axum / rusqlite / clap / serde | 1.52 / 0.8.9 / 0.40.1 / 4.6.1 / 1.0.228 | as specified |
-| notify | **9.0.0-rc.4 is RC; stable is 8.x** | not yet needed (no watcher in scaffold); pin 8.x when the watcher lands |
-| Node floor (Vite 8) | ^20.19.0 \|\| >=22.12.0 | recorded in package.json `engines`; machine runs Node 24 |
-| Rust | **rustc 1.93 → 1.96.0** | toolchain updated: libsqlite3-sys 0.38 (under rusqlite 0.40) needs `cfg_select`, unstable in 1.93. Workspace `rust-version = "1.96"` |
+| Spec named                             | Verified current                                                  | Action taken                                                                                                                         |
+| -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| React 19.x                             | 19.2.7                                                            | as specified                                                                                                                         |
+| Vite 6                                 | **8.0.16 (Vite 6 is two majors behind; `previous` dist-tag)**     | **DEVIATION: scaffolded on Vite 8** (see §5)                                                                                         |
+| TypeScript (unpinned)                  | 6.0.3                                                             | TS 6 adopted                                                                                                                         |
+| TanStack Router                        | 1.170.x                                                           | as specified                                                                                                                         |
+| TanStack Query v5                      | 5.101.0                                                           | as specified                                                                                                                         |
+| Zustand                                | 5.0.14                                                            | as specified                                                                                                                         |
+| Tailwind v4                            | 4.3.0 (+ @tailwindcss/vite)                                       | as specified                                                                                                                         |
+| Base UI                                | **1.0.0-rc.0 — still RC, no stable GA**                           | not installed (no primitives needed yet); flag against G5.c at implementation                                                        |
+| pixi.js v8                             | 8.19.0                                                            | as specified                                                                                                                         |
+| @pixi/react v8                         | 8.0.5 (React ≥19 only)                                            | installed, unused yet (islands are plain DOM in the spike)                                                                           |
+| graphology / FA2                       | 0.26.0 / 0.10.1 (worker is a path export, not a separate package) | as specified                                                                                                                         |
+| sigma v3 (fallback)                    | 3.0.3                                                             | installed as named fallback                                                                                                          |
+| d3-interpolate / d3-ease               | 3.0.1 / 3.0.1                                                     | as specified                                                                                                                         |
+| vitest                                 | 4.1.8 (v4, aligns with Vite 8)                                    | adopted                                                                                                                              |
+| eslint / typescript-eslint             | 10.4.1 / 8.61.0 (@eslint/js is 10.0.1, versioned separately)      | adopted                                                                                                                              |
+| gix                                    | 0.84.0                                                            | as specified (pure Rust, D2.5)                                                                                                       |
+| tokio / axum / rusqlite / clap / serde | 1.52 / 0.8.9 / 0.40.1 / 4.6.1 / 1.0.228                           | as specified                                                                                                                         |
+| notify                                 | **9.0.0-rc.4 is RC; stable is 8.x**                               | not yet needed (no watcher in scaffold); pin 8.x when the watcher lands                                                              |
+| Node floor (Vite 8)                    | ^20.19.0 \|\| >=22.12.0                                           | recorded in package.json `engines`; machine runs Node 24                                                                             |
+| Rust                                   | **rustc 1.93 → 1.96.0**                                           | toolchain updated: libsqlite3-sys 0.38 (under rusqlite 0.40) needs `cfg_select`, unstable in 1.93. Workspace `rust-version = "1.96"` |
 
 ______________________________________________________________________
 
@@ -219,12 +217,10 @@ ______________________________________________________________________
   architectural commitments are what's binding") — gui-spec §5.2 is being
   amended accordingly. Two riders from that approval, recorded:
   - *Worker story under Vite 8:* verified **in the spike, in dev mode** —
-    the FA2 layout ran in its web worker (`graphology-layout-forceatlas2/
-    worker`, which spawns its worker from an inline blob rather than a Vite
+    the FA2 layout ran in its web worker (`graphology-layout-forceatlas2/ worker`, which spawns its worker from an inline blob rather than a Vite
     `?worker` import) and drove live position updates throughout both
     measured corpora. Not yet verified: worker bundling in a **production**
-    build, because the spike entry is deliberately excluded from `vite
-    build`. When the real field component lands in `src/`, re-verify the
+    build, because the spike entry is deliberately excluded from `vite build`. When the real field component lands in `src/`, re-verify the
     worker path in a built bundle (and prefer Vite-native `?worker` imports
     for our own workers).
   - *Base UI at 1.0.0-rc:* open re-check at primitive-adoption time —
@@ -242,16 +238,16 @@ ______________________________________________________________________
 
 ## 6. Verification matrix (all run 2026-06-12)
 
-| Check | Result |
-| --- | --- |
-| `cargo test --workspace` | 12 passed, 0 failed |
-| `cargo fmt --all -- --check` | clean |
-| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
-| `vaultspec status/--help/serve` live smoke | as designed (incl. loopback bind + `/health`, `/status` over HTTP) |
-| `npm run typecheck` (tsc -b) | clean |
-| `npm run lint` (eslint 10) | clean |
-| `npm run format:check` (prettier) | clean |
-| `npm run test` (vitest 4) | 8 passed (3 files) |
-| `npm run build` (production bundle) | dist/ 97 kB gzip, spike excluded |
-| Spike at 1k/5k and 10k/50k | see §2 |
-| `npm audit` at install | 0 vulnerabilities |
+| Check                                                   | Result                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------ |
+| `cargo test --workspace`                                | 12 passed, 0 failed                                                |
+| `cargo fmt --all -- --check`                            | clean                                                              |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean                                                              |
+| `vaultspec status/--help/serve` live smoke              | as designed (incl. loopback bind + `/health`, `/status` over HTTP) |
+| `npm run typecheck` (tsc -b)                            | clean                                                              |
+| `npm run lint` (eslint 10)                              | clean                                                              |
+| `npm run format:check` (prettier)                       | clean                                                              |
+| `npm run test` (vitest 4)                               | 8 passed (3 files)                                                 |
+| `npm run build` (production bundle)                     | dist/ 97 kB gzip, spike excluded                                   |
+| Spike at 1k/5k and 10k/50k                              | see §2                                                             |
+| `npm audit` at install                                  | 0 vulnerabilities                                                  |

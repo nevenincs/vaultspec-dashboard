@@ -6,8 +6,6 @@ date: '2026-06-12'
 related: []
 ---
 
-
-
 # `dashboard-foundation` research: `project definition and kickoff ideation`
 
 Migrated from the kickoff working set (`tmp/kickoff/`) on 2026-06-12; this
@@ -145,11 +143,11 @@ The two phases share this spine.
      carries lifecycle state; the representation can express progress (a
      feature node that knows its plan is half-executed) and history (the
      network as it stood at a point in time).
-2. **Backend visual control.** A control surface over the two backends:
+1. **Backend visual control.** A control surface over the two backends:
    vaultspec-core health (vault stats, check results, feature state) and the
    vaultspec-rag service (service/watcher status, index counts, jobs, GPU
    state), including operational actions the backends already expose.
-3. **RAG search interface.** The human front-end for asking and browsing the
+1. **RAG search interface.** The human front-end for asking and browsing the
    semantic databases: query vault and codebase indexes, apply the existing
    filter vocabulary, and browse results through to source documents and code.
 
@@ -294,9 +292,9 @@ monolith fused to one rendering of the vault).
 
 1. **`vaultspec` engine** — the non-GUI CLI relationship/context aggregation
    engine. Prioritized; the cross-linkage system is worth building first.
-2. **GUI** — the visual surface (graph representation, backend control, search
+1. **GUI** — the visual surface (graph representation, backend control, search
    interface), consuming the engine.
-3. **Agent orchestration** — future extension, sharing the engine as its
+1. **Agent orchestration** — future extension, sharing the engine as its
    context-packing spine.
 
 ## Standing conflicts (acknowledged, to resolve at write-up)

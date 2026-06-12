@@ -7,8 +7,6 @@ related:
   - "[[2026-06-12-dashboard-foundation-research]]"
 ---
 
-
-
 # `dashboard-gui` adr: `dashboard GUI architecture` | (**status:** `accepted`)
 
 Migrated from the kickoff working set (`tmp/kickoff/`) on 2026-06-12; this
@@ -24,7 +22,7 @@ Research basis: three delegated surveys (graph-visualization literature; GPU
 graph-renderer landscape; frontend stack/delivery), synthesized in §11. Claims
 below that lean on them cite §11 inline.
 
----
+______________________________________________________________________
 
 ## 1. Design stance
 
@@ -223,12 +221,12 @@ The user can always answer "why is this node on my screen?"
 Four provenance tiers, four fixed line treatments (stable across the whole
 product — this encoding is part of the visual language, §7.3):
 
-| Tier       | Treatment                                  | Direction              | Confidence            |
-| ---------- | ------------------------------------------ | ---------------------- | --------------------- |
-| Declared   | solid inked line                           | arrowhead + verb label | n/a (authoritative)   |
-| Structural | drawn line, status-colored: resolved/stale/broken | arrowhead       | binary + status       |
-| Temporal   | dotted line                                | flow gradient          | opacity by confidence |
-| Semantic   | soft translucent stroke ("haze")           | none (associative)     | opacity/width by score |
+| Tier       | Treatment                                         | Direction              | Confidence             |
+| ---------- | ------------------------------------------------- | ---------------------- | ---------------------- |
+| Declared   | solid inked line                                  | arrowhead + verb label | n/a (authoritative)    |
+| Structural | drawn line, status-colored: resolved/stale/broken | arrowhead              | binary + status        |
+| Temporal   | dotted line                                       | flow gradient          | opacity by confidence  |
+| Semantic   | soft translucent stroke ("haze")                  | none (associative)     | opacity/width by score |
 
 - Relation verbs (fulfills, implements, resolves, reviews…) render as edge
   labels only at high zoom or on hover/selection — never in the wide view.
@@ -634,13 +632,13 @@ Illustration is functional, not wallpaper. Its assigned jobs:
 
 ## 8. Degradation matrix (truthfulness, operationalized)
 
-| Condition                  | Stage                            | Timeline                  | Rail                         | Search                  |
-| -------------------------- | -------------------------------- | ------------------------- | ---------------------------- | ----------------------- |
-| rag absent/down            | semantic tier absent; tier dial shows it offline | unaffected | rag card: drawn degraded state + start verb | text-match fallback + notice |
-| core date-mandate not landed | unaffected                     | lifecycle lane sparse + explainer | in-flight card: designed pre-landing degraded state | unaffected              |
-| structural links broken    | broken edges in warning treatment; "show broken" lens | n/a   | count surfaced               | n/a                     |
-| engine stream lost         | stale badge + auto-reconnect; cached view persists | LIVE chip becomes RECONNECTING | cards stale-badged | degraded               |
-| no vault in worktree       | invitation empty-state illustration | empty            | git still live               | n/a                     |
+| Condition                    | Stage                                                 | Timeline                          | Rail                                                | Search                       |
+| ---------------------------- | ----------------------------------------------------- | --------------------------------- | --------------------------------------------------- | ---------------------------- |
+| rag absent/down              | semantic tier absent; tier dial shows it offline      | unaffected                        | rag card: drawn degraded state + start verb         | text-match fallback + notice |
+| core date-mandate not landed | unaffected                                            | lifecycle lane sparse + explainer | in-flight card: designed pre-landing degraded state | unaffected                   |
+| structural links broken      | broken edges in warning treatment; "show broken" lens | n/a                               | count surfaced                                      | n/a                          |
+| engine stream lost           | stale badge + auto-reconnect; cached view persists    | LIVE chip becomes RECONNECTING    | cards stale-badged                                  | degraded                     |
+| no vault in worktree         | invitation empty-state illustration                   | empty                             | git still live                                      | n/a                          |
 
 Every degraded state is designed (7.4), reachable in development via a debug
 switch, and tested. Degradation is a feature with a spec, not an error path.
