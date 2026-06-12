@@ -1,0 +1,19 @@
+[package]
+name = "engine-graph"
+description = "In-memory linkage graph: nodes, edges, facets, context assembly, filters. All queries answer from RAM; persistence is a rebuildable cache (engine-spec §8, D8.1)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-model.workspace = true
+engine-store.workspace = true
+ingest-core.workspace = true
+ingest-git.workspace = true
+ingest-struct.workspace = true
+rag-client.workspace = true
+
+[lints]
+workspace = true

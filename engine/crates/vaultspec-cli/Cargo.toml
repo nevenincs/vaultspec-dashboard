@@ -1,0 +1,23 @@
+[package]
+name = "vaultspec-cli"
+description = "The `vaultspec` binary: one Rust binary, two front doors — one-shot CLI verbs and the resident serve mode (engine-spec D1.1). Verbs are thin shells over engine-query (D6.1)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "vaultspec"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+engine-model.workspace = true
+engine-query.workspace = true
+serde_json = "1.0.150"
+tokio = { version = "1.52.3", features = ["rt-multi-thread"] }
+vaultspec-api.workspace = true
+
+[lints]
+workspace = true

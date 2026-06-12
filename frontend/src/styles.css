@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* Design tokens land here as CSS variables once the visual-language work
+   starts (gui-spec §7: Tailwind v4 CSS-first config is the token carrier). */

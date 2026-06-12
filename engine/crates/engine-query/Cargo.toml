@@ -1,0 +1,15 @@
+[package]
+name = "engine-query"
+description = "The one shared query core behind both front doors (CLI and serve); the CLI and API crates contain no domain logic (engine-spec D6.1)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-model.workspace = true
+engine-graph.workspace = true
+
+[lints]
+workspace = true

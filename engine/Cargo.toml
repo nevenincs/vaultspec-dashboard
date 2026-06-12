@@ -1,0 +1,30 @@
+# vaultspec engine — cargo workspace (engine-spec §9, D9.1)
+#
+# One workspace, one shipped binary (`vaultspec`, from crates/vaultspec-cli).
+# The dependency arrow always points at engine-model (pure types, zero I/O).
+
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/wgergely/vaultspec-dashboard"
+rust-version = "1.96"
+
+[workspace.dependencies]
+# Internal crates (path-only; versions inherit workspace.package)
+engine-model = { path = "crates/engine-model" }
+engine-store = { path = "crates/engine-store" }
+engine-graph = { path = "crates/engine-graph" }
+engine-query = { path = "crates/engine-query" }
+ingest-core = { path = "crates/ingest-core" }
+ingest-git = { path = "crates/ingest-git" }
+ingest-struct = { path = "crates/ingest-struct" }
+rag-client = { path = "crates/rag-client" }
+vaultspec-api = { path = "crates/vaultspec-api" }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

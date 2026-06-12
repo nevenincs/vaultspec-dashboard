@@ -1,0 +1,15 @@
+[package]
+name = "ingest-git"
+description = "Temporal-tier ingestion via pure-Rust gix: workspace discovery (common git dir), worktrees, refs, branch classification, temporal correlation rules (engine-spec §2, §5.3, D2.5)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-model.workspace = true
+gix = "0.84.0"
+
+[lints]
+workspace = true

@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/router.tsx","./src/app/appshell.tsx","./src/scene/scenecontroller.test.ts","./src/scene/scenecontroller.ts","./src/stores/server/engine.ts","./src/stores/server/queryclient.ts","./src/stores/view/viewstore.test.ts","./src/stores/view/viewstore.ts","./spike/corpus.test.ts","./spike/corpus.ts","./spike/main.ts","./vite.config.ts"],"version":"6.0.3"}

@@ -1,0 +1,21 @@
+[package]
+name = "vaultspec-api"
+description = "The resident serve mode: single-origin loopback HTTP + JSON + SSE (axum). Serves the SPA bundle, the query API, the transparent ops proxy, and the SSE stream (engine-spec §7, contract §1)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum = "0.8.9"
+engine-model.workspace = true
+engine-query.workspace = true
+serde_json = "1.0.150"
+tokio = { version = "1.52.3", features = ["rt", "macros", "net"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5.3", features = ["util"] }

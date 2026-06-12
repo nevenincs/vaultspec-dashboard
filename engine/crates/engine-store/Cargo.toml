@@ -1,0 +1,15 @@
+[package]
+name = "engine-store"
+description = "Rebuildable derived-artifact cache: SQLite (rusqlite) at .vault/data/engine-data/. Persistence is cache, not truth (engine-spec §8, D8.1/D8.2)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-model.workspace = true
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+
+[lints]
+workspace = true
