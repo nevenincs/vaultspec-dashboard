@@ -32,7 +32,7 @@ Delivers the committed renderer with the G6.b spike gate closed, the renderer-ag
 Closes the G6.b spike gate on integrated GPUs and locks the SceneController seam the whole frontend builds on.
 
 - [x] `W01.P01.S01` - replace per-frame edge re-tessellation with mesh-based edge rendering in the spike harness per the G6.b spike finding; `frontend/spike`.
-- [ ] `W01.P01.S02` - run the integrated-GPU frame-time gate at 1k/5k and 10k/50k synthetic corpora and record results against the G6.b gate criteria; `frontend/spike`.
+- [x] `W01.P01.S02` - run the integrated-GPU frame-time gate at 1k/5k and 10k/50k synthetic corpora and record results against the G6.b gate criteria; `frontend/spike`.
 - [ ] `W01.P01.S03` - record the renderer verdict, PixiJS v8 confirmed or sigma.js v3 fallback invoked, against ADR row G6.b and flag any deviation to the ADR; `frontend/spike`.
 - [ ] `W01.P01.S04` - lock the SceneController command, event, and anchor surface with the RL-1 to RL-5 fold confirmed as final; `frontend/src/scene/sceneController.ts`.
 
