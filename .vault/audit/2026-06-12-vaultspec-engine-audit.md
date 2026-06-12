@@ -76,6 +76,10 @@ In the structural edge builder, the destination node id for step and symbol ment
 
 W02P05-202 is closed structurally: every index run builds a fresh graph, so same-id re-observation inflation cannot occur across runs, and S29 proves convergence including warm-cache runs. The property is currently a consequence of pipeline shape, not an enforced invariant: the watcher hands dirty batches to a consumer that re-runs the indexer fresh. When the serve mode wires partial re-ingestion (W03.P11), it must preserve rebuild-at-scope granularity (or scope-scoped edge replacement) rather than ingesting deltas into a live graph - otherwise 202 returns. Recorded as a named constraint for the serve-mode step.
 
+## W02P06-303 | medium | re-ingestion replaces but never prunes - removed mentions leave stale edges in a live graph
+
+Follow-up to the W02P05-202 closure at `f63f92e` (verified: extraction-granularity multiplicity aggregation, REPLACE-never-increment ingestion, and a double re-ingestion convergence test - the gate is closed for same-id re-observation). The residual: nothing prunes. When an *edited* document is re-ingested through the re-entrant partial path, edges whose mentions were REMOVED from the body persist in the live graph, while a cold rebuild would not contain them - the same D8.2 divergence as 202, through disappearance instead of inflation. Invisible today (the one-shot CLI builds fresh graphs); bites exactly when the watcher wires the re-entrant path onto a long-lived graph. Gate for that wiring (W03.P11 or wherever the watcher consumes the partial path): before re-ingesting a document, drop the graph's edges whose provenance names that source document (per-document replacement, the granularity the provenance blob already identifies), and extend the convergence test with an edit-that-removes-a-mention case - the current test only re-ingests identical content.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
@@ -104,6 +108,7 @@ W02.P06 boundary (fourth entry):
 - W02P06-301 (medium): decide unresolved-target identity before W02.P08 exposes ids; reviewer leans mention-derived identity with resolution as mutable state. Record the choice in the consuming step record.
 - W02P06-302: rebuild-at-scope granularity is a named constraint for the W03.P11 serve wiring.
 - W01P04-104: agreed - fold into the W03.P12 hardening pass (per-call memoization plus gitignore honoring), now formally routed there.
+- Post-crossing addendum: W02P05-202 verified CLOSED at `f63f92e` (replace semantics, extraction-granularity aggregation, incremental-vs-cold convergence test). W02P06-302 is superseded by that invariant for same-id re-observation; its remaining substance is narrowed into W02P06-303 (prune-on-re-ingest), the gate for the watcher wiring.
 
 ## Codification candidates
 
