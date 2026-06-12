@@ -113,6 +113,44 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
   };
 }
 
+/**
+ * Live `/search` nests the rag envelope verbatim:
+ * `{envelope: {ok, data: {results}}}`. Map result items tolerantly (the
+ * rag item vocabulary: path/stem/source, score, excerpt/text) and derive
+ * the graph node id from a stem when the engine annotation is absent —
+ * the annotation gap is a flagged divergence, not silently papered.
+ */
+export function adaptSearch(body: unknown): { results: unknown[]; tiers: TiersBlock } {
+  if (!isRec(body)) return body as never;
+  if (Array.isArray(body.results)) return body as never; // internal/mock shape
+  const envelope = isRec(body.envelope) ? body.envelope : {};
+  const data = isRec(envelope.data) ? envelope.data : {};
+  const rawResults = Array.isArray(data.results) ? (data.results as Rec[]) : [];
+  return {
+    results: rawResults.map((item) => {
+      const stem =
+        typeof item.stem === "string"
+          ? item.stem
+          : typeof item.path === "string"
+            ? item.path.replace(/^.*\//, "").replace(/\.md$/, "")
+            : null;
+      return {
+        score: Number(item.score ?? 0),
+        source: String(item.source ?? item.path ?? item.stem ?? "result"),
+        excerpt:
+          typeof item.excerpt === "string"
+            ? item.excerpt
+            : typeof item.text === "string"
+              ? item.text
+              : undefined,
+        node_id:
+          typeof item.node_id === "string" ? item.node_id : stem ? `doc:${stem}` : null,
+      };
+    }),
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
 /** Stem-suffix doc-type derivation (matches the vault naming convention). */
 export function docTypeFromStem(stem: string): string {
   if (/-W\d+-P\d+-S\d+$|-P\d+-S\d+$|-S\d+$|-summary$/.test(stem)) return "exec";

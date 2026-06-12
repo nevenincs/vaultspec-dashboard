@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   adaptFilters,
   adaptMap,
+  adaptSearch,
   adaptStatus,
   adaptVaultTree,
   unwrapEnvelope,
@@ -377,12 +378,12 @@ export class EngineClient {
   }
 
   // §8
-  search(body: {
+  async search(body: {
     query: string;
     target?: "vault" | "code";
     filters?: Record<string, string>;
   }): Promise<SearchResponse> {
-    return this.post("/search", body);
+    return adaptSearch(await this.post("/search", body)) as SearchResponse;
   }
 
   // --- transport -----------------------------------------------------------
