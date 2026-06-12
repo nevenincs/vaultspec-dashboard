@@ -121,6 +121,10 @@ until implementation.
   downsampling.
   - Raw event fields: `{id (stable), ts, kind, ref (sha|path|stem), node_ids[]}` — `node_ids` is load-bearing: timeline click → pulse the
     corresponding stage nodes; range-select → highlight; both join on it.
+  - Bound (audit ADD-901/S05, 2026-06-13): `node_ids` always carries the
+    commit node and ALL `doc:` ids (the join is doc/feature-centric);
+    `code:` ids are capped at 20 with a `truncated_node_ids` count so
+    nothing is silently dropped.
   - Bucketed response: per-bucket `{from, to, counts_by_kind}`.
 - **Time-travel: keyframe + diff (option (b), committed).**
   - `GET /graph/asof?scope&t=<ts|sha>&filter=` — full snapshot (keyframe).
