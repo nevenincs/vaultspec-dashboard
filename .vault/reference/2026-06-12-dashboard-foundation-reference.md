@@ -67,6 +67,12 @@ until implementation.
   (float 0..1, per R3), edge relation types, **structural edge state
   (resolved|stale|broken — powers the "show broken" lens)**, node kinds/doc
   types, feature tags, date range, text match. Response: nodes + edges.
+  Broken-edge consumption rule (audit finding W02P05-201, agreed by both
+  sides): broken structural edges carry confidence 0.0 — broken-ness is
+  STATE, not low confidence — so the state facet is the canonical surfacing
+  channel; the "show broken" lens selects on state without applying the
+  structural confidence floor, and the structural tier's confidence slider
+  governs resolved/stale shading only.
   - Edge fields: `id, src, dst, relation, direction, tier, confidence, state (structural only: resolved|stale|broken), provenance, observed_at`.
   - Node fields: `id, kind, doc_type?, feature_tags[], title, dates {created, modified}, lifecycle {state, progress?: {done, total}}, degree_by_tier {declared, structural, temporal, semantic}`.
   - **Constellation granularity:** queries at feature level return
