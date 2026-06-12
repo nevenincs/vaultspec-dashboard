@@ -126,9 +126,13 @@ impl Provenance {
         match self {
             Provenance::CoreGraph { edge_id, .. } => format!("core:{edge_id}"),
             Provenance::DocumentBody { target, .. } => format!("body:{target}"),
-            Provenance::CommitCorrelation { sha, rule } => {
-                format!("commit:{sha}:{rule}")
-            }
+            // Temporal identity is per (commit, record), NOT per rule
+            // (audit redline W02P07-401, conducted as the W01P01-001
+            // contract-review event): the U2 enrichment-adoption upgrade
+            // (rule-2 matches becoming rule-1 corpus-wide) must upgrade
+            // confidence in place, never churn edge ids. The rule stays in
+            // provenance as attribution only.
+            Provenance::CommitCorrelation { sha, .. } => format!("commit:{sha}"),
             Provenance::RagMatch { query, .. } => format!("rag:{query}"),
         }
     }

@@ -15,6 +15,12 @@ pub struct EdgeAttrs {
     pub weight: Option<f64>,
     /// Core's authored kind string, verbatim, when the edge came from core.
     pub core_kind: Option<String>,
+    /// What the mention resolved to in the live tree (audit W02P06-301
+    /// bridge): mention-target identity is disjoint from real
+    /// container/file node ids by design, so this attribute is the
+    /// navigable bridge node-detail and evidence surface — without it,
+    /// step/symbol mentions are dead ends on the stage.
+    pub resolved_target: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

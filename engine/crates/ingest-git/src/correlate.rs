@@ -15,7 +15,9 @@ use crate::log::CommitEvent;
 pub const RULE_EXPLICIT_ID: (&str, f32) = ("explicit-step-identifier", 0.9);
 pub const RULE_DOC_AND_CODE: (&str, f32) = ("doc-and-code-in-one-commit", 0.7);
 pub const RULE_PATH_OVERLAP: (&str, f32) = ("path-overlap-time-window", 0.4);
-pub const RULE_SAME_DAY_BRANCH: (&str, f32) = ("same-day-same-branch", 0.3);
+/// Renamed from `same-day-same-branch` (audit nit W02P07-403): the rule
+/// carries no branch predicate — branch context rides the edge's scope.
+pub const RULE_SAME_DAY_BRANCH: (&str, f32) = ("same-day-co-activity", 0.3);
 
 /// Window for the path-overlap rule: ±3 days around the record's date.
 pub const PATH_OVERLAP_WINDOW_MS: i64 = 3 * 24 * 60 * 60 * 1000;
@@ -250,6 +252,37 @@ mod tests {
             0,
         );
         assert!(edges.is_empty());
+    }
+
+    #[test]
+    fn enrichment_adoption_upgrades_confidence_without_churning_ids() {
+        // Audit redline W02P07-401: when a repo adopts the U2 commit-id
+        // enrichment, a (commit, record) pair previously correlated by
+        // rule 2 upgrades to rule 1 — same edge id, higher confidence.
+        let r = [record("up-doc", T, &[], &["S07"])];
+        let before = correlate(
+            &commit("c8", T, "wip", &[".vault/plan/up-doc.md", "src/lib.rs"]),
+            &r,
+            &scope(),
+            0,
+        );
+        let after = correlate(
+            &commit(
+                "c8",
+                T,
+                "close S07",
+                &[".vault/plan/up-doc.md", "src/lib.rs"],
+            ),
+            &r,
+            &scope(),
+            0,
+        );
+        assert_eq!(before[0].confidence, 0.7);
+        assert_eq!(after[0].confidence, 0.9);
+        assert_eq!(
+            before[0].id, after[0].id,
+            "identity is per (commit, record)"
+        );
     }
 
     #[test]

@@ -131,22 +131,24 @@ pub fn index_worktree_into(
         // W02P05-202 / W01P01-003): repeated same-target mentions in one
         // document collapse to one edge carrying the count, ingested once
         // — so re-ingestion replaces instead of inflating.
-        let mut by_id: std::collections::BTreeMap<String, (Edge, u32)> =
+        let mut by_id: std::collections::BTreeMap<String, (Edge, u32, Option<String>)> =
             std::collections::BTreeMap::new();
         for resolved in resolve(root, mentions) {
+            let target = resolved.target.clone();
             let edge = structural_edge_for(&stem, &blob_hash, &resolved, scope, observed_at);
             by_id
                 .entry(edge.id.0.clone())
-                .and_modify(|(_, count)| *count += 1)
-                .or_insert((edge, 1));
+                .and_modify(|(_, count, _)| *count += 1)
+                .or_insert((edge, 1, target));
         }
-        for (_, (edge, multiplicity)) in by_id {
+        for (_, (edge, multiplicity, resolved_target)) in by_id {
             stats.edges += 1;
             crate::edges::ingest(
                 graph,
                 edge,
                 EdgeAttrs {
                     multiplicity,
+                    resolved_target,
                     ..Default::default()
                 },
             )?;
@@ -235,6 +237,7 @@ pub fn canonical_snapshot(graph: &LinkageGraph) -> String {
                 "edge": s.edge,
                 "multiplicity": s.attrs.multiplicity,
                 "weight": s.attrs.weight,
+                "resolved_target": s.attrs.resolved_target,
             })
         })
         .collect();

@@ -42,6 +42,27 @@ pub fn tiers_block(unavailable: &[(&'static str, &str)]) -> TiersBlock {
     block
 }
 
+/// The degradation block for HISTORICAL (`as_of`) views (audit
+/// W02P07-402): the semantic tier is present-only by design (D7.3), and
+/// the structural tier carries the v1 as-of bound note so the GUI renders
+/// it truthfully rather than as full-fidelity history.
+pub fn asof_tiers_block() -> TiersBlock {
+    let mut block = tiers_block(&[(
+        "semantic",
+        "present-only by design; excluded from historical views",
+    )]);
+    block.insert(
+        "structural",
+        TierStatus {
+            available: true,
+            reason: Some(
+                "step and symbol resolution degraded to stale at T (v1 as-of bound)".to_string(),
+            ),
+        },
+    );
+    block
+}
+
 /// The envelope every serve/CLI payload travels in.
 #[derive(Debug, Clone, Serialize)]
 pub struct Envelope<T: Serialize> {

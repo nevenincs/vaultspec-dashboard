@@ -81,8 +81,10 @@ pub fn asof_graph(
         // STALE — verifying them blob-true needs plan/code blob scans,
         // a deliberate v1 bound recorded in the step record.
         let mentions = ingest_struct::extract::extract(&body.text);
-        let mut by_id: std::collections::BTreeMap<String, (engine_model::Edge, u32)> =
-            std::collections::BTreeMap::new();
+        let mut by_id: std::collections::BTreeMap<
+            String,
+            (engine_model::Edge, u32, Option<String>),
+        > = std::collections::BTreeMap::new();
         for mention in mentions {
             let (state, target) = match &mention.kind {
                 MentionKind::Path(p) => {
@@ -117,18 +119,20 @@ pub fn asof_graph(
                 state,
                 target,
             };
+            let resolved_target = resolved.target.clone();
             let edge = structural_edge_for(&stem, &body.blob_hash, &resolved, scope, observed_at);
             by_id
                 .entry(edge.id.0.clone())
-                .and_modify(|(_, c)| *c += 1)
-                .or_insert((edge, 1));
+                .and_modify(|(_, c, _)| *c += 1)
+                .or_insert((edge, 1, resolved_target));
         }
-        for (_, (edge, multiplicity)) in by_id {
+        for (_, (edge, multiplicity, resolved_target)) in by_id {
             crate::edges::ingest(
                 &mut graph,
                 edge,
                 EdgeAttrs {
                     multiplicity,
+                    resolved_target,
                     ..Default::default()
                 },
             )?;

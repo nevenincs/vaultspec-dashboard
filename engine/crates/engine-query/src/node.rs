@@ -101,6 +101,31 @@ pub struct CodeLocation {
     /// The mention target (path or unqualified symbol).
     pub target: String,
     pub state: Option<ResolutionState>,
+    /// What the mention resolved to in the live tree, if anything.
+    pub resolved_target: Option<String>,
+    /// The navigable bridge (audit W02P06-301 consequence): mention-target
+    /// ids are disjoint from real container/file node ids by design, so
+    /// the resolved target is surfaced as the real node's id — without it
+    /// step/symbol mentions are dead ends on the stage.
+    pub bridge_node_id: Option<String>,
+}
+
+/// Map a resolved target path to the real node it bridges to.
+fn bridge_node_id(resolved_target: &str) -> String {
+    use engine_model::{CanonicalKey, node_id};
+    if let Some(stem) = resolved_target
+        .strip_prefix(".vault/")
+        .and_then(|rest| rest.split('/').next_back())
+        .and_then(|file| file.strip_suffix(".md"))
+    {
+        node_id(&CanonicalKey::Document { stem }).0
+    } else {
+        node_id(&CanonicalKey::CodeArtifact {
+            path: resolved_target,
+            symbol: None,
+        })
+        .0
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -129,12 +154,14 @@ pub fn evidence(graph: &LinkageGraph, id: &NodeId) -> Option<Evidence> {
         {
             documents.push(stem.to_string());
         }
-        if other.0.starts_with("code:")
+        if (other.0.starts_with("code:") || other.0.starts_with("plan:"))
             && let Provenance::DocumentBody { target, .. } = &edge.provenance
         {
             code_locations.push(CodeLocation {
                 target: target.clone(),
                 state: edge.state,
+                resolved_target: stored.attrs.resolved_target.clone(),
+                bridge_node_id: stored.attrs.resolved_target.as_deref().map(bridge_node_id),
             });
         }
         if let Provenance::CommitCorrelation { sha, rule } = &edge.provenance {
