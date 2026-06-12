@@ -1,0 +1,126 @@
+default_stages:
+- pre-commit
+repos:
+- repo: local
+  hooks:
+  - id: ruff-check
+    name: Lint Python code (Ruff)
+    entry: uv run --no-sync ruff check
+    language: system
+    types:
+    - python
+    pass_filenames: true
+  - id: ruff-format-check
+    name: Check Python formatting (Ruff)
+    entry: uv run --no-sync ruff format --check
+    language: system
+    types:
+    - python
+    pass_filenames: true
+  - id: taplo-lint
+    name: Lint TOML files (Taplo)
+    entry: taplo lint
+    language: system
+    types:
+    - toml
+    pass_filenames: true
+  - id: ty
+    name: Type-check Python codebase (Ty)
+    entry: uv run --no-sync python -m ty check src/vaultspec_dashboard
+    language: system
+    types:
+    - python
+    pass_filenames: false
+  - id: mdformat-check
+    name: Check Markdown formatting (mdformat)
+    entry: uv run --no-sync mdformat --check
+    language: system
+    pass_filenames: true
+    types:
+    - markdown
+    exclude: ^CHANGELOG\.md$
+  - id: mdformat-wrap-docs-check
+    name: Check wrapped user-facing Markdown (mdformat)
+    entry: uv run --no-sync mdformat --wrap 88 --check
+    language: system
+    pass_filenames: true
+    files: ^(docs/.*\.md)$
+  - id: pymarkdown
+    name: Lint Markdown style (pymarkdown)
+    entry: uv run --no-sync pymarkdown --config .pymarkdown.json scan
+    language: system
+    pass_filenames: true
+    types:
+    - markdown
+    exclude: ^CHANGELOG\.md$
+  - id: vault-fix
+    name: Vault Doctor (Fix)
+    entry: uv run --no-sync vaultspec-core vault check all --fix
+    language: system
+    types:
+    - markdown
+    pass_filenames: false
+  - id: vault-sanitize-annotations
+    name: Vault sanitize annotations
+    entry: uv run --no-sync vaultspec-core vault sanitize annotations
+    language: system
+    types:
+    - markdown
+    pass_filenames: false
+  - id: spec-check
+    name: Vault Doctor (Check)
+    entry: uv run --no-sync vaultspec-core spec doctor
+    language: system
+    types:
+    - markdown
+    pass_filenames: false
+  - id: block-manual-changelog
+    name: Block manual CHANGELOG.md edits (release-please-managed)
+    entry: python -c "import subprocess, sys; changed = subprocess.run(['git', 'diff',
+      '--cached', '--name-only', '--', 'CHANGELOG.md'], capture_output=True, text=True,
+      check=False).stdout.strip(); sys.exit('CHANGELOG.md is auto-managed by release-please.
+      Do not edit manually - land your change as a conventional commit (feat:/fix:/perf:/...)
+      and release-please will regenerate CHANGELOG.md on the next release PR.' if
+      changed else 0)"
+    language: system
+    files: ^CHANGELOG\.md$
+    pass_filenames: false
+  - id: check-provider-artifacts
+    name: Check provider artifacts
+    entry: uv run --no-sync vaultspec-core check-providers
+    always_run: true
+    language: system
+    pass_filenames: false
+  - id: cargo-fmt-check
+    name: Check Rust formatting (cargo fmt)
+    entry: cargo fmt --manifest-path engine/Cargo.toml --all -- --check
+    language: system
+    types:
+    - rust
+    pass_filenames: false
+  - id: cargo-clippy
+    name: Lint Rust workspace (clippy)
+    entry: cargo clippy --manifest-path engine/Cargo.toml --workspace --all-targets
+      -- -D warnings
+    language: system
+    types:
+    - rust
+    pass_filenames: false
+  - id: frontend-eslint
+    name: Lint frontend (eslint)
+    entry: npm --prefix frontend run lint
+    language: system
+    files: ^frontend/
+    types_or:
+    - ts
+    - tsx
+    pass_filenames: false
+  - id: frontend-typecheck
+    name: Type-check frontend (tsc)
+    entry: npm --prefix frontend run typecheck
+    language: system
+    files: ^frontend/
+    types_or:
+    - ts
+    - tsx
+    pass_filenames: false

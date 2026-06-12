@@ -1,0 +1,124 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Auto-generated temp files
+tmp/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.pytest*/
+.ruff*/
+.uv*/
+cover/
+test-events.jsonl
+
+# Logs
+*.log
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# mypy / type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Gemini CLI
+.gemini/
+GEMINI.md
+
+# Codex
+.codex/
+AGENTS.md
+
+# Antigravity
+.agent/
+.agents/
+
+# Obsidian
+.vault/.obsidian/
+
+# VaultSpec Logs
+.vault/logs/
+
+# Temporary reference files
+tmp-ref/
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Rust engine workspace
+engine/target/
+
+# Frontend SPA
+frontend/node_modules/
+frontend/dist/
+
+# >>> vaultspec-managed (do not edit this block) >>>
+.vault/.obsidian/
+.vault/.trash/
+.vault/data/
+.vault/logs/
+.vaultspec/*.lock
+.vaultspec/_snapshots/
+.vaultspec/providers.json
+/.gitignore.lock
+/.mcp.json.lock
+/.pre-commit-config.yaml.lock
+# <<< vaultspec-managed <<<

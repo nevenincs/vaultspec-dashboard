@@ -1,0 +1,16 @@
+# Lychee configuration
+accept = [200, 403, 410, 429, 502, 503]
+exclude = [
+  '\[\[.*\]\]',
+  "^/[A-Z]:/",
+  "https://github.com/.*",
+]
+exclude_path = [
+  "README.md",
+  ".vault/audit/",
+  ".vault/research/",
+  ".vault\\\\audit\\\\",
+  ".vault\\\\research\\\\",
+]
+no_progress = true
+verbose = "info"
