@@ -9,6 +9,7 @@
 import { useEffect, useRef } from "react";
 
 import { useViewStore } from "../../stores/view/viewStore";
+import { useSurfaceStates } from "../degradation/useDegradation";
 import type { TimeWindow } from "./Timeline";
 import { timeToX, useTimelineStore, xToTime } from "./Timeline";
 
@@ -38,6 +39,9 @@ export function movePlayhead(t: number | "live"): void {
 export function Playhead() {
   const window_ = useTimelineStore((s) => s.window);
   const playheadT = useTimelineStore((s) => s.playheadT);
+  // The LIVE chip becomes RECONNECTING when the engine stream is lost
+  // (degradation matrix §8 — a designed state, not an error).
+  const reconnecting = useSurfaceStates().timeline === "reconnecting";
   const hostRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
@@ -89,10 +93,14 @@ export function Playhead() {
         type="button"
         onClick={() => movePlayhead("live")}
         className={`pointer-events-auto absolute top-0 right-1 rounded px-1 text-[10px] font-medium ${
-          live ? "text-emerald-700" : "text-amber-700 underline"
+          reconnecting
+            ? "text-amber-700"
+            : live
+              ? "text-emerald-700"
+              : "text-amber-700 underline"
         }`}
       >
-        {live ? "▶ LIVE" : "⏪ return to live"}
+        {reconnecting ? "↻ RECONNECTING" : live ? "▶ LIVE" : "⏪ return to live"}
       </button>
     </div>
   );

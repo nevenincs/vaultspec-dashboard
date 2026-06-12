@@ -20,6 +20,7 @@ import { computeVisibility, useFilterStore } from "../../stores/view/filters";
 import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
+import { useSurfaceStates } from "../degradation/useDegradation";
 import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
@@ -51,6 +52,7 @@ export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
   const scope = useActiveScope();
   const slice = useGraphSlice(scope);
+  const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
   const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
   const workingSet = useViewStore((s) => s.workingSet);
@@ -160,10 +162,20 @@ export function Stage() {
       <Discover />
       <TimeTravelChip />
       <IslandLayer scene={scene.controller} />
-      {!slice.data && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">
-          {scope ? "loading the constellation…" : "waiting for a worktree scope…"}
+      {surfaces.stage === "empty-invitation" ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-sm text-stone-400">
+          <span className="text-3xl">✎</span>
+          <p>this worktree has no vault corpus yet</p>
+          <p className="text-xs text-stone-300">
+            run vaultspec-core install to start a second brain here
+          </p>
         </div>
+      ) : (
+        !slice.data && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">
+            {scope ? "loading the constellation…" : "waiting for a worktree scope…"}
+          </div>
+        )
       )}
     </div>
   );
