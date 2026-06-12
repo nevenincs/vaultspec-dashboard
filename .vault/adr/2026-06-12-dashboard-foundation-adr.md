@@ -139,10 +139,15 @@ Base UI committed, citation nits fixed).
   edge rendering (in-place position-buffer uploads, replacing per-frame
   re-tessellation) closed the only soft spot: 10k/50k settled-animating
   7.5 → 59.3 fps, continuous-layout 8.7 → 36 fps; 1k/5k vsync-locked
-  throughout. *Open condition:* measured on a discrete RTX 4080 SUPER, so
-  numbers are an upper bound; the gate's literal integrated-GPU run remains
-  a five-minute manual pass (`npm run dev` in frontend/, open
-  `/spike.html?nodes=10000&edges=50000`, read the HUD).
+  throughout. *Gate condition resolved by human decision (2026-06-12):* the
+  literal integrated-GPU run is **waived** — no iGPU hardware is available,
+  and the target hardware baseline for this application is a dedicated GPU
+  (consistent with the ecosystem: vaultspec-rag already assumes CUDA
+  hardware). The discrete-GPU numbers (RTX 4080 SUPER) stand as the recorded
+  gate evidence, acknowledged as an upper bound. Integrated-GPU performance
+  is best-effort and non-gating; revisit only if adopter feedback surfaces
+  iGPU users. The spike harness (`/spike.html?nodes=10000&edges=50000`)
+  remains committed for that eventuality.
 - G7.c — the hand-drawn glyph family is commissioned design work with a real
   budget/schedule; needs your go/no-go when design phase starts.
 - D9.2 — per-platform wheels bundling a Rust binary raise packaging/CI cost;
