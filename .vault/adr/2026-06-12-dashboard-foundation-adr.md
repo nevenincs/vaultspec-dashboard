@@ -149,7 +149,11 @@ Base UI committed, citation nits fixed).
   iGPU users. The spike harness (`/spike.html?nodes=10000&edges=50000`)
   remains committed for that eventuality.
 - G7.c — the hand-drawn glyph family is commissioned design work with a real
-  budget/schedule; needs your go/no-go when design phase starts.
+  budget/schedule. **Approved — GO (human decision, 2026-06-12).** The glyph
+  family (doc types, event types, tier marks, state marks; SVG + GPU
+  sprite/SDF forms per the GUI ADR §7.2) proceeds as dedicated design work;
+  the W01.P04 placeholder glyphs remain in place until the designed family
+  lands and swaps in behind the same node-anatomy interface.
 - D9.2 — per-platform wheels bundling a Rust binary raise packaging/CI cost;
   posture fixed, mechanics deferred; awareness only.
 
