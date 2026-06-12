@@ -64,12 +64,12 @@ Assemble ingested edges into the in-memory graph with key-plus-facet identity, b
 
 Deliver the in-memory adjacency graph with key-plus-facet node identity, tier-enforcing edge ingestion, facet reconciliation across corpus views, query-time projections, meta-edge aggregation, and context assembly.
 
-- [ ] `W02.P05.S19` - Implement the in-memory adjacency graph storing nodes by stable key with per-corpus-view facets; `engine/crates/engine-graph/src/graph.rs`.
-- [ ] `W02.P05.S20` - Implement edge ingestion enforcing mandatory tier and provenance fields and the fixed per-tier confidence bands; `engine/crates/engine-graph/src/edges.rs`.
-- [ ] `W02.P05.S21` - Implement facet reconciliation across corpus views covering presence, document set, lifecycle state and content hashes, surfacing divergence; `engine/crates/engine-graph/src/facets.rs`.
-- [ ] `W02.P05.S22` - Implement query-time projections for per-tier degree counts and lifecycle progress summaries; `engine/crates/engine-graph/src/project.rs`.
-- [ ] `W02.P05.S23` - Implement feature-level meta-edge aggregation with count and per-tier breakdown per contract section 4; `engine/crates/engine-graph/src/project.rs`.
-- [ ] `W02.P05.S24` - Implement context assembly as a pure serializable read returning the tier-labelled bundle for any node; `engine/crates/engine-graph/src/context.rs`.
+- [x] `W02.P05.S19` - Implement the in-memory adjacency graph storing nodes by stable key with per-corpus-view facets; `engine/crates/engine-graph/src/graph.rs`.
+- [x] `W02.P05.S20` - Implement edge ingestion enforcing mandatory tier and provenance fields and the fixed per-tier confidence bands; `engine/crates/engine-graph/src/edges.rs`.
+- [x] `W02.P05.S21` - Implement facet reconciliation across corpus views covering presence, document set, lifecycle state and content hashes, surfacing divergence; `engine/crates/engine-graph/src/facets.rs`.
+- [x] `W02.P05.S22` - Implement query-time projections for per-tier degree counts and lifecycle progress summaries; `engine/crates/engine-graph/src/project.rs`.
+- [x] `W02.P05.S23` - Implement feature-level meta-edge aggregation with count and per-tier breakdown per contract section 4; `engine/crates/engine-graph/src/project.rs`.
+- [x] `W02.P05.S24` - Implement context assembly as a pure serializable read returning the tier-labelled bundle for any node; `engine/crates/engine-graph/src/context.rs`.
 
 ### Phase `W02.P06` - index pipeline and watcher
 

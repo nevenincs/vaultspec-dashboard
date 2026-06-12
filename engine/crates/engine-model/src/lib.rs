@@ -145,8 +145,26 @@ pub struct Edge {
 pub struct Facet {
     pub scope: ScopeRef,
     pub presence: Presence,
-    /// Content hash of the underlying document blob(s) in this view.
+    /// Content hash of the underlying document blob(s) in this view —
+    /// one namespace across read paths (the git blob oid).
     pub content_hash: Option<String>,
+    /// Lifecycle state in this view (e.g. plan 60% checked on `feature-x`,
+    /// 30% on `main` — engine-spec §4.2).
+    pub lifecycle: Option<Lifecycle>,
+}
+
+/// Lifecycle state + optional progress for a facet (contract §4 node
+/// `lifecycle {state, progress?}`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Lifecycle {
+    pub state: String,
+    pub progress: Option<Progress>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Progress {
+    pub done: u32,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +185,10 @@ pub struct Node {
     /// canonical id, commit SHA, repo-relative path).
     pub key: String,
     pub title: Option<String>,
+    /// Feature tags this node belongs to (contract §4 `feature_tags[]`);
+    /// the join key for feature-convergence synthesis and meta-edge
+    /// aggregation.
+    pub feature_tags: Vec<String>,
     pub facets: Vec<Facet>,
 }
 

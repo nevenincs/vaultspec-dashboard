@@ -27,6 +27,13 @@ related:
   - '[[2026-06-12-vaultspec-engine-W01-P04-S17]]'
   - '[[2026-06-12-vaultspec-engine-W01-P04-S18]]'
   - '[[2026-06-12-vaultspec-engine-W01-P04-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-S19]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-S20]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-S21]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-S22]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-S23]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-S24]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P05-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -70,6 +77,13 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W01-P04-S17` - Implement the working-tree resolver assigning resolved, stale or broken state to every structural edge, retaining broken edges
 - `2026-06-12-vaultspec-engine-W01-P04-S18` - Add fixture-document tests covering all four extractors and the three resolution states
 - `2026-06-12-vaultspec-engine-W01-P04-summary` - `vaultspec-engine` `W01.P04` summary
+- `2026-06-12-vaultspec-engine-W02-P05-S19` - Implement the in-memory adjacency graph storing nodes by stable key with per-corpus-view facets
+- `2026-06-12-vaultspec-engine-W02-P05-S20` - Implement edge ingestion enforcing mandatory tier and provenance fields and the fixed per-tier confidence bands
+- `2026-06-12-vaultspec-engine-W02-P05-S21` - Implement facet reconciliation across corpus views covering presence, document set, lifecycle state and content hashes, surfacing divergence
+- `2026-06-12-vaultspec-engine-W02-P05-S22` - Implement query-time projections for per-tier degree counts and lifecycle progress summaries
+- `2026-06-12-vaultspec-engine-W02-P05-S23` - Implement feature-level meta-edge aggregation with count and per-tier breakdown per contract section 4
+- `2026-06-12-vaultspec-engine-W02-P05-S24` - Implement context assembly as a pure serializable read returning the tier-labelled bundle for any node
+- `2026-06-12-vaultspec-engine-W02-P05-summary` - `vaultspec-engine` `W02.P05` summary
 
 ### plan
 

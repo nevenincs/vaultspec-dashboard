@@ -359,6 +359,9 @@ dependencies = [
  "ingest-git",
  "ingest-struct",
  "rag-client",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
