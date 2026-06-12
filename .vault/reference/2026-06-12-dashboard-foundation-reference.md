@@ -30,6 +30,20 @@ until implementation.
 - Discovery: `service.json` (port, bearer token, pid, heartbeat) mirroring
   vaultspec-rag's resident-service pattern. `/health` ungated; everything
   else bearer-gated, loopback-only. Not an auth boundary; keep on loopback.
+- **SPA token bootstrap** (amendment, audit DF-6, agreed by both sides
+  2026-06-12): the engine injects the service token into the served
+  `index.html` (meta tag); SPA clients send it as the bearer on every
+  request **including `/stream` - which requires fetch-based SSE
+  consumption; native `EventSource` cannot set an Authorization header and
+  is insufficient**. `service.json` remains the discovery path for
+  cross-process consumers; dev-server proxies read `service.json` and
+  inject the Authorization header server-side, and **meta-tag absence is
+  legal** (the SPA degrades to no-header and lets the proxy carry auth).
+  **Stale-token semantics:** an engine restart mints a new token; `401` is
+  the canonical "token stale - re-bootstrap by reloading the page" signal,
+  a designed degraded state (reconnect, 401, reload prompt), never an
+  anonymous error. The engine validates the `Host` header on every request
+  (DNS-rebinding defense).
 
 ## 2. Identity guarantees (cross-cutting)
 
