@@ -22,6 +22,8 @@ export interface ViewState {
   selectedId: string | null;
   /** The stage's explicit working set — "why is this node on my screen?" */
   workingSet: string[];
+  /** Nodes opened in place — rendered as DOM islands above the field (G6.a). */
+  openedIds: string[];
   /** The tier dial — the signature filter control (gui-spec §3.5). */
   tierFilter: TierFilter;
   timelineMode: TimelineMode;
@@ -29,6 +31,8 @@ export interface ViewState {
   rightRailCollapsed: boolean;
 
   select: (id: string | null) => void;
+  openNode: (id: string) => void;
+  closeNode: (id: string) => void;
   addToWorkingSet: (id: string) => void;
   removeFromWorkingSet: (id: string) => void;
   clearWorkingSet: () => void;
@@ -41,6 +45,7 @@ export interface ViewState {
 export const useViewStore = create<ViewState>((set) => ({
   selectedId: null,
   workingSet: [],
+  openedIds: [],
   tierFilter: {
     declared: true,
     structural: true,
@@ -53,6 +58,14 @@ export const useViewStore = create<ViewState>((set) => ({
   rightRailCollapsed: false,
 
   select: (id) => set({ selectedId: id }),
+  openNode: (id) =>
+    set((state) =>
+      state.openedIds.includes(id) ? state : { openedIds: [...state.openedIds, id] },
+    ),
+  closeNode: (id) =>
+    set((state) => ({
+      openedIds: state.openedIds.filter((entry) => entry !== id),
+    })),
   addToWorkingSet: (id) =>
     set((state) =>
       state.workingSet.includes(id) ? state : { workingSet: [...state.workingSet, id] },

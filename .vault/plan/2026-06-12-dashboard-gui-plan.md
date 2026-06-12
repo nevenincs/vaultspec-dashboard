@@ -60,7 +60,7 @@ Implements the WebGL field behind the SceneController seam: LOD node sprites, ti
 Implements the hybrid overlay per G6.a: screen-space anchor subscriptions, the React island layer, and the placeholder glyph set pending the commissioned family.
 
 - [x] `W01.P04.S14` - implement trackNode screen-space anchor subscriptions driven by camera and layout updates per G6.a; `frontend/src/scene/field/anchors.ts`.
-- [ ] `W01.P04.S15` - implement the React island layer rendering opened nodes at tracked anchors per G6.a; `frontend/src/app/islands/IslandLayer.tsx`.
+- [x] `W01.P04.S15` - implement the React island layer rendering opened nodes at tracked anchors per G6.a; `frontend/src/app/islands/IslandLayer.tsx`.
 - [ ] `W01.P04.S16` - create the placeholder programmatic glyph set for doc types, tiers, and states as sprite and SDF textures pending the commissioned family per G7.c; `frontend/src/scene/field/glyphs.ts`.
 
 ## Wave `W02` - the instrument
