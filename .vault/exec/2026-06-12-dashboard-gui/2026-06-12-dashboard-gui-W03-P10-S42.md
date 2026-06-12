@@ -39,7 +39,15 @@ green: typecheck, eslint, vitest (184 passed), prettier.
 
 ## Notes
 
-Content preview renders what the evidence endpoint serves (document list
-plus excerpt-less metadata in the mock); a fuller body preview activates
-when the live engine serves content excerpts.
+Per audit finding 027, the content-preview disposition is now FORMAL, not
+a note: the contract's evidence shape carries no content/excerpt field, so
+a body preview is unimplementable against the agreed capability set. This
+is a deviation from the ADR §2.3 inspector inventory and the S42 row
+wording, ROUTED to experience-architect (the ADR owner) for annotation as
+a flagged deviation with the proposed remedy (a content/excerpt capability
+amendment, or striking "content preview" from the inventory until one
+exists). Rendering what IS available: metadata, evidence documents, code
+locations with resolution state, and correlated commits now including the
+correlating rule attribution (finding 028, with a mock fixture carrying
+it).
 

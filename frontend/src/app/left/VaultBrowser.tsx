@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import { useVaultTree } from "../../stores/server/queries";
 import { useActiveScope } from "../stage/Stage";
-import { handleEntryClick, useHighlightedPath } from "./browserSelection";
+import { handleEntryClick, pathStem, useHighlightedPath } from "./browserSelection";
 
 // --- pure helpers (unit-tested) ---------------------------------------------------
 
@@ -68,8 +68,9 @@ export function freshnessLabel(modified: string | undefined, now: number): strin
   return "";
 }
 
+/** Display stem — the shared derivation from the selection join (024). */
 export function entryStem(path: string): string {
-  return path.replace(/^.*\//, "").replace(/\.md$/, "");
+  return pathStem(path);
 }
 
 export interface VaultBrowserProps {

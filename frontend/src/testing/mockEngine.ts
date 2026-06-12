@@ -327,7 +327,15 @@ export class MockEngine {
               state: "resolved",
             },
           ],
-          commits: [{ sha: "abc1234", subject: `feat: ${node.title ?? id}` }],
+          commits: [
+            {
+              sha: "abc1234",
+              subject: `feat: ${node.title ?? id}`,
+              // The correlating rule is the attribution that makes a
+              // correlated commit honest (finding 028).
+              rule: "step-id-correlation",
+            },
+          ],
           tiers,
         };
       }

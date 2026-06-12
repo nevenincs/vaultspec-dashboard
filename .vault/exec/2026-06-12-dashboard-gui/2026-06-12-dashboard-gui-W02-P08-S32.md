@@ -47,3 +47,11 @@ level. Gates green: typecheck, eslint, vitest (158 passed), prettier.
 This step landed after the P05 mock revision gate opened (re-check PASS);
 the lanes read the revised event/bucket serving directly.
 
+P08 visual review observation 2, answered: bucket magnitude encoding IS
+implemented - bar height is 3px plus 3px per count, capped at the lane
+height - and the uniform appearance in the boundary screenshot reflects
+the fixture corpus's genuinely uniform daily counts (mostly one event per
+bucket per kind), not a missing channel. Also folded in the consolidated
+revision per finding timeline-raw-cap-020: a client-side raw-mark ceiling
+(500) backs the engine's bucketing guarantee belt-and-suspenders.
+

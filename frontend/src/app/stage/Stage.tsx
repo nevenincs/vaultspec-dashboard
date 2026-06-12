@@ -17,6 +17,7 @@ import {
   useWorkspaceMap,
 } from "../../stores/server/queries";
 import { computeVisibility, useFilterStore } from "../../stores/view/filters";
+import { useLensStore } from "../../stores/view/lenses";
 import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -116,14 +117,23 @@ export function Stage() {
     // slice identity capture every meaningful change.
     [slice.data, expansionData.length, pinnedDiscoveries],
   );
+  // Persistence re-keys on EVERY scope change, independent of timeline
+  // mode and slice readiness (finding pin-rekey-gated-on-live-023): a swap
+  // during time travel must never leave pins or lenses writing under the
+  // previous scope's storage key.
+  useEffect(() => {
+    if (!scope) return;
+    scene.field.setPersistenceScope("default", scope);
+    usePinStore.getState().setScopeKey("default", scope);
+    useLensStore.getState().setScopeKey("default", scope);
+  }, [scope]);
+
   // While time travelling the driver owns the stage's data (S34); the
   // live keyframe path resumes — and re-pushes — on return to LIVE.
   const timelineMode = useViewStore((s) => s.timelineMode);
   useTimeTravel(scope, scene.controller);
   useEffect(() => {
     if (!merged || !scope || timelineMode.kind !== "live") return;
-    scene.field.setPersistenceScope("default", scope);
-    usePinStore.getState().setScopeKey("default", scope);
     const mapped = sliceToScene(merged);
     scene.controller.command({
       kind: "set-data",
@@ -141,13 +151,16 @@ export function Stage() {
     [merged, filterChoices],
   );
   useEffect(() => {
-    if (!membership) return;
+    // Membership computes over the LIVE slice; while the scene holds a
+    // historical set-data it must not be overwritten (finding
+    // timetravel-visibility-stale-021).
+    if (!membership || timelineMode.kind !== "live") return;
     scene.controller.command({
       kind: "set-visibility",
       visibleNodeIds: membership.visibleNodeIds,
       visibleEdgeIds: membership.visibleEdgeIds,
     });
-  }, [membership]);
+  }, [membership, timelineMode.kind]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">

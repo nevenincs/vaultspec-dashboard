@@ -6,7 +6,7 @@
 
 import type { SearchResult, VaultTreeEntry } from "../../stores/server/engine";
 import { useEngineSearch, useVaultTree } from "../../stores/server/queries";
-import { pathToNodeId } from "../left/browserSelection";
+import { pathStem, pathToNodeId } from "../left/browserSelection";
 
 // --- pure fallback matching (unit-tested) -------------------------------------------
 
@@ -19,7 +19,7 @@ export function buildFallbackResults(
   if (!needle || !entries) return [];
   const results: SearchResult[] = [];
   for (const entry of entries) {
-    const stem = entry.path.replace(/^.*\//, "").replace(/\.md$/, "");
+    const stem = pathStem(entry.path);
     const haystack = `${stem} ${entry.feature_tags.join(" ")}`.toLowerCase();
     const index = haystack.indexOf(needle);
     if (index === -1) continue;

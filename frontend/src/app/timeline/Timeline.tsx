@@ -99,6 +99,8 @@ export const useTimelineStore = create<TimelineState>((set) => ({
 
 const LANE_HEIGHT = 22;
 const RULER_HEIGHT = 16;
+/** The client-side mark ceiling (finding 020). */
+export const RAW_MARK_CAP = 500;
 
 /** Marks/extensions other steps dock into the timeline surface. */
 export interface TimelineSurfaceProps {
@@ -187,8 +189,10 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
             );
           });
         })}
-        {/* Individual event marks at fine zoom */}
-        {events.data?.events?.map((event: EngineEvent) => {
+        {/* Individual event marks at fine zoom. Belt-and-suspenders cap
+            (finding 020): the engine owns bucketing, but the client never
+            renders an unbounded mark count even if served one. */}
+        {events.data?.events?.slice(0, RAW_MARK_CAP).map((event: EngineEvent) => {
           const x = timeToX(Date.parse(event.ts), window_, width);
           const lane = laneOf(event.kind);
           return (

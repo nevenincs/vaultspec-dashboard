@@ -113,6 +113,9 @@ export function Inspector() {
             {evidence.data.commits.map((commit) => (
               <li key={commit.sha} className="truncate" title={commit.subject}>
                 commit {commit.sha.slice(0, 7)}: {commit.subject}
+                {commit.rule && (
+                  <span className="text-stone-400"> · via {commit.rule}</span>
+                )}
               </li>
             ))}
           </ul>

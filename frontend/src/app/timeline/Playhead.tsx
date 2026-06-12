@@ -6,7 +6,7 @@
 // playhead itself changes character. Returning docks back and the mode
 // exits.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useViewStore } from "../../stores/view/viewStore";
 import { useSurfaceStates } from "../degradation/useDegradation";
@@ -44,6 +44,20 @@ export function Playhead() {
   const reconnecting = useSurfaceStates().timeline === "reconnecting";
   const hostRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // Track the real rail width: the static fallback rendered LIVE mid-rail
+  // on wide screens (P08 visual review observation 1).
+  const [width, setWidth] = useState(800);
+
+  useEffect(() => {
+    const host = hostRef.current?.parentElement;
+    if (!host) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setWidth(rect.width);
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current?.parentElement;
@@ -73,7 +87,6 @@ export function Playhead() {
     };
   }, [window_]);
 
-  const width = hostRef.current?.parentElement?.clientWidth ?? 800;
   const live = playheadT === "live";
   const x = live ? width - 2 : timeToX(playheadT, window_, width);
 

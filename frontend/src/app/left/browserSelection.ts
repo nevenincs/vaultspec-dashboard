@@ -9,10 +9,14 @@ import type { VaultTreeEntry } from "../../stores/server/engine";
 import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 
+/** The single stem derivation every surface shares (finding 024). */
+export function pathStem(path: string): string {
+  return path.replace(/^.*\//, "").replace(/\.md$/, "");
+}
+
 /** Vault path → the contract's document node id (kind + canonical stem). */
 export function pathToNodeId(path: string): string {
-  const stem = path.replace(/^.*\//, "").replace(/\.md$/, "");
-  return `doc:${stem}`;
+  return `doc:${pathStem(path)}`;
 }
 
 /** Document node id → the vault path's stem (for row matching). */

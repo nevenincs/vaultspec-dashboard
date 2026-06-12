@@ -44,3 +44,10 @@ Browser glyphs are interim text marks; the commissioned family (G7.c,
 frontend/design/glyphs convention agreed) supplies the real ones via the
 same swap discipline as the stage.
 
+Per audit finding 025, declared deliberately: the browser stays
+LIVE-oriented during time travel - it is the filesystem entry path over
+the present working tree (the vault-tree endpoint has no as-of parameter
+in the contract), while the stage renders T. If a historical tree ever
+becomes a contract capability, reconciliation is a new step, not a silent
+change here.
+

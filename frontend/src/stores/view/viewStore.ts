@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type { EngineEdge } from "../server/engine";
+import { useFilterStore } from "./filters";
 
 // View state (gui-spec §5.2): selection, working set, filters/lens,
 // timeline mode, panel layout. This store is the shared brain that keeps
@@ -92,16 +93,25 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailCollapsed: false,
   rightRailCollapsed: false,
 
-  setScope: (scope) =>
+  setScope: (scope) => {
+    // WHOLESALE swap (ADR §2.1; finding scope-swap-partial-reset-022):
+    // everything scoped to the previous corpus resets — selection, working
+    // set, opened islands, session-pinned discoveries (old-corpus semantic
+    // candidates must not ride into the new slice), and the timeline mode
+    // (the new scope must not arrive pre-scrubbed to a foreign timestamp).
+    // The filter model resets too: its facet choices embed the previous
+    // scope's vocabulary. Cross-store, applied in one move.
+    useFilterStore.getState().reset();
     set({
       scope,
-      // Scope swap resets stage-scoped state: selection, working set, and
-      // opened islands belong to the previous corpus.
       selection: null,
       selectedId: null,
       workingSet: [],
       openedIds: [],
-    }),
+      pinnedDiscoveries: [],
+      timelineMode: { kind: "live" },
+    });
+  },
   select: (id) =>
     set({
       selection: id === null ? null : { kind: "node", id },

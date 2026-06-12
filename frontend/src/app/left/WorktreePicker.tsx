@@ -11,6 +11,7 @@ import type { MapWorktree } from "../../stores/server/engine";
 import { useWorkspaceMap } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
+import { movePlayhead } from "../timeline/Playhead";
 
 /** Sort corpus-bearing worktrees first, defaults leading, bare refs last. */
 export function orderWorktrees(worktrees: readonly MapWorktree[]): MapWorktree[] {
@@ -65,6 +66,9 @@ export function WorktreePicker() {
                 }
                 onClick={() => {
                   setScope(worktree.id);
+                  // The store resets the MODE to live (022); the playhead
+                  // widget docks alongside it.
+                  movePlayhead("live");
                   setExpanded(false);
                 }}
                 className={`flex w-full items-center gap-1 rounded px-2 py-0.5 text-left ${

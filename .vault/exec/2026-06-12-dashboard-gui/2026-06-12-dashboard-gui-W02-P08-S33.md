@@ -45,3 +45,12 @@ green: typecheck, eslint, vitest (161 passed), prettier.
 The stage tint shift ("paper ages slightly") belongs to the S47 token
 layer; the chip and playhead colour carry the unmistakability until then.
 
+P08 visual review observation 1, answered and fixed in the consolidated
+revision: the LIVE playhead rendering mid-rail was a render bug, not a
+clock-semantics question - the playhead (and range overlay) measured the
+rail width once with a static 800px fallback and never re-rendered on
+resize, so on wide screens the dock position was computed against the
+wrong width. Both overlays now track real width via ResizeObserver. The
+rail's right edge intentionally extends to wall-clock now (LIVE docks
+there); the mock corpus simply ends in March.
+

@@ -45,3 +45,13 @@ vitest (148 passed), prettier.
 Lens save UI (a "save as lens…" affordance on the bar) rides the palette
 work in S43 where the verb surface lives; the store API is complete now.
 
+Revised per audit findings lens-scope-key-018 and broken-lens-isolation-019
+(the consolidated P09/P10 revision): lens persistence is now keyed by
+workspace + scope exactly like pins and positions (G5.d) - lens choices
+embed scope-dependent vocabulary, so the original global key was a real
+cross-scope bleed; `setScopeKey` re-keys on every scope change from the
+same mode-independent effect as pins. The builtin "broken links" lens now
+isolates to the structural tier filtered to broken - THE broken-links
+view, not "everything plus a broken facet" - with both behaviors pinned by
+tests.
+

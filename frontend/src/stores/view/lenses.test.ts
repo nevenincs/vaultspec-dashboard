@@ -17,21 +17,23 @@ class MemoryStore implements KeyValueStore {
   }
 }
 
-describe("lens persistence", () => {
-  it("round-trips saved lenses and never persists builtins", () => {
+describe("lens persistence (keyed by workspace+scope, finding 018)", () => {
+  it("round-trips saved lenses per scope and never persists builtins", () => {
     const store = new MemoryStore();
-    saveLenses(store, [
+    saveLenses(store, "ws", "scope-a", [
       ...BUILTIN_LENSES,
       { name: "mine", choices: BUILTIN_LENSES[0].choices },
     ]);
-    const loaded = loadLenses(store);
-    expect(loaded.map((l) => l.name)).toEqual(["mine"]);
+    expect(loadLenses(store, "ws", "scope-a").map((l) => l.name)).toEqual(["mine"]);
+    // No cross-scope or cross-workspace bleed.
+    expect(loadLenses(store, "ws", "scope-b")).toEqual([]);
+    expect(loadLenses(store, "other", "scope-a")).toEqual([]);
   });
 
   it("reads corrupt blobs as none", () => {
     const store = new MemoryStore();
-    store.map.set("vaultspec-dashboard:lenses:default", "[broken");
-    expect(loadLenses(store)).toEqual([]);
+    store.map.set("vaultspec-dashboard:lenses:ws:s", "[broken");
+    expect(loadLenses(store, "ws", "s")).toEqual([]);
   });
 });
 
@@ -68,8 +70,24 @@ describe("lens store", () => {
     expect(names).toContain("mine");
   });
 
-  it("applies the show-broken builtin (the B-row lens)", () => {
+  it("applies the show-broken builtin as THE isolated broken view (019)", () => {
     expect(useLensStore.getState().apply("broken links")).toBe(true);
-    expect(useFilterStore.getState().structuralStates).toEqual(["broken"]);
+    const filters = useFilterStore.getState();
+    expect(filters.structuralStates).toEqual(["broken"]);
+    expect(filters.tiers).toEqual({
+      declared: false,
+      structural: true,
+      temporal: false,
+      semantic: false,
+    });
+  });
+
+  it("re-keys per scope and isolates saved lenses (018)", () => {
+    useLensStore.setState({ workspace: "default", scope: "scope-a", saved: [] });
+    useLensStore.getState().saveCurrent("scoped lens");
+    expect(useLensStore.getState().saved.map((l) => l.name)).toEqual(["scoped lens"]);
+    useLensStore.getState().setScopeKey("default", "scope-b");
+    expect(useLensStore.getState().saved).toEqual([]);
+    expect(useLensStore.getState().scope).toBe("scope-b");
   });
 });

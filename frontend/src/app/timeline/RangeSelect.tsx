@@ -82,7 +82,19 @@ export function RangeSelect() {
   const setDateRange = useFilterStore((s) => s.setDateRange);
   const hostRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ x1: number; x2: number } | null>(null);
+  const [width, setWidth] = useState(800);
   useRangePlayer();
+
+  useEffect(() => {
+    const host = hostRef.current?.parentElement;
+    if (!host) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (rect) setWidth(rect.width);
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current?.parentElement;
@@ -121,7 +133,6 @@ export function RangeSelect() {
     };
   }, [window_, setDateRange]);
 
-  const width = hostRef.current?.parentElement?.clientWidth ?? 800;
   const committed =
     dateRange.from && dateRange.to
       ? {
