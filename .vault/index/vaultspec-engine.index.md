@@ -76,6 +76,7 @@ related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
+  - '[[2026-06-13-vaultspec-engine-plan]]'
 ---
 
 # `vaultspec-engine` feature index
@@ -166,3 +167,4 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 ### plan
 
 - `2026-06-12-vaultspec-engine-plan` - `vaultspec-engine` plan
+- `2026-06-13-vaultspec-engine-plan` - `vaultspec-engine` plan

@@ -111,6 +111,14 @@ Responsibility: "what is happening / what just changed," and the inspector.
   resolved code locations with resolution status, correlated commits, and the
   per-tier edge list. The inspector is where "node as a live lens" pays off in
   prose form; the stage shows the shape, the inspector shows the evidence.
+  *Deviation (2026-06-13, flagged at the W03.P10 review, finding 027):*
+  **content preview is deferred from v1** — the agreed contract's evidence
+  capability carries document paths and types but no content/excerpt field,
+  so a body preview is unimplementable at the agreed capability level. The
+  remedy is filed as a contract wishlist item (an excerpt field on the
+  evidence capability, owner: engine seam); the preview returns to inspector
+  scope when that capability lands. All other inspector responsibilities in
+  this section shipped as specified.
 - **Search** (pillar 3) is reached via the command palette or a rail tab:
   query input with the rag filter vocabulary as typed chips, results listed
   with score and source, each result clickable into the graph (focus node) or
