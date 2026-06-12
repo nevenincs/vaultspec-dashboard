@@ -53,6 +53,10 @@ related:
   - '[[2026-06-12-dashboard-gui-W03-P09-S38]]'
   - '[[2026-06-12-dashboard-gui-W03-P09-S39]]'
   - '[[2026-06-12-dashboard-gui-W03-P09-summary]]'
+  - '[[2026-06-12-dashboard-gui-W03-P10-S40]]'
+  - '[[2026-06-12-dashboard-gui-W03-P10-S41]]'
+  - '[[2026-06-12-dashboard-gui-W03-P10-S42]]'
+  - '[[2026-06-12-dashboard-gui-W03-P10-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -123,6 +127,10 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W03-P09-S38` - build the vault-scoped read-only file browser over the vault-tree endpoint with doc-type glyphs and freshness per G2.c
 - `2026-06-12-dashboard-gui-W03-P09-S39` - wire bidirectional selection between browser and stage per G2.b
 - `2026-06-12-dashboard-gui-W03-P09-summary` - `dashboard-gui` `W03.P09` summary
+- `2026-06-12-dashboard-gui-W03-P10-S40` - build the now strip showing git, core in-flight, and rag rollup from the status snapshot plus SSE backends and git channels
+- `2026-06-12-dashboard-gui-W03-P10-S41` - build the ops surface with confirmation flows over the whitelisted ops proxy verbs, disabled in time-travel mode per G4.b
+- `2026-06-12-dashboard-gui-W03-P10-S42` - build the inspector with metadata, content preview, evidence, correlated commits, and the per-tier edge list with unfold-on-selection per G2.b and G3.c
+- `2026-06-12-dashboard-gui-W03-P10-summary` - `dashboard-gui` `W03.P10` summary
 
 ### plan
 
