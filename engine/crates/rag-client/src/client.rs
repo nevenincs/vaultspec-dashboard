@@ -85,13 +85,43 @@ impl RagTransport for LoopbackTransport {
             .and_then(|line| line.split_whitespace().nth(1))
             .and_then(|code| code.parse().ok())
             .ok_or(RagError::Protocol)?;
+        // Chunked framing must never reach the JSON parser as a confusing
+        // parse error (audit redline W02P09-502): de-chunk when the server
+        // says so, fail typed when the chunk grammar is malformed.
+        let body = if head
+            .lines()
+            .any(|l| l.to_ascii_lowercase().trim() == "transfer-encoding: chunked")
+        {
+            dechunk(response_body)?
+        } else {
+            response_body.to_string()
+        };
         if !(200..300).contains(&status) {
-            return Err(RagError::Http {
-                status,
-                body: response_body.to_string(),
-            });
+            return Err(RagError::Http { status, body });
         }
-        Ok(response_body.to_string())
+        Ok(body)
+    }
+}
+
+/// Decode an HTTP/1.1 chunked body (size lines in hex, terminated by a
+/// zero-length chunk). Malformed grammar is a typed protocol error.
+fn dechunk(raw: &str) -> Result<String> {
+    let mut out = String::new();
+    let mut rest = raw;
+    loop {
+        let (size_line, after) = rest.split_once("\r\n").ok_or(RagError::Protocol)?;
+        let size = usize::from_str_radix(size_line.split(';').next().unwrap_or("").trim(), 16)
+            .map_err(|_| RagError::Protocol)?;
+        if size == 0 {
+            return Ok(out);
+        }
+        if after.len() < size {
+            return Err(RagError::Protocol);
+        }
+        out.push_str(&after[..size]);
+        rest = after[size..]
+            .strip_prefix("\r\n")
+            .ok_or(RagError::Protocol)?;
     }
 }
 
@@ -190,6 +220,47 @@ mod tests {
         let info = info.unwrap();
         assert_eq!(info.port, 8766);
         assert_eq!(info.service_token.as_deref(), Some("tok-1"));
+    }
+
+    #[test]
+    fn chunked_bodies_are_dechunked_and_malformed_chunks_fail_typed() {
+        // Audit redline W02P09-502.
+        assert_eq!(
+            dechunk("5\r\n{\"ok\"\r\n7\r\n: true}\r\n0\r\n\r\n").unwrap(),
+            "{\"ok\": true}"
+        );
+        assert!(matches!(dechunk("zz\r\nbody"), Err(RagError::Protocol)));
+        assert!(matches!(
+            dechunk("ff\r\nshort\r\n"),
+            Err(RagError::Protocol)
+        ));
+    }
+
+    #[test]
+    fn chunked_transport_response_reaches_the_caller_decoded() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            // Drain the request enough to respond.
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n\
+                 b\r\n{{\"ok\": true\r\n1\r\n}}\r\n0\r\n\r\n"
+            )
+            .unwrap();
+        });
+        let transport = LoopbackTransport {
+            port,
+            bearer: None,
+            timeout: Duration::from_secs(5),
+        };
+        let body = transport.post_json("/search", "{}").unwrap();
+        assert_eq!(body, "{\"ok\": true}");
+        server.join().unwrap();
     }
 
     #[test]
