@@ -37,6 +37,8 @@ pub fn db_path(vault_root: &Path) -> PathBuf {
     engine_data_dir(vault_root).join(DB_FILENAME)
 }
 
+pub mod events;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error("sqlite: {0}")]
@@ -45,6 +47,10 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("unsupported schema version {found} (engine supports {supported})")]
     SchemaVersion { found: i64, supported: i64 },
+    /// Corrupt `node_ids` payload in the event log — loud, never silent
+    /// (audit W01P01-002): the field is the timeline↔stage join key.
+    #[error("corrupt event row seq {seq}: {detail}")]
+    CorruptEventRow { seq: i64, detail: String },
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
@@ -209,6 +215,12 @@ impl Store {
         get_semantic(&self.conn, cache_key, now)
     }
 
+    /// Raw connection access for test corruption scenarios only.
+    #[cfg(test)]
+    pub(crate) fn conn_for_tests(&self) -> &Connection {
+        &self.conn
+    }
+
     /// Drop expired semantic entries; returns the number removed.
     pub fn evict_expired_semantic(&self, now: i64) -> Result<usize> {
         let n = self.conn.execute(
@@ -251,16 +263,28 @@ fn events_in_range(conn: &Connection, from_ts: i64, to_ts: i64) -> Result<Vec<Ev
          WHERE ts >= ?1 AND ts <= ?2 ORDER BY seq",
     )?;
     let rows = stmt.query_map(params![from_ts, to_ts], |r| {
-        let node_ids_json: String = r.get(4)?;
-        Ok(EventRow {
-            seq: r.get(0)?,
-            ts: r.get(1)?,
-            kind: r.get(2)?,
-            git_ref: r.get(3)?,
-            node_ids: serde_json::from_str(&node_ids_json).unwrap_or_default(),
-        })
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, String>(4)?,
+        ))
     })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    let mut out = Vec::new();
+    for row in rows {
+        let (seq, ts, kind, git_ref, node_ids_json) = row?;
+        // Corrupt node_ids is a loud, typed error (audit W01P01-002).
+        let node_ids = Store::decode_node_ids(seq, &node_ids_json)?;
+        out.push(EventRow {
+            seq,
+            ts,
+            kind,
+            git_ref,
+            node_ids,
+        });
+    }
+    Ok(out)
 }
 
 fn get_semantic(conn: &Connection, cache_key: &str, now: i64) -> Result<Option<String>> {

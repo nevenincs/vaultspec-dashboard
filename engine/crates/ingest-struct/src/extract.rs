@@ -7,8 +7,11 @@
 
 use crate::is_step_identifier;
 
+use serde::{Deserialize, Serialize};
+
 /// What a mention refers to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum MentionKind {
     /// A repo-relative file path.
     Path(String),
@@ -21,7 +24,7 @@ pub enum MentionKind {
 }
 
 /// One extracted mention with byte-span provenance into the document.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractedMention {
     pub kind: MentionKind,
     /// Byte span (start, end) of the mention text within the document.

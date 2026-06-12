@@ -11,7 +11,9 @@ pub mod context;
 pub mod edges;
 pub mod facets;
 pub mod graph;
+pub mod index;
 pub mod project;
+pub mod watch;
 
 pub use context::{ContextBundle, context};
 pub use edges::{EdgeError, ingest, validate};

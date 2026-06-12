@@ -10,6 +10,7 @@ rust-version.workspace = true
 [dependencies]
 engine-model.workspace = true
 gix = "0.84.0"
+serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
 
 [lints]

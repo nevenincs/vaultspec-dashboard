@@ -75,11 +75,11 @@ Deliver the in-memory adjacency graph with key-plus-facet node identity, tier-en
 
 Deliver the cold parallel full-index pass, content-hash incremental re-index, the debounced filesystem watcher, the persisted temporal event log, and the re-derivability guarantee test.
 
-- [ ] `W02.P06.S25` - Implement the cold full-index orchestration with parallel per-view and per-source fan-out; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `W02.P06.S26` - Implement incremental re-index with content-hash skip against the store cache; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `W02.P06.S27` - Implement the debounced filesystem watcher over vault and git dirs driving partial re-ingestion of dirtied views; `engine/crates/engine-graph/src/watch.rs`.
-- [ ] `W02.P06.S28` - Implement temporal event log persistence correlating events to node ids; `engine/crates/engine-store/src/events.rs`.
-- [ ] `W02.P06.S29` - Add the re-derivability test proving a full index from a deleted cache converges to the identical graph; `engine/crates/engine-graph/tests/`.
+- [x] `W02.P06.S25` - Implement the cold full-index orchestration with parallel per-view and per-source fan-out; `engine/crates/engine-graph/src/index.rs`.
+- [x] `W02.P06.S26` - Implement incremental re-index with content-hash skip against the store cache; `engine/crates/engine-graph/src/index.rs`.
+- [x] `W02.P06.S27` - Implement the debounced filesystem watcher over vault and git dirs driving partial re-ingestion of dirtied views; `engine/crates/engine-graph/src/watch.rs`.
+- [x] `W02.P06.S28` - Implement temporal event log persistence correlating events to node ids; `engine/crates/engine-store/src/events.rs`.
+- [x] `W02.P06.S29` - Add the re-derivability test proving a full index from a deleted cache converges to the identical graph; `engine/crates/engine-graph/tests/`.
 
 ### Phase `W02.P07` - temporal correlation and time-travel
 

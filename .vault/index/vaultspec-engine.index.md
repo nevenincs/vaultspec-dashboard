@@ -39,6 +39,7 @@ related:
   - '[[2026-06-12-vaultspec-engine-W02-P06-S27]]'
   - '[[2026-06-12-vaultspec-engine-W02-P06-S28]]'
   - '[[2026-06-12-vaultspec-engine-W02-P06-S29]]'
+  - '[[2026-06-12-vaultspec-engine-W02-P06-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -94,6 +95,7 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W02-P06-S27` - Implement the debounced filesystem watcher over vault and git dirs driving partial re-ingestion of dirtied views
 - `2026-06-12-vaultspec-engine-W02-P06-S28` - Implement temporal event log persistence correlating events to node ids
 - `2026-06-12-vaultspec-engine-W02-P06-S29` - Add the re-derivability test proving a full index from a deleted cache converges to the identical graph
+- `2026-06-12-vaultspec-engine-W02-P06-summary` - `vaultspec-engine` `W02.P06` summary
 
 ### plan
 
