@@ -74,6 +74,10 @@ until implementation.
   structural confidence floor, and the structural tier's confidence slider
   governs resolved/stale shading only.
   - Edge fields: `id, src, dst, relation, direction, tier, confidence, state (structural only: resolved|stale|broken), provenance, observed_at`.
+    Clarification (audit W03P10-602): `direction` is not a separate wire
+    field - it is carried entirely by the `src` to `dst` ordering, which
+    every tier populates meaningfully. Clients render direction from that
+    ordering.
   - Node fields: `id, kind, doc_type?, feature_tags[], title, dates {created, modified}, lifecycle {state, progress?: {done, total}}, degree_by_tier {declared, structural, temporal, semantic}`.
   - **Constellation granularity:** queries at feature level return
     feature↔feature edges as **engine-aggregated meta-edges**

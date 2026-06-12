@@ -100,6 +100,27 @@ The W02.P07 review's 401 redline (drop the rule name from `CommitCorrelation::st
 
 The executor's S38 flag: no HTTP client crate; a ~40-line loopback HTTP/1.1 POST behind a pluggable `RagTransport` trait. RULED: accepted for v1 - the dependency frugality is defensible (the ADR's deliberately-few list names no client; the service is loopback JSON, not an auth boundary), and the trait seam means a crate swap later is contained. Redline with it: the transport assumes `Content-Length` + `Connection: close` framing and reads to EOF; if the rag service ever responds `Transfer-Encoding: chunked` (uvicorn may, for responses without a known length), the body handed to the JSON parser contains chunk framing and fails as a confusing parse error. Required: detect `Transfer-Encoding: chunked` in the response head and either de-chunk (small) or fail with a typed error naming the limitation, plus a test; revisit a real client crate (`ureq`-class) only if rag ever streams.
 
+## W03P10-601 | medium | P10 closure WITHHELD - fix set required on the shipped wire
+
+Seventh entry: boundary review of W03.P10 (CLI verbs, commit `63d8356`), conducted with a delegated deep first-pass (all G-dispositions and defects carry file-and-line plus live-run evidence; reviewer spot-verified the load-bearing items). The verbs are real and dogfooded - the live broken-lens run surfacing 62-74 decayed references in our own vault is the product working as designed - and five of six verbs are genuinely thin shells. But the pre-boundary conformance signal crossed the phase commit in flight (timestamps confirm: the G-list went out minutes before `63d8356` landed), so all eight gaps reached the boundary open, joined by review-pass defects. Closure is withheld until the P10.1 fix set lands; this is the first withheld closure, justified because the CLI is a *shipped* front door - these are wire-visible contract violations, not internal scaffolding:
+
+P10.1 fix set (blocking closure):
+- G1: `fail()` carries no `tiers` block; contract section 2 says every response. Add it.
+- G4 plus dead-end: `cmd/graph.rs` hardwires document granularity and drops `meta_edges`; the entire constellation surface (contract section 4) is unreachable from the CLI. Add `--granularity document|feature` and emit `meta_edges`.
+- Exit-code typing cluster: verb-internal scope failures (`BadScope`/`NoVault`) exit 1 with blanket `command-failed` instead of the typed exit 2; and `--scope` accepts any directory unvalidated (live: a non-workspace dir returns exit 0, `vault_present:false`) where contract section 3 demands per-request validation against the workspace map. Type the variants through `render()`, validate scope against discover+enumerate.
+- G7: `events.rs` assembles `EventRow`s from `ingest_git` inline - the one real D6.1 layering leak; lift sourcing into an `engine-query` entry point (the serve `/events` endpoint needs exactly that function, so this is convergent work, and it answers G6's parity mechanics).
+- G5: `status` lacks the git dirty/status datum (contract section 6) that `map` already computes.
+- G2: the `index` verb reports raw counts, not the core result vocabulary; per the recorded interpretation the vocabulary bites on mutating verbs - per-document created/updated/unchanged/skipped accounting (needs `IndexStats` extension upstream).
+- G3: first-class `corpus_views` list on `map` (plan S41 names it).
+- G8: minimal integration coverage - at least one envelope-shape test per verb in `vaultspec-cli/tests/`.
+- Hygiene riders (cheap, same pass): error messages leak raw `\\?\` Windows path prefixes (`NoVault` bypasses `clean_path`); resolve-failure envelopes report `command:"scope"` instead of the invoked verb.
+
+Routed elsewhere: G6's store-vs-walk parity decision lands with the P11 `/events` endpoint (rationale comment exists; the decision is which source serves which front door, recorded there). The `--full` path asymmetry is informational - convergence verified shared at `index_documents`, optional symmetry only.
+
+## W03P10-602 | low | contract clarification: edge direction is carried by src to dst ordering
+
+The review surfaced that contract section 4 lists `direction` among edge fields, but the engine edge model has no such field - direction is fully encoded by the `src`/`dst` ordering, which the model has carried since W01.P01 and every tier populates meaningfully. RULED as a contract clarification, not a model change: a redundant direction field invites disagreement between it and the ordering. The shared contract reference gains one line saying direction is the src-to-dst ordering; GUI side notified.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
