@@ -1,4 +1,83 @@
 @import "tailwindcss";
 
-/* Design tokens land here as CSS variables once the visual-language work
-   starts (gui-spec §7: Tailwind v4 CSS-first config is the token carrier). */
+/* Design token layer (W03.P12.S47, ADR G7.a / G7.d).
+   Tailwind v4 CSS-first config: the @theme block is the single token
+   carrier the visual language rides on. Calm paper-warm neutral ground,
+   ink for structure; color is SPENT on tier identity (four fixed hues —
+   treatment stays the primary, grayscale-safe channel), state, and
+   liveness. Light + dark from day one; the dark theme remaps the CSS
+   variables only — no component knows which theme it is in. */
+
+@theme {
+  /* -- ground & ink (paper-warm light) ----------------------------------- */
+  --color-paper: #faf9f7;
+  --color-paper-raised: #ffffff;
+  --color-paper-aged: #f5efe2; /* the time-travel tint: paper "ages" */
+  --color-ink: #2b2620;
+  --color-ink-muted: #6a6258;
+  --color-ink-faint: #a39b8f;
+  --color-rule: #e5e1da;
+
+  /* -- tier identity (fixed product-wide, hue SECONDARY to treatment) ---- */
+  --color-tier-declared: #3a342c; /* solid inked line */
+  --color-tier-structural: #2f7d4f; /* status-colored base (resolved) */
+  --color-tier-temporal: #4a4137; /* dotted */
+  --color-tier-semantic: #7d6f9e; /* translucent haze */
+
+  /* -- state (the only other spent color) -------------------------------- */
+  --color-state-active: #2f7d4f;
+  --color-state-complete: #4a4137;
+  --color-state-archived: #9a938a;
+  --color-state-stale: #c28e2d;
+  --color-state-broken: #b3502d; /* the warning hue */
+  --color-state-live: #1f8a5d;
+
+  /* -- type scale (compact instrument scale) ------------------------------ */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
+
+  /* -- motion (G7.5: organic settle, 150-250ms band) ---------------------- */
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-ui: 200ms;
+  --duration-ui-fast: 150ms;
+  --duration-ui-slow: 250ms;
+}
+
+/* Dark theme: variable remap only (G7.3 — light + dark from day one). */
+@layer base {
+  [data-theme="dark"] {
+    --color-paper: #211e1a;
+    --color-paper-raised: #2a2722;
+    --color-paper-aged: #2e2820;
+    --color-ink: #e8e3da;
+    --color-ink-muted: #a39b8f;
+    --color-ink-faint: #6a6258;
+    --color-rule: #3a352e;
+
+    --color-tier-declared: #d8d2c6;
+    --color-tier-structural: #5fb585;
+    --color-tier-temporal: #c2b8a8;
+    --color-tier-semantic: #a99ccc;
+
+    --color-state-active: #5fb585;
+    --color-state-complete: #d8d2c6;
+    --color-state-archived: #6a6258;
+    --color-state-stale: #d9a84e;
+    --color-state-broken: #d97352;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  /* Reduced-motion floor (G7.d); honored app-wide, S48 owns the rest. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

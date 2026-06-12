@@ -36,9 +36,16 @@ export function AppShell() {
         }}
       >
         <aside className="overflow-hidden border-r border-stone-200 p-2">
-          <button type="button" onClick={toggleLeft} className="text-xs text-stone-500">
-            {leftCollapsed ? "»" : "« scope"}
-          </button>
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={toggleLeft}
+              className="text-xs text-stone-500"
+            >
+              {leftCollapsed ? "»" : "« scope"}
+            </button>
+            {!leftCollapsed && <ThemeToggle />}
+          </div>
           {!leftCollapsed && (
             <div className="mt-2 space-y-3 overflow-y-auto">
               <WorktreePicker />
@@ -72,6 +79,27 @@ export function AppShell() {
         />
       </footer>
     </div>
+  );
+}
+
+/** Light + dark from day one (G7.3): remaps the token variables only. */
+function ThemeToggle() {
+  const [dark, setDark] = useState(
+    () => document.documentElement.dataset.theme === "dark",
+  );
+  return (
+    <button
+      type="button"
+      aria-label={dark ? "switch to light theme" : "switch to dark theme"}
+      className="text-xs text-stone-500"
+      onClick={() => {
+        const next = !dark;
+        setDark(next);
+        document.documentElement.dataset.theme = next ? "dark" : "light";
+      }}
+    >
+      {dark ? "☀" : "☾"}
+    </button>
   );
 }
 
