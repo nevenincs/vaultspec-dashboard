@@ -56,6 +56,18 @@ Node id composition uses `:` (kind prefix), `/` (plan container), and `#` (code 
 
 `resolve_symbol` re-reads every code file in the inventory for each symbol mention, so a document with N symbol mentions costs N full scans of the scope's code files. Fine at fixture scale, hostile at repository scale, and W02.P06's incremental pipeline will call this per dirtied document. Cheap fix when the pipeline lands: read each candidate file once per `resolve()` call (memoize contents or pre-build a per-call text cache); the store's derived-artifact cache then absorbs the cross-run cost. Also note `walk()` does not honor gitignore beyond a hardcoded skip list - acceptable v1, but stale resolutions against generated files will eventually confuse operators; revisit with the watcher work.
 
+## W02P05-201 | low | broken-edge confidence 0.0 is APPROVED, with a surfacing consequence
+
+The executor's flagged call (the ADR's structural band names no number for broken): broken edges ingest at confidence 0.0 - floor, unmistakably flagged, still retained. Approved: confidence answers "how strongly does this link hold right now", and a broken link holds not at all; the *signal* lives in the resolution state, which is exactly why D3.3 retains the edge. Consequence to carry into the surfaces: any min-confidence filter above zero will hide broken edges by arithmetic, so the structural-state filter facet (contract section 4) is the canonical channel for surfacing them, and the GUI's "show broken" lens must select on state without also applying a confidence floor. Recorded for the W03.P11 filter implementation and communicated to the GUI side.
+
+## W02P05-202 | medium | multiplicity aggregation is not idempotent across re-ingestion - gate for W02.P06
+
+`insert_validated_edge` increments multiplicity on every same-id ingestion. On a fresh build that is exactly the W01P01-003 decision (N mentions of one target = multiplicity N). But the increment has no idempotence key: when W02.P06.S26 re-ingests a dirtied document (or a watcher fires twice), the same N mentions arrive again and multiplicity inflates to 2N, monotonically per re-index. This also threatens D8.2 directly - an incrementally-maintained graph would not converge to the cold-rebuild graph, and the S29 re-derivability test would rightly fail. Fix before W02.P06.S26 lands: make re-ingestion replace rather than accumulate at a defined granularity (drop edges per (scope, source document) before re-extracting, or aggregate multiplicity at extraction time and pass the count once via the ingestion attributes instead of N repeated ingest calls). Either preserves the multiplicity decision while making re-index idempotent.
+
+## W02P05-203 | low | meta-edge aggregation is a full-graph scan per call
+
+`meta_edges` walks every edge and cross-products endpoint feature tags on each invocation. Fine at vault scale today and correct-by-construction; once the serve mode makes this the constellation hot path (W03.P11), consider memoizing per index generation rather than per request. No action in W02.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
@@ -70,6 +82,13 @@ Wave W01 boundary (second entry):
 - HARD GATE into W02: resolve W01P04-101 (one blob-hash namespace) before W02.P05.S21 builds facet reconciliation on the field, and W01P02-102 (milliseconds at the CommitEvent seam) before W02.P06.S28 persists commit events. Both are one-seam fixes today and corpus-wide corrections later.
 - W01P03-103: make the derived-weight choice explicit in the W02.P05.S20 record (carry it or document it untracked), alongside the W01P01-003 multiplicity decision already routed there.
 - W01P04-104: fold per-call content memoization into the W02.P06 pipeline work; no action inside W01.
+
+W02.P05 boundary (third entry):
+
+- Close W02.P05; carries W01P01-003 and W01P03-103 are confirmed resolved in the S20 record (multiplicity tracked as aggregated observation count; derived weight carried on the edge attributes). Edge-boundary enforcement including the outright rejection of semantic edges as graph fact (D3.5) is exemplary.
+- W02P05-201: broken confidence 0.0 approved; the state facet is the broken-surfacing channel - no confidence floor on the broken lens (GUI side notified).
+- HARD GATE into W02.P06.S26: resolve W02P05-202 (idempotent re-ingestion) before incremental re-index lands; the S29 re-derivability test must assert convergence of incremental-vs-cold builds, not only cold-vs-cold.
+- W02P05-203: no action until W03.P11; revisit at the serve-mode review.
 
 ## Codification candidates
 
