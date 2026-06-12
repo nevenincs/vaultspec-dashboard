@@ -22,6 +22,8 @@ export interface SceneNodeData {
   id: string;
   /** Node species/doc type — drives the silhouette glyph (gui-spec §3.1). */
   kind: string;
+  /** Display title — drives the DOI-culled label (contract §4 node field). */
+  title?: string;
   /** Lifecycle state + progress — drives ring/fill treatment. */
   lifecycle?: { state: string; progress?: { done: number; total: number } };
   /** Per-tier degree counts — drives tier badges (contract §4). */
