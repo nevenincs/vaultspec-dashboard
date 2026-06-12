@@ -209,3 +209,16 @@ from a known sequence point or signals a gap (client re-keyframes).
 - REDLINE-2 — raw event fields and bucketed shape specified (§5).
 - REDLINE-3 — single delta clock across `/graph/diff` and the `graph` SSE
   channel, with `last_seq`/`since=` splice guarantee (§5, §7).
+
+## 11. Post-v1 wishlist (capability requests for a future contract rev)
+
+- W1 (GUI side, 2026-06-13; gui ADR §2.3 finding 027): evidence documents
+  (`/nodes/{id}/evidence`) carry `{path, doc_type}` only - no content or
+  excerpt - so the inspector's content preview is a formalized v1
+  deviation. Requested: an optional bounded `excerpt` field on evidence
+  documents (first-N-chars or summary block; engine's call on shape), or
+  cursor-paginated full content (which would also serve search-result
+  previews). Engine-side note: bounded excerpts are cheap (the body bytes
+  are already read for extraction and the blob hash keys a cache); full
+  content paging is heavier and should ride a deliberate rev. When it
+  lands, the preview returns to inspector scope.
