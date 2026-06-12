@@ -22,6 +22,7 @@ import { bindSelectionToScene, selectFromScene } from "../../stores/view/selecti
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
+import { useTimeTravel } from "../timeline/timeTravel";
 import { Discover } from "./Discover";
 import { FilterBar } from "./FilterBar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
@@ -111,8 +112,12 @@ export function Stage() {
     // slice identity capture every meaningful change.
     [slice.data, expansionData.length, pinnedDiscoveries],
   );
+  // While time travelling the driver owns the stage's data (S34); the
+  // live keyframe path resumes — and re-pushes — on return to LIVE.
+  const timelineMode = useViewStore((s) => s.timelineMode);
+  useTimeTravel(scope, scene.controller);
   useEffect(() => {
-    if (!merged || !scope) return;
+    if (!merged || !scope || timelineMode.kind !== "live") return;
     scene.field.setPersistenceScope("default", scope);
     usePinStore.getState().setScopeKey("default", scope);
     const mapped = sliceToScene(merged);
@@ -121,7 +126,7 @@ export function Stage() {
       nodes: mapped.nodes,
       edges: mapped.edges,
     });
-  }, [merged, scope]);
+  }, [merged, scope, timelineMode.kind]);
 
   // One filter model, applied as a visibility membership diff (RL-5a):
   // the scene animates what the filter removed (G3.f).

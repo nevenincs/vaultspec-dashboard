@@ -103,7 +103,7 @@ Implements the bottom-docked movie-idiom timeline per G4: lanes and density buck
 
 - [x] `W02.P08.S32` - build the timeline lanes with engine-bucketed density rendering resolving to event marks at fine zoom per G4.a; `frontend/src/app/timeline/Timeline.tsx`.
 - [x] `W02.P08.S33` - implement the playhead with LIVE docking and unmistakable time-travel mode entry and exit per G4.b; `frontend/src/app/timeline/Playhead.tsx`.
-- [ ] `W02.P08.S34` - drive scene set-time from the playhead via asof keyframes and client diff-log replay with re-keyframe on large jumps per G4.b; `frontend/src/app/timeline/timeTravel.ts`.
+- [x] `W02.P08.S34` - drive scene set-time from the playhead via asof keyframes and client diff-log replay with re-keyframe on large jumps per G4.b; `frontend/src/app/timeline/timeTravel.ts`.
 - [ ] `W02.P08.S35` - implement range selection as the product's single date-range filter with play-the-range growth animation per G4.c; `frontend/src/app/timeline/RangeSelect.tsx`.
 - [ ] `W02.P08.S36` - implement event-mark click selection with node-ids cross-highlight pulse on the stage per G2.b and the contract event shape; `frontend/src/app/timeline/eventSelection.ts`.
 
