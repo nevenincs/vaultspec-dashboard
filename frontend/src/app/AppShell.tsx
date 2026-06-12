@@ -1,5 +1,6 @@
 import { useEngineStatus } from "../stores/server/engine";
 import { useViewStore } from "../stores/view/viewStore";
+import { WorktreePicker } from "./left/WorktreePicker";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
 import { RangeSelect } from "./timeline/RangeSelect";
@@ -29,8 +30,8 @@ export function AppShell() {
             {leftCollapsed ? "»" : "« scope"}
           </button>
           {!leftCollapsed && (
-            <div className="mt-2 text-sm text-stone-400">
-              worktree picker · vault browser (scaffold)
+            <div className="mt-2 space-y-3">
+              <WorktreePicker />
             </div>
           )}
         </aside>

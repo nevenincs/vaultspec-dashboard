@@ -11,6 +11,15 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-gui` plan
 
@@ -106,7 +115,7 @@ Delivers the supporting cast and the truthfulness layer: left and right rails, c
 
 Implements orientation and scope per G2: worktree picker, vault-scoped read-only browser, and bidirectional selection.
 
-- [ ] `W03.P09.S37` - build the worktree picker over the map endpoint with corpus-bearing worktrees primary and bare refs dimmed per G2.a; `frontend/src/app/left/WorktreePicker.tsx`.
+- [x] `W03.P09.S37` - build the worktree picker over the map endpoint with corpus-bearing worktrees primary and bare refs dimmed per G2.a; `frontend/src/app/left/WorktreePicker.tsx`.
 - [ ] `W03.P09.S38` - build the vault-scoped read-only file browser over the vault-tree endpoint with doc-type glyphs and freshness per G2.c; `frontend/src/app/left/VaultBrowser.tsx`.
 - [ ] `W03.P09.S39` - wire bidirectional selection between browser and stage per G2.b; `frontend/src/app/left/browserSelection.ts`.
 

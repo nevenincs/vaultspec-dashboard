@@ -31,6 +31,11 @@ export type Selection =
   | null;
 
 export interface ViewState {
+  /**
+   * The user-picked worktree scope (G2.a) — the coarsest filter; null
+   * falls back to the map's default corpus-bearing worktree.
+   */
+  scope: string | null;
   /** The shared selection; `selectedId` mirrors its id for convenience. */
   selection: Selection;
   selectedId: string | null;
@@ -50,6 +55,8 @@ export interface ViewState {
   leftRailCollapsed: boolean;
   rightRailCollapsed: boolean;
 
+  /** Switch the worktree scope — swaps the stage's scope wholesale. */
+  setScope: (scope: string | null) => void;
   /** Select a node by id (the common path); null clears. */
   select: (id: string | null) => void;
   /** Select any entity kind (edge, event with node ids, …). */
@@ -68,6 +75,7 @@ export interface ViewState {
 }
 
 export const useViewStore = create<ViewState>((set) => ({
+  scope: null,
   selection: null,
   selectedId: null,
   workingSet: [],
@@ -84,6 +92,16 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailCollapsed: false,
   rightRailCollapsed: false,
 
+  setScope: (scope) =>
+    set({
+      scope,
+      // Scope swap resets stage-scoped state: selection, working set, and
+      // opened islands belong to the previous corpus.
+      selection: null,
+      selectedId: null,
+      workingSet: [],
+      openedIds: [],
+    }),
   select: (id) =>
     set({
       selection: id === null ? null : { kind: "node", id },

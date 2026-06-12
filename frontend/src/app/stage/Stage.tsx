@@ -30,11 +30,13 @@ import { WorkingSet, mergeSlices } from "./WorkingSet";
 // One scene per app lifetime — survives route remounts; destroyed never.
 const scene = createDashboardScene();
 
-/** The active scope: the map's default corpus-bearing worktree until the
- * worktree picker (W03.P09) takes over. */
+/** The active scope: the user's pick (worktree picker, G2.a) or the
+ * map's default corpus-bearing worktree. */
 export function useActiveScope(): string | null {
+  const picked = useViewStore((s) => s.scope);
   const map = useWorkspaceMap();
   return useMemo(() => {
+    if (picked) return picked;
     for (const repo of map.data?.repositories ?? []) {
       const preferred =
         repo.worktrees.find((w) => w.is_default && w.has_vault) ??
@@ -42,7 +44,7 @@ export function useActiveScope(): string | null {
       if (preferred) return preferred.id;
     }
     return null;
-  }, [map.data]);
+  }, [picked, map.data]);
 }
 
 export function Stage() {
