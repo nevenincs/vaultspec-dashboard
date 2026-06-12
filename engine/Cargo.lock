@@ -383,6 +383,9 @@ version = "0.1.0"
 dependencies = [
  "engine-model",
  "rusqlite",
+ "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

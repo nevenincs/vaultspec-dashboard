@@ -11,12 +11,6 @@ related:
 ---
 
 
-
-
-
-
-
-
 # `vaultspec-engine` plan
 
 Build the `vaultspec` Rust engine from the committed cargo workspace scaffold to a contract-complete backend: ingestion, tiered linkage graph, query core, CLI verbs and serve mode.
@@ -25,16 +19,15 @@ Build the `vaultspec` Rust engine from the committed cargo workspace scaffold to
 
 Deliver the shared type vocabulary, the derived-artifact store, and the three deterministic ingestion sources (git landscape, core declared graph, structural extraction). Wave W02 depends on every phase here; authorized by the engine ADR sections 2, 3, 5, 8 and 9.
 
-
 ### Phase `W01.P01` - model and store foundations
 
 Deliver the shared engine-model type vocabulary (Node, Edge, Tier, Provenance, ScopeRef) with stable id derivation, and the rusqlite derived-artifact cache store.
 
-- [ ] `W01.P01.S01` - Define Node, NodeKind, Edge, RelationKind, Tier, Provenance and ScopeRef types per ADR section 3 as pure no-IO types; `engine/crates/engine-model/src/lib.rs`.
-- [ ] `W01.P01.S02` - Implement stable NodeId derivation from kind plus canonical key (feature tag, vault stem, plan stem plus step id, commit sha, repo path plus symbol) with unit tests; `engine/crates/engine-model/src/id.rs`.
-- [ ] `W01.P01.S03` - Implement stable EdgeId content-hash derivation over src, dst, relation, tier and provenance key with determinism unit tests; `engine/crates/engine-model/src/id.rs`.
-- [ ] `W01.P01.S04` - Implement the SQLite schema for derived artifacts keyed by input content hash, the temporal event log, and the semantic TTL cache; `engine/crates/engine-store/src/lib.rs`.
-- [ ] `W01.P01.S05` - Implement the store read and write API with single-writer discipline and concurrent-reader tests; `engine/crates/engine-store/src/lib.rs`.
+- [x] `W01.P01.S01` - Define Node, NodeKind, Edge, RelationKind, Tier, Provenance and ScopeRef types per ADR section 3 as pure no-IO types; `engine/crates/engine-model/src/lib.rs`.
+- [x] `W01.P01.S02` - Implement stable NodeId derivation from kind plus canonical key (feature tag, vault stem, plan stem plus step id, commit sha, repo path plus symbol) with unit tests; `engine/crates/engine-model/src/id.rs`.
+- [x] `W01.P01.S03` - Implement stable EdgeId content-hash derivation over src, dst, relation, tier and provenance key with determinism unit tests; `engine/crates/engine-model/src/id.rs`.
+- [x] `W01.P01.S04` - Implement the SQLite schema for derived artifacts keyed by input content hash, the temporal event log, and the semantic TTL cache; `engine/crates/engine-store/src/lib.rs`.
+- [x] `W01.P01.S05` - Implement the store read and write API with single-writer discipline and concurrent-reader tests; `engine/crates/engine-store/src/lib.rs`.
 
 ### Phase `W01.P02` - git landscape mapping
 

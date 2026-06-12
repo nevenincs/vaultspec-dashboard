@@ -6,6 +6,10 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod id;
+
+pub use id::{CanonicalKey, edge_id, node_id};
+
 /// Stable node identity: kind + canonical key (contract §2).
 ///
 /// Never positional, never regenerated; the GUI caches and animates by id.
@@ -164,20 +168,6 @@ pub struct Node {
     pub key: String,
     pub title: Option<String>,
     pub facets: Vec<Facet>,
-}
-
-impl NodeId {
-    /// Derive a stable node id from kind + canonical key (contract §2).
-    pub fn derive(kind: &NodeKind, key: &str) -> Self {
-        let prefix = match kind {
-            NodeKind::Feature => "feature",
-            NodeKind::Document => "doc",
-            NodeKind::PlanContainer => "plan",
-            NodeKind::Commit => "commit",
-            NodeKind::CodeArtifact => "code",
-        };
-        NodeId(format!("{prefix}:{key}"))
-    }
 }
 
 #[cfg(test)]

@@ -6,6 +6,7 @@ tags:
 date: '2026-06-12'
 related:
   - '[[2026-06-12-dashboard-gui-adr]]'
+  - '[[2026-06-12-dashboard-gui-plan]]'
 ---
 
 # `dashboard-gui` feature index
@@ -17,3 +18,7 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 ### adr
 
 - `2026-06-12-dashboard-gui-adr` - `dashboard-gui` adr: `dashboard GUI architecture` | (**status:** `accepted`)
+
+### plan
+
+- `2026-06-12-dashboard-gui-plan` - `dashboard-gui` plan
