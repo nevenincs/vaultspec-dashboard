@@ -11,6 +11,15 @@ related:
   - '[[2026-06-12-dashboard-foundation-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-gui` plan
 
@@ -114,7 +123,7 @@ Implements orientation and scope per G2: worktree picker, vault-scoped read-only
 
 Implements the activity rail per G2: now strip, the whitelisted ops surface with confirmations, and the inspector.
 
-- [ ] `W03.P10.S40` - build the now strip showing git, core in-flight, and rag rollup from the status snapshot plus SSE backends and git channels; `frontend/src/app/right/NowStrip.tsx`.
+- [x] `W03.P10.S40` - build the now strip showing git, core in-flight, and rag rollup from the status snapshot plus SSE backends and git channels; `frontend/src/app/right/NowStrip.tsx`.
 - [ ] `W03.P10.S41` - build the ops surface with confirmation flows over the whitelisted ops proxy verbs, disabled in time-travel mode per G4.b; `frontend/src/app/right/OpsPanel.tsx`.
 - [ ] `W03.P10.S42` - build the inspector with metadata, content preview, evidence, correlated commits, and the per-tier edge list with unfold-on-selection per G2.b and G3.c; `frontend/src/app/right/Inspector.tsx`.
 

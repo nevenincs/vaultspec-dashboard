@@ -1,6 +1,8 @@
-import { useEngineStatus } from "../stores/server/engine";
 import { useViewStore } from "../stores/view/viewStore";
 import { VaultBrowser } from "./left/VaultBrowser";
+import { Inspector } from "./right/Inspector";
+import { NowStrip } from "./right/NowStrip";
+import { OpsPanel } from "./right/OpsPanel";
 import { WorktreePicker } from "./left/WorktreePicker";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
@@ -67,27 +69,11 @@ export function AppShell() {
 }
 
 function ActivityRail() {
-  const { data, isError, isPending } = useEngineStatus();
   return (
-    <div className="mt-2 space-y-1 text-sm">
-      <div className="font-medium text-stone-600">engine</div>
-      {isPending && <div className="text-stone-400">contacting engine…</div>}
-      {isError && (
-        <div className="text-amber-700">
-          engine unreachable — start it with <code>vaultspec serve</code>
-        </div>
-      )}
-      {data && (
-        <ul className="text-stone-500">
-          <li>nodes: {data.nodes}</li>
-          <li>edges: {data.edges}</li>
-          {data.degradations.map((d) => (
-            <li key={d} className="text-amber-700">
-              degraded: {d}
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="mt-2 space-y-3 overflow-y-auto">
+      <NowStrip />
+      <OpsPanel />
+      <Inspector />
     </div>
   );
 }
