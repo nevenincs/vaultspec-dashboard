@@ -41,7 +41,7 @@ Closes the G6.b spike gate on integrated GPUs and locks the SceneController seam
 Builds the renderer-agnostic scene model: contract-shaped graph slices, keyframe plus delta replay on one sequence clock, visibility transitions, and warm-start position persistence.
 
 - [x] `W01.P02.S05` - implement the contract-shaped scene graph model with node kind, lifecycle, degree-by-tier and edge relation, tier, confidence, state per G3.a and the contract identity guarantees; `frontend/src/scene/graphModel.ts`.
-- [ ] `W01.P02.S06` - implement keyframe set-data and apply-deltas replay on the single sequence clock with splice-gap re-keyframe per G4.b; `frontend/src/scene/deltaLog.ts`.
+- [x] `W01.P02.S06` - implement keyframe set-data and apply-deltas replay on the single sequence clock with splice-gap re-keyframe per G4.b; `frontend/src/scene/deltaLog.ts`.
 - [ ] `W01.P02.S07` - implement set-visibility membership diffs with d3-interpolator fade transitions per G3.f; `frontend/src/scene/visibility.ts`.
 - [ ] `W01.P02.S08` - implement the client-side position cache and warm-start persistence keyed by workspace and scope per G5.d and G3.e; `frontend/src/scene/positionCache.ts`.
 
