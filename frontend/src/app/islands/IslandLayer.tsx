@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 
 import type { SceneAnchor, SceneController } from "../../scene/sceneController";
 import { useViewStore } from "../../stores/view/viewStore";
+import { NodeInterior } from "./NodeInterior";
 
 /** Island base size in CSS px at camera scale 1. */
 export const ISLAND_WIDTH_PX = 260;
@@ -69,11 +70,7 @@ function Island({ scene, id, children }: IslandProps) {
           ×
         </button>
       </div>
-      {children ?? (
-        <p className="mt-1 text-stone-500">
-          Interior pending (opens in place per G3.b; lands with W02.P06).
-        </p>
-      )}
+      {children ?? <NodeInterior id={id} />}
     </div>
   );
 }
