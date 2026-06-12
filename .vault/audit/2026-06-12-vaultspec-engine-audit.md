@@ -163,6 +163,14 @@ One advisory carried forward (non-blocking, for the backlog), post-closure adden
 
 Review-cycle statistics for the record: 12 phases, 30+ findings logged, 11 hard gates issued and all closed, 9 executor-flagged design calls ruled (8 accepted, 1 with an ADR margin amendment), 2 contract amendments and 2 clarifications, 1 upstream filing (vaultspec-rag#190), 7 dogfood findings dispositioned. The flag-don't-deviate discipline held for the entire cycle.
 
+## ADD-901 | medium | addendum cycle: five S49 consumer divergences ruled - all engine fixes
+
+Thirteenth entry (2026-06-13, post-closure): the GUI's S49 live-origin verification - the first consumer-typed-client pass over the serve surface - surfaced five capability divergences (detail in the gui plan's S49 step record). Reviewer fact-checked the two structural ones in code before ruling: as-of/diff go straight to rev-parse (a raw millisecond timestamp is not a revision, though the contract grants `t=<ts|sha>`), and feature granularity returns EMPTY nodes plus meta-edges - the convergence entity of ADR D4.1 is never synthesized as a node. RULINGS, all five engine fixes: (1) ts-or-sha as-of/diff inputs (resolve latest commit at-or-before T on the scope ref) - CRITICAL PATH for the GUI time-travel smoke; (2) feature-node synthesis at feature granularity with meta-edges addressed between feature node ids - this is an ADR-conformance fix, not merely contract; (3) contract section 4 node fields on list-shape nodes; (4) serve /status git block and /vault-tree dates/doc-type (front-door parity - the CLI got these in P10.1, serve lagged); (5) commit-event node-ids bounded - filter to graph-known nodes, cap with a truncation count, one-line bound recorded in the contract reference (the only item with a contract-side component).
+
+Cycle mechanics: the completed 2026-06-12 plan stays closed; the work rides a fresh L1 addendum plan (`2026-06-13-vaultspec-engine-plan`, 6 steps, single review boundary), authored and committed with the rulings mapped 1:1 plus S06.
+
+Process lesson institutionalized as S06: the feature e2e verified contract capability against the engine's own reading of the contract - a consumer-shaped conformance leg (typed-client expectations asserted over live responses) catches the next drift engine-side before any client does. Future contract-surface features should carry that leg from the start.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
