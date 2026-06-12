@@ -4,7 +4,7 @@
 # The dependency arrow always points at engine-model (pure types, zero I/O).
 
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "tests"]
 resolver = "3"
 
 [workspace.package]

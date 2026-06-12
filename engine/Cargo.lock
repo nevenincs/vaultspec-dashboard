@@ -375,6 +375,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine-e2e"
+version = "0.1.0"
+dependencies = [
+ "engine-graph",
+ "engine-model",
+ "engine-query",
+ "engine-store",
+ "ingest-git",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "engine-graph"
 version = "0.1.0"
 dependencies = [

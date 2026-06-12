@@ -214,7 +214,8 @@ _dev-test-help:
   @echo ""
   @echo "Targets:"
   @echo "  python    Run pytest on Python source"
-  @echo "  rust      Run cargo test on the engine workspace"
+  @echo "  rust      Run cargo test on the engine workspace (incl. e2e)"
+  @echo "  bench     Run the cold-index benchmark with baseline output"
   @echo "  frontend  Run vitest on the SPA"
   @echo "  all       Run all tests"
 
@@ -223,6 +224,9 @@ _dev-test-python:
 
 _dev-test-rust:
   cargo test --manifest-path engine/Cargo.toml --workspace
+
+_dev-test-bench:
+  cargo test --manifest-path engine/Cargo.toml -p engine-e2e --test bench -- --nocapture
 
 _dev-test-frontend:
   npm --prefix frontend run test

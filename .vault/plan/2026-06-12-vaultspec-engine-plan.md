@@ -138,9 +138,9 @@ Deliver the single-origin axum serve mode per the contract: discovery and auth, 
 
 Deliver end-to-end fixture-workspace coverage across both front doors, a cold-index performance baseline, and CI wiring for the engine workspace.
 
-- [ ] `W03.P12.S54` - Build the end-to-end fixture workspace with multiple worktrees and a vault corpus and exercise CLI and serve parity against it; `engine/tests/e2e/`.
-- [ ] `W03.P12.S55` - Add a cold-index performance smoke benchmark and record the baseline; `engine/tests/bench/`.
-- [ ] `W03.P12.S56` - Wire engine build, test and lint into the just pipeline and CI; `justfile`.
+- [x] `W03.P12.S54` - Build the end-to-end fixture workspace with multiple worktrees and a vault corpus and exercise CLI and serve parity against it; `engine/tests/e2e/`.
+- [x] `W03.P12.S55` - Add a cold-index performance smoke benchmark and record the baseline; `engine/tests/bench/`.
+- [x] `W03.P12.S56` - Wire engine build, test and lint into the just pipeline and CI; `justfile`.
 
 ## Description
 

@@ -1,0 +1,23 @@
+[package]
+name = "engine-e2e"
+description = "End-to-end fixture-workspace coverage across both front doors (plan W03.P12): CLI/serve parity, multi-worktree corpus views, degradation paths, concurrency, and the cold-index benchmark."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+engine-graph = { path = "../crates/engine-graph" }
+engine-model = { path = "../crates/engine-model" }
+engine-query = { path = "../crates/engine-query" }
+engine-store = { path = "../crates/engine-store" }
+ingest-git = { path = "../crates/ingest-git" }
+serde_json = "1.0.150"
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

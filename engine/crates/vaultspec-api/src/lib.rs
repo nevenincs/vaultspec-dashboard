@@ -157,7 +157,7 @@ pub async fn serve(port: u16) -> std::io::Result<()> {
     // Watcher → rebuild-at-scope-granularity → swap + diff broadcast
     // (audit gates W02P06-302/303; never deltas into a live graph).
     let (dirty_tx, mut dirty_rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
-    let _watch_handle = engine_graph::watch::watch(
+    let watch_handle = engine_graph::watch::watch(
         &engine_graph::watch::watch_roots(&root),
         Duration::from_millis(2000),
         move |paths| {
@@ -165,6 +165,8 @@ pub async fn serve(port: u16) -> std::io::Result<()> {
         },
     )
     .map_err(|e| std::io::Error::other(e.to_string()))?;
+    // Held in state so /status can report a dead watcher truthfully.
+    *state.watcher.lock().expect("watcher lock") = Some(watch_handle);
     {
         let state = state.clone();
         tokio::spawn(async move {
@@ -246,7 +248,10 @@ mod tests {
 
         let (status, body) = get_with_token(router, "/status", Some(&token)).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["watcher"]["mode"], "resident");
+        assert_eq!(
+            body["watcher"]["mode"], "starting",
+            "no watcher in test state"
+        );
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
     }
 

@@ -39,7 +39,18 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
             "core": {"invocation": core.invocation.join(" ")},
             "rag": rag,
         },
-        "watcher": {"running": true, "mode": "resident"},
+        // A dead watcher is stated, never papered over (DF-4 residual):
+        // heartbeat-alive-but-rebuilds-stopped is a zombie, and the
+        // operator needs to know.
+        "watcher": match state.watcher.lock().expect("watcher lock").as_ref() {
+            Some(handle) if handle.is_alive() => json!({"running": true, "mode": "resident"}),
+            Some(_) => json!({
+                "running": false,
+                "mode": "resident",
+                "reason": "watcher thread died; restart the service (rebuilds stopped)",
+            }),
+            None => json!({"running": false, "mode": "starting"}),
+        },
         "last_seq": state.seq.load(Ordering::SeqCst).saturating_sub(1),
         "tiers": super::query_tiers(&state),
     }))

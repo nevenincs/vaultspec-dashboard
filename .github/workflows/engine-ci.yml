@@ -1,0 +1,42 @@
+# Engine workspace CI (plan W03.P12.S56): build, lint, test on every push
+# and pull request touching the engine or its toolchain.
+
+name: engine-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "engine/**"
+      - ".github/workflows/engine-ci.yml"
+  pull_request:
+    paths:
+      - "engine/**"
+      - ".github/workflows/engine-ci.yml"
+
+jobs:
+  engine:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --workspace
+      - name: Test (unit + integration + e2e + bench)
+        run: cargo test --workspace

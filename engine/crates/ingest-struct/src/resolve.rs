@@ -28,15 +28,30 @@ pub struct ResolvedMention {
 
 /// Resolve mentions against a worktree checkout.
 pub fn resolve(root: &Path, mentions: Vec<ExtractedMention>) -> Vec<ResolvedMention> {
-    // One walk of the tree serves all fallback lookups.
+    // One walk of the tree serves all fallback lookups; one file-content
+    // cache serves every text-matching rule (audit W01P04-104: N mentions
+    // no longer mean N rescans of the same files).
     let inventory = walk(root);
+    let mut cache: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    let mut read = |root: &Path, path: &str| -> Option<String> {
+        cache
+            .entry(path.to_string())
+            .or_insert_with(|| std::fs::read_to_string(root.join(path)).ok())
+            .clone()
+    };
     mentions
         .into_iter()
-        .map(|mention| resolve_one(root, &inventory, mention))
+        .map(|mention| resolve_one(root, &inventory, mention, &mut read))
         .collect()
 }
 
-fn resolve_one(root: &Path, inventory: &[String], mention: ExtractedMention) -> ResolvedMention {
+fn resolve_one(
+    root: &Path,
+    inventory: &[String],
+    mention: ExtractedMention,
+    read: &mut impl FnMut(&Path, &str) -> Option<String>,
+) -> ResolvedMention {
     let (state, target) = match &mention.kind {
         MentionKind::Path(path) => {
             if root.join(path).is_file() {
@@ -59,8 +74,8 @@ fn resolve_one(root: &Path, inventory: &[String], mention: ExtractedMention) -> 
                 None => (ResolutionState::Broken, None),
             }
         }
-        MentionKind::StepId(step_id) => resolve_step_id(root, inventory, step_id),
-        MentionKind::Symbol(symbol) => resolve_symbol(root, inventory, symbol),
+        MentionKind::StepId(step_id) => resolve_step_id(root, inventory, step_id, read),
+        MentionKind::Symbol(symbol) => resolve_symbol(root, inventory, symbol, read),
     };
     ResolvedMention {
         mention,
@@ -75,6 +90,7 @@ fn resolve_step_id(
     root: &Path,
     inventory: &[String],
     step_id: &str,
+    read: &mut impl FnMut(&Path, &str) -> Option<String>,
 ) -> (ResolutionState, Option<String>) {
     let needle = format!("`{step_id}`");
     let plans: Vec<&String> = inventory
@@ -82,7 +98,7 @@ fn resolve_step_id(
         .filter(|p| p.starts_with(".vault/plan/") && p.ends_with(".md"))
         .collect();
     for plan in &plans {
-        if let Ok(text) = std::fs::read_to_string(root.join(plan))
+        if let Some(text) = read(root, plan)
             && text.contains(&needle)
         {
             return (ResolutionState::Resolved, Some((*plan).clone()));
@@ -104,6 +120,7 @@ fn resolve_symbol(
     root: &Path,
     inventory: &[String],
     symbol: &str,
+    read: &mut impl FnMut(&Path, &str) -> Option<String>,
 ) -> (ResolutionState, Option<String>) {
     let last = symbol
         .rsplit("::")
@@ -112,7 +129,7 @@ fn resolve_symbol(
         .unwrap_or(symbol);
     let mut stale_hit: Option<String> = None;
     for path in inventory.iter().filter(|p| is_code_file(p)) {
-        let Ok(text) = std::fs::read_to_string(root.join(path)) else {
+        let Some(text) = read(root, path) else {
             continue;
         };
         if text.contains(symbol) {
@@ -146,9 +163,24 @@ fn is_code_file(path: &str) -> bool {
 }
 
 /// Walk the scope's tree, returning repo-relative POSIX paths. Skips `.git`
-/// and other dot-directories except `.vault` (the corpus), plus common
-/// dependency/build trees.
+/// and other dot-directories except `.vault` (the corpus), common
+/// dependency/build trees, plus simple directory entries from the root
+/// `.gitignore` (audit W01P04-104: bounded gitignore honoring — bare
+/// directory names and `dir/` patterns; glob/negation patterns are out of
+/// v1 scope and would need a dedicated ignore implementation).
 fn walk(root: &Path) -> Vec<String> {
+    let gitignored: Vec<String> = std::fs::read_to_string(root.join(".gitignore"))
+        .map(|text| {
+            text.lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with('!'))
+                .filter(|l| !l.contains('*') && !l.contains('['))
+                .map(|l| l.trim_matches('/').to_string())
+                .filter(|l| !l.contains('/'))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -162,8 +194,9 @@ fn walk(root: &Path) -> Vec<String> {
                 let skip = (name.starts_with('.') && name != ".vault")
                     || matches!(
                         name.as_str(),
-                        "node_modules" | "target" | "dist" | "__pycache__"
-                    );
+                        "node_modules" | "target" | "dist" | "__pycache__" | "venv"
+                    )
+                    || gitignored.contains(&name);
                 if !skip {
                     stack.push(path);
                 }

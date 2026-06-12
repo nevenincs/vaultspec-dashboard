@@ -49,6 +49,9 @@ pub struct AppState {
     /// W02P05-203).
     pub meta_cache: Mutex<Option<(u64, Arc<Vec<MetaEdge>>)>>,
     pub generation: AtomicU64,
+    /// The resident watcher handle; `/status` reports a dead watcher
+    /// truthfully instead of claiming residency (DF-4 residual).
+    pub watcher: Mutex<Option<engine_graph::watch::WatchHandle>>,
 }
 
 pub const RING_CAP: usize = 4096;
@@ -197,6 +200,7 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         bearer,
         meta_cache: Mutex::new(None),
         generation: AtomicU64::new(0),
+        watcher: Mutex::new(None),
     })
 }
 

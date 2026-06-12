@@ -19,7 +19,16 @@ pub enum WatchError {
 pub struct WatchHandle {
     // Held for lifetime; the watcher stops when dropped.
     _watcher: notify::RecommendedWatcher,
-    _thread: std::thread::JoinHandle<()>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+impl WatchHandle {
+    /// Is the debounce thread still running? A panicked or exited thread
+    /// means a ZOMBIE watcher — `/status` must say so rather than claim a
+    /// resident watcher (audit P12 residual on DF-4).
+    pub fn is_alive(&self) -> bool {
+        !self.thread.is_finished()
+    }
 }
 
 /// Watch `roots` recursively, debounce events by `debounce`, and invoke
@@ -58,7 +67,7 @@ pub fn watch(
     });
     Ok(WatchHandle {
         _watcher: watcher,
-        _thread: thread,
+        thread,
     })
 }
 

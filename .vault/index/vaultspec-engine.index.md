@@ -69,6 +69,10 @@ related:
   - '[[2026-06-12-vaultspec-engine-W03-P11-S52]]'
   - '[[2026-06-12-vaultspec-engine-W03-P11-S53]]'
   - '[[2026-06-12-vaultspec-engine-W03-P11-summary]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P12-S54]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P12-S55]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P12-S56]]'
+  - '[[2026-06-12-vaultspec-engine-W03-P12-summary]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
@@ -154,6 +158,10 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W03-P11-S52` - Implement SPA static serving with embedded assets, fallback routing to index html, correct MIME types and dev-mode filesystem passthrough
 - `2026-06-12-vaultspec-engine-W03-P11-S53` - Implement the whitelisted transparent ops proxies for core and rag verbs and the search pass-through with node-id annotation
 - `2026-06-12-vaultspec-engine-W03-P11-summary` - `vaultspec-engine` `W03.P11` summary
+- `2026-06-12-vaultspec-engine-W03-P12-S54` - Build the end-to-end fixture workspace with multiple worktrees and a vault corpus and exercise CLI and serve parity against it
+- `2026-06-12-vaultspec-engine-W03-P12-S55` - Add a cold-index performance smoke benchmark and record the baseline
+- `2026-06-12-vaultspec-engine-W03-P12-S56` - Wire engine build, test and lint into the just pipeline and CI
+- `2026-06-12-vaultspec-engine-W03-P12-summary` - `vaultspec-engine` `W03.P12` summary
 
 ### plan
 
