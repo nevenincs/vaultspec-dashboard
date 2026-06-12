@@ -48,3 +48,11 @@ The log holds raw deltas unbounded for the loaded range; range eviction and
 re-keyframe policy (when scrub jumps outside the held range) belong to the
 timeline's time-travel driver (W02.P08.S34), which owns asof/diff fetching.
 
+Resolution of audit finding delta-remove-shape-002 (deliberate, canonical):
+a `remove` delta carries the entity payload in the same `node`/`edge` slot
+as `add`/`change` - symmetric with the contract's diff entry shape - and
+the entity's `id` is the only load-bearing field on removal; the client
+removes by id and ignores the rest of the payload. The mock engine (S19)
+must emit removes with at least the id populated and may send the full
+last-known entity; both splice identically.
+
