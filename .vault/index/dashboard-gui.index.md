@@ -57,6 +57,10 @@ related:
   - '[[2026-06-12-dashboard-gui-W03-P10-S41]]'
   - '[[2026-06-12-dashboard-gui-W03-P10-S42]]'
   - '[[2026-06-12-dashboard-gui-W03-P10-summary]]'
+  - '[[2026-06-12-dashboard-gui-W03-P11-S43]]'
+  - '[[2026-06-12-dashboard-gui-W03-P11-S44]]'
+  - '[[2026-06-12-dashboard-gui-W03-P11-S45]]'
+  - '[[2026-06-12-dashboard-gui-W03-P11-summary]]'
   - '[[2026-06-12-dashboard-gui-adr]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
@@ -131,6 +135,10 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W03-P10-S41` - build the ops surface with confirmation flows over the whitelisted ops proxy verbs, disabled in time-travel mode per G4.b
 - `2026-06-12-dashboard-gui-W03-P10-S42` - build the inspector with metadata, content preview, evidence, correlated commits, and the per-tier edge list with unfold-on-selection per G2.b and G3.c
 - `2026-06-12-dashboard-gui-W03-P10-summary` - `dashboard-gui` `W03.P10` summary
+- `2026-06-12-dashboard-gui-W03-P11-S43` - build the command palette fronting navigation, lenses, and ops verbs on the committed primitives per G2.a and G5.c
+- `2026-06-12-dashboard-gui-W03-P11-S44` - build the search tab over the search pass-through with typed filter chips and node-id click-through to the stage
+- `2026-06-12-dashboard-gui-W03-P11-S45` - implement the rag-down text-match fallback with the explicit semantic-search-offline state per G8.a
+- `2026-06-12-dashboard-gui-W03-P11-summary` - `dashboard-gui` `W03.P11` summary
 
 ### plan
 
