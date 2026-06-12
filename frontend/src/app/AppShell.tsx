@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useViewStore } from "../stores/view/viewStore";
 import { VaultBrowser } from "./left/VaultBrowser";
+import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { CommandPalette } from "./palette/CommandPalette";
 import { Inspector } from "./right/Inspector";
@@ -29,6 +30,7 @@ export function AppShell() {
     <div className="grid h-screen grid-rows-[1fr_8rem] bg-stone-50 text-stone-900">
       <CommandPalette />
       <DegradationDebugSwitch />
+      <KeyboardNav />
       <div
         className="grid min-h-0"
         style={{

@@ -28,11 +28,19 @@ const POSITION_SAVE_INTERVAL_MS = 5_000;
 /** Cross-highlight pulse duration (G2.b event click). */
 export const PULSE_MS = 1200;
 
+/** Reduced motion collapses the field's fade band to imperceptible (G7.d). */
+function fadeDuration(): number | undefined {
+  const reduced =
+    typeof matchMedia !== "undefined" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return reduced ? 1 : undefined;
+}
+
 export class DashboardField implements SceneFieldRenderer {
   private base = new PixiField();
   private model: SceneGraphModel = new Model();
-  private nodeVisibility = new VisibilityTracker();
-  private edgeVisibility = new VisibilityTracker();
+  private nodeVisibility = new VisibilityTracker(fadeDuration());
+  private edgeVisibility = new VisibilityTracker(fadeDuration());
   private pinned = new Set<string>();
   private pinnedPositions = new Map<string, NodePosition>();
   private positionCache = defaultPositionCache();
