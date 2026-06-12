@@ -16,6 +16,7 @@ import {
   useGraphSlice,
   useWorkspaceMap,
 } from "../../stores/server/queries";
+import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
 import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { IslandLayer } from "../islands/IslandLayer";
@@ -82,11 +83,13 @@ export function Stage() {
       if (event.kind === "expand") addToWorkingSet(event.id);
     });
     const offBind = bindSelectionToScene(scene.controller);
+    const offPins = bindPinsToScene(scene.controller);
     return () => {
       offEvents();
       offBind();
+      offPins();
     };
-  }, [openNode]);
+  }, [openNode, addToWorkingSet]);
 
   // Constellation + working-set expansions → seam command (keyframe path).
   const expansionData = expansions
@@ -95,6 +98,7 @@ export function Stage() {
   useEffect(() => {
     if (!slice.data || !scope) return;
     scene.field.setPersistenceScope("default", scope);
+    usePinStore.getState().setScopeKey("default", scope);
     const merged = mergeSlices(slice.data, [
       ...expansionData,
       // Session-pinned discovery candidates ride the semantic haze (G3.c).
