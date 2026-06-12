@@ -206,6 +206,8 @@ export interface EdgeSetResult {
 export class EdgeMeshLayer {
   private container = new Container();
   private groups = new Map<string, MeshGroup>();
+  private lastEdges: readonly SceneEdgeData[] = [];
+  private highlight: ReadonlySet<string> | null = null;
 
   constructor(world: Container) {
     // Edges draw under nodes: insert at the back of the world.
@@ -214,11 +216,26 @@ export class EdgeMeshLayer {
 
   /** Rebuild mesh topology for a new edge set (edge-set changes only). */
   setEdges(edges: readonly SceneEdgeData[]): EdgeSetResult {
+    this.lastEdges = edges;
+    return this.rebuild();
+  }
+
+  /**
+   * Ego-highlight (G3.b): lifted edge ids keep full treatment, the rest
+   * recede. Null clears. Rebuilds topology — fine at DOI-bounded sizes.
+   */
+  setHighlight(edgeIds: ReadonlySet<string> | null): void {
+    this.highlight = edgeIds;
+    this.rebuild();
+  }
+
+  private rebuild(): EdgeSetResult {
     const rejected: UnknownTierError[] = [];
     const byGroup = new Map<string, SceneEdgeData[]>();
-    for (const edge of edges) {
+    for (const edge of this.lastEdges) {
       try {
-        const key = edgeGroupKey(edge);
+        let key = edgeGroupKey(edge);
+        if (this.highlight?.has(edge.id)) key = `${key}+lift`;
         let list = byGroup.get(key);
         if (!list) {
           list = [];
@@ -251,9 +268,10 @@ export class EdgeMeshLayer {
         const b = positionOf(edge.dst);
         if (!a || !b) continue;
         const offset = i * group.vertsPerEdge * 2;
-        if (group.key.startsWith("temporal")) {
+        const base = group.key.split("+")[0];
+        if (base.startsWith("temporal")) {
           writeDashedSegments(positions, offset, a.x, a.y, b.x, b.y);
-        } else if (group.key === "meta") {
+        } else if (base === "meta") {
           writeQuadCorners(
             positions,
             offset,
@@ -263,7 +281,7 @@ export class EdgeMeshLayer {
             b.y,
             metaHalfWidth(edge.meta?.count ?? 1),
           );
-        } else if (group.key.startsWith("semantic")) {
+        } else if (base.startsWith("semantic")) {
           writeQuadCorners(
             positions,
             offset,
@@ -291,8 +309,10 @@ export class EdgeMeshLayer {
   }
 
   private buildGroup(key: string, edges: SceneEdgeData[]): MeshGroup {
-    const isTemporal = key.startsWith("temporal");
-    const isSemantic = key.startsWith("semantic") || key === "meta";
+    const base = key.split("+")[0];
+    const lifted = key.endsWith("+lift");
+    const isTemporal = base.startsWith("temporal");
+    const isSemantic = base.startsWith("semantic") || base === "meta";
     const topology = isSemantic ? "triangle-list" : "line-list";
     const vertsPerEdge = isSemantic ? 4 : isTemporal ? DASHES_PER_EDGE * 2 : 2;
     const positions = new Float32Array(edges.length * vertsPerEdge * 2);
@@ -310,9 +330,11 @@ export class EdgeMeshLayer {
     }
     const geometry = new MeshGeometry({ positions, uvs, indices, topology });
     const mesh = new Mesh({ geometry, texture: Texture.WHITE });
-    mesh.tint = groupColor(key);
-    // Alpha supports the treatment but never carries confidence alone.
-    mesh.alpha = isSemantic ? 0.45 : 0.8;
+    mesh.tint = groupColor(base);
+    // Alpha supports the treatment but never carries confidence alone;
+    // while an ego is lifted, non-lifted groups recede (G3.b).
+    const baseAlpha = isSemantic ? 0.45 : 0.8;
+    mesh.alpha = this.highlight && !lifted ? baseAlpha * 0.25 : baseAlpha;
     this.container.addChild(mesh);
     return { key, edges, topology, vertsPerEdge, positions, geometry, mesh };
   }

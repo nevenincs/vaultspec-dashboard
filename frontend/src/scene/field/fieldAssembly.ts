@@ -16,6 +16,7 @@ import type {
 import { SceneController as Controller } from "../sceneController";
 import { VisibilityTracker } from "../visibility";
 import { AnchorDriver } from "./anchors";
+import { computeEgo } from "./egoHighlight";
 import { Camera, HIT_RADIUS_WORLD, PointerGestures, SpatialHitTester } from "./camera";
 import { EdgeMeshLayer } from "./edgeMeshes";
 import { ProgrammaticGlyphs } from "./glyphs";
@@ -120,9 +121,13 @@ export class DashboardField implements SceneFieldRenderer {
       };
       app.ticker.add(tick);
 
-      // Pointer gestures on the canvas emit the locked seam events.
+      // Pointer gestures on the canvas emit the locked seam events; hover
+      // additionally drives the ego-highlight (G3.b) inside the field.
       const gestures = new PointerGestures({
-        emit: (event) => this.controller?.emit(event),
+        emit: (event) => {
+          if (event.kind === "hover") this.applyEgoHighlight(event.id);
+          this.controller?.emit(event);
+        },
         panBy: (dx, dy) => {
           this.autoFit = false;
           this.camera?.panBy(dx, dy);
@@ -282,6 +287,18 @@ export class DashboardField implements SceneFieldRenderer {
 
   private focusedIds(): ReadonlySet<string> {
     return this.pinned;
+  }
+
+  /** Hover ego-highlight: lift the 1-hop neighborhood, recede the rest. */
+  private applyEgoHighlight(id: string | null): void {
+    if (id === null) {
+      this.sprites?.setHighlight(null);
+      this.edges?.setHighlight(null);
+      return;
+    }
+    const ego = computeEgo(this.model, id);
+    this.sprites?.setHighlight(ego.nodeIds);
+    this.edges?.setHighlight(ego.edgeIds);
   }
 
   private applyModelToLayers(reseed: boolean): void {

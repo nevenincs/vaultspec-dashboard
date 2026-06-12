@@ -11,6 +11,7 @@ import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 
 import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
+import { RECEDE_ALPHA } from "./egoHighlight";
 
 // --- pure anatomy helpers (unit-tested; rendering maps these) ---------------
 
@@ -152,8 +153,29 @@ export class NodeSpriteLayer {
   /** Semantic-zoom LOD switch; focused ids keep full anatomy at any zoom. */
   setLod(scale: number, focusedIds: ReadonlySet<string>): void {
     this.focused = new Set(focusedIds);
+    this.lastScale = scale;
+    this.refresh();
+  }
+
+  /**
+   * Ego-highlight (G3.b): lifted ids keep full alpha and show labels at
+   * any zoom (DOI culling); the rest of the field recedes. Null clears.
+   */
+  setHighlight(lifted: ReadonlySet<string> | null): void {
+    this.highlight = lifted;
+    this.refresh();
+  }
+
+  private lastScale = 1;
+  private highlight: ReadonlySet<string> | null = null;
+
+  /** Re-apply LOD + highlight to every visual. */
+  private refresh(): void {
+    const now = Date.now();
     for (const visual of this.visuals.values()) {
-      const level = lodFor(scale, this.focused.has(visual.node.id));
+      const id = visual.node.id;
+      const lifted = this.highlight?.has(id) ?? false;
+      const level = lodFor(this.lastScale, this.focused.has(id) || lifted);
       if (level === "near") {
         if (!visual.anatomy) {
           visual.anatomy = this.buildAnatomy(visual);
@@ -164,6 +186,9 @@ export class NodeSpriteLayer {
       } else if (visual.anatomy) {
         visual.anatomy.visible = false;
       }
+      const recede = this.highlight && !lifted ? RECEDE_ALPHA : 1;
+      visual.sprite.alpha = freshnessAlpha(visual.node.dates?.modified, now) * recede;
+      if (visual.anatomy) visual.anatomy.alpha = recede;
     }
   }
 

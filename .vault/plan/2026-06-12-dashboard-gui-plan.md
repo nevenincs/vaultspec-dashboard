@@ -81,7 +81,7 @@ Builds the typed engine client and a mock engine mirroring the foundation refere
 Implements the details-first interaction model per G3.b: constellation, ego highlight, shared selection, open-in-place interiors, working set, discover, and pins.
 
 - [x] `W02.P06.S21` - render the initial feature constellation with engine-aggregated meta-edges per G3.a and G3.d; `frontend/src/app/stage/Stage.tsx`.
-- [ ] `W02.P06.S22` - implement hover ego-highlight with field recede and DOI label culling per G3.b; `frontend/src/scene/field/egoHighlight.ts`.
+- [x] `W02.P06.S22` - implement hover ego-highlight with field recede and DOI label culling per G3.b; `frontend/src/scene/field/egoHighlight.ts`.
 - [ ] `W02.P06.S23` - implement the shared selection concept syncing stage, view store, browser, timeline, and inspector per G2.b; `frontend/src/stores/view/selection.ts`.
 - [ ] `W02.P06.S24` - implement open-in-place feature lifecycle and plan interior islands with canonical lifecycle-axis and tier layouts per G3.b and G3.e; `frontend/src/app/islands/NodeInterior.tsx`.
 - [ ] `W02.P06.S25` - implement expand-ego working set with breadcrumb chips, collapse, and clear-to-constellation per G3.b; `frontend/src/app/stage/WorkingSet.tsx`.
