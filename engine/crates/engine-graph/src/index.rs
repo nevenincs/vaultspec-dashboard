@@ -238,11 +238,22 @@ fn index_documents(
         }
     }
 
-    // Declared tier: ingest core's authored graph from the WORKING TREE (the
-    // engine's stated core capability — "ingests core's vault graph").
-    // Structural mentions above are only one tier; without this the linkage
-    // graph carries no declared cross-references at all.
-    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, None);
+    // Declared tier: ingest core's authored graph at HEAD (the engine's stated
+    // core capability — "ingests core's vault graph"). Structural mentions
+    // above are only one tier; without this the linkage graph carries no
+    // declared cross-references at all.
+    //
+    // READ-AND-INFER (D1.2, CRITICAL): we MUST use `--ref HEAD`, never the
+    // working-tree mode. Plain `vaultspec-core vault graph` mutates the target
+    // vault — it runs core's index refresh, which stamps `modified:`
+    // frontmatter onto un-migrated docs and rewrites `.gitignore` — so reading
+    // a corpus would silently corrupt it (adversarial finding, 2026-06-13).
+    // `--ref HEAD` reads the git object DB read-only (no checkout, no cache, no
+    // write), at the cost of reflecting the committed state rather than
+    // uncommitted working-tree edits — the correct trade for a read-and-infer
+    // engine. The structural tier above still reflects the working tree via
+    // read-only file reads.
+    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, Some("HEAD"));
     stats.declared_edges += declared;
     stats.declared_unavailable = unavailable;
 
