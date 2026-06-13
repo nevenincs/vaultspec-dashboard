@@ -65,10 +65,7 @@ export class EngineError extends Error {
  * degraded state, not a bare failure. A body that is missing or unparseable
  * (a genuine transport fault) yields an EngineError with no tiers.
  */
-async function engineErrorFrom(
-  path: string,
-  response: Response,
-): Promise<EngineError> {
+async function engineErrorFrom(path: string, response: Response): Promise<EngineError> {
   let body: unknown;
   let tiers: TiersBlock | undefined;
   try {

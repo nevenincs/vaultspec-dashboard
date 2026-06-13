@@ -107,9 +107,9 @@ describe("createAppDispatcher", () => {
     const d = createAppDispatcher(guard);
     const fired = vi.fn(() => "fired");
     d.register("danger", fired);
-    expect(isArmedResult(d.dispatch({ type: "danger", meta: { guard: "confirm" } }))).toBe(
-      true,
-    );
+    expect(
+      isArmedResult(d.dispatch({ type: "danger", meta: { guard: "confirm" } })),
+    ).toBe(true);
     expect(d.dispatch({ type: "danger", meta: { guard: "confirm" } })).toBe("fired");
   });
 });

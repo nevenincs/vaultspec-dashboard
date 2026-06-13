@@ -23,8 +23,7 @@ export function useAction<P = void>(
   type: string,
 ): (payload?: P, meta?: ActionMeta) => unknown {
   return useCallback(
-    (payload?: P, meta?: ActionMeta) =>
-      appDispatcher.dispatch({ type, payload, meta }),
+    (payload?: P, meta?: ActionMeta) => appDispatcher.dispatch({ type, payload, meta }),
     [type],
   );
 }

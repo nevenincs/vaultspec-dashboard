@@ -71,7 +71,8 @@ fn graph_query_scale_and_concurrency() {
     };
 
     let t = Instant::now();
-    let (graph, stats) = engine_graph::index::index_worktree(dir.path(), &scope, &store, 0).unwrap();
+    let (graph, stats) =
+        engine_graph::index::index_worktree(dir.path(), &scope, &store, 0).unwrap();
     let index_ms = t.elapsed().as_millis();
     let graph = Arc::new(graph);
 

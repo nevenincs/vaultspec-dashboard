@@ -18,7 +18,8 @@ export const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      retry: (failureCount, error) => failureCount < 1 && classifyError(error).retryable,
+      retry: (failureCount, error) =>
+        failureCount < 1 && classifyError(error).retryable,
       staleTime: 5_000,
     },
   },

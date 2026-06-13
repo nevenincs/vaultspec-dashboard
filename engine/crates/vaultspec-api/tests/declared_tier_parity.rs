@@ -45,15 +45,13 @@ async fn get(router: axum::Router, path: &str, token: &str) -> (StatusCode, Valu
     let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
         .await
         .unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
-async fn post(
-    router: axum::Router,
-    path: &str,
-    token: &str,
-    body: Value,
-) -> (StatusCode, Value) {
+async fn post(router: axum::Router, path: &str, token: &str, body: Value) -> (StatusCode, Value) {
     let response = router
         .oneshot(
             Request::post(path)
@@ -69,7 +67,10 @@ async fn post(
     let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
         .await
         .unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 fn urlencode(s: &str) -> String {

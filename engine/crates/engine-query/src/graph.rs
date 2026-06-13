@@ -201,7 +201,10 @@ pub fn feature_delta(
     let mut seq = seq_start;
     let mut push = |op: DiffOp, node: Option<&Value>, edge: Option<&Value>| {
         let mut entry = serde_json::Map::new();
-        entry.insert("op".into(), serde_json::to_value(op).expect("op serializes"));
+        entry.insert(
+            "op".into(),
+            serde_json::to_value(op).expect("op serializes"),
+        );
         entry.insert("granularity".into(), Value::String("feature".into()));
         if let Some(node) = node {
             entry.insert("node".into(), node.clone());

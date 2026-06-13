@@ -17,8 +17,8 @@
 
 use engine_graph::{EdgeAttrs, LinkageGraph, ingest};
 use engine_model::{
-    CanonicalKey, Edge, Facet, Node, NodeKind, Presence, Provenance, RelationKind,
-    ResolutionState, ScopeRef, Tier, edge_id, node_id,
+    CanonicalKey, Edge, Facet, Node, NodeKind, Presence, Provenance, RelationKind, ResolutionState,
+    ScopeRef, Tier, edge_id, node_id,
 };
 use engine_query::node::evidence;
 
@@ -71,7 +71,13 @@ fn resolved_symbol_mention_emits_no_dead_end_bridge() {
         target: symbol.into(),
     };
     let edge = Edge {
-        id: edge_id(&src, &dst, &RelationKind::Mentions, Tier::Structural, &provenance),
+        id: edge_id(
+            &src,
+            &dst,
+            &RelationKind::Mentions,
+            Tier::Structural,
+            &provenance,
+        ),
         src: src.clone(),
         dst: dst.clone(),
         relation: RelationKind::Mentions,

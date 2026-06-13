@@ -47,10 +47,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    boundaryLog.error(
-      `uncaught render error in region "${this.props.region}"`,
-      error,
-    );
+    boundaryLog.error(`uncaught render error in region "${this.props.region}"`, error);
     boundaryLog.debug("component stack", {
       region: this.props.region,
       componentStack: info.componentStack,

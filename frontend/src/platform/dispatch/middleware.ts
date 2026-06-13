@@ -12,7 +12,10 @@ const dispatchLog = logger.child("dispatch");
 
 /** Logs every dispatched action and any failure - never swallows the throw. */
 export const loggingMiddleware: Middleware = (action, next) => {
-  dispatchLog.debug(`dispatch ${action.type}`, action.meta ? { meta: action.meta } : undefined);
+  dispatchLog.debug(
+    `dispatch ${action.type}`,
+    action.meta ? { meta: action.meta } : undefined,
+  );
   try {
     return next(action);
   } catch (error) {

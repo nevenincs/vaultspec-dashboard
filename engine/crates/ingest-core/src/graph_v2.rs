@@ -274,7 +274,12 @@ mod tests {
         let parsed = parse(&data, &scope(), 0).unwrap();
         assert_eq!(parsed.docs.len(), 2);
         assert_eq!(parsed.declared.len(), 1, "the edge to the phantom survives");
-        assert!(parsed.docs.iter().any(|d| d.id == "ghost" && d.doc_type.is_none()));
+        assert!(
+            parsed
+                .docs
+                .iter()
+                .any(|d| d.id == "ghost" && d.doc_type.is_none())
+        );
     }
 
     #[test]

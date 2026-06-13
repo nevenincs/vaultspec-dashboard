@@ -49,22 +49,14 @@ describe("Dispatcher middleware chain", () => {
     d.use(mw("b"));
     d.register("t", () => order.push("handler"));
     d.dispatch({ type: "t" });
-    expect(order).toEqual([
-      "a:before",
-      "b:before",
-      "handler",
-      "b:after",
-      "a:after",
-    ]);
+    expect(order).toEqual(["a:before", "b:before", "handler", "b:after", "a:after"]);
   });
 
   it("lets a middleware short-circuit without calling the handler", () => {
     const d = new Dispatcher();
     const handler = vi.fn();
     d.register("t", handler);
-    d.use((action, next) =>
-      action.meta?.block ? "short-circuited" : next(action),
-    );
+    d.use((action, next) => (action.meta?.block ? "short-circuited" : next(action)));
     expect(d.dispatch({ type: "t", meta: { block: true } })).toBe("short-circuited");
     expect(handler).not.toHaveBeenCalled();
   });
