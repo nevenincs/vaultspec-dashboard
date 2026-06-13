@@ -8,6 +8,7 @@
 import { useState } from "react";
 
 import type { MapWorktree } from "../../stores/server/engine";
+import { useEngineStatus } from "../../stores/server/engine";
 import { useWorkspaceMap } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
@@ -28,18 +29,21 @@ export function WorktreePicker() {
   const active = useActiveScope();
   const setScope = useViewStore((s) => s.setScope);
   const [expanded, setExpanded] = useState(false);
+  // Git sync indicator — ahead/behind/dirty from the live status hook
+  // (TanStack deduplicates this query with NowStrip and ChangesOverview).
+  const git = useEngineStatus().data?.git;
 
   if (map.isPending) {
-    return <p className="text-xs text-stone-400">mapping worktrees…</p>;
+    return <p className="text-label text-ink-faint">mapping worktrees…</p>;
   }
   if (map.isError) {
     return (
-      <div className="space-y-1">
-        <p className="text-xs text-amber-700">workspace map unavailable</p>
+      <div className="space-y-vs-1">
+        <p className="text-label text-state-broken">workspace map unavailable</p>
         <button
           type="button"
           onClick={() => void map.refetch()}
-          className="text-xs text-stone-400 underline"
+          className="text-label text-ink-faint underline"
         >
           retry
         </button>
@@ -53,20 +57,39 @@ export function WorktreePicker() {
   const current = worktrees.find((w) => w.id === active);
 
   return (
-    <div className="text-xs" data-worktree-picker>
+    <div className="text-label" data-worktree-picker>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between rounded border border-stone-200 px-2 py-1 hover:border-stone-400"
+        className="flex w-full items-center gap-1 rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 shadow-card hover:border-rule-strong"
       >
-        <span className="truncate font-medium">
+        <span className="min-w-0 flex-1 truncate font-medium text-ink">
           {current ? current.branch : "pick a worktree…"}
         </span>
-        <span className="text-stone-400">{expanded ? "▴" : "▾"}</span>
+        {/* Git sync badge: ahead/behind commits + dirty-file count */}
+        {git && (git.ahead > 0 || git.behind > 0 || git.dirty.length > 0) && (
+          <span
+            className="shrink-0 text-2xs text-ink-faint"
+            title={[
+              git.ahead > 0 ? `${git.ahead} ahead` : "",
+              git.behind > 0 ? `${git.behind} behind` : "",
+              git.dirty.length > 0 ? `${git.dirty.length} changed` : "",
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          >
+            {git.ahead > 0 && `↑${git.ahead}`}
+            {git.behind > 0 && `↓${git.behind}`}
+            {git.dirty.length > 0 && (
+              <span className="ml-vs-0-5 text-state-stale">●</span>
+            )}
+          </span>
+        )}
+        <span className="shrink-0 text-ink-faint">{expanded ? "▴" : "▾"}</span>
       </button>
       {expanded && (
-        <ul className="mt-1 space-y-0.5">
+        <ul className="mt-vs-1 space-y-vs-0-5">
           {worktrees.map((worktree) => (
             <li key={worktree.id}>
               <button
@@ -82,21 +105,21 @@ export function WorktreePicker() {
                   movePlayhead("live");
                   setExpanded(false);
                 }}
-                className={`flex w-full items-center gap-1 rounded px-2 py-0.5 text-left ${
+                className={`flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left ${
                   worktree.id === active
-                    ? "bg-stone-100 font-medium text-stone-900"
+                    ? "bg-accent-subtle font-medium text-ink"
                     : worktree.has_vault
-                      ? "text-stone-700 hover:bg-stone-50"
-                      : "cursor-not-allowed text-stone-300"
+                      ? "text-ink-muted hover:bg-paper-sunken"
+                      : "cursor-not-allowed text-ink-faint/50"
                 }`}
               >
                 <span className="truncate">{worktree.branch}</span>
                 {worktree.is_default && (
-                  <span className="text-stone-400">·default</span>
+                  <span className="text-ink-faint">·default</span>
                 )}
-                {!worktree.has_vault && <span>·bare</span>}
+                {!worktree.has_vault && <span className="text-ink-faint">·bare</span>}
                 {worktree.degraded?.length ? (
-                  <span className="text-amber-600" title={worktree.degraded.join(", ")}>
+                  <span className="text-state-stale" title={worktree.degraded.join(", ")}>
                     ⚠
                   </span>
                 ) : null}

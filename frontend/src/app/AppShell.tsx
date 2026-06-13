@@ -21,8 +21,7 @@ import { Timeline } from "./timeline/Timeline";
 
 // Four-region skeleton in the converged agentic-desktop idiom (gui-spec §2):
 // left scope rail, center stage, right activity rail, bottom timeline.
-// Placeholder panels only — the foundation scaffold proves the layout and
-// the three-store wiring, not the product.
+// Layer law: each rail reads stores hooks only; no rail component fetches.
 export function AppShell() {
   const leftCollapsed = useViewStore((s) => s.leftRailCollapsed);
   const rightCollapsed = useViewStore((s) => s.rightRailCollapsed);
@@ -40,41 +39,80 @@ export function AppShell() {
           gridTemplateColumns: `${leftCollapsed ? "2.5rem" : "16rem"} 1fr ${rightCollapsed ? "2.5rem" : "20rem"}`,
         }}
       >
-        <aside className="overflow-hidden border-r border-stone-200 p-2">
-          <div className="flex items-center justify-between">
+        {/* ── Left scope rail ────────────────────────────────────── */}
+        <aside className="flex flex-col overflow-hidden border-r border-stone-200">
+          {/* Rail header */}
+          <div className="flex h-9 shrink-0 items-center border-b border-stone-100 px-2">
             <button
               type="button"
               onClick={toggleLeft}
-              className="text-xs text-stone-500"
+              aria-label={leftCollapsed ? "expand scope rail" : "collapse scope rail"}
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
             >
-              {leftCollapsed ? "»" : "« scope"}
+              {leftCollapsed ? "›" : "‹"}
             </button>
-            {!leftCollapsed && <ThemeToggle />}
+            {!leftCollapsed && (
+              <>
+                <span className="ml-2 flex-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                  Scope
+                </span>
+                <ThemeToggle />
+              </>
+            )}
           </div>
+
+          {/* Rail content */}
           {!leftCollapsed && (
             <ErrorBoundary region="left-rail">
               <CrashZone region="left-rail" />
-              <div className="mt-2 space-y-3 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto p-2">
                 <WorktreePicker />
+                <hr className="my-2.5 border-stone-100" />
                 <VaultBrowser />
               </div>
             </ErrorBoundary>
           )}
         </aside>
+
+        {/* ── Center stage ───────────────────────────────────────── */}
         <main className="relative min-w-0">
           <ErrorBoundary region="stage">
             <CrashZone region="stage" />
             <Stage />
           </ErrorBoundary>
         </main>
-        <aside className="overflow-hidden border-l border-stone-200 p-2">
-          <button
-            type="button"
-            onClick={toggleRight}
-            className="text-xs text-stone-500"
-          >
-            {rightCollapsed ? "«" : "activity »"}
-          </button>
+
+        {/* ── Right activity rail ────────────────────────────────── */}
+        <aside className="flex flex-col overflow-hidden border-l border-stone-200">
+          {/* Rail header */}
+          <div className="flex h-9 shrink-0 items-center border-b border-stone-100 px-2">
+            {rightCollapsed ? (
+              <button
+                type="button"
+                onClick={toggleRight}
+                aria-label="expand activity rail"
+                className="mx-auto flex h-5 w-5 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+              >
+                ‹
+              </button>
+            ) : (
+              <>
+                <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                  Activity
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleRight}
+                  aria-label="collapse activity rail"
+                  className="flex h-5 w-5 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+                >
+                  ›
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Rail content */}
           {!rightCollapsed && (
             <ErrorBoundary region="right-rail">
               <CrashZone region="right-rail" />
@@ -83,6 +121,8 @@ export function AppShell() {
           )}
         </aside>
       </div>
+
+      {/* ── Bottom timeline ────────────────────────────────────────── */}
       <footer className="border-t border-stone-200">
         <ErrorBoundary region="timeline">
           <CrashZone region="timeline" />
@@ -111,7 +151,7 @@ function ThemeToggle() {
     <button
       type="button"
       aria-label={dark ? "switch to light theme" : "switch to dark theme"}
-      className="text-xs text-stone-500"
+      className="flex h-5 w-5 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
       onClick={() => {
         const next = !dark;
         setDark(next);
@@ -123,35 +163,53 @@ function ThemeToggle() {
   );
 }
 
+// Tab labels — compact to keep the rail header-aligned.
+const RAIL_TABS = [
+  { id: "activity" as const, label: "now" },
+  { id: "changes" as const, label: "changes" },
+  { id: "search" as const, label: "search" },
+];
+
 function ActivityRail() {
   const [tab, setTab] = useState<"activity" | "changes" | "search">("activity");
   return (
-    <div className="mt-2 space-y-3 overflow-y-auto">
-      <div className="flex gap-1 text-xs" role="tablist" aria-label="rail tabs">
-        {(["activity", "changes", "search"] as const).map((t) => (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* Tab strip */}
+      <div
+        className="flex shrink-0 gap-0.5 border-b border-stone-100 px-2 py-1.5"
+        role="tablist"
+        aria-label="rail tabs"
+      >
+        {RAIL_TABS.map(({ id, label }) => (
           <button
-            key={t}
+            key={id}
             type="button"
             role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`rounded px-2 py-0.5 ${
-              tab === t ? "bg-stone-200 text-stone-900" : "text-stone-500"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+              tab === id
+                ? "bg-stone-100 font-medium text-stone-800"
+                : "text-stone-400 hover:text-stone-600"
             }`}
           >
-            {t}
+            {label}
           </button>
         ))}
       </div>
-      {tab === "activity" && (
-        <>
-          <NowStrip />
-          <OpsPanel />
-          <Inspector />
-        </>
-      )}
-      {tab === "changes" && <ChangesOverview />}
-      {tab === "search" && <SearchTab />}
+
+      {/* Tab content */}
+      <div className="flex-1 space-y-3 overflow-y-auto p-2">
+        {tab === "activity" && (
+          <>
+            <NowStrip />
+            <OpsPanel />
+            <Inspector />
+          </>
+        )}
+        {tab === "changes" && <ChangesOverview />}
+        {tab === "search" && <SearchTab />}
+      </div>
     </div>
   );
 }
