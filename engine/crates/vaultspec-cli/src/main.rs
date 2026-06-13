@@ -134,10 +134,11 @@ fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
 
-    // Serve mode short-circuits: it owns its own lifecycle.
+    // Serve mode short-circuits: it owns its own lifecycle. The global
+    // `--scope` selects the served worktree (else the launch directory).
     if let Command::Serve { port } = cli.command {
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-        return match runtime.block_on(vaultspec_api::serve(port)) {
+        return match runtime.block_on(vaultspec_api::serve(port, cli.scope)) {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(err) => {
                 eprintln!("vaultspec serve: {err}");

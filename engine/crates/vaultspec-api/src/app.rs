@@ -184,6 +184,59 @@ pub async fn bearer_gate(
     }
 }
 
+/// Cap on an error body we will buffer to inspect/rewrite. Error responses
+/// are tiny; success bodies are never buffered (we short-circuit on 2xx).
+const MAX_ERROR_BODY: usize = 64 * 1024;
+
+/// Post-response guarantee for the contract §2 / codified tiers-block rule:
+/// EVERY wire response carries the per-tier degradation block. Handlers build
+/// it through the shared envelope, but framework-boundary rejections — axum
+/// extractor failures (malformed/missing body fields) and the bearer/Host
+/// gate's bare `StatusCode` — are produced BEFORE any handler and would ship a
+/// tiers-less body. Layered OUTSIDE the gate, this catches every error
+/// response and, when it lacks the block, rebuilds it through the shared shape
+/// so no error escapes the guarantee. Success (2xx) and SSE streams are passed
+/// through untouched (never buffered).
+pub async fn ensure_tiers_envelope(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let response = next.run(request).await;
+    let status = response.status();
+    if !(status.is_client_error() || status.is_server_error()) {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    let bytes = axum::body::to_bytes(body, MAX_ERROR_BODY)
+        .await
+        .unwrap_or_default();
+    // Already a shared envelope (handler-built error with the block)? Keep it.
+    let has_tiers = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .is_some_and(|v| v.get("tiers").is_some());
+    if has_tiers {
+        return Response::from_parts(parts, axum::body::Body::from(bytes));
+    }
+    // Rebuild: preserve the boundary's own message, else the status reason,
+    // and attach the truthful tiers block.
+    let original = String::from_utf8_lossy(&bytes);
+    let message = if original.trim().is_empty() {
+        status.canonical_reason().unwrap_or("error").to_string()
+    } else {
+        original.into_owned()
+    };
+    let envelope =
+        serde_json::json!({ "error": message, "tiers": crate::routes::query_tiers(&state) });
+    let rebuilt = serde_json::to_vec(&envelope).expect("error envelope serializes");
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    parts.headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("application/json"),
+    );
+    Response::from_parts(parts, axum::body::Body::from(rebuilt))
+}
+
 /// Constant-time byte comparison (audit low rider): the bearer check must
 /// not leak prefix length through timing, loopback or not.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {

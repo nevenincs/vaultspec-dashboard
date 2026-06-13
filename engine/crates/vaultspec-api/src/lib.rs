@@ -81,16 +81,39 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             state.clone(),
             app::bearer_gate,
         ))
+        // Outermost: wraps the gate too, so the tiers block rides EVERY error
+        // response — extractor rejections and the bare auth/Host 401/403
+        // included (contract §2, codified tiers-block rule).
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            app::ensure_tiers_envelope,
+        ))
         .with_state(state)
 }
 
 /// Run the resident service on loopback: initial index, watcher-driven
 /// rebuild-and-swap (302/303), heartbeat on the discovery file.
-pub async fn serve(port: u16) -> std::io::Result<()> {
+pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     // Crash visibility (dogfood DF-4): a panic anywhere must leave a
     // trace, never a silent death. The hook writes a crash log under the
     // engine data dir and stderr before unwinding.
-    let cwd = std::env::current_dir()?;
+    //
+    // `--scope` selects the served worktree explicitly; without it the
+    // launch directory is the implicit scope (both resolve to their
+    // containing worktree below, exactly like every one-shot verb).
+    let cwd = match scope {
+        Some(path) => {
+            let p = std::path::PathBuf::from(&path);
+            if !p.is_dir() {
+                return Err(std::io::Error::other(format!(
+                    "--scope `{path}` is not a usable worktree (must be an existing \
+                     directory inside a git workspace)"
+                )));
+            }
+            p
+        }
+        None => std::env::current_dir()?,
+    };
     // Resolve like every other verb (dogfood DF-2, D2.1): any launch
     // directory inside the workspace resolves to its containing worktree.
     let workspace = ingest_git::workspace::Workspace::discover(&cwd)

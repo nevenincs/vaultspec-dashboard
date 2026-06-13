@@ -60,6 +60,13 @@ pub struct IndexStats {
     /// unreachable or its graph unparseable, so the declared tier degrades
     /// TRUTHFULLY rather than silently presenting an empty tier as healthy.
     pub declared_unavailable: Option<String>,
+    /// Stems that appeared in more than one document path this index (e.g.
+    /// `adr/x.md` + `plan/x.md`). The node id is `doc:{stem}`,
+    /// directory-independent, so colliding stems merge onto one node with the
+    /// later write winning — silent data loss. Recorded (and warned at index
+    /// time) so a collision is loud, never silent. vaultspec's own filename
+    /// convention (`date-feature-type`) makes real collisions a misnaming.
+    pub duplicate_stems: Vec<String>,
 }
 
 /// Index one worktree scope into a fresh graph (the cold path).
@@ -126,8 +133,24 @@ fn index_documents(
         })
         .collect::<Result<_>>()?;
 
+    // Detect directory-independent stem collisions (node id is `doc:{stem}`):
+    // two paths with the same basename merge onto one node, the later write
+    // winning — surface it loudly rather than losing content silently.
+    let mut seen_stems: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
+        if let Some(prev) = seen_stems.insert(stem.clone(), rel_path.clone())
+            && prev != rel_path
+        {
+            eprintln!(
+                "vaultspec index: WARNING duplicate stem `{stem}` ({prev} and \
+                 {rel_path}) collide on node id `doc:{stem}`; the later document \
+                 wins and the earlier is lost — rename to disambiguate"
+            );
+            stats.duplicate_stems.push(stem.clone());
+        }
         let feature_tags = frontmatter_feature_tags(&text);
         // Contract §4 node fields on the LIST shape (addendum S03):
         // title from the body H1, created from the frontmatter date,

@@ -32,7 +32,9 @@ pub struct Ctx {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CliError {
-    #[error("scope `{0}` is not a directory")]
+    #[error(
+        "scope `{0}` is not a usable worktree (must be an existing directory inside a git workspace)"
+    )]
     BadScope(String),
     #[error("no .vault corpus under `{0}`")]
     NoVault(String),

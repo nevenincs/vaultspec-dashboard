@@ -233,7 +233,12 @@ impl SearchShapeMiss {
         match self {
             SearchShapeMiss::RagError(m) => format!("rag search failed: {m}"),
             SearchShapeMiss::NoResults => {
-                "rag search response missing results list (shape drift)".to_string()
+                // rag is up (it answered) but the payload carried no results
+                // list: most often the scope is not yet indexed, otherwise a
+                // genuine response-shape drift. An `ok:true` empty results
+                // list is NOT this case — it is a healthy zero-match success.
+                "rag returned no results payload (scope unindexed, or response shape drift)"
+                    .to_string()
             }
         }
     }
