@@ -64,13 +64,17 @@ test("search round-trips through the live pass-through", async ({ page }) => {
       },
       body: JSON.stringify({ query: "dashboard", target: "vault" }),
     });
+    // Live /search shape: { data: { results, via, timing, ... }, tiers }
+    // There is no nested `envelope` field — the results live directly in
+    // data (S49 pass-through contract, engine routes RAG response as-is).
     const body = (await response.json()) as {
-      data?: { envelope?: { ok?: boolean; data?: { results?: unknown[] } } };
+      data?: { results?: unknown[]; via?: string };
+      tiers?: Record<string, unknown>;
     };
     return {
       status: response.status,
-      ok: body.data?.envelope?.ok ?? false,
-      count: body.data?.envelope?.data?.results?.length ?? 0,
+      ok: Array.isArray(body.data?.results),
+      count: body.data?.results?.length ?? 0,
     };
   });
   expect(roundTrip.status).toBe(200);
