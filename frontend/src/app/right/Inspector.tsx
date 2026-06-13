@@ -16,6 +16,12 @@ import {
 import { selectEdge } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 
+/** Bounded-list summary (contract §5): never silently partial. */
+export function eventTouchSummary(nodeIds: string[], truncated?: number): string {
+  const base = `touches ${nodeIds.join(", ")}`;
+  return truncated && truncated > 0 ? `${base} +${truncated} more` : base;
+}
+
 // --- pure tier grouping (unit-tested) -----------------------------------------------
 
 export const TIER_LIST_ORDER = [
@@ -53,7 +59,9 @@ export function Inspector() {
     return (
       <div className="text-xs" data-inspector>
         <div className="font-medium text-stone-700">event {selection.id}</div>
-        <p className="text-stone-500">touches {selection.nodeIds.join(", ")}</p>
+        <p className="text-stone-500">
+          {eventTouchSummary(selection.nodeIds, selection.truncatedNodeIds)}
+        </p>
       </div>
     );
   }

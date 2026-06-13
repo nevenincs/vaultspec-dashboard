@@ -28,7 +28,14 @@ export interface TierFilter {
 export type Selection =
   | { kind: "node"; id: string }
   | { kind: "edge"; id: string }
-  | { kind: "event"; id: string; nodeIds: string[] }
+  | {
+      kind: "event";
+      id: string;
+      /** Bounded per contract §5; pulse what's carried. */
+      nodeIds: string[];
+      /** Ids the cap dropped — surfaced honestly, never silently. */
+      truncatedNodeIds?: number;
+    }
   | null;
 
 export interface ViewState {

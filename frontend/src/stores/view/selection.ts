@@ -27,8 +27,14 @@ export function selectFromScene(id: string | null): void {
 }
 
 /** Select a timeline event; its node ids drive the stage cross-highlight. */
-export function selectEvent(id: string, nodeIds: string[]): void {
-  useViewStore.getState().selectEntity({ kind: "event", id, nodeIds });
+export function selectEvent(
+  id: string,
+  nodeIds: string[],
+  truncatedNodeIds?: number,
+): void {
+  useViewStore
+    .getState()
+    .selectEntity({ kind: "event", id, nodeIds, truncatedNodeIds });
 }
 
 /** Select an edge (inspector's per-tier edge list). */

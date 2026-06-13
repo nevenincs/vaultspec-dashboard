@@ -159,7 +159,10 @@ export interface EngineEvent {
   ts: string;
   kind: string;
   ref: string;
+  /** Bounded per contract §5: commit + doc ids + code ids capped at 20. */
   node_ids: string[];
+  /** How many ids the cap dropped; 0/absent means the list is complete. */
+  truncated_node_ids?: number;
 }
 
 export interface EventBucket {

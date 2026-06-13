@@ -14,7 +14,11 @@ export function handleEventClick(
   event: EngineEvent,
   scene: SceneController = getScene().controller,
 ): void {
-  selectEvent(event.id, event.node_ids);
+  // node_ids is bounded (contract §5, cap 20): pulse what's carried; the
+  // truncation count rides the selection so the inspector surfaces it
+  // honestly — a silent partial pulse would violate the truthfulness
+  // stance.
+  selectEvent(event.id, event.node_ids, event.truncated_node_ids);
   if (event.node_ids.length > 0) {
     scene.command({ kind: "pulse", ids: new Set(event.node_ids) });
   }
