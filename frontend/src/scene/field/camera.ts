@@ -212,10 +212,17 @@ export class PointerGestures {
 
 export type CameraListener = (state: CameraState, level: SemanticLevel) => void;
 
+/** Lerp damping coefficient per RAF frame (0.85 → moves 15% of gap each frame). */
+const ANIM_DAMPING = 0.85;
+/** Stop animating when all components are within these thresholds. */
+const ANIM_PX_STOP = 0.5;
+const ANIM_SCALE_STOP = 0.001;
+
 export class Camera {
   private state: CameraState = { x: 0, y: 0, scale: 1 };
   private world: Container;
   private listeners = new Set<CameraListener>();
+  private rafId: number | null = null;
 
   constructor(world: Container) {
     this.world = world;
@@ -230,15 +237,65 @@ export class Camera {
   }
 
   panBy(dx: number, dy: number): void {
+    this.cancelAnimation();
     this.apply({ ...this.state, x: this.state.x + dx, y: this.state.y + dy });
   }
 
   zoomAt(sx: number, sy: number, factor: number): void {
+    this.cancelAnimation();
     this.apply(zoomAt(this.state, sx, sy, factor));
   }
 
   set(state: CameraState): void {
+    this.cancelAnimation();
     this.apply({ ...state, scale: clampScale(state.scale) });
+  }
+
+  /**
+   * Smoothly animate the camera toward `target` with a damped lerp.
+   * Cancels any in-progress animation. `onDone` fires when the camera
+   * snaps to the exact target (within ANIM_PX_STOP / ANIM_SCALE_STOP).
+   *
+   * Used by focus-node and minimap navigate-to so programmatic pan no
+   * longer snap-jumps (graph-quality plan P03.S08).
+   */
+  animateTo(target: CameraState, onDone?: () => void): void {
+    this.cancelAnimation();
+    const tx = target.x;
+    const ty = target.y;
+    const ts = clampScale(target.scale);
+
+    const step = () => {
+      const { x, y, scale } = this.state;
+      const dx = tx - x;
+      const dy = ty - y;
+      const ds = ts - scale;
+
+      if (
+        Math.abs(dx) < ANIM_PX_STOP &&
+        Math.abs(dy) < ANIM_PX_STOP &&
+        Math.abs(ds) < ANIM_SCALE_STOP
+      ) {
+        this.apply({ x: tx, y: ty, scale: ts });
+        this.rafId = null;
+        onDone?.();
+        return;
+      }
+
+      const f = 1 - ANIM_DAMPING;
+      this.apply({ x: x + dx * f, y: y + dy * f, scale: scale + ds * f });
+      this.rafId = requestAnimationFrame(step);
+    };
+
+    this.rafId = requestAnimationFrame(step);
+  }
+
+  /** Cancel any in-progress animateTo. */
+  cancelAnimation(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
   }
 
   screenToWorld(sx: number, sy: number): { x: number; y: number } {

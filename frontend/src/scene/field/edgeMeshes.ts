@@ -198,6 +198,10 @@ interface MeshGroup {
   mesh: Mesh;
   /** Treatment alpha before fade/recede modulation. */
   baseAlpha: number;
+  /** Arrowhead triangles — 3 verts × 2 floats per edge. Only on line-list groups. */
+  arrowPositions?: Float32Array;
+  arrowGeometry?: MeshGeometry;
+  arrowMesh?: Mesh;
 }
 
 export interface EdgeSetResult {
@@ -205,14 +209,50 @@ export interface EdgeSetResult {
   rejected: UnknownTierError[];
 }
 
+/** Scale threshold above which arrowhead glyphs appear (document LOD). */
+export const ARROW_VISIBLE_SCALE = 1.6;
+
+/** Arrowhead tip-to-base depth in world units. */
+const ARROW_DEPTH = 12;
+/** Arrowhead half-width at the base in world units. */
+const ARROW_HALF_WIDTH = 4;
+
+/** Write one arrowhead triangle (3 vertices, 6 floats) into `arrowPos`. */
+function writeArrow(
+  arrowPos: Float32Array,
+  offset: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): void {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  // Tip at dst; base ARROW_DEPTH back along the edge direction.
+  const baseX = bx - ux * ARROW_DEPTH;
+  const baseY = by - uy * ARROW_DEPTH;
+  arrowPos[offset + 0] = bx;
+  arrowPos[offset + 1] = by;
+  arrowPos[offset + 2] = baseX + px * ARROW_HALF_WIDTH;
+  arrowPos[offset + 3] = baseY + py * ARROW_HALF_WIDTH;
+  arrowPos[offset + 4] = baseX - px * ARROW_HALF_WIDTH;
+  arrowPos[offset + 5] = baseY - py * ARROW_HALF_WIDTH;
+}
+
 export class EdgeMeshLayer {
   private container = new Container();
   private groups = new Map<string, MeshGroup>();
-  private lastEdges: readonly SceneEdgeData[] = [];
+  private lastEdges: SceneEdgeData[] = [];
   private highlight: ReadonlySet<string> | null = null;
   /** Latest visibility sample: id → presentation progress (0..1]. */
   private visProgress: ReadonlyMap<string, number> | null = null;
   private visSignature = "";
+  private arrowsVisible = false;
 
   constructor(world: Container) {
     // Edges draw under nodes: insert at the back of the world.
@@ -221,10 +261,52 @@ export class EdgeMeshLayer {
 
   /** Rebuild mesh topology for a new edge set (edge-set changes only). */
   setEdges(edges: readonly SceneEdgeData[]): EdgeSetResult {
-    this.lastEdges = edges;
+    this.lastEdges = [...edges];
     this.visProgress = null;
     this.visSignature = "";
     return this.rebuild();
+  }
+
+  /**
+   * Try to apply a single edge delta without a full rebuild.
+   *
+   * Fast path: `op:"change"` where the edge stays in the same tier group
+   * — patch the edge data in place and return `true`. The per-frame `update()`
+   * call re-uploads positions so no buffer write is needed here.
+   *
+   * All other operations (add, remove, or a change that shifts the group key)
+   * return `false` — the caller must fall back to `setEdges` + rebuild.
+   */
+  updateEdge(edge: SceneEdgeData, op: "add" | "remove" | "change"): boolean {
+    if (op !== "change") return false;
+    const idx = this.lastEdges.findIndex((e) => e.id === edge.id);
+    if (idx === -1) return false; // unknown edge; treat as add
+    try {
+      const oldKey = edgeGroupKey(this.lastEdges[idx]).split("+")[0];
+      const newKey = edgeGroupKey(edge).split("+")[0];
+      if (oldKey !== newKey) return false; // group shift — must rebuild
+      this.lastEdges[idx] = edge;
+      // Patch the group's edge reference in place.
+      for (const group of this.groups.values()) {
+        const gi = group.edges.findIndex((e) => e.id === edge.id);
+        if (gi !== -1) {
+          group.edges[gi] = edge;
+          break;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Toggle arrowhead glyph visibility (driven by camera scale, LOD). */
+  setArrowVisibility(visible: boolean): void {
+    if (visible === this.arrowsVisible) return;
+    this.arrowsVisible = visible;
+    for (const group of this.groups.values()) {
+      if (group.arrowMesh) group.arrowMesh.visible = visible;
+    }
   }
 
   /**
@@ -290,6 +372,8 @@ export class EdgeMeshLayer {
     for (const group of this.groups.values()) {
       group.mesh.destroy();
       group.geometry.destroy();
+      group.arrowMesh?.destroy();
+      group.arrowGeometry?.destroy();
     }
     this.groups.clear();
     for (const [key, groupEdges] of byGroup) {
@@ -302,6 +386,7 @@ export class EdgeMeshLayer {
   update(positionOf: (id: string) => { x: number; y: number } | undefined): void {
     for (const group of this.groups.values()) {
       const { edges, positions } = group;
+      let arrowDirty = false;
       for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
         const a = positionOf(edge.src);
@@ -333,9 +418,17 @@ export class EdgeMeshLayer {
           );
         } else {
           writeSegment(positions, offset, a.x, a.y, b.x, b.y);
+          // Arrowhead triangle: only for non-semantic, non-meta edges.
+          if (group.arrowPositions) {
+            writeArrow(group.arrowPositions, i * 6, a.x, a.y, b.x, b.y);
+            arrowDirty = true;
+          }
         }
       }
       group.geometry.getBuffer("aPosition").update();
+      if (arrowDirty && group.arrowGeometry) {
+        group.arrowGeometry.getBuffer("aPosition").update();
+      }
     }
   }
 
@@ -378,6 +471,46 @@ export class EdgeMeshLayer {
       this.highlight && !lifted ? treatmentAlpha * 0.25 : treatmentAlpha;
     mesh.alpha = baseAlpha;
     this.container.addChild(mesh);
-    return { key, edges, topology, vertsPerEdge, positions, geometry, mesh, baseAlpha };
+
+    // Arrowhead triangles: only for solid line-list groups (not temporal dashes,
+    // not semantic quads, not meta ribbons). 3 vertices × 2 floats per edge.
+    let arrowPositions: Float32Array | undefined;
+    let arrowGeometry: MeshGeometry | undefined;
+    let arrowMesh: Mesh | undefined;
+    if (!isSemantic && !isTemporal) {
+      arrowPositions = new Float32Array(edges.length * 6);
+      const arrowUvs = new Float32Array(arrowPositions.length);
+      const arrowIndices = new Uint32Array(edges.length * 3);
+      for (let i = 0; i < edges.length; i++) {
+        arrowIndices[i * 3] = i * 3;
+        arrowIndices[i * 3 + 1] = i * 3 + 1;
+        arrowIndices[i * 3 + 2] = i * 3 + 2;
+      }
+      arrowGeometry = new MeshGeometry({
+        positions: arrowPositions,
+        uvs: arrowUvs,
+        indices: arrowIndices,
+        topology: "triangle-list",
+      });
+      arrowMesh = new Mesh({ geometry: arrowGeometry, texture: Texture.WHITE });
+      arrowMesh.tint = groupColor(base);
+      arrowMesh.alpha = baseAlpha;
+      arrowMesh.visible = this.arrowsVisible;
+      this.container.addChild(arrowMesh);
+    }
+
+    return {
+      key,
+      edges,
+      topology,
+      vertsPerEdge,
+      positions,
+      geometry,
+      mesh,
+      baseAlpha,
+      arrowPositions,
+      arrowGeometry,
+      arrowMesh,
+    };
   }
 }

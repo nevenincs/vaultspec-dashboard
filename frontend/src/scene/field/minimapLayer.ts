@@ -33,6 +33,8 @@ const FEATURE_COLOR = "#5b8cf5";
 export class MinimapLayer {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
+  private clickHandler: ((e: MouseEvent) => void) | null = null;
+  private navigateCb: ((wx: number, wy: number) => void) | null = null;
 
   // Cached data for re-render on camera change:
   private lastPositions = new Map<string, NodePosition>();
@@ -41,10 +43,44 @@ export class MinimapLayer {
   private screenW = 0;
   private screenH = 0;
 
+  // Inverse-transform state from the last render pass (click → world coord).
+  private lastMinX = 0;
+  private lastMinY = 0;
+  private lastWorldScale = 1;
+  private lastDrawOffX = 0;
+  private lastDrawOffY = 0;
+
+  /**
+   * Register a callback that fires when the user clicks the minimap.
+   * The callback receives world coordinates so the field can pan to that point.
+   */
+  setNavigateCallback(cb: ((wx: number, wy: number) => void) | null): void {
+    this.navigateCb = cb;
+  }
+
   setCanvas(canvas: HTMLCanvasElement | null): void {
+    // Remove the old listener before replacing the canvas.
+    if (this.canvas && this.clickHandler) {
+      this.canvas.removeEventListener("click", this.clickHandler);
+      this.clickHandler = null;
+    }
     this.canvas = canvas;
     this.ctx = canvas ? canvas.getContext("2d") : null;
-    if (canvas) this.render();
+    if (canvas) {
+      this.clickHandler = (e: MouseEvent) => {
+        if (!this.navigateCb) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        // Invert the minimap transform to recover world coordinates.
+        if (this.lastWorldScale === 0) return;
+        const wx = this.lastMinX + (mx - this.lastDrawOffX) / this.lastWorldScale;
+        const wy = this.lastMinY + (my - this.lastDrawOffY) / this.lastWorldScale;
+        this.navigateCb(wx, wy);
+      };
+      canvas.addEventListener("click", this.clickHandler);
+      this.render();
+    }
   }
 
   /** Called on each layout position frame. */
@@ -69,8 +105,13 @@ export class MinimapLayer {
   }
 
   destroy(): void {
+    if (this.canvas && this.clickHandler) {
+      this.canvas.removeEventListener("click", this.clickHandler);
+      this.clickHandler = null;
+    }
     this.canvas = null;
     this.ctx = null;
+    this.navigateCb = null;
     this.lastPositions.clear();
     this.featureIds.clear();
     this.lastCamera = null;
@@ -102,9 +143,18 @@ export class MinimapLayer {
     const drawH = h - PADDING * 2;
     const scale = Math.min(drawW / worldW, drawH / worldH);
 
+    // Store the transform for click-inverse (navigate-to).
+    const drawOffX = PADDING + (drawW - worldW * scale) / 2;
+    const drawOffY = PADDING + (drawH - worldH * scale) / 2;
+    this.lastMinX = minX;
+    this.lastMinY = minY;
+    this.lastWorldScale = scale;
+    this.lastDrawOffX = drawOffX;
+    this.lastDrawOffY = drawOffY;
+
     // World → minimap canvas transform.
-    const toMX = (wx: number) => PADDING + (wx - minX) * scale + (drawW - worldW * scale) / 2;
-    const toMY = (wy: number) => PADDING + (wy - minY) * scale + (drawH - worldH * scale) / 2;
+    const toMX = (wx: number) => drawOffX + (wx - minX) * scale;
+    const toMY = (wy: number) => drawOffY + (wy - minY) * scale;
 
     // Clear.
     ctx.clearRect(0, 0, w, h);

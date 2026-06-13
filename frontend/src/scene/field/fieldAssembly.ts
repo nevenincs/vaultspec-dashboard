@@ -20,7 +20,7 @@ import { AnchorDriver } from "./anchors";
 import { circularArrange } from "./circularLayout";
 import { computeEgo } from "./egoHighlight";
 import { Camera, HIT_RADIUS_WORLD, PointerGestures, SpatialHitTester } from "./camera";
-import { EdgeMeshLayer } from "./edgeMeshes";
+import { ARROW_VISIBLE_SCALE, EdgeMeshLayer } from "./edgeMeshes";
 import { ProgrammaticGlyphs } from "./glyphs";
 import type { LayoutParams } from "./layoutWorker";
 import { FieldLayout } from "./layoutWorker";
@@ -127,9 +127,13 @@ export class DashboardField implements SceneFieldRenderer {
       });
 
       this.minimap = new MinimapLayer();
+      this.minimap.setNavigateCallback((wx, wy) => {
+        this.navigateToWorld(wx, wy);
+      });
 
       const offCamera = this.camera.onChange((state, level) => {
         this.sprites?.setLod(state.scale, this.focusedIds());
+        this.edges?.setArrowVisibility(state.scale >= ARROW_VISIBLE_SCALE);
         this.anchors?.update();
         this.minimap?.updateViewport(state, app.screen.width, app.screen.height);
         this.controller?.emit({ kind: "camera-change", scale: state.scale, level });
@@ -243,7 +247,24 @@ export class DashboardField implements SceneFieldRenderer {
       }
       case "apply-deltas": {
         for (const delta of cmd.deltas) this.model.applyDelta(delta);
-        this.applyModelToLayers(false);
+        // Try incremental edge updates: if every edge delta can be patched
+        // in place (op:"change" with same group key), skip the full rebuild.
+        // Node-only deltas are handled by sprites.sync which is always called.
+        // Any unhandled edge delta falls back to the full applyModelToLayers.
+        let allEdgesHandled = true;
+        for (const delta of cmd.deltas) {
+          if (!delta.edge) continue; // node-only; sprites.sync handles it
+          if (!this.edges?.updateEdge(delta.edge, delta.op)) {
+            allEdgesHandled = false;
+            break;
+          }
+        }
+        if (allEdgesHandled) {
+          // Fast path: only sprite sync needed; edge meshes already consistent.
+          this.sprites?.sync(this.model, Date.now());
+        } else {
+          this.applyModelToLayers(false);
+        }
         break;
       }
       case "set-visibility": {
@@ -259,7 +280,7 @@ export class DashboardField implements SceneFieldRenderer {
         if (p && this.camera && this.base.application) {
           const screen = this.base.application.screen;
           const scale = Math.max(this.camera.current.scale, 1.6);
-          this.camera.set({
+          this.camera.animateTo({
             scale,
             x: screen.width / 2 - p.x * scale,
             y: screen.height / 2 - p.y * scale,
@@ -395,6 +416,19 @@ export class DashboardField implements SceneFieldRenderer {
 
   private focusedIds(): ReadonlySet<string> {
     return this.pinned;
+  }
+
+  /** Pan (animated) to center on a world coordinate — used by minimap clicks. */
+  private navigateToWorld(wx: number, wy: number): void {
+    if (!this.camera || !this.base.application) return;
+    const screen = this.base.application.screen;
+    const scale = this.camera.current.scale;
+    this.autoFit = false;
+    this.camera.animateTo({
+      scale,
+      x: screen.width / 2 - wx * scale,
+      y: screen.height / 2 - wy * scale,
+    });
   }
 
   /** Hover ego-highlight: lift the 1-hop neighborhood, recede the rest. */
