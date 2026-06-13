@@ -13,9 +13,17 @@ pub mod routes;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::{Json, Router, middleware};
 use serde_json::{Value, json};
+
+/// Request-body ceiling (defense-in-depth, 2026-06-13). Every API body —
+/// graph-query filters, search, discover — is small JSON; 1 MiB is orders of
+/// magnitude of headroom while bounding a pathological body (and the response
+/// amplification a huge filter would drive). A 413 still rides the shared
+/// envelope via `ensure_tiers_envelope`. The real boundary stays loopback.
+const MAX_REQUEST_BODY: usize = 1024 * 1024;
 
 use app::AppState;
 
@@ -81,9 +89,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             state.clone(),
             app::bearer_gate,
         ))
-        // Outermost: wraps the gate too, so the tiers block rides EVERY error
-        // response — extractor rejections and the bare auth/Host 401/403
-        // included (contract §2, codified tiers-block rule).
+        // Request-body ceiling (defense-in-depth): bound pathological bodies
+        // and the response amplification a huge filter would drive. Applied
+        // INNER to the tiers guard so a 413 still gets the envelope.
+        .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY))
+        // OUTERMOST: wraps the gate AND the body-limit, so the tiers block
+        // rides EVERY error response — extractor rejections, the bare
+        // auth/Host 401/403, and a 413 included (contract §2, codified
+        // tiers-block rule).
         .layer(middleware::from_fn_with_state(
             state.clone(),
             app::ensure_tiers_envelope,

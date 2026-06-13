@@ -45,6 +45,17 @@ pub async fn events(
             )
         })?,
     };
+    // An inverted range is a client error, not a silently-empty result —
+    // fail fast before the commit walk (hardening, 2026-06-13).
+    if let (Some(from), Some(to)) = (params.from, params.to)
+        && from > to
+    {
+        return Err(super::api_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            format!("events range: from ({from}) must be <= to ({to})"),
+        ));
+    }
     // Event sourcing shared with the CLI verb via the query core (G7).
     let workspace = ingest_git::workspace::Workspace::discover(&state.root)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
