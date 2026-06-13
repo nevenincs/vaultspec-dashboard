@@ -408,6 +408,22 @@ fn typed_client_expectations_hold_over_live_serve() {
         }),
         "doc ids never truncated"
     );
+    // Event id (the monotonic seq) tracks time order: a stream splicing by
+    // `since=<id>` relies on it (sweep LOW, 2026-06-13 — ids were assigned from
+    // newest-first walk order then re-sorted by ts, anti-correlating id and ts).
+    let pairs: Vec<(u64, i64)> = raws
+        .iter()
+        .map(|e| {
+            let id = e["id"].as_str().unwrap().strip_prefix("ev:").unwrap();
+            (id.parse().unwrap(), e["ts"].as_i64().unwrap())
+        })
+        .collect();
+    for w in pairs.windows(2) {
+        assert!(
+            w[0].0 < w[1].0 && w[0].1 <= w[1].1,
+            "event id and ts both ascend together: {pairs:?}"
+        );
+    }
 }
 
 /// Error-surface conformance (adversarial findings, 2026-06-13): EVERY wire

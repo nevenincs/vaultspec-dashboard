@@ -154,10 +154,16 @@ pub fn commit_rows(
     known: Option<&engine_graph::LinkageGraph>,
 ) -> Result<Vec<EventRow>, String> {
     let commits = ingest_git::log::walk(workspace, reference, limit).map_err(|e| e.to_string())?;
-    let mut rows: Vec<EventRow> = commits
+    // Build the rows with a PLACEHOLDER seq, then assign seq AFTER the
+    // chronological sort. `walk` returns newest-first, so assigning seq from
+    // walk order and then sorting by ts made id and ts ANTI-correlated — id 1
+    // was the newest event, last in the ts-ascending array (sweep LOW,
+    // 2026-06-13). The contract calls the id a monotonic seq and the stream
+    // splices by `since=<id>`, so id order MUST track time order. Tiebreak
+    // same-ts events by sha for a deterministic, stable id assignment.
+    let mut rows: Vec<(String, EventRow)> = commits
         .iter()
-        .enumerate()
-        .map(|(i, c)| {
+        .map(|c| {
             let correlated = engine_store::events::node_ids_for_paths(
                 c.touched_paths.iter().map(String::as_str),
             );
@@ -177,18 +183,28 @@ pub fn commit_rows(
             node_ids.push(format!("commit:{}", c.sha));
             node_ids.extend(docs);
             node_ids.extend(code);
-            EventRow {
-                seq: i as i64 + 1,
-                ts: c.ts,
-                kind: c.kind.to_string(),
-                git_ref: c.git_ref.clone(),
-                node_ids,
-                truncated_node_ids: truncated,
-            }
+            (
+                c.sha.clone(),
+                EventRow {
+                    seq: 0,
+                    ts: c.ts,
+                    kind: c.kind.to_string(),
+                    git_ref: c.git_ref.clone(),
+                    node_ids,
+                    truncated_node_ids: truncated,
+                },
+            )
         })
         .collect();
-    rows.sort_by_key(|r| r.ts);
-    Ok(rows)
+    rows.sort_by(|(a_sha, a), (b_sha, b)| a.ts.cmp(&b.ts).then_with(|| a_sha.cmp(b_sha)));
+    Ok(rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, (_, mut row))| {
+            row.seq = i as i64 + 1;
+            row
+        })
+        .collect())
 }
 
 #[cfg(test)]
