@@ -26,9 +26,21 @@ pub struct CommitEvent {
 /// Walk `ref_name` from its tip, newest first, up to `limit` commits.
 pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<CommitEvent>> {
     let repo = workspace.open()?;
-    let tip = repo
-        .rev_parse_single(ref_name)
-        .map_err(|e| GitError::Other(format!("rev-parse {ref_name}: {e}")))?;
+    let tip = match repo.rev_parse_single(ref_name) {
+        Ok(tip) => tip,
+        Err(e) => {
+            // An UNBORN HEAD — a branch with no commits yet — is an empty
+            // history, not a failure: there are simply zero events. This is the
+            // common state of a freshly-created worktree (e.g. a graphite stack
+            // branch before its first commit), where the events endpoint walks
+            // "HEAD" and previously 400'd (sweep LOW, 2026-06-13). A genuinely
+            // unknown ref (typo, deleted branch) on a born HEAD still fails loud.
+            if repo.head().is_ok_and(|h| h.is_unborn()) {
+                return Ok(Vec::new());
+            }
+            return Err(GitError::Other(format!("rev-parse {ref_name}: {e}")));
+        }
+    };
 
     let mut out = Vec::new();
     let walk = repo
@@ -141,5 +153,18 @@ mod tests {
         repo_with_commit(dir.path());
         let ws = Workspace::discover(dir.path()).unwrap();
         assert!(walk(&ws, "no-such-branch", 10).is_err());
+    }
+
+    #[test]
+    fn unborn_head_is_empty_history_not_an_error() {
+        // A repo with NO commits (unborn HEAD) — the state of a freshly-created
+        // worktree, e.g. a graphite stack branch before its first commit. The
+        // events endpoint walks "HEAD"; that must be an empty event log, not a
+        // 400 (sweep LOW, 2026-06-13).
+        let dir = tempfile::tempdir().unwrap();
+        git(dir.path(), &["init", "-b", "main", "."]);
+        let ws = Workspace::discover(dir.path()).unwrap();
+        let events = walk(&ws, "HEAD", 100).unwrap();
+        assert!(events.is_empty(), "unborn HEAD yields zero events");
     }
 }
