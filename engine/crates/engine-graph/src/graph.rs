@@ -36,6 +36,11 @@ pub struct LinkageGraph {
     edges: HashMap<EdgeId, StoredEdge>,
     /// NodeId → edge ids touching it (both directions).
     adjacency: HashMap<NodeId, Vec<EdgeId>>,
+    /// Memoized cross-feature meta-edges for THIS graph generation (perf ADR
+    /// D3): the O(E · feature_tags²) projection is computed once and shared by
+    /// every reader; any structural mutation below invalidates it, and a fresh
+    /// graph (each commit rebuilds one) starts empty.
+    meta_edges_cache: std::sync::OnceLock<Vec<crate::project::MetaEdge>>,
 }
 
 impl LinkageGraph {
@@ -47,6 +52,8 @@ impl LinkageGraph {
     /// again merges its facets per scope (replace-by-scope), never
     /// duplicating the node (D4.2).
     pub fn upsert_node(&mut self, node: Node) {
+        // Structural change invalidates the memoized projection (perf ADR D3).
+        self.meta_edges_cache.take();
         match self.nodes.get_mut(&node.id) {
             None => {
                 self.nodes.insert(node.id.clone(), node);
@@ -68,6 +75,8 @@ impl LinkageGraph {
     }
 
     pub(crate) fn insert_validated_edge(&mut self, edge: Edge, attrs: EdgeAttrs) {
+        // Structural change invalidates the memoized projection (perf ADR D3).
+        self.meta_edges_cache.take();
         let id = edge.id.clone();
         if let Some(existing) = self.edges.get_mut(&id) {
             // Same stable id = same logical edge. REPLACE semantics (audit
@@ -128,6 +137,15 @@ impl LinkageGraph {
             .into_iter()
             .flatten()
             .filter_map(|edge_id| self.edges.get(edge_id))
+    }
+
+    /// Cross-feature meta-edges, computed once per graph generation and cached
+    /// (perf ADR D3). The first caller pays the O(E · feature_tags²)
+    /// aggregation; subsequent callers — including concurrent readers sharing
+    /// the `Arc` — borrow the cached slice.
+    pub fn meta_edges_cached(&self) -> &[crate::project::MetaEdge] {
+        self.meta_edges_cache
+            .get_or_init(|| crate::project::compute_meta_edges(self))
     }
 
     pub fn node_count(&self) -> usize {

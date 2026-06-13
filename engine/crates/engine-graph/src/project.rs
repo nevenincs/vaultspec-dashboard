@@ -58,7 +58,19 @@ pub struct MetaEdge {
 /// Aggregation accumulator: (count, per-tier breakdown).
 type MetaAgg = (usize, BTreeMap<&'static str, usize>);
 
+/// Cross-feature meta-edges for the graph. Memoized on the immutable graph
+/// generation (perf ADR D3): the O(E · feature_tags²) aggregation runs once per
+/// graph instance and every caller (the feature query, the route, the bench)
+/// shares it; a fresh graph (each commit rebuilds one) starts with an empty
+/// cache, and any structural mutation invalidates it. Returns an owned clone of
+/// the cached projection (small — bounded by feature pairs).
 pub fn meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
+    graph.meta_edges_cached().to_vec()
+}
+
+/// The uncached aggregation. Call sites go through `meta_edges` /
+/// `LinkageGraph::meta_edges_cached`; this is the one that does the work.
+pub(crate) fn compute_meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
     let mut agg: BTreeMap<(String, String), MetaAgg> = BTreeMap::new();
     for stored in graph.edges() {
         let Some(src_node) = graph.node(&stored.edge.src) else {
