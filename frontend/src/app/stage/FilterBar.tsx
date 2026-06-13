@@ -34,7 +34,7 @@ function FacetChips({ label, values, selected, onToggle }: FacetChipsProps) {
   if (values.length === 0) return null;
   return (
     <span className="flex items-center gap-1" aria-label={`${label} facet`}>
-      <span className="text-stone-400">{label}</span>
+      <span className="text-ink-faint">{label}</span>
       {values.map((value) => {
         const on = selected.includes(value);
         return (
@@ -43,10 +43,10 @@ function FacetChips({ label, values, selected, onToggle }: FacetChipsProps) {
             type="button"
             aria-pressed={on}
             onClick={() => onToggle(value)}
-            className={`rounded-full border px-1.5 py-0.5 ${
+            className={`rounded-full border px-vs-1-5 py-vs-0-5 ${
               on
-                ? "border-stone-500 bg-stone-100 text-stone-900"
-                : "border-stone-200 text-stone-500"
+                ? "border-rule-strong bg-paper-sunken text-ink"
+                : "border-rule text-ink-muted hover:border-rule-strong"
             }`}
           >
             {value}
@@ -102,7 +102,7 @@ export function FilterBar({
 
   return (
     <div
-      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-3 border-b border-stone-200 bg-white/90 px-2 py-1 text-[11px] backdrop-blur-sm"
+      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-vs-3 border-b border-rule bg-paper-raised/90 px-vs-2 py-vs-1 text-label backdrop-blur-sm"
       data-filter-bar
     >
       {onSidebarToggle !== undefined && (
@@ -112,10 +112,10 @@ export function FilterBar({
           aria-label={sidebarOpen ? "close filter panel" : "open filter panel"}
           onClick={onSidebarToggle}
           title="toggle filter sidebar"
-          className={`rounded border px-1.5 py-0.5 ${
+          className={`rounded-vs-sm border px-vs-1-5 py-vs-0-5 ${
             sidebarOpen
-              ? "border-stone-500 bg-stone-100 text-stone-900"
-              : "border-stone-200 text-stone-500 hover:border-stone-400"
+              ? "border-rule-strong bg-paper-sunken text-ink"
+              : "border-rule text-ink-muted hover:border-rule-strong"
           }`}
         >
           ⊞
@@ -152,16 +152,16 @@ export function FilterBar({
         onChange={(e) => setTextMatch(e.target.value)}
         placeholder="text match…"
         aria-label="text match filter"
-        className="w-28 rounded border border-stone-200 px-1.5 py-0.5"
+        className="w-28 rounded-vs-sm border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus:outline-none"
       />
       {(dateRange.from || dateRange.to) && (
-        <span className="rounded-full border border-stone-300 bg-stone-50 px-1.5 py-0.5 text-stone-600">
+        <span className="rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 text-ink-muted">
           {dateRange.from?.slice(0, 10) ?? "…"} → {dateRange.to?.slice(0, 10) ?? "…"}{" "}
-          <span className="text-stone-400">(timeline)</span>
+          <span className="text-ink-faint">(timeline)</span>
         </span>
       )}
       {costLabel && (
-        <span className="ml-auto rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">
+        <span className="ml-auto rounded-full border border-state-stale/40 bg-paper-raised px-vs-1-5 py-vs-0-5 text-state-stale">
           {costLabel}
         </span>
       )}

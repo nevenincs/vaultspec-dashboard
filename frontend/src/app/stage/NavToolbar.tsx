@@ -51,10 +51,10 @@ function ToolButton({ label, title, glyph, onClick, pressed }: ToolButtonProps) 
       aria-pressed={pressed}
       title={title ?? label}
       onClick={onClick}
-      className={`flex h-6 w-6 items-center justify-center rounded text-[12px] transition-colors ${
+      className={`flex h-6 w-6 items-center justify-center rounded-vs-sm text-[12px] transition-colors ${
         pressed
-          ? "bg-stone-200 text-stone-800 hover:bg-stone-300"
-          : "text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+          ? "bg-paper-sunken text-ink hover:bg-rule"
+          : "text-ink-faint hover:bg-paper-sunken hover:text-ink"
       }`}
     >
       {glyph}
@@ -98,7 +98,7 @@ export function NavToolbar({
 
   return (
     <div
-      className="pointer-events-auto absolute right-2 top-8 z-20 flex items-center gap-0.5 rounded border border-stone-200 bg-white/90 px-1 py-0.5 shadow-sm backdrop-blur-sm"
+      className="pointer-events-auto absolute right-vs-2 top-8 z-20 flex items-center gap-vs-0-5 rounded-vs-md border border-rule bg-paper-raised/90 px-vs-1 py-vs-0-5 shadow-card backdrop-blur-sm"
       role="toolbar"
       aria-label="graph navigation"
       data-nav-toolbar
@@ -111,7 +111,7 @@ export function NavToolbar({
       />
       {level !== null && (
         <span
-          className="min-w-[2.5rem] text-center text-[10px] text-stone-400 tabular-nums"
+          className="min-w-[2.5rem] text-center text-2xs text-ink-faint tabular-nums"
           aria-label={`zoom level: ${level}`}
           title={level}
         >
@@ -124,7 +124,7 @@ export function NavToolbar({
         onClick={() => scene.controller.command({ kind: "zoom-in" })}
       />
 
-      <span className="mx-0.5 h-3.5 w-px bg-stone-200" aria-hidden />
+      <span className="mx-vs-0-5 h-3.5 w-px bg-rule" aria-hidden />
 
       <ToolButton
         label="fit to view"
@@ -139,7 +139,7 @@ export function NavToolbar({
         onClick={() => scene.controller.command({ kind: "reset-view" })}
       />
 
-      <span className="mx-0.5 h-3.5 w-px bg-stone-200" aria-hidden />
+      <span className="mx-vs-0-5 h-3.5 w-px bg-rule" aria-hidden />
 
       {/* Algorithm panel toggle */}
       <ToolButton
@@ -150,11 +150,11 @@ export function NavToolbar({
         onClick={onAlgorithmPanelToggle}
       />
 
-      <span className="mx-0.5 h-3.5 w-px bg-stone-200" aria-hidden />
+      <span className="mx-vs-0-5 h-3.5 w-px bg-rule" aria-hidden />
 
       {/* Granularity toggle: constellation (~12 feature nodes) ↔ document graph (~200 nodes) */}
       <div
-        className="flex rounded border border-stone-200 text-[10px]"
+        className="flex rounded-vs-sm border border-rule text-2xs"
         role="group"
         aria-label="graph granularity"
         title="Switch between the feature constellation overview and the full document graph"
@@ -163,24 +163,24 @@ export function NavToolbar({
           type="button"
           aria-pressed={granularity === "feature"}
           onClick={() => setGranularity("feature")}
-          className={`flex items-center px-1.5 py-0.5 transition-colors ${
+          className={`flex items-center px-vs-1-5 py-vs-0-5 transition-colors ${
             granularity === "feature"
-              ? "bg-stone-100 font-medium text-stone-800"
-              : "text-stone-400 hover:text-stone-600"
+              ? "bg-paper-sunken font-medium text-ink"
+              : "text-ink-faint hover:text-ink-muted"
           }`}
           title="Feature constellation — overview of how features relate"
         >
           feat
         </button>
-        <span className="w-px bg-stone-200" aria-hidden />
+        <span className="w-px bg-rule" aria-hidden />
         <button
           type="button"
           aria-pressed={granularity === "document"}
           onClick={() => setGranularity("document")}
-          className={`flex items-center px-1.5 py-0.5 transition-colors ${
+          className={`flex items-center px-vs-1-5 py-vs-0-5 transition-colors ${
             granularity === "document"
-              ? "bg-stone-100 font-medium text-stone-800"
-              : "text-stone-400 hover:text-stone-600"
+              ? "bg-paper-sunken font-medium text-ink"
+              : "text-ink-faint hover:text-ink-muted"
           }`}
           title="Document graph — all vault documents and their links"
         >
@@ -188,7 +188,7 @@ export function NavToolbar({
         </button>
       </div>
 
-      <span className="mx-0.5 h-3.5 w-px bg-stone-200" aria-hidden />
+      <span className="mx-vs-0-5 h-3.5 w-px bg-rule" aria-hidden />
 
       {/* Fullscreen — browser Fullscreen API */}
       <ToolButton

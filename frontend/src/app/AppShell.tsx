@@ -29,7 +29,7 @@ export function AppShell() {
   const toggleRight = useViewStore((s) => s.toggleRightRail);
 
   return (
-    <div className="grid h-screen grid-rows-[1fr_8rem] bg-stone-50 text-stone-900">
+    <div className="grid h-screen grid-rows-[1fr_8rem] bg-paper text-ink">
       <CommandPalette />
       <DegradationDebugSwitch />
       <KeyboardNav />
@@ -40,20 +40,20 @@ export function AppShell() {
         }}
       >
         {/* ── Left scope rail ────────────────────────────────────── */}
-        <aside className="flex flex-col overflow-hidden border-r border-stone-200">
+        <aside className="flex flex-col overflow-hidden border-r border-rule">
           {/* Rail header */}
-          <div className="flex h-9 shrink-0 items-center border-b border-stone-100 px-2">
+          <div className="flex h-9 shrink-0 items-center border-b border-rule px-vs-2">
             <button
               type="button"
               onClick={toggleLeft}
               aria-label={leftCollapsed ? "expand scope rail" : "collapse scope rail"}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
             >
               {leftCollapsed ? "›" : "‹"}
             </button>
             {!leftCollapsed && (
               <>
-                <span className="ml-2 flex-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                <span className="ml-vs-2 flex-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
                   Scope
                 </span>
                 <ThemeToggle />
@@ -65,9 +65,9 @@ export function AppShell() {
           {!leftCollapsed && (
             <ErrorBoundary region="left-rail">
               <CrashZone region="left-rail" />
-              <div className="flex-1 overflow-y-auto p-2">
+              <div className="flex-1 overflow-y-auto p-vs-2">
                 <WorktreePicker />
-                <hr className="my-2.5 border-stone-100" />
+                <hr className="my-vs-2 border-rule" />
                 <VaultBrowser />
               </div>
             </ErrorBoundary>
@@ -83,28 +83,28 @@ export function AppShell() {
         </main>
 
         {/* ── Right activity rail ────────────────────────────────── */}
-        <aside className="flex flex-col overflow-hidden border-l border-stone-200">
+        <aside className="flex flex-col overflow-hidden border-l border-rule">
           {/* Rail header */}
-          <div className="flex h-9 shrink-0 items-center border-b border-stone-100 px-2">
+          <div className="flex h-9 shrink-0 items-center border-b border-rule px-vs-2">
             {rightCollapsed ? (
               <button
                 type="button"
                 onClick={toggleRight}
                 aria-label="expand activity rail"
-                className="mx-auto flex h-5 w-5 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+                className="mx-auto flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
               >
                 ‹
               </button>
             ) : (
               <>
-                <span className="flex-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                <span className="flex-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
                   Activity
                 </span>
                 <button
                   type="button"
                   onClick={toggleRight}
                   aria-label="collapse activity rail"
-                  className="flex h-5 w-5 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+                  className="flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
                 >
                   ›
                 </button>
@@ -123,7 +123,7 @@ export function AppShell() {
       </div>
 
       {/* ── Bottom timeline ────────────────────────────────────────── */}
-      <footer className="border-t border-stone-200">
+      <footer className="border-t border-rule">
         <ErrorBoundary region="timeline">
           <CrashZone region="timeline" />
           <Timeline
@@ -151,7 +151,7 @@ function ThemeToggle() {
     <button
       type="button"
       aria-label={dark ? "switch to light theme" : "switch to dark theme"}
-      className="flex h-5 w-5 items-center justify-center rounded border border-stone-200 text-[11px] text-stone-400 transition-colors hover:border-stone-400 hover:text-stone-600"
+      className="flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
       onClick={() => {
         const next = !dark;
         setDark(next);
@@ -176,7 +176,7 @@ function ActivityRail() {
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* Tab strip */}
       <div
-        className="flex shrink-0 gap-0.5 border-b border-stone-100 px-2 py-1.5"
+        className="flex shrink-0 gap-vs-0-5 border-b border-rule px-vs-2 py-vs-1-5"
         role="tablist"
         aria-label="rail tabs"
       >
@@ -187,10 +187,10 @@ function ActivityRail() {
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+            className={`rounded-vs-sm px-vs-2 py-vs-0-5 text-label transition-colors ${
               tab === id
-                ? "bg-stone-100 font-medium text-stone-800"
-                : "text-stone-400 hover:text-stone-600"
+                ? "bg-paper-sunken font-medium text-ink"
+                : "text-ink-faint hover:text-ink-muted"
             }`}
           >
             {label}
@@ -199,7 +199,7 @@ function ActivityRail() {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 space-y-3 overflow-y-auto p-2">
+      <div className="flex-1 space-y-vs-3 overflow-y-auto p-vs-2">
         {tab === "activity" && (
           <>
             <NowStrip />

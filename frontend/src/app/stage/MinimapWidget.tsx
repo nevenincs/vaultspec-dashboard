@@ -39,20 +39,20 @@ export function MinimapWidget() {
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-2 right-2 z-10 overflow-hidden rounded border border-stone-200 bg-white/90 shadow-sm backdrop-blur-sm"
+      className="pointer-events-auto absolute bottom-vs-2 right-vs-2 z-10 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/90 shadow-card backdrop-blur-sm"
       style={{ width: collapsed ? "auto" : MINIMAP_W + 2 }}
       data-minimap-widget
     >
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-stone-100 px-2 py-1">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-stone-400">
+      <div className="flex items-center justify-between border-b border-rule px-vs-2 py-vs-1">
+        <span className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
           Map
         </span>
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
           aria-label={collapsed ? "expand minimap" : "collapse minimap"}
-          className="text-[10px] text-stone-400 hover:text-stone-600"
+          className="text-2xs text-ink-faint hover:text-ink-muted"
         >
           {collapsed ? "▸" : "▾"}
         </button>

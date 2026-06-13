@@ -28,21 +28,21 @@ interface SectionProps {
 function Section({ title, badge, defaultOpen = true, children }: SectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-stone-100">
+    <div className="border-b border-rule">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-stone-500 hover:bg-stone-50"
+        className="flex w-full items-center justify-between px-vs-3 py-vs-1-5 text-left text-label font-medium uppercase tracking-wider text-ink-muted hover:bg-paper-sunken"
       >
         <span>{title}</span>
-        <span className="flex items-center gap-1.5">
+        <span className="flex items-center gap-vs-1-5">
           {badge !== undefined && badge > 0 && (
-            <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] font-normal text-stone-600">
+            <span className="rounded-full bg-paper-sunken px-vs-1-5 py-vs-0-5 text-2xs font-normal text-ink-muted">
               {badge}
             </span>
           )}
-          <span className="text-stone-400">{open ? "▾" : "▸"}</span>
+          <span className="text-ink-faint">{open ? "▾" : "▸"}</span>
         </span>
       </button>
       {open && <div className="pb-2">{children}</div>}
@@ -68,24 +68,24 @@ function FacetList({ values, selected, onToggle, max }: FacetListProps) {
 
   if (values.length === 0) {
     return (
-      <p className="px-3 py-1 text-[11px] italic text-stone-300">none in corpus</p>
+      <p className="px-vs-3 py-vs-1 text-label italic text-ink-faint">none in corpus</p>
     );
   }
 
   return (
-    <ul className="space-y-0.5 px-3" role="list">
+    <ul className="space-y-vs-0-5 px-vs-3" role="list">
       {shown.map((value) => {
         const on = selected.includes(value);
         return (
           <li key={value}>
-            <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-[11px] hover:bg-stone-50">
+            <label className="flex cursor-pointer items-center gap-vs-2 rounded-vs-sm px-vs-1 py-vs-0-5 text-label hover:bg-paper-sunken">
               <input
                 type="checkbox"
                 checked={on}
                 onChange={() => onToggle(value)}
-                className="accent-stone-600"
+                className="accent-ink-muted"
               />
-              <span className={on ? "text-stone-800" : "text-stone-500"}>{value}</span>
+              <span className={on ? "text-ink" : "text-ink-muted"}>{value}</span>
             </label>
           </li>
         );
@@ -95,7 +95,7 @@ function FacetList({ values, selected, onToggle, max }: FacetListProps) {
           <button
             type="button"
             onClick={() => setShowAll(true)}
-            className="ml-1 text-[11px] text-stone-400 underline hover:text-stone-600"
+            className="ml-vs-1 text-label text-ink-faint underline hover:text-ink-muted"
           >
             +{overflow} more
           </button>
@@ -120,31 +120,29 @@ function TierSection() {
 
   return (
     <Section title="Tiers" badge={activeCount < 4 ? activeCount : undefined}>
-      <ul className="space-y-1 px-3" role="list">
+      <ul className="space-y-vs-1 px-vs-3" role="list">
         {TIER_ORDER.map(({ tier, mark, label }) => {
           const inapplicable = isTierInapplicable(tier, timelineMode);
           const on = tiers[tier] && !inapplicable;
           return (
             <li key={tier}>
               <label
-                className={`flex flex-col gap-0.5 rounded px-1 py-0.5 ${
-                  inapplicable ? "opacity-40" : "hover:bg-stone-50"
+                className={`flex flex-col gap-vs-0-5 rounded-vs-sm px-vs-1 py-vs-0-5 ${
+                  inapplicable ? "opacity-40" : "hover:bg-paper-sunken"
                 }`}
               >
-                <span className="flex cursor-pointer items-center gap-2">
+                <span className="flex cursor-pointer items-center gap-vs-2">
                   <input
                     type="checkbox"
                     checked={on}
                     disabled={inapplicable}
                     onChange={() => setTier(tier, !tiers[tier])}
-                    className="accent-stone-600"
+                    className="accent-ink-muted"
                   />
-                  <span
-                    className={`text-[11px] ${on ? "text-stone-800" : "text-stone-400"}`}
-                  >
+                  <span className={`text-label ${on ? "text-ink" : "text-ink-faint"}`}>
                     {mark} {label}
                     {inapplicable && (
-                      <span className="ml-1 text-[10px] text-stone-300">
+                      <span className="ml-vs-1 text-2xs text-ink-faint">
                         (time-travel)
                       </span>
                     )}
@@ -153,7 +151,7 @@ function TierSection() {
                 {(tier === "temporal" || tier === "semantic") &&
                   !inapplicable &&
                   on && (
-                    <span className="flex items-center gap-2 pl-5">
+                    <span className="flex items-center gap-vs-2 pl-vs-4">
                       <input
                         type="range"
                         min={0}
@@ -163,9 +161,9 @@ function TierSection() {
                         aria-label={`${label} confidence floor`}
                         title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
                         onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
-                        className="h-1 w-full accent-stone-600"
+                        className="h-1 w-full accent-ink-muted"
                       />
-                      <span className="w-8 text-right text-[10px] text-stone-400">
+                      <span className="w-8 text-right text-2xs text-ink-faint">
                         {Math.round((minConfidence[tier] ?? 0) * 100)}%
                       </span>
                     </span>
@@ -261,20 +259,20 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
       aria-label="filter panel"
       aria-modal={false}
       tabIndex={-1}
-      className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-stone-200 bg-white/95 shadow-md backdrop-blur-sm focus:outline-none"
+      className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm focus:outline-none"
       data-filter-sidebar
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-stone-200 px-3 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-600">
+      <div className="flex items-center justify-between border-b border-rule px-vs-3 py-vs-1-5">
+        <span className="text-label font-semibold uppercase tracking-wider text-ink-muted">
           Filters
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-vs-2">
           {anyActive && (
             <button
               type="button"
               onClick={reset}
-              className="text-[10px] text-stone-400 hover:text-stone-700"
+              className="text-2xs text-ink-faint hover:text-ink"
               aria-label="reset all filters"
             >
               reset all
@@ -284,7 +282,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             type="button"
             onClick={onClose}
             aria-label="close filter panel"
-            className="rounded p-0.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
           >
             ✕
           </button>
@@ -360,7 +358,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
               onChange={(e) => setTextMatch(e.target.value)}
               placeholder="match node labels…"
               aria-label="text match filter"
-              className="w-full rounded border border-stone-200 px-2 py-1 text-[11px] focus:border-stone-400 focus:outline-none"
+              className="w-full rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
             />
           </div>
         </Section>
@@ -368,8 +366,8 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
 
       {/* Footer: hidden count */}
       {hiddenTotal > 0 && (
-        <div className="border-t border-stone-200 px-3 py-1.5">
-          <span className="text-[11px] text-amber-700">
+        <div className="border-t border-rule px-vs-3 py-vs-1-5">
+          <span className="text-label text-state-stale">
             {hidden.nodes > 0 && `${hidden.nodes} nodes`}
             {hidden.nodes > 0 && hidden.edges > 0 && " · "}
             {hidden.edges > 0 && `${hidden.edges} edges`}

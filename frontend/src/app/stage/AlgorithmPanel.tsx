@@ -55,10 +55,10 @@ function SliderRow({
 }: SliderRowProps) {
   const display = format ? format(value) : String(value);
   return (
-    <label className="flex flex-col gap-0.5 px-3 py-1" title={hint}>
-      <span className="flex items-center justify-between text-[11px] text-stone-600">
+    <label className="flex flex-col gap-vs-0-5 px-vs-3 py-vs-1" title={hint}>
+      <span className="flex items-center justify-between text-label text-ink-muted">
         <span>{label}</span>
-        <span className="font-mono text-[10px] text-stone-400">{display}</span>
+        <span className="font-mono text-2xs text-ink-faint">{display}</span>
       </span>
       <input
         type="range"
@@ -68,7 +68,7 @@ function SliderRow({
         value={value}
         aria-label={label}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-full accent-stone-600"
+        className="h-1 w-full accent-ink-muted"
       />
     </label>
   );
@@ -128,20 +128,20 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
       role="dialog"
       aria-label="layout algorithm controls"
       aria-modal={false}
-      className="pointer-events-auto absolute bottom-12 right-2 z-20 w-52 overflow-hidden rounded border border-stone-200 bg-white/95 shadow-md backdrop-blur-sm"
+      className="pointer-events-auto absolute bottom-12 right-2 z-20 w-52 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm"
       data-algorithm-panel
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-stone-200 px-3 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-600">
+      <div className="flex items-center justify-between border-b border-rule px-vs-3 py-vs-1-5">
+        <span className="text-label font-semibold uppercase tracking-wider text-ink-muted">
           Layout
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-vs-2">
           {isDirty && (
             <button
               type="button"
               onClick={handleReset}
-              className="text-[10px] text-stone-400 hover:text-stone-700"
+              className="text-2xs text-ink-faint hover:text-ink"
               aria-label="reset to inferred defaults"
             >
               reset
@@ -151,7 +151,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
             type="button"
             onClick={onClose}
             aria-label="close layout panel"
-            className="rounded p-0.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+            className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
           >
             ✕
           </button>
@@ -159,19 +159,21 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
       </div>
 
       {/* Layout mode toggle */}
-      <div className="border-b border-stone-100 px-3 py-2">
-        <span className="mb-1 block text-[11px] font-medium text-stone-500">Mode</span>
-        <div className="flex rounded border border-stone-200 text-[11px]">
+      <div className="border-b border-rule px-vs-3 py-vs-2">
+        <span className="mb-vs-1 block text-label font-medium text-ink-muted">
+          Mode
+        </span>
+        <div className="flex rounded-vs-sm border border-rule text-label">
           {(["force", "circular"] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => applyMode(m)}
               aria-pressed={mode === m}
-              className={`flex-1 py-0.5 transition-colors ${
+              className={`flex-1 py-vs-0-5 transition-colors ${
                 mode === m
-                  ? "bg-stone-100 text-stone-800"
-                  : "text-stone-400 hover:text-stone-600"
+                  ? "bg-paper-sunken text-ink"
+                  : "text-ink-faint hover:text-ink-muted"
               }`}
             >
               {m}
@@ -224,16 +226,16 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
         />
 
         {/* Barnes-Hut toggle */}
-        <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5">
+        <label className="flex cursor-pointer items-center gap-vs-2 px-vs-3 py-vs-1-5">
           <input
             type="checkbox"
             checked={params.barnesHutOptimize}
             onChange={(e) => applyParams({ barnesHutOptimize: e.target.checked })}
-            className="accent-stone-600"
+            className="accent-ink-muted"
             disabled={mode === "circular"}
           />
-          <span className="text-[11px] text-stone-600">Barnes-Hut</span>
-          <span className="ml-0.5 text-[10px] text-stone-400">(n &gt; 200)</span>
+          <span className="text-label text-ink-muted">Barnes-Hut</span>
+          <span className="ml-vs-0-5 text-2xs text-ink-faint">(n &gt; 200)</span>
         </label>
       </div>
     </div>

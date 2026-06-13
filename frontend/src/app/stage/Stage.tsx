@@ -256,16 +256,16 @@ export function Stage() {
       <TimeTravelChip />
       <IslandLayer scene={scene.controller} />
       {surfaces.stage === "empty-invitation" ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-sm text-stone-400">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-body text-ink-faint">
           <span className="text-3xl">✎</span>
           <p>this worktree has no vault corpus yet</p>
-          <p className="text-xs text-stone-300">
+          <p className="text-2xs text-ink-faint">
             run vaultspec-core install to start a second brain here
           </p>
         </div>
       ) : (
         !slice.data && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-body text-ink-faint">
             {scope
               ? granularity === "document"
                 ? "loading document graph…"
