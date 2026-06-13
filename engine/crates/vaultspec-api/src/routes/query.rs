@@ -7,7 +7,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{NodeId, Tier};
 use engine_query::filter::{Filter, vocabulary};
-use engine_query::graph::{GraphSlice, Granularity, graph_query};
+use engine_query::graph::{Granularity, GraphSlice, graph_query};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -302,7 +302,10 @@ mod bound_tests {
             1,
             "the meta-edge to a truncated feature node was dropped"
         );
-        assert_eq!(s.meta_edges[0].dst, "feature:000001", "consistent meta-edge survived");
+        assert_eq!(
+            s.meta_edges[0].dst, "feature:000001",
+            "consistent meta-edge survived"
+        );
     }
 }
 

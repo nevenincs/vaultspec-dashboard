@@ -155,8 +155,7 @@ async fn run_sibling_bounded(
         ));
     }
     // Envelopes pass VERBATIM; non-JSON output is wrapped, never reshaped.
-    Ok(serde_json::from_str(&raw)
-        .unwrap_or_else(|_| json!({"raw": raw, "exit": status.code()})))
+    Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({"raw": raw, "exit": status.code()})))
 }
 
 /// Locate the rag CLI: PATH binary, else the uv-managed environment.
@@ -521,15 +520,9 @@ mod tests {
         // wrapping a crash.
         let (_dir, state) = sibling_state();
         let prog = shell("exit 7");
-        let err = run_sibling_bounded(
-            &state,
-            &prog,
-            &[],
-            SIBLING_TIMEOUT,
-            SIBLING_STDOUT_CAP,
-        )
-        .await
-        .unwrap_err();
+        let err = run_sibling_bounded(&state, &prog, &[], SIBLING_TIMEOUT, SIBLING_STDOUT_CAP)
+            .await
+            .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_GATEWAY, "crashed sibling → 502");
         assert!(err.1.0["error"].as_str().unwrap().contains("exited"));
     }
@@ -571,15 +564,9 @@ mod tests {
         } else {
             shell(r#"printf '%s' '{"ok":true}'"#)
         };
-        let value = run_sibling_bounded(
-            &state,
-            &prog,
-            &[],
-            SIBLING_TIMEOUT,
-            SIBLING_STDOUT_CAP,
-        )
-        .await
-        .expect("clean sibling passes through");
+        let value = run_sibling_bounded(&state, &prog, &[], SIBLING_TIMEOUT, SIBLING_STDOUT_CAP)
+            .await
+            .expect("clean sibling passes through");
         assert_eq!(value["ok"], true);
     }
 }

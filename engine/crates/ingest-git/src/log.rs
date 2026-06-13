@@ -262,7 +262,9 @@ mod tests {
             events[1].changes,
             vec![PathChange {
                 path: "b.txt".into(),
-                kind: ChangeKind::Renamed { from: "a.txt".into() }
+                kind: ChangeKind::Renamed {
+                    from: "a.txt".into()
+                }
             }],
             "a rename preserves its source path"
         );

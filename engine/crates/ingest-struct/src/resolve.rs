@@ -65,7 +65,9 @@ impl Resolver {
             let base = path.rsplit('/').next().unwrap_or(path);
             // inventory is sorted; keep the first match for a basename so the
             // O(1) lookup reproduces the prior sorted-`find` semantics exactly.
-            by_basename.entry(base.to_string()).or_insert_with(|| path.clone());
+            by_basename
+                .entry(base.to_string())
+                .or_insert_with(|| path.clone());
         }
         Self {
             root: root.to_path_buf(),
@@ -359,7 +361,10 @@ mod tests {
             ResolutionState::Resolved,
             "a memoized resolvable symbol stays resolved across documents"
         );
-        assert_eq!(state_of(&doc_a, "vanished_function"), ResolutionState::Broken);
+        assert_eq!(
+            state_of(&doc_a, "vanished_function"),
+            ResolutionState::Broken
+        );
         assert_eq!(
             state_of(&doc_b, "vanished_function"),
             ResolutionState::Broken,

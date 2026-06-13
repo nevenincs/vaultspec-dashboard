@@ -200,10 +200,7 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     kinds.sort();
     kinds.dedup();
-    let mut doc_types: Vec<String> = graph
-        .nodes()
-        .filter_map(|n| n.doc_type.clone())
-        .collect();
+    let mut doc_types: Vec<String> = graph.nodes().filter_map(|n| n.doc_type.clone()).collect();
     doc_types.sort();
     doc_types.dedup();
     let mut feature_tags: Vec<String> = graph

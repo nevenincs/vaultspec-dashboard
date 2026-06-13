@@ -388,10 +388,7 @@ mod tests {
         let future_ms = (app::now_ms() + 1_000_000).to_string();
         let (status, body) = get_with_token(
             router,
-            &format!(
-                "/graph/asof?scope={}&t={future_ms}",
-                urlencode(&scope)
-            ),
+            &format!("/graph/asof?scope={}&t={future_ms}", urlencode(&scope)),
             Some(&token),
         )
         .await;
@@ -752,12 +749,18 @@ mod tests {
                 })
             },
         ] {
-            assert!(poisoner.join().is_err(), "poisoner thread must have panicked");
+            assert!(
+                poisoner.join().is_err(),
+                "poisoner thread must have panicked"
+            );
         }
 
         // The locks are now poisoned. Direct accessors must recover, not panic.
         let graph = state.graph_arc();
-        assert!(graph.node_count() > 0, "graph_arc recovers a poisoned RwLock");
+        assert!(
+            graph.node_count() > 0,
+            "graph_arc recovers a poisoned RwLock"
+        );
         let meta = state.meta_edges();
         let _ = meta.len(); // meta_edges recovers the poisoned Mutex
 

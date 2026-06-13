@@ -472,10 +472,7 @@ mod tests {
             let _ = std::io::Read::read(&mut stream, &mut buf);
             // Headers, then a body that overshoots the cap. Connection: close
             // means the body runs until EOF; we just keep writing past the cap.
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n"
-            );
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n");
             // Write the head of a JSON body, then flood past the ceiling. A
             // 1 MiB chunk repeated until we clear MAX_RAG_BODY + headroom.
             let chunk = vec![b'x'; 1024 * 1024];

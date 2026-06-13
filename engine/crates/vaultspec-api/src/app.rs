@@ -70,10 +70,7 @@ impl AppState {
         // poisons the lock. Paired with the CatchPanicLayer, we recover the
         // inner value instead of re-panicking, so one transient panic cannot
         // cascade into a permanent total outage on every subsequent request.
-        self.graph
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        self.graph.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Meta-edges, memoized per generation (W02P05-203): the constellation
@@ -152,9 +149,7 @@ impl AppState {
         for entry in feat_entries {
             match entry["seq"].as_u64() {
                 Some(seq) => payloads.push((seq, entry)),
-                None => eprintln!(
-                    "vaultspec serve: dropping feature delta with no seq: {entry}"
-                ),
+                None => eprintln!("vaultspec serve: dropping feature delta with no seq: {entry}"),
             }
         }
 

@@ -433,11 +433,17 @@ mod tests {
 
         // T between B and C resolves B; T at/after M resolves M (sanity).
         assert_eq!(
-            resolve_commit(&repo, "1000000300000").unwrap().0.to_string(),
+            resolve_commit(&repo, "1000000300000")
+                .unwrap()
+                .0
+                .to_string(),
             b
         );
         assert_eq!(
-            resolve_commit(&repo, "1000000500000").unwrap().0.to_string(),
+            resolve_commit(&repo, "1000000500000")
+                .unwrap()
+                .0
+                .to_string(),
             m
         );
 

@@ -331,8 +331,7 @@ pub fn commit_rows(
         ));
     }
     rows.sort_by(|(a_sha, a), (b_sha, b)| {
-        a.ts
-            .cmp(&b.ts)
+        a.ts.cmp(&b.ts)
             .then_with(|| a_sha.cmp(b_sha))
             .then_with(|| a.kind.cmp(&b.kind))
     });
@@ -482,11 +481,7 @@ mod tests {
         std::fs::create_dir_all(root.join(".vault/archive/plan")).unwrap();
         git(
             root,
-            &[
-                "mv",
-                doc,
-                ".vault/archive/plan/2026-06-13-life-plan.md",
-            ],
+            &["mv", doc, ".vault/archive/plan/2026-06-13-life-plan.md"],
         );
         git(root, &["commit", "-m", "archive doc"]);
 
@@ -495,8 +490,10 @@ mod tests {
 
         let doc_node = "doc:2026-06-13-life-plan";
 
-        let created: Vec<&EventRow> =
-            rows.iter().filter(|r| r.kind == VAULT_CREATED_KIND).collect();
+        let created: Vec<&EventRow> = rows
+            .iter()
+            .filter(|r| r.kind == VAULT_CREATED_KIND)
+            .collect();
         assert_eq!(created.len(), 1, "exactly one vault-created event");
         assert_eq!(
             created[0].node_ids,
@@ -517,9 +514,7 @@ mod tests {
 
         // The lifecycle kinds are DISTINCT from doc-modified (which still
         // reports the same docs' content change).
-        assert!(
-            created[0].kind != DOC_MODIFIED_KIND && archived[0].kind != DOC_MODIFIED_KIND
-        );
+        assert!(created[0].kind != DOC_MODIFIED_KIND && archived[0].kind != DOC_MODIFIED_KIND);
 
         // Seqs stay monotonic and time-ordered across all interleaved kinds.
         assert!(rows.windows(2).all(|w| w[1].seq > w[0].seq));

@@ -194,8 +194,9 @@ pub async fn graph_diff(
     }
     // Echo each endpoint's resolved sha + interpretation (ADD-901), additive
     // to the existing delta log.
-    let from_resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.from, &scope, 0)
-        .map_err(|e| super::revision_error(&state, &params.from, &e))?;
+    let from_resolved =
+        engine_graph::asof::asof_graph_resolved(&state.root, &params.from, &scope, 0)
+            .map_err(|e| super::revision_error(&state, &params.from, &e))?;
     let to_resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.to, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.to, &e))?;
     let from_graph = &from_resolved.graph;
