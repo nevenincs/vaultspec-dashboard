@@ -28,9 +28,9 @@ related:
 - [x] `S02` - Project the rebuild diff to feature-granularity meta-edge and feature-node deltas on the shared seq clock; `engine/crates/engine-query/src/graph.rs`.
 - [x] `S03` - Emit both delta species on the single clock, carry last_seq on the live keyframe, and honor diff granularity; `engine/crates/vaultspec-api/src/app.rs`.
 - [x] `S04` - Assert the keyframe seq anchor, feature-granularity diff, and granularity-tagged stream in conformance and certify end to end; `engine/tests/tests/conformance.rs`.
-- [ ] `S05` - Extend client wire types: add `granularity` discriminator to `GraphDeltaEntry` and `last_seq` to `GraphSlice`; add `graphDeltaToScene` mapping in `sceneMapping.ts`; `frontend/src/stores/server/engine.ts`, `frontend/src/scene/sceneMapping.ts`.
-- [ ] `S06` - Upgrade `useGraphLiveSync` to subscribe `graph` with `since=keyframeSeq`, extract `granularity=feature` deltas, and fall back to invalidation on gap; `Stage.tsx` maps and routes feature deltas to `SceneController` via `apply-deltas`; `frontend/src/stores/server/graphSync.ts`, `frontend/src/app/stage/Stage.tsx`.
-- [ ] `S07` - Add unit tests for `graphDeltaToScene`, `since=keyframeSeq` subscription, and gap→invalidation fallback; run typecheck, lint, test, build gates green; `frontend/src/scene/sceneMapping.test.ts`, `frontend/src/stores/server/graphSync.test.ts`.
+- [x] `S05` - Extend client wire types: add `granularity` discriminator to `GraphDeltaEntry` and `last_seq` to `GraphSlice`; `add `graphDeltaToScene` mapping in `sceneMapping.ts`; `frontend/src/stores/server/engine.ts`, `frontend/src/scene/sceneMapping.ts`.
+- [x] `S06` - Upgrade `useGraphLiveSync` to subscribe `graph` with `since=keyframeSeq`, extract `granularity=feature` deltas, and fall back to invalidation on gap; `Stage.tsx` maps and routes feature deltas to `SceneController` via `apply-deltas`; `frontend/src/stores/server/graphSync.ts`, `frontend/src/app/stage/Stage.tsx`.
+- [x] `S07` - Add unit tests for `graphDeltaToScene`, `since=keyframeSeq` subscription, and gap→invalidation fallback; `run typecheck, lint, test, build gates green; `frontend/src/scene/sceneMapping.test.ts`, `frontend/src/stores/server/graphSync.test.ts`.
 ## Description
 
 Binding implementation of the accepted `constellation-live-delta` ADR (S50): the

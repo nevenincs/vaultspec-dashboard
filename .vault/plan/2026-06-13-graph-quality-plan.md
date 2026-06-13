@@ -100,18 +100,18 @@ related:
 
 Expose FA2 gravity/repulsion/link-distance/decay tuning and a circular-radial alternative arrangement through a SceneController API; the FA2 worker gains a params message, FieldLayout gains setParams/setMode, and two new SceneCommand kinds route from the app chrome to the field renderer.
 
-- [ ] `P01.S01` - Add a params message kind to the FA2 worker so gravity, scalingRatio, edgeWeightInfluence, and slowDown are tunable at runtime without restarting; `frontend/src/scene/field/fa2.worker.ts`.
-- [ ] `P01.S02` - Add setParams and setMode to FieldLayout, two new SceneCommand kinds (set-layout-params, set-layout-mode) routed in DashboardField, and getLayoutState as a synchronous getter on SceneController; `frontend/src/scene/field/layoutWorker.ts, frontend/src/scene/field/fieldAssembly.ts, frontend/src/scene/sceneController.ts`.
-- [ ] `P01.S03` - Implement a CircularLayout strategy that arranges N nodes on a circle of radius proportional to sqrt(N) and wire it as the alternate mode behind set-layout-mode; `frontend/src/scene/field/circularLayout.ts, frontend/src/scene/field/layoutWorker.ts`.
-- [ ] `P01.S04` - Add a layout-changed SceneEvent emitted by SceneController when mode or params change so the app layer can re-render the controls panel without polling; `frontend/src/scene/sceneController.ts, frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P01.S01` - Add a params message kind to the FA2 worker so gravity, scalingRatio, edgeWeightInfluence, and slowDown are tunable at runtime without restarting; `frontend/src/scene/field/fa2.worker.ts`.
+- [x] `P01.S02` - Add setParams and setMode to FieldLayout, two new SceneCommand kinds (set-layout-params, set-layout-mode) routed in DashboardField, and getLayoutState as a synchronous getter on SceneController; `frontend/src/scene/field/layoutWorker.ts, frontend/src/scene/field/fieldAssembly.ts, frontend/src/scene/sceneController.ts`.
+- [x] `P01.S03` - Implement a CircularLayout strategy that arranges N nodes on a circle of radius proportional to sqrt(N) and wire it as the alternate mode behind set-layout-mode; `frontend/src/scene/field/circularLayout.ts, frontend/src/scene/field/layoutWorker.ts`.
+- [x] `P01.S04` - Add a layout-changed SceneEvent emitted by SceneController when mode or params change so the app layer can re-render the controls panel without polling; `frontend/src/scene/sceneController.ts, frontend/src/scene/field/fieldAssembly.ts`.
 
 ### Phase `P02` - Minimap
 
 A downscaled node-position overlay canvas with a live viewport rect and click-to-navigate; implemented as a MinimapLayer inside the scene, exposed to the app chrome as a plain HTMLCanvasElement through a SceneController getter so no React boundary is crossed.
 
-- [ ] `P02.S05` - Implement MinimapLayer: a fixed-overlay Graphics container that mirrors node dot positions from FieldLayout position frames, scaled to a 120x120 viewport, with a colored border-rect for the current camera viewport; `frontend/src/scene/field/minimapLayer.ts`.
-- [ ] `P02.S06` - Wire MinimapLayer into DashboardField: compose on mount, feed position frames and camera onChange, emit navigate-to pointer on minimap click, and expose minimapCanvas getter on SceneController; `frontend/src/scene/field/fieldAssembly.ts, frontend/src/scene/sceneController.ts`.
-- [ ] `P02.S07` - App-layer MinimapWidget: a React wrapper that appends sceneController.minimapCanvas via useEffect DOM insertion, toggled by SceneController.setMinimapVisible and a keyboard shortcut; `frontend/src/app/stage/MinimapWidget.tsx`.
+- [x] `P02.S05` - Implement MinimapLayer: a fixed-overlay Graphics container that mirrors node dot positions from FieldLayout position frames, scaled to a 120x120 viewport, with a colored border-rect for the current camera viewport; `frontend/src/scene/field/minimapLayer.ts`.
+- [x] `P02.S06` - Wire MinimapLayer into DashboardField: compose on mount, feed position frames and camera onChange, emit navigate-to pointer on minimap click, and expose minimapCanvas getter on SceneController; `frontend/src/scene/field/fieldAssembly.ts, frontend/src/scene/sceneController.ts`.
+- [x] `P02.S07` - App-layer MinimapWidget: a React wrapper that appends sceneController.minimapCanvas via useEffect DOM insertion, toggled by SceneController.setMinimapVisible and a keyboard shortcut; `frontend/src/app/stage/MinimapWidget.tsx`.
 
 ### Phase `P03` - Scene polish and green gates
 
@@ -119,7 +119,7 @@ Smooth camera spring animation for programmatic navigation, incremental edge-mes
 
 - [ ] `P03.S08` - Add Camera.animateTo with RAF-based damped lerp (damping=0.85, stop at sub-0.5px delta) and use it in the focus-node command and minimap navigate-to so programmatic pan no longer snap-jumps; `frontend/src/scene/field/camera.ts, frontend/src/scene/field/fieldAssembly.ts`.
 - [ ] `P03.S09` - Incremental edge-mesh update on delta-apply: add EdgeMeshLayer.updateEdge to replace the full applyModelToLayers rebuild on apply-deltas paths and add arrowhead triangle glyphs on directed edges at near-zoom LOD; `frontend/src/scene/field/edgeMeshes.ts, frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `P03.S10` - Run all four green gates: npm run typecheck, npm run lint, npm run test (71+ files including adversarial suite), npm run build; vaultspec-core vault check all green; every Step closed before review; `frontend/src/scene/, frontend/src/app/stage/`.
+- [ ] `P03.S10` - Run all four green gates: npm run typecheck, npm run lint, npm run test (71+ files including adversarial suite), npm run build; `vaultspec-core vault check all green; every Step closed before review; `frontend/src/scene/, frontend/src/app/stage/`.
 
 ## Description
 
