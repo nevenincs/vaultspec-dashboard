@@ -125,8 +125,8 @@ Make every graph read bounded: LOD default, finished cursor pagination, a viewpo
 
 Default the GUI graph query to the constellation LOD and descend to bounded document/viewport slices on zoom-in.
 
-- [ ] `P04.S09` - Default the GUI graph query to the constellation LOD and descend to bounded slices on zoom-in; `frontend/src/stores/server/queries.ts`.
-- [ ] `P04.S10` - Re-run the frontend gates green (typecheck, lint, test, build); `frontend/src`.
+- [x] `P04.S09` - Default the GUI graph query to the constellation LOD and descend to bounded slices on zoom-in; `frontend/src/stores/server/queries.ts`.
+- [x] `P04.S10` - Re-run the frontend gates green (typecheck, lint, test, build); `frontend/src`.
 
 ### Phase `P05` - Codify the scale disciplines (D5)
 
