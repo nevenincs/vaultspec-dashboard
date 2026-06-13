@@ -25,9 +25,17 @@ fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::Object
         Ok(id) => Ok(id.detach()),
         Err(rev_err) => {
             // Millisecond-timestamp fallback: only for all-digit tokens —
-            // anything else propagates the revision error untouched.
+            // anything else is an invalid revision. The raw gix error is
+            // DROPPED on purpose: it embeds the build user's home dir and the
+            // gix source file:line, which must never reach a wire client
+            // (adversarial finding, 2026-06-13). The message names both forms
+            // the contract grants (`t=<ts|sha>`).
             let Ok(t) = reference.parse::<i64>() else {
-                return Err(IndexError::Git(format!("rev-parse {reference}: {rev_err}")));
+                let _ = rev_err;
+                return Err(IndexError::Git(format!(
+                    "invalid revision `{reference}`: expected a commit-ish \
+                     (ref name or sha) or a millisecond timestamp"
+                )));
             };
             let tip = repo
                 .rev_parse_single("HEAD")

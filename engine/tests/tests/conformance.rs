@@ -330,6 +330,58 @@ fn typed_client_expectations_hold_over_live_serve() {
     );
 }
 
+/// Error-surface conformance (adversarial findings, 2026-06-13): EVERY wire
+/// error carries the tiers block — including framework-boundary rejections
+/// that fire before any handler (defect 1) — and revision-parse errors never
+/// leak build internals (defect 2).
+#[test]
+fn error_surface_carries_tiers_and_hides_internals() {
+    let (_dir, root) = fixture();
+    let (_guard, token) = start_serve(&root, 8833);
+    let scope = root.to_string_lossy().replace('\\', "/");
+
+    // Defect 1 — the tiers block rides framework-boundary errors:
+    // malformed JSON body (Json extractor rejection) -> 400.
+    let (status, body) = http(8833, "POST", "/graph/query", &token, Some("{bad"));
+    assert_eq!(status, 400, "malformed body: {body}");
+    assert!(
+        body["tiers"].is_object(),
+        "malformed-body 400 carries tiers"
+    );
+    // missing required query param (Query extractor rejection) -> 400.
+    let (status, body) = http(8833, "GET", "/vault-tree", &token, None);
+    assert_eq!(status, 400);
+    assert!(body["tiers"].is_object(), "missing-param 400 carries tiers");
+    // wrong method (router rejection) -> 405.
+    let (status, body) = http(8833, "GET", "/graph/query", &token, None);
+    assert_eq!(status, 405);
+    assert!(body["tiers"].is_object(), "405 carries tiers");
+    // no/!bad auth (gate rejection) -> 401.
+    let (status, body) = http(8833, "GET", "/status", "", None);
+    assert_eq!(status, 401);
+    assert!(body["tiers"].is_object(), "401 carries tiers");
+
+    // Defect 2 — an unparseable revision is sanitized, no build internals.
+    let (status, body) = http(
+        8833,
+        "POST",
+        "/graph/query",
+        &token,
+        Some(&format!(r#"{{"scope":"{scope}","as_of":"not-a-rev"}}"#)),
+    );
+    assert_eq!(status, 400);
+    assert!(
+        body["tiers"].is_object(),
+        "revision-error 400 carries tiers"
+    );
+    let err = body["error"].as_str().unwrap_or("");
+    assert!(
+        !err.contains(".cargo") && !err.contains("gix-revision") && !err.contains(".rs:"),
+        "revision error must not leak build internals: {err}"
+    );
+    assert!(err.contains("invalid revision"), "names the failure: {err}");
+}
+
 fn urlencode(s: &str) -> String {
     s.replace(':', "%3A").replace('/', "%2F")
 }
