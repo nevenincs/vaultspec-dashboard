@@ -56,9 +56,9 @@ fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
 /// an edge between two same-feature members contributes at both endpoints.
 /// It is a sizing projection (how connected the convergence is), not an
 /// edge cardinality — the GUI must not read it as a unique-edge total.
-fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[Node]) -> Vec<Value> {
+fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> Vec<Value> {
     let mut by_tag: BTreeMap<&str, Vec<&Node>> = BTreeMap::new();
-    for node in members {
+    for &node in members {
         for tag in &node.feature_tags {
             by_tag.entry(tag).or_default().push(node);
         }
@@ -114,11 +114,14 @@ pub fn graph_query(
 ) -> Result<GraphSlice, FilterError> {
     let filter = filter.validated()?;
 
-    let mut matched: Vec<Node> = graph
+    // Borrow matched nodes (perf ADR D3): node_view / feature_nodes only read
+    // each node and re-serialize it into a Value, so cloning the whole match set
+    // up front was a redundant deep Node clone per node (id/key/title strings +
+    // facets Vec) on every request. Sorting borrowed refs is cheap.
+    let mut matched: Vec<&Node> = graph
         .nodes()
         .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
         .filter(|n| filter.matches_node(n))
-        .cloned()
         .collect();
     matched.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
@@ -131,7 +134,10 @@ pub fn graph_query(
                 .map(|s| s.edge.clone())
                 .collect();
             edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-            let views = matched.iter().map(|n| node_view(graph, scope, n)).collect();
+            let views = matched
+                .iter()
+                .map(|&n| node_view(graph, scope, n))
+                .collect();
             (views, edges, Vec::new())
         }
         // Constellation granularity (contract §4, ADR D4.1): synthesized
@@ -172,10 +178,9 @@ pub fn feature_delta(
         g: &LinkageGraph,
         scope: &ScopeRef,
     ) -> (BTreeMap<String, Value>, BTreeMap<(String, String), Value>) {
-        let members: Vec<Node> = g
+        let members: Vec<&Node> = g
             .nodes()
             .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
-            .cloned()
             .collect();
         let nodes = feature_nodes(g, scope, &members)
             .into_iter()
