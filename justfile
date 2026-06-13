@@ -103,7 +103,9 @@ _dev-lint-help:
   @echo "  markdown  Run Markdown linting and formatting checks"
   @echo "  rust      Run cargo fmt --check and clippy on the engine workspace"
   @echo "  frontend  Run eslint, prettier --check, and tsc on the SPA"
-  @echo "  all       Run all linters"
+  @echo "  typos     Run repo-wide source spell check (typos)"
+  @echo "  knip      Scan the SPA for unused files/exports/deps (advisory)"
+  @echo "  all       Run all blocking linters (typos included; knip is advisory)"
 
 _dev-lint-python:
   uv run ruff check src tests
@@ -132,6 +134,18 @@ _dev-lint-frontend:
   npm --prefix frontend run format:check
   npm --prefix frontend run typecheck
 
+_dev-lint-typos:
+  @{{ if os() == "windows" { \
+    "if (Get-Command typos -ErrorAction SilentlyContinue) { typos } else { Write-Error 'typos not found - install with: cargo install typos-cli (or: mise install)'; exit 127 }" \
+  } else { \
+    "if command -v typos >/dev/null 2>&1; then typos; else echo 'typos not found - install with: cargo install typos-cli (or: mise install)' >&2; exit 127; fi" \
+  } }}
+
+# Advisory: reports unused files/exports/deps; not part of the blocking gate
+# because just-built-but-not-yet-adopted exports are expected mid-build.
+_dev-lint-knip:
+  npx --yes knip@5 --directory frontend
+
 _dev-lint-all:
   just _dev-lint-python
   just _dev-lint-type
@@ -139,6 +153,7 @@ _dev-lint-all:
   just _dev-lint-markdown
   just _dev-lint-rust
   just _dev-lint-frontend
+  just _dev-lint-typos
 
 # ---------------------------------------------------------------------------
 
@@ -199,10 +214,33 @@ _dev-audit-help:
   @echo "Usage: just dev audit <target>"
   @echo ""
   @echo "Targets:"
-  @echo "  deps      Run uv audit on locked dependencies"
+  @echo "  python    Run uv audit on locked Python dependencies"
+  @echo "  rust      Run cargo-deny (advisories/licenses/bans/sources)"
+  @echo "  node      Run npm audit on the SPA dependencies"
+  @echo "  all       Run all supply-chain audits"
 
-_dev-audit-deps:
-  uv audit
+# The runtime (published-wheel) surface is the hard gate. Dev-group advisories
+# are excluded because torch/vaultspec-rag are dev-only (published-wheel-purity)
+# — torch is never imported or shipped (rag is consumed over loopback HTTP), so
+# a torch.jit advisory cannot reach the wheel. Run plain `uv audit` to inspect
+# the dev surface too.
+_dev-audit-python:
+  uv audit --no-dev --preview-features audit
+
+_dev-audit-rust:
+  @{{ if os() == "windows" { \
+    "if (Get-Command cargo-deny -ErrorAction SilentlyContinue) { cargo deny --manifest-path engine/Cargo.toml check } else { Write-Error 'cargo-deny not found - install with: cargo install cargo-deny (or: mise install)'; exit 127 }" \
+  } else { \
+    "if command -v cargo-deny >/dev/null 2>&1; then cargo deny --manifest-path engine/Cargo.toml check; else echo 'cargo-deny not found - install with: cargo install cargo-deny (or: mise install)' >&2; exit 127; fi" \
+  } }}
+
+_dev-audit-node:
+  npm --prefix frontend audit
+
+_dev-audit-all:
+  just _dev-audit-python
+  just _dev-audit-rust
+  just _dev-audit-node
 
 # ---------------------------------------------------------------------------
 

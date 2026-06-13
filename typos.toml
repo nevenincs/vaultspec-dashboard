@@ -1,0 +1,34 @@
+# typos — repo-wide source spell check (Rust-based, fast).
+# Run:   typos            (check)   /   typos -w   (fix)
+# Front: just dev lint typos
+#
+# Checks code, config, and prose. Generated artefacts, lockfiles, binary assets,
+# and the engine/rag data dirs are excluded; domain terms that read as typos are
+# allow-listed below rather than rewritten.
+
+[files]
+extend-exclude = [
+  "*.lock",
+  "uv.lock",
+  "**/package-lock.json",
+  "**/target/**",
+  "**/node_modules/**",
+  "**/dist/**",
+  ".vault/data/**",
+  "frontend/test-results/**",
+  "frontend/design/**",
+  "*.png",
+  "*.svg",
+]
+
+[default]
+# Skip git hashes, hex ids, and stable-key digests that look like typos.
+extend-ignore-identifiers-re = ["\\b[0-9a-f]{7,64}\\b"]
+
+  [default.extend-words]
+  # Domain / tool vocabulary that is correct in this project (enumerated from the
+  # first full run, 2026-06-13). Extend deliberately as real domain terms surface.
+  gix = "gix"                 # the pure-Rust git implementation
+  lod = "lod"                 # graphics: Level Of Detail (LOD sprites/edges)
+  mis = "mis"                 # abbrev in the ops typed-miss handling
+  unparseable = "unparseable" # intentional spelling in engine ingest/index

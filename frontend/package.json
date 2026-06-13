@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "npm@11.5.2",
   "description": "vaultspec-dashboard SPA — decoupled web GUI served by the engine's serve mode (gui-spec §5)",
   "scripts": {
     "dev": "vite",

@@ -1,0 +1,23 @@
+# mise — one polyglot version manager pinning every toolchain this repo needs,
+# so all four teams and CI resolve identical versions. Run `mise install` to
+# provision everything; mise activates these automatically on `cd` into the repo.
+#
+# Rust is intentionally NOT pinned here — it is owned by engine/rust-toolchain.toml
+# (rustup resolves it), so there is a single source of truth for the toolchain.
+#
+#   docs: https://mise.jdx.dev
+
+[tools]
+just = "latest" # the task-runner front door for every quality gate
+node = "22"     # frontend SPA — satisfies package.json engines (>=22.12)
+python = "3.13" # dashboard package + vaultspec tooling (requires-python >=3.13)
+uv = "latest"   # Python env + dependency manager (the only sanctioned path)
+
+# Cross-language dev gates, provisioned from crates.io so `mise install` gives
+# every contributor the same supply-chain and spell-check tooling:
+"cargo:cargo-deny" = "latest" # Rust supply-chain gate (advisories/licenses)
+"cargo:typos-cli" = "latest"  # repo-wide source spell check
+
+[settings]
+# Installing from the cargo backend compiles from source; allow it explicitly.
+cargo.binstall = true

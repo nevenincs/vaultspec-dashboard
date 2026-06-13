@@ -26,5 +26,11 @@ ingest-struct = { path = "crates/ingest-struct" }
 rag-client = { path = "crates/rag-client" }
 vaultspec-api = { path = "crates/vaultspec-api" }
 
+[workspace.lints.rust]
+# The engine is read-and-infer and uses zero unsafe in its own code (verified
+# 2026-06-13). `forbid` makes that a permanent, non-overridable guarantee:
+# unsafe cannot be introduced even behind an `#[allow]`.
+unsafe_code = "forbid"
+
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

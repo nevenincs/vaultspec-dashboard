@@ -124,3 +124,10 @@ repos:
     - ts
     - tsx
     pass_filenames: false
+  - id: typos
+    name: Spell-check source (typos)
+    entry: typos
+    language: system
+    pass_filenames: false
+    types:
+    - text

@@ -1,0 +1,8 @@
+# Pinned toolchain for the vaultspec engine workspace — every team and CI run
+# resolves the same rustc/clippy/rustfmt, so lint and format verdicts are
+# reproducible rather than dependent on whatever stable each machine happens to
+# have. Matches workspace.package.rust-version (MSRV 1.96).
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

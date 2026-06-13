@@ -1,0 +1,57 @@
+# cargo-deny — Rust supply-chain quality gate for the vaultspec engine workspace.
+#
+# Run:   cargo deny --manifest-path engine/Cargo.toml check
+# Front: just dev audit rust   (and the quality-gates CI workflow)
+#
+# Parallels Python's `uv audit` and Node's `npm audit`: advisories are the hard
+# gate (known vulnerabilities / yanked crates fail the build); the license
+# allow-list is enumerated from the real dependency tree (see `cargo deny list`)
+# and must be extended deliberately when a new license appears — a new license
+# is a supply-chain decision, not a silent default.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# Fail on yanked crates; the RustSec DB drives vulnerability detection.
+yanked = "deny"
+# Add specific `RUSTSEC-YYYY-NNNN` ids here only with a written justification.
+ignore = []
+
+[licenses]
+version = 2
+# Permissive / standard licenses present in the tree, enumerated 2026-06-13.
+# `cargo deny list` regenerates the inventory; add a license here only after
+# confirming it is acceptable for a distributed binary.
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "ISC",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+  "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Surface accidental dependency bloat without blocking the teams mid-flight.
+multiple-versions = "warn"
+# Internal path crates carry no version requirement (expected for a binary's
+# internals). cargo-deny's allow-wildcard-paths only exempts crates marked
+# `publish = false`; warn rather than deny so the workspace's own path deps do
+# not fail the gate. Hardening follow-up for the engine team: add
+# `publish = false` to the internal crates, then this can return to "deny".
+allow-wildcard-paths = true
+wildcards = "warn"
+
+[sources]
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+unknown-git = "deny"
+unknown-registry = "deny"

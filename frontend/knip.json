@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/main.tsx!", "vite.config.ts", "eslint.config.js"],
+  "project": ["src/**/*.{ts,tsx}!"],
+  "ignore": ["spike/**", "src/testing/**"],
+  "ignoreDependencies": ["tailwindcss"],
+  "ignoreExportsUsedInFile": true
+}

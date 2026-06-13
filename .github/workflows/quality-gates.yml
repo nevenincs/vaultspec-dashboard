@@ -1,0 +1,92 @@
+# Quality gates — the polyglot verification pipeline that mirrors `just dev lint`
+# and `just dev audit`. Rust build/clippy/test live in engine-ci.yml; this
+# workflow covers Python, the frontend SPA, repo-wide spell check, and the
+# cross-language supply-chain audits. Each job is independent so one failure
+# does not mask the others.
+name: quality-gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spellcheck:
+    name: Spell check (typos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@master
+
+  python:
+    name: Python (ruff · ty · pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - name: Ruff lint
+        run: uv run ruff check src tests
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+      - name: Type check (ty)
+        run: uv run python -m ty check src/vaultspec_dashboard
+      - name: Unit tests
+        run: uv run pytest tests src/vaultspec_dashboard -q -m unit
+
+  frontend:
+    name: Frontend (eslint · prettier · tsc · vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - name: ESLint
+        run: npm --prefix frontend run lint
+      - name: Prettier check
+        run: npm --prefix frontend run format:check
+      - name: Type check (tsc)
+        run: npm --prefix frontend run typecheck
+      - name: Unit tests (vitest)
+        run: npm --prefix frontend run test
+      - name: Unused code (knip — advisory)
+        run: npx --yes knip@5 --directory frontend
+        continue-on-error: true
+
+  supply-chain:
+    name: Supply chain (cargo-deny · uv audit · npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: engine/Cargo.toml
+          command: check
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - name: uv audit (runtime surface; dev-only torch excluded per wheel-purity)
+        run: uv audit --no-dev --preview-features audit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - name: npm audit
+        run: npm --prefix frontend audit
