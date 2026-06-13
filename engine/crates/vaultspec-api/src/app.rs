@@ -52,6 +52,11 @@ pub struct AppState {
     /// The resident watcher handle; `/status` reports a dead watcher
     /// truthfully instead of claiming residency (DF-4 residual).
     pub watcher: Mutex<Option<engine_graph::watch::WatchHandle>>,
+    /// Declared-tier ingestion status from the last rebuild: `None` when
+    /// core's graph was ingested, `Some(reason)` when core was unreachable.
+    /// The tiers block reads this so `declared` degrades TRUTHFULLY instead
+    /// of claiming a tier the index could not build.
+    pub declared_status: RwLock<Option<String>>,
 }
 
 pub const RING_CAP: usize = 4096;
@@ -80,10 +85,15 @@ impl AppState {
     /// also used at startup).
     pub fn rebuild_and_swap(&self) -> Result<usize, String> {
         let store = self.store.lock().map_err(|_| "store lock".to_string())?;
-        let (fresh, _stats) =
+        let (fresh, stats) =
             engine_graph::index::index_worktree(&self.root, &self.scope, &store, now_ms())
                 .map_err(|e| e.to_string())?;
         drop(store);
+        // Record the declared-tier ingestion result so the tiers block can
+        // degrade truthfully when core was unreachable this rebuild.
+        if let Ok(mut status) = self.declared_status.write() {
+            *status = stats.declared_unavailable;
+        }
         Ok(self.commit_graph(fresh))
     }
 
@@ -222,6 +232,7 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         meta_cache: Mutex::new(None),
         generation: AtomicU64::new(0),
         watcher: Mutex::new(None),
+        declared_status: RwLock::new(None),
     })
 }
 

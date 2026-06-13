@@ -52,6 +52,14 @@ pub struct IndexStats {
     /// graph is derived wholly each pass, so blob novelty and blob change
     /// are indistinguishable and both report as `updated`.
     pub outcomes: Vec<(String, &'static str)>,
+    /// Declared-tier edges ingested from core's authored graph (engine-spec
+    /// §3/§5.1). 0 when core is unreachable — see `declared_unavailable`.
+    pub declared_edges: usize,
+    /// `None` when the declared tier was ingested (the engine's core
+    /// capability: ingest core's vault graph); `Some(reason)` when core was
+    /// unreachable or its graph unparseable, so the declared tier degrades
+    /// TRUTHFULLY rather than silently presenting an empty tier as healthy.
+    pub declared_unavailable: Option<String>,
 }
 
 /// Index one worktree scope into a fresh graph (the cold path).
@@ -206,7 +214,64 @@ fn index_documents(
             )?;
         }
     }
+
+    // Declared tier: ingest core's authored graph (the engine's stated core
+    // capability — "ingests core's vault graph"). Structural mentions above
+    // are only one tier; without this the linkage graph carries no declared
+    // cross-references at all.
+    stats.declared_unavailable = ingest_declared_graph(graph, root, scope, observed_at, &mut stats);
+
     Ok(stats)
+}
+
+/// Ingest core's `vault graph` as declared-tier edges (engine-spec §3/§5.1,
+/// D5.1). Returns `None` on success, or a degradation reason when core is
+/// unreachable or its graph cannot be parsed — the caller surfaces that on
+/// the declared tier so the wire never claims a tier it did not ingest.
+fn ingest_declared_graph(
+    graph: &mut LinkageGraph,
+    root: &Path,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+    stats: &mut IndexStats,
+) -> Option<String> {
+    const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let data = match runner.run_json(root, &["vault", "graph"], &[GRAPH_SCHEMA]) {
+        Ok(envelope) => match envelope.data() {
+            Ok(data) => data,
+            Err(e) => return Some(format!("core graph payload: {e}")),
+        },
+        Err(e) => return Some(format!("core graph unavailable: {e}")),
+    };
+    let parsed = match ingest_core::graph_v2::parse(&data, scope, observed_at) {
+        Ok(parsed) => parsed,
+        Err(e) => return Some(format!("core graph parse: {e}")),
+    };
+    // Declared edges carry core's authored kind/multiplicity/weight verbatim;
+    // core-derived edges ride the distinct `core-derived` relation at 0.8.
+    for d in parsed.declared {
+        if crate::edges::ingest(
+            graph,
+            d.edge,
+            EdgeAttrs {
+                multiplicity: d.multiplicity,
+                weight: Some(d.weight),
+                core_kind: Some(d.core_kind),
+                resolved_target: None,
+            },
+        )
+        .is_ok()
+        {
+            stats.declared_edges += 1;
+        }
+    }
+    for edge in parsed.core_derived {
+        if crate::edges::ingest(graph, edge, EdgeAttrs::default()).is_ok() {
+            stats.declared_edges += 1;
+        }
+    }
+    None
 }
 
 /// Build the structural edge for one resolved mention. Shared with the
@@ -469,5 +534,44 @@ mod tests {
             assert_eq!(broken.id, healed.id, "identity survives resolution");
             assert_ne!(broken.state, healed.state, "state carries the signal");
         }
+    }
+
+    #[test]
+    fn declared_tier_degrades_truthfully_while_structural_survives() {
+        // A vault-only worktree (no `.vaultspec/`): core's `vault graph`
+        // cannot run there, so the declared tier must degrade TRUTHFULLY
+        // (`declared_unavailable` set, zero declared edges) while the
+        // structural pass — git object DB + working tree, no core — still
+        // produces edges. Regression guard for the wiring that was missing
+        // entirely (the graph was silently structural-only).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nMentions `src/a.rs`.\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (graph, stats) = index_worktree(root, &scope(), &store, 0).unwrap();
+
+        // Structural tier survives without core.
+        assert!(
+            graph.edge_count() >= 1 && stats.edges >= 1,
+            "structural mentions ingest without core"
+        );
+        // Declared tier degrades truthfully — never silently empty-yet-claimed.
+        // The `declared_edges == 0` arm is unconditional. The `is_some()` arm
+        // depends on a cross-package contract: core's `vault graph` errors in a
+        // `.vaultspec`-less dir. If a future core succeeds-empty there instead,
+        // this arm needs revisiting (declared would be available-but-empty).
+        assert_eq!(
+            stats.declared_edges, 0,
+            "no declared edges when core cannot graph"
+        );
+        assert!(
+            stats.declared_unavailable.is_some(),
+            "declared tier reports its own unavailability"
+        );
     }
 }

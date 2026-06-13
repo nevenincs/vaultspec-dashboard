@@ -96,7 +96,12 @@ enum Command {
 }
 
 fn render(ctx: &Ctx, command_name: &str, result: Result<Value, cmd::CliError>) -> u8 {
-    let tiers = envelope::tiers_json(ctx.rag_reason().as_deref());
+    // Declared reflects the precise ingestion outcome for indexing verbs, or
+    // a core-reachability fallback for verbs that build no graph.
+    let tiers = envelope::tiers_json(
+        ctx.rag_reason().as_deref(),
+        ctx.declared_reason().as_deref(),
+    );
     match result {
         Ok(data) => {
             if ctx.json {
@@ -161,8 +166,9 @@ fn main() -> std::process::ExitCode {
                     error.kind(),
                     &error.to_string(),
                     // No resolved scope yet: tier availability is unknown,
-                    // stated as semantic-degraded with the reason.
-                    envelope::tiers_json(Some("scope unresolved")),
+                    // stated as degraded with the reason on both backend
+                    // tiers (semantic + declared).
+                    envelope::tiers_json(Some("scope unresolved"), Some("scope unresolved")),
                 ));
             } else {
                 eprintln!("vaultspec {command_name}: {error}");

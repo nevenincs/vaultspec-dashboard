@@ -14,13 +14,23 @@ use crate::app::AppState;
 
 /// The present-view tier block as JSON (rag truthfully stated).
 pub(crate) fn query_tiers(state: &AppState) -> serde_json::Value {
-    let block = match rag_client::client::discover(&state.root.join(".vault")).0 {
-        rag_client::RagAvailability::Available => engine_query::envelope::tiers_block(&[]),
-        rag_client::RagAvailability::Unavailable { reason } => {
-            engine_query::envelope::tiers_block(&[("semantic", reason.as_str())])
-        }
-    };
-    serde_json::to_value(block).expect("tiers serialize")
+    let mut unavailable: Vec<(&'static str, String)> = Vec::new();
+    // Semantic reflects live rag discovery.
+    if let rag_client::RagAvailability::Unavailable { reason } =
+        rag_client::client::discover(&state.root.join(".vault")).0
+    {
+        unavailable.push(("semantic", reason));
+    }
+    // Declared reflects whether the last rebuild ingested core's graph — the
+    // tier never claims availability the index could not build.
+    if let Ok(status) = state.declared_status.read()
+        && let Some(reason) = status.as_ref()
+    {
+        unavailable.push(("declared", reason.clone()));
+    }
+    let refs: Vec<(&'static str, &str)> =
+        unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
+    serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
 }
 
 /// THE shared success envelope (audit L1, contract §2): every HTTP payload

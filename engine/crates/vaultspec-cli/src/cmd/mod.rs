@@ -21,6 +21,13 @@ pub struct Ctx {
     pub root: PathBuf,
     pub scope: ScopeRef,
     pub json: bool,
+    /// Precise declared-tier status recorded by `indexed_graph()` when an
+    /// indexing verb ran: `Some(None)` = core's graph was ingested,
+    /// `Some(Some(reason))` = it degraded. `None` = no index ran this
+    /// invocation (e.g. `map`), so the envelope falls back to the
+    /// `core_reason()` reachability probe. Interior-mutable: the CLI is
+    /// single-threaded and the verb runs before the envelope is rendered.
+    declared_status: std::cell::RefCell<Option<Option<String>>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -96,7 +103,24 @@ impl Ctx {
         let scope = ScopeRef::Worktree {
             path: clean_path(&root),
         };
-        Ok(Ctx { root, scope, json })
+        Ok(Ctx {
+            root,
+            scope,
+            json,
+            declared_status: std::cell::RefCell::new(None),
+        })
+    }
+
+    /// The declared-tier reason for the envelope: the PRECISE result when an
+    /// indexing verb ran this invocation (recorded by `indexed_graph()`), or
+    /// the `core_reason()` reachability probe as a fallback for verbs that
+    /// build no graph. Precise beats proxy, and the precise path also avoids
+    /// a redundant core subprocess on indexing verbs.
+    pub fn declared_reason(&self) -> Option<String> {
+        match &*self.declared_status.borrow() {
+            Some(precise) => precise.clone(),
+            None => self.core_reason(),
+        }
     }
 
     pub fn vault_root(&self) -> PathBuf {
@@ -124,6 +148,25 @@ impl Ctx {
         }
     }
 
+    /// Core REACHABILITY proxy — the declared tier's fallback availability
+    /// signal for verbs that build no graph (e.g. `map`). It probes the
+    /// light `vault stats`, which is weaker than the declared tier's true
+    /// source (`vault graph`): `stats` succeeding does NOT guarantee a
+    /// `graph` ingestion would, so this can over-report availability. Verbs
+    /// that index use the precise [`Ctx::declared_reason`] path instead.
+    /// `None` = reachable; `Some(reason)` = degrade.
+    pub fn core_reason(&self) -> Option<String> {
+        let runner = ingest_core::runner::CoreRunner::detect();
+        match runner.run_json(
+            &self.root,
+            &["vault", "stats"],
+            &["vaultspec.vault.stats.v1"],
+        ) {
+            Ok(_) => None,
+            Err(e) => Some(format!("core unreachable: {e}")),
+        }
+    }
+
     /// Build and index the scope's graph (the cold one-shot pipeline —
     /// usable without any resident service, D2.4).
     pub fn indexed_graph(
@@ -131,12 +174,13 @@ impl Ctx {
     ) -> Result<(engine_graph::LinkageGraph, engine_graph::index::IndexStats), CliError> {
         self.require_vault()?;
         let store = self.open_store()?;
-        Ok(engine_graph::index::index_worktree(
-            &self.root,
-            &self.scope,
-            &store,
-            now_ms(),
-        )?)
+        let (graph, stats) =
+            engine_graph::index::index_worktree(&self.root, &self.scope, &store, now_ms())?;
+        // Record the PRECISE declared-tier outcome so the envelope reports it
+        // exactly (not the weaker `core_reason` proxy) — and so we don't shell
+        // core a second time just to fill the tiers block.
+        *self.declared_status.borrow_mut() = Some(stats.declared_unavailable.clone());
+        Ok((graph, stats))
     }
 }
 

@@ -38,19 +38,22 @@ pub fn emit_json(payload: &Value) {
     );
 }
 
-/// The contract §2 tier block as a JSON value, with rag's truthful state.
-pub fn tiers_json(rag_reason: Option<&str>) -> Value {
+/// The contract §2 tier block as a JSON value with truthful per-tier state:
+/// `semantic` reflects rag reachability, `declared` reflects core
+/// reachability (the declared tier is ingested from core's graph, so an
+/// unreachable core means the engine cannot build it). `structural` and
+/// `temporal` derive from git + the working tree the CLI is already reading,
+/// so they are available whenever the command runs.
+pub fn tiers_json(rag_reason: Option<&str>, declared_reason: Option<&str>) -> Value {
+    let tier = |reason: Option<&str>| match reason {
+        None => json!({"available": true}),
+        Some(reason) => json!({"available": false, "reason": reason}),
+    };
     let mut block = serde_json::Map::new();
-    for tier in ["declared", "structural", "temporal"] {
-        block.insert(tier.into(), json!({"available": true}));
-    }
-    block.insert(
-        "semantic".into(),
-        match rag_reason {
-            None => json!({"available": true}),
-            Some(reason) => json!({"available": false, "reason": reason}),
-        },
-    );
+    block.insert("declared".into(), tier(declared_reason));
+    block.insert("structural".into(), json!({"available": true}));
+    block.insert("temporal".into(), json!({"available": true}));
+    block.insert("semantic".into(), tier(rag_reason));
     Value::Object(block)
 }
 
@@ -60,7 +63,7 @@ mod tests {
 
     #[test]
     fn envelopes_follow_core_vocabulary() {
-        let success = ok("map", json!({"x": 1}), tiers_json(None));
+        let success = ok("map", json!({"x": 1}), tiers_json(None, None));
         assert_eq!(success["status"], "success");
         assert_eq!(success["command"], "map");
         assert!(success["tiers"]["semantic"]["available"].as_bool().unwrap());
@@ -69,7 +72,7 @@ mod tests {
             "graph",
             "bad-filter",
             "unknown tier `psychic`",
-            tiers_json(None),
+            tiers_json(None, None),
         );
         assert_eq!(failure["ok"], false);
         assert_eq!(failure["status"], "failed");
@@ -78,7 +81,14 @@ mod tests {
             "tiers on EVERY response, failures included (contract sec 2)"
         );
 
-        let degraded = tiers_json(Some("rag service down"));
+        let degraded = tiers_json(Some("rag service down"), None);
         assert_eq!(degraded["semantic"]["available"], false);
+        assert_eq!(degraded["declared"]["available"], true);
+
+        // Declared degrades truthfully when core is unreachable.
+        let core_down = tiers_json(None, Some("core unreachable"));
+        assert_eq!(core_down["declared"]["available"], false);
+        assert_eq!(core_down["declared"]["reason"], "core unreachable");
+        assert_eq!(core_down["semantic"]["available"], true);
     }
 }
