@@ -28,16 +28,41 @@ import type { SceneEdgeData } from "../sceneController";
 export const EDGE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
 export type EdgeTier = (typeof EDGE_TIERS)[number];
 
-const PAPER = { r: 0xfa, g: 0xf9, b: 0xf7 };
+// --- CSS-token helpers (browser-only; node test env sees the fallback) --------
 
-const TIER_BASE_COLORS: Record<string, number> = {
-  declared: 0x3a342c,
-  "structural:resolved": 0x2f7d4f,
-  "structural:stale": 0xa07520,
-  "structural:broken": 0xb3502d,
-  temporal: 0x4a4137,
-  semantic: 0x7d6f9e,
-};
+/**
+ * Read a CSS custom property as a 24-bit RGB number.  In the node test
+ * environment `document` is undefined, so the fallback is always returned.
+ */
+function getCssColor(varName: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
+  return raw.startsWith("#") ? parseInt(raw.slice(1), 16) : fallback;
+}
+
+/**
+ * Resolve the paper-mix target (canvas background) from the
+ * --color-canvas-bg token so low-confidence edges fade toward the actual
+ * canvas ground in both light and dark themes.
+ */
+function readPaper(): { r: number; g: number; b: number } {
+  const c = getCssColor("--color-canvas-bg", 0xfaf9f7);
+  return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
+}
+
+/** Resolve the four tier base colours from the token layer. */
+function readTierColors(): Record<string, number> {
+  return {
+    declared: getCssColor("--color-tier-declared", 0x3a342c),
+    "structural:resolved": getCssColor("--color-state-active", 0x2f7d4f),
+    "structural:stale": getCssColor("--color-state-stale", 0xa07520),
+    "structural:broken": getCssColor("--color-state-broken", 0xb3502d),
+    temporal: getCssColor("--color-tier-temporal", 0x4a4137),
+    semantic: getCssColor("--color-tier-semantic", 0x7d6f9e),
+  };
+}
 
 /** Dash slots per temporal edge — fixed so buffers never resize per frame. */
 export const DASHES_PER_EDGE = 8;
@@ -84,14 +109,23 @@ export function confidenceBucket(confidence: number): number {
   return Math.min(3, Math.floor(c * 4));
 }
 
-/** Mix a colour toward the paper ground — lightness carries confidence. */
-export function mixTowardPaper(color: number, amount: number): number {
+/**
+ * Mix a colour toward the canvas-background ground — lightness carries
+ * confidence (per the ADR: lightness, never transparency).  The optional
+ * `paper` argument lets callers pass the resolved theme value; when absent,
+ * the light-mode paper warm-white is used (keeps unit tests pure).
+ */
+export function mixTowardPaper(
+  color: number,
+  amount: number,
+  paper = { r: 0xfa, g: 0xf9, b: 0xf7 },
+): number {
   const t = Math.max(0, Math.min(1, amount));
   const r = (color >> 16) & 0xff;
   const g = (color >> 8) & 0xff;
   const b = color & 0xff;
-  const mix = (ch: number, paper: number) => Math.round(ch + (paper - ch) * t);
-  return (mix(r, PAPER.r) << 16) | (mix(g, PAPER.g) << 8) | mix(b, PAPER.b);
+  const mix = (ch: number, p: number) => Math.round(ch + (p - ch) * t);
+  return (mix(r, paper.r) << 16) | (mix(g, paper.g) << 8) | mix(b, paper.b);
 }
 
 /** Lightness mix for a group: bucket 3 → 0 (full ink), bucket 0 → 0.6. */
@@ -99,14 +133,22 @@ export function bucketLightness(bucket: number): number {
   return (3 - Math.max(0, Math.min(3, bucket))) * 0.2;
 }
 
-/** Resolved colour for a group key. */
+/**
+ * Resolved colour for a group key.  Reads tier colours and the paper-mix
+ * target from the CSS token layer so the palette adapts to light/dark themes.
+ * In the node test environment both helpers return their hardcoded fallbacks,
+ * so existing unit tests see the same values as before.
+ */
 export function groupColor(key: string): number {
-  if (key === "meta") return mixTowardPaper(TIER_BASE_COLORS.declared, 0.35);
+  const tc = readTierColors();
+  const paper = readPaper();
+  if (key === "meta") return mixTowardPaper(tc.declared, 0.35, paper);
   const [head, sub] = key.split(":");
-  if (head === "structural") return TIER_BASE_COLORS[`structural:${sub}`];
-  const base = TIER_BASE_COLORS[head];
+  if (head === "structural")
+    return tc[`structural:${sub}`] ?? tc["structural:resolved"];
+  const base = tc[head] ?? tc.declared;
   if (head === "temporal" || head === "semantic") {
-    return mixTowardPaper(base, bucketLightness(Number(sub)));
+    return mixTowardPaper(base, bucketLightness(Number(sub)), paper);
   }
   return base;
 }

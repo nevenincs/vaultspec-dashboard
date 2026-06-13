@@ -209,6 +209,19 @@ export class DashboardField implements SceneFieldRenderer {
       canvas.addEventListener("dblclick", onDbl);
       canvas.addEventListener("wheel", onWheel, { passive: false });
 
+      // Re-render node and edge colours when the user toggles the theme.
+      // applyModelToLayers(false) is enough: sprites.sync() updates tints and
+      // rebuilds any open anatomy containers; edges.setEdges() full-rebuilds
+      // the mesh groups so groupColor() picks up the new tier/paper CSS vars.
+      // (The canvas background itself is handled by pixiField's own observer.)
+      const themeObserver = new MutationObserver(() => {
+        this.applyModelToLayers(false);
+      });
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
+
       this.detachListeners.push(
         offPositions,
         offCamera,
@@ -218,6 +231,7 @@ export class DashboardField implements SceneFieldRenderer {
         () => canvas.removeEventListener("pointerup", onUp),
         () => canvas.removeEventListener("dblclick", onDbl),
         () => canvas.removeEventListener("wheel", onWheel),
+        () => themeObserver.disconnect(),
       );
 
       // Data may have arrived before the renderer was live.

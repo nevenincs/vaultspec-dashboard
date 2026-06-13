@@ -13,6 +13,20 @@ import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
 import { RECEDE_ALPHA } from "./egoHighlight";
 
+// --- CSS-token helpers (browser-only; node test env sees the fallback) --------
+
+/**
+ * Read a CSS custom property as a 24-bit RGB number.  In the node test
+ * environment `document` is undefined, so the fallback is always returned.
+ */
+function getCssColor(varName: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
+  return raw.startsWith("#") ? parseInt(raw.slice(1), 16) : fallback;
+}
+
 // --- pure anatomy helpers (unit-tested; rendering maps these) ---------------
 
 export type LodLevel = "far" | "near";
@@ -29,21 +43,24 @@ export function lodFor(scale: number, focused: boolean): LodLevel {
 }
 
 /**
- * State colours (interim palette pending the S47 token layer). Colour is
- * spent on state only; doc type rides the silhouette.
+ * State colours — resolved from the CSS token layer so the palette adapts to
+ * light/dark themes.  In the node test environment getCssColor returns the
+ * light-mode fallbacks, so colour semantics are unchanged in tests.
  */
-const STATE_COLORS: Record<string, number> = {
-  active: 0x2f7d4f,
-  complete: 0x4a4137,
-  archived: 0x9a938a,
-  broken: 0xb3502d,
-  stale: 0xa07520,
-};
-const DEFAULT_STATE_COLOR = 0x6a6258;
+function readStateColors(): Record<string, number> {
+  return {
+    active: getCssColor("--color-state-active", 0x2f7d4f),
+    complete: getCssColor("--color-state-complete", 0x4a4137),
+    archived: getCssColor("--color-state-archived", 0x9a938a),
+    broken: getCssColor("--color-state-broken", 0xb3502d),
+    stale: getCssColor("--color-state-stale", 0xa07520),
+  };
+}
 
 export function stateColor(lifecycle?: SceneNodeData["lifecycle"]): number {
-  if (!lifecycle) return DEFAULT_STATE_COLOR;
-  return STATE_COLORS[lifecycle.state] ?? DEFAULT_STATE_COLOR;
+  const defaultColor = getCssColor("--color-ink-muted", 0x6a6258);
+  if (!lifecycle) return defaultColor;
+  return readStateColors()[lifecycle.state] ?? defaultColor;
 }
 
 /** Freshness halo decay: 1 at modification, cooling to a floor over 30 days. */
@@ -261,6 +278,11 @@ export class NodeSpriteLayer {
   }
 
   private populateAnatomy(anatomy: Container, node: SceneNodeData): void {
+    // Text colours resolved from the token layer so they read on both light
+    // and dark canvas backgrounds.
+    const inkColor = getCssColor("--color-ink", 0x2b2620);
+    const inkMuted = getCssColor("--color-ink-muted", 0x6a6258);
+
     // Anatomy rides the node's own radius so a large feature convergence does
     // not bury its ring, badges, and label inside the silhouette.
     const ringRadius = nodeRadius(node) + 3;
@@ -276,14 +298,14 @@ export class NodeSpriteLayer {
     if (badges) {
       const badgeText = new Text({
         text: badges,
-        style: { fontSize: 8, fill: 0x4a4137 },
+        style: { fontSize: 8, fill: inkMuted },
       });
       badgeText.position.set(ringRadius + 2, -ringRadius);
       anatomy.addChild(badgeText);
     }
     const label = new Text({
       text: node.title ?? node.id,
-      style: { fontSize: 10, fill: 0x2b2620 },
+      style: { fontSize: 10, fill: inkColor },
     });
     label.anchor.set(0.5, 0);
     label.position.set(0, ringRadius + 3);
