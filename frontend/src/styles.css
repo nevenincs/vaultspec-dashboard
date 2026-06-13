@@ -12,11 +12,13 @@
   /* -- ground & ink (paper-warm light) ----------------------------------- */
   --color-paper: #faf9f7;
   --color-paper-raised: #ffffff;
+  --color-paper-sunken: #f2ede6; /* inset wells, inactive tabs */
   --color-paper-aged: #f5efe2; /* the time-travel tint: paper "ages" */
   --color-ink: #2b2620;
   --color-ink-muted: #6a6258;
   --color-ink-faint: #a39b8f;
   --color-rule: #e5e1da;
+  --color-rule-strong: #c9c3b9; /* stronger dividers, focus rings */
 
   /* -- tier identity (fixed product-wide, hue SECONDARY to treatment) ---- */
   --color-tier-declared: #3a342c; /* solid inked line */
@@ -32,9 +34,43 @@
   --color-state-broken: #b3502d; /* the warning hue */
   --color-state-live: #1f8a5d;
 
-  /* -- type scale (compact instrument scale) ------------------------------ */
-  --text-2xs: 0.625rem;
+  /* -- interactive accent (warm forest green — tone-matches state-active) - */
+  --color-accent: #2f7d4f;
+  --color-accent-subtle: #e5f0eb; /* hover bg, badge bg */
+  --color-accent-text: #1a4a30; /* text on accent-subtle */
+
+  /* -- type scale (complete compact instrument scale) --------------------- */
+  --text-2xs: 0.625rem; /* 10px — dense metadata */
   --text-2xs--line-height: 0.875rem;
+  --text-label: 0.6875rem; /* 11px — timestamps, captions, pills */
+  --text-label--line-height: 1rem;
+  --text-body: 0.8125rem; /* 13px — primary UI text */
+  --text-body--line-height: 1.25rem;
+  --text-title: 0.8125rem; /* 13px + font-medium — section labels */
+  --text-title--line-height: 1.25rem;
+  --text-heading: 0.9375rem; /* 15px — panel / rail headings */
+  --text-heading--line-height: 1.375rem;
+
+  /* -- spacing (4 px base grid) ------------------------------------------ */
+  --spacing-vs-0-5: 0.125rem; /* 2px */
+  --spacing-vs-1: 0.25rem; /* 4px */
+  --spacing-vs-1-5: 0.375rem; /* 6px */
+  --spacing-vs-2: 0.5rem; /* 8px */
+  --spacing-vs-3: 0.75rem; /* 12px */
+  --spacing-vs-4: 1rem; /* 16px */
+  --spacing-vs-6: 1.5rem; /* 24px */
+  --spacing-vs-8: 2rem; /* 32px */
+
+  /* -- elevation (ink-tinted shadows harmonise with the warm palette) ----- */
+  --shadow-card: 0 1px 3px 0 rgb(43 38 32 / 0.08), 0 1px 2px -1px rgb(43 38 32 / 0.08);
+  --shadow-float:
+    0 4px 16px -2px rgb(43 38 32 / 0.12), 0 2px 6px -2px rgb(43 38 32 / 0.06);
+  --shadow-deep: 0 16px 48px -8px rgb(43 38 32 / 0.2);
+
+  /* -- radius ------------------------------------------------------------- */
+  --radius-vs-sm: 0.25rem; /* 4px  — buttons, chips */
+  --radius-vs-md: 0.375rem; /* 6px  — panels, cards */
+  --radius-vs-lg: 0.625rem; /* 10px — dialogs, popovers */
 
   /* -- motion (G7.5: organic settle, 150-250ms band) ---------------------- */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
@@ -48,11 +84,13 @@
   [data-theme="dark"] {
     --color-paper: #211e1a;
     --color-paper-raised: #2a2722;
+    --color-paper-sunken: #1a1815;
     --color-paper-aged: #2e2820;
     --color-ink: #e8e3da;
     --color-ink-muted: #a39b8f;
     --color-ink-faint: #6a6258;
     --color-rule: #3a352e;
+    --color-rule-strong: #52493f;
 
     --color-tier-declared: #d8d2c6;
     --color-tier-structural: #5fb585;
@@ -64,6 +102,15 @@
     --color-state-archived: #6a6258;
     --color-state-stale: #d9a84e;
     --color-state-broken: #d97352;
+
+    --color-accent: #5fb585;
+    --color-accent-subtle: #1e3529;
+    --color-accent-text: #9dd4b8;
+
+    /* Shadows deepen in dark mode against the dark ground */
+    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.2), 0 1px 2px -1px rgb(0 0 0 / 0.2);
+    --shadow-float: 0 4px 16px -2px rgb(0 0 0 / 0.3), 0 2px 6px -2px rgb(0 0 0 / 0.15);
+    --shadow-deep: 0 16px 48px -8px rgb(0 0 0 / 0.5);
   }
 
   body {

@@ -68,9 +68,9 @@ export function ragCard(status: EngineStatus | undefined): CardState {
 }
 
 const TONE_CLASSES: Record<CardState["tone"], string> = {
-  ok: "border-emerald-200 text-emerald-900",
-  warn: "border-amber-200 text-amber-900",
-  down: "border-stone-300 text-stone-500",
+  ok: "border-state-active/30 bg-paper-raised text-ink",
+  warn: "border-state-stale/40 bg-paper-raised text-state-stale",
+  down: "border-rule bg-paper text-ink-muted",
 };
 
 // --- the strip ----------------------------------------------------------------------
@@ -96,18 +96,18 @@ export function NowStrip() {
 
   if (status.isError) {
     return (
-      <p className="text-xs text-amber-700">
+      <p className="text-label text-state-broken">
         engine unreachable — start it with <code>vaultspec serve</code>
       </p>
     );
   }
   const cards = [gitCard(status.data), coreCard(status.data), ragCard(status.data)];
   return (
-    <div className="space-y-1 text-xs" data-now-strip>
+    <div className="space-y-vs-1 text-label" data-now-strip>
       {cards.map((card) => (
         <div
           key={card.label}
-          className={`flex items-center justify-between rounded border px-2 py-1 ${TONE_CLASSES[card.tone]}`}
+          className={`flex items-center justify-between rounded-vs-sm border px-vs-2 py-vs-1 shadow-card ${TONE_CLASSES[card.tone]}`}
         >
           <span className="font-medium">{card.label}</span>
           <span className="truncate" title={card.detail}>
@@ -116,7 +116,7 @@ export function NowStrip() {
         </div>
       ))}
       {status.data && status.data.degradations.length > 0 && (
-        <p className="text-amber-700">
+        <p className="text-state-broken">
           degraded: {status.data.degradations.join(", ")}
         </p>
       )}

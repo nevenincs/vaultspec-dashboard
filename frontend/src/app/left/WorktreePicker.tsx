@@ -119,7 +119,10 @@ export function WorktreePicker() {
                 )}
                 {!worktree.has_vault && <span className="text-ink-faint">·bare</span>}
                 {worktree.degraded?.length ? (
-                  <span className="text-state-stale" title={worktree.degraded.join(", ")}>
+                  <span
+                    className="text-state-stale"
+                    title={worktree.degraded.join(", ")}
+                  >
                     ⚠
                   </span>
                 ) : null}

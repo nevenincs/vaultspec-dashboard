@@ -108,26 +108,34 @@ interface GitStatusProps {
 function GitStatus({ branch, ahead, behind, dirtyCount }: GitStatusProps) {
   return (
     <div
-      className="flex items-center gap-1.5 rounded border border-stone-100 bg-stone-50 px-2 py-1.5 text-[11px]"
+      className="flex items-center gap-vs-1-5 rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 shadow-card text-label"
       aria-label="git status"
     >
-      <span className="text-stone-400" aria-hidden>⑂</span>
-      <span className="flex-1 truncate font-medium text-stone-700">{branch}</span>
+      <span className="text-ink-faint" aria-hidden>
+        ⑂
+      </span>
+      <span className="flex-1 truncate font-medium text-ink-muted">{branch}</span>
       {(ahead > 0 || behind > 0) && (
-        <span className="text-stone-400">
-          {ahead > 0 && <span title={`${ahead} commit${ahead !== 1 ? "s" : ""} ahead`}>↑{ahead}</span>}
+        <span className="text-ink-faint">
+          {ahead > 0 && (
+            <span title={`${ahead} commit${ahead !== 1 ? "s" : ""} ahead`}>
+              ↑{ahead}
+            </span>
+          )}
           {ahead > 0 && behind > 0 && " "}
-          {behind > 0 && <span title={`${behind} commit${behind !== 1 ? "s" : ""} behind`}>↓{behind}</span>}
+          {behind > 0 && (
+            <span title={`${behind} commit${behind !== 1 ? "s" : ""} behind`}>
+              ↓{behind}
+            </span>
+          )}
         </span>
       )}
       {dirtyCount > 0 && (
-        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
+        <span className="rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-state-stale">
           {dirtyCount} changed
         </span>
       )}
-      {dirtyCount === 0 && (
-        <span className="text-[10px] text-emerald-600">clean</span>
-      )}
+      {dirtyCount === 0 && <span className="text-2xs text-state-active">clean</span>}
     </div>
   );
 }
@@ -147,30 +155,30 @@ function DirtyFiles({ paths }: DirtyFilesProps) {
 
   return (
     <section aria-label="working changes">
-      <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+      <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
         Working changes
       </h3>
-      <ul className="space-y-0.5">
+      <ul className="space-y-vs-0-5">
         {shown.map((path) => {
           const vault = isVaultPath(path);
           return (
             <li key={path}>
               <div
-                className="flex items-center gap-1 rounded px-1 py-0.5 text-[11px]"
+                className="flex items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-label"
                 title={path}
               >
-                <span className="shrink-0 text-stone-300" aria-hidden>
+                <span className="shrink-0 text-ink-faint" aria-hidden>
                   {vault ? "✎" : "○"}
                 </span>
                 <span
                   className={`min-w-0 flex-1 truncate ${
-                    vault ? "text-stone-700" : "text-stone-500"
+                    vault ? "text-ink-muted" : "text-ink-faint"
                   }`}
                 >
                   {basename(path)}
                 </span>
                 {vault && (
-                  <span className="shrink-0 text-[9px] text-stone-300">vault</span>
+                  <span className="shrink-0 text-2xs text-ink-faint">vault</span>
                 )}
               </div>
             </li>
@@ -181,7 +189,7 @@ function DirtyFiles({ paths }: DirtyFilesProps) {
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="px-1 text-[11px] text-stone-400 underline hover:text-stone-600"
+              className="px-vs-1 text-label text-ink-faint underline hover:text-ink-muted"
             >
               +{overflow} more
             </button>
@@ -220,41 +228,40 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
           });
           if (hasNodes) setExpanded((v) => !v);
         }}
-        className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-stone-50"
+        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left hover:bg-paper-sunken"
         title={
           hasNodes
             ? `${ev.kind} · ${ev.node_ids.length} node${ev.node_ids.length !== 1 ? "s" : ""}${ev.truncated_node_ids ? ` (+${ev.truncated_node_ids} more)` : ""}`
             : ev.kind
         }
       >
-        <span className="shrink-0 text-stone-400" aria-hidden>
+        <span className="shrink-0 text-ink-faint" aria-hidden>
           {eventGlyph(ev.kind)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-stone-700">
-          {eventLabel(ev)}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-ink-muted">{eventLabel(ev)}</span>
         {hasNodes && (
-          <span className="shrink-0 text-[10px] text-stone-300">
-            {ev.node_ids.length}{ev.truncated_node_ids ? "+" : ""}
+          <span className="shrink-0 text-2xs text-ink-faint">
+            {ev.node_ids.length}
+            {ev.truncated_node_ids ? "+" : ""}
           </span>
         )}
-        <span className="shrink-0 text-[10px] text-stone-400">
+        <span className="shrink-0 text-2xs text-ink-faint">
           {relativeTs(ev.ts, now)}
         </span>
         {hasNodes && (
-          <span className="shrink-0 text-stone-300" aria-hidden>
+          <span className="shrink-0 text-ink-faint" aria-hidden>
             {expanded ? "▾" : "▸"}
           </span>
         )}
       </button>
       {expanded && ev.node_ids.length > 0 && (
-        <ul className="ml-4 mt-0.5 space-y-0.5">
+        <ul className="ml-vs-4 mt-vs-0-5 space-y-vs-0-5">
           {ev.node_ids.map((id) => (
             <li key={id}>
               <button
                 type="button"
                 onClick={() => onSelect({ kind: "node", id })}
-                className="w-full truncate rounded px-1 py-0.5 text-left text-[10px] text-stone-500 hover:bg-stone-50 hover:text-stone-800"
+                className="w-full truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left text-2xs text-ink-faint hover:bg-paper-sunken hover:text-ink"
                 title={id}
               >
                 {id.split(":").pop() ?? id}
@@ -262,7 +269,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             </li>
           ))}
           {ev.truncated_node_ids && ev.truncated_node_ids > 0 && (
-            <li className="px-1 text-[10px] text-stone-400">
+            <li className="px-vs-1 text-2xs text-ink-faint">
               +{ev.truncated_node_ids} more (contract §5 cap)
             </li>
           )}
@@ -284,7 +291,7 @@ export function ChangesOverview() {
 
   if (!scope) {
     return (
-      <p className="text-[11px] text-stone-400">no scope — pick a worktree first</p>
+      <p className="text-label text-ink-faint">no scope — pick a worktree first</p>
     );
   }
 
@@ -298,7 +305,7 @@ export function ChangesOverview() {
   const now = Date.now();
 
   return (
-    <div className="space-y-3 text-[11px]" data-changes-overview>
+    <div className="space-y-vs-3 text-label" data-changes-overview>
       {/* Git status header */}
       {git && (
         <GitStatus
@@ -309,7 +316,7 @@ export function ChangesOverview() {
         />
       )}
       {!git && status.isPending && (
-        <p className="text-[11px] text-stone-400">reading git status…</p>
+        <p className="text-label text-ink-faint">reading git status…</p>
       )}
 
       {/* Working changes (dirty files) */}
@@ -318,10 +325,10 @@ export function ChangesOverview() {
       {/* Recent commits */}
       {commits.length > 0 && (
         <section aria-label="recent commits">
-          <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+          <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
             Commits
           </h3>
-          <ul className="space-y-0.5">
+          <ul className="space-y-vs-0-5">
             {commits.slice(0, 20).map((ev) => (
               <EventRow key={ev.id} ev={ev} now={now} onSelect={selectEntity} />
             ))}
@@ -332,10 +339,10 @@ export function ChangesOverview() {
       {/* Doc + step activity */}
       {docActivity.length > 0 && (
         <section aria-label="vault activity">
-          <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+          <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
             Activity
           </h3>
-          <ul className="space-y-0.5">
+          <ul className="space-y-vs-0-5">
             {docActivity.map((ev) => (
               <EventRow key={ev.id} ev={ev} now={now} onSelect={selectEntity} />
             ))}
@@ -345,22 +352,22 @@ export function ChangesOverview() {
 
       {/* Loading and empty states */}
       {events.isPending && (
-        <p className="text-[11px] text-stone-400">loading activity…</p>
+        <p className="text-label text-ink-faint">loading activity…</p>
       )}
       {events.isError && (
-        <div className="space-y-1">
-          <p className="text-[11px] text-amber-700">activity unavailable</p>
+        <div className="space-y-vs-1">
+          <p className="text-label text-state-broken">activity unavailable</p>
           <button
             type="button"
             onClick={() => void events.refetch()}
-            className="text-[10px] text-stone-400 underline"
+            className="text-2xs text-ink-faint underline"
           >
             retry
           </button>
         </div>
       )}
       {events.isSuccess && evList.length === 0 && dirty.length === 0 && (
-        <p className="text-[11px] text-stone-400">no recent changes</p>
+        <p className="text-label text-ink-faint">no recent changes</p>
       )}
     </div>
   );
