@@ -102,9 +102,9 @@ Make cold index near-linear by resolving mentions against a once-built inventory
 
 <!-- One-line headline summary plan. -->
 
-- [ ] `P01.S01` - Thread a once-built worktree inventory into resolution; `engine/crates/ingest-struct/src/resolve.rs`.
-- [ ] `P01.S02` - Build inverted indices (basename, qualified-symbol, step-id) once and resolve each mention by lookup; `engine/crates/ingest-struct/src/resolve.rs`.
-- [ ] `P01.S03` - Re-run scale_bench and record the cold-index before and after, keeping resolver tests green; `engine/tests/tests/scale_bench.rs`.
+- [x] `P01.S01` - Thread a once-built worktree inventory into resolution; `engine/crates/ingest-struct/src/resolve.rs`.
+- [x] `P01.S02` - Build inverted indices (basename, qualified-symbol, step-id) once and resolve each mention by lookup; `engine/crates/ingest-struct/src/resolve.rs`.
+- [x] `P01.S03` - Re-run scale_bench and record the cold-index before and after, keeping resolver tests green; `engine/tests/tests/scale_bench.rs`.
 
 ### Phase `P02` - Memoized projections + serialization (D3)
 
