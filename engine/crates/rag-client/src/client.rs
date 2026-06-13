@@ -56,6 +56,14 @@ pub fn service_json_candidates(vault_root: &Path) -> Vec<PathBuf> {
 /// bound; we allow 120s before declaring the service dead.
 pub const HEARTBEAT_STALE_MS: i64 = 120_000;
 
+/// Rag response body ceiling (robustness H3, 2026-06-13): the read has a
+/// timeout but no total-byte bound, so a runaway rag service could stream an
+/// unbounded body and OOM the engine. Search/discover envelopes are small;
+/// 16 MiB is generous headroom while bounding the pathological case. A body
+/// past the cap is a typed `Protocol` error (the semantic tier degrades),
+/// never a buffer grown to exhaustion.
+pub const MAX_RAG_BODY: u64 = 16 * 1024 * 1024;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServiceInfo {
     pub port: u16,
@@ -154,8 +162,18 @@ impl RagTransport for LoopbackTransport {
             body.len()
         );
         stream.write_all(request.as_bytes())?;
-        let mut raw = String::new();
-        stream.read_to_string(&mut raw)?;
+        // Bounded read (robustness H3): read at most MAX_RAG_BODY + 1 bytes. The
+        // read timeout above bounds latency; this bounds memory so a runaway rag
+        // service cannot OOM the engine. One byte over the cap is a typed
+        // Protocol error rather than an exhausted buffer.
+        let mut bytes = Vec::new();
+        (&mut stream)
+            .take(MAX_RAG_BODY + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_RAG_BODY {
+            return Err(RagError::Protocol);
+        }
+        let raw = String::from_utf8(bytes).map_err(|_| RagError::Protocol)?;
 
         let (head, response_body) = raw.split_once("\r\n\r\n").ok_or(RagError::Protocol)?;
         let status: u16 = head
@@ -436,5 +454,51 @@ mod tests {
         let body = transport.post_json("/search", r#"{"query": "x"}"#).unwrap();
         assert!(body.contains("\"bearer\": true"));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn a_runaway_rag_body_is_bounded_not_buffered_to_oom() {
+        // Robustness H3: the read has a timeout but historically no byte
+        // ceiling — a runaway rag service streaming an unbounded body would OOM
+        // the engine. A response past MAX_RAG_BODY must be a typed Protocol
+        // error, never an exhausted buffer.
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            // Drain the request enough to respond.
+            let mut buf = [0u8; 1024];
+            let _ = std::io::Read::read(&mut stream, &mut buf);
+            // Headers, then a body that overshoots the cap. Connection: close
+            // means the body runs until EOF; we just keep writing past the cap.
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n"
+            );
+            // Write the head of a JSON body, then flood past the ceiling. A
+            // 1 MiB chunk repeated until we clear MAX_RAG_BODY + headroom.
+            let chunk = vec![b'x'; 1024 * 1024];
+            let mut written: u64 = 0;
+            let target = MAX_RAG_BODY + 2 * 1024 * 1024;
+            while written < target {
+                // A broken pipe is expected once the client gives up at the cap.
+                if stream.write_all(&chunk).is_err() {
+                    break;
+                }
+                written += chunk.len() as u64;
+            }
+        });
+        let transport = LoopbackTransport {
+            port,
+            bearer: None,
+            timeout: Duration::from_secs(10),
+        };
+        let result = transport.post_json("/search", "{}");
+        assert!(
+            matches!(result, Err(RagError::Protocol)),
+            "a body past the cap is a typed Protocol error, got {result:?}"
+        );
+        let _ = server.join();
     }
 }
