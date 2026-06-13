@@ -256,7 +256,7 @@ mod tests {
     fn run_json_reports_a_nonzero_exit_as_failed() {
         // A crashed core verb (non-zero exit) is a typed Failed error, never a
         // silently-parsed empty envelope.
-        let snippet = if cfg!(windows) { "exit 3" } else { "exit 3" };
+        let snippet = "exit 3";
         let runner = shell_runner(snippet);
         let cwd = std::env::current_dir().unwrap();
         let err = runner.run_json(&cwd, &[], &["x.v1"]).unwrap_err();
