@@ -193,23 +193,30 @@ pub(crate) fn parse_granularity(
     }
 }
 
-/// Hard ceiling on the number of document-granularity nodes serialized onto the
-/// wire (perf ADR D2 / research F2): an unbounded document slice is linear but
-/// can reach a multi-gigabyte body at corpus scale, so the engine never serves
-/// more than this. Beyond it, the client narrows with a filter or reads the
-/// feature (constellation) granularity, which is bounded by feature count.
-const MAX_DOCUMENT_NODES: usize = 5000;
+/// Hard ceiling on the number of nodes serialized onto the wire (perf ADR D2 /
+/// research F2): an unbounded slice is linear but can reach a multi-gigabyte
+/// body at corpus scale, so the engine never serves more than this — at EITHER
+/// granularity. Document granularity is the obvious offender (one node per doc),
+/// but the feature constellation is only bounded by feature count, and a corpus
+/// with near-unique tags per document could explode it too — so the ceiling
+/// applies to both, and "every graph read is bounded" holds without an
+/// assumption about the tag vocabulary. Beyond it the client narrows with a
+/// filter.
+const MAX_GRAPH_NODES: usize = 5000;
 
-/// Bound a document slice to `MAX_DOCUMENT_NODES`, keeping the returned subgraph
-/// self-consistent (only edges among kept nodes survive). Returns the original
-/// node total when truncation happened, so the response can state it honestly.
-/// Nodes are already id-sorted, so the kept page is deterministic.
-fn bound_document_slice(slice: &mut GraphSlice) -> Option<usize> {
+/// Bound a slice to `MAX_GRAPH_NODES`, keeping the returned subgraph
+/// self-consistent: both document edges AND feature meta-edges that reference a
+/// dropped node are removed. Returns the original node total when truncation
+/// happened, so the response can state it honestly. Nodes are already id-sorted,
+/// so the kept page is deterministic. Works for both granularities — at document
+/// granularity `meta_edges` is empty (the retain is a no-op); at feature
+/// granularity `edges` is empty and the meta-edge retain does the work.
+fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
     let total = slice.nodes.len();
-    if total <= MAX_DOCUMENT_NODES {
+    if total <= MAX_GRAPH_NODES {
         return None;
     }
-    slice.nodes.truncate(MAX_DOCUMENT_NODES);
+    slice.nodes.truncate(MAX_GRAPH_NODES);
     let kept: std::collections::HashSet<String> = slice
         .nodes
         .iter()
@@ -218,6 +225,9 @@ fn bound_document_slice(slice: &mut GraphSlice) -> Option<usize> {
     slice
         .edges
         .retain(|e| kept.contains(&e.src.0) && kept.contains(&e.dst.0));
+    slice
+        .meta_edges
+        .retain(|m| kept.contains(&m.src) && kept.contains(&m.dst));
     Some(total)
 }
 
@@ -225,9 +235,15 @@ fn bound_document_slice(slice: &mut GraphSlice) -> Option<usize> {
 mod bound_tests {
     use super::*;
 
-    fn slice_of(n: usize) -> GraphSlice {
+    fn node_ids(prefix: &str, n: usize) -> Vec<Value> {
+        (0..n)
+            .map(|i| json!({"id": format!("{prefix}:{i:06}")}))
+            .collect()
+    }
+
+    fn slice_of(prefix: &str, n: usize) -> GraphSlice {
         GraphSlice {
-            nodes: (0..n).map(|i| json!({"id": format!("doc:{i:06}")})).collect(),
+            nodes: node_ids(prefix, n),
             edges: Vec::new(),
             meta_edges: Vec::new(),
             filter: Filter::default(),
@@ -235,26 +251,58 @@ mod bound_tests {
     }
 
     #[test]
-    fn document_slice_under_ceiling_is_untouched() {
-        let mut s = slice_of(100);
-        assert_eq!(bound_document_slice(&mut s), None);
+    fn slice_under_ceiling_is_untouched() {
+        let mut s = slice_of("doc", 100);
+        assert_eq!(bound_slice(&mut s), None);
         assert_eq!(s.nodes.len(), 100, "small slice served whole");
     }
 
     #[test]
-    fn document_slice_over_ceiling_truncates_and_reports_total() {
-        let mut s = slice_of(MAX_DOCUMENT_NODES + 1000);
-        let total = bound_document_slice(&mut s);
+    fn slice_over_ceiling_truncates_and_reports_total() {
+        let mut s = slice_of("doc", MAX_GRAPH_NODES + 1000);
         assert_eq!(
-            total,
-            Some(MAX_DOCUMENT_NODES + 1000),
+            bound_slice(&mut s),
+            Some(MAX_GRAPH_NODES + 1000),
             "the original total is reported for an honest truncated block"
         );
         assert_eq!(
             s.nodes.len(),
-            MAX_DOCUMENT_NODES,
+            MAX_GRAPH_NODES,
             "node payload is hard-bounded at the ceiling"
         );
+    }
+
+    #[test]
+    fn truncation_drops_meta_edges_to_dropped_feature_nodes() {
+        // Feature granularity is bounded too: capping feature nodes must drop
+        // any meta-edge whose endpoint was truncated, or the constellation
+        // would carry dangling edges (boundary self-consistency).
+        let meta = |src: &str, dst: &str| engine_graph::MetaEdge {
+            src: src.to_string(),
+            dst: dst.to_string(),
+            src_feature: "x".into(),
+            dst_feature: "y".into(),
+            count: 1,
+            breakdown_by_tier: Default::default(),
+        };
+        let dropped = format!("feature:{:06}", MAX_GRAPH_NODES + 1);
+        let mut s = GraphSlice {
+            nodes: node_ids("feature", MAX_GRAPH_NODES + 1000),
+            edges: Vec::new(),
+            meta_edges: vec![
+                meta("feature:000000", "feature:000001"), // both kept
+                meta("feature:000000", &dropped),         // endpoint truncated
+            ],
+            filter: Filter::default(),
+        };
+        assert_eq!(bound_slice(&mut s), Some(MAX_GRAPH_NODES + 1000));
+        assert_eq!(s.nodes.len(), MAX_GRAPH_NODES);
+        assert_eq!(
+            s.meta_edges.len(),
+            1,
+            "the meta-edge to a truncated feature node was dropped"
+        );
+        assert_eq!(s.meta_edges[0].dst, "feature:000001", "consistent meta-edge survived");
     }
 }
 
@@ -315,19 +363,18 @@ pub async fn graph_query_route(
                 .saturating_sub(1),
         ),
     };
-    // Bound the document payload (perf ADR D2): feature granularity is already
-    // bounded by feature count, so only document slices need the ceiling.
-    let truncated = match granularity {
-        Granularity::Document => bound_document_slice(&mut slice).map(|total| {
-            json!({
-                "total_nodes": total,
-                "returned_nodes": MAX_DOCUMENT_NODES,
-                "reason": "document node ceiling: narrow with a filter or read \
-                           feature granularity (the constellation is bounded)",
-            })
-        }),
-        Granularity::Feature => None,
-    };
+    // Bound the payload at BOTH granularities (perf ADR D2): the feature
+    // constellation is normally bounded by feature count, but a pathological tag
+    // vocabulary could explode it, so the ceiling is unconditional — every graph
+    // read is bounded.
+    let truncated = bound_slice(&mut slice).map(|total| {
+        json!({
+            "total_nodes": total,
+            "returned_nodes": MAX_GRAPH_NODES,
+            "reason": "graph node ceiling: narrow with a filter; the feature \
+                       constellation is the smallest view",
+        })
+    });
     // Additive (ADD-901): when `as_of` is set, echo the commit the token
     // resolved to and how the token was read — the same two fields /graph/asof
     // and /graph/diff already carry. Absent on the present view (no as_of),

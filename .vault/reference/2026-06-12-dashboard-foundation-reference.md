@@ -109,10 +109,14 @@ until implementation.
     every graph read is bounded so the wire never carries an unbounded body
     (research F2 measured a linear-but-unbounded document slice reaching ~2.25 GB
     at 1M nodes). The **constellation (feature) granularity is the unbounded-safe
-    default view** — it is bounded by feature count, not document count.
-    **Document granularity is capped** at a hard node ceiling (`MAX_DOCUMENT_NODES`,
-    5000): beyond it the response truncates to the ceiling (keeping only edges
-    among kept nodes, so the returned subgraph is self-consistent) and carries a
+    default view** — it is normally bounded by feature count, not document count.
+    **Both granularities are hard-capped** at a node ceiling (`MAX_GRAPH_NODES`,
+    5000): document granularity is the obvious offender (one node per doc), but
+    a pathological tag vocabulary could explode the constellation too, so the
+    ceiling is unconditional and "every graph read is bounded" holds without an
+    assumption about the tags. Beyond the ceiling the response truncates to it,
+    keeping the returned subgraph self-consistent — both document `edges` and
+    feature `meta_edges` that reference a dropped node are removed — and carries a
     `truncated: {total_nodes, returned_nodes, reason}` block stating it honestly;
     a non-truncated response carries `truncated: null`. **Bounded descent** into a
     constellation node is `granularity=document` + `filter.feature_tags=[<tag>]`,

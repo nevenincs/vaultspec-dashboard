@@ -170,6 +170,41 @@ mod tests {
     }
 
     #[test]
+    fn meta_edges_cache_invalidates_on_mutation() {
+        // Perf ADR D3 / the riskiest part of the memoization: a projection
+        // cached on the graph generation MUST NOT survive a structural mutation,
+        // or the incremental re-index path (`index_worktree_into` mutates an
+        // existing graph) would serve a stale constellation.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(node("a-plan", "feature-a"));
+        g.upsert_node(node("b-adr", "feature-b"));
+        crate::edges::ingest(
+            &mut g,
+            declared_edge("a-plan", "b-adr", 1),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        // Prime the cache: one cross-feature meta-edge (a -> b).
+        assert_eq!(meta_edges(&g).len(), 1, "primed projection");
+
+        // Mutate AFTER caching: a new node + a new cross-feature edge.
+        g.upsert_node(node("c-ref", "feature-c"));
+        crate::edges::ingest(
+            &mut g,
+            declared_edge("a-plan", "c-ref", 2),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+
+        // The cache must have invalidated — a stale read would still say 1.
+        assert_eq!(
+            meta_edges(&g).len(),
+            2,
+            "mutation invalidated the cache; a stale projection would miss a->c"
+        );
+    }
+
+    #[test]
     fn degree_by_tier_is_zero_filled_for_all_four_tiers() {
         let mut g = LinkageGraph::new();
         g.upsert_node(node("a-plan", "feature-a"));
