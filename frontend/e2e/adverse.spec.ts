@@ -98,3 +98,31 @@ test.describe("platform exception containment (live)", () => {
     expect(captured).toBe(true);
   });
 });
+
+test.describe("live-state degradation truth (live)", () => {
+  test("a lost stream renders the reconnecting degraded surface, not a crash", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
+
+    // Healthy boot: LIVE, not reconnecting, no white screen.
+    await expect(page.getByText("RECONNECTING")).toHaveCount(0);
+
+    // Flip the stores-owned live-connection signal to lost via the dev-exposed
+    // store (a real StreamLostError would do the same through the policy bind).
+    await page.evaluate(() => {
+      const store = (
+        globalThis as unknown as {
+          __liveStatusStore?: { getState(): { setStreamConnected(c: boolean): void } };
+        }
+      ).__liveStatusStore;
+      store?.getState().setStreamConnected(false);
+    });
+
+    // The timeline degrades to the designed reconnecting surface (ADR G8.a /
+    // live-state D4) - a truthful degraded state, not a crash or a blank.
+    await expect(page.getByText("RECONNECTING")).toBeVisible();
+    await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
+  });
+});
