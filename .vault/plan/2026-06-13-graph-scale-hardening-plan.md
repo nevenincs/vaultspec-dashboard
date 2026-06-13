@@ -7,6 +7,7 @@ modified: '2026-06-13'
 tier: L2
 related:
   - '[[2026-06-13-graph-scale-hardening-adr]]'
+  - '[[2026-06-13-graph-scale-hardening-research]]'
 ---
 
 
