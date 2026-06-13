@@ -33,11 +33,56 @@ export type TiersBlock = Record<string, { available: boolean; reason?: string }>
 export class EngineError extends Error {
   readonly status: number;
   readonly path: string;
-  constructor(path: string, status: number) {
+  /**
+   * The per-tier degradation block the engine attaches to its error envelope
+   * (contract §2; the every-wire-response-carries-the-tiers-block rule).
+   * Preserved through the error path so a backend-DOWN condition (e.g. a
+   * rag-down 502) surfaces as degradation truth the GUI can render, never a
+   * tiers-less bare error. Undefined only when the failure carried no
+   * structured envelope (a genuine transport fault).
+   */
+  readonly tiers?: TiersBlock;
+  /** The unwrapped error envelope body, when the engine served one. */
+  readonly body?: unknown;
+  constructor(
+    path: string,
+    status: number,
+    detail?: { tiers?: TiersBlock; body?: unknown },
+  ) {
     super(`engine ${path} responded ${status}`);
     this.path = path;
     this.status = status;
+    this.tiers = detail?.tiers;
+    this.body = detail?.body;
   }
+}
+
+/**
+ * Build an EngineError from a non-ok response, preserving the tiers block the
+ * engine attaches to its error envelope (contract §2 /
+ * every-wire-response-carries-the-tiers-block). The transport must never
+ * discard the degradation truth: a down backend has to reach the client as a
+ * degraded state, not a bare failure. A body that is missing or unparseable
+ * (a genuine transport fault) yields an EngineError with no tiers.
+ */
+async function engineErrorFrom(
+  path: string,
+  response: Response,
+): Promise<EngineError> {
+  let body: unknown;
+  let tiers: TiersBlock | undefined;
+  try {
+    body = unwrapEnvelope(await response.json());
+    if (body && typeof body === "object" && "tiers" in body) {
+      const candidate = (body as { tiers?: unknown }).tiers;
+      if (candidate && typeof candidate === "object") {
+        tiers = candidate as TiersBlock;
+      }
+    }
+  } catch {
+    // No structured JSON body — nothing to preserve.
+  }
+  return new EngineError(path, response.status, { tiers, body });
 }
 
 // --- §3 workspace map / vault tree ----------------------------------------------
@@ -442,7 +487,7 @@ export class EngineClient {
       if (qs) url += `?${qs}`;
     }
     const response = await this.fetchImpl(url);
-    if (!response.ok) throw new EngineError(path, response.status);
+    if (!response.ok) throw await engineErrorFrom(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
 
@@ -452,7 +497,7 @@ export class EngineClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw new EngineError(path, response.status);
+    if (!response.ok) throw await engineErrorFrom(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
 }
