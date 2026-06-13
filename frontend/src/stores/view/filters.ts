@@ -76,15 +76,40 @@ export const useFilterStore = create<FilterState>((set) => ({
 
 // --- wire compilation (R3) ----------------------------------------------------------
 
+/**
+ * Normalize a per-tier confidence floor to the R3 wire grammar: a finite 0..1
+ * float. Out-of-range values clamp (a preset authored as a percent like 70
+ * clamps to 1); a non-finite value is not a valid floor and yields undefined.
+ * Callers drop an undefined result from the wire and fail closed in membership,
+ * so a garbage floor never ships and never silently includes everything (M-G7,
+ * finding filters-01).
+ */
+function clampFloor(value: number): number | undefined {
+  if (!Number.isFinite(value)) return undefined;
+  return Math.min(1, Math.max(0, value));
+}
+
+function clampFloors(
+  raw: Partial<Record<"temporal" | "semantic", number>>,
+): Partial<Record<"temporal" | "semantic", number>> {
+  const out: Partial<Record<"temporal" | "semantic", number>> = {};
+  for (const tier of ["temporal", "semantic"] as const) {
+    const value = raw[tier];
+    if (value === undefined) continue;
+    const floor = clampFloor(value);
+    if (floor !== undefined) out[tier] = floor;
+  }
+  return out;
+}
+
 /** Compile choices into the engine-owned filter object (snake_case wire). */
 export function toGraphFilter(choices: FilterChoices): GraphFilter {
   const filter: GraphFilter = {};
   if (Object.values(choices.tiers).some((on) => !on)) {
     filter.tiers = { ...choices.tiers };
   }
-  if (Object.keys(choices.minConfidence).length > 0) {
-    filter.min_confidence = { ...choices.minConfidence };
-  }
+  const floors = clampFloors(choices.minConfidence);
+  if (Object.keys(floors).length > 0) filter.min_confidence = floors;
   if (choices.relations.length > 0) filter.relations = [...choices.relations];
   if (choices.structuralStates.length > 0) {
     filter.structural_state = [...choices.structuralStates];
@@ -130,11 +155,17 @@ function nodeMatches(node: EngineNode, choices: FilterChoices): boolean {
 
 function edgeMatches(edge: EngineEdge, choices: FilterChoices): boolean {
   if (!choices.tiers[edge.tier]) return false;
-  const floor =
+  const rawFloor =
     edge.tier === "temporal" || edge.tier === "semantic"
       ? choices.minConfidence[edge.tier]
       : undefined;
-  if (floor !== undefined && edge.confidence < floor) return false;
+  if (rawFloor !== undefined) {
+    const floor = clampFloor(rawFloor);
+    // An engaged-but-invalid floor (non-finite) must never silently include a
+    // sub-floor edge by evaluating `confidence < NaN` (always false) — fail
+    // closed so the membership cannot lie about the floor being in effect.
+    if (floor === undefined || edge.confidence < floor) return false;
+  }
   if (choices.relations.length > 0 && !choices.relations.includes(edge.relation)) {
     return false;
   }
