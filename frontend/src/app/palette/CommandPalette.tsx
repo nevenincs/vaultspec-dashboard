@@ -6,12 +6,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { engineClient } from "../../stores/server/engine";
+import { useConfirmable } from "../../platform/dispatch/useAction";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { BUILTIN_LENSES, useLensStore } from "../../stores/view/lenses";
 import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { OPS_WHITELIST } from "../right/OpsPanel";
+import { dispatchOps } from "../right/opsActions";
 import { useActiveScope } from "../stage/Stage";
 
 // --- pure command assembly (unit-tested) --------------------------------------------
@@ -89,7 +90,13 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
-  const [armed, setArmed] = useState<string | null>(null);
+  // Platform confirm guard for ops commands (W03.P04.S08 consolidation):
+  // replaces the bespoke `armed: string | null` state. A single slot keyed
+  // on "ops:run" is correct because only one cursor position can be active;
+  // armedCommandId tracks which specific command is in confirm-mode for the
+  // label display so navigating away re-arms the new command cleanly.
+  const confirmable = useConfirmable<void>("ops:run");
+  const [armedCommandId, setArmedCommandId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Focus restore (038): the palette returns focus to wherever the user
   // was when it opened.
@@ -110,8 +117,11 @@ export function CommandPalette() {
         setOpen((v) => !v);
         setQuery("");
         setCursor(0);
-        setArmed(null);
+        confirmable.cancel();
+        setArmedCommandId(null);
       } else if (e.key === "Escape") {
+        confirmable.cancel();
+        setArmedCommandId(null);
         setOpen(false);
       }
     };
@@ -137,10 +147,10 @@ export function CommandPalette() {
       query,
       applyLens: (name) => useLensStore.getState().apply(name),
       saveLens: (name) => useLensStore.getState().saveCurrent(name),
+      // Route through the platform dispatch seam (W03.P04.S08): dispatchOps
+      // replaces the prior ad-hoc engineClient call (the seam bypass).
       runOp: (target, verb) => {
-        void (target === "core"
-          ? engineClient.opsCore(verb)
-          : engineClient.opsRag(verb));
+        void dispatchOps({ target, verb });
       },
       navigate: (nodeId) => selectNode(nodeId),
     });
@@ -154,9 +164,17 @@ export function CommandPalette() {
   const runAt = (index: number) => {
     const command = commands[index];
     if (!command) return;
-    if (command.confirm && armed !== command.id) {
-      setArmed(command.id);
-      return;
+    if (command.confirm) {
+      if (!confirmable.armed || armedCommandId !== command.id) {
+        // Arm (or re-arm after navigating to a different confirm command).
+        if (confirmable.armed) confirmable.cancel();
+        setArmedCommandId(command.id);
+        confirmable.trigger();
+        return;
+      }
+      // Second Enter on the same armed command: fire and reset.
+      confirmable.cancel();
+      setArmedCommandId(null);
     }
     command.run();
     setOpen(false);
@@ -187,7 +205,8 @@ export function CommandPalette() {
           onChange={(e) => {
             setQuery(e.target.value);
             setCursor(0);
-            setArmed(null);
+            confirmable.cancel();
+            setArmedCommandId(null);
           }}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
@@ -219,7 +238,9 @@ export function CommandPalette() {
                 }`}
               >
                 <span>
-                  {armed === command.id ? `confirm: ${command.label}?` : command.label}
+                  {confirmable.armed && armedCommandId === command.id
+                    ? `confirm: ${command.label}?`
+                    : command.label}
                 </span>
                 <span className="text-label text-ink-faint">{command.hint}</span>
               </button>

@@ -99,9 +99,7 @@ export class TimeTravelDriver {
     // `append` call below never sees a gap (diff starts exactly where the
     // asof snapshot ends on the shared clock).
     const keyframeSeq =
-      asof.last_seq != null
-        ? asof.last_seq
-        : (diffDeltas[0]?.seq ?? 1) - 1;
+      asof.last_seq != null ? asof.last_seq : (diffDeltas[0]?.seq ?? 1) - 1;
     this.log.setKeyframe({
       nodes: asof.nodes.map(engineNodeToScene),
       edges: asof.edges.map(engineEdgeToScene),
