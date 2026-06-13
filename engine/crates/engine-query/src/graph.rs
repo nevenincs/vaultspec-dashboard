@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use engine_graph::diff::DiffOp;
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
 use engine_model::{Edge, Node, NodeId, NodeKind, Progress, ScopeRef};
 use serde::Serialize;
@@ -149,6 +150,100 @@ pub fn graph_query(
         meta_edges: meta,
         filter,
     })
+}
+
+/// The feature/meta-edge delta between two graph states, on the single delta
+/// clock (constellation-live-delta ADR / S50). Projects `old` and `new` to the
+/// FEATURE granularity (feature-convergence nodes + meta-edges) and diffs them
+/// by stable id into `granularity: "feature"` entries
+/// (`{op, granularity, node?|edge?, t, seq}` — the same wire shape as the
+/// document deltas), advancing `seq` from `seq_start`. Returns the entries and
+/// the last seq used. The engine owns this aggregation (contract §4: the GUI
+/// never derives the constellation from document edges); meta-edge identity is
+/// the endpoint pair, stable across re-derivation (provenance-stable keys).
+pub fn feature_delta(
+    old: &LinkageGraph,
+    new: &LinkageGraph,
+    scope: &ScopeRef,
+    t: i64,
+    seq_start: u64,
+) -> (Vec<Value>, u64) {
+    fn project(
+        g: &LinkageGraph,
+        scope: &ScopeRef,
+    ) -> (BTreeMap<String, Value>, BTreeMap<(String, String), Value>) {
+        let members: Vec<Node> = g
+            .nodes()
+            .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
+            .cloned()
+            .collect();
+        let nodes = feature_nodes(g, scope, &members)
+            .into_iter()
+            .filter_map(|v| {
+                let id = v["id"].as_str()?.to_string();
+                Some((id, v))
+            })
+            .collect();
+        let metas = meta_edges(g)
+            .into_iter()
+            .map(|m: MetaEdge| {
+                let key = (m.src.clone(), m.dst.clone());
+                (key, serde_json::to_value(m).expect("meta-edge serializes"))
+            })
+            .collect();
+        (nodes, metas)
+    }
+
+    let (old_nodes, old_metas) = project(old, scope);
+    let (new_nodes, new_metas) = project(new, scope);
+
+    let mut entries: Vec<Value> = Vec::new();
+    let mut seq = seq_start;
+    let mut push = |op: DiffOp, node: Option<&Value>, edge: Option<&Value>| {
+        let mut entry = serde_json::Map::new();
+        entry.insert("op".into(), serde_json::to_value(op).expect("op serializes"));
+        entry.insert("granularity".into(), Value::String("feature".into()));
+        if let Some(node) = node {
+            entry.insert("node".into(), node.clone());
+        }
+        if let Some(edge) = edge {
+            entry.insert("edge".into(), edge.clone());
+        }
+        entry.insert("t".into(), Value::from(t));
+        entry.insert("seq".into(), Value::from(seq));
+        entries.push(Value::Object(entry));
+        seq += 1;
+    };
+
+    // Deterministic order (BTreeMap is sorted): nodes then edges, add/change
+    // for entries present in `new`, remove for entries gone from `old`.
+    for (id, node) in &new_nodes {
+        match old_nodes.get(id) {
+            None => push(DiffOp::Add, Some(node), None),
+            Some(before) if before != node => push(DiffOp::Change, Some(node), None),
+            _ => {}
+        }
+    }
+    for (id, node) in &old_nodes {
+        if !new_nodes.contains_key(id) {
+            push(DiffOp::Remove, Some(node), None);
+        }
+    }
+    for (key, edge) in &new_metas {
+        match old_metas.get(key) {
+            None => push(DiffOp::Add, None, Some(edge)),
+            Some(before) if before != edge => push(DiffOp::Change, None, Some(edge)),
+            _ => {}
+        }
+    }
+    for (key, edge) in &old_metas {
+        if !new_metas.contains_key(key) {
+            push(DiffOp::Remove, None, Some(edge));
+        }
+    }
+
+    let last_seq = seq.saturating_sub(1).max(seq_start);
+    (entries, last_seq)
 }
 
 #[cfg(test)]
@@ -305,5 +400,40 @@ mod tests {
         let slice = graph_query(&g, &scope(), filter, Granularity::Document).unwrap();
         assert_eq!(slice.nodes.len(), 1);
         assert_eq!(slice.nodes[0]["key"], "b-adr");
+    }
+
+    #[test]
+    fn feature_delta_projects_constellation_changes_tagged_on_the_clock() {
+        // S50: the feature/meta-edge delta between two graph states.
+        // old: just feature-a, no cross-feature edge (no meta-edge yet).
+        let mut old = LinkageGraph::new();
+        old.upsert_node(doc("a-plan", "feature-a"));
+        // new: the fixture adds feature-b and a cross-feature edge, so a
+        // meta-edge appears (feature-a -> feature-b) and feature-a's degree
+        // changes.
+        let new = fixture();
+
+        let (entries, last_seq) = feature_delta(&old, &new, &scope(), 100, 5);
+
+        assert!(!entries.is_empty(), "constellation changed: deltas emitted");
+        // Every entry rides the FEATURE species and the shared clock from 5.
+        assert!(entries.iter().all(|e| e["granularity"] == "feature"));
+        assert!(entries.iter().all(|e| e["seq"].as_u64().unwrap() >= 5));
+        assert_eq!(
+            last_seq,
+            5 + entries.len() as u64 - 1,
+            "contiguous seqs from seq_start"
+        );
+        assert!(entries.iter().all(|e| e["t"] == 100));
+        // The cross-feature meta-edge is an `add` (absent in old); meta-edge
+        // identity is the endpoint pair, stable across re-derivation.
+        assert!(
+            entries.iter().any(|e| {
+                e["op"] == "add"
+                    && e["edge"]["src"] == "feature:feature-a"
+                    && e["edge"]["dst"] == "feature:feature-b"
+            }),
+            "the new cross-feature meta-edge appears as a tagged add: {entries:?}"
+        );
     }
 }

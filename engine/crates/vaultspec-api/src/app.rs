@@ -17,7 +17,6 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
-use engine_graph::diff::DiffEntry;
 use engine_graph::{LinkageGraph, MetaEdge};
 use engine_model::ScopeRef;
 use tokio::sync::broadcast;
@@ -41,8 +40,12 @@ pub struct AppState {
     pub store: Mutex<engine_store::Store>,
     /// The single monotonic delta clock (contract REDLINE-3).
     pub seq: AtomicU64,
-    /// Recent deltas for `since=` resume; bounded.
-    pub ring: Mutex<VecDeque<DiffEntry>>,
+    /// Recent deltas for `since=` resume; bounded. Stored as
+    /// `(seq, payload)` so BOTH granularity species (document + the
+    /// feature/meta-edge projection) ride one resume buffer on the single
+    /// clock (constellation-live-delta ADR / S50): `since=` replays across
+    /// both, application is per-granularity client-side.
+    pub ring: Mutex<VecDeque<(u64, serde_json::Value)>>,
     pub tx: broadcast::Sender<StreamEvent>,
     pub bearer: String,
     /// Memoized constellation meta-edges per graph generation (audit
@@ -110,19 +113,42 @@ impl AppState {
         // Ring lock taken FIRST: it is the commit-section mutex.
         let mut ring = self.ring.lock().expect("ring lock");
         let seq_start = self.seq.load(Ordering::SeqCst);
-        let log = engine_graph::diff::diff(&old, &fresh, t, seq_start);
-        let emitted = log.entries.len();
-        if emitted > 0 {
-            self.seq.store(log.last_seq + 1, Ordering::SeqCst);
-            for entry in &log.entries {
+        // Document deltas first, then the feature/meta-edge projection deltas,
+        // CONTINUING the same monotonic clock (constellation-live-delta ADR /
+        // S50): one seq space across both species so a held constellation
+        // keyframe splices live with no gap. Both ride the ring (resume
+        // buffer) and the `graph` channel; each carries its `granularity` tag.
+        let doc_log = engine_graph::diff::diff(&old, &fresh, t, seq_start);
+        let feat_seq_start = doc_log.entries.last().map_or(seq_start, |e| e.seq + 1);
+        let (feat_entries, _) =
+            engine_query::graph::feature_delta(&old, &fresh, &self.scope, t, feat_seq_start);
+
+        // Unify both species as (seq, payload) for the resume buffer + the
+        // live channel; the document entries serialize to the same wire shape.
+        let mut payloads: Vec<(u64, serde_json::Value)> = Vec::new();
+        for entry in &doc_log.entries {
+            payloads.push((
+                entry.seq,
+                serde_json::to_value(entry).expect("entry serializes"),
+            ));
+        }
+        for entry in feat_entries {
+            let seq = entry["seq"].as_u64().expect("feature delta carries seq");
+            payloads.push((seq, entry));
+        }
+
+        let emitted = payloads.len();
+        if let Some((tip, _)) = payloads.last() {
+            self.seq.store(tip + 1, Ordering::SeqCst);
+            for (seq, payload) in payloads {
                 if ring.len() == RING_CAP {
                     ring.pop_front();
                 }
-                ring.push_back(entry.clone());
+                ring.push_back((seq, payload.clone()));
                 let _ = self.tx.send(StreamEvent {
                     channel: "graph",
-                    payload: serde_json::to_value(entry).expect("entry serializes"),
-                    seq: entry.seq,
+                    payload,
+                    seq,
                 });
             }
         }
@@ -333,7 +359,7 @@ mod tests {
         // The clock is monotonic across rebuilds and the ring holds both
         // batches in order.
         let ring = state.ring.lock().unwrap();
-        let seqs: Vec<u64> = ring.iter().map(|e| e.seq).collect();
+        let seqs: Vec<u64> = ring.iter().map(|(seq, _)| *seq).collect();
         assert!(seqs.windows(2).all(|w| w[1] > w[0]));
     }
 

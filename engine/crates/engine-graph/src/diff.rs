@@ -17,10 +17,15 @@ pub enum DiffOp {
     Change,
 }
 
-/// One delta entry (contract §5: `{op, node|edge, t, seq}`).
+/// One delta entry (contract §5: `{op, granularity, node|edge, t, seq}`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DiffEntry {
     pub op: DiffOp,
+    /// The delta's species on the single clock (contract §5/§7 amendment
+    /// 2026-06-13, constellation-live-delta ADR / S50): this `diff` produces
+    /// the DOCUMENT graph deltas; the feature/meta-edge projection is tagged
+    /// `feature` elsewhere. A single-granularity consumer applies only its own.
+    pub granularity: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node: Option<Node>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,6 +44,28 @@ pub struct DiffLog {
     pub last_seq: u64,
 }
 
+/// Does a matched edge (SAME id in both graphs) carry a MEANINGFUL change?
+///
+/// Compares only diff-relevant content — relation/tier/confidence/state and
+/// the stored attrs (multiplicity, weight, core_kind, resolved_target) — and
+/// DELIBERATELY ignores volatile metadata that is not a real change:
+/// - `observed_at`: re-stamped every index, so on the LIVE stream EVERY
+///   unchanged edge would otherwise emit a phantom `change` on each rebuild;
+/// - `provenance`: the declared tier's `payload_hash` is the hash of the WHOLE
+///   core-graph payload, which differs between ANY two snapshots even for a
+///   byte-identical edge — the historical-diff spurious-`change` storm
+///   (2026-06-13: HEAD~3..HEAD reported ~7080 phantom edge changes);
+/// - `scope`: a diff compares two views of the SAME corpus; identity is the id.
+/// (relation/tier are id-implied for a matched edge, compared for clarity.)
+fn edge_changed(before: &crate::graph::StoredEdge, after: &crate::graph::StoredEdge) -> bool {
+    let (a, b) = (&before.edge, &after.edge);
+    a.relation != b.relation
+        || a.tier != b.tier
+        || a.confidence != b.confidence
+        || a.state != b.state
+        || before.attrs != after.attrs
+}
+
 /// Compute the ordered delta log turning `from` into `to`. `seq_start` is
 /// the next position on the monotonic delta clock (shared with the live
 /// stream); `t` stamps every entry with the target time.
@@ -48,6 +75,7 @@ pub fn diff(from: &LinkageGraph, to: &LinkageGraph, t: i64, seq_start: u64) -> D
     let mut push = |op: DiffOp, node: Option<Node>, edge: Option<Edge>| {
         entries.push(DiffEntry {
             op,
+            granularity: "document",
             node,
             edge,
             t,
@@ -83,7 +111,7 @@ pub fn diff(from: &LinkageGraph, to: &LinkageGraph, t: i64, seq_start: u64) -> D
     for stored in &to_edges {
         match from.edge(&stored.edge.id) {
             None => push(DiffOp::Add, None, Some(stored.edge.clone())),
-            Some(before) if before != *stored => {
+            Some(before) if edge_changed(before, stored) => {
                 push(DiffOp::Change, None, Some(stored.edge.clone()))
             }
             _ => {}

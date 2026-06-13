@@ -99,9 +99,13 @@ pub async fn graph_asof(
 ) -> ApiResult {
     validate_scope(&state, &params.scope)?;
     let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
-    let scope = engine_model::ScopeRef::Ref {
-        name: params.t.clone(),
-    };
+    // Scope the historical snapshot to the SERVED WORKTREE (same as the
+    // present view), NOT the ref name: the ref is the TIME axis (`t`), not the
+    // corpus-view label. Stamping the ref as the facet scope makes two
+    // snapshots differ by label alone, which floods `/graph/diff` with
+    // spurious `change` deltas (2026-06-13 hardening). graph_query filters by
+    // this same scope, so both must agree.
+    let scope = state.scope.clone();
     let graph = engine_graph::asof::asof_graph(&state.root, &params.t, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.t, e))?;
     let slice = engine_query::graph::graph_query(
@@ -134,6 +138,10 @@ pub struct DiffParams {
     pub scope: String,
     pub from: String,
     pub to: String,
+    /// `document` (default) or `feature` — feature returns the projected
+    /// meta-edge/feature-node delta log (S50), each entry tagged `feature`.
+    #[serde(default)]
+    pub granularity: Option<String>,
 }
 
 pub async fn graph_diff(
@@ -141,27 +149,45 @@ pub async fn graph_diff(
     Query(params): Query<DiffParams>,
 ) -> ApiResult {
     validate_scope(&state, &params.scope)?;
-    let scope_from = engine_model::ScopeRef::Ref {
-        name: params.from.clone(),
-    };
-    let scope_to = engine_model::ScopeRef::Ref {
-        name: params.to.clone(),
-    };
-    let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope_from, 0)
+    let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
+    // BOTH endpoints are scoped to the SAME served worktree so the delta log
+    // reflects CONTENT changes (content_hash, presence, lifecycle, edges)
+    // between the refs — not the ref LABEL. Using each ref name as the facet
+    // scope made every node/edge common to both commits a spurious `change`
+    // (2026-06-13: HEAD~3..HEAD reported 8415 changes / 1 add — the diff was
+    // useless). The ref distinction lives in `from`/`to` and each entry's `t`.
+    let scope = state.scope.clone();
+    let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.from, e))?;
-    let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope_to, 0)
+    let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.to, e))?;
 
     // Historical diffs number RESULT-LOCALLY (audit N2): a scrub must
     // never burn live-clock positions or manufacture stream gaps. Only
     // `commit_graph` advances the shared atomic; `last_seq` here is the
     // local log's end, and splicing to LIVE goes through a present
-    // keyframe + the stream's own sequence space.
-    let log = engine_graph::diff::diff(&from_graph, &to_graph, crate::app::now_ms(), 0);
+    // keyframe + the stream's own sequence space. At `feature` granularity the
+    // engine projects the document diff to the constellation species (S50), so
+    // a scrub re-keyframes and replays in its own species; entries are tagged.
+    let t = crate::app::now_ms();
+    let (deltas, last_seq) = match granularity {
+        engine_query::graph::Granularity::Document => {
+            let log = engine_graph::diff::diff(&from_graph, &to_graph, t, 0);
+            (
+                serde_json::to_value(&log.entries).expect("deltas serialize"),
+                log.last_seq,
+            )
+        }
+        engine_query::graph::Granularity::Feature => {
+            let (entries, last_seq) =
+                engine_query::graph::feature_delta(&from_graph, &to_graph, &scope, t, 0);
+            (Value::Array(entries), last_seq)
+        }
+    };
     Ok(super::envelope(
         json!({
-            "deltas": log.entries,
-            "last_seq": log.last_seq,
+            "deltas": deltas,
+            "last_seq": last_seq,
             "clock": "result-local",
         }),
         serde_json::to_value(engine_query::envelope::asof_tiers_block()).expect("tiers serialize"),

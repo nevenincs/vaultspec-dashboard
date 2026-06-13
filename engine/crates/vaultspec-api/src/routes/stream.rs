@@ -102,7 +102,10 @@ pub async fn stream(
     let mut emitted_up_to: u64 = params.since.unwrap_or(0);
     if let Some(since) = params.since {
         let ring = state.ring.lock().expect("ring lock");
-        let oldest = ring.front().map(|e| e.seq);
+        // Ring entries are `(seq, payload)` across BOTH granularity species
+        // (S50); resume and gap-detection are on the GLOBAL seq, application is
+        // per-granularity client-side.
+        let oldest = ring.front().map(|(seq, _)| *seq);
         match oldest {
             Some(oldest) if since + 1 < oldest => {
                 // Replay impossible: explicit gap, client re-keyframes
@@ -114,13 +117,13 @@ pub async fn stream(
                 );
             }
             _ => {
-                for entry in ring.iter().filter(|e| e.seq > since) {
-                    emitted_up_to = emitted_up_to.max(entry.seq);
+                for (seq, payload) in ring.iter().filter(|(seq, _)| *seq > since) {
+                    emitted_up_to = emitted_up_to.max(*seq);
                     backlog.push(
                         Event::default()
                             .event("graph")
-                            .id(entry.seq.to_string())
-                            .data(serde_json::to_string(entry).expect("entry serializes")),
+                            .id(seq.to_string())
+                            .data(payload.to_string()),
                     );
                 }
             }
