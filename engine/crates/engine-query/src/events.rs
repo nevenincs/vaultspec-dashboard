@@ -150,9 +150,26 @@ pub fn parse_bucket_param(param: &str) -> Option<BucketMode> {
 /// key — while code ids beyond the cap truncate with a count.
 pub const CODE_NODE_IDS_CAP: usize = 20;
 
+/// Event kind for a commit that modified one or more `.vault/` documents
+/// (contract §5 second event kind). The commit pulse addresses the whole
+/// touched set; the doc-modified pulse addresses ONLY the document nodes, so
+/// the timeline can light "these docs changed at T" distinctly from "this
+/// commit landed at T".
+pub const DOC_MODIFIED_KIND: &str = "doc-modified";
+
 /// Source commit events from a workspace ref into contract-shaped rows
 /// (audit G7: event sourcing lives in the query core; both front doors
 /// delegate here — D6.1, no capability in only one door).
+///
+/// Emits TWO of the three contract §5 event kinds from one commit walk:
+/// a `commit` row per commit (the full touched set), and a `doc-modified`
+/// row per commit that touched at least one `.vault/` document (the document
+/// nodes only). The third kind — vault-lifecycle (created/archived) — is NOT
+/// cleanly sourceable here: the commit walk flattens every change to a touched
+/// PATH, discarding the per-path change KIND (added / deleted / renamed-into-
+/// `.vault/archive/`) that distinguishes a create or an archive from a plain
+/// modification. Sourcing it needs `ingest_git::log` to carry per-path change
+/// kinds (a `gix` diff already computes them; `touched_paths` drops them).
 ///
 /// `known` bounds the correlation (S05): when given, code-artifact ids
 /// keep only graph-known nodes; the survivors cap at
@@ -171,43 +188,66 @@ pub fn commit_rows(
     // was the newest event, last in the ts-ascending array (sweep LOW,
     // 2026-06-13). The contract calls the id a monotonic seq and the stream
     // splices by `since=<id>`, so id order MUST track time order. Tiebreak
-    // same-ts events by sha for a deterministic, stable id assignment.
-    let mut rows: Vec<(String, EventRow)> = commits
-        .iter()
-        .map(|c| {
-            let correlated = engine_store::events::node_ids_for_paths(
-                c.touched_paths.iter().map(String::as_str),
-            );
-            let (docs, code): (Vec<String>, Vec<String>) = correlated
+    // same-ts events by (sha, kind) for a deterministic, stable id assignment
+    // when a commit yields both a `commit` and a `doc-modified` row at the
+    // same ts.
+    let mut rows: Vec<(String, EventRow)> = Vec::with_capacity(commits.len());
+    for c in &commits {
+        let correlated =
+            engine_store::events::node_ids_for_paths(c.touched_paths.iter().map(String::as_str));
+        let (docs, code): (Vec<String>, Vec<String>) = correlated
+            .into_iter()
+            .partition(|id| !id.starts_with("code:"));
+        let mut code: Vec<String> = match known {
+            Some(graph) => code
                 .into_iter()
-                .partition(|id| !id.starts_with("code:"));
-            let mut code: Vec<String> = match known {
-                Some(graph) => code
-                    .into_iter()
-                    .filter(|id| graph.node(&engine_model::NodeId(id.clone())).is_some())
-                    .collect(),
-                None => code,
-            };
-            let truncated = code.len().saturating_sub(CODE_NODE_IDS_CAP) as u64;
-            code.truncate(CODE_NODE_IDS_CAP);
-            let mut node_ids = Vec::with_capacity(1 + docs.len() + code.len());
-            node_ids.push(format!("commit:{}", c.sha));
-            node_ids.extend(docs);
-            node_ids.extend(code);
-            (
+                .filter(|id| graph.node(&engine_model::NodeId(id.clone())).is_some())
+                .collect(),
+            None => code,
+        };
+        let truncated = code.len().saturating_sub(CODE_NODE_IDS_CAP) as u64;
+        code.truncate(CODE_NODE_IDS_CAP);
+
+        // doc-modified: a commit that touched any `.vault/` document is a
+        // document-modification event addressing just those doc nodes (the
+        // join is doc/feature-centric; doc ids are never truncated). Emitted
+        // BEFORE the commit row's `docs` vec is moved.
+        if !docs.is_empty() {
+            rows.push((
                 c.sha.clone(),
                 EventRow {
                     seq: 0,
                     ts: c.ts,
-                    kind: c.kind.to_string(),
+                    kind: DOC_MODIFIED_KIND.to_string(),
                     git_ref: c.git_ref.clone(),
-                    node_ids,
-                    truncated_node_ids: truncated,
+                    node_ids: docs.clone(),
+                    truncated_node_ids: 0,
                 },
-            )
-        })
-        .collect();
-    rows.sort_by(|(a_sha, a), (b_sha, b)| a.ts.cmp(&b.ts).then_with(|| a_sha.cmp(b_sha)));
+            ));
+        }
+
+        let mut node_ids = Vec::with_capacity(1 + docs.len() + code.len());
+        node_ids.push(format!("commit:{}", c.sha));
+        node_ids.extend(docs);
+        node_ids.extend(code);
+        rows.push((
+            c.sha.clone(),
+            EventRow {
+                seq: 0,
+                ts: c.ts,
+                kind: c.kind.to_string(),
+                git_ref: c.git_ref.clone(),
+                node_ids,
+                truncated_node_ids: truncated,
+            },
+        ));
+    }
+    rows.sort_by(|(a_sha, a), (b_sha, b)| {
+        a.ts
+            .cmp(&b.ts)
+            .then_with(|| a_sha.cmp(b_sha))
+            .then_with(|| a.kind.cmp(&b.kind))
+    });
     Ok(rows
         .into_iter()
         .enumerate()
@@ -231,6 +271,102 @@ mod tests {
             node_ids: vec![format!("doc:{seq}")],
             truncated_node_ids: 0,
         }
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "f")
+            .env("GIT_AUTHOR_EMAIL", "f@t")
+            .env("GIT_COMMITTER_NAME", "f")
+            .env("GIT_COMMITTER_EMAIL", "f@t")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn commit_rows_surface_doc_modification_events_alongside_commits() {
+        // Contract §5 second event kind: a commit that touches a `.vault/`
+        // document yields a `doc-modified` event addressing ONLY the document
+        // nodes, distinct from the `commit` event addressing the full touched
+        // set. A commit touching only code yields no doc-modified event.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+
+        // Commit 1: a vault doc + a code file -> commit + doc-modified.
+        std::fs::write(
+            root.join(".vault/plan/2026-06-13-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("src/lib.rs"), "// v1\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "doc and code"]);
+
+        // Commit 2: code only -> commit, NO doc-modified.
+        std::fs::write(root.join("src/lib.rs"), "// v2\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "code only"]);
+
+        let ws = ingest_git::workspace::Workspace::discover(root).unwrap();
+        let rows = commit_rows(&ws, "HEAD", 100, None).unwrap();
+
+        let commit_rows_ct = rows.iter().filter(|r| r.kind == "commit").count();
+        let doc_rows: Vec<&EventRow> = rows
+            .iter()
+            .filter(|r| r.kind == DOC_MODIFIED_KIND)
+            .collect();
+        assert_eq!(commit_rows_ct, 2, "one commit event per commit");
+        assert_eq!(
+            doc_rows.len(),
+            1,
+            "only the vault-touching commit yields a doc-modified event"
+        );
+
+        // The doc-modified event addresses exactly the document node, and no
+        // commit/code id (the doc-centric join key).
+        let doc = doc_rows[0];
+        assert_eq!(doc.node_ids, vec!["doc:2026-06-13-x-plan"]);
+        assert!(
+            doc.node_ids
+                .iter()
+                .all(|id| !id.starts_with("commit:") && !id.starts_with("code:")),
+            "doc-modified addresses only doc nodes: {:?}",
+            doc.node_ids
+        );
+
+        // The commit event for the same commit carries the commit id AND the
+        // doc id AND the code id - the full touched set.
+        let paired_commit = rows
+            .iter()
+            .find(|r| {
+                r.kind == "commit" && r.node_ids.contains(&"doc:2026-06-13-x-plan".to_string())
+            })
+            .expect("the vault-touching commit event");
+        assert!(
+            paired_commit
+                .node_ids
+                .iter()
+                .any(|id| id.starts_with("commit:"))
+        );
+        assert!(
+            paired_commit
+                .node_ids
+                .contains(&"code:src/lib.rs".to_string())
+        );
+
+        // Seqs stay monotonic and time-ordered across the interleaved kinds.
+        assert!(rows.windows(2).all(|w| w[1].seq > w[0].seq));
+        assert!(rows.windows(2).all(|w| w[1].ts >= w[0].ts));
     }
 
     #[test]

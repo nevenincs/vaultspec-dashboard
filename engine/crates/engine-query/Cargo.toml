@@ -16,5 +16,8 @@ thiserror = "2.0.18"
 engine-store = { version = "0.1.0", path = "../engine-store" }
 ingest-git = { version = "0.1.0", path = "../ingest-git" }
 
+[dev-dependencies]
+tempfile = "3.27.0"
+
 [lints]
 workspace = true
