@@ -55,7 +55,7 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         // A dead watcher is stated, never papered over (DF-4 residual):
         // heartbeat-alive-but-rebuilds-stopped is a zombie, and the
         // operator needs to know.
-        "watcher": match state.watcher.lock().expect("watcher lock").as_ref() {
+        "watcher": match state.watcher.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             Some(handle) if handle.is_alive() => json!({"running": true, "mode": "resident"}),
             Some(_) => json!({
                 "running": false,
@@ -101,7 +101,9 @@ pub async fn stream(
     let mut backlog: Vec<Event> = Vec::new();
     let mut emitted_up_to: u64 = params.since.unwrap_or(0);
     if let Some(since) = params.since {
-        let ring = state.ring.lock().expect("ring lock");
+        // Poison recovery (robustness H2): a poisoned ring lock must not wedge
+        // SSE resume; recover the inner buffer instead of panicking.
+        let ring = state.ring.lock().unwrap_or_else(|e| e.into_inner());
         // Ring entries are `(seq, payload)` across BOTH granularity species
         // (S50); resume and gap-detection are on the GLOBAL seq, application is
         // per-granularity client-side.

@@ -66,14 +66,22 @@ pub const RING_CAP: usize = 4096;
 
 impl AppState {
     pub fn graph_arc(&self) -> Arc<LinkageGraph> {
-        self.graph.read().expect("graph lock").clone()
+        // Poison recovery (robustness H2): a panic while another guard was held
+        // poisons the lock. Paired with the CatchPanicLayer, we recover the
+        // inner value instead of re-panicking, so one transient panic cannot
+        // cascade into a permanent total outage on every subsequent request.
+        self.graph
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Meta-edges, memoized per generation (W02P05-203): the constellation
     /// hot path pays one aggregation per rebuild, not per request.
     pub fn meta_edges(&self) -> Arc<Vec<MetaEdge>> {
         let generation = self.generation.load(Ordering::SeqCst);
-        let mut cache = self.meta_cache.lock().expect("meta cache lock");
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut cache = self.meta_cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((cached_generation, cached)) = cache.as_ref()
             && *cached_generation == generation
         {
@@ -111,7 +119,8 @@ impl AppState {
         let t = now_ms();
 
         // Ring lock taken FIRST: it is the commit-section mutex.
-        let mut ring = self.ring.lock().expect("ring lock");
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
         let seq_start = self.seq.load(Ordering::SeqCst);
         // Document deltas first, then the feature/meta-edge projection deltas,
         // CONTINUING the same monotonic clock (constellation-live-delta ADR /
@@ -125,16 +134,28 @@ impl AppState {
 
         // Unify both species as (seq, payload) for the resume buffer + the
         // live channel; the document entries serialize to the same wire shape.
+        // Robustness H2: a malformed entry SKIPS rather than panics — a single
+        // unserializable delta or a feature entry missing its `seq` must not
+        // panic inside the commit section (which would poison the ring lock and
+        // wedge every later commit + every `since=` resume). The dropped entry
+        // is logged; the rest of the batch and the clock advance normally.
         let mut payloads: Vec<(u64, serde_json::Value)> = Vec::new();
         for entry in &doc_log.entries {
-            payloads.push((
-                entry.seq,
-                serde_json::to_value(entry).expect("entry serializes"),
-            ));
+            match serde_json::to_value(entry) {
+                Ok(value) => payloads.push((entry.seq, value)),
+                Err(e) => eprintln!(
+                    "vaultspec serve: dropping unserializable doc delta seq={}: {e}",
+                    entry.seq
+                ),
+            }
         }
         for entry in feat_entries {
-            let seq = entry["seq"].as_u64().expect("feature delta carries seq");
-            payloads.push((seq, entry));
+            match entry["seq"].as_u64() {
+                Some(seq) => payloads.push((seq, entry)),
+                None => eprintln!(
+                    "vaultspec serve: dropping feature delta with no seq: {entry}"
+                ),
+            }
         }
 
         let emitted = payloads.len();
@@ -152,7 +173,8 @@ impl AppState {
                 });
             }
         }
-        *self.graph.write().expect("graph lock") = Arc::new(fresh);
+        // Poison recovery (robustness H2): see `graph_arc`.
+        *self.graph.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(fresh);
         self.generation.fetch_add(1, Ordering::SeqCst);
         drop(ring);
         emitted

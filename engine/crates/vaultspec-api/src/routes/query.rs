@@ -417,7 +417,9 @@ pub async fn node_discover(
             .map(|n| format!("{} {}", n.key, n.feature_tags.join(" ")))
             .unwrap_or_else(|| id.clone())
     });
-    let store = state.store.lock().expect("store lock");
+    // Poison recovery (robustness H2): a poisoned store lock must degrade, not
+    // cascade into a permanent outage on every node-discover request.
+    let store = state.store.lock().unwrap_or_else(|e| e.into_inner());
     let candidates = match rag_client::discover::discover(
         &transport,
         &store,

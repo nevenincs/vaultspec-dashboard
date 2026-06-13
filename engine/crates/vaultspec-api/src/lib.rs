@@ -85,6 +85,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
         .route("/ops/rag/{verb}", post(routes::ops::ops_rag))
         .fallback(get(routes::spa::spa_fallback))
+        // Panic containment (robustness H2, 2026-06-13): a handler panic must
+        // become a contained 500, never a dropped connection AND — critically
+        // — never a poisoned lock that cascades into a permanent outage. The
+        // layer unwinds the panic at the service boundary so the worker keeps
+        // serving. Placed INNER to the tiers guard: the default 500 body
+        // carries no tiers block, so `ensure_tiers_envelope` (outermost)
+        // re-envelopes it with the truthful per-tier degradation. Inner to the
+        // gate so a panic inside the gate is caught too. Paired with
+        // poison-recovery lock access (`unwrap_or_else(|e| e.into_inner())`):
+        // the catcher stops the panic and the recovery makes any guard that
+        // WAS held at panic time still usable.
+        .layer(tower_http::catch_panic::CatchPanicLayer::new())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             app::bearer_gate,
@@ -218,7 +230,8 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     )
     .map_err(|e| std::io::Error::other(e.to_string()))?;
     // Held in state so /status can report a dead watcher truthfully.
-    *state.watcher.lock().expect("watcher lock") = Some(watch_handle);
+    // Poison recovery (robustness H2): see `app::graph_arc`.
+    *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(watch_handle);
     {
         let state = state.clone();
         tokio::spawn(async move {
@@ -506,5 +519,64 @@ mod tests {
         ] {
             assert!(CONTRACT_ROUTES.contains(&family), "missing {family}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_poisoned_lock_degrades_instead_of_cascading_into_a_permanent_outage() {
+        // Robustness H2 regression: a panic while a lock guard is held poisons
+        // that lock. WITHOUT poison recovery, every later `.lock()/.read()`
+        // re-panics → one transient panic = permanent total outage. With the
+        // `unwrap_or_else(|e| e.into_inner())` recovery (paired with the
+        // CatchPanicLayer), the engine keeps serving.
+        let (_dir, state) = fixture_state();
+        state.rebuild_and_swap().unwrap();
+        let token = state.bearer.clone();
+
+        // Poison the graph, meta-cache, and ring locks by panicking while each
+        // guard is held — exactly the shape of a handler panicking mid-commit.
+        // The catch must NOT propagate; we catch the unwind at the seam.
+        for poisoner in [
+            {
+                let s = state.clone();
+                std::thread::spawn(move || {
+                    let _g = s.graph.write().unwrap();
+                    panic!("poison the graph lock");
+                })
+            },
+            {
+                let s = state.clone();
+                std::thread::spawn(move || {
+                    let _g = s.meta_cache.lock().unwrap();
+                    panic!("poison the meta-cache lock");
+                })
+            },
+            {
+                let s = state.clone();
+                std::thread::spawn(move || {
+                    let _g = s.ring.lock().unwrap();
+                    panic!("poison the ring lock");
+                })
+            },
+        ] {
+            assert!(poisoner.join().is_err(), "poisoner thread must have panicked");
+        }
+
+        // The locks are now poisoned. Direct accessors must recover, not panic.
+        let graph = state.graph_arc();
+        assert!(graph.node_count() > 0, "graph_arc recovers a poisoned RwLock");
+        let meta = state.meta_edges();
+        let _ = meta.len(); // meta_edges recovers the poisoned Mutex
+
+        // And the live front door still serves a request end-to-end despite the
+        // three poisoned locks — the cascade is contained.
+        let router = build_router(state);
+        let (status, body) = get_with_token(router.clone(), "/status", Some(&token)).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "engine still serves after a lock-poison event"
+        );
+        assert_eq!(body["data"]["ok"], true);
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
     }
 }
