@@ -13,6 +13,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 
 use crate::app::AppState;
 
@@ -137,24 +138,98 @@ pub async fn stream(
     } else {
         None
     };
-    let live = BroadcastStream::new(receiver).filter_map(move |item| {
-        let event = item.ok()?;
-        if !wanted.iter().any(|c| c == event.channel) {
-            return None;
-        }
-        // Drop graph deltas already replayed from the snapshot.
-        if event.channel == "graph"
-            && let Some(threshold) = dedup_threshold
-            && event.seq <= threshold
-        {
-            return None;
-        }
-        Some(Ok(Event::default()
-            .event(event.channel)
-            .id(event.seq.to_string())
-            .data(event.payload.to_string())))
-    });
+    let live = BroadcastStream::new(receiver)
+        .filter_map(move |item| map_live_item(item, &wanted, dedup_threshold));
 
     let combined = tokio_stream::iter(backlog.into_iter().map(Ok)).chain(live);
     Sse::new(combined).keep_alive(axum::response::sse::KeepAlive::default())
+}
+
+/// Map one live `BroadcastStream` item to an SSE event.
+///
+/// A slow consumer that falls behind the broadcast ring yields
+/// `Err(Lagged(n))`: `n` deltas were dropped from this receiver. The old
+/// `item.ok()?` swallowed that marker, desyncing the client without telling
+/// it. Mirror the `since=` resume contract (contract §7) and emit a `gap`
+/// event so the client re-keyframes instead of silently diverging.
+fn map_live_item(
+    item: Result<crate::app::StreamEvent, BroadcastStreamRecvError>,
+    wanted: &[String],
+    dedup_threshold: Option<u64>,
+) -> Option<Result<Event, Infallible>> {
+    match item {
+        Ok(event) => {
+            if !wanted.iter().any(|c| c == event.channel) {
+                return None;
+            }
+            // Drop graph deltas already replayed from the snapshot.
+            if event.channel == "graph"
+                && let Some(threshold) = dedup_threshold
+                && event.seq <= threshold
+            {
+                return None;
+            }
+            Some(Ok(Event::default()
+                .event(event.channel)
+                .id(event.seq.to_string())
+                .data(event.payload.to_string())))
+        }
+        Err(BroadcastStreamRecvError::Lagged(n)) => Some(Ok(Event::default()
+            .event("gap")
+            .data(json!({"lagged": n, "reason": "broadcast lag"}).to_string()))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::StreamEvent;
+    use tokio::sync::broadcast;
+
+    #[test]
+    fn lagged_item_maps_to_a_gap_event_not_a_silent_drop() {
+        // A slow consumer falling behind must produce a `gap` event, not be
+        // silently filtered out (the old `item.ok()?` desync bug).
+        let mapped = map_live_item(Err(BroadcastStreamRecvError::Lagged(7)), &[], None);
+        let event = mapped
+            .expect("lag must yield an item, never be dropped")
+            .expect("infallible");
+        let rendered = format!("{event:?}");
+        assert!(
+            rendered.contains("gap"),
+            "lag must surface as a `gap` event: {rendered}"
+        );
+        assert!(
+            rendered.contains('7'),
+            "the gap event reports the dropped count: {rendered}"
+        );
+    }
+
+    #[tokio::test]
+    async fn slow_consumer_overflow_yields_a_gap_through_the_real_broadcast_stream() {
+        // Drive an actual overflow through BroadcastStream end-to-end: a tiny
+        // channel, fill past capacity before consuming, then assert the first
+        // item the slow receiver sees is our `gap` marker.
+        let (tx, rx) = broadcast::channel::<StreamEvent>(2);
+        for seq in 0..5 {
+            let _ = tx.send(StreamEvent {
+                channel: "graph",
+                payload: json!({"seq": seq}),
+                seq,
+            });
+        }
+        let wanted = vec!["graph".to_string()];
+        let mut stream =
+            BroadcastStream::new(rx).filter_map(move |item| map_live_item(item, &wanted, None));
+        let first = stream
+            .next()
+            .await
+            .expect("a lagged receiver yields at least the gap marker")
+            .expect("infallible");
+        let rendered = format!("{first:?}");
+        assert!(
+            rendered.contains("gap"),
+            "the overflowed receiver re-keyframes via a gap event: {rendered}"
+        );
+    }
 }
