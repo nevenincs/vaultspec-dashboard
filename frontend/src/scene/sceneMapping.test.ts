@@ -65,7 +65,13 @@ describe("graphDeltaToScene", () => {
       title: "Auth",
       member_count: 5,
     };
-    const result = graphDeltaToScene({ op: "add", node, t: 100, seq: 1, granularity: "feature" });
+    const result = graphDeltaToScene({
+      op: "add",
+      node,
+      t: 100,
+      seq: 1,
+      granularity: "feature",
+    });
     expect(result).not.toBeNull();
     expect(result!.op).toBe("add");
     expect(result!.seq).toBe(1);
@@ -95,7 +101,12 @@ describe("graphDeltaToScene", () => {
     expect(result!.seq).toBe(2);
     expect(result!.t).toBe(200);
     expect(result!.node).toBeUndefined();
-    expect(result!.edge).toMatchObject({ id: "e1", src: "a", dst: "b", tier: "declared" });
+    expect(result!.edge).toMatchObject({
+      id: "e1",
+      src: "a",
+      dst: "b",
+      tier: "declared",
+    });
   });
 
   it("preserves both node and edge when both are present (remove delta)", () => {

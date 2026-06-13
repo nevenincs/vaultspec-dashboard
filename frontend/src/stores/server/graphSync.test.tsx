@@ -106,7 +106,14 @@ describe("useGraphLiveSync", () => {
           // document-granularity delta — must NOT appear in featureDeltas
           granularity: "document",
           op: "add",
-          edge: { id: "e1", src: "a", dst: "b", relation: "declares", tier: "declared", confidence: 1 },
+          edge: {
+            id: "e1",
+            src: "a",
+            dst: "b",
+            relation: "declares",
+            tier: "declared",
+            confidence: 1,
+          },
           t: 1001,
           seq: 12,
         },

@@ -300,9 +300,9 @@ export class SceneController {
    */
   setMinimapCanvas(canvas: HTMLCanvasElement | null): void {
     if (this.field && "setMinimapCanvas" in this.field) {
-      (this.field as { setMinimapCanvas(c: HTMLCanvasElement | null): void }).setMinimapCanvas(
-        canvas,
-      );
+      (
+        this.field as { setMinimapCanvas(c: HTMLCanvasElement | null): void }
+      ).setMinimapCanvas(canvas);
     }
   }
 

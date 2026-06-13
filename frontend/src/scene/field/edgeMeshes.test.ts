@@ -1,8 +1,10 @@
+import { Container } from "pixi.js";
 import { describe, expect, it } from "vitest";
 
 import type { SceneEdgeData } from "../sceneController";
 import {
   DASHES_PER_EDGE,
+  EdgeMeshLayer,
   UnknownTierError,
   bucketLightness,
   confidenceBucket,
@@ -98,5 +100,105 @@ describe("geometry writers", () => {
     // Horizontal segment: normals point in y.
     expect(Array.from(out)).toEqual([0, 2, 0, -2, 10, -2, 10, 2]);
     expect(hazeHalfWidth(1)).toBeGreaterThan(hazeHalfWidth(0));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EdgeMeshLayer.updateEdge — incremental fast-path (FP3-01)
+//
+// updateEdge() only reads/writes lastEdges and groups (plain arrays + Map)
+// and calls the pure edgeGroupKey(). No WebGL methods are invoked in the
+// fast path, so we can test it headlessly by bypassing rebuild() via direct
+// state injection on the private fields.
+// ---------------------------------------------------------------------------
+
+/** Build a minimal SceneEdgeData fixture. */
+function mkEdge(
+  id: string,
+  tier: string,
+  extra?: Partial<SceneEdgeData>,
+): SceneEdgeData {
+  return {
+    id,
+    src: "a",
+    dst: "b",
+    relation: "r",
+    tier,
+    confidence: 1,
+    ...extra,
+  } as SceneEdgeData;
+}
+
+/**
+ * Seed an EdgeMeshLayer's internal state directly (bypasses GPU-bound rebuild).
+ * groups is keyed by the base group key; each holds just enough structure for
+ * updateEdge to find and patch the edge.
+ */
+function seedLayer(layer: EdgeMeshLayer, edges: SceneEdgeData[]): void {
+  const priv = layer as unknown as {
+    lastEdges: SceneEdgeData[];
+    groups: Map<string, { edges: SceneEdgeData[] }>;
+  };
+  priv.lastEdges = [...edges];
+  const groups = new Map<string, { edges: SceneEdgeData[] }>();
+  for (const e of edges) {
+    const key = edgeGroupKey(e);
+    if (!groups.has(key)) groups.set(key, { edges: [] });
+    groups.get(key)!.edges.push(e);
+  }
+  priv.groups = groups;
+}
+
+describe("EdgeMeshLayer.updateEdge", () => {
+  function makeLayer() {
+    return new EdgeMeshLayer(new Container());
+  }
+
+  it("fast path: op:change on same group key returns true", () => {
+    const layer = makeLayer();
+    const e = mkEdge("e1", "declared");
+    seedLayer(layer, [e]);
+    // Same tier — same group key — in-place patch
+    expect(layer.updateEdge(mkEdge("e1", "declared"), "change")).toBe(true);
+  });
+
+  it("op:add returns false — caller must fall back to full rebuild", () => {
+    const layer = makeLayer();
+    const e = mkEdge("e1", "declared");
+    seedLayer(layer, [e]);
+    expect(layer.updateEdge(mkEdge("e1", "declared"), "add")).toBe(false);
+  });
+
+  it("op:remove returns false — caller must fall back to full rebuild", () => {
+    const layer = makeLayer();
+    const e = mkEdge("e1", "declared");
+    seedLayer(layer, [e]);
+    expect(layer.updateEdge(mkEdge("e1", "declared"), "remove")).toBe(false);
+  });
+
+  it("unknown id returns false — treated as add, caller falls back", () => {
+    const layer = makeLayer();
+    seedLayer(layer, [mkEdge("e1", "declared")]);
+    expect(layer.updateEdge(mkEdge("e_unknown", "declared"), "change")).toBe(false);
+  });
+
+  it("group-key shift returns false — tier change requires topology rebuild", () => {
+    const layer = makeLayer();
+    const e = mkEdge("e1", "declared");
+    seedLayer(layer, [e]);
+    // Same id, different tier → different group key → must rebuild
+    expect(layer.updateEdge(mkEdge("e1", "structural"), "change")).toBe(false);
+  });
+
+  it("fast path patches the edge in-place (lastEdges reflects the new data)", () => {
+    const layer = makeLayer();
+    const orig = mkEdge("e1", "declared");
+    seedLayer(layer, [orig]);
+    const updated = mkEdge("e1", "declared", { relation: "updated" });
+    const handled = layer.updateEdge(updated, "change");
+    expect(handled).toBe(true);
+    // Confirm the internal array was patched
+    const priv = layer as unknown as { lastEdges: SceneEdgeData[] };
+    expect(priv.lastEdges[0].relation).toBe("updated");
   });
 });

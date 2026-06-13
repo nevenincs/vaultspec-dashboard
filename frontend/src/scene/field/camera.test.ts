@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SceneEvent } from "../sceneController";
+import type { Container } from "pixi.js";
+
 import {
+  Camera,
   DOCUMENT_LEVEL_SCALE,
   DRAG_THRESHOLD_PX,
   FEATURE_LEVEL_SCALE,
@@ -114,5 +117,145 @@ describe("PointerGestures", () => {
     gestures.doubleClick({ x: 10, y: 0 });
     gestures.doubleClick({ x: 90, y: 0 });
     expect(events).toEqual([{ kind: "open", id: "n1" }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Camera class — animateTo + gesture-cancellation invariants (FP3-01)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal Container stub: Camera.apply() only calls position.set and
+ * scale.set; no WebGL context needed.
+ */
+function fakeWorld(): Container {
+  return {
+    position: { set: () => {} },
+    scale: { set: () => {} },
+  } as unknown as Container;
+}
+
+/**
+ * RAF mock: single-slot pending frame. cancelAnimationFrame clears it so
+ * Camera.cancelAnimation() reliably prevents further step calls.
+ */
+function rafHarness() {
+  let pending: (() => void) | null = null;
+  vi.stubGlobal("requestAnimationFrame", (cb: () => void) => {
+    pending = cb;
+    return 1;
+  });
+  vi.stubGlobal("cancelAnimationFrame", () => {
+    pending = null;
+  });
+  /** Advance the animation until it self-terminates or the limit is hit. */
+  function flush(limit = 500) {
+    let i = 0;
+    while (pending !== null && i++ < limit) {
+      const cb = pending;
+      pending = null;
+      cb();
+    }
+  }
+  /** True when no frame is pending (animation stopped or not started). */
+  function idle() {
+    return pending === null;
+  }
+  /** Fire exactly one frame and stop. */
+  function tick() {
+    if (pending) {
+      const cb = pending;
+      pending = null;
+      cb();
+    }
+  }
+  return { flush, idle, tick };
+}
+
+describe("Camera.animateTo", () => {
+  beforeEach(() => {
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("snaps to the exact target on completion — no overshoot", () => {
+    const { flush } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    cam.set({ x: 200, y: 100, scale: 3 });
+    cam.animateTo({ x: 0, y: 0, scale: 1 });
+    flush();
+    expect(cam.current).toEqual({ x: 0, y: 0, scale: 1 });
+  });
+
+  it("fires onDone exactly once on completion", () => {
+    const { flush } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    let calls = 0;
+    cam.animateTo({ x: 0, y: 0, scale: 1 }, () => {
+      calls++;
+    });
+    flush();
+    expect(calls).toBe(1);
+  });
+
+  it("schedules no further frames after onDone fires", () => {
+    const { flush, idle } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    cam.animateTo({ x: 0, y: 0, scale: 1 });
+    flush();
+    expect(idle()).toBe(true);
+  });
+
+  it("panBy cancels an in-progress animation — gesture wins over programmatic pan", () => {
+    const { idle, tick } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    cam.set({ x: 0, y: 0, scale: 1 });
+    let done = false;
+    cam.animateTo({ x: 1000, y: 0, scale: 1 }, () => {
+      done = true;
+    });
+    expect(idle()).toBe(false); // animation scheduled
+    tick(); // advance one frame — camera moves toward target
+    const midX = cam.current.x;
+    cam.panBy(5, 0); // gesture interrupts
+    expect(idle()).toBe(true); // RAF cancelled
+    expect(done).toBe(false);
+    // Camera reflects the pan delta from the post-frame position
+    expect(cam.current.x).toBeCloseTo(midX + 5, 1);
+  });
+
+  it("set cancels an in-progress animation and applies the new state immediately", () => {
+    const { idle } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    cam.animateTo({ x: 1000, y: 0, scale: 2 });
+    expect(idle()).toBe(false);
+    cam.set({ x: 42, y: 99, scale: 1 });
+    expect(idle()).toBe(true);
+    expect(cam.current).toMatchObject({ x: 42, y: 99, scale: 1 });
+  });
+
+  it("zoomAt cancels an in-progress animation", () => {
+    const { idle } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    cam.animateTo({ x: 500, y: 0, scale: 3 });
+    expect(idle()).toBe(false);
+    cam.zoomAt(0, 0, 1.5);
+    expect(idle()).toBe(true);
+  });
+
+  it("a second animateTo cancels the first", () => {
+    const { tick, idle } = rafHarness();
+    const cam = new Camera(fakeWorld());
+    let first = false;
+    cam.animateTo({ x: 1000, y: 0, scale: 1 }, () => {
+      first = true;
+    });
+    tick();
+    cam.animateTo({ x: 0, y: 0, scale: 1 }); // cancels first
+    expect(first).toBe(false);
+    expect(idle()).toBe(false); // second animation scheduled
   });
 });
