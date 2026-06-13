@@ -12,7 +12,7 @@ related:
   - "[[2026-06-13-constellation-live-delta-research]]"
 ---
 
-# `constellation-live-delta` adr: `constellation participation in the single delta clock (S50)` | (**status:** `proposed`)
+# `constellation-live-delta` adr: `constellation participation in the single delta clock (S50)` | (**status:** `accepted`)
 
 ## Problem Statement
 

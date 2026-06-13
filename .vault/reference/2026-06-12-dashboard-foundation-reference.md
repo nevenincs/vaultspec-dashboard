@@ -3,6 +3,7 @@ tags:
   - '#reference'
   - '#dashboard-foundation'
 date: '2026-06-12'
+modified: '2026-06-12'
 related:
   - "[[2026-06-12-vaultspec-engine-adr]]"
   - "[[2026-06-12-dashboard-gui-adr]]"
@@ -98,6 +99,12 @@ until implementation.
     `{count, breakdown_by_tier}` derived from the underlying document-level
     edges; the GUI never flattens doc-level edges client-side to draw the
     constellation. Document-level edges arrive on descent/expansion.
+  - **Live keyframe clock anchor (amendment 2026-06-13, constellation-live-delta
+    ADR, S50):** every LIVE `/graph/query` response (both granularities) carries
+    `last_seq` — the single delta clock's tip at query time — so a held keyframe
+    splices live `graph` deltas with no gap/overlap, exactly as the
+    document/time-travel path. `as_of` keyframes carry `last_seq: null`
+    (historical: no live-clock position).
 - `GET /filters?scope=` — enumerates the legal filter vocabulary actually
   present (relation types, tiers, doc types, feature tags, node kinds,
   date bounds, refs). The filter UI is data-driven; nothing hardcoded.
@@ -127,10 +134,20 @@ until implementation.
     nothing is silently dropped.
   - Bucketed response: per-bucket `{from, to, counts_by_kind}`.
 - **Time-travel: keyframe + diff (option (b), committed).**
-  - `GET /graph/asof?scope&t=<ts|sha>&filter=` — full snapshot (keyframe).
-  - `GET /graph/diff?scope&from=T1&to=T2&filter=` — ordered delta log:
-    `{op: add|remove|change, node|edge, t, seq}` entries. Scrubbing applies
-    deltas client-side at frame rate; re-keyframe on large jumps.
+  - `GET /graph/asof?scope&t=<ts|sha>&filter=&granularity=` — full snapshot
+    (keyframe). **Granularity (amendment 2026-06-13, constellation-live-delta
+    ADR, S50):** `document` (default) or `feature` — a historical keyframe in
+    the same species as the live view (feature nodes + meta-edges), so the
+    constellation time-travels in its own species, not as a disjoint document
+    graph.
+  - `GET /graph/diff?scope&from=T1&to=T2&filter=&granularity=` — ordered delta
+    log: `{op: add|remove|change, granularity, node|edge, t, seq}` entries.
+    Scrubbing applies deltas client-side at frame rate; re-keyframe on large
+    jumps. **Granularity + the per-entry `granularity` field (amendment
+    2026-06-13, S50):** `feature` returns feature-node + meta-edge deltas (the
+    engine projects the document diff to the constellation species); every entry
+    is tagged `document` | `feature` so a single-granularity consumer applies
+    only its own and ignores the other.
   - **One delta clock.** Diff entries and the live `graph` SSE channel share
     a single monotonic sequence. `/graph/diff` responses carry `last_seq`;
     `/stream` accepts `since=<seq>` and resumes (or signals a gap requiring
@@ -167,6 +184,17 @@ block). No engine semantics in the proxy; domain logic stays in siblings.
 - `graph` — incremental deltas (same shape as §5 diff entries) as the
   watcher re-indexes; GUI animates without refetching. Coarse `dirty`
   events accompany deltas as a fallback resync hint.
+  - **Granularity-tagged deltas on one clock (amendment 2026-06-13,
+    constellation-live-delta ADR, S50):** each `graph` delta carries a
+    `granularity` field (`document` | `feature`); the engine emits BOTH species
+    on the single monotonic clock as the watcher re-indexes (the feature deltas
+    are the engine-projected meta-edge/feature-node diff). **Resume and
+    gap-detection are global-seq** — `since=<seq>` replays all entries after
+    `seq` regardless of granularity, and a gap is a hole in the GLOBAL seq,
+    never a granularity the client isn't watching — while **application is
+    per-granularity**: a consumer splices only the entries matching its current
+    view onto its held keyframe. This keeps one clock and one connection while
+    letting a feature-only (constellation) consumer animate without refetch.
 - `fs` — vault filesystem change notices.
 - `git` — HEAD moves, ref changes, worktree dirty-state changes.
 - `backends` — core/rag health transitions, rag job/index/watcher state.
