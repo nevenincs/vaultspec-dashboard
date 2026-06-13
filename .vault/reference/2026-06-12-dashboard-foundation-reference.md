@@ -105,6 +105,21 @@ until implementation.
     splices live `graph` deltas with no gap/overlap, exactly as the
     document/time-travel path. `as_of` keyframes carry `last_seq: null`
     (historical: no live-clock position).
+  - **Bounded query (amendment 2026-06-13, graph-scale-hardening ADR D2):**
+    every graph read is bounded so the wire never carries an unbounded body
+    (research F2 measured a linear-but-unbounded document slice reaching ~2.25 GB
+    at 1M nodes). The **constellation (feature) granularity is the unbounded-safe
+    default view** — it is bounded by feature count, not document count.
+    **Document granularity is capped** at a hard node ceiling (`MAX_DOCUMENT_NODES`,
+    5000): beyond it the response truncates to the ceiling (keeping only edges
+    among kept nodes, so the returned subgraph is self-consistent) and carries a
+    `truncated: {total_nodes, returned_nodes, reason}` block stating it honestly;
+    a non-truncated response carries `truncated: null`. **Bounded descent** into a
+    constellation node is `granularity=document` + `filter.feature_tags=[<tag>]`,
+    which scopes the document subgraph to that feature's members. Spatial viewport
+    bounding is client-side (the engine holds no layout coordinates — the
+    graph-compute-is-CPU / GPU-is-render boundary), so the engine's region
+    primitive is the feature/kind/text filter, not pixel coordinates.
 - `GET /filters?scope=` — enumerates the legal filter vocabulary actually
   present (relation types, tiers, doc types, feature tags, node kinds,
   date bounds, refs). The filter UI is data-driven; nothing hardcoded.

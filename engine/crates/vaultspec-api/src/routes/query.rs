@@ -221,6 +221,43 @@ fn bound_document_slice(slice: &mut GraphSlice) -> Option<usize> {
     Some(total)
 }
 
+#[cfg(test)]
+mod bound_tests {
+    use super::*;
+
+    fn slice_of(n: usize) -> GraphSlice {
+        GraphSlice {
+            nodes: (0..n).map(|i| json!({"id": format!("doc:{i:06}")})).collect(),
+            edges: Vec::new(),
+            meta_edges: Vec::new(),
+            filter: Filter::default(),
+        }
+    }
+
+    #[test]
+    fn document_slice_under_ceiling_is_untouched() {
+        let mut s = slice_of(100);
+        assert_eq!(bound_document_slice(&mut s), None);
+        assert_eq!(s.nodes.len(), 100, "small slice served whole");
+    }
+
+    #[test]
+    fn document_slice_over_ceiling_truncates_and_reports_total() {
+        let mut s = slice_of(MAX_DOCUMENT_NODES + 1000);
+        let total = bound_document_slice(&mut s);
+        assert_eq!(
+            total,
+            Some(MAX_DOCUMENT_NODES + 1000),
+            "the original total is reported for an honest truncated block"
+        );
+        assert_eq!(
+            s.nodes.len(),
+            MAX_DOCUMENT_NODES,
+            "node payload is hard-bounded at the ceiling"
+        );
+    }
+}
+
 pub async fn graph_query_route(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GraphQueryBody>,

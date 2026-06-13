@@ -117,9 +117,9 @@ Compute the derived projections and serialized slice once per immutable graph ge
 
 Make every graph read bounded: LOD default, finished cursor pagination, a viewport filter, and a hard node ceiling, amending the wire contract.
 
-- [ ] `P03.S06` - Default to LOD, finish cursor pagination, and enforce a hard node ceiling on document granularity; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `P03.S07` - Add a viewport/region filter parameter to the document query; `engine/crates/engine-query/src/filter.rs`.
-- [ ] `P03.S08` - Amend the contract reference and add conformance assertions for the bounded-query semantics; `engine/tests/tests/conformance.rs`.
+- [x] `P03.S06` - Default to LOD, finish cursor pagination, and enforce a hard node ceiling on document granularity; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `P03.S07` - Add a viewport/region filter parameter to the document query; `engine/crates/engine-query/src/filter.rs`.
+- [x] `P03.S08` - Amend the contract reference and add conformance assertions for the bounded-query semantics; `engine/tests/tests/conformance.rs`.
 
 ### Phase `P04` - Frontend LOD default + viewport descent (D4)
 
