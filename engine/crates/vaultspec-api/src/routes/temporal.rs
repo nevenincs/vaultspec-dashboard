@@ -157,6 +157,24 @@ pub async fn graph_diff(
     // (2026-06-13: HEAD~3..HEAD reported 8415 changes / 1 add — the diff was
     // useless). The ref distinction lives in `from`/`to` and each entry's `t`.
     let scope = state.scope.clone();
+    // Equal-ref fast path: if `from` and `to` resolve to the SAME commit (the
+    // common `HEAD` vs its sha case, or a degenerate request), the delta log is
+    // empty by definition — return it without building either as-of graph,
+    // which on a large corpus each cost ~20s (sweep HIGH, 2026-06-13). Resolve
+    // is cheap (no tree walk / no core subprocess); a resolve failure falls
+    // through to the build path so the existing per-ref error shaping fires.
+    if let (Ok(from_sha), Ok(to_sha)) = (
+        engine_graph::asof::resolve_ref(&state.root, &params.from),
+        engine_graph::asof::resolve_ref(&state.root, &params.to),
+    ) && from_sha == to_sha
+    {
+        return Ok(super::envelope(
+            json!({"deltas": [], "last_seq": 0, "clock": "result-local"}),
+            serde_json::to_value(engine_query::envelope::asof_tiers_block())
+                .expect("tiers serialize"),
+            None,
+        ));
+    }
     let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.from, e))?;
     let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope, 0)

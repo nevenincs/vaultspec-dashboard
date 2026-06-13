@@ -72,6 +72,17 @@ fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::Object
     }
 }
 
+/// Resolve a time-travel token to its commit sha WITHOUT building the graph:
+/// open the repo, resolve the revision (or ms-timestamp), return the 40-char
+/// sha. Cheap — no tree traversal, no blob reads, no core subprocess. Lets
+/// `/graph/diff` short-circuit when `from` and `to` name the SAME commit
+/// (e.g. `HEAD` vs its sha), skipping two full as-of rebuilds that on a large
+/// corpus each cost ~20s (sweep HIGH, 2026-06-13).
+pub fn resolve_ref(repo_dir: &Path, reference: &str) -> Result<String> {
+    let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
+    Ok(resolve_commit(&repo, reference)?.to_string())
+}
+
 /// Rebuild the structural slice of the graph as committed at `reference`
 /// (a ref name, commit sha, or millisecond timestamp — contract §5
 /// `t=<ts|sha>`).
