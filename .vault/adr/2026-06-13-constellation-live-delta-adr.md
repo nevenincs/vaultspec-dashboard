@@ -9,13 +9,8 @@ related:
   - "[[2026-06-13-dashboard-live-state-adr]]"
   - "[[2026-06-12-vaultspec-engine-adr]]"
   - "[[2026-06-13-frontend-state-system-reference]]"
+  - "[[2026-06-13-constellation-live-delta-research]]"
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - If you must name a source file, class, or function, use inline backtick
-       code: `src/module.py`. -->
 
 # `constellation-live-delta` adr: `constellation participation in the single delta clock (S50)` | (**status:** `proposed`)
 
