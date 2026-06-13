@@ -127,8 +127,8 @@ Generalize the two proto-commands into one thin typed action/dispatch seam.
 
 Codify the failure taxonomy, route failures into the degradation vocabulary, and publish the platform barrel.
 
-- [ ] `P04.S11` - Implement the FailureKind taxonomy, classifyError, and the failure-policy hook with an injected degradation mapper; `frontend/src/platform/policy/failurePolicy.ts`.
-- [ ] `P04.S12` - Publish the platform public API barrel and wire the query client error sink to the policy; `frontend/src/platform/index.ts`.
+- [x] `P04.S11` - Implement the FailureKind taxonomy, classifyError, and the failure-policy hook with an injected degradation mapper; `frontend/src/platform/policy/failurePolicy.ts`.
+- [x] `P04.S12` - Publish the platform public API barrel and wire the query client error sink to the policy; `frontend/src/platform/index.ts`.
 
 ### Phase `P05` - Live verification under adverse conditions
 
