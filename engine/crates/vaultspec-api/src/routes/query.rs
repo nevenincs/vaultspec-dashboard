@@ -266,19 +266,29 @@ pub async fn graph_query_route(
     let granularity = parse_granularity(&state, body.granularity.as_deref())?;
     let filter = body.filter.unwrap_or_default();
 
-    let (mut slice, tiers) = match &body.as_of {
+    // The as_of branch carries the resolution facts the response must echo
+    // (ADD-901): the 40-char `resolved_sha` and the chosen `interpretation`
+    // (revision vs ms-timestamp). Mirrors /graph/asof + /graph/diff so the
+    // /graph/query historical path no longer makes a client re-derive how its
+    // `as_of` token was read. None for the present view (M-F1).
+    let (mut slice, tiers, resolution) = match &body.as_of {
         // Blob-true historical view (D7.3) with its fidelity-stating block.
         Some(reference) => {
             let scope = engine_model::ScopeRef::Ref {
                 name: reference.clone(),
             };
-            let graph = engine_graph::asof::asof_graph(&state.root, reference, &scope, 0)
-                .map_err(|e| super::revision_error(&state, reference, &e))?;
-            let slice = graph_query(&graph, &scope, filter, granularity)
+            let resolved =
+                engine_graph::asof::asof_graph_resolved(&state.root, reference, &scope, 0)
+                    .map_err(|e| super::revision_error(&state, reference, &e))?;
+            let slice = graph_query(&resolved.graph, &scope, filter, granularity)
                 .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             let tiers = serde_json::to_value(engine_query::envelope::asof_tiers_block())
                 .expect("tiers serialize");
-            (slice, tiers)
+            (
+                slice,
+                tiers,
+                Some((resolved.resolved_sha, resolved.interpretation)),
+            )
         }
         None => {
             let graph = state.graph_arc();
@@ -289,7 +299,7 @@ pub async fn graph_query_route(
             if granularity == Granularity::Feature {
                 slice.meta_edges = (*state.meta_edges()).clone();
             }
-            (slice, rag_tiers(&state))
+            (slice, rag_tiers(&state), None)
         }
     };
     // Live keyframe clock anchor (constellation-live-delta ADR / S50): the
@@ -318,6 +328,17 @@ pub async fn graph_query_route(
         }),
         Granularity::Feature => None,
     };
+    // Additive (ADD-901): when `as_of` is set, echo the commit the token
+    // resolved to and how the token was read — the same two fields /graph/asof
+    // and /graph/diff already carry. Absent on the present view (no as_of),
+    // where there is no token to resolve. All existing fields are preserved.
+    let (resolved_sha, interpretation) = match resolution {
+        Some((sha, interp)) => (
+            Value::from(sha),
+            serde_json::to_value(interp).expect("interpretation serializes"),
+        ),
+        None => (Value::Null, Value::Null),
+    };
     Ok(super::envelope(
         json!({
             "nodes": slice.nodes,
@@ -325,6 +346,8 @@ pub async fn graph_query_route(
             "meta_edges": slice.meta_edges,
             "filter": slice.filter,
             "as_of": body.as_of,
+            "resolved_sha": resolved_sha,
+            "interpretation": interpretation,
             "last_seq": last_seq,
             "truncated": truncated,
         }),

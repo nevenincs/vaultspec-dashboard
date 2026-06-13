@@ -298,6 +298,30 @@ mod tests {
         (status, value)
     }
 
+    async fn post_json_with_token(
+        router: Router,
+        path: &str,
+        json_body: Value,
+        token: Option<&str>,
+    ) -> (StatusCode, Value) {
+        let mut builder = Request::post(path)
+            .header("host", "127.0.0.1")
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        let response = router
+            .oneshot(builder.body(Body::from(json_body.to_string())).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, value)
+    }
+
     fn git(dir: &std::path::Path, args: &[&str]) {
         let output = std::process::Command::new("git")
             .current_dir(dir)
@@ -377,6 +401,95 @@ mod tests {
             "epoch-ms resolves to the latest commit's sha"
         );
         assert_eq!(body["data"]["interpretation"], "timestamp");
+    }
+
+    #[tokio::test]
+    async fn graph_query_as_of_echoes_the_resolved_sha_and_interpretation() {
+        // M-F1 / ADD-901: the POST /graph/query as_of path must echo the same
+        // resolution facts /graph/asof carries — the 40-char resolved_sha and
+        // the chosen interpretation — for BOTH a millisecond-timestamp token
+        // and a revision token. The present (no-as_of) view echoes neither
+        // (null), so the additive fields never lie about resolution.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-q-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#q'\n---\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "fixture"]);
+
+        let head_sha = {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let state = app::build_state(root.to_path_buf());
+        state.rebuild_and_swap().unwrap();
+        let token = state.bearer.clone();
+        let scope = state.root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        // Revision token (`HEAD`): resolves to HEAD's sha, interpretation
+        // `revision`; the raw as_of echo is preserved.
+        let (status, body) = post_json_with_token(
+            router.clone(),
+            "/graph/query",
+            json!({"scope": scope, "as_of": "HEAD"}),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "revision as_of: {body}");
+        assert_eq!(
+            body["data"]["resolved_sha"], head_sha,
+            "echoes HEAD sha for a revision as_of"
+        );
+        assert_eq!(body["data"]["interpretation"], "revision");
+        assert_eq!(body["data"]["as_of"], "HEAD", "raw as_of echo preserved");
+
+        // Millisecond-timestamp token: a far-future epoch-ms resolves to the
+        // latest commit (HEAD), interpretation `timestamp`.
+        let future_ms = (app::now_ms() + 1_000_000).to_string();
+        let (status, body) = post_json_with_token(
+            router.clone(),
+            "/graph/query",
+            json!({"scope": scope, "as_of": future_ms.clone()}),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "timestamp as_of: {body}");
+        assert_eq!(
+            body["data"]["resolved_sha"], head_sha,
+            "epoch-ms as_of resolves to the latest commit's sha"
+        );
+        assert_eq!(body["data"]["interpretation"], "timestamp");
+        assert_eq!(body["data"]["as_of"], future_ms, "raw as_of echo preserved");
+
+        // Present view (no as_of): both fields are null — there is no token to
+        // resolve, and the additive fields must not invent a resolution.
+        let (status, body) = post_json_with_token(
+            router,
+            "/graph/query",
+            json!({"scope": scope}),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "present view: {body}");
+        assert!(
+            body["data"]["resolved_sha"].is_null(),
+            "no resolved_sha without as_of"
+        );
+        assert!(
+            body["data"]["interpretation"].is_null(),
+            "no interpretation without as_of"
+        );
     }
 
     #[tokio::test]
