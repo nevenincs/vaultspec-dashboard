@@ -23,15 +23,8 @@
       ]
     },
     "figma": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "figma-developer-mcp",
-        "--stdio"
-      ],
-      "env": {
-        "FIGMA_API_KEY": "${FIGMA_API_KEY}"
-      }
+      "type": "http",
+      "url": "http://127.0.0.1:3845/mcp"
     },
     "playwright": {
       "command": "npx",
