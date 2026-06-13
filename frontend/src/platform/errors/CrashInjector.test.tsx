@@ -78,4 +78,11 @@ describe("CrashInjector", () => {
     fireEvent.click(screen.getByRole("button", { name: "stage" }));
     expect(useCrashStore.getState().armed.stage).toBe(true);
   });
+
+  it("renders nothing in a production build (dev-gated)", () => {
+    vi.stubEnv("DEV", false);
+    const { container } = render(createElement(CrashInjector));
+    expect(container.querySelector("[data-crash-injector]")).toBeNull();
+    vi.unstubAllEnvs();
+  });
 });

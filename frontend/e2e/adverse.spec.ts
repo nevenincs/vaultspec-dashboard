@@ -72,4 +72,29 @@ test.describe("platform exception containment (live)", () => {
     await expect(page.locator('[data-error-region="stage"]')).toHaveCount(0);
     await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
   });
+
+  test("the global trap captures an unhandled rejection into the logger ring buffer", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
+
+    // Fire a real unhandled promise rejection in the page and read the
+    // dev-exposed ring buffer the global trap routes into (ADR D3/D5).
+    const captured = await page.evaluate(async () => {
+      type Rec = { message: string };
+      const ring = (
+        globalThis as unknown as {
+          __platformRingBuffer?: { snapshot(): Rec[] };
+        }
+      ).__platformRingBuffer;
+      if (!ring) return false;
+      void Promise.reject(new Error("e2e induced rejection"));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return ring
+        .snapshot()
+        .some((record) => record.message.includes("unhandled promise rejection"));
+    });
+    expect(captured).toBe(true);
+  });
 });

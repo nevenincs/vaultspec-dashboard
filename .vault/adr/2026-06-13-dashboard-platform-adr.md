@@ -87,8 +87,9 @@ through a single barrel so the other teams import stable interfaces. Five decisi
   dispatch seam, and the failure-policy hooks.
 
 - **D2 — Dispatch seam.** A typed `Action` (`{ type, payload?, meta? }`) flows
-  through `dispatch(action)`, which runs a middleware chain (log → trace → guard →
-  effect) before the effect executes. Middlewares are composable `(action, next) =>`
+  through `dispatch(action)`, which runs a middleware chain (trace → log → guard →
+  effect) before the effect executes - trace stamps the correlation id first so the
+  log line carries it. Middlewares are composable `(action, next) =>`
   functions; arm-to-confirm becomes a *guard* middleware generalizing `OpsPanel`.
   A `useAction()` React hook is the component face. The seam is opt-in: it is where
   a user intent goes when it wants logging, tracing, guarding, or audit for free.

@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 
 import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
 import { installGlobalTraps } from "./platform/logger/globalTraps";
+import { ringBuffer } from "./platform/logger/logger";
 import { queryClient } from "./stores/server/queryClient";
 import { router } from "./router";
 import "./styles.css";
@@ -28,6 +29,14 @@ if (import.meta.env.VITE_MOCK_ENGINE === "1") {
 
 // Last-resort net for failures that escape React entirely (ADR D5).
 installGlobalTraps();
+
+// Dev-only: expose the log ring buffer for the dev overlay and the adverse
+// e2e pass to read captured records. Never exposed in a production build.
+if (import.meta.env.DEV) {
+  (
+    globalThis as typeof globalThis & { __platformRingBuffer?: typeof ringBuffer }
+  ).__platformRingBuffer = ringBuffer;
+}
 
 createRoot(rootElement).render(
   <StrictMode>

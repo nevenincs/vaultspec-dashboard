@@ -21,6 +21,7 @@ related:
   - '[[2026-06-13-dashboard-platform-P05-S13]]'
   - '[[2026-06-13-dashboard-platform-P05-S14]]'
   - '[[2026-06-13-dashboard-platform-adr]]'
+  - '[[2026-06-13-dashboard-platform-audit]]'
   - '[[2026-06-13-dashboard-platform-plan]]'
   - '[[2026-06-13-dashboard-platform-research]]'
 ---
@@ -34,6 +35,10 @@ Auto-generated index of all documents tagged with `#dashboard-platform`.
 ### adr
 
 - `2026-06-13-dashboard-platform-adr` - `dashboard-platform` adr: `frontend runtime substrate` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-13-dashboard-platform-audit` - `dashboard-platform` audit: `frontend runtime substrate`
 
 ### exec
 

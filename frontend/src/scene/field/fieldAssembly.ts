@@ -334,10 +334,13 @@ export class DashboardField implements SceneFieldRenderer {
     const now = Date.now();
     this.sprites.sync(this.model, now);
     const rejected = this.edges.setEdges([...this.model.edges]).rejected;
-    for (const err of rejected) {
+    if (rejected.length > 0) {
       // Truthfulness: a malformed tier is a loud, structured log, never a
       // silent re-bucket. Surfacing into the degradation UI lands with S46.
-      logger.child("scene.field-assembly").error(err.message);
+      const assemblyLog = logger.child("scene.field-assembly");
+      for (const err of rejected) {
+        assemblyLog.error(err.message);
+      }
     }
     const nodeIds = [...this.model.nodes].map((n) => n.id);
     const edgeRefs = [...this.model.edges].map((e) => ({

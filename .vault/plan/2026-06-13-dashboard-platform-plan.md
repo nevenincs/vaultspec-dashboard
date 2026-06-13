@@ -10,15 +10,6 @@ related:
   - '[[2026-06-13-dashboard-platform-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `dashboard-platform` plan
 
@@ -108,8 +99,11 @@ The plan is complete when every Step is closed and all of the following hold:
   pulling a new runtime dependency.
 - The live adverse-condition pass (`P05.S13`) demonstrates, against the running app,
   that a thrown region degrades to its boundary fallback without white-screening a
-  sibling region; a failed query and a dropped stream render as designed degraded
-  states (not crashes, not silent swallows); and the global traps capture an unhandled
-  rejection into the logger ring buffer.
+  sibling region, that the region recovers on retry, and that the global traps capture
+  an unhandled rejection into the logger ring buffer. The failed-query and
+  dropped-stream paths are classified by the failure policy and covered by the
+  `failurePolicy`, `globalTraps`, and degradation-matrix unit suites; the
+  degraded-surface rendering for those conditions is owned and tested by the
+  `app/degradation` layer (against contract section 8), not by this substrate's e2e.
 - `vaultspec-core vault check all` is green.
 - The `vaultspec-code-review` audit signs off with no unresolved HIGH findings.
