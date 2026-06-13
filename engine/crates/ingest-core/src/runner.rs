@@ -36,6 +36,33 @@ pub enum CoreError {
 
 pub type Result<T> = std::result::Result<T, CoreError>;
 
+impl CoreError {
+    /// A LEAK-FREE category reason safe to surface in a wire `tiers` block.
+    /// The full `Display` of a [`CoreError::Failed`] embeds vaultspec-core's
+    /// raw stderr — which carries ABSOLUTE filesystem paths and core's
+    /// sibling-workspace hint (e.g. naming an unrelated repo elsewhere on the
+    /// machine). That detail belongs in the server log for operators, never in
+    /// a client response (sweep MEDIUM, 2026-06-13). This returns only the
+    /// failure CATEGORY, with no paths or stderr.
+    pub fn wire_reason(&self) -> String {
+        match self {
+            CoreError::Spawn(_) => "vaultspec-core could not be launched".into(),
+            CoreError::Failed { code, .. } => format!(
+                "vaultspec-core exited unsuccessfully (code {code:?}); the scope \
+                 may not be an initialised vaultspec workspace"
+            ),
+            CoreError::Json(_) => "vaultspec-core emitted a malformed JSON envelope".into(),
+            CoreError::UnknownSchema { found, supported } => format!(
+                "vaultspec-core graph schema `{found}` is unsupported (engine supports {supported})"
+            ),
+            CoreError::MissingData => "vaultspec-core envelope was missing its data payload".into(),
+            CoreError::OutputTooLarge { cap_mib } => {
+                format!("vaultspec-core produced over {cap_mib} MiB of output")
+            }
+        }
+    }
+}
+
 /// The versioned `--json` envelope every core verb emits.
 #[derive(Debug, Deserialize)]
 pub struct Envelope {

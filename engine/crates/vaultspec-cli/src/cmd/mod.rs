@@ -165,7 +165,14 @@ impl Ctx {
             &["vaultspec.vault.stats.v1"],
         ) {
             Ok(_) => None,
-            Err(e) => Some(format!("core unreachable: {e}")),
+            // The full error embeds core's stderr — absolute paths and a
+            // sibling-workspace hint — which must not reach the wire `tiers`
+            // block (sweep MEDIUM, 2026-06-13). Log the detail; surface only the
+            // leak-free category.
+            Err(e) => {
+                eprintln!("vaultspec: declared tier unavailable — core stats probe failed: {e}");
+                Some(e.wire_reason())
+            }
         }
     }
 

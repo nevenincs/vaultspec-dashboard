@@ -307,7 +307,14 @@ pub(crate) fn ingest_core_graph(
             Ok(data) => data,
             Err(e) => return (0, Some(format!("core graph payload: {e}"))),
         },
-        Err(e) => return (0, Some(format!("core graph unavailable: {e}"))),
+        // The full error embeds core's stderr — absolute paths and a
+        // sibling-workspace hint — which must NOT reach the wire `tiers` block
+        // (sweep MEDIUM, 2026-06-13). Log the detail for operators; surface only
+        // the leak-free category as the declared-tier degradation reason.
+        Err(e) => {
+            eprintln!("vaultspec: declared tier unavailable — core graph read failed: {e}");
+            return (0, Some(e.wire_reason()));
+        }
     };
     let parsed = match ingest_core::graph_v2::parse(&data, scope, observed_at) {
         Ok(parsed) => parsed,
