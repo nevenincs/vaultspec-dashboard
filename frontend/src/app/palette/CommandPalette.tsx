@@ -164,13 +164,13 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-stone-900/20 pt-24"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/20 pt-24 animate-fade-in"
       role="dialog"
       aria-label="command palette"
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-[28rem] rounded-lg border border-stone-300 bg-white shadow-xl"
+        className="w-[28rem] overflow-hidden rounded-vs-lg border border-rule bg-paper-raised shadow-deep animate-slide-in-down"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // Focus trap (038): the modal owns Tab while open; arrows walk
@@ -201,25 +201,27 @@ export function CommandPalette() {
             }
           }}
           placeholder="type a command, feature, or lens…"
-          className="w-full border-b border-stone-200 px-3 py-2 text-sm outline-none"
+          className="w-full border-b border-rule bg-transparent px-vs-4 py-vs-2 text-body text-ink outline-none placeholder:text-ink-faint"
         />
-        <ul className="max-h-72 overflow-y-auto p-1 text-xs">
+        <ul className="max-h-72 overflow-y-auto py-vs-1 text-body">
           {commands.length === 0 && (
-            <li className="px-2 py-1 text-stone-400">nothing matches</li>
+            <li className="px-vs-4 py-vs-2 text-ink-faint">nothing matches</li>
           )}
           {commands.map((command, i) => (
             <li key={command.id}>
               <button
                 type="button"
                 onClick={() => runAt(i)}
-                className={`flex w-full items-center justify-between rounded px-2 py-1 text-left ${
-                  i === cursor ? "bg-stone-100" : ""
+                className={`flex w-full items-center justify-between rounded-vs-sm px-vs-4 py-vs-1-5 text-left transition-colors duration-ui-fast ease-settle ${
+                  i === cursor
+                    ? "bg-paper-sunken text-ink"
+                    : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
                 }`}
               >
                 <span>
                   {armed === command.id ? `confirm: ${command.label}?` : command.label}
                 </span>
-                <span className="text-stone-400">{command.hint}</span>
+                <span className="text-label text-ink-faint">{command.hint}</span>
               </button>
             </li>
           ))}

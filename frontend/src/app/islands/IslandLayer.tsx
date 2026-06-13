@@ -56,7 +56,7 @@ function Island({ scene, id, children }: IslandProps) {
   return (
     <div
       style={islandStyle(anchor)}
-      className="pointer-events-auto rounded-md border border-stone-300 bg-white/95 p-2 text-xs shadow-md"
+      className="pointer-events-auto rounded-vs-md border border-rule bg-paper-raised/95 p-vs-2 text-body shadow-float"
       data-island-for={id}
     >
       <div className="flex items-center justify-between gap-2">
@@ -64,7 +64,7 @@ function Island({ scene, id, children }: IslandProps) {
         <button
           type="button"
           aria-label={`Close ${id}`}
-          className="text-stone-500 hover:text-stone-900"
+          className="text-ink-faint hover:text-ink"
           onClick={() => closeNode(id)}
         >
           ×

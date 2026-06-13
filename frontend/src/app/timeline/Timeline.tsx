@@ -158,7 +158,7 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
       <svg className="h-full w-full" role="img" aria-label="timeline">
         {LANES.map((lane, i) => (
           <g key={lane}>
-            <text x={4} y={i * LANE_HEIGHT + 14} className="fill-stone-300 text-[9px]">
+            <text x={4} y={i * LANE_HEIGHT + 14} className="fill-ink-faint text-[9px]">
               {lane}
             </text>
             <line
@@ -166,7 +166,7 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
               x2={width}
               y1={(i + 1) * LANE_HEIGHT}
               y2={(i + 1) * LANE_HEIGHT}
-              className="stroke-stone-100"
+              className="stroke-rule"
             />
           </g>
         ))}
@@ -184,7 +184,7 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
                 y={(lane + 1) * LANE_HEIGHT - h - 2}
                 width={w}
                 height={h}
-                className="fill-stone-400/60"
+                className="fill-ink-faint/60"
               />
             );
           });
@@ -200,7 +200,7 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
               key={event.id}
               x={x}
               y={(lane + 1) * LANE_HEIGHT - 6}
-              className="cursor-pointer fill-stone-600 text-[10px] hover:fill-stone-950"
+              className="cursor-pointer fill-ink-muted text-[10px] hover:fill-ink"
               onClick={() => onEventClick?.(event)}
             >
               {eventGlyph(event.kind)}
@@ -213,12 +213,12 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
           x2={width}
           y1={height - RULER_HEIGHT}
           y2={height - RULER_HEIGHT}
-          className="stroke-stone-200"
+          className="stroke-rule-strong"
         />
-        <text x={4} y={height - 4} className="fill-stone-400 text-[9px]">
+        <text x={4} y={height - 4} className="fill-ink-faint text-[9px]">
           {new Date(window_.from).toISOString().slice(0, 10)}
         </text>
-        <text x={width - 70} y={height - 4} className="fill-stone-400 text-[9px]">
+        <text x={width - 70} y={height - 4} className="fill-ink-faint text-[9px]">
           {new Date(window_.to).toISOString().slice(0, 10)}
         </text>
       </svg>

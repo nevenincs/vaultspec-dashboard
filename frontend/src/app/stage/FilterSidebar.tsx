@@ -7,6 +7,7 @@
 // Chrome never touches the wire. The "N hidden" cost comes in from Stage
 // which already owns the visibility membership reduction.
 
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useFiltersVocabulary } from "../../stores/server/queries";
@@ -42,7 +43,9 @@ function Section({ title, badge, defaultOpen = true, children }: SectionProps) {
               {badge}
             </span>
           )}
-          <span className="text-ink-faint">{open ? "▾" : "▸"}</span>
+          <span className="text-ink-faint">
+            {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          </span>
         </span>
       </button>
       {open && <div className="pb-2">{children}</div>}
@@ -259,7 +262,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
       aria-label="filter panel"
       aria-modal={false}
       tabIndex={-1}
-      className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm focus:outline-none"
+      className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm focus:outline-none animate-slide-in-left"
       data-filter-sidebar
     >
       {/* Header */}
@@ -284,7 +287,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             aria-label="close filter panel"
             className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
           >
-            ✕
+            <X size={13} />
           </button>
         </div>
       </div>

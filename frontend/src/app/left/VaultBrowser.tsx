@@ -4,6 +4,7 @@
 // doc-type glyph, feature tag, and freshness. The boring, reliable entry
 // path for users who think in files; selection wiring is S39's.
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { VaultTreeEntry } from "../../stores/server/engine";
@@ -90,20 +91,22 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
   const clickHandler = onEntryClick ?? handleEntryClick;
   const highlight = highlightedPath ?? sharedHighlight;
 
-  if (tree.isPending) return <p className="text-xs text-stone-400">reading vault…</p>;
+  if (tree.isPending) {
+    return <p className="text-label text-ink-faint">reading vault…</p>;
+  }
   if (tree.isError) {
-    return <p className="text-xs text-amber-700">vault tree unavailable</p>;
+    return <p className="text-label text-state-broken">vault tree unavailable</p>;
   }
 
   const groups = groupEntries(tree.data?.entries ?? []);
   const now = Date.now();
 
   return (
-    <nav className="text-xs" aria-label="vault browser" data-vault-browser>
+    <nav className="text-label" aria-label="vault browser" data-vault-browser>
       {[...groups.entries()].map(([group, entries]) => {
         const isCollapsed = collapsed.has(group);
         return (
-          <section key={group} className="mt-1">
+          <section key={group} className="mt-vs-1">
             <button
               type="button"
               aria-expanded={!isCollapsed}
@@ -115,14 +118,14 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
                   return next;
                 })
               }
-              className="flex w-full items-center gap-1 font-medium text-stone-500"
+              className="flex w-full items-center gap-vs-1 font-medium text-ink-muted"
             >
-              <span>{isCollapsed ? "▸" : "▾"}</span>
-              {group}
-              <span className="text-stone-300">{entries.length}</span>
+              {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+              <span>{group}</span>
+              <span className="text-ink-faint">{entries.length}</span>
             </button>
             {!isCollapsed && (
-              <ul className="mt-0.5 ml-3 space-y-0.5">
+              <ul className="ml-vs-3 mt-vs-0-5 space-y-vs-0-5">
                 {entries.map((entry) => {
                   const fresh = freshnessLabel(entry.dates.modified, now);
                   const highlighted = entry.path === highlight;
@@ -132,23 +135,27 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
                         type="button"
                         title={entry.path}
                         onClick={() => clickHandler(entry)}
-                        className={`flex w-full items-center gap-1 truncate rounded px-1 text-left ${
+                        className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle ${
                           highlighted
-                            ? "bg-stone-200 text-stone-900"
-                            : "text-stone-600 hover:bg-stone-50"
+                            ? "bg-accent-subtle font-medium text-ink"
+                            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
                         }`}
                       >
-                        <span className="text-stone-400">
+                        <span className="shrink-0 text-ink-faint">
                           {docGlyph(entry.doc_type)}
                         </span>
-                        <span className="truncate">{entryStem(entry.path)}</span>
+                        <span className="min-w-0 truncate">
+                          {entryStem(entry.path)}
+                        </span>
                         {entry.feature_tags[0] && (
-                          <span className="text-stone-300">
+                          <span className="shrink-0 text-ink-faint">
                             #{entry.feature_tags[0]}
                           </span>
                         )}
                         {fresh && (
-                          <span className="ml-auto text-emerald-600">{fresh}</span>
+                          <span className="ml-auto shrink-0 text-state-active">
+                            {fresh}
+                          </span>
                         )}
                       </button>
                     </li>

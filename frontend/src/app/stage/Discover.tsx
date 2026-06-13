@@ -48,19 +48,19 @@ export function Discover() {
               type="button"
               aria-label="Close discovery"
               onClick={() => setOpenFor(null)}
-              className="text-stone-400 hover:text-stone-900"
+              className="text-ink-faint hover:text-ink"
             >
               ×
             </button>
           </div>
-          {discovery.isPending && <p className="mt-1 text-stone-400">asking rag…</p>}
+          {discovery.isPending && <p className="mt-1 text-ink-faint">asking rag…</p>}
           {discovery.isError && (
-            <p className="mt-1 text-amber-700">
+            <p className="mt-1 text-state-broken">
               semantic discovery offline — rag is not available
             </p>
           )}
           {discovery.data && discovery.data.candidates.length === 0 && (
-            <p className="mt-1 text-stone-400">no candidates above the floor</p>
+            <p className="mt-1 text-ink-faint">no candidates above the floor</p>
           )}
           <ul className="mt-1 space-y-1">
             {discovery.data?.candidates.map((candidate) => {
@@ -78,7 +78,7 @@ export function Discover() {
                   >
                     {candidate.dst.replace(/^(feature|doc):/, "")}
                   </button>
-                  <span className="text-stone-400">
+                  <span className="text-ink-faint">
                     {Math.round(candidate.confidence * 100)}%
                   </span>
                   <button
@@ -89,7 +89,7 @@ export function Discover() {
                     className={
                       isPinned
                         ? "text-violet-800"
-                        : "text-stone-400 hover:text-violet-800"
+                        : "text-ink-faint hover:text-ink-muted"
                     }
                   >
                     {isPinned ? "pinned (session)" : "pin"}

@@ -11,6 +11,7 @@
 // the scene layer (fe-live-graph / DashboardField) renders into it. Chrome
 // never calls the canvas API directly.
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { getScene } from "./Stage";
@@ -54,7 +55,7 @@ export function MinimapWidget() {
           aria-label={collapsed ? "expand minimap" : "collapse minimap"}
           className="text-2xs text-ink-faint hover:text-ink-muted"
         >
-          {collapsed ? "▸" : "▾"}
+          {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
         </button>
       </div>
 

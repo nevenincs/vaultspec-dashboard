@@ -174,7 +174,7 @@ export function RangeSelect() {
           <button
             type="button"
             aria-label="Clear date range"
-            className="rounded bg-stone-100 px-1 text-stone-600"
+            className="rounded-vs-sm bg-paper-sunken px-vs-1 text-ink-muted"
             onClick={() => {
               stopRangePlay();
               setDateRange({});

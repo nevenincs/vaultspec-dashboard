@@ -67,13 +67,13 @@ export function WorkingSet() {
       {workingSet.map((id) => (
         <span
           key={id}
-          className="flex items-center gap-1 rounded-full border border-stone-300 bg-white/90 px-2 py-0.5 text-[10px] text-stone-700 shadow-sm"
+          className="flex items-center gap-vs-1 rounded-full border border-rule bg-paper-raised/90 px-vs-2 py-vs-0-5 text-2xs text-ink shadow-card"
         >
           {id.replace(/^(feature|doc):/, "")}
           <button
             type="button"
             aria-label={`Collapse ${id}`}
-            className="text-stone-400 hover:text-stone-900"
+            className="text-ink-faint hover:text-ink"
             onClick={() => remove(id)}
           >
             ×
@@ -83,7 +83,7 @@ export function WorkingSet() {
       <button
         type="button"
         onClick={clear}
-        className="rounded-full border border-stone-300 bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500 hover:text-stone-900"
+        className="rounded-full border border-rule bg-paper-sunken px-vs-2 py-vs-0-5 text-2xs text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle"
       >
         clear to constellation
       </button>

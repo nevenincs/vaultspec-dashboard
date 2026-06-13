@@ -34,7 +34,7 @@ export function TierDial() {
 
   return (
     <fieldset
-      className="flex items-center gap-2 text-[11px]"
+      className="flex items-center gap-vs-2 text-label"
       aria-label="tier dial"
       data-tier-dial
     >
@@ -42,7 +42,7 @@ export function TierDial() {
         const inapplicable = isTierInapplicable(tier, timelineMode);
         const on = tiers[tier] && !inapplicable;
         return (
-          <span key={tier} className="flex items-center gap-1">
+          <span key={tier} className="flex items-center gap-vs-1">
             <button
               type="button"
               role="switch"
@@ -55,12 +55,12 @@ export function TierDial() {
                   : `${label} tier ${on ? "on" : "off"}`
               }
               onClick={() => setTier(tier, !tiers[tier])}
-              className={`rounded border px-1.5 py-0.5 ${
+              className={`rounded-vs-sm border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle ${
                 inapplicable
-                  ? "cursor-not-allowed border-dashed border-stone-200 text-stone-300"
+                  ? "cursor-not-allowed border-dashed border-rule text-ink-faint"
                   : on
-                    ? "border-stone-500 bg-stone-100 text-stone-900"
-                    : "border-stone-200 text-stone-400"
+                    ? "border-rule-strong bg-paper-sunken text-ink"
+                    : "border-rule text-ink-faint hover:border-rule-strong hover:text-ink-muted"
               }`}
             >
               {mark} {label}
@@ -75,7 +75,7 @@ export function TierDial() {
                 aria-label={`${label} confidence floor`}
                 title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
                 onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
-                className="h-1 w-14 accent-stone-600"
+                className="h-1 w-14 accent-ink-muted"
               />
             )}
           </span>

@@ -11,6 +11,7 @@
 // Seam boundary: panel dispatches only via SceneController.command(); it
 // never fetches, never touches stores, and never reaches the worker directly.
 
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { LayoutParams } from "../../scene/field/layoutWorker";
@@ -128,7 +129,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
       role="dialog"
       aria-label="layout algorithm controls"
       aria-modal={false}
-      className="pointer-events-auto absolute bottom-12 right-2 z-20 w-52 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm"
+      className="pointer-events-auto absolute bottom-12 right-2 z-20 w-52 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm animate-slide-in-up"
       data-algorithm-panel
     >
       {/* Header */}
@@ -153,7 +154,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
             aria-label="close layout panel"
             className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
           >
-            ✕
+            <X size={13} />
           </button>
         </div>
       </div>

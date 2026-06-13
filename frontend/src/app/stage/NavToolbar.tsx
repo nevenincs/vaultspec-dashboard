@@ -10,6 +10,15 @@
 // Seam boundary: chrome calls SceneController.command() only; no fetching,
 // no derived data, no direct access to the Pixi renderer.
 
+import {
+  Maximize,
+  Maximize2,
+  Minimize,
+  Minus,
+  Plus,
+  RotateCcw,
+  Settings2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { SemanticLevel } from "../../scene/field/camera";
@@ -38,12 +47,12 @@ function exitFullscreen() {
 interface ToolButtonProps {
   label: string;
   title?: string;
-  glyph: string;
+  icon: React.ReactNode;
   onClick: () => void;
   pressed?: boolean;
 }
 
-function ToolButton({ label, title, glyph, onClick, pressed }: ToolButtonProps) {
+function ToolButton({ label, title, icon, onClick, pressed }: ToolButtonProps) {
   return (
     <button
       type="button"
@@ -51,13 +60,13 @@ function ToolButton({ label, title, glyph, onClick, pressed }: ToolButtonProps) 
       aria-pressed={pressed}
       title={title ?? label}
       onClick={onClick}
-      className={`flex h-6 w-6 items-center justify-center rounded-vs-sm text-[12px] transition-colors ${
+      className={`flex h-6 w-6 items-center justify-center rounded-vs-sm transition-colors duration-ui-fast ease-settle ${
         pressed
           ? "bg-paper-sunken text-ink hover:bg-rule"
           : "text-ink-faint hover:bg-paper-sunken hover:text-ink"
       }`}
     >
-      {glyph}
+      {icon}
     </button>
   );
 }
@@ -106,7 +115,7 @@ export function NavToolbar({
       {/* Camera controls (SceneController zoom commands, P01.S02) */}
       <ToolButton
         label="zoom out"
-        glyph="−"
+        icon={<Minus size={13} />}
         onClick={() => scene.controller.command({ kind: "zoom-out" })}
       />
       {level !== null && (
@@ -120,7 +129,7 @@ export function NavToolbar({
       )}
       <ToolButton
         label="zoom in"
-        glyph="+"
+        icon={<Plus size={13} />}
         onClick={() => scene.controller.command({ kind: "zoom-in" })}
       />
 
@@ -129,13 +138,13 @@ export function NavToolbar({
       <ToolButton
         label="fit to view"
         title="fit all nodes into viewport"
-        glyph="⊡"
+        icon={<Maximize2 size={13} />}
         onClick={() => scene.controller.command({ kind: "fit-to-view" })}
       />
       <ToolButton
         label="reset view"
         title="reset camera to origin"
-        glyph="↺"
+        icon={<RotateCcw size={13} />}
         onClick={() => scene.controller.command({ kind: "reset-view" })}
       />
 
@@ -145,7 +154,7 @@ export function NavToolbar({
       <ToolButton
         label="toggle layout controls"
         title={algorithmPanelOpen ? "close layout controls" : "open layout controls"}
-        glyph="⚙"
+        icon={<Settings2 size={13} />}
         pressed={algorithmPanelOpen}
         onClick={onAlgorithmPanelToggle}
       />
@@ -163,7 +172,7 @@ export function NavToolbar({
           type="button"
           aria-pressed={granularity === "feature"}
           onClick={() => setGranularity("feature")}
-          className={`flex items-center px-vs-1-5 py-vs-0-5 transition-colors ${
+          className={`flex items-center px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle ${
             granularity === "feature"
               ? "bg-paper-sunken font-medium text-ink"
               : "text-ink-faint hover:text-ink-muted"
@@ -177,7 +186,7 @@ export function NavToolbar({
           type="button"
           aria-pressed={granularity === "document"}
           onClick={() => setGranularity("document")}
-          className={`flex items-center px-vs-1-5 py-vs-0-5 transition-colors ${
+          className={`flex items-center px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle ${
             granularity === "document"
               ? "bg-paper-sunken font-medium text-ink"
               : "text-ink-faint hover:text-ink-muted"
@@ -194,7 +203,7 @@ export function NavToolbar({
       <ToolButton
         label={isFullscreen ? "exit fullscreen" : "fullscreen"}
         title={isFullscreen ? "exit fullscreen (Esc)" : "fullscreen"}
-        glyph="⛶"
+        icon={isFullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
         pressed={isFullscreen}
         onClick={isFullscreen ? exitFullscreen : enterFullscreen}
       />

@@ -46,12 +46,12 @@ export function OpsPanel() {
   });
 
   return (
-    <div className="space-y-1 text-xs" data-ops-panel>
-      <div className="font-medium text-stone-600">operations</div>
+    <div className="space-y-vs-1 text-body" data-ops-panel>
+      <div className="font-medium text-ink-muted">operations</div>
       {timeTravel && (
-        <p className="text-amber-700">disabled while time travelling (G4.b)</p>
+        <p className="text-state-stale">disabled while time travelling (G4.b)</p>
       )}
-      <ul className="flex flex-wrap gap-1">
+      <ul className="flex flex-wrap gap-vs-1">
         {OPS_WHITELIST.map(({ target, verb, label }) => {
           const key = `${target}:${verb}`;
           const isConfirming = confirming === key;
@@ -64,12 +64,12 @@ export function OpsPanel() {
                   if (isConfirming) run.mutate({ target, verb });
                   else setConfirming(key);
                 }}
-                className={`rounded border px-1.5 py-0.5 ${
+                className={`rounded-vs-sm border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle ${
                   timeTravel
-                    ? "cursor-not-allowed border-stone-200 text-stone-300"
+                    ? "cursor-not-allowed border-rule text-ink-faint"
                     : isConfirming
-                      ? "border-amber-500 bg-amber-50 text-amber-900"
-                      : "border-stone-300 text-stone-700 hover:border-stone-500"
+                      ? "border-state-stale bg-paper-sunken text-state-stale"
+                      : "border-rule text-ink hover:border-rule-strong"
                 }`}
               >
                 {isConfirming ? `confirm ${label}?` : label}
@@ -81,13 +81,13 @@ export function OpsPanel() {
       {confirming && !timeTravel && (
         <button
           type="button"
-          className="text-stone-400 underline"
+          className="text-ink-faint underline hover:text-ink-muted"
           onClick={() => setConfirming(null)}
         >
           cancel
         </button>
       )}
-      {lastResult && <p className="text-stone-500">{lastResult}</p>}
+      {lastResult && <p className="text-ink-muted">{lastResult}</p>}
     </div>
   );
 }

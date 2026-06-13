@@ -17,16 +17,16 @@ export function SearchTab() {
   const search = useSearchWithFallback(query, target, scope);
 
   return (
-    <div className="space-y-2 text-xs" data-search-tab>
+    <div className="space-y-vs-2 text-body" data-search-tab>
       <input
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="semantic search…"
         aria-label="search query"
-        className="w-full rounded border border-stone-200 px-2 py-1"
+        className="w-full rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 text-ink placeholder:text-ink-faint focus:border-rule-strong focus:outline-none"
       />
-      <div className="flex gap-1" role="radiogroup" aria-label="search target">
+      <div className="flex gap-vs-1" role="radiogroup" aria-label="search target">
         {(["vault", "code"] as const).map((t) => (
           <button
             key={t}
@@ -34,43 +34,41 @@ export function SearchTab() {
             role="radio"
             aria-checked={target === t}
             onClick={() => setTarget(t)}
-            className={`rounded-full border px-2 py-0.5 ${
+            className={`rounded-full border px-vs-2 py-vs-0-5 transition-colors duration-ui-fast ease-settle ${
               target === t
-                ? "border-stone-500 bg-stone-100 text-stone-900"
-                : "border-stone-200 text-stone-500"
+                ? "border-rule-strong bg-paper-sunken text-ink"
+                : "border-rule text-ink-muted hover:border-rule-strong hover:text-ink"
             }`}
           >
             {t}
           </button>
         ))}
       </div>
-      {query && search.isPending && <p className="text-stone-400">searching…</p>}
+      {query && search.isPending && <p className="text-ink-faint">searching…</p>}
       {search.semanticOffline && (
         <p
-          className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800"
+          className="rounded-vs-sm border border-state-stale/30 bg-paper-raised px-vs-2 py-vs-1 text-state-stale"
           data-semantic-offline
         >
           semantic search offline — showing title/text matches
           {target === "code" ? " (vault only; no code fallback)" : ""}
         </p>
       )}
-      <ul className="space-y-1">
+      <ul className="space-y-vs-1">
         {search.results.map((result) => (
           <li key={`${result.source}:${result.score}`}>
             <button
               type="button"
               disabled={result.node_id === null}
               onClick={() => result.node_id && selectNode(result.node_id)}
-              className="w-full rounded border border-stone-100 px-2 py-1 text-left hover:border-stone-300 disabled:cursor-default"
+              className="w-full rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken disabled:cursor-default"
               title={result.node_id ?? "no graph node for this result"}
             >
-              <span className="flex items-center justify-between gap-1">
-                <span className="truncate font-medium text-stone-700">
-                  {result.source}
-                </span>
-                <span className="flex items-center gap-1 text-stone-400">
+              <span className="flex items-center justify-between gap-vs-1">
+                <span className="truncate font-medium text-ink">{result.source}</span>
+                <span className="flex shrink-0 items-center gap-vs-1 text-ink-faint">
                   {search.semanticOffline && (
-                    <span className="rounded bg-stone-100 px-1 text-[9px] text-stone-500">
+                    <span className="rounded-vs-sm bg-paper-sunken px-vs-1 text-2xs text-ink-muted">
                       text match
                     </span>
                   )}
@@ -78,7 +76,7 @@ export function SearchTab() {
                 </span>
               </span>
               {result.excerpt && (
-                <span className="block truncate text-stone-500">{result.excerpt}</span>
+                <span className="block truncate text-ink-muted">{result.excerpt}</span>
               )}
             </button>
           </li>

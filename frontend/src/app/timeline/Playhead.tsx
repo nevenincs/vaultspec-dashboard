@@ -98,7 +98,7 @@ export function Playhead() {
         aria-label="playhead"
         aria-valuetext={live ? "LIVE" : new Date(playheadT).toISOString()}
         className={`pointer-events-auto absolute top-0 bottom-0 w-[3px] cursor-ew-resize ${
-          live ? "bg-emerald-600" : "bg-amber-600"
+          live ? "bg-state-live" : "bg-state-stale"
         }`}
         style={{ left: `${Math.max(0, Math.min(width - 3, x))}px` }}
       />
@@ -107,10 +107,10 @@ export function Playhead() {
         onClick={() => movePlayhead("live")}
         className={`pointer-events-auto absolute top-0 right-1 rounded px-1 text-[10px] font-medium ${
           reconnecting
-            ? "text-amber-700"
+            ? "text-state-stale"
             : live
-              ? "text-emerald-700"
-              : "text-amber-700 underline"
+              ? "text-state-live"
+              : "text-state-stale underline"
         }`}
       >
         {reconnecting ? "↻ RECONNECTING" : live ? "▶ LIVE" : "⏪ return to live"}
@@ -124,7 +124,7 @@ export function TimeTravelChip() {
   const mode = useViewStore((s) => s.timelineMode);
   if (mode.kind !== "time-travel") return null;
   return (
-    <div className="pointer-events-auto absolute bottom-2 right-2 z-10 rounded-full border border-amber-300 bg-amber-50/95 px-3 py-1 text-[11px] text-amber-900 shadow-md">
+    <div className="pointer-events-auto absolute bottom-2 right-2 z-10 rounded-full border border-state-stale/40 bg-paper-raised/95 px-vs-3 py-vs-1 text-label text-state-stale shadow-card">
       viewing {new Date(mode.at).toISOString().slice(0, 16).replace("T", " ")} —{" "}
       <button type="button" className="underline" onClick={() => movePlayhead("live")}>
         return to live

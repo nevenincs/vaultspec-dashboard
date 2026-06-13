@@ -72,7 +72,7 @@ export function DegradationDebugSwitch() {
           </ul>
           <button
             type="button"
-            className="mt-1 text-stone-400 underline"
+            className="mt-1 text-ink-faint underline hover:text-ink-muted"
             onClick={() => {
               clearOverrides();
               void driveMock("ragDown", false);

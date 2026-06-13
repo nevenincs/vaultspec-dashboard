@@ -5,6 +5,7 @@
 // and the per-tier edge list, collapsed by default and unfolding on
 // selection (the Unfolding Edges pattern).
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { EngineEdge } from "../../stores/server/engine";
@@ -53,13 +54,13 @@ export function Inspector() {
   const [unfolded, setUnfolded] = useState<Set<string>>(new Set());
 
   if (!selection) {
-    return <p className="text-xs text-stone-400">select something to inspect</p>;
+    return <p className="text-body text-ink-faint">select something to inspect</p>;
   }
   if (selection.kind === "event") {
     return (
-      <div className="text-xs" data-inspector>
-        <div className="font-medium text-stone-700">event {selection.id}</div>
-        <p className="text-stone-500">
+      <div className="text-body" data-inspector>
+        <div className="font-medium text-ink">event {selection.id}</div>
+        <p className="text-ink-muted">
           {eventTouchSummary(selection.nodeIds, selection.truncatedNodeIds)}
         </p>
       </div>
@@ -67,26 +68,26 @@ export function Inspector() {
   }
   if (selection.kind === "edge") {
     return (
-      <div className="text-xs" data-inspector>
-        <div className="font-medium text-stone-700">edge {selection.id}</div>
+      <div className="text-body" data-inspector>
+        <div className="font-medium text-ink">edge {selection.id}</div>
       </div>
     );
   }
-  if (detail.isPending) return <p className="text-xs text-stone-400">inspecting…</p>;
+  if (detail.isPending) return <p className="text-body text-ink-faint">inspecting…</p>;
   if (detail.isError || !detail.data) {
-    return <p className="text-xs text-amber-700">node unavailable</p>;
+    return <p className="text-body text-state-broken">node unavailable</p>;
   }
 
   const node = detail.data.node;
   const tiers = edgesByTier(neighbors.data?.edges);
 
   return (
-    <div className="space-y-2 text-xs" data-inspector>
+    <div className="space-y-vs-3 text-body" data-inspector>
       <div>
-        <div className="truncate font-medium text-stone-800" title={node.id}>
+        <div className="truncate font-medium text-ink" title={node.id}>
           {node.title ?? node.id}
         </div>
-        <p className="text-stone-500">
+        <p className="text-ink-muted">
           {node.kind}
           {node.lifecycle ? ` · ${node.lifecycle.state}` : ""}
           {node.lifecycle?.progress
@@ -98,8 +99,8 @@ export function Inspector() {
 
       {evidence.data && (
         <section>
-          <div className="font-medium text-stone-600">evidence</div>
-          <ul className="text-stone-500">
+          <div className="mb-vs-1 font-medium text-ink-muted">evidence</div>
+          <ul className="space-y-vs-0-5 text-ink-muted">
             {evidence.data.documents.slice(0, 5).map((doc) => (
               <li key={doc.path} className="truncate" title={doc.path}>
                 {doc.doc_type}: {doc.path.replace(/^.*\//, "")}
@@ -110,7 +111,7 @@ export function Inspector() {
                 code: {loc.path}
                 <span
                   className={
-                    loc.state === "resolved" ? "text-emerald-700" : "text-amber-700"
+                    loc.state === "resolved" ? "text-state-active" : "text-state-broken"
                   }
                 >
                   {" "}
@@ -122,7 +123,7 @@ export function Inspector() {
               <li key={commit.sha} className="truncate" title={commit.subject}>
                 commit {commit.sha.slice(0, 7)}: {commit.subject}
                 {commit.rule && (
-                  <span className="text-stone-400"> · via {commit.rule}</span>
+                  <span className="text-ink-faint"> · via {commit.rule}</span>
                 )}
               </li>
             ))}
@@ -131,11 +132,11 @@ export function Inspector() {
       )}
 
       <section>
-        <div className="font-medium text-stone-600">edges by tier</div>
+        <div className="mb-vs-1 font-medium text-ink-muted">edges by tier</div>
         {[...tiers.entries()].map(([tier, edges]) => {
           const open = unfolded.has(tier);
           return (
-            <div key={tier}>
+            <div key={tier} className="mb-vs-0-5">
               <button
                 type="button"
                 aria-expanded={open}
@@ -147,13 +148,14 @@ export function Inspector() {
                     return next;
                   })
                 }
-                className="text-stone-600 hover:text-stone-900"
+                className="flex items-center gap-vs-1 text-ink-muted hover:text-ink"
               >
-                {open ? "▾" : "▸"} {tier}{" "}
-                <span className="text-stone-400">{edges.length}</span>
+                {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                <span>{tier}</span>
+                <span className="text-ink-faint">{edges.length}</span>
               </button>
               {open && (
-                <ul className="ml-3 text-stone-500">
+                <ul className="ml-vs-3 mt-vs-0-5 space-y-vs-0-5 text-ink-muted">
                   {edges.map((edge) => (
                     <li key={edge.id}>
                       <button

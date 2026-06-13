@@ -58,10 +58,10 @@ export function NodeInterior({ id }: { id: string }) {
   const detail = useNodeDetail(id);
   const kind = detail.data?.node.kind;
   if (detail.isPending) {
-    return <p className="mt-1 text-stone-400">unfolding…</p>;
+    return <p className="mt-1 text-ink-faint">unfolding…</p>;
   }
   if (detail.isError || !detail.data) {
-    return <p className="mt-1 text-amber-700">interior unavailable</p>;
+    return <p className="mt-1 text-state-broken">interior unavailable</p>;
   }
   if (kind === "feature") return <FeatureLifecycle id={id} />;
   if (kind === "plan") return <PlanInterior detail={detail.data} />;
@@ -72,18 +72,18 @@ export function NodeInterior({ id }: { id: string }) {
 function FeatureLifecycle({ id }: { id: string }) {
   const neighbors = useNodeNeighbors(id);
   if (!neighbors.data) {
-    return <p className="mt-1 text-stone-400">unfolding lifecycle…</p>;
+    return <p className="mt-1 text-ink-faint">unfolding lifecycle…</p>;
   }
   const docs = arrangeLifecycleAxis(neighbors.data.nodes);
   return (
     <ol className="mt-1 flex items-center gap-1" data-lifecycle-axis>
       {docs.map((doc, i) => (
         <li key={doc.id} className="flex items-center gap-1">
-          {i > 0 && <span className="text-stone-300">→</span>}
+          {i > 0 && <span className="text-ink-faint">→</span>}
           <button
             type="button"
             onClick={() => selectNode(doc.id)}
-            className="rounded border border-stone-200 px-1 py-0.5 text-[10px] hover:border-stone-400"
+            className="rounded-vs-sm border border-rule px-vs-1 py-vs-0-5 text-2xs hover:border-rule-strong hover:bg-paper-sunken transition-colors duration-ui-fast ease-settle"
             title={doc.title}
           >
             {doc.kind}
@@ -101,7 +101,7 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
   return (
     <div className="mt-1" data-plan-interior>
       {progress && (
-        <p className="text-[10px] text-stone-500">
+        <p className="text-2xs text-ink-muted">
           {progress.done}/{progress.total} steps done
         </p>
       )}
@@ -113,8 +113,8 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
               onClick={() => selectNode(step.id)}
               className={`w-full rounded border px-1 py-0.5 text-[10px] ${
                 step.done
-                  ? "border-emerald-700/40 bg-emerald-50 text-emerald-900"
-                  : "border-stone-200 text-stone-600"
+                  ? "border-state-active/40 bg-accent-subtle text-accent-text"
+                  : "border-rule text-ink-muted"
               }`}
             >
               {step.done ? "✓ " : ""}
@@ -129,7 +129,7 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
 
 function NodeSummary({ node }: { node: EngineNode }) {
   return (
-    <dl className="mt-1 text-[10px] text-stone-500">
+    <dl className="mt-1 text-2xs text-ink-muted">
       <div>
         <dt className="inline font-medium">kind:</dt>{" "}
         <dd className="inline">{node.kind}</dd>

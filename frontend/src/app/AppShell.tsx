@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
@@ -49,7 +50,7 @@ export function AppShell() {
               aria-label={leftCollapsed ? "expand scope rail" : "collapse scope rail"}
               className="flex h-5 w-5 shrink-0 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
             >
-              {leftCollapsed ? "›" : "‹"}
+              {leftCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
             </button>
             {!leftCollapsed && (
               <>
@@ -93,7 +94,7 @@ export function AppShell() {
                 aria-label="expand activity rail"
                 className="mx-auto flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
               >
-                ‹
+                <ChevronLeft size={12} />
               </button>
             ) : (
               <>
@@ -106,7 +107,7 @@ export function AppShell() {
                   aria-label="collapse activity rail"
                   className="flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
                 >
-                  ›
+                  <ChevronRight size={12} />
                 </button>
               </>
             )}
@@ -158,7 +159,7 @@ function ThemeToggle() {
         document.documentElement.dataset.theme = next ? "dark" : "light";
       }}
     >
-      {dark ? "☀" : "☾"}
+      {dark ? <Sun size={12} /> : <Moon size={12} />}
     </button>
   );
 }
