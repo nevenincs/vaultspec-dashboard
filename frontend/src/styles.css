@@ -14,6 +14,7 @@
   --color-paper-raised: #ffffff;
   --color-paper-sunken: #f2ede6; /* inset wells, inactive tabs */
   --color-paper-aged: #f5efe2; /* the time-travel tint: paper "ages" */
+  --color-canvas-bg: #faf9f7; /* Pixi canvas + minimap canvas ground */
   --color-ink: #2b2620;
   --color-ink-muted: #6a6258;
   --color-ink-faint: #a39b8f;
@@ -77,6 +78,12 @@
   --duration-ui: 200ms;
   --duration-ui-fast: 150ms;
   --duration-ui-slow: 250ms;
+
+  /* -- animations (keyframe names registered here; @keyframes below) ------ */
+  --animate-fade-in: fade-in var(--duration-ui-fast) var(--ease-settle);
+  --animate-slide-in-left: slide-in-left var(--duration-ui-slow) var(--ease-settle);
+  --animate-slide-in-up: slide-in-up var(--duration-ui) var(--ease-settle);
+  --animate-slide-in-down: slide-in-down var(--duration-ui) var(--ease-settle);
 }
 
 /* Dark theme: variable remap only (G7.3 — light + dark from day one). */
@@ -86,6 +93,7 @@
     --color-paper-raised: #2a2722;
     --color-paper-sunken: #1a1815;
     --color-paper-aged: #2e2820;
+    --color-canvas-bg: #211e1a;
     --color-ink: #e8e3da;
     --color-ink-muted: #a39b8f;
     --color-ink-faint: #6a6258;
@@ -116,6 +124,11 @@
   body {
     background-color: var(--color-paper);
     color: var(--color-ink);
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
 
   /* Reduced-motion floor (G7.d); honored app-wide, S48 owns the rest. */
@@ -126,5 +139,48 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/* Keyframe definitions (referenced by --animate-* tokens above) */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-up {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-down {
+  from {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
   }
 }

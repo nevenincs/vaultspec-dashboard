@@ -159,8 +159,10 @@ export class MinimapLayer {
     // Clear.
     ctx.clearRect(0, 0, w, h);
 
-    // Background.
-    ctx.fillStyle = "#faf9f7";
+    // Background — read theme token so the minimap matches the canvas ground.
+    const cssRoot = getComputedStyle(document.documentElement);
+    const bgColor = cssRoot.getPropertyValue("--color-canvas-bg").trim() || "#faf9f7";
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, w, h);
 
     // Draw node dots.
@@ -193,8 +195,8 @@ export class MinimapLayer {
       ctx.strokeRect(rx, ry, rw, rh);
     }
 
-    // Border.
-    ctx.strokeStyle = "#e0ddd8";
+    // Border — use the rule token so it separates cleanly on any theme.
+    ctx.strokeStyle = cssRoot.getPropertyValue("--color-rule").trim() || "#e5e1da";
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
   }

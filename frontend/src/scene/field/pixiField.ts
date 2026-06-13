@@ -11,8 +11,19 @@ import { Application, Container } from "pixi.js";
 
 import type { SceneFieldRenderer } from "../sceneController";
 
-/** Background matches the paper-warm ground until the token layer (S47). */
-const FIELD_BACKGROUND = 0xfaf9f7;
+/**
+ * Read the canvas background colour from the --color-canvas-bg CSS variable.
+ * Returns a numeric RGB hex suitable for Pixi (e.g. 0xfaf9f7 in light mode,
+ * 0x211e1a in dark mode).  Falls back to the paper-warm light value if the
+ * variable is absent so the field is never transparent.
+ */
+function readCanvasBg(): number {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--color-canvas-bg")
+    .trim();
+  if (!raw || !raw.startsWith("#")) return 0xfaf9f7;
+  return parseInt(raw.slice(1), 16);
+}
 
 export class PixiField implements SceneFieldRenderer {
   private app: Application | null = null;
@@ -22,6 +33,8 @@ export class PixiField implements SceneFieldRenderer {
   private destroyed = false;
   private pendingResize: { width: number; height: number } | null = null;
   private readyListeners = new Set<(app: Application) => void>();
+  /** Watches for data-theme changes to keep the canvas background in sync. */
+  private themeObserver: MutationObserver | null = null;
 
   /**
    * Attach the renderer's canvas into the host element. Pixi v8 init is
@@ -35,7 +48,7 @@ export class PixiField implements SceneFieldRenderer {
     const app = new Application();
     this.mounting = app
       .init({
-        background: FIELD_BACKGROUND,
+        background: readCanvasBg(),
         resizeTo: host,
         antialias: true,
         preference: "webgl",
@@ -49,6 +62,17 @@ export class PixiField implements SceneFieldRenderer {
         this.app = app;
         app.stage.addChild(this.world);
         host.appendChild(app.canvas);
+        // Track theme switches so the canvas background stays in sync with
+        // the --color-canvas-bg token as data-theme flips on <html>.
+        this.themeObserver = new MutationObserver(() => {
+          if (this.app) {
+            this.app.renderer.background.color = readCanvasBg();
+          }
+        });
+        this.themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["data-theme"],
+        });
         if (this.pendingResize) {
           this.resize(this.pendingResize.width, this.pendingResize.height);
           this.pendingResize = null;
@@ -84,6 +108,8 @@ export class PixiField implements SceneFieldRenderer {
   destroy(): void {
     this.destroyed = true;
     this.pendingResize = null;
+    this.themeObserver?.disconnect();
+    this.themeObserver = null;
     if (this.app) {
       this.app.destroy(true, { children: true });
       this.app = null;
