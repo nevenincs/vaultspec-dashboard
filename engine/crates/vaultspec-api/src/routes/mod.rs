@@ -33,6 +33,25 @@ pub(crate) fn query_tiers(state: &AppState) -> serde_json::Value {
     serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
 }
 
+/// A tier block carrying an explicit `semantic` degradation reason layered onto
+/// the real declared-tier status. Degrade paths (rag down, or a per-request rag
+/// failure / shape-miss) know semantic is unavailable for THIS response; they
+/// must still report the declared tier truthfully (LENSA-02), so this overlays
+/// declared_status the same way query_tiers() does — never defaulting declared
+/// to available.
+pub(crate) fn degraded_tiers(state: &AppState, semantic_reason: &str) -> serde_json::Value {
+    let mut unavailable: Vec<(&'static str, String)> =
+        vec![("semantic", semantic_reason.to_string())];
+    if let Ok(status) = state.declared_status.read()
+        && let Some(reason) = status.as_ref()
+    {
+        unavailable.push(("declared", reason.clone()));
+    }
+    let refs: Vec<(&'static str, &str)> =
+        unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
+    serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
+}
+
 /// THE shared success envelope (audit L1, contract §2): every HTTP payload
 /// travels as `{data, tiers, next_cursor?}` — the CLI's ok/command/status
 /// vocabulary is the CLI's own; HTTP conforms to §2.

@@ -48,6 +48,30 @@ async fn get(router: axum::Router, path: &str, token: &str) -> (StatusCode, Valu
     (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
 }
 
+async fn post(
+    router: axum::Router,
+    path: &str,
+    token: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let response = router
+        .oneshot(
+            Request::post(path)
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
 fn urlencode(s: &str) -> String {
     s.replace(':', "%3A").replace('/', "%2F")
 }
@@ -95,5 +119,32 @@ async fn declared_tier_degradation_is_consistent_across_front_doors() {
         "M-D1/M-A3 VIOLATION: /vault-tree reports declared={tree_declared} while \
          /status reports declared={status_declared} for the SAME unreachable-core \
          state; rag_tiers() ignores declared_status and lies about the declared tier"
+    );
+}
+
+#[tokio::test]
+async fn degrade_paths_keep_the_declared_tier_truthful() {
+    let (_dir, state) = fixture_state();
+    let token = state.bearer.clone();
+    // Core unreachable this rebuild: the declared tier could not ingest.
+    *state.declared_status.write().unwrap() =
+        Some("core graph unavailable: forced for test".to_string());
+    let router = build_router(state);
+
+    // rag is unavailable in the test env, so POST /search takes the rag-down
+    // degrade path. That path degrades `semantic` truthfully — and (LENSA-02)
+    // must ALSO keep the declared tier truthful, never hardcode it available.
+    let (status, body) = post(router, "/search", &token, serde_json::json!({"query": "x"})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["tiers"]["semantic"]["available"],
+        Value::Bool(false),
+        "the rag-down degrade path degrades semantic: {body}"
+    );
+    assert_eq!(
+        body["tiers"]["declared"]["available"],
+        Value::Bool(false),
+        "LENSA-02: a degrade path must keep the declared tier truthful when core \
+         was unreachable, never hardcode declared:true: {body}"
     );
 }

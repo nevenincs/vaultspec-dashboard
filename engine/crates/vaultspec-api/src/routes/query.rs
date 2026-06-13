@@ -6,7 +6,6 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{NodeId, Tier};
-use engine_query::envelope::tiers_block;
 use engine_query::filter::{Filter, vocabulary};
 use engine_query::graph::{Granularity, graph_query};
 use serde::Deserialize;
@@ -400,8 +399,7 @@ pub async fn node_discover(
         // Degrades to the §2 tier block, never an error (contract §4).
         return Ok(super::envelope(
             json!({"candidates": []}),
-            serde_json::to_value(tiers_block(&[("semantic", reason.as_str())]))
-                .expect("tiers serialize"),
+            super::degraded_tiers(&state, reason.as_str()),
             None,
         ));
     };
@@ -439,8 +437,7 @@ pub async fn node_discover(
             let reason = rag_client::search::degradation_reason(&e);
             return Ok(super::envelope(
                 json!({"candidates": []}),
-                serde_json::to_value(tiers_block(&[("semantic", reason.as_str())]))
-                    .expect("tiers serialize"),
+                super::degraded_tiers(&state, reason.as_str()),
                 None,
             ));
         }

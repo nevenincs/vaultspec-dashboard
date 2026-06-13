@@ -131,11 +131,7 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     {
         return Ok(super::envelope(
             json!({"results": []}),
-            serde_json::to_value(engine_query::envelope::tiers_block(&[(
-                "semantic",
-                reason.as_str(),
-            )]))
-            .expect("tiers serialize"),
+            super::degraded_tiers(&state, reason.as_str()),
             None,
         ));
     }
@@ -163,11 +159,7 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
             let reason = miss.reason();
             Ok(super::envelope(
                 json!({"results": []}),
-                serde_json::to_value(engine_query::envelope::tiers_block(&[(
-                    "semantic",
-                    reason.as_str(),
-                )]))
-                .expect("tiers serialize"),
+                super::degraded_tiers(&state, reason.as_str()),
                 None,
             ))
         }
