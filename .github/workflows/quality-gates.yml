@@ -66,6 +66,74 @@ jobs:
         run: npx --yes knip@5 --directory frontend
         continue-on-error: true
 
+  engine-conformance:
+    # Consumer-typed conformance (engine-hardening P01.S02, ADR D1): boot a
+    # live vaultspec serve binary against a two-commit fixture and drive
+    # EngineClient against it so wire-vs-TypeScript-type drift fails CI.
+    # This closes the seam the Rust conformance.rs cannot reach (c812371).
+    name: Engine TS conformance (live serve · EngineClient)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: Build engine binary
+        run: cargo build --bin vaultspec
+        working-directory: engine
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - name: Create fixture and start serve
+        shell: bash
+        run: |
+          set -euo pipefail
+          FIXTURE=$(mktemp -d)
+          cd "$FIXTURE"
+          git init -b main .
+          git config user.email "ci@test"
+          git config user.name "CI"
+          git config core.autocrlf false
+          mkdir -p .vault/adr
+          printf '%s\n' '---' 'tags:' "  - '#adr'" "  - '#engine-conformance'" \
+            "date: '2026-06-13'" '---' '' '# conformance adr' '' 'CI fixture.' \
+            > .vault/adr/2026-06-13-conformance-adr.md
+          git add . && git commit -m "T1: adr"
+          printf 'update\n' >> .vault/adr/2026-06-13-conformance-adr.md
+          git add . && git commit -m "T2: update"
+
+          # Start serve on an OS-assigned port; service.json carries the real
+          # port + token (same pattern as conformance.rs start_serve).
+          "$GITHUB_WORKSPACE/engine/target/debug/vaultspec" serve --port 0 &
+          SERVE_PID=$!
+          echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
+
+          SERVICE_JSON="$FIXTURE/.vault/data/engine-data/service.json"
+          for i in $(seq 30); do
+            if [ -f "$SERVICE_JSON" ]; then
+              PORT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['port'])" "$SERVICE_JSON")
+              TOKEN=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['service_token'])" "$SERVICE_JSON")
+              if [ "$PORT" != "0" ] && [ -n "$TOKEN" ]; then break; fi
+            fi
+            sleep 1
+          done
+
+          echo "ENGINE_BASE_URL=http://127.0.0.1:$PORT" >> "$GITHUB_ENV"
+          echo "ENGINE_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - name: Run TS conformance test
+        run: npx vitest run src/testing/engineConformance.test.ts --reporter=verbose
+        working-directory: frontend
+        env:
+          ENGINE_BASE_URL: ${{ env.ENGINE_BASE_URL }}
+          ENGINE_TOKEN: ${{ env.ENGINE_TOKEN }}
+      - name: Stop serve
+        if: always()
+        run: kill "$SERVE_PID" 2>/dev/null || true
+
   supply-chain:
     name: Supply chain (cargo-deny · uv audit · npm audit)
     runs-on: ubuntu-latest
