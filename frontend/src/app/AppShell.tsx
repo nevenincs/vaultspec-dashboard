@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
+import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
 import { useViewStore } from "../stores/view/viewStore";
 import { VaultBrowser } from "./left/VaultBrowser";
 import { KeyboardNav } from "./a11y/KeyboardNav";
@@ -49,14 +51,20 @@ export function AppShell() {
             {!leftCollapsed && <ThemeToggle />}
           </div>
           {!leftCollapsed && (
-            <div className="mt-2 space-y-3 overflow-y-auto">
-              <WorktreePicker />
-              <VaultBrowser />
-            </div>
+            <ErrorBoundary region="left-rail">
+              <CrashZone region="left-rail" />
+              <div className="mt-2 space-y-3 overflow-y-auto">
+                <WorktreePicker />
+                <VaultBrowser />
+              </div>
+            </ErrorBoundary>
           )}
         </aside>
         <main className="relative min-w-0">
-          <Stage />
+          <ErrorBoundary region="stage">
+            <CrashZone region="stage" />
+            <Stage />
+          </ErrorBoundary>
         </main>
         <aside className="overflow-hidden border-l border-stone-200 p-2">
           <button
@@ -66,20 +74,29 @@ export function AppShell() {
           >
             {rightCollapsed ? "«" : "activity »"}
           </button>
-          {!rightCollapsed && <ActivityRail />}
+          {!rightCollapsed && (
+            <ErrorBoundary region="right-rail">
+              <CrashZone region="right-rail" />
+              <ActivityRail />
+            </ErrorBoundary>
+          )}
         </aside>
       </div>
       <footer className="border-t border-stone-200">
-        <Timeline
-          onEventClick={handleEventClick}
-          overlay={
-            <>
-              <RangeSelect />
-              <Playhead />
-            </>
-          }
-        />
+        <ErrorBoundary region="timeline">
+          <CrashZone region="timeline" />
+          <Timeline
+            onEventClick={handleEventClick}
+            overlay={
+              <>
+                <RangeSelect />
+                <Playhead />
+              </>
+            }
+          />
+        </ErrorBoundary>
       </footer>
+      <CrashInjector />
     </div>
   );
 }

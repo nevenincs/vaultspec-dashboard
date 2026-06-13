@@ -110,10 +110,10 @@ Ship the structured logger and global error traps the whole frontend logs throug
 
 Contain thrown renders per region so a crash degrades a region, never the whole app.
 
-- [ ] `P02.S04` - Implement the ErrorBoundary class with app and region variants, reset, and the logger hook; `frontend/src/platform/errors/ErrorBoundary.tsx`.
-- [ ] `P02.S05` - Mount the app-level boundary as the last line in the app root; `frontend/src/main.tsx`.
-- [ ] `P02.S06` - Wrap the four AppShell regions in region boundaries with designed fallbacks; `frontend/src/app/AppShell.tsx`.
-- [ ] `P02.S07` - Add the dev-only crash-injection affordance for adverse-condition testing; `frontend/src/platform/errors/CrashInjector.tsx`.
+- [x] `P02.S04` - Implement the ErrorBoundary class with app and region variants, reset, and the logger hook; `frontend/src/platform/errors/ErrorBoundary.tsx`.
+- [x] `P02.S05` - Mount the app-level boundary as the last line in the app root; `frontend/src/main.tsx`.
+- [x] `P02.S06` - Wrap the four AppShell regions in region boundaries with designed fallbacks; `frontend/src/app/AppShell.tsx`.
+- [x] `P02.S07` - Add the dev-only crash-injection affordance for adverse-condition testing; `frontend/src/platform/errors/CrashInjector.tsx`.
 
 ### Phase `P03` - Dispatch seam
 

@@ -3,6 +3,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
+import { installGlobalTraps } from "./platform/logger/globalTraps";
 import { queryClient } from "./stores/server/queryClient";
 import { router } from "./router";
 import "./styles.css";
@@ -24,10 +26,18 @@ if (import.meta.env.VITE_MOCK_ENGINE === "1") {
   engineClient.useTransport(getMockEngine().fetchImpl);
 }
 
+// Last-resort net for failures that escape React entirely (ADR D5).
+installGlobalTraps();
+
 createRoot(rootElement).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    {/* App-level boundary: the last line. A throw that escapes every region
+        boundary degrades to a full-screen recoverable fallback, never a blank
+        white screen. */}
+    <ErrorBoundary region="app" variant="app">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
