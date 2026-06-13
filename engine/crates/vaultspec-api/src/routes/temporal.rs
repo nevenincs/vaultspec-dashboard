@@ -86,7 +86,7 @@ pub async fn graph_asof(
         name: params.t.clone(),
     };
     let graph = engine_graph::asof::asof_graph(&state.root, &params.t, &scope, 0)
-        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| super::revision_error(&state, &params.t, e))?;
     let slice = engine_query::graph::graph_query(
         &graph,
         &scope,
@@ -128,9 +128,9 @@ pub async fn graph_diff(
         name: params.to.clone(),
     };
     let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope_from, 0)
-        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| super::revision_error(&state, &params.from, e))?;
     let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope_to, 0)
-        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| super::revision_error(&state, &params.to, e))?;
 
     // Historical diffs number RESULT-LOCALLY (audit N2): a scrub must
     // never burn live-clock positions or manufacture stream gaps. Only

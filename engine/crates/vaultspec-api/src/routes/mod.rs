@@ -65,3 +65,27 @@ pub(crate) fn api_error(
         Json(json!({"error": message, "tiers": query_tiers(state)})),
     )
 }
+
+/// Client-safe error for an as-of / diff revision that could not be resolved
+/// (the `t` / `from` / `to` inputs and `graph/query`'s `as_of`). The
+/// underlying gix error string carries the BUILD MACHINE's cargo-registry
+/// path and a source `file:line` — an info leak beyond the served root
+/// (stress-test finding 2026-06-13). Never echo it: log the full error for
+/// operator diagnostics and return only the input the client supplied plus
+/// the accepted forms. Sanitisation lives at the API boundary so the engine's
+/// internal error types stay rich.
+pub(crate) fn revision_error<E: std::fmt::Display>(
+    state: &AppState,
+    input: &str,
+    err: E,
+) -> (StatusCode, Json<Value>) {
+    eprintln!("vaultspec serve: could not resolve revision `{input}`: {err}");
+    api_error(
+        state,
+        StatusCode::BAD_REQUEST,
+        format!(
+            "invalid revision `{input}`: expected a commit-ish (branch, tag, or sha) \
+             or a millisecond timestamp"
+        ),
+    )
+}
