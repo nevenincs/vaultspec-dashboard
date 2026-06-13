@@ -65,6 +65,8 @@ export class DashboardField implements SceneFieldRenderer {
   private hitTester = new SpatialHitTester();
   private glyphs: ProgrammaticGlyphs | null = null;
   private detachListeners: (() => void)[] = [];
+  /** Guard: mount() is idempotent — only the first call assembles the scene (S06). */
+  private assemblyMounted = false;
   private lastSave = 0;
   private layoutMode: "force" | "circular" = "force";
   private layoutParams: LayoutParams = {};
@@ -91,6 +93,12 @@ export class DashboardField implements SceneFieldRenderer {
   // --- lifecycle -------------------------------------------------------------
 
   mount(host: HTMLElement): void {
+    // Idempotency guard (S06): a second mount() before destroy() is a no-op.
+    // Without this, each call registers another onReady callback and pushes
+    // another offReady entry into detachListeners, leaking duplicate canvas
+    // event listeners, ticker callbacks, and theme observers.
+    if (this.assemblyMounted) return;
+    this.assemblyMounted = true;
     this.base.mount(host);
     const offReady = this.base.onReady((app) => {
       const world = this.base.worldContainer;
@@ -247,6 +255,7 @@ export class DashboardField implements SceneFieldRenderer {
   destroy(): void {
     for (const detach of this.detachListeners) detach();
     this.detachListeners = [];
+    this.assemblyMounted = false;
     this.layout?.destroy();
     this.layout = null;
     this.sprites = null;

@@ -9,6 +9,7 @@ import Graph from "graphology";
 import forceatlas2 from "graphology-layout-forceatlas2";
 
 import { postWorkerLog } from "../../platform/logger/workerBridge";
+import { ConvergenceDetector } from "./fa2Convergence";
 import type {
   LayoutChangeMessage,
   LayoutInMessage,
@@ -23,6 +24,7 @@ let running = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let iterationsPerTick = 4;
 const TICK_MS = 16;
+const convergence = new ConvergenceDetector();
 
 // Spread-optimised defaults — strong repulsion, low gravity — so the initial
 // layout fills 70–80% of the stage. The AlgorithmPanel exposes all four params
@@ -71,14 +73,38 @@ function postPositions(): void {
   postMessage(out, { transfer: [buffer.buffer] });
 }
 
+/** Max displacement of any node between the two position snapshots (in world units). */
+function computeMaxDisplacement(before: Map<string, { x: number; y: number }>): number {
+  let maxSq = 0;
+  graph.forEachNode((id, attrs) => {
+    const prev = before.get(id);
+    if (!prev) return;
+    const dx = (attrs.x as number) - prev.x;
+    const dy = (attrs.y as number) - prev.y;
+    const sq = dx * dx + dy * dy;
+    if (sq > maxSq) maxSq = sq;
+  });
+  return Math.sqrt(maxSq);
+}
+
 function tick(): void {
   if (!running) return;
   if (graph.order > 1 && graph.size > 0) {
+    // Snapshot positions before the FA2 step so we can measure displacement.
+    const before = new Map<string, { x: number; y: number }>();
+    graph.forEachNode((id, attrs) => {
+      before.set(id, { x: attrs.x as number, y: attrs.y as number });
+    });
     forceatlas2.assign(graph, {
       iterations: iterationsPerTick,
       settings: currentParams,
     });
     postPositions();
+    // Convergence check: stop when the layout has settled (S05).
+    if (convergence.tick(computeMaxDisplacement(before))) {
+      running = false;
+      return; // layout converged — do not reschedule
+    }
   }
   timer = setTimeout(tick, TICK_MS);
 }
@@ -88,6 +114,7 @@ onmessage = (event: MessageEvent<LayoutInMessage>) => {
   switch (msg.kind) {
     case "init":
       graph.clear();
+      convergence.reset();
       for (const seed of msg.nodes) addNode(seed);
       for (const e of msg.edges) {
         // Guard duplicates exactly like `change` does: a malformed keyframe
@@ -108,6 +135,7 @@ onmessage = (event: MessageEvent<LayoutInMessage>) => {
       postPositions();
       break;
     case "start":
+      convergence.reset();
       if (!running) {
         running = true;
         tick();
@@ -122,12 +150,26 @@ onmessage = (event: MessageEvent<LayoutInMessage>) => {
       break;
     case "change":
       applyChanges(msg);
+      convergence.reset();
+      // If the layout had converged, new graph data means positions need to
+      // re-settle — restart the tick loop.
+      if (!running) {
+        running = true;
+        tick();
+      }
       postPositions();
       break;
     case "params": {
       const p = (msg as LayoutParamsMessage).params;
       currentParams = { ...currentParams, ...p };
       if (p.iterationsPerTick !== undefined) iterationsPerTick = p.iterationsPerTick;
+      convergence.reset();
+      // If the layout had converged, new params likely mean the user wants to
+      // see a fresh settle — restart the tick loop.
+      if (!running) {
+        running = true;
+        tick();
+      }
       break;
     }
   }

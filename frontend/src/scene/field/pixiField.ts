@@ -44,6 +44,8 @@ export class PixiField implements SceneFieldRenderer {
    */
   mount(host: HTMLElement): void {
     if (this.mounting || this.app) return;
+    // No DOM → no renderer; safe no-op for SSR / node test environment.
+    if (typeof document === "undefined") return;
     this.destroyed = false;
     const app = new Application();
     this.mounting = app
