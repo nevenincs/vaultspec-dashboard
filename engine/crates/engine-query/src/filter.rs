@@ -150,15 +150,37 @@ impl Filter {
     }
 }
 
+/// Inclusive corpus date span (contract §4 `/filters` date bounds): the
+/// min/max of the nodes' frontmatter `created` dates, the field a client's
+/// date-range facet constrains against. ISO `yyyy-mm-dd` strings compare
+/// lexically, so the bounds are well-ordered without date parsing. Absent
+/// (serialized `null`) when no node in the graph carries a created date.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DateBounds {
+    pub min: String,
+    pub max: String,
+}
+
 /// The legal filter vocabulary actually present in a graph (contract §4
-/// `/filters`): data-driven, nothing hardcoded client-side.
+/// `/filters`): data-driven, nothing hardcoded client-side. Carries the full
+/// §4 facet set — relation types, tiers, doc types, feature tags, node kinds,
+/// date bounds, and refs — so the filter UI enumerates every facet from one
+/// server read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Vocabulary {
     pub tiers: Vec<&'static str>,
     pub relations: Vec<String>,
     pub kinds: Vec<String>,
+    pub doc_types: Vec<String>,
     pub feature_tags: Vec<String>,
     pub structural_states: Vec<&'static str>,
+    /// Inclusive corpus date span; `null` when no node carries a created date.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_bounds: Option<DateBounds>,
+    /// The corpus-view refs actually present in node facets (worktree paths
+    /// or ref names) — the time/scope axis surfaced data-driven, never a
+    /// hardcoded client list.
+    pub refs: Vec<String>,
 }
 
 pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
@@ -178,18 +200,48 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     kinds.sort();
     kinds.dedup();
+    let mut doc_types: Vec<String> = graph
+        .nodes()
+        .filter_map(|n| n.doc_type.clone())
+        .collect();
+    doc_types.sort();
+    doc_types.dedup();
     let mut feature_tags: Vec<String> = graph
         .nodes()
         .flat_map(|n| n.feature_tags.iter().cloned())
         .collect();
     feature_tags.sort();
     feature_tags.dedup();
+    // Corpus date span from frontmatter `created` dates (ISO yyyy-mm-dd,
+    // lexically ordered): the bounds a date-range facet selects within.
+    let date_bounds = graph
+        .nodes()
+        .filter_map(|n| n.dates.as_ref().and_then(|d| d.created.clone()))
+        .fold(None::<(String, String)>, |acc, date| match acc {
+            None => Some((date.clone(), date)),
+            Some((min, max)) => Some((min.min(date.clone()), max.max(date))),
+        })
+        .map(|(min, max)| DateBounds { min, max });
+    // Refs actually present in node facets: the scope/time axis, data-driven.
+    let mut refs: Vec<String> = graph
+        .nodes()
+        .flat_map(|n| n.facets.iter())
+        .map(|f| match &f.scope {
+            engine_model::ScopeRef::Worktree { path } => path.clone(),
+            engine_model::ScopeRef::Ref { name } => name.clone(),
+        })
+        .collect();
+    refs.sort();
+    refs.dedup();
     Vocabulary {
         tiers: TIER_NAMES.to_vec(),
         relations,
         kinds,
+        doc_types,
         feature_tags,
         structural_states: STATE_NAMES.to_vec(),
+        date_bounds,
+        refs,
     }
 }
 
@@ -217,6 +269,91 @@ mod tests {
         );
         // Engine-owned grammar: unknown facets fail loud.
         assert!(serde_json::from_str::<Filter>(r#"{"vibes": "good"}"#).is_err());
+    }
+
+    #[test]
+    fn vocabulary_emits_the_full_contract_facet_set() {
+        // Contract §4 names the complete /filters facet set: relations,
+        // tiers, doc types, feature tags, node kinds, date bounds, and refs.
+        // This is the data-driven enumeration the filter UI renders.
+        use engine_model::{
+            CanonicalKey, Dates, Facet, Node, NodeKind, Presence, ScopeRef, node_id,
+        };
+
+        fn doc(stem: &str, doc_type: &str, created: &str, feature: &str, scope: ScopeRef) -> Node {
+            Node {
+                id: node_id(&CanonicalKey::Document { stem }),
+                kind: NodeKind::Document,
+                key: stem.to_string(),
+                title: None,
+                doc_type: Some(doc_type.to_string()),
+                dates: Some(Dates {
+                    created: Some(created.to_string()),
+                    modified: None,
+                }),
+                feature_tags: vec![feature.to_string()],
+                facets: vec![Facet {
+                    scope,
+                    presence: Presence::Exists,
+                    content_hash: None,
+                    lifecycle: None,
+                }],
+            }
+        }
+
+        let mut graph = LinkageGraph::new();
+        graph.upsert_node(doc(
+            "p1",
+            "plan",
+            "2026-06-12",
+            "alpha",
+            ScopeRef::Worktree {
+                path: "/wt/main".into(),
+            },
+        ));
+        graph.upsert_node(doc(
+            "a1",
+            "adr",
+            "2026-06-10",
+            "beta",
+            ScopeRef::Ref {
+                name: "feature-x".into(),
+            },
+        ));
+        // Duplicate doc_type / scope to prove dedup; later created date to
+        // prove the max bound moves.
+        graph.upsert_node(doc(
+            "p2",
+            "plan",
+            "2026-06-14",
+            "alpha",
+            ScopeRef::Worktree {
+                path: "/wt/main".into(),
+            },
+        ));
+
+        let vocab = vocabulary(&graph);
+        assert_eq!(vocab.doc_types, vec!["adr", "plan"], "sorted, deduped");
+        assert_eq!(vocab.feature_tags, vec!["alpha", "beta"]);
+        assert_eq!(
+            vocab.date_bounds,
+            Some(DateBounds {
+                min: "2026-06-10".into(),
+                max: "2026-06-14".into(),
+            }),
+            "corpus min/max over created dates"
+        );
+        assert_eq!(
+            vocab.refs,
+            vec!["/wt/main", "feature-x"],
+            "distinct facet scopes, sorted + deduped"
+        );
+
+        // An empty graph carries absent date bounds (serialized null), never a
+        // bogus pair.
+        let empty = vocabulary(&LinkageGraph::new());
+        assert_eq!(empty.date_bounds, None);
+        assert!(empty.doc_types.is_empty() && empty.refs.is_empty());
     }
 
     #[test]
