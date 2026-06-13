@@ -117,9 +117,9 @@ A downscaled node-position overlay canvas with a live viewport rect and click-to
 
 Smooth camera spring animation for programmatic navigation, incremental edge-mesh update on delta-apply (eliminate full-rebuild), arrowhead glyphs at near-zoom LOD, and the full four-gate verification pass.
 
-- [ ] `P03.S08` - Add Camera.animateTo with RAF-based damped lerp (damping=0.85, stop at sub-0.5px delta) and use it in the focus-node command and minimap navigate-to so programmatic pan no longer snap-jumps; `frontend/src/scene/field/camera.ts, frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `P03.S09` - Incremental edge-mesh update on delta-apply: add EdgeMeshLayer.updateEdge to replace the full applyModelToLayers rebuild on apply-deltas paths and add arrowhead triangle glyphs on directed edges at near-zoom LOD; `frontend/src/scene/field/edgeMeshes.ts, frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `P03.S10` - Run all four green gates: npm run typecheck, npm run lint, npm run test (71+ files including adversarial suite), npm run build; `vaultspec-core vault check all green; every Step closed before review; `frontend/src/scene/, frontend/src/app/stage/`.
+- [x] `P03.S08` - Add Camera.animateTo with RAF-based damped lerp (damping=0.85, stop at sub-0.5px delta) and use it in the focus-node command and minimap navigate-to so programmatic pan no longer snap-jumps; `frontend/src/scene/field/camera.ts, frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P03.S09` - Incremental edge-mesh update on delta-apply: add EdgeMeshLayer.updateEdge to replace the full applyModelToLayers rebuild on apply-deltas paths and add arrowhead triangle glyphs on directed edges at near-zoom LOD; `frontend/src/scene/field/edgeMeshes.ts, frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P03.S10` - Run all four green gates: npm run typecheck, npm run lint, npm run test (71+ files including adversarial suite), npm run build; `vaultspec-core vault check all green; every Step closed before review; `frontend/src/scene/, frontend/src/app/stage/`.
 
 ## Description
 
