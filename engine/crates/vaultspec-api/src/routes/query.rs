@@ -37,13 +37,13 @@ pub fn validate_scope(state: &AppState, scope: &str) -> Result<(), (StatusCode, 
 }
 
 fn rag_tiers(state: &AppState) -> Value {
-    let block = match rag_client::client::discover(&state.root.join(".vault")).0 {
-        rag_client::RagAvailability::Available => tiers_block(&[]),
-        rag_client::RagAvailability::Unavailable { reason } => {
-            tiers_block(&[("semantic", reason.as_str())])
-        }
-    };
-    serde_json::to_value(block).expect("tiers serialize")
+    // Every front door must report ALL FOUR tiers truthfully (M-A3), and the
+    // declared tier must reflect ACTUAL core ingestion, never hardcoded true
+    // (M-D1). This helper used to build the block from rag discovery alone, so
+    // the 8 query routes that use it advertised declared:true even when core
+    // was unreachable — contradicting /status for the same state (LENSA-01).
+    // Delegate to the shared query_tiers, which overlays declared_status.
+    super::query_tiers(state)
 }
 
 #[derive(Deserialize)]
@@ -224,6 +224,19 @@ pub async fn graph_query_route(
             (slice, rag_tiers(&state))
         }
     };
+    // Live keyframe clock anchor (constellation-live-delta ADR / S50): the
+    // delta clock's tip at query time, so a held keyframe (either granularity)
+    // splices live `graph` deltas with no gap. An `as_of` (historical)
+    // keyframe carries no live-clock position.
+    let last_seq = match &body.as_of {
+        Some(_) => Value::Null,
+        None => Value::from(
+            state
+                .seq
+                .load(std::sync::atomic::Ordering::SeqCst)
+                .saturating_sub(1),
+        ),
+    };
     Ok(super::envelope(
         json!({
             "nodes": slice.nodes,
@@ -231,6 +244,7 @@ pub async fn graph_query_route(
             "meta_edges": slice.meta_edges,
             "filter": slice.filter,
             "as_of": body.as_of,
+            "last_seq": last_seq,
         }),
         tiers,
         None,
