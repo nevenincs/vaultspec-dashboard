@@ -106,11 +106,63 @@ fn default_branch_name(repo: &gix::Repository, config: &ClassifyConfig) -> Strin
     if let Some(name) = &config.default_branch {
         return name.clone();
     }
+    // HEAD is "the branch THIS worktree has checked out", NOT "the trunk". In a
+    // multi-worktree checkout (the common case the sweep hit — one worktree per
+    // feature) HEAD is a feature branch, so deriving the default from HEAD made
+    // `classify` brand the real trunk (`main`) a feature branch and the feature
+    // branch the default (sweep LOW, 2026-06-13). Prefer signals that name the
+    // trunk independently of the current checkout, HEAD only as last resort.
+    //
+    // 1) A conventional trunk among the LOCAL branches. `refs/heads/*` is shared
+    //    across every worktree of a repo, so `main` is enumerable even from a
+    //    feature worktree that has it checked out elsewhere.
+    if let Some(name) = conventional_trunk(repo) {
+        return name;
+    }
+    // 2) The remote's recorded default (`origin/HEAD` -> `origin/<trunk>`) — the
+    //    authoritative signal when the trunk is unconventionally named.
+    if let Some(name) = remote_default_branch(repo) {
+        return name;
+    }
+    // 3) Last resort: the current HEAD branch, else `main`.
     repo.head_name()
         .ok()
         .flatten()
         .map(|n| n.shorten().to_string())
         .unwrap_or_else(|| "main".to_string())
+}
+
+/// The first conventional trunk name (`main`, then `master`, then `trunk`) that
+/// exists as a local branch, or `None`. Independent of the current HEAD.
+fn conventional_trunk(repo: &gix::Repository) -> Option<String> {
+    let platform = repo.references().ok()?;
+    let locals: std::collections::HashSet<String> = platform
+        .local_branches()
+        .ok()?
+        .flatten()
+        .map(|r| r.name().shorten().to_string())
+        .collect();
+    ["main", "master", "trunk"]
+        .into_iter()
+        .find(|c| locals.contains(*c))
+        .map(str::to_string)
+}
+
+/// The remote default branch from the `origin/HEAD` symbolic pointer (e.g.
+/// `refs/remotes/origin/main` -> `main`), or `None` when unset/non-symbolic.
+fn remote_default_branch(repo: &gix::Repository) -> Option<String> {
+    let reference = repo.find_reference("refs/remotes/origin/HEAD").ok()?;
+    match reference.target() {
+        gix::refs::TargetRef::Symbolic(name) => {
+            // `name.shorten()` yields `origin/main`; take the final segment.
+            name.shorten()
+                .to_string()
+                .rsplit('/')
+                .next()
+                .map(str::to_string)
+        }
+        gix::refs::TargetRef::Object(_) => None,
+    }
 }
 
 fn classify(name: &str, default: &str, config: &ClassifyConfig) -> BranchClass {
@@ -194,6 +246,26 @@ mod tests {
             ]
         );
         assert!(branches.iter().all(|b| b.degraded_tiers.is_empty()));
+    }
+
+    #[test]
+    fn trunk_is_named_correctly_when_head_is_on_a_feature_branch() {
+        // Multi-worktree reality (sweep LOW): HEAD is checked out to a FEATURE
+        // branch. The trunk must still be `main`, derived from the conventional
+        // local trunk, NOT from HEAD — else the real trunk is branded a feature
+        // branch and the feature branch the default.
+        let dir = tempfile::tempdir().unwrap();
+        let ws = fixture(dir.path());
+        git(dir.path(), &["checkout", "feature-a"]);
+        let branches = local_branches(&ws, &ClassifyConfig::default()).unwrap();
+        let main = branches.iter().find(|b| b.name == "main").unwrap();
+        let feat = branches.iter().find(|b| b.name == "feature-a").unwrap();
+        assert_eq!(main.class, BranchClass::Default, "main is the trunk");
+        assert_eq!(
+            feat.class,
+            BranchClass::Feature,
+            "the checked-out feature branch is NOT the default"
+        );
     }
 
     #[test]
