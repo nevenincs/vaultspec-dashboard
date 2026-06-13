@@ -50,7 +50,13 @@ export function selectEdge(id: string): void {
 export function bindSelectionToScene(scene: SceneController): () => void {
   let last: Selection = useViewStore.getState().selection;
   return useViewStore.subscribe((state) => {
-    if (state.selection === last) return;
+    if (state.selection === last) {
+      // A no-op selection (e.g. a stage deselect while already cleared) still
+      // consumes a pending scene-origin suppression, so it cannot leak onto
+      // the next genuine cross-region selection and swallow its focus (G2.b).
+      sceneOriginated = false;
+      return;
+    }
     last = state.selection;
     if (sceneOriginated) {
       sceneOriginated = false;
