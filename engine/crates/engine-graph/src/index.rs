@@ -238,41 +238,57 @@ fn index_documents(
         }
     }
 
-    // Declared tier: ingest core's authored graph (the engine's stated core
-    // capability — "ingests core's vault graph"). Structural mentions above
-    // are only one tier; without this the linkage graph carries no declared
-    // cross-references at all.
-    stats.declared_unavailable = ingest_declared_graph(graph, root, scope, observed_at, &mut stats);
+    // Declared tier: ingest core's authored graph from the WORKING TREE (the
+    // engine's stated core capability — "ingests core's vault graph").
+    // Structural mentions above are only one tier; without this the linkage
+    // graph carries no declared cross-references at all.
+    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, None);
+    stats.declared_edges += declared;
+    stats.declared_unavailable = unavailable;
 
     Ok(stats)
 }
 
-/// Ingest core's `vault graph` as declared-tier edges (engine-spec §3/§5.1,
-/// D5.1). Returns `None` on success, or a degradation reason when core is
-/// unreachable or its graph cannot be parsed — the caller surfaces that on
-/// the declared tier so the wire never claims a tier it did not ingest.
-fn ingest_declared_graph(
+/// Ingest core's authored `vault graph` as declared-tier edges (engine-spec
+/// §3/§5.1, D5.1). `git_ref` selects the corpus: `None` reads the working tree
+/// (present view); `Some(sha)` reads the git object DB at that ref (blob-true
+/// historical view, core 0.1.31 `vault graph --ref`) so an as-of snapshot
+/// carries the declared tier too — core's authored cross-references AS THEY
+/// STOOD at that commit, not only structural + temporal.
+///
+/// Returns `(declared_edges_ingested, unavailable_reason)`: the reason is
+/// `None` on success, else why core could not supply the tier — the caller
+/// degrades the declared tier truthfully rather than claiming one it did not
+/// ingest. Best-effort: core unreachable / old-core / unresolvable-ref never
+/// panics, it just yields an absent declared tier.
+pub(crate) fn ingest_core_graph(
     graph: &mut LinkageGraph,
     root: &Path,
     scope: &ScopeRef,
     observed_at: Timestamp,
-    stats: &mut IndexStats,
-) -> Option<String> {
+    git_ref: Option<&str>,
+) -> (usize, Option<String>) {
     const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
     let runner = ingest_core::runner::CoreRunner::detect();
-    let data = match runner.run_json(root, &["vault", "graph"], &[GRAPH_SCHEMA]) {
+    let mut args: Vec<&str> = vec!["vault", "graph"];
+    if let Some(reference) = git_ref {
+        args.push("--ref");
+        args.push(reference);
+    }
+    let data = match runner.run_json(root, &args, &[GRAPH_SCHEMA]) {
         Ok(envelope) => match envelope.data() {
             Ok(data) => data,
-            Err(e) => return Some(format!("core graph payload: {e}")),
+            Err(e) => return (0, Some(format!("core graph payload: {e}"))),
         },
-        Err(e) => return Some(format!("core graph unavailable: {e}")),
+        Err(e) => return (0, Some(format!("core graph unavailable: {e}"))),
     };
     let parsed = match ingest_core::graph_v2::parse(&data, scope, observed_at) {
         Ok(parsed) => parsed,
-        Err(e) => return Some(format!("core graph parse: {e}")),
+        Err(e) => return (0, Some(format!("core graph parse: {e}"))),
     };
     // Declared edges carry core's authored kind/multiplicity/weight verbatim;
     // core-derived edges ride the distinct `core-derived` relation at 0.8.
+    let mut count = 0;
     for d in parsed.declared {
         if crate::edges::ingest(
             graph,
@@ -286,15 +302,15 @@ fn ingest_declared_graph(
         )
         .is_ok()
         {
-            stats.declared_edges += 1;
+            count += 1;
         }
     }
     for edge in parsed.core_derived {
         if crate::edges::ingest(graph, edge, EdgeAttrs::default()).is_ok() {
-            stats.declared_edges += 1;
+            count += 1;
         }
     }
-    None
+    (count, None)
 }
 
 /// Build the structural edge for one resolved mention. Shared with the

@@ -201,6 +201,21 @@ pub fn asof_graph(
             )?;
         }
     }
+
+    // Declared tier AT the resolved commit (core 0.1.31 `vault graph --ref`):
+    // the as-of snapshot now carries core's authored cross-references as they
+    // stood at T, not only the structural + temporal tiers reconstructed from
+    // blobs above — closing the historical declared-tier gap. Best-effort: an
+    // old core, a non-vaultspec dir, or an unresolvable ref leaves the
+    // historical declared tier simply absent, never a panic.
+    let _ = crate::index::ingest_core_graph(
+        &mut graph,
+        repo_dir,
+        scope,
+        observed_at,
+        Some(&resolved_sha),
+    );
+
     Ok(graph)
 }
 
