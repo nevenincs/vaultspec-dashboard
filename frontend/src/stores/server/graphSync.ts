@@ -1,17 +1,16 @@
-// Live graph sync (ADR D3): subscribe the live `graph` SSE channel and drive
-// targeted cache invalidation of the constellation, plus track the stream
-// connection and the resume seq. This is the contract's stated liveness path
-// (the `queryClient` comment; contract section 7): "SSE streams will feed
-// targeted cache invalidation + small live slices". The no-refetch delta-apply
-// onto the held scene model is engine-blocked on the constellation seq baseline
-// (S50) and is deliberately NOT done here - invalidation is the buildable half,
-// and the connection signal is what makes the stream-lost degradation truthful.
+// Live graph sync (ADR D3 / constellation-live-delta S06): subscribe the live
+// `graph` SSE channel, drive targeted cache invalidation of the constellation,
+// and — when keyframeSeq is supplied — extract feature-granularity deltas for
+// direct `apply-deltas` scene splice (the no-refetch delta-apply path). Gap
+// detection falls back to invalidation. Connection signal drives the live-state
+// degradation truth.
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { debounce } from "../../platform/timing";
+import type { GraphDeltaEntry } from "./engine";
 import { useLiveStatusStore } from "./liveStatus";
 import type { StreamChunk } from "./queries";
 import { engineKeys, engineStreamOptions } from "./queries";
@@ -31,23 +30,43 @@ export function maxSeq(chunks: readonly StreamChunk[] | undefined): number | nul
 }
 
 /**
- * Drive LIVE-mode reactivity from the `graph` stream. Mount it in the stage in
- * LIVE mode only (the time-travel driver owns the scene otherwise). It updates
- * the live-connection slice (connection + resume seq) and invalidates the
- * scope's constellation query when new deltas arrive.
+ * Drive LIVE-mode reactivity from the `graph` stream.
+ *
+ * Mount in Stage in LIVE mode only (the time-travel driver owns the scene
+ * otherwise). When `keyframeSeq` is supplied (constellation-live-delta S06),
+ * the subscription anchors at `since=keyframeSeq` so only new deltas arrive;
+ * the hook extracts `granularity=feature` entries and returns them as
+ * `featureDeltas` for direct `apply-deltas` splicing. A seq discontinuity
+ * increments `gapCount` so Stage can trigger a targeted `invalidateQueries`
+ * re-keyframe (the resilient floor). Document-granularity deltas still drive
+ * debounced constellation invalidation. Connection state updates the
+ * live-connection degradation slice.
+ *
+ * Return shape:
+ * - `featureDeltas`: the freshest batch of feature-granularity entries; a new
+ *   array reference on every batch so Stage's `useEffect` fires exactly once
+ *   per arrival. Empty on reset or when only document deltas arrived.
+ * - `gapCount`: starts at 0, increments once per detected seq gap. Stage's
+ *   `useEffect([gapCount])` fires once per increment and re-keyframes.
  */
-export function useGraphLiveSync(scope: string | null, enabled: boolean): void {
+export function useGraphLiveSync(
+  scope: string | null,
+  enabled: boolean,
+  keyframeSeq: number | null = null,
+): { featureDeltas: GraphDeltaEntry[]; gapCount: number } {
   const queryClient = useQueryClient();
   const active = enabled && scope !== null;
 
-  // Subscribe at the live tail (no `since=`) deliberately: a reconnect rides
-  // TanStack's streamed-query retry from the tail, not a seq replay, so the
-  // queryKey stays stable and there is no resubscribe churn as deltas arrive.
-  // `lastSeq` is advanced below and staged for the future no-refetch delta
-  // animation's precise resume (engine-blocked on the constellation seq, S50);
-  // the seq-dedup reducer and the resume-key fix protect that future path and
-  // the `since=`-bearing diff/scrub path, not this live-tail subscription.
-  const stream = useQuery({ ...engineStreamOptions(["graph"]), enabled: active });
+  // When a keyframe seq anchor is available, subscribe with `since=` so only
+  // deltas after the keyframe arrive. The since value folds into the queryKey
+  // (stream-01 adversarial property: different `since` values must not share
+  // cached data). Stable during the session — TanStack retries on error ride
+  // the same key; the streamReducer dedup handles any replay overlap.
+  const sinceArg = typeof keyframeSeq === "number" ? keyframeSeq : undefined;
+  const stream = useQuery({
+    ...engineStreamOptions(["graph"], sinceArg),
+    enabled: active,
+  });
   const { data: chunks, isError, isSuccess, fetchStatus } = stream;
 
   // Debounced, scope-keyed invalidation: a burst of deltas collapses to one
@@ -74,13 +93,69 @@ export function useGraphLiveSync(scope: string | null, enabled: boolean): void {
     else if (isSuccess || fetchStatus === "fetching") setStreamConnected(true);
   }, [active, isError, isSuccess, fetchStatus]);
 
-  // New deltas -> advance the resume point and invalidate the constellation
-  // (targeted cache invalidation, the contract's liveness path).
+  // spliceLive state: the freshest feature-delta batch and a gap counter.
+  const [featureDeltas, setFeatureDeltas] = useState<GraphDeltaEntry[]>([]);
+  const [gapCount, setGapCount] = useState(0);
+  // How many entries from `chunks[]` we have already processed. The ring-cap
+  // (STREAM_RETENTION=256) bounds the array length so this index stays bounded.
+  const processedRef = useRef(0);
+  // Last seq confirmed gaplessly; seeded from the keyframe anchor so the first
+  // delta after the keyframe is not falsely flagged as a gap.
+  const lastSeqRef = useRef<number | null>(keyframeSeq);
+
+  // Reset on scope or keyframe change (new lifecycle).
   useEffect(() => {
-    if (!active || scope === null) return;
-    const seq = maxSeq(chunks);
-    if (seq === null) return;
-    useLiveStatusStore.getState().setLastSeq(seq);
+    setFeatureDeltas([]);
+    processedRef.current = 0;
+    lastSeqRef.current = keyframeSeq;
+  }, [scope, keyframeSeq]);
+
+  // Process newly arrived chunks: advance lastSeq, extract feature-granularity
+  // deltas with gap detection, and trigger debounced invalidation for all.
+  useEffect(() => {
+    if (!active || scope === null || !chunks || chunks.length === 0) return;
+
+    const newChunks = chunks.slice(processedRef.current);
+    if (newChunks.length === 0) return;
+    processedRef.current = chunks.length;
+
+    // Advance the global resume point for reconnect anchoring.
+    const topSeq = maxSeq(newChunks);
+    if (topSeq !== null) useLiveStatusStore.getState().setLastSeq(topSeq);
+
+    // Extract feature-granularity deltas with sequential gap detection.
+    const batch: GraphDeltaEntry[] = [];
+    let gapDetected = false;
+    for (const chunk of newChunks) {
+      if (chunk.channel !== "graph") continue;
+      const entry = chunk.data as GraphDeltaEntry;
+      if (entry.granularity !== "feature") continue;
+
+      if (
+        lastSeqRef.current !== null &&
+        typeof entry.seq === "number" &&
+        entry.seq > lastSeqRef.current + 1
+      ) {
+        // Seq discontinuity: missed deltas, scene state would be inconsistent.
+        gapDetected = true;
+        break;
+      }
+      if (typeof entry.seq === "number") lastSeqRef.current = entry.seq;
+      batch.push(entry);
+    }
+
+    if (gapDetected) {
+      // Discard the partial batch; Stage's gapCount effect will re-keyframe.
+      setFeatureDeltas([]);
+      setGapCount((n) => n + 1);
+    } else if (batch.length > 0) {
+      setFeatureDeltas(batch);
+    }
+
+    // Debounced constellation invalidation covers document-granularity deltas
+    // and keeps the query cache consistent regardless of the spliceLive path.
     invalidateConstellation(scope);
   }, [active, scope, chunks, invalidateConstellation]);
+
+  return { featureDeltas, gapCount };
 }

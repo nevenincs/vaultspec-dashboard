@@ -4,12 +4,12 @@
 // client-flattened doc edges. React sends commands and subscribes to
 // events; the field owns every frame.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
-import { sliceToScene } from "../../scene/sceneMapping";
+import { graphDeltaToScene, sliceToScene } from "../../scene/sceneMapping";
 import { engineClient } from "../../stores/server/engine";
 import { useGraphLiveSync } from "../../stores/server/graphSync";
 import { useLiveStatusStore } from "../../stores/server/liveStatus";
@@ -27,8 +27,12 @@ import { useSurfaceStates } from "../degradation/useDegradation";
 import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
+import { AlgorithmPanel } from "./AlgorithmPanel";
 import { Discover } from "./Discover";
 import { FilterBar } from "./FilterBar";
+import { FilterSidebar } from "./FilterSidebar";
+import { MinimapWidget } from "./MinimapWidget";
+import { NavToolbar } from "./NavToolbar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene per app lifetime — survives route remounts; destroyed never.
@@ -54,6 +58,8 @@ export function useActiveScope(): string | null {
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
   const scope = useActiveScope();
+  const [filterSidebarOpen, setFilterSidebarOpen] = useState(false);
+  const [algorithmPanelOpen, setAlgorithmPanelOpen] = useState(false);
   // The top-level stage is the feature constellation (contract §4, ADR
   // D4.1): feature-convergence nodes + engine-aggregated meta-edges. Document
   // structure arrives on descent via the working-set ego expansions below.
@@ -137,10 +143,16 @@ export function Stage() {
   // live keyframe path resumes — and re-pushes — on return to LIVE.
   const timelineMode = useViewStore((s) => s.timelineMode);
   useTimeTravel(scope, scene.controller);
-  // LIVE-mode reactivity (live-state D3): the graph stream drives targeted
-  // invalidation of the constellation and the live-connection signal. Disabled
-  // while time travelling - the driver owns the scene then.
-  useGraphLiveSync(scope, timelineMode.kind === "live");
+  const queryClient = useQueryClient();
+  // LIVE-mode reactivity (live-state D3 / constellation-live-delta S06):
+  // subscribe with `since=keyframeSeq` when available so only new deltas
+  // arrive; feature-granularity entries come back as `featureDeltas` for
+  // direct scene splice; `gapCount` increments on seq discontinuity.
+  const { featureDeltas, gapCount } = useGraphLiveSync(
+    scope,
+    timelineMode.kind === "live",
+    slice.data?.last_seq ?? null,
+  );
   useEffect(() => {
     if (!merged || !scope || timelineMode.kind !== "live") return;
     const mapped = sliceToScene(merged);
@@ -150,6 +162,33 @@ export function Stage() {
       edges: mapped.edges,
     });
   }, [merged, scope, timelineMode.kind]);
+
+  // spliceLive: route feature-granularity deltas directly to the scene so
+  // feature-node and meta-edge changes animate without a constellation refetch.
+  useEffect(() => {
+    if (!featureDeltas.length || !scope || timelineMode.kind !== "live") return;
+    const deltas = featureDeltas
+      .map((entry) => graphDeltaToScene(entry))
+      .filter((d): d is NonNullable<typeof d> => d !== null);
+    if (!deltas.length) return;
+    scene.controller.command({
+      kind: "apply-deltas",
+      deltas,
+      seq: deltas[deltas.length - 1]!.seq,
+    });
+  }, [featureDeltas, scope, timelineMode.kind]);
+
+  // Gap fallback: a seq discontinuity means we missed deltas. Invalidate the
+  // constellation so TanStack refetches a fresh keyframe (the resilient floor
+  // from the live-state ADR). `gapCount` increments once per gap, so this
+  // effect fires exactly once per event.
+  useEffect(() => {
+    if (!gapCount || !scope) return;
+    void queryClient.invalidateQueries({
+      queryKey: [...engineKeys.all, "graph", scope],
+      exact: false,
+    });
+  }, [gapCount, scope, queryClient]);
 
   // One filter model, applied as a visibility membership diff (RL-5a):
   // the scene animates what the filter removed (G3.f).
@@ -190,7 +229,26 @@ export function Stage() {
           nodes: membership?.hiddenNodeCount ?? 0,
           edges: membership?.hiddenEdgeCount ?? 0,
         }}
+        sidebarOpen={filterSidebarOpen}
+        onSidebarToggle={() => setFilterSidebarOpen((v) => !v)}
       />
+      <NavToolbar
+        algorithmPanelOpen={algorithmPanelOpen}
+        onAlgorithmPanelToggle={() => setAlgorithmPanelOpen((v) => !v)}
+      />
+      <FilterSidebar
+        open={filterSidebarOpen}
+        onClose={() => setFilterSidebarOpen(false)}
+        scope={scope}
+        hidden={{
+          nodes: membership?.hiddenNodeCount ?? 0,
+          edges: membership?.hiddenEdgeCount ?? 0,
+        }}
+      />
+      {algorithmPanelOpen && (
+        <AlgorithmPanel onClose={() => setAlgorithmPanelOpen(false)} />
+      )}
+      <MinimapWidget />
       <WorkingSet />
       <Discover />
       <TimeTravelChip />

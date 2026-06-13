@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
 import { buildFixtureCorpus } from "../testing/fixtures/corpus";
-import { engineEdgeToScene, engineNodeToScene, sliceToScene } from "./sceneMapping";
+import {
+  engineEdgeToScene,
+  engineNodeToScene,
+  graphDeltaToScene,
+  sliceToScene,
+} from "./sceneMapping";
 
 describe("sceneMapping", () => {
   const corpus = buildFixtureCorpus();
@@ -40,5 +46,78 @@ describe("sceneMapping", () => {
     const mapped = sliceToScene({ nodes: corpus.nodes, edges: corpus.metaEdges });
     expect(mapped.nodes.length).toBe(corpus.nodes.length);
     expect(mapped.edges.every((e) => e.meta !== undefined)).toBe(true);
+  });
+});
+
+// graphDeltaToScene — spliceLive bridge (constellation-live-delta S07).
+// Stage maps feature-granularity GraphDeltaEntry objects through this
+// function before pushing them via SceneController.command("apply-deltas").
+describe("graphDeltaToScene", () => {
+  it("returns null when neither node nor edge is present", () => {
+    const entry = { op: "add", t: 100, seq: 1 } as unknown as GraphDeltaEntry;
+    expect(graphDeltaToScene(entry)).toBeNull();
+  });
+
+  it("maps a feature-node add delta to a SceneDelta", () => {
+    const node: EngineNode = {
+      id: "feature:auth",
+      kind: "feature",
+      title: "Auth",
+      member_count: 5,
+    };
+    const result = graphDeltaToScene({ op: "add", node, t: 100, seq: 1, granularity: "feature" });
+    expect(result).not.toBeNull();
+    expect(result!.op).toBe("add");
+    expect(result!.seq).toBe(1);
+    expect(result!.t).toBe(100);
+    expect(result!.node).toMatchObject({
+      id: "feature:auth",
+      kind: "feature",
+      title: "Auth",
+      memberCount: 5,
+    });
+    expect(result!.edge).toBeUndefined();
+  });
+
+  it("maps an edge change delta to a SceneDelta", () => {
+    const edge: EngineEdge = {
+      id: "e1",
+      src: "a",
+      dst: "b",
+      relation: "declares",
+      tier: "declared",
+      confidence: 0.9,
+      state: "resolved",
+    };
+    const result = graphDeltaToScene({ op: "change", edge, t: 200, seq: 2 });
+    expect(result).not.toBeNull();
+    expect(result!.op).toBe("change");
+    expect(result!.seq).toBe(2);
+    expect(result!.t).toBe(200);
+    expect(result!.node).toBeUndefined();
+    expect(result!.edge).toMatchObject({ id: "e1", src: "a", dst: "b", tier: "declared" });
+  });
+
+  it("preserves both node and edge when both are present (remove delta)", () => {
+    const node: EngineNode = { id: "doc:x", kind: "document" };
+    const edge: EngineEdge = {
+      id: "e2",
+      src: "doc:x",
+      dst: "doc:y",
+      relation: "links",
+      tier: "structural",
+      confidence: 1,
+    };
+    const result = graphDeltaToScene({ op: "remove", node, edge, t: 300, seq: 3 });
+    expect(result).not.toBeNull();
+    expect(result!.op).toBe("remove");
+    expect(result!.node).toBeDefined();
+    expect(result!.edge).toBeDefined();
+  });
+
+  it("snake_case member_count renames to camelCase memberCount across the seam", () => {
+    const node: EngineNode = { id: "feature:ux", kind: "feature", member_count: 12 };
+    const result = graphDeltaToScene({ op: "add", node, t: 10, seq: 5 });
+    expect(result!.node!.memberCount).toBe(12);
   });
 });

@@ -2,8 +2,8 @@
 // contract shapes; the scene speaks the locked seam types. This is the
 // only place the two vocabularies meet. Scene-layer module: framework-free.
 
-import type { EngineEdge, EngineNode } from "../stores/server/engine";
-import type { SceneEdgeData, SceneNodeData } from "./sceneController";
+import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
+import type { SceneDelta, SceneEdgeData, SceneNodeData } from "./sceneController";
 
 export function engineNodeToScene(node: EngineNode): SceneNodeData {
   return {
@@ -40,5 +40,25 @@ export function sliceToScene(slice: { nodes: EngineNode[]; edges: EngineEdge[] }
   return {
     nodes: slice.nodes.map(engineNodeToScene),
     edges: slice.edges.map(engineEdgeToScene),
+  };
+}
+
+/**
+ * Map one engine delta entry to a SceneDelta for `apply-deltas`.
+ * Returns null for entries that carry neither a node nor an edge — the
+ * caller filters nulls before routing to SceneController.
+ *
+ * Used by the spliceLive path (constellation-live-delta S05): Stage maps
+ * feature-granularity delta entries to SceneDeltas and pushes them via
+ * `SceneController.command({ kind: "apply-deltas", ... })`.
+ */
+export function graphDeltaToScene(delta: GraphDeltaEntry): SceneDelta | null {
+  if (!delta.node && !delta.edge) return null;
+  return {
+    op: delta.op,
+    node: delta.node ? engineNodeToScene(delta.node) : undefined,
+    edge: delta.edge ? engineEdgeToScene(delta.edge) : undefined,
+    t: delta.t,
+    seq: delta.seq,
   };
 }

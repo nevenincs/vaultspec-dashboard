@@ -194,6 +194,13 @@ export interface GraphSlice {
   meta_edges?: WireMetaEdge[];
   filter?: GraphFilter;
   tiers: TiersBlock;
+  /**
+   * Present on LIVE keyframe responses (constellation-live-delta S03): the
+   * monotonic seq clock tip at the time the keyframe was built. Absent on
+   * as-of/time-travel responses. Consumers use this as the `since` anchor
+   * for the graph SSE subscription so deltas resume without re-keyframing.
+   */
+  last_seq?: number | null;
 }
 
 export interface FiltersVocabulary {
@@ -249,13 +256,19 @@ export interface EventsResponse {
   tiers: TiersBlock;
 }
 
-/** One delta entry — the single shape shared by /graph/diff and SSE graph. */
+/**
+ * One delta entry — the single shape shared by /graph/diff and SSE graph.
+ * `granularity` is present on constellation-live-delta responses (S03) and
+ * discriminates document edges from feature-node/meta-edge deltas.
+ */
 export interface GraphDeltaEntry {
   op: "add" | "remove" | "change";
   node?: EngineNode;
   edge?: EngineEdge;
   t: number;
   seq: number;
+  /** Present when the engine emits both delta species on the single clock. */
+  granularity?: "document" | "feature";
 }
 
 export interface GraphDiffResponse {

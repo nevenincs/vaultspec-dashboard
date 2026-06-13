@@ -74,4 +74,140 @@ describe("useGraphLiveSync", () => {
     expect(useLiveStatusStore.getState().lastSeq).toBeNull();
     expect(useLiveStatusStore.getState().streamConnected).toBeNull();
   });
+
+  // --- spliceLive path (constellation-live-delta S06/S07) ---
+
+  it("since=keyframeSeq produces a different stream cache key from no-since", () => {
+    const keyWithSince = engineKeys.stream(["graph"], 42);
+    const keyNoSince = engineKeys.stream(["graph"], undefined);
+    // Keys must differ so the two subscriptions never share cached data
+    // (stream-01 adversarial property).
+    expect(keyWithSince).not.toEqual(keyNoSince);
+    expect(Array.isArray(keyWithSince)).toBe(true);
+    expect(Array.isArray(keyNoSince)).toBe(true);
+  });
+
+  it("returns featureDeltas for granularity=feature chunks when keyframeSeq is provided", () => {
+    const client = new QueryClient();
+    const chunks: StreamChunk[] = [
+      {
+        channel: "graph",
+        data: {
+          granularity: "feature",
+          op: "add",
+          node: { id: "feature:auth", kind: "feature" },
+          t: 1000,
+          seq: 11,
+        },
+      },
+      {
+        channel: "graph",
+        data: {
+          // document-granularity delta — must NOT appear in featureDeltas
+          granularity: "document",
+          op: "add",
+          edge: { id: "e1", src: "a", dst: "b", relation: "declares", tier: "declared", confidence: 1 },
+          t: 1001,
+          seq: 12,
+        },
+      },
+    ];
+    client.setQueryData(engineKeys.stream(["graph"], 10), chunks);
+
+    const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.featureDeltas).toHaveLength(1);
+    expect(result.current.featureDeltas[0]).toMatchObject({
+      granularity: "feature",
+      op: "add",
+      seq: 11,
+    });
+    expect(result.current.gapCount).toBe(0);
+  });
+
+  it("returns featureDeltas without gap detection when keyframeSeq is null", () => {
+    const client = new QueryClient();
+    const chunks: StreamChunk[] = [
+      {
+        channel: "graph",
+        data: {
+          granularity: "feature",
+          op: "add",
+          node: { id: "feature:ux", kind: "feature" },
+          t: 2000,
+          seq: 99,
+        },
+      },
+    ];
+    // Without keyframeSeq, subscribes at live tail (undefined cache key)
+    client.setQueryData(engineKeys.stream(["graph"], undefined), chunks);
+
+    const { result } = renderHook(() => useGraphLiveSync("scopeA", true, null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.featureDeltas).toHaveLength(1);
+    // seq=99 with no baseline — no false gap detection
+    expect(result.current.gapCount).toBe(0);
+  });
+
+  it("increments gapCount on seq discontinuity and clears featureDeltas", () => {
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient();
+      // keyframeSeq=10, first delta seq=15 — skips 11,12,13,14
+      const chunks: StreamChunk[] = [
+        {
+          channel: "graph",
+          data: {
+            granularity: "feature",
+            op: "add",
+            node: { id: "feature:ux", kind: "feature" },
+            t: 1000,
+            seq: 15,
+          },
+        },
+      ];
+      client.setQueryData(engineKeys.stream(["graph"], 10), chunks);
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+
+      const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+        wrapper: wrapper(client),
+      });
+
+      expect(result.current.gapCount).toBe(1);
+      expect(result.current.featureDeltas).toHaveLength(0);
+      // Debounced invalidation still fires for all deltas regardless of gap
+      vi.advanceTimersByTime(200);
+      expect(invalidate).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not flag a gap when the first feature delta arrives right after keyframeSeq", () => {
+    const client = new QueryClient();
+    const chunks: StreamChunk[] = [
+      {
+        channel: "graph",
+        data: {
+          granularity: "feature",
+          op: "add",
+          node: { id: "feature:auth", kind: "feature" },
+          t: 1000,
+          seq: 11, // exactly keyframeSeq(10) + 1
+        },
+      },
+    ];
+    client.setQueryData(engineKeys.stream(["graph"], 10), chunks);
+
+    const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.gapCount).toBe(0);
+    expect(result.current.featureDeltas).toHaveLength(1);
+  });
 });
