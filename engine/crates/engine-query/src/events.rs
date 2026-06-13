@@ -84,7 +84,12 @@ pub fn bucket_events(
             };
         }
         BucketMode::Auto => {
-            let span = (to_ts - from_ts).max(1);
+            // Saturating arithmetic (robustness M3): `from_ts`/`to_ts` arrive
+            // unsanitized from the wire, so a hostile `to=i64::MAX,
+            // from=i64::MIN` would overflow the subtraction. Release builds run
+            // with overflow-checks off — the wrap is SILENT and corrupts every
+            // bucket. Saturate instead so the span is a clamped, sane value.
+            let span = to_ts.saturating_sub(from_ts).max(1);
             (span / AUTO_TARGET_BUCKETS).max(1)
         }
         BucketMode::Fixed(ms) => ms.max(1),
@@ -95,7 +100,13 @@ pub fn bucket_events(
         if row.ts < from_ts || row.ts > to_ts {
             continue;
         }
-        let start = from_ts + ((row.ts - from_ts) / interval) * interval;
+        // Saturating arithmetic (robustness M3): every step — the offset
+        // subtraction, the bucket multiply, and the start addition — can
+        // overflow i64 on unsanitized bounds; saturate so a wrap can never
+        // silently mislabel a bucket in a release build.
+        let offset = row.ts.saturating_sub(from_ts);
+        let bucket_start = (offset / interval).saturating_mul(interval);
+        let start = from_ts.saturating_add(bucket_start);
         *buckets
             .entry(start)
             .or_default()
@@ -107,7 +118,7 @@ pub fn bucket_events(
             .into_iter()
             .map(|(from, counts_by_kind)| Bucket {
                 from,
-                to: from + interval,
+                to: from.saturating_add(interval),
                 counts_by_kind,
             })
             .collect(),
@@ -266,6 +277,36 @@ mod tests {
         assert!(buckets.len() as i64 <= AUTO_TARGET_BUCKETS + 1);
         let total: u64 = buckets.iter().flat_map(|b| b.counts_by_kind.values()).sum();
         assert_eq!(total, 1000, "no event lost to bucketing");
+    }
+
+    #[test]
+    fn extreme_bounds_do_not_overflow_the_bucketing_math() {
+        // Robustness M3: `from_ts`/`to_ts` arrive unsanitized from the wire. A
+        // hostile `to=i64::MAX, from=i64::MIN` overflows the span subtraction
+        // and the start offset/add. In the test profile (overflow-checks ON)
+        // an unchecked subtraction PANICS; in release it would silently wrap
+        // and corrupt the buckets. With saturating arithmetic the call returns
+        // a sane payload either way — this test fails loudly on a regression.
+        let rows = [row(1, 0, "commit"), row(2, 1000, "doc-modified")];
+
+        // Auto mode: span = to - from would overflow.
+        let EventsPayload::Bucketed { buckets } =
+            bucket_events(&rows, i64::MIN, i64::MAX, BucketMode::Auto)
+        else {
+            panic!("bucketed expected");
+        };
+        let total: u64 = buckets.iter().flat_map(|b| b.counts_by_kind.values()).sum();
+        assert_eq!(total, 2, "every in-range event counted, no overflow panic");
+
+        // Fixed mode with extreme bounds: the start offset/add would overflow.
+        let EventsPayload::Bucketed { .. } =
+            bucket_events(&rows, i64::MIN, i64::MAX, BucketMode::Fixed(1000))
+        else {
+            panic!("bucketed expected");
+        };
+
+        // A degenerate from > to range must also not panic (empty/clamped).
+        let _ = bucket_events(&rows, i64::MAX, i64::MIN, BucketMode::Auto);
     }
 
     #[test]
