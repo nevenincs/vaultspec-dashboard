@@ -106,10 +106,14 @@ pub async fn graph_asof(
     // spurious `change` deltas (2026-06-13 hardening). graph_query filters by
     // this same scope, so both must agree.
     let scope = state.scope.clone();
-    let graph = engine_graph::asof::asof_graph(&state.root, &params.t, &scope, 0)
+    // Echo the RESOLVED sha + the chosen interpretation (ADD-901): a client
+    // sends `t` (a ref, sha, or epoch-ms) and must learn, without re-deriving,
+    // both which commit the engine landed on and how it read the token (the
+    // revision/timestamp readings can collide on an all-digit value).
+    let resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.t, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.t, &e))?;
     let slice = engine_query::graph::graph_query(
-        &graph,
+        &resolved.graph,
         &scope,
         engine_query::filter::Filter::default(),
         granularity,
@@ -118,6 +122,10 @@ pub async fn graph_asof(
     Ok(super::envelope(
         json!({
             "t": params.t,
+            // Additive (ADD-901): the raw `t` echo above is preserved; these
+            // name the commit `t` resolved to and how the token was read.
+            "resolved_sha": resolved.resolved_sha,
+            "interpretation": resolved.interpretation,
             "nodes": slice.nodes,
             "edges": slice.edges,
             // Feature granularity carries the constellation meta-edges so a
@@ -168,17 +176,30 @@ pub async fn graph_diff(
         engine_graph::asof::resolve_ref(&state.root, &params.to),
     ) && from_sha == to_sha
     {
+        // Even the empty-delta fast path echoes the resolved shas (ADD-901):
+        // a client that diffed `HEAD` against its sha still learns both
+        // endpoints resolved to the same commit, not a silent empty log.
         return Ok(super::envelope(
-            json!({"deltas": [], "last_seq": 0, "clock": "result-local"}),
+            json!({
+                "deltas": [],
+                "last_seq": 0,
+                "clock": "result-local",
+                "from_resolved_sha": from_sha,
+                "to_resolved_sha": to_sha,
+            }),
             serde_json::to_value(engine_query::envelope::asof_tiers_block())
                 .expect("tiers serialize"),
             None,
         ));
     }
-    let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope, 0)
+    // Echo each endpoint's resolved sha + interpretation (ADD-901), additive
+    // to the existing delta log.
+    let from_resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.from, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.from, &e))?;
-    let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope, 0)
+    let to_resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.to, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.to, &e))?;
+    let from_graph = &from_resolved.graph;
+    let to_graph = &to_resolved.graph;
 
     // Historical diffs number RESULT-LOCALLY (audit N2): a scrub must
     // never burn live-clock positions or manufacture stream gaps. Only
@@ -190,7 +211,7 @@ pub async fn graph_diff(
     let t = crate::app::now_ms();
     let (deltas, last_seq) = match granularity {
         engine_query::graph::Granularity::Document => {
-            let log = engine_graph::diff::diff(&from_graph, &to_graph, t, 0);
+            let log = engine_graph::diff::diff(from_graph, to_graph, t, 0);
             (
                 serde_json::to_value(&log.entries).expect("deltas serialize"),
                 log.last_seq,
@@ -198,7 +219,7 @@ pub async fn graph_diff(
         }
         engine_query::graph::Granularity::Feature => {
             let (entries, last_seq) =
-                engine_query::graph::feature_delta(&from_graph, &to_graph, &scope, t, 0);
+                engine_query::graph::feature_delta(from_graph, to_graph, &scope, t, 0);
             (Value::Array(entries), last_seq)
         }
     };
@@ -207,6 +228,12 @@ pub async fn graph_diff(
             "deltas": deltas,
             "last_seq": last_seq,
             "clock": "result-local",
+            // Additive (ADD-901): the resolved commit + token reading for each
+            // endpoint, so a scrub log states which commits it ran between.
+            "from_resolved_sha": from_resolved.resolved_sha,
+            "to_resolved_sha": to_resolved.resolved_sha,
+            "from_interpretation": from_resolved.interpretation,
+            "to_interpretation": to_resolved.interpretation,
         }),
         serde_json::to_value(engine_query::envelope::asof_tiers_block()).expect("tiers serialize"),
         None,

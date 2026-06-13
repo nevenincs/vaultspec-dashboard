@@ -298,6 +298,87 @@ mod tests {
         (status, value)
     }
 
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "f")
+            .env("GIT_AUTHOR_EMAIL", "f@t")
+            .env("GIT_COMMITTER_NAME", "f")
+            .env("GIT_COMMITTER_EMAIL", "f@t")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_asof_echoes_the_resolved_sha_and_interpretation_for_both_token_forms() {
+        // ADD-901: /graph/asof MUST echo the chosen interpretation (revision
+        // vs ms-timestamp) AND the resolved 40-char sha, for BOTH a revision
+        // token (`HEAD`) and a millisecond-timestamp token.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-asof-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#asof'\n---\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "fixture"]);
+
+        let head_sha = {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let state = app::build_state(root.to_path_buf());
+        state.rebuild_and_swap().unwrap();
+        let token = state.bearer.clone();
+        let scope = state.root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        // Revision token: resolves to HEAD's sha, interpretation `revision`.
+        let (status, body) = get_with_token(
+            router.clone(),
+            &format!("/graph/asof?scope={}&t=HEAD", urlencode(&scope)),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "revision token: {body}");
+        assert_eq!(body["data"]["resolved_sha"], head_sha, "echoes HEAD sha");
+        assert_eq!(body["data"]["interpretation"], "revision");
+        assert_eq!(body["data"]["t"], "HEAD", "raw t echo preserved");
+
+        // Millisecond-timestamp token: a far-future epoch-ms resolves to the
+        // latest commit (HEAD), interpretation `timestamp`.
+        let future_ms = (app::now_ms() + 1_000_000).to_string();
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/asof?scope={}&t={future_ms}",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "timestamp token: {body}");
+        assert_eq!(
+            body["data"]["resolved_sha"], head_sha,
+            "epoch-ms resolves to the latest commit's sha"
+        );
+        assert_eq!(body["data"]["interpretation"], "timestamp");
+    }
+
     #[tokio::test]
     async fn health_is_ungated_everything_else_is_bearer_gated() {
         let (_dir, state) = fixture_state();

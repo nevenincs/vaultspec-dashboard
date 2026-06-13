@@ -17,12 +17,41 @@ use ingest_struct::extract::MentionKind;
 use crate::graph::{EdgeAttrs, LinkageGraph};
 use crate::index::{IndexError, Result, structural_edge_for};
 
+/// How a `t=<ts|sha>` token was interpreted (ADD-901): the response echoes
+/// this so a client never has to guess whether its token was read as a git
+/// revision or as a millisecond timestamp — the two can collide (an all-digit
+/// sha-prefix vs an epoch-ms value), so the engine's chosen reading is part of
+/// the contract surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Interpretation {
+    /// Parsed as a git commit-ish (ref name or sha).
+    Revision,
+    /// Parsed as a millisecond Unix timestamp, resolved to the latest commit
+    /// at-or-before T.
+    Timestamp,
+}
+
+/// An as-of rebuild plus the resolution facts the response must echo
+/// (ADD-901): the graph as it stood at T, the 40-char `resolved_sha` the
+/// token resolved to, and the `interpretation` the engine chose.
+#[derive(Debug)]
+pub struct AsofGraph {
+    pub graph: LinkageGraph,
+    pub resolved_sha: String,
+    pub interpretation: Interpretation,
+}
+
 /// Resolve a time-travel token (contract §5 `t=<ts|sha>`): revision-first,
 /// then — when the token is all digits — a millisecond timestamp resolved
 /// to the latest commit at-or-before T on the scope ref (addendum S01).
-fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::ObjectId> {
+/// Returns the resolved commit AND how the token was read (ADD-901).
+fn resolve_commit(
+    repo: &gix::Repository,
+    reference: &str,
+) -> Result<(gix::ObjectId, Interpretation)> {
     match repo.rev_parse_single(reference) {
-        Ok(id) => Ok(id.detach()),
+        Ok(id) => Ok((id.detach(), Interpretation::Revision)),
         Err(rev_err) => {
             // Millisecond-timestamp fallback: only for all-digit tokens —
             // anything else is an invalid revision. The raw gix error is
@@ -62,7 +91,7 @@ fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::Object
                     .seconds
                     * 1000;
                 if ts_ms <= t {
-                    return Ok(commit.id);
+                    return Ok((commit.id, Interpretation::Timestamp));
                 }
             }
             Err(IndexError::Revision(format!(
@@ -80,20 +109,37 @@ fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::Object
 /// corpus each cost ~20s (sweep HIGH, 2026-06-13).
 pub fn resolve_ref(repo_dir: &Path, reference: &str) -> Result<String> {
     let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
-    Ok(resolve_commit(&repo, reference)?.to_string())
+    Ok(resolve_commit(&repo, reference)?.0.to_string())
 }
 
 /// Rebuild the structural slice of the graph as committed at `reference`
 /// (a ref name, commit sha, or millisecond timestamp — contract §5
 /// `t=<ts|sha>`).
+///
+/// Back-compat shim over [`asof_graph_resolved`] for callers that need only
+/// the graph; surfaces of the resolved sha + interpretation (ADD-901) call
+/// the `_resolved` form.
 pub fn asof_graph(
     repo_dir: &Path,
     reference: &str,
     scope: &ScopeRef,
     observed_at: Timestamp,
 ) -> Result<LinkageGraph> {
+    Ok(asof_graph_resolved(repo_dir, reference, scope, observed_at)?.graph)
+}
+
+/// Rebuild the as-of graph AND return the resolution facts the response must
+/// echo (ADD-901): the resolved 40-char sha and the chosen `interpretation`
+/// (revision vs ms-timestamp). The contract requires the response to echo both
+/// so a client never has to re-derive how its `t` token was read.
+pub fn asof_graph_resolved(
+    repo_dir: &Path,
+    reference: &str,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+) -> Result<AsofGraph> {
     let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
-    let commit_id = resolve_commit(&repo, reference)?;
+    let (commit_id, interpretation) = resolve_commit(&repo, reference)?;
     let commit = repo
         .find_commit(commit_id)
         .map_err(|e| IndexError::Git(e.to_string()))?;
@@ -234,7 +280,11 @@ pub fn asof_graph(
         Some(&resolved_sha),
     );
 
-    Ok(graph)
+    Ok(AsofGraph {
+        graph,
+        resolved_sha,
+        interpretation,
+    })
 }
 
 #[cfg(test)]
@@ -373,18 +423,29 @@ mod tests {
         let repo = gix::open(root).unwrap();
 
         // T = 450s (ms): latest commit at-or-before is C(400), NOT B(200).
-        let resolved = resolve_commit(&repo, "1000000450000").unwrap();
+        let (resolved, interp) = resolve_commit(&repo, "1000000450000").unwrap();
         assert_eq!(resolved.to_string(), c, "must pick C(400), not B(200)");
+        assert_eq!(
+            interp,
+            Interpretation::Timestamp,
+            "an all-digit epoch-ms token reads as a timestamp"
+        );
 
         // T between B and C resolves B; T at/after M resolves M (sanity).
         assert_eq!(
-            resolve_commit(&repo, "1000000300000").unwrap().to_string(),
+            resolve_commit(&repo, "1000000300000").unwrap().0.to_string(),
             b
         );
         assert_eq!(
-            resolve_commit(&repo, "1000000500000").unwrap().to_string(),
+            resolve_commit(&repo, "1000000500000").unwrap().0.to_string(),
             m
         );
+
+        // A real ref/sha reads as a revision, never a timestamp.
+        let (_, head_interp) = resolve_commit(&repo, "HEAD").unwrap();
+        assert_eq!(head_interp, Interpretation::Revision);
+        let (_, sha_interp) = resolve_commit(&repo, &m).unwrap();
+        assert_eq!(sha_interp, Interpretation::Revision, "a sha is a revision");
 
         // A timestamp before the root commit errors, never an empty graph —
         // and as a leak-free `Revision` error naming the REAL cause, so the API
