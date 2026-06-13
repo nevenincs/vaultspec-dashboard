@@ -13,6 +13,7 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 
+import { StreamLostError } from "../../platform/policy/failurePolicy";
 import type { GraphFilter } from "./engine";
 import { engineClient } from "./engine";
 
@@ -184,21 +185,39 @@ export function parseSseFrames(buffer: string): {
   return { frames, rest };
 }
 
-/** Consume an SSE Response body as an async iterable of chunks. */
+/** True when an error is an intentional cancel (abort), not a lost stream. */
+function isAbort(cause: unknown): boolean {
+  return cause instanceof Error && cause.name === "AbortError";
+}
+
+/**
+ * Consume an SSE Response body as an async iterable of chunks. A clean
+ * end-of-stream (`done`) returns normally; a non-ok response or a mid-stream
+ * read failure throws `StreamLostError` (ADR D2) so the failure policy can
+ * classify it `degraded`/`stream-lost` and the degradation surface can render.
+ * An intentional abort (unmount / scope change) is re-thrown untouched - it is
+ * not a lost stream.
+ */
 export async function* sseChunks(
   response: Response,
 ): AsyncGenerator<StreamChunk, void, unknown> {
   if (!response.ok || !response.body) {
-    throw new Error(`stream responded ${response.status}`);
+    throw new StreamLostError(`graph stream responded ${response.status}`);
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   try {
     for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      buffer += decoder.decode(value, { stream: true });
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (cause) {
+        if (isAbort(cause)) throw cause;
+        throw new StreamLostError("graph stream dropped");
+      }
+      if (chunk.done) return;
+      buffer += decoder.decode(chunk.value, { stream: true });
       const { frames, rest } = parseSseFrames(buffer);
       buffer = rest;
       for (const frame of frames) {

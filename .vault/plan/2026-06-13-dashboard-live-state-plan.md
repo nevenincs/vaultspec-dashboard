@@ -102,8 +102,8 @@ Complete the unwired live and degradation plane of the Data and State layer: mod
 
 Model the runtime stream-connection state and make the SSE consumer signal a lost stream.
 
-- [ ] `P01.S01` - Add the scope-keyed live-connection slice holding streamConnected, lastSeq, and brokenLinkCount; `frontend/src/stores/server/liveStatus.ts`.
-- [ ] `P01.S02` - Throw StreamLostError on an abnormal stream close or non-ok response in the SSE consumer; `frontend/src/stores/server/queries.ts`.
+- [x] `P01.S01` - Add the scope-keyed live-connection slice holding streamConnected, lastSeq, and brokenLinkCount; `frontend/src/stores/server/liveStatus.ts`.
+- [x] `P01.S02` - Throw StreamLostError on an abnormal stream close or non-ok response in the SSE consumer; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `P02` - Live reactivity and degradation truth
 

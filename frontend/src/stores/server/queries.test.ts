@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { MockEngine } from "../../testing/mockEngine";
 import { EngineClient } from "./engine";
 import { engineKeys, parseSseFrames, sseChunks, stableKey } from "./queries";
@@ -81,5 +82,28 @@ describe("sseChunks over the mock engine stream", () => {
     mock.push("backends", { rag: "stopped" });
     await consume;
     expect(received).toEqual([{ channel: "backends", data: { rag: "stopped" } }]);
+  });
+
+  it("throws StreamLostError on a non-ok stream response (ADR D2)", async () => {
+    const badResponse = new Response("nope", { status: 503 });
+    await expect(async () => {
+      for await (const _chunk of sseChunks(badResponse)) {
+        void _chunk;
+      }
+    }).rejects.toBeInstanceOf(StreamLostError);
+  });
+
+  it("throws StreamLostError when the body read fails mid-stream", async () => {
+    const failingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("connection reset"));
+      },
+    });
+    const response = new Response(failingBody, { status: 200 });
+    await expect(async () => {
+      for await (const _chunk of sseChunks(response)) {
+        void _chunk;
+      }
+    }).rejects.toBeInstanceOf(StreamLostError);
   });
 });
