@@ -237,6 +237,16 @@ Further findings (tracked): HIGH — asof/diff are catastrophically slow on larg
 
 OUTSTANDING (needs operator action): the sweep's old binary left AEAT and aeat-audit working trees dirtied (engine-installed firmware + stamped/deleted vault docs); they were NOT auto-reverted because both also carry PRE-EXISTING uncommitted user work that a blind `git checkout` would destroy. Operator must restore selectively.
 
+## ADD-908 | high | /graph/diff flood had a THIRD root cause: phantom node aborted the whole graph parse - FIXED
+
+Twentieth entry (2026-06-13): hardening `/graph/diff` to the user's "absolutely critical" bar surfaced a third, distinct root cause that ADD-907's scope-label + `edge_changed` fixes did NOT reach. ADD-907 claimed HEAD~3..HEAD was clean post-fix; re-running it showed a persistent ~7100-delta flood of declared-edge add/removes between any two non-equal refs. Cause: the as-of declared-tier ingestion was **asymmetric** - HEAD ingested ~7120 declared edges while a historical ref ingested **zero**, so the diff read the entire declared tier as added-or-removed.
+
+Traced via a captured swallowed failure reason: `core graph parse: malformed JSON envelope: invalid type: null, expected a string`. A single **phantom node** (a doc linked-to but nonexistent in that corpus view - e.g. a wiki-link to `vault-cli-stamps-modified-field` that resolves only at later refs) is emitted by core with every field null but `id`. The engine's `GraphDoc.doc_type` was a required non-null `String`, so that one phantom aborted the ENTIRE `vaultspec.vault.graph.v2` parse, silently dropping every declared edge for that ref. HEAD happened to contain no unresolved link, so it parsed; historical refs with a then-dangling link did not - the asymmetry.
+
+Fix (`f87843d`): `GraphDoc.doc_type` is now `Option<String>` (a phantom legitimately has no type - the struct already carried a `phantom: bool` field anticipating exactly this), with a regression test asserting a null-`doc_type` phantom never fails the parse and the edge to it survives. Live-verified on the dashboard corpus: HEAD~3..HEAD now reports **18 real deltas** (2 change / 12 add / 4 remove - matching the actual vault changes across those commits) where it previously reported ~7100; an identity diff (HEAD..HEAD) reports 0. As-of@HEAD~3 now ingests 7116 declared edges (was 0). The misleading gix-handle-contention comment added while chasing this (a disproven hypothesis) was corrected; the handle drop stays as sound pre-subprocess hygiene. Full workspace lib suite + live-serve conformance both green.
+
+DURABILITY NOTE: this is the same class as `every-wire-response-carries-the-tiers-block` - a best-effort sibling read must degrade truthfully (one bad row drops one edge, surfaced), never fail-closed and silently drop the whole tier. A loud/partial parse for the core graph payload (skip-and-flag the unparseable node, keep the rest) is the structural form of this lesson; flagged for the codify decision rather than self-authored.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
