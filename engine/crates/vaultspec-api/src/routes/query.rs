@@ -267,6 +267,12 @@ pub struct NeighborParams {
     pub tiers: Option<String>,
 }
 
+/// Ego-network depth ceiling (hardening, 2026-06-13 adversarial finding): an
+/// unbounded `depth` walks the entire connected component into a single
+/// response. The GUI expands one hop at a time; cap the walk server-side so a
+/// hostile or accidental `depth=1e9` cannot dump the whole graph.
+const MAX_NEIGHBOR_DEPTH: usize = 4;
+
 pub async fn node_neighbors(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -291,19 +297,15 @@ pub async fn node_neighbors(
         })
         .collect::<Result<_, _>>()?;
     let graph = state.graph_arc();
-    let ego = engine_query::node::neighbors(
-        &graph,
-        &NodeId(id.clone()),
-        params.depth.unwrap_or(1),
-        &tiers,
-    )
-    .ok_or_else(|| {
-        super::api_error(
-            &state,
-            StatusCode::NOT_FOUND,
-            format!("unknown node `{id}`"),
-        )
-    })?;
+    let depth = params.depth.unwrap_or(1).min(MAX_NEIGHBOR_DEPTH);
+    let ego = engine_query::node::neighbors(&graph, &NodeId(id.clone()), depth, &tiers)
+        .ok_or_else(|| {
+            super::api_error(
+                &state,
+                StatusCode::NOT_FOUND,
+                format!("unknown node `{id}`"),
+            )
+        })?;
     Ok(super::envelope(
         json!({"ego": ego}),
         rag_tiers(&state),
@@ -339,6 +341,19 @@ pub async fn node_discover(
     Path(id): Path<String>,
     Json(body): Json<DiscoverBody>,
 ) -> ApiResult {
+    // Unknown node is a truthful 404 BEFORE any rag round-trip — consistent
+    // with /nodes, /neighbors, /evidence, and never proxies a doomed query
+    // (hardening, 2026-06-13 adversarial finding: discover used to 400 via
+    // rag for an unknown id while its sibling verbs 404).
+    let node = NodeId(id.clone());
+    let graph = state.graph_arc();
+    if graph.node(&node).is_none() {
+        return Err(super::api_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            format!("unknown node `{id}`"),
+        ));
+    }
     let vault_root = state.root.join(".vault");
     let (availability, info) = rag_client::client::discover(&vault_root);
     let rag_client::RagAvailability::Available = availability else {
@@ -359,10 +374,8 @@ pub async fn node_discover(
         bearer: info.service_token,
         timeout: std::time::Duration::from_secs(30),
     };
-    let node = NodeId(id.clone());
     // Node-scoped query: built from the node's own key plus its feature
     // tags (its content + linkage, engine-spec §4.3).
-    let graph = state.graph_arc();
     let query = body.query.unwrap_or_else(|| {
         graph
             .node(&node)

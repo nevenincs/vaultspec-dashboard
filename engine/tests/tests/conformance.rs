@@ -380,6 +380,35 @@ fn error_surface_carries_tiers_and_hides_internals() {
         "revision error must not leak build internals: {err}"
     );
     assert!(err.contains("invalid revision"), "names the failure: {err}");
+
+    // Hardening (2026-06-13 adversarial findings): discover of an unknown node
+    // is a truthful 404 (consistent with /nodes, /neighbors, /evidence), not a
+    // rag-proxied 400 — and it still carries the tiers block.
+    let (status, body) = http(8833, "POST", "/nodes/doc:nope/discover", &token, Some("{}"));
+    assert_eq!(status, 404, "discover unknown node -> 404, not 400: {body}");
+    assert!(body["tiers"].is_object(), "discover 404 carries tiers");
+
+    // Hardening: an absurd neighbor depth is clamped server-side (never an
+    // unbounded whole-component dump) and equals the capped walk.
+    let huge = http(
+        8833,
+        "GET",
+        "/nodes/doc:2026-06-13-conf-plan/neighbors?depth=999999",
+        &token,
+        None,
+    );
+    assert_eq!(huge.0, 200, "huge depth served (clamped), not an error");
+    let capped = http(
+        8833,
+        "GET",
+        "/nodes/doc:2026-06-13-conf-plan/neighbors?depth=4",
+        &token,
+        None,
+    );
+    assert_eq!(
+        huge.1["data"]["ego"], capped.1["data"]["ego"],
+        "depth beyond the cap yields the same bounded ego as the cap"
+    );
 }
 
 fn urlencode(s: &str) -> String {
