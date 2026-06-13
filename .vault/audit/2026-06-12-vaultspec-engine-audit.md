@@ -202,6 +202,16 @@ Gaps found and FIXED (one batch, reviewer PASS): (1) HIGH - axum extractor rejec
 
 Tracked, non-blocking: `status`/`map` carry a few one-door-only rollup fields (LOW D6.1 drift on non-graph verbs - the rollup verbs are point-in-time snapshots, not the shared query core); unknown API-shaped routes fall through to the SPA 200 HTML (LOW); the semantic tier reports rag service liveness, not per-scope index coverage (defensible tier definition - `/search` checks the actual response).
 
+## ADD-905 | none | production-readiness verification: base layer is sound
+
+Seventeenth entry (2026-06-13): a production-readiness verification campaign over the LIVE serve surface (existing binary, real dashboard-repo corpus 177 nodes / 7833 edges), concurrent with a parallel engine agent hardening the error-surface boundary (the handover's Defect-2 boundary `revision_error`, committed disjoint at `2e4418d` alongside this owner's source-level sanitization and `ensure_tiers_envelope` middleware).
+
+CONTRACT-ENDPOINT COVERAGE: every front-door endpoint exercised - `/health`, `/map`, `/vault-tree`, `/graph/query`, `/graph/asof`, `/graph/diff`, `/filters`, `/nodes/{id}`, `/nodes/{id}/neighbors`, `/nodes/{id}/evidence`, `/nodes/{id}/discover`, `/events`, `/status`, `/stream` (SSE), `/search`, `/ops/core/*` - all return their expected status and carry the tiers block, INCLUDING framework-boundary 400/401/405 (the `ensure_tiers_envelope` fix verified live). `/filters` correctly requires `?scope=` (returns the full filter vocabulary). Conformance test institutionalized: `error_surface_carries_tiers_and_hides_internals` asserts tiers on malformed-body/missing-param/405/401 and a leak-free revision error.
+
+LOAD / RESILIENCE: 240 sequential mixed requests across two bursts + 60 concurrent `/graph/query` - ZERO non-200 on well-formed requests, ZERO 5xx, ZERO crashes; 60/60 concurrent byte-identical (177n/7833e - per-generation consistency, no races); burst-2 within ~5% of burst-1 (system noise, not a leak); `/health` 200 throughout. (Two transient "failures" during testing were diagnosed as TEST harness bugs - a hardcoded scope and a missing `Content-Type` header - and the engine was correctly rejecting the malformed requests with tiers-carrying 400s, not a defect.) Consistent with the prior 1100+ hostile/concurrent stress pass (zero 5xx/hangs/races).
+
+VERDICT: the base layer is production-ready as a single-operator, loopback state-acquisition platform - all contract capabilities served, errors typed and tiers-truthful, no internal leaks, robust under concurrency and sustained load, identity stable and re-derivable, read-and-infer clean, degradation honest. Remaining items are LOW defense-in-depth input bounds owned by the concurrent error-surface agent (depth clamp on `/nodes/{id}/neighbors`, `filter` size cap, `/events` `from>to` validation, `/nodes/{id}/discover` degrade-vs-propagate-rag-400) - none block the platform; all carry the tiers block today and fail safe.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
