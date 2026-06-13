@@ -157,19 +157,47 @@ pub const CODE_NODE_IDS_CAP: usize = 20;
 /// commit landed at T".
 pub const DOC_MODIFIED_KIND: &str = "doc-modified";
 
+/// Event kind for a commit that CREATED a `.vault/` document — the path was
+/// Added at this commit (contract §5 third event kind, the create half of
+/// vault-lifecycle). Distinct from `doc-modified`: the timeline can mark a
+/// document's birth, not just a change.
+pub const VAULT_CREATED_KIND: &str = "vault-created";
+
+/// Event kind for a commit that ARCHIVED a `.vault/` document — the path was
+/// deleted, or renamed into `.vault/archive/` (contract §5 third event kind,
+/// the archive half of vault-lifecycle). Distinct from `doc-modified`: the
+/// timeline can mark a document's retirement.
+pub const VAULT_ARCHIVED_KIND: &str = "vault-archived";
+
+/// True for a repo-relative path that is a `.vault/` markdown document.
+fn is_vault_doc(path: &str) -> bool {
+    path.starts_with(".vault/") && path.ends_with(".md")
+}
+
+/// The doc node id a `.vault/` markdown path correlates to (by stem),
+/// matching `engine_store::events::node_ids_for_paths`.
+fn vault_doc_node_id(path: &str) -> Option<String> {
+    use engine_model::{CanonicalKey, node_id};
+    path.strip_prefix(".vault/")
+        .and_then(|rest| rest.split('/').next_back())
+        .and_then(|file| file.strip_suffix(".md"))
+        .map(|stem| node_id(&CanonicalKey::Document { stem }).0)
+}
+
 /// Source commit events from a workspace ref into contract-shaped rows
 /// (audit G7: event sourcing lives in the query core; both front doors
 /// delegate here — D6.1, no capability in only one door).
 ///
-/// Emits TWO of the three contract §5 event kinds from one commit walk:
-/// a `commit` row per commit (the full touched set), and a `doc-modified`
-/// row per commit that touched at least one `.vault/` document (the document
-/// nodes only). The third kind — vault-lifecycle (created/archived) — is NOT
-/// cleanly sourceable here: the commit walk flattens every change to a touched
-/// PATH, discarding the per-path change KIND (added / deleted / renamed-into-
-/// `.vault/archive/`) that distinguishes a create or an archive from a plain
-/// modification. Sourcing it needs `ingest_git::log` to carry per-path change
-/// kinds (a `gix` diff already computes them; `touched_paths` drops them).
+/// Emits all THREE contract §5 event kinds from one commit walk:
+/// a `commit` row per commit (the full touched set); a `doc-modified` row per
+/// commit that touched at least one `.vault/` document (the document nodes
+/// only); and the vault-lifecycle kinds — `vault-created` when a `.vault/`
+/// document was Added, `vault-archived` when one was deleted or renamed into
+/// `.vault/archive/`. The lifecycle kinds read the per-path change KIND now
+/// carried on `CommitEvent::changes` (added / deleted / renamed), which the
+/// flat `touched_paths` list cannot express. A created or archived document is
+/// ALSO reported on `doc-modified` (its content changed at this commit); the
+/// lifecycle row is the distinct, additive birth/retirement mark.
 ///
 /// `known` bounds the correlation (S05): when given, code-artifact ids
 /// keep only graph-known nodes; the survivors cap at
@@ -221,6 +249,66 @@ pub fn commit_rows(
                     kind: DOC_MODIFIED_KIND.to_string(),
                     git_ref: c.git_ref.clone(),
                     node_ids: docs.clone(),
+                    truncated_node_ids: 0,
+                },
+            ));
+        }
+
+        // vault-lifecycle: the per-path change kind (now carried on
+        // `c.changes`) distinguishes a document's BIRTH (Added) and its
+        // RETIREMENT (deleted, or renamed into `.vault/archive/`) from a plain
+        // modification. Each lifecycle row addresses only the affected doc
+        // node — the distinct, additive birth/retirement mark.
+        use ingest_git::log::ChangeKind;
+        let mut created: Vec<String> = Vec::new();
+        let mut archived: Vec<String> = Vec::new();
+        for change in &c.changes {
+            match &change.kind {
+                ChangeKind::Added if is_vault_doc(&change.path) => {
+                    if let Some(id) = vault_doc_node_id(&change.path) {
+                        created.push(id);
+                    }
+                }
+                ChangeKind::Deleted if is_vault_doc(&change.path) => {
+                    if let Some(id) = vault_doc_node_id(&change.path) {
+                        archived.push(id);
+                    }
+                }
+                // A rename into `.vault/archive/` is an archival keyed on the
+                // doc's SOURCE stem (its identity before the move). A rename
+                // elsewhere is neither a create nor an archive here.
+                ChangeKind::Renamed { from }
+                    if change.path.starts_with(".vault/archive/") && is_vault_doc(from) =>
+                {
+                    if let Some(id) = vault_doc_node_id(from) {
+                        archived.push(id);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !created.is_empty() {
+            rows.push((
+                c.sha.clone(),
+                EventRow {
+                    seq: 0,
+                    ts: c.ts,
+                    kind: VAULT_CREATED_KIND.to_string(),
+                    git_ref: c.git_ref.clone(),
+                    node_ids: created,
+                    truncated_node_ids: 0,
+                },
+            ));
+        }
+        if !archived.is_empty() {
+            rows.push((
+                c.sha.clone(),
+                EventRow {
+                    seq: 0,
+                    ts: c.ts,
+                    kind: VAULT_ARCHIVED_KIND.to_string(),
+                    git_ref: c.git_ref.clone(),
+                    node_ids: archived,
                     truncated_node_ids: 0,
                 },
             ));
@@ -367,6 +455,106 @@ mod tests {
         // Seqs stay monotonic and time-ordered across the interleaved kinds.
         assert!(rows.windows(2).all(|w| w[1].seq > w[0].seq));
         assert!(rows.windows(2).all(|w| w[1].ts >= w[0].ts));
+    }
+
+    #[test]
+    fn commit_rows_surface_vault_lifecycle_events_distinct_from_doc_modified() {
+        // Contract §5 third event kind: a commit that CREATES a `.vault/` doc
+        // yields a `vault-created` event; one that ARCHIVES it (a rename into
+        // `.vault/archive/`, or a delete) yields `vault-archived`. Both address
+        // only the affected doc node and are distinct from `doc-modified`.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+
+        // Commit 1: create a vault doc -> vault-created (+ doc-modified).
+        let doc = ".vault/plan/2026-06-13-life-plan.md";
+        std::fs::write(
+            root.join(doc),
+            "---\ntags:\n  - '#plan'\n  - '#life'\n---\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "create doc"]);
+
+        // Commit 2: rename it into `.vault/archive/` -> vault-archived.
+        std::fs::create_dir_all(root.join(".vault/archive/plan")).unwrap();
+        git(
+            root,
+            &[
+                "mv",
+                doc,
+                ".vault/archive/plan/2026-06-13-life-plan.md",
+            ],
+        );
+        git(root, &["commit", "-m", "archive doc"]);
+
+        let ws = ingest_git::workspace::Workspace::discover(root).unwrap();
+        let rows = commit_rows(&ws, "HEAD", 100, None).unwrap();
+
+        let doc_node = "doc:2026-06-13-life-plan";
+
+        let created: Vec<&EventRow> =
+            rows.iter().filter(|r| r.kind == VAULT_CREATED_KIND).collect();
+        assert_eq!(created.len(), 1, "exactly one vault-created event");
+        assert_eq!(
+            created[0].node_ids,
+            vec![doc_node],
+            "vault-created addresses only the created doc node"
+        );
+
+        let archived: Vec<&EventRow> = rows
+            .iter()
+            .filter(|r| r.kind == VAULT_ARCHIVED_KIND)
+            .collect();
+        assert_eq!(archived.len(), 1, "exactly one vault-archived event");
+        assert_eq!(
+            archived[0].node_ids,
+            vec![doc_node],
+            "vault-archived keyed on the doc's source stem"
+        );
+
+        // The lifecycle kinds are DISTINCT from doc-modified (which still
+        // reports the same docs' content change).
+        assert!(
+            created[0].kind != DOC_MODIFIED_KIND && archived[0].kind != DOC_MODIFIED_KIND
+        );
+
+        // Seqs stay monotonic and time-ordered across all interleaved kinds.
+        assert!(rows.windows(2).all(|w| w[1].seq > w[0].seq));
+        assert!(rows.windows(2).all(|w| w[1].ts >= w[0].ts));
+    }
+
+    #[test]
+    fn deleting_a_vault_doc_is_an_archival() {
+        // The archive half also covers an outright deletion of a `.vault/`
+        // doc (not only a rename into `.vault/archive/`).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        let doc = ".vault/adr/2026-06-13-del-adr.md";
+        std::fs::write(
+            root.join(doc),
+            "---\ntags:\n  - '#adr'\n  - '#del'\n---\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "create"]);
+
+        std::fs::remove_file(root.join(doc)).unwrap();
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-m", "delete"]);
+
+        let ws = ingest_git::workspace::Workspace::discover(root).unwrap();
+        let rows = commit_rows(&ws, "HEAD", 100, None).unwrap();
+        let archived: Vec<&EventRow> = rows
+            .iter()
+            .filter(|r| r.kind == VAULT_ARCHIVED_KIND)
+            .collect();
+        assert_eq!(archived.len(), 1, "a delete of a vault doc is an archival");
+        assert_eq!(archived[0].node_ids, vec!["doc:2026-06-13-del-adr"]);
     }
 
     #[test]

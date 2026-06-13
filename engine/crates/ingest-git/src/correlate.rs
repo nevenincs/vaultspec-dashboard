@@ -149,6 +149,16 @@ mod tests {
                 kind: "commit",
                 git_ref: "main".into(),
                 touched_paths: paths.iter().map(|p| p.to_string()).collect(),
+                // The correlation rules read only `touched_paths`; the
+                // per-path kind is immaterial here, so mirror each path as a
+                // Modified change to satisfy the additive field.
+                changes: paths
+                    .iter()
+                    .map(|p| crate::log::PathChange {
+                        path: p.to_string(),
+                        kind: crate::log::ChangeKind::Modified,
+                    })
+                    .collect(),
             },
             message: message.into(),
         }

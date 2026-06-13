@@ -6,6 +6,38 @@
 
 use crate::workspace::{GitError, Result, Workspace};
 
+/// How a path changed between a commit and its first parent (contract §5
+/// vault-lifecycle sourcing): the per-path kind the commit walk previously
+/// discarded. `gix`'s diff already computes these; carrying them lets the
+/// event sourcer distinguish a vault-doc *creation* (Added) or *archival*
+/// (a rename into `.vault/archive/`, or a deletion) from a plain modification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangeKind {
+    /// The path was newly added at this commit.
+    Added,
+    /// The path was deleted at this commit.
+    Deleted,
+    /// The path's content (or mode) changed in place.
+    Modified,
+    /// The path was renamed/copied from `from` to its current location.
+    Renamed {
+        /// The source (old) path of the rename.
+        from: String,
+    },
+}
+
+/// One path touched by a commit, with the kind of change (additive to the
+/// flat `touched_paths`): `path` is the post-commit location, `kind` names how
+/// it changed. The two surfaces stay in sync — `touched_paths` is the `path`
+/// of every `PathChange`, in the same order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathChange {
+    /// Repo-relative path touched (the destination, for a rename).
+    pub path: String,
+    /// How the path changed relative to the first parent.
+    pub kind: ChangeKind,
+}
+
 /// One commit observed on a ref, with the paths it touched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitEvent {
@@ -21,6 +53,11 @@ pub struct CommitEvent {
     pub git_ref: String,
     /// Repo-relative paths touched relative to the first parent.
     pub touched_paths: Vec<String>,
+    /// The same touched paths carrying their per-path change kind (additive
+    /// to `touched_paths`, same order). Lets a consumer source the
+    /// vault-lifecycle event kind (created / archived) the flat path list
+    /// cannot express.
+    pub changes: Vec<PathChange>,
 }
 
 /// Walk `ref_name` from its tip, newest first, up to `limit` commits.
@@ -57,21 +94,29 @@ pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<C
             .map_err(|e| GitError::Other(e.to_string()))?
             .seconds
             * 1000;
-        let touched_paths = touched_paths(&repo, &commit)?;
+        let changes = touched_changes(&repo, &commit)?;
+        // `touched_paths` stays the flat path list (back-compat): the `path`
+        // of every change, in the same order.
+        let touched_paths = changes.iter().map(|c| c.path.clone()).collect();
         out.push(CommitEvent {
             sha: commit.id.to_string(),
             ts,
             kind: "commit",
             git_ref: ref_name.to_string(),
             touched_paths,
+            changes,
         });
     }
     Ok(out)
 }
 
 /// Paths changed between a commit and its first parent (all paths for a
-/// root commit).
-fn touched_paths(repo: &gix::Repository, commit: &gix::Commit<'_>) -> Result<Vec<String>> {
+/// root commit), each carrying its change kind. `gix`'s tree diff already
+/// classifies every change as Addition / Deletion / Modification / Rewrite;
+/// this preserves that classification instead of flattening to a bare path.
+fn touched_changes(repo: &gix::Repository, commit: &gix::Commit<'_>) -> Result<Vec<PathChange>> {
+    use gix::object::tree::diff::Change;
+
     let tree = commit.tree().map_err(|e| GitError::Other(e.to_string()))?;
     let parent_tree = match commit.parent_ids().next() {
         Some(parent_id) => repo
@@ -82,7 +127,7 @@ fn touched_paths(repo: &gix::Repository, commit: &gix::Commit<'_>) -> Result<Vec
         None => repo.empty_tree(),
     };
 
-    let mut paths = Vec::new();
+    let mut changes = Vec::new();
     let mut platform = parent_tree
         .changes()
         .map_err(|e| GitError::Other(e.to_string()))?;
@@ -90,13 +135,24 @@ fn touched_paths(repo: &gix::Repository, commit: &gix::Commit<'_>) -> Result<Vec
         .for_each_to_obtain_tree(&tree, |change| {
             // Tree (directory) entries are structure, not touched files.
             if !change.entry_mode().is_tree() {
-                paths.push(change.location().to_string());
+                let path = change.location().to_string();
+                let kind = match &change {
+                    Change::Addition { .. } => ChangeKind::Added,
+                    Change::Deletion { .. } => ChangeKind::Deleted,
+                    Change::Modification { .. } => ChangeKind::Modified,
+                    Change::Rewrite {
+                        source_location, ..
+                    } => ChangeKind::Renamed {
+                        from: source_location.to_string(),
+                    },
+                };
+                changes.push(PathChange { path, kind });
             }
             Ok::<_, std::convert::Infallible>(std::ops::ControlFlow::Continue(()))
         })
         .map_err(|e| GitError::Other(e.to_string()))?;
-    paths.sort();
-    Ok(paths)
+    changes.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(changes)
 }
 
 #[cfg(test)]
@@ -131,6 +187,92 @@ mod tests {
         assert_eq!(events[1].touched_paths, vec!["src/lib.rs"]);
         // Root commit reports its full tree.
         assert_eq!(events[2].touched_paths, vec!["README.md"]);
+
+        // `changes` mirrors `touched_paths` in the same order, carrying the
+        // per-path kind: commit 3 modified both; commit 2 added src/lib.rs;
+        // the root commit added README.md.
+        assert_eq!(
+            events[0].changes,
+            vec![
+                PathChange {
+                    path: "README.md".into(),
+                    kind: ChangeKind::Modified
+                },
+                PathChange {
+                    path: "src/lib.rs".into(),
+                    kind: ChangeKind::Modified
+                },
+            ]
+        );
+        assert_eq!(
+            events[1].changes,
+            vec![PathChange {
+                path: "src/lib.rs".into(),
+                kind: ChangeKind::Added
+            }]
+        );
+        assert_eq!(
+            events[2].changes,
+            vec![PathChange {
+                path: "README.md".into(),
+                kind: ChangeKind::Added
+            }]
+        );
+        // `touched_paths` is exactly the `path` of every change.
+        for e in &events {
+            let from_changes: Vec<String> = e.changes.iter().map(|c| c.path.clone()).collect();
+            assert_eq!(e.touched_paths, from_changes);
+        }
+    }
+
+    #[test]
+    fn change_kinds_distinguish_add_delete_and_rename() {
+        // gix's diff classifies every change; the walk must preserve Added,
+        // Deleted, and a Rename's source (the vault-lifecycle sourcing depends
+        // on it: a delete or a rename into `.vault/archive/` is an archival).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "add a"]);
+
+        // Rename a.txt -> b.txt (a pure rename; git detects it).
+        git(root, &["mv", "a.txt", "b.txt"]);
+        git(root, &["commit", "-m", "rename a to b"]);
+
+        // Delete b.txt.
+        std::fs::remove_file(root.join("b.txt")).unwrap();
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-m", "delete b"]);
+
+        let ws = Workspace::discover(root).unwrap();
+        let events = walk(&ws, "main", 100).unwrap();
+        assert_eq!(events.len(), 3);
+
+        // Newest first: delete, then rename, then add.
+        assert_eq!(
+            events[0].changes,
+            vec![PathChange {
+                path: "b.txt".into(),
+                kind: ChangeKind::Deleted
+            }]
+        );
+        assert_eq!(
+            events[1].changes,
+            vec![PathChange {
+                path: "b.txt".into(),
+                kind: ChangeKind::Renamed { from: "a.txt".into() }
+            }],
+            "a rename preserves its source path"
+        );
+        assert_eq!(
+            events[2].changes,
+            vec![PathChange {
+                path: "a.txt".into(),
+                kind: ChangeKind::Added
+            }]
+        );
     }
 
     #[test]
