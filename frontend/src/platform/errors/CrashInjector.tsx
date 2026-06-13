@@ -45,12 +45,16 @@ export function CrashInjector(): ReactNode {
   const disarmAll = useCrashStore((s) => s.disarmAll);
   if (!import.meta.env?.DEV) return null;
   return (
-    <div className="fixed bottom-2 left-2 z-50 flex items-center gap-1 rounded border border-rose-300 bg-rose-50/90 p-1 text-[10px] text-rose-900 shadow-sm">
+    <div
+      data-crash-injector
+      className="fixed bottom-2 left-2 z-50 flex items-center gap-1 rounded border border-rose-300 bg-rose-50/90 p-1 text-[10px] text-rose-900 shadow-sm"
+    >
       <span className="font-medium">crash:</span>
       {REGIONS.map((region) => (
         <button
           key={region}
           type="button"
+          data-crash={region}
           onClick={() => arm(region)}
           className="rounded border border-rose-300 px-1 hover:border-rose-500"
         >
@@ -59,6 +63,7 @@ export function CrashInjector(): ReactNode {
       ))}
       <button
         type="button"
+        data-crash-clear
         onClick={disarmAll}
         className="rounded border border-stone-300 px-1 text-stone-600 hover:border-stone-500"
       >
