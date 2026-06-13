@@ -14,7 +14,7 @@ use engine_model::{
     ResolutionState, ScopeRef, Tier, Timestamp, edge_id, node_id,
 };
 use ingest_struct::extract::{ExtractedMention, MentionKind};
-use ingest_struct::resolve::resolve;
+use ingest_struct::resolve::Resolver;
 use rayon::prelude::*;
 
 use crate::graph::{EdgeAttrs, LinkageGraph};
@@ -149,6 +149,12 @@ fn index_documents(
     let mut seen_stems: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
 
+    // Build the worktree resolver ONCE for the whole pass (perf ADR D1): one
+    // tree walk and one shared file-content cache amortized across every
+    // document, replacing the prior per-document walk + codebase re-read that
+    // made cold index ~O(N²).
+    let resolver = Resolver::new(root);
+
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
         if let Some(prev) = seen_stems.insert(stem.clone(), rel_path.clone())
@@ -226,7 +232,7 @@ fn index_documents(
         // — so re-ingestion replaces instead of inflating.
         let mut by_id: std::collections::BTreeMap<String, (Edge, u32, Option<String>)> =
             std::collections::BTreeMap::new();
-        for resolved in resolve(root, mentions) {
+        for resolved in resolver.resolve(mentions) {
             let target = resolved.target.clone();
             let edge = structural_edge_for(&stem, &blob_hash, &resolved, scope, observed_at);
             by_id
