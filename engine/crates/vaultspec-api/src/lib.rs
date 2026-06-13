@@ -172,7 +172,16 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     // Cold initial index (the same pipeline the one-shot CLI runs, D2.4).
     state.rebuild_and_swap().map_err(std::io::Error::other)?;
 
-    // Discovery + heartbeat (contract §1).
+    // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
+    // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
+    // port before discovery is written. service.json then advertises the real
+    // port, letting tests (and any caller) bind 0 and avoid fixed-port
+    // collisions on concurrent runs.
+    let listener =
+        tokio::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], port))).await?;
+    let port = listener.local_addr()?.port();
+
+    // Discovery + heartbeat (contract §1), advertising the real bound port.
     app::write_service_json(&state, port)?;
     {
         let state = state.clone();
@@ -214,10 +223,9 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
         });
     }
 
-    // Loopback-only bind; a port conflict fails loud here (R2).
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("vaultspec serve: listening on http://{addr} (bearer token in service.json)");
+    println!(
+        "vaultspec serve: listening on http://127.0.0.1:{port} (bearer token in service.json)"
+    );
     axum::serve(listener, build_router(state))
         .await
         .map_err(std::io::Error::other)
