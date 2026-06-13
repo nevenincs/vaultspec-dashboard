@@ -60,10 +60,12 @@ export function Stage() {
   const scope = useActiveScope();
   const [filterSidebarOpen, setFilterSidebarOpen] = useState(false);
   const [algorithmPanelOpen, setAlgorithmPanelOpen] = useState(false);
-  // The top-level stage is the feature constellation (contract §4, ADR
-  // D4.1): feature-convergence nodes + engine-aggregated meta-edges. Document
-  // structure arrives on descent via the working-set ego expansions below.
-  const slice = useGraphSlice(scope, undefined, undefined, "feature");
+  // Granularity is user-switchable (NavToolbar toggle): "feature" renders the
+  // constellation overview (~12 nodes, ADR D4.1); "document" renders the
+  // full document graph (~200 nodes, the Obsidian mental model). Resets to
+  // "feature" on scope swap (viewStore.setScope).
+  const granularity = useViewStore((s) => s.granularity);
+  const slice = useGraphSlice(scope, undefined, undefined, granularity);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
   const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
@@ -264,7 +266,11 @@ export function Stage() {
       ) : (
         !slice.data && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone-300">
-            {scope ? "loading the constellation…" : "waiting for a worktree scope…"}
+            {scope
+              ? granularity === "document"
+                ? "loading document graph…"
+                : "loading the constellation…"
+              : "waiting for a worktree scope…"}
           </div>
         )
       )}

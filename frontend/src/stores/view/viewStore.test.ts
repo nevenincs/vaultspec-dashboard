@@ -29,6 +29,16 @@ describe("view store", () => {
     expect(tierFilter.declared && tierFilter.semantic).toBe(true);
   });
 
+  it("defaults to feature granularity and resets it on scope swap", () => {
+    // Switch to document granularity.
+    useViewStore.getState().setGranularity("document");
+    expect(useViewStore.getState().granularity).toBe("document");
+    // A scope swap must revert to the constellation default so a new corpus
+    // doesn't immediately load its full document graph (~200 nodes).
+    useViewStore.getState().setScope("worktree-c");
+    expect(useViewStore.getState().granularity).toBe("feature");
+  });
+
   it("resets the live-connection slice on a wholesale scope swap (live-state D1)", () => {
     // Seed a previous scope's live plane, then swap scope.
     const live = useLiveStatusStore.getState();
