@@ -132,7 +132,7 @@ Default the GUI graph query to the constellation LOD and descend to bounded docu
 
 Promote the GPU-boundary and bounded-query constraints into project rules so future agents inherit them.
 
-- [ ] `P05.S11` - Codify the GPU-boundary and bounded-query rules as project rules; `.vaultspec/rules/rules`.
+- [x] `P05.S11` - Codify the GPU-boundary and bounded-query rules as project rules; `.vaultspec/rules/rules`.
 
 ## Description
 

@@ -16,6 +16,7 @@ related:
   - '[[2026-06-13-graph-scale-hardening-P03-S08]]'
   - '[[2026-06-13-graph-scale-hardening-P04-S09]]'
   - '[[2026-06-13-graph-scale-hardening-P04-S10]]'
+  - '[[2026-06-13-graph-scale-hardening-P05-S11]]'
   - '[[2026-06-13-graph-scale-hardening-adr]]'
   - '[[2026-06-13-graph-scale-hardening-plan]]'
   - '[[2026-06-13-graph-scale-hardening-research]]'
@@ -43,6 +44,7 @@ Auto-generated index of all documents tagged with `#graph-scale-hardening`.
 - `2026-06-13-graph-scale-hardening-P03-S08` - Amend the contract reference and add conformance assertions for the bounded-query semantics
 - `2026-06-13-graph-scale-hardening-P04-S09` - Default the GUI graph query to the constellation LOD and descend to bounded slices on zoom-in
 - `2026-06-13-graph-scale-hardening-P04-S10` - Re-run the frontend gates green (typecheck, lint, test, build)
+- `2026-06-13-graph-scale-hardening-P05-S11` - Codify the GPU-boundary and bounded-query rules as project rules
 
 ### plan
 
