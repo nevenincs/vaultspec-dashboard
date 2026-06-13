@@ -7,13 +7,17 @@
 // (S50) and is deliberately NOT done here - invalidation is the buildable half,
 // and the connection signal is what makes the stream-lost degradation truthful.
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { debounce } from "../../platform/timing";
 import { useLiveStatusStore } from "./liveStatus";
 import type { StreamChunk } from "./queries";
 import { engineKeys, engineStreamOptions } from "./queries";
+
+/** Collapse a delta burst into one trailing constellation refetch (P-HIGH-1). */
+const GRAPH_INVALIDATE_DEBOUNCE_MS = 150;
 
 /** Highest seq across a batch of stream chunks, or null if none carry one. */
 export function maxSeq(chunks: readonly StreamChunk[] | undefined): number | null {
@@ -46,6 +50,20 @@ export function useGraphLiveSync(scope: string | null, enabled: boolean): void {
   const stream = useQuery({ ...engineStreamOptions(["graph"]), enabled: active });
   const { data: chunks, isError, isSuccess, fetchStatus } = stream;
 
+  // Debounced, scope-keyed invalidation: a burst of deltas collapses to one
+  // trailing constellation refetch instead of one refetch per delta (P-HIGH-1).
+  const invalidateConstellation = useMemo(
+    () =>
+      debounce((scopeArg: string) => {
+        void queryClient.invalidateQueries({
+          queryKey: [...engineKeys.all, "graph", scopeArg],
+          exact: false,
+        });
+      }, GRAPH_INVALIDATE_DEBOUNCE_MS),
+    [queryClient],
+  );
+  useEffect(() => () => invalidateConstellation.cancel(), [invalidateConstellation]);
+
   // Connection state -> the live-connection slice. An open or successful stream
   // is connected; an errored stream (StreamLostError) is lost. When inactive we
   // leave the signal untouched (null/last value) - "not expected", not "lost".
@@ -63,9 +81,6 @@ export function useGraphLiveSync(scope: string | null, enabled: boolean): void {
     const seq = maxSeq(chunks);
     if (seq === null) return;
     useLiveStatusStore.getState().setLastSeq(seq);
-    void queryClient.invalidateQueries({
-      queryKey: [...engineKeys.all, "graph", scope],
-      exact: false,
-    });
-  }, [active, scope, chunks, queryClient]);
+    invalidateConstellation(scope);
+  }, [active, scope, chunks, invalidateConstellation]);
 }

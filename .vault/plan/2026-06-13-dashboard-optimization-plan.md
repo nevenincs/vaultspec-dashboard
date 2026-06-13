@@ -106,7 +106,7 @@ Stand up the storm harness, bounded-growth assertion, and CI perf gate that repr
 
 The storm/bounded-growth test utilities and the CI perf gate.
 
-- [ ] `W01.P01.S01` - Add the fake-timer delta-storm harness and the bounded-growth assertion helper; `frontend/src/testing/adverse.ts`.
+- [x] `W01.P01.S01` - Add the fake-timer delta-storm harness and the bounded-growth assertion helper; `frontend/src/testing/adverse.ts`.
 - [ ] `W01.P01.S02` - Add the CI perf-gate spec that reads the spike frame-time results and asserts the p95 budget; `frontend/e2e/perf.spec.ts`.
 
 ## Wave `W02` - Performance optimization
@@ -117,8 +117,8 @@ Apply the four resource policies (bounded accumulation, coalesced invalidation, 
 
 Bound the live accumulator and coalesce the invalidation storms.
 
-- [ ] `W02.P02.S03` - Bound the streamed-query accumulator to a summary so it cannot grow session-unbounded; `frontend/src/stores/server/queries.ts`.
-- [ ] `W02.P02.S04` - Add a shared trailing-edge debounce and coalesce the graph and status invalidation storms; `frontend/src/stores/server/graphSync.ts`.
+- [x] `W02.P02.S03` - Bound the streamed-query accumulator to a summary so it cannot grow session-unbounded; `frontend/src/stores/server/queries.ts`.
+- [x] `W02.P02.S04` - Add a shared trailing-edge debounce and coalesce the graph and status invalidation storms; `frontend/src/stores/server/graphSync.ts`.
 
 ### Phase `W02.P03` - Scene-side performance
 

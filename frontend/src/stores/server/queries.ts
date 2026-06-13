@@ -229,10 +229,19 @@ export async function* sseChunks(
   }
 }
 
-/** Dedup graph frames by seq: a reconnect's since= replay is already held, so
- *  an idempotent splice (contract section 7) yields no second copy. Frames
- *  without a seq (backends/git) just append. */
-function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChunk[] {
+/**
+ * Cap the live accumulator (dashboard-optimization P-HIGH-6): the stream never
+ * closes and `staleTime` is Infinity, so an unbounded `[...acc, chunk]` grows
+ * for the whole session. Consumers read only the latest seq (`graphSync`) and
+ * the most-recent per-channel frames (`NowStrip`), so retaining the tail is
+ * sufficient and keeps memory + the per-append dedup scan bounded.
+ */
+export const STREAM_RETENTION = 256;
+
+/** Dedup graph frames by seq (a reconnect's since= replay is already held, so an
+ *  idempotent splice yields no second copy; frames without a seq just append),
+ *  then ring-cap to the retention window. Exported for the bounded-growth test. */
+export function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChunk[] {
   const seq = (chunk.data as { seq?: unknown }).seq;
   if (
     typeof seq === "number" &&
@@ -240,7 +249,10 @@ function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChunk[] {
   ) {
     return acc;
   }
-  return [...acc, chunk];
+  const next = [...acc, chunk];
+  return next.length > STREAM_RETENTION
+    ? next.slice(next.length - STREAM_RETENTION)
+    : next;
 }
 
 /**

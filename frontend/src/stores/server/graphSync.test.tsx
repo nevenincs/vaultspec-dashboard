@@ -33,26 +33,33 @@ describe("maxSeq", () => {
 describe("useGraphLiveSync", () => {
   afterEach(() => useLiveStatusStore.getState().reset());
 
-  it("advances lastSeq, marks connected, and invalidates the constellation on new deltas", () => {
-    const client = new QueryClient();
-    const chunks: StreamChunk[] = [
-      { channel: "graph", data: { seq: 4, op: "add" } },
-      { channel: "graph", data: { seq: 6, op: "change" } },
-    ];
-    // Seed the stream query (staleTime Infinity => useQuery returns it, no fetch).
-    client.setQueryData(engineKeys.stream(["graph"], undefined), chunks);
-    const invalidate = vi.spyOn(client, "invalidateQueries");
+  it("advances lastSeq + marks connected immediately, and debounces invalidation to one trailing refetch (P-HIGH-1)", () => {
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient();
+      const chunks: StreamChunk[] = [
+        { channel: "graph", data: { seq: 4, op: "add" } },
+        { channel: "graph", data: { seq: 6, op: "change" } },
+      ];
+      // Seed the stream query (staleTime Infinity => useQuery returns it, no fetch).
+      client.setQueryData(engineKeys.stream(["graph"], undefined), chunks);
+      const invalidate = vi.spyOn(client, "invalidateQueries");
 
-    renderHook(() => useGraphLiveSync("scopeA", true), { wrapper: wrapper(client) });
+      renderHook(() => useGraphLiveSync("scopeA", true), { wrapper: wrapper(client) });
 
-    expect(useLiveStatusStore.getState().lastSeq).toBe(6);
-    expect(useLiveStatusStore.getState().streamConnected).toBe(true);
-    expect(invalidate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        queryKey: ["engine", "graph", "scopeA"],
-        exact: false,
-      }),
-    );
+      // The cheap signals are immediate...
+      expect(useLiveStatusStore.getState().lastSeq).toBe(6);
+      expect(useLiveStatusStore.getState().streamConnected).toBe(true);
+      // ...but the invalidation is debounced, not fired per delta (the fix).
+      expect(invalidate).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(150);
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["engine", "graph", "scopeA"], exact: false }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stays inert while disabled (time-travel owns the scene)", () => {

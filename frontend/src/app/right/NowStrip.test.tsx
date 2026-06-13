@@ -35,10 +35,17 @@ describe("NowStrip stream recovery (029)", () => {
         createElement(NowStrip),
       ),
     );
-    // Let the stream subscribe, then push a live backend transition.
-    await waitFor(() => {
-      mock.push("backends", { rag: "stopped" });
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: engineKeys.status() });
-    });
+    // Push a live backend transition, then let the debounce window settle
+    // before asserting (the invalidation now coalesces, P-HIGH-2). The
+    // inter-attempt wait exceeds the 150ms debounce so each push gets its own
+    // settle even though the stream subscribes asynchronously.
+    await waitFor(
+      async () => {
+        mock.push("backends", { rag: "stopped" });
+        await new Promise((resolve) => setTimeout(resolve, 170));
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: engineKeys.status() });
+      },
+      { timeout: 3000 },
+    );
   });
 });

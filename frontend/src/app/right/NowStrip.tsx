@@ -5,8 +5,9 @@
 // degraded state renders honestly: stopped, crashed, absent — designed
 // states, not errors.
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
+import { debounce } from "../../platform/timing";
 import type { EngineStatus } from "../../stores/server/engine";
 import { useEngineStatus } from "../../stores/server/engine";
 import { engineKeys, useEngineStream } from "../../stores/server/queries";
@@ -79,11 +80,19 @@ export function NowStrip() {
   // Backend/git transitions refresh the snapshot (stream is delta,
   // /status is recovery — contract §7).
   const stream = useEngineStream(["backends", "git"]);
+  // Debounce the recovery refetch: a flapping backend bursts events; one
+  // trailing /status invalidation, not one per event (P-HIGH-2).
+  const invalidateStatus = useMemo(
+    () =>
+      debounce(() => {
+        void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+      }, 150),
+    [],
+  );
+  useEffect(() => () => invalidateStatus.cancel(), [invalidateStatus]);
   useEffect(() => {
-    if ((stream.data?.length ?? 0) > 0) {
-      void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
-    }
-  }, [stream.data?.length]);
+    if ((stream.data?.length ?? 0) > 0) invalidateStatus();
+  }, [stream.data?.length, invalidateStatus]);
 
   if (status.isError) {
     return (

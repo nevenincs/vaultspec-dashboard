@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
+import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
 import { MockEngine } from "../../testing/mockEngine";
 import { EngineClient } from "./engine";
-import { engineKeys, parseSseFrames, sseChunks, stableKey } from "./queries";
+import type { StreamChunk } from "./queries";
+import {
+  STREAM_RETENTION,
+  engineKeys,
+  parseSseFrames,
+  sseChunks,
+  stableKey,
+  streamReducer,
+} from "./queries";
 
 describe("stableKey", () => {
   it("is order-insensitive for object keys and drops undefined", () => {
@@ -105,5 +114,29 @@ describe("sseChunks over the mock engine stream", () => {
         void _chunk;
       }
     }).rejects.toBeInstanceOf(StreamLostError);
+  });
+});
+
+describe("streamReducer bounded growth (P-HIGH-6)", () => {
+  it("ring-caps the accumulator under a long delta storm and keeps the latest seq", () => {
+    // Without the cap this accumulator would hold all 10_000 chunks for the
+    // session (HIGH-6). The reducer must retain only the tail window.
+    let acc: StreamChunk[] = [];
+    for (const delta of syntheticGraphDeltas(10_000)) {
+      acc = streamReducer(acc, { channel: "graph", data: delta });
+    }
+    assertBounded(acc.length, STREAM_RETENTION, "stream accumulator");
+    expect(acc.length).toBe(STREAM_RETENTION);
+    // The latest seq is always retained, so consumers' maxSeq stays correct.
+    const seqs = acc.map((chunk) => (chunk.data as { seq: number }).seq);
+    expect(Math.max(...seqs)).toBe(10_000);
+  });
+
+  it("still dedups a repeated seq within the window", () => {
+    const frame: StreamChunk = { channel: "graph", data: { op: "add", seq: 7 } };
+    let acc: StreamChunk[] = [];
+    acc = streamReducer(acc, frame);
+    acc = streamReducer(acc, frame);
+    expect(acc).toHaveLength(1);
   });
 });
