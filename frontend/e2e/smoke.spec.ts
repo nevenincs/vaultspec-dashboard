@@ -90,14 +90,13 @@ test("search round-trips through the live pass-through", async ({ page }) => {
   }
 });
 
-// BLOCKED — external dependency, flagged not skipped: live scrubbing
-// requires /graph/asof + /graph/diff to accept the contract's `t=<ts|sha>`
-// timestamp form (S49 divergence item 1, routed to the engine owners).
-// Un-fixme when the reconciliation lands; the in-app scrub path itself is
-// covered against the contract-faithful mock (S34 tests).
-test.fixme("scrubbing the playhead renders the network as of T (blocked on engine asof/diff timestamp support)", async ({
-  page,
-}) => {
+// Scrubbing the playhead exercises the time-travel path end-to-end: the
+// frontend sends ms-timestamps to /graph/asof and /graph/diff; the engine
+// resolves them via the commit-time-sorted walk in asof.rs (resolve_commit
+// ms-timestamp fallback, S49 divergence item 1 now closed). The frontend
+// normalizes the echoed `t` string → number and derives a splice-safe keyframe
+// seq from the diff batch (timeTravel.ts scrubTo, fixed alongside this test).
+test("scrubbing the playhead renders the network as of T", async ({ page }) => {
   await page.goto("/");
   const grip = page.locator("[data-playhead-grip]");
   await grip.dragTo(page.locator("[data-timeline]"), {

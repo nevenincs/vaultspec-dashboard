@@ -278,8 +278,19 @@ export interface GraphDiffResponse {
 }
 
 export interface GraphAsofResponse extends GraphSlice {
-  t: number;
-  seq: number;
+  /**
+   * The requested timestamp echoed back. The engine returns the raw param as a
+   * string when the caller passed a millisecond timestamp; callers must coerce
+   * to number before using as a timeline cursor (see timeTravel.ts scrubTo).
+   */
+  t: string | number;
+  /**
+   * Resolved commit sha for the snapshot. Informational; not used for replay.
+   */
+  resolved_sha?: string;
+  // `seq` is NOT in the wire shape: historical views carry `last_seq: null`
+  // (inherited from GraphSlice). The scrubTo driver derives a splice-safe seq
+  // from the diff batch when last_seq is absent.
 }
 
 // --- §6 status / ops ------------------------------------------------------------------

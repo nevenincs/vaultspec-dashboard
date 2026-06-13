@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-optimization'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-06-14'
 tier: L3
 related:
   - '[[2026-06-13-dashboard-optimization-adr]]'
@@ -135,7 +135,7 @@ Finish the built-but-unwired surfaces now engine-unblocked (live delta-apply, fe
 
 Wire the now-unblocked live delta-apply and consolidate the dispatch confirm-guard.
 
-- [ ] `W03.P04.S07` - Wire the live no-refetch delta-apply and feature-granularity asof keyframe; `frontend/src/stores/server/graphSync.ts`.
+- [x] `W03.P04.S07` - Wire the live no-refetch delta-apply and feature-granularity asof keyframe; `frontend/src/stores/server/graphSync.ts`.
 - [ ] `W03.P04.S08` - Consolidate the ops and palette arm-to-confirm onto the dispatch confirm-guard; `frontend/src/app/palette/CommandPalette.tsx`.
 
 ## Wave `W04` - Engine sweep and campaign verification
@@ -146,8 +146,8 @@ Engine-side performance sweep (sequenced last; heavy cargo builds) and the campa
 
 Engine perf sweep and the campaign verification audit.
 
-- [ ] `W04.P05.S09` - Run the engine-side performance sweep; `engine/crates/vaultspec-api/src`.
-- [ ] `W04.P05.S10` - Run the campaign verification gates and record the audit; `frontend/`.
+- [x] `W04.P05.S09` - Run the engine-side performance sweep; `engine/crates/vaultspec-api/src`.
+- [x] `W04.P05.S10` - Run the campaign verification gates and record the audit; `frontend/`.
 
 ## Description
 

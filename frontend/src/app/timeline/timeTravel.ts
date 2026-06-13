@@ -91,13 +91,24 @@ export class TimeTravelDriver {
     });
     // A newer scrub superseded this load; let it win.
     if (this.loadingFor !== t) return;
+    const diffDeltas = diff.deltas.map(mapDelta);
+    // Normalize wire fields: `t` is echoed as a string when the caller passed
+    // a ms-timestamp; `last_seq` is null on historical views (engine does not
+    // yet carry the seq position at the snapshot — S50 gap). Derive a
+    // splice-safe keyframe seq from the diff batch's first entry so the
+    // `append` call below never sees a gap (diff starts exactly where the
+    // asof snapshot ends on the shared clock).
+    const keyframeSeq =
+      asof.last_seq != null
+        ? asof.last_seq
+        : (diffDeltas[0]?.seq ?? 1) - 1;
     this.log.setKeyframe({
       nodes: asof.nodes.map(engineNodeToScene),
       edges: asof.edges.map(engineEdgeToScene),
-      t: asof.t,
-      seq: asof.seq,
+      t: Number(asof.t),
+      seq: keyframeSeq,
     });
-    const result = this.log.append(diff.deltas.map(mapDelta));
+    const result = this.log.append(diffDeltas);
     this.loaded = { from: anchor, to: result.gap ? anchor : now };
     this.loadingFor = null;
     this.pushAt(t, this.log.replayTo(t));

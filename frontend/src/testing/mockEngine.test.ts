@@ -80,9 +80,10 @@ describe("MockEngine routes", () => {
     const mid = mock.timeline[Math.floor(mock.timeline.length / 2)].ts;
     const asof = await c.graphAsof({ scope: "wt-main", t: mid });
     const diff = await c.graphDiff({ scope: "wt-main", from: mid, to: Date.now() });
-    expect(asof.seq).toBeGreaterThan(0);
+    // Mock returns the real last_seq; live engine returns null until S50 closes.
+    expect(asof.last_seq).toBeGreaterThan(0);
     if (diff.deltas.length > 0) {
-      expect(diff.deltas[0].seq).toBe(asof.seq + 1);
+      expect(diff.deltas[0].seq).toBe((asof.last_seq ?? 0) + 1);
     }
     expect(diff.last_seq).toBe(mock.lastSeq);
   });

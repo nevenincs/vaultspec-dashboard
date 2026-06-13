@@ -427,7 +427,11 @@ export class MockEngine {
       requireScope(params);
       const t = Number(params.get("t"));
       const slice = this.sliceAsOf(t);
-      return { nodes: slice.nodes, edges: slice.edges, t, seq: slice.seq, tiers };
+      // Mirror live wire shape: `last_seq` (not `seq`) per the asof contract.
+      // The live engine returns last_seq: null while the S50 asof-seq gap is
+      // open; the mock returns the real value so the diff splice test can
+      // verify the clock seam without special-casing the null path.
+      return { nodes: slice.nodes, edges: slice.edges, t, last_seq: slice.seq, tiers };
     }
     if (path === "/graph/diff") {
       requireScope(params);
