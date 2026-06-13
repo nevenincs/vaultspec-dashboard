@@ -110,8 +110,8 @@ Make cold index near-linear by resolving mentions against a once-built inventory
 
 Compute the derived projections and serialized slice once per immutable graph generation so concurrent reads reuse one computation.
 
-- [ ] `P02.S04` - Memoize the derived projections and serialized slice on the graph generation, invalidated at commit; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `P02.S05` - Re-run the scale_bench concurrent pass and record before/after; `engine/tests/tests/scale_bench.rs`.
+- [x] `P02.S04` - Memoize the derived projections and serialized slice on the graph generation, invalidated at commit; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P02.S05` - Re-run the scale_bench concurrent pass and record before/after; `engine/tests/tests/scale_bench.rs`.
 
 ### Phase `P03` - Bounded-query contract (D2)
 

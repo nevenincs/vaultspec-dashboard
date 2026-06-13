@@ -107,11 +107,30 @@ fn graph_query_scale_and_concurrency() {
     });
     let concurrent_ms = t.elapsed().as_millis();
 
+    // Concurrent FEATURE (constellation LOD) load — exercises the memoized
+    // meta_edges (perf ADR D3): the O(E·tags²) projection computes once and
+    // every concurrent reader shares it instead of recomputing per query.
+    let t = Instant::now();
+    std::thread::scope(|s| {
+        for _ in 0..threads {
+            let g = Arc::clone(&graph);
+            let sc = scope.clone();
+            s.spawn(move || {
+                for _ in 0..per {
+                    let slice =
+                        graph_query(&g, &sc, Filter::default(), Granularity::Feature).unwrap();
+                    let _ = serde_json::to_vec(&slice).unwrap();
+                }
+            });
+        }
+    });
+    let concurrent_feat_ms = t.elapsed().as_millis();
+
     println!(
         "SCALE docs={} nodes={} edges={} index={}ms \
          | DOC query={}us ser={}us bytes={} \
          | FEAT nodes={} meta_edges={} query={}us bytes={} \
-         | CONCURRENT {}x{}={}ms ({} queries)",
+         | CONCURRENT doc {}x{}={}ms feat={}ms ({} queries each)",
         stats.documents,
         graph.node_count(),
         graph.edge_count(),
@@ -126,6 +145,7 @@ fn graph_query_scale_and_concurrency() {
         threads,
         per,
         concurrent_ms,
+        concurrent_feat_ms,
         threads * per,
     );
 }
