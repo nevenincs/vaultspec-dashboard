@@ -107,10 +107,17 @@ pub fn asof_graph(
     inventory.sort();
     vault_docs.sort();
 
-    let mut graph = LinkageGraph::new();
-    // Blob reads address the RESOLVED commit (a ms-timestamp token is not
-    // a revision the reader could parse).
+    // Resolve the sha, then RELEASE the gix repo handle before the declared-tier
+    // ingestion below shells `vaultspec-core vault graph --ref <sha>` against the
+    // SAME `.git` — releasing our reader handle before spawning a subprocess that
+    // reopens the object DB is sound hygiene on Windows. Blob reads below use
+    // `repo_dir` (their own short-lived handles), not `repo`.
     let resolved_sha = commit_id.to_string();
+    drop(tree);
+    drop(commit);
+    drop(repo);
+
+    let mut graph = LinkageGraph::new();
     for doc_path in &vault_docs {
         let body = ingest_struct::reader::read_from_ref(repo_dir, &resolved_sha, doc_path)?;
         let stem = doc_path

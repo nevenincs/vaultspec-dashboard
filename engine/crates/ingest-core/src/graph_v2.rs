@@ -20,7 +20,15 @@ pub const CORE_DERIVED_CONFIDENCE: f32 = 0.8;
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct GraphDoc {
     pub id: String,
-    pub doc_type: String,
+    /// Core stamps `null` for a PHANTOM node — a document linked-to but
+    /// nonexistent in the corpus view (no file to read a type from). Pre-0.1.31
+    /// historical refs also lack the `modified` stamp entirely. Both are
+    /// legitimate absences, so this is optional: a single phantom must never
+    /// fail the whole graph parse and silently drop every declared edge
+    /// (2026-06-13 as-of asymmetry — HEAD~N parsed 0 declared edges while HEAD
+    /// parsed thousands, flooding `/graph/diff` with phantom add/remove deltas).
+    #[serde(default)]
+    pub doc_type: Option<String>,
     #[serde(default)]
     pub feature: Option<String>,
     #[serde(default)]
@@ -246,6 +254,27 @@ mod tests {
         let e = &parsed.core_derived[0];
         assert_eq!(e.relation, RelationKind::CoreDerived);
         assert_eq!(e.confidence, 0.8);
+    }
+
+    #[test]
+    fn phantom_node_with_null_doc_type_never_fails_the_parse() {
+        // A linked-but-nonexistent doc: core emits it with every field null but
+        // `id`. One such phantom previously aborted the entire parse (serde
+        // `invalid type: null, expected a string` on `doc_type`), dropping every
+        // declared edge — the as-of declared-tier asymmetry that flooded
+        // `/graph/diff`. The whole graph must still parse, edges intact.
+        let data = serde_json::json!({
+            "nodes": [
+                {"id": "real-adr", "doc_type": "adr"},
+                {"id": "ghost", "doc_type": null, "phantom": true}
+            ],
+            "edges": [{"source": "real-adr", "target": "ghost", "kind": "related"}],
+            "derived_edges": []
+        });
+        let parsed = parse(&data, &scope(), 0).unwrap();
+        assert_eq!(parsed.docs.len(), 2);
+        assert_eq!(parsed.declared.len(), 1, "the edge to the phantom survives");
+        assert!(parsed.docs.iter().any(|d| d.id == "ghost" && d.doc_type.is_none()));
     }
 
     #[test]
