@@ -71,6 +71,14 @@ describe("confidence encoding", () => {
     expect(groupColor("temporal:3")).toBe(0x4a4137);
     expect(groupColor("temporal:0")).not.toBe(0x4a4137);
   });
+
+  it("optional paper arg mixes toward the supplied ground (FG1-02 — dark-mode path)", () => {
+    // At amount=1.0 the result equals the paper colour exactly.
+    const darkPaper = { r: 0x21, g: 0x1e, b: 0x1a };
+    expect(mixTowardPaper(0x000000, 1.0, darkPaper)).toBe(0x211e1a);
+    // At amount=0.0 the colour is unchanged regardless of paper.
+    expect(mixTowardPaper(0x4a4137, 0.0, darkPaper)).toBe(0x4a4137);
+  });
 });
 
 describe("geometry writers", () => {
