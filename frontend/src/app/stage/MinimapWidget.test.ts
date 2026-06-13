@@ -120,8 +120,8 @@ describe("MinimapWidget seam contract (setMinimapCanvas)", () => {
     const cleanup1 = runEffect(ctrl, false, canvas);
 
     // Collapse transition: React runs the prior cleanup then the new effect.
-    (cleanup1 as () => void)?.();           // prior cleanup → null
-    runEffect(ctrl, true, canvas);          // new effect → null
+    (cleanup1 as () => void)?.(); // prior cleanup → null
+    runEffect(ctrl, true, canvas); // new effect → null
 
     // Unmount: no cleanup from collapsed effect, but the prev effect cleanup
     // already ran above. Total sequence: [canvas, null, null].

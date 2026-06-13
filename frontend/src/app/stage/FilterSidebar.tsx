@@ -139,31 +139,37 @@ function TierSection() {
                     onChange={() => setTier(tier, !tiers[tier])}
                     className="accent-stone-600"
                   />
-                  <span className={`text-[11px] ${on ? "text-stone-800" : "text-stone-400"}`}>
+                  <span
+                    className={`text-[11px] ${on ? "text-stone-800" : "text-stone-400"}`}
+                  >
                     {mark} {label}
                     {inapplicable && (
-                      <span className="ml-1 text-[10px] text-stone-300">(time-travel)</span>
+                      <span className="ml-1 text-[10px] text-stone-300">
+                        (time-travel)
+                      </span>
                     )}
                   </span>
                 </span>
-                {(tier === "temporal" || tier === "semantic") && !inapplicable && on && (
-                  <span className="flex items-center gap-2 pl-5">
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={minConfidence[tier] ?? 0}
-                      aria-label={`${label} confidence floor`}
-                      title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
-                      onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
-                      className="h-1 w-full accent-stone-600"
-                    />
-                    <span className="w-8 text-right text-[10px] text-stone-400">
-                      {Math.round((minConfidence[tier] ?? 0) * 100)}%
+                {(tier === "temporal" || tier === "semantic") &&
+                  !inapplicable &&
+                  on && (
+                    <span className="flex items-center gap-2 pl-5">
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={minConfidence[tier] ?? 0}
+                        aria-label={`${label} confidence floor`}
+                        title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
+                        onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
+                        className="h-1 w-full accent-stone-600"
+                      />
+                      <span className="w-8 text-right text-[10px] text-stone-400">
+                        {Math.round((minConfidence[tier] ?? 0) * 100)}%
+                      </span>
                     </span>
-                  </span>
-                )}
+                  )}
               </label>
             </li>
           );
@@ -299,7 +305,9 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           <FacetList
             values={["resolved", "stale", "broken"]}
             selected={structuralStates}
-            onToggle={(v) => toggle("structuralStates", v as "resolved" | "stale" | "broken")}
+            onToggle={(v) =>
+              toggle("structuralStates", v as "resolved" | "stale" | "broken")
+            }
           />
         </Section>
 

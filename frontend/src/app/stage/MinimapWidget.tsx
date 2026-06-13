@@ -60,10 +60,7 @@ export function MinimapWidget() {
 
       {/* Canvas — always in the DOM (stable ref); display:none stops painting
           without destroying the canvas, so the ref stays valid on uncollapse */}
-      <div
-        aria-hidden={collapsed}
-        style={{ display: collapsed ? "none" : "block" }}
-      >
+      <div aria-hidden={collapsed} style={{ display: collapsed ? "none" : "block" }}>
         <canvas
           ref={canvasRef}
           width={MINIMAP_W}

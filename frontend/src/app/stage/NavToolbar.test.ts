@@ -66,7 +66,11 @@ describe("camera-event routing (seam contract)", () => {
   // We verify the contract in isolation: the handler must forward
   // `camera-change` events to the level state, and must ignore other kinds.
 
-  type CameraChangeEvent = { kind: "camera-change"; scale: number; level: SemanticLevel };
+  type CameraChangeEvent = {
+    kind: "camera-change";
+    scale: number;
+    level: SemanticLevel;
+  };
   type OtherEvent = { kind: "layout-changed" };
 
   function makeHandler(onLevel: (level: SemanticLevel) => void) {

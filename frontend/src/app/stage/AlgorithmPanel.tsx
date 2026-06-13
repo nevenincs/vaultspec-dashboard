@@ -43,7 +43,16 @@ interface SliderRowProps {
   format?: (v: number) => string;
 }
 
-function SliderRow({ label, hint, value, min, max, step, onChange, format }: SliderRowProps) {
+function SliderRow({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format,
+}: SliderRowProps) {
   const display = format ? format(value) : String(value);
   return (
     <label className="flex flex-col gap-0.5 px-3 py-1" title={hint}>
@@ -106,7 +115,10 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
 
   function handleReset() {
     setParams({ ...DEFAULTS });
-    getScene().controller.command({ kind: "set-layout-params", params: { ...DEFAULTS } });
+    getScene().controller.command({
+      kind: "set-layout-params",
+      params: { ...DEFAULTS },
+    });
   }
 
   const isDirty = JSON.stringify(params) !== JSON.stringify(DEFAULTS);

@@ -68,7 +68,10 @@ export const LEVEL_LABEL: Record<SemanticLevel, string> = {
   document: "doc",
 };
 
-export function NavToolbar({ algorithmPanelOpen, onAlgorithmPanelToggle }: NavToolbarProps) {
+export function NavToolbar({
+  algorithmPanelOpen,
+  onAlgorithmPanelToggle,
+}: NavToolbarProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [level, setLevel] = useState<SemanticLevel | null>(null);
   // Granularity toggle: reads + writes viewStore so Stage.tsx re-queries.
