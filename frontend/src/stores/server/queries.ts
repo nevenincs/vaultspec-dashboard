@@ -40,8 +40,20 @@ export const engineKeys = {
   map: () => [...engineKeys.all, "map"] as const,
   vaultTree: (scope: string) => [...engineKeys.all, "vault-tree", scope] as const,
   filters: (scope: string) => [...engineKeys.all, "filters", scope] as const,
-  graph: (scope: string, filter?: GraphFilter, asOf?: string | number) =>
-    [...engineKeys.all, "graph", scope, stableKey(filter), asOf ?? "live"] as const,
+  graph: (
+    scope: string,
+    filter?: GraphFilter,
+    asOf?: string | number,
+    granularity?: "document" | "feature",
+  ) =>
+    [
+      ...engineKeys.all,
+      "graph",
+      scope,
+      stableKey(filter),
+      asOf ?? "live",
+      granularity ?? "document",
+    ] as const,
   node: (id: string) => [...engineKeys.all, "node", id] as const,
   neighbors: (id: string, depth: number) =>
     [...engineKeys.all, "neighbors", id, depth] as const,
@@ -83,10 +95,12 @@ export function useGraphSlice(
   scope: string | null,
   filter?: GraphFilter,
   asOf?: string | number,
+  granularity?: "document" | "feature",
 ) {
   return useQuery({
-    queryKey: engineKeys.graph(scope ?? "", filter, asOf),
-    queryFn: () => engineClient.graphQuery({ scope: scope!, filter, as_of: asOf }),
+    queryKey: engineKeys.graph(scope ?? "", filter, asOf, granularity),
+    queryFn: () =>
+      engineClient.graphQuery({ scope: scope!, filter, as_of: asOf, granularity }),
     enabled: scope !== null,
   });
 }

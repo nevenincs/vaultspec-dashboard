@@ -97,6 +97,9 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
       dates: { created: iso(startTs), modified: iso(startTs + 6 * DAY) },
       lifecycle: { state, progress: { done, total } },
       degree_by_tier: { declared: 4, structural: 2, temporal: 2, semantic: 1 },
+      // Documents converging on the feature (contract §4, engine S02): one
+      // per doc type, the constellation center-of-gravity sizing input.
+      member_count: DOC_TYPES.length,
     });
 
     DOC_TYPES.forEach((docType, di) => {

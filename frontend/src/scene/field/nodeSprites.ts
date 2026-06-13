@@ -88,7 +88,21 @@ export interface GlyphTextureProvider {
 }
 
 const NODE_RADIUS = 6;
-const RING_RADIUS = NODE_RADIUS + 3;
+
+/**
+ * World-space radius for a node. Feature-convergence nodes are the
+ * constellation's centers of gravity: their radius grows with `memberCount`
+ * (documents converging on the feature, contract §4 / ADR D4.1), log-scaled
+ * so a 5-document and an 80-document feature differ visibly without the large
+ * one swamping the field. Every other species keeps the base radius — shape
+ * carries their type, not size (§3.1).
+ */
+export function nodeRadius(node: SceneNodeData): number {
+  if (node.kind !== "feature" || !node.memberCount || node.memberCount <= 0) {
+    return NODE_RADIUS;
+  }
+  return NODE_RADIUS * (1.4 + Math.log2(1 + node.memberCount) * 0.5);
+}
 
 interface NodeVisual {
   node: SceneNodeData;
@@ -117,14 +131,16 @@ export class NodeSpriteLayer {
       if (!visual) {
         const sprite = new Sprite(this.glyphs.textureFor(node.kind));
         sprite.anchor.set(0.5);
-        // Glyph textures are supersampled; sprites draw at node size in
-        // world units regardless of texture resolution.
-        sprite.setSize(NODE_RADIUS * 2, NODE_RADIUS * 2);
         this.container.addChild(sprite);
         visual = { node, sprite, anatomy: null };
         this.visuals.set(node.id, visual);
       }
       visual.node = node;
+      // Glyph textures are supersampled; sprites draw at node size in world
+      // units regardless of texture resolution. Feature nodes scale with
+      // their convergence weight (nodeRadius).
+      const radius = nodeRadius(node);
+      visual.sprite.setSize(radius * 2, radius * 2);
       visual.sprite.tint = stateColor(node.lifecycle);
       visual.sprite.alpha = freshnessAlpha(node.dates?.modified, now);
       if (visual.anatomy) this.rebuildAnatomy(visual);
@@ -203,7 +219,7 @@ export class NodeSpriteLayer {
       const base = freshnessAlpha(visual.node.dates?.modified, now);
       visual.sprite.visible = p > 0;
       visual.sprite.alpha = base * p;
-      const size = NODE_RADIUS * 2 * (0.6 + 0.4 * p);
+      const size = nodeRadius(visual.node) * 2 * (0.6 + 0.4 * p);
       visual.sprite.setSize(size, size);
       if (visual.anatomy) {
         visual.anatomy.visible = visual.anatomy.visible && p > 0;
@@ -242,11 +258,14 @@ export class NodeSpriteLayer {
   }
 
   private populateAnatomy(anatomy: Container, node: SceneNodeData): void {
+    // Anatomy rides the node's own radius so a large feature convergence does
+    // not bury its ring, badges, and label inside the silhouette.
+    const ringRadius = nodeRadius(node) + 3;
     const fraction = progressFraction(node.lifecycle);
     if (fraction !== null) {
       const ring = new Graphics();
       ring
-        .arc(0, 0, RING_RADIUS, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * fraction)
+        .arc(0, 0, ringRadius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * fraction)
         .stroke({ width: 2, color: stateColor(node.lifecycle) });
       anatomy.addChild(ring);
     }
@@ -256,7 +275,7 @@ export class NodeSpriteLayer {
         text: badges,
         style: { fontSize: 8, fill: 0x4a4137 },
       });
-      badgeText.position.set(RING_RADIUS + 2, -RING_RADIUS);
+      badgeText.position.set(ringRadius + 2, -ringRadius);
       anatomy.addChild(badgeText);
     }
     const label = new Text({
@@ -264,7 +283,7 @@ export class NodeSpriteLayer {
       style: { fontSize: 10, fill: 0x2b2620 },
     });
     label.anchor.set(0.5, 0);
-    label.position.set(0, RING_RADIUS + 3);
+    label.position.set(0, ringRadius + 3);
     anatomy.addChild(label);
   }
 }

@@ -6,6 +6,7 @@ import {
   NEAR_ZOOM_THRESHOLD,
   freshnessAlpha,
   lodFor,
+  nodeRadius,
   progressFraction,
   stateColor,
   tierBadgeText,
@@ -63,6 +64,27 @@ describe("progressFraction", () => {
     expect(
       progressFraction({ state: "active", progress: { done: 0, total: 0 } }),
     ).toBeNull();
+  });
+});
+
+describe("nodeRadius", () => {
+  it("keeps the base radius for non-feature nodes (shape carries type)", () => {
+    const base = nodeRadius({ id: "doc:x", kind: "adr" });
+    expect(nodeRadius({ id: "doc:y", kind: "plan", memberCount: 99 })).toBe(base);
+  });
+
+  it("grows feature nodes with their convergence weight (centers of gravity)", () => {
+    const small = nodeRadius({ id: "feature:a", kind: "feature", memberCount: 5 });
+    const large = nodeRadius({ id: "feature:b", kind: "feature", memberCount: 80 });
+    const base = nodeRadius({ id: "doc:x", kind: "adr" });
+    expect(small).toBeGreaterThan(base);
+    expect(large).toBeGreaterThan(small);
+  });
+
+  it("falls back to the base radius for a feature with no member_count", () => {
+    const base = nodeRadius({ id: "doc:x", kind: "adr" });
+    expect(nodeRadius({ id: "feature:a", kind: "feature" })).toBe(base);
+    expect(nodeRadius({ id: "feature:b", kind: "feature", memberCount: 0 })).toBe(base);
   });
 });
 

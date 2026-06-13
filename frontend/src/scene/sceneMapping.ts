@@ -13,6 +13,8 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     lifecycle: node.lifecycle,
     degreeByTier: node.degree_by_tier,
     dates: node.dates,
+    // Feature-convergence sizing input (S02 / ADR D4.1); absent on documents.
+    memberCount: node.member_count,
   };
 }
 

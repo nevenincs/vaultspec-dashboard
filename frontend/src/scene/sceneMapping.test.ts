@@ -13,6 +13,13 @@ describe("sceneMapping", () => {
     expect(scene.title).toBe(wire.title);
     expect(scene.degreeByTier).toEqual(wire.degree_by_tier);
     expect(scene.lifecycle).toEqual(wire.lifecycle);
+    // Feature-convergence sizing input carries across the seam (S02 / D4.1).
+    expect(scene.memberCount).toBe(wire.member_count);
+  });
+
+  it("leaves memberCount absent for non-feature (document) nodes", () => {
+    const doc = corpus.nodes.find((n) => n.kind !== "feature")!;
+    expect(engineNodeToScene(doc).memberCount).toBeUndefined();
   });
 
   it("maps meta-edges with their aggregation payload", () => {

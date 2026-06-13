@@ -32,6 +32,19 @@ export interface SceneNodeData {
   >;
   /** Created/modified timestamps — drives the freshness halo. */
   dates?: { created?: string; modified?: string };
+  /**
+   * Feature-convergence nodes only: documents converging on the feature
+   * (contract §4 `member_count`, engine addendum S02). Drives the
+   * center-of-gravity radius (ADR D4.1) — the visual semantic that makes
+   * feature nodes the constellation's anchors.
+   *
+   * SEAM REDLINE (2026-06-13, dashboard-gui addendum): additive, optional,
+   * backward-compatible field on the locked RL-1 node-data surface. Flagged
+   * to the GUI ADR (G-series) per the W01.P01.S04 lock discipline; it is the
+   * minimal surface needed to render the convergence entity, not a drive-by
+   * edit. The sigma.js fallback ignores it harmlessly.
+   */
+  memberCount?: number;
   /** Optional warm-start seed only; the renderer owns positions (RL-1). */
   seedPosition?: { x: number; y: number };
 }

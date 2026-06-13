@@ -7,10 +7,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   adaptFilters,
+  adaptGraphSlice,
   adaptMap,
   adaptStatus,
   adaptVaultTree,
   docTypeFromStem,
+  metaEdgeToEdge,
   unwrapEnvelope,
 } from "./liveAdapters";
 
@@ -123,6 +125,98 @@ describe("adaptFilters (live vocabulary sample)", () => {
     expect(adapted.feature_tags).toEqual(["dashboard-gui"]);
     expect(adapted.relations).toEqual(["mentions"]);
     expect(adapted.doc_types).toEqual([]);
+  });
+});
+
+describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
+  // Captured verbatim from `vaultspec serve` over this repo's own vault at
+  // feature granularity: feature-convergence nodes, edges EMPTY, and the
+  // relationships in a SEPARATE meta_edges array (engine addendum S02). This
+  // is the exact shape conformance.rs asserts engine-side.
+  const liveFeatureSlice = {
+    nodes: [
+      {
+        id: "feature:dashboard-foundation",
+        kind: "feature",
+        title: "dashboard-foundation",
+        member_count: 5,
+        degree_by_tier: { structural: 36 },
+        lifecycle: null,
+      },
+      {
+        id: "feature:dashboard-gui",
+        kind: "feature",
+        title: "dashboard-gui",
+        member_count: 67,
+        degree_by_tier: { structural: 590 },
+        lifecycle: { state: "complete", progress: { done: 50, total: 50 } },
+      },
+    ],
+    edges: [],
+    meta_edges: [
+      {
+        src: "feature:dashboard-foundation",
+        dst: "feature:dashboard-gui",
+        src_feature: "dashboard-foundation",
+        dst_feature: "dashboard-gui",
+        count: 2,
+        breakdown_by_tier: { structural: 2 },
+      },
+    ],
+    filter: {},
+    as_of: null,
+    tiers: TIERS,
+  };
+
+  it("folds the separate meta_edges array into edges (the GUI reads edges)", () => {
+    const slice = adaptGraphSlice(liveFeatureSlice);
+    // The live edges[] is empty; every rendered edge comes from the fold.
+    expect(slice.edges).toHaveLength(1);
+    const edge = slice.edges[0];
+    expect(edge.src).toBe("feature:dashboard-foundation");
+    expect(edge.dst).toBe("feature:dashboard-gui");
+    expect(edge.meta).toEqual({ count: 2, breakdown_by_tier: { structural: 2 } });
+    // The raw array is consumed, not leaked onto the consumer slice.
+    expect(slice.meta_edges).toBeUndefined();
+    // Feature nodes and their member_count survive untouched.
+    expect(slice.nodes[1].member_count).toBe(67);
+  });
+
+  it("synthesizes a stable id, relation, and dominant tier for a meta-edge", () => {
+    const edge = metaEdgeToEdge({
+      src: "feature:a",
+      dst: "feature:b",
+      src_feature: "a",
+      dst_feature: "b",
+      count: 7,
+      breakdown_by_tier: { structural: 2, semantic: 5 },
+    });
+    expect(edge.id).toBe("meta:feature:a->feature:b");
+    expect(edge.relation).toBe("related");
+    // Dominant tier = the breakdown's heaviest tier (semantic here).
+    expect(edge.tier).toBe("semantic");
+  });
+
+  it("passes a document-granularity slice through unchanged (tolerance)", () => {
+    // edges populated, meta_edges empty/absent: the fold is a no-op.
+    const docSlice = {
+      nodes: [{ id: "doc:x", kind: "document" }],
+      edges: [
+        {
+          id: "e:1",
+          src: "doc:x",
+          dst: "doc:y",
+          relation: "mentions",
+          tier: "structural",
+          confidence: 0.9,
+        },
+      ],
+      meta_edges: [],
+      tiers: TIERS,
+    };
+    const slice = adaptGraphSlice(docSlice);
+    expect(slice.edges).toHaveLength(1);
+    expect(slice.edges[0].meta).toBeUndefined();
   });
 });
 

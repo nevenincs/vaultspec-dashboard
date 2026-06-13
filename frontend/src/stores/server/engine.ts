@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   adaptFilters,
+  adaptGraphSlice,
   adaptMap,
   adaptSearch,
   adaptStatus,
@@ -86,6 +87,29 @@ export interface EngineNode {
   degree_by_tier?: Partial<
     Record<"declared" | "structural" | "temporal" | "semantic", number>
   >;
+  /**
+   * Feature-convergence nodes only (constellation granularity, engine
+   * addendum S02): how many documents converge on the feature. Drives the
+   * center-of-gravity sizing (ADR D4.1); absent on document nodes.
+   */
+  member_count?: number;
+}
+
+/**
+ * Constellation meta-edge wire shape (contract §4, engine addendum S02):
+ * the engine returns feature↔feature relationships as a SEPARATE top-level
+ * `meta_edges` array at feature granularity (never folded into `edges`).
+ * `src`/`dst` are the synthesized feature NODE ids (`feature:{tag}`); the
+ * wire carries no id/relation/tier — the client synthesizes those when it
+ * folds the meta-edge into the internal edge representation (adaptGraphSlice).
+ */
+export interface WireMetaEdge {
+  src: string;
+  dst: string;
+  src_feature: string;
+  dst_feature: string;
+  count: number;
+  breakdown_by_tier: Record<string, number>;
 }
 
 export interface EngineEdge {
@@ -120,6 +144,12 @@ export interface GraphFilter {
 export interface GraphSlice {
   nodes: EngineNode[];
   edges: EngineEdge[];
+  /**
+   * Raw constellation meta-edges as served at feature granularity. The
+   * client folds these into `edges` (adaptGraphSlice) so one downstream path
+   * renders both granularities; consumers read the folded `edges`, not this.
+   */
+  meta_edges?: WireMetaEdge[];
   filter?: GraphFilter;
   tiers: TiersBlock;
 }
@@ -292,12 +322,15 @@ export class EngineClient {
   }
 
   // §4
-  graphQuery(body: {
+  async graphQuery(body: {
     scope: string;
     filter?: GraphFilter;
+    /** Engine-owned granularity (contract §4): document edges, or
+     *  feature-convergence nodes + meta-edges. Omitted = document. */
+    granularity?: "document" | "feature";
     as_of?: string | number;
   }): Promise<GraphSlice> {
-    return this.post("/graph/query", body);
+    return adaptGraphSlice(await this.post("/graph/query", body));
   }
 
   async filters(scope: string): Promise<FiltersVocabulary> {
@@ -339,6 +372,10 @@ export class EngineClient {
     t: string | number;
     filter?: string;
   }): Promise<GraphAsofResponse> {
+    // NB: the constellation-granularity shape of the time-travel surface is
+    // the open S50 asof/diff divergence question (routed to team-lead); this
+    // method intentionally stays on the document-granularity path the GUI
+    // already consumes, untouched by the meta-edge fold.
     return this.get("/graph/asof", params);
   }
 

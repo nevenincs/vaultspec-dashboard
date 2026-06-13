@@ -12,11 +12,14 @@
 // engine owners (loose-scoping stance).
 
 import type {
+  EngineEdge,
   EngineStatus,
   FiltersVocabulary,
+  GraphSlice,
   MapResponse,
   TiersBlock,
   VaultTreeResponse,
+  WireMetaEdge,
 } from "./engine";
 
 type Rec = Record<string, unknown>;
@@ -36,6 +39,71 @@ export function unwrapEnvelope(body: unknown): unknown {
     data = data.payload;
   }
   return { ...data, tiers: body.tiers as TiersBlock };
+}
+
+// --- §4 graph slice: fold the separate meta-edge array into edges ----------------
+
+/** Canonical tier order — also the tie-break for a meta-edge's dominant tier. */
+const TIER_ORDER = ["declared", "structural", "temporal", "semantic"] as const;
+
+/**
+ * The tier treatment a constellation ribbon takes: the tier carrying the most
+ * underlying edges in the aggregation (ties resolve by canonical order). A
+ * meta-edge spans tiers, but the line treatment needs one — the dominant tier
+ * is the honest single answer.
+ */
+function dominantTier(breakdown: Record<string, number>): EngineEdge["tier"] {
+  let best: EngineEdge["tier"] = "structural";
+  let bestCount = -1;
+  for (const tier of TIER_ORDER) {
+    const count = breakdown[tier] ?? 0;
+    if (count > bestCount) {
+      best = tier;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/**
+ * One wire meta-edge → the internal edge representation. The wire carries no
+ * id/relation/tier, so synthesize: a stable identity-bearing id from the
+ * endpoint pair (provenance-stable, re-derives identically), the `related`
+ * relation, the dominant tier for line treatment, and the aggregation payload
+ * on `meta` (the ribbon's width-by-count and hover breakdown).
+ */
+export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
+  return {
+    id: `meta:${meta.src}->${meta.dst}`,
+    src: meta.src,
+    dst: meta.dst,
+    relation: "related",
+    tier: dominantTier(meta.breakdown_by_tier),
+    confidence: 1,
+    meta: { count: meta.count, breakdown_by_tier: meta.breakdown_by_tier },
+  };
+}
+
+/**
+ * Live `/graph/query` and `/graph/asof` settle constellation relationships in
+ * a SEPARATE top-level `meta_edges` array at feature granularity (engine
+ * addendum S02), with `edges` empty. Fold those into the internal edge list so
+ * one downstream path renders both granularities. TOLERANT: a body without
+ * `meta_edges` (document granularity, or any origin that already inlined them)
+ * passes through unchanged — the S49 one-code-path property.
+ */
+export function adaptGraphSlice(body: unknown): GraphSlice {
+  if (!isRec(body)) return body as GraphSlice;
+  const edges = Array.isArray(body.edges) ? (body.edges as EngineEdge[]) : [];
+  const metaEdges = Array.isArray(body.meta_edges)
+    ? (body.meta_edges as WireMetaEdge[])
+    : [];
+  // Drop the raw meta_edges off the returned slice — it is now in `edges`.
+  const { meta_edges: _folded, ...rest } = body as Rec;
+  return {
+    ...(rest as object),
+    edges: metaEdges.length ? [...edges, ...metaEdges.map(metaEdgeToEdge)] : edges,
+  } as GraphSlice;
 }
 
 /** Live workspace map → the internal repositories shape. */

@@ -46,9 +46,25 @@ describe("MockEngine routes", () => {
 
   it("serves the constellation as feature nodes plus meta-edges only (§4)", async () => {
     const mock = new MockEngine();
-    const slice = await client(mock).graphQuery({ scope: "wt-main" });
+    const slice = await client(mock).graphQuery({
+      scope: "wt-main",
+      granularity: "feature",
+    });
     expect(slice.nodes.every((n) => n.kind === "feature")).toBe(true);
+    expect(slice.nodes.length).toBeGreaterThan(0);
+    // Live serves meta-edges in a SEPARATE array with edges empty; the client
+    // folds them into edges (each carrying its aggregation on .meta).
+    expect(slice.edges.length).toBeGreaterThan(0);
     expect(slice.edges.every((e) => e.meta !== undefined)).toBe(true);
+  });
+
+  it("serves document granularity by default, mirroring the live engine", async () => {
+    const mock = new MockEngine();
+    const slice = await client(mock).graphQuery({ scope: "wt-main" });
+    expect(slice.nodes.every((n) => n.kind !== "feature")).toBe(true);
+    // Document edges are real edges, never meta-aggregations.
+    expect(slice.edges.length).toBeGreaterThan(0);
+    expect(slice.edges.every((e) => e.meta === undefined)).toBe(true);
   });
 
   it("serves plan interiors on node detail", async () => {
@@ -130,13 +146,18 @@ describe("MockEngine routes", () => {
     const mock = new MockEngine();
     mock.degrade("semantic", "rag service down");
     const c = client(mock);
-    const constellation = await c.graphQuery({ scope: "wt-main" });
+    const constellation = await c.graphQuery({
+      scope: "wt-main",
+      granularity: "feature",
+    });
     // Fixture meta-edges aggregate semantic-only breakdowns: all gated.
     expect(constellation.edges).toHaveLength(0);
     const asof = await c.graphAsof({ scope: "wt-main", t: mock.maxEventTs });
     expect(asof.edges.some((e) => e.tier === "semantic")).toBe(false);
     mock.degrade("semantic", null);
-    expect((await c.graphQuery({ scope: "wt-main" })).edges.length).toBeGreaterThan(0);
+    expect(
+      (await c.graphQuery({ scope: "wt-main", granularity: "feature" })).edges.length,
+    ).toBeGreaterThan(0);
   });
 
   it("degrades truthfully: rag down → 502 with reasoned tier block", async () => {
@@ -157,14 +178,18 @@ describe("MockEngine routes", () => {
     const mock = new MockEngine();
     mock.setNoVault(true);
     const c = client(mock);
-    expect((await c.graphQuery({ scope: "wt-main" })).nodes).toHaveLength(0);
+    expect(
+      (await c.graphQuery({ scope: "wt-main", granularity: "feature" })).nodes,
+    ).toHaveLength(0);
     expect((await c.vaultTree("wt-main")).entries).toHaveLength(0);
     expect((await c.status()).nodes).toBe(0);
     const events = await c.events({ scope: "wt-main" });
     expect(events.events!.length).toBeGreaterThan(0);
     expect(events.events!.every((e) => e.kind === "commit")).toBe(true);
     mock.setNoVault(false);
-    expect((await c.graphQuery({ scope: "wt-main" })).nodes.length).toBeGreaterThan(0);
+    expect(
+      (await c.graphQuery({ scope: "wt-main", granularity: "feature" })).nodes.length,
+    ).toBeGreaterThan(0);
   });
 
   it("drops lifecycle-lane events under date-mandate-missing (035)", async () => {

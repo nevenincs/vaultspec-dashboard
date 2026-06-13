@@ -22,6 +22,7 @@ import type {
   FetchLike,
   GraphDeltaEntry,
   TiersBlock,
+  WireMetaEdge,
 } from "../stores/server/engine";
 import type { FixtureCorpus } from "./fixtures/corpus";
 import { buildFixtureCorpus } from "./fixtures/corpus";
@@ -99,6 +100,25 @@ export function buildDeltaTimeline(corpus: FixtureCorpus): TimelineDelta[] {
     d.t = d.ts;
   });
   return deltas;
+}
+
+/**
+ * Project the mock's internal meta-edge (an `EngineEdge` carrying the
+ * aggregation on `.meta`, the shape the delta timeline replays) onto the
+ * live serve wire (engine addendum S02): the SEPARATE `meta_edges` array
+ * element, with the bare feature ids decomposed back to `src_feature` /
+ * `dst_feature`. The client's adaptGraphSlice folds this back into edges —
+ * exercising the exact path the live origin takes.
+ */
+function toWireMetaEdge(edge: EngineEdge): WireMetaEdge {
+  return {
+    src: edge.src,
+    dst: edge.dst,
+    src_feature: edge.src.replace(/^feature:/, ""),
+    dst_feature: edge.dst.replace(/^feature:/, ""),
+    count: edge.meta?.count ?? 0,
+    breakdown_by_tier: edge.meta?.breakdown_by_tier ?? {},
+  };
 }
 
 // --- the mock engine --------------------------------------------------------------
@@ -286,17 +306,33 @@ export class MockEngine {
       return { entries: this.noVault ? [] : c.vaultTree, tiers };
     }
     if (path === "/graph/query") {
-      // Constellation granularity: feature nodes + engine-aggregated
-      // meta-edges; doc-level arrives on descent (contract §4). Degraded
+      // Match the live serve wire (contract §4, engine addendum S02): the
+      // request's granularity selects document edges OR feature-convergence
+      // nodes plus a SEPARATE meta_edges array (edges empty) — never folded
+      // into edges. Document is the default, mirroring the engine. Degraded
       // tiers gate content here too (011); an absent corpus serves
       // nothing (035).
+      const reqBody = init?.body
+        ? (JSON.parse(String(init.body)) as { granularity?: string; filter?: unknown })
+        : {};
+      const filter = reqBody.filter;
       if (this.noVault) {
-        return { nodes: [], edges: [], tiers };
+        return { nodes: [], edges: [], meta_edges: [], filter, tiers };
+      }
+      if (reqBody.granularity === "feature") {
+        return {
+          nodes: c.nodes.filter((n) => n.kind === "feature"),
+          edges: [],
+          meta_edges: c.metaEdges.filter((e) => this.tierServed(e)).map(toWireMetaEdge),
+          filter,
+          tiers,
+        };
       }
       return {
-        nodes: c.nodes.filter((n) => n.kind === "feature"),
-        edges: c.metaEdges.filter((e) => this.tierServed(e)),
-        filter: init?.body ? JSON.parse(String(init.body)).filter : undefined,
+        nodes: c.nodes.filter((n) => n.kind !== "feature"),
+        edges: c.edges.filter((e) => this.tierServed(e)),
+        meta_edges: [],
+        filter,
         tiers,
       };
     }

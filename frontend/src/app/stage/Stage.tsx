@@ -52,7 +52,10 @@ export function useActiveScope(): string | null {
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
   const scope = useActiveScope();
-  const slice = useGraphSlice(scope);
+  // The top-level stage is the feature constellation (contract §4, ADR
+  // D4.1): feature-convergence nodes + engine-aggregated meta-edges. Document
+  // structure arrives on descent via the working-set ego expansions below.
+  const slice = useGraphSlice(scope, undefined, undefined, "feature");
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
   const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
