@@ -189,6 +189,32 @@ fn typed_client_expectations_hold_over_live_serve() {
     );
     assert_eq!(status, 200, "revision form still accepted");
 
+    // S50 follow-up: asof in the FEATURE species — a historical keyframe that
+    // matches the live constellation (feature nodes + meta-edges), not a
+    // disjoint document graph, so the constellation can time-travel cheaply.
+    let (status, hist) = http(
+        8831,
+        "GET",
+        &format!(
+            "/graph/asof?scope={}&t={t}&granularity=feature",
+            urlencode(&scope)
+        ),
+        &token,
+        None,
+    );
+    assert_eq!(status, 200, "feature-granularity asof served: {hist}");
+    let hnodes = hist["data"]["nodes"]
+        .as_array()
+        .expect("asof feature nodes");
+    assert!(
+        !hnodes.is_empty() && hnodes.iter().all(|n| n["kind"] == "feature"),
+        "historical constellation is feature-species, matching live"
+    );
+    assert!(
+        hist["data"]["meta_edges"].is_array(),
+        "feature-granularity asof carries constellation meta-edges"
+    );
+
     // --- S49 divergence 2: feature granularity synthesizes the convergence ---
     let (status, constellation) = http(
         8831,

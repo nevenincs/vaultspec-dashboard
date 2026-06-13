@@ -73,8 +73,13 @@ pub async fn events(
 #[derive(Deserialize)]
 pub struct AsofParams {
     pub scope: String,
-    /// A ref name or commit sha.
+    /// A ref name, commit sha, or millisecond timestamp.
     pub t: String,
+    /// `document` (default) or `feature` — a historical keyframe in the same
+    /// species as the live view (S50: the constellation time-travels in its
+    /// own feature species, not as a disjoint document graph).
+    #[serde(default)]
+    pub granularity: Option<String>,
 }
 
 pub async fn graph_asof(
@@ -82,6 +87,7 @@ pub async fn graph_asof(
     Query(params): Query<AsofParams>,
 ) -> ApiResult {
     validate_scope(&state, &params.scope)?;
+    let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
     let scope = engine_model::ScopeRef::Ref {
         name: params.t.clone(),
     };
@@ -91,7 +97,7 @@ pub async fn graph_asof(
         &graph,
         &scope,
         engine_query::filter::Filter::default(),
-        engine_query::graph::Granularity::Document,
+        granularity,
     )
     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(super::envelope(
@@ -99,6 +105,9 @@ pub async fn graph_asof(
             "t": params.t,
             "nodes": slice.nodes,
             "edges": slice.edges,
+            // Feature granularity carries the constellation meta-edges so a
+            // historical keyframe matches the live constellation exactly.
+            "meta_edges": slice.meta_edges,
             // A HISTORICAL keyframe carries no live-clock position (N2):
             // splicing to LIVE requires a present keyframe whose deltas
             // arrive on the stream's sequence.

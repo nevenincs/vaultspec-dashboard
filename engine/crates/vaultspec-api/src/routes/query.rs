@@ -169,22 +169,33 @@ pub struct GraphQueryBody {
     pub as_of: Option<String>,
 }
 
+/// Parse the engine-owned granularity parameter (contract §4): document-level
+/// edges, or feature-convergence nodes + meta-edges. Absent defaults to
+/// `document`, mirroring the live engine. Shared by `/graph/query` and
+/// `/graph/asof` so a historical slice can be requested in the SAME species as
+/// the live constellation (feature) — closing the asof/diff species mismatch
+/// (S50) that kept the constellation from time-travelling.
+pub(crate) fn parse_granularity(
+    state: &AppState,
+    raw: Option<&str>,
+) -> Result<Granularity, (StatusCode, Json<Value>)> {
+    match raw {
+        None | Some("document") => Ok(Granularity::Document),
+        Some("feature") => Ok(Granularity::Feature),
+        Some(other) => Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!("unknown granularity `{other}`"),
+        )),
+    }
+}
+
 pub async fn graph_query_route(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GraphQueryBody>,
 ) -> ApiResult {
     validate_scope(&state, &body.scope)?;
-    let granularity = match body.granularity.as_deref() {
-        None | Some("document") => Granularity::Document,
-        Some("feature") => Granularity::Feature,
-        Some(other) => {
-            return Err(super::api_error(
-                &state,
-                StatusCode::BAD_REQUEST,
-                format!("unknown granularity `{other}`"),
-            ));
-        }
-    };
+    let granularity = parse_granularity(&state, body.granularity.as_deref())?;
     let filter = body.filter.unwrap_or_default();
 
     let (slice, tiers) = match &body.as_of {
