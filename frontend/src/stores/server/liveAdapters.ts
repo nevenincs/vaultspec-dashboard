@@ -50,11 +50,15 @@ const TIER_ORDER = ["declared", "structural", "temporal", "semantic"] as const;
  * The tier treatment a constellation ribbon takes: the tier carrying the most
  * underlying edges in the aggregation (ties resolve by canonical order). A
  * meta-edge spans tiers, but the line treatment needs one — the dominant tier
- * is the honest single answer.
+ * is the honest single answer. An empty/all-zero breakdown (degenerate; the
+ * live engine never emits one) falls back to `structural`, the tier of the
+ * cross-feature mentions that produce meta-edges.
  */
 function dominantTier(breakdown: Record<string, number>): EngineEdge["tier"] {
   let best: EngineEdge["tier"] = "structural";
-  let bestCount = -1;
+  // Seed at 0 so a tier only wins on a POSITIVE count: an empty breakdown
+  // keeps the `structural` default rather than the first-enumerated tier.
+  let bestCount = 0;
   for (const tier of TIER_ORDER) {
     const count = breakdown[tier] ?? 0;
     if (count > bestCount) {
@@ -85,12 +89,14 @@ export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
 }
 
 /**
- * Live `/graph/query` and `/graph/asof` settle constellation relationships in
- * a SEPARATE top-level `meta_edges` array at feature granularity (engine
- * addendum S02), with `edges` empty. Fold those into the internal edge list so
- * one downstream path renders both granularities. TOLERANT: a body without
- * `meta_edges` (document granularity, or any origin that already inlined them)
- * passes through unchanged — the S49 one-code-path property.
+ * Live `/graph/query` settles constellation relationships in a SEPARATE
+ * top-level `meta_edges` array at feature granularity (engine addendum S02),
+ * with `edges` empty. Fold those into the internal edge list so one downstream
+ * path renders both granularities. TOLERANT: a body without `meta_edges`
+ * (document granularity, or any origin that already inlined them) passes
+ * through unchanged — the S49 one-code-path property. (`/graph/asof` stays on
+ * the document path: its constellation-granularity shape is the open S50
+ * divergence, out of scope here.)
  */
 export function adaptGraphSlice(body: unknown): GraphSlice {
   if (!isRec(body)) return body as GraphSlice;

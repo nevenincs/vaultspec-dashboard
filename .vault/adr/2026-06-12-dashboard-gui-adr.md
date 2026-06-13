@@ -3,6 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-gui'
 date: '2026-06-12'
+modified: '2026-06-12'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
 ---
@@ -658,6 +659,24 @@ here forecloses it — the client-over-services shape is chosen partly for it);
 no multi-user/remote/auth; no TUI. Multi-workspace presentation: v1 renders
 one worktree scope at a time with a fast switcher; the engine contract keeps
 scope a parameter so multi-scope composition stays open.
+
+## 9a. Addendum redlines
+
+Post-ADR amendments to the locked surfaces, recorded here so the seam-lock
+discipline (the RL-1..RL-5 SceneController lock, W01.P01.S04) holds: a surface
+change is an ADR-flagged redline, never a drive-by edit.
+
+- **RL-1 additive — `SceneNodeData.memberCount?` (2026-06-13,
+  `2026-06-13-dashboard-gui` addendum).** When the engine addendum (S02)
+  began synthesizing feature-convergence nodes carrying `member_count` (§3.1
+  / D4.1: the convergence entity is the primary node, sized by the documents
+  converging on it), the scene needed that count to size feature nodes as the
+  constellation's centers of gravity. Resolution: add a single OPTIONAL,
+  additive, backward-compatible field `memberCount?: number` to the RL-1
+  node-data surface. It is absent on document nodes; the sigma.js fallback
+  ignores it harmlessly; no command/event/anchor surface changes. This is the
+  minimal surface required to render the convergence entity, not a widening of
+  the seam. Consumed only by the sprite layer's `nodeRadius`.
 
 ## 10. References
 

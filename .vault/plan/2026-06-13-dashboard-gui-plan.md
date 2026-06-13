@@ -70,8 +70,8 @@ completion, per the standing per-phase discipline.
   dashboard-foundation, dashboard-gui, vaultspec-engine - joined by their
   cross-feature meta-edges).
 - The scene seam holds: no React import under `frontend/src/scene/`; the
-  `memberCount` seam addition is recorded as a flagged additive redline against
-  the GUI ADR (G-series), never a silent drive-by edit.
+  `memberCount` seam addition is recorded as a flagged additive redline in the
+  GUI ADR (§9a, "RL-1 additive"), never a silent drive-by edit.
 - Engine `cargo test --workspace` and the consumer conformance leg stay green
   (this addendum changes no engine code).
 - `vaultspec-core vault check all` stays green; every Step closed (`- [x]`).

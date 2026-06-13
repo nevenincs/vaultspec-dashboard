@@ -197,6 +197,29 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(edge.tier).toBe("semantic");
   });
 
+  const meta = (breakdown: Record<string, number>) => ({
+    src: "feature:a",
+    dst: "feature:b",
+    src_feature: "a",
+    dst_feature: "b",
+    count: 1,
+    breakdown_by_tier: breakdown,
+  });
+
+  it("resolves a dominant-tier tie by canonical order", () => {
+    // structural and temporal tie at 2 → the earlier canonical tier wins.
+    expect(metaEdgeToEdge(meta({ structural: 2, temporal: 2 })).tier).toBe(
+      "structural",
+    );
+    // declared precedes semantic; equal counts → declared.
+    expect(metaEdgeToEdge(meta({ declared: 3, semantic: 3 })).tier).toBe("declared");
+  });
+
+  it("falls back to structural for an empty/all-zero breakdown", () => {
+    expect(metaEdgeToEdge(meta({})).tier).toBe("structural");
+    expect(metaEdgeToEdge(meta({ declared: 0, semantic: 0 })).tier).toBe("structural");
+  });
+
   it("passes a document-granularity slice through unchanged (tolerance)", () => {
     // edges populated, meta_edges empty/absent: the fold is a no-op.
     const docSlice = {
