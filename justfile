@@ -99,6 +99,7 @@ _dev-lint-help:
   @echo "Targets:"
   @echo "  python    Run Ruff on Python source"
   @echo "  type      Run Ty (type checker) on Python source"
+  @echo "  pyright   Supplementary Python type check (advisory; ty is the gate)"
   @echo "  toml      Run Taplo TOML linter"
   @echo "  markdown  Run Markdown linting and formatting checks"
   @echo "  rust      Run cargo fmt --check and clippy on the engine workspace"
@@ -113,6 +114,11 @@ _dev-lint-python:
 
 _dev-lint-type:
   uv run python -m ty check src/vaultspec_dashboard
+
+# Advisory: a second type-checking lens for development/editors. `ty` (above)
+# is the enforced gate; pyright is not part of `lint all`, pre-commit, or CI.
+_dev-lint-pyright:
+  uv run pyright src/vaultspec_dashboard
 
 _dev-lint-toml:
   @{{ if os() == "windows" { \
@@ -255,6 +261,7 @@ _dev-test-help:
   @echo "  rust      Run cargo test on the engine workspace (incl. e2e)"
   @echo "  bench     Run the cold-index benchmark with baseline output"
   @echo "  frontend  Run vitest on the SPA"
+  @echo "  e2e       Install the browser + run Playwright e2e (needs the engine)"
   @echo "  all       Run all tests"
 
 _dev-test-python:
@@ -268,6 +275,13 @@ _dev-test-bench:
 
 _dev-test-frontend:
   npm --prefix frontend run test
+
+# Browser e2e: provisions the Chromium binary (idempotent), then runs the
+# Playwright smoke. Separate from `all` because it drives a live `vaultspec
+# serve` origin and a real browser.
+_dev-test-e2e:
+  npm --prefix frontend exec -- playwright install chromium
+  npm --prefix frontend run e2e
 
 _dev-test-all:
   just _dev-test-python

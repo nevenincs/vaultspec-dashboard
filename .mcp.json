@@ -15,9 +15,35 @@
         "run",
         "vaultspec-search-mcp"
       ]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@latest"
+      ]
+    },
+    "figma": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "figma-developer-mcp",
+        "--stdio"
+      ],
+      "env": {
+        "FIGMA_API_KEY": "${FIGMA_API_KEY}"
+      }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
     }
   },
   "_vaultspecManaged": [
+    "chrome-devtools",
+    "figma",
+    "playwright",
     "vaultspec-core",
     "vaultspec-rag"
   ]
