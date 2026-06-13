@@ -1,0 +1,130 @@
+//! Scale + adversarial-load benchmark for the graph QUERY-SERVE path — the
+//! surface the GUI hammers, distinct from the cold-index smoke in `bench.rs`.
+//!
+//! It generates a corpus at a tunable scale, indexes it once, then measures
+//! what a request actually costs: `graph_query` at both granularities, the
+//! JSON serialization of the slice, and the resulting payload size — plus a
+//! concurrent pass (N threads × M queries against one shared graph) to surface
+//! read contention and per-request allocation churn. Scale is env-tunable so
+//! the default stays fast; large runs ("make it break") are opt-in:
+//!
+//!   VAULTSPEC_SCALE_DOCS=20000 cargo test -p ... --test scale_bench -- --nocapture
+//!
+//! Findings land in the perf research doc; this is the evidence base, not a
+//! pass/fail gate (no wall-clock ceiling — those flake on shared runners).
+
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Instant;
+
+use engine_model::ScopeRef;
+use engine_query::filter::Filter;
+use engine_query::graph::{Granularity, graph_query};
+
+fn generate_corpus(root: &Path, docs: usize, features: usize) {
+    std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let modules = (docs / 20).max(1);
+    for i in 0..modules {
+        std::fs::write(
+            root.join(format!("src/module_{i}.rs")),
+            format!("pub fn function_{i}() {{}}\n"),
+        )
+        .unwrap();
+    }
+    for i in 0..docs {
+        let feat = i % features;
+        let link = (i + 1) % docs;
+        let m = i % modules;
+        std::fs::write(
+            root.join(format!(".vault/plan/2026-06-12-scale-{i:06}-plan.md")),
+            format!(
+                "---\ntags:\n  - '#plan'\n  - '#scale-{feat}'\n---\n\n\
+                 - [ ] `S01` - touch `src/module_{m}.rs` calling `function_{m}()`; \
+                 see [[2026-06-12-scale-{link:06}-plan]]\n",
+            ),
+        )
+        .unwrap();
+    }
+}
+
+fn env_usize(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+#[test]
+#[ignore = "scale benchmark: run explicitly with --ignored --nocapture (heavy index)"]
+fn graph_query_scale_and_concurrency() {
+    let docs = env_usize("VAULTSPEC_SCALE_DOCS", 500);
+    let features = env_usize("VAULTSPEC_SCALE_FEATURES", (docs / 50).max(2));
+    let threads = env_usize("VAULTSPEC_SCALE_THREADS", 16);
+    let per = env_usize("VAULTSPEC_SCALE_PER_THREAD", 8);
+
+    let dir = tempfile::tempdir().unwrap();
+    generate_corpus(dir.path(), docs, features);
+    let store = engine_store::Store::open_at(&dir.path().join("scale.sqlite3")).unwrap();
+    let scope = ScopeRef::Worktree {
+        path: dir.path().to_string_lossy().replace('\\', "/"),
+    };
+
+    let t = Instant::now();
+    let (graph, stats) = engine_graph::index::index_worktree(dir.path(), &scope, &store, 0).unwrap();
+    let index_ms = t.elapsed().as_millis();
+    let graph = Arc::new(graph);
+
+    // Document granularity: one full slice — query build, then serialize.
+    let t = Instant::now();
+    let doc_slice = graph_query(&graph, &scope, Filter::default(), Granularity::Document).unwrap();
+    let doc_query_us = t.elapsed().as_micros();
+    let t = Instant::now();
+    let doc_json = serde_json::to_vec(&doc_slice).unwrap();
+    let doc_ser_us = t.elapsed().as_micros();
+
+    // Feature granularity (constellation LOD): the bounded projection.
+    let t = Instant::now();
+    let feat_slice = graph_query(&graph, &scope, Filter::default(), Granularity::Feature).unwrap();
+    let feat_query_us = t.elapsed().as_micros();
+    let feat_json = serde_json::to_vec(&feat_slice).unwrap();
+
+    // Concurrent read load against one shared immutable graph.
+    let t = Instant::now();
+    std::thread::scope(|s| {
+        for _ in 0..threads {
+            let g = Arc::clone(&graph);
+            let sc = scope.clone();
+            s.spawn(move || {
+                for _ in 0..per {
+                    let slice =
+                        graph_query(&g, &sc, Filter::default(), Granularity::Document).unwrap();
+                    let _ = serde_json::to_vec(&slice).unwrap();
+                }
+            });
+        }
+    });
+    let concurrent_ms = t.elapsed().as_millis();
+
+    println!(
+        "SCALE docs={} nodes={} edges={} index={}ms \
+         | DOC query={}us ser={}us bytes={} \
+         | FEAT nodes={} meta_edges={} query={}us bytes={} \
+         | CONCURRENT {}x{}={}ms ({} queries)",
+        stats.documents,
+        graph.node_count(),
+        graph.edge_count(),
+        index_ms,
+        doc_query_us,
+        doc_ser_us,
+        doc_json.len(),
+        feat_slice.nodes.len(),
+        feat_slice.meta_edges.len(),
+        feat_query_us,
+        feat_json.len(),
+        threads,
+        per,
+        concurrent_ms,
+        threads * per,
+    );
+}
