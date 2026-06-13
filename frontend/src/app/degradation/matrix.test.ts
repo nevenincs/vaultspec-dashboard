@@ -77,6 +77,26 @@ describe("deriveInputs", () => {
   it("reads no-vault from an empty corpus", () => {
     expect(deriveInputs(status({ nodes: 0 })).noVault).toBe(true);
   });
+
+  it("derives streamLost from the live-connection signal, not a hardwired zero", () => {
+    // No live signal (default): not lost - the old hardwired behavior preserved.
+    expect(deriveInputs(status({})).streamLost).toBe(false);
+    // A stream that was never expected (null) is not lost.
+    expect(deriveInputs(status({}), { streamConnected: null }).streamLost).toBe(false);
+    // A connected stream is not lost.
+    expect(deriveInputs(status({}), { streamConnected: true }).streamLost).toBe(false);
+    // Only an explicit disconnect is a lost stream (finding 036 closed).
+    expect(deriveInputs(status({}), { streamConnected: false }).streamLost).toBe(true);
+  });
+
+  it("derives brokenLinkCount from the injected live signal", () => {
+    expect(deriveInputs(status({})).brokenLinkCount).toBe(0);
+    expect(deriveInputs(status({}), { brokenLinkCount: 4 }).brokenLinkCount).toBe(4);
+    // The broken count drives the broken-highlighted stage state end to end.
+    expect(matrixFor(deriveInputs(status({}), { brokenLinkCount: 2 })).stage).toBe(
+      "broken-highlighted",
+    );
+  });
 });
 
 describe("debug overrides (every state reachable, G8.a)", () => {

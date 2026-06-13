@@ -11,6 +11,8 @@ import { useQueries } from "@tanstack/react-query";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { sliceToScene } from "../../scene/sceneMapping";
 import { engineClient } from "../../stores/server/engine";
+import { useGraphLiveSync } from "../../stores/server/graphSync";
+import { useLiveStatusStore } from "../../stores/server/liveStatus";
 import {
   engineKeys,
   useGraphSlice,
@@ -135,6 +137,10 @@ export function Stage() {
   // live keyframe path resumes — and re-pushes — on return to LIVE.
   const timelineMode = useViewStore((s) => s.timelineMode);
   useTimeTravel(scope, scene.controller);
+  // LIVE-mode reactivity (live-state D3): the graph stream drives targeted
+  // invalidation of the constellation and the live-connection signal. Disabled
+  // while time travelling - the driver owns the scene then.
+  useGraphLiveSync(scope, timelineMode.kind === "live");
   useEffect(() => {
     if (!merged || !scope || timelineMode.kind !== "live") return;
     const mapped = sliceToScene(merged);
@@ -164,6 +170,17 @@ export function Stage() {
       visibleEdgeIds: membership.visibleEdgeIds,
     });
   }, [membership, timelineMode.kind]);
+
+  // Surface the structural-broken degradation truth (live-state D4): a pure
+  // reduction over the held slice's broken edges feeds the degradation matrix,
+  // replacing the old hardwired zero (GUI finding 036). Empty when no slice is
+  // held, so a scope swap never leaves a stale count.
+  useEffect(() => {
+    const broken = merged
+      ? merged.edges.filter((edge) => edge.state === "broken").length
+      : 0;
+    useLiveStatusStore.getState().setBrokenLinkCount(broken);
+  }, [merged]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">

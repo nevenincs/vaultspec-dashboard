@@ -6,6 +6,8 @@ import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
 import { installGlobalTraps } from "./platform/logger/globalTraps";
 import { ringBuffer } from "./platform/logger/logger";
+import { failurePolicy } from "./platform/policy/failurePolicy";
+import { useLiveStatusStore } from "./stores/server/liveStatus";
 import { queryClient } from "./stores/server/queryClient";
 import { router } from "./router";
 import "./styles.css";
@@ -30,12 +32,25 @@ if (import.meta.env.VITE_MOCK_ENGINE === "1") {
 // Last-resort net for failures that escape React entirely (ADR D5).
 installGlobalTraps();
 
-// Dev-only: expose the log ring buffer for the dev overlay and the adverse
-// e2e pass to read captured records. Never exposed in a production build.
+// Platform-policy adoption (live-state ADR D5): a stream-lost classification
+// flips the stores-owned live-connection signal, so the degradation matrix
+// renders the reconnecting/stale surface. The policy classifies (mechanism,
+// platform's); the live signal is the vocabulary binding (ours).
+failurePolicy.setDegradationHandler((classification) => {
+  if (classification.signal === "stream-lost") {
+    useLiveStatusStore.getState().setStreamConnected(false);
+  }
+});
+
+// Dev-only: expose the log ring buffer and the live-connection store for the
+// dev overlay and the adverse e2e pass. Never exposed in a production build.
 if (import.meta.env.DEV) {
-  (
-    globalThis as typeof globalThis & { __platformRingBuffer?: typeof ringBuffer }
-  ).__platformRingBuffer = ringBuffer;
+  const devGlobals = globalThis as typeof globalThis & {
+    __platformRingBuffer?: typeof ringBuffer;
+    __liveStatusStore?: typeof useLiveStatusStore;
+  };
+  devGlobals.__platformRingBuffer = ringBuffer;
+  devGlobals.__liveStatusStore = useLiveStatusStore;
 }
 
 createRoot(rootElement).render(

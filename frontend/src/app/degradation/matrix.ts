@@ -26,16 +26,34 @@ export const HEALTHY: DegradationInputs = {
   noVault: false,
 };
 
-/** Derive the live conditions from the status snapshot. */
-export function deriveInputs(status: EngineStatus | undefined): DegradationInputs {
+/**
+ * Live signals the status snapshot cannot carry, injected by the surface-states
+ * hook from the stores-owned live-connection slice (ADR D4): the runtime stream
+ * connection and the broken-link count over the held slice. Keeping these as
+ * parameters keeps `deriveInputs` pure and testable.
+ */
+export interface LiveSignals {
+  /** null = no stream expected yet, true = connected, false = lost. */
+  streamConnected?: boolean | null;
+  /** Broken structural edges in the held slice. */
+  brokenLinkCount?: number;
+}
+
+/** Derive the live conditions from the status snapshot plus the live signals. */
+export function deriveInputs(
+  status: EngineStatus | undefined,
+  live: LiveSignals = {},
+): DegradationInputs {
   return {
     ragDown:
       status === undefined ||
       status.tiers.semantic?.available === false ||
       (status.rag !== undefined && status.rag.service !== "running"),
     dateMandateMissing: status?.degradations.includes("date-mandate") ?? false,
-    brokenLinkCount: 0, // surfaced per-slice by the edge layer, not /status
-    streamLost: false, // owned by the stream consumer
+    // No longer hardwired (GUI finding 036): a count over the held slice's
+    // broken structural edges, and an explicit stream disconnect.
+    brokenLinkCount: live.brokenLinkCount ?? 0,
+    streamLost: live.streamConnected === false,
     noVault: status !== undefined && status.nodes === 0,
   };
 }

@@ -109,11 +109,11 @@ Model the runtime stream-connection state and make the SSE consumer signal a los
 
 Make LIVE mode reactive via stream-driven invalidation and replace the two hardwired degradation inputs with real derivation.
 
-- [ ] `P02.S03` - Implement the graph-sync hook: subscribe the live graph channel, invalidate the constellation, track connection and lastSeq; `frontend/src/stores/server/graphSync.ts`.
-- [ ] `P02.S04` - Extend deriveInputs to read injected live signals for streamLost and brokenLinkCount, keeping it pure; `frontend/src/app/degradation/matrix.ts`.
-- [ ] `P02.S05` - Compose the live-connection slice into the surface-states hook; `frontend/src/app/degradation/useDegradation.ts`.
-- [ ] `P02.S06` - Bind setDegradationHandler in app bootstrap so a stream-lost classification flips streamConnected false; `frontend/src/main.tsx`.
-- [ ] `P02.S07` - Mount the graph-sync hook and push the held slice broken-link count from the Stage; `frontend/src/app/stage/Stage.tsx`.
+- [x] `P02.S03` - Implement the graph-sync hook: subscribe the live graph channel, invalidate the constellation, track connection and lastSeq; `frontend/src/stores/server/graphSync.ts`.
+- [x] `P02.S04` - Extend deriveInputs to read injected live signals for streamLost and brokenLinkCount, keeping it pure; `frontend/src/app/degradation/matrix.ts`.
+- [x] `P02.S05` - Compose the live-connection slice into the surface-states hook; `frontend/src/app/degradation/useDegradation.ts`.
+- [x] `P02.S06` - Bind setDegradationHandler in app bootstrap so a stream-lost classification flips streamConnected false; `frontend/src/main.tsx`.
+- [x] `P02.S07` - Mount the graph-sync hook and push the held slice broken-link count from the Stage; `frontend/src/app/stage/Stage.tsx`.
 
 ### Phase `P03` - Live verification
 
