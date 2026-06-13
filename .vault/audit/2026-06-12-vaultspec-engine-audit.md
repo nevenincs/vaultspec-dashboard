@@ -247,6 +247,21 @@ Fix (`f87843d`): `GraphDoc.doc_type` is now `Option<String>` (a phantom legitima
 
 DURABILITY NOTE: this is the same class as `every-wire-response-carries-the-tiers-block` - a best-effort sibling read must degrade truthfully (one bad row drops one edge, surfaced), never fail-closed and silently drop the whole tier. A loud/partial parse for the core graph payload (skip-and-flag the unparseable node, keep the rest) is the structural form of this lesson; flagged for the codify decision rather than self-authored.
 
+## ADD-909 | none | sweep follow-up batch: perf fast-path + four LOWs closed, two items deferred with cause
+
+Twenty-first entry (2026-06-13): the remaining tractable sweep findings closed as a batch, each with a regression test; full workspace suite (19 suites) green.
+
+- **HIGH (the `from==to` half) — equal-ref fast path (`4008836`).** `/graph/diff` resolves `from`/`to` cheaply (open + rev-parse, no tree walk, no core subprocess) and short-circuits to an empty log when they name the same commit (the common `HEAD` vs its sha case). Verified 0.04s vs the ~24s two-build path. New `engine_graph::asof::resolve_ref`.
+- **LOW — self-contradicting timestamp 400 (`77ea3ff`).** An out-of-range ms timestamp returned "expected … a millisecond timestamp" though the client supplied one. Added a leak-free `IndexError::Revision` variant so the precise cause ("timestamp N predates the root commit") reaches the client, while gix `Git(_)` strings still get the generic substitution (the info-leak guard).
+- **LOW — event id vs ts ordering (`8ce1b5a`).** `commit_rows` assigned the stable id from newest-first walk order then re-sorted by ts, anti-correlating id and ts; the stream splices by `since=<id>`. Seq is now assigned after the chronological sort (sha tiebreak). Conformance asserts id and ts ascend together.
+- **LOW — trunk misnamed off-trunk (`e85fe7f`).** `default_branch_name` used `repo.head_name()`, so in a multi-worktree checkout (HEAD on a feature branch) the real trunk was branded a feature branch. Now derives from a conventional local trunk (main>master>trunk, shared across worktrees) then `origin/HEAD`, HEAD last.
+- **LOW — events 400 on unborn HEAD (`84063f9`).** A commit-less worktree (graphite stack branch pre-first-commit) 400'd on the `HEAD` walk; zero commits is an empty log, not an error. `walk` returns empty for an unborn HEAD; unknown refs on a born HEAD still fail loud.
+
+DEFERRED with cause (not closed):
+- **MEDIUM — duplicate-stem node collision.** The real fix is path-qualifying the document node's canonical key — an identity-bearing composition change, which `provenance-stable-keys-are-identity-bearing` rules a CONTRACT-REVIEW event, never a unilateral refactor. Correctly left for joint engine+GUI review with a cached-id migration note; the collision still logs a warning today.
+- **HIGH — per-ref as-of caching.** A genuine two-ref diff on a large corpus still pays two ~20s as-of builds (the fast path only covers equal refs). A proper LRU keyed by resolved sha (with reindex invalidation) is a focused feature, not a bug fix; deferred rather than bolted on speculatively.
+- **CAPABILITY GAP — plan↔worktree linkage** and **OPERATOR ACTION — AEAT/aeat-audit dirty-tree restoration** remain as recorded in ADD-907 (a feature, and an operator decision over pre-existing user work, respectively).
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
