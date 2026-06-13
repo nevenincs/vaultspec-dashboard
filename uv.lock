@@ -2231,7 +2231,7 @@ requires-dist = [
     { name = "pytest-timeout", marker = "extra == 'dev'", specifier = ">=2.4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.2" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.15" },
-    { name = "vaultspec-core", specifier = ">=0.1.28" },
+    { name = "vaultspec-core", specifier = ">=0.1.29" },
 ]
 provides-extras = ["dev"]
 

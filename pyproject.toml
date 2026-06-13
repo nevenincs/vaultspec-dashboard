@@ -15,7 +15,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "vaultspec-core>=0.1.28",
+  "vaultspec-core>=0.1.29",
 ]
 description = "Unified dashboard UI for the vaultspec ecosystem"
 keywords = [
