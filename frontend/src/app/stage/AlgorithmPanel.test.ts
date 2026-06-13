@@ -34,12 +34,12 @@ describe("AlgorithmPanel DEFAULTS", () => {
     );
   });
 
-  it("scalingRatio defaults to 10 (FA2 medium-graph calibration)", () => {
-    expect(DEFAULTS.scalingRatio).toBe(10);
+  it("scalingRatio defaults to 25 (spread-optimised for ~70% stage fill)", () => {
+    expect(DEFAULTS.scalingRatio).toBe(25);
   });
 
-  it("gravity defaults to 0.8 (pulls without collapsing)", () => {
-    expect(DEFAULTS.gravity).toBe(0.8);
+  it("gravity defaults to 0.5 (loose centre pull, prevents clustering blob)", () => {
+    expect(DEFAULTS.gravity).toBe(0.5);
   });
 
   it("slowDown defaults to 1 (no added damping)", () => {

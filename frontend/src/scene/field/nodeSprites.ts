@@ -17,8 +17,11 @@ import { RECEDE_ALPHA } from "./egoHighlight";
 
 export type LodLevel = "far" | "near";
 
-/** World-scale threshold above which full anatomy unfolds (semantic zoom). */
-export const NEAR_ZOOM_THRESHOLD = 1.6;
+/** World-scale threshold above which full anatomy (ring, badges, label) unfolds.
+ * Set to feature LOD (0.6) so labels are visible in the default fit-to-view,
+ * matching the Obsidian mental model where the graph shows labels at overview
+ * scale. Document LOD (1.6) was too strict — labels never appeared in practice. */
+export const NEAR_ZOOM_THRESHOLD = 0.6;
 
 /** Focused nodes always carry full anatomy regardless of zoom (§3.1). */
 export function lodFor(scale: number, focused: boolean): LodLevel {

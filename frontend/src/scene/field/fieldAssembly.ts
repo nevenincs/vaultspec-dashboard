@@ -60,6 +60,8 @@ export class DashboardField implements SceneFieldRenderer {
   private camera: Camera | null = null;
   private anchors: AnchorDriver | null = null;
   private minimap: MinimapLayer | null = null;
+  /** Canvas registered before onReady fires — applied once the layer exists. */
+  private pendingMinimapCanvas: HTMLCanvasElement | null = null;
   private hitTester = new SpatialHitTester();
   private glyphs: ProgrammaticGlyphs | null = null;
   private detachListeners: (() => void)[] = [];
@@ -69,9 +71,16 @@ export class DashboardField implements SceneFieldRenderer {
   /** Set by the controller on attach (events flow back through the seam). */
   controller: SceneController | null = null;
 
-  /** Called by SceneController.setMinimapCanvas() — chrome owns the canvas. */
+  /** Called by SceneController.setMinimapCanvas() — chrome owns the canvas.
+   * The minimap layer is created inside onReady (async Pixi init). If called
+   * before Pixi is ready, the canvas is held in pendingMinimapCanvas and
+   * applied once the layer exists. */
   setMinimapCanvas(canvas: HTMLCanvasElement | null): void {
-    this.minimap?.setCanvas(canvas);
+    if (this.minimap) {
+      this.minimap.setCanvas(canvas);
+    } else {
+      this.pendingMinimapCanvas = canvas;
+    }
   }
 
   /** Scope the warm-start persistence (the worktree picker drives this). */
@@ -130,6 +139,11 @@ export class DashboardField implements SceneFieldRenderer {
       this.minimap.setNavigateCallback((wx, wy) => {
         this.navigateToWorld(wx, wy);
       });
+      // Apply any canvas that was registered before Pixi was ready.
+      if (this.pendingMinimapCanvas !== null) {
+        this.minimap.setCanvas(this.pendingMinimapCanvas);
+        this.pendingMinimapCanvas = null;
+      }
 
       const offCamera = this.camera.onChange((state, level) => {
         this.sprites?.setLod(state.scale, this.focusedIds());

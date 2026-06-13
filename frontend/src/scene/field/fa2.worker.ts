@@ -24,12 +24,15 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let iterationsPerTick = 4;
 const TICK_MS = 16;
 
-// Spread-optimised defaults — stronger repulsion, gentler gravity — so the
-// initial layout fills the stage rather than clustering into a blob.
+// Spread-optimised defaults — strong repulsion, low gravity — so the initial
+// layout fills 70–80% of the stage. The AlgorithmPanel exposes all four params
+// so users can tighten the layout if needed. Values were calibrated against a
+// 12-node feature constellation: scalingRatio=25 produces ~70% fill at 1400px
+// wide; gravity=0.5 prevents the dense central cluster seen at 0.8.
 // Consumers tune via the "params" message (set-layout-params command).
 let currentParams: Required<Omit<LayoutParams, "iterationsPerTick">> = {
-  scalingRatio: 10,
-  gravity: 0.8,
+  scalingRatio: 25,
+  gravity: 0.5,
   slowDown: 1,
   barnesHutOptimize: true,
 };

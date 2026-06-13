@@ -21,8 +21,8 @@ import { getScene } from "./Stage";
 // its own state via getLayoutState(). Exported so tests can assert the
 // shape without rendering the component.
 export const DEFAULTS: Required<LayoutParams> = {
-  scalingRatio: 10,
-  gravity: 0.8,
+  scalingRatio: 25,
+  gravity: 0.5,
   slowDown: 1,
   barnesHutOptimize: true,
   iterationsPerTick: 4,
