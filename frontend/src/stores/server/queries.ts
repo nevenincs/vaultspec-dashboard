@@ -229,11 +229,6 @@ export async function* sseChunks(
   }
 }
 
-/**
- * Streamed query over the engine's multiplexed SSE stream. Chunks
- * accumulate in the cache as they arrive (append mode); `since` resumes
- * the graph channel from a known sequence point (§7 splice).
- */
 /** Dedup graph frames by seq: a reconnect's since= replay is already held, so
  *  an idempotent splice (contract section 7) yields no second copy. Frames
  *  without a seq (backends/git) just append. */
@@ -248,6 +243,12 @@ function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChunk[] {
   return [...acc, chunk];
 }
 
+/**
+ * Streamed query over the engine's multiplexed SSE stream. Chunks accumulate
+ * via a seq-dedup reducer (not blind append), so a reconnect's `since=` replay
+ * splices idempotently; `since` resumes the graph channel from a known seq and
+ * is folded into the cache key so two resume offsets never collide (section 7).
+ */
 export function engineStreamOptions(channels: readonly string[], since?: number) {
   return queryOptions({
     // The resume point is identity-bearing: two `since` offsets carry

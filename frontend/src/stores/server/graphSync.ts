@@ -36,6 +36,13 @@ export function useGraphLiveSync(scope: string | null, enabled: boolean): void {
   const queryClient = useQueryClient();
   const active = enabled && scope !== null;
 
+  // Subscribe at the live tail (no `since=`) deliberately: a reconnect rides
+  // TanStack's streamed-query retry from the tail, not a seq replay, so the
+  // queryKey stays stable and there is no resubscribe churn as deltas arrive.
+  // `lastSeq` is advanced below and staged for the future no-refetch delta
+  // animation's precise resume (engine-blocked on the constellation seq, S50);
+  // the seq-dedup reducer and the resume-key fix protect that future path and
+  // the `since=`-bearing diff/scrub path, not this live-tail subscription.
   const stream = useQuery({ ...engineStreamOptions(["graph"]), enabled: active });
   const { data: chunks, isError, isSuccess, fetchStatus } = stream;
 

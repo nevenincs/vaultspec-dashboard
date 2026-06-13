@@ -1,6 +1,7 @@
 // Hook face of the degradation matrix (W03.P12.S46): real conditions from
-// the status snapshot, combined with any debug overrides, resolved through
-// the §8 table.
+// the status snapshot AND the stores-owned live-connection slice (stream
+// connection + broken-link count, live-state D4), combined with any debug
+// overrides, resolved through the §8 table.
 
 import { useEngineStatus } from "../../stores/server/engine";
 import { useLiveStatusStore } from "../../stores/server/liveStatus";

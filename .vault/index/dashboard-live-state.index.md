@@ -16,6 +16,7 @@ related:
   - '[[2026-06-13-dashboard-live-state-P03-S08]]'
   - '[[2026-06-13-dashboard-live-state-P03-S09]]'
   - '[[2026-06-13-dashboard-live-state-adr]]'
+  - '[[2026-06-13-dashboard-live-state-audit]]'
   - '[[2026-06-13-dashboard-live-state-plan]]'
   - '[[2026-06-13-dashboard-live-state-research]]'
 ---
@@ -29,6 +30,10 @@ Auto-generated index of all documents tagged with `#dashboard-live-state`.
 ### adr
 
 - `2026-06-13-dashboard-live-state-adr` - `dashboard-live-state` adr: `live and degradation state plane` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-13-dashboard-live-state-audit` - `dashboard-live-state` audit: `live and degradation state plane`
 
 ### exec
 

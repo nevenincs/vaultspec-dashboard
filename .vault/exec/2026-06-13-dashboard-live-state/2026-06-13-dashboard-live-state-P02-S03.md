@@ -43,6 +43,9 @@ inert disabled path. The stream-01 cache-key assertion is now green.
 
 The `enabled` gate hands the scene to the time-travel driver while scrubbing. The
 no-refetch delta animation onto the held model stays engine-blocked (S50 constellation
-seq) and is documented at the seam. The stream-01 reconnect-dedup assertion still times
-out on the mock's never-closing SSE stream - a pre-existing stream-lifecycle/test
-artifact owned by the concurrent hardening campaign, not this feature.
+seq) and is documented at the seam. Both stream-01 adversarial assertions are now green
+(verified in review): the cache-key fix lands assertion 1, and the seq-dedup reducer
+plus the mock's bounded since= close (a concurrent hardening-campaign mock fix) land
+assertion 2 in ~0.6s - it does not time out. The live hook subscribes at the live tail
+(no since=) deliberately to avoid resubscribe churn; lastSeq is staged for the future
+engine-unblocked delta animation's precise resume.
