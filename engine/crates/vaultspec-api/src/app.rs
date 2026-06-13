@@ -314,7 +314,12 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
     let scope = ScopeRef::Worktree {
         path: root.to_string_lossy().replace('\\', "/"),
     };
-    let store = engine_store::Store::open(&root.join(".vault"))
+    // The cache is pure, deletable, fully re-derivable (D8.1): a corrupt or
+    // unopenable `engine.sqlite3` (e.g. a stale WAL after a hard kill) must
+    // not take the service down at boot — self-heal by recreating it. Only a
+    // schema-version mismatch (intentionally fail-loud, D5.1) or a
+    // recreate-also-failed condition still aborts.
+    let store = engine_store::Store::open_or_heal(&root.join(".vault"))
         .unwrap_or_else(|e| panic!("engine store unavailable: {e}"));
     let (tx, _) = broadcast::channel(1024);
     // Token: stable-enough randomness without a rand dependency.

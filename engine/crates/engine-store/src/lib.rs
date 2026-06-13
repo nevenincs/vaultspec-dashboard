@@ -37,6 +37,27 @@ pub fn db_path(vault_root: &Path) -> PathBuf {
     engine_data_dir(vault_root).join(DB_FILENAME)
 }
 
+/// Delete the SQLite database file and its WAL/SHM siblings, if present.
+/// A missing file is not an error (the heal path may run before any cache
+/// exists); only a real removal failure propagates.
+fn remove_db_files(path: &Path) -> std::io::Result<()> {
+    for suffix in ["", "-wal", "-shm"] {
+        let candidate = if suffix.is_empty() {
+            path.to_path_buf()
+        } else {
+            let mut name = path.as_os_str().to_owned();
+            name.push(suffix);
+            PathBuf::from(name)
+        };
+        match std::fs::remove_file(&candidate) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
 pub mod events;
 
 #[derive(Debug, thiserror::Error)]
@@ -121,6 +142,34 @@ impl Store {
             std::fs::create_dir_all(parent)?;
         }
         Self::open_at(&path)
+    }
+
+    /// Open the canonical store, self-healing a corrupt or unopenable cache.
+    ///
+    /// The cache is pure, deletable, fully re-derivable (D8.1): a corrupt
+    /// `engine.sqlite3` (e.g. a stale WAL after a hard kill) must NOT take the
+    /// service down at boot. On an open/corruption failure this deletes the
+    /// database file and its WAL/SHM siblings once and recreates the schema.
+    /// A schema-version mismatch is *intentionally* fail-loud (D5.1) and is
+    /// NOT healed — it propagates unchanged. If the recreate also fails the
+    /// error propagates and the caller may still choose to abort.
+    pub fn open_or_heal(vault_root: &Path) -> Result<Self> {
+        let path = db_path(vault_root);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        match Self::open_at(&path) {
+            Ok(store) => Ok(store),
+            // Version mismatch stays loud: an operator deliberately wants to
+            // know the cache is from an incompatible engine.
+            Err(e @ StoreError::SchemaVersion { .. }) => Err(e),
+            // Any other open/corruption failure: blow away the deletable cache
+            // and try exactly once more.
+            Err(_) => {
+                remove_db_files(&path)?;
+                Self::open_at(&path)
+            }
+        }
     }
 
     /// Open the store at an explicit database path (tests, tooling).
@@ -391,6 +440,48 @@ mod tests {
         );
         assert_eq!(store.get_semantic("q1", 1000).unwrap(), None);
         assert_eq!(store.evict_expired_semantic(1000).unwrap(), 1);
+    }
+
+    #[test]
+    fn corrupt_cache_self_heals() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path().join(".vault");
+        let path = db_path(&vault_root);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // A stale WAL / hard-kill artifact: bytes that are not a valid SQLite
+        // database. A plain open must fail to parse the header.
+        std::fs::write(&path, b"this is not a sqlite database, just garbage\n").unwrap();
+        assert!(
+            Store::open_at(&path).is_err(),
+            "garbage file must fail a plain open"
+        );
+
+        // Self-heal: the corrupt file is removed and a fresh schema created.
+        let store = Store::open_or_heal(&vault_root).expect("corrupt cache self-heals");
+        // The recreated store is fully usable.
+        store.put_artifact("extract", "h", "payload", 1).unwrap();
+        assert_eq!(
+            store.get_artifact("extract", "h").unwrap().as_deref(),
+            Some("payload")
+        );
+    }
+
+    #[test]
+    fn open_or_heal_preserves_schema_version_fail_loud() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path().join(".vault");
+        let path = db_path(&vault_root);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        {
+            let store = Store::open_at(&path).unwrap();
+            store.conn.pragma_update(None, "user_version", 99).unwrap();
+        }
+        // A version mismatch is intentionally NOT healed: it stays loud so the
+        // healthy-but-incompatible cache is reported, not silently wiped.
+        match Store::open_or_heal(&vault_root) {
+            Err(StoreError::SchemaVersion { found: 99, .. }) => {}
+            other => panic!("expected schema-version error to survive heal, got {other:?}"),
+        }
     }
 
     #[test]
