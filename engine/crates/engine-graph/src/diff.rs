@@ -56,6 +56,7 @@ pub struct DiffLog {
 ///   byte-identical edge — the historical-diff spurious-`change` storm
 ///   (2026-06-13: HEAD~3..HEAD reported ~7080 phantom edge changes);
 /// - `scope`: a diff compares two views of the SAME corpus; identity is the id.
+///
 /// (relation/tier are id-implied for a matched edge, compared for clarity.)
 fn edge_changed(before: &crate::graph::StoredEdge, after: &crate::graph::StoredEdge) -> bool {
     let (a, b) = (&before.edge, &after.edge);

@@ -79,26 +79,34 @@ impl Drop for ServeGuard {
     }
 }
 
-fn start_serve(root: &Path, port: u16) -> (ServeGuard, String) {
+/// Start serve on an OS-assigned EPHEMERAL port (`--port 0`) and read the
+/// real bound port + token back from the fixture's own `service.json` — so
+/// concurrent test runs never collide on a fixed port (recorded backlog,
+/// 2026-06-13). Each fixture has an isolated service.json, so the port read
+/// is unambiguous.
+fn start_serve(root: &Path) -> (ServeGuard, u16, String) {
     let child = Command::new(binary())
         .current_dir(root)
-        .args(["serve", "--port", &port.to_string()])
+        .args(["serve", "--port", "0"])
         .spawn()
         .expect("serve starts");
+    // Guard the child IMMEDIATELY so it is killed on every path, including the
+    // deadline-assert panic below (clippy::zombie_processes).
+    let guard = ServeGuard(child);
     let service_json = root.join(".vault/data/engine-data/service.json");
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    let token = loop {
+    loop {
         if let Ok(raw) = std::fs::read_to_string(&service_json)
             && let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw)
-            && v["port"].as_u64() == Some(port as u64)
+            && let Some(port) = v["port"].as_u64()
+            && port != 0
             && let Some(token) = v["service_token"].as_str()
         {
-            break token.to_string();
+            break (guard, port as u16, token.to_string());
         }
         assert!(std::time::Instant::now() < deadline, "serve never came up");
         std::thread::sleep(Duration::from_millis(200));
-    };
-    (ServeGuard(child), token)
+    }
 }
 
 fn http(
@@ -146,13 +154,13 @@ fn now_ms() -> i64 {
 #[test]
 fn typed_client_expectations_hold_over_live_serve() {
     let (_dir, root) = fixture();
-    let (_guard, token) = start_serve(&root, 8831);
+    let (_guard, port, token) = start_serve(&root);
     let scope = root.to_string_lossy().replace('\\', "/");
 
     // --- S49 divergence 1: as-of and diff accept ms timestamps ----------------
     let t = now_ms();
     let (status, asof) = http(
-        8831,
+        port,
         "GET",
         &format!("/graph/asof?scope={}&t={t}", urlencode(&scope)),
         &token,
@@ -166,7 +174,7 @@ fn typed_client_expectations_hold_over_live_serve() {
         "as-of at now resolves the latest commit's corpus"
     );
     let (status, diff) = http(
-        8831,
+        port,
         "GET",
         &format!("/graph/diff?scope={}&from=HEAD~1&to={t}", urlencode(&scope)),
         &token,
@@ -181,7 +189,7 @@ fn typed_client_expectations_hold_over_live_serve() {
     );
     // Revisions keep working (revision-first resolution).
     let (status, _) = http(
-        8831,
+        port,
         "GET",
         &format!("/graph/asof?scope={}&t=HEAD~1", urlencode(&scope)),
         &token,
@@ -193,7 +201,7 @@ fn typed_client_expectations_hold_over_live_serve() {
     // matches the live constellation (feature nodes + meta-edges), not a
     // disjoint document graph, so the constellation can time-travel cheaply.
     let (status, hist) = http(
-        8831,
+        port,
         "GET",
         &format!(
             "/graph/asof?scope={}&t={t}&granularity=feature",
@@ -214,10 +222,16 @@ fn typed_client_expectations_hold_over_live_serve() {
         hist["data"]["meta_edges"].is_array(),
         "feature-granularity asof carries constellation meta-edges"
     );
+    // S50 keyframe seq anchor: a historical (as_of) keyframe has NO live
+    // position, so last_seq is null — the client knows not to resume a stream.
+    assert!(
+        hist["data"]["last_seq"].is_null(),
+        "as_of keyframe carries last_seq: null (no live position): {hist}"
+    );
 
     // --- S49 divergence 2: feature granularity synthesizes the convergence ---
     let (status, constellation) = http(
-        8831,
+        port,
         "POST",
         "/graph/query",
         &token,
@@ -259,9 +273,43 @@ fn typed_client_expectations_hold_over_live_serve() {
         "meta-edges address feature NODE IDS, not bare tags"
     );
 
+    // --- S50: the constellation rides the single monotonic delta clock --------
+    // A LIVE feature keyframe anchors the stream: numeric last_seq = clock tip,
+    // so a held constellation resumes from exactly here without refetching.
+    assert!(
+        constellation["data"]["last_seq"].as_u64().is_some(),
+        "live feature keyframe carries a numeric last_seq: {constellation}"
+    );
+    // Document deltas (the default diff above) self-declare their species...
+    assert!(
+        diff["data"]["deltas"]
+            .as_array()
+            .is_some_and(|d| d.iter().all(|e| e["granularity"] == "document")),
+        "document diff entries are tagged granularity=document: {diff}"
+    );
+    // ...and a feature-granularity diff projects the constellation delta on the
+    // SAME wire shape, every entry tagged feature.
+    let (status, fdiff) = http(
+        port,
+        "GET",
+        &format!(
+            "/graph/diff?scope={}&from=HEAD~1&to={t}&granularity=feature",
+            urlencode(&scope)
+        ),
+        &token,
+        None,
+    );
+    assert_eq!(status, 200, "feature-granularity diff served: {fdiff}");
+    assert!(
+        fdiff["data"]["deltas"]
+            .as_array()
+            .is_some_and(|d| d.iter().all(|e| e["granularity"] == "feature")),
+        "every feature diff entry is tagged granularity=feature: {fdiff}"
+    );
+
     // --- S49 divergence 3: contract §4 fields on list-shape nodes -------------
     let (status, docs) = http(
-        8831,
+        port,
         "POST",
         "/graph/query",
         &token,
@@ -299,16 +347,22 @@ fn typed_client_expectations_hold_over_live_serve() {
         plan_node["lifecycle"]["progress"]["done"].is_number(),
         "plan lifecycle progress on the list shape"
     );
+    // S50: a LIVE document keyframe also anchors the clock (numeric last_seq),
+    // so both species resume on the single monotonic clock.
+    assert!(
+        docs["data"]["last_seq"].as_u64().is_some(),
+        "live document keyframe carries a numeric last_seq too"
+    );
 
     // --- S49 divergence 4: /status git block + /vault-tree dates/doc_type -----
-    let (status, st) = http(8831, "GET", "/status", &token, None);
+    let (status, st) = http(port, "GET", "/status", &token, None);
     assert_eq!(status, 200);
     assert!(
         st["data"]["git"]["dirty"].is_boolean() && st["data"]["git"]["head_ref"].is_string(),
         "serve /status carries the git block (front-door parity)"
     );
     let (status, tree) = http(
-        8831,
+        port,
         "GET",
         &format!("/vault-tree?scope={}", urlencode(&scope)),
         &token,
@@ -327,7 +381,7 @@ fn typed_client_expectations_hold_over_live_serve() {
 
     // --- S49 divergence 5: bounded commit-event node_ids ----------------------
     let (status, events) = http(
-        8831,
+        port,
         "GET",
         &format!("/events?scope={}", urlencode(&scope)),
         &token,
@@ -363,33 +417,33 @@ fn typed_client_expectations_hold_over_live_serve() {
 #[test]
 fn error_surface_carries_tiers_and_hides_internals() {
     let (_dir, root) = fixture();
-    let (_guard, token) = start_serve(&root, 8833);
+    let (_guard, port, token) = start_serve(&root);
     let scope = root.to_string_lossy().replace('\\', "/");
 
     // Defect 1 — the tiers block rides framework-boundary errors:
     // malformed JSON body (Json extractor rejection) -> 400.
-    let (status, body) = http(8833, "POST", "/graph/query", &token, Some("{bad"));
+    let (status, body) = http(port, "POST", "/graph/query", &token, Some("{bad"));
     assert_eq!(status, 400, "malformed body: {body}");
     assert!(
         body["tiers"].is_object(),
         "malformed-body 400 carries tiers"
     );
     // missing required query param (Query extractor rejection) -> 400.
-    let (status, body) = http(8833, "GET", "/vault-tree", &token, None);
+    let (status, body) = http(port, "GET", "/vault-tree", &token, None);
     assert_eq!(status, 400);
     assert!(body["tiers"].is_object(), "missing-param 400 carries tiers");
     // wrong method (router rejection) -> 405.
-    let (status, body) = http(8833, "GET", "/graph/query", &token, None);
+    let (status, body) = http(port, "GET", "/graph/query", &token, None);
     assert_eq!(status, 405);
     assert!(body["tiers"].is_object(), "405 carries tiers");
     // no/!bad auth (gate rejection) -> 401.
-    let (status, body) = http(8833, "GET", "/status", "", None);
+    let (status, body) = http(port, "GET", "/status", "", None);
     assert_eq!(status, 401);
     assert!(body["tiers"].is_object(), "401 carries tiers");
 
     // Defect 2 — an unparseable revision is sanitized, no build internals.
     let (status, body) = http(
-        8833,
+        port,
         "POST",
         "/graph/query",
         &token,
@@ -410,14 +464,14 @@ fn error_surface_carries_tiers_and_hides_internals() {
     // Hardening (2026-06-13 adversarial findings): discover of an unknown node
     // is a truthful 404 (consistent with /nodes, /neighbors, /evidence), not a
     // rag-proxied 400 — and it still carries the tiers block.
-    let (status, body) = http(8833, "POST", "/nodes/doc:nope/discover", &token, Some("{}"));
+    let (status, body) = http(port, "POST", "/nodes/doc:nope/discover", &token, Some("{}"));
     assert_eq!(status, 404, "discover unknown node -> 404, not 400: {body}");
     assert!(body["tiers"].is_object(), "discover 404 carries tiers");
 
     // Hardening: an absurd neighbor depth is clamped server-side (never an
     // unbounded whole-component dump) and equals the capped walk.
     let huge = http(
-        8833,
+        port,
         "GET",
         "/nodes/doc:2026-06-13-conf-plan/neighbors?depth=999999",
         &token,
@@ -425,7 +479,7 @@ fn error_surface_carries_tiers_and_hides_internals() {
     );
     assert_eq!(huge.0, 200, "huge depth served (clamped), not an error");
     let capped = http(
-        8833,
+        port,
         "GET",
         "/nodes/doc:2026-06-13-conf-plan/neighbors?depth=4",
         &token,
