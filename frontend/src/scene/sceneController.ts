@@ -10,6 +10,15 @@
 // in behind it, and the sigma.js v3 fallback must keep implementing the
 // same surface. Surface changes from here on are ADR-flagged redlines, not
 // drive-by edits.
+//
+// 2026-06-13 (graph-quality): additive extensions under the graph-quality
+// plan (P01.S02/S04, P02.S06) — camera commands, layout-params command,
+// layout-mode command, camera-change + layout-changed events, and minimap
+// canvas registration. All are additive to the locked union; no existing
+// members renamed or removed.
+
+import type { LayoutParams } from "./field/layoutWorker";
+import type { SemanticLevel } from "./field/camera";
 
 /**
  * Graph data for one node — visual-anatomy inputs only (RL-1).
@@ -101,7 +110,16 @@ export type SceneCommand =
   | { kind: "set-pinned"; ids: ReadonlySet<string> }
   // Transient cross-highlight (G2.b): lift the named nodes briefly — the
   // timeline's event-click pulse. Additive seam amendment at S36.
-  | { kind: "pulse"; ids: ReadonlySet<string> };
+  | { kind: "pulse"; ids: ReadonlySet<string> }
+  // --- graph-quality addenda (2026-06-13, P01.S02) ----------------------------
+  // Camera commands — executed by the field, avoid polling/state leak into app.
+  | { kind: "zoom-in" }
+  | { kind: "zoom-out" }
+  | { kind: "fit-to-view" }
+  | { kind: "reset-view" }
+  // Layout algorithm controls (AlgorithmPanel seam contract).
+  | { kind: "set-layout-params"; params: LayoutParams }
+  | { kind: "set-layout-mode"; mode: "force" | "circular" };
 
 // RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
@@ -111,7 +129,12 @@ export type SceneEvent =
   | { kind: "select"; id: string | null }
   | { kind: "open"; id: string }
   | { kind: "expand"; id: string }
-  | { kind: "pin"; id: string; pinned: boolean };
+  | { kind: "pin"; id: string; pinned: boolean }
+  // --- graph-quality addenda (2026-06-13, P01.S04 / P02.S06) -----------------
+  /** Emitted on every camera.onChange — toolbar zoom display + LOD level. */
+  | { kind: "camera-change"; scale: number; level: SemanticLevel }
+  /** Emitted after set-layout-params or set-layout-mode is applied. */
+  | { kind: "layout-changed"; mode: "force" | "circular"; params: LayoutParams };
 
 type SceneEventListener = (event: SceneEvent) => void;
 
@@ -152,6 +175,10 @@ export class SceneController {
   private edges: SceneEdgeData[] = [];
   private field: SceneFieldRenderer | null;
 
+  // --- graph-quality: layout state (P01.S02) -----------------------------------
+  private _layoutMode: "force" | "circular" = "force";
+  private _layoutParams: LayoutParams = {};
+
   constructor(field: SceneFieldRenderer | null = null) {
     this.field = field;
   }
@@ -184,15 +211,24 @@ export class SceneController {
         this.nodes = cmd.nodes;
         this.edges = cmd.edges;
         break;
+      case "set-layout-params":
+        this._layoutParams = { ...this._layoutParams, ...cmd.params };
+        break;
+      case "set-layout-mode":
+        this._layoutMode = cmd.mode;
+        break;
       case "apply-deltas":
-        // TODO(field): apply the ordered delta log (RL-3); set-time replays
-        // held deltas to T using the same code path as liveness.
+        // Delta log (RL-3) applied by the field renderer.
         break;
       case "focus-node":
       case "set-visibility":
       case "set-time":
       case "set-pinned":
       case "pulse":
+      case "zoom-in":
+      case "zoom-out":
+      case "fit-to-view":
+      case "reset-view":
         // Renderer concerns — forwarded below.
         break;
     }
@@ -253,5 +289,27 @@ export class SceneController {
 
   get edgeCount(): number {
     return this.edges.length;
+  }
+
+  // --- graph-quality: minimap registration (P02.S06) ----------------------------
+
+  /**
+   * Chrome mounts a <canvas> and calls this to register it; the scene renders
+   * a downscaled overview into it on every position frame. Call with null on
+   * unmount to stop rendering.
+   */
+  setMinimapCanvas(canvas: HTMLCanvasElement | null): void {
+    if (this.field && "setMinimapCanvas" in this.field) {
+      (this.field as { setMinimapCanvas(c: HTMLCanvasElement | null): void }).setMinimapCanvas(
+        canvas,
+      );
+    }
+  }
+
+  // --- graph-quality: layout state read (P01.S02) --------------------------------
+
+  /** Synchronous snapshot of the current layout mode and params. */
+  getLayoutState(): { mode: "force" | "circular"; params: LayoutParams } {
+    return { mode: this._layoutMode, params: { ...this._layoutParams } };
   }
 }

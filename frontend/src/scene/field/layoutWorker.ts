@@ -44,11 +44,34 @@ export interface LayoutChangeMessage {
   removeEdgeIds?: string[];
 }
 
+/**
+ * Tunable FA2 layout parameters — exported for AlgorithmPanel consumption.
+ * All fields are optional so callers can send partial updates.
+ */
+export interface LayoutParams {
+  /** Node repulsion strength. Higher = more spread. Default 10. */
+  scalingRatio?: number;
+  /** Attraction to origin. Higher = tighter cluster. Default 0.8. */
+  gravity?: number;
+  /** Inertia / decay. Higher = slower convergence. Default 1. */
+  slowDown?: number;
+  /** Enable Barnes-Hut approximation for large graphs. Default true. */
+  barnesHutOptimize?: boolean;
+  /** FA2 iterations per 16ms tick. Default 4. */
+  iterationsPerTick?: number;
+}
+
+export interface LayoutParamsMessage {
+  kind: "params";
+  params: LayoutParams;
+}
+
 export type LayoutInMessage =
   | LayoutInitMessage
   | { kind: "start" }
   | { kind: "stop" }
-  | LayoutChangeMessage;
+  | LayoutChangeMessage
+  | LayoutParamsMessage;
 
 export interface LayoutPositionsMessage {
   kind: "positions";
@@ -200,6 +223,11 @@ export class FieldLayout {
 
   stop(): void {
     this.worker.postMessage({ kind: "stop" });
+  }
+
+  /** Send updated layout params to the FA2 worker (applied on next tick). */
+  setParams(params: LayoutParams): void {
+    this.worker.postMessage({ kind: "params", params } satisfies LayoutParamsMessage);
   }
 
   /** Latest position frame (for saving back to the position cache). */

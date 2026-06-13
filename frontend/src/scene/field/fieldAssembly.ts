@@ -17,11 +17,14 @@ import type {
 import { SceneController as Controller } from "../sceneController";
 import { VisibilityTracker } from "../visibility";
 import { AnchorDriver } from "./anchors";
+import { circularArrange } from "./circularLayout";
 import { computeEgo } from "./egoHighlight";
 import { Camera, HIT_RADIUS_WORLD, PointerGestures, SpatialHitTester } from "./camera";
 import { EdgeMeshLayer } from "./edgeMeshes";
 import { ProgrammaticGlyphs } from "./glyphs";
+import type { LayoutParams } from "./layoutWorker";
 import { FieldLayout } from "./layoutWorker";
+import { MinimapLayer } from "./minimapLayer";
 import { NodeSpriteLayer } from "./nodeSprites";
 import { PixiField } from "./pixiField";
 
@@ -56,12 +59,20 @@ export class DashboardField implements SceneFieldRenderer {
   private edges: EdgeMeshLayer | null = null;
   private camera: Camera | null = null;
   private anchors: AnchorDriver | null = null;
+  private minimap: MinimapLayer | null = null;
   private hitTester = new SpatialHitTester();
   private glyphs: ProgrammaticGlyphs | null = null;
   private detachListeners: (() => void)[] = [];
   private lastSave = 0;
+  private layoutMode: "force" | "circular" = "force";
+  private layoutParams: LayoutParams = {};
   /** Set by the controller on attach (events flow back through the seam). */
   controller: SceneController | null = null;
+
+  /** Called by SceneController.setMinimapCanvas() — chrome owns the canvas. */
+  setMinimapCanvas(canvas: HTMLCanvasElement | null): void {
+    this.minimap?.setCanvas(canvas);
+  }
 
   /** Scope the warm-start persistence (the worktree picker drives this). */
   setPersistenceScope(workspace: string, scope: string): void {
@@ -101,6 +112,7 @@ export class DashboardField implements SceneFieldRenderer {
         this.sprites?.updatePositions((id) => positions.get(id));
         this.edges?.update((id) => positions.get(id));
         this.hitTester.rebuild(positions.entries());
+        this.minimap?.updatePositions(positions, this.model.nodes);
         this.anchors?.update();
         const now = Date.now();
         if (this.positionCache && now - this.lastSave > POSITION_SAVE_INTERVAL_MS) {
@@ -114,9 +126,13 @@ export class DashboardField implements SceneFieldRenderer {
         }
       });
 
-      const offCamera = this.camera.onChange((state) => {
+      this.minimap = new MinimapLayer();
+
+      const offCamera = this.camera.onChange((state, level) => {
         this.sprites?.setLod(state.scale, this.focusedIds());
         this.anchors?.update();
+        this.minimap?.updateViewport(state, app.screen.width, app.screen.height);
+        this.controller?.emit({ kind: "camera-change", scale: state.scale, level });
       });
 
       // Visibility fades tick on the app ticker while animating — nodes
@@ -205,6 +221,8 @@ export class DashboardField implements SceneFieldRenderer {
     this.edges = null;
     this.camera = null;
     this.anchors = null;
+    this.minimap?.destroy();
+    this.minimap = null;
     this.glyphs?.destroy();
     this.glyphs = null;
     this.base.destroy();
@@ -275,6 +293,68 @@ export class DashboardField implements SceneFieldRenderer {
           this.sprites?.setHighlight(null);
           this.edges?.setHighlight(null);
         }, PULSE_MS);
+        break;
+      }
+      // --- graph-quality camera commands (P01.S02) ------------------------------
+      case "zoom-in": {
+        if (this.camera && this.base.application) {
+          const s = this.base.application.screen;
+          this.camera.zoomAt(s.width / 2, s.height / 2, 1.25);
+        }
+        break;
+      }
+      case "zoom-out": {
+        if (this.camera && this.base.application) {
+          const s = this.base.application.screen;
+          this.camera.zoomAt(s.width / 2, s.height / 2, 0.8);
+        }
+        break;
+      }
+      case "fit-to-view": {
+        if (this.layout) {
+          this.autoFit = true;
+          this.fitToContent(this.layout.positions);
+        }
+        break;
+      }
+      case "reset-view": {
+        this.autoFit = false;
+        this.camera?.set({ x: 0, y: 0, scale: 1 });
+        break;
+      }
+      // --- graph-quality layout commands (P01.S02 / S03) ------------------------
+      case "set-layout-params": {
+        this.layoutParams = { ...this.layoutParams, ...cmd.params };
+        this.layout?.setParams(cmd.params);
+        this.controller?.emit({
+          kind: "layout-changed",
+          mode: this.layoutMode,
+          params: { ...this.layoutParams },
+        });
+        break;
+      }
+      case "set-layout-mode": {
+        this.layoutMode = cmd.mode;
+        if (cmd.mode === "circular") {
+          // Switch to circular: seed positions on circle, stop FA2.
+          if (this.layout && this.model.nodeCount > 0) {
+            const nodeIds = [...this.model.nodes].map((n) => n.id);
+            const positions = circularArrange(nodeIds);
+            this.layout.stop();
+            this.layout.init(nodeIds, [], positions);
+            // Don't restart FA2 in circular mode — positions are already set.
+          }
+        } else {
+          // Switch back to force: restart FA2 from current positions.
+          if (this.layout) {
+            this.layout.start();
+          }
+        }
+        this.controller?.emit({
+          kind: "layout-changed",
+          mode: this.layoutMode,
+          params: { ...this.layoutParams },
+        });
         break;
       }
     }

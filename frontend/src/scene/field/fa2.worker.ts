@@ -13,14 +13,26 @@ import type {
   LayoutChangeMessage,
   LayoutInMessage,
   LayoutNodeSeed,
+  LayoutParamsMessage,
   LayoutPositionsMessage,
 } from "./layoutWorker";
+import type { LayoutParams } from "./layoutWorker";
 
 const graph = new Graph({ type: "undirected", multi: true });
 let running = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
-const ITERATIONS_PER_TICK = 4;
+let iterationsPerTick = 4;
 const TICK_MS = 16;
+
+// Spread-optimised defaults — stronger repulsion, gentler gravity — so the
+// initial layout fills the stage rather than clustering into a blob.
+// Consumers tune via the "params" message (set-layout-params command).
+let currentParams: Required<Omit<LayoutParams, "iterationsPerTick">> = {
+  scalingRatio: 10,
+  gravity: 0.8,
+  slowDown: 1,
+  barnesHutOptimize: true,
+};
 
 function addNode(seed: LayoutNodeSeed): void {
   if (graph.hasNode(seed.id)) return;
@@ -59,10 +71,9 @@ function postPositions(): void {
 function tick(): void {
   if (!running) return;
   if (graph.order > 1 && graph.size > 0) {
-    const settings = forceatlas2.inferSettings(graph);
     forceatlas2.assign(graph, {
-      iterations: ITERATIONS_PER_TICK,
-      settings: { ...settings, barnesHutOptimize: true },
+      iterations: iterationsPerTick,
+      settings: currentParams,
     });
     postPositions();
   }
@@ -110,5 +121,11 @@ onmessage = (event: MessageEvent<LayoutInMessage>) => {
       applyChanges(msg);
       postPositions();
       break;
+    case "params": {
+      const p = (msg as LayoutParamsMessage).params;
+      currentParams = { ...currentParams, ...p };
+      if (p.iterationsPerTick !== undefined) iterationsPerTick = p.iterationsPerTick;
+      break;
+    }
   }
 };
