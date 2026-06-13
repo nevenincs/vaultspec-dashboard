@@ -3,7 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-gui'
-date: '2026-06-12'
+date: '2026-06-13'
+modified: '2026-06-13'
 related:
   - '[[2026-06-12-dashboard-gui-W01-P01-S01]]'
   - '[[2026-06-12-dashboard-gui-W01-P01-S02]]'
@@ -71,6 +72,12 @@ related:
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-12-dashboard-gui-plan]]'
   - '[[2026-06-12-dashboard-gui-reference]]'
+  - '[[2026-06-13-dashboard-gui-S01]]'
+  - '[[2026-06-13-dashboard-gui-S02]]'
+  - '[[2026-06-13-dashboard-gui-S03]]'
+  - '[[2026-06-13-dashboard-gui-S04]]'
+  - '[[2026-06-13-dashboard-gui-S05]]'
+  - '[[2026-06-13-dashboard-gui-plan]]'
 ---
 
 # `dashboard-gui` feature index
@@ -151,10 +158,16 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 - `2026-06-12-dashboard-gui-W03-P12-S49` - swap the mock engine for the live serve origin behind the env flag and verify contract shapes against the real API, requires the engine plan serve wave landed
 - `2026-06-12-dashboard-gui-W03-P12-S50` - add the end-to-end smoke launching against live engine serve verifying constellation render, scrub, and search round-trip, requires the engine plan serve wave landed
 - `2026-06-12-dashboard-gui-W03-P12-summary` - `dashboard-gui` `W03.P12` summary
+- `2026-06-13-dashboard-gui-S01` - Add granularity to the typed graph query and request feature granularity for the constellation
+- `2026-06-13-dashboard-gui-S02` - Carry the canonical separate meta_edges wire shape and fold it into edges through one tolerant client adapter
+- `2026-06-13-dashboard-gui-S03` - Reconcile the mock engine and corpus fixture to the live separate-meta_edges wire shape under both granularities
+- `2026-06-13-dashboard-gui-S04` - Carry member_count through the scene seam and size feature nodes as constellation centers of gravity
+- `2026-06-13-dashboard-gui-S05` - Assert the live meta_edges fold and member_count carry in a consumer test and verify the rendered constellation end to end
 
 ### plan
 
 - `2026-06-12-dashboard-gui-plan` - `dashboard-gui` plan
+- `2026-06-13-dashboard-gui-plan` - `dashboard-gui` plan
 
 ### reference
 
