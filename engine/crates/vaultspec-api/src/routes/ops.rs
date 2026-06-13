@@ -9,16 +9,31 @@
 //! reindex, watcher status/tuning.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use engine_model::{CanonicalKey, node_id};
 use serde_json::{Value, json};
+use tokio::io::AsyncReadExt;
 
 use crate::app::AppState;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
+
+/// Sibling stdout ceiling (robustness H1, 2026-06-13): a runaway sibling that
+/// streams unbounded stdout would OOM the engine. Sibling `--json` envelopes
+/// are small; 8 MiB is orders of magnitude of headroom while bounding the
+/// pathological case. Output past the cap is a truncated read, surfaced as a
+/// 502 degraded envelope rather than buffered to exhaustion.
+const SIBLING_STDOUT_CAP: u64 = 8 * 1024 * 1024;
+
+/// Sibling wall-clock ceiling (robustness H1): an unbounded, untimed sibling
+/// subprocess is a DoS + zombie vector — a hung CLI pins an async worker
+/// forever. 120s covers a cold rag reindex while still bounding a hang; on
+/// timeout the child is killed and a 504 degraded envelope is returned.
+const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The R1 core whitelist: vault check + stats. Anything else is a sibling
 /// filing, not whitelist growth.
@@ -38,17 +53,36 @@ const RAG_WHITELIST: &[(&str, &[&str])] = &[
     ("watcher-status", &["server", "watcher", "status"]),
 ];
 
-fn run_sibling(
+async fn run_sibling(
     state: &AppState,
     program: &[String],
     args: &[&str],
 ) -> Result<Value, (StatusCode, Json<Value>)> {
-    let output = std::process::Command::new(&program[0])
+    run_sibling_bounded(state, program, args, SIBLING_TIMEOUT, SIBLING_STDOUT_CAP).await
+}
+
+/// The bounded sibling runner. `timeout`/`cap` are parameters so tests can
+/// inject short bounds; the production wrapper [`run_sibling`] pins the
+/// 120s / 8 MiB constants.
+async fn run_sibling_bounded(
+    state: &AppState,
+    program: &[String],
+    args: &[&str],
+    timeout: Duration,
+    cap: u64,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    // tokio::process so the spawn + bounded-read + timeout never blocks the
+    // async worker (robustness H1): a hung sibling no longer pins a runtime
+    // thread, and stdout is read through a ceiling rather than buffered whole.
+    let mut child = tokio::process::Command::new(&program[0])
         .args(&program[1..])
         .args(args)
         .arg("--json")
         .current_dir(&state.root)
-        .output()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| {
             super::api_error(
                 state,
@@ -56,10 +90,73 @@ fn run_sibling(
                 format!("spawning {}: {e}", program[0]),
             )
         })?;
-    let raw = String::from_utf8_lossy(&output.stdout);
+
+    // Read stdout under the byte ceiling AND a wall-clock timeout. On either
+    // bound the child is killed so it cannot linger as a zombie.
+    let stdout = child.stdout.take().expect("piped stdout");
+    let collect = async {
+        let mut buf = Vec::new();
+        // `AsyncReadExt::take` consumes the reader and bounds the read at the
+        // cap; the child's exit status is awaited separately below.
+        let read = stdout.take(cap).read_to_end(&mut buf).await;
+        (read, buf)
+    };
+
+    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
+        Ok(result) => result,
+        Err(_) => {
+            // Timed out: kill the child (no zombie) and degrade truthfully.
+            let _ = child.kill().await;
+            return Err(super::api_error(
+                state,
+                StatusCode::GATEWAY_TIMEOUT,
+                format!("{} timed out after {}s", program[0], timeout.as_secs()),
+            ));
+        }
+    };
+    read_result.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("reading {} output: {e}", program[0]),
+        )
+    })?;
+
+    // Output exceeded the cap: a runaway sibling. Kill it and degrade rather
+    // than parse a truncated envelope as if it were complete.
+    if buf.len() as u64 >= cap {
+        let _ = child.kill().await;
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{} produced over {} bytes of output (capped)",
+                program[0], cap
+            ),
+        ));
+    }
+
+    // Await the exit status (M4): a crashed sibling is a 502 degraded
+    // envelope, NOT a healthy-looking 200 wrapping a crash. Mirrors
+    // `ingest-core::runner::run_json`, which already inspects status.
+    let status = child.wait().await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("awaiting {} exit: {e}", program[0]),
+        )
+    })?;
+    let raw = String::from_utf8_lossy(&buf);
+    if !status.success() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("{} exited {:?}", program[0], status.code()),
+        ));
+    }
     // Envelopes pass VERBATIM; non-JSON output is wrapped, never reshaped.
     Ok(serde_json::from_str(&raw)
-        .unwrap_or_else(|_| json!({"raw": raw, "exit": output.status.code()})))
+        .unwrap_or_else(|_| json!({"raw": raw, "exit": status.code()})))
 }
 
 /// Locate the rag CLI: PATH binary, else the uv-managed environment.
@@ -89,7 +186,7 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
         ));
     };
     let runner = ingest_core::runner::CoreRunner::detect();
-    let envelope = run_sibling(&state, &runner.invocation, args)?;
+    let envelope = run_sibling(&state, &runner.invocation, args).await?;
     Ok(super::envelope(
         json!({"envelope": envelope}),
         super::query_tiers(&state),
@@ -105,7 +202,7 @@ pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String
             format!("verb `{verb}` is not whitelisted (R1)"),
         ));
     };
-    let envelope = run_sibling(&state, &rag_invocation(), args)?;
+    let envelope = run_sibling(&state, &rag_invocation(), args).await?;
     Ok(super::envelope(
         json!({"envelope": envelope}),
         super::query_tiers(&state),
@@ -147,7 +244,21 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
         args.push(n.to_string());
     }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let rag_envelope = run_sibling(&state, &rag_invocation(), &arg_refs)?;
+    // A sibling fault (crash, timeout, capped runaway — now surfaced as a
+    // run_sibling Err per H1/M4) must DEGRADE the semantic tier here, never a
+    // hard 502/504: search is a degradable surface (contract §8), the rest of
+    // the engine is fully available. The error message rides the tier reason.
+    let rag_envelope = match run_sibling(&state, &rag_invocation(), &arg_refs).await {
+        Ok(envelope) => envelope,
+        Err((_, body)) => {
+            let reason = body.0["error"].as_str().unwrap_or("rag search failed");
+            return Ok(super::envelope(
+                json!({"results": []}),
+                super::degraded_tiers(&state, reason),
+                None,
+            ));
+        }
+    };
 
     // Flatten rag's envelope to the contract §2 shape and annotate each hit
     // with its engine node id (§8 value-add). A shape miss degrades the
@@ -351,5 +462,124 @@ mod tests {
             flatten_and_annotate(&json!({"raw": "not json", "exit": 1})).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
+    }
+
+    // --- H1 / M4: bounded sibling subprocess --------------------------------
+
+    fn sibling_state() -> (tempfile::TempDir, Arc<AppState>) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
+        let state = crate::app::build_state(dir.path().to_path_buf());
+        (dir, state)
+    }
+
+    /// A program that ignores the trailing `--json` run_sibling appends.
+    fn shell(snippet: &str) -> Vec<String> {
+        if cfg!(windows) {
+            vec!["cmd".into(), "/C".into(), snippet.into()]
+        } else {
+            vec!["sh".into(), "-c".into(), snippet.into()]
+        }
+    }
+
+    #[tokio::test]
+    async fn a_hung_sibling_is_killed_on_timeout_not_left_to_pin_the_worker() {
+        // Robustness H1: an untimed sibling pins an async worker forever. With a
+        // (here, short) timeout the child is killed and a 504 degraded envelope
+        // is returned instead of hanging.
+        let (_dir, state) = sibling_state();
+        // Sleep well past the injected 200ms timeout.
+        let prog = if cfg!(windows) {
+            // PowerShell script block swallows the trailing `--json` into $args
+            // (ignored) and holds the stdout pipe open for 5s, so the read
+            // blocks until the 200ms timeout fires.
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                "& { Start-Sleep -Seconds 5 }".into(),
+            ]
+        } else {
+            shell("sleep 5")
+        };
+        let err = run_sibling_bounded(
+            &state,
+            &prog,
+            &[],
+            Duration::from_millis(200),
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::GATEWAY_TIMEOUT, "hung sibling → 504");
+        assert!(err.1.0["error"].as_str().unwrap().contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn a_crashed_sibling_is_a_502_not_a_healthy_200(/* M4 */) {
+        // M4: a non-zero sibling exit is a 502 degraded envelope, never a 200
+        // wrapping a crash.
+        let (_dir, state) = sibling_state();
+        let prog = shell("exit 7");
+        let err = run_sibling_bounded(
+            &state,
+            &prog,
+            &[],
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_GATEWAY, "crashed sibling → 502");
+        assert!(err.1.0["error"].as_str().unwrap().contains("exited"));
+    }
+
+    #[tokio::test]
+    async fn a_runaway_sibling_stdout_is_capped_not_buffered_to_oom() {
+        // Robustness H1: stdout past the cap is killed + degraded, never grown
+        // to exhaustion. Inject a tiny 4 KiB cap and emit far more.
+        let (_dir, state) = sibling_state();
+        let prog = if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                "& { [Console]::Out.Write('x' * 65536) }".into(),
+            ]
+        } else {
+            shell("head -c 65536 /dev/zero | tr '\\0' 'x'")
+        };
+        let err = run_sibling_bounded(&state, &prog, &[], SIBLING_TIMEOUT, 4096)
+            .await
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_GATEWAY, "runaway stdout → 502");
+        assert!(err.1.0["error"].as_str().unwrap().contains("capped"));
+    }
+
+    #[tokio::test]
+    async fn a_well_behaved_sibling_envelope_passes_through() {
+        // The bounded runner must not regress the happy path: a small JSON
+        // envelope on stdout, exit 0, passes through verbatim.
+        let (_dir, state) = sibling_state();
+        let prog = if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                r#"& { [Console]::Out.Write('{"ok":true}') }"#.into(),
+            ]
+        } else {
+            shell(r#"printf '%s' '{"ok":true}'"#)
+        };
+        let value = run_sibling_bounded(
+            &state,
+            &prog,
+            &[],
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .expect("clean sibling passes through");
+        assert_eq!(value["ok"], true);
     }
 }

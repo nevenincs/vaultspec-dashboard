@@ -5,10 +5,18 @@
 //! --json` inside the scope's checkout, and every payload passes schema
 //! pinning before parsing: unknown schema versions fail loud, never guess.
 
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use serde::Deserialize;
+
+/// Core stdout ceiling (robustness H1, 2026-06-13): a runaway core verb that
+/// streams unbounded stdout would OOM the engine during an index rebuild. Core
+/// `--json` envelopes are small; 8 MiB is orders of magnitude of headroom
+/// while bounding the pathological case. Output past the cap is a typed error,
+/// never a buffer grown to exhaustion.
+const CORE_STDOUT_CAP: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -22,6 +30,8 @@ pub enum CoreError {
     UnknownSchema { found: String, supported: String },
     #[error("envelope payload missing `data`")]
     MissingData,
+    #[error("vaultspec-core produced over {cap_mib} MiB of output (capped)")]
+    OutputTooLarge { cap_mib: u64 },
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
@@ -88,15 +98,51 @@ impl CoreRunner {
         cmd.args(&self.invocation[1..])
             .args(args)
             .arg("--json")
-            .current_dir(cwd);
-        let output = cmd.output()?;
-        if !output.status.success() {
-            return Err(CoreError::Failed {
-                code: output.status.code(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = cmd.spawn()?;
+
+        // Read stdout under an 8 MiB ceiling (robustness H1): a runaway core
+        // verb cannot OOM the engine by streaming unbounded stdout. A wall-clock
+        // timeout is NOT added here — ingest-core carries no async/threading
+        // dependency and a portable blocking-read timeout needs one; deferred as
+        // a follow-up (the dependency decision belongs to the engine owners).
+        // The async ops.rs path already enforces both cap AND timeout.
+        let mut stdout_pipe = child.stdout.take().expect("piped stdout");
+        let mut stdout = Vec::new();
+        stdout_pipe
+            .by_ref()
+            .take(CORE_STDOUT_CAP)
+            .read_to_end(&mut stdout)?;
+        // Output exceeded the cap: kill the child (no zombie) and fail typed
+        // rather than parse a truncated envelope.
+        if stdout.len() as u64 >= CORE_STDOUT_CAP {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(CoreError::OutputTooLarge {
+                cap_mib: CORE_STDOUT_CAP / (1024 * 1024),
             });
         }
-        Envelope::parse_pinned(&String::from_utf8_lossy(&output.stdout), supported)
+
+        let status = child.wait()?;
+        if !status.success() {
+            let stderr = child
+                .stderr
+                .take()
+                .map(|mut e| {
+                    let mut buf = String::new();
+                    let _ = e.read_to_string(&mut buf);
+                    buf
+                })
+                .unwrap_or_default();
+            return Err(CoreError::Failed {
+                code: status.code(),
+                stderr,
+            });
+        }
+        Envelope::parse_pinned(&String::from_utf8_lossy(&stdout), supported)
     }
 }
 
@@ -142,5 +188,84 @@ mod tests {
             Envelope::parse_pinned("not json", &[]),
             Err(CoreError::Json(_))
         ));
+    }
+
+    /// A CoreRunner that invokes the OS shell, so `run_json`'s subprocess plumbing
+    /// (stdout cap, status inspection) can be exercised without a real
+    /// vaultspec-core. The `--json` arg `run_json` appends is harmless to the
+    /// shell snippets below (they ignore extra args).
+    fn shell_runner(snippet: &str) -> CoreRunner {
+        if cfg!(windows) {
+            CoreRunner::new(vec!["cmd".into(), "/C".into(), snippet.into()])
+        } else {
+            CoreRunner::new(vec!["sh".into(), "-c".into(), snippet.into()])
+        }
+    }
+
+    #[test]
+    fn run_json_streams_a_small_envelope_through() {
+        // Echo a valid pinned envelope on stdout (success path, status 0).
+        let body = r#"{"schema":"x.v1","status":"ok","data":{"n":1}}"#;
+        let snippet = if cfg!(windows) {
+            // cmd echo keeps the quotes; emit raw JSON via a here-ish trick.
+            format!("echo {}", body.replace('"', "\\\""))
+        } else {
+            format!("printf '%s' '{body}'")
+        };
+        let runner = shell_runner(&snippet);
+        let cwd = std::env::current_dir().unwrap();
+        let env = runner.run_json(&cwd, &[], &["x.v1"]);
+        // On Windows `echo` may mangle quoting; tolerate that by only asserting
+        // the happy path on Unix, where printf is byte-exact. Either way the
+        // subprocess plumbing must not panic or hang.
+        if cfg!(unix) {
+            let env = env.expect("valid envelope parses");
+            assert_eq!(env.status, "ok");
+            assert_eq!(env.data().unwrap()["n"], 1);
+        }
+    }
+
+    #[test]
+    fn run_json_reports_a_nonzero_exit_as_failed() {
+        // A crashed core verb (non-zero exit) is a typed Failed error, never a
+        // silently-parsed empty envelope.
+        let snippet = if cfg!(windows) { "exit 3" } else { "exit 3" };
+        let runner = shell_runner(snippet);
+        let cwd = std::env::current_dir().unwrap();
+        let err = runner.run_json(&cwd, &[], &["x.v1"]).unwrap_err();
+        assert!(
+            matches!(err, CoreError::Failed { code: Some(3), .. })
+                || matches!(err, CoreError::Failed { .. }),
+            "non-zero exit → Failed, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn run_json_caps_runaway_stdout_instead_of_oom() {
+        // A sibling that streams more than the 8 MiB ceiling is stopped and
+        // fails typed (OutputTooLarge), never grown to exhaustion. We emit ~9
+        // MiB so the cap trips deterministically.
+        let bytes = (CORE_STDOUT_CAP + 1024 * 1024) as usize;
+        let runner = if cfg!(windows) {
+            // PowerShell is reliably present on Windows; emit a long run of 'x'.
+            // Wrap in `& { ... }` so the trailing `--json` arg run_json appends
+            // lands in the script block's $args (ignored) instead of being
+            // concatenated into the expression.
+            let ps = format!("& {{ [Console]::Out.Write('x' * {bytes}) }}");
+            CoreRunner::new(vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                ps,
+            ])
+        } else {
+            shell_runner(&format!("head -c {bytes} /dev/zero | tr '\\0' 'x'"))
+        };
+        let cwd = std::env::current_dir().unwrap();
+        let err = runner.run_json(&cwd, &[], &["x.v1"]).unwrap_err();
+        assert!(
+            matches!(err, CoreError::OutputTooLarge { .. }),
+            "runaway stdout → OutputTooLarge, got {err:?}"
+        );
     }
 }
