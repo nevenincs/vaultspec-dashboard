@@ -519,10 +519,13 @@ export async function fetchEngineStatus(): Promise<EngineStatus> {
   return engineClient.status();
 }
 
-/** The right rail's recovery snapshot; /stream deltas refine it later. */
+/** The right rail's recovery snapshot; /stream deltas refine it later.
+ *  Polls every 8 s while errored so NowStrip self-heals after engine-up
+ *  transitions without requiring a page reload (mirrors useWorkspaceMap). */
 export function useEngineStatus() {
   return useQuery({
     queryKey: ["engine", "status"],
     queryFn: fetchEngineStatus,
+    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
   });
 }

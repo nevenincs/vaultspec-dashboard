@@ -158,7 +158,22 @@ export function adaptMap(body: unknown): MapResponse {
 /** Canonical tier names — an absent tier is a degraded state (contract §2). */
 const CANONICAL_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
 
-/** Live status rollup → the internal status shape (no git block served). */
+/**
+ * Live status rollup → the internal status shape.
+ *
+ * The live engine serves `{data: {git, index, backends, ok}, tiers}`, unwrapped
+ * by `unwrapEnvelope` before this adapter runs. Each block is optional; the
+ * adapter maps what is present and leaves absent blocks undefined so the NowStrip
+ * renders the HONEST degraded state (contract §2) rather than a lie.
+ *
+ * git block: live wire sends `{head_ref, dirty, ahead?, behind?}`.
+ *   `dirty` may be a boolean (live) or a string[] (internal/mock) — both mapped
+ *   tolerantly; a boolean `true` produces a one-element sentinel so
+ *   `gitCard` correctly shows the dirty indicator without overclaiming the count.
+ *
+ * core block: extracted from `backends.core`; `vault_health` forwarded when
+ *   present so `coreCard` can report "vault green" vs "vault unknown".
+ */
 export function adaptStatus(body: unknown): EngineStatus {
   if (!isRec(body)) return body as EngineStatus;
   if ("nodes" in body && "degradations" in body) return body as unknown as EngineStatus;
@@ -166,22 +181,48 @@ export function adaptStatus(body: unknown): EngineStatus {
   const index = isRec(body.index) ? body.index : {};
   const backends = isRec(body.backends) ? body.backends : {};
   const rag = isRec(backends.rag) ? backends.rag : {};
+  const core = isRec(backends.core) ? backends.core : null;
+  const git = isRec(body.git) ? body.git : null;
   // Contract §2: a tier ABSENT from the block is a designed degraded state —
   // absence ≠ available. Collect degraded tiers: those explicitly marked
   // available:false AND those missing from the block entirely.
   const degradations = CANONICAL_TIERS.filter(
     (tier) => tiers[tier] === undefined || tiers[tier].available === false,
   );
+  // Tolerate dirty: boolean (live: "is the tree dirty?") or string[] (internal:
+  // list of dirty files). Boolean true → sentinel array so dirty.length > 0.
+  const dirty = git
+    ? Array.isArray(git.dirty)
+      ? (git.dirty as string[])
+      : git.dirty === true
+        ? ["dirty"]
+        : []
+    : [];
   return {
     ok: Boolean(body.ok),
     nodes: Number(index.nodes ?? 0),
     edges: Number(index.edges ?? 0),
     degradations,
     tiers,
-    core: { reachable: isRec(backends.core) },
+    git: git
+      ? {
+          branch: String(git.head_ref ?? git.branch ?? "").replace(
+            /^refs\/heads\//,
+            "",
+          ),
+          ahead: Number(git.ahead ?? 0),
+          behind: Number(git.behind ?? 0),
+          dirty,
+        }
+      : undefined,
+    core: core
+      ? {
+          reachable: true,
+          vault_health:
+            typeof core.vault_health === "string" ? core.vault_health : undefined,
+        }
+      : undefined,
     rag: { service: rag.available === true ? "running" : "stopped" },
-    // git: not served by the live status — the now strip renders the
-    // honest down state; flagged as a capability divergence.
   };
 }
 
