@@ -33,6 +33,16 @@ pub enum IndexError {
     Cache(#[from] serde_json::Error),
     #[error("git: {0}")]
     Git(String),
+    /// A client-supplied revision token that is well-formed but resolves to
+    /// nothing servable — an unparseable revision, or a millisecond timestamp
+    /// before the root commit. The message is engine-authored and LEAK-FREE
+    /// (no build-machine paths or gix `file:line`), so the API boundary echoes
+    /// it verbatim instead of the generic "expected a commit-ish …" fallback,
+    /// which self-contradicts when the input WAS a valid timestamp (sweep LOW,
+    /// 2026-06-13). Distinct from [`IndexError::Git`], whose strings carry gix
+    /// internals and must never reach a client.
+    #[error("{0}")]
+    Revision(String),
 }
 
 pub type Result<T> = std::result::Result<T, IndexError>;

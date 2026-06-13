@@ -93,11 +93,18 @@ pub(crate) fn api_error(
 /// operator diagnostics and return only the input the client supplied plus
 /// the accepted forms. Sanitisation lives at the API boundary so the engine's
 /// internal error types stay rich.
-pub(crate) fn revision_error<E: std::fmt::Display>(
+pub(crate) fn revision_error(
     state: &AppState,
     input: &str,
-    err: E,
+    err: &engine_graph::IndexError,
 ) -> (StatusCode, Json<Value>) {
+    // A `Revision` error is engine-authored and leak-free — echo it verbatim.
+    // This preserves the PRECISE cause (e.g. "timestamp N predates the root
+    // commit") instead of the generic fallback below, which self-contradicts
+    // when the client DID supply a valid timestamp (sweep LOW, 2026-06-13).
+    if let engine_graph::IndexError::Revision(msg) = err {
+        return api_error(state, StatusCode::BAD_REQUEST, msg.clone());
+    }
     eprintln!("vaultspec serve: could not resolve revision `{input}`: {err}");
     api_error(
         state,

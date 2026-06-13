@@ -32,7 +32,7 @@ fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::Object
             // the contract grants (`t=<ts|sha>`).
             let Ok(t) = reference.parse::<i64>() else {
                 let _ = rev_err;
-                return Err(IndexError::Git(format!(
+                return Err(IndexError::Revision(format!(
                     "invalid revision `{reference}`: expected a commit-ish \
                      (ref name or sha) or a millisecond timestamp"
                 )));
@@ -65,7 +65,7 @@ fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::Object
                     return Ok(commit.id);
                 }
             }
-            Err(IndexError::Git(format!(
+            Err(IndexError::Revision(format!(
                 "timestamp {t} predates the root commit on the scope ref"
             )))
         }
@@ -386,10 +386,22 @@ mod tests {
             m
         );
 
-        // A timestamp before the root commit errors, never an empty graph.
-        assert!(resolve_commit(&repo, "1000000099000").is_err());
+        // A timestamp before the root commit errors, never an empty graph —
+        // and as a leak-free `Revision` error naming the REAL cause, so the API
+        // boundary echoes it instead of the self-contradicting "expected a
+        // millisecond timestamp" fallback (sweep LOW, 2026-06-13).
+        let predates = resolve_commit(&repo, "1000000099000").unwrap_err();
+        assert!(
+            matches!(&predates, IndexError::Revision(m) if m.contains("predates the root commit")),
+            "out-of-range timestamp is a precise Revision error: {predates:?}"
+        );
 
-        // A non-numeric unknown revision still surfaces the rev-parse error.
-        assert!(resolve_commit(&repo, "no-such-ref").is_err());
+        // A non-numeric unknown revision is ALSO a leak-free Revision error
+        // (the generic message), never a raw gix string that leaks build paths.
+        let bad = resolve_commit(&repo, "no-such-ref").unwrap_err();
+        assert!(
+            matches!(&bad, IndexError::Revision(m) if m.contains("expected a commit-ish")),
+            "unparseable token is a leak-free Revision error: {bad:?}"
+        );
     }
 }

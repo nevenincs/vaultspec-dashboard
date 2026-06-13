@@ -107,7 +107,7 @@ pub async fn graph_asof(
     // this same scope, so both must agree.
     let scope = state.scope.clone();
     let graph = engine_graph::asof::asof_graph(&state.root, &params.t, &scope, 0)
-        .map_err(|e| super::revision_error(&state, &params.t, e))?;
+        .map_err(|e| super::revision_error(&state, &params.t, &e))?;
     let slice = engine_query::graph::graph_query(
         &graph,
         &scope,
@@ -176,9 +176,9 @@ pub async fn graph_diff(
         ));
     }
     let from_graph = engine_graph::asof::asof_graph(&state.root, &params.from, &scope, 0)
-        .map_err(|e| super::revision_error(&state, &params.from, e))?;
+        .map_err(|e| super::revision_error(&state, &params.from, &e))?;
     let to_graph = engine_graph::asof::asof_graph(&state.root, &params.to, &scope, 0)
-        .map_err(|e| super::revision_error(&state, &params.to, e))?;
+        .map_err(|e| super::revision_error(&state, &params.to, &e))?;
 
     // Historical diffs number RESULT-LOCALLY (audit N2): a scrub must
     // never burn live-clock positions or manufacture stream gaps. Only

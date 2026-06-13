@@ -204,7 +204,7 @@ pub async fn graph_query_route(
                 name: reference.clone(),
             };
             let graph = engine_graph::asof::asof_graph(&state.root, reference, &scope, 0)
-                .map_err(|e| super::revision_error(&state, reference, e))?;
+                .map_err(|e| super::revision_error(&state, reference, &e))?;
             let slice = graph_query(&graph, &scope, filter, granularity)
                 .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             let tiers = serde_json::to_value(engine_query::envelope::asof_tiers_block())

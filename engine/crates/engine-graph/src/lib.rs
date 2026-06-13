@@ -21,4 +21,5 @@ pub use context::{ContextBundle, context};
 pub use edges::{EdgeError, ingest, validate};
 pub use facets::{Divergence, DivergenceKind, divergences};
 pub use graph::{EdgeAttrs, LinkageGraph, StoredEdge};
+pub use index::IndexError;
 pub use project::{MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
