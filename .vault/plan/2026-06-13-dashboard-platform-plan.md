@@ -102,9 +102,9 @@ The horizontal frontend runtime substrate - structured logger, exception contain
 
 Ship the structured logger and global error traps the whole frontend logs through.
 
-- [ ] `P01.S01` - Implement the leveled, namespaced ring-buffer logger with a pluggable sink array; `frontend/src/platform/logger/logger.ts`.
-- [ ] `P01.S02` - Install the global window.onerror and unhandledrejection traps routed to the logger; `frontend/src/platform/logger/globalTraps.ts`.
-- [ ] `P01.S03` - Bridge scene-worker logs to the main logger and migrate the two worker console calls; `frontend/src/platform/logger/workerBridge.ts`.
+- [x] `P01.S01` - Implement the leveled, namespaced ring-buffer logger with a pluggable sink array; `frontend/src/platform/logger/logger.ts`.
+- [x] `P01.S02` - Install the global window.onerror and unhandledrejection traps routed to the logger; `frontend/src/platform/logger/globalTraps.ts`.
+- [x] `P01.S03` - Bridge scene-worker logs to the main logger and migrate the two worker console calls; `frontend/src/platform/logger/workerBridge.ts`.
 
 ### Phase `P02` - Exception containment
 

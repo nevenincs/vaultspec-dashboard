@@ -4,6 +4,7 @@
 // SceneFieldRenderer driven entirely by seam commands. React never reaches
 // past the SceneController. Scene-layer module: framework-free by design.
 
+import { logger } from "../../platform/logger/logger";
 import type { SceneGraphModel } from "../graphModel";
 import { SceneGraphModel as Model } from "../graphModel";
 import type { NodePosition } from "../positionCache";
@@ -334,9 +335,9 @@ export class DashboardField implements SceneFieldRenderer {
     this.sprites.sync(this.model, now);
     const rejected = this.edges.setEdges([...this.model.edges]).rejected;
     for (const err of rejected) {
-      // Truthfulness: a malformed tier is a loud console error, never a
+      // Truthfulness: a malformed tier is a loud, structured log, never a
       // silent re-bucket. Surfacing into the degradation UI lands with S46.
-      console.error(err.message);
+      logger.child("scene.field-assembly").error(err.message);
     }
     const nodeIds = [...this.model.nodes].map((n) => n.id);
     const edgeRefs = [...this.model.edges].map((e) => ({

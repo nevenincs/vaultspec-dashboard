@@ -8,6 +8,7 @@
 import Graph from "graphology";
 import forceatlas2 from "graphology-layout-forceatlas2";
 
+import { postWorkerLog } from "../../platform/logger/workerBridge";
 import type {
   LayoutChangeMessage,
   LayoutInMessage,
@@ -80,7 +81,12 @@ onmessage = (event: MessageEvent<LayoutInMessage>) => {
         // worker (audit finding fa2-init-collision-006).
         if (!graph.hasNode(e.src) || !graph.hasNode(e.dst)) continue;
         if (graph.hasEdge(e.id)) {
-          console.error(`fa2 worker: duplicate edge id in keyframe: ${e.id}`);
+          postWorkerLog(
+            (m) => postMessage(m),
+            "scene.fa2-worker",
+            "error",
+            `duplicate edge id in keyframe: ${e.id}`,
+          );
           continue;
         }
         graph.addEdgeWithKey(e.id, e.src, e.dst);

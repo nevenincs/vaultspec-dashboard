@@ -12,6 +12,8 @@
 // rider) so the production-bundle worker path is verifiable, unlike the
 // library's inline-blob worker. Scene-layer module: framework-free.
 
+import { logger } from "../../platform/logger/logger";
+import { isWorkerLogEnvelope } from "../../platform/logger/workerBridge";
 import type { NodePosition } from "../positionCache";
 
 // --- worker protocol (shared with fa2.worker.ts) ------------------------------
@@ -140,6 +142,12 @@ export class FieldLayout {
   constructor(worker: WorkerLike = createFa2Worker()) {
     this.worker = worker;
     this.worker.onmessage = (event: MessageEvent) => {
+      // Peel off worker log envelopes first: they ride the same channel as
+      // layout data, and re-emit into the shared logger (ADR D3 bridge).
+      if (isWorkerLogEnvelope(event.data)) {
+        logger.ingest(event.data.record);
+        return;
+      }
       const msg = event.data as LayoutPositionsMessage;
       if (msg?.kind !== "positions") return;
       this.latest = new Map();
