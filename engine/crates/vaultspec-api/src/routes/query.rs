@@ -7,7 +7,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{NodeId, Tier};
 use engine_query::filter::{Filter, vocabulary};
-use engine_query::graph::{Granularity, graph_query};
+use engine_query::graph::{GraphSlice, Granularity, graph_query};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -142,11 +142,15 @@ pub async fn vault_tree(
         .collect();
     entries.sort_by_key(|e| e["stem"].as_str().unwrap_or_default().to_string());
     // Cursor pagination on the unbounded listing (contract §2, audit N8).
+    // Clamp the page size (robustness M2): a client-supplied page_size must not
+    // defeat the cursor cap and pull the whole listing in one response. 2000 is
+    // a generous upper bound; the default stays 500.
+    let page_size = params.page_size.unwrap_or(500).min(2000);
     let (page, next_cursor) = engine_query::envelope::paginate(
         &entries,
         |e| e["stem"].as_str().unwrap_or_default(),
         params.cursor.as_deref(),
-        params.page_size.unwrap_or(500),
+        page_size,
     );
     Ok(super::envelope(
         json!({"entries": page}),
