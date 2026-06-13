@@ -110,22 +110,29 @@ pub struct CodeLocation {
     pub bridge_node_id: Option<String>,
 }
 
-/// Map a resolved target path to the real node it bridges to.
-fn bridge_node_id(resolved_target: &str) -> String {
+/// Map a resolved target path to the real node it bridges to — but ONLY when
+/// that node actually exists in the graph. A computed id for a target the graph
+/// never minted (v1 mints no code-artifact node) would be a dead-end
+/// click-through that 404s on `/nodes/{id}` (M-B5, finding LENSB-001), so the
+/// bridge is surfaced only when navigable; otherwise None, and the
+/// human-readable `resolved_target` still rides along. (Minting code-artifact
+/// nodes so code/symbol bridges become navigable is a separate, deferred
+/// enhancement.)
+fn bridge_node_id(graph: &LinkageGraph, resolved_target: &str) -> Option<String> {
     use engine_model::{CanonicalKey, node_id};
-    if let Some(stem) = resolved_target
+    let nid = if let Some(stem) = resolved_target
         .strip_prefix(".vault/")
         .and_then(|rest| rest.split('/').next_back())
         .and_then(|file| file.strip_suffix(".md"))
     {
-        node_id(&CanonicalKey::Document { stem }).0
+        node_id(&CanonicalKey::Document { stem })
     } else {
         node_id(&CanonicalKey::CodeArtifact {
             path: resolved_target,
             symbol: None,
         })
-        .0
-    }
+    };
+    graph.node(&nid).map(|_| nid.0)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -161,7 +168,11 @@ pub fn evidence(graph: &LinkageGraph, id: &NodeId) -> Option<Evidence> {
                 target: target.clone(),
                 state: edge.state,
                 resolved_target: stored.attrs.resolved_target.clone(),
-                bridge_node_id: stored.attrs.resolved_target.as_deref().map(bridge_node_id),
+                bridge_node_id: stored
+                    .attrs
+                    .resolved_target
+                    .as_deref()
+                    .and_then(|t| bridge_node_id(graph, t)),
             });
         }
         if let Provenance::CommitCorrelation { sha, rule } = &edge.provenance {
