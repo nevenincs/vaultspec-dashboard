@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type { EngineEdge } from "../server/engine";
+import { useLiveStatusStore } from "../server/liveStatus";
 import { useFilterStore } from "./filters";
 import { useLensStore } from "./lenses";
 import { usePinStore } from "./pins";
@@ -117,6 +118,11 @@ export const useViewStore = create<ViewState>((set) => ({
     const workspace = usePinStore.getState().workspace;
     usePinStore.getState().setScopeKey(workspace, scope ?? "default");
     useLensStore.getState().setScopeKey(workspace, scope ?? "default");
+    // Reset the live-connection slice too (live-state ADR D1): the previous
+    // corpus's broken-link count / resume seq must not bleed into the new scope
+    // before the new slice and stream arrive (the same isolation discipline as
+    // pins/lenses, findings 022/023).
+    useLiveStatusStore.getState().reset();
     set({
       scope,
       selection: null,

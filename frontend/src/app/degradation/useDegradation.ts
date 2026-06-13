@@ -16,9 +16,9 @@ export function useSurfaceStates(): SurfaceStates {
   const streamConnected = useLiveStatusStore((s) => s.streamConnected);
   const brokenLinkCount = useLiveStatusStore((s) => s.brokenLinkCount);
   const overrides = useDegradationStore((s) => s.overrides);
-  const resolve = useDegradationStore((s) => s.resolve);
-  void overrides; // subscription: overrides changing re-renders consumers
-  return matrixFor(
-    resolve(deriveInputs(status.data, { streamConnected, brokenLinkCount })),
-  );
+  const real = deriveInputs(status.data, { streamConnected, brokenLinkCount });
+  // Apply dev overrides from the SAME subscribed value that drives the
+  // re-render (finding 037): one source for subscription and computation, no
+  // dead `void overrides` hack and no imperative `resolve()` get().
+  return matrixFor(overrides ? { ...real, ...overrides } : real);
 }

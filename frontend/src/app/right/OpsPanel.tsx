@@ -8,10 +8,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { engineClient } from "../../stores/server/engine";
 import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
+import { dispatchOps } from "./opsActions";
 
 /** The R1 whitelist, verbatim — never grown GUI-side. */
 export const OPS_WHITELIST: { target: "core" | "rag"; verb: string; label: string }[] =
@@ -31,8 +31,10 @@ export function OpsPanel() {
   const [lastResult, setLastResult] = useState<string | null>(null);
 
   const run = useMutation({
+    // The intent flows through the platform dispatch seam (logged + traced +
+    // guardable centrally), not an ad-hoc client call (B-1 / platform D2).
     mutationFn: ({ target, verb }: { target: "core" | "rag"; verb: string }) =>
-      target === "core" ? engineClient.opsCore(verb) : engineClient.opsRag(verb),
+      dispatchOps({ target, verb }),
     onSuccess: (result, vars) => {
       setLastResult(`${vars.verb}: ${result.ok ? "ok" : "failed"}`);
       void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
