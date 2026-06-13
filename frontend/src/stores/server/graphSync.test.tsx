@@ -55,7 +55,10 @@ describe("useGraphLiveSync", () => {
       vi.advanceTimersByTime(150);
       expect(invalidate).toHaveBeenCalledTimes(1);
       expect(invalidate).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ["engine", "graph", "scopeA"], exact: false }),
+        expect.objectContaining({
+          queryKey: ["engine", "graph", "scopeA"],
+          exact: false,
+        }),
       );
     } finally {
       vi.useRealTimers();

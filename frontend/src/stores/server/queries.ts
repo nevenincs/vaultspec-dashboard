@@ -65,6 +65,8 @@ export const engineKeys = {
     [...engineKeys.all, "search", target ?? "vault", query] as const,
   stream: (channels: readonly string[], since?: number) =>
     [...engineKeys.all, "stream", channels.join(","), since ?? "live"] as const,
+  diff: (scope: string, from: string | number, to: string | number) =>
+    [...engineKeys.all, "diff", scope, String(from), String(to)] as const,
 };
 
 // --- read hooks --------------------------------------------------------------------
@@ -143,6 +145,26 @@ export function useEngineEvents(
     queryKey: engineKeys.events(scope ?? "", range, bucket),
     queryFn: () => engineClient.events({ scope: scope!, ...range, bucket }),
     enabled: scope !== null,
+  });
+}
+
+/**
+ * Graph diff between two timestamps (§5 /graph/diff). Returns the set of
+ * add/remove/change operations on nodes and edges between `from` and `to`
+ * (millisecond timestamps or ISO strings). Disabled when scope is null or
+ * the window is empty (from === to). Cache keys fold both endpoints so two
+ * windows never collide (mirrors engineKeys.graph folding as-of).
+ */
+export function useGraphDiff(
+  scope: string | null,
+  from: string | number,
+  to: string | number,
+  filter?: string,
+) {
+  return useQuery({
+    queryKey: engineKeys.diff(scope ?? "", from, to),
+    queryFn: () => engineClient.graphDiff({ scope: scope!, from, to, filter }),
+    enabled: scope !== null && String(from) !== String(to),
   });
 }
 
