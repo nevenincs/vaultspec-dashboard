@@ -214,6 +214,17 @@ STATE-ACQUISITION CORRECTNESS (the platform's core, verified against a controlle
 
 VERDICT: the base layer is production-ready as a single-operator, loopback state-acquisition platform - all contract capabilities served, errors typed and tiers-truthful, no internal leaks, robust under concurrency and sustained load, identity stable and re-derivable, read-and-infer clean, degradation honest, historical state reconstructed accurately, and live state tracked and streamed. Remaining items are LOW defense-in-depth input bounds owned by the concurrent error-surface agent (depth clamp on `/nodes/{id}/neighbors`, `filter` size cap, `/events` `from>to` validation, `/nodes/{id}/discover` degrade-vs-propagate-rag-400) - none block the platform; all carry the tiers block today and fail safe.
 
+## ADD-906 | none | core 0.1.31 adopted: historical declared tier + all LOWs closed
+
+Eighteenth entry (2026-06-13): vaultspec-core bumped 0.1.29 -> 0.1.31 (both the published-wheel floor in `pyproject.toml` and the operator's PATH `uv tool` install; published-wheel-purity preserved - `[project] dependencies` stays core-only, rag/torch dev-group, the built wheel's Requires-Dist carries neither). Several upstream changes we filed have landed and are now utilized:
+
+- `#160 ref-scoped graph` (`vault graph --ref <branch|sha>`, a read-only git object-DB read, typed error on bad refs): wired into `engine_graph::asof::asof_graph` so the HISTORICAL view now carries the DECLARED tier - core's authored cross-references AS THEY STOOD at the resolved commit - not only the blob-reconstructed structural + temporal tiers. The declared ingestion was refactored into one `index::ingest_core_graph(.., git_ref: Option<&str>)` shared by the present (working-tree) and historical (`--ref`) paths. Live-verified: asof@HEAD~8 carries declared 6840 (380 references + 6460 core-derived) + structural 1106, matching `vault graph --ref` output; `/graph/diff` now surfaces authored-edge changes between commits. Best-effort - old core / non-vaultspec dir / unresolvable ref leaves the historical declared tier absent, never a panic.
+- `#157 plan-mutator exit code`: confirmed fixed - `vault plan step check` exits 0 on success; the prior "verify file state, not the exit code" caveat is obsolete.
+
+The two remaining MARGINAL LOWs are now closed (defense-in-depth; loopback stays the real boundary): `/events` with `from>to` fails fast with a typed 400 (was a silent empty payload); a 1 MiB `DefaultBodyLimit` bounds request bodies and the response amplification a huge filter would drive (the 413 rides the shared envelope - layered inner to `ensure_tiers_envelope`). `/nodes/{id}/discover` was already made to degrade (200 + empty candidates + semantic-tier-down) instead of propagating rag's 400. The `status`/`map` one-door rollup-field divergence is left as-is by design - one-shot CLI and resident serve legitimately expose different runtime fields; the shared query-core payload is in exact parity.
+
+Coordination: this engine work was developed concurrently with a frontend/platform-lane agent sharing one worktree + git index; commits were kept to the engine lane (engine-graph, ingest-core, vaultspec-api) and landed by pathspec to avoid sweeping the other lane's staged work.
+
 ## Recommendations
 
 - Close W01.P01; no blocking findings.
