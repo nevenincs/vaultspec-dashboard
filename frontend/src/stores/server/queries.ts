@@ -63,8 +63,8 @@ export const engineKeys = {
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
   search: (query: string, target?: string) =>
     [...engineKeys.all, "search", target ?? "vault", query] as const,
-  stream: (channels: readonly string[]) =>
-    [...engineKeys.all, "stream", channels.join(",")] as const,
+  stream: (channels: readonly string[], since?: number) =>
+    [...engineKeys.all, "stream", channels.join(","), since ?? "live"] as const,
 };
 
 // --- read hooks --------------------------------------------------------------------
@@ -234,13 +234,31 @@ export async function* sseChunks(
  * accumulate in the cache as they arrive (append mode); `since` resumes
  * the graph channel from a known sequence point (§7 splice).
  */
+/** Dedup graph frames by seq: a reconnect's since= replay is already held, so
+ *  an idempotent splice (contract section 7) yields no second copy. Frames
+ *  without a seq (backends/git) just append. */
+function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChunk[] {
+  const seq = (chunk.data as { seq?: unknown }).seq;
+  if (
+    typeof seq === "number" &&
+    acc.some((held) => (held.data as { seq?: unknown }).seq === seq)
+  ) {
+    return acc;
+  }
+  return [...acc, chunk];
+}
+
 export function engineStreamOptions(channels: readonly string[], since?: number) {
   return queryOptions({
-    queryKey: engineKeys.stream(channels),
+    // The resume point is identity-bearing: two `since` offsets carry
+    // different delta windows and must not collide on one cache entry
+    // (adversarial finding stream-01), mirroring how `graph` folds as-of.
+    queryKey: engineKeys.stream(channels, since),
     queryFn: streamedQuery({
       streamFn: async (context) =>
         sseChunks(await engineClient.openStream([...channels], since, context.signal)),
-      refetchMode: "append",
+      reducer: streamReducer,
+      initialValue: [] as StreamChunk[],
     }),
     staleTime: Infinity,
     retry: true,

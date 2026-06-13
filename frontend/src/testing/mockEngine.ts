@@ -490,10 +490,14 @@ export class MockEngine {
           );
         };
         // Splice semantics (§7): resume from a known seq or signal the gap.
+        // When `since` is provided this is a bounded replay request: emit
+        // the missed deltas in order and close the stream (the replay window
+        // is finite; no live-tail subscription is added). This lets a
+        // refetch-after-reconnect pattern resolve cleanly in tests that model
+        // the idempotent splice (§7) — the stream terminates once caught up.
         if (channels.has("graph") && since !== null) {
           const sinceSeq = Number(since);
           if (sinceSeq < this.lastSeq) {
-            // Replayable: emit the missed deltas in order.
             for (const d of this.timeline.filter((d) => d.seq > sinceSeq)) {
               send("graph", {
                 op: d.op,
@@ -504,7 +508,12 @@ export class MockEngine {
               });
             }
           }
+          // Replay complete — close the stream so callers (e.g. refetchQueries)
+          // can settle without waiting for an indefinitely-open connection.
+          controller.close();
+          return;
         }
+        // No since= → live-tail mode: stay open for pushed events.
         const subscriber: StreamSubscriber = (channel, data) => {
           if (channels.has(channel)) send(channel, data);
         };

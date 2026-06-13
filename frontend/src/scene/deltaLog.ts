@@ -81,6 +81,12 @@ export class DeltaLog {
     if (this.keyframe === null) {
       return { accepted: 0, duplicates: 0, gap: true };
     }
+    // If the log is already gapped, it is suspect until re-keyframed. Refuse
+    // all further batches (returning gap:true) so the owner is never given a
+    // false "clean splice" signal while the clock has a permanent hole.
+    if (this.gapped) {
+      return { accepted: 0, duplicates: 0, gap: true };
+    }
     let accepted = 0;
     let duplicates = 0;
     for (const delta of incoming) {

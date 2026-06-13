@@ -336,8 +336,20 @@ pub async fn node_evidence(
             format!("unknown node `{id}`"),
         )
     })?;
-    Ok(Json(
-        json!({"evidence": evidence, "tiers": rag_tiers(&state)}),
+    // Envelope-consistent with every other endpoint (`{data, tiers}`): the
+    // evidence fields sit directly under `data` (matching the mock's flat
+    // shape and the inspector's `evidence.data.documents/...` reads), not
+    // hand-built as a bare `{evidence, tiers}` body.
+    // NOTE (flagged cross-lane reconciliation, 2026-06-13): the item shapes
+    // still diverge from the GUI's NodeEvidence type — `documents` are bare
+    // stems vs `{path, doc_type}`, `code_locations` carry `target` not `path`,
+    // and `commits` lack the `subject` (a git lookup). Reconciling those is a
+    // contract event touching both the engine evidence struct and the GUI
+    // type; tracked separately, not papered over here.
+    Ok(super::envelope(
+        serde_json::to_value(evidence).expect("evidence serializes"),
+        rag_tiers(&state),
+        None,
     ))
 }
 
@@ -394,21 +406,31 @@ pub async fn node_discover(
             .unwrap_or_else(|| id.clone())
     });
     let store = state.store.lock().expect("store lock");
-    let candidates = rag_client::discover::discover(
+    let candidates = match rag_client::discover::discover(
         &transport,
         &store,
         &node,
         &query,
         &state.scope,
         crate::app::now_ms(),
-    )
-    .map_err(|e| {
-        super::api_error(
-            &state,
-            StatusCode::BAD_REQUEST,
-            rag_client::search::degradation_reason(&e),
-        )
-    })?;
+    ) {
+        Ok(candidates) => candidates,
+        Err(e) => {
+            // rag was reachable but the query itself failed (scope not
+            // indexed, timeout, transient): the NODE exists, so this is not a
+            // client error — semantic suggestions are simply unavailable right
+            // now. Degrade the `semantic` tier (empty candidates + reason),
+            // matching the rag-Unavailable path above and `/search`, never a
+            // 400 (hardening, 2026-06-13: an unindexed scope used to 400 here).
+            let reason = rag_client::search::degradation_reason(&e);
+            return Ok(super::envelope(
+                json!({"candidates": []}),
+                serde_json::to_value(tiers_block(&[("semantic", reason.as_str())]))
+                    .expect("tiers serialize"),
+                None,
+            ));
+        }
+    };
     Ok(super::envelope(
         json!({"candidates": candidates}),
         rag_tiers(&state),

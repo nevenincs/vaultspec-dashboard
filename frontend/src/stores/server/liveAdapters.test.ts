@@ -191,7 +191,9 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
       count: 7,
       breakdown_by_tier: { structural: 2, semantic: 5 },
     });
-    expect(edge.id).toBe("meta:feature:a->feature:b");
+    // ID uses JSON-encoded endpoint pair to prevent collisions when endpoint
+    // ids contain the "->" separator (wire-01 adversarial finding).
+    expect(edge.id).toBe('meta:["feature:a","feature:b"]');
     expect(edge.relation).toBe("related");
     // Dominant tier = the breakdown's heaviest tier (semantic here).
     expect(edge.tier).toBe("semantic");

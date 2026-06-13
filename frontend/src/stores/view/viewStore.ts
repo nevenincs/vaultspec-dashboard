@@ -2,6 +2,8 @@ import { create } from "zustand";
 
 import type { EngineEdge } from "../server/engine";
 import { useFilterStore } from "./filters";
+import { useLensStore } from "./lenses";
+import { usePinStore } from "./pins";
 
 // View state (gui-spec §5.2): selection, working set, filters/lens,
 // timeline mode, panel layout. This store is the shared brain that keeps
@@ -109,6 +111,12 @@ export const useViewStore = create<ViewState>((set) => ({
     // The filter model resets too: its facet choices embed the previous
     // scope's vocabulary. Cross-store, applied in one move.
     useFilterStore.getState().reset();
+    // Re-key the pin and lens stores so the previous scope's pins/lenses do
+    // not bleed into the new scope (finding-018/022/023; isolation-01/02/03).
+    // workspace is preserved; scope flips to the new value.
+    const workspace = usePinStore.getState().workspace;
+    usePinStore.getState().setScopeKey(workspace, scope ?? "default");
+    useLensStore.getState().setScopeKey(workspace, scope ?? "default");
     set({
       scope,
       selection: null,

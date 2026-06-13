@@ -77,8 +77,10 @@ function dominantTier(breakdown: Record<string, number>): EngineEdge["tier"] {
  * on `meta` (the ribbon's width-by-count and hover breakdown).
  */
 export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
+  // Use JSON-encoded endpoint pair as the id suffix to avoid collisions when
+  // an endpoint id itself contains the "->" separator (provenance-stable-keys).
   return {
-    id: `meta:${meta.src}->${meta.dst}`,
+    id: `meta:${JSON.stringify([meta.src, meta.dst])}`,
     src: meta.src,
     dst: meta.dst,
     relation: "related",
@@ -106,9 +108,17 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
     : [];
   // Drop the raw meta_edges off the returned slice — it is now in `edges`.
   const { meta_edges: _folded, ...rest } = body as Rec;
+  if (!metaEdges.length) {
+    return { ...(rest as object), edges } as GraphSlice;
+  }
+  // Deduplicate by id: if an origin already inlined a meta-edge into `edges`
+  // (same id as would be synthesized), the fold must not append a duplicate
+  // (provenance-stable-keys-are-identity-bearing: one edge per id per slice).
+  const existingIds = new Set(edges.map((e) => e.id));
+  const folded = metaEdges.map(metaEdgeToEdge).filter((e) => !existingIds.has(e.id));
   return {
     ...(rest as object),
-    edges: metaEdges.length ? [...edges, ...metaEdges.map(metaEdgeToEdge)] : edges,
+    edges: [...edges, ...folded],
   } as GraphSlice;
 }
 
@@ -145,6 +155,9 @@ export function adaptMap(body: unknown): MapResponse {
   };
 }
 
+/** Canonical tier names — an absent tier is a degraded state (contract §2). */
+const CANONICAL_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+
 /** Live status rollup → the internal status shape (no git block served). */
 export function adaptStatus(body: unknown): EngineStatus {
   if (!isRec(body)) return body as EngineStatus;
@@ -153,13 +166,17 @@ export function adaptStatus(body: unknown): EngineStatus {
   const index = isRec(body.index) ? body.index : {};
   const backends = isRec(body.backends) ? body.backends : {};
   const rag = isRec(backends.rag) ? backends.rag : {};
+  // Contract §2: a tier ABSENT from the block is a designed degraded state —
+  // absence ≠ available. Collect degraded tiers: those explicitly marked
+  // available:false AND those missing from the block entirely.
+  const degradations = CANONICAL_TIERS.filter(
+    (tier) => tiers[tier] === undefined || tiers[tier].available === false,
+  );
   return {
     ok: Boolean(body.ok),
     nodes: Number(index.nodes ?? 0),
     edges: Number(index.edges ?? 0),
-    degradations: Object.entries(tiers)
-      .filter(([, state]) => state.available === false)
-      .map(([tier]) => tier),
+    degradations,
     tiers,
     core: { reachable: isRec(backends.core) },
     rag: { service: rag.available === true ? "running" : "stopped" },
@@ -262,8 +279,10 @@ export function deriveSearchNodeId(item: Record<string, unknown>): string | null
   const stem = typeof item.stem === "string" ? item.stem : undefined;
   // A vault document is always a `.md` path/stem; anything else (or an explicit
   // `source: "code"`) is a code hit whose id lives in the `code:` namespace.
-  const isCode = item.source === "code" || (path !== undefined && !path.endsWith(".md"));
+  const isCode =
+    item.source === "code" || (path !== undefined && !path.endsWith(".md"));
   if (isCode) return path ? `code:${path}` : null;
-  const docStem = stem ?? (path ? path.replace(/^.*\//, "").replace(/\.md$/, "") : null);
+  const docStem =
+    stem ?? (path ? path.replace(/^.*\//, "").replace(/\.md$/, "") : null);
   return docStem ? `doc:${docStem}` : null;
 }
