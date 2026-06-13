@@ -48,8 +48,12 @@ pub async fn events(
     // Event sourcing shared with the CLI verb via the query core (G7).
     let workspace = ingest_git::workspace::Workspace::discover(&state.root)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
-    let mut rows: Vec<EventRow> = engine_query::events::commit_rows(&workspace, "HEAD", 5000)
-        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e))?;
+    // Node correlation bounded to graph-known nodes + the code-id cap
+    // (addendum S05) — commit pulses address nodes the stage can light.
+    let graph = state.graph_arc();
+    let mut rows: Vec<EventRow> =
+        engine_query::events::commit_rows(&workspace, "HEAD", 5000, Some(&graph))
+            .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e))?;
     if let Some(kinds) = &params.kinds {
         let wanted: Vec<&str> = kinds.split(',').collect();
         rows.retain(|r| wanted.contains(&r.kind.as_str()));

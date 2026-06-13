@@ -133,6 +133,11 @@ pub async fn vault_tree(
                 "stem": n.key,
                 "node_id": n.id.0,
                 "feature_tags": n.feature_tags,
+                // Contract §4 list fields server-side (addendum S04) —
+                // the client never derives doc_type from stem suffixes.
+                "title": n.title,
+                "doc_type": n.doc_type,
+                "dates": n.dates,
             })
         })
         .collect();

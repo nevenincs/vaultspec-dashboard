@@ -159,6 +159,8 @@ mod tests {
             kind: NodeKind::Document,
             key: stem.to_string(),
             title: None,
+            doc_type: None,
+            dates: None,
             feature_tags: vec!["demo".into()],
             facets: vec![Facet {
                 scope: ScopeRef::Ref { name: scope.into() },

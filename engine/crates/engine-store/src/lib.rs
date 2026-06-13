@@ -64,6 +64,14 @@ pub struct EventRow {
     pub kind: String,
     pub git_ref: String,
     pub node_ids: Vec<String>,
+    /// How many correlated code-artifact ids were dropped by the wire
+    /// bound (contract §5, addendum S05). Set by the live `commit_rows`
+    /// path, which both front doors use. The persisted-event read path
+    /// (`events_in_range*`) is NOT bound-aware and is currently off-wire
+    /// (no serve/CLI caller); it reports 0. Anyone wiring the persisted log
+    /// onto a front door must apply the `commit_rows` bound at the persist
+    /// seam first, or this field will lie.
+    pub truncated_node_ids: u64,
 }
 
 /// The single writer. Open exactly one per process per database.
@@ -286,6 +294,10 @@ fn events_in_range(conn: &Connection, from_ts: i64, to_ts: i64) -> Result<Vec<Ev
             kind,
             git_ref,
             node_ids,
+            // This read path is not bound-aware (see EventRow field doc):
+            // it is off-wire today, so 0 is correct only until a caller
+            // serves it. Bound at the persist seam before that happens.
+            truncated_node_ids: 0,
         });
     }
     Ok(out)

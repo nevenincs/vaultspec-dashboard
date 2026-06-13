@@ -47,6 +47,14 @@ pub struct RawEvent {
     #[serde(rename = "ref")]
     pub git_ref: String,
     pub node_ids: Vec<String>,
+    /// Code-artifact ids dropped by the wire bound (addendum S05);
+    /// omitted when nothing was truncated.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub truncated_node_ids: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 impl From<&EventRow> for RawEvent {
@@ -57,6 +65,7 @@ impl From<&EventRow> for RawEvent {
             kind: row.kind.clone(),
             git_ref: row.git_ref.clone(),
             node_ids: row.node_ids.clone(),
+            truncated_node_ids: row.truncated_node_ids,
         }
     }
 }
@@ -125,30 +134,57 @@ pub fn parse_bucket_param(param: &str) -> Option<BucketMode> {
     }
 }
 
+/// Wire bound on code-artifact ids per commit event (contract §5,
+/// addendum S05): doc ids always survive — they are the timeline's join
+/// key — while code ids beyond the cap truncate with a count.
+pub const CODE_NODE_IDS_CAP: usize = 20;
+
 /// Source commit events from a workspace ref into contract-shaped rows
 /// (audit G7: event sourcing lives in the query core; both front doors
 /// delegate here — D6.1, no capability in only one door).
+///
+/// `known` bounds the correlation (S05): when given, code-artifact ids
+/// keep only graph-known nodes; the survivors cap at
+/// [`CODE_NODE_IDS_CAP`] with the dropped count reported on the row. Doc
+/// and commit ids are never truncated.
 pub fn commit_rows(
     workspace: &ingest_git::workspace::Workspace,
     reference: &str,
     limit: usize,
+    known: Option<&engine_graph::LinkageGraph>,
 ) -> Result<Vec<EventRow>, String> {
     let commits = ingest_git::log::walk(workspace, reference, limit).map_err(|e| e.to_string())?;
     let mut rows: Vec<EventRow> = commits
         .iter()
         .enumerate()
-        .map(|(i, c)| EventRow {
-            seq: i as i64 + 1,
-            ts: c.ts,
-            kind: c.kind.to_string(),
-            git_ref: c.git_ref.clone(),
-            node_ids: {
-                let mut ids = engine_store::events::node_ids_for_paths(
-                    c.touched_paths.iter().map(String::as_str),
-                );
-                ids.insert(0, format!("commit:{}", c.sha));
-                ids
-            },
+        .map(|(i, c)| {
+            let correlated = engine_store::events::node_ids_for_paths(
+                c.touched_paths.iter().map(String::as_str),
+            );
+            let (docs, code): (Vec<String>, Vec<String>) = correlated
+                .into_iter()
+                .partition(|id| !id.starts_with("code:"));
+            let mut code: Vec<String> = match known {
+                Some(graph) => code
+                    .into_iter()
+                    .filter(|id| graph.node(&engine_model::NodeId(id.clone())).is_some())
+                    .collect(),
+                None => code,
+            };
+            let truncated = code.len().saturating_sub(CODE_NODE_IDS_CAP) as u64;
+            code.truncate(CODE_NODE_IDS_CAP);
+            let mut node_ids = Vec::with_capacity(1 + docs.len() + code.len());
+            node_ids.push(format!("commit:{}", c.sha));
+            node_ids.extend(docs);
+            node_ids.extend(code);
+            EventRow {
+                seq: i as i64 + 1,
+                ts: c.ts,
+                kind: c.kind.to_string(),
+                git_ref: c.git_ref.clone(),
+                node_ids,
+                truncated_node_ids: truncated,
+            }
         })
         .collect();
     rows.sort_by_key(|r| r.ts);
@@ -166,6 +202,7 @@ mod tests {
             kind: kind.into(),
             git_ref: "main".into(),
             node_ids: vec![format!("doc:{seq}")],
+            truncated_node_ids: 0,
         }
     }
 

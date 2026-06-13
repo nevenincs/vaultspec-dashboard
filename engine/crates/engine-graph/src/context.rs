@@ -70,6 +70,8 @@ mod tests {
             kind: NodeKind::Document,
             key: stem.into(),
             title: Some(stem.into()),
+            doc_type: None,
+            dates: None,
             feature_tags: vec!["demo".into()],
             facets: vec![Facet {
                 scope: ScopeRef::Ref {

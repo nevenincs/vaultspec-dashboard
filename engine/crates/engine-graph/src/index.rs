@@ -121,17 +121,31 @@ fn index_documents(
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
         let feature_tags = frontmatter_feature_tags(&text);
+        // Contract §4 node fields on the LIST shape (addendum S03):
+        // title from the body H1, created from the frontmatter date,
+        // modified from the worktree mtime (ms), doc_type from the vault
+        // subdirectory, lifecycle from checkbox progress.
+        let modified = std::fs::metadata(root.join(&rel_path))
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as Timestamp);
         graph.upsert_node(Node {
             id: node_id(&CanonicalKey::Document { stem: &stem }),
             kind: NodeKind::Document,
             key: stem.clone(),
-            title: None,
+            title: doc_title(&text),
+            doc_type: doc_type_of(&rel_path),
+            dates: Some(engine_model::Dates {
+                created: frontmatter_date(&text),
+                modified,
+            }),
             feature_tags,
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: Some(blob_hash.clone()),
-                lifecycle: None,
+                lifecycle: doc_lifecycle(&text),
             }],
         });
 
@@ -293,6 +307,57 @@ fn doc_stem(rel_path: &str) -> String {
         .unwrap_or(rel_path)
         .trim_end_matches(".md")
         .to_string()
+}
+
+/// Document title: the first level-one heading in the body (contract §4
+/// `title`).
+pub(crate) fn doc_title(text: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        line.strip_prefix("# ")
+            .map(|t| t.trim().trim_matches('`').to_string())
+            .filter(|t| !t.is_empty())
+    })
+}
+
+/// The frontmatter `date:` value (contract §4 `dates.created`).
+pub(crate) fn frontmatter_date(text: &str) -> Option<String> {
+    let rest = text.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    rest[..end].lines().find_map(|line| {
+        let value = line.trim().strip_prefix("date:")?.trim();
+        let value = value.trim_matches('\'').trim_matches('"');
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+/// Vault document type from the repo-relative path: the `.vault/<type>/…`
+/// subdirectory (contract §4 `doc_type?`).
+pub(crate) fn doc_type_of(rel_path: &str) -> Option<String> {
+    let rest = rel_path.strip_prefix(".vault/")?;
+    let (first, remainder) = rest.split_once('/')?;
+    let _ = remainder; // a bare `.vault/file.md` has no type directory
+    Some(first.to_string())
+}
+
+/// Lifecycle from checkbox progress (contract §4 `lifecycle {state,
+/// progress?}`): documents carrying task lists report done/total; complete
+/// when every box is checked.
+pub(crate) fn doc_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
+    let mut done: u32 = 0;
+    let mut total: u32 = 0;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ") {
+            done += 1;
+            total += 1;
+        } else if trimmed.starts_with("- [ ] ") {
+            total += 1;
+        }
+    }
+    (total > 0).then(|| engine_model::Lifecycle {
+        state: if done == total { "complete" } else { "active" }.to_string(),
+        progress: Some(engine_model::Progress { done, total }),
+    })
 }
 
 /// Feature tags from vault frontmatter: `- '#tag'` entries that are not

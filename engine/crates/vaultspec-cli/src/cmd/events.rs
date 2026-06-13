@@ -30,8 +30,17 @@ pub fn run(
     // persisted event log is its resident accumulator — that parity
     // rationale is recorded in the S45 record (G6).
     let workspace = Workspace::discover(&ctx.root)?;
-    let mut rows: Vec<EventRow> = engine_query::events::commit_rows(&workspace, "HEAD", WALK_LIMIT)
-        .map_err(CliError::Other)?;
+    // Bound node correlation to graph-known nodes (addendum S05); without
+    // a vault the bound is inapplicable and the cap alone applies.
+    let graph = ctx
+        .vault_root()
+        .is_dir()
+        .then(|| ctx.indexed_graph())
+        .transpose()?
+        .map(|(g, _)| g);
+    let mut rows: Vec<EventRow> =
+        engine_query::events::commit_rows(&workspace, "HEAD", WALK_LIMIT, graph.as_ref())
+            .map_err(CliError::Other)?;
 
     if !kinds.is_empty() {
         rows.retain(|r| kinds.contains(&r.kind));

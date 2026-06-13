@@ -3,6 +3,7 @@ tags:
   - '#audit'
   - '#vaultspec-engine'
 date: '2026-06-12'
+modified: '2026-06-12'
 related:
   - "[[2026-06-12-vaultspec-engine-plan]]"
   - "[[2026-06-12-vaultspec-engine-adr]]"
@@ -172,6 +173,14 @@ Cycle mechanics: the completed 2026-06-12 plan stays closed; the work rides a fr
 Proposal-delta rulings (the executor's technical proposals crossed the dispatched rulings; four deltas ruled): (1) revision-FIRST resolution, ms-magnitude fallback, the chosen interpretation echoed in the response - precise spellings win, applies to both serve params and the CLI as-of for parity; (2) noted fact: meta-edges already serve at feature granularity (the GUI likely probed document granularity - relayed for re-probe); the feature-node synthesis proposal (pure query-time projection: presence-union facets, meta-edge-aggregated degrees, member_count) approved as exactly the 4.3 posture; (3) dates semantics RULED: created = frontmatter date (authored truth), modified = the last-touching-commit timestamp derived from the EXISTING commit walk's touched-paths map (single pass, no per-doc log cost), mtime only as the truthful fallback for dirty/uncommitted documents; (4) doc_type stored additively at index time from the vault subdirectory; (5) the cap shape approved as proposed - commit node + ALL doc ids + code ids capped at 20 with a truncated count - and the bound is recorded in contract section 5 now that the cap is chosen.
 
 Process lesson institutionalized as S06: the feature e2e verified contract capability against the engine's own reading of the contract - a consumer-shaped conformance leg (typed-client expectations asserted over live responses) catches the next drift engine-side before any client does. Future contract-surface features should carry that leg from the start.
+
+## ADD-902 | none | addendum CLOSED - all 7 steps, review PASS after one revision cycle
+
+Fourteenth entry (2026-06-13): the addendum executed to completion. The plan grew from the ADD-901 six to **seven steps** - S07 added the `/search` pass-through hardening (flatten to the section 2 envelope with a flat annotated results list; map annotation fields against rag's recorded real `search --json` shape with a typed miss condition; fake-rag fixture asserting nonempty results). A build-unblock prefix landed first: S03's two new `Node` fields (`dates`, `doc_type`) had broken seven test-fixture initializers across engine-graph/engine-query; adding the fields to each restored `cargo test --no-run`, exposing the true red/green (S01-S06 already green via the S06 conformance leg).
+
+Review (single L1 boundary) returned **REVISE** then **PASS** on re-check. One HIGH blocker: H1 - `asof.rs resolve_commit` walked default breadth-first (topological) order and returned the FIRST commit at-or-before T, not the LATEST, wrong on non-linear history (merges, clock skew); fixed with a commit-time-ordered (`ByCommitTime(NewestFirst)`) walk and a merge-fixture regression test proven to bite (returns B@200 without the sort, C@400 with it). One MEDIUM (M1): a false-invariant comment claiming persisted event rows are written already-bounded - corrected to state the persisted read path is not bound-aware and is off-wire. Three LOWs (plan/exec scope accuracy, feature-node degree doc) resolved. Reviewer independently re-ran clippy `-D warnings`, fmt, and the full suite green.
+
+Tracked follow-ups (accepted, non-blocking): (M2) `rag-client/discover.rs` `target_node_id` still reads rag's `source` as a path, the latent bug S07 fixed for `/search`; left untouched because it is identity-bearing and the discover surface's real shape was not sampled (D5.3 file-the-gap, never guess) - `/search` and `/nodes/{id}/discover` now interpret `source` differently and must NOT be naively reconciled. (L4) `/events` known-filter uses the launch-default-scope graph regardless of the requested scope param (pre-existing; consistent with the HEAD walk it bounds). (M3) the frontend `truncated_node_ids` consumer changes are committed separately so the engine addendum's provenance stays engine-only.
 
 ## Recommendations
 

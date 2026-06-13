@@ -41,6 +41,11 @@ pub fn lifecycle_in_scope<'a>(node: &'a Node, scope: &ScopeRef) -> Option<&'a Li
 /// flattens doc-level edges client-side.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MetaEdge {
+    /// Feature NODE id (`feature:{tag}`) — meta-edges address the
+    /// synthesized constellation nodes, not bare tags (addendum S02).
+    pub src: String,
+    /// Feature NODE id (`feature:{tag}`).
+    pub dst: String,
     pub src_feature: String,
     pub dst_feature: String,
     pub count: usize,
@@ -78,6 +83,8 @@ pub fn meta_edges(graph: &LinkageGraph) -> Vec<MetaEdge> {
     agg.into_iter()
         .map(
             |((src_feature, dst_feature), (count, breakdown_by_tier))| MetaEdge {
+                src: NodeId::derive(&engine_model::NodeKind::Feature, &src_feature).0,
+                dst: NodeId::derive(&engine_model::NodeKind::Feature, &dst_feature).0,
                 src_feature,
                 dst_feature,
                 count,
@@ -100,6 +107,8 @@ mod tests {
             kind: NodeKind::Document,
             key: stem.into(),
             title: None,
+            doc_type: None,
+            dates: None,
             feature_tags: vec![feature.into()],
             facets: vec![Facet {
                 scope: ScopeRef::Ref {

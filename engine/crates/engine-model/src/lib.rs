@@ -185,11 +185,26 @@ pub struct Node {
     /// canonical id, commit SHA, repo-relative path).
     pub key: String,
     pub title: Option<String>,
+    /// Vault document type (the `.vault/` subdirectory), contract §4
+    /// `doc_type?`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc_type: Option<String>,
+    /// Contract §4 `dates {created, modified}`: created from the document
+    /// frontmatter date; modified in ms since epoch (worktree mtime on
+    /// present views; absent on blob-true historical views).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dates: Option<Dates>,
     /// Feature tags this node belongs to (contract §4 `feature_tags[]`);
     /// the join key for feature-convergence synthesis and meta-edge
     /// aggregation.
     pub feature_tags: Vec<String>,
     pub facets: Vec<Facet>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dates {
+    pub created: Option<String>,
+    pub modified: Option<Timestamp>,
 }
 
 #[cfg(test)]

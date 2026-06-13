@@ -3,7 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#vaultspec-engine'
-date: '2026-06-12'
+date: '2026-06-13'
+modified: '2026-06-13'
 related:
   - '[[2026-06-12-vaultspec-engine-W01-P01-S01]]'
   - '[[2026-06-12-vaultspec-engine-W01-P01-S02]]'
@@ -76,6 +77,13 @@ related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-vaultspec-engine-audit]]'
   - '[[2026-06-12-vaultspec-engine-plan]]'
+  - '[[2026-06-13-vaultspec-engine-S01]]'
+  - '[[2026-06-13-vaultspec-engine-S02]]'
+  - '[[2026-06-13-vaultspec-engine-S03]]'
+  - '[[2026-06-13-vaultspec-engine-S04]]'
+  - '[[2026-06-13-vaultspec-engine-S05]]'
+  - '[[2026-06-13-vaultspec-engine-S06]]'
+  - '[[2026-06-13-vaultspec-engine-S07]]'
   - '[[2026-06-13-vaultspec-engine-plan]]'
 ---
 
@@ -163,6 +171,13 @@ Auto-generated index of all documents tagged with `#vaultspec-engine`.
 - `2026-06-12-vaultspec-engine-W03-P12-S55` - Add a cold-index performance smoke benchmark and record the baseline
 - `2026-06-12-vaultspec-engine-W03-P12-S56` - Wire engine build, test and lint into the just pipeline and CI
 - `2026-06-12-vaultspec-engine-W03-P12-summary` - `vaultspec-engine` `W03.P12` summary
+- `2026-06-13-vaultspec-engine-S01` - Accept millisecond timestamps on as-of and diff inputs by resolving the latest commit at or before T on the scope ref, alongside the existing revision form
+- `2026-06-13-vaultspec-engine-S02` - Synthesize feature nodes (kind feature, id from feature tag, lifecycle and facet projections) at feature granularity and address meta-edges between their node ids
+- `2026-06-13-vaultspec-engine-S03` - Carry the contract section 4 node fields (title, dates, lifecycle, degree-by-tier) on list-shape graph nodes, not only the detail bundle
+- `2026-06-13-vaultspec-engine-S04` - Add the git block to serve status and dates plus doc-type to vault-tree entries, matching the CLI front door
+- `2026-06-13-vaultspec-engine-S05` - Bound commit-event node-ids: filter to graph-known nodes and cap with a truncation count, and record the bound in the contract reference
+- `2026-06-13-vaultspec-engine-S06` - Add a consumer-shaped conformance test asserting the typed-client expectations for every contract capability over live serve responses
+- `2026-06-13-vaultspec-engine-S07` - Flatten the search response to the section 2 envelope with a flat annotated results list, map annotation fields against rag's recorded real JSON shape with a typed miss condition, and assert annotation through a fake-rag fixture returning nonempty results
 
 ### plan
 

@@ -84,6 +84,8 @@ mod tests {
             kind: NodeKind::Feature,
             key: "editor-demo".into(),
             title: None,
+            doc_type: None,
+            dates: None,
             feature_tags: vec!["editor-demo".into()],
             facets: vec![
                 facet("main", Presence::Exists, "h1", 3),
@@ -108,6 +110,8 @@ mod tests {
             kind: NodeKind::Document,
             key: "2026-06-12-x-adr".into(),
             title: None,
+            doc_type: None,
+            dates: None,
             feature_tags: vec![],
             facets: vec![
                 facet("main", Presence::Exists, "h1", 1),

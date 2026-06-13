@@ -13,6 +13,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use engine_model::{CanonicalKey, node_id};
 use serde_json::{Value, json};
 
 use crate::app::AppState;
@@ -150,29 +151,208 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
         args.push(n.to_string());
     }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut envelope = run_sibling(&state, &rag_invocation(), &arg_refs)?;
+    let rag_envelope = run_sibling(&state, &rag_invocation(), &arg_refs)?;
 
-    // The engine's ONLY addition (contract §8): per-result node ids.
-    if let Some(results) = envelope
-        .pointer_mut("/data/results")
-        .and_then(Value::as_array_mut)
-    {
-        for result in results {
-            let node_id = result
-                .get("source")
-                .and_then(Value::as_str)
-                .map(|s| rag_client::discover::target_node_id(s).0);
-            if let Some(obj) = result.as_object_mut() {
-                obj.insert(
-                    "node_id".to_string(),
-                    node_id.map(Value::String).unwrap_or(Value::Null),
-                );
+    // Flatten rag's envelope to the contract §2 shape and annotate each hit
+    // with its engine node id (§8 value-add). A shape miss degrades the
+    // `semantic` tier truthfully — never a healthy-looking empty result and
+    // never a foreign envelope passed through unflattened.
+    match flatten_and_annotate(&rag_envelope) {
+        Ok(data) => Ok(super::envelope(data, super::query_tiers(&state), None)),
+        Err(miss) => {
+            let reason = miss.reason();
+            Ok(super::envelope(
+                json!({"results": []}),
+                serde_json::to_value(engine_query::envelope::tiers_block(&[(
+                    "semantic",
+                    reason.as_str(),
+                )]))
+                .expect("tiers serialize"),
+                None,
+            ))
+        }
+    }
+}
+
+/// A rag search hit in rag's real `search --json` shape (recorded 2026-06-13
+/// against a live rag service). The engine reads only the fields it needs to
+/// derive the click-through node id; every field of the original hit passes
+/// through to the client verbatim (the hit travels as its JSON `Value`).
+///
+/// The trap this shape documents: `source` is the search-type DISCRIMINATOR
+/// (`vault` | `code`), NOT a path. The path lives in `path` (with code
+/// symbols in `function_name` / `class_name`). An earlier annotation read
+/// `source` as a path and mis-derived every id.
+#[derive(Debug, Default, serde::Deserialize)]
+struct RagHitShape {
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    source_path: Option<String>,
+    #[serde(default)]
+    function_name: Option<String>,
+    #[serde(default)]
+    class_name: Option<String>,
+}
+
+/// Derive the engine node id a rag hit clicks through to, or `None` on a
+/// typed miss — shape drift where the discriminator is unknown/absent, or the
+/// path the discriminator requires is missing. A miss is annotated as an
+/// explicit `null`, never a dropped or guessed id.
+fn hit_node_id(hit: &RagHitShape) -> Option<String> {
+    match hit.source.as_deref() {
+        Some("vault") => {
+            let path = hit.path.as_deref()?;
+            let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
+            let stem = file.strip_suffix(".md").unwrap_or(file);
+            Some(node_id(&CanonicalKey::Document { stem }).0)
+        }
+        Some("code") => {
+            let path = hit.path.as_deref().or(hit.source_path.as_deref())?;
+            let symbol = hit.function_name.as_deref().or(hit.class_name.as_deref());
+            Some(node_id(&CanonicalKey::CodeArtifact { path, symbol }).0)
+        }
+        _ => None,
+    }
+}
+
+/// A typed miss reading rag's search envelope: rag reported its own failure,
+/// or the response did not carry the `data.results` list the contract §8
+/// pass-through requires. Surfaced as a `semantic`-tier degradation so the
+/// client never reads a shape drift as a healthy empty result.
+#[derive(Debug)]
+enum SearchShapeMiss {
+    RagError(String),
+    NoResults,
+}
+
+impl SearchShapeMiss {
+    fn reason(&self) -> String {
+        match self {
+            SearchShapeMiss::RagError(m) => format!("rag search failed: {m}"),
+            SearchShapeMiss::NoResults => {
+                "rag search response missing results list (shape drift)".to_string()
             }
         }
     }
-    Ok(super::envelope(
-        json!({"envelope": envelope}),
-        super::query_tiers(&state),
-        None,
-    ))
+}
+
+/// Flatten rag's search envelope to the contract §2 `data` payload: a flat
+/// `results` list where each hit keeps its original rag fields and gains the
+/// engine's one value-add (`node_id`). rag's own `query`/`search_type`/`via`
+/// context fields pass through. The nested foreign envelope is dropped.
+fn flatten_and_annotate(rag: &Value) -> Result<Value, SearchShapeMiss> {
+    // `ok: false` is rag reporting its own failure — surface it, never
+    // present it as a healthy empty result.
+    if rag.get("ok") == Some(&Value::Bool(false)) {
+        let msg = rag
+            .get("error")
+            .or_else(|| rag.get("message"))
+            .and_then(Value::as_str)
+            .unwrap_or("rag reported failure")
+            .to_string();
+        return Err(SearchShapeMiss::RagError(msg));
+    }
+    let data = rag.get("data").ok_or(SearchShapeMiss::NoResults)?;
+    let results = data
+        .get("results")
+        .and_then(Value::as_array)
+        .ok_or(SearchShapeMiss::NoResults)?;
+
+    let annotated: Vec<Value> = results
+        .iter()
+        .map(|hit| {
+            let nid = serde_json::from_value::<RagHitShape>(hit.clone())
+                .ok()
+                .and_then(|shape| hit_node_id(&shape));
+            let mut hit = hit.clone();
+            if let Some(obj) = hit.as_object_mut() {
+                obj.insert(
+                    "node_id".to_string(),
+                    nid.map(Value::String).unwrap_or(Value::Null),
+                );
+            }
+            hit
+        })
+        .collect();
+
+    let mut out = data.clone();
+    out["results"] = Value::Array(annotated);
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Recorded 2026-06-13 against a live rag service
+    // (`vaultspec-rag search --type vault --json`), trimmed to the
+    // annotation-relevant fields plus a synthetic code hit. `source` is the
+    // vault|code DISCRIMINATOR, never a path — the fixture exists to pin that.
+    const RAG_REAL: &str = r#"{
+        "ok": true, "command": "search",
+        "data": {
+            "query": "test", "search_type": "vault", "via": "service",
+            "results": [
+                {"id": "adr/2026-06-05-x-adr",
+                 "path": "adr/2026-06-05-x-adr.md",
+                 "score": 0.548, "source": "vault",
+                 "doc_type": "adr", "feature": "f", "date": "2026-06-05"},
+                {"path": "src/lib.rs", "score": 0.40, "source": "code",
+                 "function_name": "alpha", "language": "rust"},
+                {"path": "src/lib.rs", "score": 0.30, "source": "code"},
+                {"score": 0.10, "source": "unknown-future-kind"}
+            ]
+        }
+    }"#;
+
+    #[test]
+    fn flattens_and_annotates_rags_real_shape() {
+        let rag: Value = serde_json::from_str(RAG_REAL).unwrap();
+        let out = flatten_and_annotate(&rag).expect("real shape flattens");
+
+        // §2 flat shape: results sit directly under data; rag's context
+        // fields pass through; no nested foreign `envelope`.
+        assert_eq!(out["query"], "test");
+        assert_eq!(out["search_type"], "vault");
+        let results = out["results"].as_array().unwrap();
+        assert_eq!(results.len(), 4, "every hit survives; none dropped");
+
+        // Vault hit → doc node from the PATH STEM, not the "vault"
+        // discriminator. rag fields pass through verbatim alongside node_id.
+        assert_eq!(results[0]["node_id"], "doc:2026-06-05-x-adr");
+        assert_eq!(results[0]["doc_type"], "adr");
+        assert_eq!(results[0]["score"], 0.548);
+
+        // Code hit with a symbol → code-artifact id qualified by `#symbol`.
+        assert_eq!(results[1]["node_id"], "code:src/lib.rs#alpha");
+        // Code hit without a symbol → bare path.
+        assert_eq!(results[2]["node_id"], "code:src/lib.rs");
+        // Unknown discriminator → explicit null (typed miss), never guessed.
+        assert_eq!(results[3]["node_id"], Value::Null);
+    }
+
+    #[test]
+    fn rag_reported_failure_is_a_typed_miss() {
+        let rag = json!({"ok": false, "error": "index cold"});
+        let miss = flatten_and_annotate(&rag).unwrap_err();
+        assert!(miss.reason().contains("index cold"));
+        assert!(matches!(miss, SearchShapeMiss::RagError(_)));
+    }
+
+    #[test]
+    fn missing_results_list_is_a_typed_miss_not_an_empty_success() {
+        let rag = json!({"ok": true, "data": {"query": "x"}});
+        assert!(matches!(
+            flatten_and_annotate(&rag).unwrap_err(),
+            SearchShapeMiss::NoResults
+        ));
+        // A response with no `data` at all is the same shape drift.
+        assert!(matches!(
+            flatten_and_annotate(&json!({"raw": "not json", "exit": 1})).unwrap_err(),
+            SearchShapeMiss::NoResults
+        ));
+    }
 }

@@ -27,9 +27,22 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         }
     };
     let core = ingest_core::runner::CoreRunner::detect();
+    // Git status of the served worktree (contract §6) — front-door parity
+    // with the CLI status verb (D6.1, addendum S04).
+    let served = super::scope_token(&state.root);
+    let git = ingest_git::workspace::Workspace::discover(&state.root)
+        .ok()
+        .and_then(|ws| ingest_git::worktrees::enumerate(&ws).ok())
+        .and_then(|wts| {
+            wts.into_iter()
+                .find(|wt| super::scope_token(&wt.path) == served)
+        })
+        .map(|wt| json!({"head_ref": wt.head_ref, "dirty": wt.dirty}))
+        .unwrap_or(json!(null));
     let data = json!({
         "ok": true,
         "scope": super::scope_token(&state.root),
+        "git": git,
         "index": {
             "nodes": graph.node_count(),
             "edges": graph.edge_count(),

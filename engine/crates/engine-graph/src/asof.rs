@@ -17,8 +17,56 @@ use ingest_struct::extract::MentionKind;
 use crate::graph::{EdgeAttrs, LinkageGraph};
 use crate::index::{IndexError, Result, structural_edge_for};
 
+/// Resolve a time-travel token (contract §5 `t=<ts|sha>`): revision-first,
+/// then — when the token is all digits — a millisecond timestamp resolved
+/// to the latest commit at-or-before T on the scope ref (addendum S01).
+fn resolve_commit(repo: &gix::Repository, reference: &str) -> Result<gix::ObjectId> {
+    match repo.rev_parse_single(reference) {
+        Ok(id) => Ok(id.detach()),
+        Err(rev_err) => {
+            // Millisecond-timestamp fallback: only for all-digit tokens —
+            // anything else propagates the revision error untouched.
+            let Ok(t) = reference.parse::<i64>() else {
+                return Err(IndexError::Git(format!("rev-parse {reference}: {rev_err}")));
+            };
+            let tip = repo
+                .rev_parse_single("HEAD")
+                .map_err(|e| IndexError::Git(format!("rev-parse HEAD: {e}")))?;
+            // Commit-time order (NEWEST first), not the default topological
+            // (breadth-first) order: only a commit-time-sorted walk makes the
+            // first commit at-or-before T provably the LATEST such commit when
+            // history is non-linear (merges, committer-clock skew). The
+            // first `ts_ms <= t` in this order is the answer (addendum S01,
+            // review H1).
+            use gix::revision::walk::Sorting;
+            use gix::traverse::commit::simple::CommitTimeOrder;
+            let walk = repo
+                .rev_walk([tip.detach()])
+                .sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst))
+                .all()
+                .map_err(|e| IndexError::Git(e.to_string()))?;
+            for info in walk {
+                let info = info.map_err(|e| IndexError::Git(e.to_string()))?;
+                let commit = info.object().map_err(|e| IndexError::Git(e.to_string()))?;
+                let ts_ms = commit
+                    .time()
+                    .map_err(|e| IndexError::Git(e.to_string()))?
+                    .seconds
+                    * 1000;
+                if ts_ms <= t {
+                    return Ok(commit.id);
+                }
+            }
+            Err(IndexError::Git(format!(
+                "timestamp {t} predates the root commit on the scope ref"
+            )))
+        }
+    }
+}
+
 /// Rebuild the structural slice of the graph as committed at `reference`
-/// (a ref name or commit sha).
+/// (a ref name, commit sha, or millisecond timestamp — contract §5
+/// `t=<ts|sha>`).
 pub fn asof_graph(
     repo_dir: &Path,
     reference: &str,
@@ -26,11 +74,9 @@ pub fn asof_graph(
     observed_at: Timestamp,
 ) -> Result<LinkageGraph> {
     let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
-    let commit_id = repo
-        .rev_parse_single(reference)
-        .map_err(|e| IndexError::Git(format!("rev-parse {reference}: {e}")))?;
+    let commit_id = resolve_commit(&repo, reference)?;
     let commit = repo
-        .find_commit(commit_id.detach())
+        .find_commit(commit_id)
         .map_err(|e| IndexError::Git(e.to_string()))?;
     let tree = commit.tree().map_err(|e| IndexError::Git(e.to_string()))?;
 
@@ -54,8 +100,11 @@ pub fn asof_graph(
     vault_docs.sort();
 
     let mut graph = LinkageGraph::new();
+    // Blob reads address the RESOLVED commit (a ms-timestamp token is not
+    // a revision the reader could parse).
+    let resolved_sha = commit_id.to_string();
     for doc_path in &vault_docs {
-        let body = ingest_struct::reader::read_from_ref(repo_dir, reference, doc_path)?;
+        let body = ingest_struct::reader::read_from_ref(repo_dir, &resolved_sha, doc_path)?;
         let stem = doc_path
             .rsplit('/')
             .next()
@@ -66,13 +115,19 @@ pub fn asof_graph(
             id: node_id(&CanonicalKey::Document { stem: &stem }),
             kind: NodeKind::Document,
             key: stem.clone(),
-            title: None,
+            title: crate::index::doc_title(&body.text),
+            doc_type: crate::index::doc_type_of(doc_path),
+            dates: Some(engine_model::Dates {
+                created: crate::index::frontmatter_date(&body.text),
+                // Blob-true historical views carry no worktree mtime.
+                modified: None,
+            }),
             feature_tags: crate::index::frontmatter_feature_tags(&body.text),
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: Some(body.blob_hash.clone()),
-                lifecycle: None,
+                lifecycle: crate::index::doc_lifecycle(&body.text),
             }],
         });
 
@@ -210,5 +265,90 @@ mod tests {
                 .edges()
                 .all(|s| s.edge.tier != engine_model::Tier::Semantic)
         );
+    }
+
+    fn git_at(dir: &Path, epoch_secs: i64, args: &[&str]) {
+        let date = format!("@{epoch_secs} +0000");
+        let output = Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "f")
+            .env("GIT_AUTHOR_EMAIL", "f@t")
+            .env("GIT_COMMITTER_NAME", "f")
+            .env("GIT_COMMITTER_EMAIL", "f@t")
+            .env("GIT_AUTHOR_DATE", &date)
+            .env("GIT_COMMITTER_DATE", &date)
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn rev_parse(dir: &Path, rev: &str) -> String {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .args(["rev-parse", rev])
+            .output()
+            .expect("git runs");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn ms_timestamp_resolves_the_latest_commit_not_the_first_in_topology() {
+        // Regression for review H1: on non-linear history, breadth-first
+        // (topological) order can surface an OLDER commit before a NEWER one
+        // that is also <= T. The resolver must return the LATEST commit at or
+        // before T, which only a commit-time-ordered walk guarantees.
+        //
+        // History (committer times in seconds; M's FIRST parent is B):
+        //     A(100) ── B(200) ───────── M(500)   [main]
+        //        \                       /
+        //         ────────── C(400) ────         [feature, off A]
+        //
+        // Breadth-first from M visits B(200) before C(400) (first-parent
+        // first), so the old code returned B for any T in [200,400). The
+        // correct answer for T=450 is C(400).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        git_at(root, 1_000_000_100, &["commit", "--allow-empty", "-m", "A"]);
+        let a = rev_parse(root, "HEAD");
+        git_at(root, 1_000_000_200, &["commit", "--allow-empty", "-m", "B"]);
+        let b = rev_parse(root, "HEAD");
+        git(root, &["checkout", "-b", "feature", &a]);
+        git_at(root, 1_000_000_400, &["commit", "--allow-empty", "-m", "C"]);
+        let c = rev_parse(root, "HEAD");
+        git(root, &["checkout", "main"]);
+        git_at(
+            root,
+            1_000_000_500,
+            &["merge", "--no-ff", "feature", "-m", "M"],
+        );
+        let m = rev_parse(root, "HEAD");
+
+        let repo = gix::open(root).unwrap();
+
+        // T = 450s (ms): latest commit at-or-before is C(400), NOT B(200).
+        let resolved = resolve_commit(&repo, "1000000450000").unwrap();
+        assert_eq!(resolved.to_string(), c, "must pick C(400), not B(200)");
+
+        // T between B and C resolves B; T at/after M resolves M (sanity).
+        assert_eq!(
+            resolve_commit(&repo, "1000000300000").unwrap().to_string(),
+            b
+        );
+        assert_eq!(
+            resolve_commit(&repo, "1000000500000").unwrap().to_string(),
+            m
+        );
+
+        // A timestamp before the root commit errors, never an empty graph.
+        assert!(resolve_commit(&repo, "1000000099000").is_err());
+
+        // A non-numeric unknown revision still surfaces the rev-parse error.
+        assert!(resolve_commit(&repo, "no-such-ref").is_err());
     }
 }

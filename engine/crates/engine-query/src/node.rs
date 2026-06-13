@@ -202,6 +202,8 @@ mod tests {
             kind: NodeKind::Document,
             key: stem.into(),
             title: None,
+            doc_type: None,
+            dates: None,
             feature_tags: vec![],
             facets: vec![Facet {
                 scope: scope(),
