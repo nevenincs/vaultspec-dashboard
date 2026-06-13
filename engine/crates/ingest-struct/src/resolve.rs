@@ -334,4 +334,36 @@ mod tests {
         // Broken mentions are retained, not dropped (D3.3).
         assert_eq!(resolved.len(), 9);
     }
+
+    #[test]
+    fn resolver_reused_across_documents_resolves_consistently() {
+        // The index pass builds ONE Resolver and reuses it across every document
+        // (perf ADR D1); the symbol/step memo must return the SAME result for a
+        // repeated mention as the first encounter — a memo bug would silently
+        // diverge the second document's resolution from the first.
+        let dir = fixture();
+        let resolver = Resolver::new(dir.path());
+        let state_of = |rs: &[ResolvedMention], needle: &str| -> ResolutionState {
+            rs.iter()
+                .find(|r| format!("{:?}", r.mention.kind).contains(needle))
+                .unwrap_or_else(|| panic!("mention {needle} extracted"))
+                .state
+        };
+        // Two documents, each citing the same resolvable and the same broken
+        // symbol — the memo is exercised on the second.
+        let doc_a = resolver.resolve(extract("Calls `insert()` and `vanished_function()`."));
+        let doc_b = resolver.resolve(extract("Also `insert()`, also `vanished_function()`."));
+        assert_eq!(state_of(&doc_a, "insert"), ResolutionState::Resolved);
+        assert_eq!(
+            state_of(&doc_b, "insert"),
+            ResolutionState::Resolved,
+            "a memoized resolvable symbol stays resolved across documents"
+        );
+        assert_eq!(state_of(&doc_a, "vanished_function"), ResolutionState::Broken);
+        assert_eq!(
+            state_of(&doc_b, "vanished_function"),
+            ResolutionState::Broken,
+            "a memoized broken symbol stays broken across documents"
+        );
+    }
 }
