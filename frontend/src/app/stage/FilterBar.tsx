@@ -57,7 +57,16 @@ function FacetChips({ label, values, selected, onToggle }: FacetChipsProps) {
   );
 }
 
-export function FilterBar({ hidden }: { hidden: { nodes: number; edges: number } }) {
+export function FilterBar({
+  hidden,
+  sidebarOpen,
+  onSidebarToggle,
+}: {
+  hidden: { nodes: number; edges: number };
+  /** Pass to render a sidebar expand/collapse button at the leading edge. */
+  sidebarOpen?: boolean;
+  onSidebarToggle?: () => void;
+}) {
   const scope = useActiveScope();
   const vocabulary = useFiltersVocabulary(scope);
   const docTypes = useFilterStore((s) => s.docTypes);
@@ -96,6 +105,22 @@ export function FilterBar({ hidden }: { hidden: { nodes: number; edges: number }
       className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-3 border-b border-stone-200 bg-white/90 px-2 py-1 text-[11px] backdrop-blur-sm"
       data-filter-bar
     >
+      {onSidebarToggle !== undefined && (
+        <button
+          type="button"
+          aria-pressed={sidebarOpen}
+          aria-label={sidebarOpen ? "close filter panel" : "open filter panel"}
+          onClick={onSidebarToggle}
+          title="toggle filter sidebar"
+          className={`rounded border px-1.5 py-0.5 ${
+            sidebarOpen
+              ? "border-stone-500 bg-stone-100 text-stone-900"
+              : "border-stone-200 text-stone-500 hover:border-stone-400"
+          }`}
+        >
+          ⊞
+        </button>
+      )}
       <TierDial />
       <FacetChips
         label="type"
