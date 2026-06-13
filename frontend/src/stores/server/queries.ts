@@ -73,6 +73,10 @@ export function useWorkspaceMap() {
   return useQuery({
     queryKey: engineKeys.map(),
     queryFn: () => engineClient.map(),
+    // Poll every 8 s while in error state (engine not yet running / token
+    // not yet on disk) so the WorktreePicker self-heals after startup without
+    // requiring a page reload (task-7 live-engine resilience).
+    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
   });
 }
 

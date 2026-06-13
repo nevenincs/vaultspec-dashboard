@@ -7,6 +7,7 @@ import { VaultBrowser } from "./left/VaultBrowser";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { CommandPalette } from "./palette/CommandPalette";
+import { ChangesOverview } from "./right/ChangesOverview";
 import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
 import { OpsPanel } from "./right/OpsPanel";
@@ -123,11 +124,11 @@ function ThemeToggle() {
 }
 
 function ActivityRail() {
-  const [tab, setTab] = useState<"activity" | "search">("activity");
+  const [tab, setTab] = useState<"activity" | "changes" | "search">("activity");
   return (
     <div className="mt-2 space-y-3 overflow-y-auto">
       <div className="flex gap-1 text-xs" role="tablist" aria-label="rail tabs">
-        {(["activity", "search"] as const).map((t) => (
+        {(["activity", "changes", "search"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -142,15 +143,15 @@ function ActivityRail() {
           </button>
         ))}
       </div>
-      {tab === "activity" ? (
+      {tab === "activity" && (
         <>
           <NowStrip />
           <OpsPanel />
           <Inspector />
         </>
-      ) : (
-        <SearchTab />
       )}
+      {tab === "changes" && <ChangesOverview />}
+      {tab === "search" && <SearchTab />}
     </div>
   );
 }

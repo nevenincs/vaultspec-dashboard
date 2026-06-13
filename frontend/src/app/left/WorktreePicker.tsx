@@ -33,7 +33,18 @@ export function WorktreePicker() {
     return <p className="text-xs text-stone-400">mapping worktrees…</p>;
   }
   if (map.isError) {
-    return <p className="text-xs text-amber-700">workspace map unavailable</p>;
+    return (
+      <div className="space-y-1">
+        <p className="text-xs text-amber-700">workspace map unavailable</p>
+        <button
+          type="button"
+          onClick={() => void map.refetch()}
+          className="text-xs text-stone-400 underline"
+        >
+          retry
+        </button>
+      </div>
+    );
   }
 
   const worktrees = orderWorktrees(
