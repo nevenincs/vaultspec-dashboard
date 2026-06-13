@@ -193,6 +193,34 @@ pub(crate) fn parse_granularity(
     }
 }
 
+/// Hard ceiling on the number of document-granularity nodes serialized onto the
+/// wire (perf ADR D2 / research F2): an unbounded document slice is linear but
+/// can reach a multi-gigabyte body at corpus scale, so the engine never serves
+/// more than this. Beyond it, the client narrows with a filter or reads the
+/// feature (constellation) granularity, which is bounded by feature count.
+const MAX_DOCUMENT_NODES: usize = 5000;
+
+/// Bound a document slice to `MAX_DOCUMENT_NODES`, keeping the returned subgraph
+/// self-consistent (only edges among kept nodes survive). Returns the original
+/// node total when truncation happened, so the response can state it honestly.
+/// Nodes are already id-sorted, so the kept page is deterministic.
+fn bound_document_slice(slice: &mut GraphSlice) -> Option<usize> {
+    let total = slice.nodes.len();
+    if total <= MAX_DOCUMENT_NODES {
+        return None;
+    }
+    slice.nodes.truncate(MAX_DOCUMENT_NODES);
+    let kept: std::collections::HashSet<String> = slice
+        .nodes
+        .iter()
+        .filter_map(|n| n["id"].as_str().map(str::to_string))
+        .collect();
+    slice
+        .edges
+        .retain(|e| kept.contains(&e.src.0) && kept.contains(&e.dst.0));
+    Some(total)
+}
+
 pub async fn graph_query_route(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GraphQueryBody>,
@@ -201,7 +229,7 @@ pub async fn graph_query_route(
     let granularity = parse_granularity(&state, body.granularity.as_deref())?;
     let filter = body.filter.unwrap_or_default();
 
-    let (slice, tiers) = match &body.as_of {
+    let (mut slice, tiers) = match &body.as_of {
         // Blob-true historical view (D7.3) with its fidelity-stating block.
         Some(reference) => {
             let scope = engine_model::ScopeRef::Ref {
@@ -240,6 +268,19 @@ pub async fn graph_query_route(
                 .saturating_sub(1),
         ),
     };
+    // Bound the document payload (perf ADR D2): feature granularity is already
+    // bounded by feature count, so only document slices need the ceiling.
+    let truncated = match granularity {
+        Granularity::Document => bound_document_slice(&mut slice).map(|total| {
+            json!({
+                "total_nodes": total,
+                "returned_nodes": MAX_DOCUMENT_NODES,
+                "reason": "document node ceiling: narrow with a filter or read \
+                           feature granularity (the constellation is bounded)",
+            })
+        }),
+        Granularity::Feature => None,
+    };
     Ok(super::envelope(
         json!({
             "nodes": slice.nodes,
@@ -248,6 +289,7 @@ pub async fn graph_query_route(
             "filter": slice.filter,
             "as_of": body.as_of,
             "last_seq": last_seq,
+            "truncated": truncated,
         }),
         tiers,
         None,
