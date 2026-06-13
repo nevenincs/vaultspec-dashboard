@@ -201,26 +201,17 @@ export function adaptSearch(body: unknown): { results: unknown[]; tiers: TiersBl
   const data = isRec(envelope.data) ? envelope.data : {};
   const rawResults = Array.isArray(data.results) ? (data.results as Rec[]) : [];
   return {
-    results: rawResults.map((item) => {
-      const stem =
-        typeof item.stem === "string"
-          ? item.stem
-          : typeof item.path === "string"
-            ? item.path.replace(/^.*\//, "").replace(/\.md$/, "")
-            : null;
-      return {
-        score: Number(item.score ?? 0),
-        source: String(item.source ?? item.path ?? item.stem ?? "result"),
-        excerpt:
-          typeof item.excerpt === "string"
-            ? item.excerpt
-            : typeof item.text === "string"
-              ? item.text
-              : undefined,
-        node_id:
-          typeof item.node_id === "string" ? item.node_id : stem ? `doc:${stem}` : null,
-      };
-    }),
+    results: rawResults.map((item) => ({
+      score: Number(item.score ?? 0),
+      source: String(item.source ?? item.path ?? item.stem ?? "result"),
+      excerpt:
+        typeof item.excerpt === "string"
+          ? item.excerpt
+          : typeof item.text === "string"
+            ? item.text
+            : undefined,
+      node_id: deriveSearchNodeId(item),
+    })),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -253,4 +244,26 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
     };
   });
   return { entries, tiers: (body.tiers ?? {}) as TiersBlock };
+}
+
+/**
+ * Click-through node id for a search hit. The engine's `node_id` annotation
+ * always wins (contract §8 — the engine's sole value-add over the rag
+ * pass-through). When it is absent, the client may only derive a fallback
+ * along the node-id grammar (§2 identity, M-B1): a CODE hit derives
+ * `code:{repo-relative path}`, a vault hit derives `doc:{stem}`. A code result
+ * must NEVER be papered as a `doc:` id — that loses the directory and mislabels
+ * the kind, pointing at no graph node (finding wire-03). When no honest id can
+ * be formed the value is null, never a guess.
+ */
+export function deriveSearchNodeId(item: Record<string, unknown>): string | null {
+  if (typeof item.node_id === "string") return item.node_id;
+  const path = typeof item.path === "string" ? item.path : undefined;
+  const stem = typeof item.stem === "string" ? item.stem : undefined;
+  // A vault document is always a `.md` path/stem; anything else (or an explicit
+  // `source: "code"`) is a code hit whose id lives in the `code:` namespace.
+  const isCode = item.source === "code" || (path !== undefined && !path.endsWith(".md"));
+  if (isCode) return path ? `code:${path}` : null;
+  const docStem = stem ?? (path ? path.replace(/^.*\//, "").replace(/\.md$/, "") : null);
+  return docStem ? `doc:${docStem}` : null;
 }
