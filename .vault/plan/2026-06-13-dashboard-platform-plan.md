@@ -119,9 +119,9 @@ Contain thrown renders per region so a crash degrades a region, never the whole 
 
 Generalize the two proto-commands into one thin typed action/dispatch seam.
 
-- [ ] `P03.S08` - Implement the typed Action and dispatch core with the middleware chain; `frontend/src/platform/dispatch/dispatch.ts`.
-- [ ] `P03.S09` - Implement the logging, tracing, and arm-to-confirm guard middlewares; `frontend/src/platform/dispatch/middleware.ts`.
-- [ ] `P03.S10` - Implement the useAction React hook face over the dispatch core; `frontend/src/platform/dispatch/useAction.ts`.
+- [x] `P03.S08` - Implement the typed Action and dispatch core with the middleware chain; `frontend/src/platform/dispatch/dispatch.ts`.
+- [x] `P03.S09` - Implement the logging, tracing, and arm-to-confirm guard middlewares; `frontend/src/platform/dispatch/middleware.ts`.
+- [x] `P03.S10` - Implement the useAction React hook face over the dispatch core; `frontend/src/platform/dispatch/useAction.ts`.
 
 ### Phase `P04` - Exception policy and public API
 
