@@ -103,10 +103,19 @@ its own `ServeGuard` against a temp fixture so they are independent.
 
 ## Rationale
 
-D1 addresses the class of bug (TS type mismatch vs wire) that the Rust suite
-cannot catch by definition; the test drives the same `EngineClient` code path
-the app uses, making contract drift a CI failure. D2 is a missing feature with
-a well-defined `gix` implementation path; the data is load-bearing for the
+D1 is motivated by a concrete, production-class failure. Task #9 (commit
+`c812371`) resurrected time-travel scrubbing — a headline feature that was
+silently dead — by fixing two field mismatches between the live `/graph/asof`
+wire response and `GraphAsofResponse`: `t` was declared `number` but the engine
+echoes the raw param as a `string`; `seq: number` was declared but the wire
+field is `last_seq: null`. The Rust conformance suite (`conformance.rs`) already
+asserted the correct wire shape at the Rust level and passed — it correctly noted
+`last_seq: null`; the TS client declaration was simply wrong in a different
+namespace. A consumer-typed conformance test would have fed a captured live
+response through `EngineClient` and failed the moment `asof.seq` resolved to
+`undefined` — catching the bug the Rust suite structurally cannot reach. D1
+makes that class of drift a CI failure going forward. D2 is a missing feature
+with a well-defined `gix` implementation path; the data is load-bearing for the
 dashboard's worktree picker UX. D4 closes the gap between the rule
 (`every-wire-response-carries-the-tiers-block`) and its enforcement: without
 adversarial tests the guarantee is an aspiration, not a contract; each scenario
