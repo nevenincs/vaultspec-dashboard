@@ -90,7 +90,7 @@ Add the session and settings GET and PUT endpoints through the shared envelope h
 
 Cover the new endpoints and the registry scope-switch with live-shape conformance and end-to-end integration tests.
 
-- [ ] `W03.P07.S23` - add session and settings endpoint integration tests; `engine/tests/tests/conformance.rs`.
+- [x] `W03.P07.S23` - add session and settings endpoint integration tests; `engine/tests/tests/conformance.rs`.
 - [ ] `W03.P07.S24` - add a registry scope-switch and per-scope resume integration test; `engine/tests/tests/e2e.rs`.
 
 ## Wave `W04` - frontend stores integration as the sole wire client

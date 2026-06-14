@@ -507,6 +507,182 @@ fn error_surface_carries_tiers_and_hides_internals() {
     );
 }
 
+/// Session + settings conformance (user-state-persistence W03.P07.S23): the
+/// top-level orchestration surface carries the tiers block on every response,
+/// roundtrips a PUT through a GET, and rejects an unknown scope with a tiered
+/// 400 — the exact contract W04's client and mock must mirror.
+#[test]
+fn session_and_settings_surface_roundtrips_and_carries_tiers() {
+    let (_dir, root) = fixture();
+    let (_guard, port, token) = start_serve(&root);
+    let scope = root.to_string_lossy().replace('\\', "/");
+
+    // --- GET /session: shape + tiers ----------------------------------------
+    let (status, session) = http(port, "GET", "/session", &token, None);
+    assert_eq!(status, 200, "GET /session: {session}");
+    assert!(
+        session["tiers"].is_object(),
+        "GET /session carries the tiers block"
+    );
+    let data = &session["data"];
+    assert!(data["workspace"].is_string(), "workspace token present");
+    assert_eq!(
+        data["active_scope"].as_str(),
+        Some(scope.as_str()),
+        "active scope is the launch worktree before any switch"
+    );
+    assert!(
+        data["scope_context"]["folder"].is_null(),
+        "no folder selected by default"
+    );
+    assert!(
+        data["scope_context"]["feature_tags"]
+            .as_array()
+            .is_some_and(|t| t.is_empty()),
+        "no feature-tag contexts by default"
+    );
+    assert!(
+        data["recents"].as_array().is_some(),
+        "recents is an array (possibly empty)"
+    );
+
+    // --- GET /settings: shape + tiers ---------------------------------------
+    let (status, settings) = http(port, "GET", "/settings", &token, None);
+    assert_eq!(status, 200, "GET /settings: {settings}");
+    assert!(
+        settings["tiers"].is_object(),
+        "GET /settings carries the tiers block"
+    );
+    assert!(
+        settings["data"]["global"].is_object(),
+        "global settings is a map"
+    );
+    assert!(
+        settings["data"]["scoped"].is_object(),
+        "scoped settings is a map"
+    );
+    assert!(
+        settings["data"]["global"]
+            .as_object()
+            .is_some_and(|m| m.is_empty()),
+        "no global settings before any write"
+    );
+
+    // --- PUT /session: set scope_context + push_recent, read it back --------
+    let (status, updated) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(&format!(
+            r#"{{"scope_context": {{"folder": "plan", "feature_tags": ["conf-feature"]}},
+                 "push_recent": "{scope}"}}"#
+        )),
+    );
+    assert_eq!(status, 200, "PUT /session: {updated}");
+    assert!(updated["tiers"].is_object(), "PUT /session carries tiers");
+    // The PUT response itself reflects the update (it returns the session).
+    assert_eq!(
+        updated["data"]["scope_context"]["folder"].as_str(),
+        Some("plan"),
+        "PUT response echoes the persisted folder"
+    );
+    assert_eq!(
+        updated["data"]["scope_context"]["feature_tags"][0].as_str(),
+        Some("conf-feature"),
+        "PUT response echoes the persisted feature tags"
+    );
+    assert_eq!(
+        updated["data"]["recents"][0].as_str(),
+        Some(scope.as_str()),
+        "the pushed value is at the front of recents"
+    );
+    // A FRESH GET sees the same persisted state (true roundtrip through the
+    // store, not just the PUT's own echo).
+    let (status, reread) = http(port, "GET", "/session", &token, None);
+    assert_eq!(status, 200);
+    assert_eq!(
+        reread["data"]["scope_context"]["folder"].as_str(),
+        Some("plan"),
+        "GET after PUT reads the persisted folder back"
+    );
+    assert_eq!(
+        reread["data"]["scope_context"]["feature_tags"][0].as_str(),
+        Some("conf-feature"),
+        "GET after PUT reads the persisted feature tags back"
+    );
+
+    // --- PUT /settings: a global key, read it back --------------------------
+    let (status, set) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "theme", "value": "dark"}"#),
+    );
+    assert_eq!(status, 200, "PUT /settings: {set}");
+    assert!(set["tiers"].is_object(), "PUT /settings carries tiers");
+    assert_eq!(
+        set["data"]["global"]["theme"].as_str(),
+        Some("dark"),
+        "PUT /settings response echoes the persisted global key"
+    );
+    // A scoped key on the active (warm) scope, read back under that scope.
+    let (status, scoped) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(&format!(
+            r#"{{"scope": "{scope}", "key": "panel", "value": "open"}}"#
+        )),
+    );
+    assert_eq!(status, 200, "PUT scoped setting: {scoped}");
+    assert_eq!(
+        scoped["data"]["scoped"][&scope]["panel"].as_str(),
+        Some("open"),
+        "scoped key surfaces under its scope in the settings map"
+    );
+    // Fresh GET sees both the global and the scoped key persisted.
+    let (status, allset) = http(port, "GET", "/settings", &token, None);
+    assert_eq!(status, 200);
+    assert_eq!(
+        allset["data"]["global"]["theme"].as_str(),
+        Some("dark"),
+        "global setting persisted across a fresh GET"
+    );
+    assert_eq!(
+        allset["data"]["scoped"][&scope]["panel"].as_str(),
+        Some("open"),
+        "scoped setting persisted across a fresh GET"
+    );
+
+    // --- PUT /session with an unknown scope -> tiered 400 -------------------
+    let (status, bad) = http(
+        port,
+        "PUT",
+        "/session",
+        &token,
+        Some(r#"{"active_scope": "/no/such/worktree"}"#),
+    );
+    assert_eq!(status, 400, "unknown active_scope is a 400: {bad}");
+    assert!(
+        bad["tiers"].is_object(),
+        "the unknown-scope 400 still carries the tiers block"
+    );
+    assert!(
+        bad["error"].as_str().is_some_and(|e| e.contains("worktree")),
+        "the 400 names the unselectable scope: {bad}"
+    );
+    // The failed switch did NOT change the active scope.
+    let (_, after) = http(port, "GET", "/session", &token, None);
+    assert_eq!(
+        after["data"]["active_scope"].as_str(),
+        Some(scope.as_str()),
+        "a rejected scope switch leaves the active scope unchanged"
+    );
+}
+
 fn urlencode(s: &str) -> String {
     s.replace(':', "%3A").replace('/', "%2F")
 }
