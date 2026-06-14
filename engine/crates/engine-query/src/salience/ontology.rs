@@ -1,21 +1,19 @@
-//! Local ontology derivation — the graph-node-semantics integration seam.
+//! Salience ontology adapter over the native graph-node-semantics projection.
 //!
-//! integration seam: graph-node-semantics provides authority_class/lifecycle
-//! natively. The lens teleport bias, recency, and fan-out treatment read the
-//! node-semantics ontology fields (`authority_class`, `lifecycle`, `aggregate`).
-//! That sibling feature is built in parallel and its fields are not yet present
-//! on `Node` in this worktree. So this module DERIVES the same ontology locally
-//! from the existing thin-node fields (`doc_type`, the per-scope `lifecycle`
-//! facet, `dates`), using the SAME authority register the graph-node-semantics
-//! ADR defines.
-//!
-//! When the semantics feature lands, this module collapses to thin pass-throughs
-//! that read `node.authority_class` / `node.lifecycle` / `node.aggregate`
-//! directly; the salience composition above it is unchanged. Keep the register
-//! here in lock-step with the semantics ADR until then.
+//! The graph-node-semantics feature is now merged, so its ontology projection
+//! (`crate::ontology`) is the single source of truth for the authority register
+//! and the aggregate-species hint. This module is a thin adapter that lifts that
+//! native projection into the typed shapes the salience composition consumes
+//! (the `AuthorityClass` / `LifecyclePhase` enums and the `is_aggregate` bool):
+//! `authority_class` and `is_aggregate` DELEGATE to `crate::ontology` (no
+//! re-derivation of the register), and `lifecycle_phase` reads the native
+//! per-scope `lifecycle` facet directly. Behavior is identical to the pre-merge
+//! local derivation; the duplicate register that lived here is gone.
 
 use engine_graph::lifecycle_in_scope;
 use engine_model::{Node, ScopeRef};
+
+use crate::ontology;
 
 /// The authority register (graph-node-semantics ADR "Authority class"): each
 /// document type names *what kind of question it answers*. The salience lenses
@@ -41,21 +39,21 @@ pub enum AuthorityClass {
     None,
 }
 
-/// Map a node to its authority class via its `doc_type` (the `.vault/`
-/// subdirectory), using the graph-node-semantics register verbatim:
-/// adr -> design-authority; plan -> roadmap-authority; exec -> evidence;
-/// audit -> judgment; rule -> law; index -> manifest; reference/research ->
-/// substrate (secondary design authority). This is the exact register the
-/// semantics ADR pins.
+/// Map a node to its authority class, lifting the native graph-node-semantics
+/// register (`crate::ontology::authority_class`) into the salience enum. The
+/// register itself is owned by the semantics projection — `adr -> design`,
+/// `plan -> roadmap`, `exec -> evidence`, `audit -> judgment`, `rule -> law`,
+/// `index -> manifest`, `reference`/`research -> substrate`, anything else
+/// `unknown` -> [`AuthorityClass::None`] — so the two never drift.
 pub fn authority_class(node: &Node) -> AuthorityClass {
-    match node.doc_type.as_deref() {
-        Some("adr") => AuthorityClass::DesignAuthority,
-        Some("plan") => AuthorityClass::RoadmapAuthority,
-        Some("exec") => AuthorityClass::Evidence,
-        Some("audit") => AuthorityClass::Judgment,
-        Some("rule") => AuthorityClass::Law,
-        Some("index") => AuthorityClass::Manifest,
-        Some("reference") | Some("research") => AuthorityClass::Substrate,
+    match ontology::authority_class(node.doc_type.as_deref()) {
+        "design" => AuthorityClass::DesignAuthority,
+        "roadmap" => AuthorityClass::RoadmapAuthority,
+        "evidence" => AuthorityClass::Evidence,
+        "judgment" => AuthorityClass::Judgment,
+        "law" => AuthorityClass::Law,
+        "manifest" => AuthorityClass::Manifest,
+        "substrate" => AuthorityClass::Substrate,
         _ => AuthorityClass::None,
     }
 }
@@ -78,13 +76,12 @@ pub enum LifecyclePhase {
     Unknown,
 }
 
-/// Derive the lifecycle phase from the existing per-scope `lifecycle` facet
-/// (which today carries `state` in {active, complete} from checkbox progress)
-/// and the node presence. `Archived` presence is the strongest archived signal.
-///
-/// integration seam: graph-node-semantics will carry the rich per-type state
-/// (ADR status, plan tier, rule active/superseded, feature in_flight/archived)
-/// on the node directly; this derivation reads what the thin node carries today.
+/// Derive the lifecycle phase from the native per-scope `lifecycle` facet (the
+/// same `lifecycle_in_scope` projection the graph slice serves) and the node
+/// presence. `Archived` presence is the strongest archived signal. This reads
+/// the engine's native lifecycle directly — there is no duplicated derivation to
+/// collapse here; the cross-type in-flight/durable/archived reduction is the
+/// salience-specific axis the multiplier consumes.
 pub fn lifecycle_phase(node: &Node, scope: &ScopeRef) -> LifecyclePhase {
     // An archived facet presence wins: a recent-but-archived node is durable-at-
     // most, never in-flight (the "recent but archived" case the ADR names).
@@ -113,12 +110,10 @@ pub fn lifecycle_phase(node: &Node, scope: &ScopeRef) -> LifecyclePhase {
 /// True when the node is an aggregate species — an execution record collapsible
 /// into its parent plan as "N records, M complete" (graph-node-semantics ADR
 /// "Aggregate-versus-individual weight hint"; the salience fan-out treatment
-/// consumes this). Derived from `doc_type == "exec"` today.
-///
-/// integration seam: graph-node-semantics carries an `aggregate` hint flag on the
-/// node; this reads doc_type until then.
+/// consumes this). Delegates to the native semantics projection
+/// (`crate::ontology::is_aggregate_species`) so the hint has a single owner.
 pub fn is_aggregate(node: &Node) -> bool {
-    matches!(node.doc_type.as_deref(), Some("exec"))
+    ontology::is_aggregate_species(node.doc_type.as_deref())
 }
 
 #[cfg(test)]
