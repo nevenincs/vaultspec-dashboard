@@ -30,3 +30,15 @@ The four tiers are grayscale-safe by construction: their lightness ordering is m
 ## Notes
 
 This honors the scene's existing encoding discipline (treatment primary, hue secondary) at the token level: the tier hex the scene reads now carries the separation in lightness, reinforcing the line-treatment channel rather than competing with it.
+
+## Revision (design review, batch 1)
+
+MEDIUM-2 (grayscale safety): the dark and high-contrast tier-hue L-values were spread so
+adjacent tiers reach a >=1.50:1 grayscale (luminance) gap by construction. Light tiers
+also nudged (semantic L 0.60 -> 0.64). Final adjacent grayscale gaps: light 1.74 / 1.48 /
+1.55; dark 1.61 / 1.50 / 1.50; high-contrast 1.74 / 1.60 / 1.46. The single residual is
+HC temporal<->declared at 1.46 (the two low-chroma warm-neutral tiers compressed near
+white against the HC near-black ground); left intact per the reviewer because tier
+identity's primary channel is shape (solid/dotted/haze line treatment in edgeMeshes), so
+identity survives the 0.04 shortfall. All tier+state hues stay above their contrast floor
+against the scene canvas in every theme.

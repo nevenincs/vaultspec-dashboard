@@ -31,3 +31,16 @@ Every load-bearing pair is proven: body text at or above 4.5:1, large/UI text an
 ## Notes
 
 Targets met everywhere except the deliberately-quiet rule tokens (light rule/paper ~1.3:1, dark ~1.7:1), which the ADR's felt-not-seen border discipline requires; high-contrast lifts them to visible separators (4.18:1 / 7.61:1). No load-bearing token missed its floor.
+
+## Revision (design review, batch 1)
+
+- MEDIUM-1: the high-contrast `--color-canvas-bg` was a cold blue-dominant hex
+  contradicting its own warm-hue comment and desyncing from the HC semantic ground.
+  Re-emitted as the warm rendering just below the HC semantic surface base, so chrome
+  ground and scene ground agree and stay warm.
+- LOW-1: the dark scene-read contrast-proof rows were documented against
+  `--color-paper` (the chrome ground) but the scene composites on `--color-canvas-bg`
+  (slightly darker). Re-labelled all dark and high-contrast tier+state rows as proven
+  against the canvas ground (they still clear floor) and re-derived the full matrix for
+  the revised tier/state values. Added the grayscale-gap section recording the
+  per-theme adjacent-tier ratios (MEDIUM-2).

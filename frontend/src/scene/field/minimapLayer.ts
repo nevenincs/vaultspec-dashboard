@@ -21,14 +21,18 @@ const DOT_RADIUS = 2;
 /** Padding inside the minimap canvas (keeps dots from clipping the edge). */
 const PADDING = 8;
 
-/** Viewport-rect stroke color. */
-const VIEWPORT_COLOR = "#5b8cf5";
+// Minimap colours are read from the theme token layer at render time (MEDIUM-3)
+// rather than hardcoded: the prior cold-blue #5b8cf5 was a forbidden second
+// accent (ADR layer 3: one muted earthy accent only). Feature dots and the
+// viewport rect take the accent-tone token; node dots take a muted-ink token.
+// These reads use the literal-hex scene-read tokens (resolved per theme), which
+// real browsers return verbatim from getPropertyValue - unlike the var()-aliased
+// chrome tokens, whose chain getPropertyValue does not resolve for custom props.
 
-/** Node dot color. */
-const NODE_COLOR = "#888";
-
-/** Feature node dot color (larger + accent). */
-const FEATURE_COLOR = "#5b8cf5";
+/** Fallback colours when the token layer is absent (node test env / pre-paint). */
+const VIEWPORT_FALLBACK = "#3f774d";
+const NODE_FALLBACK = "#5f5a53";
+const FEATURE_FALLBACK = "#3f774d";
 
 export class MinimapLayer {
   private canvas: HTMLCanvasElement | null = null;
@@ -159,11 +163,21 @@ export class MinimapLayer {
     // Clear.
     ctx.clearRect(0, 0, w, h);
 
-    // Background — read theme token so the minimap matches the canvas ground.
+    // Colours read from the theme token layer so the minimap tracks the active
+    // theme and uses no off-palette colour (MEDIUM-3).
     const cssRoot = getComputedStyle(document.documentElement);
-    const bgColor = cssRoot.getPropertyValue("--color-canvas-bg").trim() || "#faf9f7";
+    const token = (name: string, fallback: string) =>
+      cssRoot.getPropertyValue(name).trim() || fallback;
+
+    // Background — matches the canvas ground.
+    const bgColor = token("--color-canvas-bg", "#faf9f7");
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, w, h);
+
+    // Accent-tone for feature dots + the viewport rect; muted-ink for node dots.
+    const featureColor = token("--color-state-active", FEATURE_FALLBACK);
+    const nodeColor = token("--color-ink-muted", NODE_FALLBACK);
+    const viewportColor = token("--color-state-active", VIEWPORT_FALLBACK);
 
     // Draw node dots.
     for (const [id, p] of this.lastPositions) {
@@ -172,7 +186,7 @@ export class MinimapLayer {
       const isFeature = this.featureIds.has(id);
       ctx.beginPath();
       ctx.arc(mx, my, isFeature ? DOT_RADIUS + 1 : DOT_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = isFeature ? FEATURE_COLOR : NODE_COLOR;
+      ctx.fillStyle = isFeature ? featureColor : nodeColor;
       ctx.fill();
     }
 
@@ -190,7 +204,7 @@ export class MinimapLayer {
       const rw = (vRight - vLeft) * scale;
       const rh = (vBottom - vTop) * scale;
 
-      ctx.strokeStyle = VIEWPORT_COLOR;
+      ctx.strokeStyle = viewportColor;
       ctx.lineWidth = 1.5;
       ctx.strokeRect(rx, ry, rw, rh);
     }

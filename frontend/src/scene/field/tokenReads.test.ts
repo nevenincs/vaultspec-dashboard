@@ -26,17 +26,26 @@ const SCENE_TOKENS: Record<string, string> = {
   "--color-tier-declared": "#312d27",
   "--color-tier-structural": "#3f774d",
   "--color-tier-temporal": "#5c5040",
-  "--color-tier-semantic": "#7f79a8",
+  "--color-tier-semantic": "#8b85b7",
   "--color-state-active": "#3f774d",
+  "--color-state-complete": "#5c5040",
+  "--color-state-archived": "#898581",
   "--color-state-stale": "#9f7100",
   "--color-state-broken": "#ae4024",
 };
 
+// Dark theme scene-read hex (matches styles.css [data-theme=dark] block 3b).
+// state-complete and state-archived are included: they are the HIGH-1 regression
+// surface - the reader parses only hex, so an oklch() value would fall through
+// to the hardcoded light fallback (a `complete` node was 1.79:1 on dark canvas).
 const DARK_TOKENS: Record<string, string> = {
   "--color-canvas-bg": "#1a1713",
-  "--color-state-active": "#78b685",
+  "--color-ink-muted": "#a9a49c",
+  "--color-state-active": "#5d9d6b",
+  "--color-state-complete": "#bdaf9d",
+  "--color-state-archived": "#74716c",
   "--color-state-broken": "#e37f65",
-  "--color-tier-structural": "#78b685",
+  "--color-tier-structural": "#5d9d6b",
 };
 
 function applyTokens(tokens: Record<string, string>): void {
@@ -65,9 +74,13 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     expect(groupColor("structural:broken")).toBe(hexToNum("#ae4024"));
   });
 
-  it("nodeSprites.stateColor reads state hex from the token layer", () => {
+  it("nodeSprites.stateColor reads ALL FIVE lifecycle states as hex (HIGH-1)", () => {
     applyTokens(SCENE_TOKENS);
     expect(stateColor({ state: "active" } as never)).toBe(hexToNum("#3f774d"));
+    // complete + archived are the HIGH-1 surface: they must be real hex, never
+    // an oklch() that silently falls through to the light-mode fallback.
+    expect(stateColor({ state: "complete" } as never)).toBe(hexToNum("#5c5040"));
+    expect(stateColor({ state: "archived" } as never)).toBe(hexToNum("#898581"));
     expect(stateColor({ state: "broken" } as never)).toBe(hexToNum("#ae4024"));
     expect(stateColor({ state: "stale" } as never)).toBe(hexToNum("#9f7100"));
     // missing lifecycle falls back to ink-muted, read from the token layer.
@@ -80,7 +93,20 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     // A [data-theme=dark] flip overrides the custom properties; the reader,
     // which calls getComputedStyle on every read, picks up the new hex.
     applyTokens(DARK_TOKENS);
-    expect(stateColor({ state: "active" } as never)).toBe(hexToNum("#78b685"));
+    expect(stateColor({ state: "active" } as never)).toBe(hexToNum("#5d9d6b"));
     expect(groupColor("structural:broken")).toBe(hexToNum("#e37f65"));
+  });
+
+  it("complete + archived resolve to the DARK hex after a theme flip (HIGH-1)", () => {
+    applyTokens(SCENE_TOKENS);
+    // light: complete = temporal warm-brown, archived = warm gray.
+    expect(stateColor({ state: "complete" } as never)).toBe(hexToNum("#5c5040"));
+    expect(stateColor({ state: "archived" } as never)).toBe(hexToNum("#898581"));
+    // After a dark flip the reader must pick up the dark hex, NOT the light
+    // fallback (the exact bug HIGH-1 catches: a dark `complete` node was
+    // #4a4137 on #1a1713 = 1.79:1, effectively invisible).
+    applyTokens(DARK_TOKENS);
+    expect(stateColor({ state: "complete" } as never)).toBe(hexToNum("#bdaf9d"));
+    expect(stateColor({ state: "archived" } as never)).toBe(hexToNum("#74716c"));
   });
 });

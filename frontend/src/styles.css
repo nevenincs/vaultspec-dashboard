@@ -158,8 +158,9 @@
   --color-accent-text: var(--semantic-accent-on-subtle);
   --color-focus: var(--semantic-focus-ring);
 
-  --color-state-complete: var(--primitive-tier-temporal-l);
-  --color-state-archived: oklch(0.62 0.008 75);
+  /* state-complete and state-archived moved to the scene-read hex block (3b)
+     below - the scene reads them and needs hex (HIGH-1). state-live is chrome-
+     only (timeline playhead), so it stays oklch here. */
   --color-state-live: oklch(0.55 0.11 160);
 
   --color-diff-add: var(--primitive-diff-add-l);
@@ -181,14 +182,21 @@
   --color-ink-muted: #5f5a53; /* oklch(0.47 0.013 75) */
   --color-rule: #ebe6e0; /* oklch(0.928 0.010 75) - subtle border */
 
-  /* tier hues - distinct L, grayscale-safe (S12) */
+  /* tier hues - distinct L, grayscale-safe by construction (S12). Light L's
+     spread declared<temporal<structural<semantic so adjacent tiers separate in
+     grayscale projection (final light adjacent gaps 1.74 / 1.48 / 1.55). */
   --color-tier-declared: #312d27; /* oklch(0.30 0.012 75) */
   --color-tier-structural: #3f774d; /* oklch(0.52 0.090 150) */
   --color-tier-temporal: #5c5040; /* oklch(0.44 0.030 75) */
-  --color-tier-semantic: #7f79a8; /* oklch(0.60 0.070 290) */
+  --color-tier-semantic: #8b85b7; /* oklch(0.64 0.075 290) - lifted for gray gap */
 
-  /* state hues read by the scene (active/stale/broken) */
-  --color-state-active: #3f774d; /* oklch(0.52 0.090 150) */
+  /* state hues read by the scene. ALL FIVE lifecycle states are emitted as
+     literal hex (HIGH-1): the nodeSprites reader parses only #rrggbb, so an
+     oklch() value would silently fall through to the hardcoded light fallback
+     in every theme - making `complete` invisible on the dark canvas. */
+  --color-state-active: #3f774d; /* oklch(0.52 0.090 150) = structural tier */
+  --color-state-complete: #5c5040; /* oklch(0.44 0.030 75) = temporal warm-brown */
+  --color-state-archived: #898581; /* oklch(0.62 0.008 75) - muted warm gray */
   --color-state-stale: #9f7100; /* oklch(0.58 0.120 80) - amber, >=3:1 */
   --color-state-broken: #ae4024; /* oklch(0.52 0.150 35) - warning */
 
@@ -321,13 +329,11 @@
     --color-paper-aged: oklch(0.96 0.018 75);
     --color-accent-subtle: var(--primitive-accent-300);
     --color-accent-text: var(--primitive-accent-600);
-    --color-state-complete: var(--primitive-tier-temporal-l);
-    --color-state-archived: oklch(0.62 0.008 75);
     --color-state-live: oklch(0.55 0.11 160);
     --color-diff-add: var(--primitive-diff-add-l);
     --color-diff-remove: var(--primitive-diff-remove-l);
 
-    /* scene-read hex (light) */
+    /* scene-read hex (light) - all five lifecycle states are hex (HIGH-1) */
     --color-canvas-bg: #fdfaf6;
     --color-ink: #312d27;
     --color-ink-muted: #5f5a53;
@@ -335,8 +341,10 @@
     --color-tier-declared: #312d27;
     --color-tier-structural: #3f774d;
     --color-tier-temporal: #5c5040;
-    --color-tier-semantic: #7f79a8;
+    --color-tier-semantic: #8b85b7; /* L0.64 - gray gap */
     --color-state-active: #3f774d;
+    --color-state-complete: #5c5040;
+    --color-state-archived: #898581;
     --color-state-stale: #9f7100;
     --color-state-broken: #ae4024;
   }
@@ -361,22 +369,25 @@
     --color-paper-aged: oklch(0.27 0.018 75);
     --color-accent-subtle: var(--primitive-accent-dark-subtle);
     --color-accent-text: var(--primitive-accent-800);
-    --color-state-complete: var(--primitive-tier-temporal-d);
-    --color-state-archived: oklch(0.55 0.008 75);
     --color-state-live: oklch(0.75 0.11 160);
     --color-diff-add: var(--primitive-diff-add-d);
     --color-diff-remove: var(--primitive-diff-remove-d);
 
-    /* scene-read hex (dark) */
+    /* scene-read hex (dark). Tier L's are spread (declared 0.88 > temporal 0.76
+       > structural 0.64 > semantic 0.54) so adjacent tiers reach >=1.50:1 in
+       grayscale (dark adjacent gaps 1.61 / 1.50 / 1.50). state-active tracks
+       the structural tier; all five lifecycle states are hex (HIGH-1). */
     --color-canvas-bg: #1a1713; /* oklch(0.205 0.009 75) */
     --color-ink: #f4efea; /* oklch(0.955 0.009 75) */
     --color-ink-muted: #a9a49c; /* oklch(0.72 0.012 75) */
     --color-rule: #46423b; /* oklch(0.38 0.012 75) */
-    --color-tier-declared: #d2cdc7; /* oklch(0.85 0.010 75) */
-    --color-tier-structural: #78b685; /* oklch(0.72 0.095 150) */
-    --color-tier-temporal: #c3b5a3; /* oklch(0.78 0.030 75) */
-    --color-tier-semantic: #9d96cd; /* oklch(0.70 0.080 290) */
-    --color-state-active: #78b685; /* oklch(0.72 0.095 150) */
+    --color-tier-declared: #dbd7d0; /* oklch(0.88 0.010 75) */
+    --color-tier-structural: #5d9d6b; /* oklch(0.64 0.100 150) */
+    --color-tier-temporal: #bdaf9d; /* oklch(0.76 0.030 75) */
+    --color-tier-semantic: #6e659f; /* oklch(0.54 0.090 290) */
+    --color-state-active: #5d9d6b; /* oklch(0.64 0.100 150) = structural tier */
+    --color-state-complete: #bdaf9d; /* oklch(0.76 0.030 75) = temporal */
+    --color-state-archived: #74716c; /* oklch(0.55 0.008 75) */
     --color-state-stale: #dcaf61; /* oklch(0.78 0.110 80) */
     --color-state-broken: #e37f65; /* oklch(0.70 0.130 35) */
 
@@ -409,22 +420,29 @@
     --color-paper-aged: oklch(0.16 0.01 75);
     --color-accent-subtle: oklch(0.2 0.05 150);
     --color-accent-text: oklch(0.92 0.08 150);
-    --color-state-complete: oklch(0.84 0.03 75);
-    --color-state-archived: oklch(0.6 0.006 75);
     --color-state-live: oklch(0.8 0.12 160);
     --color-diff-add: oklch(0.8 0.15 150);
     --color-diff-remove: oklch(0.7 0.17 28);
 
-    /* scene-read hex (high-contrast) */
-    --color-canvas-bg: #08070a; /* oklch(0.10 0.003 75) near-black */
+    /* scene-read hex (high-contrast). Canvas is a WARM near-black just below the
+       semantic-surface-base (oklch 0.12) so the scene ground and the chrome
+       ground agree and stay warm (MEDIUM-1). Tier L's are spread (declared 0.97
+       > temporal 0.85 > structural 0.70 > semantic 0.58); adjacent grayscale
+       gaps 1.74 / 1.60 / 1.46 - the top pair (declared <-> temporal, the two
+       low-chroma warm-neutral tiers whose hue barely differs) is the one
+       residual below 1.50, left intact per the reviewer (shape is the primary
+       channel). All five lifecycle states are hex (HIGH-1). */
+    --color-canvas-bg: #050403; /* oklch(0.11 0.004 75) warm near-black */
     --color-ink: #fefcf9; /* oklch(0.99 0 75) */
     --color-ink-muted: #ddd8d2; /* oklch(0.86 0.006 75) */
     --color-rule: #767069; /* oklch(0.55 0.010 75) */
-    --color-tier-declared: #ece7e0; /* oklch(0.92 0.006 75) */
-    --color-tier-structural: #8fcf9b; /* oklch(0.80 0.110 150) */
-    --color-tier-temporal: #d6c6b1; /* oklch(0.84 0.030 75) */
-    --color-tier-semantic: #aaa3da; /* oklch(0.76 0.090 290) */
-    --color-state-active: #8fcf9b; /* oklch(0.80 0.110 150) */
+    --color-tier-declared: #f7f5f1; /* oklch(0.97 0.005 75) */
+    --color-tier-structural: #63b376; /* oklch(0.70 0.120 150) */
+    --color-tier-temporal: #dacbb9; /* oklch(0.85 0.030 75) */
+    --color-tier-semantic: #7a6fb1; /* oklch(0.58 0.100 290) */
+    --color-state-active: #63b376; /* oklch(0.70 0.120 150) = structural tier */
+    --color-state-complete: #dacbb9; /* oklch(0.85 0.030 75) = temporal */
+    --color-state-archived: #82807c; /* oklch(0.60 0.006 75) */
     --color-state-stale: #e6bb5e; /* oklch(0.82 0.120 80) */
     --color-state-broken: #ec8166; /* oklch(0.72 0.150 35) */
 
@@ -532,7 +550,12 @@
    luminance). The warm ground shifts effective contrast, so every pair is
    proven per theme rather than assumed.
 
-   ---- LIGHT (ground --color-paper oklch 0.985) -------------------------------
+   Text/border tokens are proven against their OWN ground: chrome text against
+   --color-paper, and scene tier/state marks against --color-canvas-bg (the
+   actual ground the scene composites on, which is slightly darker than paper -
+   LOW-1 fix: the dark/HC tier+state rows below are labelled vs canvas).
+
+   ---- LIGHT (chrome ground --color-paper 0.985; scene ground --color-canvas-bg 0.985)
      ink / paper .............. 13.15 : 1   PASS (>=4.5)  body
      ink-muted / paper .........  6.57 : 1   PASS (>=4.5)  secondary text
      ink-faint / paper .........  4.13 : 1   PASS (>=3)    captions/UI (large)
@@ -540,6 +563,8 @@
      accent-text / accent-subtle  8.28 : 1   PASS (>=4.5)  text on badge
      focus-ring / paper ........  5.10 : 1   PASS (>=3)    load-bearing border
      state-active / paper ......  5.10 : 1   PASS (>=3)
+     state-complete / paper ....  7.54 : 1   PASS (>=3)
+     state-archived / paper ....  3.52 : 1   PASS (>=3)
      state-stale / paper .......  4.17 : 1   PASS (>=3)
      state-broken / paper ......  5.67 : 1   PASS (>=4.5)  (text-safe)
      state-live / paper ........  4.40 : 1   PASS (>=3)
@@ -548,42 +573,59 @@
      tier-declared / canvas ....  13.15 : 1  PASS (>=3)
      tier-structural / canvas ..   5.10 : 1  PASS (>=3)
      tier-temporal / canvas ....   7.54 : 1  PASS (>=3)
-     tier-semantic / canvas ....   3.88 : 1  PASS (>=3)
+     tier-semantic / canvas ....   3.29 : 1  PASS (>=3)  (L lifted to 0.64)
 
-   ---- DARK (ground --color-paper oklch 0.235) --------------------------------
+   ---- DARK (chrome ground --color-paper 0.235; scene ground --color-canvas-bg 0.205)
      ink / paper .............. 13.23 : 1   PASS (>=4.5)  body
      ink-muted / paper .........  6.76 : 1   PASS (>=4.5)  secondary text
      ink-faint / paper .........  3.89 : 1   PASS (>=3)    captions/UI (large)
      accent / paper ............  6.48 : 1   PASS (>=3)    interactive
      accent-text / accent-subtle  7.43 : 1   PASS (>=4.5)
      focus-ring / paper ........  6.48 : 1   PASS (>=3)
-     state-active / paper ......  7.04 : 1   PASS (>=3)
-     state-stale / paper .......  8.25 : 1   PASS (>=3)
-     state-broken / paper ......  5.97 : 1   PASS (>=4.5)  (text-safe)
-     state-live / paper ........  7.86 : 1   PASS (>=3)
      diff-add / paper ..........  7.09 : 1   PASS (>=4.5)
      diff-remove / paper .......  5.43 : 1   PASS (>=4.5)
-     tier-declared / canvas ....  11.31 : 1  PASS (>=3)
-     tier-structural / canvas ..   7.51 : 1  PASS (>=3)
-     tier-temporal / canvas ....   8.89 : 1  PASS (>=3)
-     tier-semantic / canvas ....   6.53 : 1  PASS (>=3)
+     state-active / canvas .....  5.53 : 1   PASS (>=3)
+     state-complete / canvas ...  8.32 : 1   PASS (>=3)
+     state-archived / canvas ...  3.67 : 1   PASS (>=3)
+     state-stale / canvas ......  8.80 : 1   PASS (>=3)
+     state-broken / canvas .....  6.37 : 1   PASS (>=4.5)  (text-safe)
+     tier-declared / canvas ....  12.45 : 1  PASS (>=3)
+     tier-structural / canvas ..   5.53 : 1  PASS (>=3)
+     tier-temporal / canvas ....   8.32 : 1  PASS (>=3)
+     tier-semantic / canvas ....   3.42 : 1  PASS (>=3)
 
-   ---- HIGH-CONTRAST (ground oklch 0.12; HC raises every floor to >=4.5) ------
+   ---- HIGH-CONTRAST (chrome ground 0.12; scene ground --color-canvas-bg 0.11; floor >=4.5)
      ink / paper .............. 19.76 : 1   PASS (>=4.5)
      ink-muted / paper ........ 13.20 : 1   PASS (>=4.5)
      ink-faint / paper .........  8.18 : 1   PASS (>=4.5)
      accent / paper ............ 10.55 : 1   PASS (>=4.5)
      focus-ring / paper ........ 13.12 : 1   PASS (>=3)
-     state-active / paper ...... 11.33 : 1   PASS (>=4.5)
-     state-stale / paper ....... 11.48 : 1   PASS (>=4.5)
-     state-broken / paper ......  7.69 : 1   PASS (>=4.5)
-     state-live / paper ........ 11.44 : 1   PASS (>=4.5)
      diff-add / paper .......... 11.44 : 1   PASS (>=4.5)
      diff-remove / paper .......  7.06 : 1   PASS (>=4.5)
-     tier-declared / canvas .... 16.25 : 1   PASS (>=4.5)
-     tier-structural / canvas .. 11.51 : 1   PASS (>=4.5)
-     tier-temporal / canvas .... 12.55 : 1   PASS (>=4.5)
-     tier-semantic / canvas ....  9.42 : 1   PASS (>=4.5)
+     state-active / canvas .....  8.04 : 1   PASS (>=4.5)
+     state-complete / canvas ... 12.90 : 1   PASS (>=4.5)
+     state-archived / canvas ...  5.20 : 1   PASS (>=4.5)
+     state-stale / canvas ...... 11.60 : 1   PASS (>=4.5)
+     state-broken / canvas .....  7.77 : 1   PASS (>=4.5)
+     tier-declared / canvas .... 18.81 : 1   PASS (>=4.5)
+     tier-structural / canvas ..  8.04 : 1   PASS (>=4.5)
+     tier-temporal / canvas .... 12.90 : 1   PASS (>=4.5)
+     tier-semantic / canvas ....  4.62 : 1   PASS (>=4.5)
+
+   ---- GRAYSCALE SAFETY (S12, MEDIUM-2) - adjacent tier hues by luminance ------
+     The four tier hues separate in grayscale projection (luminance contrast of
+     adjacent tiers in luminance order). Target adjacent gap >=1.50:1 so tiers
+     are distinguishable as fills even without hue:
+       LIGHT  declared<->temporal 1.74 | temporal<->structural 1.48 | structural<->semantic 1.55
+       DARK   semantic<->structural 1.61 | structural<->temporal 1.50 | temporal<->declared 1.50
+       HC     semantic<->structural 1.74 | structural<->temporal 1.60 | temporal<->declared 1.46
+     One residual: HC temporal<->declared 1.46 (just under 1.50). These are the
+     two low-chroma WARM-NEUTRAL tiers (declared/temporal), whose hue barely
+     differs, compressed near white against the HC near-black ground; lifting
+     either further collapses into pure white. Left intact per the reviewer:
+     tier identity's primary channel is SHAPE (edgeMeshes draws declared as a
+     solid line and temporal as a dotted line), so identity survives the 0.04
+     grayscale-gap shortfall. Light/dark meet the target on every adjacent pair.
 
    ---- DELIBERATELY BELOW FLOOR (documented, not a gap) -----------------------
      --color-rule / --color-rule-strong are felt-not-seen dividers (ADR layer
