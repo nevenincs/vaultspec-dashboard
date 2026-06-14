@@ -7,6 +7,7 @@ date: '2026-06-14'
 modified: '2026-06-14'
 related:
   - '[[2026-06-14-graph-representation-adr]]'
+  - '[[2026-06-14-graph-representation-plan]]'
   - '[[2026-06-14-graph-representation-research]]'
 ---
 
@@ -19,6 +20,10 @@ Auto-generated index of all documents tagged with `#graph-representation`.
 ### adr
 
 - `2026-06-14-graph-representation-adr` - `graph-representation` adr: `graph representation: visualization principles and large-corpus algorithms` | (**status:** `accepted`)
+
+### plan
+
+- `2026-06-14-graph-representation-plan` - `graph-representation` plan
 
 ### research
 
