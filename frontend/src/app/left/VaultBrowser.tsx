@@ -22,6 +22,7 @@ import {
   Stack,
 } from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 
 import type { VaultTreeEntry } from "../../stores/server/engine";
@@ -135,22 +136,51 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
   const clickHandler = onEntryClick ?? handleEntryClick;
   const highlight = highlightedPath ?? sharedHighlight;
 
-  // Roving-tabindex focus model (a11y contract): a single linear index across
-  // every visible row, so the rail is one Tab-stop and ArrowUp/ArrowDown move
-  // within it. The container holds the row refs; arrow keys move focus, the
-  // chevrons toggle a group, Enter/Space activates the focused row.
-  const rowRefs = useRef<HTMLButtonElement[]>([]);
-  rowRefs.current = [];
-  const registerRow = useCallback((el: HTMLButtonElement | null) => {
-    if (el) rowRefs.current.push(el);
-  }, []);
-  const moveFocus = useCallback((from: HTMLButtonElement, delta: number) => {
-    const rows = rowRefs.current;
-    const at = rows.indexOf(from);
+  // TRUE roving-tabindex focus model (a11y contract, S21 review M1/M2): the
+  // whole rail is ONE Tab-stop. Exactly one navigable element — a group
+  // disclosure HEADER or a tree ROW — carries tabIndex 0 at a time (the
+  // "active" key tracked here); every other navigable element is tabIndex -1.
+  // Tab/Shift-Tab enters and leaves the rail; ArrowUp/ArrowDown move the active
+  // "0" through the single linear list of headers and their visible rows in
+  // top-to-bottom DOM order (header → its rows → next header), so a collapsed
+  // group's header stays arrow-reachable to reopen it.
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  // Element registry keyed by a stable nav-key (never reset in render — M1/L1).
+  // A Map keyed by `header:<group>` / `row:<path>` survives re-renders and
+  // double-invoke without a render-phase side effect.
+  const navEls = useRef(new Map<string, HTMLButtonElement>());
+  const registerNav = useCallback(
+    (key: string) => (el: HTMLButtonElement | null) => {
+      if (el) navEls.current.set(key, el);
+      else navEls.current.delete(key);
+    },
+    [],
+  );
+  // The ordered nav-key list for the CURRENT render (header then its rows when
+  // expanded). Rebuilt each render so it tracks expand/collapse; used only by
+  // the arrow handler at event time, so a render-time array is correct here.
+  const navOrder = useRef<string[]>([]);
+  const moveActive = useCallback((from: string, delta: number) => {
+    const order = navOrder.current;
+    const at = order.indexOf(from);
     if (at === -1) return;
-    const next = rows[Math.min(rows.length - 1, Math.max(0, at + delta))];
-    next?.focus();
+    const next = order[Math.min(order.length - 1, Math.max(0, at + delta))];
+    if (next === undefined) return;
+    setActiveKey(next);
+    navEls.current.get(next)?.focus();
   }, []);
+  const navKeyDown = useCallback(
+    (key: string) => (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveActive(key, 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveActive(key, -1);
+      }
+    },
+    [moveActive],
+  );
 
   if (tree.isPending) {
     // Loading: a quiet, copy-toned pending line — no spinner theatre. The
@@ -187,6 +217,27 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
   const groups = groupEntries(tree.data?.entries ?? []);
   const now = Date.now();
 
+  // Build the single linear nav order for THIS render: each group's header,
+  // then (when expanded) its rows, in top-to-bottom order. Drives the arrow
+  // handler and the roving-tabindex "0" placement. The active key defaults to
+  // the first navigable element until the user moves it (M2 top-to-bottom).
+  const order: string[] = [];
+  for (const [group, entries] of groups) {
+    order.push(`header:${group}`);
+    if (!collapsed.has(group)) {
+      for (const entry of entries) order.push(`row:${entry.path}`);
+    }
+  }
+  navOrder.current = order;
+  // Resolve the element that holds tabIndex 0: the tracked active key when it
+  // is still present in the current order, else the first navigable element.
+  const rovingKey =
+    activeKey && order.includes(activeKey) ? activeKey : (order[0] ?? null);
+  // Deterministic degraded reason (L2): pick the reason of the FIRST degraded
+  // tier in the ordered `degradedTiers`, not an arbitrary Object.values order.
+  const degradedReason =
+    availability.degradedTiers.map((t) => availability.reasons[t]).find(Boolean) ?? "";
+
   return (
     <nav className="text-label" aria-label="vault browser" data-vault-browser>
       {/* Degraded: a tier the engine reports unavailable (or absent) renders as
@@ -201,10 +252,7 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
           data-vault-degraded
         >
           some of the corpus is unavailable right now
-          {Object.values(availability.reasons)[0]
-            ? ` — ${Object.values(availability.reasons)[0]}`
-            : ""}
-          . showing what loaded.
+          {degradedReason ? ` — ${degradedReason}` : ""}. showing what loaded.
         </p>
       )}
 
@@ -218,12 +266,17 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
         [...groups.entries()].map(([group, entries]) => {
           const isCollapsed = collapsed.has(group);
           const sectionId = `vault-group-${group}`;
+          const headerKey = `header:${group}`;
           return (
             <section key={group} className="mt-vs-1">
               <button
+                ref={registerNav(headerKey)}
                 type="button"
                 aria-expanded={!isCollapsed}
                 aria-controls={sectionId}
+                tabIndex={rovingKey === headerKey ? 0 : -1}
+                onKeyDown={navKeyDown(headerKey)}
+                onFocus={() => setActiveKey(headerKey)}
                 onClick={() =>
                   setCollapsed((prev) => {
                     const next = new Set(prev);
@@ -250,23 +303,18 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
                     const fresh = freshnessLabel(entry.dates.modified, now);
                     const highlighted = entry.path === highlight;
                     const Mark = docMark(entry.doc_type);
+                    const rowKey = `row:${entry.path}`;
                     return (
                       <li key={entry.path}>
                         <button
-                          ref={registerRow}
+                          ref={registerNav(rowKey)}
                           type="button"
                           title={entry.path}
-                          aria-current={highlighted ? "true" : undefined}
+                          aria-current={highlighted ? "page" : undefined}
+                          tabIndex={rovingKey === rowKey ? 0 : -1}
                           onClick={() => clickHandler(entry)}
-                          onKeyDown={(e) => {
-                            if (e.key === "ArrowDown") {
-                              e.preventDefault();
-                              moveFocus(e.currentTarget, 1);
-                            } else if (e.key === "ArrowUp") {
-                              e.preventDefault();
-                              moveFocus(e.currentTarget, -1);
-                            }
-                          }}
+                          onFocus={() => setActiveKey(rowKey)}
+                          onKeyDown={navKeyDown(rowKey)}
                           className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                             highlighted
                               ? "bg-accent-subtle font-medium text-ink"

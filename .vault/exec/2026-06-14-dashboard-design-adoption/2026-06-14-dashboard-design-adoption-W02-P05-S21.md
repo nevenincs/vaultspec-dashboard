@@ -120,11 +120,41 @@ owns.
 ## Outcome
 
 Full lint gate `just dev lint frontend` (eslint + prettier + tsc) exits 0. The
-frontend test suite is green: 521 passed, 9 pre-existing skips (none introduced
-here). Layer ownership preserved — the surface issues no `fetch`, defines no
+frontend test suite is green (568 passed, 9 pre-existing skips after the
+revision). Layer ownership preserved — the surface issues no `fetch`, defines no
 model, reads degradation only through the stores selector, and emits select /
 expand intent back through the existing shared selection and local view state.
 Icons come only from Lucide (chevrons) and Phosphor (doc-type marks).
+
+## Review revision (PASS-WITH-REVISIONS)
+
+The independent design review of the first commit landed PASS-WITH-REVISIONS;
+the revision commit closes every required and recommended finding:
+
+- M1 — implemented TRUE roving tabindex: the rail is now ONE Tab-stop. Exactly
+  one navigable element (a group disclosure header or a tree row) carries
+  `tabIndex 0` at a time, tracked by an active nav-key; every other navigable
+  element is `tabIndex -1`. Tab/Shift-Tab enters and leaves the rail; arrows move
+  the "0" within it. The first commit had no tabIndex management, so the rail was
+  N native Tab-stops — the claim was unimplemented.
+- M2 — group disclosure headers now join the single linear nav list, so
+  ArrowUp/ArrowDown steps header → its rows → next header in top-to-bottom order;
+  a collapsed group's header stays arrow-reachable to reopen it from the
+  keyboard. The roving "0" lands on whichever element (header or row) is active.
+- The render test now ASSERTS the roving property: exactly one element with
+  `tabIndex 0` at a time, the "0" follows arrow movement, and headers are
+  arrow-reachable (including from a collapsed group).
+- L1 — removed the render-phase `rowRefs.current = []` reset; nav elements are
+  now collected in a ref-held `Map` keyed by a stable nav-key, safe under
+  double-invoke.
+- L2 — the degraded banner now picks its reason deterministically from the
+  ordered `degradedTiers` (first degraded tier with a reason), not the
+  non-deterministic `Object.values(reasons)[0]`.
+- L3 — `aria-current="true"` → `aria-current="page"` (rows sit under a
+  navigation landmark).
+
+Reviewer-cleared and untouched: layer ownership, token discipline, icon deps,
+the four states, and test transport fidelity.
 
 ## Notes
 

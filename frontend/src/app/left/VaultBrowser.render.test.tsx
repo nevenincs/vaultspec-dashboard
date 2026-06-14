@@ -103,29 +103,87 @@ describe("VaultBrowser surface states + a11y (S21)", () => {
     expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
   });
 
-  it("moves row focus with ArrowDown/ArrowUp (roving-tabindex keyboard contract)", async () => {
+  // The single linear nav list: every navigable button (group disclosure
+  // headers AND tree rows) in DOM order. Headers carry aria-expanded; rows
+  // carry a `.vault/` title — the two together are the roving list.
+  function navButtons(): HTMLButtonElement[] {
+    return screen
+      .getAllByRole("button")
+      .filter(
+        (b) =>
+          b.hasAttribute("aria-expanded") ||
+          b.getAttribute("title")?.startsWith(".vault/"),
+      ) as HTMLButtonElement[];
+  }
+
+  function tabZero(): HTMLButtonElement[] {
+    return navButtons().filter((b) => b.tabIndex === 0);
+  }
+
+  it("is ONE tab-stop: exactly one navigable element has tabIndex 0 at a time", async () => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    // Rows are the activatable controls carrying the full path as title; the
-    // disclosure controls (aria-expanded) are excluded by filtering on title.
-    await waitFor(() => {
-      const rows = screen
-        .getAllByRole("button")
-        .filter((b) => b.getAttribute("title")?.startsWith(".vault/"));
-      expect(rows.length).toBeGreaterThan(1);
-    });
-    const rows = screen
-      .getAllByRole("button")
-      .filter((b) => b.getAttribute("title")?.startsWith(".vault/"));
-    rows[0].focus();
-    expect(document.activeElement).toBe(rows[0]);
-    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
-    expect(document.activeElement).toBe(rows[1]);
-    fireEvent.keyDown(rows[1], { key: "ArrowUp" });
-    expect(document.activeElement).toBe(rows[0]);
-    // ArrowUp at the top edge clamps rather than wrapping or escaping.
-    fireEvent.keyDown(rows[0], { key: "ArrowUp" });
-    expect(document.activeElement).toBe(rows[0]);
+    await waitFor(() => expect(navButtons().length).toBeGreaterThan(2));
+    // Default: exactly one tabbable element (the first nav element), every
+    // other header and row is tabIndex -1 — the rail is a single Tab-stop.
+    expect(tabZero()).toHaveLength(1);
+    const others = navButtons().filter((b) => b.tabIndex !== 0);
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((b) => b.tabIndex === -1)).toBe(true);
+    // The first navigable element is a group disclosure header (top-to-bottom
+    // focus order starts at the first header, not the first row).
+    expect(tabZero()[0].hasAttribute("aria-expanded")).toBe(true);
+  });
+
+  it("moves the roving tabIndex 0 with ArrowDown/ArrowUp, stepping header → row", async () => {
+    engineClient.useTransport(new MockEngine().fetchImpl);
+    renderBrowser();
+    await screen.findByRole("navigation", { name: "vault browser" });
+    await waitFor(() => expect(navButtons().length).toBeGreaterThan(2));
+
+    const header = tabZero()[0];
+    expect(header.hasAttribute("aria-expanded")).toBe(true);
+    header.focus();
+    // ArrowDown from the first header lands on its first row; the "0" follows.
+    fireEvent.keyDown(header, { key: "ArrowDown" });
+    const second = navButtons().find((b) => b.tabIndex === 0)!;
+    expect(tabZero()).toHaveLength(1);
+    expect(document.activeElement).toBe(second);
+    expect(second.getAttribute("title")?.startsWith(".vault/")).toBe(true);
+    // ArrowUp returns to the header — disclosure headers ARE arrow-reachable
+    // (so a collapsed group can be reopened from the keyboard).
+    fireEvent.keyDown(second, { key: "ArrowUp" });
+    expect(tabZero()).toHaveLength(1);
+    expect(document.activeElement).toBe(header);
+    expect(header.tabIndex).toBe(0);
+    // ArrowUp at the top edge clamps rather than wrapping or escaping the rail.
+    fireEvent.keyDown(header, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(header);
+  });
+
+  it("keeps a collapsed group's header arrow-reachable to reopen it", async () => {
+    engineClient.useTransport(new MockEngine().fetchImpl);
+    renderBrowser();
+    await screen.findByRole("navigation", { name: "vault browser" });
+    await waitFor(() => expect(navButtons().length).toBeGreaterThan(2));
+
+    const headers = navButtons().filter((b) => b.hasAttribute("aria-expanded"));
+    expect(headers.length).toBeGreaterThan(0);
+    const first = headers[0];
+    // Collapse the first group.
+    fireEvent.click(first);
+    expect(first.getAttribute("aria-expanded")).toBe("false");
+    // The header is still in the roving list and still reachable: arrowing from
+    // it down reaches the NEXT header (its rows are gone), and arrowing back up
+    // returns to it — it never falls out of the keyboard path.
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    const next = navButtons().find((b) => b.tabIndex === 0)!;
+    expect(next).not.toBe(first);
+    expect(next.hasAttribute("aria-expanded")).toBe(true);
+    fireEvent.keyDown(next, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(first);
+    expect(first.tabIndex).toBe(0);
   });
 });
