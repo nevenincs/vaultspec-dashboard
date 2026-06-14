@@ -218,14 +218,35 @@ const ANIM_DAMPING = 0.85;
 const ANIM_PX_STOP = 0.5;
 const ANIM_SCALE_STOP = 0.001;
 
+/**
+ * The base motion law's reduced-motion floor, read at the scene layer. Default
+ * reads `prefers-reduced-motion`; framework-free, guarded for non-DOM hosts
+ * (the layout worker, tests). Injectable on the Camera so tests can drive both
+ * branches without stubbing globals.
+ */
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof matchMedia === "function" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/** Options for a programmatic camera move (additive; all optional). */
+export interface AnimateOptions {
+  /** Skip the RAF lerp and snap to the target this frame (keyboard / reduced). */
+  instant?: boolean;
+}
+
 export class Camera {
   private state: CameraState = { x: 0, y: 0, scale: 1 };
   private world: Container;
   private listeners = new Set<CameraListener>();
   private rafId: number | null = null;
+  private reducedMotion: () => boolean;
 
-  constructor(world: Container) {
+  constructor(world: Container, reducedMotion: () => boolean = prefersReducedMotion) {
     this.world = world;
+    this.reducedMotion = reducedMotion;
   }
 
   get current(): CameraState {
@@ -258,12 +279,23 @@ export class Camera {
    *
    * Used by focus-node and minimap navigate-to so programmatic pan no
    * longer snap-jumps (graph-quality plan P03.S08).
+   *
+   * The base motion law: when `opts.instant` is set (keyboard-initiated focus)
+   * OR `prefers-reduced-motion` is active, the camera SNAPS to the target this
+   * frame with no RAF lerp; `onDone` still fires. This closes the reduced-motion
+   * violation on the cross-region focus path and keeps keyboard actions instant.
    */
-  animateTo(target: CameraState, onDone?: () => void): void {
+  animateTo(target: CameraState, onDone?: () => void, opts: AnimateOptions = {}): void {
     this.cancelAnimation();
     const tx = target.x;
     const ty = target.y;
     const ts = clampScale(target.scale);
+
+    if (opts.instant || this.reducedMotion()) {
+      this.apply({ x: tx, y: ty, scale: ts });
+      onDone?.();
+      return;
+    }
 
     const step = () => {
       const { x, y, scale } = this.state;

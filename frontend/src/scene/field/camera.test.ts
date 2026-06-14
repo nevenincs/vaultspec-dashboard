@@ -259,3 +259,49 @@ describe("Camera.animateTo", () => {
     expect(idle()).toBe(false); // second animation scheduled
   });
 });
+
+// ---------------------------------------------------------------------------
+// Base motion law: instant focus + prefers-reduced-motion snap (HIGH-2)
+// ---------------------------------------------------------------------------
+
+describe("Camera.animateTo instant / reduced-motion snap (base motion law)", () => {
+  it("snaps to the target this frame and fires onDone when opts.instant is set", () => {
+    const { idle } = rafHarness();
+    // reducedMotion=false so ONLY the instant flag drives the snap.
+    const cam = new Camera(fakeWorld(), () => false);
+    cam.set({ x: 200, y: 100, scale: 3 });
+    let done = false;
+    cam.animateTo(
+      { x: 0, y: 0, scale: 1 },
+      () => {
+        done = true;
+      },
+      { instant: true },
+    );
+    // No RAF scheduled — the camera is already at the exact target.
+    expect(idle()).toBe(true);
+    expect(cam.current).toEqual({ x: 0, y: 0, scale: 1 });
+    expect(done).toBe(true);
+  });
+
+  it("snaps instantly under prefers-reduced-motion even when animate is requested", () => {
+    const { idle } = rafHarness();
+    // reducedMotion=true, NO instant flag — the reduced-motion floor still snaps,
+    // closing the cross-region focus violation (search-hit / event / browser-row).
+    const cam = new Camera(fakeWorld(), () => true);
+    cam.set({ x: 500, y: 500, scale: 4 });
+    cam.animateTo({ x: 10, y: 20, scale: 1 });
+    expect(idle()).toBe(true);
+    expect(cam.current).toEqual({ x: 10, y: 20, scale: 1 });
+  });
+
+  it("still animates over RAF when motion is allowed and no instant flag is set", () => {
+    const { idle, flush } = rafHarness();
+    const cam = new Camera(fakeWorld(), () => false);
+    cam.animateTo({ x: 1000, y: 0, scale: 1 });
+    // A frame IS scheduled — the default animated path is unchanged.
+    expect(idle()).toBe(false);
+    flush();
+    expect(cam.current).toEqual({ x: 1000, y: 0, scale: 1 });
+  });
+});

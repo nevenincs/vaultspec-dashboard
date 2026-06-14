@@ -7,7 +7,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { SceneCommand, SceneFieldRenderer } from "../../scene/sceneController";
 import { SceneController } from "../../scene/sceneController";
-import { bindSelectionToScene, selectFromScene, selectNode } from "./selection";
+import {
+  bindSelectionToScene,
+  focusFromWalk,
+  selectFromScene,
+  selectNode,
+} from "./selection";
 import { useViewStore } from "./viewStore";
 
 function captureScene() {
@@ -50,6 +55,42 @@ describe("selection scene-origin flag (G2.b)", () => {
     // already pointing — the suppression still holds.
     selectFromScene("feature:x");
     expect(commands).toEqual([]);
+
+    off();
+  });
+});
+
+describe("focusFromWalk: keyboard walk re-centers instantly (HIGH-2)", () => {
+  beforeEach(() => {
+    useViewStore.getState().select(null);
+  });
+
+  it("issues exactly one focus-node with animate:false and no animated bounce", () => {
+    const { scene, commands } = captureScene();
+    const off = bindSelectionToScene(scene);
+
+    // Walking to a node must INSTANTLY re-center it (animate:false) so it never
+    // strays off-screen — and must NOT also trigger the binding's animated
+    // follow (a double focus-node). The walk owns the camera move.
+    focusFromWalk(scene, "feature:walked");
+    expect(commands).toEqual([
+      { kind: "focus-node", id: "feature:walked", animate: false },
+    ]);
+    // The shared selection is updated so every region honors it.
+    expect(useViewStore.getState().selectedId).toBe("feature:walked");
+
+    off();
+  });
+
+  it("a clearing walk (null) deselects without commanding a focus", () => {
+    const { scene, commands } = captureScene();
+    const off = bindSelectionToScene(scene);
+
+    useViewStore.getState().select("feature:held");
+    commands.length = 0; // ignore the cross-region focus from the seed
+    focusFromWalk(scene, null);
+    expect(commands).toEqual([]);
+    expect(useViewStore.getState().selectedId).toBeNull();
 
     off();
   });

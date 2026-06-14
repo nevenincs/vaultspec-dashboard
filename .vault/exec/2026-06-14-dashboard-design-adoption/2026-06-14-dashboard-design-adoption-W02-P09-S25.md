@@ -154,3 +154,32 @@ failures are all the same concurrent git-refactor files, none mine.
   advances, and bubbles uninterrupted when there is nothing to walk from, so focus can
   always leave the canvas widget. Arrow keys remain free to seed/walk (they are not
   focus-traversal keys), and Escape clears. Revision landed and tested before close.
+
+Independent review returned PASS-WITH-REVISIONS (2 HIGHs); both fixed in a follow-up
+revision commit (the resolver precedence, overlay states, no-keyboard-trap fix, layer
+ownership, instrument grammar, and marks were all confirmed and left untouched):
+
+- HIGH-1 (mock-vs-live fidelity): the `truncated` field was unit-tested only on
+  hand-built slices, never proven through the real client path. Added a consumer test
+  that calls `MockEngine.setTruncated(n)`, drives `engineClient.graphQuery` through the
+  real transport, asserts the returned `GraphSlice.truncated` shape survived
+  `adaptGraphSlice`, then that `resolveCanvasState` over that adapter-produced slice
+  yields the truncated state — and the unbounded-feature path serves no block and
+  resolves ok. The `mock-mirrors-live-wire-shape` proof. No mock/engine edit needed; the
+  already-committed `setTruncated` toggle and `truncated` type carry it.
+- HIGH-2 (camera motion-law): closed the prior seam insufficiency with ONE additive
+  seam amendment, strictly within the locked-seam discipline — an optional
+  `animate?: boolean` field on the existing `focus-node` command (default undefined ≡
+  true preserves existing behaviour; NO new command, NO new semantics). `camera.animateTo`
+  now takes an optional `{ instant }` and SNAPS instantly when `instant` is set OR
+  `prefers-reduced-motion` is active (the camera reads reduced-motion via an injectable
+  predicate, default `matchMedia`, so both branches are testable). This also closes the
+  pre-existing reduced-motion violation on the cross-region focus path (search-hit /
+  timeline-event / browser-row selection previously animated the camera ignoring reduced
+  motion). The keyboard walk now issues `focus-node {animate:false}` through a new
+  `focusFromWalk` helper that selects (scene-origin, no double-follow) and instantly
+  re-centers, fixing the off-screen operability gap (a walked node could leave the
+  viewport with no follow) while keeping keyboard actions instant. Seam confirmed
+  additive: all existing `focus-node` and `animateTo` callers omit the new optional
+  fields and are unaffected. Tests assert instant/reduced-motion snap and the
+  walk-re-centers command.

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import type { GraphSlice } from "../../stores/server/engine";
+import { engineClient, type GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
+import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
 import { resolveCanvasState } from "./CanvasStateOverlay";
 
 // The node-canvas ADR "States" table, exercised as a pure resolver: every wire
@@ -150,5 +151,71 @@ describe("resolveCanvasState (ADR States table)", () => {
         availability: HEALTHY,
       }),
     ).toEqual({ kind: "ok" });
+  });
+});
+
+// The mock-mirrors-live-wire-shape FIDELITY proof (HIGH-1): the `truncated` block
+// is exercised end-to-end through the SAME client path the app uses — the mock
+// engine serves the live shape, `engineClient.graphQuery` runs it through
+// `adaptGraphSlice`, and `resolveCanvasState` over the ADAPTER-PRODUCED slice
+// yields the truncated state. This proves the field survives the real transport
+// + adapter, not just a hand-built object.
+describe("truncated block fidelity through the real client path (HIGH-1)", () => {
+  afterEach(() => {
+    engineClient.useTransport((input, init) => fetch(input, init));
+  });
+
+  it("survives adaptGraphSlice and resolves to the truncated canvas state", async () => {
+    const mock = new MockEngine();
+    // Drive the engine's node ceiling: the mock now serves the live
+    // `{total_nodes, returned_nodes, reason}` shape (committed setTruncated).
+    mock.setTruncated(4200);
+    engineClient.useTransport(mock.fetchImpl);
+
+    // The exact call the Stage makes — through the real client + adapter.
+    const adapted = await engineClient.graphQuery({
+      scope: MOCK_SCOPE,
+      granularity: "document",
+    });
+
+    // The wire `truncated` block survived adaptGraphSlice as the typed field.
+    expect(adapted.truncated).toEqual({
+      total_nodes: 4200,
+      returned_nodes: 4200,
+      reason: expect.stringContaining("node ceiling"),
+    });
+
+    // The consumer resolves the adapter-produced slice to the truncated state.
+    const state = resolveCanvasState({
+      scope: MOCK_SCOPE,
+      granularity: "document",
+      stageSurface: "normal",
+      slice: adapted,
+      availability: HEALTHY,
+    });
+    expect(state).toEqual({
+      kind: "truncated",
+      total: 4200,
+      returned: 4200,
+      reason: expect.stringContaining("node ceiling"),
+    });
+  });
+
+  it("serves no truncated block (null) on an unbounded slice — ok state", async () => {
+    const mock = new MockEngine();
+    engineClient.useTransport(mock.fetchImpl);
+    const adapted = await engineClient.graphQuery({
+      scope: MOCK_SCOPE,
+      granularity: "feature",
+    });
+    expect(adapted.truncated ?? null).toBeNull();
+    const state = resolveCanvasState({
+      scope: MOCK_SCOPE,
+      granularity: "feature",
+      stageSurface: "normal",
+      slice: adapted,
+      availability: HEALTHY,
+    });
+    expect(state).toEqual({ kind: "ok" });
   });
 });

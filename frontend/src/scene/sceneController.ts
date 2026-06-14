@@ -96,7 +96,13 @@ export interface SceneDelta {
 export type SceneCommand =
   | { kind: "set-data"; nodes: SceneNodeData[]; edges: SceneEdgeData[] }
   | { kind: "apply-deltas"; deltas: SceneDelta[]; seq: number }
-  | { kind: "focus-node"; id: string }
+  // `animate` is an ADDITIVE optional flag on the locked seam (default undefined ≡
+  // true preserves the existing animated-follow behaviour): `animate:false`
+  // re-centers INSTANTLY, for keyboard-initiated focus which must never animate
+  // (base motion law). The camera ALSO snaps instantly under
+  // prefers-reduced-motion regardless of this flag. No new command and no new
+  // semantics — existing consumers that omit `animate` are unaffected.
+  | { kind: "focus-node"; id: string; animate?: boolean }
   // RL-5a: filter SEMANTICS live engine/view-side; the scene receives only
   // the computed visibility membership and animates the diff (§3.5 fade).
   | {

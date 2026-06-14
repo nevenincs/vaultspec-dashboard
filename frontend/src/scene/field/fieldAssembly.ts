@@ -323,11 +323,17 @@ export class DashboardField implements SceneFieldRenderer {
         if (p && this.camera && this.base.application) {
           const screen = this.base.application.screen;
           const scale = Math.max(this.camera.current.scale, 1.6);
-          this.camera.animateTo({
-            scale,
-            x: screen.width / 2 - p.x * scale,
-            y: screen.height / 2 - p.y * scale,
-          });
+          // `animate:false` (keyboard walk) snaps instantly; the camera also
+          // snaps under prefers-reduced-motion regardless (base motion law).
+          this.camera.animateTo(
+            {
+              scale,
+              x: screen.width / 2 - p.x * scale,
+              y: screen.height / 2 - p.y * scale,
+            },
+            undefined,
+            { instant: cmd.animate === false },
+          );
         }
         break;
       }

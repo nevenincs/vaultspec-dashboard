@@ -25,7 +25,11 @@ import {
 import { computeVisibility, useFilterStore } from "../../stores/view/filters";
 import { useLensStore } from "../../stores/view/lenses";
 import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
-import { bindSelectionToScene, selectFromScene } from "../../stores/view/selection";
+import {
+  bindSelectionToScene,
+  focusFromWalk,
+  selectFromScene,
+} from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { IslandLayer } from "../islands/IslandLayer";
@@ -180,19 +184,20 @@ export function Stage() {
   const pinnedDiscoveries = useViewStore((s) => s.pinnedDiscoveries);
 
   // Stable graph-walk handlers reading live store state (so the keyboard binding
-  // never re-mounts): walk and open route through `selectFromScene` (the scene-
-  // origin path that selects WITHOUT bouncing the camera focus the user is
-  // already on), open also unfolds the island, expand adds the ego to the
-  // working set. All are instant shared-store writes — no animation (ADR motion
-  // law: keyboard actions never animate).
+  // never re-mounts): a walk routes through `focusFromWalk`, which selects AND
+  // instantly re-centers the camera on the walked node (`focus-node animate:false`)
+  // so it never strays off-screen and the move never animates (base motion law:
+  // keyboard actions are instant); open re-centers and unfolds the island; expand
+  // adds the ego to the working set; clearing just deselects. All instant
+  // shared-store writes.
   const walkHandlersRef = useRef({
     selectedId: () => {
       const sel = useViewStore.getState().selection;
       return sel?.kind === "node" ? sel.id : null;
     },
-    select: (id: string | null) => selectFromScene(id),
+    select: (id: string | null) => focusFromWalk(scene.controller, id),
     open: (id: string) => {
-      selectFromScene(id);
+      focusFromWalk(scene.controller, id);
       useViewStore.getState().openNode(id);
     },
     expand: (id: string) => useViewStore.getState().addToWorkingSet(id),

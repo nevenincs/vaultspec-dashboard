@@ -26,6 +26,20 @@ export function selectFromScene(id: string | null): void {
   useViewStore.getState().select(id);
 }
 
+/**
+ * Keyboard graph-walk focus: select the walked node AND instantly re-center the
+ * camera on it. The selection is marked scene-originated so the store→scene
+ * binding does NOT also issue an animated focus (double-follow); this path owns
+ * the camera move and issues it as `focus-node {animate:false}` so the walked
+ * node is re-centered INSTANTLY (base motion law: keyboard actions never
+ * animate) and never strays off-screen. Clearing (id === null) just deselects.
+ */
+export function focusFromWalk(scene: SceneController, id: string | null): void {
+  sceneOriginated = true;
+  useViewStore.getState().select(id);
+  if (id !== null) scene.command({ kind: "focus-node", id, animate: false });
+}
+
 /** Select a timeline event; its node ids drive the stage cross-highlight. */
 export function selectEvent(
   id: string,
