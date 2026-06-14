@@ -137,7 +137,7 @@ Re-skins the worktree switcher onto the new tokens and Lucide chrome, gated on t
 
 Re-skins the rag manager onto the new tokens and sanctioned icons, gated on the rag-manager surface ADR reaching accepted.
 
-- [ ] `W02.P15.S31` - Re-skin the rag manager onto the new tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P15.S31` - Re-skin the rag manager onto the new tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P16` - Rag-search surface adoption
 

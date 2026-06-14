@@ -501,6 +501,162 @@ export function useGitStatus(): GitStatusView {
   return deriveGitStatusView(status.data, status.error, status.isPending);
 }
 
+// --- rag service status (dashboard-rag-manager ADR) ----------------------------------
+//
+// The rag rollup is app chrome; it reads rag readiness through this stores
+// selector and NEVER inspects `status.rag` or the raw `tiers` block directly
+// (dashboard-layer-ownership / rag-manager ADR "Reads status truth via stores").
+// The `/status` snapshot carries `rag: { service, watcher?, index?, jobs? }` plus
+// the wire `tiers` block. Per the rag-manager ADR, rag-down, rag-absent, and a
+// `semantic` tier reporting unavailable are all DESIGNED degraded states sourced
+// from that truth — never failures. "Readiness" is the COMPOSITE the ADR names
+// (running + index present + watcher live), derived ONLY from fields the snapshot
+// actually carries; no rag semantics are reconstructed here.
+
+const RAG_TIER = "semantic";
+
+/** The interpreted rag service view consumed by the rollup and the ops cluster. */
+export interface RagStatusView {
+  /** The status snapshot is in flight with no held rag data. */
+  loading: boolean;
+  /** A genuine transport failure (no tiers-bearing envelope) — engine unreachable. */
+  errored: boolean;
+  /**
+   * Designed degradation: the `semantic` tier reports unavailable (or is absent
+   * from a served block). Distinct from a plain stopped/absent service — this is
+   * the engine telling us the capability is down.
+   */
+  degraded: boolean;
+  /** The engine's per-tier reason when degraded, for copy-tone rendering. */
+  reason?: string;
+  /**
+   * The service lifecycle word verbatim from the snapshot ("running" / "stopped"
+   * / "absent" / …) when a rag payload is present; undefined while loading or on
+   * a tiers-less transport fault. Never synthesized.
+   */
+  service?: string;
+  /** True only when the service word is exactly "running". */
+  running: boolean;
+  /** The watcher state word when present (e.g. "watching"); undefined otherwise. */
+  watcher?: string;
+  /** The index-present word when present (e.g. "fresh"); undefined otherwise. */
+  index?: string;
+  /** In-flight job count when present; undefined otherwise. */
+  jobs?: number;
+  /**
+   * The composite readiness the ADR names: rag is "ready" only when the service
+   * is running, the index is present, and the watcher is live. Derived strictly
+   * from the carried fields; false whenever any is missing or the tier degrades.
+   */
+  ready: boolean;
+}
+
+/**
+ * Derive the rag service view (loading / errored / degraded / lifecycle / composite
+ * readiness) from a status query's data + error + pending flags, reading the `rag`
+ * payload and the `semantic` tier ONLY here in the stores layer so the rollup and
+ * the ops cluster consume interpreted truth, never `status.data.tiers` or the raw
+ * `status.rag`. A served tiers block that marks `semantic` unavailable (or omits it)
+ * is degradation (contract §2: absence ≠ available); a tiers-less transport fault is
+ * the errored branch. The composite `ready` is true only when running + index +
+ * watcher all hold — the ADR's "states the composite plainly rather than making the
+ * operator infer it".
+ */
+export function deriveRagStatusView(
+  data: EngineStatus | undefined,
+  error: unknown,
+  pending: boolean,
+): RagStatusView {
+  const tiers = data?.tiers ?? (error instanceof EngineError ? error.tiers : undefined);
+  const tier = tiers?.[RAG_TIER];
+  const degraded = tier !== undefined && tier.available === false;
+  const reason = degraded ? tier?.reason : undefined;
+
+  if (data?.rag) {
+    const rag = data.rag;
+    const running = rag.service === "running";
+    const ready =
+      running && !degraded && rag.index !== undefined && rag.watcher !== undefined;
+    return {
+      loading: false,
+      errored: false,
+      degraded,
+      reason,
+      service: rag.service,
+      running,
+      watcher: rag.watcher,
+      index: rag.index,
+      jobs: rag.jobs,
+      ready,
+    };
+  }
+  // No rag payload. A tiers-bearing envelope (served snapshot OR a backend-down
+  // error envelope) is designed degradation; a tiers-less fault is the errored
+  // branch; otherwise the snapshot is still in flight.
+  if (tiers) {
+    return {
+      loading: false,
+      errored: false,
+      degraded,
+      reason,
+      running: false,
+      ready: false,
+    };
+  }
+  if (error) {
+    return {
+      loading: false,
+      errored: true,
+      degraded: false,
+      running: false,
+      ready: false,
+    };
+  }
+  return {
+    loading: pending,
+    errored: false,
+    degraded: false,
+    running: false,
+    ready: false,
+  };
+}
+
+/**
+ * Stores hook: the rag service view, read through the status query so the rag
+ * manager surface consumes interpreted state instead of the raw `tiers` block or
+ * the raw `status.rag`. The rollup and the ops cluster render
+ * loading / errored / degraded / lifecycle / readiness directly from this.
+ */
+export function useRagStatus(): RagStatusView {
+  const status = useEngineStatus();
+  return deriveRagStatusView(status.data, status.error, status.isPending);
+}
+
+/** The interpreted outcome of an ops dispatch, for the receipt copy. */
+export type OpsOutcome = "ok" | "backend-down" | "failed";
+
+/**
+ * Classify an ops dispatch outcome in the stores layer so the chrome receipt
+ * never inspects the raw `tiers` block itself (dashboard-layer-ownership /
+ * rag-manager ADR: "reads status truth via stores"). A rejected dispatch whose
+ * `EngineError` carries a tiers block is the backend reporting itself down (the
+ * rag-down 502 surfaces as section-2 tier truth, contract §2 /
+ * every-wire-response-carries-the-tiers-block) — distinct from a tiers-less
+ * transport fault, which is a plain failure. A resolved-but-not-ok envelope is
+ * also a plain failure. The chrome renders the returned kind, not the block.
+ */
+export function classifyOpsOutcome(result: {
+  ok: boolean;
+  error?: unknown;
+}): OpsOutcome {
+  if (result.error !== undefined) {
+    return result.error instanceof EngineError && result.error.tiers !== undefined
+      ? "backend-down"
+      : "failed";
+  }
+  return result.ok ? "ok" : "failed";
+}
+
 /** The interpreted state of a file's read-only diff request. */
 export interface GitFileDiffView {
   /** The diff request is in flight. */

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { EngineStatus } from "../../stores/server/engine";
+import { EngineError, type EngineStatus } from "../../stores/server/engine";
+import { classifyOpsOutcome, deriveRagStatusView } from "../../stores/server/queries";
 import { edgesByTier } from "./Inspector";
-import { coreCard, gitCard, ragCard } from "./NowStrip";
+import { coreCard, gitCard, ragCardView } from "./NowStrip";
 import { OPS_WHITELIST } from "./OpsPanel";
 
 const status = (over: Partial<EngineStatus>): EngineStatus => ({
@@ -25,22 +26,75 @@ describe("now strip rollups (G2, honest degradation)", () => {
     expect(gitCard(undefined).tone).toBe("down");
   });
 
-  it("renders core and rag absence as designed down states, not errors", () => {
+  it("renders core absence as a designed down state, not an error", () => {
     expect(coreCard(status({ core: { reachable: false } })).tone).toBe("down");
     expect(
       coreCard(status({ core: { reachable: true, vault_health: "green" } })).tone,
     ).toBe("ok");
-    expect(ragCard(status({ rag: { service: "stopped" } }))).toMatchObject({
-      tone: "down",
-      detail: "stopped",
+  });
+
+  // The rag rollup is driven by the interpreted RagStatusView the stores layer
+  // derives — feed real status snapshots through deriveRagStatusView so the test
+  // exercises the stores selector AND the card projection end to end (no raw
+  // status interpretation in the card).
+  it("renders rag stopped/absent as designed down states, not errors", () => {
+    const stopped = deriveRagStatusView(
+      status({ rag: { service: "stopped" } }),
+      null,
+      false,
+    );
+    expect(ragCardView(stopped)).toMatchObject({ tone: "down", detail: "stopped" });
+
+    const absent = deriveRagStatusView(status({}), null, false);
+    expect(ragCardView(absent).tone).toBe("down");
+  });
+
+  it("states rag readiness as a composite (running + index + watcher)", () => {
+    const ready = deriveRagStatusView(
+      status({
+        rag: { service: "running", watcher: "watching", index: "fresh", jobs: 2 },
+      }),
+      null,
+      false,
+    );
+    const card = ragCardView(ready);
+    expect(card.tone).toBe("ok");
+    expect(card.detail).toBe("ready · watching · index fresh");
+    expect(card.jobs).toBe(2);
+  });
+
+  it("renders a degraded semantic tier as warn, not a bare error", () => {
+    const degraded = deriveRagStatusView(
+      status({
+        rag: { service: "stopped" },
+        tiers: { semantic: { available: false, reason: "model loading" } },
+      }),
+      null,
+      false,
+    );
+    const card = ragCardView(degraded);
+    expect(card.tone).toBe("warn");
+    expect(card.detail).toContain("model loading");
+  });
+});
+
+describe("ops outcome classification (rag-manager ADR, stores-owned tier read)", () => {
+  it("classifies a tiers-bearing EngineError as backend-down, not a plain failure", () => {
+    const down = new EngineError("/ops/rag/reindex", 502, {
+      tiers: { semantic: { available: false, reason: "rag service down" } },
     });
-    expect(
-      ragCard(
-        status({
-          rag: { service: "running", watcher: "watching", index: "fresh", jobs: 2 },
-        }),
-      ).detail,
-    ).toBe("watching · index fresh · 2 jobs");
+    expect(classifyOpsOutcome({ ok: false, error: down })).toBe("backend-down");
+  });
+
+  it("classifies a tiers-less transport fault as a plain failure", () => {
+    const fault = new EngineError("/ops/rag/reindex", 500, {});
+    expect(classifyOpsOutcome({ ok: false, error: fault })).toBe("failed");
+    expect(classifyOpsOutcome({ ok: false, error: new Error("boom") })).toBe("failed");
+  });
+
+  it("classifies a resolved envelope by its ok flag", () => {
+    expect(classifyOpsOutcome({ ok: true })).toBe("ok");
+    expect(classifyOpsOutcome({ ok: false })).toBe("failed");
   });
 });
 

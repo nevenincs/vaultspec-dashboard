@@ -15,6 +15,58 @@ import { queryClient } from "../../stores/server/queryClient";
 import { MockEngine } from "../../testing/mockEngine";
 import { NowStrip } from "./NowStrip";
 
+function ragCardEl(): HTMLElement {
+  return document.querySelector('[data-card="rag"]') as HTMLElement;
+}
+
+function renderStrip(configure?: (mock: MockEngine) => void) {
+  const mock = new MockEngine();
+  configure?.(mock);
+  engineClient.useTransport(mock.fetchImpl);
+  render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(NowStrip),
+    ),
+  );
+  return mock;
+}
+
+describe("NowStrip rag rollup states (W02.P15.S31)", () => {
+  afterEach(() => {
+    cleanup();
+    queryClient.clear();
+    engineClient.useTransport((input, init) => fetch(input, init));
+    vi.restoreAllMocks();
+  });
+
+  it("renders rag readiness as a legible receipt (running + index + watcher)", async () => {
+    renderStrip();
+    await waitFor(() => {
+      const card = ragCardEl();
+      expect(card).toBeTruthy();
+      // Composite readiness is stated plainly; the snapshot serves a fresh
+      // index, a live watcher, and zero jobs.
+      expect(card.getAttribute("data-tone")).toBe("ok");
+      expect(card.textContent).toContain("ready");
+      expect(card.textContent).toContain("index fresh");
+      expect(card.querySelector("[data-rag-jobs]")?.textContent).toContain("0 jobs");
+    });
+  });
+
+  it("renders a degraded semantic tier as a designed warn state, not an error", async () => {
+    renderStrip((mock) => mock.degrade("semantic", "model loading"));
+    await waitFor(() => {
+      const card = ragCardEl();
+      expect(card.getAttribute("data-tone")).toBe("warn");
+      // Honest degraded copy carrying the engine's own reason — never a bare
+      // error and never the stopped/absent wording.
+      expect(card.textContent).toContain("model loading");
+    });
+  });
+});
+
 describe("NowStrip stream recovery (029)", () => {
   afterEach(() => {
     cleanup();
