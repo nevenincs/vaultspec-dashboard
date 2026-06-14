@@ -10,6 +10,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import type { SalienceLens } from "../view/salienceLens";
 import {
   adaptFilters,
   adaptGraphSlice,
@@ -141,6 +142,15 @@ export interface EngineNode {
    * center-of-gravity sizing (ADR D4.1); absent on document nodes.
    */
   member_count?: number;
+  /**
+   * The single active-lens Degree-of-Interest salience float in [0,1]
+   * (graph-node-salience ADR): the engine-computed, per-lens, CPU-bound node
+   * importance for the REQUESTED lens. Present on document nodes; absent on
+   * feature-convergence nodes (the salience model ranks documents). It is a
+   * single float for the active lens, NEVER a per-lens map — treating it as a
+   * fixed number anywhere discards the intent dimension the ADR exists for.
+   */
+  salience?: number;
 }
 
 /**
@@ -217,6 +227,18 @@ export interface GraphSlice {
    * silent partial result.
    */
   truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
+  /**
+   * The active salience lens the engine computed for (graph-node-salience ADR
+   * wire amendment), echoed so the client never re-derives which lens it renders.
+   * Defaults to `status` when the request omitted it.
+   */
+  lens?: SalienceLens;
+  /**
+   * True when the salience was computed while a relevant tier was degraded (read
+   * from the `tiers` block, never guessed): the client renders the ranking as
+   * partial, never as a complete one. The degraded tier itself is in `tiers`.
+   */
+  salience_partial?: boolean;
 }
 
 export interface FiltersVocabulary {
@@ -526,6 +548,11 @@ export class EngineClient {
      *  feature-convergence nodes + meta-edges. Omitted = document. */
     granularity?: "document" | "feature";
     as_of?: string | number;
+    /** The active salience lens (graph-node-salience ADR wire amendment):
+     *  `status` (default) or `design`. Omitted = the engine defaults to status. */
+    lens?: SalienceLens;
+    /** The DOI focus node id folded into the salience distance term. */
+    focus?: string | null;
   }): Promise<GraphSlice> {
     return adaptGraphSlice(await this.post("/graph/query", body));
   }

@@ -199,19 +199,19 @@ Wire the stores layer as the sole wire client: active-lens view state distinct f
 
 Hold the active-lens state in the stores view layer, distinct from the tier-dial lens, parameterize the graph query by lens, and drive a focus-change loading state into the scene; read degradation from the tiers block.
 
-- [ ] `W04.P09.S36` - Add an active-salience-lens view store (status default) distinct from the saved-filter-set lenses store, exposing the active lens and a setter; `frontend/src/stores/view/salienceLens.ts`.
-- [ ] `W04.P09.S37` - Add the lens parameter to the engine graphQuery adapter request body so the wire client sends the active lens; `frontend/src/stores/server/engine.ts`.
-- [ ] `W04.P09.S38` - Parameterize the useGraphSlice query by active lens, keying the query cache on lens so a lens switch is a re-query; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P09.S39` - Surface a focus-change loading state from the stores layer into the scene loading channel, derived from the lens-and-focus query state; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P09.S40` - Read salience degradation from the tiers block (fresh error tiers winning over a stale held-success block), never from a bare transport error; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P09.S41` - Test the active-lens store default and setter, the lens-keyed query re-fetch, the focus loading state, and the tiers-based degradation read; `frontend/src/stores/view/salienceLens.test.ts`.
+- [x] `W04.P09.S36` - Add an active-salience-lens view store (status default) distinct from the saved-filter-set lenses store, exposing the active lens and a setter; `frontend/src/stores/view/salienceLens.ts`.
+- [x] `W04.P09.S37` - Add the lens parameter to the engine graphQuery adapter request body so the wire client sends the active lens; `frontend/src/stores/server/engine.ts`.
+- [x] `W04.P09.S38` - Parameterize the useGraphSlice query by active lens, keying the query cache on lens so a lens switch is a re-query; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P09.S39` - Surface a focus-change loading state from the stores layer into the scene loading channel, derived from the lens-and-focus query state; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P09.S40` - Read salience degradation from the tiers block (fresh error tiers winning over a stale held-success block), never from a bare transport error; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P09.S41` - Test the active-lens store default and setter, the lens-keyed query re-fetch, the focus loading state, and the tiers-based degradation read; `frontend/src/stores/view/salienceLens.test.ts`.
 
 ### Phase `W04.P10` - Mock-engine parity and the live-sample conformance test
 
 Bring the mock engine to live-wire parity for the lens parameter and the salience field, and prove fidelity by feeding a captured live sample through the same client path the app uses.
 
-- [ ] `W04.P10.S42` - Extend the mock engine to honor the lens request parameter and emit the single active-lens salience float on document nodes, byte-for-byte the live wire shape; `frontend/src/testing/mockEngine.ts`.
-- [ ] `W04.P10.S43` - Add a conformance test feeding a captured live salience sample through adaptGraphSlice and the same client path the app uses, asserting lens default and salience fidelity; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `W04.P10.S42` - Extend the mock engine to honor the lens request parameter and emit the single active-lens salience float on document nodes, byte-for-byte the live wire shape; `frontend/src/testing/mockEngine.ts`.
+- [x] `W04.P10.S43` - Add a conformance test feeding a captured live salience sample through adaptGraphSlice and the same client path the app uses, asserting lens default and salience fidelity; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ## Wave `W05` - Benchmarks, tests, and the closing green gate
 

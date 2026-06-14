@@ -142,6 +142,59 @@ function toWireMetaEdge(edge: EngineEdge): WireMetaEdge {
   };
 }
 
+/**
+ * The two launch salience lenses (graph-node-salience ADR), the exact wire
+ * tokens the mock honors on `/graph/query`. STATUS is the default (omitted lens).
+ */
+type MockLens = "status" | "design";
+
+function parseMockLens(raw: unknown): MockLens {
+  return raw === "design" ? "design" : "status";
+}
+
+/**
+ * A deterministic mock salience that mirrors the LIVE wire SHAPE exactly
+ * (mock-mirrors-live-wire-shape): a single active-lens `salience` float in [0,1]
+ * on each DOCUMENT node, lens-dependent so the two lenses order the same node set
+ * differently — the design lens favors authority documents (adr/research),
+ * the status lens favors roadmap documents (plan) and recent exec activity. This
+ * is NOT the real DOI engine (that is CPU-side); it is a faithful stand-in for the
+ * field's SHAPE and lens-dependence so the client path that reads/orders by
+ * salience is exercised against the same wire contract the live engine serves.
+ */
+function mockSalienceFor(node: EngineNode, lens: MockLens): number {
+  const docType = node.doc_type ?? "document";
+  const authorityWeight: Record<string, number> = {
+    adr: 1.0,
+    research: 0.8,
+    reference: 0.7,
+    plan: 0.4,
+    audit: 0.5,
+    rule: 0.5,
+    exec: 0.1,
+    index: 0.0,
+  };
+  const roadmapWeight: Record<string, number> = {
+    plan: 1.0,
+    audit: 0.6,
+    adr: 0.5,
+    exec: 0.3,
+    research: 0.3,
+    reference: 0.3,
+    rule: 0.4,
+    index: 0.0,
+  };
+  const base =
+    lens === "design"
+      ? (authorityWeight[docType] ?? 0.2)
+      : (roadmapWeight[docType] ?? 0.2);
+  // A small connectivity nudge so nodes of the same type still differ, clamped
+  // to [0,1]. Deterministic from the served degree projection.
+  const degree =
+    (node.degree_by_tier?.declared ?? 0) + (node.degree_by_tier?.structural ?? 0);
+  return Math.min(1, Math.max(0, base * 0.9 + Math.min(0.1, degree * 0.02)));
+}
+
 // --- the mock engine --------------------------------------------------------------
 
 type StreamSubscriber = (channel: string, data: unknown) => void;
@@ -531,9 +584,27 @@ export class MockEngine {
       // tiers gate content here too (011); an absent corpus serves
       // nothing (035).
       const reqBody = init?.body
-        ? (JSON.parse(String(init.body)) as { granularity?: string; filter?: unknown })
+        ? (JSON.parse(String(init.body)) as {
+            granularity?: string;
+            filter?: unknown;
+            lens?: string;
+            focus?: string | null;
+          })
         : {};
       const filter = reqBody.filter;
+      // The active salience lens (graph-node-salience ADR wire amendment): the
+      // mock honors the `lens` request parameter and defaults to STATUS when
+      // omitted, byte-for-byte the live engine (Lens::parse). The lens is echoed.
+      const lens = parseMockLens(reqBody.lens);
+      // salience_partial read from the SAME tiers block the response carries
+      // (degradation-is-read-from-tiers), mirroring the live `is_partial`: a
+      // degraded backbone tier (declared/structural) flags any lens partial; a
+      // degraded temporal tier flags the STATUS lens partial.
+      const degraded = (t: string) => tiers[t]?.available === false;
+      const saliencePartial =
+        degraded("declared") ||
+        degraded("structural") ||
+        (lens === "status" && degraded("temporal"));
       // The bounded-query honesty block, mirroring the live `vaultspec-api`
       // `query.rs`: `null` on an unbounded slice, the object when the ceiling
       // fired. The reason text matches the live "narrow with a filter" copy.
@@ -556,12 +627,16 @@ export class MockEngine {
           tiers,
           last_seq: null,
           truncated: null,
+          lens,
+          salience_partial: saliencePartial,
         };
       }
       // LIVE /graph/query carries `last_seq` — the delta clock's tip at query
       // time — so a held keyframe splices live `graph` deltas with no gap
       // (contract §4; the live engine emits it, so the mock must mirror it).
       if (reqBody.granularity === "feature") {
+        // Feature-convergence nodes are NOT salience-ranked (the model ranks
+        // documents), so they carry no salience field — live parity.
         return {
           nodes: c.nodes.filter((n) => n.kind === "feature"),
           edges: [],
@@ -570,16 +645,29 @@ export class MockEngine {
           tiers,
           last_seq: this.lastSeq,
           truncated,
+          lens,
+          salience_partial: saliencePartial,
         };
       }
+      // Document granularity: attach the single active-lens salience float to each
+      // document node and order by descending salience, so a truncation keeps the
+      // top-DOI nodes for the active lens — byte-for-byte the live wire SHAPE.
+      const docNodes = c.nodes
+        .filter((n) => n.kind !== "feature")
+        .map((n) => ({ ...n, salience: mockSalienceFor(n, lens) }))
+        .sort(
+          (a, b) => (b.salience ?? 0) - (a.salience ?? 0) || a.id.localeCompare(b.id),
+        );
       return {
-        nodes: c.nodes.filter((n) => n.kind !== "feature"),
+        nodes: docNodes,
         edges: c.edges.filter((e) => this.tierServed(e)),
         meta_edges: [],
         filter,
         tiers,
         last_seq: this.lastSeq,
         truncated,
+        lens,
+        salience_partial: saliencePartial,
       };
     }
     if (path === "/filters") {
