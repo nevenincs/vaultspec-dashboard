@@ -182,19 +182,88 @@ tier filter, and un-bundled on hover. The dense semantic tier is therefore prese
 smothering. **Encoding** applies the channel map (type→shape, feature→hue, salience→size,
 lifecycle/recency→value, tier→hue+dash), with the semantics lifecycle vocabulary driving
 state treatments — superseded ADRs faded, audit severity tinted, generated index nodes
-visually distinct — and diff coloring overriding warmth during temporal replay.
+visually distinct — and diff coloring overriding warmth during temporal replay. Note two
+distinct "backbones": the **centrality backbone** the salience ADR computes on is tier-*weighted*
+(all four tiers, declared ≥ structural ≫ temporal ≥ semantic), while the **layout backbone**
+drawn here is the high-precision *subset* (declared + structural only, with temporal/semantic as
+layered context, not layout input). They share an intent but are not the same structure; an
+implementer builds both.
 
-**Dynamic behavior** animates live deltas (add fades in, remove fades out, re-tier is a
+**Switching mechanism and ownership.** Representation-mode switching is a **new `SceneController`
+command** (`set-representation-mode: connectivity | lineage | semantic`), explicitly **distinct
+from the existing render-tuning `set-layout-mode` (force | circular)** that the canvas-controls
+AlgorithmPanel already owns — the two are different axes (representation mode changes which CPU-
+worker layout runs and what data it consumes; force/circular only tunes the force solver).
+Active representation-mode is **view state owned by the stores/app view-store**, emitted to the
+scene, which re-runs the mode's worker layout and echoes a `representation-mode-changed` event.
+**Object constancy across a mode switch** is carried by the scene's existing id-keyed sprite
+reconciler and position cache: the new layout seeds its animated transition from prior id-keyed
+positions, and no node is re-keyed. Overlay visibility (feature hulls, country labels on/off) is
+view state owned by the view-store and emitted as a dedicated `set-overlays` command; the scene
+toggles the hull layer without re-layout. The **default first-load state is the connectivity
+mode under the status lens**.
+
+**Composition — lens and mode are orthogonal and freely combinable.** The lens (an engine/wire
+concern: a query parameter selecting the salience field and, via DOI, the served node *set*) and
+the representation mode (a scene concern: a CPU-worker spatialization of whatever nodes are
+served) are independent axes — one selects *which nodes and how important*, the other *where they
+sit* — and every lens must be viewable in every mode (status lens + lineage mode is a first-class
+combination). The stores layer owns both active selections and **sequences them**: a lens switch
+is a re-query that delivers a possibly-different node set, which the active mode re-lays-out with
+id-keyed object constancy; a mode switch re-lays-out the current set with no re-query. This
+single rule is what keeps the two switches from contending.
+
+**Required downstream amendments (named, not assumed).** Adopting these principles requires
+amending two accepted consumer ADRs, and this ADR states each so an executor does not invent it:
+(1) a **node-canvas amendment** for `salience → size` — node-canvas currently pins radius to
+feature member-count and holds all other species at base radius; that rule is **superseded** by
+salience-driven size (member-count folds into the feature node's salience, so the two no longer
+compete), and node-canvas's label culling gains salience as a label-priority input; (2) a
+**canvas-controls amendment** adding the **representation-mode selector** (and reconciling it with
+the existing force/circular toggle, which becomes a sub-option of connectivity) and the **lens
+selector** control group. These amendments are scoped by the plans this ADR seeds.
+
+### Frontier ledger
+
+Every technique surfaced by the representation research, with its verdict, promotion trigger, and
+reason. `adopt-v1` ships in the first build; `adopt-deferred` is decided-in but scheduled later
+behind a trigger; `study` is a reference implementation to learn from; `decline` is a permanent
+no.
+
+| Technique | Verdict | Trigger / reason |
+|---|---|---|
+| DOI bounded selection (Shneiderman/Furnas/van Ham-Perer) | adopt-v1 | the interaction + wire-selection spine |
+| Semantic zoom LOD (Pad++) | adopt-v1 | the focus+context mechanism |
+| ForceAtlas2 connectivity layout | adopt-v1 | default; in-sweet-spot at the ceiling |
+| Lineage derivation-DAG layout (CitNetExplorer/PROV) | adopt-v1 | primary path-following task; consumes `derivation` labels |
+| Backbone draw + HEB bundling + disparity filter | adopt-v1 | the anti-hairball discipline |
+| BubbleSets feature hulls | adopt-v1 | v1 overlay |
+| GMap "feature countries" overview | adopt-v1 | overview LOD metaphor |
+| Channel encoding (Bertin/Mackinlay/Munzner) | adopt-v1 | type→shape, feature→hue, salience→size, etc. |
+| Animated deltas + incremental layout | adopt-v1 | mental-map stability (core, not frontier) |
+| Semantic UMAP layout mode | adopt-v1-gated | promotes when worker UMAP at ceiling is within the layout time budget and clusters separate legibly |
+| KelpFusion overlay | adopt-deferred | when hull-overlap legibility threshold is crossed |
+| LinkQ "talk to your vault" query | adopt-deferred | when the grounded-query stores seam + degradation contract exist |
+| LLM cluster auto-labeling | adopt-deferred | read-only, grounded; after the labeling seam exists |
+| NodeTrix matrix-in-node | adopt-deferred | when intra-cluster edge density exceeds the legibility threshold |
+| DRGraph scale-hardened DR layout | adopt-deferred | when UMAP runtime at the ceiling exceeds the budget |
+| sfdp / multilevel pre-layout | adopt-deferred | only for a future beyond-ceiling pre-layout need |
+| Embedding Atlas / Nomic Atlas | study | reference for semantic + cluster-label at scale |
+| cosmos.gl rendering tricks | study | adopt instancing/culling; reject its GPU-layout model |
+| GNN learned layout (DeepGD/CoRe-GD/etc.) | decline | needs runtime torch (wheel-purity); no gain at our bound |
+| cosmos.gl GPU-layout model | decline | violates GPU-render-only / engine-holds-no-coordinates |
+
+**Dynamic behavior (v1)** animates live deltas (add fades in, remove fades out, re-tier is a
 staged transition) and places new nodes incrementally rather than re-running the full layout,
-preserving the mental map per the dynamic-graph evidence. **The AI layer** is grounded and
-optional: a natural-language query is compiled by an LLM into a bounded engine query executed
-by the stores layer and rendered as a normal result (the LLM contributes intent, never
-nodes), and feature/semantic clusters may be auto-labelled by an LLM summary of their members
-— both read-only, both degrading to absence honestly when unavailable. **Escalation paths**
-are recorded but deferred: NodeTrix matrix-in-node for over-dense clusters, DRGraph for a
-scale-hardened semantic layout, sfdp/multilevel for any future beyond-ceiling pre-layout.
-This ADR pins the principles and the algorithm choices; the node-canvas ADR and the stores
-projections carry them into the rendering and the wire; no application code is written here.
+preserving the mental map per the dynamic-graph evidence. **The AI layer (deferred)** is, when
+it lands post-v1, grounded and read-only: a natural-language query is compiled by an LLM into a
+bounded engine query executed by the stores layer and rendered as a normal result (the LLM
+contributes intent, never nodes), and clusters may be auto-labelled by an LLM summary of their
+members — both degrading to absence honestly when unavailable. It is `adopt-deferred` in the
+ledger, not v1 scope. **Escalation paths** (NodeTrix, DRGraph, sfdp) are likewise deferred behind
+the triggers in the ledger. This ADR pins the principles, the v1/deferred split, and the
+switching/composition mechanisms; the plans it seeds carry them into the engine, the wire, and
+the node-canvas/canvas-controls amendments — no application code is written in this ADR.
 
 ## Rationale
 
