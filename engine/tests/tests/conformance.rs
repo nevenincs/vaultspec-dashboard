@@ -628,9 +628,9 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
     // the global-settings surface, session.rs). No user-authored keys are
     // present yet.
     assert!(
-        settings["data"]["global"].as_object().is_some_and(|m| {
-            m.keys().all(|k| k == "active_workspace")
-        }),
+        settings["data"]["global"]
+            .as_object()
+            .is_some_and(|m| { m.keys().all(|k| k == "active_workspace") }),
         "no user global settings before any write: {}",
         settings["data"]["global"]
     );

@@ -600,7 +600,7 @@ impl LensBasis {
                 members
                     .iter()
                     .copied()
-                    .find(|nd| &nd.id == id)
+                    .find(|node| &node.id == id)
                     .expect("backbone id is a member")
             })
             .collect();
@@ -1585,8 +1585,8 @@ mod tests {
             doc("r", "research", "f"),
         ];
         let mut g = LinkageGraph::new();
-        for nd in &nodes {
-            g.upsert_node(nd.clone());
+        for node in &nodes {
+            g.upsert_node(node.clone());
         }
         engine_graph::ingest(
             &mut g,
@@ -1784,8 +1784,8 @@ mod tests {
             doc("r", "research", "f"),
         ];
         let mut g = LinkageGraph::new();
-        for nd in &nodes {
-            g.upsert_node(nd.clone());
+        for node in &nodes {
+            g.upsert_node(node.clone());
         }
         engine_graph::ingest(
             &mut g,
