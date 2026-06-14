@@ -107,7 +107,7 @@ Stand up the storm harness, bounded-growth assertion, and CI perf gate that repr
 The storm/bounded-growth test utilities and the CI perf gate.
 
 - [x] `W01.P01.S01` - Add the fake-timer delta-storm harness and the bounded-growth assertion helper; `frontend/src/testing/adverse.ts`.
-- [ ] `W01.P01.S02` - Add the CI perf-gate spec that reads the spike frame-time results and asserts the p95 budget; `frontend/e2e/perf.spec.ts`.
+- [x] `W01.P01.S02` - Add the CI perf-gate spec that reads the spike frame-time results and asserts the p95 budget; `frontend/e2e/perf.spec.ts`.
 
 ## Wave `W02` - Performance optimization
 
@@ -124,8 +124,8 @@ Bound the live accumulator and coalesce the invalidation storms.
 
 Settle the layout loop and make scene mount bindings reversible.
 
-- [ ] `W02.P03.S05` - Add convergence detection so the FA2 worker settles and stops, restarting on input; `frontend/src/scene/field/fa2.worker.ts`.
-- [ ] `W02.P03.S06` - Make the scene mount bindings reversible so they do not leak across remounts; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W02.P03.S05` - Add convergence detection so the FA2 worker settles and stops, restarting on input; `frontend/src/scene/field/fa2.worker.ts`.
+- [x] `W02.P03.S06` - Make the scene mount bindings reversible so they do not leak across remounts; `frontend/src/scene/field/fieldAssembly.ts`.
 
 ## Wave `W03` - Feature completeness
 
@@ -136,7 +136,7 @@ Finish the built-but-unwired surfaces now engine-unblocked (live delta-apply, fe
 Wire the now-unblocked live delta-apply and consolidate the dispatch confirm-guard.
 
 - [x] `W03.P04.S07` - Wire the live no-refetch delta-apply and feature-granularity asof keyframe; `frontend/src/stores/server/graphSync.ts`.
-- [ ] `W03.P04.S08` - Consolidate the ops and palette arm-to-confirm onto the dispatch confirm-guard; `frontend/src/app/palette/CommandPalette.tsx`.
+- [x] `W03.P04.S08` - Consolidate the ops and palette arm-to-confirm onto the dispatch confirm-guard; `frontend/src/app/palette/CommandPalette.tsx`.
 
 ## Wave `W04` - Engine sweep and campaign verification
 
