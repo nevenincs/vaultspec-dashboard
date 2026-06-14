@@ -47,6 +47,21 @@ export interface ViewState {
    * falls back to the map's default corpus-bearing worktree.
    */
   scope: string | null;
+  /**
+   * The active vault folder for the current scope (user-state-persistence
+   * W04.P09.S30): the durable "which folder am I browsing" projection over the
+   * `/vault-tree`, restored from the session on load. Null when no folder is
+   * selected. This is session-defining state — its durable home is the session
+   * API, NOT localStorage; the view store mirrors it for synchronous reads.
+   */
+  activeFolder: string | null;
+  /**
+   * The active feature-tag contexts for the current scope (W04.P09.S30): the
+   * "current folder + contexts" concept built on the existing `feature_tags`
+   * grouping primitive (a projection, never a new node model). Restored from the
+   * session's `scope_context.feature_tags` on load.
+   */
+  featureContexts: string[];
   /** The shared selection; `selectedId` mirrors its id for convenience. */
   selection: Selection;
   selectedId: string | null;
@@ -76,6 +91,25 @@ export interface ViewState {
 
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
   setScope: (scope: string | null) => void;
+  /**
+   * Seed the scope + folder context from the restored session (W04.P09.S30).
+   * Used by the stores-layer restore hook on session load: it mirrors the
+   * durable session shape into the view store WITHOUT triggering the wholesale
+   * reset (which is for a user-initiated swap, not a restore). Durable
+   * persistence is the session API's job, not this setter's.
+   */
+  seedFromSession: (context: {
+    scope: string | null;
+    folder: string | null;
+    featureTags: string[];
+  }) => void;
+  /**
+   * Set the active folder + feature-tag contexts (W04.P09.S30). Mirrors the
+   * selection into the view store for synchronous reads; the durable write goes
+   * through the session API at the call site (a stores mutation), never
+   * localStorage.
+   */
+  setScopeContext: (context: { folder: string | null; featureTags: string[] }) => void;
   /** Select a node by id (the common path); null clears. */
   select: (id: string | null) => void;
   /** Select any entity kind (edge, event with node ids, …). */
@@ -106,6 +140,8 @@ export const PINNED_DISCOVERIES_CAP = 50;
 
 export const useViewStore = create<ViewState>((set) => ({
   scope: null,
+  activeFolder: null,
+  featureContexts: [],
   selection: null,
   selectedId: null,
   workingSet: [],
@@ -145,6 +181,11 @@ export const useViewStore = create<ViewState>((set) => ({
     useLiveStatusStore.getState().reset();
     set({
       scope,
+      // The folder context is scoped to the previous corpus — clear it on a
+      // wholesale swap (W04.P09.S30). The new scope's persisted context is
+      // re-seeded from the session by the stores restore hook (seedFromSession).
+      activeFolder: null,
+      featureContexts: [],
       selection: null,
       selectedId: null,
       workingSet: [],
@@ -156,6 +197,10 @@ export const useViewStore = create<ViewState>((set) => ({
       granularity: "feature",
     });
   },
+  seedFromSession: ({ scope, folder, featureTags }) =>
+    set({ scope, activeFolder: folder, featureContexts: featureTags }),
+  setScopeContext: ({ folder, featureTags }) =>
+    set({ activeFolder: folder, featureContexts: featureTags }),
   select: (id) =>
     set({
       selection: id === null ? null : { kind: "node", id },
@@ -191,7 +236,9 @@ export const useViewStore = create<ViewState>((set) => ({
       const next = [...state.workingSet, id];
       return {
         workingSet:
-          next.length > WORKING_SET_CAP ? next.slice(next.length - WORKING_SET_CAP) : next,
+          next.length > WORKING_SET_CAP
+            ? next.slice(next.length - WORKING_SET_CAP)
+            : next,
       };
     }),
   removeFromWorkingSet: (id) =>
