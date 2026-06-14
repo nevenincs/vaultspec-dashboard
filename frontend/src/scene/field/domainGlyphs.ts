@@ -37,6 +37,17 @@ export function markForKind(kind: string): MarkDef {
 }
 
 /**
+ * Resolve any mark by its stable id (a tier/state/event id or a doc-type kind)
+ * for `textureForMark` — the legend/badge path that turns a non-species mark
+ * into a silhouette texture. Falls back to the default species for an unknown
+ * id so the provider never throws. Pure and unit-tested; the GPU upload that
+ * consumes it stays untested (no GPU in the test env).
+ */
+export function markForId(id: string): MarkDef {
+  return markDef(id) ?? markForKind(id);
+}
+
+/**
  * Rasterize a mark SVG into a Pixi `Graphics` via the spike-proven parse:
  * substitute the tintable ink, then parse with `GraphicsContext.svg()`. Pure
  * geometry — no GPU upload — so it is inspectable offline (the gate and tests
@@ -70,8 +81,7 @@ export class DomainGlyphs implements GlyphTextureProvider {
 
   /** Texture for any mark by its stable id (tier/state/event/doc-type). */
   textureForMark(id: string): Texture {
-    const def = markDef(id) ?? markForKind(id);
-    return this.textureForDef(def, id);
+    return this.textureForDef(markForId(id), id);
   }
 
   private textureForDef(def: MarkDef, cacheKey: string): Texture {

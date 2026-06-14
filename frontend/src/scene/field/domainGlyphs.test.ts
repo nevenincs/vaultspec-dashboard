@@ -9,8 +9,8 @@
 import { describe, expect, it } from "vitest";
 import { Graphics } from "pixi.js";
 
-import { markForKind, markGraphics } from "./domainGlyphs";
-import { DOC_TYPE_MARK_DEFS } from "./marks";
+import { markForId, markForKind, markGraphics } from "./domainGlyphs";
+import { DOC_TYPE_MARK_DEFS, STATE_MARK_DEFS, TIER_MARK_DEFS } from "./marks";
 
 describe("markForKind", () => {
   it("resolves every doc-type/feature species to its own mark", () => {
@@ -27,6 +27,24 @@ describe("markForKind", () => {
 
   it("carries the authored node-feature mark for the feature species", () => {
     expect(markForKind("feature").provenance).toBe("authored");
+  });
+});
+
+describe("markForId (the textureForMark resolution path)", () => {
+  it("resolves a tier id to the tier def, not a doc-type species", () => {
+    // The latent path the review flagged: textureForMark can turn a tier mark
+    // into a texture. Prove its resolver picks the tier def by id (geometry
+    // only; the GPU upload that consumes it is untested).
+    expect(markForId("tier:declared").body).toBe(TIER_MARK_DEFS.declared.body);
+  });
+
+  it("resolves a state id to the state def", () => {
+    expect(markForId("state:broken").body).toBe(STATE_MARK_DEFS.broken.body);
+  });
+
+  it("falls back to a real species mark for an unknown id (never blank)", () => {
+    const fallback = markForId("not:a:mark");
+    expect(fallback.body.length).toBeGreaterThan(0);
   });
 });
 

@@ -121,12 +121,15 @@ const EVENT_LIFECYCLE = p(
 // Anchor geometry is exact (diamond on center 128,128; square frame axis-true;
 // ring arcs anchored at 12 o'clock; waves on a shared baseline rhythm).
 
-/** tier:declared — solid filled diamond on center (the only filled mass). */
+/** tier:declared — solid filled diamond on center (the only filled mass). The
+ * points reach the safe-area extents (24/232 on both axes) so the silhouette is
+ * an unmistakable rhombus, not a near-disc, at the 14px gate — this is what
+ * separates it from `state:active` (a filled disc) across families with margin
+ * rather than at the bare floor. */
 const TIER_DECLARED = {
   id: "tier:declared",
   provenance: "authored" as const,
-  // A clean rhombus, corners at the four cardinal extents of the safe area.
-  body: p("M128,40 208,128 128,216 48,128 Z"),
+  body: p("M128,24 232,128 128,232 24,128 Z"),
 };
 
 /** tier:structural — open square frame + one bold accent corner-notch. */
@@ -212,16 +215,24 @@ const STATE_ARCHIVED = {
   ),
 };
 
-/** state:broken — a tall lightning bolt cutting through a baseline (miter
- * joins by redline: the one sanctioned sharp ornament). */
+/** state:broken — a tall lightning bolt cutting through a gapped baseline
+ * (miter joins by redline: the one sanctioned sharp ornament). The baseline is
+ * the documented broken-vs-gapped-line collision feature, so it must SURVIVE
+ * the 14px gate: it sits on the y≈137 cell-center row (row 7 of the 14-row
+ * gate, not the y=128 axis that falls between two rows and inks nothing) and is
+ * stroked at 30 (a ~1.6px band at 14px) so its ink reaches that row. The bolt
+ * occupies the center column (x≈96..176); the baseline segments stay clear of
+ * it (left x≤84, right x≥172), so the through-a-line reading shows ink on the
+ * baseline row OUTSIDE the bolt at the legibility floor. */
 const STATE_BROKEN = {
   id: "state:broken",
   provenance: "authored" as const,
   body:
     // the bolt: tall zig with a clear central gap, sharp (miter) joins
     '<path fill="currentColor" d="M148,24 96,116 134,116 108,232 176,108 134,108 Z"/>' +
-    // the broken baseline it cuts through, gapped at the bolt
-    '<path fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" d="M32,128H92 M164,128H224"/>',
+    // the broken baseline it cuts through, anchored on a gate cell-center row
+    // (y=137) and thickened so its band inks at 14px, gapped at the bolt column
+    '<path fill="none" stroke="currentColor" stroke-width="30" stroke-linecap="round" d="M32,137H84 M172,137H224"/>',
 };
 
 /** state:stale — a counter-clockwise clock (time slipping; Phosphor energy). */
@@ -327,3 +338,14 @@ export const ALL_MARK_DEFS: Record<string, MarkDef> = {
 export function markDef(id: string): MarkDef | undefined {
   return ALL_MARK_DEFS[id];
 }
+
+/**
+ * Every mark that can be rasterized into a texture — exactly what
+ * `DomainGlyphs.textureForMark(id)` can resolve, deduplicated by stable id.
+ * The cross-family grayscale gate runs over this whole set, not just within a
+ * single family, because the texture seam can turn ANY of these into a
+ * silhouette and a cross-family collision (e.g. a filled diamond vs a filled
+ * disc) would otherwise ship untested.
+ */
+export const TEXTURABLE_MARK_DEFS: ReadonlyArray<MarkDef> =
+  Object.values(ALL_MARK_DEFS);

@@ -17,6 +17,7 @@ import {
   DOC_TYPE_MARK_DEFS,
   EVENT_MARK_DEFS,
   STATE_MARK_DEFS,
+  TEXTURABLE_MARK_DEFS,
   TIER_MARK_DEFS,
   NODE_FEATURE_MARK,
 } from "./marks";
@@ -96,6 +97,30 @@ describe("the lifecycle state set passes the 14px grayscale gate (S34)", () => {
     );
     expect(d).toBeGreaterThanOrEqual(GATE_FLOOR);
   });
+
+  it("keeps the broken baseline (the through-a-line reading) alive at 14px", () => {
+    // The bolt-through-a-GAPPED-line is the documented broken-vs-gapped-line
+    // feature, and it must survive the legibility floor — a bare bolt would
+    // pass the active-disc distance trivially (the prior vacuous guard). The
+    // baseline sits on a gate cell-center row (y≈137 → row 7) and is gapped at
+    // the bolt's center column, so it inks cells on that row OUTSIDE the bolt.
+    const sil = silhouetteOf(STATE_MARK_DEFS.broken);
+    const n = sil.size;
+    const baselineRow = Math.round((137 / 256) * n - 0.5); // = 7
+    const boltColLeft = Math.floor((84 / 256) * n); // left edge of bolt gap
+    const boltColRight = Math.ceil((172 / 256) * n); // right edge of bolt gap
+    let leftInk = 0;
+    let rightInk = 0;
+    for (let x = 0; x < n; x++) {
+      if (!sil.cells[baselineRow * n + x]) continue;
+      if (x < boltColLeft) leftInk++;
+      else if (x > boltColRight) rightInk++;
+    }
+    // Ink to BOTH sides of the bolt on the baseline row = a line cut by the
+    // bolt, not a bare bolt.
+    expect(leftInk).toBeGreaterThan(0);
+    expect(rightInk).toBeGreaterThan(0);
+  });
 });
 
 describe("the node-feature mark honors its collision constraints (S35)", () => {
@@ -150,10 +175,43 @@ describe("the adopted doc-type marks pass the 14px grayscale gate (S33)", () => 
 
 describe("the event marks pass the 14px grayscale gate", () => {
   it("the four event marks are mutually distinct at 14px", () => {
-    // doc-created (FilePlus) and doc-modified (FileText) share the file
-    // silhouette but differ by their interior — assert the family still clears
-    // the floor, since the interior glyph is the distinguishing channel.
     expect(gateFamily(Object.values(EVENT_MARK_DEFS), GATE_FLOOR).pass).toBe(true);
+  });
+
+  it("doc-created (FilePlus) and doc-modified (FileText) — interior is the only channel — separate", () => {
+    // The two share the file-with-corner-fold outer silhouette; the plus vs the
+    // two ruled lines is the SOLE distinguishing channel, so this is the
+    // family's thinnest pair. Assert the specific distance, not just family
+    // pass, so a future interior tweak that erodes the margin is caught.
+    const d = silhouetteDistance(
+      silhouetteOf(EVENT_MARK_DEFS["doc-created"]),
+      silhouetteOf(EVENT_MARK_DEFS["doc-modified"]),
+    );
+    expect(d).toBeGreaterThanOrEqual(GATE_FLOOR);
+  });
+});
+
+describe("the CROSS-FAMILY gate over every texture-able mark", () => {
+  // DomainGlyphs.textureForMark(id) can turn ANY mark into a silhouette
+  // texture, so a collision ACROSS families (a filled diamond vs a filled disc)
+  // is as real a defect as one within a family — and the within-family gates
+  // never test it. This is the safety net for the whole texture-able set.
+  it("every texture-able mark is mutually distinct at 14px, across families", () => {
+    const result = gateFamily(TEXTURABLE_MARK_DEFS, GATE_FLOOR);
+    // The closest pair names the cross-family regression if one appears.
+    expect(result.pass).toBe(true);
+    expect(result.minDistance).toBeGreaterThanOrEqual(GATE_FLOOR);
+  });
+
+  it("tier:declared (filled diamond) clears the floor against state:active (filled disc) with margin", () => {
+    // The MEDIUM the review flagged: a near-disc diamond sat exactly at the
+    // floor. The diamond's points reach the safe-area extents so it reads as a
+    // rhombus, separating it from the disc with margin, not at the bare floor.
+    const d = silhouetteDistance(
+      silhouetteOf(TIER_MARK_DEFS.declared),
+      silhouetteOf(STATE_MARK_DEFS.active),
+    );
+    expect(d).toBeGreaterThan(GATE_FLOOR);
   });
 });
 
