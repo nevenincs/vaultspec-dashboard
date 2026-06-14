@@ -7,6 +7,7 @@ date: '2026-06-14'
 modified: '2026-06-14'
 related:
   - '[[2026-06-14-graph-node-salience-adr]]'
+  - '[[2026-06-14-graph-node-salience-plan]]'
   - '[[2026-06-14-graph-node-salience-research]]'
 ---
 
@@ -19,6 +20,10 @@ Auto-generated index of all documents tagged with `#graph-node-salience`.
 ### adr
 
 - `2026-06-14-graph-node-salience-adr` - `graph-node-salience` adr: `node salience: engine-computed intent-driven importance` | (**status:** `accepted`)
+
+### plan
+
+- `2026-06-14-graph-node-salience-plan` - `graph-node-salience` plan
 
 ### research
 
