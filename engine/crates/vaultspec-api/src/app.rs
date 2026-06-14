@@ -71,6 +71,12 @@ pub struct ScopeCell {
     /// Memoized constellation meta-edges per graph generation (audit
     /// W02P05-203).
     pub meta_cache: Mutex<Option<(u64, Arc<Vec<MetaEdge>>)>>,
+    /// Memoized salience lens basis per graph generation (graph-node-salience
+    /// ADR: "the lens basis is precomputed once per graph generation for all
+    /// launch lenses"). The expensive PPR/Brandes/k-core sweep runs once per
+    /// rebuild and every lens combines over the shared partial-vector basis;
+    /// invalidated on a generation bump.
+    pub salience_cache: Mutex<Option<(u64, Arc<engine_query::salience::LensBasis>)>>,
     pub generation: AtomicU64,
     /// This cell's resident watcher handle; `/status` reports a dead watcher
     /// truthfully instead of claiming residency (DF-4 residual). Dropping the
@@ -114,6 +120,7 @@ impl ScopeCell {
             ring: Mutex::new(VecDeque::new()),
             tx,
             meta_cache: Mutex::new(None),
+            salience_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
@@ -142,6 +149,37 @@ impl ScopeCell {
             return cached.clone();
         }
         let fresh = Arc::new(engine_graph::meta_edges(&self.graph_arc()));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The salience lens basis, memoized per generation (graph-node-salience ADR:
+    /// the basis is precomputed once per graph generation for all launch lenses;
+    /// only the focus-folded final score is computed per request). The basis is
+    /// built over this cell's scope document nodes — the bounded member set the
+    /// query serves. The expensive PPR/Brandes/k-core sweep runs at most once per
+    /// rebuild.
+    pub fn salience_basis(&self) -> Arc<engine_query::salience::LensBasis> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut cache = self.salience_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let graph = self.graph_arc();
+        // The bounded member set: this scope's document nodes (the salience model
+        // ranks documents; feature-convergence nodes are not ranked).
+        let members: Vec<&engine_model::Node> = graph
+            .nodes()
+            .filter(|n| n.facets.iter().any(|f| f.scope == self.scope))
+            .collect();
+        let fresh = Arc::new(engine_query::salience::LensBasis::compute(
+            &graph,
+            &self.scope,
+            &members,
+        ));
         *cache = Some((generation, fresh.clone()));
         fresh
     }

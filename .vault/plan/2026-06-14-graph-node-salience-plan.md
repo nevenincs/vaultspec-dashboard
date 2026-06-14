@@ -183,13 +183,13 @@ Fold focus-bias into the lens teleport vector and re-run the warm-started PPR on
 
 Add the lens request parameter to the four graph endpoints, serve the single active-lens salience node field through the shared envelope helper with the tiers block, make DOI truncation under MAX_GRAPH_NODES lens-and-focus dependent, and flag degraded-tier salience partial.
 
-- [ ] `W03.P08.S29` - Add the lens request parameter to the graph query body and parse it, defaulting to the status lens when omitted; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P08.S30` - Thread lens through graph_query and attach the single active-lens salience float to each served document node view; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W03.P08.S31` - Make MAX_GRAPH_NODES truncation select the top-DOI nodes for the active lens and focus, keeping the subgraph self-consistent and the truncated block honest; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P08.S32` - Add the lens parameter to the asof, diff, and neighbors routes, serving salience through the same shared envelope helper with the tiers block; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P08.S33` - Flag salience partial via the tiers block when a tier is degraded, computing over available tiers and never presenting a guessed-complete score; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P08.S34` - Amend the foundation reference section 4 prose to document the lens request parameter, the salience node field, and the lens-dependent DOI truncation semantics; `.vault/reference/2026-06-12-dashboard-foundation-reference.md`.
-- [ ] `W03.P08.S35` - Add route-level tests asserting lens default, salience presence on nodes, lens-dependent truncation, and the tiers block on success and error envelopes; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S29` - Add the lens request parameter to the graph query body and parse it, defaulting to the status lens when omitted; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S30` - Thread lens through graph_query and attach the single active-lens salience float to each served document node view; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W03.P08.S31` - Make MAX_GRAPH_NODES truncation select the top-DOI nodes for the active lens and focus, keeping the subgraph self-consistent and the truncated block honest; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S32` - Add the lens parameter to the asof, diff, and neighbors routes, serving salience through the same shared envelope helper with the tiers block; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S33` - Flag salience partial via the tiers block when a tier is degraded, computing over available tiers and never presenting a guessed-complete score; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P08.S34` - Amend the foundation reference section 4 prose to document the lens request parameter, the salience node field, and the lens-dependent DOI truncation semantics; `.vault/reference/2026-06-12-dashboard-foundation-reference.md`.
+- [x] `W03.P08.S35` - Add route-level tests asserting lens default, salience presence on nodes, lens-dependent truncation, and the tiers block on success and error envelopes; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
 ## Wave `W04` - Stores layer: active-lens state, lens query, and mock parity
 

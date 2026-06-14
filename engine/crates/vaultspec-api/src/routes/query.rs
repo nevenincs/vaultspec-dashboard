@@ -170,6 +170,50 @@ pub struct GraphQueryBody {
     pub granularity: Option<String>,
     #[serde(default)]
     pub as_of: Option<String>,
+    /// The active salience lens (graph-node-salience ADR wire amendment):
+    /// `status` (default when omitted) or `design`. The stores layer owns the
+    /// active-lens view state and sends it here; switching lens is a re-query.
+    #[serde(default)]
+    pub lens: Option<String>,
+    /// The focus node id for the DOI focus-distance term (folded into the
+    /// warm-started PPR). Absent = no focus (DOI == a-priori importance).
+    #[serde(default)]
+    pub focus: Option<String>,
+}
+
+/// Parse the `lens` request parameter, defaulting to the status lens when
+/// omitted (ADR: "defaulted to the status lens when omitted"). An unrecognized
+/// lens is a tiered 400, not a silent default.
+pub(crate) fn parse_lens(
+    state: &AppState,
+    raw: Option<&str>,
+) -> Result<engine_query::salience::Lens, (StatusCode, Json<Value>)> {
+    engine_query::salience::Lens::parse(raw).ok_or_else(|| {
+        super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!("unknown lens `{}`", raw.unwrap_or("")),
+        )
+    })
+}
+
+/// Which tiers are unavailable in this cell's served tiers block, as the slice of
+/// names the salience partial-flag reads (graph-node-salience: degradation is
+/// read from the tiers block, not guessed). Reads the same `query_tiers` block
+/// the response carries so the flag and the block agree.
+fn unavailable_tier_names(tiers: &Value) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    for tier in ["declared", "structural", "temporal", "semantic"] {
+        let available = tiers
+            .get(tier)
+            .and_then(|t| t.get("available"))
+            .and_then(|a| a.as_bool())
+            .unwrap_or(true);
+        if !available {
+            out.push(tier);
+        }
+    }
+    out
 }
 
 /// Parse the engine-owned granularity parameter (contract §4): document-level
@@ -273,6 +317,33 @@ mod bound_tests {
     }
 
     #[test]
+    fn doi_ordered_truncation_keeps_the_top_salience_nodes() {
+        // graph-node-salience W03.P08.S31: when the active-lens DOI orders the
+        // document nodes, MAX_GRAPH_NODES truncation keeps the TOP-DOI nodes for
+        // the lens. Build a slice over the ceiling, give one specific node a high
+        // salience, order by salience, then bound — it must survive.
+        use engine_query::salience::SalienceScores;
+        let mut s = slice_of("doc", MAX_GRAPH_NODES + 10);
+        // The highest-numbered id sorts LAST by id, so without DOI ordering it
+        // would be the first dropped. Give it the top salience.
+        let survivor = format!("doc:{:06}", MAX_GRAPH_NODES + 9);
+        let mut scores = SalienceScores::default();
+        scores.by_id.insert(survivor.clone(), 1.0);
+        engine_query::salience::order_by_salience(&mut s.nodes, &scores);
+        let total = bound_slice(&mut s);
+        assert_eq!(total, Some(MAX_GRAPH_NODES + 10));
+        assert_eq!(s.nodes.len(), MAX_GRAPH_NODES);
+        assert_eq!(
+            s.nodes[0]["id"], survivor,
+            "the top-DOI node leads the ordered, bounded slice"
+        );
+        assert!(
+            s.nodes.iter().any(|n| n["id"] == survivor),
+            "the top-salience node survives DOI-ordered truncation"
+        );
+    }
+
+    #[test]
     fn truncation_drops_meta_edges_to_dropped_feature_nodes() {
         // Feature granularity is bounded too: capping feature nodes must drop
         // any meta-edge whose endpoint was truncated, or the constellation
@@ -315,6 +386,7 @@ pub async fn graph_query_route(
 ) -> ApiResult {
     let cell = validate_scope(&state, &body.scope)?;
     let granularity = parse_granularity(&state, body.granularity.as_deref())?;
+    let lens = parse_lens(&state, body.lens.as_deref())?;
     let filter = body.filter.unwrap_or_default();
 
     // The as_of branch carries the resolution facts the response must echo
@@ -367,10 +439,41 @@ pub async fn graph_query_route(
                 .saturating_sub(1),
         ),
     };
+    // Active-lens salience (graph-node-salience ADR): compute the per-lens DOI
+    // over the bounded subgraph and attach the single active-lens `salience`
+    // float to each served DOCUMENT node, then order document nodes by descending
+    // DOI so the MAX_GRAPH_NODES truncation keeps the top-DOI nodes for the active
+    // lens and focus. Feature-granularity nodes are not salience-ranked (the model
+    // ranks documents), so they keep their id order. Historical (`as_of`) views
+    // carry no live basis — the basis is memoized per the LIVE graph generation —
+    // so salience attaches only to the present view.
+    let mut salience_partial = false;
+    if granularity == Granularity::Document && body.as_of.is_none() {
+        let basis = cell.salience_basis();
+        let focus = body.focus.as_ref().map(|f| engine_model::NodeId(f.clone()));
+        // The partial flag is read from the TIERS BLOCK (graph-node-salience /
+        // degradation-is-read-from-tiers), never guessed: a salience computed
+        // while a relevant tier is degraded is flagged partial, never presented
+        // as a complete ranking.
+        salience_partial =
+            engine_query::salience::is_partial(lens, &unavailable_tier_names(&tiers));
+        let scores = engine_query::salience::compute_salience(
+            &basis,
+            &cell.graph_arc(),
+            lens,
+            focus.as_ref(),
+            crate::app::now_ms(),
+            salience_partial,
+        );
+        engine_query::salience::annotate_nodes(&mut slice.nodes, &scores);
+        engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
+    }
     // Bound the payload at BOTH granularities (perf ADR D2): the feature
     // constellation is normally bounded by feature count, but a pathological tag
     // vocabulary could explode it, so the ceiling is unconditional — every graph
-    // read is bounded.
+    // read is bounded. For the active-lens document view the nodes are already
+    // ordered by descending DOI, so the truncation keeps the TOP-salience nodes
+    // for the lens and focus (ADR: lens-dependent DOI truncation).
     let truncated = bound_slice(&mut slice).map(|total| {
         json!({
             "total_nodes": total,
@@ -401,6 +504,15 @@ pub async fn graph_query_route(
             "interpretation": interpretation,
             "last_seq": last_seq,
             "truncated": truncated,
+            // The active lens the salience was computed for, echoed so the client
+            // never has to re-derive which lens it is rendering (ADR wire
+            // amendment). Defaults to status when the request omitted it.
+            "lens": lens.as_str(),
+            // Honest partiality (ADR Constraints): true when the salience was
+            // computed over fewer than all relevant tiers (a degraded tier), so
+            // the client renders it as a partial ranking, never a complete one.
+            // The degraded tier itself is named in the `tiers` block above.
+            "salience_partial": salience_partial,
         }),
         tiers,
         None,
@@ -449,6 +561,10 @@ pub struct NeighborParams {
     pub depth: Option<usize>,
     #[serde(default)]
     pub tiers: Option<String>,
+    /// The active salience lens for the ego nodes (graph-node-salience ADR wire
+    /// amendment: `lens` on `/nodes/{id}/neighbors`). Defaults to status.
+    #[serde(default)]
+    pub lens: Option<String>,
 }
 
 /// Ego-network depth ceiling (hardening, 2026-06-13 adversarial finding): an
@@ -480,6 +596,7 @@ pub async fn node_neighbors(
             )),
         })
         .collect::<Result<_, _>>()?;
+    let lens = parse_lens(&state, params.lens.as_deref())?;
     let cell = state.active_cell();
     let graph = cell.graph_arc();
     let depth = params.depth.unwrap_or(1).min(MAX_NEIGHBOR_DEPTH);
@@ -491,7 +608,30 @@ pub async fn node_neighbors(
                 format!("unknown node `{id}`"),
             )
         })?;
-    Ok(super::envelope(json!({"ego": ego}), rag_tiers(&cell), None))
+    // Attach the active-lens salience to the ego nodes, with the ego center as
+    // the DOI focus (graph-node-salience: salience is served through the same
+    // shared envelope helper with the tiers block on the neighbors route too).
+    let tiers = rag_tiers(&cell);
+    let basis = cell.salience_basis();
+    let partial = engine_query::salience::is_partial(lens, &unavailable_tier_names(&tiers));
+    let focus = NodeId(id.clone());
+    let scores = engine_query::salience::compute_salience(
+        &basis,
+        &graph,
+        lens,
+        Some(&focus),
+        crate::app::now_ms(),
+        partial,
+    );
+    let mut ego_value = serde_json::to_value(&ego).expect("ego serializes");
+    if let Some(nodes) = ego_value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
+        engine_query::salience::annotate_nodes(nodes, &scores);
+    }
+    Ok(super::envelope(
+        json!({"ego": ego_value, "lens": lens.as_str()}),
+        tiers,
+        None,
+    ))
 }
 
 pub async fn node_evidence(

@@ -1276,6 +1276,60 @@ impl FocusKey {
     }
 }
 
+/// Attach the active-lens `salience` float to each served document node view
+/// (ADR Constraints: "a single `salience` float computed for the *requested*
+/// lens ... an additive node field"). Mutates each node Value in place, adding a
+/// `salience` key. A node not in the scored set (e.g. a feature-convergence node,
+/// which the salience model does not rank) gets no salience field — truthful
+/// absence rather than a guessed zero.
+pub fn annotate_nodes(nodes: &mut [serde_json::Value], scores: &SalienceScores) {
+    for node in nodes.iter_mut() {
+        let Some(id) = node.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if let Some(score) = scores.get(id)
+            && let Some(obj) = node.as_object_mut()
+        {
+            obj.insert(
+                "salience".to_string(),
+                serde_json::Value::from((score * 1e6).round() / 1e6),
+            );
+        }
+    }
+}
+
+/// Order document node views by descending active-lens salience, so a DOI
+/// truncation under the node ceiling keeps the TOP-salience nodes for the active
+/// lens and focus (ADR: "MAX_GRAPH_NODES truncation selects the top-DOI nodes for
+/// the active lens and focus"). Nodes without a salience score sort last (their
+/// importance is unknown, so they recede under truncation), with id as the
+/// deterministic tie-break.
+pub fn order_by_salience(nodes: &mut [serde_json::Value], scores: &SalienceScores) {
+    nodes.sort_by(|a, b| {
+        let sa = a
+            .get("id")
+            .and_then(|v| v.as_str())
+            .and_then(|id| scores.get(id));
+        let sb = b
+            .get("id")
+            .and_then(|v| v.as_str())
+            .and_then(|id| scores.get(id));
+        match (sa, sb) {
+            (Some(x), Some(y)) => y
+                .partial_cmp(&x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| id_str(a).cmp(id_str(b))),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => id_str(a).cmp(id_str(b)),
+        }
+    });
+}
+
+fn id_str(v: &serde_json::Value) -> &str {
+    v.get("id").and_then(|x| x.as_str()).unwrap_or("")
+}
+
 /// Whether the backbone admits any degraded tier into the partial flag: the
 /// backbone is declared+structural only, so the salience is "partial" iff EITHER
 /// of those backbone tiers is degraded. A degraded temporal or semantic tier does
@@ -1828,5 +1882,39 @@ mod tests {
         let basis = LensBasis::compute(&g, &scope(), &members(&nodes));
         let scores = compute_salience(&basis, &g, Lens::Status, None, 0, true);
         assert!(scores.partial, "the partial flag carries into the served scores");
+    }
+
+    // --- W03.P08: annotate + DOI-ordered bounding ------------------------------
+
+    #[test]
+    fn annotate_attaches_salience_to_scored_nodes_only() {
+        let mut scores = SalienceScores::default();
+        scores.by_id.insert("doc:a".into(), 0.75);
+        let mut nodes = vec![
+            serde_json::json!({"id": "doc:a"}),
+            serde_json::json!({"id": "feature:x"}), // unscored
+        ];
+        annotate_nodes(&mut nodes, &scores);
+        assert_eq!(nodes[0]["salience"].as_f64().unwrap(), 0.75);
+        assert!(
+            nodes[1].get("salience").is_none(),
+            "an unscored node gets no guessed salience"
+        );
+    }
+
+    #[test]
+    fn order_by_salience_puts_top_doi_first_unscored_last() {
+        let mut scores = SalienceScores::default();
+        scores.by_id.insert("doc:a".into(), 0.2);
+        scores.by_id.insert("doc:b".into(), 0.9);
+        let mut nodes = vec![
+            serde_json::json!({"id": "doc:a"}),
+            serde_json::json!({"id": "doc:unscored"}),
+            serde_json::json!({"id": "doc:b"}),
+        ];
+        order_by_salience(&mut nodes, &scores);
+        assert_eq!(nodes[0]["id"], "doc:b", "highest DOI first");
+        assert_eq!(nodes[1]["id"], "doc:a");
+        assert_eq!(nodes[2]["id"], "doc:unscored", "unscored recedes under truncation");
     }
 }
