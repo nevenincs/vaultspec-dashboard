@@ -574,7 +574,13 @@ export class MockEngine {
       }
       return {
         nodes: c.nodes.filter((n) => n.kind !== "feature"),
-        edges: c.edges.filter((e) => this.tierServed(e)),
+        // The live engine's edge_view adds the additive `derivation` key to
+        // EVERY edge (null when no pipeline relationship). Mirror that at the
+        // serving boundary so the mock matches the live wire byte-for-byte
+        // (graph-node-semantics ADR; mock-mirrors-live-wire-shape).
+        edges: c.edges
+          .filter((e) => this.tierServed(e))
+          .map((e) => ({ derivation: e.derivation ?? null, ...e })),
         meta_edges: [],
         filter,
         tiers,

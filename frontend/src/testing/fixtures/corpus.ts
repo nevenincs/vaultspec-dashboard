@@ -62,6 +62,33 @@ const LIFECYCLE_RELATIONS: Record<string, string> = {
   audit: "reviews", // audit —reviews→ exec
 };
 
+// The ontology projection the live engine serves on document nodes
+// (graph-node-semantics ADR): the authority register each doc_type answers in,
+// mirrored byte-for-byte so the mock matches the live wire
+// (mock-mirrors-live-wire-shape).
+const AUTHORITY_CLASS: Record<string, string> = {
+  adr: "design",
+  research: "substrate",
+  reference: "substrate",
+  plan: "roadmap",
+  exec: "evidence",
+  audit: "judgment",
+  rule: "law",
+  index: "manifest",
+};
+const authorityClass = (docType: string): string =>
+  AUTHORITY_CLASS[docType] ?? "unknown";
+
+// The derivation label the live engine assigns to a pipeline edge between two
+// document types (graph-node-semantics ADR): carried alongside the §4 relation,
+// never instead of it.
+const DERIVATION_BY_PAIR: Record<string, string> = {
+  "adr->research": "grounds",
+  "plan->adr": "authorizes",
+  "exec->plan": "generated-by",
+  "audit->exec": "reviews",
+};
+
 const BASE_TS = Date.parse("2026-01-05T09:00:00Z");
 const DAY = 24 * 3600 * 1000;
 
@@ -119,6 +146,11 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
             ? { state, progress: { done, total } }
             : { state: "complete" },
         degree_by_tier: { declared: 2, structural: 1 },
+        // Ontology projection mirrored from the live wire
+        // (graph-node-semantics ADR): the authority register and the
+        // aggregate-species hint (only exec records collapse).
+        authority_class: authorityClass(docType),
+        aggregate: docType === "exec",
       });
       vaultTree.push({
         path: `.vault/${docType}/${stem}.md`,
@@ -127,7 +159,9 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         dates: { created: iso(created), modified: iso(created + DAY) },
       });
       nextEvent(created, "doc-created", `${stem}.md`, [docId, featureId]);
-      // Document belongs to its feature convergence.
+      // Document belongs to its feature convergence. A feature-membership edge
+      // carries no pipeline-derivation label (derivation: null), exactly as the
+      // live engine serves it.
       edges.push({
         id: `e:${docId}->${featureId}:declares`,
         src: docId,
@@ -137,10 +171,14 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         confidence: 1,
         provenance: "frontmatter",
         observed_at: iso(created),
+        derivation: null,
       });
-      // Lifecycle-axis declared edge to the previous doc type.
+      // Lifecycle-axis declared edge to the previous doc type. The pipeline
+      // pair carries its derivation label alongside the §4 relation
+      // (graph-node-semantics ADR), mirrored from the live wire.
       const relation = LIFECYCLE_RELATIONS[docType];
-      const prev = docIds[DOC_TYPES[di - 1]];
+      const prevType = DOC_TYPES[di - 1];
+      const prev = docIds[prevType];
       if (relation && prev) {
         edges.push({
           id: `e:${docId}->${prev}:${relation}`,
@@ -151,6 +189,7 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
           confidence: 1,
           provenance: "wiki-link",
           observed_at: iso(created),
+          derivation: DERIVATION_BY_PAIR[`${docType}->${prevType}`] ?? null,
         });
       }
     });
