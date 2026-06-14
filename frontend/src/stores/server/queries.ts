@@ -85,11 +85,6 @@ export const engineKeys = {
     ] as const,
   diff: (scope: string, from: string | number, to: string | number) =>
     [...engineKeys.all, "diff", scope, String(from), String(to)] as const,
-  // The read-only git file diff (git-diff-browser ADR) — keyed by (scope, path):
-  // a worktree's diff for one changed file. Distinct from `diff` (the temporal
-  // graph delta); the two are different surfaces over different data.
-  gitFileDiff: (scope: string, path: string) =>
-    [...engineKeys.all, "git-file-diff", scope, path] as const,
   // The session/settings surface is workspace-singular (not scope-keyed): one
   // active session and one settings document per workspace, so a single stable
   // key each. Mutations invalidate exactly these.
@@ -431,33 +426,56 @@ export function usePutSettings() {
 //
 // The git diff browser is app chrome; it consumes git state through these stores
 // selectors and NEVER reads the raw `tiers` block (dashboard-layer-ownership). The
-// `/status` snapshot carries `git: { branch, ahead, behind, dirty }` plus the wire
-// `tiers` block. Per the git-diff-browser ADR, when git is absent from the response
-// — either no `git` object or a `git` tier reporting unavailable/absent — that is a
-// DESIGNED degraded state ("no repository state"), rendered as such, never an error.
+// LIVE `/status` snapshot carries `git: { branch (from head_ref), ahead?, behind?,
+// dirty: boolean }` — a clean/dirty BOOLEAN, NOT a per-file list, and ahead/behind
+// that are absent when no upstream is configured. `git` is NOT one of the canonical
+// tiers (`declared`/`structural`/`temporal`/`semantic`), so git availability is
+// derived from the PRESENCE of the `git` payload, never from a (non-existent) git
+// tier. When the engine responds but carries no `git` object, that is the designed
+// "no repository state" degraded state; a tiers-less transport fault is the error.
+//
+// ENGINE-BLOCKED CAPABILITIES (NOT served by the live wire, signaled by constants,
+// never faked as tiers): the per-file CHANGED-FILES LIST (live `dirty` is a single
+// boolean) and the per-file DIFF BODY (the live ops whitelist is only
+// `/ops/core/*` and `/ops/rag/*`; there is no `/ops/git/*` route, and
+// engine-read-and-infer forbids inventing one here). Both surface as honest
+// engine-blocked states; the richer shapes are a documented forward proposal.
 
-const GIT_TIER = "git";
+/** The per-file changed-files list is not served by the live engine. */
+export const CHANGED_FILES_LIST_SERVED = false;
+/** The read-only diff body is not served by the live engine. */
+export const GIT_DIFF_CAPABILITY_SERVED = false;
 
 export interface GitStatusView {
   /** The status snapshot is in flight with no held git data. */
   loading: boolean;
   /** A genuine transport failure (no tiers-bearing envelope) — distinct from degraded. */
   errored: boolean;
-  /** Designed degradation: git state is unavailable (absent object or unavailable tier). */
+  /** Designed degradation: the engine responded but carries no git payload. */
   degraded: boolean;
-  /** The engine's per-tier reason when degraded, for copy-tone rendering. */
-  reason?: string;
   /** The git rollup when available; undefined while loading/degraded/errored. */
   git?: NonNullable<EngineStatus["git"]>;
+  /**
+   * The working tree is dirty (live `dirty: boolean`). True iff git is available
+   * AND dirty. The PER-FILE list is engine-blocked — consumers render the dirty
+   * truth as a single honest "changes present, per-file detail pending" state.
+   */
+  dirty: boolean;
+}
+
+/** The git view plus a retry bound to the STATUS query (not some other query). */
+export interface GitStatusHookView extends GitStatusView {
+  /** Refetch the status snapshot — the source of git state (LOW: not events). */
+  retry: () => void;
 }
 
 /**
  * Derive the git working-tree view (loading / degraded / errored / available)
  * from a status query's data + error + pending flags, reading the `git` payload
- * and the `git` tier ONLY here in the stores layer so the surface consumes
- * interpreted truth, never `status.data.tiers`. A served tiers block that omits
- * `git` or marks it unavailable is degradation (contract §2: absence ≠
- * available); a tiers-less transport fault is the errored branch.
+ * ONLY here in the stores layer so the surface consumes interpreted truth, never
+ * `status.data.tiers`. `git` is not a tier: availability tracks the PRESENCE of
+ * the `git` object. An engine response with no git payload is designed
+ * degradation; a tiers-less transport fault is the errored branch.
  */
 export function deriveGitStatusView(
   data: EngineStatus | undefined,
@@ -465,29 +483,24 @@ export function deriveGitStatusView(
   pending: boolean,
 ): GitStatusView {
   if (data?.git) {
-    const tier = data.tiers?.[GIT_TIER];
-    // A served `git` tier marked unavailable degrades even when a stale `git`
-    // object lingers; an absent git tier alongside a present payload is treated
-    // as available (the v1 wire does not yet emit a dedicated git tier).
-    if (tier && tier.available === false) {
-      return { loading: false, errored: false, degraded: true, reason: tier.reason };
-    }
-    return { loading: false, errored: false, degraded: false, git: data.git };
-  }
-  // No git payload. A tiers-bearing error envelope (backend down) is designed
-  // degradation; a tiers-less fault is the errored branch; otherwise in-flight.
-  const tiers = data?.tiers ?? (error instanceof EngineError ? error.tiers : undefined);
-  if (tiers) {
-    const tier = tiers[GIT_TIER];
     return {
       loading: false,
       errored: false,
-      degraded: true,
-      reason: tier?.reason,
+      degraded: false,
+      git: data.git,
+      dirty: data.git.dirty,
     };
   }
-  if (error) return { loading: false, errored: true, degraded: false };
-  return { loading: pending, errored: false, degraded: false };
+  // No git payload. A served response (success data OR a tiers-bearing error
+  // envelope, i.e. the engine answered) is designed degradation; a tiers-less
+  // fault is the errored branch; otherwise still in flight.
+  const answered =
+    data !== undefined || (error instanceof EngineError && error.tiers !== undefined);
+  if (answered) {
+    return { loading: false, errored: false, degraded: true, dirty: false };
+  }
+  if (error) return { loading: false, errored: true, degraded: false, dirty: false };
+  return { loading: pending, errored: false, degraded: false, dirty: false };
 }
 
 /**
@@ -496,9 +509,10 @@ export function deriveGitStatusView(
  * raw `tiers` block. The surface renders loading / degraded / errored / available
  * directly from this, never inspecting `status.data.tiers`.
  */
-export function useGitStatus(): GitStatusView {
+export function useGitStatus(): GitStatusHookView {
   const status = useEngineStatus();
-  return deriveGitStatusView(status.data, status.error, status.isPending);
+  const view = deriveGitStatusView(status.data, status.error, status.isPending);
+  return { ...view, retry: () => void status.refetch() };
 }
 
 // --- rag service status (dashboard-rag-manager ADR) ----------------------------------
@@ -657,78 +671,35 @@ export function classifyOpsOutcome(result: {
   return result.ok ? "ok" : "failed";
 }
 
-/** The interpreted state of a file's read-only diff request. */
-export interface GitFileDiffView {
-  /** The diff request is in flight. */
-  loading: boolean;
-  /** Designed degradation: the read-only diff capability is not yet served. */
-  degraded: boolean;
-  /** A genuine transport failure (no tiers envelope), distinct from degraded. */
-  errored: boolean;
-  /** The structured diff body when available. */
-  diff?: GitFileDiff;
-  /** Retry the diff request. */
-  retry: () => void;
-}
-
 /**
- * Derive the diff view (loading / degraded / errored / available) from a diff
- * query, reading the `git` tier ONLY here in the stores layer (dashboard-layer-
- * ownership). A tiers-bearing error envelope is designed degradation — the
- * read-only diff verb is not yet served (git-diff-browser ADR: the diff body is
- * engine-blocked); a tiers-less fault is the errored branch. Returns the body
- * verbatim when the engine serves one.
+ * The interpreted state of a file's read-only diff (git-diff-browser ADR).
+ *
+ * IMPORTANT: the live engine serves NO read-only diff — there is no `/ops/git/*`
+ * route in the ops whitelist, and engine-read-and-infer forbids inventing one in
+ * this UI-adoption cycle. So this hook NEVER issues a network query; it reports a
+ * single honest ENGINE-BLOCKED state, and the `DiffView` chrome renders the
+ * "diff unavailable — engine capability pending" message. The richer structured
+ * `GitFileDiff` shape is a documented forward proposal, not a live call.
  */
-export function deriveGitFileDiffView(query: {
-  data?: GitFileDiff;
-  error: unknown;
-  isPending: boolean;
-  isError: boolean;
-  enabled: boolean;
-  refetch: () => void;
-}): GitFileDiffView {
-  const retry = query.refetch;
-  if (!query.enabled) return { loading: false, degraded: false, errored: false, retry };
-  if (query.data) {
-    return { loading: false, degraded: false, errored: false, diff: query.data, retry };
-  }
-  if (query.isError) {
-    // A tiers-bearing error envelope is designed degradation; a tiers-less
-    // transport fault is the errored branch.
-    const degraded =
-      query.error instanceof EngineError && query.error.tiers !== undefined;
-    return { loading: false, degraded, errored: !degraded, retry };
-  }
-  return { loading: query.isPending, degraded: false, errored: false, retry };
+export interface GitFileDiffView {
+  /** The read-only diff capability is not served by the engine (always true today). */
+  engineBlocked: boolean;
+  /** The structured diff body when a future engine serves one; undefined today. */
+  diff?: GitFileDiff;
 }
 
 /**
- * Stores hook: the read-only structured diff for one changed file (git-diff-
- * browser ADR), interpreted in the stores layer so the surface never reads the
- * raw `tiers` block. Keyed by (scope, path); disabled until a file is selected.
- * The diff body is a pure projection of read-only git data served verbatim
- * through the engine's `/ops/git diff` pass-through; this surface NEVER writes.
- * Until the read-only verb is served the view reports degradation and the surface
- * renders the designed "diff not yet available" detail (never an error).
+ * Stores selector for a changed file's read-only diff. Returns the engine-blocked
+ * capability state with no network call, because the live wire serves no diff
+ * endpoint. When the proposed read-only diff pass-through lands as a contract
+ * amendment, this selector grows the real query behind the same shape; the
+ * `DiffView` consumer is unchanged.
  */
 export function useGitFileDiff(
-  scope: string | null,
-  path: string | null,
+  _scope: string | null,
+  _path: string | null,
 ): GitFileDiffView {
-  const enabled = scope !== null && path !== null;
-  const query = useQuery({
-    queryKey: engineKeys.gitFileDiff(scope ?? "", path ?? ""),
-    queryFn: () => engineClient.gitFileDiff({ scope: scope!, path: path! }),
-    enabled,
-  });
-  return deriveGitFileDiffView({
-    data: query.data,
-    error: query.error,
-    isPending: query.isPending,
-    isError: query.isError,
-    enabled,
-    refetch: () => void query.refetch(),
-  });
+  return { engineBlocked: !GIT_DIFF_CAPABILITY_SERVED };
 }
 
 // --- SSE consumption (§7) -------------------------------------------------------------

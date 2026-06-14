@@ -16,13 +16,16 @@ const status = (over: Partial<EngineStatus>): EngineStatus => ({
 });
 
 describe("now strip rollups (G2, honest degradation)", () => {
-  it("rolls git into clean/drift/dirty tones", () => {
+  it("rolls git into clean/drift/dirty tones (live shape: dirty boolean, ahead/behind Option)", () => {
+    // Clean tree, no upstream (ahead/behind absent).
+    expect(gitCard(status({ git: { branch: "main", dirty: false } }))).toMatchObject({
+      tone: "ok",
+      detail: "main · clean",
+    });
+    // Dirty tree with an upstream configured → drift + a dirty mark (no count).
     expect(
-      gitCard(status({ git: { branch: "main", ahead: 0, behind: 0, dirty: [] } })),
-    ).toMatchObject({ tone: "ok", detail: "main · clean" });
-    expect(
-      gitCard(status({ git: { branch: "main", ahead: 2, behind: 1, dirty: ["a"] } })),
-    ).toMatchObject({ tone: "warn", detail: "main · ↑2 ↓1 1 dirty" });
+      gitCard(status({ git: { branch: "main", ahead: 2, behind: 1, dirty: true } })),
+    ).toMatchObject({ tone: "warn", detail: "main · ↑2 ↓1 dirty" });
     expect(gitCard(undefined).tone).toBe("down");
   });
 

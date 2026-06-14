@@ -163,14 +163,16 @@ export class MockEngine {
   // the live shape so the canvas's "narrowed — refine your view" chrome state is
   // exercised through the real client path (mock-mirrors-live-wire-shape).
   private truncatedTotal: number | null = null;
-  // Git working-tree state served on /status and the read-only diff served on
-  // /ops/git/diff (git-diff-browser surface). The mock mirrors the live wire
-  // shape exactly (mock-mirrors-live-wire-shape): a flat dirty `string[]` and a
-  // structured per-file diff body keyed by path.
-  private gitDirty: string[] = [];
-  private gitDiffs = new Map<string, unknown>();
-  private gitAhead = 0;
-  private gitBehind = 0;
+  // Git working-tree state served on /status (git-diff-browser surface). The mock
+  // mirrors the LIVE wire shape exactly (mock-mirrors-live-wire-shape): `dirty` is
+  // a BOOLEAN ("is the tree dirty?") — the live engine serves NO per-file list —
+  // and `ahead`/`behind` are Option<u32>, ABSENT (undefined) by default to model
+  // "no upstream configured". There is NO read-only diff endpoint: the live ops
+  // whitelist is `/ops/core/*` and `/ops/rag/*` only, so no `/ops/git/*` route is
+  // served and the diff capability is engine-blocked in the chrome.
+  private gitDirty = false;
+  private gitAhead: number | undefined = undefined;
+  private gitBehind: number | undefined = undefined;
 
   // --- session / settings state (mirrors the live store) ---
   /** The active worktree scope — the "where am I" pointer restored on load. The
@@ -208,20 +210,16 @@ export class MockEngine {
     this.truncatedTotal = total;
   }
 
-  /** Set the working-tree dirty file list served on /status (git-diff-browser). */
-  setGitDirty(paths: string[]): void {
-    this.gitDirty = [...paths];
+  /** Set the working-tree dirty BOOLEAN served on /status (live shape). */
+  setGitDirty(dirty: boolean): void {
+    this.gitDirty = dirty;
   }
 
-  /** Set the upstream divergence served on /status. */
-  setGitDivergence(ahead: number, behind: number): void {
+  /** Set the upstream divergence served on /status. Both Option<u32>: pass
+   *  undefined to model "no upstream configured" (absent ≠ zero). */
+  setGitDivergence(ahead: number | undefined, behind: number | undefined): void {
     this.gitAhead = ahead;
     this.gitBehind = behind;
-  }
-
-  /** Register a read-only structured diff body for one path (/ops/git/diff). */
-  setGitDiff(path: string, diff: unknown): void {
-    this.gitDiffs.set(path, diff);
   }
 
   /** The currently-active scope — test/demo introspection. */
@@ -436,10 +434,7 @@ export class MockEngine {
     } catch (err) {
       if (err instanceof RouteError) {
         return Promise.resolve(
-          json(
-            { ok: false, error: err.message, tiers: err.tiers ?? this.tiersBlock() },
-            err.status,
-          ),
+          json({ ok: false, error: err.message, tiers: this.tiersBlock() }, err.status),
         );
       }
       throw err;
@@ -464,11 +459,17 @@ export class MockEngine {
         last_seq: this.lastSeq,
         degradations: [...this.degradations.keys()],
         tiers,
+        // The mock serves the already-internal /status shape (it carries `nodes`
+        // + `degradations`, so adaptStatus passes it through unchanged). The git
+        // block therefore mirrors the INTERNAL EngineStatus.git: `branch` (the
+        // adapter's head_ref→branch result), `dirty` BOOLEAN, and Option ahead/
+        // behind OMITTED when undefined (no upstream). A separate parity test
+        // feeds a RAW live-shaped `{head_ref, ...}` sample through adaptStatus.
         git: {
           branch: "main",
-          ahead: this.gitAhead,
-          behind: this.gitBehind,
           dirty: this.gitDirty,
+          ...(this.gitAhead !== undefined ? { ahead: this.gitAhead } : {}),
+          ...(this.gitBehind !== undefined ? { behind: this.gitBehind } : {}),
         },
         core: { reachable: true, vault_health: "green" },
         rag: this.degradations.has("semantic")
@@ -708,23 +709,10 @@ export class MockEngine {
         tiers,
       };
     }
-    if (path === "/ops/git/diff") {
-      // Read-only diff pass-through (git-diff-browser ADR): the engine forwards
-      // git's diff verbatim. A registered body is served with the tiers block; an
-      // unregistered path is the engine-blocked default — the read-only verb is
-      // not yet served, surfaced as git-tier degradation (a tiers-bearing 502 the
-      // surface renders as the designed "not yet available" detail, never an
-      // error). The mock NEVER accepts a write here (read-and-infer).
-      const diffPath = params.get("path") ?? "";
-      const body = this.gitDiffs.get(diffPath);
-      if (body !== undefined) {
-        return { ...(body as Record<string, unknown>), tiers };
-      }
-      throw new RouteError(502, "read-only git diff not yet served", {
-        ...tiers,
-        git: { available: false, reason: "read-only diff capability not yet served" },
-      });
-    }
+    // NB: there is intentionally NO `/ops/git/*` route — the live ops whitelist
+    // is `/ops/core/*` and `/ops/rag/*` only (engine-read-and-infer). The git
+    // diff capability is engine-blocked; the chrome renders that honestly without
+    // any mock endpoint. A request would correctly 404 below as "no mock route".
     const ops = /^\/ops\/(core|rag)\/([^/]+)$/.exec(path);
     if (ops) {
       if (ops[1] === "rag" && this.degradations.has("semantic")) {
@@ -805,14 +793,9 @@ export class MockEngine {
 
 class RouteError extends Error {
   readonly status: number;
-  /** Optional tiers override for the error envelope (e.g. a `git` tier marked
-   *  unavailable on the read-only diff pass-through). When absent the transport
-   *  attaches the standard 4-tier graph block. */
-  readonly tiers?: TiersBlock;
-  constructor(status: number, message: string, tiers?: TiersBlock) {
+  constructor(status: number, message: string) {
     super(message);
     this.status = status;
-    this.tiers = tiers;
   }
 }
 

@@ -317,7 +317,13 @@ export interface EngineStatus {
   edges: number;
   degradations: string[];
   tiers: TiersBlock;
-  git?: { branch: string; ahead: number; behind: number; dirty: string[] };
+  // The live `/status` git rollup (git-diff-browser ADR / mock-mirrors-live-wire-
+  // shape): `dirty` is a BOOLEAN ("is the working tree dirty?") — the live engine
+  // serves NO per-file changed list, so the changed-files LIST is engine-blocked
+  // and rendered as a designed degraded state. `ahead`/`behind` are OPTIONAL:
+  // absent means "no upstream configured" (NOT zero), so divergence is only
+  // shown when an upstream exists. `branch` is derived from the live `head_ref`.
+  git?: { branch: string; ahead?: number; behind?: number; dirty: boolean };
   core?: { reachable: boolean; vault_health?: string };
   rag?: { service: string; watcher?: string; index?: string; jobs?: number };
 }
@@ -328,22 +334,22 @@ export interface OpsResult {
   tiers: TiersBlock;
 }
 
-// --- §6 read-only git file diff (git-diff-browser ADR) -------------------------------
+// --- PROPOSED read-only git file diff shape (NOT a live wire contract) ----------------
 //
-// The git diff browser's diff body is a READ-ONLY projection of git working-tree
-// state, served verbatim through a `/ops/git` style pass-through (engine-read-and-
-// infer: the engine forwards git's diff without growing diff semantics). The
-// structured shape below is the contract the surface consumes — a hunk-per-entry
-// document with twin (old/new) line numbers and an explicit change type per line,
-// so the surface never re-parses unified-diff text in the view layer. Bounded by
-// default: the engine caps the body and states truncation honestly (a giant diff
-// is the scale cliff the bounded-reads discipline forecloses).
+// IMPORTANT: the live engine does NOT serve a read-only diff. Its ops whitelist
+// is ONLY `/ops/core/{verb}` and `/ops/rag/{verb}` (POST); there is no `/ops/git/*`
+// route, and `engine-read-and-infer` forbids inventing one in this UI-adoption
+// cycle. The per-file diff body is therefore ENGINE-BLOCKED: the `DiffView`
+// surface renders the honest "engine capability pending" state, and no live query
+// calls a non-existent endpoint.
 //
-// This shape and the `gitFileDiff` query are the stores SEAM the ADR names: the
-// diff body is currently engine-blocked (no `/ops/git diff` verb is served yet),
-// so the query reports the git tier degraded and the surface renders the designed
-// "diff not yet available" detail rather than an error. When the read-only verb
-// lands, the same query carries the real body unchanged.
+// The structured shapes below are kept ONLY as the `DiffView` component's prop
+// contract (so the chrome is complete and fully testable) and as a DOCUMENTED
+// FORWARD PROPOSAL for a future contract amendment — a separate engine feature
+// (a read-only diff pass-through plus a richer per-file dirty-entry shape), out of
+// scope here. A hunk-per-entry document with twin (old/new) line numbers and an
+// explicit per-line change type lets a future view render without re-parsing
+// unified-diff text. None of this is served by the current wire.
 
 /** A single changed line within a hunk. `kind` is the non-color identity. */
 export interface GitDiffLine {
@@ -361,7 +367,10 @@ export interface GitDiffHunk {
   lines: GitDiffLine[];
 }
 
-/** The structured read-only diff for one changed file. */
+/**
+ * The structured read-only diff for one changed file — the `DiffView` prop
+ * contract and a proposed future wire shape. NOT served by the live engine.
+ */
 export interface GitFileDiff {
   path: string;
   /** Git status letter for the entry (A/M/D/R/?) — the non-color status mark. */
@@ -369,9 +378,8 @@ export interface GitFileDiff {
   hunks: GitDiffHunk[];
   /** True when there is no textual diff (binary blob or a pure rename). */
   binary?: boolean;
-  /** Honest truncation, when the engine capped an oversized body. */
+  /** Honest truncation, when a future engine capped an oversized body. */
   truncated?: { total_hunks: number; returned_hunks: number; reason: string };
-  tiers: TiersBlock;
 }
 
 // --- §8 search ---------------------------------------------------------------------------
@@ -580,19 +588,6 @@ export class EngineClient {
   // §6
   async status(): Promise<EngineStatus> {
     return adaptStatus(await this.get("/status"));
-  }
-
-  /**
-   * Read-only structured diff for one changed file (git-diff-browser ADR). The
-   * engine forwards git's diff verbatim through a `/ops/git diff` style
-   * pass-through and grows no diff semantics (engine-read-and-infer); the body
-   * is bounded and states truncation honestly. NO write affordance exists or is
-   * accepted here. Until the read-only verb is served, this resolves to a
-   * git-tier-degraded envelope and the surface renders the designed "not yet
-   * available" detail (never an error).
-   */
-  async gitFileDiff(params: { scope: string; path: string }): Promise<GitFileDiff> {
-    return this.get("/ops/git/diff", params);
   }
 
   opsCore(verb: string, body: unknown = {}): Promise<OpsResult> {

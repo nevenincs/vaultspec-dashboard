@@ -58,22 +58,28 @@ describe("adaptStatus: git block mapping (NowStrip honesty)", () => {
     expect(adapted.git?.branch).toBe("feature/x");
   });
 
-  it("dirty:true (boolean) maps to non-empty array so gitCard shows dirty indicator", () => {
+  // The LIVE wire serves `dirty` as a BOOLEAN ("is the tree dirty?"), NOT a
+  // per-file list (git-diff-browser review HIGH-1: the engine serves no per-file
+  // changed list). adaptStatus preserves the boolean truth so the surface renders
+  // clean vs. dirty honestly without fabricating a file list.
+  it("dirty:true (boolean) is preserved so the surface shows the dirty state", () => {
     const adapted = adaptStatus(liveBody({ git: { head_ref: "main", dirty: true } }));
-    expect(adapted.git?.dirty.length).toBeGreaterThan(0);
+    expect(adapted.git?.dirty).toBe(true);
   });
 
-  it("dirty:false maps to empty array (clean tree)", () => {
+  it("dirty:false is preserved (clean tree)", () => {
     const adapted = adaptStatus(liveBody({ git: { head_ref: "main", dirty: false } }));
-    expect(adapted.git?.dirty).toEqual([]);
+    expect(adapted.git?.dirty).toBe(false);
   });
 
-  it("dirty:string[] passes through (internal / mock shape)", () => {
-    const files = ["src/a.ts", "src/b.ts"];
+  it("a legacy/internal dirty string[] collapses to the boolean truth (is anything dirty)", () => {
+    // Tolerated for back-compat: a non-empty list means dirty, an empty one clean.
     const adapted = adaptStatus(
-      liveBody({ git: { head_ref: "main", dirty: files, ahead: 0, behind: 0 } }),
+      liveBody({ git: { head_ref: "main", dirty: ["src/a.ts", "src/b.ts"] } }),
     );
-    expect(adapted.git?.dirty).toEqual(files);
+    expect(adapted.git?.dirty).toBe(true);
+    const clean = adaptStatus(liveBody({ git: { head_ref: "main", dirty: [] } }));
+    expect(clean.git?.dirty).toBe(false);
   });
 
   it("absent git block leaves git undefined (honest: engine not providing git state)", () => {

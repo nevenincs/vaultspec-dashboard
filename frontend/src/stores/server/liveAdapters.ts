@@ -196,15 +196,19 @@ export function adaptStatus(body: unknown): EngineStatus {
   const degradations = CANONICAL_TIERS.filter(
     (tier) => tiers[tier] === undefined || tiers[tier].available === false,
   );
-  // Tolerate dirty: boolean (live: "is the tree dirty?") or string[] (internal:
-  // list of dirty files). Boolean true → sentinel array so dirty.length > 0.
+  // Live `/status` git: `dirty` is a BOOLEAN ("is the tree dirty?") — the live
+  // engine serves NO per-file list. Tolerate a legacy/internal `string[]` by
+  // collapsing it to "is anything dirty", but the wire truth is the boolean.
   const dirty = git
     ? Array.isArray(git.dirty)
-      ? (git.dirty as string[])
+      ? (git.dirty as unknown[]).length > 0
       : git.dirty === true
-        ? ["dirty"]
-        : []
-    : [];
+    : false;
+  // `ahead`/`behind` are Option<u32> on the wire: PRESERVE undefined (no upstream
+  // configured) rather than coercing to 0, so "no upstream" stays distinguishable
+  // from "even with upstream" (git-diff-browser ADR: absent ≠ zero).
+  const numOrUndef = (v: unknown): number | undefined =>
+    typeof v === "number" ? v : undefined;
   return {
     ok: Boolean(body.ok),
     nodes: Number(index.nodes ?? 0),
@@ -217,8 +221,8 @@ export function adaptStatus(body: unknown): EngineStatus {
             /^refs\/heads\//,
             "",
           ),
-          ahead: Number(git.ahead ?? 0),
-          behind: Number(git.behind ?? 0),
+          ahead: numOrUndef(git.ahead),
+          behind: numOrUndef(git.behind),
           dirty,
         }
       : undefined,

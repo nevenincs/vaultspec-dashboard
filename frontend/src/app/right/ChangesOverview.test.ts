@@ -15,13 +15,11 @@ import {
 import type { EngineEvent } from "../../stores/server/engine";
 import {
   basename,
-  classifyDirty,
   eventLabel,
   eventMark,
   isVaultPath,
   KIND_MARK,
   relativeTs,
-  statusLetter,
 } from "./ChangesOverview";
 
 // ---------------------------------------------------------------------------
@@ -219,61 +217,5 @@ describe("isVaultPath", () => {
 
   it("returns false for paths that merely contain 'vault' without the dot prefix", () => {
     expect(isVaultPath("src/stores/vault/store.ts")).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// classifyDirty — the honest interim status classification
-// ---------------------------------------------------------------------------
-
-describe("classifyDirty", () => {
-  it("classifies a leading status token and strips it from the path", () => {
-    expect(classifyDirty("M frontend/src/App.tsx")).toEqual({
-      path: "frontend/src/App.tsx",
-      status: "modified",
-    });
-    expect(classifyDirty("A new.ts")).toEqual({ path: "new.ts", status: "added" });
-    expect(classifyDirty("D gone.ts")).toEqual({ path: "gone.ts", status: "deleted" });
-    expect(classifyDirty("R moved.ts")).toEqual({
-      path: "moved.ts",
-      status: "renamed",
-    });
-  });
-
-  it("classifies the untracked '??' token", () => {
-    expect(classifyDirty("?? scratch.md")).toEqual({
-      path: "scratch.md",
-      status: "untracked",
-    });
-  });
-
-  it("falls back to 'modified' for the v1 flat-path shape (no status token)", () => {
-    // The v1 wire serves a bare path with no per-file status — the honest interim.
-    expect(classifyDirty(".vault/plan/2026-06-12-foo-plan.md")).toEqual({
-      path: ".vault/plan/2026-06-12-foo-plan.md",
-      status: "modified",
-    });
-  });
-
-  it("does not misread a path whose first segment looks like a token", () => {
-    // "src/..." has no whitespace-separated leading token, so it is a bare path.
-    expect(classifyDirty("src/main.rs")).toEqual({
-      path: "src/main.rs",
-      status: "modified",
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// statusLetter — the non-colour status identity on a changed-file row
-// ---------------------------------------------------------------------------
-
-describe("statusLetter", () => {
-  it("renders a distinct letter per status (status is never colour-only)", () => {
-    expect(statusLetter("added")).toBe("A");
-    expect(statusLetter("modified")).toBe("M");
-    expect(statusLetter("deleted")).toBe("D");
-    expect(statusLetter("renamed")).toBe("R");
-    expect(statusLetter("untracked")).toBe("?");
   });
 });

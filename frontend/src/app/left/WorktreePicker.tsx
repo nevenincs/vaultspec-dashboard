@@ -275,39 +275,39 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             switching…
           </span>
         )}
-        {/* Git sync badge: ahead/behind commits + dirty-file count — a glanceable
-            cue on REAL git state, shown only when there is something to report.
-            Ahead/behind use Lucide arrow marks with tabular-numeral counts; the
-            dirty mark is the single muted accent. */}
+        {/* Git sync badge: ahead/behind commits + a dirty mark — a glanceable cue
+            on REAL git state, shown only when there is something to report. Live
+            shape: ahead/behind are Option (shown only when an upstream exists,
+            absent ≠ zero); `dirty` is a BOOLEAN (no per-file count), so the dirty
+            mark is a single muted-accent dot, not a number. */}
         {!pending &&
           git &&
-          (git.ahead > 0 || git.behind > 0 || git.dirty.length > 0) && (
+          ((git.ahead ?? 0) > 0 || (git.behind ?? 0) > 0 || git.dirty) && (
             <span
               className="flex shrink-0 items-center gap-vs-0-5 text-2xs text-ink-faint"
               title={[
-                git.ahead > 0 ? `${git.ahead} ahead` : "",
-                git.behind > 0 ? `${git.behind} behind` : "",
-                git.dirty.length > 0 ? `${git.dirty.length} changed` : "",
+                (git.ahead ?? 0) > 0 ? `${git.ahead} ahead` : "",
+                (git.behind ?? 0) > 0 ? `${git.behind} behind` : "",
+                git.dirty ? "changes present" : "",
               ]
                 .filter(Boolean)
                 .join(", ")}
             >
-              {git.ahead > 0 && (
+              {git.ahead !== undefined && git.ahead > 0 && (
                 <span className="flex items-center" aria-hidden>
                   <MoveUp size={SYNC_PX} />
                   <span data-tabular>{git.ahead}</span>
                 </span>
               )}
-              {git.behind > 0 && (
+              {git.behind !== undefined && git.behind > 0 && (
                 <span className="flex items-center" aria-hidden>
                   <MoveDown size={SYNC_PX} />
                   <span data-tabular>{git.behind}</span>
                 </span>
               )}
-              {git.dirty.length > 0 && (
+              {git.dirty && (
                 <span className="flex items-center text-accent" aria-hidden>
                   <Dot size={SYNC_PX} />
-                  <span data-tabular>{git.dirty.length}</span>
                 </span>
               )}
             </span>

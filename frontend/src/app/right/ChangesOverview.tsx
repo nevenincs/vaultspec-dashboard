@@ -28,7 +28,6 @@ import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import {
   File as FileMark,
   FileDashed,
-  FileMinus,
   FilePlus,
   GitBranch,
   GitCommit,
@@ -37,14 +36,8 @@ import {
 } from "@phosphor-icons/react";
 import { useState } from "react";
 
-import { pathToNodeId } from "../left/browserSelection";
 import type { EngineEvent } from "../../stores/server/engine";
-import {
-  useEngineEvents,
-  useGitFileDiff,
-  useGitStatus,
-} from "../../stores/server/queries";
-import { selectNode } from "../../stores/view/selection";
+import { useEngineEvents, useGitStatus } from "../../stores/server/queries";
 import type { Selection } from "../../stores/view/viewStore";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
@@ -131,50 +124,7 @@ export function isVaultPath(p: string): boolean {
   return p.startsWith(".vault/") || p.includes("/.vault/");
 }
 
-/**
- * Classify a dirty entry's git status from a leading status token when the wire
- * carries one (e.g. `"M path"`, `"A path"`, `"?? path"`), falling back to
- * "modified" for the v1 flat-path shape that carries no per-file status. This is
- * the honest interim until the wire serves a status per entry (git-diff-browser
- * ADR: the grouping is the target shape, the flat list the interim). Returns the
- * status key plus the bare path with any status token stripped.
- */
-export interface DirtyEntry {
-  path: string;
-  status: "added" | "modified" | "deleted" | "renamed" | "untracked";
-}
-
-const STATUS_TOKEN: Record<string, DirtyEntry["status"]> = {
-  A: "added",
-  M: "modified",
-  D: "deleted",
-  R: "renamed",
-  "??": "untracked",
-};
-
-export function classifyDirty(raw: string): DirtyEntry {
-  const m = /^([A-Z?]{1,2})\s+(.+)$/.exec(raw);
-  if (m && STATUS_TOKEN[m[1]]) {
-    return { path: m[2], status: STATUS_TOKEN[m[1]] };
-  }
-  return { path: raw, status: "modified" };
-}
-
-/** The status letter shown on a changed-file row — non-colour status identity. */
-export function statusLetter(status: DirtyEntry["status"]): string {
-  return status === "untracked" ? "?" : status.charAt(0).toUpperCase();
-}
-
-/** Phosphor file mark per status (shape carries status, not colour alone). */
-function statusMark(status: DirtyEntry["status"]): Icon {
-  if (status === "added" || status === "untracked") return FilePlus;
-  if (status === "deleted") return FileMinus;
-  if (status === "modified") return PencilSimple;
-  return FileMark;
-}
-
 const MAX_EVENTS = 30;
-const MAX_DIRTY = 20;
 
 // ---------------------------------------------------------------------------
 // Git status header
@@ -184,10 +134,11 @@ interface GitStatusProps {
   branch: string;
   ahead?: number;
   behind?: number;
-  dirtyCount: number;
+  /** Live `dirty: boolean` — clean vs. dirty (NO per-file count; engine-blocked). */
+  dirty: boolean;
 }
 
-function GitStatusHeader({ branch, ahead, behind, dirtyCount }: GitStatusProps) {
+function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
   // Divergence shows only when an upstream is configured (absent ahead/behind
   // means "no upstream", not "zero") — ahead/behind are optional on the wire.
   const hasUpstream = ahead !== undefined || behind !== undefined;
@@ -224,14 +175,12 @@ function GitStatusHeader({ branch, ahead, behind, dirtyCount }: GitStatusProps) 
           )}
         </span>
       )}
-      {/* Status pill — colour reinforced by a label so "clean" / "N changed"
-          read in grayscale (never colour-only). */}
-      {dirtyCount > 0 ? (
-        <span
-          className="shrink-0 rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-accent-text"
-          data-tabular
-        >
-          {dirtyCount} changed
+      {/* Status pill — colour reinforced by a label so "clean" / "changes" read
+          in grayscale (never colour-only). The live wire serves a dirty BOOLEAN,
+          not a count, so the pill states clean vs. "changes" without a number. */}
+      {dirty ? (
+        <span className="shrink-0 rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-accent-text">
+          changes
         </span>
       ) : (
         <span className="shrink-0 text-2xs text-state-active">clean</span>
@@ -244,142 +193,51 @@ function GitStatusHeader({ branch, ahead, behind, dirtyCount }: GitStatusProps) 
 // Changed-files list — disclosure rows revealing the inline diff view
 // ---------------------------------------------------------------------------
 
-interface ChangedFileRowProps {
-  entry: DirtyEntry;
-  scope: string;
-  /** Roving-tabindex: only the active row is in the file-list tab order. */
-  tabbable: boolean;
-}
+// ---------------------------------------------------------------------------
+// Working-tree changes — the HONEST engine-blocked panel
+// ---------------------------------------------------------------------------
+//
+// The live engine serves only a dirty BOOLEAN, not a per-file changed list, so
+// there is NO fabricated per-file list here. When the tree is dirty this panel
+// states that plainly and offers a single disclosure that reveals the DiffView's
+// honest engine-blocked detail — keeping the diff chrome (and its a11y) wired and
+// exercised end-to-end against the engine-blocked path, without inventing data
+// the wire does not serve. The per-file changed list and the read-only diff body
+// are documented forward proposals (a future contract amendment), not live data.
 
-function ChangedFileRow({ entry, scope, tabbable }: ChangedFileRowProps) {
+function WorkingTreeChanges() {
   const [open, setOpen] = useState(false);
-  const vault = isVaultPath(entry.path);
-  const Mark = statusMark(entry.status);
   const Chevron = open ? ChevronDown : ChevronRight;
-  // The inline diff is fetched only while the row is open (bounded by default —
-  // no eager fetch of every file's diff). The stores hook interprets the tiers
-  // seam so this surface never reads the raw block.
-  const diff = useGitFileDiff(scope, open ? entry.path : null);
-
-  const onSelect = () => {
-    // Emit select intent into the shared selection: a vault file cross-highlights
-    // its document node on the stage (the one model, by stable id). A non-vault
-    // path has no graph node — selecting it only toggles the local disclosure.
-    if (vault) selectNode(pathToNodeId(entry.path));
-    setOpen((v) => !v);
-  };
 
   return (
-    <li>
+    <section aria-label="working tree changes" data-working-changes>
+      <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+        Changes
+      </h3>
       <button
-        {...{ "data-changed-file": "" }}
         type="button"
-        tabIndex={tabbable ? 0 : -1}
         aria-expanded={open}
-        aria-label={`${entry.status} ${entry.path}${vault ? " (vault)" : ""}`}
-        onClick={onSelect}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
-            moveFileFocus(e.currentTarget, 1);
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            moveFileFocus(e.currentTarget, -1);
-          }
-        }}
-        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left text-label transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        title={entry.path}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-left text-label text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
-        <span className="shrink-0 text-ink-faint" aria-hidden>
+        <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
           <Chevron size={CHROME_PX} />
         </span>
-        <span className="shrink-0 text-ink-faint" aria-hidden>
-          <Mark size={DOMAIN_PX} />
+        <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
+          <FileDashed size={DOMAIN_PX} />
         </span>
-        {/* Status letter — non-colour status identity, read by the SR via the
-            row's aria-label. */}
-        <span
-          className="w-3 shrink-0 select-none text-center font-mono text-2xs text-ink-faint"
-          aria-hidden
-        >
-          {statusLetter(entry.status)}
+        <span className="min-w-0 flex-1">
+          working tree has changes — per-file detail not yet served by the engine
         </span>
-        {/* Path identity → mono; basename shown, full path on hover + to AT. */}
-        <span
-          className={`min-w-0 flex-1 truncate font-mono ${vault ? "text-ink-muted" : "text-ink-faint"}`}
-        >
-          {basename(entry.path)}
-        </span>
-        {vault && <span className="shrink-0 text-2xs text-ink-faint">vault</span>}
       </button>
       {open && (
         <div className="ml-vs-4 mt-vs-0-5 animate-fade-in motion-reduce:animate-none">
-          <DiffView
-            diff={diff.diff}
-            loading={diff.loading}
-            degraded={diff.degraded}
-            errored={diff.errored}
-            onRetry={diff.retry}
-          />
+          {/* The diff capability is engine-blocked (no /ops/git/* route lives);
+              DiffView renders the honest "capability pending" state — the
+              engine-blocked path exercised end-to-end. */}
+          <DiffView engineBlocked />
         </div>
       )}
-    </li>
-  );
-}
-
-// Roving-tabindex focus order, derived from the DOM at EVENT time (the in-repo
-// `NavToolbar.rovingButtons` / SearchTab pattern): read the file-list rows at
-// the moment an arrow key fires, so memoization or a re-render can never desync
-// focus order from what is painted.
-function moveFileFocus(from: HTMLButtonElement, delta: number): void {
-  const list = from.closest("ul");
-  if (!list) return;
-  const rows = Array.from(
-    list.querySelectorAll<HTMLButtonElement>("button[data-changed-file]"),
-  );
-  const at = rows.indexOf(from);
-  if (at === -1) return;
-  rows[Math.min(rows.length - 1, Math.max(0, at + delta))]?.focus();
-}
-
-interface ChangedFilesProps {
-  entries: DirtyEntry[];
-  scope: string;
-}
-
-function ChangedFiles({ entries, scope }: ChangedFilesProps) {
-  const [showAll, setShowAll] = useState(false);
-  const shown = showAll ? entries : entries.slice(0, MAX_DIRTY);
-  const overflow = entries.length - MAX_DIRTY;
-
-  return (
-    <section aria-label="changed files">
-      <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
-        Changed files
-      </h3>
-      <ul className="space-y-vs-0-5" role="list" aria-label="changed files">
-        {shown.map((entry, i) => (
-          <ChangedFileRow
-            key={entry.path}
-            entry={entry}
-            scope={scope}
-            // The list's single Tab-stop is the first row; arrows rove within.
-            tabbable={i === 0}
-          />
-        ))}
-        {overflow > 0 && !showAll && (
-          <li>
-            <button
-              type="button"
-              onClick={() => setShowAll(true)}
-              className="rounded-vs-sm px-vs-1 text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-              data-tabular
-            >
-              +{overflow} more
-            </button>
-          </li>
-        )}
-      </ul>
     </section>
   );
 }
@@ -484,8 +342,6 @@ export function ChangesOverview() {
     );
   }
 
-  const dirtyEntries = (gitView.git?.dirty ?? []).map(classifyDirty);
-
   const evList = events.data?.events ?? [];
   const commits = evList.filter((e) => e.kind === "commit");
   const docActivity = evList.filter((e) => e.kind !== "commit").slice(0, MAX_EVENTS);
@@ -501,7 +357,7 @@ export function ChangesOverview() {
           branch={gitView.git.branch}
           ahead={gitView.git.ahead}
           behind={gitView.git.behind}
-          dirtyCount={dirtyEntries.length}
+          dirty={gitView.dirty}
         />
       )}
 
@@ -515,8 +371,8 @@ export function ChangesOverview() {
         </p>
       )}
 
-      {/* Degraded per tiers (git tier absent / unavailable): a DESIGNED
-          "no repository state" — distinct from an error, never a failure, with
+      {/* Degraded: the engine answered but carried no git payload — a DESIGNED
+          "no repository state", distinct from an error, never a failure, with
           the rest of the chrome unaffected (git-diff-browser ADR States). */}
       {gitView.degraded && (
         <p
@@ -526,10 +382,7 @@ export function ChangesOverview() {
           <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
             <GitBranch size={CHROME_PX} />
           </span>
-          <span>
-            repository state unavailable
-            {gitView.reason ? ` — ${gitView.reason}` : ""}
-          </span>
+          <span>repository state unavailable</span>
         </p>
       )}
 
@@ -544,9 +397,11 @@ export function ChangesOverview() {
             <RefreshCw size={CHROME_PX} />
           </span>
           <p className="flex-1 text-label text-state-broken">git status unavailable</p>
+          {/* Retry the STATUS query — the source of git state (not the events
+              query, which is a separate surface). */}
           <button
             type="button"
-            onClick={() => void events.refetch()}
+            onClick={gitView.retry}
             className="rounded-vs-sm text-2xs text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             retry
@@ -554,12 +409,13 @@ export function ChangesOverview() {
         </div>
       )}
 
-      {/* Changed files — the disclosure list revealing the inline diff. */}
-      {dirtyEntries.length > 0 && <ChangedFiles entries={dirtyEntries} scope={scope} />}
+      {/* Working-tree changes — the honest engine-blocked panel when the tree is
+          dirty (live `dirty: boolean`; no fabricated per-file list). */}
+      {gitView.git && gitView.dirty && <WorkingTreeChanges />}
 
       {/* Empty / clean working tree: an approachable state in the warm copy tone
           (the header above still shows branch + divergence). */}
-      {gitView.git && dirtyEntries.length === 0 && (
+      {gitView.git && !gitView.dirty && (
         <p className="px-vs-1 py-vs-1 text-label text-ink-faint" data-git-clean>
           working tree clean — no changes to review.
         </p>

@@ -210,7 +210,8 @@ describe("WorktreePicker surface states + a11y (S30)", () => {
     const mock = new MockEngine();
     const transport = withPatchedBody(mock.fetchImpl, "/status", (body) => ({
       ...body,
-      git: { branch: "main", ahead: 3, behind: 2, dirty: ["a.ts", "b.ts"] },
+      // Live git shape: dirty BOOLEAN, ahead/behind present (upstream configured).
+      git: { branch: "main", ahead: 3, behind: 2, dirty: true },
     }));
     engineClient.useTransport(transport);
     renderPicker();

@@ -54,16 +54,18 @@ export function gitCard(status: EngineStatus | undefined): CardState {
     return { label: "git", tone: "down", detail: "no repository state" };
   }
   const { branch, ahead, behind, dirty } = status.git;
+  // Live git shape: `dirty` is a BOOLEAN (no per-file count), and ahead/behind
+  // are Option (undefined = no upstream, shown only when configured).
   const drift = [
-    ahead > 0 ? `↑${ahead}` : "",
-    behind > 0 ? `↓${behind}` : "",
-    dirty.length > 0 ? `${dirty.length} dirty` : "",
+    ahead !== undefined && ahead > 0 ? `↑${ahead}` : "",
+    behind !== undefined && behind > 0 ? `↓${behind}` : "",
+    dirty ? "dirty" : "",
   ]
     .filter(Boolean)
     .join(" ");
   return {
     label: "git",
-    tone: dirty.length > 0 ? "warn" : "ok",
+    tone: dirty ? "warn" : "ok",
     detail: `${branch}${drift ? ` · ${drift}` : " · clean"}`,
   };
 }

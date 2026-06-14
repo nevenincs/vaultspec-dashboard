@@ -152,5 +152,65 @@ ADR insufficiency for refinement: the ADR specifies the read-only diff body but
 does not pin the diff's WIRE SHAPE (unified-diff text vs. a structured hunk
 document). This step assumed a structured `GitFileDiff` (twin-gutter line-number
 shape) so the view never re-parses unified-diff text in the chrome layer; that
-shape should be ratified into the contract reference when the `/ops/git/diff`
+shape should be ratified into the contract reference when a read-only diff
 capability is specified, so the mock and live wire agree.
+
+## Revision — review PASS-WITH-REVISIONS, two HIGHs (commit follows)
+
+The independent review found the chrome correct (read-only boundary, sacred diff
+tokens, non-colour glyphs, a11y/keyboard, bounded rendering, layer ownership all
+cleared) but the WIRE SURFACE had gotten ahead of the live engine contract. This
+is a UI-adoption cycle, not an engine cycle, so the surface is now made HONEST
+against the CURRENT live engine and the richer shapes are kept only as a
+documented forward proposal. Fixes:
+
+- HIGH-1 (fabricated per-file list). The live engine serves `dirty` as a BOOLEAN,
+  not a per-file changed list; the first cut fabricated a `dirty: string[]` in the
+  mock and rendered per-file rows that would collapse to one bogus "dirty" row
+  against live. Reverted the mock and `EngineStatus.git.dirty` to `boolean`, and
+  removed the fabricated list. The dirty tree now renders an HONEST engine-blocked
+  panel (`WorkingTreeChanges`): "working tree has changes — per-file detail not
+  yet served by the engine", with a single keyboard disclosure. The per-entry list
+  shape (`classifyDirty`/`statusLetter`) is removed from code and recorded only as
+  a proposed future contract.
+
+- HIGH-2 (non-existent endpoint + fake tier). The live ops whitelist is
+  `/ops/core/*` and `/ops/rag/*` only — there is no `/ops/git/*` route, and `git`
+  is not a tier. Removed `engineClient.gitFileDiff`, the `/ops/git/diff` mock
+  route, the `gitFileDiff` cache key, and the fake-`git`-tier degradation path.
+  `useGitFileDiff` now issues NO network call and returns a single engine-blocked
+  state; `DiffView` renders "diff unavailable — engine capability pending". The
+  engine-blocked path is exercised end-to-end in the render test.
+
+- MEDIUM (live-sample parity). Added a parity test feeding a RAW live-shaped
+  `{git:{head_ref, dirty:bool, ahead:Option, behind:Option}}` `/status` sample
+  through `adaptStatus` → `deriveGitStatusView`, asserting branch-from-head_ref,
+  the preserved dirty boolean, and preserved/absent ahead/behind.
+
+- MEDIUM (Option ahead/behind). `EngineStatus.git.ahead`/`behind` are now optional;
+  `adaptStatus` preserves `undefined` (no upstream) instead of `?? 0`, so
+  "no upstream" is distinguishable from "even". The header shows divergence only
+  when an upstream is configured. Sibling consumers `NowStrip.gitCard` and
+  `WorktreePicker`'s sync badge were updated to the boolean/Option shape (the
+  dirty badge is a single mark, not a count); `rail.test.ts`,
+  `WorktreePicker.render.test.tsx`, and the `adaptStatus` git-mapping adversarial
+  test were corrected to the live boolean contract.
+
+- LOW. The git-status error retry now calls the STATUS query's refetch
+  (`gitView.retry`), not the events query.
+
+Honest engine-blocked states as they render now: the status header (branch,
+ahead/behind when an upstream exists, clean/dirty) works truthfully against live;
+a clean tree shows "working tree clean"; a dirty tree shows the engine-blocked
+"per-file detail not yet served" panel whose disclosure reveals the diff's
+"engine capability pending" detail; an absent git payload shows the designed
+"repository state unavailable"; a tiers-less fault shows the recoverable error
+with a status-query retry. The mock mirrors the live `/status` git shape exactly.
+
+Gate after revision: `just dev lint frontend` exits 0 (eslint + prettier + tsc all
+green across the whole SPA). Tests: full frontend suite `730 passed, 9 skipped`
+(the skips are the pre-existing live-origin probes needing a running engine on
+port 3000). Forward proposal recorded for a future ENGINE cycle (out of scope
+here): a read-only `git` diff pass-through plus a richer per-file dirty-entry
+shape, with the structured `GitFileDiff` hunk document as the proposed wire shape —
+a contract amendment, not engine semantics invented in the GUI.

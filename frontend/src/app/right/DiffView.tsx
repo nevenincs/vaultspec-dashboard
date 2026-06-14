@@ -127,61 +127,33 @@ function HunkBlock({ hunk, index }: { hunk: GitDiffHunk; index: number }) {
 }
 
 export interface DiffViewProps {
-  /** The structured diff to render. */
+  /**
+   * The read-only diff capability is not served by the live engine (the live ops
+   * whitelist is `/ops/core/*` and `/ops/rag/*` only — there is no `/ops/git/*`).
+   * When true (the case today) the surface renders the honest "engine capability
+   * pending" state and makes NO network call. Default true.
+   */
+  engineBlocked?: boolean;
+  /**
+   * A structured diff to render — supplied only when a FUTURE engine serves the
+   * proposed read-only diff. Not produced by any live query today; present so the
+   * render chrome is complete and testable.
+   */
   diff?: GitFileDiff;
-  /** The diff query is in flight. */
-  loading?: boolean;
-  /** Designed degradation: the read-only diff capability is not yet served. */
-  degraded?: boolean;
-  /** A genuine transport failure, distinct from degradation. */
-  errored?: boolean;
-  /** Retry the diff request (transport-error recovery). */
-  onRetry?: () => void;
 }
 
 /**
- * The diff body for a selected changed file, with every state the ADR names:
- * loading, the designed "not yet available" degraded detail, a recoverable
- * error with retry, a no-textual-diff (binary / pure rename) statement, and the
- * hunk document itself with honest truncation.
+ * The diff body for a selected changed file.
+ *
+ * Today this renders ONE honest state: "diff unavailable — engine capability
+ * pending", because the live engine serves no read-only diff (engine-blocked, by
+ * the read-and-infer boundary). The structured render path below (hunks with the
+ * sacred add/remove treatment, binary / empty / truncation) is retained for when
+ * the proposed read-only diff capability lands as a contract amendment; it is the
+ * `DiffView` prop contract, never reached against the current wire.
  */
-export function DiffView({ diff, loading, degraded, errored, onRetry }: DiffViewProps) {
-  if (loading) {
-    return (
-      <p
-        className="animate-pulse-live px-vs-2 py-vs-1 text-label text-ink-faint"
-        data-diff-loading
-      >
-        reading diff…
-      </p>
-    );
-  }
-
-  if (errored) {
-    return (
-      <div
-        className="space-y-vs-1 rounded-vs-sm border border-state-broken/40 px-vs-2 py-vs-1"
-        data-diff-error
-      >
-        <p className="text-label text-state-broken">could not read this diff</p>
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-          >
-            try again
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // Designed degradation — the read-only diff capability is not yet served by the
-  // wire (git-diff-browser ADR: the diff body is engine-blocked). This is a calm,
-  // advisory detail, NOT an error: the file's status and path stand in until the
-  // capability lands.
-  if (degraded || !diff) {
+export function DiffView({ engineBlocked = true, diff }: DiffViewProps) {
+  if (engineBlocked || !diff) {
     return (
       <p
         className="flex items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
@@ -190,7 +162,7 @@ export function DiffView({ diff, loading, degraded, errored, onRetry }: DiffView
         <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
           <FileDashed size={14} />
         </span>
-        <span>diff preview not yet available for this file</span>
+        <span>diff unavailable — engine capability pending</span>
       </p>
     );
   }
