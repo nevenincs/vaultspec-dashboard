@@ -248,6 +248,84 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
   });
 });
 
+describe("adaptGraphSlice ontology fields (graph-node-semantics)", () => {
+  // A document-granularity slice in the EXACT shape the live engine's edge_view
+  // and node_view now serve: nodes carry the additive `authority_class` register
+  // and the `aggregate` hint; edges carry the additive `derivation` label
+  // alongside the §4 `relation`/`tier`. Fed through the SAME client path the app
+  // uses (adaptGraphSlice), proving the ontology survives the adapter intact
+  // (mock-mirrors-live-wire-shape: one code path serves both origins).
+  const liveOntologySlice = {
+    nodes: [
+      {
+        id: "doc:2026-06-13-conf-plan",
+        kind: "document",
+        doc_type: "plan",
+        title: "conf plan",
+        feature_tags: ["conf-feature"],
+        lifecycle: { state: "L2", progress: { done: 1, total: 2 } },
+        degree_by_tier: { declared: 1, structural: 1 },
+        authority_class: "roadmap",
+        aggregate: false,
+      },
+      {
+        id: "doc:2026-06-13-conf-exec-S01",
+        kind: "document",
+        doc_type: "exec",
+        title: "conf exec",
+        feature_tags: ["conf-feature"],
+        lifecycle: { state: "complete" },
+        authority_class: "evidence",
+        aggregate: true,
+      },
+    ],
+    edges: [
+      {
+        id: "e:plan->adr",
+        src: "doc:2026-06-13-conf-plan",
+        dst: "doc:2026-06-13-conf-adr",
+        relation: "mentions",
+        tier: "structural",
+        confidence: 0.9,
+        derivation: "authorizes",
+      },
+      {
+        id: "e:plan->feature",
+        src: "doc:2026-06-13-conf-plan",
+        dst: "feature:conf-feature",
+        relation: "declares",
+        tier: "declared",
+        confidence: 1,
+        derivation: null,
+      },
+    ],
+    meta_edges: [],
+    tiers: TIERS,
+  };
+
+  it("preserves authority_class and the aggregate hint on document nodes", () => {
+    const slice = adaptGraphSlice(liveOntologySlice);
+    const plan = slice.nodes.find((n) => n.id === "doc:2026-06-13-conf-plan");
+    const exec = slice.nodes.find((n) => n.id === "doc:2026-06-13-conf-exec-S01");
+    expect(plan?.authority_class).toBe("roadmap");
+    expect(plan?.aggregate).toBe(false);
+    // The exec record is the collapsible aggregate species.
+    expect(exec?.authority_class).toBe("evidence");
+    expect(exec?.aggregate).toBe(true);
+  });
+
+  it("preserves the derivation label alongside the relation on edges", () => {
+    const slice = adaptGraphSlice(liveOntologySlice);
+    const pipeline = slice.edges.find((e) => e.id === "e:plan->adr");
+    // The §4 relation is untouched; the derivation rides alongside it.
+    expect(pipeline?.relation).toBe("mentions");
+    expect(pipeline?.derivation).toBe("authorizes");
+    // A feature-membership edge carries an explicit null derivation, not absent.
+    const membership = slice.edges.find((e) => e.id === "e:plan->feature");
+    expect(membership?.derivation).toBeNull();
+  });
+});
+
 describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
   it("unwraps the live nested rag envelope and preserves the engine node-id annotation", () => {
     // The live `/search` forwards rag's envelope verbatim

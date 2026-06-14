@@ -178,6 +178,22 @@ export interface EngineNode {
    * center-of-gravity sizing (ADR D4.1); absent on document nodes.
    */
   member_count?: number;
+  /**
+   * The authority register the node answers in (graph-node-semantics ADR):
+   * `design` (ADR), `roadmap` (plan/feature), `evidence` (exec), `judgment`
+   * (audit), `law` (rule), `substrate` (research/reference), `manifest`
+   * (index), or `unknown` (an unrecognized type, surfaced honestly). The
+   * stable handle the salience lenses bias toward; an ADDITIVE projection, it
+   * never re-keys the node.
+   */
+  authority_class?: string;
+  /**
+   * The aggregate-species hint (graph-node-semantics ADR): `true` for exec
+   * records, collapsible into their parent plan at overview LOD so the long
+   * tail does not swamp the field. `false`/absent for individually-weighted
+   * species (ADR, plan, audit, rule).
+   */
+  aggregate?: boolean;
 }
 
 /**
@@ -209,6 +225,16 @@ export interface EngineEdge {
   state?: "resolved" | "stale" | "broken";
   provenance?: string;
   observed_at?: string;
+  /**
+   * The pipeline-derivation label (graph-node-semantics ADR), carried
+   * ALONGSIDE the §4 `relation`/`tier` and NEVER instead of them: one of
+   * `grounds`, `authorizes`, `generated-by`, `aggregates`, `reviews`,
+   * `promoted-from`, or `null` when the edge carries no pipeline relationship.
+   * The two name different facts — derivation says WHAT the relationship is in
+   * the framework, the tier says HOW the engine knows it. ADDITIVE: the label
+   * is not part of the edge stable key, so labeling never re-keys.
+   */
+  derivation?: string | null;
   /** Constellation meta-edges only (engine-aggregated, §4). */
   meta?: { count: number; breakdown_by_tier: Record<string, number> };
 }

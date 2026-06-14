@@ -82,3 +82,5 @@ pub mod events;
 pub mod filter;
 pub mod graph;
 pub mod node;
+pub mod ontology;
+pub mod pipeline;

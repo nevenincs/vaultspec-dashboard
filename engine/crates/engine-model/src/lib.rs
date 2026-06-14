@@ -35,6 +35,11 @@ pub enum NodeKind {
     Commit,
     /// Code artifact keyed by repo-relative path (+ optional symbol).
     CodeArtifact,
+    /// A project rule keyed by its kebab-case slug (graph-node-semantics ADR):
+    /// the codify pipeline's output, projected from the rules tree
+    /// (`.vaultspec/rules/`, OUTSIDE `.vault/`). Authority class is law; it is
+    /// a re-computable projection, never a vault document (read-and-infer).
+    Rule,
 }
 
 /// Typed, directed relation semantics (engine-spec §3).
