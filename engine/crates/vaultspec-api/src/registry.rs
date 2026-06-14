@@ -509,11 +509,19 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     }
 }
 
-/// Validate that a scope token names a selectable vault-bearing worktree in
-/// this workspace, returning its canonical root path. An unknown or non-vault
+/// Validate that a scope token names a selectable vault-bearing worktree in the
+/// ACTIVE WORKSPACE, returning its canonical root path. An unknown or non-vault
 /// scope is rejected (the caller maps the `Err` to an honest 400). This is the
 /// registry-side membership check; the route-side `validate_scope` wraps it in
 /// the API error envelope (W02.P04.S15).
+///
+/// Multi-workspace generalization (dashboard-workspace-registry ADR, P03.S11):
+/// the worktree set a scope is resolved against is the *active workspace's*
+/// enumerable worktrees, not one frozen launch value — so switching the active
+/// workspace re-points which worktrees are selectable. The active workspace
+/// defaults to the launch workspace when no registry selection exists yet, so
+/// the single-workspace behaviour is unchanged. READ-ONLY: discovery and
+/// enumeration never mutate anything.
 pub fn validate_scope_token(state: &AppState, token: &str) -> Result<std::path::PathBuf, String> {
     let normalize = |s: &str| {
         let s = s.replace('\\', "/");
@@ -521,7 +529,8 @@ pub fn validate_scope_token(state: &AppState, token: &str) -> Result<std::path::
         s.trim_end_matches('/').to_string()
     };
     let wanted = normalize(token);
-    let workspace = ingest_git::workspace::Workspace::discover(&state.workspace_root)
+    let active_root = state.active_workspace_root();
+    let workspace = ingest_git::workspace::Workspace::discover(&active_root)
         .map_err(|e| format!("workspace discovery failed: {e}"))?;
     let worktrees = ingest_git::worktrees::enumerate(&workspace)
         .map_err(|e| format!("worktree enumeration failed: {e}"))?;
@@ -529,15 +538,15 @@ pub fn validate_scope_token(state: &AppState, token: &str) -> Result<std::path::
         if normalize(&crate::routes::scope_token(&wt.path)) == wanted {
             if !wt.path.join(".vault").is_dir() {
                 return Err(format!(
-                    "scope `{token}` is a worktree of this workspace but carries no \
-                     .vault corpus; it is not a selectable scope"
+                    "scope `{token}` is a worktree of the active workspace but carries \
+                     no .vault corpus; it is not a selectable scope"
                 ));
             }
             return Ok(wt.path);
         }
     }
     Err(format!(
-        "scope `{token}` is not a selectable worktree in this workspace"
+        "scope `{token}` is not a selectable worktree in the active workspace"
     ))
 }
 
@@ -610,6 +619,104 @@ mod tests {
             state.registry.read().unwrap().len(),
             1,
             "only the launch scope is warm"
+        );
+    }
+
+    #[test]
+    fn scope_validation_follows_the_active_workspace_and_warm_cells_span_workspaces() {
+        // P03.S11/S12: validate_scope resolves a worktree against the ACTIVE
+        // WORKSPACE's enumerable worktrees, and warm cells may belong to any
+        // registered workspace, each keeping its OWN delta clock.
+        //
+        // Two SEPARATE git workspaces (A = launch, B = a registered sibling).
+        // A worktree of B is NOT a worktree of A, so it is only selectable once
+        // B is the active workspace — proving scope routing follows the active
+        // workspace, not one frozen launch value.
+        let parent = tempfile::tempdir().unwrap();
+        let a = parent.path().join("project-a");
+        let b = parent.path().join("project-b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        for dir in [&a, &b] {
+            git(dir, &["init", "-b", "main", "."]);
+            vault_root(dir);
+            git(dir, &["add", "."]);
+            git(dir, &["commit", "-m", "fixture"]);
+        }
+        let a_id = crate::routes::scope_token(
+            &ingest_git::workspace::Workspace::discover(&a)
+                .unwrap()
+                .common_dir,
+        );
+        let b_id = crate::routes::scope_token(
+            &ingest_git::workspace::Workspace::discover(&b)
+                .unwrap()
+                .common_dir,
+        );
+        let b_scope = crate::routes::scope_token(&std::fs::canonicalize(&b).unwrap());
+
+        // Launch in A; register both A and B in the registry.
+        let state = crate::app::build_state(a.clone());
+        {
+            let us = state.user_state.lock().unwrap();
+            us.auto_register_launch(&a_id, "a", &crate::routes::scope_token(&a), 1)
+                .unwrap();
+            us.add_root(
+                &vaultspec_session::WorkspaceRoot {
+                    id: b_id.clone(),
+                    label: "b".into(),
+                    path: crate::routes::scope_token(&std::fs::canonicalize(&b).unwrap()),
+                    is_launch: false,
+                    reachable: true,
+                    unreachable_reason: None,
+                },
+                2,
+            )
+            .unwrap();
+            us.set_active_workspace(&a_id, 3).unwrap();
+        }
+
+        // While A is active, B's worktree is NOT a selectable scope.
+        assert!(
+            validate_scope_token(&state, &b_scope).is_err(),
+            "B's worktree is not selectable while A is the active workspace"
+        );
+
+        // Switch the active workspace to B; now B's worktree validates.
+        {
+            let us = state.user_state.lock().unwrap();
+            us.set_active_workspace(&b_id, 4).unwrap();
+        }
+        let resolved = validate_scope_token(&state, &b_scope)
+            .expect("B's worktree is selectable once B is the active workspace");
+        assert_eq!(
+            crate::routes::scope_token(&resolved).trim_end_matches('/'),
+            b_scope.trim_end_matches('/'),
+            "validation resolves the B worktree against B's enumerable worktrees"
+        );
+
+        // Warm B's cell: the launch (A) cell and B's cell coexist, each with its
+        // OWN independent delta clock (per-scope clock preserved across
+        // workspaces). A rebuild on B advances only B's clock.
+        let b_cell = get_or_build(&state, &b_scope).expect("B's scope warms");
+        let a_token = crate::routes::scope_token(&state.workspace_root);
+        let a_cell = state
+            .registry
+            .read()
+            .unwrap()
+            .peek_arc(&a_token)
+            .expect("A's launch cell is still warm");
+        assert!(
+            !Arc::ptr_eq(&a_cell, &b_cell),
+            "A and B are distinct warm cells from distinct workspaces"
+        );
+        use std::sync::atomic::Ordering;
+        let a_before = a_cell.seq.load(Ordering::SeqCst);
+        b_cell.rebuild_and_swap().unwrap();
+        assert_eq!(
+            a_cell.seq.load(Ordering::SeqCst),
+            a_before,
+            "rebuilding B's cell does not touch A's per-scope clock"
         );
     }
 

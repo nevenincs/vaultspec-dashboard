@@ -16,6 +16,8 @@ related:
   - '[[2026-06-14-dashboard-workspace-registry-P02-S08]]'
   - '[[2026-06-14-dashboard-workspace-registry-P02-S09]]'
   - '[[2026-06-14-dashboard-workspace-registry-P02-S10]]'
+  - '[[2026-06-14-dashboard-workspace-registry-P03-S11]]'
+  - '[[2026-06-14-dashboard-workspace-registry-P03-S12]]'
   - '[[2026-06-14-dashboard-workspace-registry-adr]]'
   - '[[2026-06-14-dashboard-workspace-registry-plan]]'
 ---
@@ -42,6 +44,8 @@ Auto-generated index of all documents tagged with `#dashboard-workspace-registry
 - `2026-06-14-dashboard-workspace-registry-P02-S08` - Add the active_workspace field and its PUT handling to the session endpoint
 - `2026-06-14-dashboard-workspace-registry-P02-S09` - Route registry add and forget through the user-state config surface, not the graph API or the ops proxy
 - `2026-06-14-dashboard-workspace-registry-P02-S10` - Mirror the /workspaces and extended /map and /session shapes in the frontend mock fixtures
+- `2026-06-14-dashboard-workspace-registry-P03-S11` - Change validate_scope to resolve a worktree against the active workspace's enumerable worktrees
+- `2026-06-14-dashboard-workspace-registry-P03-S12` - Let warm scope cells belong to any registered reachable workspace while preserving per-scope delta clocks
 
 ### plan
 

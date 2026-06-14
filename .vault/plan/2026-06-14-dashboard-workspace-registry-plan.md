@@ -127,8 +127,8 @@ Expose the registry on the wire: GET /workspaces, an optional workspace= paramet
 
 Route scope across workspaces: validate_scope resolves a worktree against the active workspace's enumerable worktrees; warm scope cells may belong to any registered reachable workspace; each scope keeps its own monotonic delta clock so SSE resume stays correct.
 
-- [ ] `P03.S11` - Change validate_scope to resolve a worktree against the active workspace's enumerable worktrees; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `P03.S12` - Let warm scope cells belong to any registered reachable workspace while preserving per-scope delta clocks; `engine/crates/vaultspec-session/src/session.rs`.
+- [x] `P03.S11` - Change validate_scope to resolve a worktree against the active workspace's enumerable worktrees; `engine/crates/vaultspec-api/src/app.rs`.
+- [x] `P03.S12` - Let warm scope cells belong to any registered reachable workspace while preserving per-scope delta clocks; `engine/crates/vaultspec-session/src/session.rs`.
 
 ### Phase `P04` - Frontend workspace switcher
 

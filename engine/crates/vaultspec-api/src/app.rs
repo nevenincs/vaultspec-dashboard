@@ -325,6 +325,28 @@ impl AppState {
         crate::registry::build_active(self, PathBuf::from(&token))
             .expect("active-scope cell rebuildable")
     }
+
+    /// The root path of the ACTIVE WORKSPACE — the registered root a per-request
+    /// scope is validated against (dashboard-workspace-registry ADR, P03.S11).
+    ///
+    /// Multi-workspace generalizes scope routing: `validate_scope` resolves a
+    /// requested worktree against the *active workspace's* enumerable worktrees,
+    /// not one frozen launch value. This reads the active-workspace id from the
+    /// user-state config and returns its registered root path, falling back to
+    /// the engine's launch `workspace_root` when no registry/active selection
+    /// exists yet (the unchanged single-workspace case). Pure READ over config;
+    /// it never mutates anything.
+    pub fn active_workspace_root(&self) -> PathBuf {
+        let us = self.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(active) = us.active_workspace().ok().flatten() else {
+            return self.workspace_root.clone();
+        };
+        us.root(&active)
+            .ok()
+            .flatten()
+            .map(|r| PathBuf::from(r.path))
+            .unwrap_or_else(|| self.workspace_root.clone())
+    }
 }
 
 pub fn now_ms() -> i64 {
