@@ -178,6 +178,71 @@ export function useGraphSlice(
   });
 }
 
+/**
+ * The graph slice's loading + degradation truth, derived inside the stores layer
+ * so chrome (the nav toolbar's granularity descent) never reads the raw `tiers`
+ * block (dashboard-layer-ownership / nav-controls ADR "States"). Contract §2: a
+ * tier marked `available:false` OR absent from the served block is a designed
+ * degraded state. The reasons travel through both the success envelope
+ * (`data.tiers`) and the error envelope (`EngineError.tiers`, transport-preserved)
+ * so a backend-down condition surfaces as designed degradation, never a bare
+ * error. `loading` is the query's in-flight state for the affected slice. The nav
+ * toolbar consumes this, never `slice.data.tiers`.
+ */
+export interface GraphSliceAvailability {
+  /** The slice query is in flight (no held data yet). */
+  loading: boolean;
+  /** A served tiers block reports at least one tier unavailable/absent. */
+  degraded: boolean;
+  /** Names of the tiers reporting unavailable (or absent from the block). */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+}
+
+const GRAPH_SLICE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+
+export function deriveGraphSliceAvailability(
+  tiers: TiersBlock | undefined,
+  loading: boolean,
+): GraphSliceAvailability {
+  // A wholly absent block (a genuine transport fault with no envelope) is NOT
+  // treated as every-tier-degraded — that is the query's error state, distinct
+  // from served degradation. Degradation is reported only from a block the
+  // engine actually served (success data or a tiers-bearing error envelope).
+  if (!tiers) return { loading, degraded: false, degradedTiers: [], reasons: {} };
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of GRAPH_SLICE_TIERS) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  return { loading, degraded: degradedTiers.length > 0, degradedTiers, reasons };
+}
+
+/**
+ * Stores hook: the graph slice's loading + degradation truth for the active
+ * scope and granularity, read through the wire client so the nav toolbar
+ * consumes derived truth instead of the raw `tiers` block. Mirrors
+ * `useVaultTreeAvailability`. The toolbar passes the same (scope, granularity)
+ * it renders so the descent reflects the slice it is steering.
+ */
+export function useGraphSliceAvailability(
+  scope: string | null,
+  granularity?: "document" | "feature",
+): GraphSliceAvailability {
+  const slice = useGraphSlice(scope, undefined, undefined, granularity);
+  const fromData = slice.data?.tiers;
+  const fromError = slice.error instanceof EngineError ? slice.error.tiers : undefined;
+  return deriveGraphSliceAvailability(
+    fromData ?? fromError,
+    scope !== null && slice.isPending,
+  );
+}
+
 export function useNodeDetail(id: string | null) {
   return useQuery({
     queryKey: engineKeys.node(id ?? ""),

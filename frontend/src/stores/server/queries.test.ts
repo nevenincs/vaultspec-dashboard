@@ -8,6 +8,7 @@ import type { TiersBlock } from "./engine";
 import type { StreamChunk } from "./queries";
 import {
   STREAM_RETENTION,
+  deriveGraphSliceAvailability,
   deriveVaultTreeAvailability,
   engineKeys,
   parseSseFrames,
@@ -69,6 +70,56 @@ describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () =
     const a = deriveVaultTreeAvailability(undefined);
     expect(a.degraded).toBe(false);
     expect(a.degradedTiers).toEqual([]);
+  });
+});
+
+describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", () => {
+  const allUp: TiersBlock = {
+    declared: { available: true },
+    structural: { available: true },
+    temporal: { available: true },
+    semantic: { available: true },
+  };
+
+  it("reports no degradation and carries the loading flag through verbatim", () => {
+    const idle = deriveGraphSliceAvailability(allUp, false);
+    expect(idle.loading).toBe(false);
+    expect(idle.degraded).toBe(false);
+    expect(idle.degradedTiers).toEqual([]);
+    const busy = deriveGraphSliceAvailability(allUp, true);
+    expect(busy.loading).toBe(true);
+    expect(busy.degraded).toBe(false);
+  });
+
+  it("treats a tier marked unavailable as degraded and carries its reason", () => {
+    const a = deriveGraphSliceAvailability(
+      { ...allUp, semantic: { available: false, reason: "rag service down" } },
+      false,
+    );
+    expect(a.degraded).toBe(true);
+    expect(a.degradedTiers).toEqual(["semantic"]);
+    expect(a.reasons.semantic).toBe("rag service down");
+  });
+
+  it("treats a tier ABSENT from the block as degraded (absence ≠ availability)", () => {
+    const partial: TiersBlock = {
+      declared: { available: true },
+      structural: { available: true },
+    };
+    const a = deriveGraphSliceAvailability(partial, false);
+    expect(a.degraded).toBe(true);
+    expect(a.degradedTiers).toEqual(["temporal", "semantic"]);
+    expect(a.reasons).toEqual({});
+  });
+
+  it("returns the no-degradation default for a wholly absent block, preserving loading", () => {
+    // A missing block is the query's ERROR/idle state, not every-tier-degraded;
+    // the loading flag still flows through so the descent can show a busy cue
+    // while the first slice is in flight (no served block yet).
+    const a = deriveGraphSliceAvailability(undefined, true);
+    expect(a.degraded).toBe(false);
+    expect(a.degradedTiers).toEqual([]);
+    expect(a.loading).toBe(true);
   });
 });
 

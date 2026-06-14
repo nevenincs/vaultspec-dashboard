@@ -83,7 +83,7 @@ Re-skins the sidebar/vault-browser chrome onto the new semantic tokens and Lucid
 
 Re-skins the navigation toolbar and controls onto the new tokens and Lucide chrome, gated on the nav-controls surface ADR reaching accepted; supplies the nav model command-palette and search reference.
 
-- [ ] `W02.P06.S22` - Re-skin the nav toolbar and controls to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app/stage/NavToolbar.tsx`.
+- [x] `W02.P06.S22` - Re-skin the nav toolbar and controls to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app/stage/NavToolbar.tsx`.
 
 ### Phase `W02.P07` - Command-palette surface adoption
 
@@ -95,7 +95,7 @@ Rebuilds the Cmd/Ctrl+K command palette as a lifted surface on the new tokens, g
 
 Re-skins the search surface onto the new tokens and sanctioned icons, gated on the search surface ADR reaching accepted; references the nav model.
 
-- [ ] `W02.P08.S24` - Re-skin the search surface to consume only the new semantic tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P08.S24` - Re-skin the search surface to consume only the new semantic tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P09` - Node-canvas surface adoption
 

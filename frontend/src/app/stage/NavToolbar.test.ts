@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SemanticLevel } from "../../scene/field/camera";
-import { LEVEL_LABEL } from "./NavToolbar";
+import { LEVEL_LABEL, LEVEL_NAME } from "./NavToolbar";
 
 // ---------------------------------------------------------------------------
 // LEVEL_LABEL — semantic level display strings
@@ -50,6 +50,34 @@ describe("LEVEL_LABEL", () => {
   it("all labels are unique (no two levels share a display string)", () => {
     const labels = Object.values(LEVEL_LABEL);
     expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LEVEL_NAME — full-prose accessible names for the level receipt (S22)
+// ---------------------------------------------------------------------------
+
+describe("LEVEL_NAME", () => {
+  const LEVELS: SemanticLevel[] = ["constellation", "feature", "document"];
+
+  it("spells every level in full for the receipt's accessible name", () => {
+    // The ADR requires the level receipt's accessible name to spell the level
+    // in full, distinct from the compact display token (LEVEL_LABEL).
+    expect(LEVEL_NAME.constellation).toBe("constellation");
+    expect(LEVEL_NAME.feature).toBe("feature");
+    expect(LEVEL_NAME.document).toBe("document");
+  });
+
+  it("covers exactly the three known levels — no extras, no gaps", () => {
+    expect(Object.keys(LEVEL_NAME).sort()).toEqual([...LEVELS].sort());
+  });
+
+  it("the full name differs from the compact label for every level", () => {
+    // The receipt and the granularity toggle must read distinctly (ADR
+    // "Granularity versus level"): the full accessible name is not the token.
+    for (const level of LEVELS) {
+      expect(LEVEL_NAME[level]).not.toBe(LEVEL_LABEL[level]);
+    }
   });
 });
 
