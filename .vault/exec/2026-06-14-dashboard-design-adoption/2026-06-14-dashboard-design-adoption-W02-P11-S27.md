@@ -127,3 +127,31 @@ the empty copy is not announced to AT on transition). A future refinement could
 mirror the empty/loading state into the canvas's `aria-label` or a sibling
 `role="status"` region, consistent with how the nav toolbar surfaces its degraded
 state non-visually.
+
+## Revision (post-review PASS-WITH-REVISIONS, no HIGH)
+
+Independent review confirmed the token-read seam, single-accent discipline,
+grayscale viewport, bounded client geometry, and layer ownership correct, and
+returned fidelity/a11y revisions. Landed:
+
+- MEDIUM-1 — the empty-state copy draws with `--color-ink-muted`, but the ADR
+  specifies the FAINT ink role. Resolved honestly: `--color-ink-faint` is
+  `var()`-aliased on `:root`, so it is not scene-readable through
+  `getPropertyValue` (only the literal-hex scene-read subset is), and no
+  scene-readable faint hex token exists. Added a code comment documenting that
+  muted is the readable-token approximation of the faint role, and recorded the
+  empty-label contrast on the warm low-chroma scene ground (`--color-canvas-bg`),
+  measured from the shipped hex tokens: light 6.57:1, dark 7.21:1,
+  high-contrast 14.46:1 — all clear the 4.5:1 floor. `styles.css` was not touched.
+- MEDIUM-2 — added a test asserting the empty-label fill resolves from a palette
+  token (the muted-ink scene token), not a literal, plus a theme-flip test proving
+  the label colour is read live; the per-theme contrast is noted in the test.
+- LOW — added `aria-controls` on the collapse button pointing at the canvas
+  wrapper region id (with a render test); added a comment that the click/drag pan
+  is intentionally pointer-supplementary (full keyboard pan/zoom lives on the
+  field + NavToolbar); added a comment that binding feature/viewport to
+  `--color-state-active` is the intentional accent / structural-tier unification.
+
+Re-gated: full `just dev lint frontend` (eslint + prettier + tsc) exit 0; full
+frontend suite 789 passed, 9 pre-existing skips, no regressions; targeted minimap
+suites 22/22.

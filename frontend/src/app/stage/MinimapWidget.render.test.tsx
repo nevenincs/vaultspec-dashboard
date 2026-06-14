@@ -54,6 +54,17 @@ describe("MinimapWidget surface + a11y + seam (S27)", () => {
     expect(expand.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("ties the collapse control to the canvas region it controls (aria-controls)", () => {
+    render(createElement(MinimapWidget));
+    const collapse = screen.getByRole("button", { name: "collapse minimap" });
+    const controlsId = collapse.getAttribute("aria-controls");
+    expect(controlsId).toBeTruthy();
+    // The referenced region exists and wraps the minimap canvas.
+    const region = document.getElementById(controlsId as string);
+    expect(region).toBeTruthy();
+    expect(region?.querySelector("[data-minimap-canvas]")).toBeTruthy();
+  });
+
   it("registers the canvas on mount and unregisters it on collapse (scene seam)", () => {
     const spy = vi.spyOn(getScene().controller, "setMinimapCanvas");
     render(createElement(MinimapWidget));

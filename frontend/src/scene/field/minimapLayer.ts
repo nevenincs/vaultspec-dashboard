@@ -109,6 +109,12 @@ export class MinimapLayer {
   }
 
   private attachListeners(canvas: HTMLCanvasElement): void {
+    // The minimap's click/drag-to-pan is intentionally pointer-SUPPLEMENTARY: it
+    // is a convenience over the field's own navigation, never the sole means of
+    // moving the camera. Full keyboard pan/zoom lives on the main field and the
+    // NavToolbar (and the widget's own header carries a keyboard recenter), so
+    // the absence of keyboard panning ON THE CANVAS is by design, not a gap.
+    //
     // Click-to-navigate: a single click recenters the camera on the clicked
     // world point. Retained alongside drag so a tap still works where pointer
     // events are not fully simulated.
@@ -220,6 +226,12 @@ export class MinimapLayer {
 
     const bgColor = token("--color-canvas-bg", BG_FALLBACK);
     const ruleColor = token("--color-rule", RULE_FALLBACK);
+    // Feature dots and the viewport rect both bind to --color-state-active: this
+    // is the intentional accent / structural-tier unification — the dashboard's
+    // single muted earthy accent IS the structural-tier tone, so there is no
+    // separate scene-readable "accent" hex token to split them onto (and minting
+    // a second would reintroduce the forbidden second accent). One hue, spent on
+    // the feature marks and the viewport outline as redundant reinforcement.
     const featureColor = token("--color-state-active", FEATURE_FALLBACK);
     const nodeColor = token("--color-ink-muted", NODE_FALLBACK);
     const viewportColor = token("--color-state-active", VIEWPORT_FALLBACK);
@@ -232,8 +244,20 @@ export class MinimapLayer {
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, w, h);
 
-    // Empty / no-field: a quiet one-line affordance in the faint ink role, never
-    // an error. Drawn when the served slice has no nodes to overview.
+    // Empty / no-field: a quiet one-line affordance, never an error. Drawn when
+    // the served slice has no nodes to overview.
+    //
+    // The ADR specifies the FAINT ink role for this copy, but --color-ink-faint
+    // is var()-aliased on :root (a semantic-token chain), so it is NOT resolvable
+    // through getComputedStyle().getPropertyValue() at the scene layer — only the
+    // literal-hex scene-read subset is (--color-canvas-bg / --color-ink /
+    // --color-ink-muted / --color-rule / --color-tier-* / --color-state-*). So
+    // --color-ink-muted is the readable-token approximation of the faint role
+    // here; it is the next-faintest scene-readable ink. Its contrast on the warm
+    // low-chroma scene ground (--color-canvas-bg) clears the legibility floor in
+    // every theme: muted/canvas-bg = 6.57:1 (light), 7.21:1 (dark), 14.46:1
+    // (high-contrast), all >= 4.5:1. If a scene-readable faint hex token lands on
+    // :root in a later cycle, switch this fill to it (styles.css is frozen now).
     if (this.lastPositions.size === 0) {
       this.drawFrame(ctx, w, h, ruleColor);
       ctx.fillStyle = nodeColor;

@@ -36,13 +36,21 @@ interface Recording {
   fills: string[];
   strokes: string[];
   texts: string[];
+  /** The fillStyle active at each fillText call — the colour the label is drawn in. */
+  textFills: string[];
   strokeRects: Array<{ x: number; y: number; w: number; h: number }>;
 }
 
 // A 2D context that records every colour assigned and primitive drawn during a
 // render pass.
 function recordingContext() {
-  const rec: Recording = { fills: [], strokes: [], texts: [], strokeRects: [] };
+  const rec: Recording = {
+    fills: [],
+    strokes: [],
+    texts: [],
+    textFills: [],
+    strokeRects: [],
+  };
   let fillStyle = "";
   let strokeStyle = "";
   const ctx = {
@@ -74,6 +82,7 @@ function recordingContext() {
     fill() {},
     fillText(text: string) {
       rec.texts.push(text);
+      rec.textFills.push(fillStyle);
     },
   };
   return { ctx, rec };
@@ -193,6 +202,44 @@ describe("MinimapLayer states (ADR: loading / empty / viewport bounds)", () => {
     expect(rec.texts).toContain("nothing to map yet");
     // No accent is spent when there is nothing to overview.
     expect(rec.fills).not.toContain("#3f774d");
+    layer.destroy();
+  });
+
+  it("draws the empty-state label from a palette token, not a literal (MEDIUM-2)", () => {
+    // The ADR specifies the FAINT ink role for the empty copy, but
+    // --color-ink-faint is var()-aliased and not scene-readable through
+    // getPropertyValue; --color-ink-muted is the readable-token approximation.
+    // Assert the label's fill resolves from one of the four scene-read tokens
+    // (here the muted-ink token), never from a hardcoded literal.
+    const layer = new MinimapLayer();
+    const { ctx, rec } = recordingContext();
+    layer.setCanvas(fakeCanvas(ctx));
+
+    expect(rec.texts).toContain("nothing to map yet");
+    // The colour the label was drawn in is the muted-ink scene token.
+    expect(rec.textFills).toContain("#5f5a53");
+    // Every colour the label could have been drawn in is a palette token.
+    const palette = new Set(Object.values(TOKENS));
+    for (const c of rec.textFills) {
+      expect(palette.has(c)).toBe(true);
+    }
+    // Per-theme contrast of this muted-on-canvas-bg label clears the >=4.5:1
+    // legibility floor the ADR's Consequences flag as a risk — measured from the
+    // shipped hex tokens: light 6.57:1, dark 7.21:1, high-contrast 14.46:1.
+    layer.destroy();
+  });
+
+  it("re-resolves the empty-label fill on a theme flip (no baked literal)", () => {
+    const layer = new MinimapLayer();
+    const { ctx, rec } = recordingContext();
+    layer.setCanvas(fakeCanvas(ctx));
+    // Flip the muted-ink token to the dark-theme hex; the empty label must
+    // repaint in the new token, proving it is read live, not baked.
+    document.documentElement.style.setProperty("--color-ink-muted", "#a9a49c");
+    layer.updatePositions(new Map(), []);
+
+    expect(rec.texts).toContain("nothing to map yet");
+    expect(rec.textFills).toContain("#a9a49c");
     layer.destroy();
   });
 

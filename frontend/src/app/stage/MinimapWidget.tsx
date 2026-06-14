@@ -41,6 +41,10 @@ import { getScene } from "./Stage";
 const MINIMAP_W = 192;
 const MINIMAP_H = 128;
 
+// The id the collapse button's aria-controls points at, so assistive tech ties
+// the toggle to the canvas region it shows/hides.
+const CANVAS_REGION_ID = "minimap-canvas-region";
+
 // Lucide chrome marks render at the widget's small instrument size in single
 // currentColor ink drawn from the token layer, so they are theme-correct across
 // dark / light / high-contrast for free (iconography ADR).
@@ -105,6 +109,7 @@ export function MinimapWidget() {
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "expand minimap" : "collapse minimap"}
             aria-expanded={!collapsed}
+            aria-controls={CANVAS_REGION_ID}
             title={collapsed ? "expand minimap" : "collapse minimap"}
             className="flex h-4 w-4 items-center justify-center rounded-vs-sm text-ink-faint transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             data-minimap-collapse
@@ -123,7 +128,11 @@ export function MinimapWidget() {
           The scene owns every pixel inside it; chrome never calls the canvas
           drawing API. role=img + an accessible name name it as the overview;
           click/drag inside it navigate the camera via the scene's seam. */}
-      <div aria-hidden={collapsed} style={{ display: collapsed ? "none" : "block" }}>
+      <div
+        id={CANVAS_REGION_ID}
+        aria-hidden={collapsed}
+        style={{ display: collapsed ? "none" : "block" }}
+      >
         <canvas
           ref={canvasRef}
           width={MINIMAP_W}
