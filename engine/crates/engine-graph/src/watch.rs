@@ -175,11 +175,35 @@ fn debounce_loop(
 fn collect(event: notify::Result<notify::Event>, dirty: &mut Vec<PathBuf>) {
     if let Ok(event) = event {
         for path in event.paths {
+            // Engine-owned cache/log zones under `.vault/` are SKIPPED: the
+            // engine's own `put_artifact` writes (the SQLite cache + its
+            // WAL/SHM siblings, the extraction cache, and the HEAD-keyed
+            // declared-graph cache) all land under `.vault/data/engine-data/`,
+            // and serve logs under `.vault/logs/`. Watching them makes the
+            // watcher self-trigger on every cache write — an endless
+            // rebuild→write→rebuild churn (perf ADR follow-up). Mirrors the
+            // `vault_documents` walk skip of `data`/`logs`.
+            if is_engine_owned_path(&path) {
+                continue;
+            }
             if !dirty.contains(&path) {
                 dirty.push(path);
             }
         }
     }
+}
+
+/// True when `path` lives in an engine-owned, gitignored zone under `.vault/`
+/// (`.vault/data/…` or `.vault/logs/…`) — the cache and log directories the
+/// engine writes to itself. Detected by the adjacent `.vault` → (`data`|`logs`)
+/// segment PAIR (not a bare `data`/`logs` anywhere), so a user document like
+/// `.vault/plan/data-model-plan.md` is never mistaken for a cache write.
+fn is_engine_owned_path(path: &Path) -> bool {
+    let comps: Vec<&std::ffi::OsStr> = path.components().map(|c| c.as_os_str()).collect();
+    comps.windows(2).any(|w| {
+        w[0] == std::ffi::OsStr::new(".vault")
+            && (w[1] == std::ffi::OsStr::new("data") || w[1] == std::ffi::OsStr::new("logs"))
+    })
 }
 
 /// The watch roots for one worktree: its vault corpus and its git dir
@@ -308,5 +332,52 @@ mod tests {
             std::thread::sleep(Duration::from_millis(25));
         }
         sup.join().unwrap();
+    }
+
+    #[test]
+    fn collect_skips_engine_owned_cache_and_log_writes_but_keeps_documents() {
+        // Perf ADR follow-up: the engine's own cache writes under
+        // `.vault/data/engine-data/` (the SQLite db + its WAL/SHM siblings and
+        // the declared-graph cache) and serve logs under `.vault/logs/` must NOT
+        // dirty the watcher, or every `put_artifact` retriggers a rebuild
+        // (rebuild→write→rebuild churn). Real vault documents under other
+        // `.vault/` subdirectories still dirty.
+        let cache = Path::new("/ws/main/.vault/data/engine-data/engine.sqlite3");
+        let wal = Path::new("/ws/main/.vault/data/engine-data/engine.sqlite3-wal");
+        let declared_cache = Path::new("/ws/main/.vault/data/engine-data/engine.sqlite3-shm");
+        let log = Path::new("/ws/main/.vault/logs/serve.log");
+        let doc = Path::new("/ws/main/.vault/plan/2026-06-14-x-plan.md");
+        // A user doc whose name merely CONTAINS `data` is not the cache zone.
+        let data_named_doc = Path::new("/ws/main/.vault/plan/data-model-plan.md");
+
+        assert!(
+            is_engine_owned_path(cache),
+            "the sqlite cache is engine-owned"
+        );
+        assert!(is_engine_owned_path(wal), "the WAL sibling is engine-owned");
+        assert!(
+            is_engine_owned_path(declared_cache),
+            "the SHM sibling is engine-owned"
+        );
+        assert!(is_engine_owned_path(log), "serve logs are engine-owned");
+        assert!(!is_engine_owned_path(doc), "a vault document is watched");
+        assert!(
+            !is_engine_owned_path(data_named_doc),
+            "a `.vault/plan/data-*.md` doc is NOT the engine-owned cache zone"
+        );
+
+        // The full collect path drops the engine-owned writes from a batch.
+        let mut dirty = Vec::new();
+        for p in [cache, wal, log, doc, data_named_doc] {
+            collect(event_for(p), &mut dirty);
+        }
+        assert!(
+            dirty.iter().any(|p| p == doc) && dirty.iter().any(|p| p == data_named_doc),
+            "documents survive the filter: {dirty:?}"
+        );
+        assert!(
+            !dirty.iter().any(|p| p == cache || p == wal || p == log),
+            "no engine-owned cache/log write reaches the dirty set: {dirty:?}"
+        );
     }
 }
