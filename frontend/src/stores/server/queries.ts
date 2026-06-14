@@ -98,6 +98,59 @@ export function useWorkspaceMap() {
   });
 }
 
+/**
+ * The workspace map's degradation truth, derived inside the stores layer so the
+ * worktree switcher (chrome) never reads the raw `tiers` block
+ * (dashboard-layer-ownership / worktree-switcher ADR "States"). The `/map`
+ * projection is resolved by the engine's structural read of the
+ * repository→branch→worktree tree, so the `structural` tier is what gates the
+ * map's availability. Contract §2: a tier marked `available:false` OR absent
+ * from the served block is a designed degraded state — absence is degradation,
+ * not availability. The reason travels through both the success envelope
+ * (`data.tiers`) and the error envelope (`EngineError.tiers`, transport-
+ * preserved). Returns `degraded` plus the per-tier reasons for copy-tone
+ * rendering; the switcher consumes this, never `map.data.tiers`.
+ */
+export interface WorkspaceMapAvailability {
+  degraded: boolean;
+  /** Names of the tiers reporting unavailable (or absent from the block). */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+}
+
+const WORKSPACE_MAP_TIERS = ["structural"] as const;
+
+export function deriveWorkspaceMapAvailability(
+  tiers: TiersBlock | undefined,
+): WorkspaceMapAvailability {
+  // A wholly absent block (a genuine transport fault with no envelope) is NOT
+  // treated as degraded here — that is the query's error state, which the
+  // switcher renders distinctly. Degradation is reported only from a block the
+  // engine actually served.
+  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of WORKSPACE_MAP_TIERS) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+}
+
+/** Stores hook: the workspace map's degradation, read through the wire client so
+ *  the worktree switcher consumes derived truth instead of the raw `tiers`
+ *  block. Mirrors `useVaultTreeAvailability`. */
+export function useWorkspaceMapAvailability(): WorkspaceMapAvailability {
+  const map = useWorkspaceMap();
+  const fromData = map.data?.tiers;
+  const fromError = map.error instanceof EngineError ? map.error.tiers : undefined;
+  return deriveWorkspaceMapAvailability(fromData ?? fromError);
+}
+
 export function useVaultTree(scope: string | null) {
   return useQuery({
     queryKey: engineKeys.vaultTree(scope ?? ""),

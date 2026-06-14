@@ -131,7 +131,7 @@ Re-skins the git-diff browser onto the new tokens with the sacred diff green/red
 
 Re-skins the worktree switcher onto the new tokens and Lucide chrome, gated on the worktree-switcher surface ADR reaching accepted.
 
-- [ ] `W02.P14.S30` - Re-skin the worktree switcher onto the new tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P14.S30` - Re-skin the worktree switcher onto the new tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P15` - Rag-manager surface adoption
 
