@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { EngineEdge } from "../server/engine";
 import { useLiveStatusStore } from "../server/liveStatus";
+import { resetBrowserMode } from "./browserMode";
 import { useFilterStore } from "./filters";
 import { useLensStore } from "./lenses";
 import { usePinStore } from "./pins";
@@ -193,6 +194,10 @@ export const useViewStore = create<ViewState>((set) => ({
     // before the new slice and stream arrive (the same isolation discipline as
     // pins/lenses, findings 022/023).
     useLiveStatusStore.getState().reset();
+    // Reset the browser-region view state (dashboard-left-rail ADR): the chosen
+    // vault/code mode and the in-rail filter are re-keyed per scope, so a stale
+    // mode or filter from the prior corpus must not ride into the new scope.
+    resetBrowserMode();
     set({
       scope,
       // The folder context is scoped to the previous corpus — clear it on a
@@ -226,6 +231,10 @@ export const useViewStore = create<ViewState>((set) => ({
     // Reset the live-connection slice (broken-link count / resume seq) so no
     // prior-project counters bleed in before the new slice and stream arrive.
     useLiveStatusStore.getState().reset();
+    // Reset the browser-region view state too (dashboard-left-rail ADR): the
+    // coarser workspace swap must clear at least as much as a worktree swap, so
+    // the prior PROJECT's browser mode and in-rail filter cannot bleed in.
+    resetBrowserMode();
     set({
       scope,
       activeFolder: null,
