@@ -108,10 +108,40 @@ safety-semantics tests were retained and updated for the new confirm-prompt copy
 ## Outcome
 
 Full lint gate `just dev lint frontend` exits 0 (eslint + prettier + tsc all clean). The
-palette suite is 19 tests green (11 interactive + 8 unit); the full frontend suite is 566
-passed, 9 pre-existing skips, 0 failures. The palette now reads as a native member of the
-agentic-desktop cohort, shares the token / motion / icon layers, and carries the complete
-keyboard-first accessibility contract the ADR pins.
+palette suite is 23 tests green (15 interactive + 8 unit) after the review revision; the
+full frontend suite is 576 passed, 9 pre-existing skips, 0 failures. The palette now reads
+as a native member of the agentic-desktop cohort, shares the token / motion / icon layers,
+and carries the complete keyboard-first accessibility contract the ADR pins.
+
+## Review revision (PASS-WITH-REVISIONS)
+
+The independent design review of the first commit returned PASS-WITH-REVISIONS (no
+CRITICAL/HIGH). Two MEDIUM disarm-hygiene gaps and one near-tautological trap test were
+fixed in this revision:
+
+- M1 (disarm hygiene): two exit paths skipped disarm and leaked the armed state into the
+  process-wide confirm guard — the backdrop dismiss (only hid the palette) and activating
+  a non-confirm row while an ops verb was armed. Introduced a single `close()` helper
+  (disarm then hide) and a shared `disarm()` primitive; every exit path (Escape, the
+  Ctrl/Cmd-K toggle, backdrop dismiss, activating a non-confirm row, and editing the
+  query) now routes through it, and the non-confirm activation disarms before running.
+- M2 (pointer/keyboard parity): `onMouseEnter` moved the cursor without the disarm the
+  keyboard cursor performs, desyncing the armed row from the visually-selected row for
+  pointer users. Both paths now call one `setCursorTo` cursor-setter that disarms.
+- M3 (test honesty): the focus-trap test was near-tautological because the input was the
+  only tab stop. Strengthened it to inject a second real tab stop into the panel and
+  assert the wrap-around actually cycles (last to first, first to last) and that the
+  handler calls `preventDefault`. This exposed and fixed a real trap defect: `focusablesOf`
+  selected `tabindex="-1"` buttons (the result rows), so the input was not the true first
+  stop; the selector now excludes any `tabindex="-1"` element.
+- L1 (a11y honesty): when no search result matches but the contextual save-lens row is the
+  sole survivor, the live region now announces `no matches — save current filters as lens
+  "..."` instead of a bare "nothing matches" while a row is selected.
+
+L2 (ops request-ordering token) was assessed and deferred as optional: the ops verbs are
+single-slotted behind the arm-to-confirm guard and run one at a time from the palette, so
+out-of-order resolution is not reachable through this surface; a token guard would be
+dead code here. Four disarm-hygiene tests were added covering all M1/M2 exit paths.
 
 ## Notes
 

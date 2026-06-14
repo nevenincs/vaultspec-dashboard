@@ -16,7 +16,7 @@
 // guardable point that touches the engine client.
 
 import { CornerDownLeft, Search } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { useConfirmable } from "../../platform/dispatch/useAction";
 import { useFiltersVocabulary } from "../../stores/server/queries";
@@ -128,13 +128,22 @@ export function groupByFamily(
 
 // --- the palette -----------------------------------------------------------------------
 
-/** Focusable descendants of a container, in tab order. */
+/**
+ * Tab-order focusable descendants of a container. Anything with
+ * `tabindex="-1"` is programmatically focusable but NOT a tab stop, so it is
+ * excluded — the result rows carry `tabindex=-1` and must not count toward the
+ * trap's first/last boundary, or the input would stop being the first stop.
+ */
 function focusablesOf(root: HTMLElement): HTMLElement[] {
   return Array.from(
     root.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      "a[href], button, input, select, textarea, [tabindex]",
     ),
-  );
+  ).filter((el) => {
+    if (el.hasAttribute("disabled")) return false;
+    if (el.getAttribute("tabindex") === "-1") return false;
+    return true;
+  });
 }
 
 export function CommandPalette() {
@@ -176,25 +185,42 @@ export function CommandPalette() {
   // pending) — shown as a subtle cue per family, never a blank list.
   const navLoading = scope !== null && vocabulary.isPending;
 
-  const reset = () => {
+  // Disarm any pending ops confirm and clear the armed-row id. Both close() and
+  // reset() funnel through this so no exit path can leak an armed slot into the
+  // process-wide appConfirmGuard (ADR: closing/navigating/editing disarms).
+  const disarm = useCallback(() => {
+    confirmable.cancel();
+    setArmedCommandId(null);
+  }, [confirmable]);
+
+  const reset = useCallback(() => {
     setQuery("");
     setCursor(0);
     setOpsMessage(null);
-    confirmable.cancel();
-    setArmedCommandId(null);
-  };
+    disarm();
+  }, [disarm]);
+
+  // The single close path: disarm, then hide. Every exit (Escape, Ctrl/Cmd-K
+  // toggle, backdrop dismiss, activating a non-confirm command) routes here so
+  // the armed state is always cleared on the way out.
+  const close = useCallback(() => {
+    disarm();
+    setOpen(false);
+  }, [disarm]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setOpen((v) => !v);
-        reset();
+        // Toggle: if open, close (disarming); if closed, open with a clean slate.
+        if (open) close();
+        else {
+          reset();
+          setOpen(true);
+        }
       } else if (e.key === "Escape" && open) {
         e.preventDefault();
-        confirmable.cancel();
-        setArmedCommandId(null);
-        setOpen(false);
+        close();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -263,7 +289,13 @@ export function CommandPalette() {
   // The polite live-region message: result count + selection, plus the armed
   // prompt — de-duplicated so fast typing does not flood assistive tech.
   const liveMessage = useMemo(() => {
-    if (noMatch) return "nothing matches";
+    if (noMatch) {
+      // a11y honesty: when no SEARCH result matched but the contextual
+      // save-lens row is the sole survivor (and is the aria-selected row),
+      // announce that affordance rather than a bare "nothing matches".
+      const saveLens = ordered.find((c) => c.id.startsWith("save-lens:"));
+      return saveLens ? `no matches — ${saveLens.label}` : "nothing matches";
+    }
     const count = `${matchedResults.length} command${
       matchedResults.length === 1 ? "" : "s"
     }`;
@@ -273,6 +305,7 @@ export function CommandPalette() {
     return activeCommand ? `${count}. ${activeCommand.label}` : count;
   }, [
     noMatch,
+    ordered,
     matchedResults.length,
     activeCommand,
     confirmable.armed,
@@ -292,27 +325,33 @@ export function CommandPalette() {
         confirmable.trigger();
         return;
       }
-      // Second Enter on the same armed command: fire and reset the arm. The
-      // palette stays open so the inline ops message remains visible.
-      confirmable.cancel();
-      setArmedCommandId(null);
+      // Second Enter on the same armed command: disarm then fire. The palette
+      // stays open so the inline ops message remains visible.
+      disarm();
       command.run();
       return;
     }
+    // Non-confirm command: disarm any other pending ops arm BEFORE running, so
+    // activating a navigation/lens row while an ops verb is armed cannot leave
+    // the guard slot armed after close.
+    disarm();
     command.run();
-    setOpen(false);
+    close();
+  };
+
+  // Move the cursor to an explicit index, disarming any pending confirm so the
+  // armed row can never desync from the visually-selected row (shared by the
+  // keyboard moveCursor and the pointer onMouseEnter path).
+  const setCursorTo = (index: number) => {
+    disarm();
+    setCursor(index);
   };
 
   const moveCursor = (delta: 1 | -1) => {
     if (ordered.length === 0) return;
-    // Moving the cursor disarms a pending confirm so a stale arm can never
-    // fire the wrong verb.
-    confirmable.cancel();
-    setArmedCommandId(null);
-    setCursor((c) => {
-      const base = c < 0 ? 0 : c;
-      return Math.min(ordered.length - 1, Math.max(0, base + delta));
-    });
+    setCursorTo(
+      Math.min(ordered.length - 1, Math.max(0, (cursor < 0 ? 0 : cursor) + delta)),
+    );
   };
 
   return (
@@ -320,8 +359,9 @@ export function CommandPalette() {
       className="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 pt-24 animate-fade-in"
       onMouseDown={(e) => {
         // Backdrop dismiss only on the scrim itself — a click inside the panel
-        // (which stops propagation) must not close it.
-        if (e.target === e.currentTarget) setOpen(false);
+        // (which stops propagation) must not close it. Routes through close()
+        // so the dismiss disarms any pending ops confirm.
+        if (e.target === e.currentTarget) close();
       }}
     >
       <div
@@ -366,11 +406,12 @@ export function CommandPalette() {
             }
             aria-autocomplete="list"
             onChange={(e) => {
+              // Editing the query disarms (ADR: editing the query disarms a
+              // pending confirm cleanly).
               setQuery(e.target.value);
               setCursor(0);
               setOpsMessage(null);
-              confirmable.cancel();
-              setArmedCommandId(null);
+              disarm();
             }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
@@ -422,7 +463,7 @@ export function CommandPalette() {
                         role="option"
                         aria-selected={selected}
                         tabIndex={-1}
-                        onMouseEnter={() => setCursor(index)}
+                        onMouseEnter={() => setCursorTo(index)}
                         onClick={() => runAt(index)}
                         className={`flex w-full items-center justify-between border-l-2 rounded-r-vs-sm py-vs-1-5 pr-vs-4 pl-vs-3 text-left transition-colors duration-ui-fast ease-settle ${
                           selected

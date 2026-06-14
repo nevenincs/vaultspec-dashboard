@@ -18,6 +18,7 @@ import {
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { appConfirmGuard } from "../../platform/dispatch/middleware";
 import { engineClient } from "../../stores/server/engine";
 import { MockEngine } from "../../testing/mockEngine";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -184,19 +185,33 @@ describe("CommandPalette a11y + keyboard contract (W02.P07.S23)", () => {
     expect(screen.getByText("navigate")).toBeTruthy();
   });
 
-  it("Tab is trapped within the dialog", async () => {
+  it("Tab wraps within the dialog (the trap actually cycles)", async () => {
     mountPalette();
     const input = (await screen.findByRole("combobox")) as HTMLInputElement;
     const dialog = screen.getByRole("dialog");
-    // Option buttons are tabindex=-1, so the input is the only tab stop; the
-    // trap handler keeps Tab/Shift+Tab from escaping the dialog. The keydown
-    // is dispatched on the dialog (where the handler lives) with the input as
-    // the active element, mirroring the real focus position on open.
+    // Inject a SECOND real tab stop into the panel so the wrap-around branch is
+    // genuinely exercised — with only the input focusable the assertion would
+    // pass even if the trap handler were deleted (the near-tautology the review
+    // flagged). With two stops, Tab from the last must wrap to the first and
+    // Shift+Tab from the first must wrap to the last, and the handler must call
+    // preventDefault to suppress the native tab.
+    const second = document.createElement("button");
+    second.textContent = "second stop";
+    dialog.appendChild(second);
+
+    // Forward Tab from the LAST focusable (the injected button) wraps to first.
+    second.focus();
+    const fwd = fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(fwd).toBe(false); // default was prevented
+    expect(document.activeElement).toBe(input);
+
+    // Shift+Tab from the FIRST focusable (the input) wraps to the last.
     input.focus();
-    fireEvent.keyDown(dialog, { key: "Tab" });
-    expect(dialog.contains(document.activeElement)).toBe(true);
-    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    const back = fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(back).toBe(false); // default was prevented
+    expect(document.activeElement).toBe(second);
+
+    second.remove();
   });
 
   it("surfaces the ops result inline without closing the palette", async () => {
@@ -209,5 +224,74 @@ describe("CommandPalette a11y + keyboard contract (W02.P07.S23)", () => {
     // The palette stays open and shows a legible status line.
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(await screen.findByRole("status")).toBeTruthy();
+  });
+});
+
+describe("CommandPalette disarm hygiene (M1/M2 revisions)", () => {
+  beforeEach(() => {
+    useViewStore.getState().setTimelineMode({ kind: "live" });
+    appConfirmGuard.reset();
+  });
+  afterEach(() => {
+    cleanup();
+    appConfirmGuard.reset();
+    engineClient.useTransport((input, init) => fetch(input, init));
+  });
+
+  it("backdrop dismiss disarms a pending ops verb (no leak into the guard)", async () => {
+    const { opsCalls } = mountPalette();
+    const verb = await screen.findByText("ops: vault check");
+    fireEvent.click(verb); // arm
+    await screen.findByText("confirm ops: vault check?");
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(true);
+
+    // Click the scrim (the fixed overlay is the input's offsetParent root).
+    const scrim = screen.getByRole("dialog").parentElement as HTMLElement;
+    fireEvent.mouseDown(scrim);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
+    expect(opsCalls).toHaveLength(0); // never fired
+  });
+
+  it("activating a non-confirm row while armed disarms before running", async () => {
+    const { opsCalls } = mountPalette();
+    const verb = await screen.findByText("ops: vault check");
+    fireEvent.click(verb); // arm an ops verb
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(true);
+
+    // Click a non-confirm row (a builtin lens) — it must disarm, then close.
+    const lens = await screen.findByText("lens: broken links");
+    fireEvent.click(lens);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
+    expect(opsCalls).toHaveLength(0); // the armed verb never fired
+  });
+
+  it("hovering another row (pointer) disarms the pending confirm", async () => {
+    mountPalette();
+    const verb = await screen.findByText("ops: vault check");
+    fireEvent.click(verb); // arm
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(true);
+    // The armed prompt is showing on the armed row.
+    expect(screen.getByText("confirm ops: vault check?")).toBeTruthy();
+
+    // Mouse-enter a different row: the cursor moves AND the arm clears, so the
+    // armed-row id can never desync from the visually-selected row.
+    const other = screen.getByText("ops: vault stats");
+    fireEvent.mouseEnter(other.closest('[role="option"]') as HTMLElement);
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
+    expect(screen.queryByText("confirm ops: vault check?")).toBeNull();
+  });
+
+  it("Ctrl/Cmd-K toggle-close disarms a pending ops verb", async () => {
+    mountPalette();
+    const verb = await screen.findByText("ops: vault check");
+    fireEvent.click(verb); // arm
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(true);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true }); // toggle closed
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(appConfirmGuard.isArmed("ops:run")).toBe(false);
   });
 });
