@@ -46,6 +46,7 @@ related:
   - '[[2026-06-14-user-state-persistence-W04-P10-S34]]'
   - '[[2026-06-14-user-state-persistence-W04-P10-S35]]'
   - '[[2026-06-14-user-state-persistence-adr]]'
+  - '[[2026-06-14-user-state-persistence-audit]]'
   - '[[2026-06-14-user-state-persistence-plan]]'
   - '[[2026-06-14-user-state-persistence-research]]'
 ---
@@ -59,6 +60,10 @@ Auto-generated index of all documents tagged with `#user-state-persistence`.
 ### adr
 
 - `2026-06-14-user-state-persistence-adr` - `user-state-persistence` adr: `co-resident orchestration layer for session state and workspace selection` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-14-user-state-persistence-audit` - `user-state-persistence` audit: `live production verification and hardening campaign`
 
 ### exec
 
