@@ -20,11 +20,12 @@ import { AnchorDriver } from "./anchors";
 import { circularArrange } from "./circularLayout";
 import { computeEgo } from "./egoHighlight";
 import { Camera, HIT_RADIUS_WORLD, PointerGestures, SpatialHitTester } from "./camera";
+import { DomainGlyphs } from "./domainGlyphs";
 import { ARROW_VISIBLE_SCALE, EdgeMeshLayer } from "./edgeMeshes";
-import { ProgrammaticGlyphs } from "./glyphs";
 import type { LayoutParams } from "./layoutWorker";
 import { FieldLayout } from "./layoutWorker";
 import { MinimapLayer } from "./minimapLayer";
+import type { GlyphTextureProvider } from "./nodeSprites";
 import { NodeSpriteLayer } from "./nodeSprites";
 import { PixiField } from "./pixiField";
 
@@ -63,7 +64,12 @@ export class DashboardField implements SceneFieldRenderer {
   /** Canvas registered before onReady fires — applied once the layer exists. */
   private pendingMinimapCanvas: HTMLCanvasElement | null = null;
   private hitTester = new SpatialHitTester();
-  private glyphs: ProgrammaticGlyphs | null = null;
+  // The domain-mark texture provider (W02.P17.S37). `ProgrammaticGlyphs` in
+  // `glyphs.ts` stays intact as the GPU-free placeholder/fallback; the live
+  // assembly uses `DomainGlyphs`, the Phosphor-family provider, behind the
+  // unchanged `GlyphTextureProvider` seam — a provider swap, not a sprite-code
+  // change.
+  private glyphs: GlyphTextureProvider | null = null;
   private detachListeners: (() => void)[] = [];
   /** Guard: mount() is idempotent — only the first call assembles the scene (S06). */
   private assemblyMounted = false;
@@ -102,7 +108,7 @@ export class DashboardField implements SceneFieldRenderer {
     this.base.mount(host);
     const offReady = this.base.onReady((app) => {
       const world = this.base.worldContainer;
-      this.glyphs = new ProgrammaticGlyphs(app.renderer);
+      this.glyphs = new DomainGlyphs(app.renderer);
       this.edges = new EdgeMeshLayer(world);
       this.sprites = new NodeSpriteLayer(world, this.glyphs);
       this.camera = new Camera(world);
@@ -264,7 +270,7 @@ export class DashboardField implements SceneFieldRenderer {
     this.anchors = null;
     this.minimap?.destroy();
     this.minimap = null;
-    this.glyphs?.destroy();
+    this.glyphs?.destroy?.();
     this.glyphs = null;
     this.base.destroy();
   }

@@ -12,6 +12,7 @@ import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
 import { RECEDE_ALPHA } from "./egoHighlight";
+import { drawProgressRing } from "./progressRing";
 
 // --- CSS-token helpers (browser-only; node test env sees the fallback) --------
 
@@ -102,9 +103,12 @@ export function tierBadgeText(degreeByTier?: SceneNodeData["degreeByTier"]): str
 
 // --- the sprite layer ---------------------------------------------------------
 
-/** Supplies silhouette textures per node kind (S16 placeholder set plugs in). */
+/** Supplies silhouette textures per node kind (the S16 placeholder set or the
+ * W02.P17 domain-mark provider plugs in behind this seam). */
 export interface GlyphTextureProvider {
   textureFor(kind: string): Texture;
+  /** Release cached GPU textures; called by the field on teardown. */
+  destroy?(): void;
 }
 
 const NODE_RADIUS = 6;
@@ -288,10 +292,13 @@ export class NodeSpriteLayer {
     const ringRadius = nodeRadius(node) + 3;
     const fraction = progressFraction(node.lifecycle);
     if (fraction !== null) {
-      const ring = new Graphics();
-      ring
-        .arc(0, 0, ringRadius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * fraction)
-        .stroke({ width: 2, color: stateColor(node.lifecycle) });
+      // The progress ring is a parametric arc-fill primitive (S36), not an
+      // icon: exact done/total arc anchored at 12 o'clock, tinted with state.
+      const ring = drawProgressRing(new Graphics(), fraction, {
+        radius: ringRadius,
+        width: 2,
+        color: stateColor(node.lifecycle),
+      });
       anatomy.addChild(ring);
     }
     const badges = tierBadgeText(node.degreeByTier);

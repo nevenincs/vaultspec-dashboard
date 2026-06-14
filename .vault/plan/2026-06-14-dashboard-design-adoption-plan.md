@@ -149,11 +149,11 @@ Re-skins the rag search surface onto the new tokens and sanctioned icons, gated 
 
 Authors the bespoke tier, lifecycle, node-feature, and progress-ring marks in-family on Phosphor's grid and wires them through both the React chrome and the Pixi GlyphTextureProvider texture seam, gated on the iconography ADR (accepted) and W01.P04.
 
-- [ ] `W02.P17.S33` - Author the four bespoke abstract tier marks in-family on Phosphor's grid, each passing the 14px grayscale-by-shape gate; `frontend/src/scene/field/glyphs.ts`.
-- [ ] `W02.P17.S34` - Author the lifecycle state marks in-family from Phosphor primitives honoring the active-versus-node-feature and broken-bolt collision constraints, each passing the 14px grayscale gate; `frontend/src/scene/field/glyphs.ts`.
-- [ ] `W02.P17.S35` - Author the deliberately-asymmetric node-feature species mark in-family honoring its collision constraints against the state-active ring, passing the 14px grayscale gate; `frontend/src/scene/field/glyphs.ts`.
-- [ ] `W02.P17.S36` - Implement the progress ring as a small parametric programmatic component (exact arc fills) rather than static SVGs; `frontend/src/scene/field/glyphs.ts`.
-- [ ] `W02.P17.S37` - Wire the authored domain marks through both the React chrome and the Pixi GlyphTextureProvider texture seam so both planes consume the same currentColor marks; `frontend/src/scene/field/nodeSprites.ts`.
+- [x] `W02.P17.S33` - Author the four bespoke abstract tier marks in-family on Phosphor's grid, each passing the 14px grayscale-by-shape gate; `frontend/src/scene/field/glyphs.ts`.
+- [x] `W02.P17.S34` - Author the lifecycle state marks in-family from Phosphor primitives honoring the active-versus-node-feature and broken-bolt collision constraints, each passing the 14px grayscale gate; `frontend/src/scene/field/glyphs.ts`.
+- [x] `W02.P17.S35` - Author the deliberately-asymmetric node-feature species mark in-family honoring its collision constraints against the state-active ring, passing the 14px grayscale gate; `frontend/src/scene/field/glyphs.ts`.
+- [x] `W02.P17.S36` - Implement the progress ring as a small parametric programmatic component (exact arc fills) rather than static SVGs; `frontend/src/scene/field/glyphs.ts`.
+- [x] `W02.P17.S37` - Wire the authored domain marks through both the React chrome and the Pixi GlyphTextureProvider texture seam so both planes consume the same currentColor marks; `frontend/src/scene/field/nodeSprites.ts`.
 
 ## Wave `W03` - Codify - promote the durable design-language rules
 
