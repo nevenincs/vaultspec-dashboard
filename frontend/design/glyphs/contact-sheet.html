@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vaultspec hand-drawn glyph family v1 — contact sheet</title>
+<style>
+  :root { --pad: 28px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: var(--pad); border-bottom: 1px solid #0002; }
+  header h1 { margin: 0 0 .25rem; font-size: 18px; letter-spacing: .01em; }
+  header p { margin: 0; font-size: 12.5px; opacity: .8; max-width: 70ch; }
+  .theme { padding: var(--pad); }
+  .theme > h2 { margin: 0 0 .25rem; font-size: 15px; text-transform: uppercase; letter-spacing: .08em; }
+  .theme > .note { font-size: 12px; opacity: .75; margin: 0 0 1.25rem; }
+  .light { background: #faf6ef; color: #2b2723; }
+  .dark  { background: #211e1a; color: #ece5d8; }
+  .gray  { background: #efeeec; color: #1c1c1c; }
+  .gray .grid svg { filter: grayscale(1); }
+  .cat { margin-bottom: 1.75rem; }
+  .cat h3 { font-size: 13px; margin: 0 0 .6rem; font-weight: 650; letter-spacing: .02em;
+            border-bottom: 1px solid color-mix(in srgb, currentColor 22%, transparent); padding-bottom: .3rem; }
+  .cat h3 em { font-style: normal; font-weight: 400; font-size: 11.5px; opacity: .7; margin-left: .5rem; }
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .cell { display: flex; flex-direction: column; align-items: center; padding: 10px 12px 8px; border-radius: 8px;
+          background: color-mix(in srgb, currentColor 4%, transparent);
+          border: 1px solid color-mix(in srgb, currentColor 12%, transparent); min-width: 116px; }
+  .sizes { display: flex; align-items: flex-end; gap: 10px; height: 48px; }
+  .g { display: inline-flex; align-items: flex-end; }
+  .g svg { display: block; }
+  .lbl { font-size: 10.5px; opacity: .82; margin-top: 8px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .legend { font-size: 11px; opacity: .65; padding: 0 var(--pad) var(--pad); }
+  hr.sep { border: 0; border-top: 1px solid #0002; margin: 0; }
+</style>
+</head>
+<body>
+<header class="light">
+  <h1>vaultspec hand-drawn glyph family — v1 contact sheet</h1>
+  <p>26 glyphs, one hand. 24×24 viewBox, 20×20 safe area, exact anchor geometry; hand-drawn character lives only in stroke treatment (curvature bow, ≤0.5u corner overshoot) and weight tiers (detail 1.25 / primary 2.0 / accent 2.75), round caps and joins throughout. Single <code>currentColor</code> ink. Each glyph shown at field (14px), mid (24px), and detail (44px) size.</p>
+</header>
+<section class="theme light"><h2>Light theme</h2><p class="note">paper-warm ground #faf6ef · ink #2b2723</p>
+    <div class="cat">
+      <h3>Doc types <em>closed fillable silhouettes — shape carries type</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-research: magnifying glass over a three-point dot grid (inquiry) -->
+  <!-- lens: hand-circle, exact center (9.5,9.5) r=5.2, opened with a confident overshoot -->
+  <path d="M13.0 5.1 Q15.0 6.9 14.6 9.8 Q14.1 13.2 10.6 14.4 Q6.9 15.4 5.0 12.3 Q3.6 9.6 5.4 6.9 Q7.3 4.2 10.6 4.4 Q11.9 4.6 13.0 5.1" />
+  <!-- handle: drawn with a slight bow, overshot ~0.4u past the rim -->
+  <path d="M13.3 13.0 Q15.6 15.4 18.6 18.6" />
+  <!-- three dot-grid inquiry points, exact, detail weight as solid ink -->
+  <circle cx="7.8" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="11.1" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="9.5" cy="11.4" r="0.85" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-research: magnifying glass over a three-point dot grid (inquiry) -->
+  <!-- lens: hand-circle, exact center (9.5,9.5) r=5.2, opened with a confident overshoot -->
+  <path d="M13.0 5.1 Q15.0 6.9 14.6 9.8 Q14.1 13.2 10.6 14.4 Q6.9 15.4 5.0 12.3 Q3.6 9.6 5.4 6.9 Q7.3 4.2 10.6 4.4 Q11.9 4.6 13.0 5.1" />
+  <!-- handle: drawn with a slight bow, overshot ~0.4u past the rim -->
+  <path d="M13.3 13.0 Q15.6 15.4 18.6 18.6" />
+  <!-- three dot-grid inquiry points, exact, detail weight as solid ink -->
+  <circle cx="7.8" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="11.1" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="9.5" cy="11.4" r="0.85" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-research: magnifying glass over a three-point dot grid (inquiry) -->
+  <!-- lens: hand-circle, exact center (9.5,9.5) r=5.2, opened with a confident overshoot -->
+  <path d="M13.0 5.1 Q15.0 6.9 14.6 9.8 Q14.1 13.2 10.6 14.4 Q6.9 15.4 5.0 12.3 Q3.6 9.6 5.4 6.9 Q7.3 4.2 10.6 4.4 Q11.9 4.6 13.0 5.1" />
+  <!-- handle: drawn with a slight bow, overshot ~0.4u past the rim -->
+  <path d="M13.3 13.0 Q15.6 15.4 18.6 18.6" />
+  <!-- three dot-grid inquiry points, exact, detail weight as solid ink -->
+  <circle cx="7.8" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="11.1" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="9.5" cy="11.4" r="0.85" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">doc-research</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" /></svg></span></div>
+    <div class="lbl">doc-adr</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" /></svg></span></div>
+    <div class="lbl">doc-plan</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-exec: a tag/label outline with a bold check-stroke inside (work done) -->
+  <!-- tag silhouette: notched-left label, exact geometry, slight corner overshoot -->
+  <path d="M9.4 5.0 L19.4 5.0 Q20.0 5.0 20.0 5.6 L20.0 15.6 Q20.0 16.2 19.4 16.2 L9.4 16.2 L4.4 10.6 Z" />
+  <!-- punch hole, exact center -->
+  <circle cx="8.4" cy="10.6" r="1.05" fill="currentColor" stroke="none" />
+  <!-- bold accent-weight check inside the body -->
+  <path d="M11.6 10.8 Q12.7 12.2 13.6 13.2 Q15.4 9.9 17.6 7.9" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-exec: a tag/label outline with a bold check-stroke inside (work done) -->
+  <!-- tag silhouette: notched-left label, exact geometry, slight corner overshoot -->
+  <path d="M9.4 5.0 L19.4 5.0 Q20.0 5.0 20.0 5.6 L20.0 15.6 Q20.0 16.2 19.4 16.2 L9.4 16.2 L4.4 10.6 Z" />
+  <!-- punch hole, exact center -->
+  <circle cx="8.4" cy="10.6" r="1.05" fill="currentColor" stroke="none" />
+  <!-- bold accent-weight check inside the body -->
+  <path d="M11.6 10.8 Q12.7 12.2 13.6 13.2 Q15.4 9.9 17.6 7.9" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-exec: a tag/label outline with a bold check-stroke inside (work done) -->
+  <!-- tag silhouette: notched-left label, exact geometry, slight corner overshoot -->
+  <path d="M9.4 5.0 L19.4 5.0 Q20.0 5.0 20.0 5.6 L20.0 15.6 Q20.0 16.2 19.4 16.2 L9.4 16.2 L4.4 10.6 Z" />
+  <!-- punch hole, exact center -->
+  <circle cx="8.4" cy="10.6" r="1.05" fill="currentColor" stroke="none" />
+  <!-- bold accent-weight check inside the body -->
+  <path d="M11.6 10.8 Q12.7 12.2 13.6 13.2 Q15.4 9.9 17.6 7.9" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">doc-exec</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">doc-audit</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">doc-reference</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-index: a small grid of four cells, one filled -->
+  <!-- outer frame, exact 5.0..19.0, faint bow, slight corner overshoot -->
+  <path d="M6.0 4.6 L18.0 4.6 Q19.0 4.6 19.0 5.6 L19.0 17.6 Q19.0 18.6 18.0 18.6 L6.0 18.6 Q5.0 18.6 5.0 17.6 L5.0 5.6 Q5.0 4.6 6.0 4.6 Z" />
+  <!-- dividers, exact mid axes x=12, y=11.6 -->
+  <path d="M12 4.8 Q11.8 11.6 12 18.4" />
+  <path d="M5.2 11.6 Q12 11.4 18.8 11.6" />
+  <!-- one filled cell (top-left), inset from dividers -->
+  <path d="M6.6 6.2 L10.4 6.2 L10.4 10.0 L6.6 10.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-index: a small grid of four cells, one filled -->
+  <!-- outer frame, exact 5.0..19.0, faint bow, slight corner overshoot -->
+  <path d="M6.0 4.6 L18.0 4.6 Q19.0 4.6 19.0 5.6 L19.0 17.6 Q19.0 18.6 18.0 18.6 L6.0 18.6 Q5.0 18.6 5.0 17.6 L5.0 5.6 Q5.0 4.6 6.0 4.6 Z" />
+  <!-- dividers, exact mid axes x=12, y=11.6 -->
+  <path d="M12 4.8 Q11.8 11.6 12 18.4" />
+  <path d="M5.2 11.6 Q12 11.4 18.8 11.6" />
+  <!-- one filled cell (top-left), inset from dividers -->
+  <path d="M6.6 6.2 L10.4 6.2 L10.4 10.0 L6.6 10.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-index: a small grid of four cells, one filled -->
+  <!-- outer frame, exact 5.0..19.0, faint bow, slight corner overshoot -->
+  <path d="M6.0 4.6 L18.0 4.6 Q19.0 4.6 19.0 5.6 L19.0 17.6 Q19.0 18.6 18.0 18.6 L6.0 18.6 Q5.0 18.6 5.0 17.6 L5.0 5.6 Q5.0 4.6 6.0 4.6 Z" />
+  <!-- dividers, exact mid axes x=12, y=11.6 -->
+  <path d="M12 4.8 Q11.8 11.6 12 18.4" />
+  <path d="M5.2 11.6 Q12 11.4 18.8 11.6" />
+  <!-- one filled cell (top-left), inset from dividers -->
+  <path d="M6.6 6.2 L10.4 6.2 L10.4 10.0 L6.6 10.0 Z" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">doc-index</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Feature <em>the compound species — reads distinct from all doc types</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- node-feature: a loose hand-circled cluster of unequal points (constellation knot, never face) -->
+  <!-- binding lasso: center (12,12) r~8.4, drawn clockwise from just right of 12 o'clock,
+       left OPEN with a ~70deg gap at the upper-left so it reads as a sketched loop, not a closed head -->
+  <path d="M12.8 3.8 Q18.2 4.6 20.0 9.4 Q21.6 14.6 17.6 18.0 Q13.4 21.4 8.4 19.6 Q3.8 17.8 3.5 12.8 Q3.3 10.4 4.6 8.4" />
+  <!-- three constellation points, three sizes, scalene triangle: largest low-left -->
+  <circle cx="8.4" cy="13.8" r="2.0" fill="currentColor" stroke="none" />
+  <circle cx="16.0" cy="8.6" r="1.4" fill="currentColor" stroke="none" />
+  <circle cx="13.0" cy="15.0" r="1.0" fill="currentColor" stroke="none" />
+  <!-- one constellation thread, detail weight, between the two smaller dots —
+       steeply diagonal with clear air around each dot, so it never fuses into a bar -->
+  <path d="M15.2 10.3 Q14.6 11.9 13.7 13.5" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- node-feature: a loose hand-circled cluster of unequal points (constellation knot, never face) -->
+  <!-- binding lasso: center (12,12) r~8.4, drawn clockwise from just right of 12 o'clock,
+       left OPEN with a ~70deg gap at the upper-left so it reads as a sketched loop, not a closed head -->
+  <path d="M12.8 3.8 Q18.2 4.6 20.0 9.4 Q21.6 14.6 17.6 18.0 Q13.4 21.4 8.4 19.6 Q3.8 17.8 3.5 12.8 Q3.3 10.4 4.6 8.4" />
+  <!-- three constellation points, three sizes, scalene triangle: largest low-left -->
+  <circle cx="8.4" cy="13.8" r="2.0" fill="currentColor" stroke="none" />
+  <circle cx="16.0" cy="8.6" r="1.4" fill="currentColor" stroke="none" />
+  <circle cx="13.0" cy="15.0" r="1.0" fill="currentColor" stroke="none" />
+  <!-- one constellation thread, detail weight, between the two smaller dots —
+       steeply diagonal with clear air around each dot, so it never fuses into a bar -->
+  <path d="M15.2 10.3 Q14.6 11.9 13.7 13.5" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- node-feature: a loose hand-circled cluster of unequal points (constellation knot, never face) -->
+  <!-- binding lasso: center (12,12) r~8.4, drawn clockwise from just right of 12 o'clock,
+       left OPEN with a ~70deg gap at the upper-left so it reads as a sketched loop, not a closed head -->
+  <path d="M12.8 3.8 Q18.2 4.6 20.0 9.4 Q21.6 14.6 17.6 18.0 Q13.4 21.4 8.4 19.6 Q3.8 17.8 3.5 12.8 Q3.3 10.4 4.6 8.4" />
+  <!-- three constellation points, three sizes, scalene triangle: largest low-left -->
+  <circle cx="8.4" cy="13.8" r="2.0" fill="currentColor" stroke="none" />
+  <circle cx="16.0" cy="8.6" r="1.4" fill="currentColor" stroke="none" />
+  <circle cx="13.0" cy="15.0" r="1.0" fill="currentColor" stroke="none" />
+  <!-- one constellation thread, detail weight, between the two smaller dots —
+       steeply diagonal with clear air around each dot, so it never fuses into a bar -->
+  <path d="M15.2 10.3 Q14.6 11.9 13.7 13.5" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">node-feature</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Events <em>small, open, linear — timeline marks</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-commit: a filled dot on a vertical branch line with a short branch tick -->
+  <!-- main branch line, exact x=10, overshot top/bottom ~0.4u -->
+  <path d="M10 3.6 Q9.8 12 10 20.4" />
+  <!-- commit node, exact center (10,12) -->
+  <circle cx="10" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  <!-- short branch tick diverging up-right -->
+  <path d="M11.9 10.1 Q14.6 7.4 18.0 6.4" />
+  <circle cx="18.4" cy="6.2" r="1.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-commit: a filled dot on a vertical branch line with a short branch tick -->
+  <!-- main branch line, exact x=10, overshot top/bottom ~0.4u -->
+  <path d="M10 3.6 Q9.8 12 10 20.4" />
+  <!-- commit node, exact center (10,12) -->
+  <circle cx="10" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  <!-- short branch tick diverging up-right -->
+  <path d="M11.9 10.1 Q14.6 7.4 18.0 6.4" />
+  <circle cx="18.4" cy="6.2" r="1.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-commit: a filled dot on a vertical branch line with a short branch tick -->
+  <!-- main branch line, exact x=10, overshot top/bottom ~0.4u -->
+  <path d="M10 3.6 Q9.8 12 10 20.4" />
+  <!-- commit node, exact center (10,12) -->
+  <circle cx="10" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  <!-- short branch tick diverging up-right -->
+  <path d="M11.9 10.1 Q14.6 7.4 18.0 6.4" />
+  <circle cx="18.4" cy="6.2" r="1.4" /></svg></span></div>
+    <div class="lbl">event-commit</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">event-doc-created</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-modified: page silhouette with a pencil tick at corner -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- pencil over the lower-right corner, exact 45deg, nib at (14.2,19.6) -->
+  <path d="M19.8 11.6 L21.2 13.0 L15.0 19.2 L13.4 19.6 L13.8 18.0 Z" stroke-width="1.25" />
+  <path d="M18.5 12.9 L19.9 14.3" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-modified: page silhouette with a pencil tick at corner -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- pencil over the lower-right corner, exact 45deg, nib at (14.2,19.6) -->
+  <path d="M19.8 11.6 L21.2 13.0 L15.0 19.2 L13.4 19.6 L13.8 18.0 Z" stroke-width="1.25" />
+  <path d="M18.5 12.9 L19.9 14.3" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-modified: page silhouette with a pencil tick at corner -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- pencil over the lower-right corner, exact 45deg, nib at (14.2,19.6) -->
+  <path d="M19.8 11.6 L21.2 13.0 L15.0 19.2 L13.4 19.6 L13.8 18.0 Z" stroke-width="1.25" />
+  <path d="M18.5 12.9 L19.9 14.3" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">event-doc-modified</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" /></svg></span></div>
+    <div class="lbl">event-lifecycle</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Tier marks <em>MUST distinguish in grayscale at 14px by shape + treatment</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span></div>
+    <div class="lbl">tier-declared</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">tier-structural</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">tier-temporal</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span></div>
+    <div class="lbl">tier-semantic</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>State marks</h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">state-active</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" /></svg></span></div>
+    <div class="lbl">state-complete</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-archived: closed box with a lid line -->
+  <!-- box body, exact 5..19 wide, lid band on top -->
+  <path d="M5.0 8.6 L19.0 8.6 L19.0 18.2 Q19.0 18.6 18.6 18.6 L5.4 18.6 Q5.0 18.6 5.0 18.2 Z" />
+  <!-- lid: a band across the top, drawn with slight overshoot -->
+  <path d="M4.4 6.0 L19.6 6.0 Q19.8 6.0 19.8 6.4 L19.8 8.6 L4.2 8.6 L4.2 6.4 Q4.2 6.0 4.4 6.0 Z" />
+  <!-- pull handle, detail weight -->
+  <path d="M9.8 12.6 Q12 12.4 14.2 12.6" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-archived: closed box with a lid line -->
+  <!-- box body, exact 5..19 wide, lid band on top -->
+  <path d="M5.0 8.6 L19.0 8.6 L19.0 18.2 Q19.0 18.6 18.6 18.6 L5.4 18.6 Q5.0 18.6 5.0 18.2 Z" />
+  <!-- lid: a band across the top, drawn with slight overshoot -->
+  <path d="M4.4 6.0 L19.6 6.0 Q19.8 6.0 19.8 6.4 L19.8 8.6 L4.2 8.6 L4.2 6.4 Q4.2 6.0 4.4 6.0 Z" />
+  <!-- pull handle, detail weight -->
+  <path d="M9.8 12.6 Q12 12.4 14.2 12.6" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-archived: closed box with a lid line -->
+  <!-- box body, exact 5..19 wide, lid band on top -->
+  <path d="M5.0 8.6 L19.0 8.6 L19.0 18.2 Q19.0 18.6 18.6 18.6 L5.4 18.6 Q5.0 18.6 5.0 18.2 Z" />
+  <!-- lid: a band across the top, drawn with slight overshoot -->
+  <path d="M4.4 6.0 L19.6 6.0 Q19.8 6.0 19.8 6.4 L19.8 8.6 L4.2 8.6 L4.2 6.4 Q4.2 6.0 4.4 6.0 Z" />
+  <!-- pull handle, detail weight -->
+  <path d="M9.8 12.6 Q12 12.4 14.2 12.6" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">state-archived</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" /></svg></span></div>
+    <div class="lbl">state-broken</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">state-stale</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Progress ring parts <em>arcs anchored at 12 o’clock, clockwise, exact 90/180/270</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><!-- ring-track: full hand-circle, detail weight, center (12,12) r=8.0 -->
+  <!-- drawn open-then-closed with a faint overshoot at 12 o'clock where the pen meets -->
+  <path d="M12.6 4.02 Q17.0 4.3 19.0 8.4 Q21.2 12.9 18.6 17.0 Q15.9 21.2 11.0 19.8 Q6.0 18.4 4.4 13.6 Q3.0 9.0 6.9 5.7 Q9.2 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><!-- ring-track: full hand-circle, detail weight, center (12,12) r=8.0 -->
+  <!-- drawn open-then-closed with a faint overshoot at 12 o'clock where the pen meets -->
+  <path d="M12.6 4.02 Q17.0 4.3 19.0 8.4 Q21.2 12.9 18.6 17.0 Q15.9 21.2 11.0 19.8 Q6.0 18.4 4.4 13.6 Q3.0 9.0 6.9 5.7 Q9.2 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><!-- ring-track: full hand-circle, detail weight, center (12,12) r=8.0 -->
+  <!-- drawn open-then-closed with a faint overshoot at 12 o'clock where the pen meets -->
+  <path d="M12.6 4.02 Q17.0 4.3 19.0 8.4 Q21.2 12.9 18.6 17.0 Q15.9 21.2 11.0 19.8 Q6.0 18.4 4.4 13.6 Q3.0 9.0 6.9 5.7 Q9.2 3.8 12.0 4.0" /></svg></span></div>
+    <div class="lbl">ring-track</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-25: 90deg arc from 12 o'clock clockwise to 3 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (20,12), r=8, large-arc=0 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 20.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-25: 90deg arc from 12 o'clock clockwise to 3 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (20,12), r=8, large-arc=0 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 20.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-25: 90deg arc from 12 o'clock clockwise to 3 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (20,12), r=8, large-arc=0 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 20.0 12.0" /></svg></span></div>
+    <div class="lbl">ring-fill-25</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-50: 180deg arc from 12 o'clock clockwise to 6 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (12,20), r=8, sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 12.0 20.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-50: 180deg arc from 12 o'clock clockwise to 6 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (12,20), r=8, sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 12.0 20.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-50: 180deg arc from 12 o'clock clockwise to 6 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (12,20), r=8, sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 12.0 20.0" /></svg></span></div>
+    <div class="lbl">ring-fill-50</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" /></svg></span></div>
+    <div class="lbl">ring-fill-75</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- ring-complete: full circle at accent weight, center (12,12) r=8.0 -->
+  <!-- closed hand-circle with a faint overshoot at 12 o'clock -->
+  <path d="M12.4 4.02 Q17.0 4.4 19.2 8.6 Q21.2 12.9 18.5 17.0 Q15.8 21.2 11.0 19.85 Q6.0 18.4 4.5 13.6 Q3.1 9.0 6.8 5.7 Q9.4 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- ring-complete: full circle at accent weight, center (12,12) r=8.0 -->
+  <!-- closed hand-circle with a faint overshoot at 12 o'clock -->
+  <path d="M12.4 4.02 Q17.0 4.4 19.2 8.6 Q21.2 12.9 18.5 17.0 Q15.8 21.2 11.0 19.85 Q6.0 18.4 4.5 13.6 Q3.1 9.0 6.8 5.7 Q9.4 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- ring-complete: full circle at accent weight, center (12,12) r=8.0 -->
+  <!-- closed hand-circle with a faint overshoot at 12 o'clock -->
+  <path d="M12.4 4.02 Q17.0 4.4 19.2 8.6 Q21.2 12.9 18.5 17.0 Q15.8 21.2 11.0 19.85 Q6.0 18.4 4.5 13.6 Q3.1 9.0 6.8 5.7 Q9.4 3.8 12.0 4.0" /></svg></span></div>
+    <div class="lbl">ring-complete</div>
+  </div></div>
+    </div></section>
+<hr class="sep">
+<section class="theme dark"><h2>Dark theme</h2><p class="note">ground #211e1a · ink #ece5d8</p>
+    <div class="cat">
+      <h3>Doc types <em>closed fillable silhouettes — shape carries type</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-research: magnifying glass over a three-point dot grid (inquiry) -->
+  <!-- lens: hand-circle, exact center (9.5,9.5) r=5.2, opened with a confident overshoot -->
+  <path d="M13.0 5.1 Q15.0 6.9 14.6 9.8 Q14.1 13.2 10.6 14.4 Q6.9 15.4 5.0 12.3 Q3.6 9.6 5.4 6.9 Q7.3 4.2 10.6 4.4 Q11.9 4.6 13.0 5.1" />
+  <!-- handle: drawn with a slight bow, overshot ~0.4u past the rim -->
+  <path d="M13.3 13.0 Q15.6 15.4 18.6 18.6" />
+  <!-- three dot-grid inquiry points, exact, detail weight as solid ink -->
+  <circle cx="7.8" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="11.1" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="9.5" cy="11.4" r="0.85" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-research: magnifying glass over a three-point dot grid (inquiry) -->
+  <!-- lens: hand-circle, exact center (9.5,9.5) r=5.2, opened with a confident overshoot -->
+  <path d="M13.0 5.1 Q15.0 6.9 14.6 9.8 Q14.1 13.2 10.6 14.4 Q6.9 15.4 5.0 12.3 Q3.6 9.6 5.4 6.9 Q7.3 4.2 10.6 4.4 Q11.9 4.6 13.0 5.1" />
+  <!-- handle: drawn with a slight bow, overshot ~0.4u past the rim -->
+  <path d="M13.3 13.0 Q15.6 15.4 18.6 18.6" />
+  <!-- three dot-grid inquiry points, exact, detail weight as solid ink -->
+  <circle cx="7.8" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="11.1" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="9.5" cy="11.4" r="0.85" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-research: magnifying glass over a three-point dot grid (inquiry) -->
+  <!-- lens: hand-circle, exact center (9.5,9.5) r=5.2, opened with a confident overshoot -->
+  <path d="M13.0 5.1 Q15.0 6.9 14.6 9.8 Q14.1 13.2 10.6 14.4 Q6.9 15.4 5.0 12.3 Q3.6 9.6 5.4 6.9 Q7.3 4.2 10.6 4.4 Q11.9 4.6 13.0 5.1" />
+  <!-- handle: drawn with a slight bow, overshot ~0.4u past the rim -->
+  <path d="M13.3 13.0 Q15.6 15.4 18.6 18.6" />
+  <!-- three dot-grid inquiry points, exact, detail weight as solid ink -->
+  <circle cx="7.8" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="11.1" cy="8.4" r="0.85" fill="currentColor" stroke="none" />
+  <circle cx="9.5" cy="11.4" r="0.85" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">doc-research</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" /></svg></span></div>
+    <div class="lbl">doc-adr</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" /></svg></span></div>
+    <div class="lbl">doc-plan</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-exec: a tag/label outline with a bold check-stroke inside (work done) -->
+  <!-- tag silhouette: notched-left label, exact geometry, slight corner overshoot -->
+  <path d="M9.4 5.0 L19.4 5.0 Q20.0 5.0 20.0 5.6 L20.0 15.6 Q20.0 16.2 19.4 16.2 L9.4 16.2 L4.4 10.6 Z" />
+  <!-- punch hole, exact center -->
+  <circle cx="8.4" cy="10.6" r="1.05" fill="currentColor" stroke="none" />
+  <!-- bold accent-weight check inside the body -->
+  <path d="M11.6 10.8 Q12.7 12.2 13.6 13.2 Q15.4 9.9 17.6 7.9" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-exec: a tag/label outline with a bold check-stroke inside (work done) -->
+  <!-- tag silhouette: notched-left label, exact geometry, slight corner overshoot -->
+  <path d="M9.4 5.0 L19.4 5.0 Q20.0 5.0 20.0 5.6 L20.0 15.6 Q20.0 16.2 19.4 16.2 L9.4 16.2 L4.4 10.6 Z" />
+  <!-- punch hole, exact center -->
+  <circle cx="8.4" cy="10.6" r="1.05" fill="currentColor" stroke="none" />
+  <!-- bold accent-weight check inside the body -->
+  <path d="M11.6 10.8 Q12.7 12.2 13.6 13.2 Q15.4 9.9 17.6 7.9" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-exec: a tag/label outline with a bold check-stroke inside (work done) -->
+  <!-- tag silhouette: notched-left label, exact geometry, slight corner overshoot -->
+  <path d="M9.4 5.0 L19.4 5.0 Q20.0 5.0 20.0 5.6 L20.0 15.6 Q20.0 16.2 19.4 16.2 L9.4 16.2 L4.4 10.6 Z" />
+  <!-- punch hole, exact center -->
+  <circle cx="8.4" cy="10.6" r="1.05" fill="currentColor" stroke="none" />
+  <!-- bold accent-weight check inside the body -->
+  <path d="M11.6 10.8 Q12.7 12.2 13.6 13.2 Q15.4 9.9 17.6 7.9" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">doc-exec</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">doc-audit</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">doc-reference</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-index: a small grid of four cells, one filled -->
+  <!-- outer frame, exact 5.0..19.0, faint bow, slight corner overshoot -->
+  <path d="M6.0 4.6 L18.0 4.6 Q19.0 4.6 19.0 5.6 L19.0 17.6 Q19.0 18.6 18.0 18.6 L6.0 18.6 Q5.0 18.6 5.0 17.6 L5.0 5.6 Q5.0 4.6 6.0 4.6 Z" />
+  <!-- dividers, exact mid axes x=12, y=11.6 -->
+  <path d="M12 4.8 Q11.8 11.6 12 18.4" />
+  <path d="M5.2 11.6 Q12 11.4 18.8 11.6" />
+  <!-- one filled cell (top-left), inset from dividers -->
+  <path d="M6.6 6.2 L10.4 6.2 L10.4 10.0 L6.6 10.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-index: a small grid of four cells, one filled -->
+  <!-- outer frame, exact 5.0..19.0, faint bow, slight corner overshoot -->
+  <path d="M6.0 4.6 L18.0 4.6 Q19.0 4.6 19.0 5.6 L19.0 17.6 Q19.0 18.6 18.0 18.6 L6.0 18.6 Q5.0 18.6 5.0 17.6 L5.0 5.6 Q5.0 4.6 6.0 4.6 Z" />
+  <!-- dividers, exact mid axes x=12, y=11.6 -->
+  <path d="M12 4.8 Q11.8 11.6 12 18.4" />
+  <path d="M5.2 11.6 Q12 11.4 18.8 11.6" />
+  <!-- one filled cell (top-left), inset from dividers -->
+  <path d="M6.6 6.2 L10.4 6.2 L10.4 10.0 L6.6 10.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- doc-index: a small grid of four cells, one filled -->
+  <!-- outer frame, exact 5.0..19.0, faint bow, slight corner overshoot -->
+  <path d="M6.0 4.6 L18.0 4.6 Q19.0 4.6 19.0 5.6 L19.0 17.6 Q19.0 18.6 18.0 18.6 L6.0 18.6 Q5.0 18.6 5.0 17.6 L5.0 5.6 Q5.0 4.6 6.0 4.6 Z" />
+  <!-- dividers, exact mid axes x=12, y=11.6 -->
+  <path d="M12 4.8 Q11.8 11.6 12 18.4" />
+  <path d="M5.2 11.6 Q12 11.4 18.8 11.6" />
+  <!-- one filled cell (top-left), inset from dividers -->
+  <path d="M6.6 6.2 L10.4 6.2 L10.4 10.0 L6.6 10.0 Z" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">doc-index</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Feature <em>the compound species — reads distinct from all doc types</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- node-feature: a loose hand-circled cluster of unequal points (constellation knot, never face) -->
+  <!-- binding lasso: center (12,12) r~8.4, drawn clockwise from just right of 12 o'clock,
+       left OPEN with a ~70deg gap at the upper-left so it reads as a sketched loop, not a closed head -->
+  <path d="M12.8 3.8 Q18.2 4.6 20.0 9.4 Q21.6 14.6 17.6 18.0 Q13.4 21.4 8.4 19.6 Q3.8 17.8 3.5 12.8 Q3.3 10.4 4.6 8.4" />
+  <!-- three constellation points, three sizes, scalene triangle: largest low-left -->
+  <circle cx="8.4" cy="13.8" r="2.0" fill="currentColor" stroke="none" />
+  <circle cx="16.0" cy="8.6" r="1.4" fill="currentColor" stroke="none" />
+  <circle cx="13.0" cy="15.0" r="1.0" fill="currentColor" stroke="none" />
+  <!-- one constellation thread, detail weight, between the two smaller dots —
+       steeply diagonal with clear air around each dot, so it never fuses into a bar -->
+  <path d="M15.2 10.3 Q14.6 11.9 13.7 13.5" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- node-feature: a loose hand-circled cluster of unequal points (constellation knot, never face) -->
+  <!-- binding lasso: center (12,12) r~8.4, drawn clockwise from just right of 12 o'clock,
+       left OPEN with a ~70deg gap at the upper-left so it reads as a sketched loop, not a closed head -->
+  <path d="M12.8 3.8 Q18.2 4.6 20.0 9.4 Q21.6 14.6 17.6 18.0 Q13.4 21.4 8.4 19.6 Q3.8 17.8 3.5 12.8 Q3.3 10.4 4.6 8.4" />
+  <!-- three constellation points, three sizes, scalene triangle: largest low-left -->
+  <circle cx="8.4" cy="13.8" r="2.0" fill="currentColor" stroke="none" />
+  <circle cx="16.0" cy="8.6" r="1.4" fill="currentColor" stroke="none" />
+  <circle cx="13.0" cy="15.0" r="1.0" fill="currentColor" stroke="none" />
+  <!-- one constellation thread, detail weight, between the two smaller dots —
+       steeply diagonal with clear air around each dot, so it never fuses into a bar -->
+  <path d="M15.2 10.3 Q14.6 11.9 13.7 13.5" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- node-feature: a loose hand-circled cluster of unequal points (constellation knot, never face) -->
+  <!-- binding lasso: center (12,12) r~8.4, drawn clockwise from just right of 12 o'clock,
+       left OPEN with a ~70deg gap at the upper-left so it reads as a sketched loop, not a closed head -->
+  <path d="M12.8 3.8 Q18.2 4.6 20.0 9.4 Q21.6 14.6 17.6 18.0 Q13.4 21.4 8.4 19.6 Q3.8 17.8 3.5 12.8 Q3.3 10.4 4.6 8.4" />
+  <!-- three constellation points, three sizes, scalene triangle: largest low-left -->
+  <circle cx="8.4" cy="13.8" r="2.0" fill="currentColor" stroke="none" />
+  <circle cx="16.0" cy="8.6" r="1.4" fill="currentColor" stroke="none" />
+  <circle cx="13.0" cy="15.0" r="1.0" fill="currentColor" stroke="none" />
+  <!-- one constellation thread, detail weight, between the two smaller dots —
+       steeply diagonal with clear air around each dot, so it never fuses into a bar -->
+  <path d="M15.2 10.3 Q14.6 11.9 13.7 13.5" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">node-feature</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Events <em>small, open, linear — timeline marks</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-commit: a filled dot on a vertical branch line with a short branch tick -->
+  <!-- main branch line, exact x=10, overshot top/bottom ~0.4u -->
+  <path d="M10 3.6 Q9.8 12 10 20.4" />
+  <!-- commit node, exact center (10,12) -->
+  <circle cx="10" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  <!-- short branch tick diverging up-right -->
+  <path d="M11.9 10.1 Q14.6 7.4 18.0 6.4" />
+  <circle cx="18.4" cy="6.2" r="1.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-commit: a filled dot on a vertical branch line with a short branch tick -->
+  <!-- main branch line, exact x=10, overshot top/bottom ~0.4u -->
+  <path d="M10 3.6 Q9.8 12 10 20.4" />
+  <!-- commit node, exact center (10,12) -->
+  <circle cx="10" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  <!-- short branch tick diverging up-right -->
+  <path d="M11.9 10.1 Q14.6 7.4 18.0 6.4" />
+  <circle cx="18.4" cy="6.2" r="1.4" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-commit: a filled dot on a vertical branch line with a short branch tick -->
+  <!-- main branch line, exact x=10, overshot top/bottom ~0.4u -->
+  <path d="M10 3.6 Q9.8 12 10 20.4" />
+  <!-- commit node, exact center (10,12) -->
+  <circle cx="10" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  <!-- short branch tick diverging up-right -->
+  <path d="M11.9 10.1 Q14.6 7.4 18.0 6.4" />
+  <circle cx="18.4" cy="6.2" r="1.4" /></svg></span></div>
+    <div class="lbl">event-commit</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">event-doc-created</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-modified: page silhouette with a pencil tick at corner -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- pencil over the lower-right corner, exact 45deg, nib at (14.2,19.6) -->
+  <path d="M19.8 11.6 L21.2 13.0 L15.0 19.2 L13.4 19.6 L13.8 18.0 Z" stroke-width="1.25" />
+  <path d="M18.5 12.9 L19.9 14.3" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-modified: page silhouette with a pencil tick at corner -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- pencil over the lower-right corner, exact 45deg, nib at (14.2,19.6) -->
+  <path d="M19.8 11.6 L21.2 13.0 L15.0 19.2 L13.4 19.6 L13.8 18.0 Z" stroke-width="1.25" />
+  <path d="M18.5 12.9 L19.9 14.3" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-doc-modified: page silhouette with a pencil tick at corner -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- pencil over the lower-right corner, exact 45deg, nib at (14.2,19.6) -->
+  <path d="M19.8 11.6 L21.2 13.0 L15.0 19.2 L13.4 19.6 L13.8 18.0 Z" stroke-width="1.25" />
+  <path d="M18.5 12.9 L19.9 14.3" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">event-doc-modified</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" /></svg></span></div>
+    <div class="lbl">event-lifecycle</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Tier marks <em>MUST distinguish in grayscale at 14px by shape + treatment</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span></div>
+    <div class="lbl">tier-declared</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">tier-structural</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">tier-temporal</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span></div>
+    <div class="lbl">tier-semantic</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>State marks</h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">state-active</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" /></svg></span></div>
+    <div class="lbl">state-complete</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-archived: closed box with a lid line -->
+  <!-- box body, exact 5..19 wide, lid band on top -->
+  <path d="M5.0 8.6 L19.0 8.6 L19.0 18.2 Q19.0 18.6 18.6 18.6 L5.4 18.6 Q5.0 18.6 5.0 18.2 Z" />
+  <!-- lid: a band across the top, drawn with slight overshoot -->
+  <path d="M4.4 6.0 L19.6 6.0 Q19.8 6.0 19.8 6.4 L19.8 8.6 L4.2 8.6 L4.2 6.4 Q4.2 6.0 4.4 6.0 Z" />
+  <!-- pull handle, detail weight -->
+  <path d="M9.8 12.6 Q12 12.4 14.2 12.6" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-archived: closed box with a lid line -->
+  <!-- box body, exact 5..19 wide, lid band on top -->
+  <path d="M5.0 8.6 L19.0 8.6 L19.0 18.2 Q19.0 18.6 18.6 18.6 L5.4 18.6 Q5.0 18.6 5.0 18.2 Z" />
+  <!-- lid: a band across the top, drawn with slight overshoot -->
+  <path d="M4.4 6.0 L19.6 6.0 Q19.8 6.0 19.8 6.4 L19.8 8.6 L4.2 8.6 L4.2 6.4 Q4.2 6.0 4.4 6.0 Z" />
+  <!-- pull handle, detail weight -->
+  <path d="M9.8 12.6 Q12 12.4 14.2 12.6" stroke-width="1.25" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-archived: closed box with a lid line -->
+  <!-- box body, exact 5..19 wide, lid band on top -->
+  <path d="M5.0 8.6 L19.0 8.6 L19.0 18.2 Q19.0 18.6 18.6 18.6 L5.4 18.6 Q5.0 18.6 5.0 18.2 Z" />
+  <!-- lid: a band across the top, drawn with slight overshoot -->
+  <path d="M4.4 6.0 L19.6 6.0 Q19.8 6.0 19.8 6.4 L19.8 8.6 L4.2 8.6 L4.2 6.4 Q4.2 6.0 4.4 6.0 Z" />
+  <!-- pull handle, detail weight -->
+  <path d="M9.8 12.6 Q12 12.4 14.2 12.6" stroke-width="1.25" /></svg></span></div>
+    <div class="lbl">state-archived</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" /></svg></span></div>
+    <div class="lbl">state-broken</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">state-stale</div>
+  </div></div>
+    </div>
+    <div class="cat">
+      <h3>Progress ring parts <em>arcs anchored at 12 o’clock, clockwise, exact 90/180/270</em></h3>
+      <div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><!-- ring-track: full hand-circle, detail weight, center (12,12) r=8.0 -->
+  <!-- drawn open-then-closed with a faint overshoot at 12 o'clock where the pen meets -->
+  <path d="M12.6 4.02 Q17.0 4.3 19.0 8.4 Q21.2 12.9 18.6 17.0 Q15.9 21.2 11.0 19.8 Q6.0 18.4 4.4 13.6 Q3.0 9.0 6.9 5.7 Q9.2 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><!-- ring-track: full hand-circle, detail weight, center (12,12) r=8.0 -->
+  <!-- drawn open-then-closed with a faint overshoot at 12 o'clock where the pen meets -->
+  <path d="M12.6 4.02 Q17.0 4.3 19.0 8.4 Q21.2 12.9 18.6 17.0 Q15.9 21.2 11.0 19.8 Q6.0 18.4 4.4 13.6 Q3.0 9.0 6.9 5.7 Q9.2 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><!-- ring-track: full hand-circle, detail weight, center (12,12) r=8.0 -->
+  <!-- drawn open-then-closed with a faint overshoot at 12 o'clock where the pen meets -->
+  <path d="M12.6 4.02 Q17.0 4.3 19.0 8.4 Q21.2 12.9 18.6 17.0 Q15.9 21.2 11.0 19.8 Q6.0 18.4 4.4 13.6 Q3.0 9.0 6.9 5.7 Q9.2 3.8 12.0 4.0" /></svg></span></div>
+    <div class="lbl">ring-track</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-25: 90deg arc from 12 o'clock clockwise to 3 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (20,12), r=8, large-arc=0 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 20.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-25: 90deg arc from 12 o'clock clockwise to 3 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (20,12), r=8, large-arc=0 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 20.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-25: 90deg arc from 12 o'clock clockwise to 3 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (20,12), r=8, large-arc=0 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 20.0 12.0" /></svg></span></div>
+    <div class="lbl">ring-fill-25</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-50: 180deg arc from 12 o'clock clockwise to 6 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (12,20), r=8, sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 12.0 20.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-50: 180deg arc from 12 o'clock clockwise to 6 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (12,20), r=8, sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 12.0 20.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-50: 180deg arc from 12 o'clock clockwise to 6 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (12,20), r=8, sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 0 1 12.0 20.0" /></svg></span></div>
+    <div class="lbl">ring-fill-50</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" /></svg></span></div>
+    <div class="lbl">ring-fill-75</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- ring-complete: full circle at accent weight, center (12,12) r=8.0 -->
+  <!-- closed hand-circle with a faint overshoot at 12 o'clock -->
+  <path d="M12.4 4.02 Q17.0 4.4 19.2 8.6 Q21.2 12.9 18.5 17.0 Q15.8 21.2 11.0 19.85 Q6.0 18.4 4.5 13.6 Q3.1 9.0 6.8 5.7 Q9.4 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- ring-complete: full circle at accent weight, center (12,12) r=8.0 -->
+  <!-- closed hand-circle with a faint overshoot at 12 o'clock -->
+  <path d="M12.4 4.02 Q17.0 4.4 19.2 8.6 Q21.2 12.9 18.5 17.0 Q15.8 21.2 11.0 19.85 Q6.0 18.4 4.5 13.6 Q3.1 9.0 6.8 5.7 Q9.4 3.8 12.0 4.0" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><!-- ring-complete: full circle at accent weight, center (12,12) r=8.0 -->
+  <!-- closed hand-circle with a faint overshoot at 12 o'clock -->
+  <path d="M12.4 4.02 Q17.0 4.4 19.2 8.6 Q21.2 12.9 18.5 17.0 Q15.8 21.2 11.0 19.85 Q6.0 18.4 4.5 13.6 Q3.1 9.0 6.8 5.7 Q9.4 3.8 12.0 4.0" /></svg></span></div>
+    <div class="lbl">ring-complete</div>
+  </div></div>
+    </div></section>
+<hr class="sep">
+<section class="theme gray"><h2>Grayscale tier proof</h2><p class="note">tier marks must distinguish without hue — silhouette + stroke treatment only, squint-test at 14px</p><div class="cat"><div class="grid"><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" /></svg></span></div>
+    <div class="lbl">tier-declared</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-structural: square outline with a bold corner anchor-notch -->
+  <!-- square, exact 5..19, faint bow + slight corner overshoot -->
+  <path d="M6.0 5.0 L18.0 5.0 Q19.0 5.0 19.0 6.0 L19.0 18.0 Q19.0 19.0 18.0 19.0 L6.0 19.0 Q5.0 19.0 5.0 18.0 L5.0 6.0 Q5.0 5.0 6.0 5.0 Z" />
+  <!-- bold anchor-notch at the top-left corner: accent weight L bracket -->
+  <path d="M8.4 5.0 L5.0 5.0 L5.0 8.4" stroke-width="2.75" /></svg></span></div>
+    <div class="lbl">tier-structural</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-temporal: dotted/dashed ring with a center dot (clock feel, no hands) -->
+  <!-- dashed ring, exact center (12,12) r=7.0 — dash pattern is the treatment signal -->
+  <circle cx="12" cy="12" r="7.0" stroke-dasharray="0.2 4.05" stroke-width="2.4" />
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" /></svg></span></div>
+    <div class="lbl">tier-temporal</div>
+  </div><div class="cell">
+    <div class="sizes"><span class="g"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span><span class="g"><svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><!-- tier-semantic: three short stacked tilde-waves (haze) -->
+  <path d="M5.6 8.4 Q8.0 6.4 10.4 8.4 Q12.8 10.4 15.2 8.4 Q17.0 6.9 18.4 8.0" />
+  <path d="M5.6 12.0 Q8.0 10.0 10.4 12.0 Q12.8 14.0 15.2 12.0 Q17.0 10.5 18.4 11.6" />
+  <path d="M5.6 15.6 Q8.0 13.6 10.4 15.6 Q12.8 17.6 15.2 15.6 Q17.0 14.1 18.4 15.2" /></svg></span></div>
+    <div class="lbl">tier-semantic</div>
+  </div></div></div></section>
+<p class="legend">Labels meet WCAG AA on both themes: #2b2723 on #faf6ef ≈ 12.6:1; #ece5d8 on #211e1a ≈ 12.9:1. Tier/state hue is applied by the consumer (currentColor); these grounds are the design reference grounds only.</p>
+</body>
+</html>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- state-active: concentric dot + open ring (pulse) -->
+  <!-- open ring drawn with a gap + overshoot where the pen lifts, center (12,12) r=7.2 -->
+  <path d="M14.6 5.3 Q19.0 7.1 19.2 12.0 Q19.4 17.2 14.4 18.9 Q9.6 20.5 6.0 17.0 Q2.9 13.8 4.6 9.2" />
+  <!-- core dot -->
+  <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" />
+</svg>

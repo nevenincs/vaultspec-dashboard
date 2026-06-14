@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- tier-declared: solid filled diamond (authoritative ink) -->
+  <!-- exact rhombus on center (12,12), drawn as a filled silhouette -->
+  <path d="M12 4.0 L19.6 12 L12 20.0 L4.4 12 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" />
+</svg>

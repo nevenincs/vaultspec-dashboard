@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- state-complete: a confident check stroke (accent weight) -->
+  <!-- exact elbow at (10.0,15.6), overshot ~0.4u past each terminus -->
+  <path d="M4.6 11.8 Q7.4 14.0 10.0 15.6 Q14.6 9.4 19.4 5.6" />
+</svg>

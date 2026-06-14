@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- doc-adr: signpost fork — one stem splitting into two diverging arrow strokes (decision) -->
+  <!-- stem: rises from base, exact vertical axis x=12, drawn with a faint bow -->
+  <path d="M12 20.4 Q11.7 16.5 12 13.0" />
+  <!-- left diverging arm to (5.6,6.0) -->
+  <path d="M12 13.0 Q9.0 9.8 6.0 6.4" />
+  <path d="M6.0 6.4 L6.0 9.4 M6.0 6.4 L9.0 6.4" />
+  <!-- right diverging arm to (18.4,6.0), symmetric about x=12 -->
+  <path d="M12 13.0 Q15.0 9.8 18.0 6.4" />
+  <path d="M18.0 6.4 L18.0 9.4 M18.0 6.4 L15.0 6.4" />
+</svg>

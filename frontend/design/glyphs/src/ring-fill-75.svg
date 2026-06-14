@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- ring-fill-75: 270deg arc from 12 o'clock clockwise to 9 o'clock, primary weight -->
+  <!-- exact: start (12,4) -> end (4,12), r=8, large-arc=1 sweep=1 -->
+  <path d="M12 4.0 A 8 8 0 1 1 4.0 12.0" />
+</svg>

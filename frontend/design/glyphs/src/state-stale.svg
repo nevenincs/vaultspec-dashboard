@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- state-stale: half-filled hourglass -->
+  <!-- frame: top + bottom caps, exact x=6.4..17.6 -->
+  <path d="M6.4 4.6 Q12 4.9 17.6 4.6" />
+  <path d="M6.4 19.4 Q12 19.1 17.6 19.4" />
+  <!-- hourglass bulbs meeting at the exact pinch (12,12) -->
+  <path d="M6.8 4.6 Q7.0 8.6 12 12 Q17.0 8.6 17.2 4.6" />
+  <path d="M6.8 19.4 Q7.0 15.4 12 12 Q17.0 15.4 17.2 19.4" />
+  <!-- lower bulb half-filled with settled sand (solid ink) -->
+  <path d="M9.0 19.0 L15.0 19.0 Q14.0 16.2 12 14.6 Q10.0 16.2 9.0 19.0 Z" fill="currentColor" stroke="none" />
+</svg>

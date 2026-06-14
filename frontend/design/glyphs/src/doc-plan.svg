@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- doc-plan: two rails carrying three offset ladder rungs (tiered steps) -->
+  <!-- left + right rails, exact x=5.2 and x=18.8, faint bow, overshot ~0.4u top/bottom -->
+  <path d="M5.2 4.2 Q4.9 12.0 5.2 19.8" />
+  <path d="M18.8 4.2 Q19.1 12.0 18.8 19.8" />
+  <!-- three rungs, each offset horizontally to read as ascending tiers -->
+  <path d="M7.4 16.6 Q10.3 16.4 13.0 16.6" />
+  <path d="M9.0 12.0 Q12.0 11.8 15.0 12.0" />
+  <path d="M10.6 7.4 Q13.5 7.2 16.6 7.4" />
+</svg>

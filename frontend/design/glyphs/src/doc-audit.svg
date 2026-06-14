@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- doc-audit: an eye whose lower lid is a baseline rule (review over the record) -->
+  <!-- upper lid arc, opened wide so the almond survives downscale, exact span x=3.6..20.4 peaking at (12,6.4) -->
+  <path d="M3.6 12.2 Q12 5.6 20.4 12.2" />
+  <!-- lower lid as a straight baseline rule, overshot ~0.4u each end -->
+  <path d="M3.4 14.0 Q12 14.4 20.6 14.0" />
+  <!-- iris: ring + solid pupil, exact center (12,11.4), enlarged for 14px legibility -->
+  <circle cx="12" cy="11.4" r="2.7" />
+  <circle cx="12" cy="11.4" r="1.0" fill="currentColor" stroke="none" />
+</svg>

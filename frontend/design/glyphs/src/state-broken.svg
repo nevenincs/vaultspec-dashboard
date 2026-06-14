@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- state-broken: a crack/lightning stroke through a line (warning without hue) -->
+  <!-- the severed line, exact y=12, broken open across the middle -->
+  <path d="M3.4 12.0 L8.4 12.0" />
+  <path d="M15.6 12.0 L20.6 12.0" />
+  <!-- lightning crack bridging the gap, accent weight, tall sharp zig -->
+  <path d="M11.6 3.8 L8.6 12.0 L12.0 11.2 L9.4 20.2 L15.2 10.4 L11.6 11.4 Z" stroke-width="2.4" stroke-linejoin="miter" />
+</svg>

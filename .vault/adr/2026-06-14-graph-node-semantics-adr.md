@@ -70,7 +70,11 @@ Five semantic layers are missing from the thin node and are added here:
   `promoted-from` (audit→rule), `grounds` (research/reference→adr) — are first-class
   *labeled* relations, **distinct from the four inference tiers**. The tiers say *how the
   engine knows two documents are related* (declared/structural/temporal/semantic); the
-  derivation relations say *what the relationship is in the framework*. Both are needed.
+  derivation relations say *what the relationship is in the framework*. Both are needed. The
+  derivation relation is a **new additive edge field** (`derivation`), carried distinct from
+  the existing §4 `relation` field (the engine's relation-type enum) so that the relation-type
+  vocabulary and the `/filters` enumeration are unaffected; it is **not** part of the edge
+  stable key, so labeling an edge never re-keys it.
 - **Two orthogonal edge families.** The graph carries the *pipeline-derivation chain*
   (research→adr→plan→exec→audit→rule) and, crossing it, the *feature-membership star*
   (everything sharing `#{feature}`). A node belongs to both; the ontology names both so a
@@ -83,6 +87,19 @@ Five semantic layers are missing from the thin node and are added here:
 The thin §4 fields are retained verbatim; the ontology is *additive*. A new `rule` node
 species is introduced (rules live in `.vaultspec/rules/`, outside `.vault/`, and have no
 `kind` today) so the codify pipeline's output is representable.
+
+**Wire-contract impact (a §4 amendment, named as a contract event).** The ontology is a
+concrete, reviewed amendment to the foundation reference §4 node/edge shape, not a hand-wave:
+the node gains `authority_class` (the register enum), a per-type `lifecycle` vocabulary
+extension (ADR status, plan tier, audit `max_severity`, rule active/superseded, feature
+`in_flight|archived`, the `generated` flag), and an `aggregate` hint flag; the edge gains the
+`derivation` label field above; and the node `kind`/`doc_type` enum and the `/filters` node-
+kinds vocabulary gain the `rule` species. Every addition is purely additive and **none touch
+the id derivation** — the stable-key composition is unchanged, so caches, animations, and
+time-travel by id are unaffected (honoring the provenance-stable-keys identity guarantee).
+This block is the single coherent statement of this ADR's wire shape; the salience ADR states
+its own `lens`/`salience` amendment, and the representation ADR its `embedding`-delivery
+amendment, so the three together enumerate the full §4 delta.
 
 ## Constraints
 

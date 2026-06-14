@@ -84,11 +84,13 @@ rank and TOPSIS for v1 because it is transparent, interpretable (the engine must
 - **Read-and-infer, fully re-derivable.** The salience field is a derived projection,
   memoized per `(graph-generation, lens)` and recomputed on graph change; it persists only
   in the engine-owned cache, is deletable, and is never written back into documents.
-- **Served through the shared envelope, with the tiers block.** The per-lens scalar ships as
-  an additive node field through the shared envelope helper; a degraded tier (e.g. the
-  semantic tier absent) yields a salience computed on the available tiers and says so via the
-  tiers block, never a guessed or silently partial score. Degradation is read from tiers, not
-  inferred from a transport error.
+- **Served through the shared envelope, with the tiers block.** The wire carries a **single
+  `salience` float computed for the *requested* lens** — not a per-lens map — because DOI makes
+  the served node set itself lens-dependent (see the wire-contract amendment in Implementation);
+  it ships as an additive node field through the shared envelope helper. A degraded tier (e.g.
+  the semantic tier absent) yields a salience computed on the available tiers, flagged partial
+  via the tiers block, never a guessed or silently complete score. Degradation is read from
+  tiers, not inferred from a transport error.
 - **A projection over one model; the stores layer is the sole consumer.** Salience is one
   more projection over the `LinkageGraph`, surfaced by a stores query; the scene and chrome
   read it as a node field and never compute it. No new endpoint defines its own node shape.

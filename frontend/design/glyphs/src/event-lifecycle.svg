@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- event-lifecycle: a small pennant flag on a pole -->
+  <!-- pole, exact x=7, overshot top/bottom ~0.4u -->
+  <path d="M7 3.8 Q6.8 12 7 20.2" />
+  <!-- pennant triangle off the pole top, swallow-tail notch, drawn with faint bow -->
+  <path d="M7.6 5.0 Q13.4 6.0 18.4 7.6 Q13.8 9.2 12.4 9.9 Q14.0 11.5 14.6 13.0 Q10.4 11.4 7.6 11.0 Z" />
+</svg>

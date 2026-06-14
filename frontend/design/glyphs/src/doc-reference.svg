@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- doc-reference: a bookmark ribbon over a page corner -->
+  <!-- page with a folded top-right corner, exact geometry -->
+  <path d="M6.0 4.4 L14.6 4.4 L19.0 8.8 L19.0 19.6 Q19.0 19.8 18.8 19.8 L6.2 19.8 Q6.0 19.8 6.0 19.6 Z" />
+  <!-- dog-ear fold -->
+  <path d="M14.6 4.4 L14.6 8.8 L19.0 8.8" />
+  <!-- bookmark ribbon: detail weight, sits over the page, notched tail -->
+  <path d="M10.0 4.4 L10.0 13.4 L11.8 11.7 L13.6 13.4 L13.6 4.4" stroke-width="1.25" />
+</svg>

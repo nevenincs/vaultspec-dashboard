@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- event-doc-created: page silhouette with a plus at corner -->
+  <!-- page with folded corner, exact geometry -->
+  <path d="M5.6 4.4 L12.6 4.4 L16.4 8.2 L16.4 19.4 Q16.4 19.6 16.2 19.6 L5.8 19.6 Q5.6 19.6 5.6 19.4 Z" />
+  <path d="M12.6 4.4 L12.6 8.2 L16.4 8.2" stroke-width="1.25" />
+  <!-- plus badge at the lower-right corner, exact center (17.6,16.4) -->
+  <path d="M17.6 13.6 L17.6 19.2 M14.8 16.4 L20.4 16.4" stroke-width="2.75" />
+</svg>
