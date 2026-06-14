@@ -671,7 +671,9 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         "the unknown-scope 400 still carries the tiers block"
     );
     assert!(
-        bad["error"].as_str().is_some_and(|e| e.contains("worktree")),
+        bad["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("worktree")),
         "the 400 names the unselectable scope: {bad}"
     );
     // The failed switch did NOT change the active scope.
