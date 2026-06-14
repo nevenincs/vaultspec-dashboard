@@ -128,3 +128,35 @@ species"). The enumerated filter-chip vocabulary beyond the target toggle remain
 controller-dependent per the ADR ("can ship the target toggle and grow chips
 incrementally"); only the target `radiogroup` is realized here, as the ADR
 permits. Did not touch `styles.css` or any other surface's files.
+
+### Revision (design review PASS-WITH-REVISIONS, two MEDIUMs + two RECOMMENDED)
+
+Independent design review of the first commit returned PASS-WITH-REVISIONS;
+addressed in a follow-up revision commit:
+
+- MEDIUM (roving refs) — replaced the render-phase ref-array reset (a
+  render-phase side effect: order-dependent, desyncs under memoization / reorder
+  / partial unmount) with the in-repo DOM-at-event-time pattern from
+  `NavToolbar.rovingButtons`: result rows carry a `data-search-result` marker and
+  the focus order is read from the enclosing list at the moment an arrow key
+  fires (`closest('ul')` + `querySelectorAll('button[...]:not(:disabled)')`).
+  Disabled null-node_id rows drop out of the roving set, so arrow nav steps over
+  them; the list's single Tab-stop is the first selectable row.
+- MEDIUM (blanked results) — the transport-error branch of
+  `useSearchWithFallback` now returns the last successful `semantic.data.results`
+  rather than `[]`, so a transient refetch failure keeps the previously-loaded
+  results visible under the error banner + retry (the ADR's "recoverable" error
+  state). Result ids are stable across queries (contract §2), so a held result
+  stays selectable; no concrete reason found to distrust the stale set.
+- RECOMMENDED (double announcements) — the single `sr-only` polite live region
+  now solely owns announcements; dropped `role="status"`/`aria-live` from the
+  visible loading, degraded, and error nodes (they stay visual only), so a
+  screen reader hears each settled outcome once.
+- RECOMMENDED (species map) — documented that the `commit:`/`code:`/`doc:`
+  prefix map is intentionally chrome-only and non-exhaustive (e.g. `feature:`
+  ids fall to the dashed-file fallback; the panel does not own the engine's full
+  node taxonomy).
+
+Added a render test proving held results persist under a transient refetch error
+(same-key refetch against a failing transport). Re-gated: `just dev lint
+frontend` exit 0; search tests 20/20; full suite green.

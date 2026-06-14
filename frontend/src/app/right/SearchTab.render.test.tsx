@@ -17,6 +17,7 @@ import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
 import { MockEngine, MOCK_SCOPE } from "../../testing/mockEngine";
@@ -223,6 +224,52 @@ describe("SearchTab surface states + a11y + selection (S24)", () => {
     expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
     // It is NOT the degraded state.
     expect(document.querySelector("[data-semantic-offline]")).toBeNull();
+  });
+
+  it("keeps the last-good results visible under the error banner on a transient refetch failure", async () => {
+    // The first /search serves results; a refetch of the SAME query key then
+    // fails with a tiers-less transport error. The ADR error state is
+    // recoverable — held results must stay visible alongside the banner, not be
+    // blanked (the hook returns the last successful `data.results`, not []).
+    let failNow = false;
+    engineClient.useTransport((input, init) => {
+      const url = new URL(input, "http://mock.local");
+      if (url.pathname.replace(/^\/api/, "") === "/search") {
+        if (failNow) return Promise.resolve(new Response("boom", { status: 500 }));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              results: [
+                {
+                  score: 0.8,
+                  source: "held-result",
+                  excerpt: "stays visible",
+                  node_id: "doc:held-result",
+                },
+              ],
+              tiers: { semantic: { available: true } },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return fetch(input, init);
+    });
+    renderSearch();
+    type("auth");
+    // The first query settles with the held result.
+    expect(await screen.findByRole("button", { name: /held-result/i })).toBeTruthy();
+    // Now refetch the SAME key against a failing transport — the held data is
+    // retained on the key by TanStack across the error.
+    failNow = true;
+    await queryClient
+      .refetchQueries({ queryKey: engineKeys.search("auth", "vault") })
+      .catch(() => undefined);
+    // The error banner appears AND the held result is still on screen.
+    await waitFor(() => {
+      expect(document.querySelector("[data-search-error]")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: /held-result/i })).toBeTruthy();
   });
 
   it("clears the query through the clear affordance and Escape", () => {

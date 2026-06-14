@@ -25,7 +25,7 @@ import {
   GitCommit,
   type Icon,
 } from "@phosphor-icons/react";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { SearchResult } from "../../stores/server/engine";
 import { selectNode } from "../../stores/view/selection";
@@ -44,7 +44,10 @@ const CHROME_PX = 13;
 // (`doc:` / `code:` / `commit:`, contract §2). Each reads in `currentColor` so
 // hue is never the identity channel — shape is, distinct at 14px (file-text /
 // code-brackets / git-commit), with a dashed-file fallback for an unmapped or
-// null id.
+// null id. The prefix map is intentionally chrome-only and NON-exhaustive: it
+// covers the species that surface in search results today; other stable-id
+// prefixes (e.g. `feature:`) fall through to the dashed-file fallback rather
+// than the panel owning the engine's full node taxonomy.
 function speciesMark(nodeId: string | null): Icon {
   if (!nodeId) return FileDashed;
   if (nodeId.startsWith("commit:")) return GitCommit;
@@ -58,25 +61,41 @@ function scorePercent(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
 
+// Roving-tabindex focus order, derived from the DOM at EVENT time (the in-repo
+// pattern from `NavToolbar.rovingButtons`): read the enclosing list's result
+// buttons at the moment an arrow key fires rather than tracking a render-phase
+// ref array, so memoization, reorder, or a partial unmount can never desync the
+// focus order from what is actually painted.
+const ROVING_ATTR = "data-search-result";
+
+function rovingRows(from: HTMLElement): HTMLButtonElement[] {
+  const list = from.closest("ul");
+  if (!list) return [];
+  // Non-clickable (null-node_id) rows are `disabled` and unfocusable, so they
+  // drop out of the roving set — arrow nav steps over them onto the next
+  // selectable result rather than stalling on a dead row.
+  return Array.from(
+    list.querySelectorAll<HTMLButtonElement>(`button[${ROVING_ATTR}]:not(:disabled)`),
+  );
+}
+
+function moveRowFocus(from: HTMLButtonElement, delta: number): void {
+  const rows = rovingRows(from);
+  const at = rows.indexOf(from);
+  if (at === -1) return;
+  rows[Math.min(rows.length - 1, Math.max(0, at + delta))]?.focus();
+}
+
 interface ResultRowProps {
   result: SearchResult;
   /** True while serving the text-match fallback — fallback rows are tagged. */
   fallback: boolean;
   /** Roving-tabindex: only the active row is in tab order. */
   tabbable: boolean;
-  registerRow: (el: HTMLButtonElement | null) => void;
   onActivate: (id: string) => void;
-  onArrow: (from: HTMLButtonElement, delta: number) => void;
 }
 
-function ResultRow({
-  result,
-  fallback,
-  tabbable,
-  registerRow,
-  onActivate,
-  onArrow,
-}: ResultRowProps) {
+function ResultRow({ result, fallback, tabbable, onActivate }: ResultRowProps) {
   const clickable = result.node_id !== null;
   const Mark = speciesMark(result.node_id);
   const percent = scorePercent(result.score);
@@ -89,7 +108,7 @@ function ResultRow({
   return (
     <li>
       <button
-        ref={registerRow}
+        {...{ [ROVING_ATTR]: "" }}
         type="button"
         disabled={!clickable}
         tabIndex={tabbable ? 0 : -1}
@@ -99,10 +118,10 @@ function ResultRow({
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            onArrow(e.currentTarget, 1);
+            moveRowFocus(e.currentTarget, 1);
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            onArrow(e.currentTarget, -1);
+            moveRowFocus(e.currentTarget, -1);
           }
         }}
         className={`w-full rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
@@ -156,21 +175,6 @@ export function SearchTab() {
   const trimmed = query.trim();
   const hasQuery = trimmed.length > 0;
 
-  // Roving-tabindex result list (a11y contract): one Tab-stop, ArrowUp/ArrowDown
-  // move within it, the focused row's button activates on Enter/Space natively.
-  const rowRefs = useRef<HTMLButtonElement[]>([]);
-  rowRefs.current = [];
-  const registerRow = useCallback((el: HTMLButtonElement | null) => {
-    if (el) rowRefs.current.push(el);
-  }, []);
-  const moveFocus = useCallback((from: HTMLButtonElement, delta: number) => {
-    const rows = rowRefs.current;
-    const at = rows.indexOf(from);
-    if (at === -1) return;
-    const next = rows[Math.min(rows.length - 1, Math.max(0, at + delta))];
-    next?.focus();
-  }, []);
-
   const fieldRef = useRef<HTMLInputElement>(null);
   // Escape clears the query, or returns focus to the field if already empty.
   const onFieldKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -184,6 +188,8 @@ export function SearchTab() {
   // offline notice on degradation, and the no-results message — so a screen
   // reader operator learns the outcome without polling.
   const showResults = hasQuery && !search.isPending && search.results.length > 0;
+  // The list's Tab entry is the first selectable row (disabled rows can't focus).
+  const firstClickable = search.results.findIndex((r) => r.node_id !== null);
   const noResults =
     hasQuery &&
     !search.isPending &&
@@ -261,7 +267,10 @@ export function SearchTab() {
         })}
       </div>
 
-      {/* Polite live region — announces the settled outcome to assistive tech. */}
+      {/* The SINGLE polite live region (search ADR: "a polite live region") —
+          it alone announces the settled outcome (count / offline / no-results /
+          error) to assistive tech. The visible status nodes below are styled
+          but NOT live regions, so a screen reader hears each outcome once. */}
       <p className="sr-only" role="status" aria-live="polite">
         {liveMessage}
       </p>
@@ -280,8 +289,6 @@ export function SearchTab() {
       {hasQuery && search.isPending && (
         <p
           className="animate-pulse-live px-vs-1 py-vs-0-5 text-label text-ink-faint"
-          role="status"
-          aria-live="polite"
           data-search-loading
         >
           searching…
@@ -295,8 +302,6 @@ export function SearchTab() {
       {search.semanticOffline && (
         <p
           className="flex items-start gap-vs-1-5 rounded-vs-sm border border-state-stale/40 bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
-          role="status"
-          aria-live="polite"
           data-semantic-offline
         >
           <span className="mt-px shrink-0 text-state-stale" aria-hidden>
@@ -315,8 +320,6 @@ export function SearchTab() {
       {search.transportError && (
         <div
           className="space-y-vs-1 rounded-vs-sm border border-state-broken/40 px-vs-2 py-vs-1"
-          role="status"
-          aria-live="polite"
           data-search-error
         >
           <p className="text-label text-state-broken">search request failed</p>
@@ -351,10 +354,11 @@ export function SearchTab() {
                 key={result.node_id ?? `${result.source}:${i}`}
                 result={result}
                 fallback={search.semanticOffline}
-                tabbable={i === 0}
-                registerRow={registerRow}
+                // The list's single Tab-stop is the first SELECTABLE row (a
+                // disabled null-node_id row cannot receive focus), so Tab always
+                // enters the list on a usable result.
+                tabbable={i === firstClickable}
                 onActivate={selectNode}
-                onArrow={moveFocus}
               />
             ))}
           </ul>

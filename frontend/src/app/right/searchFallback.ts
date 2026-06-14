@@ -112,9 +112,15 @@ export function useSearchWithFallback(
   const retry = () => void semantic.refetch();
 
   if (semantic.isError && !semanticOffline) {
-    // Genuine transport failure (no tiers envelope): the error state.
+    // Genuine transport failure (no tiers envelope): the error state. KEEP the
+    // last successful results visible under the banner + retry (search ADR error
+    // state: "recoverable, plainly-worded, with retry") — a transient refetch
+    // error must not blank a list the operator was reading. TanStack retains
+    // `data` across an error, so the stale-but-trustworthy last-good set stands;
+    // the result ids are stable across queries (contract §2), so a held result
+    // stays selectable.
     return {
-      results: [],
+      results: semantic.data?.results ?? [],
       semanticOffline: false,
       transportError: true,
       isPending: false,
