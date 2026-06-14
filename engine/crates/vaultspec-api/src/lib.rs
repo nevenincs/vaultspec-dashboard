@@ -52,6 +52,8 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/search",
     "/ops/core/{verb}",
     "/ops/rag/{verb}",
+    "/session",
+    "/settings",
 ];
 
 async fn health() -> Json<Value> {
@@ -85,6 +87,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
         .route("/ops/rag/{verb}", post(routes::ops::ops_rag))
+        // Top-level session + settings surface (user-state-persistence W03):
+        // the durable "where am I" session and user settings, both through the
+        // shared envelope so every response carries the tiers block.
+        .route(
+            "/session",
+            get(routes::session::get_session).put(routes::session::put_session),
+        )
+        .route(
+            "/settings",
+            get(routes::session::get_settings).put(routes::session::put_settings),
+        )
         .fallback(get(routes::spa::spa_fallback))
         // Panic containment (robustness H2, 2026-06-13): a handler panic must
         // become a contained 500, never a dropped connection AND — critically
