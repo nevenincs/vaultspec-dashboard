@@ -113,7 +113,7 @@ Re-skins the canvas controls onto the new tokens and Lucide chrome, gated on the
 
 Re-skins the minimap widget and layer onto the new token layer, gated on the minimap surface ADR reaching accepted; references the node-canvas surface.
 
-- [ ] `W02.P11.S27` - Re-skin the minimap widget and layer to consume the new token layer per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app/stage/MinimapWidget.tsx`.
+- [x] `W02.P11.S27` - Re-skin the minimap widget and layer to consume the new token layer per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app/stage/MinimapWidget.tsx`.
 
 ### Phase `W02.P12` - Timeline surface adoption
 

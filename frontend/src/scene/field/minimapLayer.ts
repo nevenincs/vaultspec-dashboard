@@ -1,4 +1,4 @@
-// Minimap layer (graph-quality plan P02.S05).
+// Minimap layer (graph-quality plan P02.S05; recodified W02.P11.S27).
 //
 // Renders a downscaled overview of node positions + a viewport-rect border
 // into a chrome-owned canvas. Chrome creates the <canvas>, registers it via
@@ -7,6 +7,19 @@
 //
 // Rendering is plain 2D canvas (not Pixi) — no additional WebGL context.
 // Scene-layer module: framework-free by design.
+//
+// Per the minimap surface ADR (2026-06-14-dashboard-minimap-adr):
+//   • every colour resolves from the shared :root canvas token layer, so the
+//     overview and the field it overviews share one palette per theme;
+//   • the viewport rectangle is the SINGLE stroked outline on the overview, so
+//     its position reads in grayscale, not by hue alone;
+//   • the layer always paints its attenuated empty ground + frame — the
+//     loading (no layout yet) and empty (no field) states are designed, never
+//     blank or a spinner. Empty draws a quiet "nothing to map yet" affordance;
+//   • click and drag both navigate: the click/drag recovers a world coordinate
+//     and forwards it through the navigate callback. The SCENE applies the
+//     camera change (camera.animateTo, which snaps under prefers-reduced-motion);
+//     the chrome never moves the camera itself.
 
 import type { NodePosition } from "../positionCache";
 import type { SceneNodeData } from "../sceneController";
@@ -33,11 +46,20 @@ const PADDING = 8;
 const VIEWPORT_FALLBACK = "#3f774d";
 const NODE_FALLBACK = "#5f5a53";
 const FEATURE_FALLBACK = "#3f774d";
+const BG_FALLBACK = "#fdfaf6";
+const RULE_FALLBACK = "#ebe6e0";
+
+/** The quiet empty-state copy drawn when the served slice has no nodes. */
+const EMPTY_LABEL = "nothing to map yet";
 
 export class MinimapLayer {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private clickHandler: ((e: MouseEvent) => void) | null = null;
+  private pointerDownHandler: ((e: PointerEvent) => void) | null = null;
+  private pointerMoveHandler: ((e: PointerEvent) => void) | null = null;
+  private pointerUpHandler: ((e: PointerEvent) => void) | null = null;
+  private dragging = false;
   private navigateCb: ((wx: number, wy: number) => void) | null = null;
 
   // Cached data for re-render on camera change:
@@ -55,36 +77,100 @@ export class MinimapLayer {
   private lastDrawOffY = 0;
 
   /**
-   * Register a callback that fires when the user clicks the minimap.
-   * The callback receives world coordinates so the field can pan to that point.
+   * Register a callback that fires when the user clicks or drags the minimap.
+   * The callback receives world coordinates so the scene can pan the camera to
+   * that point. The chrome never moves the camera itself — the scene applies the
+   * change (camera.animateTo snaps under prefers-reduced-motion).
    */
   setNavigateCallback(cb: ((wx: number, wy: number) => void) | null): void {
     this.navigateCb = cb;
   }
 
   setCanvas(canvas: HTMLCanvasElement | null): void {
-    // Remove the old listener before replacing the canvas.
-    if (this.canvas && this.clickHandler) {
-      this.canvas.removeEventListener("click", this.clickHandler);
-      this.clickHandler = null;
-    }
+    // Remove old listeners before replacing the canvas.
+    this.detachListeners();
     this.canvas = canvas;
     this.ctx = canvas ? canvas.getContext("2d") : null;
     if (canvas) {
-      this.clickHandler = (e: MouseEvent) => {
-        if (!this.navigateCb) return;
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        // Invert the minimap transform to recover world coordinates.
-        if (this.lastWorldScale === 0) return;
-        const wx = this.lastMinX + (mx - this.lastDrawOffX) / this.lastWorldScale;
-        const wy = this.lastMinY + (my - this.lastDrawOffY) / this.lastWorldScale;
-        this.navigateCb(wx, wy);
-      };
-      canvas.addEventListener("click", this.clickHandler);
+      this.attachListeners(canvas);
       this.render();
     }
+  }
+
+  /** Recover the world coordinate under a pointer position on the canvas. */
+  private worldAt(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+    if (this.lastWorldScale === 0) return null;
+    const wx = this.lastMinX + (mx - this.lastDrawOffX) / this.lastWorldScale;
+    const wy = this.lastMinY + (my - this.lastDrawOffY) / this.lastWorldScale;
+    return { wx, wy };
+  }
+
+  private attachListeners(canvas: HTMLCanvasElement): void {
+    // Click-to-navigate: a single click recenters the camera on the clicked
+    // world point. Retained alongside drag so a tap still works where pointer
+    // events are not fully simulated.
+    this.clickHandler = (e: MouseEvent) => {
+      if (!this.navigateCb || this.dragging) return;
+      const world = this.worldAt(canvas, e.clientX, e.clientY);
+      if (world) this.navigateCb(world.wx, world.wy);
+    };
+    canvas.addEventListener("click", this.clickHandler);
+
+    // Drag-to-navigate: pressing and dragging pans the camera continuously to
+    // follow the pointer — a scrub-the-field gesture. Both gestures resolve to
+    // the same navigate callback, so pointer and (the widget's) keyboard paths
+    // converge on one channel.
+    this.pointerDownHandler = (e: PointerEvent) => {
+      if (!this.navigateCb) return;
+      this.dragging = true;
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // setPointerCapture can throw in non-DOM hosts / detached canvases.
+      }
+      const world = this.worldAt(canvas, e.clientX, e.clientY);
+      if (world) this.navigateCb(world.wx, world.wy);
+    };
+    this.pointerMoveHandler = (e: PointerEvent) => {
+      if (!this.dragging || !this.navigateCb) return;
+      const world = this.worldAt(canvas, e.clientX, e.clientY);
+      if (world) this.navigateCb(world.wx, world.wy);
+    };
+    this.pointerUpHandler = (e: PointerEvent) => {
+      if (!this.dragging) return;
+      this.dragging = false;
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore — capture may not have been held
+      }
+    };
+    canvas.addEventListener("pointerdown", this.pointerDownHandler);
+    canvas.addEventListener("pointermove", this.pointerMoveHandler);
+    canvas.addEventListener("pointerup", this.pointerUpHandler);
+    canvas.addEventListener("pointercancel", this.pointerUpHandler);
+  }
+
+  private detachListeners(): void {
+    const c = this.canvas;
+    if (!c) return;
+    if (this.clickHandler) c.removeEventListener("click", this.clickHandler);
+    if (this.pointerDownHandler)
+      c.removeEventListener("pointerdown", this.pointerDownHandler);
+    if (this.pointerMoveHandler)
+      c.removeEventListener("pointermove", this.pointerMoveHandler);
+    if (this.pointerUpHandler) {
+      c.removeEventListener("pointerup", this.pointerUpHandler);
+      c.removeEventListener("pointercancel", this.pointerUpHandler);
+    }
+    this.clickHandler = null;
+    this.pointerDownHandler = null;
+    this.pointerMoveHandler = null;
+    this.pointerUpHandler = null;
+    this.dragging = false;
   }
 
   /** Called on each layout position frame. */
@@ -109,10 +195,7 @@ export class MinimapLayer {
   }
 
   destroy(): void {
-    if (this.canvas && this.clickHandler) {
-      this.canvas.removeEventListener("click", this.clickHandler);
-      this.clickHandler = null;
-    }
+    this.detachListeners();
     this.canvas = null;
     this.ctx = null;
     this.navigateCb = null;
@@ -124,10 +207,45 @@ export class MinimapLayer {
   private render(): void {
     const ctx = this.ctx;
     const canvas = this.canvas;
-    if (!ctx || !canvas || this.lastPositions.size === 0) return;
+    if (!ctx || !canvas) return;
 
     const w = canvas.width || MINIMAP_SIZE;
     const h = canvas.height || MINIMAP_SIZE;
+
+    // Colours read from the theme token layer so the minimap tracks the active
+    // theme and uses no off-palette colour (MEDIUM-3). Resolved once per pass.
+    const cssRoot = getComputedStyle(document.documentElement);
+    const token = (name: string, fallback: string) =>
+      cssRoot.getPropertyValue(name).trim() || fallback;
+
+    const bgColor = token("--color-canvas-bg", BG_FALLBACK);
+    const ruleColor = token("--color-rule", RULE_FALLBACK);
+    const featureColor = token("--color-state-active", FEATURE_FALLBACK);
+    const nodeColor = token("--color-ink-muted", NODE_FALLBACK);
+    const viewportColor = token("--color-state-active", VIEWPORT_FALLBACK);
+
+    // Clear, then paint the attenuated empty ground + frame ALWAYS. This is the
+    // loading state (no layout frame yet) and the empty state (no field): the
+    // minimap is a passive overview, so it shows its ground rather than a
+    // spinner or a blank canvas (ADR "States": loading / empty / degraded).
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    // Empty / no-field: a quiet one-line affordance in the faint ink role, never
+    // an error. Drawn when the served slice has no nodes to overview.
+    if (this.lastPositions.size === 0) {
+      this.drawFrame(ctx, w, h, ruleColor);
+      ctx.fillStyle = nodeColor;
+      ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(EMPTY_LABEL, w / 2, h / 2);
+      // Reset text alignment so it does not bleed into a later pass.
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
+      return;
+    }
 
     // Compute world bounds from node positions.
     let minX = Infinity;
@@ -147,7 +265,7 @@ export class MinimapLayer {
     const drawH = h - PADDING * 2;
     const scale = Math.min(drawW / worldW, drawH / worldH);
 
-    // Store the transform for click-inverse (navigate-to).
+    // Store the transform for click/drag-inverse (navigate-to).
     const drawOffX = PADDING + (drawW - worldW * scale) / 2;
     const drawOffY = PADDING + (drawH - worldH * scale) / 2;
     this.lastMinX = minX;
@@ -160,26 +278,9 @@ export class MinimapLayer {
     const toMX = (wx: number) => drawOffX + (wx - minX) * scale;
     const toMY = (wy: number) => drawOffY + (wy - minY) * scale;
 
-    // Clear.
-    ctx.clearRect(0, 0, w, h);
-
-    // Colours read from the theme token layer so the minimap tracks the active
-    // theme and uses no off-palette colour (MEDIUM-3).
-    const cssRoot = getComputedStyle(document.documentElement);
-    const token = (name: string, fallback: string) =>
-      cssRoot.getPropertyValue(name).trim() || fallback;
-
-    // Background — matches the canvas ground.
-    const bgColor = token("--color-canvas-bg", "#faf9f7");
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, w, h);
-
-    // Accent-tone for feature dots + the viewport rect; muted-ink for node dots.
-    const featureColor = token("--color-state-active", FEATURE_FALLBACK);
-    const nodeColor = token("--color-ink-muted", NODE_FALLBACK);
-    const viewportColor = token("--color-state-active", VIEWPORT_FALLBACK);
-
-    // Draw node dots.
+    // Draw node dots. Feature/constellation nodes are drawn slightly larger and
+    // in the shared accent as redundant reinforcement; ordinary nodes take the
+    // muted-ink token. Marks are small and unlabelled — shape, not identity.
     for (const [id, p] of this.lastPositions) {
       const mx = toMX(p.x);
       const my = toMY(p.y);
@@ -190,27 +291,46 @@ export class MinimapLayer {
       ctx.fill();
     }
 
-    // Draw viewport rectangle if camera state is available.
+    // Draw the viewport rectangle if camera state is available. The rect is the
+    // SINGLE stroked outline on the overview, so its position reads in grayscale
+    // (not by hue alone). It is clamped to the canvas bounds so an off-screen or
+    // out-of-bounds viewport still reads as an edge-pinned rectangle rather than
+    // drawing off-canvas (ADR "States": viewport-out-of-bounds).
     if (this.lastCamera && this.screenW > 0 && this.screenH > 0) {
       const cam = this.lastCamera;
-      // The visible world rect.
       const vLeft = -cam.x / cam.scale;
       const vTop = -cam.y / cam.scale;
       const vRight = vLeft + this.screenW / cam.scale;
       const vBottom = vTop + this.screenH / cam.scale;
 
-      const rx = toMX(vLeft);
-      const ry = toMY(vTop);
-      const rw = (vRight - vLeft) * scale;
-      const rh = (vBottom - vTop) * scale;
+      const rawX = toMX(vLeft);
+      const rawY = toMY(vTop);
+      const rawW = (vRight - vLeft) * scale;
+      const rawH = (vBottom - vTop) * scale;
+
+      // Clamp the rectangle into [0, w] × [0, h] so it never strokes off-canvas.
+      const x0 = Math.max(0, Math.min(w, rawX));
+      const y0 = Math.max(0, Math.min(h, rawY));
+      const x1 = Math.max(0, Math.min(w, rawX + rawW));
+      const y1 = Math.max(0, Math.min(h, rawY + rawH));
 
       ctx.strokeStyle = viewportColor;
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.strokeRect(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
     }
 
-    // Border — use the rule token so it separates cleanly on any theme.
-    ctx.strokeStyle = cssRoot.getPropertyValue("--color-rule").trim() || "#e5e1da";
+    // Frame — the rule token so it separates cleanly on any theme.
+    this.drawFrame(ctx, w, h, ruleColor);
+  }
+
+  /** Stroke the 1px frame border in the rule token. */
+  private drawFrame(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    ruleColor: string,
+  ): void {
+    ctx.strokeStyle = ruleColor;
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
   }
