@@ -1,39 +1,79 @@
-// Changes overview (task-7 right-rail): git working-tree state and recent
-// vault activity for the active scope. Two data sources, both from the
-// stores layer:
-//   • useEngineStatus() → git.branch / ahead / behind / dirty (changed files)
-//   • useEngineEvents()  → commits + doc-created / doc-modified / step-checked
+// Git diff browser (right-rail surface adoption, W02.P13.S29): the active
+// worktree's working-tree state and its changes — a repository status header, a
+// changed-files list with status marks, expand/collapse disclosure rows revealing
+// a read-only diff view inline, plus recent commit + vault-activity context.
 //
-// When a commit is selected, its associated vault node_ids cross-highlight
-// on the stage via selectEntity (G2.b). The dirty-file section shows the
-// raw git working-tree without a diff body — a per-file diff endpoint is
-// a future stores addition (leave TODO for fe-platform).
+// Re-skinned onto the OKLCH token layer and the two sanctioned icon families per
+// the git-diff-browser surface ADR: structural chrome from Lucide (chevrons), the
+// domain plane from Phosphor (git-branch, git-commit, file marks). The retired
+// hand-drawn / ad-hoc Unicode glyphs leave.
 //
-// Layer boundary: chrome reads stores hooks only; no fetch calls.
+// Data sources, both from the stores layer (chrome reads selectors, never the
+// engine, never the raw `tiers` block — dashboard-layer-ownership):
+//   • useGitStatus()    → the derived git working-tree view (branch / ahead /
+//                          behind / dirty), with loading / degraded / errored
+//                          interpreted in the stores layer.
+//   • useGitFileDiff()  → the read-only structured diff for a selected file.
+//   • useEngineEvents() → commits + doc-created / doc-modified / step-checked.
+//
+// DIFF LEGIBILITY IS SACRED and COLOUR IS NEVER THE SOLE SIGNAL: the diff body
+// (DiffView) keeps high-contrast green/red and carries +/- glyphs and labels; the
+// changed-files rows carry a status letter so status is never colour-only.
+//
+// ENGINE BOUNDARY: this surface NEVER writes git — no stage, unstage, commit,
+// discard, or checkout affordance exists or is accepted here (engine-read-and-
+// infer). The browser observes git state; it never changes it.
 
+import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import {
+  File as FileMark,
+  FileDashed,
+  FileMinus,
+  FilePlus,
+  GitBranch,
+  GitCommit,
+  PencilSimple,
+  type Icon,
+} from "@phosphor-icons/react";
 import { useState } from "react";
 
+import { pathToNodeId } from "../left/browserSelection";
 import type { EngineEvent } from "../../stores/server/engine";
-import { useEngineStatus } from "../../stores/server/engine";
-import { useEngineEvents } from "../../stores/server/queries";
+import {
+  useEngineEvents,
+  useGitFileDiff,
+  useGitStatus,
+} from "../../stores/server/queries";
+import { selectNode } from "../../stores/view/selection";
 import type { Selection } from "../../stores/view/viewStore";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
+import { DiffView } from "./DiffView";
+
+// Icon sizing — the iconography ADR's grayscale-by-shape gate is 14px; the
+// structural chrome (chevrons) reads one density step smaller so it stays
+// attenuated relative to the expressive domain marks.
+const DOMAIN_PX = 14;
+const CHROME_PX = 13;
 
 // ---------------------------------------------------------------------------
-// Pure helpers (unit-testable)
+// Pure helpers (unit-testable) — retained as the data-to-display pipeline.
 // ---------------------------------------------------------------------------
 
-/** Unicode glyph for each event kind. */
-export const KIND_GLYPH: Record<string, string> = {
-  commit: "⑂",
-  "doc-created": "✎",
-  "doc-modified": "✏",
-  "step-checked": "☑",
+/**
+ * Phosphor domain mark for each event kind (replaces the retired Unicode
+ * glyphs). git-commit directly; file-plus / pencil for doc-created / modified;
+ * a generic file for step-checked; a dashed-file fallback for an unknown kind.
+ */
+export const KIND_MARK: Record<string, Icon> = {
+  commit: GitCommit,
+  "doc-created": FilePlus,
+  "doc-modified": PencilSimple,
+  "step-checked": FileMark,
 };
 
-export function eventGlyph(kind: string): string {
-  return KIND_GLYPH[kind] ?? "◦";
+export function eventMark(kind: string): Icon {
+  return KIND_MARK[kind] ?? FileDashed;
 }
 
 /**
@@ -91,6 +131,48 @@ export function isVaultPath(p: string): boolean {
   return p.startsWith(".vault/") || p.includes("/.vault/");
 }
 
+/**
+ * Classify a dirty entry's git status from a leading status token when the wire
+ * carries one (e.g. `"M path"`, `"A path"`, `"?? path"`), falling back to
+ * "modified" for the v1 flat-path shape that carries no per-file status. This is
+ * the honest interim until the wire serves a status per entry (git-diff-browser
+ * ADR: the grouping is the target shape, the flat list the interim). Returns the
+ * status key plus the bare path with any status token stripped.
+ */
+export interface DirtyEntry {
+  path: string;
+  status: "added" | "modified" | "deleted" | "renamed" | "untracked";
+}
+
+const STATUS_TOKEN: Record<string, DirtyEntry["status"]> = {
+  A: "added",
+  M: "modified",
+  D: "deleted",
+  R: "renamed",
+  "??": "untracked",
+};
+
+export function classifyDirty(raw: string): DirtyEntry {
+  const m = /^([A-Z?]{1,2})\s+(.+)$/.exec(raw);
+  if (m && STATUS_TOKEN[m[1]]) {
+    return { path: m[2], status: STATUS_TOKEN[m[1]] };
+  }
+  return { path: raw, status: "modified" };
+}
+
+/** The status letter shown on a changed-file row — non-colour status identity. */
+export function statusLetter(status: DirtyEntry["status"]): string {
+  return status === "untracked" ? "?" : status.charAt(0).toUpperCase();
+}
+
+/** Phosphor file mark per status (shape carries status, not colour alone). */
+function statusMark(status: DirtyEntry["status"]): Icon {
+  if (status === "added" || status === "untracked") return FilePlus;
+  if (status === "deleted") return FileMinus;
+  if (status === "modified") return PencilSimple;
+  return FileMark;
+}
+
 const MAX_EVENTS = 30;
 const MAX_DIRTY = 20;
 
@@ -100,109 +182,210 @@ const MAX_DIRTY = 20;
 
 interface GitStatusProps {
   branch: string;
-  ahead: number;
-  behind: number;
+  ahead?: number;
+  behind?: number;
   dirtyCount: number;
 }
 
-function GitStatus({ branch, ahead, behind, dirtyCount }: GitStatusProps) {
+function GitStatusHeader({ branch, ahead, behind, dirtyCount }: GitStatusProps) {
+  // Divergence shows only when an upstream is configured (absent ahead/behind
+  // means "no upstream", not "zero") — ahead/behind are optional on the wire.
+  const hasUpstream = ahead !== undefined || behind !== undefined;
+  const aheadN = ahead ?? 0;
+  const behindN = behind ?? 0;
   return (
     <div
-      className="flex items-center gap-vs-1-5 rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 shadow-card text-label"
+      className="flex items-center gap-vs-1-5 rounded-vs-md border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label shadow-card"
       aria-label="git status"
     >
-      <span className="text-ink-faint" aria-hidden>
-        ⑂
+      <span className="shrink-0 text-ink-faint" aria-hidden>
+        <GitBranch size={DOMAIN_PX} />
       </span>
-      <span className="flex-1 truncate font-medium text-ink-muted">{branch}</span>
-      {(ahead > 0 || behind > 0) && (
-        <span className="text-ink-faint">
-          {ahead > 0 && (
-            <span title={`${ahead} commit${ahead !== 1 ? "s" : ""} ahead`}>
-              ↑{ahead}
+      {/* Branch name is identity → mono per the typography law. */}
+      <span className="min-w-0 flex-1 truncate font-mono text-ink-muted">{branch}</span>
+      {hasUpstream && (aheadN > 0 || behindN > 0) && (
+        // Divergence counts are data-bearing → tabular numerals, with an
+        // explicit up/down label so the divergence reads in grayscale.
+        <span
+          className="flex shrink-0 items-center gap-vs-1 text-ink-faint"
+          data-tabular
+        >
+          {aheadN > 0 && (
+            <span aria-label={`${aheadN} ahead`}>
+              <span aria-hidden>↑</span>
+              {aheadN}
             </span>
           )}
-          {ahead > 0 && behind > 0 && " "}
-          {behind > 0 && (
-            <span title={`${behind} commit${behind !== 1 ? "s" : ""} behind`}>
-              ↓{behind}
+          {behindN > 0 && (
+            <span aria-label={`${behindN} behind`}>
+              <span aria-hidden>↓</span>
+              {behindN}
             </span>
           )}
         </span>
       )}
-      {dirtyCount > 0 && (
-        <span className="rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-state-stale">
+      {/* Status pill — colour reinforced by a label so "clean" / "N changed"
+          read in grayscale (never colour-only). */}
+      {dirtyCount > 0 ? (
+        <span
+          className="shrink-0 rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-accent-text"
+          data-tabular
+        >
           {dirtyCount} changed
         </span>
+      ) : (
+        <span className="shrink-0 text-2xs text-state-active">clean</span>
       )}
-      {dirtyCount === 0 && <span className="text-2xs text-state-active">clean</span>}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Working changes (dirty files)
+// Changed-files list — disclosure rows revealing the inline diff view
 // ---------------------------------------------------------------------------
 
-interface DirtyFilesProps {
-  paths: string[];
+interface ChangedFileRowProps {
+  entry: DirtyEntry;
+  scope: string;
+  /** Roving-tabindex: only the active row is in the file-list tab order. */
+  tabbable: boolean;
 }
 
-function DirtyFiles({ paths }: DirtyFilesProps) {
-  const [showAll, setShowAll] = useState(false);
-  const shown = showAll ? paths : paths.slice(0, MAX_DIRTY);
-  const overflow = paths.length - MAX_DIRTY;
+function ChangedFileRow({ entry, scope, tabbable }: ChangedFileRowProps) {
+  const [open, setOpen] = useState(false);
+  const vault = isVaultPath(entry.path);
+  const Mark = statusMark(entry.status);
+  const Chevron = open ? ChevronDown : ChevronRight;
+  // The inline diff is fetched only while the row is open (bounded by default —
+  // no eager fetch of every file's diff). The stores hook interprets the tiers
+  // seam so this surface never reads the raw block.
+  const diff = useGitFileDiff(scope, open ? entry.path : null);
+
+  const onSelect = () => {
+    // Emit select intent into the shared selection: a vault file cross-highlights
+    // its document node on the stage (the one model, by stable id). A non-vault
+    // path has no graph node — selecting it only toggles the local disclosure.
+    if (vault) selectNode(pathToNodeId(entry.path));
+    setOpen((v) => !v);
+  };
 
   return (
-    <section aria-label="working changes">
+    <li>
+      <button
+        {...{ "data-changed-file": "" }}
+        type="button"
+        tabIndex={tabbable ? 0 : -1}
+        aria-expanded={open}
+        aria-label={`${entry.status} ${entry.path}${vault ? " (vault)" : ""}`}
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            moveFileFocus(e.currentTarget, 1);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            moveFileFocus(e.currentTarget, -1);
+          }
+        }}
+        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left text-label transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        title={entry.path}
+      >
+        <span className="shrink-0 text-ink-faint" aria-hidden>
+          <Chevron size={CHROME_PX} />
+        </span>
+        <span className="shrink-0 text-ink-faint" aria-hidden>
+          <Mark size={DOMAIN_PX} />
+        </span>
+        {/* Status letter — non-colour status identity, read by the SR via the
+            row's aria-label. */}
+        <span
+          className="w-3 shrink-0 select-none text-center font-mono text-2xs text-ink-faint"
+          aria-hidden
+        >
+          {statusLetter(entry.status)}
+        </span>
+        {/* Path identity → mono; basename shown, full path on hover + to AT. */}
+        <span
+          className={`min-w-0 flex-1 truncate font-mono ${vault ? "text-ink-muted" : "text-ink-faint"}`}
+        >
+          {basename(entry.path)}
+        </span>
+        {vault && <span className="shrink-0 text-2xs text-ink-faint">vault</span>}
+      </button>
+      {open && (
+        <div className="ml-vs-4 mt-vs-0-5 animate-fade-in motion-reduce:animate-none">
+          <DiffView
+            diff={diff.diff}
+            loading={diff.loading}
+            degraded={diff.degraded}
+            errored={diff.errored}
+            onRetry={diff.retry}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+// Roving-tabindex focus order, derived from the DOM at EVENT time (the in-repo
+// `NavToolbar.rovingButtons` / SearchTab pattern): read the file-list rows at
+// the moment an arrow key fires, so memoization or a re-render can never desync
+// focus order from what is painted.
+function moveFileFocus(from: HTMLButtonElement, delta: number): void {
+  const list = from.closest("ul");
+  if (!list) return;
+  const rows = Array.from(
+    list.querySelectorAll<HTMLButtonElement>("button[data-changed-file]"),
+  );
+  const at = rows.indexOf(from);
+  if (at === -1) return;
+  rows[Math.min(rows.length - 1, Math.max(0, at + delta))]?.focus();
+}
+
+interface ChangedFilesProps {
+  entries: DirtyEntry[];
+  scope: string;
+}
+
+function ChangedFiles({ entries, scope }: ChangedFilesProps) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? entries : entries.slice(0, MAX_DIRTY);
+  const overflow = entries.length - MAX_DIRTY;
+
+  return (
+    <section aria-label="changed files">
       <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
-        Working changes
+        Changed files
       </h3>
-      <ul className="space-y-vs-0-5">
-        {shown.map((path) => {
-          const vault = isVaultPath(path);
-          return (
-            <li key={path}>
-              <div
-                className="flex items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-label"
-                title={path}
-              >
-                <span className="shrink-0 text-ink-faint" aria-hidden>
-                  {vault ? "✎" : "○"}
-                </span>
-                <span
-                  className={`min-w-0 flex-1 truncate ${
-                    vault ? "text-ink-muted" : "text-ink-faint"
-                  }`}
-                >
-                  {basename(path)}
-                </span>
-                {vault && (
-                  <span className="shrink-0 text-2xs text-ink-faint">vault</span>
-                )}
-              </div>
-            </li>
-          );
-        })}
+      <ul className="space-y-vs-0-5" role="list" aria-label="changed files">
+        {shown.map((entry, i) => (
+          <ChangedFileRow
+            key={entry.path}
+            entry={entry}
+            scope={scope}
+            // The list's single Tab-stop is the first row; arrows rove within.
+            tabbable={i === 0}
+          />
+        ))}
         {overflow > 0 && !showAll && (
           <li>
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="px-vs-1 text-label text-ink-faint underline hover:text-ink-muted"
+              className="rounded-vs-sm px-vs-1 text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              data-tabular
             >
               +{overflow} more
             </button>
           </li>
         )}
       </ul>
-      {/* TODO(fe-platform): wire per-file diff once the stores hook lands */}
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Event row
+// Event row (commit / vault-activity context)
 // ---------------------------------------------------------------------------
 
 interface EventRowProps {
@@ -214,11 +397,14 @@ interface EventRowProps {
 function EventRow({ ev, now, onSelect }: EventRowProps) {
   const [expanded, setExpanded] = useState(false);
   const hasNodes = ev.node_ids.length > 0;
+  const Mark = eventMark(ev.kind);
+  const Chevron = expanded ? ChevronDown : ChevronRight;
 
   return (
     <li>
       <button
         type="button"
+        aria-expanded={hasNodes ? expanded : undefined}
         onClick={() => {
           onSelect({
             kind: "event",
@@ -228,7 +414,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
           });
           if (hasNodes) setExpanded((v) => !v);
         }}
-        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left hover:bg-paper-sunken"
+        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         title={
           hasNodes
             ? `${ev.kind} · ${ev.node_ids.length} node${ev.node_ids.length !== 1 ? "s" : ""}${ev.truncated_node_ids ? ` (+${ev.truncated_node_ids} more)` : ""}`
@@ -236,21 +422,24 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
         }
       >
         <span className="shrink-0 text-ink-faint" aria-hidden>
-          {eventGlyph(ev.kind)}
+          <Mark size={DOMAIN_PX} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-ink-muted">{eventLabel(ev)}</span>
+        {/* Commit/ref label is identity → mono. */}
+        <span className="min-w-0 flex-1 truncate font-mono text-ink-muted">
+          {eventLabel(ev)}
+        </span>
         {hasNodes && (
-          <span className="shrink-0 text-2xs text-ink-faint">
+          <span className="shrink-0 text-2xs text-ink-faint" data-tabular>
             {ev.node_ids.length}
             {ev.truncated_node_ids ? "+" : ""}
           </span>
         )}
-        <span className="shrink-0 text-2xs text-ink-faint">
+        <span className="shrink-0 text-2xs text-ink-faint" data-tabular>
           {relativeTs(ev.ts, now)}
         </span>
         {hasNodes && (
           <span className="shrink-0 text-ink-faint" aria-hidden>
-            {expanded ? "▾" : "▸"}
+            <Chevron size={CHROME_PX} />
           </span>
         )}
       </button>
@@ -261,7 +450,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
               <button
                 type="button"
                 onClick={() => onSelect({ kind: "node", id })}
-                className="w-full truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left text-2xs text-ink-faint hover:bg-paper-sunken hover:text-ink"
+                className="w-full truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left font-mono text-2xs text-ink-faint hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 title={id}
               >
                 {id.split(":").pop() ?? id}
@@ -269,7 +458,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             </li>
           ))}
           {ev.truncated_node_ids && ev.truncated_node_ids > 0 && (
-            <li className="px-vs-1 text-2xs text-ink-faint">
+            <li className="px-vs-1 text-2xs text-ink-faint" data-tabular>
               +{ev.truncated_node_ids} more (contract §5 cap)
             </li>
           )}
@@ -286,7 +475,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
 export function ChangesOverview() {
   const scope = useActiveScope();
   const events = useEngineEvents(scope);
-  const status = useEngineStatus();
+  const gitView = useGitStatus();
   const selectEntity = useViewStore((s) => s.selectEntity);
 
   if (!scope) {
@@ -295,8 +484,7 @@ export function ChangesOverview() {
     );
   }
 
-  const git = status.data?.git;
-  const dirty = git?.dirty ?? [];
+  const dirtyEntries = (gitView.git?.dirty ?? []).map(classifyDirty);
 
   const evList = events.data?.events ?? [];
   const commits = evList.filter((e) => e.kind === "commit");
@@ -306,21 +494,76 @@ export function ChangesOverview() {
 
   return (
     <div className="space-y-vs-3 text-label" data-changes-overview>
-      {/* Git status header */}
-      {git && (
-        <GitStatus
-          branch={git.branch}
-          ahead={git.ahead}
-          behind={git.behind}
-          dirtyCount={dirty.length}
+      {/* Repository status header (shown whenever git state is available, even on
+          a clean tree). */}
+      {gitView.git && (
+        <GitStatusHeader
+          branch={gitView.git.branch}
+          ahead={gitView.git.ahead}
+          behind={gitView.git.behind}
+          dirtyCount={dirtyEntries.length}
         />
       )}
-      {!git && status.isPending && (
-        <p className="text-label text-ink-faint">reading git status…</p>
+
+      {/* Loading: a liveness cue tied to the in-flight status snapshot. */}
+      {gitView.loading && (
+        <p
+          className="animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
+          data-git-loading
+        >
+          reading git status…
+        </p>
       )}
 
-      {/* Working changes (dirty files) */}
-      {dirty.length > 0 && <DirtyFiles paths={dirty} />}
+      {/* Degraded per tiers (git tier absent / unavailable): a DESIGNED
+          "no repository state" — distinct from an error, never a failure, with
+          the rest of the chrome unaffected (git-diff-browser ADR States). */}
+      {gitView.degraded && (
+        <p
+          className="flex items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          data-git-degraded
+        >
+          <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
+            <GitBranch size={CHROME_PX} />
+          </span>
+          <span>
+            repository state unavailable
+            {gitView.reason ? ` — ${gitView.reason}` : ""}
+          </span>
+        </p>
+      )}
+
+      {/* Error: a genuine transport failure (no tiers envelope), kept distinct
+          from degradation, with a retry affordance. */}
+      {gitView.errored && (
+        <div
+          className="flex items-center gap-vs-1-5 rounded-vs-sm border border-state-broken/40 px-vs-2 py-vs-1"
+          data-git-error
+        >
+          <span className="shrink-0 text-state-broken" aria-hidden>
+            <RefreshCw size={CHROME_PX} />
+          </span>
+          <p className="flex-1 text-label text-state-broken">git status unavailable</p>
+          <button
+            type="button"
+            onClick={() => void events.refetch()}
+            className="rounded-vs-sm text-2xs text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            retry
+          </button>
+        </div>
+      )}
+
+      {/* Changed files — the disclosure list revealing the inline diff. */}
+      {dirtyEntries.length > 0 && <ChangedFiles entries={dirtyEntries} scope={scope} />}
+
+      {/* Empty / clean working tree: an approachable state in the warm copy tone
+          (the header above still shows branch + divergence). */}
+      {gitView.git && dirtyEntries.length === 0 && (
+        <p className="px-vs-1 py-vs-1 text-label text-ink-faint" data-git-clean>
+          working tree clean — no changes to review.
+        </p>
+      )}
 
       {/* Recent commits */}
       {commits.length > 0 && (
@@ -350,7 +593,7 @@ export function ChangesOverview() {
         </section>
       )}
 
-      {/* Loading and empty states */}
+      {/* Activity loading / error / empty states. */}
       {events.isPending && (
         <p className="text-label text-ink-faint">loading activity…</p>
       )}
@@ -360,14 +603,11 @@ export function ChangesOverview() {
           <button
             type="button"
             onClick={() => void events.refetch()}
-            className="text-2xs text-ink-faint underline"
+            className="rounded-vs-sm text-2xs text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             retry
           </button>
         </div>
-      )}
-      {events.isSuccess && evList.length === 0 && dirty.length === 0 && (
-        <p className="text-label text-ink-faint">no recent changes</p>
       )}
     </div>
   );

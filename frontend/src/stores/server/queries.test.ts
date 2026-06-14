@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
 import { MockEngine } from "../../testing/mockEngine";
-import { EngineClient } from "./engine";
-import type { TiersBlock } from "./engine";
+import { EngineClient, EngineError } from "./engine";
+import type { EngineStatus, GitFileDiff, TiersBlock } from "./engine";
 import type { StreamChunk } from "./queries";
 import {
   STREAM_RETENTION,
+  deriveGitFileDiffView,
+  deriveGitStatusView,
   deriveGraphSliceAvailability,
   deriveVaultTreeAvailability,
   engineKeys,
@@ -239,5 +241,132 @@ describe("streamReducer bounded growth (P-HIGH-6)", () => {
     acc = streamReducer(acc, frame);
     acc = streamReducer(acc, frame);
     expect(acc).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveGitStatusView — git working-tree interpretation (git-diff-browser ADR)
+// ---------------------------------------------------------------------------
+
+function statusWith(
+  git: EngineStatus["git"],
+  tiers: TiersBlock = { structural: { available: true } },
+): EngineStatus {
+  return { ok: true, nodes: 0, edges: 0, degradations: [], tiers, git };
+}
+
+describe("deriveGitStatusView", () => {
+  it("reports available with the git payload when git state is served", () => {
+    const view = deriveGitStatusView(
+      statusWith({ branch: "main", ahead: 1, behind: 0, dirty: ["a.ts"] }),
+      undefined,
+      false,
+    );
+    expect(view).toMatchObject({ loading: false, degraded: false, errored: false });
+    expect(view.git?.branch).toBe("main");
+  });
+
+  it("treats a present git payload as degraded when a served git tier is unavailable", () => {
+    const view = deriveGitStatusView(
+      statusWith(
+        { branch: "main", ahead: 0, behind: 0, dirty: [] },
+        { git: { available: false, reason: "repo locked" } },
+      ),
+      undefined,
+      false,
+    );
+    expect(view.degraded).toBe(true);
+    expect(view.reason).toBe("repo locked");
+  });
+
+  it("treats an absent git payload with a served tiers block as designed degradation, not error", () => {
+    const view = deriveGitStatusView(
+      statusWith(undefined, { structural: { available: true } }),
+      undefined,
+      false,
+    );
+    expect(view.degraded).toBe(true);
+    expect(view.errored).toBe(false);
+  });
+
+  it("surfaces a tiers-bearing error envelope as degradation (backend down)", () => {
+    const err = new EngineError("/status", 502, {
+      tiers: { git: { available: false, reason: "core down" } },
+    });
+    const view = deriveGitStatusView(undefined, err, false);
+    expect(view.degraded).toBe(true);
+    expect(view.reason).toBe("core down");
+    expect(view.errored).toBe(false);
+  });
+
+  it("surfaces a tiers-less transport fault as the errored branch", () => {
+    const err = new EngineError("/status", 500);
+    const view = deriveGitStatusView(undefined, err, false);
+    expect(view.errored).toBe(true);
+    expect(view.degraded).toBe(false);
+  });
+
+  it("reports loading while the snapshot is in flight with no data or error", () => {
+    const view = deriveGitStatusView(undefined, undefined, true);
+    expect(view.loading).toBe(true);
+    expect(view.degraded).toBe(false);
+    expect(view.errored).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveGitFileDiffView — read-only diff interpretation (engine-blocked default)
+// ---------------------------------------------------------------------------
+
+describe("deriveGitFileDiffView", () => {
+  const base = { isPending: false, isError: false, refetch: () => {} };
+
+  it("is idle (not loading) when disabled (no file selected)", () => {
+    const view = deriveGitFileDiffView({ ...base, error: undefined, enabled: false });
+    expect(view).toMatchObject({ loading: false, degraded: false, errored: false });
+    expect(view.diff).toBeUndefined();
+  });
+
+  it("returns the structured diff body verbatim when the engine serves one", () => {
+    const diff: GitFileDiff = {
+      path: "a.ts",
+      hunks: [{ header: "@@ -1 +1 @@", lines: [] }],
+      tiers: { git: { available: true } },
+    };
+    const view = deriveGitFileDiffView({
+      ...base,
+      data: diff,
+      error: undefined,
+      enabled: true,
+    });
+    expect(view.diff).toBe(diff);
+    expect(view.degraded).toBe(false);
+    expect(view.errored).toBe(false);
+  });
+
+  it("treats a tiers-bearing error as designed degradation (diff capability unserved)", () => {
+    const err = new EngineError("/ops/git/diff", 502, {
+      tiers: { git: { available: false } },
+    });
+    const view = deriveGitFileDiffView({
+      ...base,
+      error: err,
+      isError: true,
+      enabled: true,
+    });
+    expect(view.degraded).toBe(true);
+    expect(view.errored).toBe(false);
+  });
+
+  it("treats a tiers-less fault as the errored branch", () => {
+    const err = new EngineError("/ops/git/diff", 500);
+    const view = deriveGitFileDiffView({
+      ...base,
+      error: err,
+      isError: true,
+      enabled: true,
+    });
+    expect(view.errored).toBe(true);
+    expect(view.degraded).toBe(false);
   });
 });

@@ -125,7 +125,7 @@ Re-skins the timeline surface onto the new tokens and the animated-transitions m
 
 Re-skins the git-diff browser onto the new tokens with the sacred diff green/red preserved, gated on the git-diff-browser surface ADR reaching accepted.
 
-- [ ] `W02.P13.S29` - Re-skin the git-diff browser onto the new tokens with the sacred diff green/red preserved per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P13.S29` - Re-skin the git-diff browser onto the new tokens with the sacred diff green/red preserved per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P14` - Worktree-switcher surface adoption
 
