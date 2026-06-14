@@ -148,6 +148,10 @@ export function adaptMap(body: unknown): MapResponse {
           has_vault: Boolean(w.has_vault),
           is_default: Boolean(w.is_main),
           degraded: Array.isArray(w.degraded) ? (w.degraded as string[]) : undefined,
+          // ahead/behind are null when no upstream is configured — map to
+          // undefined so callers can distinguish "unknown" from "0 ahead".
+          ahead: w.ahead != null ? Number(w.ahead) : undefined,
+          behind: w.behind != null ? Number(w.behind) : undefined,
         })),
       },
     ],

@@ -38,7 +38,7 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
             wts.into_iter()
                 .find(|wt| super::scope_token(&wt.path) == served)
         })
-        .map(|wt| json!({"head_ref": wt.head_ref, "dirty": wt.dirty}))
+        .map(|wt| json!({"head_ref": wt.head_ref, "dirty": wt.dirty, "ahead": wt.ahead, "behind": wt.behind}))
         .unwrap_or(json!(null));
     let data = json!({
         "ok": true,

@@ -66,6 +66,8 @@ pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
                 "dirty": wt.dirty,
                 "is_main": wt.is_main,
                 "has_vault": wt.path.join(".vault").is_dir(),
+                "ahead": wt.ahead,
+                "behind": wt.behind,
             })
         })
         .collect();

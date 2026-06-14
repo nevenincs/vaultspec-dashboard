@@ -91,6 +91,10 @@ export interface MapWorktree {
   has_vault: boolean;
   is_default?: boolean;
   degraded?: string[];
+  /** Commits in HEAD not yet pushed to upstream; absent when no upstream is configured. */
+  ahead?: number;
+  /** Commits in upstream not yet merged into HEAD; absent when no upstream is configured. */
+  behind?: number;
 }
 
 export interface MapRepository {
