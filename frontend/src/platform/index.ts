@@ -24,3 +24,7 @@ export * from "./dispatch/useAction";
 
 // Exception-handling policy (P04)
 export * from "./policy/failurePolicy";
+
+// Theme model (design-language adoption W01.P02.S09)
+export * from "./theme/themeController";
+export * from "./theme/useTheme";

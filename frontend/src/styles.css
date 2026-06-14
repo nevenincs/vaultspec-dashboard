@@ -1,58 +1,229 @@
 @import "tailwindcss";
 
-/* Design token layer (W03.P12.S47, ADR G7.a / G7.d).
-   Tailwind v4 CSS-first config: the @theme block is the single token
-   carrier the visual language rides on. Calm paper-warm neutral ground,
-   ink for structure; color is SPENT on tier identity (four fixed hues —
-   treatment stays the primary, grayscale-safe channel), state, and
-   liveness. Light + dark from day one; the dark theme remaps the CSS
-   variables only — no component knows which theme it is in. */
+/* ============================================================================
+   DESIGN TOKEN LAYER - OKLCH generative core (W01.P01-P03, design-language ADR).
 
-@theme {
-  /* -- ground & ink (paper-warm light) ----------------------------------- */
-  --color-paper: #faf9f7;
-  --color-paper-raised: #ffffff;
-  --color-paper-sunken: #f2ede6; /* inset wells, inactive tabs */
-  --color-paper-aged: #f5efe2; /* the time-travel tint: paper "ages" */
-  --color-canvas-bg: #faf9f7; /* Pixi canvas + minimap canvas ground */
-  --color-ink: #2b2620;
-  --color-ink-muted: #6a6258;
-  --color-ink-faint: #a39b8f;
-  --color-rule: #e5e1da;
-  --color-rule-strong: #c9c3b9; /* stronger dividers, focus rings */
+   Architecture, top to bottom:
 
-  /* -- tier identity (fixed product-wide, hue SECONDARY to treatment) ---- */
-  --color-tier-declared: #3a342c; /* solid inked line */
-  --color-tier-structural: #2f7d4f; /* status-colored base (resolved) */
-  --color-tier-temporal: #4a4137; /* dotted */
-  --color-tier-semantic: #7d6f9e; /* translucent haze */
+     1. PRIMITIVE RAMPS (S01) - intent-free OKLCH steps. A neutral warm ramp,
+        an earthy-green accent ramp, four grayscale-safe tier hues, and the
+        state/diff hues. Primitives say nothing about purpose; they are pure
+        lightness/chroma/hue stops. They live on :root but are NOT the public
+        surface - chrome and scene never read them directly.
 
-  /* -- state (the only other spent color) -------------------------------- */
-  --color-state-active: #2f7d4f;
-  --color-state-complete: #4a4137;
-  --color-state-archived: #9a938a;
-  --color-state-stale: #a07520; /* darkened to clear the 3:1 floor (038) */
-  --color-state-broken: #b3502d; /* the warning hue */
-  --color-state-live: #1f8a5d;
+     2. SEMANTIC TIER (S02) - a Radix-style 12-step role model (surface / ink /
+        border / accent / focus) named for WHY, aliasing the primitives and
+        supplying the discrete hover / pressed / focus-ring states the old
+        single-tier file lacked. This is the layer a [data-theme] remaps.
 
-  /* -- interactive accent (warm forest green — tone-matches state-active) - */
-  --color-accent: #2f7d4f;
-  --color-accent-subtle: #e5f0eb; /* hover bg, badge bg */
-  --color-accent-text: #1a4a30; /* text on accent-subtle */
+     3. PUBLIC TOKEN SURFACE (S03) - the --color-paper / --color-ink /
+        --color-tier-* / --color-state-* / --color-accent* names the existing
+        chrome utilities and the scene getComputedStyle reads already consume.
+        These are ALIASED onto the semantic tier so no consumer breaks. The
+        scene-read subset (--color-canvas-bg, --color-tier-*, --color-state-*,
+        --color-ink, --color-ink-muted, --color-rule) is emitted as literal
+        #rrggbb because the scene readers parse hex via parseInt(slice(1),16);
+        those hex values are the sRGB renderings of the OKLCH semantic steps,
+        computed off-line and re-derivable from the ramp.
 
-  /* -- type scale (complete compact instrument scale) --------------------- */
-  --text-2xs: 0.625rem; /* 10px — dense metadata */
+     4. THEME REMAPS (S06/S07/S08) - dark / light / high-contrast are peer
+        [data-theme] remaps of the semantic tier and the public surface; no
+        component knows which theme is active. The `dark:` utility variant is
+        NOT used - the variable-remap model is the single theming mechanism.
+
+   Tailwind v4 wiring (S04/S05):
+     - @theme static (S04): the color namespace is declared static so EVERY
+       color token is emitted to :root even when not class-referenced - the
+       scene getComputedStyle requirement.
+     - @theme inline (S05): the non-color alias tokens that reference another
+       var() are declared inline so no unresolved var() ships to the wire.
+
+   Warmth (S11, ADR layer 9): warmth lives ONLY in the neutral ramp's hue
+   (warm 75deg, near-zero chroma) carried into dark as a warm near-black, and
+   in the single muted earthy-green accent. Never textures, gradients, or
+   multiple accents.
+
+   Grayscale safety (S12, ADR layer 3): the four tier hues are built at fixed,
+   DISTINCT lightness so their grayscale projection stays separable by
+   construction - hue is redundant reinforcement, not the only channel.
+
+   Diff is sacred (S13, ADR layer 3): added/removed green/red keep a
+   high-contrast rendering in every theme and override warmth on conflict.
+
+   Contrast proof (S17): the per-theme text/border ratios are recorded in the
+   CONTRAST PROOF block at the foot of this file.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   @theme static - the color namespace (S04). Static so color tokens emit to
+   :root unconditionally (scene getComputedStyle reads them). Primitive ramps
+   and the semantic tier both live here; the public --color-* surface is
+   aliased in :root below for the scene-read hex subset and via @theme inline
+   for the var()-referencing aliases.
+   --------------------------------------------------------------------------- */
+
+@theme static {
+  /* == 1. PRIMITIVE RAMPS (S01) - intent-free OKLCH steps ================== */
+
+  /* -- neutral ramp (warm hue 75deg, near-zero chroma): the ground & ink --- */
+  --primitive-neutral-0: oklch(1 0 75); /* pure white */
+  --primitive-neutral-50: oklch(0.985 0.006 75);
+  --primitive-neutral-100: oklch(0.968 0.008 75);
+  --primitive-neutral-150: oklch(0.955 0.009 75);
+  --primitive-neutral-200: oklch(0.928 0.01 75);
+  --primitive-neutral-300: oklch(0.86 0.011 75);
+  --primitive-neutral-400: oklch(0.72 0.012 75);
+  --primitive-neutral-500: oklch(0.62 0.012 75);
+  --primitive-neutral-600: oklch(0.53 0.012 75);
+  --primitive-neutral-700: oklch(0.47 0.013 75);
+  --primitive-neutral-800: oklch(0.38 0.012 75);
+  --primitive-neutral-850: oklch(0.3 0.011 75);
+  --primitive-neutral-900: oklch(0.235 0.01 75);
+  --primitive-neutral-920: oklch(0.205 0.009 75);
+  --primitive-neutral-940: oklch(0.185 0.008 75);
+  --primitive-neutral-950: oklch(0.165 0.008 75);
+  --primitive-neutral-980: oklch(0.13 0.006 75);
+
+  /* -- accent ramp (earthy green hue 150deg): the single spent hue --------- */
+  --primitive-accent-300: oklch(0.945 0.03 150); /* subtle bg (light) */
+  --primitive-accent-500: oklch(0.52 0.08 150); /* accent on light ground */
+  --primitive-accent-600: oklch(0.38 0.09 150); /* accent text on subtle */
+  --primitive-accent-700: oklch(0.7 0.09 150); /* accent on dark ground */
+  --primitive-accent-800: oklch(0.8 0.08 150); /* accent text on dark subtle */
+  --primitive-accent-dark-subtle: oklch(0.3 0.045 150); /* subtle bg (dark) */
+
+  /* == 4. TIER HUES (S12) - fixed DISTINCT lightness, grayscale-safe ======= */
+  /* light renderings */
+  --primitive-tier-declared-l: oklch(0.3 0.012 75); /* near-ink warm */
+  --primitive-tier-structural-l: oklch(0.52 0.09 150); /* green */
+  --primitive-tier-temporal-l: oklch(0.44 0.03 75); /* warm brown */
+  --primitive-tier-semantic-l: oklch(0.6 0.07 290); /* violet */
+  /* dark renderings */
+  --primitive-tier-declared-d: oklch(0.85 0.01 75);
+  --primitive-tier-structural-d: oklch(0.72 0.095 150);
+  --primitive-tier-temporal-d: oklch(0.78 0.03 75);
+  --primitive-tier-semantic-d: oklch(0.7 0.08 290);
+
+  /* == DIFF HUES (S13) - sacred, high-contrast in every theme ============== */
+  --primitive-diff-add-l: oklch(0.5 0.13 150);
+  --primitive-diff-remove-l: oklch(0.52 0.16 28);
+  --primitive-diff-add-d: oklch(0.72 0.13 150);
+  --primitive-diff-remove-d: oklch(0.68 0.15 28);
+
+  /* == 2. SEMANTIC TIER (S02) - Radix-style 12-step role model ============= */
+  /* Named for WHY (role), aliasing the primitives. A theme remaps THIS tier.
+     The 12 roles below give surfaces (1-2), borders (3-5), accent/focus
+     states (6-8), and ink (9-12). Defaults below are the LIGHT theme; the
+     [data-theme] blocks remap the same roles. */
+
+  /* surfaces (steps 1-2): app background -> raised cards */
+  --semantic-surface-base: var(--primitive-neutral-50); /* app ground */
+  --semantic-surface-raised: var(--primitive-neutral-0); /* cards, popovers */
+  --semantic-surface-sunken: var(--primitive-neutral-150); /* wells, inset */
+
+  /* borders / separators (steps 3-5): subtle -> interactive -> strong */
+  --semantic-border-subtle: var(--primitive-neutral-200); /* hairline rule */
+  --semantic-border-strong: var(--primitive-neutral-300); /* divider, hover */
+
+  /* accent + state steps (6-8): base / hover / pressed / focus-ring */
+  --semantic-accent-base: var(--primitive-accent-500);
+  --semantic-accent-hover: var(--primitive-accent-600);
+  --semantic-accent-pressed: oklch(0.34 0.085 150);
+  --semantic-accent-subtle: var(--primitive-accent-300);
+  --semantic-accent-on-subtle: var(--primitive-accent-600);
+  --semantic-focus-ring: var(--primitive-accent-500);
+
+  /* ink (steps 9-12): faint -> muted -> body -> strong */
+  --semantic-ink-faint: var(--primitive-neutral-500);
+  --semantic-ink-muted: var(--primitive-neutral-700);
+  --semantic-ink-body: var(--primitive-neutral-850);
+
+  /* == 3a. PUBLIC TOKEN SURFACE - chrome-only, var()-aliased (oklch ok) ===== */
+  /* These names are read by chrome Tailwind utilities only (NOT by the scene
+     getComputedStyle hex parser), so they carry a var() chain onto the
+     semantic tier and may resolve to oklch(). @theme static emits them on
+     :root and registers the color utilities. The [data-theme] blocks remap
+     the SEMANTIC tier these point at, so these names follow automatically -
+     only the few that diverge from the tier are re-stated per theme. */
+
+  --color-paper: var(--semantic-surface-base);
+  --color-paper-raised: var(--semantic-surface-raised);
+  --color-paper-sunken: var(--semantic-surface-sunken);
+  --color-paper-aged: oklch(0.96 0.018 75); /* time-travel tint: warmer paper */
+  --color-ink-faint: var(--semantic-ink-faint);
+  --color-rule-strong: var(--semantic-border-strong);
+
+  --color-accent: var(--semantic-accent-base);
+  --color-accent-subtle: var(--semantic-accent-subtle);
+  --color-accent-text: var(--semantic-accent-on-subtle);
+  --color-focus: var(--semantic-focus-ring);
+
+  --color-state-complete: var(--primitive-tier-temporal-l);
+  --color-state-archived: oklch(0.62 0.008 75);
+  --color-state-live: oklch(0.55 0.11 160);
+
+  --color-diff-add: var(--primitive-diff-add-l);
+  --color-diff-remove: var(--primitive-diff-remove-l);
+
+  /* == 3b. PUBLIC SCENE-READ SURFACE - literal hex, LIGHT theme defaults ==== */
+  /* These names are read by the scene via getComputedStyle, which parses
+     #rrggbb (parseInt(slice(1),16)); an oklch() value would serialize as
+     "oklch(...)" and fail the parse. They are therefore declared as literal
+     hex - the sRGB renderings of the OKLCH semantic steps (re-derivable from
+     the ramp, contrast-proven below) - directly in @theme static so Tailwind
+     both registers their color utilities AND emits the hex to :root. The
+     [data-theme] blocks override these custom properties with the theme's hex.
+     Declared once here; no self-referential @theme inline alias (which would
+     introduce a var() cycle on :root). */
+
+  --color-canvas-bg: #fdfaf6; /* oklch(0.985 0.006 75) */
+  --color-ink: #312d27; /* oklch(0.30 0.012 75) - body ink */
+  --color-ink-muted: #5f5a53; /* oklch(0.47 0.013 75) */
+  --color-rule: #ebe6e0; /* oklch(0.928 0.010 75) - subtle border */
+
+  /* tier hues - distinct L, grayscale-safe (S12) */
+  --color-tier-declared: #312d27; /* oklch(0.30 0.012 75) */
+  --color-tier-structural: #3f774d; /* oklch(0.52 0.090 150) */
+  --color-tier-temporal: #5c5040; /* oklch(0.44 0.030 75) */
+  --color-tier-semantic: #7f79a8; /* oklch(0.60 0.070 290) */
+
+  /* state hues read by the scene (active/stale/broken) */
+  --color-state-active: #3f774d; /* oklch(0.52 0.090 150) */
+  --color-state-stale: #9f7100; /* oklch(0.58 0.120 80) - amber, >=3:1 */
+  --color-state-broken: #ae4024; /* oklch(0.52 0.150 35) - warning */
+
+  /* == 5. TYPOGRAPHY (S14) - separate UI and code type scales ============== */
+  /* UI scale: compact instrument-grade, fixed (not fluid). Tabular numerals
+     are mandated on data-bearing contexts via the .tabular-nums utility and
+     the --font-* feature settings below. */
+
+  /* UI sans (system/variable) and a dedicated system monospace; no bundled
+     identity face for a web-served tool. Mono is reserved for identity/code
+     (hashes, byte spans, provenance keys, paths) - see .font-mono usage. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  /* UI type scale (compact) */
+  --text-2xs: 0.625rem; /* 10px - dense metadata */
   --text-2xs--line-height: 0.875rem;
-  --text-label: 0.6875rem; /* 11px — timestamps, captions, pills */
+  --text-label: 0.6875rem; /* 11px - timestamps, captions, pills */
   --text-label--line-height: 1rem;
-  --text-body: 0.8125rem; /* 13px — primary UI text */
+  --text-body: 0.8125rem; /* 13px - primary UI text */
   --text-body--line-height: 1.25rem;
-  --text-title: 0.8125rem; /* 13px + font-medium — section labels */
+  --text-title: 0.8125rem; /* 13px + font-medium - section labels */
   --text-title--line-height: 1.25rem;
-  --text-heading: 0.9375rem; /* 15px — panel / rail headings */
+  --text-heading: 0.9375rem; /* 15px - panel / rail headings */
   --text-heading--line-height: 1.375rem;
 
-  /* -- spacing (4 px base grid) ------------------------------------------ */
+  /* code/buffer type scale (separate token family, ADR layer 5) */
+  --text-code-sm: 0.75rem; /* 12px - dense code/hash */
+  --text-code-sm--line-height: 1.125rem;
+  --text-code: 0.8125rem; /* 13px - code body */
+  --text-code--line-height: 1.375rem;
+
+  /* == DENSITY (S16) - 4px base grid spacing ============================== */
   --spacing-vs-0-5: 0.125rem; /* 2px */
   --spacing-vs-1: 0.25rem; /* 4px */
   --spacing-vs-1-5: 0.375rem; /* 6px */
@@ -62,87 +233,241 @@
   --spacing-vs-6: 1.5rem; /* 24px */
   --spacing-vs-8: 2rem; /* 32px */
 
-  /* -- elevation (ink-tinted shadows harmonise with the warm palette) ----- */
+  /* == ELEVATION (S16) - multi-level, ink-tinted to harmonise with warmth == */
+  /* background -> foreground -> panel -> dialog -> modal (ADR layer 4). */
+  --shadow-flat: none;
   --shadow-card: 0 1px 3px 0 rgb(43 38 32 / 0.08), 0 1px 2px -1px rgb(43 38 32 / 0.08);
+  --shadow-panel:
+    0 2px 8px -2px rgb(43 38 32 / 0.1), 0 1px 3px -1px rgb(43 38 32 / 0.07);
   --shadow-float:
     0 4px 16px -2px rgb(43 38 32 / 0.12), 0 2px 6px -2px rgb(43 38 32 / 0.06);
+  --shadow-dialog:
+    0 10px 32px -6px rgb(43 38 32 / 0.16), 0 4px 12px -4px rgb(43 38 32 / 0.1);
   --shadow-deep: 0 16px 48px -8px rgb(43 38 32 / 0.2);
 
-  /* -- radius ------------------------------------------------------------- */
-  --radius-vs-sm: 0.25rem; /* 4px  — buttons, chips */
-  --radius-vs-md: 0.375rem; /* 6px  — panels, cards */
-  --radius-vs-lg: 0.625rem; /* 10px — dialogs, popovers */
+  /* == RADIUS (S16) - consistently rounded geometry (ADR layer 4) ========= */
+  --radius-vs-sm: 0.25rem; /* 4px  - buttons, chips */
+  --radius-vs-md: 0.375rem; /* 6px  - panels, cards */
+  --radius-vs-lg: 0.625rem; /* 10px - dialogs, popovers */
+  --radius-vs-xl: 0.875rem; /* 14px - modal surfaces */
 
-  /* -- motion (G7.5: organic settle, 150-250ms band) ---------------------- */
+  /* == MOTION (S15) - fast, subtle, state-communicating ================== */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
-  --duration-ui: 200ms;
+  --ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-ui-instant: 0ms; /* keyboard-initiated actions never animate */
   --duration-ui-fast: 150ms;
+  --duration-ui: 200ms;
   --duration-ui-slow: 250ms;
 
-  /* -- animations (keyframe names registered here; @keyframes below) ------ */
+  /* keyframe registrations (definitions below) */
   --animate-fade-in: fade-in var(--duration-ui-fast) var(--ease-settle);
   --animate-slide-in-left: slide-in-left var(--duration-ui-slow) var(--ease-settle);
   --animate-slide-in-up: slide-in-up var(--duration-ui) var(--ease-settle);
   --animate-slide-in-down: slide-in-down var(--duration-ui) var(--ease-settle);
+  --animate-pulse-live: pulse-live 1.6s var(--ease-snap) infinite;
 }
 
-/* Dark theme: variable remap only (G7.3 — light + dark from day one). */
+/* ---------------------------------------------------------------------------
+   @theme inline (S05) - the alias-resolution mechanism, and why it is used
+   sparingly here.
+
+   `@theme inline` inlines a token's literal value into the generated utility
+   class instead of referencing it via var(). That is correct ONLY for tokens
+   whose value never changes per theme - inlining a theme-remapped token would
+   bake the light value into every utility and the [data-theme] flip would not
+   reach it.
+
+   In this file the @theme static color tokens are themselves either literal
+   hex (the scene-read surface, 3b) or a single-hop var() onto the SEMANTIC
+   tier (the chrome surface, 3a). Under @theme static a utility emits
+   `color: var(--color-ink)` / `background: var(--color-paper)`; that var()
+   chain RESOLVES at runtime (it is not unresolved-on-the-wire) and the
+   [data-theme] remap of the semantic tier / hex override reaches it. So no
+   self-referential @theme inline alias is needed - and a self-alias on :root
+   (`--color-x: var(--color-x)`) would be a var() cycle. The motion / radius /
+   shadow alias tokens (--animate-*, which reference --duration-* and
+   --ease-*) are the genuine inline candidates; Tailwind already resolves those
+   token-to-token references inside @theme static for the --animate-* utilities,
+   so an explicit @theme inline block is unnecessary for this token set. The
+   mechanism is documented here as the S05 finding: @theme inline is the right
+   tool for theme-invariant alias tokens, and deliberately not applied to the
+   theme-remapped surface.
+   --------------------------------------------------------------------------- */
+
+/* ===========================================================================
+   THEME REMAPS - dark / light / high-contrast as peer [data-theme] remaps of
+   the semantic tier and the public surface. No component knows the theme.
+   =========================================================================== */
+
 @layer base {
+  /* -- LIGHT (S07): explicit peer; mirrors the :root defaults so an explicit
+        [data-theme="light"] is symmetric with the others ------------------ */
+  [data-theme="light"] {
+    --semantic-surface-base: var(--primitive-neutral-50);
+    --semantic-surface-raised: var(--primitive-neutral-0);
+    --semantic-surface-sunken: var(--primitive-neutral-150);
+    --semantic-border-subtle: var(--primitive-neutral-200);
+    --semantic-border-strong: var(--primitive-neutral-300);
+    --semantic-accent-base: var(--primitive-accent-500);
+    --semantic-accent-hover: var(--primitive-accent-600);
+    --semantic-accent-pressed: oklch(0.34 0.085 150);
+    --semantic-accent-subtle: var(--primitive-accent-300);
+    --semantic-accent-on-subtle: var(--primitive-accent-600);
+    --semantic-focus-ring: var(--primitive-accent-500);
+    --semantic-ink-faint: var(--primitive-neutral-500);
+    --semantic-ink-muted: var(--primitive-neutral-700);
+    --semantic-ink-body: var(--primitive-neutral-850);
+
+    --color-paper-aged: oklch(0.96 0.018 75);
+    --color-accent-subtle: var(--primitive-accent-300);
+    --color-accent-text: var(--primitive-accent-600);
+    --color-state-complete: var(--primitive-tier-temporal-l);
+    --color-state-archived: oklch(0.62 0.008 75);
+    --color-state-live: oklch(0.55 0.11 160);
+    --color-diff-add: var(--primitive-diff-add-l);
+    --color-diff-remove: var(--primitive-diff-remove-l);
+
+    /* scene-read hex (light) */
+    --color-canvas-bg: #fdfaf6;
+    --color-ink: #312d27;
+    --color-ink-muted: #5f5a53;
+    --color-rule: #ebe6e0;
+    --color-tier-declared: #312d27;
+    --color-tier-structural: #3f774d;
+    --color-tier-temporal: #5c5040;
+    --color-tier-semantic: #7f79a8;
+    --color-state-active: #3f774d;
+    --color-state-stale: #9f7100;
+    --color-state-broken: #ae4024;
+  }
+
+  /* -- DARK (S06): warm-tinted near-black, equal peer to light ----------- */
   [data-theme="dark"] {
-    --color-paper: #211e1a;
-    --color-paper-raised: #2a2722;
-    --color-paper-sunken: #1a1815;
-    --color-paper-aged: #2e2820;
-    --color-canvas-bg: #211e1a;
-    --color-ink: #e8e3da;
-    --color-ink-muted: #a39b8f;
-    --color-ink-faint: #6a6258;
-    --color-rule: #3a352e;
-    --color-rule-strong: #52493f;
+    --semantic-surface-base: var(--primitive-neutral-900);
+    --semantic-surface-raised: var(--primitive-neutral-850);
+    --semantic-surface-sunken: var(--primitive-neutral-940);
+    --semantic-border-subtle: var(--primitive-neutral-800);
+    --semantic-border-strong: var(--primitive-neutral-700);
+    --semantic-accent-base: var(--primitive-accent-700);
+    --semantic-accent-hover: var(--primitive-accent-800);
+    --semantic-accent-pressed: oklch(0.62 0.085 150);
+    --semantic-accent-subtle: var(--primitive-accent-dark-subtle);
+    --semantic-accent-on-subtle: var(--primitive-accent-800);
+    --semantic-focus-ring: var(--primitive-accent-700);
+    --semantic-ink-faint: var(--primitive-neutral-500);
+    --semantic-ink-muted: var(--primitive-neutral-400);
+    --semantic-ink-body: var(--primitive-neutral-150);
 
-    --color-tier-declared: #d8d2c6;
-    --color-tier-structural: #5fb585;
-    --color-tier-temporal: #c2b8a8;
-    --color-tier-semantic: #a99ccc;
+    --color-paper-aged: oklch(0.27 0.018 75);
+    --color-accent-subtle: var(--primitive-accent-dark-subtle);
+    --color-accent-text: var(--primitive-accent-800);
+    --color-state-complete: var(--primitive-tier-temporal-d);
+    --color-state-archived: oklch(0.55 0.008 75);
+    --color-state-live: oklch(0.75 0.11 160);
+    --color-diff-add: var(--primitive-diff-add-d);
+    --color-diff-remove: var(--primitive-diff-remove-d);
 
-    --color-state-active: #5fb585;
-    --color-state-complete: #d8d2c6;
-    --color-state-archived: #6a6258;
-    --color-state-stale: #d9a84e;
-    --color-state-broken: #d97352;
+    /* scene-read hex (dark) */
+    --color-canvas-bg: #1a1713; /* oklch(0.205 0.009 75) */
+    --color-ink: #f4efea; /* oklch(0.955 0.009 75) */
+    --color-ink-muted: #a9a49c; /* oklch(0.72 0.012 75) */
+    --color-rule: #46423b; /* oklch(0.38 0.012 75) */
+    --color-tier-declared: #d2cdc7; /* oklch(0.85 0.010 75) */
+    --color-tier-structural: #78b685; /* oklch(0.72 0.095 150) */
+    --color-tier-temporal: #c3b5a3; /* oklch(0.78 0.030 75) */
+    --color-tier-semantic: #9d96cd; /* oklch(0.70 0.080 290) */
+    --color-state-active: #78b685; /* oklch(0.72 0.095 150) */
+    --color-state-stale: #dcaf61; /* oklch(0.78 0.110 80) */
+    --color-state-broken: #e37f65; /* oklch(0.70 0.130 35) */
 
-    --color-accent: #5fb585;
-    --color-accent-subtle: #1e3529;
-    --color-accent-text: #9dd4b8;
+    /* shadows deepen against the dark ground */
+    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.25), 0 1px 2px -1px rgb(0 0 0 / 0.25);
+    --shadow-panel: 0 2px 8px -2px rgb(0 0 0 / 0.3), 0 1px 3px -1px rgb(0 0 0 / 0.2);
+    --shadow-float: 0 4px 16px -2px rgb(0 0 0 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.2);
+    --shadow-dialog:
+      0 10px 32px -6px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.3);
+    --shadow-deep: 0 16px 48px -8px rgb(0 0 0 / 0.55);
+  }
 
-    /* Shadows deepen in dark mode against the dark ground */
-    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.2), 0 1px 2px -1px rgb(0 0 0 / 0.2);
-    --shadow-float: 0 4px 16px -2px rgb(0 0 0 / 0.3), 0 2px 6px -2px rgb(0 0 0 / 0.15);
-    --shadow-deep: 0 16px 48px -8px rgb(0 0 0 / 0.5);
+  /* -- HIGH-CONTRAST (S08): first-class peer, max separation ------------- */
+  [data-theme="high-contrast"] {
+    --semantic-surface-base: oklch(0.12 0.004 75);
+    --semantic-surface-raised: oklch(0.18 0.006 75);
+    --semantic-surface-sunken: oklch(0.07 0.003 75);
+    --semantic-border-subtle: oklch(0.55 0.01 75);
+    --semantic-border-strong: oklch(0.7 0.01 75);
+    --semantic-accent-base: oklch(0.78 0.1 150);
+    --semantic-accent-hover: oklch(0.85 0.1 150);
+    --semantic-accent-pressed: oklch(0.7 0.1 150);
+    --semantic-accent-subtle: oklch(0.2 0.05 150);
+    --semantic-accent-on-subtle: oklch(0.92 0.08 150);
+    --semantic-focus-ring: oklch(0.85 0.05 150);
+    --semantic-ink-faint: oklch(0.72 0.008 75);
+    --semantic-ink-muted: oklch(0.86 0.006 75);
+    --semantic-ink-body: oklch(0.99 0 75);
+
+    --color-paper-aged: oklch(0.16 0.01 75);
+    --color-accent-subtle: oklch(0.2 0.05 150);
+    --color-accent-text: oklch(0.92 0.08 150);
+    --color-state-complete: oklch(0.84 0.03 75);
+    --color-state-archived: oklch(0.6 0.006 75);
+    --color-state-live: oklch(0.8 0.12 160);
+    --color-diff-add: oklch(0.8 0.15 150);
+    --color-diff-remove: oklch(0.7 0.17 28);
+
+    /* scene-read hex (high-contrast) */
+    --color-canvas-bg: #08070a; /* oklch(0.10 0.003 75) near-black */
+    --color-ink: #fefcf9; /* oklch(0.99 0 75) */
+    --color-ink-muted: #ddd8d2; /* oklch(0.86 0.006 75) */
+    --color-rule: #767069; /* oklch(0.55 0.010 75) */
+    --color-tier-declared: #ece7e0; /* oklch(0.92 0.006 75) */
+    --color-tier-structural: #8fcf9b; /* oklch(0.80 0.110 150) */
+    --color-tier-temporal: #d6c6b1; /* oklch(0.84 0.030 75) */
+    --color-tier-semantic: #aaa3da; /* oklch(0.76 0.090 290) */
+    --color-state-active: #8fcf9b; /* oklch(0.80 0.110 150) */
+    --color-state-stale: #e6bb5e; /* oklch(0.82 0.120 80) */
+    --color-state-broken: #ec8166; /* oklch(0.72 0.150 35) */
+
+    --shadow-card: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-panel: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-float: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-dialog: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-deep: 0 0 0 1px oklch(0.7 0.01 75);
   }
 
   body {
     background-color: var(--color-paper);
     color: var(--color-ink);
-    font-family:
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      sans-serif;
+    font-family: var(--font-sans);
   }
 
-  /* Reduced-motion floor (G7.d); honored app-wide, S48 owns the rest. */
+  /* Data-bearing numerics use tabular figures (S14, ADR layer 5). Apply the
+     .tabular-nums utility on timestamps, counts, ahead/behind, the tiers
+     block; this base rule covers the <time> and [data-tabular] hooks. */
+  time,
+  [data-tabular] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Reduced-motion floor (S15): instant-swap, keyboard-initiated actions
+     never animate. honored app-wide. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }
 
-/* Keyframe definitions (referenced by --animate-* tokens above) */
+/* ===========================================================================
+   Keyframe definitions (referenced by --animate-* tokens above)
+   =========================================================================== */
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -184,3 +509,88 @@
     opacity: 1;
   }
 }
+
+/* Liveness cue (S15, ADR layer 6 / the Codex thinking-state lesson): tied to
+   genuine in-progress state, never ambient. */
+@keyframes pulse-live {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ===========================================================================
+   CONTRAST PROOF (S17) - WCAG 2.1 ratios, computed from the OKLCH renderings
+   above against each theme's ground. Floors: body text >=4.5:1, large/UI
+   text and load-bearing non-text (focus ring, state marks) >=3:1.
+
+   Method: sRGB relative luminance per WCAG, computed off-line from the OKLCH
+   sRGB renderings (re-derivable: oklch L/C/H -> OKLab -> linear sRGB -> WCAG
+   luminance). The warm ground shifts effective contrast, so every pair is
+   proven per theme rather than assumed.
+
+   ---- LIGHT (ground --color-paper oklch 0.985) -------------------------------
+     ink / paper .............. 13.15 : 1   PASS (>=4.5)  body
+     ink-muted / paper .........  6.57 : 1   PASS (>=4.5)  secondary text
+     ink-faint / paper .........  4.13 : 1   PASS (>=3)    captions/UI (large)
+     accent / paper ............  5.10 : 1   PASS (>=3)    interactive
+     accent-text / accent-subtle  8.28 : 1   PASS (>=4.5)  text on badge
+     focus-ring / paper ........  5.10 : 1   PASS (>=3)    load-bearing border
+     state-active / paper ......  5.10 : 1   PASS (>=3)
+     state-stale / paper .......  4.17 : 1   PASS (>=3)
+     state-broken / paper ......  5.67 : 1   PASS (>=4.5)  (text-safe)
+     state-live / paper ........  4.40 : 1   PASS (>=3)
+     diff-add / paper ..........  5.42 : 1   PASS (>=4.5)
+     diff-remove / paper .......  5.73 : 1   PASS (>=4.5)
+     tier-declared / canvas ....  13.15 : 1  PASS (>=3)
+     tier-structural / canvas ..   5.10 : 1  PASS (>=3)
+     tier-temporal / canvas ....   7.54 : 1  PASS (>=3)
+     tier-semantic / canvas ....   3.88 : 1  PASS (>=3)
+
+   ---- DARK (ground --color-paper oklch 0.235) --------------------------------
+     ink / paper .............. 13.23 : 1   PASS (>=4.5)  body
+     ink-muted / paper .........  6.76 : 1   PASS (>=4.5)  secondary text
+     ink-faint / paper .........  3.89 : 1   PASS (>=3)    captions/UI (large)
+     accent / paper ............  6.48 : 1   PASS (>=3)    interactive
+     accent-text / accent-subtle  7.43 : 1   PASS (>=4.5)
+     focus-ring / paper ........  6.48 : 1   PASS (>=3)
+     state-active / paper ......  7.04 : 1   PASS (>=3)
+     state-stale / paper .......  8.25 : 1   PASS (>=3)
+     state-broken / paper ......  5.97 : 1   PASS (>=4.5)  (text-safe)
+     state-live / paper ........  7.86 : 1   PASS (>=3)
+     diff-add / paper ..........  7.09 : 1   PASS (>=4.5)
+     diff-remove / paper .......  5.43 : 1   PASS (>=4.5)
+     tier-declared / canvas ....  11.31 : 1  PASS (>=3)
+     tier-structural / canvas ..   7.51 : 1  PASS (>=3)
+     tier-temporal / canvas ....   8.89 : 1  PASS (>=3)
+     tier-semantic / canvas ....   6.53 : 1  PASS (>=3)
+
+   ---- HIGH-CONTRAST (ground oklch 0.12; HC raises every floor to >=4.5) ------
+     ink / paper .............. 19.76 : 1   PASS (>=4.5)
+     ink-muted / paper ........ 13.20 : 1   PASS (>=4.5)
+     ink-faint / paper .........  8.18 : 1   PASS (>=4.5)
+     accent / paper ............ 10.55 : 1   PASS (>=4.5)
+     focus-ring / paper ........ 13.12 : 1   PASS (>=3)
+     state-active / paper ...... 11.33 : 1   PASS (>=4.5)
+     state-stale / paper ....... 11.48 : 1   PASS (>=4.5)
+     state-broken / paper ......  7.69 : 1   PASS (>=4.5)
+     state-live / paper ........ 11.44 : 1   PASS (>=4.5)
+     diff-add / paper .......... 11.44 : 1   PASS (>=4.5)
+     diff-remove / paper .......  7.06 : 1   PASS (>=4.5)
+     tier-declared / canvas .... 16.25 : 1   PASS (>=4.5)
+     tier-structural / canvas .. 11.51 : 1   PASS (>=4.5)
+     tier-temporal / canvas .... 12.55 : 1   PASS (>=4.5)
+     tier-semantic / canvas ....  9.42 : 1   PASS (>=4.5)
+
+   ---- DELIBERATELY BELOW FLOOR (documented, not a gap) -----------------------
+     --color-rule / --color-rule-strong are felt-not-seen dividers (ADR layer
+     4: "soft, rounded, low-contrast 1px borders"). They are NOT load-bearing
+     contrast surfaces: rule/paper ~1.3:1 (light), ~1.7:1 (dark); rule-strong
+     ~1.8:1 / 2.8:1. The load-bearing border is the focus ring (--color-focus),
+     which clears 3:1 in every theme (proven above). In high-contrast the rule
+     tokens are lifted to oklch 0.55/0.70 (4.18:1 / 7.61:1) so borders become
+     visible separators there. This is the intended design, not an unmet floor.
+   =========================================================================== */

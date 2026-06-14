@@ -1,8 +1,10 @@
-import { ChevronLeft, ChevronRight, Moon, Sun } from "lucide-react";
+import { ChevronLeft, ChevronRight, Contrast, Monitor, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
+import type { ThemePreference } from "../platform/theme/themeController";
+import { useTheme } from "../platform/theme/useTheme";
 import { useViewStore } from "../stores/view/viewStore";
 import { VaultBrowser } from "./left/VaultBrowser";
 import { KeyboardNav } from "./a11y/KeyboardNav";
@@ -143,23 +145,34 @@ export function AppShell() {
   );
 }
 
-/** Light + dark from day one (G7.3): remaps the token variables only. */
+// Theme preferences the toggle cycles through (ADR layer 2): system
+// auto-switch plus the three peer themes as manual overrides. The controller
+// owns <html>; this button only cycles the preference and never touches
+// data-theme directly (no dark: utility variant).
+const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark", "high-contrast"];
+
+const THEME_META: Record<ThemePreference, { icon: typeof Sun; label: string }> = {
+  system: { icon: Monitor, label: "system theme (auto)" },
+  light: { icon: Sun, label: "light theme" },
+  dark: { icon: Moon, label: "dark theme" },
+  "high-contrast": { icon: Contrast, label: "high-contrast theme" },
+};
+
+/** Theme model (S09): cycles preference through system/light/dark/high-contrast. */
 function ThemeToggle() {
-  const [dark, setDark] = useState(
-    () => document.documentElement.dataset.theme === "dark",
-  );
+  const { preference, setPreference } = useTheme();
+  const current = THEME_META[preference];
+  const Icon = current.icon;
+  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(preference) + 1) % THEME_CYCLE.length];
   return (
     <button
       type="button"
-      aria-label={dark ? "switch to light theme" : "switch to dark theme"}
+      aria-label={`theme: ${current.label}; click for ${THEME_META[next].label}`}
+      title={current.label}
       className="flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
-      onClick={() => {
-        const next = !dark;
-        setDark(next);
-        document.documentElement.dataset.theme = next ? "dark" : "light";
-      }}
+      onClick={() => setPreference(next)}
     >
-      {dark ? <Sun size={12} /> : <Moon size={12} />}
+      <Icon size={12} />
     </button>
   );
 }

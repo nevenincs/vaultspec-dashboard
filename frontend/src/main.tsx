@@ -7,6 +7,7 @@ import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
 import { installGlobalTraps } from "./platform/logger/globalTraps";
 import { ringBuffer } from "./platform/logger/logger";
 import { failurePolicy } from "./platform/policy/failurePolicy";
+import { getThemeController } from "./platform/theme/themeController";
 import { useLiveStatusStore } from "./stores/server/liveStatus";
 import { queryClient } from "./stores/server/queryClient";
 import { router } from "./router";
@@ -28,6 +29,11 @@ if (import.meta.env.VITE_MOCK_ENGINE === "1") {
   ]);
   engineClient.useTransport(getMockEngine().fetchImpl);
 }
+
+// Theme model (design-language adoption S09): resolve the stored preference
+// (or system auto-switch) and apply [data-theme] to <html> before first paint
+// so there is no theme flash, and begin OS media listening for "system".
+getThemeController();
 
 // Last-resort net for failures that escape React entirely (ADR D5).
 installGlobalTraps();
