@@ -2,6 +2,7 @@
 
 pub mod ops;
 pub mod query;
+pub mod session;
 pub mod spa;
 pub mod stream;
 pub mod temporal;
