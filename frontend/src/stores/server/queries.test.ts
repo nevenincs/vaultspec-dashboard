@@ -188,22 +188,42 @@ describe("deriveDiscoverView (canvas-controls discover, contract §4)", () => {
 });
 
 describe("engineKeys", () => {
-  it("keys graph slices by the (scope, filter, as-of, granularity) tuple", () => {
+  it("keys graph slices by the (scope, filter, as-of, granularity, lens) tuple", () => {
     const a = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
     const b = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
     const c = engineKeys.graph("wt-2", { tiers: { semantic: false } }, 123);
     const d = engineKeys.graph("wt-1", { tiers: { semantic: false } });
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    // Defaults: as-of "live", granularity "document" (the engine's default).
-    expect(d[d.length - 2]).toBe("live");
-    expect(d[d.length - 1]).toBe("document");
+    // Defaults: as-of "live", granularity "document", lens "status" (the engine's
+    // defaults). The lens (graph-node-salience) folds into the tail of the key.
+    expect(d[d.length - 3]).toBe("live");
+    expect(d[d.length - 2]).toBe("document");
+    expect(d[d.length - 1]).toBe("status");
     // Granularity is part of the cache identity: the constellation (feature)
     // and a document slice never collide in cache.
     const feature = engineKeys.graph("wt-1", undefined, undefined, "feature");
     const document = engineKeys.graph("wt-1", undefined, undefined, "document");
     expect(feature).not.toEqual(document);
-    expect(feature[feature.length - 1]).toBe("feature");
+    expect(feature[feature.length - 2]).toBe("feature");
+    // The salience lens is also part of the cache identity: DOI makes the served
+    // node set lens-dependent, so two lenses are distinct slices.
+    const statusLens = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+    );
+    const designLens = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "design",
+    );
+    expect(statusLens).not.toEqual(designLens);
+    expect(designLens[designLens.length - 1]).toBe("design");
   });
 });
 

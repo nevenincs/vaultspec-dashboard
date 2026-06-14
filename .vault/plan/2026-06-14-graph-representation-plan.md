@@ -218,28 +218,28 @@ Amend the two accepted consumer ADRs (node-canvas salience-size/label-priority; 
 
 Amend the node-canvas ADR (salience-size supersedes member-count radius; salience as label-priority) by body-prose edit and land the matching scene code.
 
-- [ ] `W04.P11.S44` - Amend node-canvas ADR body: salience-size supersedes member-count radius rule; `.vault/adr/2026-06-14-dashboard-node-canvas-adr.md`.
-- [ ] `W04.P11.S45` - Amend node-canvas ADR body: salience as label-priority input; `.vault/adr/2026-06-14-dashboard-node-canvas-adr.md`.
-- [ ] `W04.P11.S46` - Land the salience-size and label-priority code and verify member-count folds into feature salience; `frontend/src/scene/field/nodeSprites.ts`.
+- [x] `W04.P11.S44` - Amend node-canvas ADR body: salience-size supersedes member-count radius rule; `.vault/adr/2026-06-14-dashboard-node-canvas-adr.md`.
+- [x] `W04.P11.S45` - Amend node-canvas ADR body: salience as label-priority input; `.vault/adr/2026-06-14-dashboard-node-canvas-adr.md`.
+- [x] `W04.P11.S46` - Land the salience-size and label-priority code and verify member-count folds into feature salience; `frontend/src/scene/field/nodeSprites.ts`.
 
 ### Phase `W04.P12` - canvas-controls amendment + controls
 
 Amend the canvas-controls ADR (representation-mode selector reconciled with force/circular; lens selector) by body-prose edit and land the app-chrome control groups.
 
-- [ ] `W04.P12.S47` - Amend canvas-controls ADR body: add representation-mode selector reconciled with force/circular; `.vault/adr/2026-06-14-dashboard-canvas-controls-adr.md`.
-- [ ] `W04.P12.S48` - Amend canvas-controls ADR body: add lens selector control group; `.vault/adr/2026-06-14-dashboard-canvas-controls-adr.md`.
-- [ ] `W04.P12.S49` - Build the RepresentationModePanel control emitting mode intent into the view store; `frontend/src/app/stage/RepresentationModePanel.tsx`.
-- [ ] `W04.P12.S50` - Build the LensSelector control emitting lens intent into the view store; `frontend/src/app/stage/LensSelector.tsx`.
+- [x] `W04.P12.S47` - Amend canvas-controls ADR body: add representation-mode selector reconciled with force/circular; `.vault/adr/2026-06-14-dashboard-canvas-controls-adr.md`.
+- [x] `W04.P12.S48` - Amend canvas-controls ADR body: add lens selector control group; `.vault/adr/2026-06-14-dashboard-canvas-controls-adr.md`.
+- [x] `W04.P12.S49` - Build the RepresentationModePanel control emitting mode intent into the view store; `frontend/src/app/stage/RepresentationModePanel.tsx`.
+- [x] `W04.P12.S50` - Build the LensSelector control emitting lens intent into the view store; `frontend/src/app/stage/LensSelector.tsx`.
 
 ### Phase `W04.P13` - integration + animated deltas + green gate
 
 Wire the modes/overlays/selectors into Stage with animated incremental deltas, run the full lint gate and vitest to green, and commit.
 
-- [ ] `W04.P13.S51` - Mount the RepresentationModePanel and LensSelector into Stage; `frontend/src/app/stage/Stage.tsx`.
-- [ ] `W04.P13.S52` - Drive animated incremental deltas across a mode switch in Stage; `frontend/src/app/stage/Stage.tsx`.
-- [ ] `W04.P13.S53` - Add render tests for the mode and lens selector controls; `frontend/src/app/stage/RepresentationModePanel.test.tsx`.
-- [ ] `W04.P13.S54` - Run just dev lint all to exit 0 and fix any findings; `frontend/src`.
-- [ ] `W04.P13.S55` - Run frontend vitest to green and commit by pathspec; `frontend/src`.
+- [x] `W04.P13.S51` - Mount the RepresentationModePanel and LensSelector into Stage; `frontend/src/app/stage/Stage.tsx`.
+- [x] `W04.P13.S52` - Drive animated incremental deltas across a mode switch in Stage; `frontend/src/app/stage/Stage.tsx`.
+- [x] `W04.P13.S53` - Add render tests for the mode and lens selector controls; `frontend/src/app/stage/RepresentationModePanel.test.tsx`.
+- [x] `W04.P13.S54` - Run just dev lint all to exit 0 and fix any findings; `frontend/src`.
+- [x] `W04.P13.S55` - Run frontend vitest to green and commit by pathspec; `frontend/src`.
 
 ## Description
 

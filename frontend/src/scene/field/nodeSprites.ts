@@ -162,6 +162,23 @@ interface NodeVisual {
   sprite: Sprite;
   /** Lazily built full anatomy (ring, badges, label) — near LOD only. */
   anatomy: Container | null;
+  /** The label Text within the anatomy, kept for DOI label-priority culling. */
+  label: Text | null;
+}
+
+/**
+ * Ambient label-priority floor by zoom (graph-representation label-priority cull):
+ * at low ambient zoom only the highest-salience nodes label; the floor relaxes as
+ * the user zooms in, until at the near threshold every near node labels. Focused,
+ * pinned, and lifted nodes always label regardless (handled in `refresh`).
+ */
+export function ambientLabelFloor(scale: number): number {
+  // scale below NEAR_ZOOM_THRESHOLD: no ambient labels (caller already gates by
+  // LOD). Between NEAR and 1.6, relax linearly from 0.6 down to 0.
+  if (scale >= 1.6) return 0;
+  if (scale <= NEAR_ZOOM_THRESHOLD) return 0.6;
+  const t = (scale - NEAR_ZOOM_THRESHOLD) / (1.6 - NEAR_ZOOM_THRESHOLD);
+  return 0.6 * (1 - t);
 }
 
 export class NodeSpriteLayer {
@@ -185,7 +202,7 @@ export class NodeSpriteLayer {
         const sprite = new Sprite(this.glyphs.textureFor(node.kind));
         sprite.anchor.set(0.5);
         this.container.addChild(sprite);
-        visual = { node, sprite, anatomy: null };
+        visual = { node, sprite, anatomy: null, label: null };
         this.visuals.set(node.id, visual);
       }
       visual.node = node;
@@ -252,6 +269,15 @@ export class NodeSpriteLayer {
           this.container.addChild(visual.anatomy);
         }
         visual.anatomy.visible = true;
+        // DOI label-priority cull (graph-representation node-canvas amendment):
+        // focused/pinned/lifted nodes always label; the ambient field labels by
+        // `salience` priority against a zoom-relaxing floor, so the overview never
+        // becomes a hairball of text.
+        if (visual.label) {
+          const always = this.focused.has(id) || lifted;
+          visual.label.visible =
+            always || labelPriority(visual.node) >= ambientLabelFloor(this.lastScale);
+        }
       } else if (visual.anatomy) {
         visual.anatomy.visible = false;
       }
@@ -300,17 +326,17 @@ export class NodeSpriteLayer {
 
   private buildAnatomy(visual: NodeVisual): Container {
     const anatomy = new Container();
-    this.populateAnatomy(anatomy, visual.node);
+    visual.label = this.populateAnatomy(anatomy, visual.node);
     return anatomy;
   }
 
   private rebuildAnatomy(visual: NodeVisual): void {
     if (!visual.anatomy) return;
     visual.anatomy.removeChildren().forEach((c) => c.destroy());
-    this.populateAnatomy(visual.anatomy, visual.node);
+    visual.label = this.populateAnatomy(visual.anatomy, visual.node);
   }
 
-  private populateAnatomy(anatomy: Container, node: SceneNodeData): void {
+  private populateAnatomy(anatomy: Container, node: SceneNodeData): Text {
     // Text colours resolved from the token layer so they read on both light
     // and dark canvas backgrounds.
     const inkColor = getCssColor("--color-ink", 0x2b2620);
@@ -346,5 +372,6 @@ export class NodeSpriteLayer {
     label.anchor.set(0.5, 0);
     label.position.set(0, ringRadius + 3);
     anatomy.addChild(label);
+    return label;
   }
 }

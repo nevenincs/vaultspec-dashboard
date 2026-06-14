@@ -7,7 +7,12 @@ import { describe, expect, it } from "vitest";
 
 import type { SceneNodeData } from "../sceneController";
 import { isLineageEdge } from "./edgeMeshes";
-import { SALIENCE_RADIUS_MAX, labelPriority, nodeRadius } from "./nodeSprites";
+import {
+  SALIENCE_RADIUS_MAX,
+  ambientLabelFloor,
+  labelPriority,
+  nodeRadius,
+} from "./nodeSprites";
 
 const node = (over: Partial<SceneNodeData>): SceneNodeData => ({
   id: "n",
@@ -59,6 +64,14 @@ describe("salience -> label priority (graph-representation)", () => {
     expect(labelPriority(node({ kind: "feature", memberCount: 30 }))).toBeGreaterThan(
       labelPriority(node({ kind: "exec" })),
     );
+  });
+
+  it("relaxes the ambient label floor as the field is zoomed in", () => {
+    // Zoomed out (at the near threshold) the floor is highest; zoomed in it drops
+    // to 0 so every near node labels.
+    expect(ambientLabelFloor(0.6)).toBeGreaterThan(ambientLabelFloor(1.0));
+    expect(ambientLabelFloor(1.0)).toBeGreaterThan(ambientLabelFloor(1.6));
+    expect(ambientLabelFloor(1.6)).toBe(0);
   });
 });
 

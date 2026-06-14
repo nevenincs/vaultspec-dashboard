@@ -37,6 +37,8 @@ import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { AlgorithmPanel } from "./AlgorithmPanel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
+import { LensSelector } from "./LensSelector";
+import { RepresentationModePanel } from "./RepresentationModePanel";
 import { Discover } from "./Discover";
 import { useGraphWalkKeyboard } from "./graphWalk";
 import { FilterBar } from "./FilterBar";
@@ -466,6 +468,14 @@ export function Stage() {
       {algorithmPanelOpen && (
         <AlgorithmPanel onClose={() => setAlgorithmPanelOpen(false)} />
       )}
+      {/* Representation-mode + lens selectors (graph-representation, canvas-
+          controls amendment): docked on-stage controls. The mode selector emits a
+          scene re-layout; the lens selector emits a wire re-query — composition
+          sequencing keeps the two from contending. */}
+      <div className="pointer-events-auto absolute left-1/2 top-vs-2 z-10 flex -translate-x-1/2 items-center gap-vs-2">
+        <RepresentationModePanel />
+        <LensSelector />
+      </div>
       <MinimapWidget />
       <WorkingSet />
       <Discover />
