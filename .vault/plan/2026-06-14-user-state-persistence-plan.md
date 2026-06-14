@@ -10,6 +10,15 @@ related:
   - '[[2026-06-14-user-state-persistence-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `user-state-persistence` plan
 
@@ -43,7 +52,7 @@ Generalize the single-AppState serve layer into a warm multi-scope scope registr
 
 Extract the single-graph serve fields into a per-scope cell and build the scope registry with lazy build and LRU working-set cap.
 
-- [ ] `W02.P03.S09` - extract the single-graph serve fields into a per-scope cell struct; `engine/crates/vaultspec-api/src/app.rs`.
+- [x] `W02.P03.S09` - extract the single-graph serve fields into a per-scope cell struct; `engine/crates/vaultspec-api/src/app.rs`.
 - [ ] `W02.P03.S10` - implement the scope registry with lazy build and LRU working-set cap and eviction; `engine/crates/vaultspec-api/src/registry.rs`.
 - [ ] `W02.P03.S11` - restore and persist the active scope through the session crate at serve boot; `engine/crates/vaultspec-api/src/lib.rs`.
 
