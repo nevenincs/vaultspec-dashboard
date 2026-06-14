@@ -115,6 +115,16 @@ export function useGraphLiveSync(
   useEffect(() => {
     if (!active || scope === null || !chunks || chunks.length === 0) return;
 
+    // Stream reconnect: the streamed query's reducer empties `chunks` back to
+    // [] on a refetch, so an array shorter than what we have already consumed
+    // means the stream reset. Re-consume from the rebuilt head and re-anchor
+    // gap detection — else every post-reconnect delta is silently dropped, the
+    // invalidation never fires, and the re-keyframe fallback dies (review HIGH-1).
+    if (chunks.length < processedRef.current) {
+      processedRef.current = 0;
+      lastSeqRef.current = keyframeSeq;
+    }
+
     const newChunks = chunks.slice(processedRef.current);
     if (newChunks.length === 0) return;
     processedRef.current = chunks.length;
@@ -126,10 +136,14 @@ export function useGraphLiveSync(
     // Extract feature-granularity deltas with sequential gap detection.
     const batch: GraphDeltaEntry[] = [];
     let gapDetected = false;
+    let sawDocumentDelta = false;
     for (const chunk of newChunks) {
       if (chunk.channel !== "graph") continue;
       const entry = chunk.data as GraphDeltaEntry;
-      if (entry.granularity !== "feature") continue;
+      if (entry.granularity !== "feature") {
+        sawDocumentDelta = true;
+        continue;
+      }
 
       if (
         lastSeqRef.current !== null &&
@@ -152,10 +166,15 @@ export function useGraphLiveSync(
       setFeatureDeltas(batch);
     }
 
-    // Debounced constellation invalidation covers document-granularity deltas
-    // and keeps the query cache consistent regardless of the spliceLive path.
-    invalidateConstellation(scope);
-  }, [active, scope, chunks, invalidateConstellation]);
+    // Realize the no-refetch path (review MED-1): only invalidate the
+    // constellation when a feature batch could NOT be spliced incrementally — a
+    // document-granularity delta arrived, a gap forced a re-keyframe, or nothing
+    // was applied. A clean feature-only batch animates via `apply-deltas` with
+    // no refetch (that is the whole point of the spliceLive path).
+    if (sawDocumentDelta || gapDetected || batch.length === 0) {
+      invalidateConstellation(scope);
+    }
+  }, [active, scope, chunks, keyframeSeq, invalidateConstellation]);
 
   return { featureDeltas, gapCount };
 }

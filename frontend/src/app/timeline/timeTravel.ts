@@ -112,17 +112,10 @@ export class TimeTravelDriver {
     this.pushAt(t, this.log.replayTo(t));
   }
 
-  /** Splice live graph-channel deltas (same clock, same code path). */
-  spliceLive(entries: readonly GraphDeltaEntry[]): void {
-    if (this.log.needsKeyframe) return;
-    const result = this.log.append(entries.map(mapDelta));
-    if (!result.gap && this.loaded) this.loaded.to = Date.now();
-  }
-
-  /** The resume point for the live stream's since= (§7). */
-  get lastSeq(): number | null {
-    return this.log.lastSeq;
-  }
+  // NB: the LIVE feature-delta splice runs in `useGraphLiveSync` + Stage
+  // (apply-deltas), the single production live path. The earlier
+  // DeltaLog-based `spliceLive` here was a second, unused contract and was
+  // removed (review LOW-1); this driver owns time-travel scrub only.
 
   private pushAt(t: number, model: SceneGraphModel): void {
     this.target.pushSlice([...model.nodes], [...model.edges], t);

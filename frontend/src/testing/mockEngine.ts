@@ -317,8 +317,11 @@ export class MockEngine {
         : {};
       const filter = reqBody.filter;
       if (this.noVault) {
-        return { nodes: [], edges: [], meta_edges: [], filter, tiers };
+        return { nodes: [], edges: [], meta_edges: [], filter, tiers, last_seq: null };
       }
+      // LIVE /graph/query carries `last_seq` — the delta clock's tip at query
+      // time — so a held keyframe splices live `graph` deltas with no gap
+      // (contract §4; the live engine emits it, so the mock must mirror it).
       if (reqBody.granularity === "feature") {
         return {
           nodes: c.nodes.filter((n) => n.kind === "feature"),
@@ -326,6 +329,7 @@ export class MockEngine {
           meta_edges: c.metaEdges.filter((e) => this.tierServed(e)).map(toWireMetaEdge),
           filter,
           tiers,
+          last_seq: this.lastSeq,
         };
       }
       return {
@@ -334,6 +338,7 @@ export class MockEngine {
         meta_edges: [],
         filter,
         tiers,
+        last_seq: this.lastSeq,
       };
     }
     if (path === "/filters") {

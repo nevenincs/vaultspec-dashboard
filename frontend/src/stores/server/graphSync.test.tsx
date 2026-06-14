@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -216,5 +216,62 @@ describe("useGraphLiveSync", () => {
 
     expect(result.current.gapCount).toBe(0);
     expect(result.current.featureDeltas).toHaveLength(1);
+  });
+
+  it("re-extracts deltas after a stream reconnect resets the chunk array (HIGH-1)", async () => {
+    const client = new QueryClient();
+    const key = engineKeys.stream(["graph"], 10);
+    const fc = (seq: number): StreamChunk => ({
+      channel: "graph",
+      data: {
+        granularity: "feature",
+        op: "add",
+        node: { id: `feature:f${seq}`, kind: "feature" },
+        t: seq,
+        seq,
+      },
+    });
+    client.setQueryData(key, [fc(11), fc(12)]);
+    const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+      wrapper: wrapper(client),
+    });
+    expect(result.current.featureDeltas.map((d) => d.seq)).toEqual([11, 12]);
+
+    // streamedQuery's reducer empties `chunks` on reconnect; the since=keyframe
+    // resume replays from seq 11 again into a SHORTER array. Without the cursor
+    // reset the hook would slice past the new head and drop everything.
+    client.setQueryData(key, [fc(11)]);
+
+    // Not dropped — the cursor reset re-consumes from the rebuilt head.
+    await waitFor(() =>
+      expect(result.current.featureDeltas.map((d) => d.seq)).toEqual([11]),
+    );
+    expect(result.current.gapCount).toBe(0);
+  });
+
+  it("does NOT refetch the constellation for a clean feature-only batch (MED-1)", () => {
+    vi.useFakeTimers();
+    try {
+      const client = new QueryClient();
+      client.setQueryData(engineKeys.stream(["graph"], 10), [
+        {
+          channel: "graph",
+          data: {
+            granularity: "feature",
+            op: "add",
+            node: { id: "feature:auth", kind: "feature" },
+            t: 1000,
+            seq: 11,
+          },
+        },
+      ]);
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+      renderHook(() => useGraphLiveSync("scopeA", true, 10), { wrapper: wrapper(client) });
+      // The feature delta splices via apply-deltas; no debounced refetch fires.
+      vi.advanceTimersByTime(300);
+      expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

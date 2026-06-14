@@ -264,9 +264,11 @@ export async function* sseChunks(
  */
 export const STREAM_RETENTION = 256;
 
-/** Dedup graph frames by seq (a reconnect's since= replay is already held, so an
- *  idempotent splice yields no second copy; frames without a seq just append),
- *  then ring-cap to the retention window. Exported for the bounded-growth test. */
+/** Dedup graph frames by seq WITHIN the retained window (a reconnect's since=
+ *  replay overlapping the tail yields no second copy; a replay older than the
+ *  256-frame window is not deduped here but is upserted idempotently by id at
+ *  apply time), then ring-cap. Frames without a seq just append. Exported for
+ *  the bounded-growth test. */
 export function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChunk[] {
   const seq = (chunk.data as { seq?: unknown }).seq;
   if (
@@ -301,9 +303,10 @@ export function engineStreamOptions(channels: readonly string[], since?: number)
     }),
     staleTime: Infinity,
     retry: true,
-    // Capped exponential backoff (P-MED-3): a flapping /stream must not tight-
-    // loop reconnects (and storm the error log); back off to a 30s ceiling.
-    retryDelay: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
+    // Capped exponential backoff (P-MED-3, LOW-2): recover a transient blip
+    // fast (250ms first retry), then back off exponentially to a 30s ceiling so
+    // a flapping /stream cannot tight-loop reconnects or storm the error log.
+    retryDelay: (attempt) => (attempt === 0 ? 250 : Math.min(30_000, 1_000 * 2 ** attempt)),
   });
 }
 

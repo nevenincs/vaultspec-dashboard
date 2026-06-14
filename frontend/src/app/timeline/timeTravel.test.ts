@@ -76,20 +76,4 @@ describe("TimeTravelDriver", () => {
     const lateSlice = pushes.at(-1)!;
     expect(lateSlice.nodes.length).toBeGreaterThan(earlySlice.nodes.length);
   });
-
-  it("splices live deltas on the same clock and extends the range", async () => {
-    const { mock, driver } = harness();
-    const late = mock.timeline.at(-1)!.ts;
-    await driver.scrubTo(late);
-    const next = (driver.lastSeq ?? 0) + 1;
-    driver.spliceLive([
-      {
-        op: "add",
-        node: { id: "doc:fresh", kind: "exec" },
-        t: late + 1000,
-        seq: next,
-      },
-    ]);
-    expect(driver.lastSeq).toBe(next);
-  });
 });
