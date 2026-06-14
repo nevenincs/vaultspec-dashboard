@@ -6,7 +6,7 @@
 // (document node ids derive from the vault stem).
 
 import { usePutSession } from "../../stores/server/queries";
-import type { VaultTreeEntry } from "../../stores/server/engine";
+import type { FileTreeEntry, VaultTreeEntry } from "../../stores/server/engine";
 import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 
@@ -50,6 +50,63 @@ export function useHighlightedPath(
 ): string | null {
   const selectedId = useViewStore((s) => s.selectedId);
   return highlightedPathFor(entries, selectedId);
+}
+
+// --- code-tree row ↔ stage selection (dashboard-code-tree ADR "The interlink") ---
+//
+// The code browser realizes the SAME bidirectional join the vault browser does
+// for `doc:<stem>`, now for `code:<path>`: selecting a file row focuses its
+// `code:` node on the stage, and the active stage selection highlights the
+// matching row. The join is on the contract's stable id derivation — a file path
+// maps to `code:<path>` by the shared `node_id` rule the listing already applied
+// (the entry carries `node_id`), so no new identity scheme. A file with no
+// `code:` node in the current graph is still listed and selectable for
+// navigation; its interlink is a quiet ABSENT state, never an error — but the
+// selection still fires (it focuses the id even when no node is mounted yet).
+
+/** Code file path → the contract's code-artifact node id (kind + repo-relative
+ *  path). The same `code:<path>` derivation the listing endpoint applies, so the
+ *  derivation lives in ONE place conceptually; the entry carries the id directly. */
+export function codePathToNodeId(path: string): string {
+  return `code:${path}`;
+}
+
+/** Code-artifact node id → the repo-relative path (for row matching). */
+export function nodeIdToCodePath(id: string): string | null {
+  return id.startsWith("code:") ? id.slice(5) : null;
+}
+
+/** Code-tree row click → the shared selection (the stage focuses the `code:`
+ *  node). Uses the entry's carried `node_id` (the shared-rule derivation),
+ *  falling back to deriving it from the path so a sparse entry still joins. */
+export function handleCodeEntryClick(entry: FileTreeEntry): void {
+  selectNode(entry.node_id || codePathToNodeId(entry.path));
+}
+
+/**
+ * The code-tree row to highlight for the current selection, if the selected
+ * entity is a `code:` artifact whose path is present in the given (visible,
+ * already-fetched) level. Mirrors `highlightedPathFor` for the `doc:` join. The
+ * match is on the entry's `node_id` (the shared-rule id) so it is robust to path
+ * normalization differences.
+ */
+export function highlightedCodePathFor(
+  entries: readonly FileTreeEntry[] | undefined,
+  selectedId: string | null,
+): string | null {
+  if (!selectedId || !entries) return null;
+  if (!selectedId.startsWith("code:")) return null;
+  const match = entries.find((e) => e.node_id === selectedId);
+  return match?.path ?? null;
+}
+
+/** Hook: the highlighted code-tree path for the shared selection, over the
+ *  visible (already-fetched) level entries. */
+export function useHighlightedCodePath(
+  entries: readonly FileTreeEntry[] | undefined,
+): string | null {
+  const selectedId = useViewStore((s) => s.selectedId);
+  return highlightedCodePathFor(entries, selectedId);
 }
 
 // --- current folder + feature-tag contexts (user-state-persistence W04.P09.S32) --
