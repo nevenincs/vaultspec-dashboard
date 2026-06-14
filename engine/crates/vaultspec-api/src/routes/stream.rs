@@ -20,8 +20,12 @@ use crate::app::AppState;
 // --- GET /status (the recovery snapshot, contract §6) -------------------------
 
 pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
-    let graph = state.graph_arc();
-    let rag = match rag_client::client::discover(&state.root.join(".vault")).0 {
+    // `/status` reports the ACTIVE scope's cell (W02.P04.S13): its live graph,
+    // generation, watcher residency, and delta-clock tip. The active cell is
+    // always present (pinned, never evicted).
+    let cell = state.active_cell();
+    let graph = cell.graph_arc();
+    let rag = match rag_client::client::discover(&cell.root.join(".vault")).0 {
         rag_client::RagAvailability::Available => json!({"available": true}),
         rag_client::RagAvailability::Unavailable { reason } => {
             json!({"available": false, "reason": reason})
@@ -30,8 +34,8 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
     let core = ingest_core::runner::CoreRunner::detect();
     // Git status of the served worktree (contract §6) — front-door parity
     // with the CLI status verb (D6.1, addendum S04).
-    let served = super::scope_token(&state.root);
-    let git = ingest_git::workspace::Workspace::discover(&state.root)
+    let served = super::scope_token(&cell.root);
+    let git = ingest_git::workspace::Workspace::discover(&cell.root)
         .ok()
         .and_then(|ws| ingest_git::worktrees::enumerate(&ws).ok())
         .and_then(|wts| {
@@ -42,12 +46,12 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         .unwrap_or(json!(null));
     let data = json!({
         "ok": true,
-        "scope": super::scope_token(&state.root),
+        "scope": super::scope_token(&cell.root),
         "git": git,
         "index": {
             "nodes": graph.node_count(),
             "edges": graph.edge_count(),
-            "generation": state.generation.load(Ordering::SeqCst),
+            "generation": cell.generation.load(Ordering::SeqCst),
         },
         "backends": {
             "core": {"invocation": core.invocation.join(" ")},
@@ -55,8 +59,8 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         },
         // A dead watcher is stated, never papered over (DF-4 residual):
         // heartbeat-alive-but-rebuilds-stopped is a zombie, and the
-        // operator needs to know.
-        "watcher": match state.watcher.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        // operator needs to know. Reads the active cell's own watcher.
+        "watcher": match cell.watcher.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             Some(handle) if handle.is_alive() => json!({"running": true, "mode": "resident"}),
             Some(_) => json!({
                 "running": false,
@@ -65,10 +69,10 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
             }),
             None => json!({"running": false, "mode": "starting"}),
         },
-        "last_seq": state.seq.load(Ordering::SeqCst).saturating_sub(1),
+        "last_seq": cell.seq.load(Ordering::SeqCst).saturating_sub(1),
     });
     // Contract §2 envelope (audit L1).
-    super::envelope(data, super::query_tiers(&state), None)
+    super::envelope(data, super::query_tiers(&cell), None)
 }
 
 // --- GET /stream?channels=&since= -----------------------------------------------
@@ -79,6 +83,13 @@ pub struct StreamParams {
     pub channels: Option<String>,
     #[serde(default)]
     pub since: Option<u64>,
+    /// The scope to stream (W02.P04.S14). WIRE CHANGE: per-scope live state
+    /// means the client passes `scope` to stream a specific worktree. Absent,
+    /// it falls back to the active scope — backward-compatible for a single-
+    /// scope client. `since=` resume is against THIS scope's own monotonic
+    /// clock, so resume stays correct and independent per scope.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 pub async fn stream(
@@ -93,18 +104,31 @@ pub async fn stream(
         .map(str::to_string)
         .collect();
 
+    // Resolve the streamed scope's cell (W02.P04.S14). An explicit `scope`
+    // resolves through the registry (building it warm if cold); absent or
+    // unresolvable, the active scope's cell is the fallback — a stream is never
+    // an error surface, so a bad scope degrades to the active scope rather than
+    // failing the SSE handshake. The cell owns the `tx`/`ring`/`seq` this
+    // stream subscribes to and resumes from, so per-scope resume is correct.
+    let cell = match params.scope.as_deref() {
+        Some(scope) => {
+            crate::registry::get_or_build(&state, scope).unwrap_or_else(|_| state.active_cell())
+        }
+        None => state.active_cell(),
+    };
+
     // Splice order matters (audit N1): SUBSCRIBE FIRST, snapshot the ring
     // SECOND — a rebuild landing between the two is then present in the
     // live receiver's queue rather than silently lost. De-duplication by
     // sequence threshold removes the overlap between snapshot and queue.
-    let receiver = state.tx.subscribe();
+    let receiver = cell.tx.subscribe();
 
     let mut backlog: Vec<Event> = Vec::new();
     let mut emitted_up_to: u64 = params.since.unwrap_or(0);
     if let Some(since) = params.since {
         // Poison recovery (robustness H2): a poisoned ring lock must not wedge
         // SSE resume; recover the inner buffer instead of panicking.
-        let ring = state.ring.lock().unwrap_or_else(|e| e.into_inner());
+        let ring = cell.ring.lock().unwrap_or_else(|e| e.into_inner());
         // Ring entries are `(seq, payload)` across BOTH granularity species
         // (S50); resume and gap-detection are on the GLOBAL seq, application is
         // per-granularity client-side.
