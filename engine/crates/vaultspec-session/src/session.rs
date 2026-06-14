@@ -105,8 +105,10 @@ impl Store {
         current.insert(0, value.to_string());
         current.truncate(MAX_RECENTS);
 
-        self.conn()
-            .execute("DELETE FROM recents WHERE workspace = ?1", params![workspace])?;
+        self.conn().execute(
+            "DELETE FROM recents WHERE workspace = ?1",
+            params![workspace],
+        )?;
         for (position, v) in current.iter().enumerate() {
             self.conn().execute(
                 "INSERT INTO recents (workspace, position, value) VALUES (?1, ?2, ?3)",
@@ -118,9 +120,9 @@ impl Store {
 
     /// List the workspace recents, most-recent-first.
     pub fn recents(&self, workspace: &str) -> Result<Vec<String>> {
-        let mut stmt = self.conn().prepare(
-            "SELECT value FROM recents WHERE workspace = ?1 ORDER BY position ASC",
-        )?;
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT value FROM recents WHERE workspace = ?1 ORDER BY position ASC")?;
         let rows = stmt.query_map(params![workspace], |r| r.get::<_, String>(0))?;
         let mut out = Vec::new();
         for row in rows {
@@ -171,7 +173,9 @@ mod tests {
             active_folder: Some("adr".to_string()),
             feature_tags: vec!["other".into()],
         };
-        store.set_scope_context("wsA", "feature-x", &other, 2).unwrap();
+        store
+            .set_scope_context("wsA", "feature-x", &other, 2)
+            .unwrap();
         assert_eq!(store.scope_context("wsA", "main").unwrap(), ctx);
         assert_eq!(store.scope_context("wsA", "feature-x").unwrap(), other);
     }

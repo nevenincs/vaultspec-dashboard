@@ -43,9 +43,9 @@ impl Store {
     /// List all settings under a scope (use `GLOBAL_SCOPE` for the global
     /// set), ordered by key.
     pub fn list_settings(&self, scope: &str) -> Result<Vec<Setting>> {
-        let mut stmt = self.conn().prepare(
-            "SELECT key, value FROM settings WHERE scope = ?1 ORDER BY key ASC",
-        )?;
+        let mut stmt = self
+            .conn()
+            .prepare("SELECT key, value FROM settings WHERE scope = ?1 ORDER BY key ASC")?;
         let rows = stmt.query_map(params![scope], |r| {
             Ok(Setting {
                 key: r.get(0)?,
@@ -97,7 +97,10 @@ mod tests {
         let (_dir, store) = temp_store();
         assert_eq!(store.global_setting("theme").unwrap(), None);
         store.set_global_setting("theme", "dark", 1).unwrap();
-        assert_eq!(store.global_setting("theme").unwrap().as_deref(), Some("dark"));
+        assert_eq!(
+            store.global_setting("theme").unwrap().as_deref(),
+            Some("dark")
+        );
         store.set_global_setting("theme", "light", 2).unwrap();
         assert_eq!(
             store.global_setting("theme").unwrap().as_deref(),
@@ -109,9 +112,14 @@ mod tests {
     fn scoped_settings_are_independent_of_global() {
         let (_dir, store) = temp_store();
         store.set_global_setting("theme", "dark", 1).unwrap();
-        store.set_scoped_setting("main", "theme", "light", 2).unwrap();
+        store
+            .set_scoped_setting("main", "theme", "light", 2)
+            .unwrap();
         // Each key resolves to its own scope's value; no implicit fallback.
-        assert_eq!(store.global_setting("theme").unwrap().as_deref(), Some("dark"));
+        assert_eq!(
+            store.global_setting("theme").unwrap().as_deref(),
+            Some("dark")
+        );
         assert_eq!(
             store.scoped_setting("main", "theme").unwrap().as_deref(),
             Some("light")
