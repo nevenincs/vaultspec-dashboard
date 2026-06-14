@@ -813,7 +813,8 @@ export class MockEngine {
       return {
         // Document nodes carry the single active-lens salience float, ordered
         // by descending salience (graph-node-salience), AND the additive
-        // ontology projections ride on each node as set in the corpus fixture.
+        // ontology (authority_class/aggregate) + embedding projections ride on
+        // each node from the corpus fixture (spread through docNodes).
         nodes: docNodes,
         // The live engine's edge_view adds the additive `derivation` key to
         // EVERY edge (null when no pipeline relationship). Mirror that at the

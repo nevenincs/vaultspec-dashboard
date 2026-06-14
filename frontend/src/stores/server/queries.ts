@@ -17,7 +17,7 @@ import {
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
 import type { SalienceLens } from "../view/salienceLens";
-import { useSalienceLensStore } from "../view/salienceLens";
+import { DEFAULT_SALIENCE_LENS, useSalienceLensStore } from "../view/salienceLens";
 import type {
   DiscoverResponse,
   EngineEdge,
@@ -81,7 +81,7 @@ export const engineKeys = {
       // a lens switch is a re-query, a focus change runs a warm-started PPR pass):
       // two lenses/focuses carry different salience and must not share a cache
       // entry. Defaulted so the omitted case is the status-lens, no-focus key.
-      lens ?? "status",
+      lens ?? DEFAULT_SALIENCE_LENS,
       focus ?? "none",
     ] as const,
   node: (id: string) => [...engineKeys.all, "node", id] as const,

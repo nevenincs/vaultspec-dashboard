@@ -224,6 +224,8 @@ describe("engineKeys", () => {
       "design",
     );
     expect(statusLens).not.toEqual(designLens);
+    // With focus appended as the key tail, the lens sits at length-2.
+    expect(designLens[designLens.length - 2]).toBe("design");
   });
 });
 

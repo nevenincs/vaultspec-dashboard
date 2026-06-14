@@ -112,20 +112,49 @@ export interface GlyphTextureProvider {
 }
 
 const NODE_RADIUS = 6;
+/** The salience multiplier band: salience 0 -> 1.0x base; salience 1 -> this. */
+export const SALIENCE_RADIUS_MAX = 2.6;
 
 /**
- * World-space radius for a node. Feature-convergence nodes are the
- * constellation's centers of gravity: their radius grows with `memberCount`
- * (documents converging on the feature, contract §4 / ADR D4.1), log-scaled
- * so a 5-document and an 80-document feature differ visibly without the large
- * one swamping the field. Every other species keeps the base radius — shape
- * carries their type, not size (§3.1).
+ * World-space radius for a node, driven by salience (graph-representation ADR
+ * encoding map: salience -> size, "making the importance field visible").
+ *
+ * salience -> size SUPERSEDES the old member-count radius rule (node-canvas
+ * amendment, graph-representation W04.P11): member-count now folds into a feature
+ * node's salience upstream, so the two channels no longer compete. When salience
+ * is present it drives the radius for EVERY species (the importance field is the
+ * size signal). When salience is ABSENT (an origin that does not yet serve it),
+ * the prior rule is the fallback: feature-convergence nodes scale by member-count
+ * (the constellation centers of gravity), every other species keeps the base
+ * radius (shape carries type, not size, §3.1).
  */
 export function nodeRadius(node: SceneNodeData): number {
+  if (typeof node.salience === "number") {
+    const s = Math.max(0, Math.min(1, node.salience));
+    return NODE_RADIUS * (1 + s * (SALIENCE_RADIUS_MAX - 1));
+  }
+  // Fallback (salience absent): the prior member-count rule (node-canvas D4.1).
   if (node.kind !== "feature" || !node.memberCount || node.memberCount <= 0) {
     return NODE_RADIUS;
   }
   return NODE_RADIUS * (1.4 + Math.log2(1 + node.memberCount) * 0.5);
+}
+
+/**
+ * Label priority for the DOI label cull (graph-representation ADR: salience is a
+ * label-priority input). Higher = labelled sooner as the field declutters.
+ * Focused/pinned/lifted nodes are always labelled (handled by the LOD pass); this
+ * orders the AMBIENT field. Salience is the primary signal; member-count breaks
+ * ties for feature nodes when salience is absent.
+ */
+export function labelPriority(node: SceneNodeData): number {
+  if (typeof node.salience === "number") {
+    return Math.max(0, Math.min(1, node.salience));
+  }
+  if (node.kind === "feature" && node.memberCount && node.memberCount > 0) {
+    return Math.min(1, 0.5 + Math.log2(1 + node.memberCount) * 0.1);
+  }
+  return 0.2;
 }
 
 interface NodeVisual {
@@ -133,6 +162,23 @@ interface NodeVisual {
   sprite: Sprite;
   /** Lazily built full anatomy (ring, badges, label) — near LOD only. */
   anatomy: Container | null;
+  /** The label Text within the anatomy, kept for DOI label-priority culling. */
+  label: Text | null;
+}
+
+/**
+ * Ambient label-priority floor by zoom (graph-representation label-priority cull):
+ * at low ambient zoom only the highest-salience nodes label; the floor relaxes as
+ * the user zooms in, until at the near threshold every near node labels. Focused,
+ * pinned, and lifted nodes always label regardless (handled in `refresh`).
+ */
+export function ambientLabelFloor(scale: number): number {
+  // scale below NEAR_ZOOM_THRESHOLD: no ambient labels (caller already gates by
+  // LOD). Between NEAR and 1.6, relax linearly from 0.6 down to 0.
+  if (scale >= 1.6) return 0;
+  if (scale <= NEAR_ZOOM_THRESHOLD) return 0.6;
+  const t = (scale - NEAR_ZOOM_THRESHOLD) / (1.6 - NEAR_ZOOM_THRESHOLD);
+  return 0.6 * (1 - t);
 }
 
 export class NodeSpriteLayer {
@@ -156,7 +202,7 @@ export class NodeSpriteLayer {
         const sprite = new Sprite(this.glyphs.textureFor(node.kind));
         sprite.anchor.set(0.5);
         this.container.addChild(sprite);
-        visual = { node, sprite, anatomy: null };
+        visual = { node, sprite, anatomy: null, label: null };
         this.visuals.set(node.id, visual);
       }
       visual.node = node;
@@ -223,6 +269,15 @@ export class NodeSpriteLayer {
           this.container.addChild(visual.anatomy);
         }
         visual.anatomy.visible = true;
+        // DOI label-priority cull (graph-representation node-canvas amendment):
+        // focused/pinned/lifted nodes always label; the ambient field labels by
+        // `salience` priority against a zoom-relaxing floor, so the overview never
+        // becomes a hairball of text.
+        if (visual.label) {
+          const always = this.focused.has(id) || lifted;
+          visual.label.visible =
+            always || labelPriority(visual.node) >= ambientLabelFloor(this.lastScale);
+        }
       } else if (visual.anatomy) {
         visual.anatomy.visible = false;
       }
@@ -271,17 +326,17 @@ export class NodeSpriteLayer {
 
   private buildAnatomy(visual: NodeVisual): Container {
     const anatomy = new Container();
-    this.populateAnatomy(anatomy, visual.node);
+    visual.label = this.populateAnatomy(anatomy, visual.node);
     return anatomy;
   }
 
   private rebuildAnatomy(visual: NodeVisual): void {
     if (!visual.anatomy) return;
     visual.anatomy.removeChildren().forEach((c) => c.destroy());
-    this.populateAnatomy(visual.anatomy, visual.node);
+    visual.label = this.populateAnatomy(visual.anatomy, visual.node);
   }
 
-  private populateAnatomy(anatomy: Container, node: SceneNodeData): void {
+  private populateAnatomy(anatomy: Container, node: SceneNodeData): Text {
     // Text colours resolved from the token layer so they read on both light
     // and dark canvas backgrounds.
     const inkColor = getCssColor("--color-ink", 0x2b2620);
@@ -317,5 +372,6 @@ export class NodeSpriteLayer {
     label.anchor.set(0.5, 0);
     label.position.set(0, ringRadius + 3);
     anatomy.addChild(label);
+    return label;
   }
 }

@@ -10,7 +10,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import type { SalienceLens } from "../view/salienceLens";
+import { DEFAULT_SALIENCE_LENS, type SalienceLens } from "../view/salienceLens";
 import {
   adaptFilters,
   adaptGraphSlice,
@@ -202,8 +202,20 @@ export interface EngineNode {
    * feature-convergence nodes (the salience model ranks documents). It is a
    * single float for the active lens, NEVER a per-lens map — treating it as a
    * fixed number anywhere discards the intent dimension the ADR exists for.
+   * The representation layer CONSUMES this (node size + label priority,
+   * graph-representation ADR encoding map); now produced for real by the
+   * merged salience engine, no longer a representation mock stub.
    */
   salience?: number;
+  /**
+   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
+   * the rag embedding delivered to the CPU worker for the semantic UMAP layout
+   * mode. The engine never serves layout coordinates (graph-compute-is-CPU); it
+   * serves the raw embedding and the worker projects it. Absent on nodes lacking
+   * an embedding — the semantic mode draws those in a connectivity-fallback
+   * position and says so.
+   */
+  embedding?: number[];
 }
 
 /**
@@ -237,17 +249,41 @@ export interface EngineEdge {
   observed_at?: string;
   /**
    * The pipeline-derivation label (graph-node-semantics ADR), carried
-   * ALONGSIDE the §4 `relation`/`tier` and NEVER instead of them: one of
-   * `grounds`, `authorizes`, `generated-by`, `aggregates`, `reviews`,
-   * `promoted-from`, or `null` when the edge carries no pipeline relationship.
+   * ALONGSIDE the §4 `relation`/`tier` and NEVER instead of them: a first-class
+   * labeled relation drawn from the closed `DerivationRelation` vocabulary
+   * (`grounds`, `authorizes`/`binds`, `generated-by`, `aggregates`, `reviews`,
+   * `promoted-from`), or `null` when the edge carries no pipeline relationship.
    * The two name different facts — derivation says WHAT the relationship is in
-   * the framework, the tier says HOW the engine knows it. ADDITIVE: the label
-   * is not part of the edge stable key, so labeling never re-keys.
+   * the framework, the tier says HOW the engine knows it. The representation
+   * layer's lineage layout consumes it on the derivation axis. ADDITIVE: the
+   * label is not part of the edge stable key, so labeling never re-keys.
    */
-  derivation?: string | null;
+  derivation?: DerivationRelation | null;
   /** Constellation meta-edges only (engine-aggregated, §4). */
   meta?: { count: number; breakdown_by_tier: Record<string, number> };
 }
+
+/** The closed pipeline-derivation vocabulary (graph-node-semantics ADR). */
+export type DerivationRelation =
+  | "grounds"
+  | "authorizes"
+  | "binds"
+  | "generated-by"
+  | "aggregates"
+  | "reviews"
+  | "promoted-from";
+
+/**
+ * The salience lens (graph-node-salience ADR): the per-viewer-intent
+ * parameterization the engine biases its importance computation toward.
+ * `status` (the default, "what is in-flight") leads with betweenness + hub
+ * score + high recency; `design` ("why is the system this way") leads with
+ * authority PageRank + coreness. The canonical definition (and its active-lens
+ * view store) lives in `view/salienceLens.ts`; re-exported here so the §4 wire
+ * surface and its representation-layer consumers share one type and one default.
+ */
+export { DEFAULT_SALIENCE_LENS };
+export type { SalienceLens };
 
 /** The engine-owned filter object, echoed back normalized (§4). */
 export interface GraphFilter {
@@ -628,8 +664,14 @@ export class EngineClient {
      *  feature-convergence nodes + meta-edges. Omitted = document. */
     granularity?: "document" | "feature";
     as_of?: string | number;
-    /** The active salience lens (graph-node-salience ADR wire amendment):
-     *  `status` (default) or `design`. Omitted = the engine defaults to status. */
+    /**
+     * The active salience lens (graph-node-salience ADR §4 amendment): a request
+     * parameter selecting which per-lens importance field the engine computes
+     * and — via DOI — which node set is served. `status` (default) or `design`;
+     * omitted = the engine defaults to status. Switching lens is a re-query the
+     * stores layer issues. The representation layer drives this from its
+     * active-lens view state.
+     */
     lens?: SalienceLens;
     /** The DOI focus node id folded into the salience distance term. */
     focus?: string | null;

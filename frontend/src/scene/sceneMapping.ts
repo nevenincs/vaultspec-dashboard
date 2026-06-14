@@ -10,11 +10,17 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     id: node.id,
     kind: node.kind,
     title: node.title,
+    // Feature membership -> the feature overlays (countries, hulls).
+    featureTags: node.feature_tags,
     lifecycle: node.lifecycle,
     degreeByTier: node.degree_by_tier,
     dates: node.dates,
     // Feature-convergence sizing input (S02 / ADR D4.1); absent on documents.
     memberCount: node.member_count,
+    // Per-lens salience (graph-node-salience) -> size + label priority; the
+    // embedding feeds the semantic UMAP worker (graph-representation §4).
+    salience: node.salience,
+    embedding: node.embedding,
   };
 }
 
@@ -30,6 +36,10 @@ export function engineEdgeToScene(edge: EngineEdge): SceneEdgeData {
     meta: edge.meta
       ? { count: edge.meta.count, breakdownByTier: edge.meta.breakdown_by_tier }
       : undefined,
+    // Pipeline-derivation label (graph-node-semantics) -> lineage axis. The
+    // wire carries `null` for "no pipeline relationship"; the scene treats that
+    // as absent (undefined) so the lineage axis only sees real labels.
+    derivation: edge.derivation ?? undefined,
   };
 }
 
