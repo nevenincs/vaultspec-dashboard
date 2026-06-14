@@ -8,8 +8,8 @@
 import { useState } from "react";
 
 import type { MapWorktree } from "../../stores/server/engine";
-import { useEngineStatus } from "../../stores/server/engine";
-import { useWorkspaceMap } from "../../stores/server/queries";
+import { EngineError, useEngineStatus } from "../../stores/server/engine";
+import { usePutSession, useWorkspaceMap } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
 import { movePlayhead } from "../timeline/Playhead";
@@ -28,7 +28,12 @@ export function WorktreePicker() {
   const map = useWorkspaceMap();
   const active = useActiveScope();
   const setScope = useViewStore((s) => s.setScope);
+  const putSession = usePutSession();
   const [expanded, setExpanded] = useState(false);
+  // A rejected durable switch (the engine 400s an unknown/non-vault scope)
+  // surfaces here rather than failing silently; the immediate `setScope` already
+  // moved the UI, so this reports that the selection did not PERSIST.
+  const [switchError, setSwitchError] = useState<string | null>(null);
   // Git sync indicator — ahead/behind/dirty from the live status hook
   // (TanStack deduplicates this query with NowStrip and ChangesOverview).
   const git = useEngineStatus().data?.git;
@@ -104,6 +109,23 @@ export function WorktreePicker() {
                   // widget docks alongside it.
                   movePlayhead("live");
                   setExpanded(false);
+                  // Persist the selection durably through the session API (S31)
+                  // so it survives a reload — the immediate `setScope` above is
+                  // for responsiveness, this is the durable write. A rejected
+                  // switch (unknown/non-vault scope → tiered 400) surfaces
+                  // gracefully instead of failing silently.
+                  setSwitchError(null);
+                  putSession.mutate(
+                    { active_scope: worktree.id },
+                    {
+                      onError: (err) =>
+                        setSwitchError(
+                          err instanceof EngineError && err.status === 400
+                            ? `could not switch to ${worktree.branch}`
+                            : "could not persist the worktree switch",
+                        ),
+                    },
+                  );
                 }}
                 className={`flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left ${
                   worktree.id === active
@@ -130,6 +152,11 @@ export function WorktreePicker() {
             </li>
           ))}
         </ul>
+      )}
+      {switchError && (
+        <p className="mt-vs-1 text-2xs text-state-broken" role="status">
+          {switchError}
+        </p>
       )}
     </div>
   );
