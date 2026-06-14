@@ -99,23 +99,23 @@ related:
 
 Wire the TypeScript conformance fixture and CI job so contract drift between the live engine wire and `EngineClient` types fails CI — the Rust suite cannot catch TypeScript type mismatches.
 
-- [ ] `P01.S01` - Write `engineConformance.test.ts`: a vitest fixture that skips when `ENGINE_BASE_URL` is unset and drives every contract capability (graph slice, asof/diff ms-timestamp, tiers on success and error, search shape) against the live engine port when set; `frontend/src/testing/engineConformance.test.ts`.
-- [ ] `P01.S02` - Add `engine-conformance` job to `quality-gates.yml`: cargo build engine binary, start `vaultspec serve` against a temp fixture, set `ENGINE_BASE_URL`, run `vitest run` scoped to `engineConformance.test.ts`, tear down; use `rust-cache` scoped to `engine/`; `.github/workflows/quality-gates.yml`.
+- [x] `P01.S01` - Write `engineConformance.test.ts`: a vitest fixture that skips when `ENGINE_BASE_URL` is unset and drives every contract capability (graph slice, asof/diff ms-timestamp, tiers on success and error, search shape) against the live engine port when set; `frontend/src/testing/engineConformance.test.ts`.
+- [x] `P01.S02` - Add `engine-conformance` job to `quality-gates.yml`: cargo build engine binary, start `vaultspec serve` against a temp fixture, set `ENGINE_BASE_URL`, run `vitest run` scoped to `engineConformance.test.ts`, tear down; `use `rust-cache` scoped to `engine/`; `.github/workflows/quality-gates.yml`.
 
 ### Phase `P02` - Git ahead/behind
 
 Add ahead/behind divergence counts to the git wire surface so the dashboard knows worktree sync status without a separate `git status` call.
 
-- [ ] `P02.S03` - Add `ahead: Option<u32>` and `behind: Option<u32>` to `WorktreeInfo`; compute via gix rev-walk against the upstream tracking ref; return `None` on detached HEAD, no upstream configured, or bare remote — never fail the enclosing request; `engine/crates/ingest-git/src/worktrees.rs`.
-- [ ] `P02.S04` - Propagate `ahead`/`behind` into the `/map` and `/status` wire responses; add optional `ahead?: number` and `behind?: number` to `WorktreeInfo` and `EngineStatus.git` in the TypeScript client types; `engine/crates/vaultspec-api/src/routes/workspace.rs`, `frontend/src/stores/server/engine.ts`.
-- [ ] `P02.S05` - Add a unit test in `ingest-git` using a two-commit fixture with a bare remote: verify `ahead=1`, `behind=0` after one local commit not yet pushed; `engine/crates/ingest-git/src/worktrees.rs`.
+- [x] `P02.S03` - Add `ahead: Option<u32>` and `behind: Option<u32>` to `WorktreeInfo`; `compute via gix rev-walk against the upstream tracking ref; return `None` on detached HEAD, no upstream configured, or bare remote — never fail the enclosing request; `engine/crates/ingest-git/src/worktrees.rs`.
+- [x] `P02.S04` - Propagate `ahead`/`behind` into the `/map` and `/status` wire responses; `add optional `ahead?: number` and `behind?: number` to `WorktreeInfo` and `EngineStatus.git` in the TypeScript client types; `engine/crates/vaultspec-api/src/routes/workspace.rs`, `frontend/src/stores/server/engine.ts`.
+- [x] `P02.S05` - Add a unit test in `ingest-git` using a two-commit fixture with a bare remote: verify `ahead=1`, `behind=0` after one local commit not yet pushed; `engine/crates/ingest-git/src/worktrees.rs`.
 
 ### Phase `P03` - Engine degradation adversarial tests
 
 Add adversarial engine tests that simulate each failure mode and assert the tiers block reflects the outage — closing the gap between the rule and its enforcement.
 
-- [ ] `P03.S06` - Write `degradation_adversarial.rs` using the `fixture()` + `ServeGuard` pattern from `conformance.rs`: three tests — (a) rag unreachable: point rag URL at a bound-but-unserved port, assert `tiers.semantic.available == false`; (b) core unreachable: provide a nonexistent core path, assert `tiers.declared.available == false`; (c) healthy baseline: assert all four canonical tiers present and `available == true` in a clean serve; `engine/tests/tests/degradation_adversarial.rs`.
-- [ ] `P03.S07` - Run `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `npx tsc --noEmit`, `npx eslint src/`, `npx vitest run` all green; submit for fe-reviewer gate; `engine/`, `frontend/`.
+- [x] `P03.S06` - Write `degradation_adversarial.rs` using the `fixture()` + `ServeGuard` pattern from `conformance.rs`: three tests — (a) rag unreachable: point rag URL at a bound-but-unserved port, assert `tiers.semantic.available == false`; `(b) core unreachable: provide a nonexistent core path, assert `tiers.declared.available == false`; (c) healthy baseline: assert all four canonical tiers present and `available == true` in a clean serve; `engine/tests/tests/degradation_adversarial.rs`.
+- [x] `P03.S07` - Run `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `npx tsc --noEmit`, `npx eslint src/`, `npx vitest run` all green; `submit for fe-reviewer gate; `engine/`, `frontend/`.
 
 ## Description
 
