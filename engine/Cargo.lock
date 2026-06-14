@@ -424,6 +424,7 @@ dependencies = [
  "ingest-git",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 
@@ -2641,6 +2642,18 @@ dependencies = [
  "thiserror",
  "tokio",
  "vaultspec-api",
+]
+
+[[package]]
+name = "vaultspec-session"
+version = "0.1.0"
+dependencies = [
+ "engine-store",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

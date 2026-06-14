@@ -25,6 +25,7 @@ ingest-git = { path = "crates/ingest-git" }
 ingest-struct = { path = "crates/ingest-struct" }
 rag-client = { path = "crates/rag-client" }
 vaultspec-api = { path = "crates/vaultspec-api" }
+vaultspec-session = { path = "crates/vaultspec-session" }
 
 [workspace.lints.rust]
 # The engine is read-and-infer and uses zero unsafe in its own code (verified
