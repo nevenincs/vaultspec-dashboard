@@ -29,8 +29,29 @@ import { buildFixtureCorpus } from "./fixtures/corpus";
 
 export const MOCK_SCOPE = "wt-main";
 
+/** The workspace key the session/settings store rows hang under — one workspace,
+ *  one key, matching the live route's `workspace_key` (the launch root token). */
+export const MOCK_WORKSPACE = "/repo";
+
+/** The vault-bearing worktree tokens the live multi-scope registry accepts as
+ *  selectable scopes (W02.P04.S15 retarget): scoped reads serve any of these,
+ *  not one frozen scope. `wt-bare` has no vault and is NOT selectable. */
+const VAULT_BEARING_SCOPES = new Set([MOCK_SCOPE]);
+
 export function isMockEngineEnabled(): boolean {
   return import.meta.env.VITE_MOCK_ENGINE === "1";
+}
+
+// --- session / settings in-memory state (user-state-persistence W04.P08.S27) ----
+//
+// The mock mirrors the live `vaultspec-session`-backed store byte-for-byte: a
+// per-scope folder + feature-tag context, workspace recents, global settings,
+// and per-scope scoped settings. Best-effort, in-memory only — exactly the shape
+// the live `{data, tiers}`-enveloped session/settings routes serve.
+
+interface MockScopeContext {
+  folder: string | null;
+  feature_tags: string[];
 }
 
 // --- delta timeline (pure, derived from the corpus event log) -------------------
@@ -136,6 +157,21 @@ export class MockEngine {
   private noVault = false;
   private lifecycleSparse = false;
 
+  // --- session / settings state (mirrors the live store) ---
+  /** The active worktree scope — the "where am I" pointer restored on load. The
+   *  active scope drives `/status` and the stream's scope fallback. */
+  private activeScope = MOCK_SCOPE;
+  /** Per-scope folder + feature-tag context. A scope absent here defaults to
+   *  the empty context (folder null, no tags) — exactly like the live store. */
+  private scopeContexts = new Map<string, MockScopeContext>();
+  /** Workspace recents, most-recent-first (push dedups + moves to front). */
+  private recents: string[] = [];
+  /** Global settings: a flat `{ key: value }` map. */
+  private globalSettings = new Map<string, string>();
+  /** Per-scope scoped settings: `scope → { key: value }`. A scope with no scoped
+   *  keys is sparse-omitted from the served `scoped` map (live parity). */
+  private scopedSettings = new Map<string, Map<string, string>>();
+
   /** No vault in the worktree: the served corpus is empty (035). */
   setNoVault(on: boolean): void {
     this.noVault = on;
@@ -144,6 +180,119 @@ export class MockEngine {
   /** Date-mandate missing: lifecycle-lane events drop from serving (035). */
   setLifecycleSparse(on: boolean): void {
     this.lifecycleSparse = on;
+  }
+
+  /** The currently-active scope — test/demo introspection. */
+  get scope(): string {
+    return this.activeScope;
+  }
+
+  /** Build the `/session` data block (GET and PUT return the same shape). */
+  private sessionData(): unknown {
+    const ctx = this.scopeContexts.get(this.activeScope) ?? {
+      folder: null,
+      feature_tags: [],
+    };
+    return {
+      workspace: MOCK_WORKSPACE,
+      active_scope: this.activeScope,
+      scope_context: { folder: ctx.folder, feature_tags: [...ctx.feature_tags] },
+      recents: [...this.recents],
+      tiers: this.tiersBlock(),
+    };
+  }
+
+  /** Build the `/settings` data block. `scoped` sparse-omits empty scopes. */
+  private settingsData(): unknown {
+    const global: Record<string, string> = {};
+    for (const [key, value] of this.globalSettings) global[key] = value;
+    const scoped: Record<string, Record<string, string>> = {};
+    for (const [scope, entries] of this.scopedSettings) {
+      if (entries.size === 0) continue;
+      const map: Record<string, string> = {};
+      for (const [key, value] of entries) map[key] = value;
+      scoped[scope] = map;
+    }
+    return { global, scoped, tiers: this.tiersBlock() };
+  }
+
+  /**
+   * Apply a partial PUT /session update (mirrors the live route): any absent
+   * field leaves that part untouched. `active_scope` retargets the active scope
+   * but is validated through the (mock) registry FIRST — an unknown or
+   * non-vault-bearing scope is a tiered 400 and the active scope is left
+   * unchanged (live parity, the conformance "unknown scope" assertion).
+   * `scope_context` sets a scope's folder + feature_tags wholesale (an absent or
+   * null folder clears it). `push_recent` pushes one value onto the recents.
+   */
+  private applySessionUpdate(init: RequestInit): unknown {
+    const body = init.body
+      ? (JSON.parse(String(init.body)) as {
+          active_scope?: string;
+          scope_context?: {
+            scope?: string;
+            folder?: string | null;
+            feature_tags?: string[];
+          };
+          push_recent?: string;
+        })
+      : {};
+
+    // Validate + retarget the active scope FIRST (the one step that can 400).
+    if (body.active_scope !== undefined) {
+      if (!VAULT_BEARING_SCOPES.has(body.active_scope)) {
+        // Tiered 400, active scope unchanged (the live route's behavior).
+        throw new RouteError(
+          400,
+          `unknown or non-vault-bearing scope ${body.active_scope}`,
+        );
+      }
+      this.activeScope = body.active_scope;
+    }
+
+    if (body.scope_context !== undefined) {
+      const ctx = body.scope_context;
+      const target = ctx.scope && ctx.scope.length > 0 ? ctx.scope : this.activeScope;
+      this.scopeContexts.set(target, {
+        folder: typeof ctx.folder === "string" ? ctx.folder : null,
+        feature_tags: Array.isArray(ctx.feature_tags) ? [...ctx.feature_tags] : [],
+      });
+    }
+
+    if (body.push_recent !== undefined) {
+      this.pushRecent(body.push_recent);
+    }
+
+    // Return the updated session — the same shape GET serves.
+    return this.sessionData();
+  }
+
+  /** Push a value to the front of recents, dedup-moving an existing entry. */
+  private pushRecent(value: string): void {
+    this.recents = [value, ...this.recents.filter((r) => r !== value)];
+  }
+
+  /**
+   * Apply a single PUT /settings write (mirrors the live route): a key/value
+   * pair, global when `scope` is absent, scope-scoped otherwise. Returns the
+   * full updated settings — the same shape GET serves.
+   */
+  private applySettingsUpdate(init: RequestInit): unknown {
+    const body = init.body
+      ? (JSON.parse(String(init.body)) as {
+          scope?: string;
+          key: string;
+          value: string;
+        })
+      : { key: "", value: "" };
+    if (body.scope !== undefined) {
+      const entries = this.scopedSettings.get(body.scope) ?? new Map<string, string>();
+      entries.set(body.key, body.value);
+      this.scopedSettings.set(body.scope, entries);
+    } else {
+      this.globalSettings.set(body.key, body.value);
+    }
+    return this.settingsData();
   }
 
   constructor(corpus: FixtureCorpus = buildFixtureCorpus()) {
@@ -258,10 +407,16 @@ export class MockEngine {
     const tiers = this.tiersBlock();
     const c = this.corpus;
     if (path === "/status") {
+      // `/status` reports the ACTIVE scope's cell (W02.P04.S13): scope, index,
+      // watcher, and last_seq all reflect the selected worktree. The mock serves
+      // one corpus, so the counts are stable, but the `scope` field echoes the
+      // active selection for live parity.
       return {
         ok: true,
+        scope: this.activeScope,
         nodes: this.noVault ? 0 : c.nodes.length,
         edges: this.noVault ? 0 : c.edges.length,
+        last_seq: this.lastSeq,
         degradations: [...this.degradations.keys()],
         tiers,
         git: { branch: "main", ahead: 0, behind: 0, dirty: [] },
@@ -270,6 +425,18 @@ export class MockEngine {
           ? { service: "stopped" }
           : { service: "running", watcher: "watching", index: "fresh", jobs: 0 },
       };
+    }
+    if (path === "/session") {
+      if (init?.method === "PUT") {
+        return this.applySessionUpdate(init);
+      }
+      return this.sessionData();
+    }
+    if (path === "/settings") {
+      if (init?.method === "PUT") {
+        return this.applySettingsUpdate(init);
+      }
+      return this.settingsData();
     }
     if (path === "/map") {
       return {
@@ -489,6 +656,12 @@ export class MockEngine {
   private streamResponse(params: URLSearchParams): Response {
     const channels = new Set((params.get("channels") ?? "").split(","));
     const since = params.get("since");
+    // The optional `scope` param (W02.P04.S14) targets a worktree's own clock.
+    // The live engine NEVER errors the SSE handshake on a bad scope — it falls
+    // back to the active scope. The mock serves one corpus on one timeline, so
+    // it accepts `scope` and resumes that single clock; the parameter is honored
+    // (read, not rejected) for live parity, and `since=` resumes the same clock.
+    void params.get("scope");
     const encoder = new TextEncoder();
     let unsubscribe: (() => void) | null = null;
     const stream = new ReadableStream<Uint8Array>({
@@ -548,8 +721,18 @@ class RouteError extends Error {
   }
 }
 
+/**
+ * Validate a scoped-read's `scope` param (W02.P04.S15 retarget): the live
+ * registry serves ANY vault-bearing worktree, not one frozen scope. An absent
+ * scope is still a 400 (the read routes require it); a present-but-non-vault or
+ * unknown token 400s honestly, exactly as the live `validate_scope` does.
+ */
 function requireScope(params: URLSearchParams): void {
-  if (!params.get("scope")) throw new RouteError(400, "scope is required");
+  const scope = params.get("scope");
+  if (!scope) throw new RouteError(400, "scope is required");
+  if (!VAULT_BEARING_SCOPES.has(scope)) {
+    throw new RouteError(400, `unknown or non-vault-bearing scope ${scope}`);
+  }
 }
 
 function json(body: unknown, status = 200): Response {
