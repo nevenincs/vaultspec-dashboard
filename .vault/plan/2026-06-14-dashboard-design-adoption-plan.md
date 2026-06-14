@@ -77,7 +77,7 @@ W02 carries the adoption across every dashboard surface and the bespoke Phosphor
 
 Re-skins the sidebar/vault-browser chrome onto the new semantic tokens and Lucide icons, gated on the sidebar surface ADR reaching accepted.
 
-- [ ] `W02.P05.S21` - Re-skin the sidebar/vault-browser to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership (no new fetch, no raw tiers read), with design review and the full lint gate green; `frontend/src/app/left/VaultBrowser.tsx`.
+- [x] `W02.P05.S21` - Re-skin the sidebar/vault-browser to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership (no new fetch, no raw tiers read), with design review and the full lint gate green; `frontend/src/app/left/VaultBrowser.tsx`.
 
 ### Phase `W02.P06` - Nav-controls surface adoption
 

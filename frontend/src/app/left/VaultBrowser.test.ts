@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { VaultTreeEntry } from "../../stores/server/engine";
-import { docGlyph, entryStem, freshnessLabel, groupEntries } from "./VaultBrowser";
+import {
+  docMarkName,
+  entryStem,
+  freshnessLabel,
+  groupEntries,
+  isFresh,
+} from "./VaultBrowser";
 
 const entry = (path: string, docType: string, modified?: string): VaultTreeEntry => ({
   path,
@@ -31,10 +37,18 @@ describe("groupEntries (G2.c)", () => {
 });
 
 describe("entry presentation", () => {
-  it("gives each doc type a distinct glyph with a fallback", () => {
-    const glyphs = ["research", "adr", "plan", "exec", "audit"].map(docGlyph);
-    expect(new Set(glyphs).size).toBe(glyphs.length);
-    expect(docGlyph("mystery")).toBe("○");
+  it("gives every canonical doc type a distinct Phosphor mark with a fallback", () => {
+    // Grayscale-by-shape gate (iconography ADR): each doc type maps to a
+    // shape-distinct Phosphor mark; the squint test is shape, so the marks
+    // must not collide. Unknown types fall back to the dashed-file mark.
+    const types = ["research", "adr", "plan", "exec", "audit", "reference", "index"];
+    const marks = types.map(docMarkName);
+    expect(new Set(marks).size).toBe(marks.length);
+    // An unknown doc type resolves to the dashed-file fallback mark, which is
+    // genuinely distinct from every assigned mark (not an alias of one of them).
+    const fallback = docMarkName("mystery");
+    expect(fallback).toMatch(/FileDashed/);
+    expect(marks).not.toContain(fallback);
   });
 
   it("labels freshness in compact buckets and cools to silence", () => {
@@ -45,6 +59,15 @@ describe("entry presentation", () => {
     expect(freshnessLabel("2026-05-30T12:00:00Z", now)).toBe("1w");
     expect(freshnessLabel("2026-01-01T00:00:00Z", now)).toBe("");
     expect(freshnessLabel(undefined, now)).toBe("");
+  });
+
+  it("tints only genuinely-fresh items (the <1h 'now' bucket) with the accent", () => {
+    // The accent freshness cue is a purposeful liveness signal tied to real
+    // recency, not ambient decoration — only "now" is accent-tinted.
+    expect(isFresh("now")).toBe(true);
+    expect(isFresh("9h")).toBe(false);
+    expect(isFresh("3d")).toBe(false);
+    expect(isFresh("")).toBe(false);
   });
 
   it("derives the display stem from the path", () => {

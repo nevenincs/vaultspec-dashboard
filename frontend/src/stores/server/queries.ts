@@ -16,8 +16,8 @@ import {
 } from "@tanstack/react-query";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
-import type { GraphFilter, SessionUpdate, SettingUpdate } from "./engine";
-import { engineClient } from "./engine";
+import type { GraphFilter, SessionUpdate, SettingUpdate, TiersBlock } from "./engine";
+import { EngineError, engineClient } from "./engine";
 
 // --- stable serialization for key parts -----------------------------------------
 
@@ -104,6 +104,56 @@ export function useVaultTree(scope: string | null) {
     queryFn: () => engineClient.vaultTree(scope!),
     enabled: scope !== null,
   });
+}
+
+/**
+ * The vault-tree's degradation truth, derived inside the stores layer so chrome
+ * never reads the raw `tiers` block (dashboard-layer-ownership). Contract §2: a
+ * tier marked `available:false` OR absent from the block is a designed degraded
+ * state — absence is degradation, not availability. The reasons the engine
+ * attached travel through both the success envelope (`data.tiers`) and the
+ * error envelope (`EngineError.tiers`, preserved by the transport) so a
+ * backend-down condition surfaces as designed degradation rather than a bare
+ * error. Returns `degraded` plus the per-tier reasons for copy-tone rendering;
+ * the sidebar consumes this, never `tree.data.tiers`.
+ */
+export interface VaultTreeAvailability {
+  degraded: boolean;
+  /** Names of the tiers reporting unavailable (or absent from the block). */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+}
+
+const VAULT_TREE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+
+export function deriveVaultTreeAvailability(
+  tiers: TiersBlock | undefined,
+): VaultTreeAvailability {
+  // A wholly absent block (a genuine transport fault with no envelope) is NOT
+  // treated as every-tier-degraded here — that is the query's error state, which
+  // the sidebar renders distinctly. Degradation is reported only from a block
+  // the engine actually served.
+  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of VAULT_TREE_TIERS) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+}
+
+/** Stores hook: the vault-tree degradation, read through the wire client so the
+ *  sidebar consumes derived truth instead of the raw `tiers` block. */
+export function useVaultTreeAvailability(scope: string | null): VaultTreeAvailability {
+  const tree = useVaultTree(scope);
+  const fromData = tree.data?.tiers;
+  const fromError = tree.error instanceof EngineError ? tree.error.tiers : undefined;
+  return deriveVaultTreeAvailability(fromData ?? fromError);
 }
 
 export function useFiltersVocabulary(scope: string | null) {

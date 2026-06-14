@@ -4,9 +4,11 @@ import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
 import { MockEngine } from "../../testing/mockEngine";
 import { EngineClient } from "./engine";
+import type { TiersBlock } from "./engine";
 import type { StreamChunk } from "./queries";
 import {
   STREAM_RETENTION,
+  deriveVaultTreeAvailability,
   engineKeys,
   parseSseFrames,
   sseChunks,
@@ -19,6 +21,54 @@ describe("stableKey", () => {
     expect(stableKey({ b: 1, a: 2 })).toBe(stableKey({ a: 2, b: 1 }));
     expect(stableKey({ a: 1, gone: undefined })).toBe(stableKey({ a: 1 }));
     expect(stableKey(undefined)).toBe("");
+  });
+});
+
+describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () => {
+  const allUp: TiersBlock = {
+    declared: { available: true },
+    structural: { available: true },
+    temporal: { available: true },
+    semantic: { available: true },
+  };
+
+  it("reports no degradation when every canonical tier is available", () => {
+    const a = deriveVaultTreeAvailability(allUp);
+    expect(a.degraded).toBe(false);
+    expect(a.degradedTiers).toEqual([]);
+    expect(a.reasons).toEqual({});
+  });
+
+  it("treats a tier marked unavailable as degraded and carries its reason", () => {
+    const a = deriveVaultTreeAvailability({
+      ...allUp,
+      semantic: { available: false, reason: "rag service down" },
+    });
+    expect(a.degraded).toBe(true);
+    expect(a.degradedTiers).toEqual(["semantic"]);
+    expect(a.reasons.semantic).toBe("rag service down");
+  });
+
+  it("treats a tier ABSENT from the block as degraded (absence ≠ availability)", () => {
+    // Contract §2: an absent tier is a designed degraded state, never read as
+    // available. A reason-less degradation carries no reason string.
+    const partial: TiersBlock = {
+      declared: { available: true },
+      structural: { available: true },
+    };
+    const a = deriveVaultTreeAvailability(partial);
+    expect(a.degraded).toBe(true);
+    expect(a.degradedTiers).toEqual(["temporal", "semantic"]);
+    expect(a.reasons).toEqual({});
+  });
+
+  it("returns the no-degradation default for a wholly absent block (transport fault)", () => {
+    // A missing block is the query's ERROR state (rendered distinctly by the
+    // sidebar), not every-tier-degraded — so the degraded banner does not also
+    // fire on a bare transport failure.
+    const a = deriveVaultTreeAvailability(undefined);
+    expect(a.degraded).toBe(false);
+    expect(a.degradedTiers).toEqual([]);
   });
 });
 
