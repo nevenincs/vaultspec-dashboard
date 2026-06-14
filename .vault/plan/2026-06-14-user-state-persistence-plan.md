@@ -32,7 +32,7 @@ Stand up the new workspace crate and the best-effort user-state SQLite store wit
 
 - [x] `W01.P01.S01` - add the new workspace crate manifest; `engine/crates/vaultspec-session/Cargo.toml`.
 - [x] `W01.P01.S02` - register the new crate in the workspace members; `engine/Cargo.toml`.
-- [ ] `W01.P01.S03` - implement the best-effort user-state SQLite store with open-or-heal recreate-on-corrupt; `engine/crates/vaultspec-session/src/store.rs`.
+- [x] `W01.P01.S03` - implement the best-effort user-state SQLite store with open-or-heal recreate-on-corrupt; `engine/crates/vaultspec-session/src/store.rs`.
 - [ ] `W01.P01.S04` - define the session and settings table schema and migration-free init; `engine/crates/vaultspec-session/src/schema.rs`.
 
 ### Phase `W01.P02` - session and settings domain plus tests
