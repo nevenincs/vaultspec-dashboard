@@ -101,7 +101,7 @@ Re-skins the search surface onto the new tokens and sanctioned icons, gated on t
 
 Rebuilds the node-canvas scene to consume the new token layer through getComputedStyle and the sanctioned domain marks, gated on the node-canvas surface ADR reaching accepted.
 
-- [ ] `W02.P09.S25` - Rebuild the node-canvas scene to consume the new token layer via getComputedStyle and sanctioned domain marks per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/scene/field/nodeSprites.ts`.
+- [x] `W02.P09.S25` - Rebuild the node-canvas scene to consume the new token layer via getComputedStyle and sanctioned domain marks per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/scene/field/nodeSprites.ts`.
 
 ### Phase `W02.P10` - Canvas-controls surface adoption
 
