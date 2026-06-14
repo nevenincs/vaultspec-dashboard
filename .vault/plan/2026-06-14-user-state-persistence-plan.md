@@ -104,7 +104,7 @@ Add the session and settings client methods, wire types, query and mutation hook
 - [x] `W04.P08.S25` - add session and settings client methods and snake_case wire types; `frontend/src/stores/server/engine.ts`.
 - [x] `W04.P08.S26` - add session and settings query and mutation hooks and keys; `frontend/src/stores/server/queries.ts`.
 - [x] `W04.P08.S27` - mirror the new session and settings wire shape in the mock engine double; `frontend/src/testing/mockEngine.ts`.
-- [ ] `W04.P08.S28` - extend the tolerant live adapter for the new shapes; `frontend/src/stores/server/liveAdapters.ts`.
+- [x] `W04.P08.S28` - extend the tolerant live adapter for the new shapes; `frontend/src/stores/server/liveAdapters.ts`.
 
 ### Phase `W04.P09` - restore-on-load and selection persistence
 
