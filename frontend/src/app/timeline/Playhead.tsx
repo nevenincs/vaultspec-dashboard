@@ -38,6 +38,11 @@ import { timeToX, useTimelineStore, xToTime } from "./Timeline";
 /** Pixels from the right edge within which a drag snaps back to LIVE. */
 export const LIVE_SNAP_PX = 10;
 
+/** The playhead rail width in px — a named geometry constant, applied via
+ *  inline style to match the Timeline's MARK_PX / LANE_HEIGHT pattern (no raw
+ *  arbitrary-px Tailwind class). */
+export const PLAYHEAD_W = 3;
+
 /** One keyboard step nudges the playhead this fraction of the window span. */
 export const KEY_STEP_FRACTION = 1 / 24;
 export const KEY_NUDGE_FRACTION = 1 / 96;
@@ -178,10 +183,13 @@ export function Playhead() {
         aria-valuenow={Math.round(ariaNow)}
         aria-valuetext={live ? "LIVE" : humanInstant(playheadT)}
         onKeyDown={onGripKeyDown}
-        className={`pointer-events-auto absolute top-0 bottom-0 w-[3px] cursor-ew-resize transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`pointer-events-auto absolute top-0 bottom-0 cursor-ew-resize transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           live ? "bg-state-live" : "bg-state-stale"
         }`}
-        style={{ left: `${Math.max(0, Math.min(width - 3, x))}px` }}
+        style={{
+          width: `${PLAYHEAD_W}px`,
+          left: `${Math.max(0, Math.min(width - PLAYHEAD_W, x))}px`,
+        }}
       />
       <button
         type="button"

@@ -287,7 +287,7 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
       {!loading && !errored && marks.length > 0 && (
         <div
           className="pointer-events-none absolute inset-0"
-          role="list"
+          role="group"
           aria-label="timeline events"
         >
           {marks.slice(0, RAW_MARK_CAP).map((event: EngineEvent) => {
@@ -305,7 +305,6 @@ export function Timeline({ onEventClick, overlay }: TimelineSurfaceProps = {}) {
               <button
                 key={event.id}
                 type="button"
-                role="listitem"
                 aria-label={label}
                 title={label}
                 onClick={() => onEventClick?.(event)}

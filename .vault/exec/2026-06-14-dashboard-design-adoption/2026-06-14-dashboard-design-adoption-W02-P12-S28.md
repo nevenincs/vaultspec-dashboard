@@ -149,3 +149,45 @@ ruler baseline stay SVG) because Phosphor marks are React SVG components and
 proper focus / ARIA / keyboard semantics are cleaner on real HTML buttons than on
 SVG `<text>`; this keeps the marks in-family and a11y-correct without a
 foreignObject nest.
+
+## Revision (design review PASS-WITH-REVISIONS)
+
+The independent design review confirmed time-travel honesty, the motion grammar,
+the ARIA slider, and the SVG-to-HTML overlay choice as sound, and returned two
+MEDIUM revisions plus one LOW confirm. All addressed:
+
+- MEDIUM (a11y) — the event marks carried `role="listitem"` inside a
+  `role="list"` wrapper, which OVERRODE the native button role so assistive tech
+  announced each mark as a plain list item, not an activatable control. Dropped
+  `role="list"` / `role="listitem"`; the wrapper is now `role="group"` (it still
+  names the marks), and each mark keeps its native `<button>` role. Added a new
+  `Timeline.render.test.tsx` proving each mark resolves as a BUTTON by its exact
+  accessible name (kind + human time + joined-node count) and that activating it
+  fires the select intent — the focusable-AND-activatable contract the ADR
+  requires.
+
+- MEDIUM (token discipline) — the playhead slider used an arbitrary `w-[3px]`
+  Tailwind class, violating the no-raw-px rule. Hoisted a named `PLAYHEAD_W`
+  geometry constant (matching the `MARK_PX` / `LANE_HEIGHT` pattern already in
+  the timeline) and applied it via inline `style={{ width }}`, which also feeds
+  the same constant into the slider's left-clamp math.
+
+- LOW (local vs UTC time) — confirmed and decided KEEP UTC. Surveyed every
+  human-time rendering in the app: there is zero `toLocale*` / `Intl.DateTimeFormat`
+  usage anywhere in `src`. The app's one absolute-date surface (the inspector)
+  renders the stored ISO instant directly (`dates.modified.slice(0, 10)`), and
+  the vault browser uses relative freshness (`now` / `Nh` / `Nd` / `Nw`), which
+  is timezone-agnostic. The timeline's `humanInstant` (`toISOString().slice`)
+  already matches the inspector's stored-ISO convention exactly; switching to
+  local would make the timeline the only surface diverging from the rest and
+  break cross-surface consistency. UTC is therefore the deliberate, consistent
+  choice. The machine value `aria-valuenow` carries epoch ms regardless, and the
+  date-range filter still writes ISO.
+
+Re-gated after the revisions: 31 timeline tests green (added the
+`Timeline.render.test.tsx` activatable-button pair); eslint exits 0 project-wide;
+prettier and `tsc --noEmit` clean on all authored timeline files; the full
+`npm test` suite is green (648 passed, 9 skipped). The full `just dev lint`
+recipe's only format failure is `src/stores/server/queries.ts`, a concurrent
+stores-layer agent's uncommitted, prettier-dirty in-flight file outside the
+timeline scope fence — not touched or staged here.
