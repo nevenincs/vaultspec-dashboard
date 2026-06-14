@@ -108,65 +108,65 @@ Map every doc_type to its authority register as a query-time projection on the n
 
 <!-- One-line headline summary plan. -->
 
-- [ ] `P01.S01` - add an ontology module with an authority_class map from doc_type to register; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `P01.S02` - unit-test authority_class across every doc type plus the unknown fallback; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `P01.S03` - wire authority_class into the node_view document projection; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `P01.S04` - assert authority_class on the document list shape in graph query tests; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P01.S01` - add an ontology module with an authority_class map from doc_type to register; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `P01.S02` - unit-test authority_class across every doc type plus the unknown fallback; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `P01.S03` - wire authority_class into the node_view document projection; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P01.S04` - assert authority_class on the document list shape in graph query tests; `engine/crates/engine-query/src/graph.rs`.
 
 ### Phase `P02` - type-specific lifecycle vocabulary
 
 Enrich the ingest-time lifecycle parse to carry per-species state (ADR status, plan tier, audit severity, rule active/superseded) with honest degradation.
 
-- [ ] `P02.S05` - parse the ADR H1 status line into a type-specific lifecycle state; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `P02.S06` - parse the audit worst-finding severity into a lifecycle max_severity; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `P02.S07` - carry the plan tier alongside progress in the lifecycle; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `P02.S08` - parse rule active or superseded status into the lifecycle; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `P02.S09` - unit-test the type-specific lifecycle parse with honest degradation; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P02.S05` - parse the ADR H1 status line into a type-specific lifecycle state; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P02.S06` - parse the audit worst-finding severity into a lifecycle max_severity; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P02.S07` - carry the plan tier alongside progress in the lifecycle; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P02.S08` - parse rule active or superseded status into the lifecycle; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P02.S09` - unit-test the type-specific lifecycle parse with honest degradation; `engine/crates/engine-graph/src/index.rs`.
 
 ### Phase `P03` - aggregate hint and node_view enrichment
 
 Add the aggregate collapsibility hint and fold the ontology fields onto the document node_view projection.
 
-- [ ] `P03.S10` - add the aggregate collapsibility hint for exec records bound to a parent plan; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `P03.S11` - fold authority_class and aggregate onto the node_view projection; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `P03.S12` - ensure the id derivation is unchanged by the additive node fields; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `P03.S13` - test the enriched node_view carries authority and aggregate additively; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P03.S10` - add the aggregate collapsibility hint for exec records bound to a parent plan; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `P03.S11` - fold authority_class and aggregate onto the node_view projection; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P03.S12` - ensure the id derivation is unchanged by the additive node fields; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P03.S13` - test the enriched node_view carries authority and aggregate additively; `engine/crates/engine-query/src/graph.rs`.
 
 ### Phase `P04` - edge derivation-relation label
 
 Project a derivation label onto pipeline edges, distinct from relation and never part of the edge stable key.
 
-- [ ] `P04.S14` - add a derivation-label function from relation, doc_type pair, and provenance; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `P04.S15` - read the generated-by label from the exec id container path; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `P04.S16` - project edges as values carrying a derivation field distinct from relation; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `P04.S17` - prove the derivation label is not part of the edge stable key; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `P04.S18` - test the edge_view derivation labels across the pipeline vocabulary; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P04.S14` - add a derivation-label function from relation, doc_type pair, and provenance; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `P04.S15` - read the generated-by label from the exec id container path; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `P04.S16` - project edges as values carrying a derivation field distinct from relation; `engine/crates/engine-query/src/graph.rs`.
+- [x] `P04.S17` - prove the derivation label is not part of the edge stable key; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `P04.S18` - test the edge_view derivation labels across the pipeline vocabulary; `engine/crates/engine-query/src/graph.rs`.
 
 ### Phase `P05` - rule node species
 
 Introduce the rule node kind projected from the rules tree as authority law with promoted-from edges, without implying rules are vault documents.
 
-- [ ] `P05.S19` - add the rule node kind and its identity prefix; `engine/crates/engine-model/src/id.rs`.
-- [ ] `P05.S20` - project rule nodes from the rules tree as authority law with active state; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `P05.S21` - mint promoted-from derivation edges from rule back to its audit; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `P05.S22` - test rule species projection without implying rules are vault documents; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P05.S19` - add the rule node kind and its identity prefix; `engine/crates/engine-model/src/id.rs`.
+- [x] `P05.S20` - project rule nodes from the rules tree as authority law with active state; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P05.S21` - mint promoted-from derivation edges from rule back to its audit; `engine/crates/engine-graph/src/index.rs`.
+- [x] `P05.S22` - test rule species projection without implying rules are vault documents; `engine/crates/engine-graph/src/index.rs`.
 
 ### Phase `P06` - stores typing, mock parity, conformance
 
 Type the additive wire fields in the stores layer, mirror them byte-for-byte in the mock and fixtures, and prove fidelity through the client path.
 
-- [ ] `P06.S23` - type the additive node and edge ontology fields in the stores engine types; `frontend/src/stores/server/engine.ts`.
-- [ ] `P06.S24` - add the ontology fields to the fixture corpus byte-for-byte like live; `frontend/src/testing/fixtures/corpus.ts`.
-- [ ] `P06.S25` - serve the additive ontology fields from the mock graph route; `frontend/src/testing/mockEngine.ts`.
-- [ ] `P06.S26` - feed a captured live sample through the client path and assert the fields; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `P06.S23` - type the additive node and edge ontology fields in the stores engine types; `frontend/src/stores/server/engine.ts`.
+- [x] `P06.S24` - add the ontology fields to the fixture corpus byte-for-byte like live; `frontend/src/testing/fixtures/corpus.ts`.
+- [x] `P06.S25` - serve the additive ontology fields from the mock graph route; `frontend/src/testing/mockEngine.ts`.
+- [x] `P06.S26` - feed a captured live sample through the client path and assert the fields; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ### Phase `P07` - full green gate and wire-contract verification
 
 Run the full lint gate, the engine suite, and the frontend tests to exit 0, and confirm the additive wire delta is honored end to end.
 
-- [ ] `P07.S27` - run the full lint gate to exit zero across frontend and rust; `engine`.
-- [ ] `P07.S28` - run the engine test suite and the relevant frontend vitest suites green; `engine`.
-- [ ] `P07.S29` - verify the additive wire delta is honored on success and error envelopes; `engine/tests/tests/conformance.rs`.
+- [x] `P07.S27` - run the full lint gate to exit zero across frontend and rust; `engine`.
+- [x] `P07.S28` - run the engine test suite and the relevant frontend vitest suites green; `engine`.
+- [x] `P07.S29` - verify the additive wire delta is honored on success and error envelopes; `engine/tests/tests/conformance.rs`.
 
 ## Description
 
