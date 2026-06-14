@@ -83,12 +83,18 @@ pub struct ScopeCell {
     /// claiming a tier the index could not build.
     pub declared_status: RwLock<Option<String>>,
     /// Coalescing guard for the async declared fold (perf ADR D1): true while
-    /// a fold task is in flight for this cell. A second rebuild that finds it
-    /// set skips spawning another fold — the running one is corrected by the
-    /// NEXT rebuild's fold (which re-reads HEAD and re-folds at the current
-    /// graph), so at most one fold runs per cell at a time and the latest
-    /// committed structural graph always gets a declared fold eventually.
+    /// a fold task is in flight for this cell, so at most one fold runs per
+    /// cell at a time.
     pub declared_fold_active: AtomicBool,
+    /// Trailing-edge flag (perf ADR D1, review HIGH): set when a rebuild lands
+    /// while a fold is already in flight (the new `spawn_declared_fold` could
+    /// not claim the slot, so it could not fold the NEW structural graph). The
+    /// in-flight fold's completion guard checks this and re-spawns a fold at
+    /// the CURRENT HEAD, guaranteeing the latest structural commit always gets
+    /// a declared fold even when it is the LAST change (no further rebuild to
+    /// piggy-back on). Without it, a fold finishing after a final HEAD advance
+    /// would serve the superseded commit's declared edges indefinitely.
+    pub declared_fold_pending: AtomicBool,
 }
 
 pub const RING_CAP: usize = 4096;
@@ -112,6 +118,7 @@ impl ScopeCell {
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
             declared_fold_active: AtomicBool::new(false),
+            declared_fold_pending: AtomicBool::new(false),
         }
     }
 

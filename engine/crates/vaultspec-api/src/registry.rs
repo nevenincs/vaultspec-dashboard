@@ -310,35 +310,67 @@ fn declared_cache_key(scope_token: &str, head_sha: &str) -> String {
 /// `Weak<ScopeCell>`, upgrading per use and exiting if the cell was evicted —
 /// it never keeps a dead scope alive.
 ///
-/// COALESCED: a per-cell `declared_fold_active` flag means at most one fold
-/// runs per cell at a time. If one is already in flight, this skips — the
-/// running fold is superseded by the NEXT rebuild's fold (which re-reads HEAD
-/// at the current graph), so the latest structural commit always gets a
-/// declared fold eventually.
+/// COALESCED with a closed trailing edge (perf ADR D1, review HIGH): a per-cell
+/// `declared_fold_active` flag means at most one fold runs per cell at a time.
+/// If one is already in flight, this sets the `declared_fold_pending`
+/// trailing-edge flag instead of dropping the request — the in-flight fold's
+/// completion guard sees the flag and re-spawns a fold at the CURRENT HEAD. So
+/// even when a rebuild that races a fold is the LAST change (no further rebuild
+/// to piggy-back on), the latest structural commit STILL gets a declared fold;
+/// the tier never serves a superseded commit's edges indefinitely.
 pub fn spawn_declared_fold(cell: &Arc<ScopeCell>) {
     use std::sync::atomic::Ordering;
 
     // Only runs under a tokio runtime; the non-runtime (unit-test) path folds
     // declared inline in `rebuild_and_swap`, so there is nothing to defer here.
-    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+    if tokio::runtime::Handle::try_current().is_err() {
         return;
-    };
+    }
 
-    // Coalesce: claim the fold slot. If another fold is already in flight, skip
-    // — the next rebuild's fold corrects the result at the current HEAD.
+    // Coalesce: claim the fold slot. If another fold is in flight, record the
+    // trailing edge (a fold is owed at the current HEAD) and return; the running
+    // fold re-spawns on completion. Re-check after setting `pending` to close the
+    // lost-wakeup window: if the in-flight fold cleared `active` between our
+    // failed claim and our `pending` set, it may have already observed `pending`
+    // as false and finished — so we re-attempt the claim ourselves rather than
+    // leave an owed fold stranded.
     if cell
         .declared_fold_active
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
     {
-        return;
+        cell.declared_fold_pending.store(true, Ordering::Release);
+        if cell
+            .declared_fold_active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            // Still in flight: the running fold owns the trailing edge now.
+            return;
+        }
+        // We won the slot after all; consume the flag WE just set (we are about
+        // to fold at the current HEAD, satisfying it) and fall through to spawn.
+        cell.declared_fold_pending.store(false, Ordering::Release);
     }
 
+    spawn_claimed_fold(cell);
+}
+
+/// Spawn the fold task for a cell that has ALREADY claimed the
+/// `declared_fold_active` slot. Leak-safe: the task holds a `Weak<ScopeCell>`
+/// and upgrades inside, so an eviction between spawn and run cleanly aborts.
+fn spawn_claimed_fold(cell: &Arc<ScopeCell>) {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        // Claimed but no runtime to run on: release the slot so a later
+        // (runtime-backed) spawn can claim it. Defensive — callers only reach
+        // here under a runtime.
+        cell.declared_fold_active
+            .store(false, std::sync::atomic::Ordering::Release);
+        return;
+    };
     let weak = Arc::downgrade(cell);
     handle.spawn(async move {
         // The subprocess + CPU ingest is blocking; run it OFF the async reactor.
-        // The closure holds the `Weak` and upgrades inside, so an eviction
-        // between spawn and run cleanly aborts the fold.
         let result = tokio::task::spawn_blocking(move || declared_fold_blocking(&weak)).await;
         if let Err(e) = result {
             eprintln!("vaultspec serve: declared fold task panicked: {e}");
@@ -348,7 +380,8 @@ pub fn spawn_declared_fold(cell: &Arc<ScopeCell>) {
 
 /// The blocking body of the declared fold (perf ADR D1): HEAD-sha resolve →
 /// cache-or-subprocess JSON → clone-and-fold → commit. Runs on a blocking
-/// thread; clears the cell's coalescing flag on every exit path.
+/// thread; the completion guard releases the coalescing slot and re-spawns a
+/// fold if a rebuild raced this one (the trailing-edge close, review HIGH).
 fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     use std::sync::atomic::Ordering;
 
@@ -357,15 +390,33 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
     let Some(cell) = weak.upgrade() else {
         return;
     };
-    // Whatever happens below, release the coalescing slot so the next rebuild's
-    // fold can run. A guard makes this panic-safe.
-    struct FoldGuard<'a>(&'a ScopeCell);
-    impl Drop for FoldGuard<'_> {
+    // On EVERY exit path (including a panic): release the coalescing slot, then
+    // — if a rebuild raced this fold (`declared_fold_pending` set) — re-spawn a
+    // fold at the CURRENT HEAD so the latest structural commit is never left
+    // unfolded. The guard holds a `Weak` for the re-spawn so it can never keep
+    // an evicted cell alive (HIGH-1 discipline). Termination: a re-spawn only
+    // happens when `pending` was actually set by a concurrent rebuild, and the
+    // re-spawned fold clears it; on a STABLE HEAD no rebuild fires, so `pending`
+    // stays false and the chain ends.
+    struct FoldGuard {
+        cell: std::sync::Weak<ScopeCell>,
+    }
+    impl Drop for FoldGuard {
         fn drop(&mut self) {
-            self.0.declared_fold_active.store(false, Ordering::Release);
+            let Some(cell) = self.cell.upgrade() else {
+                return;
+            };
+            cell.declared_fold_active.store(false, Ordering::Release);
+            // Trailing edge: a rebuild landed mid-fold and could not claim the
+            // slot. Re-spawn now that the slot is free, folding at the current
+            // HEAD. `swap` consumes the flag so a single race triggers exactly
+            // one re-spawn.
+            if cell.declared_fold_pending.swap(false, Ordering::AcqRel) {
+                spawn_declared_fold(&cell);
+            }
         }
     }
-    let _guard = FoldGuard(&cell);
+    let _guard = FoldGuard { cell: weak.clone() };
 
     // Resolve the worktree HEAD sha (read-and-infer: object-DB read, no
     // checkout). A failure here (detached/empty repo, gix error) means we
@@ -755,6 +806,167 @@ mod tests {
             *cell.declared_status.read().unwrap(),
             None,
             "declared tier flips to available from the cache (no subprocess ran)"
+        );
+    }
+
+    /// Seed the declared-graph cache for a given HEAD sha with a JSON payload
+    /// declaring one edge from `src` to `dst`, so the fold at that HEAD hits the
+    /// cache (no subprocess) and folds that specific edge.
+    fn seed_declared_cache(
+        cell: &ScopeCell,
+        root: &std::path::Path,
+        head_sha: &str,
+        src: &str,
+        dst: &str,
+    ) {
+        let json = serde_json::json!({
+            "nodes": [
+                {"id": src, "doc_type": "plan"},
+                {"id": dst, "doc_type": "adr"}
+            ],
+            "edges": [ {"source": src, "target": dst, "kind": "related"} ]
+        })
+        .to_string();
+        let key = declared_cache_key(&crate::routes::scope_token(root), head_sha);
+        let store = cell.store.lock().unwrap();
+        store
+            .put_artifact(DECLARED_GRAPH_KIND, &key, &json, crate::app::now_ms())
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_that_races_an_in_flight_fold_is_not_lost_trailing_edge() {
+        // Review HIGH (perf ADR D1 trailing-edge race): F1 claims the fold slot
+        // and begins folding at HEAD-A; a rebuild lands structural@HEAD-B and
+        // finds the slot busy, so it cannot spawn its own fold. Without the
+        // trailing-edge close, F1 finishes, clears the slot, and NO fold ever
+        // runs at HEAD-B — the declared tier serves HEAD-A's edges over HEAD-B's
+        // structural graph forever (B was the last change). This test forces
+        // exactly that interleaving and asserts a fold DOES eventually run at
+        // HEAD-B: the cell ends clean (slot free, no pending) with HEAD-B's
+        // declared edge folded in.
+        use std::sync::atomic::Ordering;
+
+        let dir = tempfile::tempdir().unwrap();
+        let (root, cell) = structural_cell(dir.path());
+        let structural_edges = cell.graph_arc().edge_count();
+
+        // HEAD-A and its cached declared JSON (edge into `...-a-adr`).
+        let head_a = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
+        seed_declared_cache(
+            &cell,
+            &root,
+            &head_a,
+            "2026-06-14-reg-plan",
+            "2026-06-14-a-adr",
+        );
+
+        // Simulate F1 in flight: claim the slot WITHOUT running the body yet.
+        assert!(
+            cell.declared_fold_active
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok(),
+            "the test claims the slot to stand in for an in-flight fold F1"
+        );
+
+        // The racing rebuild advances HEAD to B and re-commits structural at B,
+        // then tries to spawn a fold — the slot is busy, so it must record the
+        // trailing edge (pending) rather than drop the request.
+        std::fs::write(
+            root.join(".vault/plan/2026-06-14-reg-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#reg'\n---\n\nMentions `src/b.rs`.\n",
+        )
+        .unwrap();
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "head-b"]);
+        let head_b = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
+        assert_ne!(head_a, head_b, "HEAD actually advanced to B");
+        seed_declared_cache(
+            &cell,
+            &root,
+            &head_b,
+            "2026-06-14-reg-plan",
+            "2026-06-14-b-adr",
+        );
+        // Re-commit the structural graph at HEAD-B (what the watcher's
+        // rebuild_and_swap does), so the cell's CURRENT graph is HEAD-B's.
+        {
+            let (structural_b, _) = {
+                let store = cell.store.lock().unwrap();
+                engine_graph::index::index_worktree_structural(
+                    &cell.root,
+                    &cell.scope,
+                    &store,
+                    crate::app::now_ms(),
+                )
+                .unwrap()
+            };
+            cell.commit_graph(structural_b);
+        }
+
+        spawn_declared_fold(&cell);
+        assert!(
+            cell.declared_fold_pending.load(Ordering::Acquire),
+            "a rebuild racing an in-flight fold records the trailing edge"
+        );
+
+        // F1 completes: run its blocking body (it owns the slot we claimed). Its
+        // guard releases the slot, sees `pending`, and re-spawns a fold — which,
+        // running at the CURRENT HEAD-B, hits HEAD-B's cache and folds B's edge.
+        let weak = Arc::downgrade(&cell);
+        tokio::task::spawn_blocking(move || super::declared_fold_blocking(&weak))
+            .await
+            .unwrap();
+
+        // Let the re-spawned fold (and any further re-spawn) settle.
+        for _ in 0..100 {
+            if !cell.declared_fold_active.load(Ordering::Acquire)
+                && !cell.declared_fold_pending.load(Ordering::Acquire)
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        // The trailing edge is closed: the cell ends clean and the declared tier
+        // is AVAILABLE over HEAD-B's structural graph with HEAD-B's declared edge
+        // present (the `...-b-adr` phantom node only exists if B's fold ran).
+        assert!(
+            !cell.declared_fold_active.load(Ordering::Acquire),
+            "the fold slot is released after the chain settles"
+        );
+        assert!(
+            !cell.declared_fold_pending.load(Ordering::Acquire),
+            "no trailing edge is left owed once the chain settles"
+        );
+        assert_eq!(
+            *cell.declared_status.read().unwrap(),
+            None,
+            "declared tier is available after the trailing fold"
+        );
+        assert!(
+            cell.graph_arc().edge_count() > structural_edges,
+            "a declared edge is folded into the live graph"
+        );
+        // Declared edges reference document nodes by id but do not mint them, so
+        // assert on the EDGE to HEAD-B's target (`doc:2026-06-14-b-adr`), which
+        // exists ONLY if a fold ran at HEAD-B (HEAD-A's cache targets `a-adr`).
+        let b_dst = engine_model::node_id(&engine_model::CanonicalKey::Document {
+            stem: "2026-06-14-b-adr",
+        });
+        let graph = cell.graph_arc();
+        assert!(
+            graph.edges().any(|s| s.edge.dst == b_dst),
+            "HEAD-B's declared edge folded in — the trailing fold ran at the \
+             CURRENT HEAD, not the superseded HEAD-A"
+        );
+        let a_dst = engine_model::node_id(&engine_model::CanonicalKey::Document {
+            stem: "2026-06-14-a-adr",
+        });
+        assert!(
+            !graph.edges().any(|s| s.edge.dst == a_dst),
+            "no superseded HEAD-A declared edge survives once the fold runs at \
+             HEAD-B (the fold clones the CURRENT structural graph, not A's)"
         );
     }
 

@@ -864,4 +864,75 @@ mod tests {
             "the declared edge actually folded in"
         );
     }
+
+    #[test]
+    fn full_index_equals_structural_plus_declared_from_json_d8_2() {
+        // Review LOW (perf ADR D1, D8.2 lock): the async fold's serve path is
+        // `index_worktree_structural` + `ingest_declared_from_json`. Tie it back
+        // to the SYNCHRONOUS full `index_worktree` (the CLI / re-derivability
+        // path): for the SAME declared input and observed_at, the full path's
+        // graph must be byte-identical to structural + the same declared JSON.
+        //
+        // The full path's declared phase IS `ingest_core_graph` =
+        // `fetch_core_graph_json` + `ingest_declared_from_json`. In this
+        // `.vaultspec`-less dir core cannot graph, so the full path ingests an
+        // EMPTY declared tier; feeding that SAME empty declared into the fold
+        // path must therefore yield the identical graph. Ingesting a non-empty
+        // fixed JSON into BOTH the full result and the structural base then
+        // proves the seams stay identical past the empty case — locking that the
+        // fold path and the full path share one declared-ingest function.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nMentions `src/a.rs` and \
+             [[2026-06-12-x-adr]].\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+
+        // The full synchronous path (structural + declared-from-core). Core is
+        // unavailable here, so declared is empty and `full` == structural-only.
+        let (full, full_stats) = index_worktree(root, &scope(), &store, 7).unwrap();
+        assert_eq!(
+            full_stats.declared_edges, 0,
+            "core unavailable: the full path's declared tier is empty here"
+        );
+        // The fold's base: structural-only at the SAME observed_at.
+        let (structural, _) = index_worktree_structural(root, &scope(), &store, 7).unwrap();
+        assert_eq!(
+            canonical_snapshot(&full),
+            canonical_snapshot(&structural),
+            "full(structural+empty-declared) == structural base of the fold path"
+        );
+
+        // Past the empty case: ingest the SAME fixed declared JSON into both the
+        // full-path result and the structural base via the shared seam. The two
+        // must stay byte-identical — the fold path and the full path converge.
+        let declared_json = serde_json::json!({
+            "nodes": [
+                {"id": "2026-06-12-x-plan", "doc_type": "plan"},
+                {"id": "2026-06-12-x-adr", "doc_type": "adr"}
+            ],
+            "edges": [
+                {"source": "2026-06-12-x-plan", "target": "2026-06-12-x-adr", "kind": "related"}
+            ]
+        })
+        .to_string();
+        let mut full_plus = full;
+        let mut fold_path = structural;
+        ingest_declared_from_json(&mut full_plus, &declared_json, &scope(), 7);
+        ingest_declared_from_json(&mut fold_path, &declared_json, &scope(), 7);
+        assert_eq!(
+            canonical_snapshot(&full_plus),
+            canonical_snapshot(&fold_path),
+            "full + declared(JSON) == structural + declared(JSON): the fold path \
+             converges to the synchronous full path (D8.2)"
+        );
+        assert!(
+            fold_path.edge_count() > full_stats.documents,
+            "the fixed declared edge actually ingested on both sides"
+        );
+    }
 }
