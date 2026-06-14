@@ -11,11 +11,12 @@
 //!   decayed but still points at something recoverable.
 //! - **Broken** — nothing in the scope resolves the mention.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use engine_model::ResolutionState;
+use rayon::prelude::*;
 
 use crate::extract::{ExtractedMention, MentionKind};
 
@@ -38,21 +39,29 @@ pub struct ResolvedMention {
 /// pass, and basename fallbacks are an O(1) lookup instead of an O(N) scan.
 pub struct Resolver {
     root: PathBuf,
-    /// Sorted repo-relative POSIX paths (one tree walk).
+    /// Sorted repo-relative POSIX paths (one tree walk). Immutable after build,
+    /// so it is freely shared across rayon worker threads (perf ADR D2).
     inventory: Vec<String>,
     /// basename → first path in sorted order (mirrors the prior
-    /// `find_by_basename`, which returned the first sorted match).
+    /// `find_by_basename`, which returned the first sorted match). Immutable.
     by_basename: HashMap<String, String>,
-    /// repo-relative path → file contents, read at most once per pass.
-    cache: RefCell<HashMap<String, Option<String>>>,
+    /// repo-relative path → file contents, read at most once per pass. A
+    /// `Mutex<HashMap>` (not `RefCell`) so the parallel symbol/step fan-out
+    /// (perf ADR D2) can share one content cache across worker threads while
+    /// preserving the read-at-most-once property: the lock is only held to
+    /// check/insert the cache entry, never across the file read itself
+    /// (`prime_contents` reads in parallel and inserts each path exactly once).
+    cache: Mutex<HashMap<String, Option<String>>>,
     /// symbol → resolution outcome, memoized across documents: symbol
     /// resolution is a pure function of the symbol and the fixed tree, so the
     /// all-code-files scan runs once per DISTINCT symbol, not once per mention
-    /// (perf ADR D1 — the residual O(docs × code_files) cost otherwise).
-    symbol_memo: RefCell<HashMap<String, (ResolutionState, Option<String>)>>,
+    /// (perf ADR D1 — the residual O(docs × code_files) cost otherwise). A
+    /// `Mutex` so the parallel resolution path (perf ADR D2) can deposit each
+    /// distinct symbol's outcome; the single-doc `resolve` path also reads it.
+    symbol_memo: Mutex<HashMap<String, (ResolutionState, Option<String>)>>,
     /// step-id → resolution outcome, memoized the same way (one plan scan per
     /// distinct step id).
-    step_memo: RefCell<HashMap<String, (ResolutionState, Option<String>)>>,
+    step_memo: Mutex<HashMap<String, (ResolutionState, Option<String>)>>,
 }
 
 impl Resolver {
@@ -73,13 +82,20 @@ impl Resolver {
             root: root.to_path_buf(),
             inventory,
             by_basename,
-            cache: RefCell::new(HashMap::new()),
-            symbol_memo: RefCell::new(HashMap::new()),
-            step_memo: RefCell::new(HashMap::new()),
+            cache: Mutex::new(HashMap::new()),
+            symbol_memo: Mutex::new(HashMap::new()),
+            step_memo: Mutex::new(HashMap::new()),
         }
     }
 
     /// Resolve one document's mentions against the pre-built inventory.
+    ///
+    /// Single-document convenience entry point (callers / tests). It shares the
+    /// exact symbol/step resolution logic with the parallel batch path via
+    /// [`Resolver::resolve_one`] and [`Resolver::resolve_symbol`] /
+    /// [`Resolver::resolve_step_id`], so a single-doc resolve and a batch
+    /// resolve of the same document produce byte-identical results (perf ADR D2
+    /// parity invariant).
     pub fn resolve(&self, mentions: Vec<ExtractedMention>) -> Vec<ResolvedMention> {
         mentions
             .into_iter()
@@ -87,13 +103,129 @@ impl Resolver {
             .collect()
     }
 
-    /// Read a repo-relative file's contents, caching across the whole pass.
+    /// Resolve every document's mentions in one pass, parallelizing the
+    /// expensive symbol/step content scans across CPU cores (perf ADR D2;
+    /// `graph-compute-is-cpu-gpu-is-render-and-search`).
+    ///
+    /// The win: `resolve_symbol` / `resolve_step_id` each scan code/plan file
+    /// contents once per DISTINCT symbol/step. Those scans are a pure function
+    /// of the symbol/step and the fixed tree, so they are embarrassingly
+    /// parallel. This entry point:
+    ///
+    /// 1. Collects the DISTINCT symbols and DISTINCT step ids across all docs.
+    /// 2. Primes the file-content cache by reading every code/plan file ONCE in
+    ///    parallel (so the subsequent scans are pure in-memory lookups — the
+    ///    read-at-most-once property is preserved, and no file I/O happens
+    ///    under the per-symbol scan).
+    /// 3. Resolves the distinct symbols/steps in parallel (`par_iter`), each via
+    ///    the SAME `resolve_symbol` / `resolve_step_id` logic as the sequential
+    ///    path, depositing outcomes into the shared memos. Determinism holds:
+    ///    distinct symbols resolve independently, and within ONE symbol's scan
+    ///    the sorted inventory is walked sequentially, preserving first-match.
+    /// 4. Maps each document's mentions to `ResolvedMention` (memo lookups for
+    ///    symbols/steps; the O(1) path/wiki-link rules inline as before).
+    ///
+    /// The result for each document is byte-identical to calling
+    /// [`Resolver::resolve`] on that document's mentions sequentially.
+    pub fn resolve_batch(&self, per_doc: Vec<Vec<ExtractedMention>>) -> Vec<Vec<ResolvedMention>> {
+        // 1. Distinct symbols / step ids across every document.
+        let mut symbols: Vec<String> = Vec::new();
+        let mut steps: Vec<String> = Vec::new();
+        {
+            let mut seen_sym: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            let mut seen_step: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            for doc in &per_doc {
+                for m in doc {
+                    match &m.kind {
+                        MentionKind::Symbol(s) if seen_sym.insert(s.as_str()) => {
+                            symbols.push(s.clone());
+                        }
+                        MentionKind::StepId(s) if seen_step.insert(s.as_str()) => {
+                            steps.push(s.clone());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // 2. Prime the content cache once, in parallel — every code file (for
+        //    symbol scans) and every plan file (for step scans). After this the
+        //    per-symbol/step scans never touch the filesystem, so the
+        //    read-at-most-once property holds and the scans stay pure.
+        if !symbols.is_empty() {
+            self.prime_contents(self.inventory.iter().filter(|p| is_code_file(p)));
+        }
+        if !steps.is_empty() {
+            self.prime_contents(
+                self.inventory
+                    .iter()
+                    .filter(|p| p.starts_with(".vault/plan/") && p.ends_with(".md")),
+            );
+        }
+
+        // 3. Resolve distinct symbols / steps in parallel. Each call deposits
+        //    its own outcome into the shared memo (the same write the sequential
+        //    path makes); the distinct sets guarantee each is resolved exactly
+        //    once, so the memo's final contents are independent of thread order.
+        symbols.par_iter().for_each(|sym| {
+            self.resolve_symbol(sym);
+        });
+        steps.par_iter().for_each(|step| {
+            self.resolve_step_id(step);
+        });
+
+        // 4. Map each document via memo lookups + the O(1) path/wiki rules.
+        per_doc
+            .into_iter()
+            .map(|mentions| {
+                mentions
+                    .into_iter()
+                    .map(|mention| self.resolve_one(mention))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Read the given repo-relative paths into the content cache once each, in
+    /// parallel, skipping any already cached. The file read happens OUTSIDE the
+    /// cache lock; each distinct path is read at most once across the pass.
+    fn prime_contents<'a>(&self, paths: impl Iterator<Item = &'a String>) {
+        let to_read: Vec<String> = {
+            let cache = self.cache.lock().unwrap();
+            paths
+                .filter(|p| !cache.contains_key(p.as_str()))
+                .cloned()
+                .collect()
+        };
+        let read: Vec<(String, Option<String>)> = to_read
+            .par_iter()
+            .map(|path| {
+                (
+                    path.clone(),
+                    std::fs::read_to_string(self.root.join(path)).ok(),
+                )
+            })
+            .collect();
+        let mut cache = self.cache.lock().unwrap();
+        for (path, contents) in read {
+            cache.entry(path).or_insert(contents);
+        }
+    }
+
+    /// Read a repo-relative file's contents, caching across the whole pass. The
+    /// file read happens outside the lock (lock to check, read on miss, lock to
+    /// insert) so a parallel scan never serializes on I/O; under a rare race two
+    /// threads may read the same uncached path, but the cache still holds one
+    /// canonical entry and the batch path pre-primes every scanned file so this
+    /// fallback I/O does not fire on the hot path.
     fn cached_read(&self, path: &str) -> Option<String> {
-        self.cache
-            .borrow_mut()
-            .entry(path.to_string())
-            .or_insert_with(|| std::fs::read_to_string(self.root.join(path)).ok())
-            .clone()
+        if let Some(hit) = self.cache.lock().unwrap().get(path) {
+            return hit.clone();
+        }
+        let contents = std::fs::read_to_string(self.root.join(path)).ok();
+        let mut cache = self.cache.lock().unwrap();
+        cache.entry(path.to_string()).or_insert(contents).clone()
     }
 
     fn find_by_basename(&self, basename: &str) -> Option<String> {
@@ -136,7 +268,7 @@ impl Resolver {
     /// A step id resolves when some plan document in the scope contains its
     /// canonical backtick form.
     fn resolve_step_id(&self, step_id: &str) -> (ResolutionState, Option<String>) {
-        if let Some(hit) = self.step_memo.borrow().get(step_id) {
+        if let Some(hit) = self.step_memo.lock().unwrap().get(step_id) {
             return hit.clone();
         }
         let needle = format!("`{step_id}`");
@@ -162,7 +294,8 @@ impl Resolver {
             None => (ResolutionState::Broken, None),
         };
         self.step_memo
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(step_id.to_string(), result.clone());
         result
     }
@@ -171,7 +304,7 @@ impl Resolver {
     /// scope (tree-sitter-grade resolution is v2, per the ADR). Qualified match
     /// → resolved; last-segment-only match → stale; nothing → broken.
     fn resolve_symbol(&self, symbol: &str) -> (ResolutionState, Option<String>) {
-        if let Some(hit) = self.symbol_memo.borrow().get(symbol) {
+        if let Some(hit) = self.symbol_memo.lock().unwrap().get(symbol) {
             return hit.clone();
         }
         let last = symbol
@@ -201,7 +334,8 @@ impl Resolver {
             },
         };
         self.symbol_memo
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(symbol.to_string(), result.clone());
         result
     }
@@ -369,6 +503,69 @@ mod tests {
             state_of(&doc_b, "vanished_function"),
             ResolutionState::Broken,
             "a memoized broken symbol stays broken across documents"
+        );
+    }
+
+    #[test]
+    fn resolve_batch_is_byte_identical_to_sequential_resolve() {
+        // Perf ADR D2 parity invariant: the parallel batch path MUST assign the
+        // exact same ResolutionState and target to every mention as the
+        // sequential per-document `resolve`. A divergence would silently change
+        // edge states. The fixture exercises symbols, step ids, wiki-links, and
+        // paths in all three resolution states, across multiple documents (so
+        // distinct symbols/steps are deduplicated across docs and the parallel
+        // fan-out is genuinely exercised).
+        let dir = fixture();
+
+        // Multiple documents: some mentions shared (so the distinct-set dedup
+        // and memo are exercised), each kind present in all three states.
+        let docs: Vec<Vec<ExtractedMention>> = vec![
+            extract(
+                "Touches `src/lib.rs` and `old/moved.rs` and `gone/nothing.rs`. \
+                 Step `W01.P02.S03` and step `W09.P09.S99`. \
+                 See [[2026-06-12-demo-adr]] and [[2026-06-12-missing-adr]]. \
+                 Calls `insert()` and `vanished_function()`.",
+            ),
+            extract(
+                "Again `src/lib.rs`, again step `W01.P02.S03`, again `insert()`. \
+                 Plus `another::missing::symbol` and `src/nested/moved.rs`.",
+            ),
+            extract(
+                "Fresh doc: `graph` module, [[2026-06-12-demo-adr]], \
+                 step `S07`, path `docs/readme.md`.",
+            ),
+        ];
+
+        // Sequential reference: a fresh resolver, resolve each doc in order.
+        let sequential_resolver = Resolver::new(dir.path());
+        let sequential: Vec<Vec<ResolvedMention>> = docs
+            .iter()
+            .map(|doc| sequential_resolver.resolve(doc.clone()))
+            .collect();
+
+        // Parallel batch: a fresh resolver, one batch call.
+        let batch_resolver = Resolver::new(dir.path());
+        let batch = batch_resolver.resolve_batch(docs.clone());
+
+        assert_eq!(
+            batch, sequential,
+            "resolve_batch must be byte-identical to per-document sequential resolve"
+        );
+
+        // Guard against a vacuous comparison: assert the fixture actually
+        // produced mentions in every resolution state, so parity is meaningful.
+        let flat: Vec<&ResolvedMention> = batch.iter().flatten().collect();
+        assert!(
+            flat.iter().any(|r| r.state == ResolutionState::Resolved),
+            "fixture yields at least one resolved mention"
+        );
+        assert!(
+            flat.iter().any(|r| r.state == ResolutionState::Stale),
+            "fixture yields at least one stale mention"
+        );
+        assert!(
+            flat.iter().any(|r| r.state == ResolutionState::Broken),
+            "fixture yields at least one broken mention"
         );
     }
 }

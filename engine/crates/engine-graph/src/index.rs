@@ -255,6 +255,13 @@ fn index_structural(
     let resolver = Resolver::new(root);
     phase!("resolver-built");
 
+    // Pass 1 (serial): node upsert + extraction-cache get/put per document,
+    // collecting each document's mentions. The store is single-writer, so its
+    // get/put stays on the coordinating thread; node upsert mutates the graph,
+    // also serial. This pass does NOT resolve — resolution is the expensive,
+    // parallelizable work, deferred to the batch call below (perf ADR D2).
+    let mut per_doc: Vec<(String, String, Vec<ExtractedMention>)> =
+        Vec::with_capacity(extracted.len());
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
         if let Some(prev) = seen_stems.insert(stem.clone(), rel_path.clone())
@@ -322,19 +329,31 @@ fn index_structural(
                 fresh
             }
         };
+        per_doc.push((stem, blob_hash, mentions));
+    }
 
-        // Resolution always runs against the *current* tree (resolution
-        // state is live signal, not cacheable fact).
-        //
-        // Multiplicity aggregates at extraction granularity (audit
-        // W02P05-202 / W01P01-003): repeated same-target mentions in one
-        // document collapse to one edge carrying the count, ingested once
-        // — so re-ingestion replaces instead of inflating.
+    // Resolve EVERY document's mentions in one parallel batch (perf ADR D2):
+    // distinct symbols/steps are resolved across CPU cores, the per-document
+    // result is byte-identical to the prior sequential `resolver.resolve(...)`
+    // (the resolve_batch parity invariant). Resolution always runs against the
+    // *current* tree (resolution state is live signal, not cacheable fact).
+    let mention_batches: Vec<Vec<ExtractedMention>> =
+        per_doc.iter().map(|(_, _, m)| m.clone()).collect();
+    let resolved_batches = resolver.resolve_batch(mention_batches);
+
+    // Pass 2 (serial): mint edges per document from the pre-resolved mentions.
+    // Edge ingestion mutates the graph, so it stays serial; it is cheap.
+    //
+    // Multiplicity aggregates at extraction granularity (audit W02P05-202 /
+    // W01P01-003): repeated same-target mentions in one document collapse to one
+    // edge carrying the count, ingested once — so re-ingestion replaces instead
+    // of inflating.
+    for ((stem, blob_hash, _), resolved_mentions) in per_doc.iter().zip(resolved_batches) {
         let mut by_id: std::collections::BTreeMap<String, (Edge, u32, Option<String>)> =
             std::collections::BTreeMap::new();
-        for resolved in resolver.resolve(mentions) {
+        for resolved in resolved_mentions {
             let target = resolved.target.clone();
-            let edge = structural_edge_for(&stem, &blob_hash, &resolved, scope, observed_at);
+            let edge = structural_edge_for(stem, blob_hash, &resolved, scope, observed_at);
             by_id
                 .entry(edge.id.0.clone())
                 .and_modify(|(_, count, _)| *count += 1)
