@@ -24,6 +24,12 @@ related:
   - '[[2026-06-14-user-state-persistence-W02-P05-S16]]'
   - '[[2026-06-14-user-state-persistence-W02-P05-S17]]'
   - '[[2026-06-14-user-state-persistence-W02-P05-S18]]'
+  - '[[2026-06-14-user-state-persistence-W03-P06-S19]]'
+  - '[[2026-06-14-user-state-persistence-W03-P06-S20]]'
+  - '[[2026-06-14-user-state-persistence-W03-P06-S21]]'
+  - '[[2026-06-14-user-state-persistence-W03-P06-S22]]'
+  - '[[2026-06-14-user-state-persistence-W03-P07-S23]]'
+  - '[[2026-06-14-user-state-persistence-W03-P07-S24]]'
   - '[[2026-06-14-user-state-persistence-adr]]'
   - '[[2026-06-14-user-state-persistence-plan]]'
   - '[[2026-06-14-user-state-persistence-research]]'
@@ -59,6 +65,12 @@ Auto-generated index of all documents tagged with `#user-state-persistence`.
 - `2026-06-14-user-state-persistence-W02-P05-S16` - resolve the cell via the registry in the graph and vault-tree and filters and node routes
 - `2026-06-14-user-state-persistence-W02-P05-S17` - resolve the cell via the registry in the temporal routes
 - `2026-06-14-user-state-persistence-W02-P05-S18` - resolve the cell via the registry in the ops routes
+- `2026-06-14-user-state-persistence-W03-P06-S19` - add GET and PUT session endpoints carrying the tiers block
+- `2026-06-14-user-state-persistence-W03-P06-S20` - add GET and PUT settings endpoints carrying the tiers block
+- `2026-06-14-user-state-persistence-W03-P06-S21` - wire the new routes into the router and the bearer-gated API prefixes
+- `2026-06-14-user-state-persistence-W03-P06-S22` - register the session route prefixes in the SPA gate
+- `2026-06-14-user-state-persistence-W03-P07-S23` - add session and settings endpoint integration tests
+- `2026-06-14-user-state-persistence-W03-P07-S24` - add a registry scope-switch and per-scope resume integration test
 
 ### plan
 
