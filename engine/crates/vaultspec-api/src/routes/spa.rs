@@ -80,6 +80,8 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/search",
     "/ops",
     "/health",
+    "/session",
+    "/settings",
 ];
 
 /// The SPA fallback handler: serve the asset when it exists, otherwise
