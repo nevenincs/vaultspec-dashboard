@@ -45,7 +45,8 @@ describe("view store", () => {
       confidence: 0.5,
     });
     const store = useViewStore.getState();
-    for (let i = 0; i < PINNED_DISCOVERIES_CAP + 5; i += 1) store.pinDiscovery(edge(`p${i}`));
+    for (let i = 0; i < PINNED_DISCOVERIES_CAP + 5; i += 1)
+      store.pinDiscovery(edge(`p${i}`));
     const pins = useViewStore.getState().pinnedDiscoveries;
     expect(pins).toHaveLength(PINNED_DISCOVERIES_CAP);
     expect(pins.some((e) => e.id === "p0")).toBe(false);

@@ -121,7 +121,7 @@ Cover the client, restore, and persistence with stores tests and a mock-versus-l
 
 - [x] `W04.P10.S33` - add stores tests for the session client and restore and persistence; `frontend/src/stores/server/session.test.ts`.
 - [x] `W04.P10.S34` - add a mock-versus-live parity test feeding a captured sample through the adapter; `frontend/src/stores/server/liveAdapters.session.test.ts`.
-- [ ] `W04.P10.S35` - run the full lint gate and the engine and frontend test suites to green; `just dev lint all`.
+- [x] `W04.P10.S35` - run the full lint gate and the engine and frontend test suites to green; `just dev lint all`.
 
 ## Description
 

@@ -30,6 +30,17 @@ related:
   - '[[2026-06-14-user-state-persistence-W03-P06-S22]]'
   - '[[2026-06-14-user-state-persistence-W03-P07-S23]]'
   - '[[2026-06-14-user-state-persistence-W03-P07-S24]]'
+  - '[[2026-06-14-user-state-persistence-W04-P08-S25]]'
+  - '[[2026-06-14-user-state-persistence-W04-P08-S26]]'
+  - '[[2026-06-14-user-state-persistence-W04-P08-S27]]'
+  - '[[2026-06-14-user-state-persistence-W04-P08-S28]]'
+  - '[[2026-06-14-user-state-persistence-W04-P09-S29]]'
+  - '[[2026-06-14-user-state-persistence-W04-P09-S30]]'
+  - '[[2026-06-14-user-state-persistence-W04-P09-S31]]'
+  - '[[2026-06-14-user-state-persistence-W04-P09-S32]]'
+  - '[[2026-06-14-user-state-persistence-W04-P10-S33]]'
+  - '[[2026-06-14-user-state-persistence-W04-P10-S34]]'
+  - '[[2026-06-14-user-state-persistence-W04-P10-S35]]'
   - '[[2026-06-14-user-state-persistence-adr]]'
   - '[[2026-06-14-user-state-persistence-plan]]'
   - '[[2026-06-14-user-state-persistence-research]]'
@@ -71,6 +82,17 @@ Auto-generated index of all documents tagged with `#user-state-persistence`.
 - `2026-06-14-user-state-persistence-W03-P06-S22` - register the session route prefixes in the SPA gate
 - `2026-06-14-user-state-persistence-W03-P07-S23` - add session and settings endpoint integration tests
 - `2026-06-14-user-state-persistence-W03-P07-S24` - add a registry scope-switch and per-scope resume integration test
+- `2026-06-14-user-state-persistence-W04-P08-S25` - add session and settings client methods and snake_case wire types
+- `2026-06-14-user-state-persistence-W04-P08-S26` - add session and settings query and mutation hooks and keys
+- `2026-06-14-user-state-persistence-W04-P08-S27` - mirror the new session and settings wire shape in the mock engine double
+- `2026-06-14-user-state-persistence-W04-P08-S28` - extend the tolerant live adapter for the new shapes
+- `2026-06-14-user-state-persistence-W04-P09-S29` - restore the persisted session on load instead of recomputing the default scope
+- `2026-06-14-user-state-persistence-W04-P09-S30` - seed and persist scope and folder context in the view store through the session API
+- `2026-06-14-user-state-persistence-W04-P09-S31` - persist worktree selection through the session API
+- `2026-06-14-user-state-persistence-W04-P09-S32` - represent the current folder and its feature-tag contexts as a view selector
+- `2026-06-14-user-state-persistence-W04-P10-S33` - add stores tests for the session client and restore and persistence
+- `2026-06-14-user-state-persistence-W04-P10-S34` - add a mock-versus-live parity test feeding a captured sample through the adapter
+- `2026-06-14-user-state-persistence-W04-P10-S35` - run the full lint gate and the engine and frontend test suites to green
 
 ### plan
 
