@@ -179,3 +179,109 @@ pub async fn put_session(
         None,
     ))
 }
+
+// --- settings ----------------------------------------------------------------
+
+/// Build the settings `data` block from the shared user-state handle: the
+/// global keys plus a per-scope map of the warm scopes' scoped keys. Read inside
+/// ONE scoped guard, dropped before the caller envelopes the result.
+///
+/// `global` is a flat `{ key: value }` map; `scoped` is `{ scope: { key: value } }`
+/// over every scope that has at least one scoped setting (discovered from the
+/// warm registry's resident tokens). A scope with no scoped settings is simply
+/// absent from `scoped` rather than carrying an empty object.
+fn settings_data(state: &AppState) -> Value {
+    // The scopes worth listing are the warm ones: the active scope plus any
+    // other resident cell. A cold scope has no settings the client is browsing.
+    let mut scopes: Vec<String> = {
+        let reg = state.registry.read().unwrap_or_else(|e| e.into_inner());
+        reg.scope_tokens()
+    };
+    let active = active_scope_token(state);
+    if !scopes.contains(&active) {
+        scopes.push(active);
+    }
+
+    // SCOPED guard: every settings read happens here and the guard drops at the
+    // close brace, never held across an `.await`.
+    let (global, scoped) = {
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        let global = settings_map(&us.list_settings(GLOBAL_SCOPE_KEY).unwrap_or_default());
+        let mut scoped = serde_json::Map::new();
+        for scope in scopes {
+            let entries = us.list_settings(&scope).unwrap_or_default();
+            if !entries.is_empty() {
+                scoped.insert(scope, settings_map(&entries));
+            }
+        }
+        (global, Value::Object(scoped))
+    };
+    json!({ "global": global, "scoped": scoped })
+}
+
+/// The sentinel scope under which global settings live — `vaultspec_session`'s
+/// `GLOBAL_SCOPE` (the empty string). Named locally so the API never threads the
+/// sentinel by hand.
+const GLOBAL_SCOPE_KEY: &str = "";
+
+/// Collapse an ordered `Setting` list into a `{ key: value }` JSON object.
+fn settings_map(entries: &[vaultspec_session::Setting]) -> Value {
+    let mut map = serde_json::Map::new();
+    for setting in entries {
+        map.insert(setting.key.clone(), Value::String(setting.value.clone()));
+    }
+    Value::Object(map)
+}
+
+// --- GET /settings ------------------------------------------------------------
+
+/// Read user settings: the global keys and, per warm scope, the scoped keys.
+pub async fn get_settings(State(state): State<Arc<AppState>>) -> ApiResult {
+    let data = settings_data(&state);
+    Ok(super::envelope(
+        data,
+        super::query_tiers(&state.active_cell()),
+        None,
+    ))
+}
+
+// --- PUT /settings ------------------------------------------------------------
+
+/// A single settings write: a `key`/`value` pair, global when `scope` is absent,
+/// scope-scoped otherwise. A global key applies workspace-wide; a scoped key
+/// overrides it for one worktree (no implicit fallback — the client composes the
+/// precedence it wants).
+#[derive(Deserialize)]
+pub struct SettingUpdate {
+    #[serde(default)]
+    pub scope: Option<String>,
+    pub key: String,
+    pub value: String,
+}
+
+pub async fn put_settings(
+    State(state): State<Arc<AppState>>,
+    Json(update): Json<SettingUpdate>,
+) -> ApiResult {
+    let now = crate::app::now_ms();
+    // SCOPED guard: the write happens here; the guard drops at the close brace,
+    // never held across an `.await`.
+    {
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        match update.scope.as_deref() {
+            Some(scope) => {
+                let _ = us.set_scoped_setting(scope, &update.key, &update.value, now);
+            }
+            None => {
+                let _ = us.set_global_setting(&update.key, &update.value, now);
+            }
+        }
+    }
+    // Return the updated settings — the same shape GET serves.
+    let data = settings_data(&state);
+    Ok(super::envelope(
+        data,
+        super::query_tiers(&state.active_cell()),
+        None,
+    ))
+}

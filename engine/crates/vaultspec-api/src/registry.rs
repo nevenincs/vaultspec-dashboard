@@ -73,6 +73,13 @@ impl ScopeRegistry {
         self.cells.get(token).cloned()
     }
 
+    /// The scope tokens of every resident (warm) cell. Used by `/settings` to
+    /// enumerate which scopes' scoped keys to surface — a recency-free,
+    /// snapshot-only read that touches nothing.
+    pub fn scope_tokens(&self) -> Vec<String> {
+        self.cells.keys().cloned().collect()
+    }
+
     /// Mark a token most-recently-used.
     fn touch(&mut self, token: &str) {
         self.recency.retain(|t| t != token);

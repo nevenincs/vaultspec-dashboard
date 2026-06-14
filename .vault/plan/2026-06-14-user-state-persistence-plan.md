@@ -82,7 +82,7 @@ Add the session and settings endpoints through the shared envelope helper so eve
 Add the session and settings GET and PUT endpoints through the shared envelope helper and wire them into the router and gates.
 
 - [x] `W03.P06.S19` - add GET and PUT session endpoints carrying the tiers block; `engine/crates/vaultspec-api/src/routes/session.rs`.
-- [ ] `W03.P06.S20` - add GET and PUT settings endpoints carrying the tiers block; `engine/crates/vaultspec-api/src/routes/session.rs`.
+- [x] `W03.P06.S20` - add GET and PUT settings endpoints carrying the tiers block; `engine/crates/vaultspec-api/src/routes/session.rs`.
 - [ ] `W03.P06.S21` - wire the new routes into the router and the bearer-gated API prefixes; `engine/crates/vaultspec-api/src/routes/mod.rs`.
 - [ ] `W03.P06.S22` - register the session route prefixes in the SPA gate; `engine/crates/vaultspec-api/src/routes/spa.rs`.
 
