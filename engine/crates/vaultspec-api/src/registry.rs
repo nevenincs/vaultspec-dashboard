@@ -171,6 +171,13 @@ fn build_and_insert(
     // `/status` reports a dead watcher truthfully and eviction tears it down.
     spawn_watcher(&cell);
 
+    // Fold the slow declared tier in asynchronously (perf ADR D1): the cold
+    // `rebuild_and_swap` above committed the STRUCTURAL graph synchronously, so
+    // the scope is already servable; this defers the core subprocess off the
+    // critical path. A no-op when no tokio runtime is current (unit tests),
+    // where `rebuild_and_swap` ingested declared inline instead.
+    spawn_declared_fold(&cell);
+
     // Insert under the lock. A concurrent builder may have won the race for the
     // same token while we built outside the lock — if so, prefer the resident
     // cell and drop ours (its watcher tears down on drop), so the registry
@@ -257,14 +264,176 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
                 };
                 // Rebuild failures are LOGGED, never silently swallowed
                 // (DF-4): a contended store is a wait-and-retry on the next
-                // dirty batch, not a death.
-                match tokio::task::spawn_blocking(move || cell.rebuild_and_swap()).await {
-                    Ok(Ok(_)) => {}
+                // dirty batch, not a death. `rebuild_and_swap` commits the
+                // structural tier; the declared fold rides a separate task so a
+                // new commit re-folds declared at the new HEAD (perf ADR D1).
+                let rebuild_cell = cell.clone();
+                match tokio::task::spawn_blocking(move || rebuild_cell.rebuild_and_swap()).await {
+                    Ok(Ok(_)) => spawn_declared_fold(&cell),
                     Ok(Err(e)) => eprintln!("vaultspec serve: rebuild failed: {e}"),
                     Err(e) => eprintln!("vaultspec serve: rebuild task panicked: {e}"),
                 }
             }
         });
+    }
+}
+
+/// Engine-store artifact kind for the cached raw core graph JSON, keyed by the
+/// worktree HEAD sha (perf ADR D1). The declared graph at a commit is immutable,
+/// so a rebuild at an unchanged HEAD is a cache hit that skips the ~16s core
+/// subprocess entirely. Lives in the re-derivable `.vault/data/engine-data/`
+/// zone — fully deletable, rebuildable on the next miss.
+const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
+
+/// Cache key for the declared graph: the worktree HEAD sha qualified by the
+/// scope token, so two scopes at the same commit never alias each other's
+/// cached JSON (defensive — the JSON is scope-independent, but the qualified
+/// key documents the `(scope, HEAD sha)` ADR contract).
+fn declared_cache_key(scope_token: &str, head_sha: &str) -> String {
+    engine_model::content_hash(format!("{scope_token}:{head_sha}").as_bytes())
+}
+
+/// Asynchronously fold the declared tier into a cell's live graph (perf ADR
+/// D1 — the dominant win: the slow `vaultspec-core vault graph` subprocess off
+/// the servable-parse critical path).
+///
+/// The structural graph is already committed and servable; this task resolves
+/// the worktree HEAD sha, gets the declared graph JSON (cache hit → no
+/// subprocess; miss → run the subprocess and cache the JSON by HEAD sha),
+/// clones the cell's CURRENT graph, ingests the declared edges into the clone,
+/// and `commit_graph`s the folded graph — emitting declared deltas on the
+/// cell's per-scope monotonic clock. `declared_status` flips to `None`
+/// (declared AVAILABLE) on success, or `Some(reason)` if core was unreachable
+/// (truthful degrade).
+///
+/// LEAK-SAFE (HIGH-1 discipline, like `spawn_watcher`): the task holds a
+/// `Weak<ScopeCell>`, upgrading per use and exiting if the cell was evicted —
+/// it never keeps a dead scope alive.
+///
+/// COALESCED: a per-cell `declared_fold_active` flag means at most one fold
+/// runs per cell at a time. If one is already in flight, this skips — the
+/// running fold is superseded by the NEXT rebuild's fold (which re-reads HEAD
+/// at the current graph), so the latest structural commit always gets a
+/// declared fold eventually.
+pub fn spawn_declared_fold(cell: &Arc<ScopeCell>) {
+    use std::sync::atomic::Ordering;
+
+    // Only runs under a tokio runtime; the non-runtime (unit-test) path folds
+    // declared inline in `rebuild_and_swap`, so there is nothing to defer here.
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+
+    // Coalesce: claim the fold slot. If another fold is already in flight, skip
+    // — the next rebuild's fold corrects the result at the current HEAD.
+    if cell
+        .declared_fold_active
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    let weak = Arc::downgrade(cell);
+    handle.spawn(async move {
+        // The subprocess + CPU ingest is blocking; run it OFF the async reactor.
+        // The closure holds the `Weak` and upgrades inside, so an eviction
+        // between spawn and run cleanly aborts the fold.
+        let result = tokio::task::spawn_blocking(move || declared_fold_blocking(&weak)).await;
+        if let Err(e) = result {
+            eprintln!("vaultspec serve: declared fold task panicked: {e}");
+        }
+    });
+}
+
+/// The blocking body of the declared fold (perf ADR D1): HEAD-sha resolve →
+/// cache-or-subprocess JSON → clone-and-fold → commit. Runs on a blocking
+/// thread; clears the cell's coalescing flag on every exit path.
+fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
+    use std::sync::atomic::Ordering;
+
+    // Upgrade once at the top; if the cell was evicted, there is nothing to fold
+    // and the flag died with the cell — exit.
+    let Some(cell) = weak.upgrade() else {
+        return;
+    };
+    // Whatever happens below, release the coalescing slot so the next rebuild's
+    // fold can run. A guard makes this panic-safe.
+    struct FoldGuard<'a>(&'a ScopeCell);
+    impl Drop for FoldGuard<'_> {
+        fn drop(&mut self) {
+            self.0.declared_fold_active.store(false, Ordering::Release);
+        }
+    }
+    let _guard = FoldGuard(&cell);
+
+    // Resolve the worktree HEAD sha (read-and-infer: object-DB read, no
+    // checkout). A failure here (detached/empty repo, gix error) means we
+    // cannot key the cache — fall through to an uncached subprocess read so the
+    // declared tier still lands; only the cache speed-up is lost.
+    let head_sha = engine_graph::asof::resolve_ref(&cell.root, "HEAD").ok();
+
+    // Get the declared graph JSON: cache hit (no subprocess) or miss
+    // (subprocess, then cache the JSON by HEAD sha).
+    let json: Result<String, String> = match &head_sha {
+        Some(sha) => {
+            let key = declared_cache_key(&crate::routes::scope_token(&cell.root), sha);
+            let cached = {
+                let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
+                store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
+            };
+            match cached {
+                Some(json) => Ok(json),
+                None => {
+                    // Cache miss: run the subprocess (read-and-infer `--ref
+                    // HEAD`), then persist the JSON by HEAD sha for instant
+                    // repeat-switch / restart at this commit.
+                    let fetched =
+                        engine_graph::index::fetch_core_graph_json(&cell.root, Some("HEAD"));
+                    if let Ok(json) = &fetched {
+                        let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Err(e) = store.put_artifact(
+                            DECLARED_GRAPH_KIND,
+                            &key,
+                            json,
+                            crate::app::now_ms(),
+                        ) {
+                            eprintln!("vaultspec serve: caching declared graph failed: {e}");
+                        }
+                    }
+                    fetched
+                }
+            }
+        }
+        // No HEAD sha: uncached subprocess read (declared tier still lands).
+        None => engine_graph::index::fetch_core_graph_json(&cell.root, Some("HEAD")),
+    };
+
+    // Clone the cell's CURRENT structural graph and fold the declared edges into
+    // the clone, then commit. Cloning (not re-parsing) is why `LinkageGraph` is
+    // `Clone` (perf ADR D1): clone(structural)+declared is byte-identical to a
+    // synchronous structural+declared build (D8.2 convergence), since declared
+    // ingest is replace-by-id idempotent over the structural graph.
+    let declared_status = match json {
+        Ok(json) => {
+            let mut folded = (*cell.graph_arc()).clone();
+            let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
+                &mut folded,
+                &json,
+                &cell.scope,
+                crate::app::now_ms(),
+            );
+            // Commit the folded graph: emits declared deltas on the cell's
+            // per-scope clock + ring (no separate clock), and bumps generation.
+            cell.commit_graph(folded);
+            unavailable
+        }
+        // Core unreachable: leave the structural graph served, report the
+        // declared tier unavailable TRUTHFULLY (replaces the building sentinel).
+        Err(reason) => Some(reason),
+    };
+    if let Ok(mut status) = cell.declared_status.write() {
+        *status = declared_status;
     }
 }
 
@@ -484,6 +653,127 @@ mod tests {
             "the evicted cell leaked: its strong count never reached 0 — the \
              rebuild task is still holding it (HIGH-1 cycle), so WORKING_SET_CAP \
              is defeated and the evicted scope keeps rebuilding"
+        );
+    }
+
+    /// A real worktree cell holding a STRUCTURAL graph, for the declared-fold
+    /// cache tests. Builds a one-commit git repo with one vault doc, opens a
+    /// real store, and commits the structural-only graph (no declared tier yet).
+    fn structural_cell(dir: &std::path::Path) -> (std::path::PathBuf, Arc<ScopeCell>) {
+        git(dir, &["init", "-b", "main", "."]);
+        vault_root(dir);
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-m", "fixture"]);
+        let root = std::fs::canonicalize(dir).unwrap();
+        let token = crate::routes::scope_token(&root);
+        let store = engine_store::Store::open_or_heal(&root.join(".vault")).unwrap();
+        let cell = Arc::new(ScopeCell::new(
+            root.clone(),
+            ScopeRef::Worktree {
+                path: token.clone(),
+            },
+            store,
+        ));
+        // Commit STRUCTURAL only (no runtime here, but build it through the same
+        // path index_worktree_structural produces, then commit directly so we do
+        // NOT trip the sync-fallback declared ingest in rebuild_and_swap).
+        let (structural, _) = {
+            let store = cell.store.lock().unwrap();
+            engine_graph::index::index_worktree_structural(
+                &cell.root,
+                &cell.scope,
+                &store,
+                crate::app::now_ms(),
+            )
+            .unwrap()
+        };
+        cell.commit_graph(structural);
+        (root, cell)
+    }
+
+    /// A minimal valid `vaultspec.vault.graph.v2` `data` payload declaring ONE
+    /// edge between two documents — the cacheable JSON the fold ingests.
+    fn declared_graph_json() -> String {
+        serde_json::json!({
+            "nodes": [
+                {"id": "2026-06-14-reg-plan", "doc_type": "plan"},
+                {"id": "2026-06-14-reg-adr", "doc_type": "adr"}
+            ],
+            "edges": [
+                {"source": "2026-06-14-reg-plan", "target": "2026-06-14-reg-adr", "kind": "related"}
+            ]
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn declared_fold_ingests_from_the_head_sha_cache_without_a_subprocess() {
+        // Perf ADR D1: the declared graph at a commit is immutable, so the fold
+        // caches the raw core JSON by HEAD sha and a build at the same HEAD is a
+        // cache HIT that skips the ~16s subprocess. We prove the hit by
+        // PRE-SEEDING the cache with valid graph-v2 JSON: core is unavailable in
+        // the test env (the temp dir is not a vaultspec workspace), so the
+        // declared tier can ONLY become available via the cache. If the fold ran
+        // the subprocess instead, it would fail and declared_status would carry a
+        // failure reason — never None.
+        let dir = tempfile::tempdir().unwrap();
+        let (root, cell) = structural_cell(dir.path());
+
+        // The structural commit carries no declared edges yet.
+        let structural_edges = cell.graph_arc().edge_count();
+
+        // Seed the cache under the EXACT key the fold computes: HEAD sha,
+        // scope-qualified.
+        let head_sha = engine_graph::asof::resolve_ref(&root, "HEAD").unwrap();
+        let key = declared_cache_key(&crate::routes::scope_token(&root), &head_sha);
+        {
+            let store = cell.store.lock().unwrap();
+            store
+                .put_artifact(
+                    DECLARED_GRAPH_KIND,
+                    &key,
+                    &declared_graph_json(),
+                    crate::app::now_ms(),
+                )
+                .unwrap();
+        }
+
+        // Run the fold's blocking body directly (no subprocess will run — the
+        // cache hits). A Weak mirrors the real spawn path's leak-safety.
+        let weak = Arc::downgrade(&cell);
+        tokio::task::spawn_blocking(move || super::declared_fold_blocking(&weak))
+            .await
+            .unwrap();
+
+        // The cached declared edge folded in: edge count grew, declared tier is
+        // now AVAILABLE (status None) — only reachable via the cache here.
+        assert!(
+            cell.graph_arc().edge_count() > structural_edges,
+            "the cached declared edge folded into the live graph"
+        );
+        assert_eq!(
+            *cell.declared_status.read().unwrap(),
+            None,
+            "declared tier flips to available from the cache (no subprocess ran)"
+        );
+    }
+
+    #[test]
+    fn declared_cache_key_is_deterministic_and_separates_scope_and_sha() {
+        // The cache key is a pure function of (scope token, HEAD sha): stable for
+        // the same inputs, distinct when either changes — so a rebuild at the
+        // same HEAD hits, and two scopes (or two commits) never alias.
+        let k = declared_cache_key("/ws/main", "abc123");
+        assert_eq!(k, declared_cache_key("/ws/main", "abc123"), "stable");
+        assert_ne!(
+            k,
+            declared_cache_key("/ws/feature", "abc123"),
+            "different scope, different key"
+        );
+        assert_ne!(
+            k,
+            declared_cache_key("/ws/main", "def456"),
+            "different HEAD sha, different key"
         );
     }
 }

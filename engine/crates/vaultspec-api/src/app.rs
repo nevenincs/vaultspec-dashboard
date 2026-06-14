@@ -22,7 +22,7 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use axum::extract::{Request, State};
@@ -77,10 +77,18 @@ pub struct ScopeCell {
     /// handle (on eviction) tears the OS watch down.
     pub watcher: Mutex<Option<engine_graph::watch::WatchHandle>>,
     /// Declared-tier ingestion status from the last rebuild: `None` when
-    /// core's graph was ingested, `Some(reason)` when core was unreachable.
-    /// The tiers block reads this so `declared` degrades TRUTHFULLY instead
-    /// of claiming a tier the index could not build.
+    /// core's graph was ingested, `Some(reason)` when core was unreachable
+    /// (or `Some(DECLARED_BUILDING)` while the async fold is in flight). The
+    /// tiers block reads this so `declared` degrades TRUTHFULLY instead of
+    /// claiming a tier the index could not build.
     pub declared_status: RwLock<Option<String>>,
+    /// Coalescing guard for the async declared fold (perf ADR D1): true while
+    /// a fold task is in flight for this cell. A second rebuild that finds it
+    /// set skips spawning another fold — the running one is corrected by the
+    /// NEXT rebuild's fold (which re-reads HEAD and re-folds at the current
+    /// graph), so at most one fold runs per cell at a time and the latest
+    /// committed structural graph always gets a declared fold eventually.
+    pub declared_fold_active: AtomicBool,
 }
 
 pub const RING_CAP: usize = 4096;
@@ -103,6 +111,7 @@ impl ScopeCell {
             generation: AtomicU64::new(0),
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
+            declared_fold_active: AtomicBool::new(false),
         }
     }
 
@@ -132,16 +141,58 @@ impl ScopeCell {
 
     /// Rebuild the scope's graph fresh and commit it (the watcher's path;
     /// also used at startup).
+    ///
+    /// Builds the STRUCTURAL tier only and commits it immediately (perf ADR
+    /// D1): the worktree is interactive in roughly the structural-parse time,
+    /// with `declared_status` set to the building sentinel so the tiers block
+    /// reports `declared` unavailable-while-building. The slow declared-tier
+    /// core subprocess is folded in asynchronously by
+    /// [`crate::registry::spawn_declared_fold`], called by the caller after a
+    /// successful rebuild.
+    ///
+    /// SYNC FALLBACK: when no tokio runtime is current (unit tests calling this
+    /// directly), there is no async fold to defer to, so the declared tier is
+    /// ingested INLINE here — behavior stays correct and the served graph still
+    /// carries declared edges. Under `serve` the runtime is always up, so the
+    /// fast structural commit is what users see and the fold runs in the
+    /// background.
     pub fn rebuild_and_swap(&self) -> Result<usize, String> {
         let store = self.store.lock().map_err(|_| "store lock".to_string())?;
-        let (fresh, stats) =
-            engine_graph::index::index_worktree(&self.root, &self.scope, &store, now_ms())
-                .map_err(|e| e.to_string())?;
+        let (mut fresh, stats) = engine_graph::index::index_worktree_structural(
+            &self.root,
+            &self.scope,
+            &store,
+            now_ms(),
+        )
+        .map_err(|e| e.to_string())?;
         drop(store);
-        // Record the declared-tier ingestion result so the tiers block can
-        // degrade truthfully when core was unreachable this rebuild.
+
+        // No async runtime ⇒ no deferred fold; ingest declared synchronously so
+        // the served graph is complete in non-serve (test) contexts. Under
+        // `serve` a runtime is always current, so this branch never runs there.
+        // Uses the SAME fetch+ingest seam the async fold uses (read-and-infer
+        // `--ref HEAD`), so the sync and async declared graphs converge.
+        let declared_status = if tokio::runtime::Handle::try_current().is_err() {
+            match engine_graph::index::fetch_core_graph_json(&self.root, Some("HEAD")) {
+                Ok(json) => {
+                    let (_, unavailable) = engine_graph::index::ingest_declared_from_json(
+                        &mut fresh,
+                        &json,
+                        &self.scope,
+                        now_ms(),
+                    );
+                    unavailable
+                }
+                Err(reason) => Some(reason),
+            }
+        } else {
+            // Async path: serve the structural graph now; the fold flips this to
+            // None (available) or a real reason once it lands.
+            stats.declared_unavailable
+        };
+
         if let Ok(mut status) = self.declared_status.write() {
-            *status = stats.declared_unavailable;
+            *status = declared_status;
         }
         Ok(self.commit_graph(fresh))
     }
