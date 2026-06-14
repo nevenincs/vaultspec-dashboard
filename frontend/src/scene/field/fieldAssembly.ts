@@ -28,6 +28,10 @@ import { MinimapLayer } from "./minimapLayer";
 import type { GlyphTextureProvider } from "./nodeSprites";
 import { NodeSpriteLayer } from "./nodeSprites";
 import { PixiField } from "./pixiField";
+import { splitBackbone } from "./backbone";
+import type { RepresentationMode } from "./representationLayout";
+import { representationLayout } from "./representationLayout";
+import { OverlayLayer } from "./overlayLayer";
 
 const POSITION_SAVE_INTERVAL_MS = 5_000;
 /** Cross-highlight pulse duration (G2.b event click). */
@@ -61,6 +65,8 @@ export class DashboardField implements SceneFieldRenderer {
   private camera: Camera | null = null;
   private anchors: AnchorDriver | null = null;
   private minimap: MinimapLayer | null = null;
+  private overlayLayer: OverlayLayer | null = null;
+  private lastLevel: import("./camera").SemanticLevel = "constellation";
   /** Canvas registered before onReady fires — applied once the layer exists. */
   private pendingMinimapCanvas: HTMLCanvasElement | null = null;
   private hitTester = new SpatialHitTester();
@@ -76,6 +82,9 @@ export class DashboardField implements SceneFieldRenderer {
   private lastSave = 0;
   private layoutMode: "force" | "circular" = "force";
   private layoutParams: LayoutParams = {};
+  // --- graph-representation: representation mode + overlay state (W03) ----------
+  private representationMode: RepresentationMode = "connectivity";
+  private overlays = { featureCountries: true, featureHulls: true };
   /** Set by the controller on attach (events flow back through the seam). */
   controller: SceneController | null = null;
 
@@ -109,6 +118,9 @@ export class DashboardField implements SceneFieldRenderer {
     const offReady = this.base.onReady((app) => {
       const world = this.base.worldContainer;
       this.glyphs = new DomainGlyphs(app.renderer);
+      // Overlay layer sits behind the edges/nodes (added first to the world).
+      this.overlayLayer = new OverlayLayer(world);
+      this.overlayLayer.setFlags(this.overlays);
       this.edges = new EdgeMeshLayer(world);
       this.sprites = new NodeSpriteLayer(world, this.glyphs);
       this.camera = new Camera(world);
@@ -136,6 +148,11 @@ export class DashboardField implements SceneFieldRenderer {
         this.edges?.update((id) => positions.get(id));
         this.hitTester.rebuild(positions.entries());
         this.minimap?.updatePositions(positions, this.model.nodes);
+        this.overlayLayer?.render(
+          [...this.model.nodes],
+          (id) => positions.get(id),
+          this.lastLevel,
+        );
         this.anchors?.update();
         const now = Date.now();
         if (this.positionCache && now - this.lastSave > POSITION_SAVE_INTERVAL_MS) {
@@ -160,8 +177,15 @@ export class DashboardField implements SceneFieldRenderer {
       }
 
       const offCamera = this.camera.onChange((state, level) => {
+        this.lastLevel = level;
         this.sprites?.setLod(state.scale, this.focusedIds());
         this.edges?.setArrowVisibility(state.scale >= ARROW_VISIBLE_SCALE);
+        // LOD changed which overlay applies (countries vs hulls) — re-render.
+        this.overlayLayer?.render(
+          [...this.model.nodes],
+          (id) => this.sprites?.positionOf(id),
+          level,
+        );
         this.anchors?.update();
         this.minimap?.updateViewport(state, app.screen.width, app.screen.height);
         this.controller?.emit({ kind: "camera-change", scale: state.scale, level });
@@ -270,6 +294,8 @@ export class DashboardField implements SceneFieldRenderer {
     this.anchors = null;
     this.minimap?.destroy();
     this.minimap = null;
+    this.overlayLayer?.destroy();
+    this.overlayLayer = null;
     this.glyphs?.destroy?.();
     this.glyphs = null;
     this.base.destroy();
@@ -427,7 +453,81 @@ export class DashboardField implements SceneFieldRenderer {
         });
         break;
       }
+      // --- graph-representation: representation mode switch (W03.P08) ----------
+      case "set-representation-mode": {
+        this.applyRepresentationMode(cmd.mode);
+        break;
+      }
+      case "set-overlays": {
+        this.overlays = {
+          featureCountries: cmd.featureCountries,
+          featureHulls: cmd.featureHulls,
+        };
+        // Toggling overlays never re-lays-out (set overlays are projections that
+        // do not move nodes); re-render the overlay layer immediately.
+        this.overlayLayer?.setFlags(this.overlays);
+        this.refreshOverlays();
+        break;
+      }
     }
+  }
+
+  /**
+   * Switch the representation mode (graph-representation ADR). Connectivity hands
+   * positions to the FA2 solver (restart from current positions); lineage and
+   * semantic seed explicit static positions and stop the solver. OBJECT
+   * CONSTANCY: every mode seeds the SAME id-keyed nodes — no node is re-keyed, so
+   * the sprite/island reconcilers carry identity across the switch and the
+   * transition animates from the prior positions. A gated mode (semantic) may
+   * DOWNGRADE to connectivity; the applied mode is echoed honestly.
+   */
+  private applyRepresentationMode(mode: RepresentationMode): void {
+    this.representationMode = mode;
+    let applied: RepresentationMode = mode;
+    let downgradeReason: string | undefined;
+    if (this.layout && this.model.nodeCount > 0) {
+      const nodes = [...this.model.nodes];
+      const edges = [...this.model.edges];
+      const result = representationLayout(mode, nodes, edges);
+      applied = result.applied;
+      downgradeReason = result.downgradeReason;
+      if (result.positions) {
+        // Deterministic mode: seed the explicit positions (id-keyed) and stop the
+        // solver, exactly like the circular mode but with the mode's layout.
+        const nodeIds = nodes.map((n) => n.id);
+        const seeds = new Map(
+          nodeIds
+            .filter((id) => result.positions!.has(id))
+            .map((id) => [id, result.positions!.get(id)!] as const),
+        );
+        this.layout.stop();
+        this.layout.init(nodeIds, [], seeds);
+      } else {
+        // Connectivity: feed ONLY the layout backbone to FA2 (anti-hairball
+        // discipline, W02.P07) and restart the force solver from current
+        // positions (warm-start = object constancy).
+        const backbone = splitBackbone(edges).backbone;
+        const nodeIds = nodes.map((n) => n.id);
+        const edgeRefs = backbone.map((e) => ({ id: e.id, src: e.src, dst: e.dst }));
+        this.layout.init(nodeIds, edgeRefs, this.layout.positions);
+        this.layout.start();
+      }
+    }
+    this.controller?.emit({
+      kind: "representation-mode-changed",
+      requested: mode,
+      applied,
+      downgradeReason,
+    });
+  }
+
+  /** Re-render the overlay layer from the current overlay flags (no re-layout). */
+  private refreshOverlays(): void {
+    this.overlayLayer?.render(
+      [...this.model.nodes],
+      (id) => this.sprites?.positionOf(id),
+      this.lastLevel,
+    );
   }
 
   // --- internals -------------------------------------------------------------------
@@ -506,12 +606,40 @@ export class DashboardField implements SceneFieldRenderer {
       }
     }
     const nodeIds = [...this.model.nodes].map((n) => n.id);
-    const edgeRefs = [...this.model.edges].map((e) => ({
+    // Anti-hairball discipline (W02.P07): feed ONLY the declared+structural layout
+    // backbone to the FA2 solver; the disparity-thinned temporal/semantic tiers
+    // are layered context the renderer draws, never layout input. The full edge
+    // set still renders (the EdgeMeshLayer got all edges above); only the FORCE
+    // INPUT is the backbone.
+    const allEdges = [...this.model.edges];
+    const backboneRefs = splitBackbone(allEdges).backbone.map((e) => ({
       id: e.id,
       src: e.src,
       dst: e.dst,
     }));
     if (reseed) {
+      // Composition (graph-representation ADR): a new slice (a lens re-query) is
+      // re-laid-out by the ACTIVE representation mode. A deterministic mode
+      // (lineage/semantic) seeds explicit positions; connectivity warm-starts FA2
+      // over the backbone.
+      if (this.representationMode !== "connectivity") {
+        const result = representationLayout(
+          this.representationMode,
+          [...this.model.nodes],
+          allEdges,
+        );
+        if (result.positions) {
+          const seeds = new Map(
+            nodeIds
+              .filter((id) => result.positions!.has(id))
+              .map((id) => [id, result.positions!.get(id)!] as const),
+          );
+          this.layout.stop();
+          this.layout.init(nodeIds, [], seeds);
+          return;
+        }
+        // A held gated mode downgrades to connectivity below.
+      }
       const warm = new Map<string, NodePosition>();
       if (this.positionCache) {
         for (const [id, p] of this.positionCache.load(
@@ -526,9 +654,18 @@ export class DashboardField implements SceneFieldRenderer {
           warm.set(node.id, node.seedPosition);
         }
       }
-      this.layout.init(nodeIds, edgeRefs, warm);
+      this.layout.init(nodeIds, backboneRefs, warm);
       this.layout.start();
     }
+  }
+
+  /** Synchronous snapshot for tests/inspection: active representation mode and
+   *  overlay flags (the field-side mirror of the controller state). */
+  getRepresentationState(): {
+    mode: RepresentationMode;
+    overlays: { featureCountries: boolean; featureHulls: boolean };
+  } {
+    return { mode: this.representationMode, overlays: { ...this.overlays } };
   }
 }
 

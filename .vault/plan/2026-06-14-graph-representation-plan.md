@@ -158,7 +158,7 @@ Build the CPU-worker lineage layout that lays the directed derivation DAG along 
 - [x] `W02.P05.S19` - Render dangling lineage stubs honestly for incomplete derivation chains; `frontend/src/scene/field/lineageLayout.ts`.
 - [x] `W02.P05.S20` - Unit-test lineage layering, axis ordering, and dangling-stub honesty; `frontend/src/scene/field/lineageLayout.test.ts`.
 - [x] `W02.P05.S21` - Add a representationLayout dispatcher selecting connectivity vs lineage vs semantic; `frontend/src/scene/field/representationLayout.ts`.
-- [ ] `W02.P05.S22` - Wire lineage positions into the field layout path behind a representation mode; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W02.P05.S22` - Wire lineage positions into the field layout path behind a representation mode; `frontend/src/scene/field/fieldAssembly.ts`.
 
 ### Phase `W02.P06` - semantic UMAP mode (v1-gated)
 
@@ -174,9 +174,9 @@ Build the CPU-worker UMAP projection over per-node embeddings as a gated v1 mode
 Draw layout on the declared+structural layout backbone, disparity-filter-thin temporal/semantic to their significant subset, bundle hierarchically, DOI-gate, and un-bundle on hover.
 
 - [x] `W02.P07.S27` - Add a pure disparity-filter thinning of temporal/semantic edges to their significant subset; `frontend/src/scene/field/disparityFilter.ts`.
-- [ ] `W02.P07.S28` - Compute the declared+structural layout backbone and feed only it to the layout; `frontend/src/scene/field/backbone.ts`.
+- [x] `W02.P07.S28` - Compute the declared+structural layout backbone and feed only it to the layout; `frontend/src/scene/field/backbone.ts`.
 - [x] `W02.P07.S29` - Add hierarchical edge bundling geometry along the feature containment; `frontend/src/scene/field/edgeBundling.ts`.
-- [ ] `W02.P07.S30` - Un-bundle bundled edges on hover via the ego highlight; `frontend/src/scene/field/edgeBundling.ts`.
+- [x] `W02.P07.S30` - Un-bundle bundled edges on hover via the ego highlight; `frontend/src/scene/field/edgeBundling.ts`.
 - [x] `W02.P07.S31` - Unit-test disparity filter, backbone selection, and bundling/un-bundling; `frontend/src/scene/field/backbone.test.ts`.
 
 ## Wave `W03` - switching, composition, overlays
@@ -187,28 +187,28 @@ Add the set-representation-mode and set-overlays SceneController commands, the s
 
 Add the set-representation-mode and set-overlays SceneController commands additively to the locked union, distinct from set-layout-mode, with id-keyed object constancy across a switch.
 
-- [ ] `W03.P08.S32` - Add set-representation-mode command and representation-mode-changed event to the seam; `frontend/src/scene/sceneController.ts`.
-- [ ] `W03.P08.S33` - Add set-overlays command to the SceneCommand union; `frontend/src/scene/sceneController.ts`.
-- [ ] `W03.P08.S34` - Handle set-representation-mode in field assembly re-laying out with id-keyed object constancy; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W03.P08.S35` - Unit-test the new commands, object constancy across a mode switch, and the echoed event; `frontend/src/scene/sceneController.representation.test.ts`.
+- [x] `W03.P08.S32` - Add set-representation-mode command and representation-mode-changed event to the seam; `frontend/src/scene/sceneController.ts`.
+- [x] `W03.P08.S33` - Add set-overlays command to the SceneCommand union; `frontend/src/scene/sceneController.ts`.
+- [x] `W03.P08.S34` - Handle set-representation-mode in field assembly re-laying out with id-keyed object constancy; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W03.P08.S35` - Unit-test the new commands, object constancy across a mode switch, and the echoed event; `frontend/src/scene/sceneController.representation.test.ts`.
 
 ### Phase `W03.P09` - view state + composition sequencing
 
 Own active representation-mode and active-lens in the stores/app view store and sequence lens re-query then mode re-layout so every lens is viewable in every mode.
 
-- [ ] `W03.P09.S36` - Add activeRepresentationMode and setRepresentationMode to the view store; `frontend/src/stores/view/viewStore.ts`.
-- [ ] `W03.P09.S37` - Add a pure composition sequencer (lens re-query then mode re-layout) module; `frontend/src/stores/view/composition.ts`.
-- [ ] `W03.P09.S38` - Unit-test composition sequencing keeps every lens viewable in every mode; `frontend/src/stores/view/composition.test.ts`.
-- [ ] `W03.P09.S39` - Wire representation-mode and overlays from the view store into Stage scene commands; `frontend/src/app/stage/Stage.tsx`.
+- [x] `W03.P09.S36` - Add activeRepresentationMode and setRepresentationMode to the view store; `frontend/src/stores/view/viewStore.ts`.
+- [x] `W03.P09.S37` - Add a pure composition sequencer (lens re-query then mode re-layout) module; `frontend/src/stores/view/composition.ts`.
+- [x] `W03.P09.S38` - Unit-test composition sequencing keeps every lens viewable in every mode; `frontend/src/stores/view/composition.test.ts`.
+- [x] `W03.P09.S39` - Wire representation-mode and overlays from the view store into Stage scene commands; `frontend/src/app/stage/Stage.tsx`.
 
 ### Phase `W03.P10` - feature overlays
 
 Render GMap feature-country labels at overview and BubbleSets hulls at document LOD as set overlays that do not move nodes, toggled by set-overlays.
 
-- [ ] `W03.P10.S40` - Add GMap feature-country label geometry at overview LOD; `frontend/src/scene/field/overlays.ts`.
-- [ ] `W03.P10.S41` - Add BubbleSets hull geometry at document LOD; `frontend/src/scene/field/bubbleSets.ts`.
-- [ ] `W03.P10.S42` - Render overlays as a layer toggled by set-overlays without re-layout; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W03.P10.S43` - Unit-test country labels, hull computation, and overlay toggling; `frontend/src/scene/field/overlays.test.ts`.
+- [x] `W03.P10.S40` - Add GMap feature-country label geometry at overview LOD; `frontend/src/scene/field/overlays.ts`.
+- [x] `W03.P10.S41` - Add BubbleSets hull geometry at document LOD; `frontend/src/scene/field/bubbleSets.ts`.
+- [x] `W03.P10.S42` - Render overlays as a layer toggled by set-overlays without re-layout; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W03.P10.S43` - Unit-test country labels, hull computation, and overlay toggling; `frontend/src/scene/field/overlays.test.ts`.
 
 ## Wave `W04` - consumer-ADR amendments + integration
 

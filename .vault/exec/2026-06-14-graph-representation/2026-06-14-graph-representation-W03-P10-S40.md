@@ -4,7 +4,7 @@ tags:
   - '#graph-representation'
 date: '2026-06-14'
 modified: '2026-06-14'
-step_id: 'S22'
+step_id: 'S40'
 related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
@@ -18,7 +18,7 @@ related:
      refreshed by mutating CLI verbs and vault check fix; never hand-edit.
 
      step_id is the originating Step's canonical identifier, e.g. S01.
-     The S22 and 2026-06-14-graph-representation-plan placeholders are machine-filled by
+     The S40 and 2026-06-14-graph-representation-plan placeholders are machine-filled by
      `vaultspec-core vault add exec`; do not fill them by hand.
 
      Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
@@ -36,17 +36,17 @@ related:
 <!-- STEP RECORD:
      This file represents one Step from the originating plan. Identified
      by its canonical leaf identifier (S##) and ancestor display path.
-     The Wire lineage positions into the field layout path behind a representation mode and ## Scope
+     The Add GMap feature-country label geometry at overview LOD and ## Scope
 
-- `frontend/src/scene/field/fieldAssembly.ts` placeholders below are machine-filled
+- `frontend/src/scene/field/overlays.ts` placeholders below are machine-filled
      by `vaultspec-core vault add exec` from the originating Step row;
      do not fill them by hand. -->
 
-# Wire lineage positions into the field layout path behind a representation mode
+# Add GMap feature-country label geometry at overview LOD
 
 ## Scope
 
-- `frontend/src/scene/field/fieldAssembly.ts`
+- `frontend/src/scene/field/overlays.ts`
 
 ## Description
 
@@ -54,7 +54,7 @@ related:
 
 ## Outcome
 
-Lineage positions wire into the field via `fieldAssembly.applyRepresentationMode` (W03.P08): the dispatcher's lineage seed is set on the layout and FA2 stopped, behind the `set-representation-mode` command.
+Added `overlays.ts`: `countryLabels` places one GMap country label per feature at its members' centroid (feature membership from featureTags, added to SceneNodeData + mapper).
 
 ## Notes
 

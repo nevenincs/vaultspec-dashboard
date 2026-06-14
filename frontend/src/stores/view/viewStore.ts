@@ -2,6 +2,8 @@ import { create } from "zustand";
 
 import type { EngineEdge, SalienceLens } from "../server/engine";
 import { DEFAULT_SALIENCE_LENS } from "../server/engine";
+import type { RepresentationMode } from "../../scene/field/representationLayout";
+import { DEFAULT_REPRESENTATION_MODE } from "../../scene/field/representationLayout";
 import { useLiveStatusStore } from "../server/liveStatus";
 import { useFilterStore } from "./filters";
 import { useLensStore } from "./lenses";
@@ -99,6 +101,21 @@ export interface ViewState {
    * lens is an intent that travels with the viewer, not the corpus.
    */
   activeLens: SalienceLens;
+  /**
+   * The active REPRESENTATION mode (graph-representation ADR): connectivity
+   * (default) | lineage | semantic. Owned here as view state and emitted to the
+   * scene as a `set-representation-mode` command; the scene re-lays-out. DISTINCT
+   * from the force/circular layout tuning (a scene-only render knob) and from the
+   * salience lens (a wire concern). Does NOT reset on scope swap — a chosen mode
+   * is a viewer preference, not corpus state.
+   */
+  activeRepresentationMode: RepresentationMode;
+  /**
+   * Overlay visibility (graph-representation ADR): feature-country labels at
+   * overview and BubbleSets hulls at document LOD. Owned here, emitted as
+   * `set-overlays`.
+   */
+  overlays: { featureCountries: boolean; featureHulls: boolean };
 
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
   setScope: (scope: string | null) => void;
@@ -140,6 +157,10 @@ export interface ViewState {
   setGranularity: (granularity: "document" | "feature") => void;
   /** Switch the active salience lens (status/design). A re-query, not a reset. */
   setActiveLens: (lens: SalienceLens) => void;
+  /** Switch the active representation mode (connectivity/lineage/semantic). */
+  setRepresentationMode: (mode: RepresentationMode) => void;
+  /** Set overlay visibility (feature countries, feature hulls). */
+  setOverlays: (overlays: { featureCountries: boolean; featureHulls: boolean }) => void;
 }
 
 /** Cap the working set (P-MED-4): each entry materializes its own ego-network
@@ -172,6 +193,8 @@ export const useViewStore = create<ViewState>((set) => ({
   rightRailCollapsed: false,
   granularity: "feature",
   activeLens: DEFAULT_SALIENCE_LENS,
+  activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
+  overlays: { featureCountries: true, featureHulls: true },
 
   setScope: (scope) => {
     // WHOLESALE swap (ADR §2.1; finding scope-swap-partial-reset-022):
@@ -268,4 +291,7 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => ({ rightRailCollapsed: !state.rightRailCollapsed })),
   setGranularity: (granularity) => set({ granularity }),
   setActiveLens: (activeLens) => set({ activeLens }),
+  setRepresentationMode: (activeRepresentationMode) =>
+    set({ activeRepresentationMode }),
+  setOverlays: (overlays) => set({ overlays }),
 }));

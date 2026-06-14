@@ -4,7 +4,7 @@ tags:
   - '#graph-representation'
 date: '2026-06-14'
 modified: '2026-06-14'
-step_id: 'S22'
+step_id: 'S38'
 related:
   - "[[2026-06-14-graph-representation-plan]]"
 ---
@@ -18,7 +18,7 @@ related:
      refreshed by mutating CLI verbs and vault check fix; never hand-edit.
 
      step_id is the originating Step's canonical identifier, e.g. S01.
-     The S22 and 2026-06-14-graph-representation-plan placeholders are machine-filled by
+     The S38 and 2026-06-14-graph-representation-plan placeholders are machine-filled by
      `vaultspec-core vault add exec`; do not fill them by hand.
 
      Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
@@ -36,17 +36,17 @@ related:
 <!-- STEP RECORD:
      This file represents one Step from the originating plan. Identified
      by its canonical leaf identifier (S##) and ancestor display path.
-     The Wire lineage positions into the field layout path behind a representation mode and ## Scope
+     The Unit-test composition sequencing keeps every lens viewable in every mode and ## Scope
 
-- `frontend/src/scene/field/fieldAssembly.ts` placeholders below are machine-filled
+- `frontend/src/stores/view/composition.test.ts` placeholders below are machine-filled
      by `vaultspec-core vault add exec` from the originating Step row;
      do not fill them by hand. -->
 
-# Wire lineage positions into the field layout path behind a representation mode
+# Unit-test composition sequencing keeps every lens viewable in every mode
 
 ## Scope
 
-- `frontend/src/scene/field/fieldAssembly.ts`
+- `frontend/src/stores/view/composition.test.ts`
 
 ## Description
 
@@ -54,7 +54,7 @@ related:
 
 ## Outcome
 
-Lineage positions wire into the field via `fieldAssembly.applyRepresentationMode` (W03.P08): the dispatcher's lineage seed is set on the layout and FA2 stopped, behind the `set-representation-mode` command.
+Added `composition.test.ts`: requery-then-relayout on lens, relayout-only on mode, requery-first when both change, no-op when unchanged, and EVERY lens viewable in EVERY mode (no forbidden combination). 6 tests green.
 
 ## Notes
 

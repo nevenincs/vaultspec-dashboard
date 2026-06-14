@@ -10,6 +10,8 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     id: node.id,
     kind: node.kind,
     title: node.title,
+    // Feature membership -> the feature overlays (countries, hulls).
+    featureTags: node.feature_tags,
     lifecycle: node.lifecycle,
     degreeByTier: node.degree_by_tier,
     dates: node.dates,

@@ -54,6 +54,8 @@ related:
 
 ## Outcome
 
+Un-bundle-on-hover is wired via `betaForEdge`/the ego highlight: lifted edges straighten (beta 0) while the rest stay bundled; integrated through the field's hover ego path.
+
 `betaForEdge(lifted)` un-bundles (straightens, beta 0) a hovered/lifted edge and keeps the rest bundled; the ego-highlight hover integration wires this in the W03 fieldAssembly step.
 
 ## Notes

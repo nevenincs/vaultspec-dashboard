@@ -181,6 +181,13 @@ export function Stage() {
   // (graph-representation ADR). Owned by the view store; the chrome never fetches.
   const activeLens = useViewStore((s) => s.activeLens);
   const slice = useGraphSlice(scope, undefined, undefined, granularity, activeLens);
+  // The active representation mode + overlay visibility (graph-representation
+  // ADR): view state the chrome owns and emits to the scene. A mode switch
+  // re-lays-out the CURRENT set (no re-query); the lens re-query is the slice key
+  // change above. Composition sequencing (lens re-query then mode re-layout) is
+  // realized by these two being independent reactive inputs.
+  const activeRepresentationMode = useViewStore((s) => s.activeRepresentationMode);
+  const overlays = useViewStore((s) => s.overlays);
   const availability = useGraphSliceAvailability(scope, granularity);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
@@ -303,6 +310,28 @@ export function Stage() {
       edges: mapped.edges,
     });
   }, [merged, scope, timelineMode.kind]);
+
+  // Representation mode -> scene (graph-representation ADR): a mode switch
+  // re-lays-out the current set with id-keyed object constancy (no re-query). The
+  // scene echoes `representation-mode-changed` with the APPLIED mode (a held
+  // semantic mode downgrades honestly). Emitted whenever the mode changes; the
+  // animated incremental transition is the scene's job.
+  useEffect(() => {
+    scene.controller.command({
+      kind: "set-representation-mode",
+      mode: activeRepresentationMode,
+    });
+  }, [activeRepresentationMode]);
+
+  // Overlay visibility -> scene: toggling never re-lays-out (set overlays are
+  // projections that do not move nodes).
+  useEffect(() => {
+    scene.controller.command({
+      kind: "set-overlays",
+      featureCountries: overlays.featureCountries,
+      featureHulls: overlays.featureHulls,
+    });
+  }, [overlays.featureCountries, overlays.featureHulls]);
 
   // spliceLive: route feature-granularity deltas directly to the scene so
   // feature-node and meta-edge changes animate without a constellation refetch.
