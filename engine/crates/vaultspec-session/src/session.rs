@@ -105,16 +105,20 @@ impl Store {
         current.insert(0, value.to_string());
         current.truncate(MAX_RECENTS);
 
-        self.conn().execute(
+        // Delete + renumber as one atomic unit so a mid-rewrite failure cannot
+        // leave a partially-renumbered list (idiomatic rusqlite).
+        let tx = self.conn().unchecked_transaction()?;
+        tx.execute(
             "DELETE FROM recents WHERE workspace = ?1",
             params![workspace],
         )?;
         for (position, v) in current.iter().enumerate() {
-            self.conn().execute(
+            tx.execute(
                 "INSERT INTO recents (workspace, position, value) VALUES (?1, ?2, ?3)",
                 params![workspace, position as i64, v],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
