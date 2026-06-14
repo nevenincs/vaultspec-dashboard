@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { useLiveStatusStore } from "../server/liveStatus";
-import { useViewStore } from "./viewStore";
+import { WORKING_SET_CAP, useViewStore } from "./viewStore";
 
 describe("view store", () => {
   it("shares one selection concept", () => {
@@ -20,6 +20,18 @@ describe("view store", () => {
     expect(useViewStore.getState().workingSet).toEqual(["a", "b"]);
     useViewStore.getState().removeFromWorkingSet("a");
     expect(useViewStore.getState().workingSet).toEqual(["b"]);
+  });
+
+  it("caps the working set to the most-recent entries (P-MED-4)", () => {
+    const store = useViewStore.getState();
+    store.clearWorkingSet();
+    for (let i = 0; i < WORKING_SET_CAP + 10; i += 1) store.addToWorkingSet(`n${i}`);
+    const ws = useViewStore.getState().workingSet;
+    // bounded — the ego-query fan-out cannot grow without limit
+    expect(ws).toHaveLength(WORKING_SET_CAP);
+    // oldest evicted, newest retained
+    expect(ws).not.toContain("n0");
+    expect(ws[ws.length - 1]).toBe(`n${WORKING_SET_CAP + 9}`);
   });
 
   it("defaults to LIVE timeline mode with all tiers on", () => {

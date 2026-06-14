@@ -301,6 +301,9 @@ export function engineStreamOptions(channels: readonly string[], since?: number)
     }),
     staleTime: Infinity,
     retry: true,
+    // Capped exponential backoff (P-MED-3): a flapping /stream must not tight-
+    // loop reconnects (and storm the error log); back off to a 30s ceiling.
+    retryDelay: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
   });
 }
 

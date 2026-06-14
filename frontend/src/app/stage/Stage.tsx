@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useShallow } from "zustand/react/shallow";
 
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { graphDeltaToScene, sliceToScene } from "../../scene/sceneMapping";
@@ -193,8 +194,22 @@ export function Stage() {
   }, [gapCount, scope, queryClient]);
 
   // One filter model, applied as a visibility membership diff (RL-5a):
-  // the scene animates what the filter removed (G3.f).
-  const filterChoices = useFilterStore();
+  // the scene animates what the filter removed (G3.f). Subscribe ONLY to the
+  // choice fields (not the setters) via a shallow selector (P-MED-14), so a
+  // setter-identity change or an unrelated store write does not re-render the
+  // stage - the heaviest component and owner of the scene effects.
+  const filterChoices = useFilterStore(
+    useShallow((s) => ({
+      tiers: s.tiers,
+      minConfidence: s.minConfidence,
+      docTypes: s.docTypes,
+      featureTags: s.featureTags,
+      relations: s.relations,
+      structuralStates: s.structuralStates,
+      textMatch: s.textMatch,
+      dateRange: s.dateRange,
+    })),
+  );
   const membership = useMemo(
     () =>
       merged ? computeVisibility(merged.nodes, merged.edges, filterChoices) : null,

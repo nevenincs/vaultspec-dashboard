@@ -21,6 +21,11 @@ export const queryClient = new QueryClient({
       retry: (failureCount, error) =>
         failureCount < 1 && classifyError(error).retryable,
       staleTime: 5_000,
+      // Bound cache retention across filter/scrub churn (P-MED-9): each
+      // distinct (scope, filter, as-of, granularity) mints an entry and graph
+      // slices are large, so evict unobserved entries promptly rather than the
+      // 5-minute default.
+      gcTime: 120_000,
     },
   },
 });

@@ -95,6 +95,11 @@ export interface ViewState {
   setGranularity: (granularity: "document" | "feature") => void;
 }
 
+/** Cap the working set (P-MED-4): each entry materializes its own ego-network
+ *  query (Stage's `useQueries` fan-out), so an uncapped set is an unbounded
+ *  concurrent-request fan-out. Keep the most-recent N. */
+export const WORKING_SET_CAP = 24;
+
 export const useViewStore = create<ViewState>((set) => ({
   scope: null,
   selection: null,
@@ -172,9 +177,14 @@ export const useViewStore = create<ViewState>((set) => ({
       pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== edgeId),
     })),
   addToWorkingSet: (id) =>
-    set((state) =>
-      state.workingSet.includes(id) ? state : { workingSet: [...state.workingSet, id] },
-    ),
+    set((state) => {
+      if (state.workingSet.includes(id)) return state;
+      const next = [...state.workingSet, id];
+      return {
+        workingSet:
+          next.length > WORKING_SET_CAP ? next.slice(next.length - WORKING_SET_CAP) : next,
+      };
+    }),
   removeFromWorkingSet: (id) =>
     set((state) => ({
       workingSet: state.workingSet.filter((entry) => entry !== id),
