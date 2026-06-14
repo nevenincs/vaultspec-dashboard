@@ -48,10 +48,25 @@ pub struct ScopeParam {
 
 // --- GET /map ----------------------------------------------------------------
 
-pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
-    // /map is workspace-level: it enumerates every worktree of the workspace,
-    // so it discovers from the workspace root, not a single scope.
-    let workspace = ingest_git::workspace::Workspace::discover(&state.workspace_root)
+/// The optional `workspace=` selector (dashboard-workspace-registry ADR,
+/// P02.S07). Absent or `"active"` lists the active workspace (the unchanged
+/// single-workspace default); a registered workspace id lists that root; an
+/// unknown id 400s honestly.
+#[derive(Deserialize, Default)]
+pub struct MapParams {
+    #[serde(default)]
+    pub workspace: Option<String>,
+}
+
+pub async fn map(State(state): State<Arc<AppState>>, Query(params): Query<MapParams>) -> ApiResult {
+    // /map is workspace-level: it enumerates every worktree of the chosen
+    // registered root. The optional `workspace=` parameter selects WHICH root —
+    // defaulting to the active workspace, so the existing single-workspace
+    // behaviour is the unchanged `workspace=active` case. The root is resolved
+    // READ-ONLY through the registry; discovery never mutates anything.
+    let root =
+        crate::routes::registry::resolve_map_workspace_root(&state, params.workspace.as_deref())?;
+    let workspace = ingest_git::workspace::Workspace::discover(&root)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let config = ingest_git::branches::ClassifyConfig::default();
     let worktrees: Vec<Value> = ingest_git::worktrees::enumerate(&workspace)
@@ -403,6 +418,29 @@ pub async fn graph_query_route(
             "truncated": truncated,
         }),
         tiers,
+        None,
+    ))
+}
+
+// --- GET /pipeline?scope= ---------------------------------------------------------
+
+/// The in-flight pipeline projection (dashboard-pipeline-wire W02.P05.S22):
+/// resolve the per-request scope to its warm cell, run the bounded `in_flight`
+/// projection over that scope's live graph, and return it through the shared
+/// envelope helper so the tiers block rides the response (success here, and the
+/// unknown-scope 400 via `validate_scope`/`api_error`). The projection is
+/// bounded to active artifacts in scope by construction — no node ceiling block
+/// is needed because "in-flight" is already the bound.
+pub async fn pipeline(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ScopeParam>,
+) -> ApiResult {
+    let cell = validate_scope(&state, &params.scope)?;
+    let graph = cell.graph_arc();
+    let artifacts = engine_query::pipeline::in_flight(&graph, &cell.scope);
+    Ok(super::envelope(
+        json!({"artifacts": artifacts}),
+        rag_tiers(&cell),
         None,
     ))
 }

@@ -70,6 +70,7 @@ pub fn inject_token(html: &str, token: &str) -> String {
 /// trust boundary.
 pub(crate) const API_PREFIXES: &[&str] = &[
     "/map",
+    "/workspaces",
     "/vault-tree",
     "/graph",
     "/filters",

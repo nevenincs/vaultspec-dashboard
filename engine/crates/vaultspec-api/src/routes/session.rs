@@ -60,17 +60,23 @@ fn session_data(state: &AppState) -> Value {
     // SCOPED guard: every user-state read happens here, and the guard drops at
     // the close brace — never held across the `.await`-free envelope below, and
     // never across any future `.await`.
-    let (scope_context, recents) = {
+    let (scope_context, recents, active_workspace) = {
         let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
         let context = us
             .scope_context(&workspace, &active_scope)
             .unwrap_or_default();
         let recents = us.recents(&workspace).unwrap_or_default();
-        (context, recents)
+        // The active WORKSPACE id beside the active scope (dashboard-workspace-
+        // registry ADR): the registered root the dashboard is pointed at. The
+        // registry of WHICH roots exist lives on /workspaces; /session carries
+        // only the active selection.
+        let active_workspace = us.active_workspace().ok().flatten();
+        (context, recents, active_workspace)
     };
     json!({
         "workspace": workspace,
         "active_scope": active_scope,
+        "active_workspace": active_workspace,
         "scope_context": {
             "folder": scope_context.active_folder,
             "feature_tags": scope_context.feature_tags,
@@ -108,6 +114,22 @@ pub struct SessionUpdate {
     pub scope_context: Option<ScopeContextUpdate>,
     #[serde(default)]
     pub push_recent: Option<String>,
+    /// Select the active WORKSPACE (dashboard-workspace-registry ADR): the
+    /// registered root the dashboard is pointed at. Validated against the
+    /// registry — an unregistered id is a tiered 400, leaving the selection
+    /// unchanged. Persisted on the global-settings surface, the same config
+    /// mechanism the active scope already uses.
+    #[serde(default)]
+    pub active_workspace: Option<String>,
+    /// Register a new project root from an operator-supplied absolute path
+    /// (read-only: validates a discoverable git workspace, records ONE config
+    /// row, never mutates the repository). An invalid path is a tiered 400.
+    #[serde(default)]
+    pub add_workspace: Option<String>,
+    /// Forget a registered project root by its stable id (config delete only;
+    /// never touches disk; the last launch root is refused; warm cells evicted).
+    #[serde(default)]
+    pub forget_workspace: Option<String>,
 }
 
 /// The scope-context part of a session update. `scope` names which scope the
@@ -132,6 +154,43 @@ pub async fn put_session(
 ) -> ApiResult {
     let workspace = workspace_key(&state);
     let now = crate::app::now_ms();
+
+    // Registry mutations route through the user-state CONFIG surface (P02.S09),
+    // NOT the read-only graph API and NOT the /ops proxy. All are read-only over
+    // repository content: register DISCOVERS a path and records a config row;
+    // forget removes a config row and evicts warm cells; select records the
+    // active-workspace pointer. Each can fail with a client error, so they run
+    // before the persistence block (and before the user-state lock is taken for
+    // the scope writes), failing fast and honestly.
+
+    // forget first (so a forget+select in one request lands cleanly).
+    if let Some(id) = update.forget_workspace.as_deref() {
+        crate::routes::registry::forget_root(&state, id)?;
+    }
+
+    // add: register the operator-supplied path read-only.
+    if let Some(path) = update.add_workspace.as_deref() {
+        crate::routes::registry::register_root(&state, path)?;
+    }
+
+    // active_workspace: validate it names a registered root, then persist the
+    // active-workspace pointer (config write). The frontend fires the wholesale
+    // scope reset around this; the engine only records the selection.
+    if let Some(ws) = update.active_workspace.as_deref() {
+        let registered = {
+            let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+            us.root(ws).ok().flatten().is_some()
+        };
+        if !registered {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("workspace `{ws}` is not a registered project root"),
+            ));
+        }
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = us.set_active_workspace(ws, now);
+    }
 
     // active_scope: validate + warm through the registry FIRST (this is the one
     // step that can fail with a client error), then retarget the active scope

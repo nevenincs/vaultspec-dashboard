@@ -117,11 +117,11 @@ Persist the workspace registry in the vaultspec-session orchestration crate: an 
 
 Expose the registry on the wire: GET /workspaces, an optional workspace= parameter on /map (default active, single-workspace behaviour unchanged), and an active_workspace field on /session. Registry add/forget route through the user-state config surface, never the read-only graph API or the /ops proxy. Mirror the live shape in the mock.
 
-- [ ] `P02.S06` - Add the GET /workspaces route returning id, label, path, launch-default marker, reachability, and the tiers block; `engine/crates/vaultspec-api/src/routes/registry.rs`.
-- [ ] `P02.S07` - Add the optional workspace= parameter to /map defaulting to the active workspace with unchanged single-workspace behaviour; `engine/crates/vaultspec-api/src/routes/registry.rs`.
-- [ ] `P02.S08` - Add the active_workspace field and its PUT handling to the session endpoint; `engine/crates/vaultspec-api/src/routes/session.rs`.
-- [ ] `P02.S09` - Route registry add and forget through the user-state config surface, not the graph API or the ops proxy; `engine/crates/vaultspec-api/src/routes/session.rs`.
-- [ ] `P02.S10` - Mirror the /workspaces and extended /map and /session shapes in the frontend mock fixtures; `frontend/src/stores/server/`.
+- [x] `P02.S06` - Add the GET /workspaces route returning id, label, path, launch-default marker, reachability, and the tiers block; `engine/crates/vaultspec-api/src/routes/registry.rs`.
+- [x] `P02.S07` - Add the optional workspace= parameter to /map defaulting to the active workspace with unchanged single-workspace behaviour; `engine/crates/vaultspec-api/src/routes/registry.rs`.
+- [x] `P02.S08` - Add the active_workspace field and its PUT handling to the session endpoint; `engine/crates/vaultspec-api/src/routes/session.rs`.
+- [x] `P02.S09` - Route registry add and forget through the user-state config surface, not the graph API or the ops proxy; `engine/crates/vaultspec-api/src/routes/session.rs`.
+- [x] `P02.S10` - Mirror the /workspaces and extended /map and /session shapes in the frontend mock fixtures; `frontend/src/stores/server/`.
 
 ### Phase `P03` - Scope routing across workspaces
 

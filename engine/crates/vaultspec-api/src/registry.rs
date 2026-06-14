@@ -92,6 +92,27 @@ impl ScopeRegistry {
         self.touch(&token);
     }
 
+    /// Evict every warm cell whose scope token satisfies `predicate` EXCEPT the
+    /// pinned active scope, returning the count evicted. Used when forgetting a
+    /// registered workspace (dashboard-workspace-registry ADR): its warm scope
+    /// cells are dropped so the forgotten project's corpus does not linger warm.
+    /// Each evicted cell's watcher tears down on drop. The pinned active scope is
+    /// never evicted here (a forget of the active workspace re-points the active
+    /// scope first, at the route layer, before this runs).
+    pub fn evict_where(&mut self, pinned: &str, predicate: impl Fn(&str) -> bool) -> usize {
+        let victims: Vec<String> = self
+            .cells
+            .keys()
+            .filter(|t| t.as_str() != pinned && predicate(t))
+            .cloned()
+            .collect();
+        for victim in &victims {
+            self.recency.retain(|t| t != victim);
+            self.cells.remove(victim);
+        }
+        victims.len()
+    }
+
     /// Evict the least-recently-used cell that is NOT the pinned active scope,
     /// returning the evicted cell (whose watcher tears down on drop). Returns
     /// `None` when nothing is evictable (only the pinned scope remains).

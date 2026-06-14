@@ -37,6 +37,7 @@ pub const DEFAULT_PORT: u16 = 8767;
 pub const CONTRACT_ROUTES: &[&str] = &[
     "/health",
     "/map",
+    "/workspaces",
     "/vault-tree",
     "/graph/query",
     "/graph/asof",
@@ -72,6 +73,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/map", get(routes::query::map))
+        // Workspace registry enumeration (dashboard-workspace-registry ADR):
+        // the registered project roots with reachability, through the shared
+        // envelope. Registry mutation rides /session (config), never here.
+        .route("/workspaces", get(routes::registry::list_workspaces))
         .route("/vault-tree", get(routes::query::vault_tree))
         .route("/graph/query", post(routes::query::graph_query_route))
         .route("/graph/asof", get(routes::temporal::graph_asof))
@@ -352,6 +357,30 @@ mod tests {
         token: Option<&str>,
     ) -> (StatusCode, Value) {
         let mut builder = Request::post(path)
+            .header("host", "127.0.0.1")
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        let response = router
+            .oneshot(builder.body(Body::from(json_body.to_string())).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, value)
+    }
+
+    async fn put_json_with_token(
+        router: Router,
+        path: &str,
+        json_body: Value,
+        token: Option<&str>,
+    ) -> (StatusCode, Value) {
+        let mut builder = Request::put(path)
             .header("host", "127.0.0.1")
             .header("content-type", "application/json");
         if let Some(token) = token {
@@ -823,5 +852,216 @@ mod tests {
         );
         assert_eq!(body["data"]["ok"], true);
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    // --- workspace registry wire surface (dashboard-workspace-registry P02) ---
+
+    /// Build a real one-commit git workspace with a vault doc at `root`.
+    fn vault_git_repo(root: &std::path::Path) {
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-14-ws-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#ws'\n---\n\nMentions `src/a.rs`.\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "fixture"]);
+    }
+
+    #[tokio::test]
+    async fn workspaces_route_lists_the_launch_root_with_tiers_and_active_marker() {
+        // GET /workspaces enumerates the registry through the shared envelope:
+        // the boot-auto-registered launch root with its id/label/path, the
+        // launch-default marker, a reachability state, the active-workspace id,
+        // and the per-tier tiers block (every-wire-response-carries-the-tiers).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        vault_git_repo(root);
+
+        let state = app::build_state(root.to_path_buf());
+        // Mirror the boot auto-register (build_state alone does not run it; the
+        // serve() boot path does — replicate it here so the route has a root).
+        let ws_id = {
+            let ws = ingest_git::workspace::Workspace::discover(&state.workspace_root).unwrap();
+            routes::scope_token(&ws.common_dir)
+        };
+        let launch_token = routes::scope_token(&state.workspace_root);
+        {
+            let us = state.user_state.lock().unwrap();
+            us.auto_register_launch(&ws_id, "main", &launch_token, app::now_ms())
+                .unwrap();
+            us.set_active_workspace(&ws_id, app::now_ms()).unwrap();
+        }
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(router, "/workspaces", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let roots = body["data"]["workspaces"]
+            .as_array()
+            .expect("workspaces array");
+        assert_eq!(roots.len(), 1, "only the launch root is registered");
+        assert_eq!(roots[0]["id"], ws_id);
+        assert_eq!(roots[0]["is_launch"], true, "launch-default marker present");
+        assert_eq!(roots[0]["reachable"], true, "launch root probes reachable");
+        assert_eq!(body["data"]["active_workspace"], ws_id);
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn map_default_workspace_is_unchanged_and_unknown_workspace_400s() {
+        // /map without `workspace=` is the unchanged single-workspace default
+        // (it enumerates the launch root's worktrees); an unknown registered id
+        // 400s honestly with the tiers block.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        vault_git_repo(root);
+        let state = app::build_state(root.to_path_buf());
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(router.clone(), "/map", Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "default /map unchanged: {body}");
+        assert!(
+            body["data"]["worktrees"]
+                .as_array()
+                .is_some_and(|w| !w.is_empty()),
+            "default /map lists the launch root's worktrees"
+        );
+
+        let (status, body) =
+            get_with_token(router, "/map?workspace=not-a-registered-root", Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "unknown workspace 400s");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the 400 still carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn put_session_registers_a_sibling_then_forgets_it_read_only() {
+        // PUT /session add_workspace registers a real sibling git workspace
+        // read-only (it appears on /workspaces); forget_workspace removes it.
+        // Neither touches the repository on disk — registering only records the
+        // operator-supplied path.
+        let workspace = tempfile::tempdir().unwrap();
+        let main = workspace.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        vault_git_repo(&main);
+        // A SEPARATE git workspace the operator will register.
+        let sibling = workspace.path().join("other-project");
+        std::fs::create_dir_all(&sibling).unwrap();
+        vault_git_repo(&sibling);
+
+        let state = app::build_state(main.clone());
+        // Seed the launch root so the registry is non-empty (boot parity).
+        let launch_id = {
+            let ws = ingest_git::workspace::Workspace::discover(&state.workspace_root).unwrap();
+            routes::scope_token(&ws.common_dir)
+        };
+        {
+            let us = state.user_state.lock().unwrap();
+            us.auto_register_launch(
+                &launch_id,
+                "main",
+                &routes::scope_token(&state.workspace_root),
+                app::now_ms(),
+            )
+            .unwrap();
+        }
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let sibling_path = routes::scope_token(&std::fs::canonicalize(&sibling).unwrap());
+        let (status, body) = put_json_with_token(
+            router.clone(),
+            "/session",
+            json!({ "add_workspace": sibling_path }),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "registering a sibling: {body}");
+
+        let (_, body) = get_with_token(router.clone(), "/workspaces", Some(&token)).await;
+        let roots = body["data"]["workspaces"].as_array().unwrap();
+        assert_eq!(roots.len(), 2, "launch + the registered sibling");
+        let sibling_id = roots
+            .iter()
+            .find(|r| r["is_launch"] == false)
+            .expect("the sibling root")["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // The sibling repo on disk is untouched by registration: still exactly
+        // the one fixture commit, no new refs/worktrees created by the engine.
+        let sibling_commits = {
+            let out = std::process::Command::new("git")
+                .current_dir(&sibling)
+                .args(["rev-list", "--count", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(sibling_commits, "1", "registration never mutated the repo");
+
+        // Forget the sibling: a config delete only; the registry returns to one.
+        let (status, body) = put_json_with_token(
+            router.clone(),
+            "/session",
+            json!({ "forget_workspace": sibling_id }),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "forgetting the sibling: {body}");
+        let (_, body) = get_with_token(router, "/workspaces", Some(&token)).await;
+        assert_eq!(
+            body["data"]["workspaces"].as_array().unwrap().len(),
+            1,
+            "the sibling is forgotten; the launch root remains"
+        );
+    }
+
+    #[tokio::test]
+    async fn put_session_refuses_forgetting_the_last_launch_root() {
+        // The launch workspace cannot be forgotten while it is the only root — a
+        // tiered 400, never a disk operation.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        vault_git_repo(root);
+        let state = app::build_state(root.to_path_buf());
+        let launch_id = {
+            let ws = ingest_git::workspace::Workspace::discover(&state.workspace_root).unwrap();
+            routes::scope_token(&ws.common_dir)
+        };
+        {
+            let us = state.user_state.lock().unwrap();
+            us.auto_register_launch(
+                &launch_id,
+                "main",
+                &routes::scope_token(&state.workspace_root),
+                app::now_ms(),
+            )
+            .unwrap();
+        }
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = put_json_with_token(
+            router,
+            "/session",
+            json!({ "forget_workspace": launch_id }),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the refusal carries the tiers block"
+        );
     }
 }

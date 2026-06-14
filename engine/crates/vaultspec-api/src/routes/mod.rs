@@ -2,6 +2,7 @@
 
 pub mod ops;
 pub mod query;
+pub mod registry;
 pub mod session;
 pub mod spa;
 pub mod stream;

@@ -54,6 +54,23 @@ interface MockScopeContext {
   feature_tags: string[];
 }
 
+/** One registered project root in the mock registry — byte-for-byte the live
+ *  `/workspaces` row shape (dashboard-workspace-registry ADR / mock-mirrors-
+ *  live-wire-shape): stable id, label, monospace path identity, the launch-
+ *  default marker, and a reachability state with a reason when degraded. */
+interface MockWorkspaceRoot {
+  id: string;
+  label: string;
+  path: string;
+  is_launch: boolean;
+  reachable: boolean;
+  unreachable_reason: string | null;
+}
+
+/** The workspace id the mock auto-registers as the launch root — the same id the
+ *  live engine derives from the launch workspace's git common dir. */
+export const MOCK_WORKSPACE_ID = "/repo/.git";
+
 // --- delta timeline (pure, derived from the corpus event log) -------------------
 
 export interface TimelineDelta extends GraphDeltaEntry {
@@ -189,6 +206,22 @@ export class MockEngine {
    *  keys is sparse-omitted from the served `scoped` map (live parity). */
   private scopedSettings = new Map<string, Map<string, string>>();
 
+  // --- workspace registry state (mirrors the live store) ---
+  /** The registered project roots, in stable registry order. Seeded with the
+   *  auto-registered launch root so the single-project experience matches boot. */
+  private workspaceRoots: MockWorkspaceRoot[] = [
+    {
+      id: MOCK_WORKSPACE_ID,
+      label: "repo",
+      path: MOCK_WORKSPACE,
+      is_launch: true,
+      reachable: true,
+      unreachable_reason: null,
+    },
+  ];
+  /** The active workspace id — the registered root the dashboard is pointed at. */
+  private activeWorkspace: string | null = MOCK_WORKSPACE_ID;
+
   /** No vault in the worktree: the served corpus is empty (035). */
   setNoVault(on: boolean): void {
     this.noVault = on;
@@ -236,10 +269,39 @@ export class MockEngine {
     return {
       workspace: MOCK_WORKSPACE,
       active_scope: this.activeScope,
+      // The active WORKSPACE id beside the active scope (dashboard-workspace-
+      // registry ADR): the registered root the dashboard is pointed at. Mirrors
+      // the live `/session` field.
+      active_workspace: this.activeWorkspace,
       scope_context: { folder: ctx.folder, feature_tags: [...ctx.feature_tags] },
       recents: [...this.recents],
       tiers: this.tiersBlock(),
     };
+  }
+
+  /** Build the `/workspaces` data block (mirrors the live route): the registered
+   *  roots with reachability, plus the active-workspace id. Flat-with-tiers, the
+   *  shape `unwrapEnvelope` + the workspaces adapter consume. */
+  private workspacesData(): unknown {
+    return {
+      workspaces: this.workspaceRoots.map((r) => ({ ...r })),
+      active_workspace: this.activeWorkspace,
+      tiers: this.tiersBlock(),
+    };
+  }
+
+  /** Mark a registered root unreachable (or recover it) — test/demo affordance
+   *  for the degraded-root rail state. A no-op when the id is unknown. */
+  setWorkspaceReachable(id: string, reachable: boolean, reason: string | null): void {
+    const root = this.workspaceRoots.find((r) => r.id === id);
+    if (!root) return;
+    root.reachable = reachable;
+    root.unreachable_reason = reachable ? null : reason;
+  }
+
+  /** The registered roots — test/demo introspection. */
+  get workspaces(): readonly MockWorkspaceRoot[] {
+    return this.workspaceRoots;
   }
 
   /** Build the `/settings` data block. `scoped` sparse-omits empty scopes. */
@@ -275,8 +337,31 @@ export class MockEngine {
             feature_tags?: string[];
           };
           push_recent?: string;
+          active_workspace?: string;
+          add_workspace?: string;
+          forget_workspace?: string;
         })
       : {};
+
+    // Registry mutations route through the session config surface (the live
+    // route's P02.S09 ordering): forget, then add, then select-active. All are
+    // read-only over repository content — registering only RECORDS a path.
+    if (body.forget_workspace !== undefined) {
+      this.forgetWorkspace(body.forget_workspace);
+    }
+    if (body.add_workspace !== undefined) {
+      this.addWorkspace(body.add_workspace);
+    }
+    if (body.active_workspace !== undefined) {
+      if (!this.workspaceRoots.some((r) => r.id === body.active_workspace)) {
+        // Tiered 400, active workspace unchanged (the live route's behavior).
+        throw new RouteError(
+          400,
+          `workspace ${body.active_workspace} is not a registered project root`,
+        );
+      }
+      this.activeWorkspace = body.active_workspace;
+    }
 
     // Validate + retarget the active scope FIRST (the one step that can 400).
     if (body.active_scope !== undefined) {
@@ -310,6 +395,51 @@ export class MockEngine {
   /** Push a value to the front of recents, dedup-moving an existing entry. */
   private pushRecent(value: string): void {
     this.recents = [value, ...this.recents.filter((r) => r !== value)];
+  }
+
+  /**
+   * Register (upsert) a project root from an operator-supplied path (mirrors the
+   * live read-only register): a path the mock recognizes as a valid project is
+   * recorded as a new root; an unrecognized path is a tiered 400 (the live
+   * "not a git workspace" refusal). The mock cannot probe a real filesystem, so
+   * it treats any non-empty path NOT starting with `bad` as a valid project,
+   * deriving a stable id from the path — enough to exercise the add → list →
+   * forget flow and the validation-refusal state through the real client path.
+   * Registering only RECORDS the path; it never mutates anything.
+   */
+  private addWorkspace(path: string): void {
+    if (path.length === 0 || path.startsWith("bad")) {
+      throw new RouteError(400, `cannot register ${path}: not a git workspace`);
+    }
+    const id = `${path}/.git`;
+    if (this.workspaceRoots.some((r) => r.id === id)) return; // upsert no-op
+    const label = path.replace(/\/+$/, "").split("/").pop() || path;
+    this.workspaceRoots.push({
+      id,
+      label,
+      path,
+      is_launch: false,
+      reachable: true,
+      unreachable_reason: null,
+    });
+  }
+
+  /**
+   * Forget a registered root by id (mirrors the live config delete): the launch
+   * workspace cannot be forgotten while it is the only root (a tiered 400);
+   * forgetting any other root removes only its registry entry and never touches
+   * disk. An unknown id is a harmless no-op.
+   */
+  private forgetWorkspace(id: string): void {
+    const target = this.workspaceRoots.find((r) => r.id === id);
+    if (!target) return;
+    if (target.is_launch && this.workspaceRoots.length === 1) {
+      throw new RouteError(
+        400,
+        "the launch workspace cannot be forgotten while it is the only registered root",
+      );
+    }
+    this.workspaceRoots = this.workspaceRoots.filter((r) => r.id !== id);
   }
 
   /**
@@ -489,7 +619,29 @@ export class MockEngine {
       }
       return this.settingsData();
     }
+    if (path === "/workspaces") {
+      // The registered project roots with reachability + the active-workspace id
+      // (dashboard-workspace-registry ADR). Registry MUTATION rides /session
+      // (config), not here — /workspaces is read-only enumeration, like the live
+      // route.
+      return this.workspacesData();
+    }
     if (path === "/map") {
+      // The optional `workspace=` selector (dashboard-workspace-registry ADR,
+      // P02.S07): absent or `active` is the unchanged single-workspace default;
+      // an unknown registered id 400s honestly, exactly like the live route. The
+      // mock serves one corpus, so a known workspace returns the same map.
+      const workspace = params.get("workspace");
+      if (
+        workspace &&
+        workspace !== "active" &&
+        !this.workspaceRoots.some((r) => r.id === workspace)
+      ) {
+        throw new RouteError(
+          400,
+          `workspace ${workspace} is not a registered project root`,
+        );
+      }
       return {
         repositories: [
           {
