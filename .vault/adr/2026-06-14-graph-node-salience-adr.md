@@ -128,6 +128,24 @@ volume reads as evidence, not inflation. A future **audit/compliance lens** is j
 teleport vector biased to audit + rule with its own weight row — no new architecture, which
 is the whole point of making the lens a parameter.
 
+**Switching, ownership, and the wire amendment.** The lens is a **request parameter on
+`POST /graph/query`** (and on `/graph/asof`, `/graph/diff`, `/nodes/{id}/neighbors`) — a §4
+contract amendment adding `lens` to the request body, defaulted to the **status lens** when
+omitted (first-load is "what is in-flight," the most common review intent). Switching lens is
+therefore a **re-query issued by the stores layer**, which owns the active-lens view state
+(distinct from the canvas-controls tier-dial "lens"); the engine recomputes nothing the client
+holds. The compute split is decided to make switching cheap: the **lens basis** (the partial
+PPR vectors, Brandes betweenness, k-core, structural-role and aggregate features) is
+**precomputed once per graph generation for all launch lenses**, so a no-focus lens switch is a
+warm-cache re-query; only the **focus-folded final score** is computed **on demand per
+`(lens, focus)`** and memoized, so a focus change runs one warm-started PPR pass behind a
+stores→scene loading state. Because DOI makes the served node *set* lens-dependent, the
+bounded-query truncation (`MAX_GRAPH_NODES`) selects the top-DOI nodes *for the active lens and
+focus* — an amendment to §4's truncation semantics. The lens **selector control** is an
+app-chrome surface that does not yet exist in the canvas-controls ADR; this ADR flags it as a
+**required canvas-controls amendment** (a seventh control group emitting lens intent into the
+view store), so the control is homed rather than orphaned.
+
 Recency is an **exponential decay** with a per-lens half-life (the single interpretable knob),
 kept distinct from the discrete lifecycle multiplier so "recent but archived" and "old but
 in-flight" are both handled correctly. The composition ships its **weight-sensitivity sweep**

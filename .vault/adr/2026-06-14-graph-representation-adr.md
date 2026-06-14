@@ -50,18 +50,22 @@ nodes for the active lens and focus, where a-priori-importance is precisely the 
 per-lens field. The node ceiling stops being an arbitrary truncation and becomes a principled
 "keep the most interesting N."
 
-**Three layout modes over one model, not one layout.** ForceAtlas2 stays the default
-*connectivity* layout — its degree-dependent repulsion separates feature clusters and its
-stated 10–10,000-node comfort zone validates the ceiling. But two further modes are added,
-each motivated by research and by data we already hold. A **semantic layout mode** projects
-the existing rag embeddings to 2D with UMAP (a "semantic constellation" that clusters by
-meaning, not connectivity) — the cheapest high-value experiment in the whole campaign because
-the embeddings already exist; DRGraph is the scale-hardened port if the mode proves valuable.
-A **lineage layout mode** lays the directed derivation DAG (research→adr→plan→exec→audit→rule)
-along a derivation/time axis — the CitNetExplorer and W3C PROV convention — because our
-primary review task is path-following along lineage, the one task at which node-link
-decisively beats matrices, and because the ADR-tooling ecosystem leaves exactly this
-decision-DAG view unbuilt.
+**Three layout modes over one model — with an explicit v1/deferred split.** Layout is not a
+menu of co-equal options; the decision is phased. **v1 adopts two modes: connectivity
+(ForceAtlas2, the default) and lineage.** ForceAtlas2's degree-dependent repulsion separates
+feature clusters and its stated 10–10,000-node comfort zone validates the ceiling. The
+**lineage mode** lays the directed derivation DAG (research→adr→plan→exec→audit→rule) along a
+derivation/time axis — the CitNetExplorer and W3C PROV convention — and is v1 because our
+primary review task is path-following along lineage (the one task at which node-link decisively
+beats matrices) and because the ADR-tooling ecosystem leaves exactly this decision-DAG view
+unbuilt; it consumes the semantics ADR's `derivation` edge labels and needs no new wire data.
+The **semantic mode** (UMAP over the existing rag embeddings, a "meaning constellation") is a
+**v1 experiment gated on a measurable trigger**: it promotes to a shipped mode when the
+CPU-worker UMAP projection over the node-ceiling slice lands inside the layout time budget *and*
+a usability check confirms meaning-clusters separate legibly; failing the gate it is held out of
+v1, and **DRGraph** is its deferred scale-hardened successor, promoted only when a measured
+UMAP runtime at the ceiling exceeds that budget. The split is recorded in the Frontier ledger
+below.
 
 **The hairball is averted by a backbone discipline that our tiers already encode.** Dense
 small-world graphs collapse under force layout; the canonical fix is backbone extraction, and
@@ -74,8 +78,10 @@ identity discipline.
 
 **Feature clusters are set overlays, not a second layout; encoding follows channel theory.**
 Feature membership is orthogonal to the connectivity layout, so it renders as an overlay that
-does not move nodes: GMap-style "feature countries" at the overview LOD, BubbleSets hulls at
-document granularity (KelpFusion as the empirically-best upgrade target). Visual encoding
+does not move nodes: GMap-style "feature countries" at the overview LOD, **BubbleSets hulls
+(v1)** at document granularity. **KelpFusion** is the deferred, empirically-best upgrade,
+promoted when overlapping feature hulls at document LOD cross a measured legibility threshold
+(hull-overlap area per view above a user-tested floor). Visual encoding
 follows Bertin/Mackinlay/Munzner: **type → shape** (the icon mark, grayscale-safe per the
 icon gate), **feature → hue** (colorblind-safe OKLCH), **salience → size** (making the
 importance field visible), **lifecycle/recency → value** (low-chroma per warmth-in-tokens),
@@ -83,14 +89,19 @@ importance field visible), **lifecycle/recency → value** (low-chroma per warmt
 the state channels: a **superseded ADR reads faded/struck**, an audit's worst severity tints
 its treatment, diff legibility (add/remove green/red) stays sacred under any theme.
 
-**The frontier is adopted selectively, with AI as a grounded assistant.** Animated
-add/remove for live deltas plus incremental layout (mental-map stability) is the empirically-
-backed delta behavior. AI enters only as a *grounded, read-only* layer: a LinkQ-style "talk
-to your vault" that turns a natural-language question into a bounded engine query (the LLM
-never invents nodes), and LLM auto-labeling of feature/semantic clusters. GNN learned layout
-is declined for now (it needs trained torch models, colliding with GPU-render-only and
-wheel-purity, and offers nothing over FA2 at our bound). NodeTrix (matrix-in-node) is the
-recorded escalation when a feature cluster grows too dense to read as node-link.
+**The frontier is adopted selectively, and the AI layer is explicitly deferred past v1.**
+**v1 ships** animated add/remove for live deltas plus incremental layout (mental-map
+stability) — the empirically-backed delta behavior, and a core requirement, not frontier. The
+**AI layer is deferred to a post-v1 phase**: a LinkQ-style "talk to your vault" (an LLM
+compiling a natural-language question into a bounded engine query, never inventing nodes) and
+LLM auto-labeling of clusters are both *adopted-deferred*, gated on the grounded-query seam
+existing in stores and an availability/degradation contract; neither blocks v1, and both must
+be grounded and read-only when they land. **GNN learned layout is declined permanently** (it
+needs trained torch models, colliding with GPU-render-only and wheel-purity, and offers nothing
+over FA2 at our bound), as is **cosmos.gl's GPU-layout model**. **NodeTrix** (matrix-in-node) is
+the deferred escalation, promoted when a single feature cluster's intra-cluster edge density at
+document LOD exceeds a measured legibility threshold (edges/node above K). All verdicts are
+consolidated in the Frontier ledger below.
 
 ## Constraints
 
@@ -120,9 +131,19 @@ recorded escalation when a feature cluster grows too dense to read as node-link.
   families through the existing `GlyphTextureProvider` seam. Identity never rests on hue;
   grayscale-safe-by-shape holds; warmth lives in tokens; motion is fast/subtle and
   keyboard-initiated actions do not animate.
+- **Inherits filter ownership; does not re-own it.** Filter active-state (type / tier / feature
+  / lifecycle) ownership and propagation are already settled by the canvas-controls ADR (app
+  chrome emits filter intent into the stores view-store; stores re-queries; the engine validates
+  the filter vocabulary). This ADR inherits that unchanged and adds no competing filter owner.
+- **Requires downstream amendments to two accepted consumer ADRs.** node-canvas and
+  canvas-controls were authored before this trio and lack the seams it assumes; this ADR names
+  the required amendments explicitly (size-driver, label-priority, representation-mode command,
+  mode/lens selector controls) in Implementation rather than silently assuming them.
 - **Depends on the sibling ADRs.** Salience (size, label priority, the DOI a-priori term) and
   semantics (type→shape, lifecycle→state channels, derivation→lineage layout) are accepted
-  and supply the inputs this ADR encodes.
+  and supply the inputs this ADR encodes. The dependency order is **semantics → salience →
+  representation → (node-canvas + canvas-controls, as downstream consumers requiring
+  amendment)**; the chain is acyclic.
 
 ## Implementation
 
@@ -134,14 +155,24 @@ seeds a DOI-expanded contextual subgraph. The bounded wire serves the top-DOI no
 active lens and focus, so what is on screen is always "the most interesting slice," not a
 blind truncation.
 
-**Layout** is three selectable modes over the one model. *Connectivity* (ForceAtlas2, the
-default) for topology; *semantic* (UMAP over the existing rag embeddings, CPU worker) for a
-meaning-clustered constellation; *lineage* (a directed derivation-axis DAG, type-shaped,
-PROV-convention) for tracing decision-to-execution provenance. Each mode is a different
-spatialization of the same nodes; switching modes re-lays-out with object constancy preserved
-by stable id. **Level of detail** is semantic zoom: the constellation draws features as
-labelled "countries" (GMap metaphor) with the salience field as size; descent swaps to
-document granularity with full node anatomy, BubbleSets feature hulls, and document edges.
+**Layout** is selectable modes over the one model, each a different spatialization of the
+*same served nodes*. *Connectivity* (ForceAtlas2, the v1 default) for topology; *lineage* (a
+directed derivation-axis DAG, type-shaped, PROV-convention, consuming the semantics ADR's
+`derivation` edge labels) for tracing decision-to-execution provenance — **both v1**; and
+*semantic* (UMAP over the rag embeddings, CPU worker) for a meaning-clustered constellation —
+**v1-gated** per the trigger above. Each mode's **data source** is named: connectivity and
+lineage run on the §4 node/edge payload already served (lineage needs only the `derivation`
+labels, no new wire data); the semantic mode needs **per-node embedding vectors delivered to
+the CPU worker**, which is a §4 amendment — the engine serves the rag embedding vectors as an
+optional additive node field (or a paired bounded endpoint), and the worker runs UMAP on them
+(the engine never serves coordinates, honoring graph-compute-is-CPU). **Empty/degraded states
+are owned here:** semantic mode draws nodes lacking an embedding in a connectivity fallback
+position and says so; lineage mode draws an incomplete derivation chain honestly (an orphan
+exec record, or a plan whose ADR is absent, renders as a dangling lineage stub, never a
+fabricated edge — matching the engine's honest-degradation stance). **Level of detail** is
+semantic zoom: the constellation draws features as labelled "countries" (GMap metaphor) with
+the salience field as size; descent swaps to document granularity with full node anatomy,
+BubbleSets feature hulls, and document edges.
 
 **The anti-hairball backbone** is the load-bearing algorithmic decision. Layout and the
 default draw run on the declared+structural backbone; temporal and semantic edges are
