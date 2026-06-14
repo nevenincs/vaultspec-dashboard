@@ -79,7 +79,12 @@ pub struct IndexStats {
     pub duplicate_stems: Vec<String>,
 }
 
-/// Index one worktree scope into a fresh graph (the cold path).
+/// Index one worktree scope into a fresh graph (the cold path): structural
+/// resolve + edge ingest AND the declared-tier core subprocess, synchronously.
+///
+/// This full path is the CLI's (`vaultspec index`, `vaultspec status`) and the
+/// D8.2 re-derivability comparator; its output is UNCHANGED by the perf ADR
+/// (the async split lives in the serve path via [`index_worktree_structural`]).
 pub fn index_worktree(
     root: &Path,
     scope: &ScopeRef,
@@ -88,6 +93,35 @@ pub fn index_worktree(
 ) -> Result<(LinkageGraph, IndexStats)> {
     let mut graph = LinkageGraph::new();
     let stats = index_worktree_into(&mut graph, root, scope, store, observed_at)?;
+    Ok((graph, stats))
+}
+
+/// Sentinel `declared_unavailable` reason a STRUCTURAL-only index records: the
+/// declared tier is not yet ingested because the async fold is in progress
+/// (perf ADR D1). The serve path's `query_tiers` renders this as the
+/// `declared` tier unavailable-while-building, flipping to available once the
+/// fold's `commit_graph` lands. Distinct from a real core-unreachable reason,
+/// which is what the fold itself records on a genuine failure.
+pub const DECLARED_BUILDING: &str = "declared tier building";
+
+/// Index one worktree scope into a fresh graph, STRUCTURAL TIER ONLY — every
+/// phase of [`index_worktree`] EXCEPT the declared-tier core subprocess (perf
+/// ADR D1). This is the fast servable parse: the serve path commits it
+/// immediately so the worktree is interactive in roughly the structural-parse
+/// time, then folds the declared tier in asynchronously.
+///
+/// `IndexStats.declared_edges` is 0 and `declared_unavailable` is the
+/// [`DECLARED_BUILDING`] sentinel (NOT a failure — the tier is pending the
+/// async fold, reported truthfully as unavailable-while-building).
+pub fn index_worktree_structural(
+    root: &Path,
+    scope: &ScopeRef,
+    store: &engine_store::Store,
+    observed_at: Timestamp,
+) -> Result<(LinkageGraph, IndexStats)> {
+    let mut graph = LinkageGraph::new();
+    let mut stats = index_structural(&mut graph, root, scope, store, observed_at, false)?;
+    stats.declared_unavailable = Some(DECLARED_BUILDING.to_string());
     Ok((graph, stats))
 }
 
@@ -119,6 +153,52 @@ pub fn index_worktree_into(
 }
 
 fn index_documents(
+    graph: &mut LinkageGraph,
+    root: &Path,
+    scope: &ScopeRef,
+    store: &engine_store::Store,
+    observed_at: Timestamp,
+    force_extract: bool,
+) -> Result<IndexStats> {
+    let mut stats = index_structural(graph, root, scope, store, observed_at, force_extract)?;
+
+    // Declared tier: ingest core's authored graph at HEAD (the engine's stated
+    // core capability — "ingests core's vault graph"). Structural mentions
+    // above are only one tier; without this the linkage graph carries no
+    // declared cross-references at all.
+    //
+    // READ-AND-INFER (D1.2, CRITICAL): we MUST use `--ref HEAD`, never the
+    // working-tree mode. Plain `vaultspec-core vault graph` mutates the target
+    // vault — it runs core's index refresh, which stamps `modified:`
+    // frontmatter onto un-migrated docs and rewrites `.gitignore` — so reading
+    // a corpus would silently corrupt it (adversarial finding, 2026-06-13).
+    // `--ref HEAD` reads the git object DB read-only (no checkout, no cache, no
+    // write), at the cost of reflecting the committed state rather than
+    // uncommitted working-tree edits — the correct trade for a read-and-infer
+    // engine. The structural tier above still reflects the working tree via
+    // read-only file reads.
+    let timing = std::env::var_os("VAULTSPEC_INDEX_TIMING").is_some();
+    let t_start = std::time::Instant::now();
+    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, Some("HEAD"));
+    stats.declared_edges += declared;
+    stats.declared_unavailable = unavailable;
+    if timing {
+        eprintln!(
+            "vaultspec index timing: declared (core subprocess) +{}ms ({} docs)",
+            t_start.elapsed().as_millis(),
+            stats.documents
+        );
+    }
+
+    Ok(stats)
+}
+
+/// The structural tier of the index: read+extract, resolver build, resolve +
+/// edge ingest. Everything [`index_documents`] does EXCEPT the declared-tier
+/// core subprocess (perf ADR D1). Shared by the full path (which then ingests
+/// declared synchronously) and [`index_worktree_structural`] (the fast
+/// servable parse, declared deferred to the async fold).
+fn index_structural(
     graph: &mut LinkageGraph,
     root: &Path,
     scope: &ScopeRef,
@@ -276,26 +356,6 @@ fn index_documents(
 
     phase!("structural");
 
-    // Declared tier: ingest core's authored graph at HEAD (the engine's stated
-    // core capability — "ingests core's vault graph"). Structural mentions
-    // above are only one tier; without this the linkage graph carries no
-    // declared cross-references at all.
-    //
-    // READ-AND-INFER (D1.2, CRITICAL): we MUST use `--ref HEAD`, never the
-    // working-tree mode. Plain `vaultspec-core vault graph` mutates the target
-    // vault — it runs core's index refresh, which stamps `modified:`
-    // frontmatter onto un-migrated docs and rewrites `.gitignore` — so reading
-    // a corpus would silently corrupt it (adversarial finding, 2026-06-13).
-    // `--ref HEAD` reads the git object DB read-only (no checkout, no cache, no
-    // write), at the cost of reflecting the committed state rather than
-    // uncommitted working-tree edits — the correct trade for a read-and-infer
-    // engine. The structural tier above still reflects the working tree via
-    // read-only file reads.
-    let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, Some("HEAD"));
-    stats.declared_edges += declared;
-    stats.declared_unavailable = unavailable;
-    phase!("declared (core subprocess)");
-
     Ok(stats)
 }
 
@@ -318,7 +378,34 @@ pub(crate) fn ingest_core_graph(
     observed_at: Timestamp,
     git_ref: Option<&str>,
 ) -> (usize, Option<String>) {
-    const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
+    // Split into the subprocess fetch and the parse/ingest so the async
+    // declared fold (perf ADR D1) can cache the raw JSON by HEAD sha between
+    // them. This combined path keeps the synchronous full `index_worktree`
+    // (CLI / re-derivability test) behaviorally UNCHANGED: fetch, then ingest.
+    let json = match fetch_core_graph_json(root, git_ref) {
+        Ok(json) => json,
+        Err(reason) => return (0, Some(reason)),
+    };
+    ingest_declared_from_json(graph, &json, scope, observed_at)
+}
+
+/// The graph-v2 envelope schema core emits (engine-spec §5.1).
+const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
+
+/// Run `vaultspec-core vault graph [--ref <git_ref>]` in `root` and return the
+/// raw `data` payload as a JSON STRING (the cacheable unit, perf ADR D1).
+///
+/// `git_ref` selects the corpus exactly as [`ingest_core_graph`] documents:
+/// `Some("HEAD")` is the read-and-infer-safe object-DB read (D1.2, CRITICAL —
+/// never the vault-mutating working-tree mode); `None` reads the working tree.
+///
+/// On failure returns a LEAK-FREE reason (no build-machine paths, no core
+/// stderr) safe to surface as the declared-tier degradation reason — the full
+/// error is logged for operators, mirroring the prior inline behavior.
+pub fn fetch_core_graph_json(
+    root: &Path,
+    git_ref: Option<&str>,
+) -> std::result::Result<String, String> {
     let runner = ingest_core::runner::CoreRunner::detect();
     let mut args: Vec<&str> = vec!["vault", "graph"];
     if let Some(reference) = git_ref {
@@ -328,7 +415,7 @@ pub(crate) fn ingest_core_graph(
     let data = match runner.run_json(root, &args, &[GRAPH_SCHEMA]) {
         Ok(envelope) => match envelope.data() {
             Ok(data) => data,
-            Err(e) => return (0, Some(format!("core graph payload: {e}"))),
+            Err(e) => return Err(format!("core graph payload: {e}")),
         },
         // The full error embeds core's stderr — absolute paths and a
         // sibling-workspace hint — which must NOT reach the wire `tiers` block
@@ -336,8 +423,32 @@ pub(crate) fn ingest_core_graph(
         // the leak-free category as the declared-tier degradation reason.
         Err(e) => {
             eprintln!("vaultspec: declared tier unavailable — core graph read failed: {e}");
-            return (0, Some(e.wire_reason()));
+            return Err(e.wire_reason());
         }
+    };
+    Ok(data.to_string())
+}
+
+/// Parse a raw core graph-v2 `data` JSON string and ingest its declared +
+/// core-derived edges into `graph`. The CPU-side counterpart to
+/// [`fetch_core_graph_json`] (perf ADR D1): the async fold caches the JSON by
+/// HEAD sha, then calls this to fold the declared tier into a clone of the
+/// live structural graph.
+///
+/// Returns `(declared_edges_ingested, unavailable_reason)` — `None` on
+/// success, `Some(reason)` if the JSON was unparseable. Ingesting into the
+/// structural graph is idempotent (replace-by-id), so the folded
+/// clone(structural)+declared graph is byte-identical to a synchronous
+/// structural+declared build (D8.2 convergence).
+pub fn ingest_declared_from_json(
+    graph: &mut LinkageGraph,
+    json: &str,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+) -> (usize, Option<String>) {
+    let data: serde_json::Value = match serde_json::from_str(json) {
+        Ok(data) => data,
+        Err(e) => return (0, Some(format!("core graph json: {e}"))),
     };
     let parsed = match ingest_core::graph_v2::parse(&data, scope, observed_at) {
         Ok(parsed) => parsed,

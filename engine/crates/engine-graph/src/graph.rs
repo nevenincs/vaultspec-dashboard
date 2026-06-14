@@ -30,7 +30,15 @@ pub struct StoredEdge {
 }
 
 /// The in-memory linkage graph.
-#[derive(Debug, Default)]
+///
+/// `Clone` (perf ADR `worktree-parse-performance` D1): the async declared
+/// fold clones the just-committed STRUCTURAL graph and adds the declared
+/// edges into the clone, so the second commit never re-runs the structural
+/// parse. The `meta_edges_cache` is `OnceLock<Vec<MetaEdge>>`, whose `Clone`
+/// (Rust 1.78+) copies the cached value when set — semantically a no-op here
+/// because the fold mutates the clone (every mutation invalidates the cache),
+/// so the clone's projection re-derives lazily on first read.
+#[derive(Debug, Default, Clone)]
 pub struct LinkageGraph {
     nodes: HashMap<NodeId, Node>,
     edges: HashMap<EdgeId, StoredEdge>,
