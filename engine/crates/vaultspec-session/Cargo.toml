@@ -1,0 +1,21 @@
+[package]
+name = "vaultspec-session"
+description = "Co-resident orchestration crate: durable session/settings user-state store (rusqlite) at .vault/data/engine-data/user-state.sqlite3. Best-effort persistence; never writes .vault/ docs or mutates git (user-state-persistence ADR)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+engine-store = { version = "0.1.0", path = "../engine-store" }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+thiserror = "2.0.18"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
