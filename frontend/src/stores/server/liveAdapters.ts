@@ -17,6 +17,9 @@ import type {
   FiltersVocabulary,
   GraphSlice,
   MapResponse,
+  ScopeContextWire,
+  SessionState,
+  SettingsState,
   TiersBlock,
   VaultTreeResponse,
   WireMetaEdge,
@@ -330,4 +333,82 @@ export function deriveSearchNodeId(item: Record<string, unknown>): string | null
   const docStem =
     stem ?? (path ? path.replace(/^.*\//, "").replace(/\.md$/, "") : null);
   return docStem ? `doc:${docStem}` : null;
+}
+
+// --- session / settings (user-state-persistence W04.P08.S28) ---------------------
+//
+// Tolerant adapters for the orchestration crate's session/settings surface. The
+// live `{data, tiers}` envelope is already unwrapped by `unwrapEnvelope` before
+// these run (the client's get/put path); a body already in the internal shape
+// (the mock) passes through unchanged — the one-code-path property. Every
+// missing field defaults to a safe empty so a sparse or older shape NEVER throws
+// and the chrome never has to read the raw tiers block (the degradation truth
+// still rides through on `tiers`, defaulted to an empty block when absent).
+
+/** Default a scope-context wire shape, tolerating an absent or partial object:
+ *  an absent `folder` becomes null (no folder selected), absent `feature_tags`
+ *  becomes []. */
+function adaptScopeContext(value: unknown): ScopeContextWire {
+  if (!isRec(value)) return { folder: null, feature_tags: [] };
+  return {
+    folder: typeof value.folder === "string" ? value.folder : null,
+    feature_tags: Array.isArray(value.feature_tags)
+      ? (value.feature_tags as string[])
+      : [],
+  };
+}
+
+/**
+ * Live `/session` → the internal session state. TOLERANT: a sparse body (no
+ * `scope_context`, no `recents`) defaults to safe empties rather than throwing,
+ * so a freshly-recreated best-effort store (the prototype's corrupt→empty path)
+ * restores as "no selection yet" instead of crashing the load.
+ */
+export function adaptSession(body: unknown): SessionState {
+  if (!isRec(body)) {
+    return {
+      workspace: "",
+      active_scope: "",
+      scope_context: { folder: null, feature_tags: [] },
+      recents: [],
+      tiers: {},
+    };
+  }
+  return {
+    workspace: typeof body.workspace === "string" ? body.workspace : "",
+    active_scope: typeof body.active_scope === "string" ? body.active_scope : "",
+    scope_context: adaptScopeContext(body.scope_context),
+    recents: Array.isArray(body.recents) ? (body.recents as string[]) : [],
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+/** Default a flat `{ key: value }` string map, dropping non-string values. */
+function adaptStringMap(value: unknown): Record<string, string> {
+  if (!isRec(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "string") out[key] = raw;
+  }
+  return out;
+}
+
+/**
+ * Live `/settings` → the internal settings state. TOLERANT: an absent `global`
+ * or `scoped` (or a sparse-omitted scope) defaults to an empty map, so the
+ * client composes precedence over whatever is present without guarding for
+ * missing keys.
+ */
+export function adaptSettings(body: unknown): SettingsState {
+  if (!isRec(body)) return { global: {}, scoped: {}, tiers: {} };
+  const scopedRaw = isRec(body.scoped) ? body.scoped : {};
+  const scoped: Record<string, Record<string, string>> = {};
+  for (const [scope, entries] of Object.entries(scopedRaw)) {
+    scoped[scope] = adaptStringMap(entries);
+  }
+  return {
+    global: adaptStringMap(body.global),
+    scoped,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
 }

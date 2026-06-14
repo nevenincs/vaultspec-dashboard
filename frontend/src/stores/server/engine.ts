@@ -15,6 +15,8 @@ import {
   adaptGraphSlice,
   adaptMap,
   adaptSearch,
+  adaptSession,
+  adaptSettings,
   adaptStatus,
   adaptVaultTree,
   unwrapEnvelope,
@@ -331,6 +333,67 @@ export interface SearchResponse {
   tiers: TiersBlock;
 }
 
+// --- session / settings (user-state-persistence W04.P08.S25) -----------------------------
+//
+// The orchestration crate's session/settings surface (the "builds beside" layer,
+// foundation contract §9). Wire shapes stay snake_case exactly as the live
+// `vaultspec-session`-backed routes serve them under the shared `{data, tiers}`
+// envelope. This is the durable, session-defining state — active scope, the
+// active folder + its feature-tag contexts, recents, and user settings — that
+// survives a reload; ephemeral view state stays in localStorage.
+
+/** A scope's persisted folder + feature-tag context (GET /session). `folder` is
+ *  null when no folder is selected; `feature_tags` is the grouping primitive the
+ *  "current folder + contexts" projection is built on (never a new node model). */
+export interface ScopeContextWire {
+  folder: string | null;
+  feature_tags: string[];
+}
+
+/** The current session: the "where am I and what am I looking at" the dashboard
+ *  restores on load instead of recomputing a default (GET/PUT /session data). */
+export interface SessionState {
+  workspace: string;
+  active_scope: string;
+  scope_context: ScopeContextWire;
+  recents: string[];
+  tiers: TiersBlock;
+}
+
+/** The scope-context part of a PUT /session body. `scope` selects which scope
+ *  the context belongs to (absent = the active scope); an absent or null
+ *  `folder` clears it; `feature_tags` is set wholesale. */
+export interface ScopeContextUpdate {
+  scope?: string;
+  folder?: string | null;
+  feature_tags?: string[];
+}
+
+/** A partial session update (PUT /session): any absent field leaves that part of
+ *  the session untouched. An unknown `active_scope` is a tiered 400 and leaves the
+ *  active scope unchanged. */
+export interface SessionUpdate {
+  active_scope?: string;
+  scope_context?: ScopeContextUpdate;
+  push_recent?: string;
+}
+
+/** User settings (GET/PUT /settings data): a flat `global` map plus a per-scope
+ *  `scoped` map. `scoped` sparse-omits scopes with no scoped keys. */
+export interface SettingsState {
+  global: Record<string, string>;
+  scoped: Record<string, Record<string, string>>;
+  tiers: TiersBlock;
+}
+
+/** A single settings write (PUT /settings body): a key/value pair, global when
+ *  `scope` is absent, scope-scoped otherwise. */
+export interface SettingUpdate {
+  scope?: string;
+  key: string;
+  value: string;
+}
+
 // --- the client ------------------------------------------------------------------------------
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -471,19 +534,26 @@ export class EngineClient {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
   }
 
-  /** §7 — open the multiplexed SSE stream through the same transport. */
+  /** §7 — open the multiplexed SSE stream through the same transport. The
+   *  optional `scope` targets a specific worktree's clock (W02.P04.S14 wire
+   *  change): resume runs against that scope's own monotonic seq; absent, the
+   *  engine falls back to the active scope. */
   openStream(
     channels: string[],
     since?: number,
     signal?: AbortSignal,
+    scope?: string,
   ): Promise<Response> {
-    return this.fetchImpl(this.streamUrl(channels, since), { signal });
+    return this.fetchImpl(this.streamUrl(channels, since, scope), { signal });
   }
 
   // §7 — the SSE endpoint URL; consumption lives in queries.ts (S20).
-  streamUrl(channels: string[], since?: number): string {
+  streamUrl(channels: string[], since?: number, scope?: string): string {
     const params = new URLSearchParams({ channels: channels.join(",") });
     if (since !== undefined) params.set("since", String(since));
+    // Per-scope resume (W02.P04.S14): pass the scope so `since=` resumes against
+    // that scope's own clock. Absent, the engine streams the active scope.
+    if (scope !== undefined) params.set("scope", scope);
     return `${this.baseUrl}/stream?${params.toString()}`;
   }
 
@@ -494,6 +564,29 @@ export class EngineClient {
     filters?: Record<string, string>;
   }): Promise<SearchResponse> {
     return adaptSearch(await this.post("/search", body)) as SearchResponse;
+  }
+
+  // --- session / settings (W04.P08.S25) ------------------------------------
+
+  /** Read the current session — the "where am I" state restored on load. */
+  async session(): Promise<SessionState> {
+    return adaptSession(await this.get("/session"));
+  }
+
+  /** Persist a partial session update; returns the full updated session. An
+   *  unknown `active_scope` throws an EngineError (tiered 400). */
+  async putSession(body: SessionUpdate): Promise<SessionState> {
+    return adaptSession(await this.put("/session", body));
+  }
+
+  /** Read user settings (global + per-scope scoped keys). */
+  async settings(): Promise<SettingsState> {
+    return adaptSettings(await this.get("/settings"));
+  }
+
+  /** Persist a single settings write; returns the full updated settings. */
+  async putSettings(body: SettingUpdate): Promise<SettingsState> {
+    return adaptSettings(await this.put("/settings", body));
   }
 
   // --- transport -----------------------------------------------------------
@@ -519,6 +612,16 @@ export class EngineClient {
   private async post<T>(path: string, body: unknown): Promise<T> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw await engineErrorFrom(path, response);
+    return unwrapEnvelope(await response.json()) as T;
+  }
+
+  private async put<T>(path: string, body: unknown): Promise<T> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
