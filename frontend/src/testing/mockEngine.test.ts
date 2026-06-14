@@ -175,6 +175,33 @@ describe("MockEngine routes", () => {
     expect((await c.status()).tiers.semantic.available).toBe(true);
   });
 
+  it("serves /search in the LIVE nested rag envelope, exercising adaptSearch (W02.P16.S32)", async () => {
+    // mock-mirrors-live-wire-shape / search ADR "Mock fidelity": the mock must
+    // emit the nested rag envelope `{envelope: {ok, data: {results}}}` the live
+    // serve forwards, NOT the internal flat shape — so adaptSearch's unwrap is
+    // exercised against reality. Prove it by reading the RAW mock body and
+    // confirming the nesting, then by feeding it through the client path.
+    const mock = new MockEngine();
+    const raw = (await mock
+      .fetchImpl("/search", {
+        method: "POST",
+        body: JSON.stringify({ query: "auth", target: "vault" }),
+      })
+      .then((r) => r.json())) as {
+      envelope?: { data?: { results?: unknown[] } };
+      results?: unknown[];
+    };
+    // The mock body is the NESTED live shape, not the flat internal shape.
+    expect(raw.results).toBeUndefined();
+    expect(raw.envelope?.data?.results?.length).toBeGreaterThan(0);
+    // The same body flows through the client's adaptSearch into the flat
+    // internal `{results, tiers}` the controller consumes — node ids preserved.
+    const response = await client(mock).search({ query: "auth", target: "vault" });
+    expect(response.results.length).toBeGreaterThan(0);
+    expect(response.results[0].node_id).not.toBeNull();
+    expect(response.tiers.semantic.available).toBe(true);
+  });
+
   it("serves an empty corpus end-to-end under no-vault, git still live (035)", async () => {
     const mock = new MockEngine();
     mock.setNoVault(true);

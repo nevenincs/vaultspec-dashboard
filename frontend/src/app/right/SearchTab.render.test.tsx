@@ -63,13 +63,17 @@ describe("SearchTab surface states + a11y + selection (S24)", () => {
     expect(idle?.textContent).toMatch(/select a result to focus it/i);
   });
 
-  it("shows a liveness loading cue tied to a real in-flight query", () => {
-    // A transport that never resolves keeps the search query pending.
+  it("shows a liveness loading cue tied to a real in-flight query", async () => {
+    // A transport that never resolves keeps the search query pending. The
+    // controller debounces the keystroke stream, so the loading cue appears once
+    // the term settles and the (never-resolving) request is in flight.
     engineClient.useTransport(() => new Promise<Response>(() => {}));
     renderSearch();
     type("auth");
-    const loading = document.querySelector("[data-search-loading]");
-    expect(loading?.textContent).toMatch(/searching/i);
+    await waitFor(() => {
+      const loading = document.querySelector("[data-search-loading]");
+      expect(loading?.textContent).toMatch(/searching/i);
+    });
   });
 
   it("lists results with a tabular score and a count receipt when the query settles", async () => {

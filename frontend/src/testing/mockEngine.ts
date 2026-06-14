@@ -694,18 +694,35 @@ export class MockEngine {
     }
     if (path === "/search") {
       if (this.degradations.has("semantic")) {
+        // Rag-down: a 502 whose error envelope still carries
+        // `tiers.semantic.available:false` (contract §2 / search ADR). The
+        // catch in `fetchImpl` attaches `this.tiersBlock()` to the error body,
+        // and `semantic` is degraded here, so the gate reads it truthfully.
         throw new RouteError(502, "rag service down");
       }
+      // Mirror the LIVE `/search` wire shape EXACTLY (mock-mirrors-live-wire-
+      // shape / search ADR "Mock fidelity"): the engine forwards rag's nested
+      // envelope verbatim — `{envelope: {ok, data: {results}}}` — and annotates
+      // each result with its graph node id (contract §8, the sole value-add).
+      // `adaptSearch` unwraps that nesting; serving the internal flat shape here
+      // would let the adapter go untested against reality. The rag item carries
+      // the rag vocabulary (`source`/`score`/`excerpt`) plus the engine's
+      // `node_id` annotation.
       return {
-        results: c.nodes
-          .filter((n) => n.kind !== "feature")
-          .slice(0, 8)
-          .map((n, i) => ({
-            score: 0.9 - i * 0.07,
-            source: n.title ?? n.id,
-            excerpt: `…${n.title ?? n.id}…`,
-            node_id: n.id,
-          })),
+        envelope: {
+          ok: true,
+          data: {
+            results: c.nodes
+              .filter((n) => n.kind !== "feature")
+              .slice(0, 8)
+              .map((n, i) => ({
+                score: 0.9 - i * 0.07,
+                source: n.title ?? n.id,
+                excerpt: `…${n.title ?? n.id}…`,
+                node_id: n.id,
+              })),
+          },
+        },
         tiers,
       };
     }

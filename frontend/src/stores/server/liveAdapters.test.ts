@@ -5,12 +5,15 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { SearchResult } from "./engine";
 import {
   adaptFilters,
   adaptGraphSlice,
   adaptMap,
+  adaptSearch,
   adaptStatus,
   adaptVaultTree,
+  deriveSearchNodeId,
   docTypeFromStem,
   metaEdgeToEdge,
   unwrapEnvelope,
@@ -242,6 +245,86 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     const slice = adaptGraphSlice(docSlice);
     expect(slice.edges).toHaveLength(1);
     expect(slice.edges[0].meta).toBeUndefined();
+  });
+});
+
+describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
+  it("unwraps the live nested rag envelope and preserves the engine node-id annotation", () => {
+    // The live `/search` forwards rag's envelope verbatim
+    // (`{envelope: {ok, data: {results}}}`) plus the engine's §8 node-id
+    // annotation; adaptSearch must reach into that nesting, not the flat shape.
+    const adapted = adaptSearch({
+      envelope: {
+        ok: true,
+        data: {
+          results: [
+            {
+              source: "2026-06-12-auth-flow-adr",
+              score: 0.91,
+              excerpt: "auth flow decisions",
+              node_id: "doc:2026-06-12-auth-flow-adr",
+            },
+          ],
+        },
+      },
+      tiers: TIERS,
+    }) as { results: SearchResult[]; tiers: typeof TIERS };
+    expect(adapted.results).toHaveLength(1);
+    expect(adapted.results[0].node_id).toBe("doc:2026-06-12-auth-flow-adr");
+    expect(adapted.results[0].score).toBe(0.91);
+    // The tiers block rides through (semantic degraded in this sample).
+    expect(adapted.tiers.semantic.available).toBe(false);
+  });
+
+  it("passes a flat (mock/internal) body through unchanged — the one-code-path property", () => {
+    const body = { results: [], tiers: TIERS };
+    expect(adaptSearch(body)).toBe(body);
+  });
+
+  it("tolerates the rag item vocabulary (path/stem/text) when fields are sparse", () => {
+    const adapted = adaptSearch({
+      envelope: {
+        data: {
+          results: [{ path: "src/lib/auth.rs", score: 0.7, text: "fn authenticate" }],
+        },
+      },
+      tiers: TIERS,
+    }) as { results: SearchResult[] };
+    expect(adapted.results[0].source).toBe("src/lib/auth.rs");
+    expect(adapted.results[0].excerpt).toBe("fn authenticate");
+  });
+});
+
+describe("deriveSearchNodeId (node-id grammar, null floor — search ADR)", () => {
+  it("the engine annotation always wins", () => {
+    expect(deriveSearchNodeId({ node_id: "doc:explicit", path: "x.md" })).toBe(
+      "doc:explicit",
+    );
+  });
+
+  it("derives doc:{stem} for a vault hit when the annotation is absent", () => {
+    expect(deriveSearchNodeId({ path: ".vault/adr/2026-06-12-auth-flow-adr.md" })).toBe(
+      "doc:2026-06-12-auth-flow-adr",
+    );
+    expect(deriveSearchNodeId({ stem: "2026-06-12-auth-flow-adr" })).toBe(
+      "doc:2026-06-12-auth-flow-adr",
+    );
+  });
+
+  it("derives code:{path} for a code hit — NEVER papers a code hit as doc:", () => {
+    // A non-.md path is a code hit; papering it as doc: would lose the directory
+    // and point at no graph node (search ADR risk: phantom click-through).
+    expect(deriveSearchNodeId({ path: "src/lib/auth.rs" })).toBe(
+      "code:src/lib/auth.rs",
+    );
+    expect(deriveSearchNodeId({ source: "code", path: "engine/query.rs" })).toBe(
+      "code:engine/query.rs",
+    );
+  });
+
+  it("yields null when no honest id can be formed (never a guess)", () => {
+    expect(deriveSearchNodeId({ score: 0.5 })).toBeNull();
+    expect(deriveSearchNodeId({ source: "code" })).toBeNull();
   });
 });
 

@@ -143,7 +143,7 @@ Re-skins the rag manager onto the new tokens and sanctioned icons, gated on the 
 
 Re-skins the rag search surface onto the new tokens and sanctioned icons, gated on the rag-search surface ADR reaching accepted.
 
-- [ ] `W02.P16.S32` - Re-skin the rag search surface onto the new tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P16.S32` - Re-skin the rag search surface onto the new tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P17` - Phosphor domain-mark plane
 

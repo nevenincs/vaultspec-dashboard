@@ -6,12 +6,15 @@
 //
 // The panel is a DUMB view (dashboard-layer-ownership / views-are-projections):
 // it holds only ephemeral input state (the query text and target), consumes the
-// rag controller exclusively through the `useSearchWithFallback` stores hook,
-// reads degradation only through that hook's interpreted `semanticOffline`
-// (never the raw `tiers` block), and emits selection intent through the view
-// store's `selectNode` — it fetches nothing and navigates nothing itself. Each
-// result is a projection over the one model addressed by its stable node id;
-// activating it selects that node, which the stage and inspector reflect.
+// rag controller exclusively through the `useSearchController` stores selector
+// (the sole wire client for search — the fallback, the debounce/cancel, the
+// node-id derivation, and the tiers-gated degradation all live there now, pulled
+// back out of this chrome layer per the rag-search ADR), reads degradation only
+// through that selector's interpreted `semanticOffline` (never the raw `tiers`
+// block), and emits selection intent through the view store's `selectNode` — it
+// fetches nothing and navigates nothing itself. Each result is a projection over
+// the one model addressed by its stable node id; activating it selects that
+// node, which the stage and inspector reflect.
 //
 // The full state machine the ADR names is realized here: idle, loading,
 // results, no-results, degraded (semantic search offline, a designed state via
@@ -28,9 +31,9 @@ import {
 import { useRef, useState } from "react";
 
 import type { SearchResult } from "../../stores/server/engine";
+import { useSearchController } from "../../stores/server/searchController";
 import { selectNode } from "../../stores/view/selection";
 import { useActiveScope } from "../stage/Stage";
-import { useSearchWithFallback } from "./searchFallback";
 
 // Icon sizing — the iconography ADR's grayscale-by-shape gate is 14px; the
 // leading chrome adornment reads one density step smaller so the structural
@@ -170,7 +173,7 @@ export function SearchTab() {
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState<"vault" | "code">("vault");
   const scope = useActiveScope();
-  const search = useSearchWithFallback(query, target, scope);
+  const search = useSearchController(query, target, scope);
 
   const trimmed = query.trim();
   const hasQuery = trimmed.length > 0;
@@ -186,16 +189,17 @@ export function SearchTab() {
 
   // The settled phase for the polite live region: the count on results, the
   // offline notice on degradation, and the no-results message — so a screen
-  // reader operator learns the outcome without polling.
-  const showResults = hasQuery && !search.isPending && search.results.length > 0;
+  // reader operator learns the outcome without polling. The interpreted `state`
+  // from the stores controller is the single source the view switches on. The
+  // list renders whenever the controller hands back hits — semantic results, the
+  // offline text-match fallback, OR the held last-good set carried under the
+  // error banner (the ADR's recoverable error state must not blank a list the
+  // operator was reading), so the gate is simply "are there results to show".
+  const showResults = search.results.length > 0;
   // The list's Tab entry is the first selectable row (disabled rows can't focus).
   const firstClickable = search.results.findIndex((r) => r.node_id !== null);
-  const noResults =
-    hasQuery &&
-    !search.isPending &&
-    !search.transportError &&
-    search.results.length === 0;
-  const liveMessage = search.transportError
+  const noResults = search.state === "no-results";
+  const liveMessage = search.error
     ? "search request failed"
     : search.semanticOffline
       ? "semantic search offline — showing title and text matches"
@@ -286,7 +290,7 @@ export function SearchTab() {
       {/* Loading: the purposeful liveness cue tied to real pending work; goes
           static under prefers-reduced-motion (the app-wide reduced-motion floor
           neutralizes the pulse). */}
-      {hasQuery && search.isPending && (
+      {search.state === "loading" && (
         <p
           className="animate-pulse-live px-vs-1 py-vs-0-5 text-label text-ink-faint"
           data-search-loading
@@ -309,7 +313,7 @@ export function SearchTab() {
           </span>
           <span>
             semantic search offline — showing title and text matches
-            {target === "code" ? " (vault only; no code fallback available)" : ""}
+            {search.noCodeFallback ? " (vault only; no code fallback available)" : ""}
           </span>
         </p>
       )}
@@ -317,7 +321,7 @@ export function SearchTab() {
       {/* Error: a genuine transport failure that is NOT tier degradation —
           recoverable, plainly worded, with a retry affordance, kept distinct
           from the degraded state per the tiers contract. */}
-      {search.transportError && (
+      {search.error && (
         <div
           className="space-y-vs-1 rounded-vs-sm border border-state-broken/40 px-vs-2 py-vs-1"
           data-search-error
