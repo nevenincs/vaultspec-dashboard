@@ -118,14 +118,46 @@ export function entryStem(path: string): string {
 const DOC_MARK_PX = 14;
 const CHEVRON_PX = 12;
 
+/**
+ * Client-side narrowing of the ALREADY-FETCHED vault listing (dashboard-left-
+ * rail ADR "In-rail filter"): a row matches when its stem, full path, or any
+ * feature tag contains the (lowercased) query. It issues NO wire request — it
+ * filters the entries the `/vault-tree` query already returned, the deliberate
+ * counterpart to the global right-rail search pillar. Empty/absent shows all.
+ * Pure (unit-tested), not a fetch.
+ */
+export function filterVaultEntries(
+  entries: readonly VaultTreeEntry[],
+  filter: string,
+): VaultTreeEntry[] {
+  const q = filter.trim().toLowerCase();
+  if (q.length === 0) return [...entries];
+  return entries.filter(
+    (e) =>
+      entryStem(e.path).toLowerCase().includes(q) ||
+      e.path.toLowerCase().includes(q) ||
+      e.feature_tags.some((t) => t.toLowerCase().includes(q)),
+  );
+}
+
 export interface VaultBrowserProps {
   /** Row click handler (S39 wires bidirectional selection). */
   onEntryClick?: (entry: VaultTreeEntry) => void;
   /** The entry currently highlighted by the shared selection (S39). */
   highlightedPath?: string | null;
+  /**
+   * In-rail filter (left-rail IA ADR): a client-side narrowing of the visible,
+   * already-fetched vault listing by stem/path/feature-tag — never a wire
+   * search. Empty/absent shows the full tree.
+   */
+  filter?: string;
 }
 
-export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProps) {
+export function VaultBrowser({
+  onEntryClick,
+  highlightedPath,
+  filter,
+}: VaultBrowserProps) {
   const scope = useActiveScope();
   const tree = useVaultTree(scope);
   const availability = useVaultTreeAvailability(scope);
@@ -214,7 +246,14 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
     );
   }
 
-  const groups = groupEntries(tree.data?.entries ?? []);
+  const allEntries = tree.data?.entries ?? [];
+  // In-rail filter: narrow the already-fetched listing client-side before
+  // grouping (no wire request). A non-empty filter that matches nothing yields a
+  // distinct "no matches" empty state below, not the "no documents" state.
+  const activeFilter = (filter ?? "").trim();
+  const filteredEntries = filterVaultEntries(allEntries, activeFilter);
+  const groups = groupEntries(filteredEntries);
+  const filteredToNothing = activeFilter.length > 0 && filteredEntries.length === 0;
   const now = Date.now();
 
   // Build the single linear nav order for THIS render: each group's header,
@@ -257,11 +296,23 @@ export function VaultBrowser({ onEntryClick, highlightedPath }: VaultBrowserProp
       )}
 
       {groups.size === 0 ? (
-        // Empty: an approachable empty state — a non-vault worktree resolving to
-        // no documents is a real, common condition, not a fault.
-        <p className="px-vs-1 py-vs-0-5 text-label text-ink-faint" data-vault-empty>
-          no vault documents in this scope yet.
-        </p>
+        filteredToNothing ? (
+          // Filtered to nothing: the listing IS present but the in-rail filter
+          // matches no row — an honest, distinct state, not "no documents". The
+          // filter is client-side; clearing it restores the full tree.
+          <p
+            className="px-vs-1 py-vs-0-5 text-label text-ink-faint"
+            data-vault-filter-empty
+          >
+            no vault documents match the filter.
+          </p>
+        ) : (
+          // Empty: an approachable empty state — a non-vault worktree resolving to
+          // no documents is a real, common condition, not a fault.
+          <p className="px-vs-1 py-vs-0-5 text-label text-ink-faint" data-vault-empty>
+            no vault documents in this scope yet.
+          </p>
+        )
       ) : (
         [...groups.entries()].map(([group, entries]) => {
           const isCollapsed = collapsed.has(group);

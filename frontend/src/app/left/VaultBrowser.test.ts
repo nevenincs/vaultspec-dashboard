@@ -4,6 +4,7 @@ import type { VaultTreeEntry } from "../../stores/server/engine";
 import {
   docMarkName,
   entryStem,
+  filterVaultEntries,
   freshnessLabel,
   groupEntries,
   isFresh,
@@ -14,6 +15,13 @@ const entry = (path: string, docType: string, modified?: string): VaultTreeEntry
   doc_type: docType,
   feature_tags: ["demo"],
   dates: { modified },
+});
+
+const tagged = (path: string, docType: string, tags: string[]): VaultTreeEntry => ({
+  path,
+  doc_type: docType,
+  feature_tags: tags,
+  dates: {},
 });
 
 describe("groupEntries (G2.c)", () => {
@@ -72,5 +80,44 @@ describe("entry presentation", () => {
 
   it("derives the display stem from the path", () => {
     expect(entryStem(".vault/adr/2026-06-12-x-adr.md")).toBe("2026-06-12-x-adr");
+  });
+});
+
+describe("filterVaultEntries (in-rail filter; client-side, no wire)", () => {
+  const entries = [
+    tagged(".vault/plan/2026-06-14-left-rail-plan.md", "plan", ["left-rail"]),
+    tagged(".vault/adr/2026-06-14-code-tree-adr.md", "adr", ["code-tree"]),
+    tagged(".vault/research/2026-06-14-workspace-research.md", "research", [
+      "workspace-registry",
+    ]),
+  ];
+
+  it("returns ALL entries (a copy) for an empty or whitespace filter", () => {
+    expect(filterVaultEntries(entries, "")).toHaveLength(3);
+    expect(filterVaultEntries(entries, "   ")).toHaveLength(3);
+    // a copy, not the same reference (callers may sort/mutate)
+    expect(filterVaultEntries(entries, "")).not.toBe(entries);
+  });
+
+  it("matches on the stem (case-insensitive)", () => {
+    const out = filterVaultEntries(entries, "LEFT-RAIL");
+    expect(out.map((e) => e.path)).toEqual([
+      ".vault/plan/2026-06-14-left-rail-plan.md",
+    ]);
+  });
+
+  it("matches on the full path", () => {
+    const out = filterVaultEntries(entries, "/adr/");
+    expect(out).toHaveLength(1);
+    expect(out[0]!.doc_type).toBe("adr");
+  });
+
+  it("matches on a feature tag", () => {
+    const out = filterVaultEntries(entries, "workspace-registry");
+    expect(out.map((e) => e.doc_type)).toEqual(["research"]);
+  });
+
+  it("returns an empty list when nothing matches (the distinct filter-empty state)", () => {
+    expect(filterVaultEntries(entries, "no-such-thing")).toEqual([]);
   });
 });
