@@ -34,7 +34,7 @@ pub async fn events(
     State(state): State<Arc<AppState>>,
     Query(params): Query<EventsParams>,
 ) -> ApiResult {
-    validate_scope(&state, &params.scope)?;
+    let cell = validate_scope(&state, &params.scope)?;
     let mode = match params.bucket.as_deref() {
         None => BucketMode::Raw,
         Some(p) => parse_bucket_param(p).ok_or_else(|| {
@@ -56,12 +56,13 @@ pub async fn events(
             format!("events range: from ({from}) must be <= to ({to})"),
         ));
     }
-    // Event sourcing shared with the CLI verb via the query core (G7).
-    let workspace = ingest_git::workspace::Workspace::discover(&state.root)
+    // Event sourcing shared with the CLI verb via the query core (G7). Scoped
+    // to the resolved cell's worktree (W02.P05.S17).
+    let workspace = ingest_git::workspace::Workspace::discover(&cell.root)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     // Node correlation bounded to graph-known nodes + the code-id cap
     // (addendum S05) — commit pulses address nodes the stage can light.
-    let graph = state.graph_arc();
+    let graph = cell.graph_arc();
     let mut rows: Vec<EventRow> =
         engine_query::events::commit_rows(&workspace, "HEAD", 5000, Some(&graph))
             .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e))?;
@@ -76,7 +77,7 @@ pub async fn events(
     let payload = bucket_events(&rows, from, upper, mode);
     Ok(super::envelope(
         json!({"payload": payload}),
-        super::query_tiers(&state),
+        super::query_tiers(&cell),
         None,
     ))
 }
@@ -97,20 +98,21 @@ pub async fn graph_asof(
     State(state): State<Arc<AppState>>,
     Query(params): Query<AsofParams>,
 ) -> ApiResult {
-    validate_scope(&state, &params.scope)?;
+    let cell = validate_scope(&state, &params.scope)?;
     let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
     // Scope the historical snapshot to the SERVED WORKTREE (same as the
     // present view), NOT the ref name: the ref is the TIME axis (`t`), not the
     // corpus-view label. Stamping the ref as the facet scope makes two
     // snapshots differ by label alone, which floods `/graph/diff` with
     // spurious `change` deltas (2026-06-13 hardening). graph_query filters by
-    // this same scope, so both must agree.
-    let scope = state.scope.clone();
+    // this same scope, so both must agree. Now the RESOLVED cell's scope/root
+    // (W02.P05.S17).
+    let scope = cell.scope.clone();
     // Echo the RESOLVED sha + the chosen interpretation (ADD-901): a client
     // sends `t` (a ref, sha, or epoch-ms) and must learn, without re-deriving,
     // both which commit the engine landed on and how it read the token (the
     // revision/timestamp readings can collide on an all-digit value).
-    let resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.t, &scope, 0)
+    let resolved = engine_graph::asof::asof_graph_resolved(&cell.root, &params.t, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.t, &e))?;
     let slice = engine_query::graph::graph_query(
         &resolved.graph,
@@ -156,7 +158,7 @@ pub async fn graph_diff(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DiffParams>,
 ) -> ApiResult {
-    validate_scope(&state, &params.scope)?;
+    let cell = validate_scope(&state, &params.scope)?;
     let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
     // BOTH endpoints are scoped to the SAME served worktree so the delta log
     // reflects CONTENT changes (content_hash, presence, lifecycle, edges)
@@ -164,7 +166,8 @@ pub async fn graph_diff(
     // scope made every node/edge common to both commits a spurious `change`
     // (2026-06-13: HEAD~3..HEAD reported 8415 changes / 1 add — the diff was
     // useless). The ref distinction lives in `from`/`to` and each entry's `t`.
-    let scope = state.scope.clone();
+    // Now the RESOLVED cell's scope/root (W02.P05.S17).
+    let scope = cell.scope.clone();
     // Equal-ref fast path: if `from` and `to` resolve to the SAME commit (the
     // common `HEAD` vs its sha case, or a degenerate request), the delta log is
     // empty by definition — return it without building either as-of graph,
@@ -172,8 +175,8 @@ pub async fn graph_diff(
     // is cheap (no tree walk / no core subprocess); a resolve failure falls
     // through to the build path so the existing per-ref error shaping fires.
     if let (Ok(from_sha), Ok(to_sha)) = (
-        engine_graph::asof::resolve_ref(&state.root, &params.from),
-        engine_graph::asof::resolve_ref(&state.root, &params.to),
+        engine_graph::asof::resolve_ref(&cell.root, &params.from),
+        engine_graph::asof::resolve_ref(&cell.root, &params.to),
     ) && from_sha == to_sha
     {
         // Even the empty-delta fast path echoes the resolved shas (ADD-901):
@@ -195,9 +198,9 @@ pub async fn graph_diff(
     // Echo each endpoint's resolved sha + interpretation (ADD-901), additive
     // to the existing delta log.
     let from_resolved =
-        engine_graph::asof::asof_graph_resolved(&state.root, &params.from, &scope, 0)
+        engine_graph::asof::asof_graph_resolved(&cell.root, &params.from, &scope, 0)
             .map_err(|e| super::revision_error(&state, &params.from, &e))?;
-    let to_resolved = engine_graph::asof::asof_graph_resolved(&state.root, &params.to, &scope, 0)
+    let to_resolved = engine_graph::asof::asof_graph_resolved(&cell.root, &params.to, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.to, &e))?;
     let from_graph = &from_resolved.graph;
     let to_graph = &to_resolved.graph;

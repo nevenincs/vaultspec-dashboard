@@ -10,20 +10,25 @@ use axum::Json;
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 
-use crate::app::AppState;
+use crate::app::{AppState, ScopeCell};
 
-/// The present-view tier block as JSON (rag truthfully stated).
-pub(crate) fn query_tiers(state: &AppState) -> serde_json::Value {
+/// The present-view tier block as JSON (rag truthfully stated) for ONE scope.
+///
+/// Now reads from the resolved per-scope [`ScopeCell`] (W02.P05): rag discovery
+/// is scoped to the cell's root, and the declared tier reflects that cell's
+/// last rebuild — so a degraded declared tier is reported per scope, not for a
+/// single frozen state.
+pub(crate) fn query_tiers(cell: &ScopeCell) -> serde_json::Value {
     let mut unavailable: Vec<(&'static str, String)> = Vec::new();
-    // Semantic reflects live rag discovery.
+    // Semantic reflects live rag discovery against THIS scope's root.
     if let rag_client::RagAvailability::Unavailable { reason } =
-        rag_client::client::discover(&state.root.join(".vault")).0
+        rag_client::client::discover(&cell.root.join(".vault")).0
     {
         unavailable.push(("semantic", reason));
     }
     // Declared reflects whether the last rebuild ingested core's graph — the
     // tier never claims availability the index could not build.
-    if let Ok(status) = state.declared_status.read()
+    if let Ok(status) = cell.declared_status.read()
         && let Some(reason) = status.as_ref()
     {
         unavailable.push(("declared", reason.clone()));
@@ -37,12 +42,12 @@ pub(crate) fn query_tiers(state: &AppState) -> serde_json::Value {
 /// the real declared-tier status. Degrade paths (rag down, or a per-request rag
 /// failure / shape-miss) know semantic is unavailable for THIS response; they
 /// must still report the declared tier truthfully (LENSA-02), so this overlays
-/// declared_status the same way query_tiers() does — never defaulting declared
-/// to available.
-pub(crate) fn degraded_tiers(state: &AppState, semantic_reason: &str) -> serde_json::Value {
+/// the cell's declared_status the same way query_tiers() does — never
+/// defaulting declared to available.
+pub(crate) fn degraded_tiers(cell: &ScopeCell, semantic_reason: &str) -> serde_json::Value {
     let mut unavailable: Vec<(&'static str, String)> =
         vec![("semantic", semantic_reason.to_string())];
-    if let Ok(status) = state.declared_status.read()
+    if let Ok(status) = cell.declared_status.read()
         && let Some(reason) = status.as_ref()
     {
         unavailable.push(("declared", reason.clone()));
@@ -74,6 +79,10 @@ pub(crate) fn scope_token(path: &std::path::Path) -> String {
 
 /// THE shared error response (audit N7, contract §2): every error carries
 /// the tiers block too — absence of a tier is data even on failures.
+///
+/// Error paths may fire BEFORE a per-request scope resolves (e.g. an unknown
+/// scope 400), so the tiers come from the always-present ACTIVE-scope cell
+/// (W02.P05): the bad-scope 400 still carries an honest tiers block.
 pub(crate) fn api_error(
     state: &AppState,
     status: StatusCode,
@@ -81,7 +90,7 @@ pub(crate) fn api_error(
 ) -> (StatusCode, Json<Value>) {
     (
         status,
-        Json(json!({"error": message, "tiers": query_tiers(state)})),
+        Json(json!({"error": message, "tiers": query_tiers(&state.active_cell())})),
     )
 }
 

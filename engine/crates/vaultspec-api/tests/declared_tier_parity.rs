@@ -25,8 +25,8 @@ fn fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
         "---\ntags:\n  - '#plan'\n  - '#srv'\n---\n\nMentions `src/a.rs`.\n",
     )
     .unwrap();
+    // build_state warms + indexes the launch scope's cell eagerly.
     let state = app::build_state(dir.path().to_path_buf());
-    state.rebuild_and_swap().unwrap();
     (dir, state)
 }
 
@@ -81,13 +81,15 @@ fn urlencode(s: &str) -> String {
 async fn declared_tier_degradation_is_consistent_across_front_doors() {
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
-    let served = state.root.to_string_lossy().replace('\\', "/");
+    let served = state.workspace_root.to_string_lossy().replace('\\', "/");
 
-    // Simulate the real "core unreachable this rebuild" condition: the
-    // engine records WHY the declared tier could not ingest. This is exactly
-    // what `rebuild_and_swap` writes when `vaultspec-core vault graph` is
-    // unavailable (engine-graph index.rs: `declared_unavailable`).
-    *state.declared_status.write().unwrap() =
+    // Simulate the real "core unreachable this rebuild" condition on the active
+    // scope's cell: the engine records WHY the declared tier could not ingest.
+    // This is exactly what `ScopeCell::rebuild_and_swap` writes when
+    // `vaultspec-core vault graph` is unavailable (engine-graph index.rs:
+    // `declared_unavailable`). The declared status now lives per-scope on the
+    // cell (W02.P05).
+    *state.active_cell().declared_status.write().unwrap() =
         Some("core graph unavailable: forced for test".to_string());
 
     let router = build_router(state);
@@ -127,8 +129,9 @@ async fn declared_tier_degradation_is_consistent_across_front_doors() {
 async fn degrade_paths_keep_the_declared_tier_truthful() {
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
-    // Core unreachable this rebuild: the declared tier could not ingest.
-    *state.declared_status.write().unwrap() =
+    // Core unreachable this rebuild: the declared tier could not ingest. The
+    // declared status lives per-scope on the active cell (W02.P05).
+    *state.active_cell().declared_status.write().unwrap() =
         Some("core graph unavailable: forced for test".to_string());
     let router = build_router(state);
 
