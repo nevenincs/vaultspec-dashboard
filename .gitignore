@@ -106,9 +106,13 @@ tmp-ref/
 # Rust engine workspace
 engine/target/
 
+# Node dependencies (root + any nested package)
+node_modules/
+
 # Frontend SPA
 frontend/node_modules/
 frontend/dist/
+frontend/test-results/
 
 # >>> vaultspec-managed (do not edit this block) >>>
 .vault/.obsidian/
