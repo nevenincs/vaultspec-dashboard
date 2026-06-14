@@ -163,9 +163,9 @@ W03 promotes the three codification candidates the grounding ADRs named, but onl
 
 Promotes the three codification candidates to project rules after they have held across one full execution cycle.
 
-- [ ] `W03.P18.S38` - Promote the warmth-lives-in-tokens-not-decoration candidate to a project rule after the foundation and surface cycle has held it; `.vaultspec/rules/rules/warmth-lives-in-tokens-not-decoration.md`.
-- [ ] `W03.P18.S39` - Promote the themes-are-oklch-generated-from-a-token-tier candidate to a project rule after the foundation has proven out across a cycle; `.vaultspec/rules/rules/themes-are-oklch-generated-from-a-token-tier.md`.
-- [ ] `W03.P18.S40` - Promote the icons-come-from-the-two-sanctioned-families candidate to a project rule after the icon planes have held across a cycle; `.vaultspec/rules/rules/icons-come-from-the-two-sanctioned-families.md`.
+- [x] `W03.P18.S38` - Promote the warmth-lives-in-tokens-not-decoration candidate to a project rule after the foundation and surface cycle has held it; `.vaultspec/rules/rules/warmth-lives-in-tokens-not-decoration.md`.
+- [x] `W03.P18.S39` - Promote the themes-are-oklch-generated-from-a-token-tier candidate to a project rule after the foundation has proven out across a cycle; `.vaultspec/rules/rules/themes-are-oklch-generated-from-a-token-tier.md`.
+- [x] `W03.P18.S40` - Promote the icons-come-from-the-two-sanctioned-families candidate to a project rule after the icon planes have held across a cycle; `.vaultspec/rules/rules/icons-come-from-the-two-sanctioned-families.md`.
 
 ## Description
 
