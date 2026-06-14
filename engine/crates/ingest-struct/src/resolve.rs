@@ -192,7 +192,7 @@ impl Resolver {
     /// cache lock; each distinct path is read at most once across the pass.
     fn prime_contents<'a>(&self, paths: impl Iterator<Item = &'a String>) {
         let to_read: Vec<String> = {
-            let cache = self.cache.lock().unwrap();
+            let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             paths
                 .filter(|p| !cache.contains_key(p.as_str()))
                 .cloned()
@@ -207,7 +207,7 @@ impl Resolver {
                 )
             })
             .collect();
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         for (path, contents) in read {
             cache.entry(path).or_insert(contents);
         }
@@ -220,11 +220,16 @@ impl Resolver {
     /// canonical entry and the batch path pre-primes every scanned file so this
     /// fallback I/O does not fire on the hot path.
     fn cached_read(&self, path: &str) -> Option<String> {
-        if let Some(hit) = self.cache.lock().unwrap().get(path) {
+        if let Some(hit) = self
+            .cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(path)
+        {
             return hit.clone();
         }
         let contents = std::fs::read_to_string(self.root.join(path)).ok();
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         cache.entry(path.to_string()).or_insert(contents).clone()
     }
 
@@ -268,7 +273,12 @@ impl Resolver {
     /// A step id resolves when some plan document in the scope contains its
     /// canonical backtick form.
     fn resolve_step_id(&self, step_id: &str) -> (ResolutionState, Option<String>) {
-        if let Some(hit) = self.step_memo.lock().unwrap().get(step_id) {
+        if let Some(hit) = self
+            .step_memo
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(step_id)
+        {
             return hit.clone();
         }
         let needle = format!("`{step_id}`");
@@ -304,7 +314,12 @@ impl Resolver {
     /// scope (tree-sitter-grade resolution is v2, per the ADR). Qualified match
     /// → resolved; last-segment-only match → stale; nothing → broken.
     fn resolve_symbol(&self, symbol: &str) -> (ResolutionState, Option<String>) {
-        if let Some(hit) = self.symbol_memo.lock().unwrap().get(symbol) {
+        if let Some(hit) = self
+            .symbol_memo
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(symbol)
+        {
             return hit.clone();
         }
         let last = symbol
