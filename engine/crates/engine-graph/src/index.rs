@@ -781,4 +781,87 @@ mod tests {
             "declared tier reports its own unavailability"
         );
     }
+
+    #[test]
+    fn structural_index_carries_edges_and_the_building_sentinel_without_a_subprocess() {
+        // Perf ADR D1: the fast servable parse builds the structural tier ONLY,
+        // never running the declared-tier core subprocess. It must carry the
+        // same structural edges index_worktree produces, zero declared edges,
+        // and the DECLARED_BUILDING sentinel (the async fold is pending — a
+        // truthful "not yet" state, NOT a failure reason).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nMentions `src/a.rs`.\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (graph, stats) = index_worktree_structural(root, &scope(), &store, 0).unwrap();
+
+        assert!(
+            graph.edge_count() >= 1 && stats.edges >= 1,
+            "structural mentions ingest in the structural-only parse"
+        );
+        assert_eq!(
+            stats.declared_edges, 0,
+            "no declared tier in the fast parse"
+        );
+        assert_eq!(
+            stats.declared_unavailable.as_deref(),
+            Some(DECLARED_BUILDING),
+            "the structural parse reports declared as building, not failed"
+        );
+    }
+
+    #[test]
+    fn cloned_structural_plus_declared_equals_a_combined_build() {
+        // Perf ADR D1 convergence invariant: the async fold clones the
+        // structural graph and ingests declared into the clone. That folded
+        // clone(structural)+declared graph MUST equal a graph built structural
+        // THEN declared from the same JSON in one pass — declared ingest is
+        // replace-by-id idempotent over the structural graph (D8.2). Proven on
+        // the canonical snapshot (no core subprocess: we feed a fixed JSON).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-12-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nMentions `src/a.rs` and \
+             [[2026-06-12-x-adr]].\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+
+        let declared_json = serde_json::json!({
+            "nodes": [
+                {"id": "2026-06-12-x-plan", "doc_type": "plan"},
+                {"id": "2026-06-12-x-adr", "doc_type": "adr"}
+            ],
+            "edges": [
+                {"source": "2026-06-12-x-plan", "target": "2026-06-12-x-adr", "kind": "related"}
+            ]
+        })
+        .to_string();
+
+        // Path A: structural, then clone and fold declared into the clone.
+        let (structural, _) = index_worktree_structural(root, &scope(), &store, 0).unwrap();
+        let mut folded = structural.clone();
+        ingest_declared_from_json(&mut folded, &declared_json, &scope(), 0);
+
+        // Path B: structural, then declared into the SAME graph in one pass.
+        let (mut combined, _) = index_worktree_structural(root, &scope(), &store, 0).unwrap();
+        ingest_declared_from_json(&mut combined, &declared_json, &scope(), 0);
+
+        assert_eq!(
+            canonical_snapshot(&folded),
+            canonical_snapshot(&combined),
+            "clone(structural)+declared converges to structural+declared (D8.2)"
+        );
+        assert!(
+            folded.edge_count() > structural.edge_count(),
+            "the declared edge actually folded in"
+        );
+    }
 }
