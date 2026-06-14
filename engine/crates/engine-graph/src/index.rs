@@ -132,6 +132,24 @@ fn index_documents(
         ..Default::default()
     };
 
+    // Opt-in phase timing (`VAULTSPEC_INDEX_TIMING=1`): emits per-phase
+    // wall-clock to stderr so the cold-parse breakdown (structural vs the
+    // declared-tier subprocess) is measurable in production without a profiler.
+    let timing = std::env::var_os("VAULTSPEC_INDEX_TIMING").is_some();
+    let t_start = std::time::Instant::now();
+    macro_rules! phase {
+        ($label:expr) => {
+            if timing {
+                eprintln!(
+                    "vaultspec index timing: {} +{}ms ({} docs)",
+                    $label,
+                    t_start.elapsed().as_millis(),
+                    stats.documents
+                );
+            }
+        };
+    }
+
     // Parallel per-document read + extract fan-out (CPU-bound; D2.4).
     // The store is single-writer, so cache lookups/writes happen on the
     // coordinating thread after the parallel section.
@@ -142,6 +160,7 @@ fn index_documents(
             Ok((rel_path.clone(), body.blob_hash, body.text))
         })
         .collect::<Result<_>>()?;
+    phase!("read+extract");
 
     // Detect directory-independent stem collisions (node id is `doc:{stem}`):
     // two paths with the same basename merge onto one node, the later write
@@ -154,6 +173,7 @@ fn index_documents(
     // document, replacing the prior per-document walk + codebase re-read that
     // made cold index ~O(N²).
     let resolver = Resolver::new(root);
+    phase!("resolver-built");
 
     for (rel_path, blob_hash, text) in extracted {
         let stem = doc_stem(&rel_path);
@@ -254,6 +274,8 @@ fn index_documents(
         }
     }
 
+    phase!("structural");
+
     // Declared tier: ingest core's authored graph at HEAD (the engine's stated
     // core capability — "ingests core's vault graph"). Structural mentions
     // above are only one tier; without this the linkage graph carries no
@@ -272,6 +294,7 @@ fn index_documents(
     let (declared, unavailable) = ingest_core_graph(graph, root, scope, observed_at, Some("HEAD"));
     stats.declared_edges += declared;
     stats.declared_unavailable = unavailable;
+    phase!("declared (core subprocess)");
 
     Ok(stats)
 }
