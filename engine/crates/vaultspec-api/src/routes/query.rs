@@ -222,9 +222,14 @@ fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
         .iter()
         .filter_map(|n| n["id"].as_str().map(str::to_string))
         .collect();
-    slice
-        .edges
-        .retain(|e| kept.contains(&e.src.0) && kept.contains(&e.dst.0));
+    slice.edges.retain(|e| {
+        // Edges are now serialized `Value`s carrying the additive `derivation`
+        // label (graph-node-semantics ADR); self-consistency reads the `src`/`dst`
+        // ids off the value.
+        let src = e["src"].as_str().unwrap_or_default();
+        let dst = e["dst"].as_str().unwrap_or_default();
+        kept.contains(src) && kept.contains(dst)
+    });
     slice
         .meta_edges
         .retain(|m| kept.contains(&m.src) && kept.contains(&m.dst));
