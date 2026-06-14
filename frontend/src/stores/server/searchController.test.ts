@@ -10,19 +10,22 @@
 // (mockEngine), with no controller-internal doubles.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MockEngine, MOCK_SCOPE } from "../../testing/mockEngine";
 import type { SearchResult, TiersBlock, VaultTreeEntry } from "./engine";
 import { EngineError, engineClient } from "./engine";
+import type { StreamChunk } from "./queries";
+import { STREAM_RETENTION, engineKeys, streamReducer } from "./queries";
 import { queryClient } from "./queryClient";
 import {
   buildFallbackResults,
   interpretSearch,
   isSemanticOffline,
   isTransportError,
+  latestBackendsRagAvailable,
   pathStem,
   pathToDocNodeId,
   useSearchController,
@@ -133,6 +136,61 @@ describe("isTransportError (error vs degradation, the tiers contract)", () => {
     expect(isTransportError(tiered)).toBe(false);
     expect(isTransportError(null)).toBe(false);
     expect(isTransportError(undefined)).toBe(false);
+  });
+});
+
+// --- rag-health transition detector (value-based, ring-cap safe) --------------------
+
+const frame = (rag: string): StreamChunk => ({ channel: "backends", data: { rag } });
+
+describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring cap)", () => {
+  it("is undefined when no rag-bearing backends frame has arrived yet", () => {
+    expect(latestBackendsRagAvailable(undefined)).toBeUndefined();
+    expect(latestBackendsRagAvailable([])).toBeUndefined();
+    const noRagFrame: StreamChunk = { channel: "backends", data: {} };
+    expect(latestBackendsRagAvailable([noRagFrame])).toBeUndefined();
+  });
+
+  it("reads availability from the MOST-RECENT rag frame (running ⇒ available)", () => {
+    expect(latestBackendsRagAvailable([frame("running")])).toBe(true);
+    expect(latestBackendsRagAvailable([frame("stopped")])).toBe(false);
+    // Latest frame wins over earlier ones.
+    expect(
+      latestBackendsRagAvailable([
+        frame("running"),
+        frame("stopped"),
+        frame("running"),
+      ]),
+    ).toBe(true);
+    expect(
+      latestBackendsRagAvailable([
+        frame("running"),
+        frame("running"),
+        frame("stopped"),
+      ]),
+    ).toBe(false);
+  });
+
+  it("only 'running' is available — any other lifecycle word is down", () => {
+    expect(latestBackendsRagAvailable([frame("absent")])).toBe(false);
+    expect(latestBackendsRagAvailable([frame("starting")])).toBe(false);
+  });
+
+  it("reads the value AFTER the ring cap saturates — the length-based detector's death", () => {
+    // streamReducer ring-caps at STREAM_RETENTION (256): a length detector pins
+    // forever once full and drops every later transition. Drive the ACTUAL
+    // accumulator through `streamReducer` past saturation, then a recovery frame:
+    // the capped accumulator is exactly STREAM_RETENTION long (so a length
+    // detector sees no growth and never fires), yet the value detector still reads
+    // the newest carried value — the >256 regression the HIGH finding named.
+    let acc: StreamChunk[] = [];
+    for (let i = 0; i < 300; i++) acc = streamReducer(acc, frame("stopped"));
+    expect(acc.length).toBe(STREAM_RETENTION); // capped — length is pinned
+    expect(latestBackendsRagAvailable(acc)).toBe(false);
+    const before = acc.length;
+    acc = streamReducer(acc, frame("running")); // the recovery frame
+    expect(acc.length).toBe(before); // STILL capped — a length detector sees no edge
+    expect(latestBackendsRagAvailable(acc)).toBe(true); // value detector flips
   });
 });
 
@@ -372,5 +430,141 @@ describe("useSearchController (real transport, full controller contract)", () =>
     await waitFor(() => expect(result.current.state).toBe("error"), { timeout: 4000 });
     expect(result.current.error).toBe(true);
     expect(result.current.semanticOffline).toBe(false);
+  });
+
+  it("transitions HELD-success → semantic-offline on a 502 refetch (MEDIUM-1: the error wins over stale data.tiers)", async () => {
+    // Two-phase: a healthy /search populates `data.tiers` (semantic available) on
+    // the key; a later 502 on the SAME key carries a fresh rag-down tiers block.
+    // The controller must degrade to semantic-offline — the live wiring proof that
+    // `error` is threaded ALONGSIDE the held `data`, so a fresh degradation is not
+    // masked by the stale held success tiers a pure unit test cannot catch.
+    const mock = new MockEngine();
+    let down = false;
+    engineClient.useTransport((input, init) => {
+      const url = new URL(input, "http://mock.local");
+      if (url.pathname.replace(/^\/api/, "") === "/search" && down) {
+        mock.degrade("semantic", "rag service down");
+      }
+      return mock.fetchImpl(input, init);
+    });
+    const { result } = renderHook(
+      () => useSearchController("auth", "vault", MOCK_SCOPE),
+      { wrapper },
+    );
+    // Phase 1: healthy results settle on the key (data.tiers semantic available).
+    await waitFor(() => expect(result.current.state).toBe("results"), {
+      timeout: 4000,
+    });
+
+    // Phase 2: the SAME key refetches against a rag-down 502. TanStack retains the
+    // held success `data` (and its tiers) across the error; the fresh error
+    // envelope's tiers must win.
+    down = true;
+    await queryClient
+      .refetchQueries({ queryKey: engineKeys.search("auth", "vault") })
+      .catch(() => undefined);
+    await waitFor(() => expect(result.current.state).toBe("semantic-offline"), {
+      timeout: 4000,
+    });
+    expect(result.current.semanticOffline).toBe(true);
+  });
+
+  it("re-issues live on a rag-came-back backends transition (HIGH: the recovery wiring)", async () => {
+    // Start rag-down: the controller serves the text-match fallback. Rag recovers
+    // on the wire, then a `backends` frame announces the rag-came-back transition;
+    // the value-based detector must flip and invalidate the search cache so the
+    // query re-issues against the now-live semantic tier and leaves the fallback.
+    // (The ring-cap-survival half of the HIGH finding is pinned deterministically
+    // by the pure `latestBackendsRagAvailable` saturation test above, which is not
+    // subject to SSE-plumbing timing; this test is the end-to-end recovery proof.)
+    const mock = new MockEngine();
+    mock.degrade("semantic", "rag service down");
+    engineClient.useTransport(mock.fetchImpl);
+    const { result } = renderHook(
+      () => useSearchController("auth", "vault", MOCK_SCOPE),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.state).toBe("semantic-offline"), {
+      timeout: 4000,
+    });
+    expect(result.current.semanticOffline).toBe(true);
+
+    // Rag recovers on the wire, then the backends frame announces the transition.
+    mock.degrade("semantic", null);
+    act(() => mock.push("backends", { rag: "running" }));
+
+    // The value flip invalidates the search cache → the query re-issues live and
+    // the controller leaves the fallback for real semantic results.
+    await waitFor(() => expect(result.current.state).toBe("results"), {
+      timeout: 4000,
+    });
+    expect(result.current.semanticOffline).toBe(false);
+  });
+
+  it("abandons a SUPERSEDED in-flight query — a slow earlier response never overwrites a newer one (MEDIUM-2)", async () => {
+    // The first (vault,"au") request is held open; the term advances to
+    // (vault,"auth"), which settles; the stale "au" request then resolves LATE.
+    // The controller's results must reflect ONLY the newer key — the superseded
+    // query is abandoned (its key is no longer observed), so its late response is
+    // never rendered.
+    const mock = new MockEngine();
+    let releaseStale: (() => void) | null = null;
+    engineClient.useTransport((input, init) => {
+      const url = new URL(input, "http://mock.local");
+      const path = url.pathname.replace(/^\/api/, "");
+      if (path === "/search") {
+        const body = init?.body
+          ? (JSON.parse(String(init.body)) as { query?: string })
+          : {};
+        if (body.query === "au") {
+          // Hold the stale request open until we release it LATE, then serve a
+          // distinctive single result that must NOT win.
+          return new Promise<Response>((resolve) => {
+            releaseStale = () =>
+              resolve(
+                new Response(
+                  JSON.stringify({
+                    envelope: {
+                      ok: true,
+                      data: {
+                        results: [
+                          { score: 0.99, source: "STALE-au", node_id: "doc:stale" },
+                        ],
+                      },
+                    },
+                    tiers: { semantic: { available: true } },
+                  }),
+                  { status: 200, headers: { "content-type": "application/json" } },
+                ),
+              );
+          });
+        }
+      }
+      return mock.fetchImpl(input, init);
+    });
+
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useSearchController(q, "vault", MOCK_SCOPE),
+      { wrapper, initialProps: { q: "" } },
+    );
+    // Settle "au" (kicks off the held request).
+    rerender({ q: "au" });
+    await waitFor(() => expect(result.current.state).toBe("loading"), {
+      timeout: 4000,
+    });
+    // Advance to "auth" — a NEW key; the "au" request is no longer observed.
+    rerender({ q: "auth" });
+    await waitFor(() => expect(result.current.state).toBe("results"), {
+      timeout: 4000,
+    });
+    const newerResults = result.current.results.map((r) => r.source);
+    expect(newerResults).not.toContain("STALE-au");
+
+    // Now resolve the stale "au" request LATE — it must not overwrite the newer
+    // results, because its key is abandoned.
+    act(() => releaseStale?.());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(result.current.results.map((r) => r.source)).not.toContain("STALE-au");
+    expect(result.current.results.length).toBeGreaterThan(0);
   });
 });

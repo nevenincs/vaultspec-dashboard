@@ -126,6 +126,47 @@ export function isTransportError(error: unknown): boolean {
   return true;
 }
 
+// --- rag-health transition detector (value-based, ring-cap safe) --------------------
+//
+// The §7 `backends` stream reports each backend's lifecycle word. The search
+// controller subscribes only to `backends`, so every retained chunk's `data` is a
+// `{ rag?: <lifecycle> }` frame; rag is available only when the word is exactly
+// "running" (mirrors `adaptStatus`/`deriveRagStatusView`: `service === "running"`).
+// We read the MOST-RECENT such frame BY VALUE rather than counting accumulator
+// length, because `streamReducer` ring-caps the accumulator at STREAM_RETENTION —
+// a length-based detector silently stops firing once the stream saturates, so a
+// recovered rag would stay pinned to the text-match fallback for the rest of the
+// session. A value-based read survives the ring cap unchanged.
+
+/** The rag lifecycle word from a single retained stream chunk, if it carries one. */
+function ragWordOf(chunk: { data: unknown }): string | undefined {
+  const data = chunk.data;
+  if (data && typeof data === "object" && "rag" in data) {
+    const word = (data as { rag?: unknown }).rag;
+    if (typeof word === "string") return word;
+  }
+  return undefined;
+}
+
+/**
+ * Rag availability from the LATEST `backends` frame in the retained accumulator,
+ * or `undefined` when no rag-bearing frame has arrived yet (so the caller can
+ * guard the initial state and not treat "no frame" as a transition). Robust to
+ * the STREAM_RETENTION ring cap: it reads the newest carried value, never a
+ * monotonically-growing count. Available iff the lifecycle word is exactly
+ * "running".
+ */
+export function latestBackendsRagAvailable(
+  chunks: readonly { data: unknown }[] | undefined,
+): boolean | undefined {
+  if (!chunks) return undefined;
+  for (let i = chunks.length - 1; i >= 0; i--) {
+    const word = ragWordOf(chunks[i]);
+    if (word !== undefined) return word === "running";
+  }
+  return undefined;
+}
+
 // --- the interpreted controller view ------------------------------------------------
 
 /**
@@ -356,6 +397,14 @@ export function useSearchController(
   // query re-issue against the live semantic tier rather than stay pinned to its
   // fallback. Debounced so a flapping backend bursts one trailing invalidation,
   // not one per event (mirrors NowStrip's recovery-refetch debounce).
+  //
+  // Detected BY VALUE, not accumulator length: `streamReducer` ring-caps the
+  // accumulator at STREAM_RETENTION, so a length-based edge detector silently
+  // dies once the stream saturates (length pins forever → every later transition
+  // dropped → a recovered rag stays pinned to the fallback for the rest of the
+  // session). Reading the latest `backends` frame's rag availability and firing
+  // only when that boolean FLIPS is robust to the ring cap and also removes the
+  // spurious per-frame invalidation a length detector caused.
   const stream = useEngineStream(["backends"]);
   const invalidateSearch = useMemo(
     () =>
@@ -367,16 +416,17 @@ export function useSearchController(
     [queryClient],
   );
   useEffect(() => () => invalidateSearch.cancel(), [invalidateSearch]);
-  const backendsSeen = useRef(0);
+  const ragAvailable = latestBackendsRagAvailable(stream.data);
+  const priorRagAvailable = useRef<boolean | undefined>(undefined);
   useEffect(() => {
-    const len = stream.data?.length ?? 0;
-    // Only a NEW backends frame (a health transition) invalidates — not the
-    // initial empty stream or a re-render with the same frame count.
-    if (len > backendsSeen.current) {
-      backendsSeen.current = len;
-      invalidateSearch();
-    }
-  }, [stream.data?.length, invalidateSearch]);
+    if (ragAvailable === undefined) return; // no backends frame yet — nothing to compare
+    const prior = priorRagAvailable.current;
+    priorRagAvailable.current = ragAvailable;
+    // Only a genuine FLIP (including the first observed value, prior=undefined)
+    // invalidates. A repeated same-availability frame is a no-op, so a flapping
+    // backend that re-reports the same state does not storm invalidations.
+    if (prior !== ragAvailable) invalidateSearch();
+  }, [ragAvailable, invalidateSearch]);
 
   const retry = useMemo(() => () => void semantic.refetch(), [semantic]);
 

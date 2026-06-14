@@ -120,3 +120,33 @@ The ADR was sufficient: every controller requirement (sole wire client, debounce
 cancel, tiers-gated degradation, node-id floor, filter vocabulary, rag-health
 invalidation, mock fidelity) mapped cleanly onto the implementation with no
 contract gap surfaced.
+
+## Revision (independent review: PASS-WITH-REVISIONS)
+
+The first commit returned PASS-WITH-REVISIONS — one HIGH correctness defect plus
+two MEDIUM test-fidelity gaps; the relocation, tiers precedence, fallback honesty,
+node-id grammar, debounce, and mock fidelity were all confirmed correct. Fixed in
+the revision:
+
+- HIGH: the rag-health invalidation was edge-detected by accumulator LENGTH, but
+  the stream reducer ring-caps the accumulator at its retention bound — once the
+  stream saturated, the length pinned forever and every rag-health transition after
+  the cap was silently dropped, leaving a recovered rag pinned to the text-match
+  fallback for the rest of the session. Replaced with a VALUE-based detector: a
+  pure helper reads the most-recent backends frame's rag lifecycle word (available
+  only when exactly "running") and the effect invalidates only when that boolean
+  flips versus a ref-held prior value, guarding the initial undefined. Robust to
+  the ring cap and free of the prior spurious per-frame invalidation.
+- MEDIUM-1: added the live two-phase hook test — a healthy search settles on the
+  key, a 502 refetch on the same key carries a fresh rag-down tiers block, and the
+  controller transitions to semantic-offline rather than staying on the held
+  success tiers (the wiring proof the pure precedence test cannot give).
+- MEDIUM-2: added the superseded-in-flight-query test — the first term's request is
+  held open, the term advances to a new key which settles, the stale request
+  resolves late, and the controller's results reflect only the newer key.
+- Added a deterministic ring-cap regression test that drives the real stream
+  reducer past saturation and asserts the capped accumulator length is pinned while
+  the value detector still flips on the recovery frame.
+
+Full lint gate exits 0; full frontend suite green (789 passed, 9 pre-existing
+skips); the four directly-touched suites pass 79/79.
