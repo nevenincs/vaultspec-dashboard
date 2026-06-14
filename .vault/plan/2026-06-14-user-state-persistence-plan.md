@@ -69,7 +69,7 @@ Move the commit-graph path, watcher lifecycle, SSE resume, and scope validation 
 
 Resolve the per-scope cell via the registry on every read route so each request serves the selected scope.
 
-- [ ] `W02.P05.S16` - resolve the cell via the registry in the graph and vault-tree and filters and node routes; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W02.P05.S16` - resolve the cell via the registry in the graph and vault-tree and filters and node routes; `engine/crates/vaultspec-api/src/routes/query.rs`.
 - [ ] `W02.P05.S17` - resolve the cell via the registry in the temporal routes; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
 - [ ] `W02.P05.S18` - resolve the cell via the registry in the ops routes; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
