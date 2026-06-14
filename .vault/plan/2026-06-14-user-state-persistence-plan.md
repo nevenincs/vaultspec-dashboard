@@ -61,7 +61,7 @@ Extract the single-graph serve fields into a per-scope cell and build the scope 
 Move the commit-graph path, watcher lifecycle, SSE resume, and scope validation onto the per-scope cell so live state is correct per scope.
 
 - [x] `W02.P04.S12` - move commit-graph and rebuild-and-swap onto the cell with a per-scope monotonic clock; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `W02.P04.S13` - spawn and tear down the watcher per warm scope; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `W02.P04.S13` - spawn and tear down the watcher per warm scope; `engine/crates/vaultspec-api/src/lib.rs`.
 - [ ] `W02.P04.S14` - make the SSE stream and since resume per-scope from the cell ring; `engine/crates/vaultspec-api/src/routes/stream.rs`.
 - [ ] `W02.P04.S15` - rewrite validate-scope to accept any selectable vault-bearing worktree in the workspace; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
