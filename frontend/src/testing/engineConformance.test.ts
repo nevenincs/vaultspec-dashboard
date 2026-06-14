@@ -54,9 +54,7 @@ describe.skipIf(!BASE_URL)("live engine wire conformance (consumer-typed)", () =
 
   beforeAll(async () => {
     const map: MapResponse = await client.map();
-    const wt = map.repositories
-      .flatMap((r) => r.worktrees)
-      .find((w) => w.has_vault);
+    const wt = map.repositories.flatMap((r) => r.worktrees).find((w) => w.has_vault);
     if (!wt) throw new Error("fixture has no vault-bearing worktree");
     scope = wt.id;
     // Use a timestamp just before "now" so the asof/diff window is valid.
