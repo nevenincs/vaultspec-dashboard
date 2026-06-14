@@ -156,6 +156,13 @@ export class MockEngine {
   // date-mandate not landed).
   private noVault = false;
   private lifecycleSparse = false;
+  // The bounded-query node ceiling fired (graph-queries-are-bounded-by-default):
+  // when set, `/graph/query` echoes the live engine's `truncated` block
+  // (`total_nodes`/`returned_nodes`/`reason`) alongside the capped slice, the
+  // exact shape `vaultspec-api` `query.rs` serves. The mock must be able to emit
+  // the live shape so the canvas's "narrowed — refine your view" chrome state is
+  // exercised through the real client path (mock-mirrors-live-wire-shape).
+  private truncatedTotal: number | null = null;
   // Git working-tree state served on /status and the read-only diff served on
   // /ops/git/diff (git-diff-browser surface). The mock mirrors the live wire
   // shape exactly (mock-mirrors-live-wire-shape): a flat dirty `string[]` and a
@@ -188,6 +195,17 @@ export class MockEngine {
   /** Date-mandate missing: lifecycle-lane events drop from serving (035). */
   setLifecycleSparse(on: boolean): void {
     this.lifecycleSparse = on;
+  }
+
+  /**
+   * Simulate the engine's hard node ceiling firing on `/graph/query`: pass the
+   * pre-cap total so the served slice carries the live `truncated` block (the
+   * capped subgraph stays self-consistent; only the honesty block is added).
+   * Pass null to clear. Mirrors the live `vaultspec-api` `query.rs` shape so the
+   * canvas's truncated state is exercised through the real client path.
+   */
+  setTruncated(total: number | null): void {
+    this.truncatedTotal = total;
   }
 
   /** Set the working-tree dirty file list served on /status (git-diff-browser). */
@@ -515,8 +533,29 @@ export class MockEngine {
         ? (JSON.parse(String(init.body)) as { granularity?: string; filter?: unknown })
         : {};
       const filter = reqBody.filter;
+      // The bounded-query honesty block, mirroring the live `vaultspec-api`
+      // `query.rs`: `null` on an unbounded slice, the object when the ceiling
+      // fired. The reason text matches the live "narrow with a filter" copy.
+      const truncated =
+        this.truncatedTotal !== null
+          ? {
+              total_nodes: this.truncatedTotal,
+              returned_nodes: this.truncatedTotal,
+              reason:
+                "graph node ceiling: narrow with a filter; the feature " +
+                "constellation is the smallest view",
+            }
+          : null;
       if (this.noVault) {
-        return { nodes: [], edges: [], meta_edges: [], filter, tiers, last_seq: null };
+        return {
+          nodes: [],
+          edges: [],
+          meta_edges: [],
+          filter,
+          tiers,
+          last_seq: null,
+          truncated: null,
+        };
       }
       // LIVE /graph/query carries `last_seq` — the delta clock's tip at query
       // time — so a held keyframe splices live `graph` deltas with no gap
@@ -529,6 +568,7 @@ export class MockEngine {
           filter,
           tiers,
           last_seq: this.lastSeq,
+          truncated,
         };
       }
       return {
@@ -538,6 +578,7 @@ export class MockEngine {
         filter,
         tiers,
         last_seq: this.lastSeq,
+        truncated,
       };
     }
     if (path === "/filters") {

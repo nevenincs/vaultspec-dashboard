@@ -1,15 +1,27 @@
-// Open-in-place node interiors (W02.P06.S24, ADR G3.b / G3.e).
+// Open-in-place node interiors (W02.P06.S24 / recodified W02.P09.S25,
+// node-canvas ADR G3.b / "The browse interaction").
 //
-// Opened nodes unfold IN PLACE as DOM islands. Structure that has a
-// canonical order gets a canonical layout — never force-directed: a
-// feature opens into its document lifecycle laid along the lifecycle axis
-// (research → adr → plan → exec → audit); a plan opens into its tiered
-// interior (steps with check state, exec records docked by the engine's
-// interior subgraph). Clicking unfolded entries drives the one shared
-// selection.
+// Opened nodes unfold IN PLACE as DOM islands rendered as a reviewable,
+// scannable document in the cohort's instrument grammar — never force-directed.
+// Structure that has a canonical order gets a canonical layout: a feature opens
+// into its document lifecycle along the lifecycle axis (research → adr → plan →
+// exec → audit); a plan opens into its tiered steps with check state. Clicking
+// any unfolded entry drives the one shared selection.
+//
+// Recodification (S25): the interior is brought fully onto the token layer and
+// the shared domain-mark registry. Identity (the node id) is monospace; counts
+// and progress are tabular numerals; lifecycle state carries a grayscale-safe
+// StateMark (shape, not hue, is the primary channel); doc-type entries carry
+// their DocTypeMark silhouette. Every color comes from a state/ink token, none
+// hard-coded. The interior reads stores hooks only — it never fetches and never
+// reads the raw `tiers` block (dashboard-layer-ownership).
+
+import { FileWarning } from "lucide-react";
 
 import type { EngineNode, NodeDetail } from "../../stores/server/engine";
 import { useNodeDetail, useNodeNeighbors } from "../../stores/server/queries";
+import { DocTypeMark, StateMark } from "../../scene/field/markComponents";
+import type { StateKey } from "../../scene/field/marks";
 import { selectNode } from "../../stores/view/selection";
 
 // --- canonical layout helpers (pure, unit-tested) -------------------------------
@@ -52,16 +64,41 @@ export function interiorSteps(interior: NodeDetail["interior"]): InteriorStep[] 
     }));
 }
 
+/** The five canonical lifecycle states that carry a StateMark, else null. */
+const STATE_KEYS = new Set<StateKey>([
+  "active",
+  "complete",
+  "archived",
+  "broken",
+  "stale",
+]);
+
+export function stateMarkKey(state: string | undefined): StateKey | null {
+  return state && STATE_KEYS.has(state as StateKey) ? (state as StateKey) : null;
+}
+
 // --- the interior component --------------------------------------------------------
 
 export function NodeInterior({ id }: { id: string }) {
   const detail = useNodeDetail(id);
   const kind = detail.data?.node.kind;
   if (detail.isPending) {
-    return <p className="mt-1 text-ink-faint">unfolding…</p>;
+    return <p className="mt-vs-1 text-label text-ink-faint">unfolding…</p>;
   }
+  // Contained per-island failure (ADR "States"): an interior/detail fetch
+  // failure is rendered on THIS island, never as a canvas-wide error. A
+  // non-color icon cue carries the state so it reads without color perception.
   if (detail.isError || !detail.data) {
-    return <p className="mt-1 text-state-broken">interior unavailable</p>;
+    return (
+      <p
+        className="mt-vs-1 flex items-center gap-vs-1 text-label text-state-broken"
+        role="status"
+        data-interior-error
+      >
+        <FileWarning aria-hidden size={14} strokeWidth={1.5} />
+        interior unavailable
+      </p>
+    );
   }
   if (kind === "feature") return <FeatureLifecycle id={id} />;
   if (kind === "plan") return <PlanInterior detail={detail.data} />;
@@ -72,20 +109,25 @@ export function NodeInterior({ id }: { id: string }) {
 function FeatureLifecycle({ id }: { id: string }) {
   const neighbors = useNodeNeighbors(id);
   if (!neighbors.data) {
-    return <p className="mt-1 text-ink-faint">unfolding lifecycle…</p>;
+    return <p className="mt-vs-1 text-label text-ink-faint">unfolding lifecycle…</p>;
   }
   const docs = arrangeLifecycleAxis(neighbors.data.nodes);
   return (
-    <ol className="mt-1 flex items-center gap-1" data-lifecycle-axis>
+    <ol className="mt-vs-1 flex items-center gap-vs-1" data-lifecycle-axis>
       {docs.map((doc, i) => (
-        <li key={doc.id} className="flex items-center gap-1">
-          {i > 0 && <span className="text-ink-faint">→</span>}
+        <li key={doc.id} className="flex items-center gap-vs-1">
+          {i > 0 && (
+            <span className="text-ink-faint" aria-hidden>
+              →
+            </span>
+          )}
           <button
             type="button"
             onClick={() => selectNode(doc.id)}
-            className="rounded-vs-sm border border-rule px-vs-1 py-vs-0-5 text-2xs hover:border-rule-strong hover:bg-paper-sunken transition-colors duration-ui-fast ease-settle"
-            title={doc.title}
+            className="flex items-center gap-vs-1 rounded-vs-sm border border-rule px-vs-1 py-vs-0-5 text-2xs text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken"
+            title={doc.title ?? doc.kind}
           >
+            <DocTypeMark kind={doc.kind} size={12} aria-hidden />
             {doc.kind}
           </button>
         </li>
@@ -99,26 +141,38 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
   const steps = interiorSteps(detail.interior);
   const progress = detail.node.lifecycle?.progress;
   return (
-    <div className="mt-1" data-plan-interior>
+    <div className="mt-vs-1" data-plan-interior>
       {progress && (
         <p className="text-2xs text-ink-muted">
-          {progress.done}/{progress.total} steps done
+          {/* Counts are data-bearing → tabular numerals (typography law). */}
+          <span data-tabular className="tabular-nums">
+            {progress.done}
+          </span>
+          /
+          <span data-tabular className="tabular-nums">
+            {progress.total}
+          </span>{" "}
+          steps done
         </p>
       )}
-      <ul className="mt-1 grid grid-cols-4 gap-1">
+      <ul className="mt-vs-1 grid grid-cols-4 gap-vs-1">
         {steps.map((step) => (
           <li key={step.id}>
             <button
               type="button"
               onClick={() => selectNode(step.id)}
-              className={`w-full rounded border px-1 py-0.5 text-[10px] ${
+              // Done state is carried by a check glyph + fill + border, not hue
+              // alone — grayscale-safe (ADR a11y). The accent token reinforces.
+              aria-pressed={step.done}
+              className={`flex w-full items-center gap-vs-0-5 rounded-vs-sm border px-vs-1 py-vs-0-5 text-2xs ${
                 step.done
                   ? "border-state-active/40 bg-accent-subtle text-accent-text"
                   : "border-rule text-ink-muted"
               }`}
+              title={step.title}
             >
-              {step.done ? "✓ " : ""}
-              {step.title}
+              <span aria-hidden>{step.done ? "✓" : "○"}</span>
+              <span className="truncate">{step.title}</span>
             </button>
           </li>
         ))}
@@ -128,18 +182,30 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
 }
 
 function NodeSummary({ node }: { node: EngineNode }) {
+  const mark = stateMarkKey(node.lifecycle?.state);
   return (
-    <dl className="mt-1 text-2xs text-ink-muted">
-      <div>
-        <dt className="inline font-medium">kind:</dt>{" "}
-        <dd className="inline">{node.kind}</dd>
+    <dl className="mt-vs-1 text-2xs text-ink-muted">
+      <div className="flex items-center gap-vs-1">
+        <dt className="inline font-medium">kind:</dt>
+        <dd className="inline flex items-center gap-vs-1">
+          <DocTypeMark kind={node.kind} size={12} aria-hidden />
+          {node.kind}
+        </dd>
       </div>
       {node.lifecycle && (
-        <div>
-          <dt className="inline font-medium">state:</dt>{" "}
-          <dd className="inline">{node.lifecycle.state}</dd>
+        <div className="flex items-center gap-vs-1">
+          <dt className="inline font-medium">state:</dt>
+          <dd className="inline flex items-center gap-vs-1">
+            {mark && <StateMark state={mark} size={12} aria-hidden />}
+            {node.lifecycle.state}
+          </dd>
         </div>
       )}
+      {/* The node id is true identity → monospace (typography law). */}
+      <div className="mt-vs-0-5">
+        <dt className="inline font-medium">id:</dt>{" "}
+        <dd className="inline break-all font-mono text-ink-faint">{node.id}</dd>
+      </div>
     </dl>
   );
 }

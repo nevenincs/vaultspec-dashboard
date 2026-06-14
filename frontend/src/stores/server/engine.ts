@@ -207,6 +207,16 @@ export interface GraphSlice {
    * for the graph SSE subscription so deltas resume without re-keyframing.
    */
   last_seq?: number | null;
+  /**
+   * The bounded-query honesty block (graph-queries-are-bounded-by-default,
+   * node-canvas ADR "States"): present and non-null ONLY when the engine's hard
+   * node ceiling capped the slice. `/graph/query` serves it under the
+   * `truncated` key (`vaultspec-api` `query.rs`); it survives `adaptGraphSlice`
+   * untouched as part of the spread-through `rest`. The canvas renders it as the
+   * "narrowed — refine your view" state over the capped subgraph, never as a
+   * silent partial result.
+   */
+  truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
 }
 
 export interface FiltersVocabulary {

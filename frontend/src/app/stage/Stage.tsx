@@ -17,6 +17,7 @@ import { useLiveStatusStore } from "../../stores/server/liveStatus";
 import {
   engineKeys,
   useGraphSlice,
+  useGraphSliceAvailability,
   usePutSession,
   useSession,
   useWorkspaceMap,
@@ -31,7 +32,9 @@ import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { AlgorithmPanel } from "./AlgorithmPanel";
+import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { Discover } from "./Discover";
+import { useGraphWalkKeyboard } from "./graphWalk";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { MinimapWidget } from "./MinimapWidget";
@@ -152,6 +155,9 @@ function useSeedSessionContext(): void {
 
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
+  // The host element is tracked as state so the keyboard graph-walk binds once
+  // it is in the DOM (a ref alone never re-runs the binding effect).
+  const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
   // Restore the persisted session on load: the scope cold-start persist (S29)
   // and the scope+folder context seed (S30) both fire from this single owner,
   // since Stage mounts once per app lifetime.
@@ -166,11 +172,31 @@ export function Stage() {
   // "feature" on scope swap (viewStore.setScope).
   const granularity = useViewStore((s) => s.granularity);
   const slice = useGraphSlice(scope, undefined, undefined, granularity);
+  const availability = useGraphSliceAvailability(scope, granularity);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
   const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
   const workingSet = useViewStore((s) => s.workingSet);
   const pinnedDiscoveries = useViewStore((s) => s.pinnedDiscoveries);
+
+  // Stable graph-walk handlers reading live store state (so the keyboard binding
+  // never re-mounts): walk and open route through `selectFromScene` (the scene-
+  // origin path that selects WITHOUT bouncing the camera focus the user is
+  // already on), open also unfolds the island, expand adds the ego to the
+  // working set. All are instant shared-store writes — no animation (ADR motion
+  // law: keyboard actions never animate).
+  const walkHandlersRef = useRef({
+    selectedId: () => {
+      const sel = useViewStore.getState().selection;
+      return sel?.kind === "node" ? sel.id : null;
+    },
+    select: (id: string | null) => selectFromScene(id),
+    open: (id: string) => {
+      selectFromScene(id);
+      useViewStore.getState().openNode(id);
+    },
+    expand: (id: string) => useViewStore.getState().addToWorkingSet(id),
+  });
 
   // Each working-set entry materializes its ego network on stage (G3.b).
   const expansions = useQueries({
@@ -340,9 +366,43 @@ export function Stage() {
     useLiveStatusStore.getState().setBrokenLinkCount(broken);
   }, [merged]);
 
+  // Keyboard graph-walk (node-canvas ADR "Keyboard operability"): the focused
+  // node walks its edges across the held slice; select/open/expand have keyboard
+  // equivalents, all INSTANT shared-store state. The graph and handlers are read
+  // lazily so the binding survives across slice refetches without re-running.
+  // mergedRef keeps the latest slice readable from the bound listener.
+  const mergedRef = useRef(merged);
+  mergedRef.current = merged;
+  // Stable getter (a ref) so the keyboard binding keys on the host alone and is
+  // not re-bound each render; it reads the latest held slice at call time.
+  const graphGetterRef = useRef(() => mergedRef.current ?? { nodes: [], edges: [] });
+  useGraphWalkKeyboard(hostEl, graphGetterRef.current, walkHandlersRef.current);
+
+  // Resolve the one designed canvas state from stores-derived truth — the
+  // chrome half of the ADR's "every wire condition is a designed state" mandate.
+  const canvasState = resolveCanvasState({
+    scope,
+    granularity,
+    stageSurface: surfaces.stage,
+    slice: slice.data ?? null,
+    availability,
+  });
+
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div ref={hostRef} className="absolute inset-0" data-stage-host />
+      <div
+        ref={(el) => {
+          hostRef.current = el;
+          setHostEl(el);
+        }}
+        // Focusable so keyboard graph-walk can own the canvas (ADR keyboard
+        // operability). aria-label names the surface for screen readers.
+        tabIndex={0}
+        role="application"
+        aria-label="node canvas — arrow keys walk the graph, Enter opens, e expands"
+        className="absolute inset-0 outline-none focus-visible:ring-2 focus-visible:ring-state-active/40"
+        data-stage-host
+      />
       <FilterBar
         hidden={{
           nodes: membership?.hiddenNodeCount ?? 0,
@@ -372,25 +432,7 @@ export function Stage() {
       <Discover />
       <TimeTravelChip />
       <IslandLayer scene={scene.controller} />
-      {surfaces.stage === "empty-invitation" ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-body text-ink-faint">
-          <span className="text-3xl">✎</span>
-          <p>this worktree has no vault corpus yet</p>
-          <p className="text-2xs text-ink-faint">
-            run vaultspec-core install to start a second brain here
-          </p>
-        </div>
-      ) : (
-        !slice.data && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-body text-ink-faint">
-            {scope
-              ? granularity === "document"
-                ? "loading document graph…"
-                : "loading the constellation…"
-              : "waiting for a worktree scope…"}
-          </div>
-        )
-      )}
+      <CanvasStateOverlay state={canvasState} />
     </div>
   );
 }

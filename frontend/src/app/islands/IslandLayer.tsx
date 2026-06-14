@@ -7,6 +7,7 @@
 // epsilon-gates dispatch), never per-frame state. The island's content is
 // a placeholder shell until the open-in-place interiors land (W02.P06.S24).
 
+import { X } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
 
@@ -59,15 +60,16 @@ function Island({ scene, id, children }: IslandProps) {
       className="pointer-events-auto rounded-vs-md border border-rule bg-paper-raised/95 p-vs-2 text-body shadow-float"
       data-island-for={id}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-medium">{id}</span>
+      <div className="flex items-center justify-between gap-vs-2">
+        {/* The opened node's id is true identity → monospace (typography law). */}
+        <span className="truncate font-mono text-label text-ink">{id}</span>
         <button
           type="button"
           aria-label={`Close ${id}`}
-          className="text-ink-faint hover:text-ink"
+          className="shrink-0 text-ink-faint transition-colors duration-ui-fast hover:text-ink"
           onClick={() => closeNode(id)}
         >
-          ×
+          <X aria-hidden size={14} strokeWidth={1.5} />
         </button>
       </div>
       {children ?? <NodeInterior id={id} />}

@@ -6,6 +6,7 @@ import {
   arrangeLifecycleAxis,
   interiorSteps,
   lifecycleRank,
+  stateMarkKey,
 } from "./NodeInterior";
 
 const node = (id: string, kind: string, extra?: Partial<EngineNode>): EngineNode => ({
@@ -52,5 +53,18 @@ describe("interiorSteps", () => {
 
   it("is empty without an interior", () => {
     expect(interiorSteps(undefined)).toEqual([]);
+  });
+});
+
+describe("stateMarkKey (grayscale-safe lifecycle mark resolution)", () => {
+  it("resolves the five canonical lifecycle states to a mark key", () => {
+    for (const s of ["active", "complete", "archived", "broken", "stale"]) {
+      expect(stateMarkKey(s)).toBe(s);
+    }
+  });
+
+  it("returns null for an unknown or absent state (no mark, never a guess)", () => {
+    expect(stateMarkKey("in-progress")).toBeNull();
+    expect(stateMarkKey(undefined)).toBeNull();
   });
 });
