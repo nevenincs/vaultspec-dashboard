@@ -5,7 +5,9 @@ import {
   MAX_SPAN_MS,
   MIN_SPAN_MS,
   bucketForSpan,
-  eventGlyph,
+  eventKindLabel,
+  eventMark,
+  humanInstant,
   laneOf,
   timeToX,
   xToTime,
@@ -14,16 +16,37 @@ import {
 
 const DAY = 24 * 3600 * 1000;
 
-describe("lanes (G4.a)", () => {
-  it("keeps at most four fixed lanes with per-event glyph heterogeneity", () => {
+describe("lanes (timeline ADR: ≤4 fixed lanes, per-event marks)", () => {
+  it("keeps at most four fixed lanes with per-event mark heterogeneity", () => {
     expect(LANES.length).toBeLessThanOrEqual(4);
     expect(laneOf("commit")).toBe(0);
     expect(laneOf("doc-created")).toBe(1);
     expect(laneOf("doc-modified")).toBe(1);
     expect(laneOf("step-checked")).toBe(2);
     expect(laneOf("feature-archived")).toBe(2);
-    expect(eventGlyph("commit")).not.toBe(eventGlyph("doc-created"));
-    expect(eventGlyph("unknown-kind")).toBe("○");
+  });
+
+  it("maps each event kind to a DISTINCT Phosphor domain mark, falling back to lifecycle", () => {
+    // Heterogeneity is encoded by the mark, not by adding lanes (ADR): the
+    // commit, doc-created and doc-modified kinds each draw a distinct shape so a
+    // lane reads correctly in grayscale, and any unknown kind takes the
+    // lifecycle flag rather than vanishing.
+    expect(eventMark("commit")).not.toBe(eventMark("doc-created"));
+    expect(eventMark("doc-created")).not.toBe(eventMark("doc-modified"));
+    expect(eventMark("step-checked")).toBe(eventMark("unknown-kind"));
+  });
+
+  it("names each kind in human prose for the accessible label", () => {
+    expect(eventKindLabel("commit")).toBe("commit");
+    expect(eventKindLabel("doc-created")).toBe("document created");
+    expect(eventKindLabel("doc-modified")).toBe("document modified");
+    expect(eventKindLabel("plan-approved")).toBe("plan approved");
+  });
+});
+
+describe("humanInstant (tabular time label)", () => {
+  it("renders a date + minute label from an ISO instant", () => {
+    expect(humanInstant("2026-02-01T09:30:45Z")).toBe("2026-02-01 09:30");
   });
 });
 

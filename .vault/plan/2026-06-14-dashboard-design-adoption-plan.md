@@ -119,7 +119,7 @@ Re-skins the minimap widget and layer onto the new token layer, gated on the min
 
 Re-skins the timeline surface onto the new tokens and the animated-transitions motion grammar, gated on the timeline surface ADR reaching accepted.
 
-- [ ] `W02.P12.S28` - Re-skin the timeline surface onto the new tokens and the animated-transitions motion grammar per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P12.S28` - Re-skin the timeline surface onto the new tokens and the animated-transitions motion grammar per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P13` - Git-diff-browser surface adoption
 

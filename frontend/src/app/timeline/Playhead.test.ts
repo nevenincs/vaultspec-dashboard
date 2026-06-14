@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useViewStore } from "../../stores/view/viewStore";
-import { LIVE_SNAP_PX, dragToPlayhead, movePlayhead } from "./Playhead";
+import { LIVE_SNAP_PX, dragToPlayhead, keyboardStep, movePlayhead } from "./Playhead";
 import { useTimelineStore } from "./Timeline";
 
 const window_ = { from: 1000, to: 2000 };
@@ -16,6 +16,30 @@ describe("dragToPlayhead", () => {
     expect(dragToPlayhead(-50, window_, 800, 5000)).toBe(1000);
     // Never past now even if the window extends beyond it.
     expect(dragToPlayhead(600, window_, 800, 1600)).toBe(1600);
+  });
+});
+
+describe("keyboardStep (keyboard scrub is an instant pure projection)", () => {
+  const now = 1800;
+
+  it("steps backward from LIVE into a concrete time anchored at now", () => {
+    // [ / ArrowLeft from LIVE lands at now - delta (not at the window end).
+    expect(keyboardStep("live", -200, window_, now)).toBe(1600);
+  });
+
+  it("steps a concrete time backward and forward within the window", () => {
+    expect(keyboardStep(1500, -200, window_, now)).toBe(1300);
+    expect(keyboardStep(1300, 200, window_, now)).toBe(1500);
+  });
+
+  it("snaps back to LIVE when a forward step reaches or passes now", () => {
+    // ] from a time near now reaches the live dock rather than overscrubbing.
+    expect(keyboardStep(1700, 200, window_, now)).toBe("live");
+    expect(keyboardStep("live", 200, window_, now)).toBe("live");
+  });
+
+  it("clamps a backward step to the window start", () => {
+    expect(keyboardStep(1050, -500, window_, now)).toBe(1000);
   });
 });
 

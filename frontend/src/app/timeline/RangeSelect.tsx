@@ -1,15 +1,38 @@
-// Range selection (W02.P08.S35, ADR G4.c): drag across the timeline
-// (shift-drag, keeping the plain drag for the playhead) to set the
-// product's SINGLE date-range filter — owned by the timeline, shown in the
-// filter bar as a chip. "Play" animates the playhead across the range to
-// watch the network grow: the cheapest, most legible "history of this
-// feature" story in the product.
+// Range selection (re-skinned W02.P12.S28 onto the OKLCH token layer and the
+// sanctioned Lucide chrome marks per the timeline surface ADR): shift-drag
+// across the timeline (the plain drag stays reserved for the playhead) to set
+// the product's SINGLE date-range filter — owned by the timeline, shown in the
+// filter bar as a chip. The committed range renders as a band in the ACCENT
+// token (not a literal sky tint) with the base language's selection ring. "Play"
+// animates the playhead across the range to watch the network grow: the
+// cheapest, most legible "history of this feature" story in the product.
+//
+// Motion (ADR / base motion law): play-the-range is a deliberate, state-
+// communicating animation that runs on animation frames ONLY while a play is
+// active (an idle timeline schedules no per-frame callback). Under
+// prefers-reduced-motion the animated sweep is swapped for an instant jump to
+// the range end — the reduced-motion floor, honored at this surface's own path.
+//
+// Keyboard (ADR "Keyboard contract, a11y"): the band exposes its bounds and a
+// keyboard escape clears the range; the play / clear controls are real buttons
+// with accessible names. Range keys clear from the keyboard so the feature is
+// reachable without a pointer.
+//
+// Layer ownership (dashboard-layer-ownership / timeline ADR): app-chrome, the
+// SINGLE date-range writer in the product. It writes only the date-range filter
+// through the stores setter and fetches nothing; no other surface may set it.
 
-import { useEffect, useRef, useState } from "react";
+import { Play, X } from "lucide-react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useFilterStore } from "../../stores/view/filters";
 import { movePlayhead } from "./Playhead";
-import type { TimeWindow } from "./Timeline";
+import { humanInstant, type TimeWindow } from "./Timeline";
 import { timeToX, useTimelineStore, xToTime } from "./Timeline";
 
 // --- pure helpers (unit-tested) -------------------------------------------------
@@ -39,6 +62,15 @@ export function playPosition(
   return from + (to - from) * ratio;
 }
 
+/** True when the OS asks for reduced motion (the base motion law floor). */
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 // --- play-the-range ----------------------------------------------------------------
 
 interface PlayState {
@@ -52,6 +84,13 @@ let playState: PlayState | null = null;
 let kickRangePlay: (() => void) | null = null;
 
 export function startRangePlay(from: number, to: number, now: number): void {
+  // Reduced-motion floor (ADR): swap the animated sweep for an instant jump to
+  // the range end — the network is shown grown, with no per-frame animation.
+  if (prefersReducedMotion()) {
+    playState = null;
+    movePlayhead(to);
+    return;
+  }
   playState = { from, to, startedAt: now };
   kickRangePlay?.();
 }
@@ -62,8 +101,8 @@ export function stopRangePlay(): void {
 
 /**
  * Drives the playhead across an active range play on animation frames. The RAF
- * loop runs ONLY while a play is active and stops at completion (P-LOW-15): an
- * idle timeline schedules no per-frame callback.
+ * loop runs ONLY while a play is active and stops at completion: an idle
+ * timeline schedules no per-frame callback.
  */
 export function useRangePlayer(): void {
   useEffect(() => {
@@ -155,6 +194,12 @@ export function RangeSelect() {
     };
   }, [window_, setDateRange]);
 
+  const clearRange = () => {
+    stopRangePlay();
+    setDateRange({});
+    movePlayhead("live");
+  };
+
   const committed =
     dateRange.from && dateRange.to
       ? {
@@ -164,25 +209,56 @@ export function RangeSelect() {
       : null;
   const band = drag ?? committed;
 
+  // The committed band escapes the range from the keyboard (ADR: range keys
+  // clear from the keyboard) — Escape / Delete / Backspace clear, instantly.
+  const onBandKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" || e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      clearRange();
+    }
+  };
+
+  const bandLabel =
+    committed && dateRange.from && dateRange.to
+      ? `selected range ${humanInstant(dateRange.from)} to ${humanInstant(dateRange.to)}`
+      : "selecting range";
+
   return (
     <div ref={hostRef} className="pointer-events-none absolute inset-0">
       {band && (
         <div
-          className="absolute top-0 bottom-0 bg-sky-500/10 ring-1 ring-sky-400/40"
+          // The committed band is a focusable, labelled region announcing its
+          // bounds (ADR: the range band announces its bounds); the live drag is
+          // a transient visual without focus.
+          {...(committed && !drag
+            ? {
+                role: "region",
+                "aria-label": bandLabel,
+                tabIndex: 0,
+                onKeyDown: onBandKeyDown,
+              }
+            : { "aria-hidden": true })}
+          className={`absolute top-0 bottom-0 bg-accent-subtle/40 ring-1 ring-accent/50 ${
+            committed && !drag
+              ? "pointer-events-auto transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              : ""
+          }`}
           style={{
             left: `${Math.min(band.x1, band.x2)}px`,
             width: `${Math.abs(band.x2 - band.x1)}px`,
           }}
+          data-range-band
         />
       )}
       {committed && !drag && (
         <div
-          className="pointer-events-auto absolute top-0 flex gap-1 text-[10px]"
+          className="pointer-events-auto absolute top-0 flex gap-vs-1 text-label"
           style={{ left: `${Math.min(committed.x1, committed.x2)}px` }}
         >
           <button
             type="button"
-            className="rounded bg-sky-100 px-1 text-sky-900"
+            aria-label="play the selected range"
+            className="flex items-center gap-vs-1 rounded-vs-sm bg-accent-subtle px-vs-1-5 py-vs-0-5 text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() =>
               startRangePlay(
                 Date.parse(dateRange.from!),
@@ -191,19 +267,16 @@ export function RangeSelect() {
               )
             }
           >
-            ▶ play
+            <Play size={10} aria-hidden />
+            play
           </button>
           <button
             type="button"
-            aria-label="Clear date range"
-            className="rounded-vs-sm bg-paper-sunken px-vs-1 text-ink-muted"
-            onClick={() => {
-              stopRangePlay();
-              setDateRange({});
-              movePlayhead("live");
-            }}
+            aria-label="clear date range"
+            className="flex items-center rounded-vs-sm bg-paper-sunken px-vs-1 py-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            onClick={clearRange}
           >
-            ×
+            <X size={10} aria-hidden />
           </button>
         </div>
       )}
