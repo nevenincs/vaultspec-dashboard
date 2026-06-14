@@ -138,6 +138,10 @@ fn http_get(port: u16, path: &str, token: &str) -> (u16, serde_json::Value) {
     http(port, "GET", path, token, None)
 }
 
+fn urlencode(s: &str) -> String {
+    s.replace(':', "%3A").replace('/', "%2F")
+}
+
 fn http(
     port: u16,
     method: &str,
@@ -173,6 +177,178 @@ fn http(
         status,
         serde_json::from_str(payload).unwrap_or(serde_json::Value::Null),
     )
+}
+
+/// Capture the SSE backlog a `/stream?...&since=N` resume replays: connect,
+/// send the request, read raw bytes until the stream goes idle (the read times
+/// out after the backlog is flushed and keep-alive begins), and return the raw
+/// SSE text so the caller can parse `event:`/`id:`/`data:` lines. The resume
+/// backlog is emitted synchronously before the live tail, so a short read
+/// window captures it deterministically.
+fn http_stream_capture(port: u16, path: &str, token: &str, window: Duration) -> String {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    stream.set_read_timeout(Some(window)).unwrap();
+    let request = format!(
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n\
+         Authorization: Bearer {token}\r\nAccept: text/event-stream\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut raw = Vec::new();
+    let mut buf = [0u8; 4096];
+    // Read until the window elapses (timeout) — the backlog is flushed well
+    // within it; the timeout ends the otherwise-infinite SSE read.
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => raw.extend_from_slice(&buf[..n]),
+            Err(_) => break, // read timeout: backlog captured, stop.
+        }
+    }
+    String::from_utf8_lossy(&raw).into_owned()
+}
+
+#[test]
+fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
+    // W03.P07.S24: with a workspace holding two vault-bearing worktrees, a
+    // PUT /session active_scope switch must (a) retarget reads to THAT
+    // worktree's divergent corpus and (b) keep per-scope SSE `since=` resume
+    // correct against the switched scope's OWN monotonic clock.
+    let (_dir, main, feature) = fixture_landscape();
+    let (_guard, token) = start_serve(&main, 8823);
+    let main_scope = main.to_string_lossy().replace('\\', "/");
+    let feature_scope = feature.to_string_lossy().replace('\\', "/");
+
+    // The two worktrees diverge: the feature branch's plan adds a `src/new.rs`
+    // mention that main's plan does not have. `src/new.rs` does not exist on
+    // disk, so it surfaces as a BROKEN structural edge whose `dst` addresses
+    // `code:src/new.rs` — present in the feature scope's graph, absent from
+    // main's. That edge is the divergence proving the switch retargeted reads.
+    let new_mention = "code:src/new.rs";
+    let has_new_edge = |graph: &serde_json::Value| -> bool {
+        graph["data"]["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["dst"] == new_mention)
+    };
+
+    // Sanity: BEFORE switching, the active scope is main, and main's graph has
+    // no edge to src/new.rs (that mention is branch-only).
+    let (status, session) = http_get(8823, "/session", &token);
+    assert_eq!(status, 200, "GET /session: {session}");
+    assert_eq!(
+        session["data"]["active_scope"].as_str(),
+        Some(main_scope.as_str()),
+        "the launch worktree is the active scope at boot"
+    );
+    let (status, main_graph) = http(
+        8823,
+        "POST",
+        "/graph/query",
+        &token,
+        Some(&format!(r#"{{"scope": "{main_scope}"}}"#)),
+    );
+    assert_eq!(status, 200);
+    assert!(
+        !has_new_edge(&main_graph),
+        "main's corpus has no src/new.rs mention (it is branch-only)"
+    );
+
+    // Switch the active scope to the feature worktree through the session API.
+    let (status, switched) = http(
+        8823,
+        "PUT",
+        "/session",
+        &token,
+        Some(&format!(r#"{{"active_scope": "{feature_scope}"}}"#)),
+    );
+    assert_eq!(status, 200, "PUT /session active_scope: {switched}");
+    assert_eq!(
+        switched["data"]["active_scope"].as_str(),
+        Some(feature_scope.as_str()),
+        "the session now names the feature worktree as active"
+    );
+
+    // The feature scope's graph DOES carry the branch-only src/new.rs mention —
+    // the read was genuinely retargeted to that worktree's bytes.
+    let (status, feature_graph) = http(
+        8823,
+        "POST",
+        "/graph/query",
+        &token,
+        Some(&format!(r#"{{"scope": "{feature_scope}"}}"#)),
+    );
+    assert_eq!(status, 200);
+    assert!(
+        has_new_edge(&feature_graph),
+        "the feature worktree's corpus serves its own divergent src/new.rs \
+         mention: {feature_graph}"
+    );
+
+    // Per-scope clocks are independent: each scope's /vault-tree serves its own
+    // doc set, and a `since=0` stream resume against the FEATURE scope replays
+    // the feature cell's OWN deltas (its cold-index keyframe), not main's.
+    let (status, feature_tree) = http(
+        8823,
+        "GET",
+        &format!("/vault-tree?scope={}", urlencode(&feature_scope)),
+        &token,
+        None,
+    );
+    assert_eq!(status, 200, "feature vault-tree served: {feature_tree}");
+    assert!(
+        feature_tree["data"]["entries"]
+            .as_array()
+            .is_some_and(|e| !e.is_empty()),
+        "the feature scope's vault-tree has entries"
+    );
+
+    // SSE `since=0` against the feature scope: the resume replays that cell's
+    // own ring (the cold-index keyframe deltas), each `id:` a seq on the
+    // feature cell's OWN clock. A non-empty backlog proves the feature scope
+    // has its own populated resume buffer, distinct from main's.
+    let feature_backlog = http_stream_capture(
+        8823,
+        &format!("/stream?scope={}&since=0", urlencode(&feature_scope)),
+        &token,
+        Duration::from_millis(1500),
+    );
+    let feature_ids: Vec<u64> = feature_backlog
+        .lines()
+        .filter_map(|l| l.strip_prefix("id:").map(str::trim))
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    assert!(
+        !feature_ids.is_empty(),
+        "since=0 resume against the feature scope replays its own clock's \
+         deltas: {feature_backlog}"
+    );
+    // The resumed ids are monotonic on this scope's own clock.
+    assert!(
+        feature_ids.windows(2).all(|w| w[1] > w[0]),
+        "feature scope resume ids ascend on its own monotonic clock: {feature_ids:?}"
+    );
+
+    // The main scope keeps its OWN clock: a since=0 resume against main also
+    // replays a non-empty backlog of main's deltas, independent of the feature
+    // scope's clock — the two never share a seq space.
+    let main_backlog = http_stream_capture(
+        8823,
+        &format!("/stream?scope={}&since=0", urlencode(&main_scope)),
+        &token,
+        Duration::from_millis(1500),
+    );
+    let main_ids: Vec<u64> = main_backlog
+        .lines()
+        .filter_map(|l| l.strip_prefix("id:").map(str::trim))
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    assert!(
+        !main_ids.is_empty(),
+        "since=0 resume against the main scope replays its own clock's deltas: \
+         {main_backlog}"
+    );
 }
 
 #[test]
