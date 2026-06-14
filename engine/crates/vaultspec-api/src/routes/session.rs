@@ -155,10 +155,13 @@ pub async fn put_session(
         }
         if let Some(ctx) = update.scope_context.as_ref() {
             // The context's own `scope` field selects which scope it applies to;
-            // absent, it is the (possibly just-updated) active scope.
+            // absent (or an empty-string sentinel that would collide with the
+            // active-scope pointer's PK row), it is the (possibly just-updated)
+            // active scope.
             let target = ctx
                 .scope
                 .clone()
+                .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| active_scope_token(&state));
             let context = ScopeContext {
                 active_folder: ctx.folder.clone(),
