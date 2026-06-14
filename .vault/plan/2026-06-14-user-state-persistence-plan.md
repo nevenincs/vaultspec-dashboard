@@ -110,7 +110,7 @@ Add the session and settings client methods, wire types, query and mutation hook
 
 Restore the persisted session on load and persist scope, folder context, and worktree selection through the session API.
 
-- [ ] `W04.P09.S29` - restore the persisted session on load instead of recomputing the default scope; `frontend/src/app/stage/Stage.tsx`.
+- [x] `W04.P09.S29` - restore the persisted session on load instead of recomputing the default scope; `frontend/src/app/stage/Stage.tsx`.
 - [x] `W04.P09.S30` - seed and persist scope and folder context in the view store through the session API; `frontend/src/stores/view/viewStore.ts`.
 - [ ] `W04.P09.S31` - persist worktree selection through the session API; `frontend/src/app/left/WorktreePicker.tsx`.
 - [ ] `W04.P09.S32` - represent the current folder and its feature-tag contexts as a view selector; `frontend/src/app/left/browserSelection.ts`.

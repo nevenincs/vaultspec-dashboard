@@ -17,6 +17,8 @@ import { useLiveStatusStore } from "../../stores/server/liveStatus";
 import {
   engineKeys,
   useGraphSlice,
+  usePutSession,
+  useSession,
   useWorkspaceMap,
 } from "../../stores/server/queries";
 import { computeVisibility, useFilterStore } from "../../stores/view/filters";
@@ -39,25 +41,115 @@ import { WorkingSet, mergeSlices } from "./WorkingSet";
 // One scene per app lifetime — survives route remounts; destroyed never.
 const scene = createDashboardScene();
 
-/** The active scope: the user's pick (worktree picker, G2.a) or the
- * map's default corpus-bearing worktree. */
+/** The map's default corpus-bearing worktree (the cold-start fallback when no
+ *  session has been persisted yet): the default vault worktree, else the first
+ *  vault-bearing one. Null when the map has no vault-bearing worktree. */
+function mapDefaultScope(map: ReturnType<typeof useWorkspaceMap>): string | null {
+  for (const repo of map.data?.repositories ?? []) {
+    const preferred =
+      repo.worktrees.find((w) => w.is_default && w.has_vault) ??
+      repo.worktrees.find((w) => w.has_vault);
+    if (preferred) return preferred.id;
+  }
+  return null;
+}
+
+/**
+ * The active scope, restored on load (user-state-persistence W04.P09.S29).
+ *
+ * Pure READ hook — precedence, highest first:
+ *  1. the user's explicit in-session pick (`viewStore.scope`, set by the worktree
+ *     picker) — a fresh selection always wins;
+ *  2. the PERSISTED session's `active_scope` (read through the `useSession`
+ *     stores hook) — this is the reload-amnesia cure: a reload restores the last
+ *     selected worktree instead of recomputing a default;
+ *  3. the map's default corpus-bearing worktree — the cold-start fallback when no
+ *     session scope exists yet; `useRestoreSessionScope` (mounted once in Stage)
+ *     persists that initial choice so the next reload takes path (2).
+ *
+ * The restore flows entirely through the `useSession` stores hook; the chrome
+ * never fetches and never reads the raw tiers block (dashboard-layer-ownership).
+ * This hook has NO side effects — it is read by ~nine surfaces, so the cold-start
+ * persist lives in one place (`useRestoreSessionScope`), not here.
+ */
 export function useActiveScope(): string | null {
   const picked = useViewStore((s) => s.scope);
   const map = useWorkspaceMap();
+  const session = useSession();
+
+  const persisted = session.data?.active_scope || null;
+  const fallback = mapDefaultScope(map);
+
   return useMemo(() => {
     if (picked) return picked;
-    for (const repo of map.data?.repositories ?? []) {
-      const preferred =
-        repo.worktrees.find((w) => w.is_default && w.has_vault) ??
-        repo.worktrees.find((w) => w.has_vault);
-      if (preferred) return preferred.id;
-    }
-    return null;
-  }, [picked, map.data]);
+    if (persisted) return persisted;
+    return fallback;
+  }, [picked, persisted, fallback]);
+}
+
+/**
+ * Persist the cold-start default scope ONCE (W04.P09.S29). Mounted exactly once,
+ * in Stage (one scene per app lifetime), so the write fires from a single owner
+ * rather than from every `useActiveScope` consumer. The effect runs only when
+ * the session has loaded with no active scope, the user has not picked one, and
+ * a vault-bearing default exists; the mutation's non-idle state then latches it
+ * off, and `onSuccess` flips `active_scope` truthy so it never re-fires. This is
+ * what makes the first ever choice durable — every subsequent reload restores it
+ * through `useSession` instead of recomputing the map default.
+ */
+function useRestoreSessionScope(): void {
+  const picked = useViewStore((s) => s.scope);
+  const map = useWorkspaceMap();
+  const session = useSession();
+  const putSession = usePutSession();
+
+  const persisted = session.data?.active_scope || null;
+  const fallback = mapDefaultScope(map);
+
+  useEffect(() => {
+    if (picked) return;
+    if (!session.isSuccess) return;
+    if (persisted) return;
+    if (!fallback) return;
+    if (!putSession.isIdle) return;
+    putSession.mutate({ active_scope: fallback });
+  }, [picked, session.isSuccess, persisted, fallback, putSession]);
+}
+
+/**
+ * Seed the view store's scope + folder context from the restored session
+ * (W04.P09.S30). Mounted once in Stage. On the FIRST successful session load it
+ * mirrors the durable `{ active_scope, scope_context }` into the view store via
+ * `seedFromSession` — restoring "which worktree, which folder, which contexts"
+ * without triggering the wholesale scope-swap reset (that is for a user pick).
+ * A `seededRef` latch makes this a one-shot per mount, so a later session
+ * re-fetch (e.g. after a mutation) never clobbers the user's in-session edits.
+ */
+function useSeedSessionContext(): void {
+  const session = useSession();
+  const seedFromSession = useViewStore((s) => s.seedFromSession);
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    if (seededRef.current) return;
+    if (!session.isSuccess || !session.data) return;
+    seededRef.current = true;
+    const data = session.data;
+    seedFromSession({
+      scope: data.active_scope || null,
+      folder: data.scope_context.folder,
+      featureTags: data.scope_context.feature_tags,
+    });
+  }, [session.isSuccess, session.data, seedFromSession]);
 }
 
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
+  // Restore the persisted session on load: the scope cold-start persist (S29)
+  // and the scope+folder context seed (S30) both fire from this single owner,
+  // since Stage mounts once per app lifetime.
+  useRestoreSessionScope();
+  useSeedSessionContext();
   const scope = useActiveScope();
   const [filterSidebarOpen, setFilterSidebarOpen] = useState(false);
   const [algorithmPanelOpen, setAlgorithmPanelOpen] = useState(false);
