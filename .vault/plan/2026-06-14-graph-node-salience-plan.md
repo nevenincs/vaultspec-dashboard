@@ -137,26 +137,26 @@ Rank-normalize each criterion within the bounded subgraph and compose the per-le
 
 Compute exponential recency with a per-lens half-life, the discrete lifecycle multiplier, and the status-lens activity-burst term over recent temporal-tier edges, kept as separate inputs.
 
-- [ ] `W02.P03.S12` - Implement exponential recency decay exp(-ln2 * age / half_life) reading node modified dates, with the half-life a per-lens parameter; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P03.S13` - Implement the discrete per-lens lifecycle multiplier reading the semantics lifecycle vocabulary, kept distinct from recency so recent-but-archived and old-but-in-flight resolve correctly; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P03.S14` - Implement the status-lens activity-burst term over recent temporal-tier edge activity (new exec records and commit-correlation edges in the recent window); `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P03.S15` - Unit-test recency decay half-life behavior, lifecycle multiplier per state, and the burst term over a windowed temporal edge set; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S12` - Implement exponential recency decay exp(-ln2 * age / half_life) reading node modified dates, with the half-life a per-lens parameter; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S13` - Implement the discrete per-lens lifecycle multiplier reading the semantics lifecycle vocabulary, kept distinct from recency so recent-but-archived and old-but-in-flight resolve correctly; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S14` - Implement the status-lens activity-burst term over recent temporal-tier edge activity (new exec records and commit-correlation edges in the recent window); `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S15` - Unit-test recency decay half-life behavior, lifecycle multiplier per state, and the burst term over a windowed temporal edge set; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W02.P04` - Rank-normalization and weighted-linear DOI composition
 
 Rank-normalize each criterion to [0,1] within the bounded subgraph and compose the per-lens a-priori importance minus focus-distance into the DOI scalar.
 
-- [ ] `W02.P04.S16` - Implement rank-normalization of each criterion to [0,1] within the bounded served subgraph, robust to the heavy tails of PageRank and betweenness; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P04.S17` - Implement the weighted-linear a-priori composition (type-prior, personalized centrality, recency, lifecycle, structural role) parameterized by a per-lens weight row; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P04.S18` - Subtract the backbone focus-distance term to realize the DOI scalar I(n|L) = API(n|L) - gamma_L * D_backbone(n, focus); `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P04.S19` - Unit-test normalization range and rank stability, weighted composition against a hand-computed blend, and the DOI focus-distance subtraction; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S16` - Implement rank-normalization of each criterion to [0,1] within the bounded served subgraph, robust to the heavy tails of PageRank and betweenness; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S17` - Implement the weighted-linear a-priori composition (type-prior, personalized centrality, recency, lifecycle, structural role) parameterized by a per-lens weight row; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S18` - Subtract the backbone focus-distance term to realize the DOI scalar I(n|L) = API(n|L) - gamma_L * D_backbone(n, focus); `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S19` - Unit-test normalization range and rank stability, weighted composition against a hand-computed blend, and the DOI focus-distance subtraction; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W02.P05` - The weight-sensitivity sweep artifact
 
 Produce the top-k Kendall-tau stability sweep under weight perturbation as the artifact that justifies the lens-derived weights.
 
-- [ ] `W02.P05.S20` - Implement the weight-sensitivity sweep computing top-k Kendall-tau stability under +/- weight perturbation per lens; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P05.S21` - Add a sweep test asserting top-k ordering stays stable under bounded perturbation for both launch lenses, failing if a lens top-k flips; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P05.S20` - Implement the weight-sensitivity sweep computing top-k Kendall-tau stability under +/- weight perturbation per lens; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P05.S21` - Add a sweep test asserting top-k ordering stays stable under bounded perturbation for both launch lenses, failing if a lens top-k flips; `engine/crates/engine-query/src/salience.rs`.
 
 ## Wave `W03` - The two launch lenses, focus folding, and the wire amendment
 
@@ -166,18 +166,18 @@ Parameterize the design and status lenses from one model (default status), fold 
 
 Define the design and status lenses as teleport-bias and weight-row parameterizations of the one DOI model, with status the default lens.
 
-- [ ] `W03.P06.S22` - Define the Lens enum and per-lens parameter rows (teleport bias, dominant centrality, type-prior weights, recency emphasis, lifecycle modulation) with status as the default; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P06.S23` - Parameterize the design lens: teleport biased to ADR and research authority, PageRank-led with high coreness and low recency weight; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P06.S24` - Parameterize the status lens: teleport biased to in-flight plans, betweenness-and-hub-led with high recency, the activity burst, and exec children aggregated into the parent; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P06.S25` - Unit-test that both lenses derive from one model and yield distinct orderings on the same graph (authority-led vs pivotal-bridge-led); `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S22` - Define the Lens enum and per-lens parameter rows (teleport bias, dominant centrality, type-prior weights, recency emphasis, lifecycle modulation) with status as the default; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S23` - Parameterize the design lens: teleport biased to ADR and research authority, PageRank-led with high coreness and low recency weight; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S24` - Parameterize the status lens: teleport biased to in-flight plans, betweenness-and-hub-led with high recency, the activity burst, and exec children aggregated into the parent; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S25` - Unit-test that both lenses derive from one model and yield distinct orderings on the same graph (authority-led vs pivotal-bridge-led); `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W03.P07` - Focus folding and per-key memoization
 
 Fold focus-bias into the lens teleport vector and re-run the warm-started PPR on demand, memoizing the basis per (graph-generation, lens) and the focus-folded score per (lens, focus).
 
-- [ ] `W03.P07.S26` - Implement focus folding: mix focus-bias into the lens teleport vector and re-run the warm-started PPR so a-priori minus distance is one computation; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P07.S27` - Memoize the lens basis per (graph-generation, lens) and the focus-folded final score per (lens, focus), recomputing only on graph change; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P07.S28` - Unit-test that a no-focus lens switch is a warm-cache hit and a focus change runs exactly one warm-started PPR pass; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P07.S26` - Implement focus folding: mix focus-bias into the lens teleport vector and re-run the warm-started PPR so a-priori minus distance is one computation; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P07.S27` - Memoize the lens basis per (graph-generation, lens) and the focus-folded final score per (lens, focus), recomputing only on graph change; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P07.S28` - Unit-test that a no-focus lens switch is a warm-cache hit and a focus change runs exactly one warm-started PPR pass; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W03.P08` - The lens wire amendment and DOI-bounded serving
 
