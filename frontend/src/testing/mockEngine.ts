@@ -531,9 +531,22 @@ export class MockEngine {
       // tiers gate content here too (011); an absent corpus serves
       // nothing (035).
       const reqBody = init?.body
-        ? (JSON.parse(String(init.body)) as { granularity?: string; filter?: unknown })
+        ? (JSON.parse(String(init.body)) as {
+            granularity?: string;
+            filter?: unknown;
+            lens?: string;
+          })
         : {};
       const filter = reqBody.filter;
+      // Project each served node's salience for the REQUESTED lens (graph-node-
+      // salience ADR: the wire carries a SINGLE `salience` float for the requested
+      // lens, not a per-lens map). Defaulted to the status lens when omitted,
+      // exactly like the live engine. The engine producer is an integration seam.
+      const lens = reqBody.lens === "design" ? "design" : "status";
+      const withSalience = (n: EngineNode): EngineNode => {
+        const s = c.salienceByLens.get(n.id);
+        return s ? { ...n, salience: s[lens] } : n;
+      };
       // The bounded-query honesty block, mirroring the live `vaultspec-api`
       // `query.rs`: `null` on an unbounded slice, the object when the ceiling
       // fired. The reason text matches the live "narrow with a filter" copy.
@@ -563,7 +576,7 @@ export class MockEngine {
       // (contract §4; the live engine emits it, so the mock must mirror it).
       if (reqBody.granularity === "feature") {
         return {
-          nodes: c.nodes.filter((n) => n.kind === "feature"),
+          nodes: c.nodes.filter((n) => n.kind === "feature").map(withSalience),
           edges: [],
           meta_edges: c.metaEdges.filter((e) => this.tierServed(e)).map(toWireMetaEdge),
           filter,
@@ -573,7 +586,7 @@ export class MockEngine {
         };
       }
       return {
-        nodes: c.nodes.filter((n) => n.kind !== "feature"),
+        nodes: c.nodes.filter((n) => n.kind !== "feature").map(withSalience),
         edges: c.edges.filter((e) => this.tierServed(e)),
         meta_edges: [],
         filter,

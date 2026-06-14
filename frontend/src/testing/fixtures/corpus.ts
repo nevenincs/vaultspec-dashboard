@@ -26,6 +26,14 @@ export interface FixtureCorpus {
   /** Dated event log, ts-ascending, seq monotonic from 1. */
   events: EngineEvent[];
   vaultTree: VaultTreeEntry[];
+  /**
+   * Per-lens salience scalar by node id (graph-node-salience ADR): the engine
+   * serves a SINGLE `salience` for the REQUESTED lens, so the mock projects this
+   * map at query time. Each entry is the node's [0,1] importance under each lens.
+   * Computed deterministically from authority/type prior, centrality (degree),
+   * and recency; the engine producer is an integration seam.
+   */
+  salienceByLens: Map<string, { status: number; design: number }>;
 }
 
 function mulberry32(seed: number): () => number {
@@ -56,11 +64,55 @@ const FEATURE_NAMES = [
 
 const DOC_TYPES = ["research", "adr", "plan", "exec", "audit"] as const;
 const LIFECYCLE_RELATIONS: Record<string, string> = {
-  adr: "resolves", // adr —resolves→ research
-  plan: "implements", // plan —implements→ adr
-  exec: "fulfills", // exec —fulfills→ plan
-  audit: "reviews", // audit —reviews→ exec
+  adr: "resolves", // adr -resolves-> research
+  plan: "implements", // plan -implements-> adr
+  exec: "fulfills", // exec -fulfills-> plan
+  audit: "reviews", // audit -reviews-> exec
 };
+
+/**
+ * Pipeline-derivation labels (graph-node-semantics ADR), keyed by the CHILD doc
+ * type of the lifecycle-axis edge (child -> prev). The label rides ALONGSIDE the
+ * declared tier, never instead of it, and drives the lineage layout's derivation
+ * axis (research -> adr -> plan -> exec -> audit). Shaped exactly per the upstream
+ * ADR's closed vocabulary; the engine producer is an integration seam.
+ */
+const DERIVATION_LABELS: Record<string, string> = {
+  adr: "grounds", // adr derives FROM research (research grounds the adr)
+  plan: "authorizes", // plan derives FROM adr (adr authorizes the plan)
+  exec: "generated-by", // exec derives FROM plan (plan generates exec)
+  audit: "reviews", // audit derives FROM exec (audit reviews exec)
+};
+
+/** Per-lens type prior (graph-node-salience ADR): the design lens biases toward
+ *  design authority (adr/research), the status lens toward in-flight roadmap
+ *  authority (plan) and evidence. Shaped exactly per the upstream ADR; the engine
+ *  producer is an integration seam. */
+const TYPE_PRIOR: Record<string, { status: number; design: number }> = {
+  research: { status: 0.25, design: 0.7 },
+  adr: { status: 0.35, design: 0.95 },
+  plan: { status: 0.95, design: 0.5 },
+  exec: { status: 0.55, design: 0.15 },
+  audit: { status: 0.45, design: 0.45 },
+  feature: { status: 0.8, design: 0.8 },
+  code: { status: 0.3, design: 0.2 },
+  commit: { status: 0.4, design: 0.1 },
+};
+
+/** Deterministic D-dim embedding clustered by feature (graph-representation §4):
+ *  a per-feature base vector plus per-doc-type jitter, so the semantic UMAP mode
+ *  separates feature meaning-clusters legibly. The engine producer (rag) is an
+ *  integration seam; this mirrors the additive wire field shape. */
+const EMBEDDING_DIM = 8;
+function featureEmbedding(featureIndex: number, docTypeIndex: number): number[] {
+  const v: number[] = [];
+  for (let d = 0; d < EMBEDDING_DIM; d++) {
+    const center = Math.sin((featureIndex + 1) * (d + 1) * 0.7);
+    const offset = Math.cos((docTypeIndex + 1) * (d + 1) * 0.3) * 0.12;
+    v.push(center + offset);
+  }
+  return v;
+}
 
 const BASE_TS = Date.parse("2026-01-05T09:00:00Z");
 const DAY = 24 * 3600 * 1000;
@@ -119,6 +171,9 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
             ? { state, progress: { done, total } }
             : { state: "complete" },
         degree_by_tier: { declared: 2, structural: 1 },
+        // Per-node embedding (graph-representation §4): clustered by feature so
+        // the semantic UMAP mode separates meaning-clusters. Integration seam.
+        embedding: featureEmbedding(fi, di),
       });
       vaultTree.push({
         path: `.vault/${docType}/${stem}.md`,
@@ -151,6 +206,9 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
           confidence: 1,
           provenance: "wiki-link",
           observed_at: iso(created),
+          // Pipeline-derivation label ALONGSIDE the declared tier
+          // (graph-node-semantics): drives the lineage layout. Integration seam.
+          derivation: DERIVATION_LABELS[docType] as EngineEdge["derivation"],
         });
       }
     });
@@ -269,5 +327,63 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
   events.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   events.forEach((e, i) => (e.id = `evt-${i + 1}`));
 
-  return { features, nodes, edges, metaEdges, planInteriors, events, vaultTree };
+  // Per-lens salience (graph-node-salience ADR): a deterministic, defensible
+  // blend of the per-lens type prior, rank-normalized degree (centrality proxy),
+  // and recency. The status lens weights recency high; the design lens weights it
+  // low (decisions are durable). Each criterion is in [0,1] and the blend is
+  // clamped to [0,1]. The engine producer computes the real PPR/betweenness/
+  // coreness field; this mirror is a realistic stand-in (integration seam).
+  const salienceByLens = computeSalience(nodes, edges);
+
+  return {
+    features,
+    nodes,
+    edges,
+    metaEdges,
+    planInteriors,
+    events,
+    vaultTree,
+    salienceByLens,
+  };
+}
+
+/** Deterministic per-lens salience over the corpus (graph-node-salience mirror). */
+function computeSalience(
+  nodes: EngineNode[],
+  edges: EngineEdge[],
+): Map<string, { status: number; design: number }> {
+  // Degree as a cheap centrality proxy (the engine uses PPR/betweenness/coreness).
+  const degree = new Map<string, number>();
+  for (const e of edges) {
+    degree.set(e.src, (degree.get(e.src) ?? 0) + 1);
+    degree.set(e.dst, (degree.get(e.dst) ?? 0) + 1);
+  }
+  let maxDegree = 1;
+  for (const d of degree.values()) maxDegree = Math.max(maxDegree, d);
+
+  // Recency: newest modification = 1, oldest = 0 (rank-normalized by time).
+  const mods = nodes
+    .map((n) => (n.dates?.modified ? Date.parse(n.dates.modified) : NaN))
+    .filter((t) => Number.isFinite(t));
+  const minMod = mods.length ? Math.min(...mods) : 0;
+  const maxMod = mods.length ? Math.max(...mods) : 1;
+  const span = Math.max(1, maxMod - minMod);
+
+  const out = new Map<string, { status: number; design: number }>();
+  for (const node of nodes) {
+    const prior = TYPE_PRIOR[node.kind] ?? { status: 0.4, design: 0.4 };
+    const centrality = (degree.get(node.id) ?? 0) / maxDegree;
+    const modTs = node.dates?.modified ? Date.parse(node.dates.modified) : minMod;
+    const recency = (modTs - minMod) / span;
+    // Status lens: roadmap prior + centrality + HIGH recency weight.
+    const status = clamp01(0.5 * prior.status + 0.25 * centrality + 0.25 * recency);
+    // Design lens: authority prior dominant + centrality + LOW recency weight.
+    const design = clamp01(0.65 * prior.design + 0.25 * centrality + 0.1 * recency);
+    out.set(node.id, { status, design });
+  }
+  return out;
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
 }

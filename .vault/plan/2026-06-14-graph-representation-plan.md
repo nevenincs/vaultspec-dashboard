@@ -113,29 +113,29 @@ Deliver the consumed wire fields (salience float, derivation edge label, per-nod
 
 Add the additive node fields (salience float, embedding vector) and edge field (derivation label) to the stores wire types and scene seam types, marked as integration seams.
 
-- [ ] `W01.P01.S01` - Add salience optional float and embedding to EngineNode with integration-seam note; `frontend/src/stores/server/engine.ts`.
-- [ ] `W01.P01.S02` - Add derivation optional label to EngineEdge with integration-seam note; `frontend/src/stores/server/engine.ts`.
-- [ ] `W01.P01.S03` - Add salience and embedding to SceneNodeData and derivation to SceneEdgeData; `frontend/src/scene/sceneController.ts`.
-- [ ] `W01.P01.S04` - Carry salience/embedding/derivation through sliceToScene and graphDeltaToScene; `frontend/src/scene/sceneMapping.ts`.
+- [x] `W01.P01.S01` - Add salience optional float and embedding to EngineNode with integration-seam note; `frontend/src/stores/server/engine.ts`.
+- [x] `W01.P01.S02` - Add derivation optional label to EngineEdge with integration-seam note; `frontend/src/stores/server/engine.ts`.
+- [x] `W01.P01.S03` - Add salience and embedding to SceneNodeData and derivation to SceneEdgeData; `frontend/src/scene/sceneController.ts`.
+- [x] `W01.P01.S04` - Carry salience/embedding/derivation through sliceToScene and graphDeltaToScene; `frontend/src/scene/sceneMapping.ts`.
 
 ### Phase `W01.P02` - lens query param + active-lens view state
 
 Thread the lens request parameter through the graph query path and own the active-lens (status/design salience lens) as stores/app view state, distinct from the named-filter-set lenses.
 
-- [ ] `W01.P02.S05` - Add lens enum type and thread lens onto the graphQuery request body; `frontend/src/stores/server/engine.ts`.
-- [ ] `W01.P02.S06` - Fold lens into the graph query cache key; `frontend/src/stores/server/queries.ts`.
-- [ ] `W01.P02.S07` - Add activeLens and setActiveLens to the view store distinct from named-filter lenses; `frontend/src/stores/view/viewStore.ts`.
-- [ ] `W01.P02.S08` - Pass active lens into useGraphSlice from Stage; `frontend/src/app/stage/Stage.tsx`.
+- [x] `W01.P02.S05` - Add lens enum type and thread lens onto the graphQuery request body; `frontend/src/stores/server/engine.ts`.
+- [x] `W01.P02.S06` - Fold lens into the graph query cache key; `frontend/src/stores/server/queries.ts`.
+- [x] `W01.P02.S07` - Add activeLens and setActiveLens to the view store distinct from named-filter lenses; `frontend/src/stores/view/viewStore.ts`.
+- [x] `W01.P02.S08` - Pass active lens into useGraphSlice from Stage; `frontend/src/app/stage/Stage.tsx`.
 
 ### Phase `W01.P03` - mock + corpus fidelity
 
 Make the mock engine and fixture corpus serve salience, derivation, and embedding shaped exactly per the upstream ADRs, proven by a consumer test through the real client path.
 
-- [ ] `W01.P03.S09` - Compute deterministic per-lens salience in the fixture corpus; `frontend/src/testing/fixtures/corpus.ts`.
-- [ ] `W01.P03.S10` - Add derivation labels to lifecycle-axis edges in the corpus; `frontend/src/testing/fixtures/corpus.ts`.
-- [ ] `W01.P03.S11` - Add per-node embedding vectors to document nodes in the corpus; `frontend/src/testing/fixtures/corpus.ts`.
-- [ ] `W01.P03.S12` - Serve salience for the requested lens and derivation/embedding from the mock graph route; `frontend/src/testing/mockEngine.ts`.
-- [ ] `W01.P03.S13` - Add a consumer test feeding a mock graph sample through adaptGraphSlice asserting new fields survive; `frontend/src/stores/server/liveAdapters.salience.test.ts`.
+- [x] `W01.P03.S09` - Compute deterministic per-lens salience in the fixture corpus; `frontend/src/testing/fixtures/corpus.ts`.
+- [x] `W01.P03.S10` - Add derivation labels to lifecycle-axis edges in the corpus; `frontend/src/testing/fixtures/corpus.ts`.
+- [x] `W01.P03.S11` - Add per-node embedding vectors to document nodes in the corpus; `frontend/src/testing/fixtures/corpus.ts`.
+- [x] `W01.P03.S12` - Serve salience for the requested lens and derivation/embedding from the mock graph route; `frontend/src/testing/mockEngine.ts`.
+- [x] `W01.P03.S13` - Add a consumer test feeding a mock graph sample through adaptGraphSlice asserting new fields survive; `frontend/src/stores/server/liveAdapters.salience.test.ts`.
 
 ## Wave `W02` - scene layout modes + encoding + backbone
 

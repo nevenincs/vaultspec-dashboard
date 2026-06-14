@@ -175,7 +175,12 @@ export function Stage() {
   // full document graph (~200 nodes, the Obsidian mental model). Resets to
   // "feature" on scope swap (viewStore.setScope).
   const granularity = useViewStore((s) => s.granularity);
-  const slice = useGraphSlice(scope, undefined, undefined, granularity);
+  // The active salience lens (graph-node-salience): a lens switch is a RE-QUERY
+  // (the lens folds into the slice cache key), which the active representation
+  // mode then re-lays-out with id-keyed object constancy — the composition rule
+  // (graph-representation ADR). Owned by the view store; the chrome never fetches.
+  const activeLens = useViewStore((s) => s.activeLens);
+  const slice = useGraphSlice(scope, undefined, undefined, granularity, activeLens);
   const availability = useGraphSliceAvailability(scope, granularity);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);

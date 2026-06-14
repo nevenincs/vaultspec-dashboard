@@ -141,6 +141,33 @@ export interface EngineNode {
    * center-of-gravity sizing (ADR D4.1); absent on document nodes.
    */
   member_count?: number;
+  /**
+   * Per-lens importance scalar for the REQUESTED lens (graph-node-salience ADR):
+   * a single float in [0,1], computed in the engine on CPU as a projection over
+   * the bounded graph for the active lens and focus — NOT a per-lens map (DOI
+   * makes the served node set itself lens-dependent). Drives node size and label
+   * priority (graph-representation ADR encoding map). Absent on origins that do
+   * not yet serve it; the consumer treats absence as "no salience signal" and
+   * falls back to the prior size rule.
+   *
+   * integration seam: graph-node-salience produces salience; this feature
+   * consumes it as an additive node field. The engine producer is built in a
+   * parallel feature and is not in this worktree's engine code.
+   */
+  salience?: number;
+  /**
+   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
+   * the rag embedding delivered to the CPU worker for the semantic UMAP layout
+   * mode. The engine never serves layout coordinates (graph-compute-is-CPU); it
+   * serves the raw embedding and the worker projects it. Absent on nodes lacking
+   * an embedding — the semantic mode draws those in a connectivity-fallback
+   * position and says so.
+   *
+   * integration seam: graph-node-semantics / representation produces the
+   * embedding wire field; this feature consumes it. The stores/mock side is
+   * implemented here; the engine side is a seam.
+   */
+  embedding?: number[];
 }
 
 /**
@@ -174,7 +201,46 @@ export interface EngineEdge {
   observed_at?: string;
   /** Constellation meta-edges only (engine-aggregated, §4). */
   meta?: { count: number; breakdown_by_tier: Record<string, number> };
+  /**
+   * Pipeline-derivation relation label (graph-node-semantics ADR): a first-class
+   * labeled relation drawn from the closed vocabulary (`grounds`,
+   * `authorizes`/`binds`, `generated-by`, `aggregates`, `reviews`,
+   * `promoted-from`), carried ALONGSIDE — never instead of — the inference
+   * `tier`. The tier says how the engine knows two documents are related; the
+   * derivation says what the relationship is in the framework. Drives the lineage
+   * layout's derivation axis (graph-representation ADR). NOT part of the edge
+   * stable key, so labeling an edge never re-keys it.
+   *
+   * integration seam: graph-node-semantics produces derivation; this feature
+   * consumes it. The engine producer is built in a parallel feature.
+   */
+  derivation?: DerivationRelation;
 }
+
+/** The closed pipeline-derivation vocabulary (graph-node-semantics ADR). */
+export type DerivationRelation =
+  | "grounds"
+  | "authorizes"
+  | "binds"
+  | "generated-by"
+  | "aggregates"
+  | "reviews"
+  | "promoted-from";
+
+/**
+ * Salience lens (graph-node-salience ADR): the per-viewer-intent parameterization
+ * the engine biases its importance computation toward. `status` (the default,
+ * "what is in-flight") leads with betweenness + hub score + high recency;
+ * `design` ("why is the system this way") leads with authority PageRank + coreness
+ * and weights recency low. A future `audit` lens is just a third teleport vector.
+ * This is the SALIENCE lens — distinct from the named-filter-set lenses
+ * (`view/lenses.ts`) and from the tier-dial "lens".
+ */
+export type SalienceLens = "status" | "design";
+
+/** The default lens when none is requested (graph-node-salience ADR: first-load
+ *  is "what is in-flight", the most common review intent). */
+export const DEFAULT_SALIENCE_LENS: SalienceLens = "status";
 
 /** The engine-owned filter object, echoed back normalized (§4). */
 export interface GraphFilter {
@@ -526,6 +592,14 @@ export class EngineClient {
      *  feature-convergence nodes + meta-edges. Omitted = document. */
     granularity?: "document" | "feature";
     as_of?: string | number;
+    /**
+     * The salience lens (graph-node-salience ADR §4 amendment): a request
+     * parameter selecting which per-lens importance field the engine computes
+     * and — via DOI — which node set is served. Defaulted to the status lens
+     * server-side when omitted. Switching lens is a re-query the stores layer
+     * issues; the engine recomputes nothing the client holds.
+     */
+    lens?: SalienceLens;
   }): Promise<GraphSlice> {
     return adaptGraphSlice(await this.post("/graph/query", body));
   }

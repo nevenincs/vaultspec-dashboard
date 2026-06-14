@@ -22,11 +22,17 @@ import type {
   EngineStatus,
   GitFileDiff,
   GraphFilter,
+  SalienceLens,
   SessionUpdate,
   SettingUpdate,
   TiersBlock,
 } from "./engine";
-import { EngineError, engineClient, useEngineStatus } from "./engine";
+import {
+  DEFAULT_SALIENCE_LENS,
+  EngineError,
+  engineClient,
+  useEngineStatus,
+} from "./engine";
 
 // --- stable serialization for key parts -----------------------------------------
 
@@ -57,6 +63,7 @@ export const engineKeys = {
     filter?: GraphFilter,
     asOf?: string | number,
     granularity?: "document" | "feature",
+    lens?: SalienceLens,
   ) =>
     [
       ...engineKeys.all,
@@ -65,6 +72,11 @@ export const engineKeys = {
       stableKey(filter),
       asOf ?? "live",
       granularity ?? "document",
+      // The salience lens folds into the graph identity (graph-node-salience
+      // ADR): DOI makes the served node set lens-dependent, so two lenses are
+      // genuinely different slices and must not share a cache entry. Absent =
+      // the status-lens default.
+      lens ?? DEFAULT_SALIENCE_LENS,
     ] as const,
   node: (id: string) => [...engineKeys.all, "node", id] as const,
   neighbors: (id: string, depth: number) =>
@@ -232,11 +244,18 @@ export function useGraphSlice(
   filter?: GraphFilter,
   asOf?: string | number,
   granularity?: "document" | "feature",
+  lens?: SalienceLens,
 ) {
   return useQuery({
-    queryKey: engineKeys.graph(scope ?? "", filter, asOf, granularity),
+    queryKey: engineKeys.graph(scope ?? "", filter, asOf, granularity, lens),
     queryFn: () =>
-      engineClient.graphQuery({ scope: scope!, filter, as_of: asOf, granularity }),
+      engineClient.graphQuery({
+        scope: scope!,
+        filter,
+        as_of: asOf,
+        granularity,
+        lens,
+      }),
     enabled: scope !== null,
   });
 }

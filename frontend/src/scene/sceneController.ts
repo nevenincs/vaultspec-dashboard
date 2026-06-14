@@ -55,6 +55,25 @@ export interface SceneNodeData {
    * harmlessly.
    */
   memberCount?: number;
+  /**
+   * Per-lens importance scalar in [0,1] (graph-node-salience ADR, consumed via
+   * graph-representation). Drives node SIZE (superseding the member-count radius
+   * for non-feature species) and LABEL PRIORITY in the DOI cull. Absent when the
+   * origin does not serve it; the sprite layer falls back to the base radius.
+   *
+   * SEAM REDLINE (graph-representation W01.P01): additive, optional,
+   * backward-compatible on the locked RL-1 node-data surface — flagged per the
+   * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
+   */
+  salience?: number;
+  /**
+   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
+   * the rag embedding the CPU worker projects with UMAP for the semantic layout
+   * mode. The renderer never receives layout coordinates from the engine; it
+   * receives this raw vector and the worker projects it. Absent on nodes lacking
+   * an embedding (drawn in a connectivity-fallback position).
+   */
+  embedding?: number[];
   /** Optional warm-start seed only; the renderer owns positions (RL-1). */
   seedPosition?: { x: number; y: number };
 }
@@ -78,6 +97,14 @@ export interface SceneEdgeData {
    * ribbon's thickness is the count, the breakdown unfolds on hover.
    */
   meta?: { count: number; breakdownByTier: Record<string, number> };
+  /**
+   * Pipeline-derivation relation label (graph-node-semantics ADR), carried
+   * ALONGSIDE the inference `tier`. Drives the lineage layout's derivation axis
+   * (research -> adr -> plan -> exec -> audit -> rule) and the lineage edge
+   * treatment. Absent on edges without a framework-derivation meaning (e.g. a
+   * raw semantic similarity). Not part of the edge identity.
+   */
+  derivation?: string;
 }
 
 /**
