@@ -107,11 +107,11 @@ Persist the workspace registry in the vaultspec-session orchestration crate: an 
 
 <!-- One-line headline summary plan. -->
 
-- [ ] `P01.S01` - Define the WorkspaceRoot record and registry schema (stable id from git common dir, label, path, reachability); `engine/crates/vaultspec-session/src/schema.rs`.
-- [ ] `P01.S02` - Implement the durable workspace-registry table with best-effort open-or-heal in the user-state store; `engine/crates/vaultspec-session/src/store.rs`.
-- [ ] `P01.S03` - Auto-register the launch workspace as the first root on first run; `engine/crates/vaultspec-session/src/lib.rs`.
-- [ ] `P01.S04` - Implement read-only add, forget, and select-active registry operations that never mutate a repository; `engine/crates/vaultspec-session/src/session.rs`.
-- [ ] `P01.S05` - Roundtrip-test registry persistence and corrupt-store recreation; `engine/crates/vaultspec-session/tests/`.
+- [x] `P01.S01` - Define the WorkspaceRoot record and registry schema (stable id from git common dir, label, path, reachability); `engine/crates/vaultspec-session/src/schema.rs`.
+- [x] `P01.S02` - Implement the durable workspace-registry table with best-effort open-or-heal in the user-state store; `engine/crates/vaultspec-session/src/store.rs`.
+- [x] `P01.S03` - Auto-register the launch workspace as the first root on first run; `engine/crates/vaultspec-session/src/lib.rs`.
+- [x] `P01.S04` - Implement read-only add, forget, and select-active registry operations that never mutate a repository; `engine/crates/vaultspec-session/src/session.rs`.
+- [x] `P01.S05` - Roundtrip-test registry persistence and corrupt-store recreation; `engine/crates/vaultspec-session/tests/`.
 
 ### Phase `P02` - Wire surface
 

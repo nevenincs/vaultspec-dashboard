@@ -247,6 +247,34 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
         let _ = us.set_active_scope(&workspace_key, &active_token, app::now_ms());
     }
 
+    // Auto-register the launch workspace as the first registry root
+    // (dashboard-workspace-registry ADR, P01.S03), so the single-project
+    // experience is unchanged. The stable workspace id is the canonical git
+    // common dir (the same identity-bearing derivation the rest of the contract
+    // uses), discovered READ-ONLY from the launch root; the label defaults to the
+    // launch root's final path component, the path is the launch token. This
+    // RECORDS the launch root only; it never mutates the repository. Best-effort:
+    // a discovery or store failure degrades to "no registry seeded" and the rail
+    // renders the launch workspace as the header fallback. The active workspace
+    // is seeded to the launch root when none is selected yet.
+    {
+        let workspace_id = ingest_git::workspace::Workspace::discover(&state.workspace_root)
+            .ok()
+            .map(|ws| routes::scope_token(&ws.common_dir));
+        if let Some(workspace_id) = workspace_id {
+            let label = state
+                .workspace_root
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| launch_token.clone());
+            let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = us.auto_register_launch(&workspace_id, &label, &launch_token, app::now_ms());
+            if us.active_workspace().ok().flatten().is_none() {
+                let _ = us.set_active_workspace(&workspace_id, app::now_ms());
+            }
+        }
+    }
+
     // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
     // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
     // port before discovery is written. service.json then advertises the real

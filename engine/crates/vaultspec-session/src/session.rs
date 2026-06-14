@@ -9,12 +9,22 @@
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::schema::GLOBAL_SCOPE;
+use crate::schema::{ACTIVE_WORKSPACE_KEY, GLOBAL_SCOPE, WorkspaceRoot};
 use crate::store::{Result, Store};
 
 /// How many recent selections are retained per workspace; older entries past
 /// this bound are dropped on write.
 pub const MAX_RECENTS: usize = 50;
+
+/// The error a read-only registry mutation returns when the operator's action
+/// is refused (the launch workspace cannot be forgotten while it is the only
+/// root). This is a CONFIG-level refusal, never a disk operation — `forget`
+/// removes a registry row and never touches the repository on disk.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RegistryError {
+    #[error("the launch workspace cannot be forgotten while it is the only registered root")]
+    LastLaunchRoot,
+}
 
 /// A scope's "current folder and its contexts": the active vault folder plus
 /// the feature-tag contexts scoped to it. Built on the existing `feature_tags`
@@ -134,6 +144,157 @@ impl Store {
         }
         Ok(out)
     }
+
+    // --- workspace registry (dashboard-workspace-registry ADR) --------------
+    //
+    // The ordered set of registered project roots. Registering, selecting, and
+    // forgetting are all USER-STATE CONFIG: they write only registry/settings
+    // rows in this best-effort store and NEVER clone, init, create, delete, or
+    // otherwise mutate a repository, a worktree, a branch, or any file on disk.
+    // Each registered root is READ exactly as the launch workspace is.
+
+    /// List the registered project roots in their stable registry order
+    /// (position ascending, the order they were added). A fresh or
+    /// best-effort-recreated store returns an empty list; the launch workspace
+    /// is re-auto-registered on the next boot (S03).
+    pub fn list_roots(&self) -> Result<Vec<WorkspaceRoot>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT id, label, path, is_launch, reachable, unreachable_reason
+             FROM workspace_registry
+             ORDER BY position ASC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(WorkspaceRoot {
+                id: r.get(0)?,
+                label: r.get(1)?,
+                path: r.get(2)?,
+                is_launch: r.get::<_, i64>(3)? != 0,
+                reachable: r.get::<_, i64>(4)? != 0,
+                unreachable_reason: r.get(5)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// One registered root by its stable id, if present.
+    pub fn root(&self, id: &str) -> Result<Option<WorkspaceRoot>> {
+        Ok(self.list_roots()?.into_iter().find(|r| r.id == id))
+    }
+
+    /// Register (upsert) a project root, appending it at the end of the registry
+    /// order on first registration and refreshing its label / path /
+    /// reachability on a repeat. This is a CONFIG write only: the caller has
+    /// already validated (read-only) that the path is a discoverable git
+    /// workspace and derived the stable id from its git common dir; this method
+    /// just RECORDS the entry. It never touches the repository on disk.
+    ///
+    /// `is_launch` marks the auto-registered launch workspace (advisory). A
+    /// repeat registration preserves the existing row's position so the order is
+    /// stable across reboots.
+    pub fn add_root(&self, root: &WorkspaceRoot, now: i64) -> Result<()> {
+        // Preserve an existing row's position; a new root appends after the max.
+        let existing_position: Option<i64> = self
+            .conn()
+            .query_row(
+                "SELECT position FROM workspace_registry WHERE id = ?1",
+                params![root.id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let position = match existing_position {
+            Some(p) => p,
+            None => {
+                let max: Option<i64> = self
+                    .conn()
+                    .query_row("SELECT max(position) FROM workspace_registry", [], |r| {
+                        r.get(0)
+                    })
+                    .optional()?
+                    .flatten();
+                max.map(|m| m + 1).unwrap_or(0)
+            }
+        };
+        self.conn().execute(
+            "INSERT INTO workspace_registry
+                 (id, label, path, is_launch, position, reachable, unreachable_reason, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                 label = ?2,
+                 path = ?3,
+                 is_launch = ?4,
+                 reachable = ?6,
+                 unreachable_reason = ?7,
+                 updated_at = ?8",
+            params![
+                root.id,
+                root.label,
+                root.path,
+                root.is_launch as i64,
+                position,
+                root.reachable as i64,
+                root.unreachable_reason,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Update one registered root's reachability state (and its degradation
+    /// reason). A no-op when the id is unknown. Pure config write — used by the
+    /// registry-enumeration path to record a root that has moved or disappeared
+    /// on disk as degraded rather than dropping it.
+    pub fn set_root_reachability(
+        &self,
+        id: &str,
+        reachable: bool,
+        reason: Option<&str>,
+        now: i64,
+    ) -> Result<()> {
+        self.conn().execute(
+            "UPDATE workspace_registry
+             SET reachable = ?2, unreachable_reason = ?3, updated_at = ?4
+             WHERE id = ?1",
+            params![id, reachable as i64, reason, now],
+        )?;
+        Ok(())
+    }
+
+    /// Forget (remove) a registered root by its stable id. A CONFIG DELETE only:
+    /// it removes the registry row and NEVER touches the repository on disk. The
+    /// launch workspace cannot be forgotten while it is the only registered root
+    /// (a refusal, not a disk operation); forgetting any other root, or the
+    /// launch root once siblings exist, is permitted. The caller is responsible
+    /// for evicting any warm scope cells the forgotten root owned.
+    pub fn forget_root(&self, id: &str) -> Result<std::result::Result<(), RegistryError>> {
+        let roots = self.list_roots()?;
+        let Some(target) = roots.iter().find(|r| r.id == id) else {
+            // Forgetting an unknown id is a harmless no-op (already gone).
+            return Ok(Ok(()));
+        };
+        if target.is_launch && roots.len() == 1 {
+            return Ok(Err(RegistryError::LastLaunchRoot));
+        }
+        self.conn()
+            .execute("DELETE FROM workspace_registry WHERE id = ?1", params![id])?;
+        Ok(Ok(()))
+    }
+
+    /// The active workspace id, if one has been selected. Persisted on the
+    /// existing global-settings kv surface under [`ACTIVE_WORKSPACE_KEY`].
+    pub fn active_workspace(&self) -> Result<Option<String>> {
+        self.global_setting(ACTIVE_WORKSPACE_KEY)
+    }
+
+    /// Select the active workspace (a config write to the global-settings
+    /// surface). Selecting a workspace never mutates a repository; it records
+    /// which registered root the dashboard is currently pointed at.
+    pub fn set_active_workspace(&self, id: &str, now: i64) -> Result<()> {
+        self.set_global_setting(ACTIVE_WORKSPACE_KEY, id, now)
+    }
 }
 
 #[cfg(test)]
@@ -203,5 +364,123 @@ mod tests {
         assert_eq!(recents.len(), MAX_RECENTS);
         // The most recent push is at the front.
         assert_eq!(recents[0], format!("v{}", MAX_RECENTS + 9));
+    }
+
+    fn root(id: &str, label: &str, path: &str, is_launch: bool) -> WorkspaceRoot {
+        WorkspaceRoot {
+            id: id.to_string(),
+            label: label.to_string(),
+            path: path.to_string(),
+            is_launch,
+            reachable: true,
+            unreachable_reason: None,
+        }
+    }
+
+    #[test]
+    fn registry_roots_preserve_insertion_order_and_upsert_in_place() {
+        let (_dir, store) = temp_store();
+        assert!(
+            store.list_roots().unwrap().is_empty(),
+            "fresh registry empty"
+        );
+
+        store
+            .add_root(&root("id-a", "alpha", "/ws/a", true), 1)
+            .unwrap();
+        store
+            .add_root(&root("id-b", "beta", "/ws/b", false), 2)
+            .unwrap();
+        store
+            .add_root(&root("id-c", "gamma", "/ws/c", false), 3)
+            .unwrap();
+        let ids: Vec<String> = store
+            .list_roots()
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["id-a", "id-b", "id-c"],
+            "insertion order is stable"
+        );
+
+        // Re-adding an existing root updates its label IN PLACE, keeping its
+        // position — the order does not reshuffle on a repeat registration.
+        store
+            .add_root(&root("id-a", "alpha-renamed", "/ws/a", true), 4)
+            .unwrap();
+        let roots = store.list_roots().unwrap();
+        assert_eq!(
+            roots.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
+            vec!["id-a", "id-b", "id-c"],
+            "upsert keeps position"
+        );
+        assert_eq!(roots[0].label, "alpha-renamed", "label updated in place");
+    }
+
+    #[test]
+    fn registry_reachability_round_trips() {
+        let (_dir, store) = temp_store();
+        store
+            .add_root(&root("id-a", "alpha", "/ws/a", true), 1)
+            .unwrap();
+        store
+            .set_root_reachability("id-a", false, Some("path unreachable"), 2)
+            .unwrap();
+        let r = store.root("id-a").unwrap().expect("present");
+        assert!(!r.reachable);
+        assert_eq!(r.unreachable_reason.as_deref(), Some("path unreachable"));
+        // Recovering clears the reason.
+        store.set_root_reachability("id-a", true, None, 3).unwrap();
+        let r = store.root("id-a").unwrap().expect("present");
+        assert!(r.reachable);
+        assert_eq!(r.unreachable_reason, None);
+    }
+
+    #[test]
+    fn forget_removes_a_sibling_but_refuses_the_last_launch_root() {
+        let (_dir, store) = temp_store();
+        store
+            .add_root(&root("launch", "launch", "/ws/launch", true), 1)
+            .unwrap();
+
+        // The launch workspace cannot be forgotten while it is the ONLY root —
+        // a config refusal, never a disk operation.
+        assert_eq!(
+            store.forget_root("launch").unwrap(),
+            Err(RegistryError::LastLaunchRoot)
+        );
+        assert_eq!(store.list_roots().unwrap().len(), 1, "still registered");
+
+        // Once a sibling exists, forgetting a sibling — or the launch root — is
+        // permitted; it removes only the registry row.
+        store
+            .add_root(&root("other", "other", "/ws/other", false), 2)
+            .unwrap();
+        assert_eq!(store.forget_root("other").unwrap(), Ok(()));
+        assert_eq!(
+            store
+                .list_roots()
+                .unwrap()
+                .into_iter()
+                .map(|r| r.id)
+                .collect::<Vec<_>>(),
+            vec!["launch"],
+            "sibling forgotten, launch remains"
+        );
+        // Forgetting an unknown id is a harmless no-op.
+        assert_eq!(store.forget_root("nope").unwrap(), Ok(()));
+    }
+
+    #[test]
+    fn active_workspace_round_trips_and_defaults_to_none() {
+        let (_dir, store) = temp_store();
+        assert_eq!(store.active_workspace().unwrap(), None);
+        store.set_active_workspace("id-a", 1).unwrap();
+        assert_eq!(store.active_workspace().unwrap().as_deref(), Some("id-a"));
+        store.set_active_workspace("id-b", 2).unwrap();
+        assert_eq!(store.active_workspace().unwrap().as_deref(), Some("id-b"));
     }
 }

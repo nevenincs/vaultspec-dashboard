@@ -165,4 +165,26 @@ mod tests {
             .unwrap();
         assert_eq!(count, 0);
     }
+
+    #[test]
+    fn heal_recreates_the_workspace_registry_table_too() {
+        // The durable workspace registry (dashboard-workspace-registry ADR)
+        // rides the SAME best-effort store: a corrupt file is recreated empty,
+        // and the recreated store carries an empty, queryable
+        // `workspace_registry` table. There is nothing precious to safeguard, so
+        // a corrupt registry resets to "no roots yet" (the launch workspace is
+        // re-auto-registered on the next boot, S03).
+        let dir = tempfile::tempdir().unwrap();
+        let vault_root = dir.path().join(".vault");
+        let path = db_path(&vault_root);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"not a sqlite db\n").unwrap();
+
+        let store = Store::open_or_heal(&vault_root).expect("corrupt store self-heals");
+        let count: i64 = store
+            .conn()
+            .query_row("SELECT count(*) FROM workspace_registry", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "recreated registry starts empty");
+    }
 }

@@ -43,7 +43,8 @@ pub mod session;
 pub mod settings;
 pub mod store;
 
-pub use session::{MAX_RECENTS, ScopeContext};
+pub use schema::WorkspaceRoot;
+pub use session::{MAX_RECENTS, RegistryError, ScopeContext};
 pub use settings::Setting;
 pub use store::{Result, Store, StoreError};
 
@@ -110,6 +111,89 @@ impl UserState {
     /// The workspace recents, most-recent-first.
     pub fn recents(&self, workspace: &str) -> Result<Vec<String>> {
         self.store.recents(workspace)
+    }
+
+    // --- workspace-registry convenience delegators --------------------------
+    //
+    // The registry of WHICH project roots exist (dashboard-workspace-registry
+    // ADR). All read-only over repository content: registering, selecting, and
+    // forgetting write only config rows in this best-effort store.
+
+    /// List the registered project roots in their stable registry order.
+    pub fn list_roots(&self) -> Result<Vec<WorkspaceRoot>> {
+        self.store.list_roots()
+    }
+
+    /// One registered root by its stable id, if present.
+    pub fn root(&self, id: &str) -> Result<Option<WorkspaceRoot>> {
+        self.store.root(id)
+    }
+
+    /// Register (upsert) a project root. CONFIG write only — never mutates a
+    /// repository.
+    pub fn add_root(&self, root: &WorkspaceRoot, now: i64) -> Result<()> {
+        self.store.add_root(root, now)
+    }
+
+    /// Auto-register the launch workspace as the FIRST root on first run
+    /// (dashboard-workspace-registry ADR, S03), so the single-project experience
+    /// is unchanged: a fresh (or best-effort-recreated) registry seeds the
+    /// launch workspace as the launch-default root, and a registry that already
+    /// holds the launch id is left untouched (idempotent — a reboot does not
+    /// re-seed or reorder).
+    ///
+    /// The caller derives the stable `id` from the discovered git common dir and
+    /// the canonical `path`/`label` (the session crate stays git-free under the
+    /// read-and-infer fence). This RECORDS the launch root only; it never mutates
+    /// the repository. Returns the launch root (whether freshly seeded or
+    /// already present).
+    pub fn auto_register_launch(
+        &self,
+        id: &str,
+        label: &str,
+        path: &str,
+        now: i64,
+    ) -> Result<WorkspaceRoot> {
+        if let Some(existing) = self.store.root(id)? {
+            return Ok(existing);
+        }
+        let launch = WorkspaceRoot {
+            id: id.to_string(),
+            label: label.to_string(),
+            path: path.to_string(),
+            is_launch: true,
+            reachable: true,
+            unreachable_reason: None,
+        };
+        self.store.add_root(&launch, now)?;
+        Ok(launch)
+    }
+
+    /// Update a root's last-seen reachability state and degradation reason.
+    pub fn set_root_reachability(
+        &self,
+        id: &str,
+        reachable: bool,
+        reason: Option<&str>,
+        now: i64,
+    ) -> Result<()> {
+        self.store.set_root_reachability(id, reachable, reason, now)
+    }
+
+    /// Forget a registered root. CONFIG delete only — never touches disk; the
+    /// last launch root is refused.
+    pub fn forget_root(&self, id: &str) -> Result<std::result::Result<(), RegistryError>> {
+        self.store.forget_root(id)
+    }
+
+    /// The active workspace id, if one has been selected.
+    pub fn active_workspace(&self) -> Result<Option<String>> {
+        self.store.active_workspace()
+    }
+
+    /// Select the active workspace (config write).
+    pub fn set_active_workspace(&self, id: &str, now: i64) -> Result<()> {
+        self.store.set_active_workspace(id, now)
     }
 
     // --- settings convenience delegators ------------------------------------
