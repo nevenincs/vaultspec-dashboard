@@ -121,3 +121,39 @@ touched specs pass; eslint, tsc, and prettier are clean on every touched file.
   descent but the live graph-slice query had no stores-side availability selector
   (only the vault-tree did); this step added the parallel `GraphSliceAvailability`
   selector so the affordance reads derived truth, matching the sidebar's pattern.
+
+### Revision 1 (design-review PASS-WITH-REVISIONS, one HIGH + one recommended)
+
+- HIGH — roving Tab-stop dead state. The active roving member (`activeRove`) was
+  not reconciled when its control became disabled: focusing the `feat`/`docs`
+  segment then engaging time-travel left `tabIndex 0` on a now-disabled segment,
+  removing it from the tab order and leaving the rail with ZERO reachable Tab
+  stops until a click. Fixed with a reconciliation `useEffect` keyed on the
+  disabling conditions (`timeTravelling`, `isFullscreen`, `activeRove`): when no
+  enabled roving control holds the Tab stop, the active member snaps back to
+  index 0 (zoom-out, always live). A render test focuses `docs`, flips to
+  time-travel, and asserts the disabled segment drops the Tab stop while exactly
+  one enabled control (zoom-out) carries `tabIndex 0` — a Tab stop always
+  survives.
+- Recommended — the descent's degraded reason was exposed only via the
+  mouse-only group `title`. Added a visually-quiet `role=status` /
+  `aria-live=polite` region (`#nav-granularity-status`) the group's
+  `aria-describedby` points at, carrying the degraded reason, the time-travel
+  lock, and the loading state in copy tone — consistent with the camera level's
+  `role=status`. Two render tests assert the non-visual announcement for the
+  degraded-reason and time-travel cases.
+- Recommended — confirmed (no change): `ICON_PX = 13` is the intentional
+  attenuated chrome size (below the iconography ADR's 14px domain-mark gate,
+  matching SearchTab's 13px chrome). The marks render in `text-ink-faint`
+  `currentColor`, which clears the iconography ADR's >=3:1 non-text floor in every
+  theme per the styles.css contrast proof (ink-faint/paper 4.13 light / 3.89 dark
+  / 8.18 HC), and the simple Lucide chrome silhouettes (minus / plus / rotate /
+  maximize) stay squint-distinct at 13px on the warm ground.
+- Cleared items left untouched: instant keyboard camera actions, the stores
+  availability selector + tiers-seam degradation, ARIA toolbar / aria-pressed /
+  non-color state, token discipline.
+- Gate after revision: eslint + prettier + tsc clean on every touched file (the
+  full `just dev lint frontend` remains RED only on concurrent agents' P08
+  `SearchTab.tsx` mid-refactor — `registerRow`/`moveFocus` rename — outside this
+  step's scope); stage + queries suites green (77 tests, incl. the 25 NavToolbar
+  cases).

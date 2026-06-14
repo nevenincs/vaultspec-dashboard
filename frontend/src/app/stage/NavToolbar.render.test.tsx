@@ -20,7 +20,14 @@
 //     not an error, with the engine's reason in copy tone.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -178,6 +185,63 @@ describe("NavToolbar surface + a11y + states (S22)", () => {
     expect(
       members.every((b) => b.textContent !== "feat" && b.textContent !== "docs"),
     ).toBe(true);
+  });
+
+  it("reconciles the Tab stop when the active control is disabled mid-session (no dead state)", () => {
+    // Design-review HIGH: focusing the granularity segment makes it the active
+    // roving member (activeRove=5); engaging time-travel then disables it. Without
+    // reconciliation its tabIndex=0 would land on an untabbable button and the rail
+    // would lose its only Tab stop. Assert the entry snaps back to an enabled
+    // control so exactly one ENABLED roving member carries tabIndex 0.
+    renderToolbar();
+    const docs = screen.getByRole("button", { name: "docs" });
+    // Focus the descent segment so it becomes the active roving member.
+    act(() => {
+      docs.focus();
+    });
+    expect((docs as HTMLButtonElement).tabIndex).toBe(0);
+    // Engage time-travel — the segment becomes disabled.
+    act(() => {
+      useViewStore.getState().setTimelineMode({ kind: "time-travel", at: 7 });
+    });
+    // The now-disabled segment must NOT hold the Tab stop.
+    const disabledDocs = screen.getByRole("button", { name: "docs" });
+    expect(disabledDocs).toHaveProperty("disabled", true);
+    expect((disabledDocs as HTMLButtonElement).tabIndex).toBe(-1);
+    // Exactly one ENABLED roving control carries tabIndex 0 — a Tab stop survives.
+    const enabledEntries = roveMembers().filter((b) => b.tabIndex === 0);
+    expect(enabledEntries).toHaveLength(1);
+    expect(enabledEntries[0].getAttribute("aria-label")).toBe("zoom out");
+  });
+
+  it("announces the descent status non-visually via a role=status region (aria-describedby)", async () => {
+    const mock = new MockEngine();
+    mock.degrade("semantic", "rag service down");
+    engineClient.useTransport(mock.fetchImpl);
+    renderToolbar();
+    await waitFor(() => {
+      const status = document.querySelector("[data-nav-granularity-status]");
+      expect(status?.getAttribute("role")).toBe("status");
+      expect(status?.textContent).toMatch(/rag service down/);
+    });
+    // The group points at the status region so the reason is announced, not
+    // exposed by the mouse-only title alone.
+    const group = document.querySelector("[data-nav-granularity]");
+    expect(group?.getAttribute("aria-describedby")).toBe("nav-granularity-status");
+    const status = document.querySelector("[data-nav-granularity-status]");
+    expect(status?.getAttribute("id")).toBe("nav-granularity-status");
+  });
+
+  it("announces the time-travel lock non-visually on the descent status region", () => {
+    useViewStore.getState().setTimelineMode({ kind: "time-travel", at: 1 });
+    renderToolbar();
+    const status = document.querySelector("[data-nav-granularity-status]");
+    expect(status?.textContent).toMatch(/while time travelling/i);
+    expect(
+      document
+        .querySelector("[data-nav-granularity]")
+        ?.getAttribute("aria-describedby"),
+    ).toBe("nav-granularity-status");
   });
 
   it("paints a quiet designed degraded affordance on the descent, with the engine reason", async () => {

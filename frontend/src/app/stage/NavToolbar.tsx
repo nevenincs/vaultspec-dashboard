@@ -170,6 +170,19 @@ export function NavToolbar({
   const descentBusy = sliceAvailability.loading;
   const descentDegraded = sliceAvailability.degraded;
   const descentReason = Object.values(sliceAvailability.reasons)[0];
+  // The descent's status, surfaced NON-visually too (design-review recommended):
+  // the `title` is mouse-only, so this string also drives a quiet role=status /
+  // aria-live region the group's aria-describedby points at, consistent with the
+  // camera level's role=status. Empty when the descent is nominal (no status).
+  const descentStatus = timeTravelling
+    ? "granularity is fixed while time travelling — the timeline owns the scene"
+    : descentDegraded
+      ? `some of the graph is unavailable right now${
+          descentReason ? ` — ${descentReason}` : ""
+        }`
+      : descentBusy
+        ? "loading the graph slice…"
+        : "";
 
   // Track OS-level fullscreen state via the document event.
   useEffect(() => {
@@ -215,9 +228,31 @@ export function NavToolbar({
   }, []);
 
   // The active roving member carries tabIndex 0; the rest carry -1 so the whole
-  // rail is one Tab-stop. We track which control is "active" by focus; the first
-  // enabled control is the default Tab entry.
+  // rail is one Tab-stop. We track which control is "active" by the per-control
+  // roving INDEX (0..7), not by DOM position, so the tabIndex assignment is
+  // stable as members enable/disable. Index 0 (zoom-out) is always enabled and
+  // is the default Tab entry.
   const [activeRove, setActiveRove] = useState(0);
+
+  // Reconcile the active member when its control becomes disabled (design-review
+  // HIGH): if `activeRove` points at a control that is now disabled (e.g. the
+  // granularity segments under time-travel), its tabIndex=0 would land on an
+  // untabbable button and the whole rail would lose its only Tab stop until the
+  // user clicks. Whenever a disabling condition flips, snap the active member
+  // back to the first ENABLED roving control (index 0, zoom-out, always live).
+  // Keyed on every condition that can disable a roving control. We compare the
+  // DOM's enabled set against the rendered control at `activeRove`: the
+  // disabled-segment indices drop out of `rovingButtons`, so if the active index
+  // has no enabled DOM control we reset.
+  useEffect(() => {
+    const enabled = rovingButtons(toolbarRef.current);
+    // The control at `activeRove` is reachable iff some enabled roving button
+    // carries tabIndex 0 (its assignment below). If none does, the active member
+    // is disabled — reset to the always-enabled first control.
+    const hasEntry = enabled.some((b) => b.tabIndex === 0);
+    if (!hasEntry) setActiveRove(0);
+  }, [timeTravelling, isFullscreen, activeRove]);
+
   // Roving props for the raw granularity buttons (which are not ToolButtons and
   // need the data attribute + handlers spread directly).
   const roveProps = (index: number) => ({
@@ -317,14 +352,10 @@ export function NavToolbar({
         role="group"
         aria-label="graph granularity"
         aria-disabled={timeTravelling || undefined}
+        aria-describedby={descentStatus ? "nav-granularity-status" : undefined}
         title={
-          timeTravelling
-            ? "granularity is fixed while time travelling — the timeline owns the scene"
-            : descentDegraded
-              ? `some of the graph is unavailable right now${
-                  descentReason ? ` — ${descentReason}` : ""
-                }`
-              : "Switch between the feature constellation overview and the bounded full document graph"
+          descentStatus ||
+          "Switch between the feature constellation overview and the bounded full document graph"
         }
         data-nav-granularity
       >
@@ -360,6 +391,21 @@ export function NavToolbar({
           docs
         </button>
       </div>
+
+      {/* The descent's status as a designed NON-visual state (design-review
+          recommended): a quiet role=status / aria-live region the group's
+          aria-describedby points at, so the degraded reason and the time-travel
+          lock are announced to assistive tech, not exposed by the mouse-only
+          title alone. Mirrors the camera level receipt's role=status. */}
+      <span
+        id="nav-granularity-status"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        data-nav-granularity-status
+      >
+        {descentStatus}
+      </span>
 
       <span className="mx-vs-0-5 h-3.5 w-px bg-rule" aria-hidden />
 
