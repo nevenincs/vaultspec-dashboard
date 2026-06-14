@@ -102,16 +102,23 @@ function useRestoreSessionScope(): void {
   const map = useWorkspaceMap();
   const session = useSession();
   const putSession = usePutSession();
+  // Explicit one-shot latch: the cold-start default is persisted at most once
+  // per mount, independent of the mutation object's per-render identity. The
+  // `!isIdle`/`persisted` guards still hold, but the ref makes the intent
+  // explicit rather than relying on mutation state for re-entry safety.
+  const attemptedRef = useRef(false);
 
   const persisted = session.data?.active_scope || null;
   const fallback = mapDefaultScope(map);
 
   useEffect(() => {
+    if (attemptedRef.current) return;
     if (picked) return;
     if (!session.isSuccess) return;
     if (persisted) return;
     if (!fallback) return;
     if (!putSession.isIdle) return;
+    attemptedRef.current = true;
     putSession.mutate({ active_scope: fallback });
   }, [picked, session.isSuccess, persisted, fallback, putSession]);
 }
