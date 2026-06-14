@@ -188,22 +188,42 @@ describe("deriveDiscoverView (canvas-controls discover, contract §4)", () => {
 });
 
 describe("engineKeys", () => {
-  it("keys graph slices by the (scope, filter, as-of, granularity) tuple", () => {
+  it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus) tuple", () => {
     const a = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
     const b = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
     const c = engineKeys.graph("wt-2", { tiers: { semantic: false } }, 123);
     const d = engineKeys.graph("wt-1", { tiers: { semantic: false } });
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    // Defaults: as-of "live", granularity "document" (the engine's default).
-    expect(d[d.length - 2]).toBe("live");
-    expect(d[d.length - 1]).toBe("document");
+    // Defaults (key tail is [..., asOf, granularity, lens, focus]): as-of "live",
+    // granularity "document", lens "status", focus "none" (the engine's defaults).
+    expect(d[d.length - 4]).toBe("live");
+    expect(d[d.length - 3]).toBe("document");
+    expect(d[d.length - 2]).toBe("status");
+    expect(d[d.length - 1]).toBe("none");
     // Granularity is part of the cache identity: the constellation (feature)
     // and a document slice never collide in cache.
     const feature = engineKeys.graph("wt-1", undefined, undefined, "feature");
     const document = engineKeys.graph("wt-1", undefined, undefined, "document");
     expect(feature).not.toEqual(document);
-    expect(feature[feature.length - 1]).toBe("feature");
+    expect(feature[feature.length - 3]).toBe("feature");
+    // Lens and focus are part of the cache identity (graph-node-salience): two
+    // lenses or two focuses never collide in cache.
+    const statusLens = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+    );
+    const designLens = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "design",
+    );
+    expect(statusLens).not.toEqual(designLens);
   });
 });
 

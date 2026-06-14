@@ -124,6 +124,28 @@ until implementation.
     bounding is client-side (the engine holds no layout coordinates — the
     graph-compute-is-CPU / GPU-is-render boundary), so the engine's region
     primitive is the feature/kind/text filter, not pixel coordinates.
+  - **Node salience (amendment 2026-06-14, graph-node-salience ADR):** the body
+    accepts a `lens` request parameter (`status` | `design`, **defaulting to
+    `status` when omitted**) and an optional `focus` node id. Every served
+    document node carries a single active-lens `salience` float in `[0,1]` — the
+    engine-computed, CPU-bound, per-lens Degree-of-Interest scalar
+    (`interest = a-priori-importance - distance-from-focus`) over the bounded
+    subgraph, computed from a tier-weighted backbone (declared+structural),
+    Personalized PageRank, Brandes betweenness, k-core coreness, recency,
+    lifecycle, and structural role. It is a **single float for the requested
+    lens**, never a per-lens map, because DOI makes the served node *set*
+    lens-dependent: `MAX_GRAPH_NODES` truncation selects the **top-DOI nodes for
+    the active lens and focus** (the document nodes are served ordered by
+    descending salience). The response echoes the active `lens` and a
+    `salience_partial` boolean — true when the salience was computed while a
+    relevant tier was degraded (a backbone tier for any lens, or the temporal tier
+    for the status lens's recency/burst), read from the `tiers` block, never
+    guessed. The `lens` parameter is accepted on `/graph/asof`, `/graph/diff`, and
+    `/nodes/{id}/neighbors` too (the neighbors route folds the ego center as the
+    DOI focus). Switching lens is a **re-query issued by the stores layer**, which
+    owns the active-lens view state; the lens basis is precomputed once per graph
+    generation and shared across lenses, so a no-focus lens switch is a warm-cache
+    re-query and only the focus-folded final score is computed on demand.
 - `GET /filters?scope=` — enumerates the legal filter vocabulary actually
   present (relation types, tiers, doc types, feature tags, node kinds,
   date bounds, refs). The filter UI is data-driven; nothing hardcoded.

@@ -326,6 +326,84 @@ describe("adaptGraphSlice ontology fields (graph-node-semantics)", () => {
   });
 });
 
+describe("adaptGraphSlice salience conformance (live sample, graph-node-salience W04.P10.S43)", () => {
+  // A sample CAPTURED from the live `vaultspec serve` `/graph/query` document
+  // response under the graph-node-salience wire amendment: the `{data, tiers}`
+  // envelope carrying the single active-lens `salience` float on each document
+  // node, the active `lens` echo, `salience_partial`, and the bounded-query
+  // metadata. Feeding it through the SAME client path the app uses
+  // (unwrapEnvelope -> adaptGraphSlice) and asserting salience fidelity is the
+  // mock-mirrors-live-wire-shape verification for the salience field.
+  const liveSalienceEnvelope = {
+    data: {
+      nodes: [
+        // The live wire serves document nodes ORDERED by descending salience for
+        // the active lens (status default), each carrying a single salience float.
+        {
+          id: "doc:2026-06-14-x-plan",
+          kind: "document",
+          doc_type: "plan",
+          feature_tags: ["x"],
+          salience: 0.91,
+          degree_by_tier: { declared: 1, structural: 2, temporal: 0, semantic: 0 },
+        },
+        {
+          id: "doc:2026-06-14-x-adr",
+          kind: "document",
+          doc_type: "adr",
+          feature_tags: ["x"],
+          salience: 0.54,
+          degree_by_tier: { declared: 1, structural: 1, temporal: 0, semantic: 0 },
+        },
+      ],
+      edges: [],
+      meta_edges: [],
+      filter: {},
+      as_of: null,
+      last_seq: 12,
+      truncated: null,
+      lens: "status",
+      salience_partial: false,
+    },
+    tiers: TIERS,
+  };
+
+  it("preserves the active-lens salience float through the live client path", () => {
+    const slice = adaptGraphSlice(unwrapEnvelope(liveSalienceEnvelope));
+    // The active lens defaults to status on the live wire, surfaced verbatim.
+    expect(slice.lens).toBe("status");
+    expect(slice.salience_partial).toBe(false);
+    // Each document node carries its single active-lens salience float, fidelity
+    // preserved (not dropped, not re-derived).
+    expect(slice.nodes).toHaveLength(2);
+    expect(slice.nodes[0].salience).toBe(0.91);
+    expect(slice.nodes[1].salience).toBe(0.54);
+    // The wire order (descending salience) is preserved: the top-DOI node leads.
+    expect(slice.nodes[0].id).toBe("doc:2026-06-14-x-plan");
+    expect((slice.nodes[0].salience ?? 0) > (slice.nodes[1].salience ?? 0)).toBe(true);
+    // The tiers block rides through for the degradation read.
+    expect(slice.tiers.semantic.available).toBe(false);
+  });
+
+  it("surfaces salience_partial when the live sample flags a degraded ranking", () => {
+    const partialEnvelope = {
+      data: {
+        ...liveSalienceEnvelope.data,
+        lens: "design",
+        salience_partial: true,
+      },
+      tiers: {
+        ...TIERS,
+        declared: { available: false, reason: "core graph unavailable" },
+      },
+    };
+    const slice = adaptGraphSlice(unwrapEnvelope(partialEnvelope));
+    expect(slice.lens).toBe("design");
+    expect(slice.salience_partial).toBe(true);
+    expect(slice.tiers.declared.available).toBe(false);
+  });
+});
+
 describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
   it("unwraps the live nested rag envelope and preserves the engine node-id annotation", () => {
     // The live `/search` forwards rag's envelope verbatim

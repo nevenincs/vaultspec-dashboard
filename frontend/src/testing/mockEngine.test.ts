@@ -67,6 +67,58 @@ describe("MockEngine routes", () => {
     expect(slice.edges.every((e) => e.meta === undefined)).toBe(true);
   });
 
+  it("emits the active-lens salience + lens echo on document nodes (graph-node-salience parity)", async () => {
+    const mock = new MockEngine();
+    const c = client(mock);
+    // Omitted lens defaults to status — byte-for-byte the live wire.
+    const slice = await c.graphQuery({ scope: "wt-main" });
+    expect(slice.lens).toBe("status");
+    expect(slice.salience_partial).toBe(false);
+    // Every document node carries a single active-lens salience float in [0,1].
+    expect(slice.nodes.length).toBeGreaterThan(0);
+    for (const node of slice.nodes) {
+      expect(typeof node.salience).toBe("number");
+      expect(node.salience).toBeGreaterThanOrEqual(0);
+      expect(node.salience).toBeLessThanOrEqual(1);
+    }
+    // Nodes are served ordered by descending salience (the top-DOI node leads),
+    // so a truncation keeps the top-salience nodes for the active lens.
+    for (let i = 1; i < slice.nodes.length; i++) {
+      expect(slice.nodes[i - 1].salience ?? 0).toBeGreaterThanOrEqual(
+        slice.nodes[i].salience ?? 0,
+      );
+    }
+  });
+
+  it("the two lenses order the same document set differently (parity with live)", async () => {
+    const mock = new MockEngine();
+    const c = client(mock);
+    const status = await c.graphQuery({ scope: "wt-main", lens: "status" });
+    const design = await c.graphQuery({ scope: "wt-main", lens: "design" });
+    expect(status.lens).toBe("status");
+    expect(design.lens).toBe("design");
+    // Same node set, two orderings (the lens is intent-driven importance).
+    const ids = (s: typeof status) => s.nodes.map((n) => n.id).sort();
+    expect(ids(status)).toEqual(ids(design));
+    // The design lens (authority-led) ranks an ADR above the same plan that the
+    // status lens (roadmap-led) ranks higher — the orderings genuinely differ.
+    const designOrder = design.nodes.map((n) => n.id);
+    const statusOrder = status.nodes.map((n) => n.id);
+    expect(designOrder).not.toEqual(statusOrder);
+  });
+
+  it("flags salience_partial from a degraded backbone tier (read from tiers)", async () => {
+    const mock = new MockEngine();
+    mock.degrade("declared", "core graph unavailable");
+    const slice = await client(mock).graphQuery({ scope: "wt-main", lens: "design" });
+    // A degraded backbone tier flags any lens partial — the same is_partial rule
+    // the live engine applies, read from the tiers block.
+    expect(slice.salience_partial).toBe(true);
+    expect(slice.tiers.declared.available).toBe(false);
+    // The ranking is still served (computed over available tiers), not withheld.
+    expect(slice.nodes.every((n) => typeof n.salience === "number")).toBe(true);
+  });
+
   it("serves plan interiors on node detail", async () => {
     const mock = new MockEngine();
     const planId = [...mock.corpus.planInteriors.keys()][0];
