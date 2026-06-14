@@ -134,3 +134,31 @@ No canvas-controls ADR insufficiency surfaced: the spec's element-by-element sco
 and its ownership map were sufficient to execute the family against. The only seam
 the ADR calls out as real work (the discover relocation) is exactly the one blocked
 by concurrent file ownership, not by any spec gap.
+
+## Revision (review PASS-WITH-REVISIONS, post-6ff4b9c)
+
+Independent review of the initial commit returned PASS-WITH-REVISIONS; the stores
+wire-client lane was freed this slot and the items landed:
+
+- MEDIUM (the deferred relocation, now unblocked): moved the discover wire read
+  out of the app layer into the stores layer. Added an `engineKeys.discover(id)`
+  cache key, a pure `deriveDiscoverView(data, error, loading, enabled)` that maps
+  the response to a loading / offline / candidates view (rag-down via a
+  tiers-bearing 502, a tiers-less transport fault on the discover route, or a
+  success envelope marking the semantic tier unavailable all collapse to the
+  designed offline state), and a `useDiscover(nodeId)` hook wrapping the existing
+  discover call with `retry:false` and `enabled` only when a node is open. The
+  Discover panel now consumes `useDiscover` and no longer imports or calls the
+  engine client — chrome no longer fetches, closing the layer-ownership deviation
+  so stores is the sole wire client. Added seven `deriveDiscoverView` unit tests
+  covering the closed/loading/served/offline/empty branches.
+- LOW: bumped the tier marks in the tier dial and the filter sidebar tier section
+  to size 14 to meet the iconography ADR's named 14px grayscale gate.
+- LOW: gave the Discover dialog an Escape→close handler and self-focus on open,
+  matching the filter sidebar and layout panel (kept `role="dialog"`); added a
+  render test asserting the open→Escape→closed cycle.
+- ACCEPT (no change): kept the `state-stale` token for the rag-down/offline copy,
+  consistent with the tier dial's offline treatment; no new token introduced.
+
+Re-gated: full lint gate green (eslint + prettier + tsc, exit 0); the full
+frontend suite passes with the pre-existing 9 skips unchanged.

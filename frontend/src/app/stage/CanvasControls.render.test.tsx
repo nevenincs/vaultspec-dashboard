@@ -227,4 +227,16 @@ describe("Discover surface: sanctioned mark + quarantined states (S26)", () => {
     const { container } = renderWithClient(createElement(Discover));
     expect(container.firstChild).toBeNull();
   });
+
+  it("opens a labelled dialog and closes it on Escape (consistent with the named dialogs)", () => {
+    act(() => useViewStore.getState().select("feature:auth"));
+    renderWithClient(createElement(Discover));
+    fireEvent.click(screen.getByRole("button", { name: /discover related/ }));
+    // The opened panel is a labelled non-modal dialog surface.
+    expect(screen.getByRole("dialog", { name: "semantic discovery" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    // Escape collapses back to the trigger affordance.
+    expect(screen.queryByRole("dialog", { name: "semantic discovery" })).toBeNull();
+    expect(screen.getByRole("button", { name: /discover related/ })).toBeTruthy();
+  });
 });

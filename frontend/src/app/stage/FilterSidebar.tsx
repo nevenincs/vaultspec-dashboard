@@ -155,7 +155,7 @@ function TierSection() {
                   <span
                     className={`flex items-center gap-vs-1 text-label ${on ? "text-ink" : "text-ink-faint"}`}
                   >
-                    <TierMark tier={tier} size={12} title={`${label} tier mark`} />
+                    <TierMark tier={tier} size={14} title={`${label} tier mark`} />
                     {label}
                     {inapplicable && (
                       <span className="ml-vs-1 text-2xs text-ink-faint">

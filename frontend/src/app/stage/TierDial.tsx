@@ -100,7 +100,7 @@ export function TierDial() {
             >
               {/* Mark shape carries the tier identity (grayscale-safe); the
                   on/off ring below is the non-color active cue. */}
-              <TierMark tier={tier} size={13} title={`${label} tier mark`} />
+              <TierMark tier={tier} size={14} title={`${label} tier mark`} />
               <span>{label}</span>
               {offline && <span className="text-2xs text-state-stale">offline</span>}
             </button>

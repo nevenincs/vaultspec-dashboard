@@ -17,6 +17,8 @@ import {
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
 import type {
+  DiscoverResponse,
+  EngineEdge,
   EngineStatus,
   GitFileDiff,
   GraphFilter,
@@ -68,6 +70,7 @@ export const engineKeys = {
   neighbors: (id: string, depth: number) =>
     [...engineKeys.all, "neighbors", id, depth] as const,
   evidence: (id: string) => [...engineKeys.all, "evidence", id] as const,
+  discover: (id: string) => [...engineKeys.all, "discover", id] as const,
   events: (scope: string, range: { from?: string; to?: string }, bucket?: string) =>
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
   search: (query: string, target?: string) =>
@@ -325,6 +328,90 @@ export function useNodeEvidence(id: string | null) {
     queryFn: () => engineClient.nodeEvidence(id!),
     enabled: id !== null,
   });
+}
+
+// --- node-scoped semantic discover (canvas-controls ADR) ---------------------
+//
+// Discover is `POST /nodes/{id}/discover` returning ranked candidate edges that
+// never auto-assert (contract §4). The chrome panel is a dumb view: it MUST NOT
+// fetch the engine itself (dashboard-layer-ownership — stores is the sole wire
+// client). This hook is that single wire seam; the panel consumes it and reads
+// the interpreted view below, never `engineClient.discover` or the raw `tiers`
+// block. Disabled until a node is actually open; `retry:false` so a rag-down
+// 502 surfaces immediately as the designed discover-offline state rather than
+// after backoff.
+
+/** The interpreted discover view the panel renders: loading / offline / the
+ *  ranked candidates. Degradation (rag absent → a 502 or a `semantic` tier
+ *  reporting unavailable) is a DESIGNED state, never an anonymous error. */
+export interface DiscoverView {
+  /** The discover request is in flight with no held candidates. */
+  loading: boolean;
+  /**
+   * Designed degradation: rag is not available. Sourced from a tiers-bearing
+   * error envelope marking `semantic` unavailable, a served block that marks
+   * it unavailable, OR a plain transport failure on the discover route (the
+   * route only fails when rag is down). Rendered as discover-offline, not an
+   * error.
+   */
+  offline: boolean;
+  /** The ranked candidate edges when served; empty array while loading/offline. */
+  candidates: EngineEdge[];
+}
+
+const DISCOVER_TIER = "semantic";
+
+/**
+ * Derive the discover view (loading / offline / candidates) from a discover
+ * query's data + error + pending flags, reading the `semantic` tier ONLY here
+ * in the stores layer so the panel consumes interpreted truth, never the raw
+ * `tiers` block. A served block (success or a tiers-bearing error envelope)
+ * marking `semantic` unavailable degrades; a tiers-less transport fault on this
+ * route is still rag-down (the route fails only when rag is absent), so it maps
+ * to offline too — the panel never renders a bare error here.
+ */
+export function deriveDiscoverView(
+  data: DiscoverResponse | undefined,
+  error: unknown,
+  loading: boolean,
+  enabled: boolean,
+): DiscoverView {
+  if (!enabled) return { loading: false, offline: false, candidates: [] };
+  const errTiers = error instanceof EngineError ? error.tiers : undefined;
+  const tiers = data?.tiers ?? errTiers;
+  const tierDegraded =
+    tiers !== undefined &&
+    (tiers[DISCOVER_TIER] === undefined || tiers[DISCOVER_TIER]?.available === false);
+  // Any error on the discover route is rag-down (the route fails only then), so
+  // a tiers-less transport fault is still the designed offline state.
+  const offline = error !== null || tierDegraded;
+  return {
+    loading,
+    offline,
+    candidates: data?.candidates ?? [],
+  };
+}
+
+/**
+ * Stores hook: node-scoped semantic discovery for the open node, read through
+ * the wire client so the discover panel consumes the interpreted view instead
+ * of fetching itself. `nodeId === null` means the panel is closed: the query is
+ * disabled and the view is the inert closed state.
+ */
+export function useDiscover(nodeId: string | null): DiscoverView {
+  const enabled = nodeId !== null;
+  const query = useQuery({
+    queryKey: engineKeys.discover(nodeId ?? ""),
+    queryFn: () => engineClient.discover(nodeId!),
+    enabled,
+    retry: false,
+  });
+  return deriveDiscoverView(
+    query.data,
+    query.error ?? null,
+    enabled && query.isPending,
+    enabled,
+  );
 }
 
 export function useEngineEvents(

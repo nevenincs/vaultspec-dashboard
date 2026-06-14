@@ -9,19 +9,17 @@
 // (the species color, via the shared semantic TierMark) and the muted-accent
 // system, so candidates read as the semantic species in any theme.
 //
-// Layer-ownership NOTE (carried from the ADR): the discovery fetch should move
-// from this app-layer `useQuery` + `engineClient.discover(...)` into a stores
-// query hook, restoring the single-wire-client boundary. That relocation lives
-// in `stores/server/queries.ts`, owned by a concurrent slot; it is reported as a
-// follow-up rather than performed here. The visual re-skin and every designed
-// state are realized in full below.
+// Layer ownership (dashboard-layer-ownership): the panel is a dumb view and does
+// NOT fetch — the discovery wire read lives behind the stores `useDiscover` hook
+// (stores is the sole wire client). The panel consumes the interpreted view and
+// emits pin/unpin/select intent; it never calls `engineClient` and never reads
+// the raw `tiers` block.
 
-import { useQuery } from "@tanstack/react-query";
 import { HelpCircle, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { TierMark } from "../../scene/field/markComponents";
-import { engineClient } from "../../stores/server/engine";
+import { useDiscover } from "../../stores/server/queries";
 import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 
@@ -31,13 +29,27 @@ export function Discover() {
   const pin = useViewStore((s) => s.pinDiscovery);
   const unpin = useViewStore((s) => s.unpinDiscovery);
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  const discovery = useQuery({
-    queryKey: ["engine", "discover", openFor ?? ""],
-    queryFn: () => engineClient.discover(openFor!),
-    enabled: openFor !== null,
-    retry: false,
-  });
+  // The wire read lives in the stores layer; the panel consumes the interpreted
+  // loading / offline / candidates view (never the raw tiers block).
+  const discovery = useDiscover(openFor);
+
+  // Close on Escape — this is a non-modal role="dialog" surface, consistent with
+  // the filter sidebar and layout panel.
+  useEffect(() => {
+    if (openFor === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenFor(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openFor]);
+
+  // Focus the panel on open so keyboard users land inside it.
+  useEffect(() => {
+    if (openFor !== null) panelRef.current?.focus();
+  }, [openFor]);
 
   if (!selectedId && openFor === null) return null;
 
@@ -49,20 +61,22 @@ export function Discover() {
           onClick={() => setOpenFor(selectedId)}
           className="flex items-center gap-vs-1 rounded-vs-sm border border-tier-semantic/50 bg-paper-raised/90 px-vs-2 py-vs-1 text-accent-text shadow-card transition-colors duration-ui-fast ease-settle hover:border-tier-semantic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
-          <TierMark tier="semantic" size={13} title="semantic" />
+          <TierMark tier="semantic" size={14} title="semantic" />
           discover related…
         </button>
       ) : (
         <div
+          ref={panelRef}
           role="dialog"
           aria-label="semantic discovery"
           aria-modal={false}
-          className="rounded-vs-md border border-tier-semantic/40 bg-paper-raised/95 p-vs-2 shadow-float backdrop-blur-sm animate-slide-in-up"
+          tabIndex={-1}
+          className="rounded-vs-md border border-tier-semantic/40 bg-paper-raised/95 p-vs-2 shadow-float backdrop-blur-sm focus:outline-none animate-slide-in-up"
           data-discover-panel
         >
           <div className="flex items-center justify-between gap-vs-2">
             <span className="flex items-center gap-vs-1 font-medium text-ink">
-              <TierMark tier="semantic" size={13} title="semantic discovery" />
+              <TierMark tier="semantic" size={14} title="semantic discovery" />
               discovery — {openFor.replace(/^(feature|doc):/, "")}
             </span>
             <button
@@ -74,24 +88,26 @@ export function Discover() {
               <X size={13} aria-hidden />
             </button>
           </div>
-          {discovery.isPending && (
+          {discovery.loading && (
             // The liveness cue is tied to the real in-progress request.
             <p className="mt-vs-1 text-ink-faint" aria-busy>
               <span className="animate-pulse-live">asking rag…</span>
             </p>
           )}
-          {discovery.isError && (
+          {discovery.offline && (
             // Designed degraded state (rag absent): discover-offline, never an
             // anonymous error.
             <p className="mt-vs-1 text-state-stale" data-discover-offline>
               semantic discovery offline — rag is not available
             </p>
           )}
-          {discovery.data && discovery.data.candidates.length === 0 && (
-            <p className="mt-vs-1 text-ink-faint">no candidates above the floor</p>
-          )}
+          {!discovery.loading &&
+            !discovery.offline &&
+            discovery.candidates.length === 0 && (
+              <p className="mt-vs-1 text-ink-faint">no candidates above the floor</p>
+            )}
           <ul className="mt-vs-1 space-y-vs-1" role="list">
-            {discovery.data?.candidates.map((candidate) => {
+            {discovery.candidates.map((candidate) => {
               const isPinned = pinned.some((e) => e.id === candidate.id);
               return (
                 <li key={candidate.id} className="flex items-center gap-vs-2">
@@ -102,7 +118,7 @@ export function Discover() {
                     title="quarantined suggestion"
                   >
                     <HelpCircle size={11} aria-hidden />
-                    <TierMark tier="semantic" size={12} title="semantic suggestion" />
+                    <TierMark tier="semantic" size={14} title="semantic suggestion" />
                   </span>
                   <button
                     type="button"

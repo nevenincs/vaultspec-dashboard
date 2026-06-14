@@ -4,11 +4,12 @@ import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
 import { MockEngine } from "../../testing/mockEngine";
 import { EngineClient, EngineError } from "./engine";
-import type { EngineStatus, TiersBlock } from "./engine";
+import type { DiscoverResponse, EngineStatus, TiersBlock } from "./engine";
 import { adaptStatus } from "./liveAdapters";
 import type { StreamChunk } from "./queries";
 import {
   STREAM_RETENTION,
+  deriveDiscoverView,
   deriveGitStatusView,
   deriveGraphSliceAvailability,
   deriveVaultTreeAvailability,
@@ -122,6 +123,67 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
     expect(a.degraded).toBe(false);
     expect(a.degradedTiers).toEqual([]);
     expect(a.loading).toBe(true);
+  });
+});
+
+describe("deriveDiscoverView (canvas-controls discover, contract §4)", () => {
+  const edge = (id: string): DiscoverResponse["candidates"][number] => ({
+    id,
+    src: "feature:a",
+    dst: "feature:b",
+    relation: "related",
+    tier: "semantic",
+    confidence: 0.8,
+  });
+  const served = (
+    candidates: DiscoverResponse["candidates"],
+    semanticUp = true,
+  ): DiscoverResponse => ({
+    candidates,
+    tiers: { semantic: { available: semanticUp } },
+  });
+
+  it("is the inert closed state when the panel is not open (disabled query)", () => {
+    const v = deriveDiscoverView(undefined, null, false, false);
+    expect(v).toEqual({ loading: false, offline: false, candidates: [] });
+  });
+
+  it("carries the loading flag while the request is in flight, no candidates yet", () => {
+    const v = deriveDiscoverView(undefined, null, true, true);
+    expect(v.loading).toBe(true);
+    expect(v.offline).toBe(false);
+    expect(v.candidates).toEqual([]);
+  });
+
+  it("surfaces ranked candidates when rag serves them", () => {
+    const v = deriveDiscoverView(served([edge("e1"), edge("e2")]), null, false, true);
+    expect(v.offline).toBe(false);
+    expect(v.candidates.map((c) => c.id)).toEqual(["e1", "e2"]);
+  });
+
+  it("maps a tiers-bearing 502 (rag down) to the designed offline state, not an error", () => {
+    const err = new EngineError("/nodes/x/discover", 502, {
+      tiers: { semantic: { available: false, reason: "rag service down" } },
+    });
+    const v = deriveDiscoverView(undefined, err, false, true);
+    expect(v.offline).toBe(true);
+    expect(v.candidates).toEqual([]);
+  });
+
+  it("maps a tiers-less transport fault on the discover route to offline (route fails only when rag is down)", () => {
+    const v = deriveDiscoverView(undefined, new Error("network"), false, true);
+    expect(v.offline).toBe(true);
+  });
+
+  it("treats a SUCCESS envelope marking semantic unavailable as offline", () => {
+    const v = deriveDiscoverView(served([], false), null, false, true);
+    expect(v.offline).toBe(true);
+  });
+
+  it("is empty-not-offline when rag is up and serves zero candidates", () => {
+    const v = deriveDiscoverView(served([]), null, false, true);
+    expect(v.offline).toBe(false);
+    expect(v.candidates).toEqual([]);
   });
 });
 
