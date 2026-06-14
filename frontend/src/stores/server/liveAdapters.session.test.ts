@@ -82,6 +82,9 @@ describe("adaptSession (live session sample)", () => {
     expect(empty).toEqual({
       workspace: "",
       active_scope: "",
+      // The active-workspace field defaults to null (dashboard-workspace-registry
+      // ADR) so a sparse or older session restores as "no project selected yet".
+      active_workspace: null,
       scope_context: { folder: null, feature_tags: [] },
       recents: [],
       tiers: {},

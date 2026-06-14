@@ -134,18 +134,18 @@ Route scope across workspaces: validate_scope resolves a worktree against the ac
 
 Host the workspace switcher above the worktree switcher in the left rail: a stores query over /workspaces, a picker that renders as a quiet header when only one root exists, an add-a-project affordance with an honest validation refusal, and a workspace-level wholesale reset (the full 022 reset plus clearing the cached worktree set) owned by the stores layer.
 
-- [ ] `P04.S13` - Add a stores query hook for /workspaces and the active-workspace selector; `frontend/src/stores/server/`.
-- [ ] `P04.S14` - Widen the wholesale scope reset to also clear the cached worktree set on a workspace swap; `frontend/src/stores/view/`.
-- [ ] `P04.S15` - Author the WorkspacePicker rendering roots, launch-default and unreachable markers, and the add-a-project affordance; `frontend/src/app/left/WorkspacePicker.tsx`.
+- [x] `P04.S13` - Add a stores query hook for /workspaces and the active-workspace selector; `frontend/src/stores/server/`.
+- [x] `P04.S14` - Widen the wholesale scope reset to also clear the cached worktree set on a workspace swap; `frontend/src/stores/view/`.
+- [x] `P04.S15` - Author the WorkspacePicker rendering roots, launch-default and unreachable markers, and the add-a-project affordance; `frontend/src/app/left/WorkspacePicker.tsx`.
 - [ ] `P04.S16` - Host the workspace switcher above the worktree switcher and render it as a quiet header when only one root exists; `frontend/src/app/AppShell.tsx`.
 
 ### Phase `P05` - Verification
 
 Verify: extend the scope-isolation tests to workspace swaps (no cross-project bleed), roundtrip the registry persistence, prove the four honest states, and pass the feature-scoped lint, test, and vault-check gates.
 
-- [ ] `P05.S17` - Extend the scope-isolation adversarial tests to cover workspace swaps with no cross-project state bleed; `frontend/src/stores/__adversarial__/`.
-- [ ] `P05.S18` - Test the WorkspacePicker four honest states and the add-a-project validation refusal; `frontend/src/app/left/WorkspacePicker.render.test.tsx`.
-- [ ] `P05.S19` - Run the feature-scoped lint, test, and vault-check gates to green; `engine/crates/vaultspec-session/`.
+- [x] `P05.S17` - Extend the scope-isolation adversarial tests to cover workspace swaps with no cross-project state bleed; `frontend/src/stores/__adversarial__/`.
+- [x] `P05.S18` - Test the WorkspacePicker four honest states and the add-a-project validation refusal; `frontend/src/app/left/WorkspacePicker.render.test.tsx`.
+- [x] `P05.S19` - Run the feature-scoped lint, test, and vault-check gates to green; `engine/crates/vaultspec-session/`.
 
 ## Description
 

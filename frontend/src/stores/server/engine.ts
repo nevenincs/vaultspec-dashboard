@@ -19,6 +19,7 @@ import {
   adaptSettings,
   adaptStatus,
   adaptVaultTree,
+  adaptWorkspaces,
   unwrapEnvelope,
 } from "./liveAdapters";
 
@@ -107,6 +108,42 @@ export interface MapRepository {
 
 export interface MapResponse {
   repositories: MapRepository[];
+  tiers: TiersBlock;
+}
+
+// --- workspace registry (dashboard-workspace-registry ADR) ----------------------
+//
+// The multi-workspace project-root registry surface. `GET /workspaces`
+// enumerates the registered roots; registry mutation (select/add/forget) rides
+// `PUT /session` (config), consumed through the same `usePutSession` mutation as
+// the active-scope switch. Wire shapes stay snake_case as the live
+// `vaultspec-session`-backed routes serve them under the `{data, tiers}`
+// envelope.
+
+/** One registered project root (GET /workspaces). A `WorkspaceRoot` is the
+ *  user-state record of a git workspace the operator pointed the dashboard at —
+ *  read-only: it records a path, never implies any repository mutation. */
+export interface WorkspaceRoot {
+  /** Stable workspace id (the canonical git common dir). */
+  id: string;
+  /** Operator-facing label (defaults to the root's final path component). */
+  label: string;
+  /** Absolute root path — rendered as monospace path identity. */
+  path: string;
+  /** Advisory launch-default marker: true for the auto-registered launch root. */
+  is_launch: boolean;
+  /** Last-seen reachability: an unreachable root renders degraded, not dropped. */
+  reachable: boolean;
+  /** The reason a root is unreachable, for copy-tone rendering; null when reachable. */
+  unreachable_reason: string | null;
+}
+
+/** The workspace registry enumeration (GET /workspaces data): the registered
+ *  roots plus the active-workspace id the rail marks current. */
+export interface WorkspacesState {
+  workspaces: WorkspaceRoot[];
+  /** The active workspace id, or null when none is selected yet. */
+  active_workspace: string | null;
   tiers: TiersBlock;
 }
 
@@ -419,6 +456,10 @@ export interface ScopeContextWire {
 export interface SessionState {
   workspace: string;
   active_scope: string;
+  /** The active WORKSPACE id beside the active scope (dashboard-workspace-
+   *  registry ADR): the registered root the dashboard is pointed at, or null
+   *  when none is selected yet. */
+  active_workspace: string | null;
   scope_context: ScopeContextWire;
   recents: string[];
   tiers: TiersBlock;
@@ -435,11 +476,18 @@ export interface ScopeContextUpdate {
 
 /** A partial session update (PUT /session): any absent field leaves that part of
  *  the session untouched. An unknown `active_scope` is a tiered 400 and leaves the
- *  active scope unchanged. */
+ *  active scope unchanged. The registry-mutation fields (dashboard-workspace-
+ *  registry ADR) ride the same config surface: `active_workspace` selects the
+ *  active root (an unregistered id is a tiered 400), `add_workspace` registers an
+ *  operator-supplied path read-only (an invalid path is a tiered 400), and
+ *  `forget_workspace` removes a root (the last launch root is refused). */
 export interface SessionUpdate {
   active_scope?: string;
   scope_context?: ScopeContextUpdate;
   push_recent?: string;
+  active_workspace?: string;
+  add_workspace?: string;
+  forget_workspace?: string;
 }
 
 /** User settings (GET/PUT /settings data): a flat `global` map plus a per-scope
@@ -512,6 +560,12 @@ export class EngineClient {
   // §3
   async map(): Promise<MapResponse> {
     return adaptMap(await this.get("/map"));
+  }
+
+  /** The workspace registry (dashboard-workspace-registry ADR): the registered
+   *  project roots with reachability plus the active-workspace id. */
+  async workspaces(): Promise<WorkspacesState> {
+    return adaptWorkspaces(await this.get("/workspaces"));
   }
 
   async vaultTree(scope: string): Promise<VaultTreeResponse> {

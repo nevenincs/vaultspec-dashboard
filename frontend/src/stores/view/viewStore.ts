@@ -92,6 +92,20 @@ export interface ViewState {
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
   setScope: (scope: string | null) => void;
   /**
+   * Switch the WORKSPACE — the coarsest swap (dashboard-workspace-registry ADR).
+   * Performs the FULL 022 wholesale reset (every piece of per-scope state)
+   * PLUS the two things a worktree swap does not: it re-keys the pin and lens
+   * stores to the NEW WORKSPACE (not just the new scope, so the prior project's
+   * pins/lenses cannot bleed in), and it resets the scope to the new
+   * workspace's launch-default / first vault-bearing worktree. The cached
+   * worktree SET (the `/map` and `/vault-tree` query cache) is cleared by the
+   * stores-layer hook that invokes this (`useSwapWorkspace`), because that
+   * cache lives in React Query, not this store — together they are the
+   * workspace-level wholesale reset the ADR requires. The control owns no reset
+   * logic; it invokes this, exactly as the worktree switcher invokes setScope.
+   */
+  swapWorkspace: (workspace: string, scope: string | null) => void;
+  /**
    * Seed the scope + folder context from the restored session (W04.P09.S30).
    * Used by the stores-layer restore hook on session load: it mirrors the
    * durable session shape into the view store WITHOUT triggering the wholesale
@@ -194,6 +208,36 @@ export const useViewStore = create<ViewState>((set) => ({
       timelineMode: { kind: "live" },
       // Reset to constellation overview on scope swap: loading 200 document
       // nodes into an unfamiliar corpus is unexpected (granularity doc comment).
+      granularity: "feature",
+    });
+  },
+  swapWorkspace: (workspace, scope) => {
+    // WORKSPACE-LEVEL WHOLESALE swap (dashboard-workspace-registry ADR): the
+    // SAME cross-store 022 reset a worktree swap performs, WIDENED so nothing
+    // from the prior PROJECT's corpus survives. A coarser scope change must
+    // clear at least as much as a worktree change, plus re-key the pin/lens
+    // stores to the NEW WORKSPACE (a worktree swap preserves the workspace key;
+    // a workspace swap does not, or the prior project's pins/lenses bleed in).
+    useFilterStore.getState().reset();
+    // Re-key the pin and lens stores to the NEW WORKSPACE + the new scope — the
+    // load-bearing difference from setScope, which preserves the workspace key.
+    usePinStore.getState().setScopeKey(workspace, scope ?? "default");
+    useLensStore.getState().setScopeKey(workspace, scope ?? "default");
+    // Reset the live-connection slice (broken-link count / resume seq) so no
+    // prior-project counters bleed in before the new slice and stream arrive.
+    useLiveStatusStore.getState().reset();
+    set({
+      scope,
+      activeFolder: null,
+      featureContexts: [],
+      selection: null,
+      selectedId: null,
+      workingSet: [],
+      openedIds: [],
+      pinnedDiscoveries: [],
+      timelineMode: { kind: "live" },
+      // Reset to the constellation overview so the new project does not open at
+      // 200 document nodes (same rationale as the worktree swap).
       granularity: "feature",
     });
   },

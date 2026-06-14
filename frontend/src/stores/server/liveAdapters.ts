@@ -23,6 +23,8 @@ import type {
   TiersBlock,
   VaultTreeResponse,
   WireMetaEdge,
+  WorkspaceRoot,
+  WorkspacesState,
 } from "./engine";
 
 type Rec = Record<string, unknown>;
@@ -373,6 +375,7 @@ export function adaptSession(body: unknown): SessionState {
     return {
       workspace: "",
       active_scope: "",
+      active_workspace: null,
       scope_context: { folder: null, feature_tags: [] },
       recents: [],
       tiers: {},
@@ -381,8 +384,64 @@ export function adaptSession(body: unknown): SessionState {
   return {
     workspace: typeof body.workspace === "string" ? body.workspace : "",
     active_scope: typeof body.active_scope === "string" ? body.active_scope : "",
+    // The active WORKSPACE id (dashboard-workspace-registry ADR); null when
+    // absent (a sparse or older session shape) so the rail marks none current.
+    active_workspace:
+      typeof body.active_workspace === "string" ? body.active_workspace : null,
     scope_context: adaptScopeContext(body.scope_context),
     recents: Array.isArray(body.recents) ? (body.recents as string[]) : [],
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- workspace registry (dashboard-workspace-registry ADR) -----------------------
+//
+// Tolerant adapter for `GET /workspaces`. The live `{data, tiers}` envelope is
+// already unwrapped by `unwrapEnvelope` before this runs; a body already in the
+// internal shape (the mock) passes through unchanged. Every missing field
+// defaults to a safe empty so a sparse or older shape NEVER throws and the
+// chrome never reads the raw tiers block (the degradation truth rides on `tiers`,
+// defaulted to an empty block when absent).
+
+/** Default one registered-root wire row, tolerating an absent or partial object:
+ *  missing id/label/path become empty strings, `is_launch`/`reachable` default
+ *  conservatively (false / true — an unmarked root is treated as reachable so it
+ *  is never wrongly hidden as degraded), and an absent reason is null. */
+function adaptWorkspaceRoot(value: unknown): WorkspaceRoot {
+  if (!isRec(value)) {
+    return {
+      id: "",
+      label: "",
+      path: "",
+      is_launch: false,
+      reachable: true,
+      unreachable_reason: null,
+    };
+  }
+  return {
+    id: typeof value.id === "string" ? value.id : "",
+    label: typeof value.label === "string" ? value.label : "",
+    path: typeof value.path === "string" ? value.path : "",
+    is_launch: value.is_launch === true,
+    // Absent reachability is treated as reachable (do not hide a root as
+    // degraded on a missing field); only an explicit `false` degrades.
+    reachable: value.reachable !== false,
+    unreachable_reason:
+      typeof value.unreachable_reason === "string" ? value.unreachable_reason : null,
+  };
+}
+
+/** Live `/workspaces` → the internal workspaces state. TOLERANT: an absent
+ *  `workspaces` array defaults to empty (the rail renders the header fallback),
+ *  and an absent active-workspace id is null. */
+export function adaptWorkspaces(body: unknown): WorkspacesState {
+  if (!isRec(body)) return { workspaces: [], active_workspace: null, tiers: {} };
+  return {
+    workspaces: Array.isArray(body.workspaces)
+      ? (body.workspaces as unknown[]).map(adaptWorkspaceRoot)
+      : [],
+    active_workspace:
+      typeof body.active_workspace === "string" ? body.active_workspace : null,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

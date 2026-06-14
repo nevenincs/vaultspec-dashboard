@@ -25,8 +25,10 @@ import type {
   SessionUpdate,
   SettingUpdate,
   TiersBlock,
+  WorkspaceRoot,
 } from "./engine";
 import { EngineError, engineClient, useEngineStatus } from "./engine";
+import { useViewStore } from "../view/viewStore";
 
 // --- stable serialization for key parts -----------------------------------------
 
@@ -50,6 +52,11 @@ export const engineKeys = {
   all: ["engine"] as const,
   status: () => [...engineKeys.all, "status"] as const,
   map: () => [...engineKeys.all, "map"] as const,
+  // The workspace registry is workspace-singular (one registry per engine), so a
+  // single stable key. Registry mutations (select/add/forget) ride the session
+  // mutation, which invalidates this key so the picker re-reads the
+  // authoritative shape (dashboard-workspace-registry ADR).
+  workspaces: () => [...engineKeys.all, "workspaces"] as const,
   vaultTree: (scope: string) => [...engineKeys.all, "vault-tree", scope] as const,
   filters: (scope: string) => [...engineKeys.all, "filters", scope] as const,
   graph: (
@@ -159,6 +166,122 @@ export function useWorkspaceMapAvailability(): WorkspaceMapAvailability {
   const fromData = map.data?.tiers;
   const fromError = map.error instanceof EngineError ? map.error.tiers : undefined;
   return deriveWorkspaceMapAvailability(fromData ?? fromError);
+}
+
+// --- workspace registry (dashboard-workspace-registry ADR) -----------------------
+//
+// The multi-workspace project-root registry, consumed through stores hooks so the
+// WorkspacePicker (chrome) never fetches the engine or reads the raw `tiers`
+// block (dashboard-layer-ownership). `useWorkspaces` is the single wire seam for
+// `GET /workspaces`; registry mutation (select/add/forget) rides the existing
+// `usePutSession` mutation (the config surface), which invalidates BOTH the
+// session and the workspaces keys so the picker re-reads the authoritative shape.
+
+/** Read the workspace registry — the registered roots + the active-workspace id.
+ *  Polls every 8 s while in error state so the picker self-heals after engine
+ *  startup without a page reload (mirrors `useWorkspaceMap`). */
+export function useWorkspaces() {
+  return useQuery({
+    queryKey: engineKeys.workspaces(),
+    queryFn: () => engineClient.workspaces(),
+    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
+  });
+}
+
+/**
+ * The workspace registry's degradation truth, derived inside the stores layer so
+ * the picker (chrome) never reads the raw `tiers` block (dashboard-layer-
+ * ownership). The `/workspaces` enumeration is resolved by the engine's
+ * structural read of each registered repository, so the `structural` tier gates
+ * the registry's availability. Contract §2: a tier marked `available:false` OR
+ * absent from the served block is a designed degraded state. The reason travels
+ * through both the success envelope (`data.tiers`) and the error envelope
+ * (`EngineError.tiers`). Mirrors `useWorkspaceMapAvailability`.
+ */
+export interface WorkspacesAvailability {
+  degraded: boolean;
+  degradedTiers: string[];
+  reasons: Record<string, string>;
+}
+
+const WORKSPACES_TIERS = ["structural"] as const;
+
+export function deriveWorkspacesAvailability(
+  tiers: TiersBlock | undefined,
+): WorkspacesAvailability {
+  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of WORKSPACES_TIERS) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+}
+
+/** Stores hook: the workspace registry's degradation, read through the wire
+ *  client so the picker consumes derived truth instead of the raw `tiers`
+ *  block. */
+export function useWorkspacesAvailability(): WorkspacesAvailability {
+  const workspaces = useWorkspaces();
+  const fromData = workspaces.data?.tiers;
+  const fromError =
+    workspaces.error instanceof EngineError ? workspaces.error.tiers : undefined;
+  return deriveWorkspacesAvailability(fromData ?? fromError);
+}
+
+/** Stores selector: the active workspace's id (from the registry's
+ *  `active_workspace`), or null when none is selected yet. The picker reads this
+ *  to mark the current root — it never reads the raw response. */
+export function useActiveWorkspace(): string | null {
+  return useWorkspaces().data?.active_workspace ?? null;
+}
+
+/** Stores selector: the registered roots, or an empty list while loading /
+ *  errored. Pure projection over the registry query for the picker. */
+export function useWorkspaceRoots(): WorkspaceRoot[] {
+  return useWorkspaces().data?.workspaces ?? [];
+}
+
+/**
+ * The workspace-level wholesale-swap action (dashboard-workspace-registry ADR):
+ * the stores-layer orchestration the WorkspacePicker invokes, exactly as the
+ * worktree switcher invokes `setScope`. The control owns NO reset logic; this
+ * hook owns the whole transition:
+ *
+ * 1. `swapWorkspace` (the view store) runs the full 022 cross-store reset
+ *    WIDENED to re-key the pin/lens stores to the NEW workspace.
+ * 2. The cached worktree SET is cleared: the `/map`, `/vault-tree`, and
+ *    `/workspaces` React-Query caches are removed so the next reads are keyed to
+ *    the new workspace (the prior project's worktree set must not survive — the
+ *    "widen to also clear the cached worktree set" requirement).
+ * 3. The active-workspace selection is durably persisted via `usePutSession`
+ *    (the config surface). A rejected switch (unknown workspace → tiered 400)
+ *    rejects the mutation; the caller surfaces it as a non-silent status line.
+ *
+ * Returns a `swap(workspace, scope)` callback plus the mutation handle so the
+ * control can render pending / error honestly.
+ */
+export function useSwapWorkspace() {
+  const queryClient = useQueryClient();
+  const putSession = usePutSession();
+  const swap = (workspace: string, scope: string | null) => {
+    // (1) the widened view-store reset, applied synchronously so the UI moves
+    // immediately (optimistic, like setScope).
+    useViewStore.getState().swapWorkspace(workspace, scope);
+    // (2) clear the cached worktree set + scoped reads so nothing from the prior
+    // project survives in the query cache. removeQueries drops the entries
+    // entirely (vs invalidate, which would refetch the STALE-keyed read first).
+    queryClient.removeQueries({ queryKey: engineKeys.map() });
+    queryClient.removeQueries({ queryKey: [...engineKeys.all, "vault-tree"] });
+    queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph"] });
+    // (3) durably persist the active-workspace selection (the config write).
+    return putSession.mutateAsync({ active_workspace: workspace });
+  };
+  return { swap, mutation: putSession };
 }
 
 export function useVaultTree(scope: string | null) {
@@ -493,6 +616,11 @@ export function usePutSession() {
     onSuccess: (session) => {
       queryClient.setQueryData(engineKeys.session(), session);
       void queryClient.invalidateQueries({ queryKey: engineKeys.session() });
+      // A session mutation may carry a registry mutation (select/add/forget a
+      // workspace, dashboard-workspace-registry ADR), so refresh the registry
+      // enumeration too — the picker re-reads the authoritative roots + active
+      // marker without a separate mutation hook.
+      void queryClient.invalidateQueries({ queryKey: engineKeys.workspaces() });
     },
   });
 }
@@ -731,6 +859,85 @@ export function deriveRagStatusView(
 export function useRagStatus(): RagStatusView {
   const status = useEngineStatus();
   return deriveRagStatusView(status.data, status.error, status.isPending);
+}
+
+// --- work pillar availability (dashboard-activity-rail ADR) ---------------------------
+//
+// The right-rail `work` tab is the in-flight pipeline pillar: the active ADRs and
+// plans in scope, with their wave/phase/step progress. That CONTENT and its wire are
+// specified by the sibling `dashboard-pipeline-status` ADR and are out of scope for
+// the activity-rail plan; what lands now is the tab FRAME with its own designed
+// degraded and empty states. The frame is app chrome under dashboard-layer-ownership:
+// it reads availability through this stores selector ONLY, never fetching the engine
+// and never inspecting the raw `tiers` block.
+//
+// The pillar's documents (ADRs, plans) and their lifecycle/progress are resolved by
+// the engine's STRUCTURAL read of the vault corpus, so the `structural` tier gates the
+// pillar's availability (contract §2: a tier marked `available:false` OR absent from a
+// served block is a designed degraded state — absence is degradation, not
+// availability). Degradation is derived from the tiers truth the wire carries (the
+// success envelope's `tiers`, or the FRESH error envelope's `tiers` winning over a
+// stale held block), per degradation-is-read-from-tiers-not-guessed-from-errors —
+// never inferred from a bare transport error. The `items` array is the seam the
+// pipeline-status plan extends with the real in-flight ADR/plan list; today it is
+// always empty, so a non-degraded pillar renders the designed empty state.
+
+const WORK_PILLAR_TIER = "structural";
+
+/**
+ * The interpreted work-pillar view the `WorkTab` frame renders. `degraded` is the
+ * designed-down state (the `structural` tier reports unavailable or is absent from a
+ * served block); `items` carries the in-flight pipeline work once the pipeline-status
+ * wire lands (empty today, so the available case is the designed empty state).
+ */
+export interface WorkPillarAvailability {
+  /** A served tiers block reports the structural tier unavailable (or absent). */
+  degraded: boolean;
+  /** The structural tier's human reason when degraded, for copy-tone rendering. */
+  reason?: string;
+  /**
+   * The in-flight pipeline work (active ADRs/plans). Empty today — this is the seam
+   * the sibling dashboard-pipeline-status plan extends with the real list; the frame
+   * renders the designed empty state whenever it is empty and the pillar is available.
+   */
+  items: readonly never[];
+}
+
+/**
+ * Derive the work-pillar view from the status snapshot's served tiers block, reading
+ * the `structural` tier ONLY here in the stores layer so the `WorkTab` frame consumes
+ * interpreted truth, never `status.data.tiers`. A served block (success data OR a
+ * tiers-bearing error envelope) that marks `structural` unavailable — or omits it — is
+ * designed degradation (contract §2: absence ≠ available). A wholly absent block (a
+ * tiers-less transport fault with no envelope) is NOT treated as degraded: it is the
+ * query's error state, and the frame must not guess "down" from a bare transport error
+ * (degradation-is-read-from-tiers-not-guessed-from-errors).
+ */
+export function deriveWorkPillarAvailability(
+  tiers: TiersBlock | undefined,
+): WorkPillarAvailability {
+  if (!tiers) return { degraded: false, items: [] };
+  const state = tiers[WORK_PILLAR_TIER];
+  const degraded = state === undefined || state.available === false;
+  return {
+    degraded,
+    reason: degraded ? state?.reason : undefined,
+    items: [],
+  };
+}
+
+/**
+ * Stores hook: the work pillar's availability, read through the status query so the
+ * `WorkTab` frame consumes derived truth instead of the raw `tiers` block. The FRESH
+ * error envelope's tiers win over a stale held-success block so a backend-down
+ * condition surfaces as designed degradation rather than a bare error. Mirrors
+ * `useVaultTreeAvailability` / `useGraphSliceAvailability`.
+ */
+export function useWorkPillarAvailability(): WorkPillarAvailability {
+  const status = useEngineStatus();
+  const fromError =
+    status.error instanceof EngineError ? status.error.tiers : undefined;
+  return deriveWorkPillarAvailability(fromError ?? status.data?.tiers);
 }
 
 /** The interpreted outcome of an ops dispatch, for the receipt copy. */
