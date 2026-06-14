@@ -74,11 +74,17 @@ async fn run_sibling_bounded(
     // tokio::process so the spawn + bounded-read + timeout never blocks the
     // async worker (robustness H1): a hung sibling no longer pins a runtime
     // thread, and stdout is read through a ceiling rather than buffered whole.
+    // The sibling runs in the ACTIVE scope's worktree (the target for the
+    // subprocess working dir, W02.P05.S18): the ops routes carry no scope
+    // param, so they forward to core/rag in the currently-selected scope. The
+    // read-and-infer fence holds — the engine only FORWARDS to the sibling; it
+    // grows no sibling semantics.
+    let cwd = state.active_cell().root.clone();
     let mut child = tokio::process::Command::new(&program[0])
         .args(&program[1..])
         .args(args)
         .arg("--json")
-        .current_dir(&state.root)
+        .current_dir(&cwd)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -188,7 +194,7 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
     let envelope = run_sibling(&state, &runner.invocation, args).await?;
     Ok(super::envelope(
         json!({"envelope": envelope}),
-        super::query_tiers(&state),
+        super::query_tiers(&state.active_cell()),
         None,
     ))
 }
@@ -204,7 +210,7 @@ pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String
     let envelope = run_sibling(&state, &rag_invocation(), args).await?;
     Ok(super::envelope(
         json!({"envelope": envelope}),
-        super::query_tiers(&state),
+        super::query_tiers(&state.active_cell()),
         None,
     ))
 }
@@ -220,14 +226,17 @@ pub struct SearchBody {
 }
 
 pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchBody>) -> ApiResult {
+    // Search runs against the ACTIVE scope (no scope param, W02.P05.S18): rag
+    // discovery and the tiers block both read that cell's root.
+    let cell = state.active_cell();
     // Degrade to the tier block when rag is absent — never a dead control
     // (contract §8).
     if let rag_client::RagAvailability::Unavailable { reason } =
-        rag_client::client::discover(&state.root.join(".vault")).0
+        rag_client::client::discover(&cell.root.join(".vault")).0
     {
         return Ok(super::envelope(
             json!({"results": []}),
-            super::degraded_tiers(&state, reason.as_str()),
+            super::degraded_tiers(&cell, reason.as_str()),
             None,
         ));
     }
@@ -253,7 +262,7 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
             let reason = body.0["error"].as_str().unwrap_or("rag search failed");
             return Ok(super::envelope(
                 json!({"results": []}),
-                super::degraded_tiers(&state, reason),
+                super::degraded_tiers(&cell, reason),
                 None,
             ));
         }
@@ -264,12 +273,12 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     // `semantic` tier truthfully — never a healthy-looking empty result and
     // never a foreign envelope passed through unflattened.
     match flatten_and_annotate(&rag_envelope) {
-        Ok(data) => Ok(super::envelope(data, super::query_tiers(&state), None)),
+        Ok(data) => Ok(super::envelope(data, super::query_tiers(&cell), None)),
         Err(miss) => {
             let reason = miss.reason();
             Ok(super::envelope(
                 json!({"results": []}),
-                super::degraded_tiers(&state, reason.as_str()),
+                super::degraded_tiers(&cell, reason.as_str()),
                 None,
             ))
         }

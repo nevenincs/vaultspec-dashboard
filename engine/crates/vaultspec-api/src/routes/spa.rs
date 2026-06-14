@@ -19,7 +19,7 @@ pub fn spa_dir(state: &AppState) -> Option<PathBuf> {
         let p = PathBuf::from(dir);
         return p.is_dir().then_some(p);
     }
-    let candidate = state.root.join("frontend").join("dist");
+    let candidate = state.workspace_root.join("frontend").join("dist");
     candidate.is_dir().then_some(candidate)
 }
 
@@ -94,7 +94,7 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
             StatusCode::NOT_FOUND,
             axum::Json(serde_json::json!({
                 "error": format!("unknown API path `{path}`"),
-                "tiers": crate::routes::query_tiers(&state),
+                "tiers": crate::routes::query_tiers(&state.active_cell()),
             })),
         )
             .into_response();
