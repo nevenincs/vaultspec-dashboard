@@ -8,6 +8,7 @@
 //! No WebSocket in v1 (D7.1).
 
 pub mod app;
+pub mod registry;
 pub mod routes;
 
 use std::sync::Arc;
@@ -192,10 +193,46 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
         default_hook(info);
     }));
 
+    // Build the workspace-level state. This opens the SHARED user-state handle
+    // once, eagerly builds the launch scope's cell into the registry (cold
+    // initial index, the same pipeline the one-shot CLI runs, D2.4), spawns
+    // that cell's watcher on its own clock (W02.P04.S13), and pins it as the
+    // active scope. We run inside the tokio runtime, so the watcher's rebuild
+    // task spawns here.
     let state = app::build_state(root.clone());
 
-    // Cold initial index (the same pipeline the one-shot CLI runs, D2.4).
-    state.rebuild_and_swap().map_err(std::io::Error::other)?;
+    // Restore the persisted active scope through the shared user-state handle
+    // (W02.P03.S11): the workspace key is the launch root's token, the stored
+    // active scope is a worktree token. Restore it only if it still names a
+    // selectable vault-bearing worktree; otherwise fall back to the launch
+    // worktree. Persist the resolved active scope back so a first run seeds it.
+    let workspace_key = routes::scope_token(&state.workspace_root);
+    let launch_token = workspace_key.clone();
+    let restored = {
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        us.active_scope(&workspace_key).ok().flatten()
+    }
+    .filter(|token| registry::validate_scope_token(&state, token).is_ok());
+    let active_token = match restored {
+        Some(token) if token != launch_token => {
+            // A different, still-valid persisted scope: warm it and make it
+            // active so reload restores "where I was".
+            if registry::get_or_build(&state, &token).is_ok() {
+                *state
+                    .active_scope
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner()) = token.clone();
+                token
+            } else {
+                launch_token.clone()
+            }
+        }
+        _ => launch_token.clone(),
+    };
+    {
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = us.set_active_scope(&workspace_key, &active_token, app::now_ms());
+    }
 
     // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
     // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
@@ -214,37 +251,6 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
             loop {
                 tokio::time::sleep(Duration::from_secs(15)).await;
                 let _ = app::write_service_json(&state, port);
-            }
-        });
-    }
-
-    // Watcher → rebuild-at-scope-granularity → swap + diff broadcast
-    // (audit gates W02P06-302/303; never deltas into a live graph).
-    let (dirty_tx, mut dirty_rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
-    let watch_handle = engine_graph::watch::watch(
-        &engine_graph::watch::watch_roots(&root),
-        Duration::from_millis(2000),
-        move |paths| {
-            let _ = dirty_tx.send(paths.len());
-        },
-    )
-    .map_err(|e| std::io::Error::other(e.to_string()))?;
-    // Held in state so /status can report a dead watcher truthfully.
-    // Poison recovery (robustness H2): see `app::graph_arc`.
-    *state.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(watch_handle);
-    {
-        let state = state.clone();
-        tokio::spawn(async move {
-            while dirty_rx.recv().await.is_some() {
-                let state = state.clone();
-                // Rebuild failures are LOGGED, never silently swallowed
-                // (DF-4): a contended store is a wait-and-retry on the
-                // next dirty batch, not a death.
-                match tokio::task::spawn_blocking(move || state.rebuild_and_swap()).await {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(e)) => eprintln!("vaultspec serve: rebuild failed: {e}"),
-                    Err(e) => eprintln!("vaultspec serve: rebuild task panicked: {e}"),
-                }
             }
         });
     }
@@ -272,8 +278,8 @@ mod tests {
             "---\ntags:\n  - '#plan'\n  - '#srv'\n---\n\nMentions `src/a.rs`.\n",
         )
         .unwrap();
+        // build_state warms + indexes the launch scope's cell eagerly.
         let state = app::build_state(dir.path().to_path_buf());
-        state.rebuild_and_swap().unwrap();
         (dir, state)
     }
 
@@ -365,10 +371,10 @@ mod tests {
             String::from_utf8_lossy(&out.stdout).trim().to_string()
         };
 
+        // build_state warms + indexes the launch scope's cell eagerly.
         let state = app::build_state(root.to_path_buf());
-        state.rebuild_and_swap().unwrap();
         let token = state.bearer.clone();
-        let scope = state.root.to_string_lossy().replace('\\', "/");
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
         let router = build_router(state);
 
         // Revision token: resolves to HEAD's sha, interpretation `revision`.
@@ -428,10 +434,10 @@ mod tests {
             String::from_utf8_lossy(&out.stdout).trim().to_string()
         };
 
+        // build_state warms + indexes the launch scope's cell eagerly.
         let state = app::build_state(root.to_path_buf());
-        state.rebuild_and_swap().unwrap();
         let token = state.bearer.clone();
-        let scope = state.root.to_string_lossy().replace('\\', "/");
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
         let router = build_router(state);
 
         // Revision token (`HEAD`): resolves to HEAD's sha, interpretation
@@ -535,7 +541,7 @@ mod tests {
     async fn scope_validation_rejects_unserved_scopes() {
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();
-        let served = state.root.to_string_lossy().replace('\\', "/");
+        let served = state.workspace_root.to_string_lossy().replace('\\', "/");
         let router = build_router(state);
         let (status, _) = get_with_token(
             router.clone(),
@@ -720,31 +726,32 @@ mod tests {
         // `unwrap_or_else(|e| e.into_inner())` recovery (paired with the
         // CatchPanicLayer), the engine keeps serving.
         let (_dir, state) = fixture_state();
-        state.rebuild_and_swap().unwrap();
         let token = state.bearer.clone();
+        // The per-scope live locks now live on the active scope's cell.
+        let cell = state.active_cell();
 
         // Poison the graph, meta-cache, and ring locks by panicking while each
         // guard is held — exactly the shape of a handler panicking mid-commit.
         // The catch must NOT propagate; we catch the unwind at the seam.
         for poisoner in [
             {
-                let s = state.clone();
+                let c = cell.clone();
                 std::thread::spawn(move || {
-                    let _g = s.graph.write().unwrap();
+                    let _g = c.graph.write().unwrap();
                     panic!("poison the graph lock");
                 })
             },
             {
-                let s = state.clone();
+                let c = cell.clone();
                 std::thread::spawn(move || {
-                    let _g = s.meta_cache.lock().unwrap();
+                    let _g = c.meta_cache.lock().unwrap();
                     panic!("poison the meta-cache lock");
                 })
             },
             {
-                let s = state.clone();
+                let c = cell.clone();
                 std::thread::spawn(move || {
-                    let _g = s.ring.lock().unwrap();
+                    let _g = c.ring.lock().unwrap();
                     panic!("poison the ring lock");
                 })
             },
@@ -756,12 +763,12 @@ mod tests {
         }
 
         // The locks are now poisoned. Direct accessors must recover, not panic.
-        let graph = state.graph_arc();
+        let graph = cell.graph_arc();
         assert!(
             graph.node_count() > 0,
             "graph_arc recovers a poisoned RwLock"
         );
-        let meta = state.meta_edges();
+        let meta = cell.meta_edges();
         let _ = meta.len(); // meta_edges recovers the poisoned Mutex
 
         // And the live front door still serves a request end-to-end despite the
