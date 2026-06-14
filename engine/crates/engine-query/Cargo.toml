@@ -19,5 +19,13 @@ ingest-git = { version = "0.1.0", path = "../ingest-git" }
 [dev-dependencies]
 tempfile = "3.27.0"
 
+# The salience feasibility benchmark (graph-node-salience W05.P11.S44):
+# `harness = false` so it is a plain `main` printing wall-clock evidence (no
+# Criterion, no flaky pass/fail gate), compiled by `cargo build --benches` /
+# `cargo bench`. Mirrors the established no-wall-clock-ceiling bench convention.
+[[bench]]
+name = "salience_bench"
+harness = false
+
 [lints]
 workspace = true

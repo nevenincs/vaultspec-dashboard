@@ -162,7 +162,10 @@ impl ScopeCell {
     pub fn salience_basis(&self) -> Arc<engine_query::salience::LensBasis> {
         let generation = self.generation.load(Ordering::SeqCst);
         // Poison recovery (robustness H2): see `graph_arc`.
-        let mut cache = self.salience_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let mut cache = self
+            .salience_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some((cached_generation, cached)) = cache.as_ref()
             && *cached_generation == generation
         {
@@ -599,6 +602,31 @@ mod tests {
         let c = cell.meta_edges();
         // New generation recomputes (pointer may differ even if equal).
         assert_eq!(*a, *c, "content equal across no-op rebuild");
+    }
+
+    #[test]
+    fn salience_basis_is_memoized_per_generation() {
+        // graph-node-salience W05.P11.S45: the expensive lens basis (the PPR
+        // partial vectors, Brandes betweenness, k-core, role features) is computed
+        // ONCE per graph generation and shared by every lens. A no-op query is a
+        // warm-cache hit (same Arc); a generation bump (rebuild) recomputes.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.salience_basis();
+        let b = cell.salience_basis();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: the basis is a warm-cache hit, not recomputed"
+        );
+        // A generation bump (rebuild) invalidates the cache and recomputes.
+        let _ = cell.rebuild_and_swap();
+        let c = cell.salience_basis();
+        assert_eq!(
+            a.node_count(),
+            c.node_count(),
+            "the recomputed basis covers the same bounded node set"
+        );
     }
 
     #[test]

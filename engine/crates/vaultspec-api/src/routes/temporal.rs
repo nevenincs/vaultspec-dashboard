@@ -146,7 +146,10 @@ pub async fn graph_asof(
         let basis = engine_query::salience::LensBasis::compute(&resolved.graph, &scope, &members);
         // Historical structural resolution degrades to stale at T (the as-of
         // tiers block says so), so the salience is computed partial for honesty.
-        let focus = params.focus.as_ref().map(|f| engine_model::NodeId(f.clone()));
+        let focus = params
+            .focus
+            .as_ref()
+            .map(|f| engine_model::NodeId(f.clone()));
         let scores = engine_query::salience::compute_salience(
             &basis,
             &resolved.graph,

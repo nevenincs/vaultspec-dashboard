@@ -221,16 +221,16 @@ Establish the engine benchmark proving Brandes betweenness feasibility under the
 
 Add the engine benchmark proving Brandes betweenness is affordable under the node ceiling and round out the engine-side salience test suite.
 
-- [ ] `W05.P11.S44` - Add an engine benchmark measuring Brandes betweenness and the full basis precompute at the node ceiling, proving feasibility under MAX_GRAPH_NODES; `engine/crates/engine-query/benches/salience_bench.rs`.
-- [ ] `W05.P11.S45` - Add an integration test asserting basis memoization survives a no-op query and recomputes on graph generation change; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W05.P11.S46` - Add a degraded-tier integration test asserting salience computed over available tiers is flagged partial in the tiers block end to end; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W05.P11.S44` - Add an engine benchmark measuring Brandes betweenness and the full basis precompute at the node ceiling, proving feasibility under MAX_GRAPH_NODES; `engine/crates/engine-query/benches/salience_bench.rs`.
+- [x] `W05.P11.S45` - Add an integration test asserting basis memoization survives a no-op query and recomputes on graph generation change; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W05.P11.S46` - Add a degraded-tier integration test asserting salience computed over available tiers is flagged partial in the tiers block end to end; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
 ### Phase `W05.P12` - The closing full green gate
 
 Run the full lint and test gate across engine and frontend as the closing verification, confirming exit 0 including prettier and rustfmt.
 
-- [ ] `W05.P12.S47` - Run cargo fmt --check, cargo clippy, and cargo test across the engine workspace and confirm exit 0; `engine/Cargo.toml`.
-- [ ] `W05.P12.S48` - Run just dev lint frontend (eslint, prettier, tsc) plus the stores test suite and confirm exit 0 including format:check; `frontend/package.json`.
+- [x] `W05.P12.S47` - Run cargo fmt --check, cargo clippy, and cargo test across the engine workspace and confirm exit 0; `engine/Cargo.toml`.
+- [x] `W05.P12.S48` - Run just dev lint frontend (eslint, prettier, tsc) plus the stores test suite and confirm exit 0 including format:check; `frontend/package.json`.
 
 ## Description
 

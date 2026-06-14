@@ -197,7 +197,10 @@ mod tests {
             }),
             Presence::Exists,
         );
-        assert_eq!(lifecycle_phase(&in_flight, &scope()), LifecyclePhase::InFlight);
+        assert_eq!(
+            lifecycle_phase(&in_flight, &scope()),
+            LifecyclePhase::InFlight
+        );
 
         let complete = node(
             "plan",
@@ -207,7 +210,10 @@ mod tests {
             }),
             Presence::Exists,
         );
-        assert_eq!(lifecycle_phase(&complete, &scope()), LifecyclePhase::Durable);
+        assert_eq!(
+            lifecycle_phase(&complete, &scope()),
+            LifecyclePhase::Durable
+        );
 
         // Archived presence wins even with an active lifecycle (recent-but-archived).
         let archived = node(
@@ -218,7 +224,10 @@ mod tests {
             }),
             Presence::Archived,
         );
-        assert_eq!(lifecycle_phase(&archived, &scope()), LifecyclePhase::Archived);
+        assert_eq!(
+            lifecycle_phase(&archived, &scope()),
+            LifecyclePhase::Archived
+        );
     }
 
     #[test]

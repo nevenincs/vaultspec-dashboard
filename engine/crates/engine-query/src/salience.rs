@@ -244,8 +244,7 @@ impl Backbone {
             let Some(w) = backbone_weight(stored.edge.tier) else {
                 continue;
             };
-            let (Some(&a), Some(&b)) =
-                (index.get(&stored.edge.src), index.get(&stored.edge.dst))
+            let (Some(&a), Some(&b)) = (index.get(&stored.edge.src), index.get(&stored.edge.dst))
             else {
                 continue;
             };
@@ -486,10 +485,7 @@ pub fn coreness(backbone: &Backbone) -> Vec<usize> {
     let mut level = 0usize;
     for _ in 0..n {
         // Find the unremoved node of minimum current degree.
-        let Some(v) = (0..n)
-            .filter(|&i| !removed[i])
-            .min_by_key(|&i| degree[i])
-        else {
+        let Some(v) = (0..n).filter(|&i| !removed[i]).min_by_key(|&i| degree[i]) else {
             break;
         };
         level = level.max(degree[v]);
@@ -747,8 +743,7 @@ fn aggregated_exec_features(
 /// hub/fan-out treatment, never a headline measure on its own).
 pub fn backbone_degree(graph: &LinkageGraph, id: &NodeId) -> usize {
     let counts = degree_by_tier(graph, id);
-    counts.get("declared").copied().unwrap_or(0)
-        + counts.get("structural").copied().unwrap_or(0)
+    counts.get("declared").copied().unwrap_or(0) + counts.get("structural").copied().unwrap_or(0)
 }
 
 // --- Stage 3 inputs: recency, lifecycle multiplier, status burst ----------------
@@ -797,12 +792,7 @@ pub fn lifecycle_multiplier(lens: Lens, phase: LifecyclePhase) -> f64 {
 /// age). Counts the node's incident temporal-tier edges observed within
 /// `window_days` of `now`, normalized by a soft cap so a hot node saturates
 /// rather than dominating unboundedly.
-pub fn activity_burst(
-    graph: &LinkageGraph,
-    id: &NodeId,
-    now_ms: i64,
-    window_days: f64,
-) -> f64 {
+pub fn activity_burst(graph: &LinkageGraph, id: &NodeId, now_ms: i64, window_days: f64) -> f64 {
     let window_ms = (window_days * MS_PER_DAY) as i64;
     let mut recent = 0usize;
     for stored in graph.edges_of(id) {
@@ -833,7 +823,11 @@ pub fn rank_normalize(values: &[f64]) -> Vec<f64> {
     }
     // Sort indices by value; assign average ranks for ties.
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| values[a].partial_cmp(&values[b]).unwrap_or(std::cmp::Ordering::Equal));
+    order.sort_by(|&a, &b| {
+        values[a]
+            .partial_cmp(&values[b])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let mut normalized = vec![0.0; n];
     let mut i = 0;
     while i < n {
@@ -1026,7 +1020,13 @@ pub fn backbone_distance(backbone: &Backbone, focus: Option<&NodeId>) -> Vec<f64
     let max_reachable = dist.iter().copied().filter(|&d| d >= 0).max().unwrap_or(0);
     let raw: Vec<f64> = dist
         .iter()
-        .map(|&d| if d < 0 { (max_reachable + 1) as f64 } else { d as f64 })
+        .map(|&d| {
+            if d < 0 {
+                (max_reachable + 1) as f64
+            } else {
+                d as f64
+            }
+        })
         .collect();
     rank_normalize(&raw)
 }
@@ -1162,8 +1162,7 @@ pub fn weight_sensitivity_sweep(
             let overlap = if baseline_top.is_empty() {
                 1.0
             } else {
-                baseline_top.intersection(&perturbed_top).count() as f64
-                    / baseline_top.len() as f64
+                baseline_top.intersection(&perturbed_top).count() as f64 / baseline_top.len() as f64
             };
             min_overlap = min_overlap.min(overlap);
         }
@@ -1358,8 +1357,8 @@ mod tests {
     use super::*;
     use engine_graph::EdgeAttrs;
     use engine_model::{
-        CanonicalKey, Dates, Facet, NodeKind, Presence, Provenance, RelationKind,
-        ResolutionState, edge_id, node_id,
+        CanonicalKey, Dates, Facet, NodeKind, Presence, Provenance, RelationKind, ResolutionState,
+        edge_id, node_id,
     };
 
     fn scope() -> ScopeRef {
@@ -1434,8 +1433,7 @@ mod tests {
         for n in &nodes {
             g.upsert_node(n.clone());
         }
-        engine_graph::ingest(&mut g, edge("p", "a", Tier::Declared), EdgeAttrs::default())
-            .unwrap();
+        engine_graph::ingest(&mut g, edge("p", "a", Tier::Declared), EdgeAttrs::default()).unwrap();
         engine_graph::ingest(
             &mut g,
             edge("p", "r", Tier::Structural),
@@ -1450,8 +1448,7 @@ mod tests {
         .unwrap();
         // A temporal edge a<->s: must be excluded from the backbone topology
         // (only declared/structural enter the backbone).
-        engine_graph::ingest(&mut g, edge("a", "s", Tier::Temporal), EdgeAttrs::default())
-            .unwrap();
+        engine_graph::ingest(&mut g, edge("a", "s", Tier::Temporal), EdgeAttrs::default()).unwrap();
         (g, nodes)
     }
 
@@ -1465,16 +1462,26 @@ mod tests {
         let backbone = Backbone::build(&g, &members(&nodes));
         // 5 members; the semantic a<->s edge is excluded, so `s` is isolated.
         assert_eq!(backbone.node_count(), 5);
-        let s = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "s" })).unwrap();
+        let s = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "s" }))
+            .unwrap();
         assert_eq!(
             backbone.adjacency[s].len(),
             0,
             "off-backbone (temporal) edge is not part of the backbone topology"
         );
         // The declared p<->a edge weights higher than a structural p<->r edge.
-        let p = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "p" })).unwrap();
-        let a = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "a" })).unwrap();
-        let pa = backbone.adjacency[p].iter().find(|&&(j, _)| j == a).unwrap().1;
+        let p = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "p" }))
+            .unwrap();
+        let a = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "a" }))
+            .unwrap();
+        let pa = backbone.adjacency[p]
+            .iter()
+            .find(|&&(j, _)| j == a)
+            .unwrap()
+            .1;
         assert!((pa - tier_weight(Tier::Declared)).abs() < 1e-9);
     }
 
@@ -1489,7 +1496,9 @@ mod tests {
         let backbone = Backbone::build(&g, &subset);
         assert_eq!(backbone.node_count(), 3);
         // `e` was dropped, so p has only the a and r backbone edges.
-        let p = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "p" })).unwrap();
+        let p = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "p" }))
+            .unwrap();
         assert_eq!(backbone.adjacency[p].len(), 2);
     }
 
@@ -1501,10 +1510,17 @@ mod tests {
         let teleport = vec![1.0; n];
         let rank = personalized_pagerank(&backbone, &teleport);
         let total: f64 = rank.iter().sum();
-        assert!((total - 1.0).abs() < 1e-6, "stationary distribution sums to 1");
+        assert!(
+            (total - 1.0).abs() < 1e-6,
+            "stationary distribution sums to 1"
+        );
         // The central plan node `p` outranks the isolated semantic-only node `s`.
-        let p = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "p" })).unwrap();
-        let s = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "s" })).unwrap();
+        let p = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "p" }))
+            .unwrap();
+        let s = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "s" }))
+            .unwrap();
         assert!(rank[p] > rank[s], "the hub plan outranks the isolated node");
     }
 
@@ -1513,7 +1529,9 @@ mod tests {
         let (g, nodes) = fixture();
         let backbone = Backbone::build(&g, &members(&nodes));
         let n = backbone.node_count();
-        let a = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "a" })).unwrap();
+        let a = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "a" }))
+            .unwrap();
         // Teleport biased entirely onto the ADR `a`.
         let mut teleport = vec![0.0; n];
         teleport[a] = 1.0;
@@ -1532,8 +1550,12 @@ mod tests {
         let (g, nodes) = fixture();
         let backbone = Backbone::build(&g, &members(&nodes));
         let n = backbone.node_count();
-        let a = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "a" })).unwrap();
-        let r = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "r" })).unwrap();
+        let a = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "a" }))
+            .unwrap();
+        let r = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "r" }))
+            .unwrap();
         let mut ta = vec![0.0; n];
         ta[a] = 1.0;
         let mut tr = vec![0.0; n];
@@ -1557,21 +1579,42 @@ mod tests {
     fn brandes_betweenness_finds_the_bridge() {
         // path a - p - r: p is the only bridge, so it carries all the
         // betweenness; a and r carry none.
-        let nodes = vec![doc("a", "adr", "f"), doc("p", "plan", "f"), doc("r", "research", "f")];
+        let nodes = vec![
+            doc("a", "adr", "f"),
+            doc("p", "plan", "f"),
+            doc("r", "research", "f"),
+        ];
         let mut g = LinkageGraph::new();
         for nd in &nodes {
             g.upsert_node(nd.clone());
         }
-        engine_graph::ingest(&mut g, edge("a", "p", Tier::Structural), EdgeAttrs::default())
-            .unwrap();
-        engine_graph::ingest(&mut g, edge("p", "r", Tier::Structural), EdgeAttrs::default())
-            .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            edge("a", "p", Tier::Structural),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            edge("p", "r", Tier::Structural),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
         let backbone = Backbone::build(&g, &members(&nodes));
         let bc = brandes_betweenness(&backbone);
-        let p = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "p" })).unwrap();
-        let a = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "a" })).unwrap();
-        let r = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "r" })).unwrap();
-        assert!((bc[p] - 1.0).abs() < 1e-9, "the middle node is the only bridge");
+        let p = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "p" }))
+            .unwrap();
+        let a = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "a" }))
+            .unwrap();
+        let r = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "r" }))
+            .unwrap();
+        assert!(
+            (bc[p] - 1.0).abs() < 1e-9,
+            "the middle node is the only bridge"
+        );
         assert!(bc[a] < 1e-9 && bc[r] < 1e-9, "the endpoints bridge nothing");
     }
 
@@ -1580,7 +1623,9 @@ mod tests {
         let (g, nodes) = fixture();
         let backbone = Backbone::build(&g, &members(&nodes));
         let core = coreness(&backbone);
-        let e = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "e" })).unwrap();
+        let e = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "e" }))
+            .unwrap();
         // The exec leaf `e` is a pendant (degree 1): coreness 1, peeled first.
         assert_eq!(core[e], 1, "pendant exec leaf has minimal coreness");
     }
@@ -1596,10 +1641,22 @@ mod tests {
         assert_eq!(basis.aggregated_exec.len(), 5);
         assert_eq!(basis.ppr_basis.hub_count(), HUB_CLASSES.len());
         // The plan `p` aggregates its exec child `e`.
-        let p = basis.backbone.index_of(&node_id(&CanonicalKey::Document { stem: "p" })).unwrap();
-        assert_eq!(basis.aggregated_exec[p].child_count, 1, "exec child rolled up");
-        let e = basis.backbone.index_of(&node_id(&CanonicalKey::Document { stem: "e" })).unwrap();
-        assert!(basis.aggregated_exec[e].is_aggregate, "exec record is aggregate species");
+        let p = basis
+            .backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "p" }))
+            .unwrap();
+        assert_eq!(
+            basis.aggregated_exec[p].child_count, 1,
+            "exec child rolled up"
+        );
+        let e = basis
+            .backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "e" }))
+            .unwrap();
+        assert!(
+            basis.aggregated_exec[e].is_aggregate,
+            "exec record is aggregate species"
+        );
     }
 
     // --- W02.P03: recency, lifecycle, burst ------------------------------------
@@ -1658,10 +1715,16 @@ mod tests {
         let normed = rank_normalize(&values);
         assert_eq!(normed[0], 0.0, "smallest maps to 0");
         assert_eq!(normed[3], 1.0, "largest maps to 1 regardless of magnitude");
-        assert!(normed[1] > normed[0] && normed[2] > normed[1], "rank order preserved");
+        assert!(
+            normed[1] > normed[0] && normed[2] > normed[1],
+            "rank order preserved"
+        );
         // Ties share the average rank.
         let tied = rank_normalize(&[5.0, 5.0, 9.0]);
-        assert!((tied[0] - tied[1]).abs() < 1e-12, "tied values share a rank");
+        assert!(
+            (tied[0] - tied[1]).abs() < 1e-12,
+            "tied values share a rank"
+        );
     }
 
     #[test]
@@ -1680,13 +1743,15 @@ mod tests {
         let row = Lens::Design.weights();
         // centrality blend with a single node normalizes to 0.5 (single elem).
         let expected = row.type_prior * 1.0
-            + row.centrality
-                * ((1.0 - row.betweenness_blend) * 0.5 + row.betweenness_blend * 0.0)
+            + row.centrality * ((1.0 - row.betweenness_blend) * 0.5 + row.betweenness_blend * 0.0)
             + row.recency * 1.0
             + row.structural_role * 0.0
             + row.burst * 0.0;
         let api = compose_api(&criteria, Lens::Design);
-        assert!((api[0] - expected).abs() < 1e-9, "weighted blend matches by hand");
+        assert!(
+            (api[0] - expected).abs() < 1e-9,
+            "weighted blend matches by hand"
+        );
     }
 
     #[test]
@@ -1696,29 +1761,55 @@ mod tests {
         let distance = vec![0.0, 1.0, 0.5];
         let doi = apply_focus_distance(&api, &distance, Lens::Status);
         let gamma = Lens::Status.weights().focus_gamma;
-        assert!((doi[0] - 1.0).abs() < 1e-9, "the focus node keeps its full API");
-        assert!((doi[1] - (1.0 - gamma)).abs() < 1e-9, "a far node loses gamma*distance");
-        assert!(doi[0] > doi[2] && doi[2] > doi[1], "interest falls with distance");
+        assert!(
+            (doi[0] - 1.0).abs() < 1e-9,
+            "the focus node keeps its full API"
+        );
+        assert!(
+            (doi[1] - (1.0 - gamma)).abs() < 1e-9,
+            "a far node loses gamma*distance"
+        );
+        assert!(
+            doi[0] > doi[2] && doi[2] > doi[1],
+            "interest falls with distance"
+        );
     }
 
     #[test]
     fn backbone_distance_is_bfs_hops_from_focus() {
         // path a - p - r: distance from a is 0,1,2.
-        let nodes = vec![doc("a", "adr", "f"), doc("p", "plan", "f"), doc("r", "research", "f")];
+        let nodes = vec![
+            doc("a", "adr", "f"),
+            doc("p", "plan", "f"),
+            doc("r", "research", "f"),
+        ];
         let mut g = LinkageGraph::new();
         for nd in &nodes {
             g.upsert_node(nd.clone());
         }
-        engine_graph::ingest(&mut g, edge("a", "p", Tier::Structural), EdgeAttrs::default())
-            .unwrap();
-        engine_graph::ingest(&mut g, edge("p", "r", Tier::Structural), EdgeAttrs::default())
-            .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            edge("a", "p", Tier::Structural),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            edge("p", "r", Tier::Structural),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
         let backbone = Backbone::build(&g, &members(&nodes));
         let a = node_id(&CanonicalKey::Document { stem: "a" });
         let dist = backbone_distance(&backbone, Some(&a));
         let ia = backbone.index_of(&a).unwrap();
-        let ir = backbone.index_of(&node_id(&CanonicalKey::Document { stem: "r" })).unwrap();
-        assert!(dist[ia] < dist[ir], "the focus is nearest, the far node farthest");
+        let ir = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "r" }))
+            .unwrap();
+        assert!(
+            dist[ia] < dist[ir],
+            "the focus is nearest, the far node farthest"
+        );
         // No focus -> all zero distance.
         assert!(backbone_distance(&backbone, None).iter().all(|&d| d == 0.0));
     }
@@ -1793,8 +1884,14 @@ mod tests {
         let (g, nodes) = sweep_fixture();
         let basis = LensBasis::compute(&g, &scope(), &members(&nodes));
         let now = 100 * MS_PER_DAY as i64;
-        let design = compose_api(&normalize_criteria(&basis, &g, Lens::Design, now), Lens::Design);
-        let status = compose_api(&normalize_criteria(&basis, &g, Lens::Status, now), Lens::Status);
+        let design = compose_api(
+            &normalize_criteria(&basis, &g, Lens::Design, now),
+            Lens::Design,
+        );
+        let status = compose_api(
+            &normalize_criteria(&basis, &g, Lens::Status, now),
+            Lens::Status,
+        );
         let design_top = top_k_ids(&basis.backbone, &design, 3);
         let status_top = top_k_ids(&basis.backbone, &status, 3);
         assert_ne!(
@@ -1804,11 +1901,15 @@ mod tests {
         );
         // Design should rank an ADR highly; status should favor a plan.
         assert!(
-            design_top.iter().any(|id| id.0.contains("a1") || id.0.contains("a2")),
+            design_top
+                .iter()
+                .any(|id| id.0.contains("a1") || id.0.contains("a2")),
             "design lens surfaces an authority ADR in its top-k: {design_top:?}"
         );
         assert!(
-            status_top.iter().any(|id| id.0.contains("p1") || id.0.contains("p2")),
+            status_top
+                .iter()
+                .any(|id| id.0.contains("p1") || id.0.contains("p2")),
             "status lens surfaces a plan in its top-k: {status_top:?}"
         );
     }
@@ -1840,8 +1941,7 @@ mod tests {
         // The no-focus and focused maps differ (focus folding actually changed
         // the ordering for at least the far node).
         assert!(
-            (no_focus.get(&far.0).unwrap_or(0.0) - focused.get(&far.0).unwrap_or(0.0)).abs()
-                > 1e-9
+            (no_focus.get(&far.0).unwrap_or(0.0) - focused.get(&far.0).unwrap_or(0.0)).abs() > 1e-9
                 || no_focus.by_id != focused.by_id,
             "focus folding shifts the DOI ranking"
         );
@@ -1881,7 +1981,10 @@ mod tests {
         let (g, nodes) = fixture();
         let basis = LensBasis::compute(&g, &scope(), &members(&nodes));
         let scores = compute_salience(&basis, &g, Lens::Status, None, 0, true);
-        assert!(scores.partial, "the partial flag carries into the served scores");
+        assert!(
+            scores.partial,
+            "the partial flag carries into the served scores"
+        );
     }
 
     // --- W03.P08: annotate + DOI-ordered bounding ------------------------------
@@ -1915,6 +2018,9 @@ mod tests {
         order_by_salience(&mut nodes, &scores);
         assert_eq!(nodes[0]["id"], "doc:b", "highest DOI first");
         assert_eq!(nodes[1]["id"], "doc:a");
-        assert_eq!(nodes[2]["id"], "doc:unscored", "unscored recedes under truncation");
+        assert_eq!(
+            nodes[2]["id"], "doc:unscored",
+            "unscored recedes under truncation"
+        );
     }
 }

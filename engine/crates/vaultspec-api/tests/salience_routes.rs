@@ -62,7 +62,10 @@ async fn post(router: axum::Router, path: &str, token: &str, body: Value) -> (St
     let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
         .await
         .unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 fn served_scope(state: &AppState) -> String {
@@ -86,7 +89,10 @@ async fn graph_query_defaults_to_the_status_lens_and_carries_salience() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let data = &body["data"];
-    assert_eq!(data["lens"], "status", "omitted lens defaults to status: {body}");
+    assert_eq!(
+        data["lens"], "status",
+        "omitted lens defaults to status: {body}"
+    );
 
     // Every served DOCUMENT node carries the single active-lens salience float.
     let nodes = data["nodes"].as_array().expect("nodes array");
@@ -98,11 +104,17 @@ async fn graph_query_defaults_to_the_status_lens_and_carries_salience() {
             "every document node carries a salience float: {node}"
         );
         let s = salience.as_f64().unwrap();
-        assert!((0.0..=1.0).contains(&s), "salience is normalized to [0,1]: {s}");
+        assert!(
+            (0.0..=1.0).contains(&s),
+            "salience is normalized to [0,1]: {s}"
+        );
     }
 
     // The tiers block rides the success envelope.
-    assert!(body["tiers"].is_object(), "tiers block present on success: {body}");
+    assert!(
+        body["tiers"].is_object(),
+        "tiers block present on success: {body}"
+    );
     assert_eq!(body["tiers"]["structural"]["available"], Value::Bool(true));
 }
 
@@ -143,7 +155,10 @@ async fn the_two_lenses_order_the_served_nodes_differently() {
     let mut design_set = ids_for(&design_body);
     status_set.sort();
     design_set.sort();
-    assert_eq!(status_set, design_set, "same bounded node set, two orderings");
+    assert_eq!(
+        status_set, design_set,
+        "same bounded node set, two orderings"
+    );
 }
 
 #[tokio::test]
@@ -160,9 +175,16 @@ async fn an_unknown_lens_is_a_tiered_400() {
         json!({"scope": scope, "lens": "bogus"}),
     )
     .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "unknown lens is a 400: {body}");
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "unknown lens is a 400: {body}"
+    );
     // The error envelope still carries the tiers block (contract §2).
-    assert!(body["tiers"].is_object(), "error envelope carries tiers: {body}");
+    assert!(
+        body["tiers"].is_object(),
+        "error envelope carries tiers: {body}"
+    );
 }
 
 #[tokio::test]
@@ -230,7 +252,10 @@ async fn neighbors_carries_salience_and_the_lens_echo() {
         .await
         .unwrap();
     let body: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(body["data"]["lens"], "status", "neighbors echoes the active lens");
+    assert_eq!(
+        body["data"]["lens"], "status",
+        "neighbors echoes the active lens"
+    );
     let ego_nodes = body["data"]["ego"]["nodes"].as_array().expect("ego nodes");
     // The focus node (the center) is in the ego set and carries salience.
     assert!(
