@@ -42,7 +42,9 @@ describe("useGraphLiveSync", () => {
         { channel: "graph", data: { seq: 6, op: "change" } },
       ];
       // Seed the stream query (staleTime Infinity => useQuery returns it, no fetch).
-      client.setQueryData(engineKeys.stream(["graph"], undefined), chunks);
+      // Scope folds into the stream key (W02.P04.S14 per-scope clock), so the seed
+      // must carry the same scope the active hook subscribes with.
+      client.setQueryData(engineKeys.stream(["graph"], undefined, "scopeA"), chunks);
       const invalidate = vi.spyOn(client, "invalidateQueries");
 
       renderHook(() => useGraphLiveSync("scopeA", true), { wrapper: wrapper(client) });
@@ -85,6 +87,14 @@ describe("useGraphLiveSync", () => {
     expect(keyWithSince).not.toEqual(keyNoSince);
     expect(Array.isArray(keyWithSince)).toBe(true);
     expect(Array.isArray(keyNoSince)).toBe(true);
+    // Scope is part of the stream identity too (W02.P04.S14 per-scope clock):
+    // two scopes' streams carry different deltas and must not share a cache
+    // entry. Absent scope folds to the "active" sentinel, distinct from a named
+    // scope.
+    expect(engineKeys.stream(["graph"], 42, "scopeA")).not.toEqual(
+      engineKeys.stream(["graph"], 42, "scopeB"),
+    );
+    expect(engineKeys.stream(["graph"], 42, "scopeA")).not.toEqual(keyWithSince);
   });
 
   it("returns featureDeltas for granularity=feature chunks when keyframeSeq is provided", () => {
@@ -119,7 +129,7 @@ describe("useGraphLiveSync", () => {
         },
       },
     ];
-    client.setQueryData(engineKeys.stream(["graph"], 10), chunks);
+    client.setQueryData(engineKeys.stream(["graph"], 10, "scopeA"), chunks);
 
     const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
       wrapper: wrapper(client),
@@ -148,8 +158,8 @@ describe("useGraphLiveSync", () => {
         },
       },
     ];
-    // Without keyframeSeq, subscribes at live tail (undefined cache key)
-    client.setQueryData(engineKeys.stream(["graph"], undefined), chunks);
+    // Without keyframeSeq, subscribes at live tail (undefined since, scopeA)
+    client.setQueryData(engineKeys.stream(["graph"], undefined, "scopeA"), chunks);
 
     const { result } = renderHook(() => useGraphLiveSync("scopeA", true, null), {
       wrapper: wrapper(client),
@@ -177,7 +187,7 @@ describe("useGraphLiveSync", () => {
           },
         },
       ];
-      client.setQueryData(engineKeys.stream(["graph"], 10), chunks);
+      client.setQueryData(engineKeys.stream(["graph"], 10, "scopeA"), chunks);
       const invalidate = vi.spyOn(client, "invalidateQueries");
 
       const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
@@ -208,7 +218,7 @@ describe("useGraphLiveSync", () => {
         },
       },
     ];
-    client.setQueryData(engineKeys.stream(["graph"], 10), chunks);
+    client.setQueryData(engineKeys.stream(["graph"], 10, "scopeA"), chunks);
 
     const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
       wrapper: wrapper(client),
@@ -220,7 +230,7 @@ describe("useGraphLiveSync", () => {
 
   it("re-extracts deltas after a stream reconnect resets the chunk array (HIGH-1)", async () => {
     const client = new QueryClient();
-    const key = engineKeys.stream(["graph"], 10);
+    const key = engineKeys.stream(["graph"], 10, "scopeA");
     const fc = (seq: number): StreamChunk => ({
       channel: "graph",
       data: {
@@ -253,7 +263,7 @@ describe("useGraphLiveSync", () => {
     vi.useFakeTimers();
     try {
       const client = new QueryClient();
-      client.setQueryData(engineKeys.stream(["graph"], 10), [
+      client.setQueryData(engineKeys.stream(["graph"], 10, "scopeA"), [
         {
           channel: "graph",
           data: {
@@ -266,7 +276,9 @@ describe("useGraphLiveSync", () => {
         },
       ]);
       const invalidate = vi.spyOn(client, "invalidateQueries");
-      renderHook(() => useGraphLiveSync("scopeA", true, 10), { wrapper: wrapper(client) });
+      renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+        wrapper: wrapper(client),
+      });
       // The feature delta splices via apply-deltas; no debounced refetch fires.
       vi.advanceTimersByTime(300);
       expect(invalidate).not.toHaveBeenCalled();

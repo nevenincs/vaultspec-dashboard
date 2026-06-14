@@ -63,8 +63,12 @@ export function useGraphLiveSync(
   // cached data). Stable during the session — TanStack retries on error ride
   // the same key; the streamReducer dedup handles any replay overlap.
   const sinceArg = typeof keyframeSeq === "number" ? keyframeSeq : undefined;
+  // Subscribe against THIS scope's own clock (W02.P04.S14 per-scope stream):
+  // pass the active scope so `since=` resume stays correct and independent per
+  // worktree, and so two scopes' streams never share a cache entry.
+  const scopeArg = scope ?? undefined;
   const stream = useQuery({
-    ...engineStreamOptions(["graph"], sinceArg),
+    ...engineStreamOptions(["graph"], sinceArg, scopeArg),
     enabled: active,
   });
   const { data: chunks, isError, isSuccess, fetchStatus } = stream;

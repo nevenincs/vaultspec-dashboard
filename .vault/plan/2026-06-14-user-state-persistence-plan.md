@@ -102,7 +102,7 @@ Wire the session and settings surface through the stores layer as the sole wire 
 Add the session and settings client methods, wire types, query and mutation hooks, mock double, and tolerant adapter.
 
 - [x] `W04.P08.S25` - add session and settings client methods and snake_case wire types; `frontend/src/stores/server/engine.ts`.
-- [ ] `W04.P08.S26` - add session and settings query and mutation hooks and keys; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P08.S26` - add session and settings query and mutation hooks and keys; `frontend/src/stores/server/queries.ts`.
 - [ ] `W04.P08.S27` - mirror the new session and settings wire shape in the mock engine double; `frontend/src/testing/mockEngine.ts`.
 - [ ] `W04.P08.S28` - extend the tolerant live adapter for the new shapes; `frontend/src/stores/server/liveAdapters.ts`.
 

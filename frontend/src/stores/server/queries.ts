@@ -10,11 +10,13 @@
 import {
   experimental_streamedQuery as streamedQuery,
   queryOptions,
+  useMutation,
   useQuery,
+  useQueryClient,
 } from "@tanstack/react-query";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
-import type { GraphFilter } from "./engine";
+import type { GraphFilter, SessionUpdate, SettingUpdate } from "./engine";
 import { engineClient } from "./engine";
 
 // --- stable serialization for key parts -----------------------------------------
@@ -63,10 +65,24 @@ export const engineKeys = {
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
   search: (query: string, target?: string) =>
     [...engineKeys.all, "search", target ?? "vault", query] as const,
-  stream: (channels: readonly string[], since?: number) =>
-    [...engineKeys.all, "stream", channels.join(","), since ?? "live"] as const,
+  stream: (channels: readonly string[], since?: number, scope?: string) =>
+    [
+      ...engineKeys.all,
+      "stream",
+      channels.join(","),
+      since ?? "live",
+      // Scope folds into the stream identity (W02.P04.S14 per-scope clock): two
+      // scopes' streams carry different deltas on different clocks and must not
+      // share a cache entry. Absent scope = the active-scope fallback ("active").
+      scope ?? "active",
+    ] as const,
   diff: (scope: string, from: string | number, to: string | number) =>
     [...engineKeys.all, "diff", scope, String(from), String(to)] as const,
+  // The session/settings surface is workspace-singular (not scope-keyed): one
+  // active session and one settings document per workspace, so a single stable
+  // key each. Mutations invalidate exactly these.
+  session: () => [...engineKeys.all, "session"] as const,
+  settings: () => [...engineKeys.all, "settings"] as const,
 };
 
 // --- read hooks --------------------------------------------------------------------
@@ -173,6 +189,61 @@ export function useEngineSearch(query: string, target: "vault" | "code" = "vault
     queryKey: engineKeys.search(query, target),
     queryFn: () => engineClient.search({ query, target }),
     enabled: query.length > 0,
+  });
+}
+
+// --- session / settings (user-state-persistence W04.P08.S26) -------------------------
+//
+// The durable "where am I" session and the user settings, consumed through
+// stores hooks so chrome and scene never touch the wire (dashboard-layer-
+// ownership). `useSession` is what Stage reads on load to restore the persisted
+// active scope instead of recomputing a default — the reload-amnesia cure. The
+// mutation hooks persist a selection and invalidate their own key so the read
+// re-fetches the authoritative server shape.
+
+/** Read the current session — the restore-on-load source of truth. */
+export function useSession() {
+  return useQuery({
+    queryKey: engineKeys.session(),
+    queryFn: () => engineClient.session(),
+  });
+}
+
+/** Read user settings (global + per-scope scoped keys). */
+export function useSettings() {
+  return useQuery({
+    queryKey: engineKeys.settings(),
+    queryFn: () => engineClient.settings(),
+  });
+}
+
+/**
+ * Persist a partial session update (active scope, scope context, or a recent).
+ * On success the server returns the full updated session, which seeds the cache
+ * directly AND triggers an invalidation so any other observer re-reads. A
+ * rejected switch (unknown scope → tiered 400) rejects the mutation; callers
+ * surface it gracefully and the persisted state stays unchanged.
+ */
+export function usePutSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SessionUpdate) => engineClient.putSession(body),
+    onSuccess: (session) => {
+      queryClient.setQueryData(engineKeys.session(), session);
+      void queryClient.invalidateQueries({ queryKey: engineKeys.session() });
+    },
+  });
+}
+
+/** Persist a single settings write; seed + invalidate the settings cache. */
+export function usePutSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SettingUpdate) => engineClient.putSettings(body),
+    onSuccess: (settings) => {
+      queryClient.setQueryData(engineKeys.settings(), settings);
+      void queryClient.invalidateQueries({ queryKey: engineKeys.settings() });
+    },
   });
 }
 
@@ -289,15 +360,22 @@ export function streamReducer(acc: StreamChunk[], chunk: StreamChunk): StreamChu
  * splices idempotently; `since` resumes the graph channel from a known seq and
  * is folded into the cache key so two resume offsets never collide (section 7).
  */
-export function engineStreamOptions(channels: readonly string[], since?: number) {
+export function engineStreamOptions(
+  channels: readonly string[],
+  since?: number,
+  scope?: string,
+) {
   return queryOptions({
     // The resume point is identity-bearing: two `since` offsets carry
     // different delta windows and must not collide on one cache entry
     // (adversarial finding stream-01), mirroring how `graph` folds as-of.
-    queryKey: engineKeys.stream(channels, since),
+    // Scope joins the key for the same reason (per-scope clock, W02.P04.S14).
+    queryKey: engineKeys.stream(channels, since, scope),
     queryFn: streamedQuery({
       streamFn: async (context) =>
-        sseChunks(await engineClient.openStream([...channels], since, context.signal)),
+        sseChunks(
+          await engineClient.openStream([...channels], since, context.signal, scope),
+        ),
       reducer: streamReducer,
       initialValue: [] as StreamChunk[],
     }),
@@ -306,10 +384,15 @@ export function engineStreamOptions(channels: readonly string[], since?: number)
     // Capped exponential backoff (P-MED-3, LOW-2): recover a transient blip
     // fast (250ms first retry), then back off exponentially to a 30s ceiling so
     // a flapping /stream cannot tight-loop reconnects or storm the error log.
-    retryDelay: (attempt) => (attempt === 0 ? 250 : Math.min(30_000, 1_000 * 2 ** attempt)),
+    retryDelay: (attempt) =>
+      attempt === 0 ? 250 : Math.min(30_000, 1_000 * 2 ** attempt),
   });
 }
 
-export function useEngineStream(channels: readonly string[], since?: number) {
-  return useQuery(engineStreamOptions(channels, since));
+export function useEngineStream(
+  channels: readonly string[],
+  since?: number,
+  scope?: string,
+) {
+  return useQuery(engineStreamOptions(channels, since, scope));
 }
