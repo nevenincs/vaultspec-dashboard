@@ -103,6 +103,31 @@ export function edgeGroupKey(edge: SceneEdgeData): string {
   }
 }
 
+/**
+ * Pipeline-derivation labels in PROV/lineage axis order (graph-node-semantics /
+ * graph-representation): the directed chain research -> adr -> plan -> exec ->
+ * audit -> rule. A derivation-bearing edge is a LINEAGE edge — the lineage layout
+ * orders nodes along this axis. Tier still carries the line treatment (the channel
+ * separation is preserved): derivation never becomes a competing edge colour, it
+ * is a layout-axis and edge-classification signal only.
+ */
+export const DERIVATION_AXIS_ORDER: Record<string, number> = {
+  grounds: 0, // research -> adr
+  authorizes: 1, // adr -> plan
+  binds: 1, // adr -> plan (synonym)
+  "generated-by": 2, // plan -> exec
+  aggregates: 3, // exec -> summary
+  reviews: 4, // exec -> audit
+  "promoted-from": 5, // audit -> rule
+};
+
+/** True when the edge carries a pipeline-derivation label (a lineage edge). */
+export function isLineageEdge(edge: SceneEdgeData): boolean {
+  return (
+    typeof edge.derivation === "string" && edge.derivation in DERIVATION_AXIS_ORDER
+  );
+}
+
 /** Confidence quantized to 4 lightness buckets (0 = faintest, 3 = fullest). */
 export function confidenceBucket(confidence: number): number {
   const c = Math.max(0, Math.min(1, confidence));

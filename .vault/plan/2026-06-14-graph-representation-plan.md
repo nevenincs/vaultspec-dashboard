@@ -145,39 +145,39 @@ Build the v1 layout modes in the CPU worker (lineage derivation-DAG; v1-gated se
 
 Map salience to size and label-priority and derivation onto the scene edge, encode the channel map through tokens.
 
-- [ ] `W02.P04.S14` - Add salience-driven nodeRadius helper superseding member-count for non-feature species; `frontend/src/scene/field/nodeSprites.ts`.
-- [ ] `W02.P04.S15` - Add salience as a label-priority input to the DOI label-culling pass; `frontend/src/scene/field/nodeSprites.ts`.
-- [ ] `W02.P04.S16` - Encode derivation onto edge treatment via tokens; `frontend/src/scene/field/edgeMeshes.ts`.
-- [ ] `W02.P04.S17` - Add a salience-encoding unit test; `frontend/src/scene/field/salienceEncoding.test.ts`.
+- [x] `W02.P04.S14` - Add salience-driven nodeRadius helper superseding member-count for non-feature species; `frontend/src/scene/field/nodeSprites.ts`.
+- [x] `W02.P04.S15` - Add salience as a label-priority input to the DOI label-culling pass; `frontend/src/scene/field/nodeSprites.ts`.
+- [x] `W02.P04.S16` - Encode derivation onto edge treatment via tokens; `frontend/src/scene/field/edgeMeshes.ts`.
+- [x] `W02.P04.S17` - Add a salience-encoding unit test; `frontend/src/scene/field/salienceEncoding.test.ts`.
 
 ### Phase `W02.P05` - lineage derivation-DAG layout
 
 Build the CPU-worker lineage layout that lays the directed derivation DAG along a derivation/time axis from the derivation edge labels, with honest dangling-stub handling.
 
-- [ ] `W02.P05.S18` - Add a pure lineage DAG ordering module (derivation-axis longest-path layering); `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W02.P05.S19` - Render dangling lineage stubs honestly for incomplete derivation chains; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W02.P05.S20` - Unit-test lineage layering, axis ordering, and dangling-stub honesty; `frontend/src/scene/field/lineageLayout.test.ts`.
-- [ ] `W02.P05.S21` - Add a representationLayout dispatcher selecting connectivity vs lineage vs semantic; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W02.P05.S18` - Add a pure lineage DAG ordering module (derivation-axis longest-path layering); `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W02.P05.S19` - Render dangling lineage stubs honestly for incomplete derivation chains; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W02.P05.S20` - Unit-test lineage layering, axis ordering, and dangling-stub honesty; `frontend/src/scene/field/lineageLayout.test.ts`.
+- [x] `W02.P05.S21` - Add a representationLayout dispatcher selecting connectivity vs lineage vs semantic; `frontend/src/scene/field/representationLayout.ts`.
 - [ ] `W02.P05.S22` - Wire lineage positions into the field layout path behind a representation mode; `frontend/src/scene/field/fieldAssembly.ts`.
 
 ### Phase `W02.P06` - semantic UMAP mode (v1-gated)
 
 Build the CPU-worker UMAP projection over per-node embeddings as a gated v1 mode, with the measured promotion gate as a step and a connectivity fallback for nodes lacking an embedding.
 
-- [ ] `W02.P06.S23` - Add a CPU UMAP-lite projection over embeddings with connectivity fallback for embeddingless nodes; `frontend/src/scene/field/semanticLayout.ts`.
-- [ ] `W02.P06.S24` - Add the measured promotion gate (projection time budget + cluster separation check); `frontend/src/scene/field/semanticGate.ts`.
-- [ ] `W02.P06.S25` - Unit-test the UMAP projection, fallback positions, and the gate verdict; `frontend/src/scene/field/semanticLayout.test.ts`.
-- [ ] `W02.P06.S26` - Record the v1 semantic-mode gate verdict in the layout dispatcher; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W02.P06.S23` - Add a CPU UMAP-lite projection over embeddings with connectivity fallback for embeddingless nodes; `frontend/src/scene/field/semanticLayout.ts`.
+- [x] `W02.P06.S24` - Add the measured promotion gate (projection time budget + cluster separation check); `frontend/src/scene/field/semanticGate.ts`.
+- [x] `W02.P06.S25` - Unit-test the UMAP projection, fallback positions, and the gate verdict; `frontend/src/scene/field/semanticLayout.test.ts`.
+- [x] `W02.P06.S26` - Record the v1 semantic-mode gate verdict in the layout dispatcher; `frontend/src/scene/field/representationLayout.ts`.
 
 ### Phase `W02.P07` - anti-hairball backbone
 
 Draw layout on the declared+structural layout backbone, disparity-filter-thin temporal/semantic to their significant subset, bundle hierarchically, DOI-gate, and un-bundle on hover.
 
-- [ ] `W02.P07.S27` - Add a pure disparity-filter thinning of temporal/semantic edges to their significant subset; `frontend/src/scene/field/disparityFilter.ts`.
+- [x] `W02.P07.S27` - Add a pure disparity-filter thinning of temporal/semantic edges to their significant subset; `frontend/src/scene/field/disparityFilter.ts`.
 - [ ] `W02.P07.S28` - Compute the declared+structural layout backbone and feed only it to the layout; `frontend/src/scene/field/backbone.ts`.
-- [ ] `W02.P07.S29` - Add hierarchical edge bundling geometry along the feature containment; `frontend/src/scene/field/edgeBundling.ts`.
+- [x] `W02.P07.S29` - Add hierarchical edge bundling geometry along the feature containment; `frontend/src/scene/field/edgeBundling.ts`.
 - [ ] `W02.P07.S30` - Un-bundle bundled edges on hover via the ego highlight; `frontend/src/scene/field/edgeBundling.ts`.
-- [ ] `W02.P07.S31` - Unit-test disparity filter, backbone selection, and bundling/un-bundling; `frontend/src/scene/field/backbone.test.ts`.
+- [x] `W02.P07.S31` - Unit-test disparity filter, backbone selection, and bundling/un-bundling; `frontend/src/scene/field/backbone.test.ts`.
 
 ## Wave `W03` - switching, composition, overlays
 
