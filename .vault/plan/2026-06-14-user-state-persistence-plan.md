@@ -53,7 +53,7 @@ Generalize the single-AppState serve layer into a warm multi-scope scope registr
 Extract the single-graph serve fields into a per-scope cell and build the scope registry with lazy build and LRU working-set cap.
 
 - [x] `W02.P03.S09` - extract the single-graph serve fields into a per-scope cell struct; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `W02.P03.S10` - implement the scope registry with lazy build and LRU working-set cap and eviction; `engine/crates/vaultspec-api/src/registry.rs`.
+- [x] `W02.P03.S10` - implement the scope registry with lazy build and LRU working-set cap and eviction; `engine/crates/vaultspec-api/src/registry.rs`.
 - [ ] `W02.P03.S11` - restore and persist the active scope through the session crate at serve boot; `engine/crates/vaultspec-api/src/lib.rs`.
 
 ### Phase `W02.P04` - make serve infrastructure per-scope
