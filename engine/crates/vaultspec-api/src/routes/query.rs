@@ -11,38 +11,34 @@ use engine_query::graph::{Granularity, GraphSlice, graph_query};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::app::AppState;
+use std::sync::Arc as StdArc;
+
+use crate::app::{AppState, ScopeCell};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
-/// Validate the stateless per-request scope (contract §3). v1 serves one
-/// workspace view (the launch worktree); other scopes 400 honestly.
-pub fn validate_scope(state: &AppState, scope: &str) -> Result<(), (StatusCode, Json<Value>)> {
-    let strip = |s: String| s.strip_prefix("//?/").unwrap_or(&s).to_string();
-    let served = strip(state.root.to_string_lossy().replace('\\', "/"));
-    let normalized = strip(scope.replace('\\', "/"));
-    if normalized == served || normalized.trim_end_matches('/') == served.trim_end_matches('/') {
-        Ok(())
-    } else {
-        Err(super::api_error(
-            state,
-            StatusCode::BAD_REQUEST,
-            format!(
-                "scope `{scope}` is not served by this instance (serving `{served}`); \
-             v1 serves the launch worktree only"
-            ),
-        ))
-    }
+/// Resolve the per-request scope to its warm cell (contract §3, W02.P04.S15 +
+/// W02.P05.S16). The scope is no longer compared to ONE frozen value: it is
+/// resolved through the registry to any selectable vault-bearing worktree in
+/// this workspace, building the cell on first access. An unknown or non-vault
+/// scope still 400s honestly with the tiers block attached.
+pub fn validate_scope(
+    state: &AppState,
+    scope: &str,
+) -> Result<StdArc<ScopeCell>, (StatusCode, Json<Value>)> {
+    crate::registry::get_or_build(state, scope)
+        .map_err(|reason| super::api_error(state, StatusCode::BAD_REQUEST, reason))
 }
 
-fn rag_tiers(state: &AppState) -> Value {
+fn rag_tiers(cell: &ScopeCell) -> Value {
     // Every front door must report ALL FOUR tiers truthfully (M-A3), and the
     // declared tier must reflect ACTUAL core ingestion, never hardcoded true
     // (M-D1). This helper used to build the block from rag discovery alone, so
     // the 8 query routes that use it advertised declared:true even when core
     // was unreachable — contradicting /status for the same state (LENSA-01).
-    // Delegate to the shared query_tiers, which overlays declared_status.
-    super::query_tiers(state)
+    // Delegate to the shared query_tiers, which overlays the cell's
+    // declared_status for THIS resolved scope.
+    super::query_tiers(cell)
 }
 
 #[derive(Deserialize)]
@@ -53,7 +49,9 @@ pub struct ScopeParam {
 // --- GET /map ----------------------------------------------------------------
 
 pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
-    let workspace = ingest_git::workspace::Workspace::discover(&state.root)
+    // /map is workspace-level: it enumerates every worktree of the workspace,
+    // so it discovers from the workspace root, not a single scope.
+    let workspace = ingest_git::workspace::Workspace::discover(&state.workspace_root)
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let config = ingest_git::branches::ClassifyConfig::default();
     let worktrees: Vec<Value> = ingest_git::worktrees::enumerate(&workspace)
@@ -104,7 +102,7 @@ pub async fn map(State(state): State<Arc<AppState>>) -> ApiResult {
             // scope= parameter accepts.
             "scope_token_format": "absolute worktree path, forward slashes, no extended-length prefix",
         }),
-        rag_tiers(&state),
+        rag_tiers(&state.active_cell()),
         None,
     ))
 }
@@ -124,8 +122,8 @@ pub async fn vault_tree(
     State(state): State<Arc<AppState>>,
     Query(params): Query<VaultTreeParams>,
 ) -> ApiResult {
-    validate_scope(&state, &params.scope)?;
-    let graph = state.graph_arc();
+    let cell = validate_scope(&state, &params.scope)?;
+    let graph = cell.graph_arc();
     let mut entries: Vec<Value> = graph
         .nodes()
         .filter(|n| n.id.0.starts_with("doc:"))
@@ -156,7 +154,7 @@ pub async fn vault_tree(
     );
     Ok(super::envelope(
         json!({"entries": page}),
-        rag_tiers(&state),
+        rag_tiers(&cell),
         next_cursor,
     ))
 }
@@ -315,7 +313,7 @@ pub async fn graph_query_route(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GraphQueryBody>,
 ) -> ApiResult {
-    validate_scope(&state, &body.scope)?;
+    let cell = validate_scope(&state, &body.scope)?;
     let granularity = parse_granularity(&state, body.granularity.as_deref())?;
     let filter = body.filter.unwrap_or_default();
 
@@ -331,7 +329,7 @@ pub async fn graph_query_route(
                 name: reference.clone(),
             };
             let resolved =
-                engine_graph::asof::asof_graph_resolved(&state.root, reference, &scope, 0)
+                engine_graph::asof::asof_graph_resolved(&cell.root, reference, &scope, 0)
                     .map_err(|e| super::revision_error(&state, reference, &e))?;
             let slice = graph_query(&resolved.graph, &scope, filter, granularity)
                 .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
@@ -344,26 +342,27 @@ pub async fn graph_query_route(
             )
         }
         None => {
-            let graph = state.graph_arc();
-            let mut slice = graph_query(&graph, &state.scope, filter, granularity)
+            let graph = cell.graph_arc();
+            let mut slice = graph_query(&graph, &cell.scope, filter, granularity)
                 .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             // Constellation meta-edges come from the memoized projection
             // (W02P05-203) — same content, one aggregation per rebuild.
             if granularity == Granularity::Feature {
-                slice.meta_edges = (*state.meta_edges()).clone();
+                slice.meta_edges = (*cell.meta_edges()).clone();
             }
-            (slice, rag_tiers(&state), None)
+            (slice, rag_tiers(&cell), None)
         }
     };
     // Live keyframe clock anchor (constellation-live-delta ADR / S50): the
-    // delta clock's tip at query time, so a held keyframe (either granularity)
-    // splices live `graph` deltas with no gap. An `as_of` (historical)
-    // keyframe carries no live-clock position.
+    // cell's delta clock tip at query time, so a held keyframe (either
+    // granularity) splices live `graph` deltas with no gap. An `as_of`
+    // (historical) keyframe carries no live-clock position. The clock is now
+    // per-scope (W02.P04.S12): the keyframe anchors to THIS scope's resume
+    // sequence so per-scope `since=` resume is correct.
     let last_seq = match &body.as_of {
         Some(_) => Value::Null,
         None => Value::from(
-            state
-                .seq
+            cell.seq
                 .load(std::sync::atomic::Ordering::SeqCst)
                 .saturating_sub(1),
         ),
@@ -414,11 +413,11 @@ pub async fn filters(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ScopeParam>,
 ) -> ApiResult {
-    validate_scope(&state, &params.scope)?;
-    let vocab = vocabulary(&state.graph_arc());
+    let cell = validate_scope(&state, &params.scope)?;
+    let vocab = vocabulary(&cell.graph_arc());
     Ok(super::envelope(
         json!({"vocabulary": vocab}),
-        rag_tiers(&state),
+        rag_tiers(&cell),
         None,
     ))
 }
@@ -426,7 +425,10 @@ pub async fn filters(
 // --- /nodes/{id} family --------------------------------------------------------------
 
 pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> ApiResult {
-    let graph = state.graph_arc();
+    // The /nodes/* family carries no scope param: it serves from the active
+    // scope's live graph (W02.P05.S16).
+    let cell = state.active_cell();
+    let graph = cell.graph_arc();
     let detail = engine_query::node::node_detail(&graph, &NodeId(id.clone())).ok_or_else(|| {
         super::api_error(
             &state,
@@ -436,7 +438,7 @@ pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<Stri
     })?;
     Ok(super::envelope(
         json!({"detail": detail}),
-        rag_tiers(&state),
+        rag_tiers(&cell),
         None,
     ))
 }
@@ -478,7 +480,8 @@ pub async fn node_neighbors(
             )),
         })
         .collect::<Result<_, _>>()?;
-    let graph = state.graph_arc();
+    let cell = state.active_cell();
+    let graph = cell.graph_arc();
     let depth = params.depth.unwrap_or(1).min(MAX_NEIGHBOR_DEPTH);
     let ego = engine_query::node::neighbors(&graph, &NodeId(id.clone()), depth, &tiers)
         .ok_or_else(|| {
@@ -488,18 +491,15 @@ pub async fn node_neighbors(
                 format!("unknown node `{id}`"),
             )
         })?;
-    Ok(super::envelope(
-        json!({"ego": ego}),
-        rag_tiers(&state),
-        None,
-    ))
+    Ok(super::envelope(json!({"ego": ego}), rag_tiers(&cell), None))
 }
 
 pub async fn node_evidence(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult {
-    let graph = state.graph_arc();
+    let cell = state.active_cell();
+    let graph = cell.graph_arc();
     let evidence = engine_query::node::evidence(&graph, &NodeId(id.clone())).ok_or_else(|| {
         super::api_error(
             &state,
@@ -519,7 +519,7 @@ pub async fn node_evidence(
     // type; tracked separately, not papered over here.
     Ok(super::envelope(
         serde_json::to_value(evidence).expect("evidence serializes"),
-        rag_tiers(&state),
+        rag_tiers(&cell),
         None,
     ))
 }
@@ -539,8 +539,11 @@ pub async fn node_discover(
     // with /nodes, /neighbors, /evidence, and never proxies a doomed query
     // (hardening, 2026-06-13 adversarial finding: discover used to 400 via
     // rag for an unknown id while its sibling verbs 404).
+    // The /nodes/* family serves from the active scope's live graph + store
+    // (W02.P05.S16).
+    let cell = state.active_cell();
     let node = NodeId(id.clone());
-    let graph = state.graph_arc();
+    let graph = cell.graph_arc();
     if graph.node(&node).is_none() {
         return Err(super::api_error(
             &state,
@@ -548,7 +551,7 @@ pub async fn node_discover(
             format!("unknown node `{id}`"),
         ));
     }
-    let vault_root = state.root.join(".vault");
+    let vault_root = cell.root.join(".vault");
     let (availability, info) = rag_client::client::discover(&vault_root);
     let rag_client::RagAvailability::Available = availability else {
         let rag_client::RagAvailability::Unavailable { reason } = availability else {
@@ -557,7 +560,7 @@ pub async fn node_discover(
         // Degrades to the §2 tier block, never an error (contract §4).
         return Ok(super::envelope(
             json!({"candidates": []}),
-            super::degraded_tiers(&state, reason.as_str()),
+            super::degraded_tiers(&cell, reason.as_str()),
             None,
         ));
     };
@@ -577,13 +580,13 @@ pub async fn node_discover(
     });
     // Poison recovery (robustness H2): a poisoned store lock must degrade, not
     // cascade into a permanent outage on every node-discover request.
-    let store = state.store.lock().unwrap_or_else(|e| e.into_inner());
+    let store = cell.store.lock().unwrap_or_else(|e| e.into_inner());
     let candidates = match rag_client::discover::discover(
         &transport,
         &store,
         &node,
         &query,
-        &state.scope,
+        &cell.scope,
         crate::app::now_ms(),
     ) {
         Ok(candidates) => candidates,
@@ -597,14 +600,14 @@ pub async fn node_discover(
             let reason = rag_client::search::degradation_reason(&e);
             return Ok(super::envelope(
                 json!({"candidates": []}),
-                super::degraded_tiers(&state, reason.as_str()),
+                super::degraded_tiers(&cell, reason.as_str()),
                 None,
             ));
         }
     };
     Ok(super::envelope(
         json!({"candidates": candidates}),
-        rag_tiers(&state),
+        rag_tiers(&cell),
         None,
     ))
 }
