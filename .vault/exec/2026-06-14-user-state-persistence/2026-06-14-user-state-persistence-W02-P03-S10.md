@@ -85,3 +85,16 @@ resident cell and drops the loser (its watcher tears down). The per-scope
 watcher rebuild task only spawns when a tokio runtime is current, so the
 non-async unit-test fixtures install the watcher without a rebuild task and
 rebuild explicitly.
+
+Revision (W02 review HIGH-1): the per-scope rebuild task originally captured a
+strong `Arc<ScopeCell>`, forming a cycle (task → cell → its `WatchHandle` owning
+`dirty_tx` → open `dirty_rx` → task never exits) that leaked an evicted cell,
+its watcher, the OS watch, and the task — defeating the working-set cap. Fixed by
+having the task hold a `Weak<ScopeCell>` and `upgrade()` per dirty batch: when the
+registry drops the evicted cell's last strong ref the count hits zero, the
+`WatchHandle` drops (tearing the OS watch down and closing `dirty_tx`), and the
+task exits. A runtime-present test
+`eviction_drops_the_evicted_cell_and_its_watcher_with_no_leaked_rebuild_task`
+over real git worktrees forces one eviction and asserts the evicted cell's strong
+count reaches zero; it fails against the old strong-`Arc` task and passes with the
+`Weak`.

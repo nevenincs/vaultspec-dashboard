@@ -221,11 +221,33 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
     // The unit-test `build_state` path runs OUTSIDE a runtime (no reactor), so
     // guard the spawn — the watcher still installs, it just has no rebuild task
     // there (tests rebuild explicitly). Under `serve` the runtime is always up.
+    //
+    // The task holds a `Weak<ScopeCell>`, NEVER a strong `Arc` (HIGH-1 fix). A
+    // strong clone would form a reference cycle: task → Arc<ScopeCell> →
+    // `cell.watcher` (the WatchHandle owning `dirty_tx`) → keeps `dirty_rx`
+    // open → `recv().await` never returns None → the task loops forever holding
+    // the cell. Eviction would then drop only the registry's ref, leaking the
+    // cell, its WatchHandle, the OS watch, the supervisor thread, AND the
+    // rebuild task — defeating WORKING_SET_CAP and rebuilding an evicted scope
+    // on every FS change. With a `Weak`, the moment the registry (and any
+    // caller) drops its strong ref the cell's strong count reaches 0; the
+    // WatchHandle drops, tearing the OS watch down and closing `dirty_tx`, so
+    // the next `recv().await` returns None and the task exits promptly. This
+    // holds for BOTH the LRU-eviction path and the concurrent-cold-build-race
+    // loser (whose cell Arc is dropped when `build_and_insert` returns the
+    // resident cell). `upgrade()` per iteration is the belt-and-braces guard:
+    // if a dirty batch races the final drop, the rebuild is skipped and the
+    // loop ends.
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        let cell = cell.clone();
+        let weak = Arc::downgrade(cell);
         handle.spawn(async move {
             while dirty_rx.recv().await.is_some() {
-                let cell = cell.clone();
+                // Upgrade per batch: a `None` means the cell was evicted
+                // (strong count hit 0) between this dirty event and now — stop
+                // rebuilding a dead scope and let the task exit.
+                let Some(cell) = weak.upgrade() else {
+                    break;
+                };
                 // Rebuild failures are LOGGED, never silently swallowed
                 // (DF-4): a contended store is a wait-and-retry on the next
                 // dirty batch, not a death.
@@ -340,6 +362,121 @@ mod tests {
             state.registry.read().unwrap().len(),
             1,
             "only the launch scope is warm"
+        );
+    }
+
+    #[tokio::test]
+    async fn eviction_drops_the_evicted_cell_and_its_watcher_with_no_leaked_rebuild_task() {
+        // HIGH-1 regression: the per-scope rebuild task must NOT keep the
+        // evicted cell alive. WITHOUT the `Weak` fix the task holds a strong
+        // `Arc<ScopeCell>` → `cell.watcher` (owning `dirty_tx`) → `dirty_rx`
+        // stays open → `recv().await` never returns None → the task loops
+        // forever → the evicted cell, its WatchHandle, the OS watch, the
+        // supervisor thread, and the task all leak, defeating WORKING_SET_CAP.
+        //
+        // The cycle only exists when (a) a tokio runtime is current so the
+        // rebuild task spawns and (b) the watcher actually STARTED so it owns a
+        // live `dirty_tx`. So this is a `#[tokio::test]` over REAL git worktrees
+        // (the watcher watches `.git`; a non-git root makes `watch()` fail to
+        // start, skipping the task and hiding the bug). It forces exactly one
+        // eviction and asserts the evicted cell's strong count reaches 0 (a held
+        // `Weak` no longer upgrades).
+        //
+        // Fails before the fix (the task's strong Arc keeps `upgrade()` Some);
+        // passes after (only a `Weak` remains, so the cell drops on eviction).
+        use std::sync::Weak;
+
+        let workspace = tempfile::tempdir().unwrap();
+        let main = workspace.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        git(&main, &["init", "-b", "main", "."]);
+        vault_root(&main);
+        git(&main, &["add", "."]);
+        git(&main, &["commit", "-m", "fixture"]);
+
+        // The main checkout is the pinned active scope (warmed by build_state),
+        // never evicted. Add WORKING_SET_CAP linked worktrees, each
+        // vault-bearing, so the registry holds active + CAP non-active cells
+        // (CAP + 1 total) once all are warm — and inserting the last one evicts
+        // the LRU non-active cell (the first sibling warmed).
+        let state = crate::app::build_state(main.clone());
+
+        let ws = ingest_git::workspace::Workspace::discover(&main).unwrap();
+        let mut victim: Option<Weak<ScopeCell>> = None;
+        for i in 0..WORKING_SET_CAP {
+            let wt = workspace.path().join(format!("wt-{i}"));
+            git(
+                &main,
+                &[
+                    "worktree",
+                    "add",
+                    "-b",
+                    &format!("feat-{i}"),
+                    wt.to_str().unwrap(),
+                ],
+            );
+            vault_root(&wt);
+            // Resolve this worktree's canonical scope token exactly as a client
+            // would, then warm it through the real validated `get_or_build`
+            // path (build + spawn_watcher + insert + evict).
+            let token = {
+                let wts = ingest_git::worktrees::enumerate(&ws).unwrap();
+                let canon = std::fs::canonicalize(&wt).unwrap();
+                wts.into_iter()
+                    .map(|w| crate::routes::scope_token(&w.path))
+                    .find(|t| {
+                        crate::routes::scope_token(&canon).trim_end_matches('/')
+                            == t.trim_end_matches('/')
+                    })
+                    .expect("the new worktree is enumerable")
+            };
+            let cell = get_or_build(&state, &token).expect("sibling worktree warms");
+            // The watcher MUST have started for this test to exercise the cycle;
+            // a non-started watcher would hide the leak.
+            assert!(
+                cell.watcher
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .is_some_and(|h| h.is_alive()),
+                "the sibling worktree's watcher must be live to exercise the cycle"
+            );
+            if i == 0 {
+                // Hold ONLY a Weak to the LRU victim; never retain its Arc, or
+                // the test itself would be the strong ref under examination.
+                victim = Some(Arc::downgrade(&cell));
+            }
+            // `cell` (the strong Arc) drops at the end of each iteration; the
+            // registry holds the canonical strong ref until eviction.
+        }
+
+        let victim = victim.expect("captured the LRU victim");
+
+        // The registry is bounded at the cap (active + CAP-1 survivors after
+        // one eviction). The pinned active scope is never the victim.
+        assert_eq!(
+            state.registry.read().unwrap().len(),
+            WORKING_SET_CAP,
+            "registry held to the working-set cap after eviction"
+        );
+
+        // Give the evicted cell's WatchHandle drop + task teardown a moment to
+        // settle (the rebuild task wakes when its `dirty_tx` closes; the OS-watch
+        // supervisor joins out of band on drop).
+        for _ in 0..100 {
+            if victim.upgrade().is_none() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        // The leak assertion: the evicted cell's strong count is 0. Before the
+        // fix the rebuild task's strong Arc keeps this `Some`, so this fails.
+        assert!(
+            victim.upgrade().is_none(),
+            "the evicted cell leaked: its strong count never reached 0 — the \
+             rebuild task is still holding it (HIGH-1 cycle), so WORKING_SET_CAP \
+             is defeated and the evicted scope keeps rebuilding"
         );
     }
 }
