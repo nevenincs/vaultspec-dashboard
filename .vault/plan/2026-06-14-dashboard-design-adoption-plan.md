@@ -65,9 +65,9 @@ Derives the warm low-chroma neutrals, the single earthy accent, grayscale-safe t
 
 Formalizes lucide-react as a real dependency at the in-tree version, adds Phosphor, and proves the Phosphor SVG to texture path against the GlyphTextureProvider seam as a spike, with full domain marks deferred to a surface wave.
 
-- [ ] `W01.P04.S18` - Declare lucide-react as a real dependency at the in-tree installed version, ending the phantom-import state; `frontend/package.json`.
-- [ ] `W01.P04.S19` - Add the Phosphor icon dependency for the expressive/domain plane; `frontend/package.json`.
-- [ ] `W01.P04.S20` - Prove the Phosphor SVG to texture path against the GlyphTextureProvider seam as a spike, deferring full domain marks to a surface wave; `frontend/src/scene/field/glyphs.ts`.
+- [x] `W01.P04.S18` - Declare lucide-react as a real dependency at the in-tree installed version, ending the phantom-import state; `frontend/package.json`.
+- [x] `W01.P04.S19` - Add the Phosphor icon dependency for the expressive/domain plane; `frontend/package.json`.
+- [x] `W01.P04.S20` - Prove the Phosphor SVG to texture path against the GlyphTextureProvider seam as a spike, deferring full domain marks to a surface wave; `frontend/src/scene/field/glyphs.ts`.
 
 ## Wave `W02` - Surface adoption - re-skin each surface onto the new tokens and sanctioned icons
 
