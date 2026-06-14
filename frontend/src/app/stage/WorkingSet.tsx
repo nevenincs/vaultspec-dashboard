@@ -4,6 +4,7 @@
 // Keyboard E expands the selected node's ego; Backspace collapses the last
 // expansion; the clear chip resets to the constellation.
 
+import { X } from "lucide-react";
 import { useEffect } from "react";
 
 import type { EngineEdge, EngineNode } from "../../stores/server/engine";
@@ -58,12 +59,23 @@ export function WorkingSet() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedId, add, remove]);
 
+  // The trail hides entirely when the working set is empty: the constellation
+  // alone needs no provenance.
   if (workingSet.length === 0) return null;
   return (
     <nav
       className="pointer-events-auto absolute top-9 left-2 z-10 flex flex-wrap items-center gap-1"
       aria-label="working set"
+      data-working-set
     >
+      {/* Working-set size: a data-bearing count, tabular numerals. */}
+      <span
+        data-tabular
+        className="rounded-full bg-paper-sunken px-vs-1-5 py-vs-0-5 text-2xs tabular-nums text-ink-muted"
+        aria-label={`${workingSet.length} expansions in working set`}
+      >
+        {workingSet.length}
+      </span>
       {workingSet.map((id) => (
         <span
           key={id}
@@ -73,17 +85,17 @@ export function WorkingSet() {
           <button
             type="button"
             aria-label={`Collapse ${id}`}
-            className="text-ink-faint hover:text-ink"
+            className="flex items-center text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() => remove(id)}
           >
-            ×
+            <X size={11} aria-hidden />
           </button>
         </span>
       ))}
       <button
         type="button"
         onClick={clear}
-        className="rounded-full border border-rule bg-paper-sunken px-vs-2 py-vs-0-5 text-2xs text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle"
+        className="rounded-full border border-rule bg-paper-sunken px-vs-2 py-vs-0-5 text-2xs text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         clear to constellation
       </button>

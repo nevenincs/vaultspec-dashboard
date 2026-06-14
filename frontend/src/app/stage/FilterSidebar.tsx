@@ -10,6 +10,7 @@
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { TierMark } from "../../scene/field/markComponents";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -62,16 +63,25 @@ interface FacetListProps {
   selected: string[];
   onToggle: (value: string) => void;
   max?: number;
+  /** Vocabulary query in flight — render a loading cue, not "none in corpus". */
+  loading?: boolean;
 }
 
-function FacetList({ values, selected, onToggle, max }: FacetListProps) {
+function FacetList({ values, selected, onToggle, max, loading }: FacetListProps) {
   const [showAll, setShowAll] = useState(false);
   const shown = !max || showAll ? values : values.slice(0, max);
   const overflow = max ? values.length - max : 0;
 
   if (values.length === 0) {
+    // Loading and empty are distinct designed states: a vocabulary still in
+    // flight is "loading…", an actually-empty corpus is "none in corpus".
     return (
-      <p className="px-vs-3 py-vs-1 text-label italic text-ink-faint">none in corpus</p>
+      <p
+        className="px-vs-3 py-vs-1 text-label italic text-ink-faint"
+        aria-busy={loading || undefined}
+      >
+        {loading ? "loading…" : "none in corpus"}
+      </p>
     );
   }
 
@@ -86,7 +96,7 @@ function FacetList({ values, selected, onToggle, max }: FacetListProps) {
                 type="checkbox"
                 checked={on}
                 onChange={() => onToggle(value)}
-                className="accent-ink-muted"
+                className="accent-accent"
               />
               <span className={on ? "text-ink" : "text-ink-muted"}>{value}</span>
             </label>
@@ -124,7 +134,7 @@ function TierSection() {
   return (
     <Section title="Tiers" badge={activeCount < 4 ? activeCount : undefined}>
       <ul className="space-y-vs-1 px-vs-3" role="list">
-        {TIER_ORDER.map(({ tier, mark, label }) => {
+        {TIER_ORDER.map(({ tier, label }) => {
           const inapplicable = isTierInapplicable(tier, timelineMode);
           const on = tiers[tier] && !inapplicable;
           return (
@@ -140,10 +150,13 @@ function TierSection() {
                     checked={on}
                     disabled={inapplicable}
                     onChange={() => setTier(tier, !tiers[tier])}
-                    className="accent-ink-muted"
+                    className="accent-accent"
                   />
-                  <span className={`text-label ${on ? "text-ink" : "text-ink-faint"}`}>
-                    {mark} {label}
+                  <span
+                    className={`flex items-center gap-vs-1 text-label ${on ? "text-ink" : "text-ink-faint"}`}
+                  >
+                    <TierMark tier={tier} size={12} title={`${label} tier mark`} />
+                    {label}
                     {inapplicable && (
                       <span className="ml-vs-1 text-2xs text-ink-faint">
                         (time-travel)
@@ -162,11 +175,15 @@ function TierSection() {
                         step={0.05}
                         value={minConfidence[tier] ?? 0}
                         aria-label={`${label} confidence floor`}
+                        aria-valuetext={`${Math.round((minConfidence[tier] ?? 0) * 100)} percent`}
                         title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
                         onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
-                        className="h-1 w-full accent-ink-muted"
+                        className="h-1 w-full accent-accent"
                       />
-                      <span className="w-8 text-right text-2xs text-ink-faint">
+                      <span
+                        data-tabular
+                        className="w-8 text-right text-2xs tabular-nums text-ink-faint"
+                      >
                         {Math.round((minConfidence[tier] ?? 0) * 100)}%
                       </span>
                     </span>
@@ -197,6 +214,10 @@ export interface FilterSidebarProps {
 
 export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarProps) {
   const vocabulary = useFiltersVocabulary(scope);
+  // The vocabulary query is enabled only when scope is set; treat "no scope yet"
+  // and "in flight" alike as loading so the data-driven facets render a loading
+  // cue instead of a false "none in corpus".
+  const vocabLoading = scope === null || vocabulary.isPending;
 
   const docTypes = useFilterStore((s) => s.docTypes);
   const featureTags = useFilterStore((s) => s.featureTags);
@@ -322,6 +343,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             values={vocabulary.data?.doc_types ?? []}
             selected={docTypes}
             onToggle={(v) => toggle("docTypes", v)}
+            loading={vocabLoading}
           />
         </Section>
 
@@ -336,6 +358,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             selected={featureTags}
             onToggle={(v) => toggle("featureTags", v)}
             max={12}
+            loading={vocabLoading}
           />
         </Section>
 
@@ -349,6 +372,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             values={vocabulary.data?.relations ?? []}
             selected={relations}
             onToggle={(v) => toggle("relations", v)}
+            loading={vocabLoading}
           />
         </Section>
 

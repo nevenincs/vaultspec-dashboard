@@ -107,7 +107,7 @@ Rebuilds the node-canvas scene to consume the new token layer through getCompute
 
 Re-skins the canvas controls onto the new tokens and Lucide chrome, gated on the canvas-controls surface ADR reaching accepted; references the node-canvas surface.
 
-- [ ] `W02.P10.S26` - Re-skin the canvas controls to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app/stage/AlgorithmPanel.tsx`.
+- [x] `W02.P10.S26` - Re-skin the canvas controls to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app/stage/AlgorithmPanel.tsx`.
 
 ### Phase `W02.P11` - Minimap surface adoption
 

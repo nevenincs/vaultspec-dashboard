@@ -6,6 +6,8 @@
 // names the cost. The date-range chip is read-only here — the timeline
 // owns it (G4.c).
 
+import { PanelLeft } from "lucide-react";
+
 import { useActiveScope } from "./Stage";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
@@ -43,7 +45,7 @@ function FacetChips({ label, values, selected, onToggle }: FacetChipsProps) {
             type="button"
             aria-pressed={on}
             onClick={() => onToggle(value)}
-            className={`rounded-full border px-vs-1-5 py-vs-0-5 ${
+            className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
               on
                 ? "border-rule-strong bg-paper-sunken text-ink"
                 : "border-rule text-ink-muted hover:border-rule-strong"
@@ -69,6 +71,10 @@ export function FilterBar({
 }) {
   const scope = useActiveScope();
   const vocabulary = useFiltersVocabulary(scope);
+  // The vocabulary query is enabled only when scope is set; "no scope yet" and
+  // "in flight" both render the strip without facet chips (a designed loading
+  // state) — text-match still works as a fallback throughout.
+  const vocabLoading = scope === null || vocabulary.isPending;
   const docTypes = useFilterStore((s) => s.docTypes);
   const featureTags = useFilterStore((s) => s.featureTags);
   const structuralStates = useFilterStore((s) => s.structuralStates);
@@ -112,16 +118,21 @@ export function FilterBar({
           aria-label={sidebarOpen ? "close filter panel" : "open filter panel"}
           onClick={onSidebarToggle}
           title="toggle filter sidebar"
-          className={`rounded-vs-sm border px-vs-1-5 py-vs-0-5 ${
+          className={`flex items-center rounded-vs-sm border p-vs-1 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             sidebarOpen
               ? "border-rule-strong bg-paper-sunken text-ink"
               : "border-rule text-ink-muted hover:border-rule-strong"
           }`}
         >
-          ⊞
+          <PanelLeft size={13} aria-hidden />
         </button>
       )}
       <TierDial />
+      {vocabLoading && (
+        <span className="text-ink-faint" aria-busy data-filter-loading>
+          loading facets…
+        </span>
+      )}
       <FacetChips
         label="type"
         values={vocabulary.data?.doc_types ?? []}
@@ -152,16 +163,22 @@ export function FilterBar({
         onChange={(e) => setTextMatch(e.target.value)}
         placeholder="text match…"
         aria-label="text match filter"
-        className="w-28 rounded-vs-sm border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus:outline-none"
+        className="w-28 rounded-vs-sm border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
       />
       {(dateRange.from || dateRange.to) && (
-        <span className="rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 text-ink-muted">
+        <span
+          data-tabular
+          className="rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 tabular-nums text-ink-muted"
+        >
           {dateRange.from?.slice(0, 10) ?? "…"} → {dateRange.to?.slice(0, 10) ?? "…"}{" "}
           <span className="text-ink-faint">(timeline)</span>
         </span>
       )}
       {costLabel && (
-        <span className="ml-auto rounded-full border border-state-stale/40 bg-paper-raised px-vs-1-5 py-vs-0-5 text-state-stale">
+        <span
+          data-tabular
+          className="ml-auto rounded-full border border-state-stale/40 bg-paper-raised px-vs-1-5 py-vs-0-5 tabular-nums text-state-stale"
+        >
           {costLabel}
         </span>
       )}

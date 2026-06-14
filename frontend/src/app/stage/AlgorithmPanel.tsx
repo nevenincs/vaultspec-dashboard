@@ -59,7 +59,11 @@ function SliderRow({
     <label className="flex flex-col gap-vs-0-5 px-vs-3 py-vs-1" title={hint}>
       <span className="flex items-center justify-between text-label text-ink-muted">
         <span>{label}</span>
-        <span className="font-mono text-2xs text-ink-faint">{display}</span>
+        {/* Readout is a data-bearing numeric value: tabular numerals, not the
+            monospace identity face. */}
+        <span data-tabular className="text-2xs tabular-nums text-ink-faint">
+          {display}
+        </span>
       </span>
       <input
         type="range"
@@ -68,8 +72,9 @@ function SliderRow({
         step={step}
         value={value}
         aria-label={label}
+        aria-valuetext={display}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-full accent-ink-muted"
+        className="h-1 w-full accent-accent"
       />
     </label>
   );
@@ -102,6 +107,15 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
       }
     });
   }, []);
+
+  // Close on Escape — this is a non-modal role="dialog" surface.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   function applyParams(update: Partial<LayoutParams>) {
     const next = { ...params, ...update };
@@ -142,7 +156,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
             <button
               type="button"
               onClick={handleReset}
-              className="text-2xs text-ink-faint hover:text-ink"
+              className="rounded-vs-sm text-2xs text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               aria-label="reset to inferred defaults"
             >
               reset
@@ -152,7 +166,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
             type="button"
             onClick={onClose}
             aria-label="close layout panel"
-            className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
+            className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <X size={13} />
           </button>
@@ -171,7 +185,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
               type="button"
               onClick={() => applyMode(m)}
               aria-pressed={mode === m}
-              className={`flex-1 py-vs-0-5 transition-colors ${
+              className={`flex-1 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
                 mode === m
                   ? "bg-paper-sunken text-ink"
                   : "text-ink-faint hover:text-ink-muted"
@@ -232,7 +246,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
             type="checkbox"
             checked={params.barnesHutOptimize}
             onChange={(e) => applyParams({ barnesHutOptimize: e.target.checked })}
-            className="accent-ink-muted"
+            className="accent-accent"
             disabled={mode === "circular"}
           />
           <span className="text-label text-ink-muted">Barnes-Hut</span>
