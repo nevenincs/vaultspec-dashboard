@@ -40,7 +40,7 @@ Stand up the new workspace crate and the best-effort user-state SQLite store wit
 Implement the session and settings domain models over the store and cover them with roundtrip, corrupt-recreate, and recents-ordering tests.
 
 - [x] `W01.P02.S05` - implement the session model for active workspace and scope and per-scope folder and feature-tag contexts and recents; `engine/crates/vaultspec-session/src/session.rs`.
-- [ ] `W01.P02.S06` - implement the settings model with global and scoped keys; `engine/crates/vaultspec-session/src/settings.rs`.
+- [x] `W01.P02.S06` - implement the settings model with global and scoped keys; `engine/crates/vaultspec-session/src/settings.rs`.
 - [ ] `W01.P02.S07` - expose the crate handle and document the read-and-infer fence; `engine/crates/vaultspec-session/src/lib.rs`.
 - [ ] `W01.P02.S08` - add roundtrip and corrupt-recreate and recents-ordering tests; `engine/crates/vaultspec-session/tests/store_test.rs`.
 
