@@ -14,6 +14,16 @@ related:
   - '[[2026-06-14-user-state-persistence-W01-P02-S06]]'
   - '[[2026-06-14-user-state-persistence-W01-P02-S07]]'
   - '[[2026-06-14-user-state-persistence-W01-P02-S08]]'
+  - '[[2026-06-14-user-state-persistence-W02-P03-S09]]'
+  - '[[2026-06-14-user-state-persistence-W02-P03-S10]]'
+  - '[[2026-06-14-user-state-persistence-W02-P03-S11]]'
+  - '[[2026-06-14-user-state-persistence-W02-P04-S12]]'
+  - '[[2026-06-14-user-state-persistence-W02-P04-S13]]'
+  - '[[2026-06-14-user-state-persistence-W02-P04-S14]]'
+  - '[[2026-06-14-user-state-persistence-W02-P04-S15]]'
+  - '[[2026-06-14-user-state-persistence-W02-P05-S16]]'
+  - '[[2026-06-14-user-state-persistence-W02-P05-S17]]'
+  - '[[2026-06-14-user-state-persistence-W02-P05-S18]]'
   - '[[2026-06-14-user-state-persistence-adr]]'
   - '[[2026-06-14-user-state-persistence-plan]]'
   - '[[2026-06-14-user-state-persistence-research]]'
@@ -39,6 +49,16 @@ Auto-generated index of all documents tagged with `#user-state-persistence`.
 - `2026-06-14-user-state-persistence-W01-P02-S06` - implement the settings model with global and scoped keys
 - `2026-06-14-user-state-persistence-W01-P02-S07` - expose the crate handle and document the read-and-infer fence
 - `2026-06-14-user-state-persistence-W01-P02-S08` - add roundtrip and corrupt-recreate and recents-ordering tests
+- `2026-06-14-user-state-persistence-W02-P03-S09` - extract the single-graph serve fields into a per-scope cell struct
+- `2026-06-14-user-state-persistence-W02-P03-S10` - implement the scope registry with lazy build and LRU working-set cap and eviction
+- `2026-06-14-user-state-persistence-W02-P03-S11` - restore and persist the active scope through the session crate at serve boot
+- `2026-06-14-user-state-persistence-W02-P04-S12` - move commit-graph and rebuild-and-swap onto the cell with a per-scope monotonic clock
+- `2026-06-14-user-state-persistence-W02-P04-S13` - spawn and tear down the watcher per warm scope
+- `2026-06-14-user-state-persistence-W02-P04-S14` - make the SSE stream and since resume per-scope from the cell ring
+- `2026-06-14-user-state-persistence-W02-P04-S15` - rewrite validate-scope to accept any selectable vault-bearing worktree in the workspace
+- `2026-06-14-user-state-persistence-W02-P05-S16` - resolve the cell via the registry in the graph and vault-tree and filters and node routes
+- `2026-06-14-user-state-persistence-W02-P05-S17` - resolve the cell via the registry in the temporal routes
+- `2026-06-14-user-state-persistence-W02-P05-S18` - resolve the cell via the registry in the ops routes
 
 ### plan
 
