@@ -48,29 +48,51 @@ interface PlayState {
 }
 
 let playState: PlayState | null = null;
+/** Set by the mounted player; lets `startRangePlay` wake the RAF loop. */
+let kickRangePlay: (() => void) | null = null;
 
 export function startRangePlay(from: number, to: number, now: number): void {
   playState = { from, to, startedAt: now };
+  kickRangePlay?.();
 }
 
 export function stopRangePlay(): void {
   playState = null;
 }
 
-/** Drives the playhead across an active range play on animation frames. */
+/**
+ * Drives the playhead across an active range play on animation frames. The RAF
+ * loop runs ONLY while a play is active and stops at completion (P-LOW-15): an
+ * idle timeline schedules no per-frame callback.
+ */
 export function useRangePlayer(): void {
   useEffect(() => {
     let raf = 0;
+    let running = false;
     const tick = () => {
-      if (playState) {
-        const elapsed = performance.now() - playState.startedAt;
-        movePlayhead(playPosition(playState.from, playState.to, elapsed));
-        if (elapsed >= PLAY_DURATION_MS) playState = null;
+      if (!playState) {
+        running = false;
+        return;
+      }
+      const elapsed = performance.now() - playState.startedAt;
+      movePlayhead(playPosition(playState.from, playState.to, elapsed));
+      if (elapsed >= PLAY_DURATION_MS) {
+        playState = null;
+        running = false;
+        return;
       }
       raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    kickRangePlay = () => {
+      if (running) return;
+      running = true;
+      raf = requestAnimationFrame(tick);
+    };
+    if (playState) kickRangePlay(); // a play already active at mount
+    return () => {
+      cancelAnimationFrame(raf);
+      kickRangePlay = null;
+    };
   }, []);
 }
 

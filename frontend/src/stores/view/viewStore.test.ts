@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import type { EngineEdge } from "../server/engine";
 import { useLiveStatusStore } from "../server/liveStatus";
-import { WORKING_SET_CAP, useViewStore } from "./viewStore";
+import { PINNED_DISCOVERIES_CAP, WORKING_SET_CAP, useViewStore } from "./viewStore";
 
 describe("view store", () => {
   it("shares one selection concept", () => {
@@ -32,6 +33,22 @@ describe("view store", () => {
     // oldest evicted, newest retained
     expect(ws).not.toContain("n0");
     expect(ws[ws.length - 1]).toBe(`n${WORKING_SET_CAP + 9}`);
+  });
+
+  it("caps session-pinned discoveries to the most-recent entries (P-LOW-10)", () => {
+    const edge = (id: string): EngineEdge => ({
+      id,
+      src: "a",
+      dst: "b",
+      relation: "declares",
+      tier: "semantic",
+      confidence: 0.5,
+    });
+    const store = useViewStore.getState();
+    for (let i = 0; i < PINNED_DISCOVERIES_CAP + 5; i += 1) store.pinDiscovery(edge(`p${i}`));
+    const pins = useViewStore.getState().pinnedDiscoveries;
+    expect(pins).toHaveLength(PINNED_DISCOVERIES_CAP);
+    expect(pins.some((e) => e.id === "p0")).toBe(false);
   });
 
   it("defaults to LIVE timeline mode with all tiers on", () => {

@@ -118,6 +118,11 @@ export function Stage() {
   const expansionData = expansions
     .map((q) => q.data)
     .filter((d): d is NonNullable<typeof d> => d !== undefined);
+  // Content signature (P-LOW-5): `dataUpdatedAt` bumps on every successful
+  // (re)fetch, so a neighbors refetch returning DIFFERENT data for the same id
+  // recomputes `merged` even when the expansion count is unchanged — the old
+  // `expansionData.length` proxy missed same-count content changes.
+  const expansionSig = expansions.map((q) => q.dataUpdatedAt).join(",");
   const merged = useMemo(
     () =>
       slice.data
@@ -127,9 +132,7 @@ export function Stage() {
             { nodes: [], edges: pinnedDiscoveries },
           ])
         : null,
-    // expansionData is identity-unstable per render; length plus the base
-    // slice identity capture every meaningful change.
-    [slice.data, expansionData.length, pinnedDiscoveries],
+    [slice.data, expansionSig, pinnedDiscoveries],
   );
   // Persistence re-keys on EVERY scope change, independent of timeline
   // mode and slice readiness (finding pin-rekey-gated-on-live-023): a swap

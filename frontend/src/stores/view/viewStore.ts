@@ -100,6 +100,10 @@ export interface ViewState {
  *  concurrent-request fan-out. Keep the most-recent N. */
 export const WORKING_SET_CAP = 24;
 
+/** Cap session-pinned discoveries (P-LOW-10): each is a full EngineEdge held
+ *  for the session; keep the most-recent N so a long session stays bounded. */
+export const PINNED_DISCOVERIES_CAP = 50;
+
 export const useViewStore = create<ViewState>((set) => ({
   scope: null,
   selection: null,
@@ -167,11 +171,16 @@ export const useViewStore = create<ViewState>((set) => ({
       openedIds: state.openedIds.filter((entry) => entry !== id),
     })),
   pinDiscovery: (edge) =>
-    set((state) =>
-      state.pinnedDiscoveries.some((e) => e.id === edge.id)
-        ? state
-        : { pinnedDiscoveries: [...state.pinnedDiscoveries, edge] },
-    ),
+    set((state) => {
+      if (state.pinnedDiscoveries.some((e) => e.id === edge.id)) return state;
+      const next = [...state.pinnedDiscoveries, edge];
+      return {
+        pinnedDiscoveries:
+          next.length > PINNED_DISCOVERIES_CAP
+            ? next.slice(next.length - PINNED_DISCOVERIES_CAP)
+            : next,
+      };
+    }),
   unpinDiscovery: (edgeId) =>
     set((state) => ({
       pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== edgeId),
