@@ -1,10 +1,22 @@
-// The command palette (W03.P11.S43, ADR G2.a / G5.c): Ctrl/Cmd-K, the
-// universal verb surface and the cheap escape hatch that keeps the chrome
-// minimal. Fronts navigation (features by name), lenses (apply and save),
-// and the whitelisted ops verbs — all on committed primitives; nothing
-// here exists only in the palette.
+// The command palette (W02.P07.S23, command-palette ADR): the Ctrl/Cmd-K
+// lifted surface — the universal navigation and verb plane and the cheap
+// escape hatch that keeps the chrome minimal. Fronts navigation (features by
+// name), lenses (apply and save), and the whitelisted ops verbs — all on
+// committed primitives; nothing here exists only in the palette.
+//
+// Re-grounded onto the base design language (design-language ADR): it renders
+// on the modal step of the elevation tier (shadow-deep), consumes the semantic
+// token surface only (no hardcoded hex/px), shows inline shortcut hints, and
+// honours the keyboard-first / reduced-motion laws. Chrome icons are Lucide.
+//
+// Layer ownership (dashboard-layer-ownership): app-chrome reads store state
+// through stores hooks/selectors and emits intent only — it never fetches the
+// engine and never reads the raw `tiers` block. Every ops verb dispatches
+// through the `appDispatcher` seam (`dispatchOps`), the single logged, traced,
+// guardable point that touches the engine client.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CornerDownLeft, Search } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { useConfirmable } from "../../platform/dispatch/useAction";
 import { useFiltersVocabulary } from "../../stores/server/queries";
@@ -17,14 +29,26 @@ import { useActiveScope } from "../stage/Stage";
 
 // --- pure command assembly (unit-tested) --------------------------------------------
 
+/** The four command families, ordered as they group in the list. */
+export type CommandFamily = "navigate" | "filters" | "core" | "rag";
+
 export interface PaletteCommand {
   id: string;
   label: string;
-  hint: string;
+  /** The family this command belongs to (drives grouping + the row hint). */
+  family: CommandFamily;
   run: () => void;
   /** Destructive verbs arm on first Enter, run on the second. */
   confirm?: boolean;
 }
+
+/** Human-facing group heading per family (object-then-action taxonomy). */
+export const FAMILY_LABEL: Record<CommandFamily, string> = {
+  navigate: "navigate",
+  filters: "filters",
+  core: "core ops",
+  rag: "rag ops",
+};
 
 export interface PaletteSources {
   featureTags: readonly string[];
@@ -42,7 +66,7 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
     commands.push({
       id: `nav:${feature}`,
       label: `go to ${feature}`,
-      hint: "navigate",
+      family: "navigate",
       run: () => sources.navigate(`feature:${feature}`),
     });
   }
@@ -50,7 +74,7 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
     commands.push({
       id: `lens:${name}`,
       label: `lens: ${name}`,
-      hint: "filters",
+      family: "filters",
       run: () => sources.applyLens(name),
     });
   }
@@ -58,7 +82,7 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
     commands.push({
       id: `ops:${target}:${verb}`,
       label: `ops: ${label}`,
-      hint: target,
+      family: target,
       confirm: true,
       run: () => sources.runOp(target, verb),
     });
@@ -68,7 +92,7 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
     commands.push({
       id: `save-lens:${trimmed}`,
       label: `save current filters as lens "${trimmed}"`,
-      hint: "filters",
+      family: "filters",
       run: () => sources.saveLens(trimmed),
     });
   }
@@ -81,15 +105,46 @@ export function filterCommands(
 ): PaletteCommand[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [...commands];
-  return commands.filter((c) => c.label.toLowerCase().includes(needle));
+  // Forgiving of word order / partial tokens: every whitespace token of the
+  // query must appear in the label, in any order (the ADR's fuzzy law).
+  const tokens = needle.split(/\s+/).filter(Boolean);
+  return commands.filter((c) => {
+    const label = c.label.toLowerCase();
+    return tokens.every((t) => label.includes(t));
+  });
+}
+
+/** Group the flat list into families, preserving the canonical family order. */
+const FAMILY_ORDER: CommandFamily[] = ["navigate", "filters", "core", "rag"];
+
+export function groupByFamily(
+  commands: readonly PaletteCommand[],
+): { family: CommandFamily; commands: PaletteCommand[] }[] {
+  return FAMILY_ORDER.map((family) => ({
+    family,
+    commands: commands.filter((c) => c.family === family),
+  })).filter((group) => group.commands.length > 0);
 }
 
 // --- the palette -----------------------------------------------------------------------
+
+/** Focusable descendants of a container, in tab order. */
+function focusablesOf(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  // The last ops dispatch result surfaced inline (degraded/error truth): the
+  // palette stays open and shows a legible message rather than failing
+  // silently or implying success.
+  const [opsMessage, setOpsMessage] = useState<string | null>(null);
   // Platform confirm guard for ops commands (W03.P04.S08 consolidation):
   // replaces the bespoke `armed: string | null` state. A single slot keyed
   // on "ops:run" is correct because only one cursor position can be active;
@@ -98,9 +153,17 @@ export function CommandPalette() {
   const confirmable = useConfirmable<void>("ops:run");
   const [armedCommandId, setArmedCommandId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Focus restore (038): the palette returns focus to wherever the user
-  // was when it opened.
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Focus restore: the palette returns focus to wherever the user was when it
+  // opened (the audit's focus-restore obligation).
   const previousFocus = useRef<HTMLElement | null>(null);
+  // Stable id roots so role=combobox / listbox / option wire together and
+  // aria-activedescendant can name the cursor row.
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const liveRegionId = `${baseId}-live`;
+  const optionId = (id: string) => `${baseId}-opt-${id}`;
+
   const scope = useActiveScope();
   const vocabulary = useFiltersVocabulary(scope);
   // Select the stable slice and compose builtins memoized: a selector
@@ -109,17 +172,26 @@ export function CommandPalette() {
   const saved = useLensStore((s) => s.saved);
   const lenses = useMemo(() => [...BUILTIN_LENSES, ...saved], [saved]);
   const timeTravel = useViewStore((s) => s.timelineMode.kind === "time-travel");
+  // Loading liveness: the navigate family is still resolving (vocabulary
+  // pending) — shown as a subtle cue per family, never a blank list.
+  const navLoading = scope !== null && vocabulary.isPending;
+
+  const reset = () => {
+    setQuery("");
+    setCursor(0);
+    setOpsMessage(null);
+    confirmable.cancel();
+    setArmedCommandId(null);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((v) => !v);
-        setQuery("");
-        setCursor(0);
-        confirmable.cancel();
-        setArmedCommandId(null);
-      } else if (e.key === "Escape") {
+        reset();
+      } else if (e.key === "Escape" && open) {
+        e.preventDefault();
         confirmable.cancel();
         setArmedCommandId(null);
         setOpen(false);
@@ -127,7 +199,7 @@ export function CommandPalette() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -147,10 +219,19 @@ export function CommandPalette() {
       query,
       applyLens: (name) => useLensStore.getState().apply(name),
       saveLens: (name) => useLensStore.getState().saveCurrent(name),
-      // Route through the platform dispatch seam (W03.P04.S08): dispatchOps
-      // replaces the prior ad-hoc engineClient call (the seam bypass).
+      // Route through the platform dispatch seam (palette-ops-dispatch-through-
+      // the-seam): dispatchOps is the single logged/traced/guardable engine
+      // touch. The result/error is surfaced inline so degradation reads as a
+      // designed state rather than a silent failure.
       runOp: (target, verb) => {
-        void dispatchOps({ target, verb });
+        setOpsMessage(`${verb}: running…`);
+        dispatchOps({ target, verb }).then(
+          (result) => setOpsMessage(`${verb}: ${result.ok ? "ok" : "unavailable"}`),
+          (err) =>
+            setOpsMessage(
+              `${verb}: ${err instanceof Error ? err.message : "unavailable"}`,
+            ),
+        );
       },
       navigate: (nodeId) => selectNode(nodeId),
     });
@@ -159,10 +240,49 @@ export function CommandPalette() {
     return filterCommands(gated, query);
   }, [vocabulary.data, lenses, query, timeTravel]);
 
+  const groups = useMemo(() => groupByFamily(commands), [commands]);
+  // The cursor walks DISPLAY order, not raw build order: grouping re-orders the
+  // rows (filters before ops, save-lens folded into filters), so the keyboard
+  // cursor and the visually-highlighted row must index the same flattened
+  // group order or they desync.
+  const ordered = useMemo(() => groups.flatMap((g) => g.commands), [groups]);
+
+  // The contextual "save current filters as lens" command always matches its
+  // own query, so it can never be the SEARCH result the no-match state is about.
+  // No-match is shown when nothing but that contextual action matched.
+  const matchedResults = useMemo(
+    () => ordered.filter((c) => !c.id.startsWith("save-lens:")),
+    [ordered],
+  );
+  const noMatch = matchedResults.length === 0;
+
+  // Keep the cursor inside the current result set as it narrows.
+  const safeCursor = ordered.length === 0 ? -1 : Math.min(cursor, ordered.length - 1);
+  const activeCommand = safeCursor >= 0 ? ordered[safeCursor] : undefined;
+
+  // The polite live-region message: result count + selection, plus the armed
+  // prompt — de-duplicated so fast typing does not flood assistive tech.
+  const liveMessage = useMemo(() => {
+    if (noMatch) return "nothing matches";
+    const count = `${matchedResults.length} command${
+      matchedResults.length === 1 ? "" : "s"
+    }`;
+    if (activeCommand && confirmable.armed && armedCommandId === activeCommand.id) {
+      return `${count}. confirm ${activeCommand.label}?`;
+    }
+    return activeCommand ? `${count}. ${activeCommand.label}` : count;
+  }, [
+    noMatch,
+    matchedResults.length,
+    activeCommand,
+    confirmable.armed,
+    armedCommandId,
+  ]);
+
   if (!open) return null;
 
   const runAt = (index: number) => {
-    const command = commands[index];
+    const command = ordered[index];
     if (!command) return;
     if (command.confirm) {
       if (!confirmable.armed || armedCommandId !== command.id) {
@@ -172,81 +292,198 @@ export function CommandPalette() {
         confirmable.trigger();
         return;
       }
-      // Second Enter on the same armed command: fire and reset.
+      // Second Enter on the same armed command: fire and reset the arm. The
+      // palette stays open so the inline ops message remains visible.
       confirmable.cancel();
       setArmedCommandId(null);
+      command.run();
+      return;
     }
     command.run();
     setOpen(false);
   };
 
+  const moveCursor = (delta: 1 | -1) => {
+    if (ordered.length === 0) return;
+    // Moving the cursor disarms a pending confirm so a stale arm can never
+    // fire the wrong verb.
+    confirmable.cancel();
+    setArmedCommandId(null);
+    setCursor((c) => {
+      const base = c < 0 ? 0 : c;
+      return Math.min(ordered.length - 1, Math.max(0, base + delta));
+    });
+  };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/20 pt-24 animate-fade-in"
-      role="dialog"
-      aria-label="command palette"
-      onClick={() => setOpen(false)}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink/30 pt-24 animate-fade-in"
+      onMouseDown={(e) => {
+        // Backdrop dismiss only on the scrim itself — a click inside the panel
+        // (which stops propagation) must not close it.
+        if (e.target === e.currentTarget) setOpen(false);
+      }}
     >
       <div
-        className="w-[28rem] overflow-hidden rounded-vs-lg border border-rule bg-paper-raised shadow-deep animate-slide-in-down"
-        onClick={(e) => e.stopPropagation()}
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="command palette"
+        className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-vs-xl border border-rule bg-paper-raised shadow-deep animate-slide-in-down"
+        onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          // Focus trap (038): the modal owns Tab while open; arrows walk
-          // the list, Escape closes (window handler), focus stays inside.
-          if (e.key === "Tab") {
+          // Real focus trap: Tab / Shift+Tab cycle within the dialog so focus
+          // can never escape to the chrome behind the scrim while open.
+          if (e.key !== "Tab" || !panelRef.current) return;
+          const focusables = focusablesOf(panelRef.current);
+          if (focusables.length === 0) {
             e.preventDefault();
-            inputRef.current?.focus();
+            return;
+          }
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          const activeEl = document.activeElement;
+          if (e.shiftKey && activeEl === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && activeEl === last) {
+            e.preventDefault();
+            first.focus();
           }
         }}
       >
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setCursor(0);
-            confirmable.cancel();
-            setArmedCommandId(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setCursor((c) => Math.min(commands.length - 1, c + 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setCursor((c) => Math.max(0, c - 1));
-            } else if (e.key === "Enter") {
-              runAt(cursor);
+        {/* Search affordance + query input (combobox over the listbox). */}
+        <div className="flex items-center gap-vs-2 border-b border-rule px-vs-4">
+          <Search aria-hidden className="size-4 shrink-0 text-ink-faint" />
+          <input
+            ref={inputRef}
+            value={query}
+            role="combobox"
+            aria-expanded
+            aria-controls={listboxId}
+            aria-activedescendant={
+              activeCommand ? optionId(activeCommand.id) : undefined
             }
-          }}
-          placeholder="type a command, feature, or lens…"
-          className="w-full border-b border-rule bg-transparent px-vs-4 py-vs-2 text-body text-ink outline-none placeholder:text-ink-faint"
-        />
-        <ul className="max-h-72 overflow-y-auto py-vs-1 text-body">
-          {commands.length === 0 && (
-            <li className="px-vs-4 py-vs-2 text-ink-faint">nothing matches</li>
+            aria-autocomplete="list"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setCursor(0);
+              setOpsMessage(null);
+              confirmable.cancel();
+              setArmedCommandId(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                moveCursor(1);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                moveCursor(-1);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                runAt(safeCursor);
+              }
+            }}
+            placeholder="type a command, feature, or lens…"
+            className="w-full bg-transparent py-vs-3 text-body text-ink outline-none placeholder:text-ink-faint"
+          />
+        </div>
+
+        {/* The result listbox: families grouped, rows are options. */}
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-label="commands"
+          className="max-h-80 overflow-y-auto py-vs-1 text-body"
+        >
+          {noMatch && (
+            <li
+              role="presentation"
+              className="px-vs-4 py-vs-3 text-center text-ink-faint"
+            >
+              nothing matches
+            </li>
           )}
-          {commands.map((command, i) => (
-            <li key={command.id}>
-              <button
-                type="button"
-                onClick={() => runAt(i)}
-                className={`flex w-full items-center justify-between rounded-vs-sm px-vs-4 py-vs-1-5 text-left transition-colors duration-ui-fast ease-settle ${
-                  i === cursor
-                    ? "bg-paper-sunken text-ink"
-                    : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
-                }`}
-              >
-                <span>
-                  {confirmable.armed && armedCommandId === command.id
-                    ? `confirm: ${command.label}?`
-                    : command.label}
-                </span>
-                <span className="text-label text-ink-faint">{command.hint}</span>
-              </button>
+          {groups.map((group) => (
+            <li key={group.family} role="presentation">
+              <div className="px-vs-4 pt-vs-2 pb-vs-0-5 text-2xs font-medium uppercase tracking-wide text-ink-faint">
+                {FAMILY_LABEL[group.family]}
+              </div>
+              <ul role="presentation">
+                {group.commands.map((command) => {
+                  const index = ordered.indexOf(command);
+                  const selected = index === safeCursor;
+                  const armed = confirmable.armed && armedCommandId === command.id;
+                  return (
+                    <li key={command.id} role="presentation">
+                      <button
+                        type="button"
+                        id={optionId(command.id)}
+                        role="option"
+                        aria-selected={selected}
+                        tabIndex={-1}
+                        onMouseEnter={() => setCursor(index)}
+                        onClick={() => runAt(index)}
+                        className={`flex w-full items-center justify-between border-l-2 rounded-r-vs-sm py-vs-1-5 pr-vs-4 pl-vs-3 text-left transition-colors duration-ui-fast ease-settle ${
+                          selected
+                            ? "border-accent bg-paper-sunken text-ink"
+                            : "border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
+                        }`}
+                      >
+                        <span className={armed ? "text-state-stale" : undefined}>
+                          {armed ? `confirm ${command.label}?` : command.label}
+                        </span>
+                        <span className="flex items-center gap-vs-2 text-label text-ink-faint">
+                          {command.confirm && (
+                            <span
+                              className="rounded-vs-sm border border-rule px-vs-1 py-vs-0-5 font-mono text-2xs"
+                              aria-hidden
+                            >
+                              ⏎ ⏎
+                            </span>
+                          )}
+                          {selected && !command.confirm && (
+                            <CornerDownLeft
+                              aria-hidden
+                              className="size-3 text-ink-faint"
+                            />
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </li>
           ))}
+          {navLoading && (
+            <li
+              role="presentation"
+              className="flex items-center gap-vs-2 px-vs-4 py-vs-2 text-label text-ink-faint"
+            >
+              <span
+                aria-hidden
+                className="size-2 rounded-full bg-state-live animate-pulse-live"
+              />
+              loading navigation…
+            </li>
+          )}
         </ul>
+
+        {/* Inline ops result / degradation truth (does not close the palette). */}
+        {opsMessage && (
+          <div
+            role="status"
+            className="border-t border-rule px-vs-4 py-vs-2 text-label text-ink-muted"
+          >
+            {opsMessage}
+          </div>
+        )}
+
+        {/* Polite live region: result count, selection, and arm prompt. */}
+        <div id={liveRegionId} aria-live="polite" className="sr-only">
+          {liveMessage}
+        </div>
       </div>
     </div>
   );

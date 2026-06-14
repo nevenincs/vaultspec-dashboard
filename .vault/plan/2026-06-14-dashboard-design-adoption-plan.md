@@ -89,7 +89,7 @@ Re-skins the navigation toolbar and controls onto the new tokens and Lucide chro
 
 Rebuilds the Cmd/Ctrl+K command palette as a lifted surface on the new tokens, gated on the command-palette surface ADR reaching accepted; references the nav model.
 
-- [ ] `W02.P07.S23` - Rebuild the Cmd/Ctrl+K command palette as a lifted surface on the new tokens per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
+- [x] `W02.P07.S23` - Rebuild the Cmd/Ctrl+K command palette as a lifted surface on the new tokens per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green; `frontend/src/app`.
 
 ### Phase `W02.P08` - Search surface adoption
 
