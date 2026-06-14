@@ -1,0 +1,29 @@
+/* Prototype-local stylesheet (node-visual-richness, DEV-ONLY). Imports the
+   shared design-token layer + Tailwind so the gallery renders in the real
+   instrument register, then adds the three `--color-status-*` tokens the stamp
+   tint NAMES (`stampToken`) refer to. These are defined HERE rather than in the
+   shared `styles.css` to stay collision-free with the in-flight token work; a
+   post-merge integration can promote them into the semantic tier. The values
+   are warm, low-chroma reinforcements (NOT a second accent) consistent with the
+   warmth-lives-in-tokens guardrail. */
+
+@import "../styles.css";
+
+:root,
+[data-theme="light"] {
+  --color-status-provisional: #8a7f6b; /* warm neutral — a tentative reading */
+  --color-status-graded: #9f7100; /* the amber severity reinforcement */
+  --color-status-tiered: #5c5040; /* the warm-brown tier reinforcement */
+}
+
+[data-theme="dark"] {
+  --color-status-provisional: #b8ad97;
+  --color-status-graded: #dcaf61;
+  --color-status-tiered: #bdaf9d;
+}
+
+[data-theme="high-contrast"] {
+  --color-status-provisional: #d6ccb8;
+  --color-status-graded: #e6bb5e;
+  --color-status-tiered: #dacbb9;
+}

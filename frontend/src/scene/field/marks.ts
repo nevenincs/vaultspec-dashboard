@@ -287,6 +287,173 @@ export const NODE_FEATURE_MARK = {
     '<circle cx="182" cy="160" r="13" fill="currentColor"/>', // smallest, right
 };
 
+// --- AUTHORED IN-FAMILY: the status-stamp mark families (node-visual-richness) -
+//
+// Two NEW authored families for the status-stamp prototype, drawn on the same
+// 256 grid in Phosphor's house style (rounded joins, single currentColor ink),
+// so they read as one hand with the existing marks. Both are the SHAPE channel
+// for a node's status — hue never load-bearing — and both must clear the 14px
+// grayscale-by-shape gate (`markGate.ts`) within their family.
+//
+//   * status-severity-1..4 — ONE large dot at four fill levels: hollow ring,
+//     quarter-filled (a bottom band), half-filled (lower hemisphere), and a
+//     solid disc. The four silhouettes differ by how much of the SAME disc
+//     footprint is inked, so the gate (true ink coverage, winding-rule fills,
+//     hollow holes preserved) reads them as four distinct masses. The disc is
+//     sized large (r≈74) so each fill increment moves well above the squint
+//     floor at 14px.
+//
+//   * status-tier-1..4 — a stepped staircase notch with 1..4 filled steps,
+//     ascending left-to-right. Each added step inks a new tall column on the
+//     right, so the silhouettes grow monotonically and separate by whole
+//     columns — the cleanest possible four-way grayscale ladder.
+//
+// Authoring discipline mirrors TIER_MARK_DEFS / STATE_MARK_DEFS above: each
+// def is `{ id, provenance: "authored", body }`, registered into
+// ALL_MARK_DEFS / TEXTURABLE_MARK_DEFS via the family map below.
+
+// -- status-severity: a gauge, four fill levels -------------------------------
+// A clock GAUGE that fills as severity rises: a thick round-capped arc anchored
+// at 12 o'clock, sweeping clockwise by 1/4, 2/4, 3/4 of the circle, closing to a
+// full ring at level 4. The "how much of the ring is filled" reading is the
+// fill-level metaphor, made grayscale-safe by ARC LENGTH alone — never hue.
+//
+// Why an arc gauge and NOT a solid/growing disc: a filled disc rasterizes
+// identically to the existing `state:active` mark (a solid disc) at 14px, a
+// cross-family collision the CROSS-FAMILY gate rightly rejects. The hollow arc
+// keeps the dot's center empty, so every severity level stays clear of the
+// solid-disc and ring marks already in the family (measured: ≥37 cells from
+// state:active / state:complete; within-family min-distance 11, floor 8, and
+// the WHOLE cross-family TEXTURABLE set still clears the floor at 11).
+
+const SEV_CX = 128;
+const SEV_CY = 128;
+const SEV_R = 72;
+const SEV_SW = 30;
+
+/** A round-capped gauge arc from 12 o'clock, sweeping `fraction` of the circle. */
+function severityArc(fraction: number): string {
+  const start = -Math.PI / 2;
+  const end = start + fraction * 2 * Math.PI - 1e-4;
+  const x0 = (SEV_CX + SEV_R * Math.cos(start)).toFixed(2);
+  const y0 = (SEV_CY + SEV_R * Math.sin(start)).toFixed(2);
+  const x1 = (SEV_CX + SEV_R * Math.cos(end)).toFixed(2);
+  const y1 = (SEV_CY + SEV_R * Math.sin(end)).toFixed(2);
+  const large = fraction > 0.5 ? 1 : 0;
+  return (
+    `<path fill="none" stroke="currentColor" stroke-width="${SEV_SW}" ` +
+    `stroke-linecap="round" d="M${x0},${y0} A${SEV_R},${SEV_R} 0 ${large} 1 ${x1},${y1}"/>`
+  );
+}
+
+/** severity 1 — a quarter gauge (the lowest grade). */
+const STATUS_SEVERITY_1 = {
+  id: "status-severity-1",
+  provenance: "authored" as const,
+  body: severityArc(0.25),
+};
+
+/** severity 2 — a half gauge. */
+const STATUS_SEVERITY_2 = {
+  id: "status-severity-2",
+  provenance: "authored" as const,
+  body: severityArc(0.5),
+};
+
+/** severity 3 — a three-quarter gauge. */
+const STATUS_SEVERITY_3 = {
+  id: "status-severity-3",
+  provenance: "authored" as const,
+  body: severityArc(0.75),
+};
+
+/** severity 4 — a full ring gauge (the highest grade). */
+const STATUS_SEVERITY_4 = {
+  id: "status-severity-4",
+  provenance: "authored" as const,
+  body:
+    `<circle cx="${SEV_CX}" cy="${SEV_CY}" r="${SEV_R}" ` +
+    `fill="none" stroke="currentColor" stroke-width="${SEV_SW}"/>`,
+};
+
+// -- status-tier: a staircase, 1..4 filled steps ------------------------------
+// Steps ascend left→right; level N inks the leftmost N columns as tall bars of
+// increasing height, so each added step inks a NEW column — four monotonically
+// growing silhouettes. Columns are wide (≈44u) and tall enough that one column
+// clears the squint floor at 14px.
+
+const TIER_STEP = (n: 1 | 2 | 3 | 4): string => {
+  // Four columns across x=40..216 (44u each), bottoms anchored at y=216, with
+  // heights stepping up: col1 short … col4 tall. Only the first n columns ink.
+  const cols: Array<[number, number]> = [
+    [40, 150], // [x, top-y] — col 1 (shortest)
+    [86, 118], // col 2
+    [132, 86], // col 3
+    [178, 54], // col 4 (tallest)
+  ];
+  return cols
+    .slice(0, n)
+    .map(
+      ([x, top]) =>
+        `<rect x="${x}" y="${top}" width="38" height="${216 - top}" ` +
+        'fill="currentColor"/>',
+    )
+    .join("");
+};
+
+const STATUS_TIER_1 = {
+  id: "status-tier-1",
+  provenance: "authored" as const,
+  body: TIER_STEP(1),
+};
+const STATUS_TIER_2 = {
+  id: "status-tier-2",
+  provenance: "authored" as const,
+  body: TIER_STEP(2),
+};
+const STATUS_TIER_3 = {
+  id: "status-tier-3",
+  provenance: "authored" as const,
+  body: TIER_STEP(3),
+};
+const STATUS_TIER_4 = {
+  id: "status-tier-4",
+  provenance: "authored" as const,
+  body: TIER_STEP(4),
+};
+
+/**
+ * The two status-stamp mark families, in fill/step order. Indexed 1..4 by the
+ * severity grade (graded ordinal) and the tier rank (tiered ordinal) the
+ * `statusStamp` descriptor carries.
+ */
+export const STATUS_MARK_DEFS: ReadonlyArray<MarkDef> = [
+  STATUS_SEVERITY_1,
+  STATUS_SEVERITY_2,
+  STATUS_SEVERITY_3,
+  STATUS_SEVERITY_4,
+  STATUS_TIER_1,
+  STATUS_TIER_2,
+  STATUS_TIER_3,
+  STATUS_TIER_4,
+];
+
+/** The severity dots, indexed by fill level 1..4 (graded ordinal). */
+export const STATUS_SEVERITY_MARK_DEFS = {
+  1: STATUS_SEVERITY_1,
+  2: STATUS_SEVERITY_2,
+  3: STATUS_SEVERITY_3,
+  4: STATUS_SEVERITY_4,
+} as const;
+
+/** The tier notches, indexed by step count 1..4 (tiered ordinal). */
+export const STATUS_TIER_MARK_DEFS = {
+  1: STATUS_TIER_1,
+  2: STATUS_TIER_2,
+  3: STATUS_TIER_3,
+  4: STATUS_TIER_4,
+} as const;
+
 // --- the assembled inventory --------------------------------------------------
 
 /**
@@ -332,6 +499,7 @@ export const ALL_MARK_DEFS: Record<string, MarkDef> = {
   ...Object.fromEntries(Object.values(EVENT_MARK_DEFS).map((d) => [d.id, d])),
   ...Object.fromEntries(Object.values(TIER_MARK_DEFS).map((d) => [d.id, d])),
   ...Object.fromEntries(Object.values(STATE_MARK_DEFS).map((d) => [d.id, d])),
+  ...Object.fromEntries(STATUS_MARK_DEFS.map((d) => [d.id, d])),
 };
 
 /** Resolve a mark def by id, or undefined when unknown (caller falls back). */
