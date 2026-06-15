@@ -6,57 +6,18 @@
 
 import { create } from "zustand";
 
-import type { EngineStatus } from "../../stores/server/engine";
+// The degradation condition inputs and their wire-reading derivation live in the
+// stores layer (F-M3): `deriveInputs` reads the raw `tiers` block, which only the
+// stores layer may touch. Re-exported here so the degradation module's public
+// surface (and its tests) is unchanged; this app module owns only the §8 table.
+import type { DegradationInputs } from "../../stores/server/degradationInputs";
 
-// --- conditions -------------------------------------------------------------------
-
-export interface DegradationInputs {
-  ragDown: boolean;
-  dateMandateMissing: boolean;
-  brokenLinkCount: number;
-  streamLost: boolean;
-  noVault: boolean;
-}
-
-export const HEALTHY: DegradationInputs = {
-  ragDown: false,
-  dateMandateMissing: false,
-  brokenLinkCount: 0,
-  streamLost: false,
-  noVault: false,
-};
-
-/**
- * Live signals the status snapshot cannot carry, injected by the surface-states
- * hook from the stores-owned live-connection slice (ADR D4): the runtime stream
- * connection and the broken-link count over the held slice. Keeping these as
- * parameters keeps `deriveInputs` pure and testable.
- */
-export interface LiveSignals {
-  /** null = no stream expected yet, true = connected, false = lost. */
-  streamConnected?: boolean | null;
-  /** Broken structural edges in the held slice. */
-  brokenLinkCount?: number;
-}
-
-/** Derive the live conditions from the status snapshot plus the live signals. */
-export function deriveInputs(
-  status: EngineStatus | undefined,
-  live: LiveSignals = {},
-): DegradationInputs {
-  return {
-    ragDown:
-      status === undefined ||
-      status.tiers.semantic?.available === false ||
-      (status.rag !== undefined && status.rag.service !== "running"),
-    dateMandateMissing: status?.degradations.includes("date-mandate") ?? false,
-    // No longer hardwired (GUI finding 036): a count over the held slice's
-    // broken structural edges, and an explicit stream disconnect.
-    brokenLinkCount: live.brokenLinkCount ?? 0,
-    streamLost: live.streamConnected === false,
-    noVault: status !== undefined && status.nodes === 0,
-  };
-}
+export {
+  HEALTHY,
+  deriveInputs,
+  type DegradationInputs,
+  type LiveSignals,
+} from "../../stores/server/degradationInputs";
 
 // --- the §8 table, encoded -----------------------------------------------------------
 
