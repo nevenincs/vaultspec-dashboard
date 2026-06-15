@@ -17,7 +17,7 @@
 // canvas registration. All are additive to the locked union; no existing
 // members renamed or removed.
 
-import type { LayoutParams } from "./field/layoutWorker";
+import type { LayoutParams } from "./field/forceLayout";
 import type { RepresentationMode } from "./field/representationLayout";
 import type { StatusClass } from "./field/statusStamp";
 import type { SemanticLevel } from "./field/camera";

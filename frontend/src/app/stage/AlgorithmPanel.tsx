@@ -1,33 +1,27 @@
-// Graph algorithm controls panel (task #6): sliders and toggles for the
-// ForceAtlas2 layout engine in the scene layer's web worker, plus a
-// layout-mode toggle (force ↔ circular).
+// Graph layout controls panel (dashboard-node-graph-stability ADR).
 //
-// Commands set-layout-params and set-layout-mode are live as of the
-// 2026-06-13 graph-quality addenda (P01.S02). SceneController.getLayoutState()
-// provides the initial state on mount so the sliders open reflecting the
-// current engine state. The panel subscribes to layout-changed events to stay
-// in sync if another actor changes the params.
+// Exposes the Obsidian knob set for the d3-force connectivity layout — Repel,
+// Link force, Link distance, Center — plus the layout-mode toggle (force ↔
+// circular). The cooling schedule (alpha/velocity decay) is deliberately NOT
+// exposed: fixing it in code is what guarantees the layout always settles.
 //
-// Seam boundary: panel dispatches only via SceneController.command(); it
-// never fetches, never touches stores, and never reaches the worker directly.
+// Commands set-layout-params and set-layout-mode are dispatched only via
+// SceneController.command(); the panel never fetches, never touches stores, and
+// never reaches the solver directly. SceneController.getLayoutState() provides
+// the initial state on mount so the sliders open reflecting the live engine
+// state, and the panel subscribes to layout-changed events to stay in sync.
 
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { LayoutParams } from "../../scene/field/layoutWorker";
+import type { LayoutParams } from "../../scene/field/forceLayout";
+import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { getScene } from "./Stage";
 
-// Defaults match the FA2 inferSettings() output for a medium-sized graph.
-// Used as the "reset" target and the initial state before the scene reports
-// its own state via getLayoutState(). Exported so tests can assert the
-// shape without rendering the component.
-export const DEFAULTS: Required<LayoutParams> = {
-  scalingRatio: 25,
-  gravity: 0.5,
-  slowDown: 1,
-  barnesHutOptimize: true,
-  iterationsPerTick: 4,
-};
+// The "reset" target and the initial state before the scene reports its own
+// state via getLayoutState(). Exported so tests can assert the shape without
+// rendering the component.
+export const DEFAULTS: Required<LayoutParams> = { ...LAYOUT_DEFAULTS };
 
 // ---------------------------------------------------------------------------
 // Slider row helper
@@ -157,7 +151,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
               type="button"
               onClick={handleReset}
               className="rounded-vs-sm text-2xs text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-              aria-label="reset to inferred defaults"
+              aria-label="reset to default forces"
             >
               reset
             </button>
@@ -197,61 +191,48 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
         </div>
       </div>
 
-      {/* FA2 parameter sliders — only relevant in force mode */}
+      {/* Obsidian force knobs — only relevant in force mode */}
       <div className={`py-1 ${mode === "circular" ? "opacity-40" : ""}`}>
         <SliderRow
-          label="Spread"
-          hint="Node repulsion — higher spreads nodes further apart"
-          value={params.scalingRatio}
-          min={0.1}
-          max={20}
-          step={0.1}
-          onChange={(v) => applyParams({ scalingRatio: v })}
-          format={(v) => v.toFixed(1)}
-        />
-        <SliderRow
-          label="Gravity"
-          hint="Central gravity — higher pulls nodes toward center"
-          value={params.gravity}
+          label="Repel force"
+          hint="Node repulsion — higher pushes nodes further apart"
+          value={params.repel}
           min={0}
-          max={5}
-          step={0.1}
-          onChange={(v) => applyParams({ gravity: v })}
-          format={(v) => v.toFixed(1)}
-        />
-        <SliderRow
-          label="Inertia"
-          hint="Damping — higher slows convergence"
-          value={params.slowDown}
-          min={1}
-          max={100}
-          step={1}
-          onChange={(v) => applyParams({ slowDown: v })}
+          max={400}
+          step={10}
+          onChange={(v) => applyParams({ repel: v })}
           format={(v) => String(Math.round(v))}
         />
         <SliderRow
-          label="Speed"
-          hint="FA2 iterations per 16ms frame"
-          value={params.iterationsPerTick}
-          min={1}
-          max={20}
-          step={1}
-          onChange={(v) => applyParams({ iterationsPerTick: v })}
-          format={(v) => `${Math.round(v)}/frame`}
+          label="Link force"
+          hint="Spring stiffness — higher pulls linked nodes tighter together"
+          value={params.linkForce}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(v) => applyParams({ linkForce: v })}
+          format={(v) => v.toFixed(2)}
         />
-
-        {/* Barnes-Hut toggle */}
-        <label className="flex cursor-pointer items-center gap-vs-2 px-vs-3 py-vs-1-5">
-          <input
-            type="checkbox"
-            checked={params.barnesHutOptimize}
-            onChange={(e) => applyParams({ barnesHutOptimize: e.target.checked })}
-            className="accent-accent"
-            disabled={mode === "circular"}
-          />
-          <span className="text-label text-ink-muted">Barnes-Hut</span>
-          <span className="ml-vs-0-5 text-2xs text-ink-faint">(n &gt; 200)</span>
-        </label>
+        <SliderRow
+          label="Link distance"
+          hint="Spring rest length between linked nodes"
+          value={params.linkDistance}
+          min={10}
+          max={120}
+          step={5}
+          onChange={(v) => applyParams({ linkDistance: v })}
+          format={(v) => String(Math.round(v))}
+        />
+        <SliderRow
+          label="Center force"
+          hint="Gravity toward the center — higher tightens the whole graph inward"
+          value={params.center}
+          min={0}
+          max={0.3}
+          step={0.01}
+          onChange={(v) => applyParams({ center: v })}
+          format={(v) => v.toFixed(2)}
+        />
       </div>
     </div>
   );

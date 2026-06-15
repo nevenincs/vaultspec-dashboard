@@ -1,66 +1,48 @@
-// Unit tests for AlgorithmPanel (task-6 graph workspace chrome).
+// Unit tests for AlgorithmPanel (dashboard-node-graph-stability P03/P04).
 //
-// F6-02 coverage (reviewer requirement):
-//   • DEFAULTS shape: values must match FA2 inferSettings() output for a
-//     medium-sized graph — this is what the scene uses when the panel opens.
-//   • applyParams composition: merging a partial update into the current
-//     params must produce a sound merged object (no field dropped, no field
-//     introduced beyond the Required<LayoutParams> shape).
+// Coverage:
+//   • DEFAULTS shape: the Obsidian knob set (Repel, Link force, Link distance,
+//     Center) — what the panel dispatches and what the scene opens with.
+//   • applyParams composition: merging a partial update into the current params
+//     must produce a sound merged object (no field dropped, none introduced
+//     beyond the Required<LayoutParams> shape).
 //
-// The panel's SceneController dispatch is covered by the component-level
-// test in NavToolbar.test.ts (same mock pattern); here we focus on the
-// exported constants and the merge semantics.
+// The panel's SceneController dispatch is covered by the component-level test in
+// NavToolbar.test.ts; here we focus on the exported constants and merge.
 
 import { describe, expect, it } from "vitest";
 
-import type { LayoutParams } from "../../scene/field/layoutWorker";
+import type { LayoutParams } from "../../scene/field/forceLayout";
+import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { DEFAULTS } from "./AlgorithmPanel";
 
-// ---------------------------------------------------------------------------
-// DEFAULTS — match FA2 inferSettings() for a medium graph
-// ---------------------------------------------------------------------------
-
-describe("AlgorithmPanel DEFAULTS", () => {
-  it("has all five Required<LayoutParams> fields with no extras", () => {
-    const keys = Object.keys(DEFAULTS).sort();
-    expect(keys).toEqual(
-      [
-        "barnesHutOptimize",
-        "gravity",
-        "iterationsPerTick",
-        "scalingRatio",
-        "slowDown",
-      ].sort(),
+describe("AlgorithmPanel DEFAULTS (the Obsidian knob set)", () => {
+  it("has the four force knobs and no extras", () => {
+    expect(Object.keys(DEFAULTS).sort()).toEqual(
+      ["center", "linkDistance", "linkForce", "repel"].sort(),
     );
   });
 
-  it("scalingRatio defaults to 25 (spread-optimised for ~70% stage fill)", () => {
-    expect(DEFAULTS.scalingRatio).toBe(25);
+  it("mirrors the driver's LAYOUT_DEFAULTS (single source of truth)", () => {
+    expect(DEFAULTS).toEqual(LAYOUT_DEFAULTS);
   });
 
-  it("gravity defaults to 0.5 (loose centre pull, prevents clustering blob)", () => {
-    expect(DEFAULTS.gravity).toBe(0.5);
+  it("defaults to the research parameter table (repel 120, link 0.4/40, center 0.06)", () => {
+    expect(DEFAULTS.repel).toBe(120);
+    expect(DEFAULTS.linkForce).toBe(0.4);
+    expect(DEFAULTS.linkDistance).toBe(40);
+    expect(DEFAULTS.center).toBe(0.06);
   });
 
-  it("slowDown defaults to 1 (no added damping)", () => {
-    expect(DEFAULTS.slowDown).toBe(1);
-  });
-
-  it("barnesHutOptimize defaults to true (O(n log n) tree for n>200)", () => {
-    expect(DEFAULTS.barnesHutOptimize).toBe(true);
-  });
-
-  it("iterationsPerTick defaults to 4 (4 FA2 steps per 16ms frame)", () => {
-    expect(DEFAULTS.iterationsPerTick).toBe(4);
+  it("exposes no cooling parameters (the schedule is fixed, never user-tunable)", () => {
+    const keys = Object.keys(DEFAULTS);
+    for (const forbidden of ["alphaDecay", "velocityDecay", "alphaMin", "alpha"]) {
+      expect(keys).not.toContain(forbidden);
+    }
   });
 });
 
-// ---------------------------------------------------------------------------
-// applyParams composition — the merge must be non-destructive
-// ---------------------------------------------------------------------------
-
 describe("applyParams composition (merge semantics)", () => {
-  // Simulate the merge inside applyParams without rendering the component.
   function applyParams(
     current: Required<LayoutParams>,
     update: Partial<LayoutParams>,
@@ -69,35 +51,23 @@ describe("applyParams composition (merge semantics)", () => {
   }
 
   it("merging a partial update preserves all unmodified fields", () => {
-    const result = applyParams(DEFAULTS, { gravity: 2.0 });
-    expect(result.gravity).toBe(2.0);
-    expect(result.scalingRatio).toBe(DEFAULTS.scalingRatio);
-    expect(result.slowDown).toBe(DEFAULTS.slowDown);
-    expect(result.barnesHutOptimize).toBe(DEFAULTS.barnesHutOptimize);
-    expect(result.iterationsPerTick).toBe(DEFAULTS.iterationsPerTick);
+    const result = applyParams(DEFAULTS, { repel: 220 });
+    expect(result.repel).toBe(220);
+    expect(result.linkForce).toBe(DEFAULTS.linkForce);
+    expect(result.linkDistance).toBe(DEFAULTS.linkDistance);
+    expect(result.center).toBe(DEFAULTS.center);
   });
 
   it("merging multiple fields simultaneously updates all of them", () => {
-    const result = applyParams(DEFAULTS, {
-      scalingRatio: 5,
-      gravity: 1.5,
-      barnesHutOptimize: false,
-    });
-    expect(result.scalingRatio).toBe(5);
-    expect(result.gravity).toBe(1.5);
-    expect(result.barnesHutOptimize).toBe(false);
-    // Unchanged fields
-    expect(result.slowDown).toBe(DEFAULTS.slowDown);
-    expect(result.iterationsPerTick).toBe(DEFAULTS.iterationsPerTick);
-  });
-
-  it("merging an empty update is a no-op", () => {
-    const result = applyParams(DEFAULTS, {});
-    expect(result).toEqual(DEFAULTS);
+    const result = applyParams(DEFAULTS, { repel: 80, linkDistance: 60, center: 0.1 });
+    expect(result.repel).toBe(80);
+    expect(result.linkDistance).toBe(60);
+    expect(result.center).toBe(0.1);
+    expect(result.linkForce).toBe(DEFAULTS.linkForce);
   });
 
   it("reset to DEFAULTS after a partial update restores the original shape", () => {
-    const modified = applyParams(DEFAULTS, { scalingRatio: 0.1, gravity: 5 });
+    const modified = applyParams(DEFAULTS, { repel: 0, center: 0.3 });
     const reset = applyParams(modified, { ...DEFAULTS });
     expect(reset).toEqual(DEFAULTS);
   });

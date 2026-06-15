@@ -1,15 +1,19 @@
-// Renderer spike (gui-spec §6.1): PixiJS v8 field + graphology FA2 web
-// worker + DOM overlay islands, against a synthetic corpus.
+// Renderer spike (gui-spec §6.1): PixiJS v8 field + the production d3-force
+// layout driver + DOM overlay islands, against a synthetic corpus.
+//
+// Ported from the original graphology ForceAtlas2 proof to the shipped
+// `FieldLayout` (dashboard-node-graph-stability) so the perf harness benchmarks
+// the engine we actually ship.
 //
 // URL params: ?nodes=1000&edges=5000&islands=5&measure=10 (seconds)
 // Results land in window.__SPIKE_RESULTS__ and the HUD, so both a human
 // and a headless harness can read them.
 
-import Graph from "graphology";
-import FA2Layout from "graphology-layout-forceatlas2/worker";
-import forceatlas2 from "graphology-layout-forceatlas2";
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 
+import type { LayoutEdgeRef } from "../src/scene/field/forceLayout";
+import { FieldLayout } from "../src/scene/field/forceLayout";
+import type { NodePosition } from "../src/scene/positionCache";
 import { generateCorpus } from "./corpus";
 import { createEdgeMeshField } from "./edgeMesh";
 
@@ -48,23 +52,28 @@ function log(line: string) {
 async function main() {
   hud.textContent = `spike: ${NODE_COUNT} nodes / ${EDGE_COUNT} edges`;
 
-  // --- corpus + graphology + FA2 worker -----------------------------------
+  // --- corpus + the production d3-force driver ----------------------------
   const corpus = generateCorpus(NODE_COUNT, EDGE_COUNT);
-  const graph = new Graph();
-  for (const n of corpus.nodes) {
-    graph.addNode(n.id, {
-      x: Math.random() * 1000,
-      y: Math.random() * 1000,
-      kind: n.kind,
-    });
-  }
+  const nodeIds = corpus.nodes.map((n) => n.id);
+  const edgeRefs: LayoutEdgeRef[] = corpus.edges.map((e, i) => ({
+    id: `e${i}`,
+    src: e.source,
+    dst: e.target,
+  }));
+  const degree = new Map<string, number>();
   for (const e of corpus.edges) {
-    graph.addEdge(e.source, e.target, { tier: e.tier });
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
   }
-  const sensible = forceatlas2.inferSettings(graph);
-  const layout = new FA2Layout(graph, {
-    settings: { ...sensible, barnesHutOptimize: true },
+  // The driver owns positions and emits a frame per tick; the renderer reads
+  // the latest snapshot (cold-seeded via d3's phyllotaxis — never the origin).
+  let latest: ReadonlyMap<string, NodePosition> = new Map();
+  const layout = new FieldLayout();
+  layout.onPositions((p) => {
+    latest = p;
   });
+  layout.init(nodeIds, edgeRefs, new Map());
+  const posOf = (id: string): NodePosition => latest.get(id) ?? { x: 0, y: 0 };
 
   // --- Pixi v8 field --------------------------------------------------------
   const app = new Application();
@@ -118,7 +127,7 @@ async function main() {
   // Highest-degree nodes get an "opened node" HTML island, repositioned
   // every frame from the world transform — the hybrid pattern under test.
   const degrees = corpus.nodes
-    .map((n) => ({ id: n.id, degree: graph.degree(n.id) }))
+    .map((n) => ({ id: n.id, degree: degree.get(n.id) ?? 0 }))
     .sort((a, b) => b.degree - a.degree)
     .slice(0, ISLAND_COUNT);
   const islands: { id: string; el: HTMLDivElement }[] = [];
@@ -136,12 +145,13 @@ async function main() {
       minY = Infinity,
       maxX = -Infinity,
       maxY = -Infinity;
-    graph.forEachNode((_, attrs) => {
-      minX = Math.min(minX, attrs.x as number);
-      minY = Math.min(minY, attrs.y as number);
-      maxX = Math.max(maxX, attrs.x as number);
-      maxY = Math.max(maxY, attrs.y as number);
-    });
+    for (const p of latest.values()) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    if (!Number.isFinite(minX)) return;
     const w = maxX - minX || 1;
     const h = maxY - minY || 1;
     const scale = Math.min(app.screen.width / w, app.screen.height / h) * 0.9;
@@ -160,26 +170,25 @@ async function main() {
 
   app.ticker.add(() => {
     if (!dynamic) return;
-    // Sync sprite positions from graphology (FA2 worker mutates attrs) and
-    // fill the shared node-position array the edge meshes read from.
-    graph.forEachNode((id, attrs) => {
-      const sprite = sprites.get(id)!;
-      const x = attrs.x as number;
-      const y = attrs.y as number;
+    // Sync sprite positions from the driver's latest frame and fill the shared
+    // node-position array the edge meshes read from.
+    for (const n of corpus.nodes) {
+      const sprite = sprites.get(n.id)!;
+      const { x, y } = posOf(n.id);
       sprite.position.set(x, y);
-      const i = nodeIndex.get(id)! * 2;
+      const i = nodeIndex.get(n.id)! * 2;
       nodePositions[i] = x;
       nodePositions[i + 1] = y;
-    });
+    }
     // Mesh edges: in-place position write + one buffer upload per tier — no
     // per-frame tessellation, no allocation.
     edgeField.update(nodePositions);
     fit();
     // DOM islands track their node through the world transform.
     for (const { id, el } of islands) {
-      const attrs = graph.getNodeAttributes(id);
-      const x = (attrs.x as number) * world.scale.x + world.position.x;
-      const y = (attrs.y as number) * world.scale.y + world.position.y;
+      const p = posOf(id);
+      const x = p.x * world.scale.x + world.position.x;
+      const y = p.y * world.scale.y + world.position.y;
       el.style.transform = `translate(${x + 8}px, ${y - 8}px)`;
     }
   });
@@ -234,7 +243,7 @@ async function main() {
 
   log(`renderer: ${results.renderer} · gpu: ${gpu}`);
 
-  // Phase 1: layout running (FA2 worker active) — positions change per frame.
+  // Phase 1: layout running (d3-force settling) — positions change per frame.
   layout.start();
   await measure("layout-running", MEASURE_S);
   layout.stop();
@@ -249,7 +258,7 @@ async function main() {
   dynamic = false;
   await measure("settled-static", MEASURE_S / 2);
 
-  layout.kill();
+  layout.destroy();
   results.done = true;
   log("DONE");
 }

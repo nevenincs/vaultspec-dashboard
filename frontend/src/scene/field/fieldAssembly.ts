@@ -22,8 +22,8 @@ import { computeEgo } from "./egoHighlight";
 import { Camera, HIT_RADIUS_WORLD, PointerGestures, SpatialHitTester } from "./camera";
 import { DomainGlyphs } from "./domainGlyphs";
 import { ARROW_VISIBLE_SCALE, EdgeMeshLayer } from "./edgeMeshes";
-import type { LayoutParams } from "./layoutWorker";
-import { FieldLayout } from "./layoutWorker";
+import type { LayoutParams } from "./forceLayout";
+import { FieldLayout } from "./forceLayout";
 import { MinimapLayer } from "./minimapLayer";
 import type { GlyphTextureProvider } from "./nodeSprites";
 import { NodeSpriteLayer } from "./nodeSprites";
@@ -36,6 +36,8 @@ import { OverlayLayer } from "./overlayLayer";
 const POSITION_SAVE_INTERVAL_MS = 5_000;
 /** Cross-highlight pulse duration (G2.b event click). */
 export const PULSE_MS = 1200;
+/** Per-node movement (world units) below which a frame is skipped (D4 gate). */
+const MOVE_EPSILON = 0.4;
 
 /** Reduced motion collapses the field's fade band to imperceptible (G7.d). */
 function fadeDuration(): number | undefined {
@@ -51,7 +53,6 @@ export class DashboardField implements SceneFieldRenderer {
   private nodeVisibility = new VisibilityTracker(fadeDuration());
   private edgeVisibility = new VisibilityTracker(fadeDuration());
   private pinned = new Set<string>();
-  private pinnedPositions = new Map<string, NodePosition>();
   private positionCache = defaultPositionCache();
   private cacheKey: { workspace: string; scope: string } = {
     workspace: "default",
@@ -76,6 +77,12 @@ export class DashboardField implements SceneFieldRenderer {
   private detachListeners: (() => void)[] = [];
   /** Guard: mount() is idempotent — only the first call assembles the scene (S06). */
   private assemblyMounted = false;
+  /** Bumped each mount; the async onReady bails if it no longer matches (D9). */
+  private mountGen = 0;
+  /** The shared assembly logger (used by the per-frame loop and apply path). */
+  private assemblyLog = logger.child("scene.field-assembly");
+  /** Last rendered frame, for the movement gate (D4); a reference, never copied. */
+  private lastFrame: ReadonlyMap<string, NodePosition> | null = null;
   private lastSave = 0;
   private layoutMode: "force" | "circular" = "force";
   private layoutParams: LayoutParams = {};
@@ -111,8 +118,12 @@ export class DashboardField implements SceneFieldRenderer {
     // event listeners, ticker callbacks, and theme observers.
     if (this.assemblyMounted) return;
     this.assemblyMounted = true;
+    const gen = ++this.mountGen;
     this.base.mount(host);
     const offReady = this.base.onReady((app) => {
+      // Pixi init is async; if a destroy/remount interleaved in that window the
+      // generation no longer matches and this stale assembly must not run (D9).
+      if (gen !== this.mountGen) return;
       const world = this.base.worldContainer;
       this.glyphs = new DomainGlyphs(app.renderer);
       // Overlay layer sits behind the edges/nodes (added first to the world).
@@ -133,33 +144,46 @@ export class DashboardField implements SceneFieldRenderer {
       // Layout frames drive sprites, edges, hit-testing, anchors, and the
       // periodic warm-start save.
       const offPositions = this.layout.onPositions((positions) => {
-        for (const [id, p] of this.pinnedPositions) {
-          if (positions.has(id)) (positions as Map<string, NodePosition>).set(id, p);
-        }
-        // Auto-fit follows the layout settle until the user takes the
-        // camera (first pan/zoom) — then the mental map is theirs.
-        if (this.autoFit && positions.size > 0) {
-          this.fitToContent(positions);
-        }
-        this.sprites?.updatePositions((id) => positions.get(id));
-        this.edges?.update((id) => positions.get(id));
-        this.hitTester.rebuild(positions.entries());
-        this.minimap?.updatePositions(positions, this.model.nodes);
-        this.overlayLayer?.render(
-          [...this.model.nodes],
-          (id) => positions.get(id),
-          this.lastLevel,
-        );
-        this.anchors?.update();
-        const now = Date.now();
-        if (this.positionCache && now - this.lastSave > POSITION_SAVE_INTERVAL_MS) {
-          this.lastSave = now;
-          this.positionCache.save(
-            this.cacheKey.workspace,
-            this.cacheKey.scope,
-            positions,
-            now,
+        // One throwing consumer must never wedge the frame loop (D8).
+        try {
+          // Movement gate (D4): skip the heavy per-frame work once motion drops
+          // below the epsilon; it ceases entirely when the simulation freezes
+          // (no tick -> no frame). No camera fit here — the camera is fit ONCE
+          // on settle, then it belongs to the user (D5).
+          if (!this.frameMoved(positions)) return;
+          this.lastFrame = positions;
+          this.sprites?.updatePositions((id) => positions.get(id));
+          this.edges?.update((id) => positions.get(id));
+          this.hitTester.rebuild(positions.entries());
+          this.minimap?.updatePositions(positions, this.model.nodes);
+          this.overlayLayer?.render(
+            [...this.model.nodes],
+            (id) => positions.get(id),
+            this.lastLevel,
           );
+          this.anchors?.update();
+          const now = Date.now();
+          if (this.positionCache && now - this.lastSave > POSITION_SAVE_INTERVAL_MS) {
+            this.lastSave = now;
+            this.positionCache.save(
+              this.cacheKey.workspace,
+              this.cacheKey.scope,
+              positions,
+              now,
+            );
+          }
+        } catch (err) {
+          this.assemblyLog.error(`position frame threw: ${(err as Error).message}`);
+        }
+      });
+
+      // Fit ONCE when the layout cools to a freeze, then the camera is the
+      // user's (D5). A user pan/zoom before settle disarms this, so the fit
+      // never yanks the view back from where the user moved it.
+      const offSettle = this.layout.onSettle(() => {
+        if (this.autoFitArmed && this.layout) {
+          this.autoFitArmed = false;
+          this.fitToContent(this.layout.positions, true);
         }
       });
 
@@ -191,18 +215,22 @@ export class DashboardField implements SceneFieldRenderer {
       // Visibility fades tick on the app ticker while animating — nodes
       // fade/shrink, edges fade through their transition groups (017).
       const tick = () => {
-        const now = performance.now();
-        const nodeSample = this.nodeVisibility.sample(now);
-        const edgeSample = this.edgeVisibility.sample(now);
-        if (nodeSample.animating || edgeSample.animating || this.lastAnimating) {
-          this.sprites?.applyVisibility(
-            nodeSample.progress,
-            this.nodeVisibility.visibleIds,
-            Date.now(),
-          );
-          this.edges?.applyVisibility(edgeSample.progress);
+        try {
+          const now = performance.now();
+          const nodeSample = this.nodeVisibility.sample(now);
+          const edgeSample = this.edgeVisibility.sample(now);
+          if (nodeSample.animating || edgeSample.animating || this.lastAnimating) {
+            this.sprites?.applyVisibility(
+              nodeSample.progress,
+              this.nodeVisibility.visibleIds,
+              Date.now(),
+            );
+            this.edges?.applyVisibility(edgeSample.progress);
+          }
+          this.lastAnimating = nodeSample.animating || edgeSample.animating;
+        } catch (err) {
+          this.assemblyLog.error(`ticker frame threw: ${(err as Error).message}`);
         }
-        this.lastAnimating = nodeSample.animating || edgeSample.animating;
       };
       app.ticker.add(tick);
 
@@ -214,7 +242,7 @@ export class DashboardField implements SceneFieldRenderer {
           this.controller?.emit(event);
         },
         panBy: (dx, dy) => {
-          this.autoFit = false;
+          this.autoFitArmed = false;
           this.camera?.panBy(dx, dy);
         },
         hitTestScreen: (sx, sy) => {
@@ -240,7 +268,7 @@ export class DashboardField implements SceneFieldRenderer {
       };
       const onWheel = (e: WheelEvent) => {
         e.preventDefault();
-        this.autoFit = false;
+        this.autoFitArmed = false;
         const p = local(e);
         this.camera?.zoomAt(p.x, p.y, e.deltaY < 0 ? 1.15 : 1 / 1.15);
       };
@@ -266,6 +294,7 @@ export class DashboardField implements SceneFieldRenderer {
 
       this.detachListeners.push(
         offPositions,
+        offSettle,
         offCamera,
         () => app.ticker.remove(tick),
         () => canvas.removeEventListener("pointerdown", onDown),
@@ -288,9 +317,12 @@ export class DashboardField implements SceneFieldRenderer {
   }
 
   destroy(): void {
+    // Bump the generation so any onReady still in flight from this mount bails.
+    this.mountGen++;
     for (const detach of this.detachListeners) detach();
     this.detachListeners = [];
     this.assemblyMounted = false;
+    this.lastFrame = null;
     this.layout?.destroy();
     this.layout = null;
     this.sprites = null;
@@ -315,7 +347,7 @@ export class DashboardField implements SceneFieldRenderer {
     switch (cmd.kind) {
       case "set-data": {
         this.model.setData(cmd.nodes, cmd.edges);
-        this.autoFit = true;
+        this.autoFitArmed = true;
         this.applyModelToLayers(true);
         break;
       }
@@ -369,13 +401,12 @@ export class DashboardField implements SceneFieldRenderer {
         break;
       }
       case "set-pinned": {
+        // Solver-level pinning (D7): the simulation fixes pinned nodes via
+        // fx/fy and holds them itself, so nothing fights. The display-overwrite
+        // of the authoritative frame is gone. The set is also kept for the
+        // pinned-node LOD focus treatment.
         this.pinned = new Set(cmd.ids);
-        this.pinnedPositions = new Map(
-          [...this.pinned].flatMap((id) => {
-            const p = this.layout?.positions.get(id);
-            return p ? [[id, p] as const] : [];
-          }),
-        );
+        this.layout?.setPinned(this.pinned);
         break;
       }
       case "set-time":
@@ -413,13 +444,13 @@ export class DashboardField implements SceneFieldRenderer {
       }
       case "fit-to-view": {
         if (this.layout) {
-          this.autoFit = true;
+          this.autoFitArmed = true;
           this.fitToContent(this.layout.positions);
         }
         break;
       }
       case "reset-view": {
-        this.autoFit = false;
+        this.autoFitArmed = false;
         this.camera?.set({ x: 0, y: 0, scale: 1 });
         break;
       }
@@ -507,15 +538,24 @@ export class DashboardField implements SceneFieldRenderer {
         );
         this.layout.stop();
         this.layout.init(nodeIds, [], seeds);
+        // Deterministic mode: solver held stopped; animate the camera once to
+        // frame the new arrangement.
+        this.lastFrame = null;
+        this.autoFitArmed = false;
+        this.fitToContent(this.layout.positions, true);
       } else {
-        // Connectivity: feed ONLY the layout backbone to FA2 (anti-hairball
-        // discipline, W02.P07) and restart the force solver from current
-        // positions (warm-start = object constancy).
+        // Connectivity: feed ONLY the layout backbone to the solver (anti-hairball
+        // discipline, W02.P07) and warm-start from the CURRENT positions so the
+        // switch animates from where the nodes are (object constancy). Arm the
+        // settle fit so the camera frames the cooled layout once, without snapping
+        // away from the mental map mid-transition.
         const backbone = splitBackbone(edges).backbone;
         const nodeIds = nodes.map((n) => n.id);
         const edgeRefs = backbone.map((e) => ({ id: e.id, src: e.src, dst: e.dst }));
         this.layout.init(nodeIds, edgeRefs, this.layout.positions);
         this.layout.start();
+        this.lastFrame = null;
+        this.autoFitArmed = true;
       }
     }
     this.controller?.emit({
@@ -537,12 +577,35 @@ export class DashboardField implements SceneFieldRenderer {
 
   // --- internals -------------------------------------------------------------------
 
-  private autoFit = true;
+  /** Whether the next settle should fit the camera (disarmed once the user
+   *  takes the camera, or after the one-shot fit fires). */
+  private autoFitArmed = true;
 
-  /** Center and scale the camera to the field's content bounds. */
-  private fitToContent(positions: ReadonlyMap<string, NodePosition>): void {
+  /** True when this frame moved enough to be worth re-rendering (D4 gate). */
+  private frameMoved(positions: ReadonlyMap<string, NodePosition>): boolean {
+    const prev = this.lastFrame;
+    if (!prev || prev.size !== positions.size) return true;
+    for (const [id, p] of positions) {
+      const q = prev.get(id);
+      if (
+        !q ||
+        Math.abs(q.x - p.x) > MOVE_EPSILON ||
+        Math.abs(q.y - p.y) > MOVE_EPSILON
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Center and scale the camera to the field's content bounds. When `animate`
+   *  the camera eases to the target; otherwise it snaps (initial one-shot). */
+  private fitToContent(
+    positions: ReadonlyMap<string, NodePosition>,
+    animate = false,
+  ): void {
     const app = this.base.application;
-    if (!app || !this.camera) return;
+    if (!app || !this.camera || positions.size === 0) return;
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -561,11 +624,16 @@ export class DashboardField implements SceneFieldRenderer {
       1,
       Math.min(app.screen.width / w, app.screen.height / h) * 0.85,
     );
-    this.camera.set({
+    const target = {
       scale,
       x: app.screen.width / 2 - (minX + w / 2) * scale,
       y: app.screen.height / 2 - (minY + h / 2) * scale,
-    });
+    };
+    if (animate) {
+      this.camera.animateTo(target);
+    } else {
+      this.camera.set(target);
+    }
   }
 
   private focusedIds(): ReadonlySet<string> {
@@ -577,7 +645,7 @@ export class DashboardField implements SceneFieldRenderer {
     if (!this.camera || !this.base.application) return;
     const screen = this.base.application.screen;
     const scale = this.camera.current.scale;
-    this.autoFit = false;
+    this.autoFitArmed = false;
     this.camera.animateTo({
       scale,
       x: screen.width / 2 - wx * scale,
@@ -605,9 +673,8 @@ export class DashboardField implements SceneFieldRenderer {
     if (rejected.length > 0) {
       // Truthfulness: a malformed tier is a loud, structured log, never a
       // silent re-bucket. Surfacing into the degradation UI lands with S46.
-      const assemblyLog = logger.child("scene.field-assembly");
       for (const err of rejected) {
-        assemblyLog.error(err.message);
+        this.assemblyLog.error(err.message);
       }
     }
     const nodeIds = [...this.model.nodes].map((n) => n.id);
@@ -641,6 +708,11 @@ export class DashboardField implements SceneFieldRenderer {
           );
           this.layout.stop();
           this.layout.init(nodeIds, [], seeds);
+          // Deterministic mode: the solver is held stopped, so no settle fires;
+          // frame the seeded positions once, now.
+          this.lastFrame = null;
+          this.autoFitArmed = false;
+          this.fitToContent(this.layout.positions, false);
           return;
         }
         // A held gated mode downgrades to connectivity below.
@@ -661,6 +733,11 @@ export class DashboardField implements SceneFieldRenderer {
       }
       this.layout.init(nodeIds, backboneRefs, warm);
       this.layout.start();
+      // Frame the initial seed spread immediately (one-shot, instant), then arm
+      // the settle fit so the final framing animates once the layout cools (D5).
+      this.lastFrame = null;
+      this.autoFitArmed = true;
+      this.fitToContent(this.layout.positions, false);
     }
   }
 
