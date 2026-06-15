@@ -3,6 +3,7 @@ tags:
   - '#adr'
   - '#vaultspec-engine'
 date: '2026-06-12'
+modified: '2026-06-15'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
 ---

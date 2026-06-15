@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#vaultspec-engine'
 date: '2026-06-12'
-modified: '2026-06-12'
+modified: '2026-06-15'
 step_id: 'S04'
 related:
   - "[[2026-06-13-vaultspec-engine-plan]]"

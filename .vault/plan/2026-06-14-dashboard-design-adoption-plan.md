@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-design-adoption'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-06-15'
 tier: L3
 related:
   - '[[2026-06-14-dashboard-design-language-adr]]'
@@ -11,15 +11,6 @@ related:
   - '[[2026-06-14-dashboard-design-language-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `dashboard-design-adoption` plan
 

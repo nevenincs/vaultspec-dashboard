@@ -3,18 +3,13 @@ tags:
   - '#audit'
   - '#dashboard-optimization'
 date: '2026-06-13'
-modified: '2026-06-14'
+modified: '2026-06-15'
 related:
   - '[[2026-06-13-dashboard-optimization-plan]]'
   - '[[2026-06-13-dashboard-optimization-adr]]'
   - '[[2026-06-13-dashboard-optimization-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
 
 # `dashboard-optimization` audit: `campaign-verification`
 

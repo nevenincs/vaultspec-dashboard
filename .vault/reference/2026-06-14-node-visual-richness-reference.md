@@ -3,7 +3,7 @@ tags:
   - '#reference'
   - '#node-visual-richness'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-06-15'
 related:
   - '[[2026-06-14-node-visual-richness-adr]]'
   - '[[2026-06-14-node-visual-richness-research]]'

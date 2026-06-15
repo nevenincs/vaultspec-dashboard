@@ -3,17 +3,12 @@ tags:
   - '#exec'
   - '#dashboard-optimization'
 date: '2026-06-13'
-modified: '2026-06-14'
+modified: '2026-06-15'
 step_id: 'S10'
 related:
   - "[[2026-06-13-dashboard-optimization-plan]]"
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
 
 # Run the campaign verification gates and record the audit
 

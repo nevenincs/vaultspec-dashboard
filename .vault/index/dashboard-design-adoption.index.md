@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-design-adoption'
-date: '2026-06-14'
-modified: '2026-06-14'
+date: '2026-06-15'
+modified: '2026-06-15'
 related:
   - '[[2026-06-14-dashboard-design-adoption-W01-P01-S01]]'
   - '[[2026-06-14-dashboard-design-adoption-W01-P01-S02]]'
@@ -23,7 +23,28 @@ related:
   - '[[2026-06-14-dashboard-design-adoption-W01-P03-S15]]'
   - '[[2026-06-14-dashboard-design-adoption-W01-P03-S16]]'
   - '[[2026-06-14-dashboard-design-adoption-W01-P03-S17]]'
+  - '[[2026-06-14-dashboard-design-adoption-W01-P04-S18]]'
+  - '[[2026-06-14-dashboard-design-adoption-W01-P04-S19]]'
+  - '[[2026-06-14-dashboard-design-adoption-W01-P04-S20]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P05-S21]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P06-S22]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P07-S23]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P08-S24]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P09-S25]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P10-S26]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P11-S27]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P12-S28]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P13-S29]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P14-S30]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P15-S31]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P16-S32]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P17-S33]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P17-S34]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P17-S35]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P17-S36]]'
+  - '[[2026-06-14-dashboard-design-adoption-W02-P17-S37]]'
   - '[[2026-06-14-dashboard-design-adoption-adr]]'
+  - '[[2026-06-14-dashboard-design-adoption-audit]]'
   - '[[2026-06-14-dashboard-design-adoption-plan]]'
 ---
 
@@ -36,6 +57,10 @@ Auto-generated index of all documents tagged with `#dashboard-design-adoption`.
 ### adr
 
 - `2026-06-14-dashboard-design-adoption-adr` - `dashboard-design-adoption` adr: `design language adoption cycle` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-14-dashboard-design-adoption-audit` - `dashboard-design-adoption` audit: `W01 P01-P03 OKLCH token foundation review`
 
 ### exec
 
@@ -56,6 +81,26 @@ Auto-generated index of all documents tagged with `#dashboard-design-adoption`.
 - `2026-06-14-dashboard-design-adoption-W01-P03-S15` - Define motion tokens with prefers-reduced-motion instant-swap, ensuring keyboard-initiated actions never animate
 - `2026-06-14-dashboard-design-adoption-W01-P03-S16` - Define the multi-level elevation, radius, and density tokens (background to foreground to panel to dialog to modal)
 - `2026-06-14-dashboard-design-adoption-W01-P03-S17` - Contrast-prove every text and border token against each theme (warm ground shifts effective contrast), recording the per-theme ratios
+- `2026-06-14-dashboard-design-adoption-W01-P04-S18` - Declare lucide-react as a real dependency at the in-tree installed version, ending the phantom-import state
+- `2026-06-14-dashboard-design-adoption-W01-P04-S19` - Add the Phosphor icon dependency for the expressive/domain plane
+- `2026-06-14-dashboard-design-adoption-W01-P04-S20` - Prove the Phosphor SVG to texture path against the GlyphTextureProvider seam as a spike, deferring full domain marks to a surface wave
+- `2026-06-14-dashboard-design-adoption-W02-P05-S21` - Re-skin the sidebar/vault-browser to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership (no new fetch, no raw tiers read), with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P06-S22` - Re-skin the nav toolbar and controls to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P07-S23` - Rebuild the Cmd/Ctrl+K command palette as a lifted surface on the new tokens per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P08-S24` - Re-skin the search surface to consume only the new semantic tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P09-S25` - Rebuild the node-canvas scene to consume the new token layer via getComputedStyle and sanctioned domain marks per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P10-S26` - Re-skin the canvas controls to consume only the new semantic tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P11-S27` - Re-skin the minimap widget and layer to consume the new token layer per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P12-S28` - Re-skin the timeline surface onto the new tokens and the animated-transitions motion grammar per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P13-S29` - Re-skin the git-diff browser onto the new tokens with the sacred diff green/red preserved per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P14-S30` - Re-skin the worktree switcher onto the new tokens and Lucide chrome per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P15-S31` - Re-skin the rag manager onto the new tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P16-S32` - Re-skin the rag search surface onto the new tokens and sanctioned icons per its accepted surface ADR, preserving layer ownership, with design review and the full lint gate green
+- `2026-06-14-dashboard-design-adoption-W02-P17-S33` - Author the four bespoke abstract tier marks in-family on Phosphor's grid, each passing the 14px grayscale-by-shape gate
+- `2026-06-14-dashboard-design-adoption-W02-P17-S34` - Author the lifecycle state marks in-family from Phosphor primitives honoring the active-versus-node-feature and broken-bolt collision constraints, each passing the 14px grayscale gate
+- `2026-06-14-dashboard-design-adoption-W02-P17-S35` - Author the deliberately-asymmetric node-feature species mark in-family honoring its collision constraints against the state-active ring, passing the 14px grayscale gate
+- `2026-06-14-dashboard-design-adoption-W02-P17-S36` - Implement the progress ring as a small parametric programmatic component (exact arc fills) rather than static SVGs
+- `2026-06-14-dashboard-design-adoption-W02-P17-S37` - Wire the authored domain marks through both the React chrome and the Pixi GlyphTextureProvider texture seam so both planes consume the same currentColor marks
 
 ### plan
 

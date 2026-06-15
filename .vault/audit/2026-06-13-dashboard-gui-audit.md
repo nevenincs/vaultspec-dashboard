@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#dashboard-gui'
 date: '2026-06-13'
-modified: '2026-06-13'
+modified: '2026-06-15'
 related:
   - '[[2026-06-13-dashboard-gui-plan]]'
   - '[[2026-06-13-dashboard-platform-plan]]'

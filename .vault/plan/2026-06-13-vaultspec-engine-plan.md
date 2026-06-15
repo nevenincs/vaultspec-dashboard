@@ -3,6 +3,7 @@ tags:
   - '#plan'
   - '#vaultspec-engine'
 date: '2026-06-13'
+modified: '2026-06-15'
 tier: L1
 related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
@@ -10,15 +11,6 @@ related:
   - '[[2026-06-12-vaultspec-engine-audit]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `vaultspec-engine` plan
 

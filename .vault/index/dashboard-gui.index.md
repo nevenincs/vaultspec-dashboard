@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-gui'
-date: '2026-06-13'
-modified: '2026-06-13'
+date: '2026-06-15'
+modified: '2026-06-15'
 related:
   - '[[2026-06-12-dashboard-gui-W01-P01-S01]]'
   - '[[2026-06-12-dashboard-gui-W01-P01-S02]]'
@@ -77,6 +77,7 @@ related:
   - '[[2026-06-13-dashboard-gui-S03]]'
   - '[[2026-06-13-dashboard-gui-S04]]'
   - '[[2026-06-13-dashboard-gui-S05]]'
+  - '[[2026-06-13-dashboard-gui-audit]]'
   - '[[2026-06-13-dashboard-gui-plan]]'
 ---
 
@@ -93,6 +94,7 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 ### audit
 
 - `2026-06-12-dashboard-gui-audit` - `dashboard-gui` audit: `W01.P01 review`
+- `2026-06-13-dashboard-gui-audit` - `dashboard-gui` audit: `fe-reviewer pass: prototype chrome #6 and platform #7`
 
 ### exec
 

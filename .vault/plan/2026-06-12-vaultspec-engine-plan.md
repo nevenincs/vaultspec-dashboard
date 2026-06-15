@@ -3,6 +3,7 @@ tags:
   - '#plan'
   - '#vaultspec-engine'
 date: '2026-06-12'
+modified: '2026-06-15'
 tier: L3
 related:
   - '[[2026-06-12-vaultspec-engine-adr]]'

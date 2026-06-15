@@ -3,6 +3,7 @@ tags:
   - '#exec'
   - '#dashboard-gui'
 date: '2026-06-13'
+modified: '2026-06-15'
 step_id: 'S04'
 related:
   - "[[2026-06-13-dashboard-gui-plan]]"
