@@ -14,6 +14,7 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import type { LayoutParams } from "../../scene/field/forceLayout";
 import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { getScene } from "./Stage";
@@ -103,13 +104,7 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
   }, []);
 
   // Close on Escape — this is a non-modal role="dialog" surface.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useDismissOnEscape(onClose);
 
   function applyParams(update: Partial<LayoutParams>) {
     const next = { ...params, ...update };

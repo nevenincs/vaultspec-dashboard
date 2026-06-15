@@ -18,6 +18,7 @@
 import { HelpCircle, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { TierMark } from "../../scene/field/markComponents";
 import { useDiscover } from "../../stores/server/queries";
 import { selectNode } from "../../stores/view/selection";
@@ -37,14 +38,7 @@ export function Discover() {
 
   // Close on Escape — this is a non-modal role="dialog" surface, consistent with
   // the filter sidebar and layout panel.
-  useEffect(() => {
-    if (openFor === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpenFor(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openFor]);
+  useDismissOnEscape(() => setOpenFor(null), { enabled: openFor !== null });
 
   // Focus the panel on open so keyboard users land inside it.
   useEffect(() => {

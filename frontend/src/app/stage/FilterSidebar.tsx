@@ -10,6 +10,7 @@
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { TierMark } from "../../scene/field/markComponents";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
@@ -232,14 +233,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape; refocus opener is the caller's responsibility.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useDismissOnEscape(onClose, { enabled: open });
 
   // Focus the panel on open so keyboard users can tab through controls.
   useEffect(() => {
