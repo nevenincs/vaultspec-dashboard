@@ -20,6 +20,7 @@
 //! token. The inference crates are untouched: the registry just holds N
 //! `LinkageGraph`s; `engine-query`/`engine-graph` read fns stay pure over one.
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -31,9 +32,16 @@ use axum::middleware::Next;
 use axum::response::Response;
 use engine_graph::{LinkageGraph, MetaEdge};
 use engine_model::ScopeRef;
+use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::registry::ScopeRegistry;
+
+/// Per-generation enriched document views (perf-sweep A1): the node-id → enriched
+/// node view map and the edge-id → enriched edge view map, built once per graph
+/// generation by `engine_query::graph::build_document_views` and reused by every
+/// Document-granularity query via `graph_query_cached`.
+type DocViews = (HashMap<String, Value>, HashMap<String, Value>);
 
 /// One multiplexed stream event (contract §7).
 #[derive(Debug, Clone)]
@@ -77,6 +85,10 @@ pub struct ScopeCell {
     /// rebuild and every lens combines over the shared partial-vector basis;
     /// invalidated on a generation bump.
     pub salience_cache: Mutex<Option<(u64, Arc<engine_query::salience::LensBasis>)>>,
+    /// Memoized enriched document node/edge views per graph generation
+    /// (perf-sweep A1): the dominant per-request Document-query cost
+    /// (node_view/edge_view projections) computed once per rebuild and reused.
+    pub doc_views_cache: Mutex<Option<(u64, Arc<DocViews>)>>,
     pub generation: AtomicU64,
     /// This cell's resident watcher handle; `/status` reports a dead watcher
     /// truthfully instead of claiming residency (DF-4 residual). Dropping the
@@ -121,6 +133,7 @@ impl ScopeCell {
             tx,
             meta_cache: Mutex::new(None),
             salience_cache: Mutex::new(None),
+            doc_views_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
@@ -149,6 +162,32 @@ impl ScopeCell {
             return cached.clone();
         }
         let fresh = Arc::new(engine_graph::meta_edges(&self.graph_arc()));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// Enriched per-document node/edge views, memoized per generation
+    /// (perf-sweep A1). `build_document_views` runs the heavy node_view/edge_view
+    /// projections (serialize + degree-by-tier adjacency walk + ontology + status)
+    /// once per rebuild; `graph_query_cached` then reuses them so repeat and
+    /// concurrent Document queries skip the dominant per-request cost. Invalidated
+    /// on a generation bump, exactly like `meta_edges`/`salience_basis`.
+    pub fn document_views(&self) -> Arc<DocViews> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut cache = self
+            .doc_views_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::graph::build_document_views(
+            &self.graph_arc(),
+            &self.scope,
+        ));
         *cache = Some((generation, fresh.clone()));
         fresh
     }

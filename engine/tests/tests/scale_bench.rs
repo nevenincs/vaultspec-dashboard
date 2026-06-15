@@ -126,6 +126,40 @@ fn graph_query_scale_and_concurrency() {
     });
     let concurrent_feat_ms = t.elapsed().as_millis();
 
+    // Concurrent DOCUMENT load reusing the per-generation enriched views
+    // (perf-sweep A1): build_document_views runs the node_view/edge_view
+    // projections ONCE; every concurrent reader reuses them via
+    // graph_query_cached instead of recomputing the whole slice per query — the
+    // same memoization the API layer's per-generation cache provides.
+    let views = engine_query::graph::build_document_views(&graph, &scope);
+    let t = Instant::now();
+    std::thread::scope(|s| {
+        let views = &views;
+        for _ in 0..threads {
+            let g = Arc::clone(&graph);
+            let sc = scope.clone();
+            s.spawn(move || {
+                for _ in 0..per {
+                    let slice = engine_query::graph::graph_query_cached(
+                        &g,
+                        &sc,
+                        Filter::default(),
+                        Granularity::Document,
+                        &views.0,
+                        &views.1,
+                    )
+                    .unwrap();
+                    let _ = serde_json::to_vec(&slice).unwrap();
+                }
+            });
+        }
+    });
+    let concurrent_doc_cached_ms = t.elapsed().as_millis();
+    println!(
+        "SCALE-A1 docs={} threads={}x{} | CONCURRENT doc uncached={}ms cached={}ms",
+        stats.documents, threads, per, concurrent_ms, concurrent_doc_cached_ms
+    );
+
     println!(
         "SCALE docs={} nodes={} edges={} index={}ms \
          | DOC query={}us ser={}us bytes={} \

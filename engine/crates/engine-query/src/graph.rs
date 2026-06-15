@@ -3,6 +3,7 @@
 //! echoed back normalized.
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use engine_graph::diff::DiffOp;
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
@@ -237,6 +238,61 @@ pub fn graph_query(
     filter: Filter,
     granularity: Granularity,
 ) -> Result<GraphSlice, FilterError> {
+    graph_query_inner(graph, scope, filter, granularity, None)
+}
+
+/// Like [`graph_query`] but reusing pre-built per-generation enriched node/edge
+/// views (perf-sweep A1). The Document arm's `node_view`/`edge_view` projections
+/// (serialize + `degree_by_tier` adjacency walk + ontology + status) are the
+/// dominant per-request cost and are identical for a fixed graph generation, so
+/// the API layer memoizes them once per generation (mirroring the `meta_edges`
+/// cache) and passes them here. Filtering and sorting still run per request; only
+/// the heavy per-item projection is reused, so a node/edge absent from the cache
+/// (none today) falls back to a fresh projection — never wrong, just uncached.
+pub fn graph_query_cached(
+    graph: &LinkageGraph,
+    scope: &ScopeRef,
+    filter: Filter,
+    granularity: Granularity,
+    node_views: &HashMap<String, Value>,
+    edge_views: &HashMap<String, Value>,
+) -> Result<GraphSlice, FilterError> {
+    graph_query_inner(
+        graph,
+        scope,
+        filter,
+        granularity,
+        Some((node_views, edge_views)),
+    )
+}
+
+/// Build every node's and (scope-local) edge's enriched view once — the unit the
+/// API layer caches per graph generation for [`graph_query_cached`]. Pure over an
+/// immutable graph generation, so the result is safe to memoize keyed on it.
+pub fn build_document_views(
+    graph: &LinkageGraph,
+    scope: &ScopeRef,
+) -> (HashMap<String, Value>, HashMap<String, Value>) {
+    let node_views = graph
+        .nodes()
+        .map(|n| (n.id.0.clone(), node_view(graph, scope, n)))
+        .collect();
+    let edge_views = graph
+        .edges()
+        .filter(|s| &s.edge.scope == scope)
+        .map(|s| (s.edge.id.0.clone(), edge_view(graph, &s.edge)))
+        .collect();
+    (node_views, edge_views)
+}
+
+#[allow(clippy::type_complexity)]
+fn graph_query_inner(
+    graph: &LinkageGraph,
+    scope: &ScopeRef,
+    filter: Filter,
+    granularity: Granularity,
+    views: Option<(&HashMap<String, Value>, &HashMap<String, Value>)>,
+) -> Result<GraphSlice, FilterError> {
     let filter = filter.validated()?;
 
     // Borrow matched nodes (perf ADR D3): node_view / feature_nodes only read
@@ -259,12 +315,23 @@ pub fn graph_query(
                 .map(|s| &s.edge)
                 .collect();
             edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-            let edge_views = edges.iter().map(|&e| edge_view(graph, e)).collect();
-            let views = matched
+            let edge_view_list = edges
                 .iter()
-                .map(|&n| node_view(graph, scope, n))
+                .map(|&e| {
+                    views
+                        .and_then(|(_, ev)| ev.get(&e.id.0).cloned())
+                        .unwrap_or_else(|| edge_view(graph, e))
+                })
                 .collect();
-            (views, edge_views, Vec::new())
+            let node_view_list = matched
+                .iter()
+                .map(|&n| {
+                    views
+                        .and_then(|(nv, _)| nv.get(&n.id.0).cloned())
+                        .unwrap_or_else(|| node_view(graph, scope, n))
+                })
+                .collect();
+            (node_view_list, edge_view_list, Vec::new())
         }
         // Constellation granularity (contract §4, ADR D4.1): synthesized
         // feature-convergence nodes plus engine-aggregated meta-edges —
@@ -468,6 +535,29 @@ mod tests {
         )
         .unwrap();
         g
+    }
+
+    #[test]
+    fn cached_document_query_is_byte_identical_to_uncached() {
+        // A1 correctness invariant: reusing the per-generation enriched views via
+        // graph_query_cached must produce exactly the same slice as recomputing
+        // them in graph_query — both filtered and unfiltered.
+        let g = fixture();
+        let (nv, ev) = build_document_views(&g, &scope());
+        for filter in [
+            Filter::default(),
+            serde_json::from_str(r#"{"structural_state": ["resolved"]}"#).unwrap(),
+        ] {
+            let uncached =
+                graph_query(&g, &scope(), filter.clone(), Granularity::Document).unwrap();
+            let cached =
+                graph_query_cached(&g, &scope(), filter, Granularity::Document, &nv, &ev).unwrap();
+            assert_eq!(
+                serde_json::to_value(&uncached).unwrap(),
+                serde_json::to_value(&cached).unwrap(),
+                "cached document slice diverged from uncached"
+            );
+        }
     }
 
     #[test]
