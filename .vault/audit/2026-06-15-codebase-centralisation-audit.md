@@ -162,6 +162,44 @@ is the singular `ContextMenuHost`; `menus/registerAll.ts` is the resolver regist
 correctly partitioned, one-resolver-per-kind enforced. The one-letter difference is a
 readability hazard worth a rename consideration, but there is no behavioural duplication.
 
+### Engine (Rust) — wave 2
+
+The engine is structurally honest on every boundary: read-and-infer (no `.vault` writes,
+no git mutation, `/ops/*` forwards sibling envelopes verbatim), CPU-only graph compute (no
+CUDA/torch/wgpu in any crate), identity-bearing stable keys (one `edge_id` composition that
+excludes resolution/rule outcomes), and bounded reads with honest `truncated` blocks at
+every door. Four centralisation defects:
+
+**E1 (HIGH) — the tiers block is built by two different helpers across the two wire
+surfaces.** `engine-query/src/envelope.rs` `tiers_block()` is the canonical builder, but
+`vaultspec-cli/src/envelope.rs` hand-rolls the identical contract §2 block as `tiers_json()`
+with a separate `json!` shape (hardcoding `structural`/`temporal` as always-available). The
+CLI **already depends on `engine-query`** (and imports its graph/events/node/filter
+modules), so the canonical helper is one import away. This is precisely the cross-surface
+drift `every-wire-response-carries-the-tiers-block` was promoted to prevent ("the same
+omission shipped independently on *both* wire surfaces"). *Action:* make
+`engine-query::envelope` the sole tiers-block source; CLI `tiers_json` delegates to it,
+keeping only the CLI's own `{ok,command,status}` envelope vocabulary.
+
+**E2 (MED, in-flight) — duplicated document node-ceiling constant.** `MAX_GRAPH_NODES`
+(`engine-query/src/graph.rs`, 5000) and `MAX_DOCUMENT_NODES` (`engine-query/src/lineage.rs`,
+5000); lineage's own comment says "the same 5000-node ceiling the graph-query route
+enforces" then redeclares it. `lineage.rs` is the **actively-integrating** timeline-lineage
+campaign — flagged for that campaign to fold into one shared const before it settles, not
+edited here to avoid colliding with in-flight work.
+
+**E3 (MED) — scope-token canonicalisation implemented twice, byte-identical.**
+`vaultspec-cli/src/cmd/mod.rs` `clean_path` and `vaultspec-api/src/routes/mod.rs`
+`scope_token` have identical bodies, both claiming to be "the one canonical scope-token form
+everywhere". Scope tokens are identity-bearing on the wire. *Action:* lift one copy into a
+shared low-level crate (`engine-model`/`engine-store`, already shared by both front doors)
+and have both call it.
+
+**E4 (LOW) — `asof_graph` self-labelled "back-compat shim" with one caller.**
+`engine-graph/src/asof.rs` wraps `asof_graph_resolved` for "callers that need only the
+graph"; the single live caller (`vaultspec-cli/src/cmd/graph.rs`) can take
+`asof_graph_resolved(...).graph` directly. Per the no-shim mandate, inline and retire.
+
 ## Recommendations
 
 Remediation order (each is mechanical consolidation with existing test coverage nearby,
@@ -182,8 +220,49 @@ low blast radius, and should be planned/approved before edits land):
 7. **L2–L6** — opportunistic cleanups, fold into whichever adjacent change touches the
    file.
 
-The Rust engine (`engine/`) sweep is the next campaign wave. Platform substrate needs no
-remediation (verdict: textbook single-source-of-truth).
+Platform substrate needs no remediation (verdict: textbook single-source-of-truth).
+
+### Remediation status (2026-06-15)
+
+All frontend findings remediated and verified — frontend tsc clean, eslint clean, prettier
+clean, 804/805 affected tests pass (the one failure, a `PUT /settings` 400 in
+`session.test.ts`, is in-flight dashboard-settings schema-validation collateral, not from
+this work):
+
+- **H1** — `readTierAvailability` + `tiersFromQuery` + one `TierAvailability` type landed in
+  `engine.ts`; 8 derive fns are thin wrappers, 7 interfaces collapsed, net −70 lines. Five
+  sites (not one) had the precedence backwards; all now error-wins.
+- **H2** — `scene/field/tokenReads.ts` (`cssColorNumber`/`cssColorString`) is the sole seam;
+  five readers delegate.
+- **M1** — one ordered `CANONICAL_TIERS` in `engine.ts`; all full-set copies replaced.
+- **M2** — `stores/view/scopedStore.ts` factory; `pins`/`lenses` are configurations of it.
+- **M3** — one `isRagRunning` predicate; three sites route through it.
+- **M4** — dead `glyphs.ts` (+ test) deleted; `DomainGlyphs` is the sole owner.
+- **M5** — `toggleFacet` store action + shared `FacetChipGroup` (correct `role="switch"`);
+  `FilterBar`, `FilterSidebar`, and `TimelineControls` all consume them; the local
+  `ChipGroup`/`FacetChips` copies and the 3-arg toggle helper are gone.
+- **L1** — `prototype/` + `prototype.html` + the Vite entry removed.
+- **L2** — shared `stemFromPath`/`docNodeIdFromStem`. **L3** — `FilterSidebar` imports
+  `hiddenCountLabel`. **L4** — `IslandLayer` comment corrected. **L5** — `timing` added to
+  the platform barrel. **L6** — naming hazard left as informational (no behavioural defect).
+
+Engine wave — **E1, E3, E4 remediated and verified** (engine gate green: `cargo fmt --check`,
+`cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings` all exit 0, 321
+tests pass; the final `vaultspec.exe` link is blocked only by the running dev server's
+supervised engine holding the binary, an artifact lock — verified in an isolated target dir):
+
+- **E1** — `engine-query::envelope::tiers_block` is now the sole tiers-block source; the CLI
+  `tiers_json` delegates to it (and serializes the result), keeping only its own
+  `{ok,command,status}` envelope wrapper.
+- **E3** — one canonical `scope_token` `pub fn` in `engine-model`; `vaultspec-api` re-exports
+  it and the CLI aliases it as `clean_path`, so both front doors mint scope tokens from one
+  implementation.
+- **E4** — the `asof_graph` back-compat shim is deleted; its one caller takes
+  `asof_graph_resolved(...).graph` directly.
+
+**E2 deferred** to the in-flight timeline-lineage campaign (its `lineage.rs` is actively
+integrating — folding the duplicated 5000-node ceiling into one shared const there avoids a
+concurrent-edit collision).
 
 ## Codification candidates
 

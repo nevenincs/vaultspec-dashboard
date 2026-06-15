@@ -34,8 +34,8 @@ import { EngineError } from "./engine";
 import { docNodeIdFromStem, isRagRunning, stemFromPath } from "./liveAdapters";
 import {
   engineKeys,
+  useBackendSignalStream,
   useEngineSearch,
-  useEngineStream,
   useFiltersVocabulary,
   useVaultTree,
 } from "./queries";
@@ -133,8 +133,10 @@ export function isTransportError(error: unknown): boolean {
 // --- rag-health transition detector (value-based, ring-cap safe) --------------------
 //
 // The §7 `backends` stream reports each backend's lifecycle word. The search
-// controller subscribes only to `backends`, so every retained chunk's `data` is a
-// `{ rag?: <lifecycle> }` frame; rag is available only when the word is exactly
+// controller now reads the SHARED backend-signal stream (backends + git, F-M1),
+// so the retained accumulator also carries `git` chunks; `ragWordOf` ignores any
+// chunk without a `rag` field (every git frame), so the latest rag-bearing frame
+// is still a `backends` `{ rag?: <lifecycle> }` frame; rag is available only when the word is exactly
 // "running", tested through the shared `isRagRunning` predicate (the one stores-
 // layer home `adaptStatus`/`deriveRagStatusView` also route through — no local
 // re-implementation to drift). We read the MOST-RECENT such frame BY VALUE rather
@@ -411,7 +413,7 @@ export function useSearchController(
   // session). Reading the latest `backends` frame's rag availability and firing
   // only when that boolean FLIPS is robust to the ring cap and also removes the
   // spurious per-frame invalidation a length detector caused.
-  const stream = useEngineStream(["backends"]);
+  const stream = useBackendSignalStream();
   const invalidateSearch = useMemo(
     () =>
       debounce(() => {

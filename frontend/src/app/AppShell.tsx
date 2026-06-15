@@ -12,6 +12,7 @@ import { useState } from "react";
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
 import type { ThemePreference } from "../platform/theme/themeController";
+import { useBackendSignalStream } from "../stores/server/queries";
 import { useViewStore } from "../stores/view/viewStore";
 import { LeftRail } from "./left/LeftRail";
 import { KeyboardNav } from "./a11y/KeyboardNav";
@@ -52,6 +53,10 @@ export function AppShell() {
   // Apply the non-theme consumed settings (reduce_motion, default_granularity)
   // to app state once at the shell top (review HIGH-1: no dead controls).
   useSettingsEffects();
+  // F-M1 (event-unity): mount the shared backend-signal stream (backends + git)
+  // once here so status / rag-health stay live regardless of which rail tab is
+  // open; NowStrip and the search controller read the deduped shared accumulator.
+  useBackendSignalStream();
 
   return (
     <div className="grid h-screen grid-rows-[1fr_13rem] bg-paper text-ink">

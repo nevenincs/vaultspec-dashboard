@@ -112,22 +112,6 @@ pub fn resolve_ref(repo_dir: &Path, reference: &str) -> Result<String> {
     Ok(resolve_commit(&repo, reference)?.0.to_string())
 }
 
-/// Rebuild the structural slice of the graph as committed at `reference`
-/// (a ref name, commit sha, or millisecond timestamp — contract §5
-/// `t=<ts|sha>`).
-///
-/// Back-compat shim over [`asof_graph_resolved`] for callers that need only
-/// the graph; surfaces of the resolved sha + interpretation (ADD-901) call
-/// the `_resolved` form.
-pub fn asof_graph(
-    repo_dir: &Path,
-    reference: &str,
-    scope: &ScopeRef,
-    observed_at: Timestamp,
-) -> Result<LinkageGraph> {
-    Ok(asof_graph_resolved(repo_dir, reference, scope, observed_at)?.graph)
-}
-
 /// Rebuild the as-of graph AND return the resolution facts the response must
 /// echo (ADD-901): the resolved 40-char sha and the chosen `interpretation`
 /// (revision vs ms-timestamp). The contract requires the response to echo both
@@ -345,7 +329,7 @@ mod tests {
         .unwrap();
 
         let scope = ScopeRef::Ref { name: "t1".into() };
-        let graph = asof_graph(root, "t1", &scope, 0).unwrap();
+        let graph = asof_graph_resolved(root, "t1", &scope, 0).unwrap().graph;
 
         // Blob-true: the doc node carries the T1 blob and the T1 mention,
         // resolved against the T1 tree (where src/lib.rs exists). Target

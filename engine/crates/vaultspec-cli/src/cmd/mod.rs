@@ -193,13 +193,11 @@ impl Ctx {
     }
 }
 
-/// Render a path for the wire: strip Windows extended-length prefixes
-/// (`\\?\`) and use POSIX separators, so paths compare and display
-/// consistently across canonicalized and plain sources.
-pub fn clean_path(path: &std::path::Path) -> String {
-    let s = path.to_string_lossy().replace('\\', "/");
-    s.strip_prefix("//?/").unwrap_or(&s).to_string()
-}
+/// Render a path for the wire: the canonical scope-token form (POSIX
+/// separators, no Windows extended-length prefix). Delegates to the single
+/// shared canonicaliser in `engine_model` (audit E3) so the CLI and serve
+/// doors mint identity-bearing scope tokens identically.
+pub use engine_model::scope_token as clean_path;
 
 /// Wall-clock ms since the epoch (`engine_model::Timestamp` unit).
 pub fn now_ms() -> i64 {

@@ -31,7 +31,7 @@ import type { EngineStatus } from "../../stores/server/engine";
 import { useEngineStatus } from "../../stores/server/engine";
 import {
   engineKeys,
-  useEngineStream,
+  useBackendSignalStream,
   useRagStatus,
   type RagStatusView,
 } from "../../stores/server/queries";
@@ -225,8 +225,10 @@ export function NowStrip() {
   const status = useEngineStatus();
   const rag = useRagStatus();
   // Backend/git transitions refresh the snapshot (stream is delta,
-  // /status is recovery — contract §7).
-  const stream = useEngineStream(["backends", "git"]);
+  // /status is recovery — contract §7). Reads the shared backend-signal stream
+  // (F-M1): the shell mounts it always-on; this consumer shares that one
+  // EventSource and reacts to any backends/git chunk.
+  const stream = useBackendSignalStream();
   // Debounce the recovery refetch: a flapping backend bursts events; one
   // trailing /status invalidation, not one per event (P-HIGH-2).
   const invalidateStatus = useMemo(

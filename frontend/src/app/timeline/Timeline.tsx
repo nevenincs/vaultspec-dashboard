@@ -34,12 +34,20 @@ import { create } from "zustand";
 import { DocTypeMark } from "../../scene/field/markComponents";
 import type { EngineEvent, LineageArc, LineageNode } from "../../stores/server/engine";
 import { useTimelineLineage } from "../../stores/server/queries";
+import { useViewStore } from "../../stores/view/viewStore";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { useActiveScope } from "../stage/Stage";
 // Side-effect import: registers the timeline's event-mark menu resolver at load
 // (the contributed-menus model; the resolver module is owned by the
 // dashboard-context-menus surface and consumed by the generic menu host).
 import "./menus/eventMarkMenu";
+import {
+  type RevealState,
+  isUngated,
+  revealArcs,
+  revealNodes,
+  revealTimeFor,
+} from "./arcGrowth";
 import {
   type ArcInput,
   type ArcPoint,
@@ -244,6 +252,14 @@ const BUNDLE_BELOW_PX_PER_MS = 100 / (30 * 24 * 3600_000); // ~30 days / 100px
 const BUNDLE_MIN_CONFIDENCE = 0.4;
 /** The dim alpha a receded (out-of-ego) mark/arc takes — never hidden (S40). */
 const RECEDE_ALPHA = 0.22;
+/**
+ * The faint alpha a NOT-YET-REVEALED mark takes while scrubbing (animated arc
+ * growth fast-follow): before its `created` instant is crossed by the playhead, a
+ * node sits at a faint pre-birth ghost rather than vanishing, so the lineage reads
+ * as growing INTO an anticipated shape rather than popping out of nothing. Arcs,
+ * which cannot exist before both their documents do, are hidden until revealed.
+ */
+const PRE_BIRTH_ALPHA = 0.06;
 
 /** The instant a node's mark is positioned at (blob-true creation), or null. */
 export function nodeInstant(node: LineageNode): number | null {
@@ -461,6 +477,39 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     [arcs],
   );
 
+  // --- animated arc growth (dashboard-timeline ADR deferred fast-follow) ----------
+  //
+  // As the playhead scrubs — and during play-the-range — the lineage nodes and
+  // derivation arcs are REVEALED progressively up to the playhead's time, so the
+  // corpus lineage visibly grows. The reveal frontier T is read from the ONE shared
+  // playhead truth (`timelineMode`, which `movePlayhead` authoritatively writes for
+  // both drag and play-the-range), never a second clock. In LIVE mode the reveal is
+  // UNGATED — every in-range item is shown — so the default view is unchanged. Under
+  // reduced motion the eased fade collapses to an instant cut.
+  const timelineMode = useViewStore((s) => s.timelineMode);
+  const ungated = isUngated(timelineMode);
+  const nodeReveal = useMemo(() => {
+    const T = revealTimeFor(timelineMode, Date.now());
+    return revealNodes(
+      nodes.map((n) => ({ id: n.id, bornMs: nodeInstant(n) })),
+      { T, instant: reducedMotion, ungated },
+    );
+  }, [nodes, timelineMode, reducedMotion, ungated]);
+  const arcReveal = useMemo(() => {
+    const T = revealTimeFor(timelineMode, Date.now());
+    return revealArcs(
+      arcInputs.map((a) => ({ id: a.id, src: a.src, dst: a.dst })),
+      nodeReveal,
+      { T, instant: reducedMotion, ungated },
+    );
+  }, [arcInputs, nodeReveal, timelineMode, reducedMotion, ungated]);
+  const revealOf = useMemo(
+    () =>
+      (id: string): RevealState =>
+        nodeReveal.get(id) ?? { revealed: true, fade: 1 },
+    [nodeReveal],
+  );
+
   // Bundling is GATED: coarse scale bundles (with un-bundle-on-hover), fine scale
   // draws raw arcs (the v1 surface). Either way the set is capped so the surface
   // never draws an unbounded arc count. Under reduced motion the bundle/un-bundle
@@ -563,6 +612,13 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           {renderedArcs.map((arc) => {
             const inEgo = !hasHover || ego.has(arc.src) || ego.has(arc.dst);
             const t = arc.treatment;
+            // Animated arc growth: an arc cannot exist before BOTH its documents do,
+            // so a not-yet-revealed arc is hidden (not faint) and a freshly-revealed
+            // one fades in by its eased fade factor (1 in LIVE / under reduced motion).
+            const reveal = arcReveal.get(arc.id);
+            if (reveal && !reveal.revealed) return null;
+            const fade = reveal ? reveal.fade : 1;
+            const base = inEgo ? t.opacity : t.opacity * RECEDE_ALPHA;
             return (
               <path
                 key={arc.id}
@@ -572,10 +628,16 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 strokeWidth={t.widthPx}
                 strokeDasharray={t.dash || undefined}
                 strokeLinecap="round"
-                opacity={inEgo ? t.opacity : t.opacity * RECEDE_ALPHA}
+                opacity={base * fade}
+                className={
+                  reducedMotion
+                    ? undefined
+                    : "transition-opacity duration-ui-fast ease-settle"
+                }
                 data-timeline-arc
                 data-arc-tier={t.tier}
                 data-arc-recede={inEgo ? undefined : "true"}
+                data-arc-revealed={reveal && !ungated ? "true" : undefined}
               >
                 <title>{arc.label}</title>
               </path>
@@ -620,6 +682,15 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         >
           {visibleMarks.items.map(({ node, x, y }) => {
             const inEgo = !hasHover || ego.has(node.id);
+            // Animated arc growth: a node not yet born (its `created` instant not yet
+            // crossed by the playhead) sits at a faint pre-birth ghost rather than
+            // vanishing; a revealed node fades in by its eased fade factor. In LIVE /
+            // under reduced motion the factor is 1, so the default view is unchanged.
+            const reveal = revealOf(node.id);
+            const baseAlpha = inEgo ? 1 : RECEDE_ALPHA;
+            const markOpacity = reveal.revealed
+              ? baseAlpha * reveal.fade
+              : PRE_BIRTH_ALPHA;
             const created = node.dates?.created;
             // S63: the mark announces its kind, date, joined-node count, and
             // lineage degree. The joined-node count is the distinct 1-hop
@@ -655,11 +726,12 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 style={{
                   left: `${x}px`,
                   top: `${y}px`,
-                  opacity: inEgo ? 1 : RECEDE_ALPHA,
+                  opacity: markOpacity,
                 }}
                 data-timeline-mark
                 data-doc-type={node.doc_type}
                 data-mark-recede={inEgo ? undefined : "true"}
+                data-mark-prebirth={reveal.revealed ? undefined : "true"}
               >
                 <DocTypeMark kind={node.doc_type} size={MARK_PX} />
               </button>

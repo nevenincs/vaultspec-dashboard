@@ -97,12 +97,10 @@ pub(crate) fn envelope(data: Value, tiers: Value, next_cursor: Option<String>) -
     Json(Value::Object(body))
 }
 
-/// One canonical scope-token form everywhere (audit L2): absolute worktree
-/// path, forward slashes, no Windows extended-length prefix.
-pub(crate) fn scope_token(path: &std::path::Path) -> String {
-    let s = path.to_string_lossy().replace('\\', "/");
-    s.strip_prefix("//?/").unwrap_or(&s).to_string()
-}
+/// One canonical scope-token form everywhere (audit E3/L2): delegates to the
+/// single shared canonicaliser in `engine_model` so the CLI and serve doors
+/// mint identity-bearing scope tokens identically.
+pub(crate) use engine_model::scope_token;
 
 /// THE shared error response (audit N7, contract §2): every error carries
 /// the tiers block too — absence of a tier is data even on failures.

@@ -1577,3 +1577,24 @@ export function useEngineStream(
 ) {
   return useQuery(engineStreamOptions(channels, since, scope));
 }
+
+/**
+ * The canonical backend-signal channel set (F-M1 / event-unity): `backends`
+ * (rag/core lifecycle) + `git` (working-tree status) share ONE multiplexed SSE
+ * subscription, so the dashboard opens a single backend-signal EventSource
+ * instead of one per consumer. The `graph` channel stays SEPARATE — it is the
+ * per-scope, `since=keyframeSeq`-anchored live delta clock (`useGraphLiveSync`)
+ * and must never be folded in here.
+ */
+export const BACKEND_SIGNAL_CHANNELS = ["backends", "git"] as const;
+
+/**
+ * Subscribe the shared backend-signal stream. Mounted once at the app shell so
+ * backend / git / rag-health stay live regardless of which rail tab is open;
+ * NowStrip and the search controller call this same hook and TanStack Query
+ * coalesces them onto the one EventSource (each filters the deduped accumulator
+ * for its own channel). No `since`/`scope` — these channels are not anchored.
+ */
+export function useBackendSignalStream() {
+  return useEngineStream(BACKEND_SIGNAL_CHANNELS);
+}

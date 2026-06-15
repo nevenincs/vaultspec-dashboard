@@ -44,17 +44,21 @@ pub fn emit_json(payload: &Value) {
 /// unreachable core means the engine cannot build it). `structural` and
 /// `temporal` derive from git + the working tree the CLI is already reading,
 /// so they are available whenever the command runs.
+///
+/// The per-tier availability/reason semantics live in exactly one place:
+/// `engine_query::envelope::tiers_block` (audit E1). This CLI surface only
+/// maps its two degradation inputs onto that canonical builder and serializes
+/// the result, so both wire surfaces emit a byte-identical tier block.
 pub fn tiers_json(rag_reason: Option<&str>, declared_reason: Option<&str>) -> Value {
-    let tier = |reason: Option<&str>| match reason {
-        None => json!({"available": true}),
-        Some(reason) => json!({"available": false, "reason": reason}),
-    };
-    let mut block = serde_json::Map::new();
-    block.insert("declared".into(), tier(declared_reason));
-    block.insert("structural".into(), json!({"available": true}));
-    block.insert("temporal".into(), json!({"available": true}));
-    block.insert("semantic".into(), tier(rag_reason));
-    Value::Object(block)
+    let mut unavailable: Vec<(&'static str, &str)> = Vec::new();
+    if let Some(reason) = declared_reason {
+        unavailable.push(("declared", reason));
+    }
+    if let Some(reason) = rag_reason {
+        unavailable.push(("semantic", reason));
+    }
+    serde_json::to_value(engine_query::envelope::tiers_block(&unavailable))
+        .expect("tiers block serializes")
 }
 
 #[cfg(test)]

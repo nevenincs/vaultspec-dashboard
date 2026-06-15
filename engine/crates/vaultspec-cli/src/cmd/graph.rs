@@ -35,7 +35,8 @@ pub fn run(
             let scope = engine_model::ScopeRef::Ref {
                 name: reference.to_string(),
             };
-            let graph = engine_graph::asof::asof_graph(&ctx.root, reference, &scope, 0)?;
+            let graph =
+                engine_graph::asof::asof_graph_resolved(&ctx.root, reference, &scope, 0)?.graph;
             (graph, scope)
         }
         None => {

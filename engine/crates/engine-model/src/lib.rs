@@ -102,6 +102,17 @@ pub enum ScopeRef {
     Ref { name: String },
 }
 
+/// The one canonical scope-token form everywhere (audit E3/L2): an absolute
+/// worktree path with POSIX separators and no Windows extended-length prefix
+/// (`\\?\`). Scope tokens are identity-bearing on the wire, so every front
+/// door (CLI verbs, the serve routes) MUST mint them through this single
+/// function — paths compare and display consistently across canonicalized and
+/// plain sources.
+pub fn scope_token(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy().replace('\\', "/");
+    s.strip_prefix("//?/").unwrap_or(&s).to_string()
+}
+
 /// Who said so, from what input, when. Never optional: provenance is what
 /// makes an edge auditable and re-derivable (engine-spec §3).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

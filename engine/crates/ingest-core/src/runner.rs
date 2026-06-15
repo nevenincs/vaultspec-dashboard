@@ -11,12 +11,28 @@ use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 
-/// Core stdout ceiling (robustness H1, 2026-06-13): a runaway core verb that
-/// streams unbounded stdout would OOM the engine during an index rebuild. Core
-/// `--json` envelopes are small; 8 MiB is orders of magnitude of headroom
-/// while bounding the pathological case. Output past the cap is a typed error,
-/// never a buffer grown to exhaustion.
-const CORE_STDOUT_CAP: u64 = 8 * 1024 * 1024;
+/// Default core stdout ceiling (robustness H1, 2026-06-13): a runaway core verb
+/// that streams unbounded stdout would OOM the engine during an index rebuild.
+/// Output past the cap is a typed error, never a buffer grown to exhaustion.
+///
+/// Sized at 64 MiB: a real `vault graph --json` for a large, mature corpus
+/// already crosses the original 8 MiB ceiling (this dashboard's own vault is
+/// ~8.8 MiB and growing across the concurrent campaigns), which silently took
+/// the declared tier offline. 64 MiB keeps generous headroom for corpus growth
+/// while still bounding the genuinely pathological case. The ceiling is
+/// overridable at runtime via `VAULTSPEC_CORE_STDOUT_CAP_MIB` so a still-larger
+/// corpus needs no rebuild.
+const DEFAULT_CORE_STDOUT_CAP: u64 = 64 * 1024 * 1024;
+
+/// Resolve the stdout ceiling, honoring the `VAULTSPEC_CORE_STDOUT_CAP_MIB`
+/// override (clamped to a 1 MiB floor so a typo cannot disable the bound).
+fn resolve_stdout_cap() -> u64 {
+    std::env::var("VAULTSPEC_CORE_STDOUT_CAP_MIB")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|mib| mib.max(1) * 1024 * 1024)
+        .unwrap_or(DEFAULT_CORE_STDOUT_CAP)
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
@@ -98,11 +114,23 @@ pub struct CoreRunner {
     /// Program plus leading arguments, e.g. `["vaultspec-core"]` or
     /// `["uv", "run", "--no-sync", "vaultspec-core"]`.
     pub invocation: Vec<String>,
+    /// Stdout ceiling in bytes; output past it fails typed (never OOM).
+    stdout_cap: u64,
 }
 
 impl CoreRunner {
     pub fn new(invocation: Vec<String>) -> Self {
-        CoreRunner { invocation }
+        CoreRunner {
+            invocation,
+            stdout_cap: resolve_stdout_cap(),
+        }
+    }
+
+    /// Override the stdout ceiling (bytes). Used by tests to trip the cap
+    /// deterministically without emitting tens of MiB.
+    pub fn with_stdout_cap(mut self, cap: u64) -> Self {
+        self.stdout_cap = cap;
+        self
     }
 
     pub fn detect() -> Self {
@@ -137,19 +165,17 @@ impl CoreRunner {
         // dependency and a portable blocking-read timeout needs one; deferred as
         // a follow-up (the dependency decision belongs to the engine owners).
         // The async ops.rs path already enforces both cap AND timeout.
+        let cap = self.stdout_cap;
         let mut stdout_pipe = child.stdout.take().expect("piped stdout");
         let mut stdout = Vec::new();
-        stdout_pipe
-            .by_ref()
-            .take(CORE_STDOUT_CAP)
-            .read_to_end(&mut stdout)?;
+        stdout_pipe.by_ref().take(cap).read_to_end(&mut stdout)?;
         // Output exceeded the cap: kill the child (no zombie) and fail typed
         // rather than parse a truncated envelope.
-        if stdout.len() as u64 >= CORE_STDOUT_CAP {
+        if stdout.len() as u64 >= cap {
             let _ = child.kill();
             let _ = child.wait();
             return Err(CoreError::OutputTooLarge {
-                cap_mib: CORE_STDOUT_CAP / (1024 * 1024),
+                cap_mib: cap.div_ceil(1024 * 1024),
             });
         }
 
@@ -269,10 +295,12 @@ mod tests {
 
     #[test]
     fn run_json_caps_runaway_stdout_instead_of_oom() {
-        // A sibling that streams more than the 8 MiB ceiling is stopped and
-        // fails typed (OutputTooLarge), never grown to exhaustion. We emit ~9
-        // MiB so the cap trips deterministically.
-        let bytes = (CORE_STDOUT_CAP + 1024 * 1024) as usize;
+        // A sibling that streams more than the ceiling is stopped and fails
+        // typed (OutputTooLarge), never grown to exhaustion. A small per-runner
+        // cap (1 MiB) lets the cap trip deterministically while emitting only
+        // ~2 MiB, so the test stays fast regardless of the production default.
+        let cap: u64 = 1024 * 1024;
+        let bytes = (cap + 1024 * 1024) as usize;
         let runner = if cfg!(windows) {
             // PowerShell is reliably present on Windows; emit a long run of 'x'.
             // Wrap in `& { ... }` so the trailing `--json` arg run_json appends
@@ -285,8 +313,9 @@ mod tests {
                 "-Command".into(),
                 ps,
             ])
+            .with_stdout_cap(cap)
         } else {
-            shell_runner(&format!("head -c {bytes} /dev/zero | tr '\\0' 'x'"))
+            shell_runner(&format!("head -c {bytes} /dev/zero | tr '\\0' 'x'")).with_stdout_cap(cap)
         };
         let cwd = std::env::current_dir().unwrap();
         let err = runner.run_json(&cwd, &[], &["x.v1"]).unwrap_err();

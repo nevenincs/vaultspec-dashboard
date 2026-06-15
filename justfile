@@ -41,6 +41,8 @@ _dev-help:
   @echo "  audit     supply-chain / security checks (uv audit)"
   @echo "  test      pytest"
   @echo "  build     uv build"
+  @echo "  serve     live dev survey: engine + Vite HMR, auto-rebuild + auto-refresh"
+  @echo "  tokens    regenerate the DTCG color CSS and check parity/drift"
   @echo "  precommit pre-commit hook management (install, upgrade, run)"
 
 # ===========================================================================
@@ -139,6 +141,12 @@ _dev-lint-frontend:
   npm --prefix frontend run lint
   npm --prefix frontend run format:check
   npm --prefix frontend run typecheck
+  npm --prefix frontend run tokens:check
+
+# Regenerate the DTCG-derived color CSS and verify it against the committed tier.
+_dev-tokens:
+  npm --prefix frontend run tokens:build
+  npm --prefix frontend run tokens:parity
 
 _dev-lint-typos:
   @{{ if os() == "windows" { \
@@ -287,6 +295,17 @@ _dev-test-all:
   just _dev-test-python
   just _dev-test-rust
   just _dev-test-frontend
+
+# ---------------------------------------------------------------------------
+
+# Live development survey: one command starts the Vite SPA dev server, which in
+# turn supervises the `vaultspec serve` engine. Chrome edits hot-reload (Vite
+# HMR), `.vault/` corpus edits stream live (engine SSE), and engine source edits
+# rebuild + restart the engine and force a browser refresh. Stale caches are
+# cleared on boot. Override the engine port with VAULTSPEC_DEV_PORT and the
+# engine handling with VAULTSPEC_DEV_ENGINE=manage|adopt|off.
+_dev-serve:
+  npm --prefix frontend run dev
 
 # ---------------------------------------------------------------------------
 
