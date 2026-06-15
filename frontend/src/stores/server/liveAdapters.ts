@@ -35,7 +35,11 @@ import type {
   PlanInteriorResponse,
   ScopeContextWire,
   SessionState,
+  SettingControlKind,
+  SettingDef,
+  SettingsSchema,
   SettingsState,
+  SettingValueType,
   TiersBlock,
   VaultTreeResponse,
   WireMetaEdge,
@@ -389,14 +393,27 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
   const v = body.vocabulary;
   const list = (key: string): string[] =>
     Array.isArray(v[key]) ? (v[key] as string[]) : [];
+  // The live `date_bounds` arrives as `{min, max}` (inclusive ISO corpus span);
+  // the internal shape is `{from, to}`. Map it (tolerant of an already-internal
+  // `{from, to}`) so the corpus-span consumers (the timeline fit-all/fit-feature
+  // controls and the minimap scrubber) work against the live origin, not only the
+  // mock. Absent when no node carries a created date (the field is skipped live).
+  const rawBounds = isRec(v.date_bounds) ? v.date_bounds : undefined;
+  const dateBounds = rawBounds
+    ? {
+        from: (rawBounds.min ?? rawBounds.from) as string | undefined,
+        to: (rawBounds.max ?? rawBounds.to) as string | undefined,
+      }
+    : undefined;
   return {
     relations: list("relations"),
     tiers: list("tiers"),
-    // The live vocabulary does not enumerate doc types or date bounds yet;
-    // empty stays honest (the facet rows hide on empty vocabularies).
+    // doc_types and feature_tags are enumerated data-driven by the live
+    // vocabulary; empty stays honest (the facet rows hide on empty vocabularies).
     doc_types: list("doc_types"),
     feature_tags: list("feature_tags"),
     kinds: list("kinds"),
+    date_bounds: dateBounds,
     tiers_block: (body.tiers ?? undefined) as TiersBlock | undefined,
   };
 }
@@ -683,6 +700,78 @@ export function adaptSettings(body: unknown): SettingsState {
     scoped,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
+}
+
+const CONTROL_KINDS: SettingControlKind[] = ["segmented", "switch", "text", "slider"];
+
+/** Decode one `value_type` tagged union from the wire, defaulting unknown or
+ *  malformed shapes to a permissive `string` so a sparse or newer wire never
+ *  throws (the tolerant-adapter property). */
+function adaptValueType(value: unknown): SettingValueType {
+  if (!isRec(value) || typeof value.type !== "string") {
+    return { type: "string", max_len: 4096 };
+  }
+  switch (value.type) {
+    case "enum":
+      return {
+        type: "enum",
+        members: Array.isArray(value.members)
+          ? value.members.filter((m): m is string => typeof m === "string")
+          : [],
+      };
+    case "bool":
+      return { type: "bool" };
+    case "integer":
+      return {
+        type: "integer",
+        min: typeof value.min === "number" ? value.min : 0,
+        max: typeof value.max === "number" ? value.max : 100,
+      };
+    case "string":
+    default:
+      return {
+        type: "string",
+        max_len: typeof value.max_len === "number" ? value.max_len : 4096,
+      };
+  }
+}
+
+/** Decode one declared setting from the wire, defaulting every missing field to
+ *  a safe value. An unknown control kind falls back to `text` (the most generic
+ *  renderer), so a newer engine-declared control never crashes an older client. */
+function adaptSettingDef(value: unknown): SettingDef | null {
+  if (!isRec(value) || typeof value.key !== "string") return null;
+  const controlRaw = typeof value.control === "string" ? value.control : "";
+  const control = (CONTROL_KINDS as string[]).includes(controlRaw)
+    ? (controlRaw as SettingControlKind)
+    : "text";
+  return {
+    key: value.key,
+    value_type: adaptValueType(value.value_type),
+    default: typeof value.default === "string" ? value.default : "",
+    scope_eligible: value.scope_eligible === true,
+    control,
+    label: typeof value.label === "string" ? value.label : value.key,
+    description: typeof value.description === "string" ? value.description : "",
+    group: typeof value.group === "string" ? value.group : "General",
+    order: typeof value.order === "number" ? value.order : 0,
+    step: typeof value.step === "number" ? value.step : undefined,
+    unit: typeof value.unit === "string" ? value.unit : undefined,
+  };
+}
+
+/** Live `/settings/schema` → the internal schema. TOLERANT: an absent settings
+ *  or groups array defaults to empty; malformed defs are dropped rather than
+ *  throwing, and the chrome never reads the raw tiers block. */
+export function adaptSettingsSchema(body: unknown): SettingsSchema {
+  if (!isRec(body)) return { settings: [], groups: [], tiers: {} };
+  const settings = Array.isArray(body.settings)
+    ? body.settings.map(adaptSettingDef).filter((d): d is SettingDef => d !== null)
+    : [];
+  const groups = Array.isArray(body.groups)
+    ? body.groups.filter((g): g is string => typeof g === "string")
+    : [];
+  return { settings, groups, tiers: (body.tiers ?? {}) as TiersBlock };
 }
 
 // --- pipeline / plan-interior / git (dashboard-pipeline-wire W05.P11.S61) ---------

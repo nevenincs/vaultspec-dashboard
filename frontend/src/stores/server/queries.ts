@@ -138,6 +138,11 @@ export const engineKeys = {
   // key each. Mutations invalidate exactly these.
   session: () => [...engineKeys.all, "session"] as const,
   settings: () => [...engineKeys.all, "settings"] as const,
+  // The settings schema registry (dashboard-settings): engine-owned and stable
+  // for a workspace, so a single key. Read rarely, cached long; the dialog reads
+  // it to render controls. Never invalidated by a value write (only the schema
+  // CHANGING would, which requires a redeploy).
+  settingsSchema: () => [...engineKeys.all, "settings-schema"] as const,
 };
 
 // --- read hooks --------------------------------------------------------------------
@@ -896,6 +901,21 @@ export function useSettings() {
   return useQuery({
     queryKey: engineKeys.settings(),
     queryFn: () => engineClient.settings(),
+  });
+}
+
+/**
+ * Read the engine-owned settings schema registry — the single source of truth
+ * the settings dialog renders its controls and defaults from (dashboard-settings).
+ * The schema is stable for a deployment, so it is cached long and never
+ * invalidated by a value write; only the schema itself changing (a redeploy)
+ * would alter it.
+ */
+export function useSettingsSchema() {
+  return useQuery({
+    queryKey: engineKeys.settingsSchema(),
+    queryFn: () => engineClient.settingsSchema(),
+    staleTime: Infinity,
   });
 }
 

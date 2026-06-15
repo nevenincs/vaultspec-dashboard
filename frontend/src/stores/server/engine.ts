@@ -23,6 +23,7 @@ import {
   adaptSearch,
   adaptSession,
   adaptSettings,
+  adaptSettingsSchema,
   adaptStatus,
   adaptVaultTree,
   adaptWorkspaces,
@@ -53,6 +54,27 @@ export class EngineError extends Error {
   readonly tiers?: TiersBlock;
   /** The unwrapped error envelope body, when the engine served one. */
   readonly body?: unknown;
+
+  /** The machine-readable `error_kind` the engine attaches to a typed error
+   *  envelope (dashboard-settings: unknown_key / scope_not_allowed /
+   *  invalid_value), when present. Lets a consumer distinguish WHY a write was
+   *  rejected without parsing the human message. Undefined for untyped errors. */
+  get errorKind(): string | undefined {
+    if (this.body && typeof this.body === "object" && "error_kind" in this.body) {
+      const kind = (this.body as { error_kind?: unknown }).error_kind;
+      return typeof kind === "string" ? kind : undefined;
+    }
+    return undefined;
+  }
+
+  /** The human-facing `error` message the engine served, when present. */
+  get errorMessage(): string | undefined {
+    if (this.body && typeof this.body === "object" && "error" in this.body) {
+      const msg = (this.body as { error?: unknown }).error;
+      return typeof msg === "string" ? msg : undefined;
+    }
+    return undefined;
+  }
   constructor(
     path: string,
     status: number,
@@ -869,6 +891,54 @@ export interface SettingUpdate {
   value: string;
 }
 
+// --- settings schema (dashboard-settings W01/W02) -----------------------------
+//
+// The engine-owned settings registry served by GET /settings/schema: the single
+// source of truth the client renders controls and synthesizes defaults from. The
+// wire stays string-valued (the {global, scoped} maps above); these types carry
+// the TYPING + UI hints so the dialog renders schema-driven controls and the
+// effective-value selector decodes by declared type. Shapes mirror the live
+// `vaultspec_session::settings_schema` serialization exactly (snake_case, the
+// tagged `value_type`).
+
+/** A setting's value type + constraints (the tagged `value_type`). The client
+ *  decodes the string wire value by this and validates optimistically. */
+export type SettingValueType =
+  | { type: "enum"; members: string[] }
+  | { type: "bool" }
+  | { type: "string"; max_len: number }
+  | { type: "integer"; min: number; max: number };
+
+/** The UI control a setting renders as (the schema-driven render hint). */
+export type SettingControlKind = "segmented" | "switch" | "text" | "slider";
+
+/** One declared setting (GET /settings/schema data.settings[]). */
+export interface SettingDef {
+  key: string;
+  value_type: SettingValueType;
+  /** The default wire value (string form) when no row exists. */
+  default: string;
+  /** Whether a per-scope override is allowed (false = global only). */
+  scope_eligible: boolean;
+  control: SettingControlKind;
+  label: string;
+  description: string;
+  group: string;
+  order: number;
+  /** Slider step (slider controls only). */
+  step?: number;
+  /** Unit suffix for display, e.g. "%" (slider controls only). */
+  unit?: string;
+}
+
+/** The served settings schema (GET /settings/schema data): the declared settings
+ *  plus the engine-owned group display order. */
+export interface SettingsSchema {
+  settings: SettingDef[];
+  groups: string[];
+  tiers: TiersBlock;
+}
+
 // --- the client ------------------------------------------------------------------------------
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -1137,9 +1207,17 @@ export class EngineClient {
     return adaptSettings(await this.get("/settings"));
   }
 
-  /** Persist a single settings write; returns the full updated settings. */
+  /** Persist a single settings write; returns the full updated settings. A
+   *  rejected write (unknown key / bad value / scope-not-allowed) throws an
+   *  EngineError whose `errorKind` names the typed reason. */
   async putSettings(body: SettingUpdate): Promise<SettingsState> {
     return adaptSettings(await this.put("/settings", body));
+  }
+
+  /** Read the engine-owned settings schema registry — the single source of
+   *  truth the client renders controls and synthesizes defaults from. */
+  async settingsSchema(): Promise<SettingsSchema> {
+    return adaptSettingsSchema(await this.get("/settings/schema"));
   }
 
   // --- transport -----------------------------------------------------------

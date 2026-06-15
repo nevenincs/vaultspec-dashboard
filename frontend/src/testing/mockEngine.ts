@@ -21,11 +21,104 @@ import type {
   EngineNode,
   FetchLike,
   GraphDeltaEntry,
+  SettingDef,
   TiersBlock,
   WireMetaEdge,
 } from "../stores/server/engine";
 import type { FixtureCorpus } from "./fixtures/corpus";
 import { buildFixtureCorpus } from "./fixtures/corpus";
+
+// The mock settings registry — a byte-for-byte mirror of the live
+// `vaultspec_session::settings_schema` registry (mock-mirrors-live-wire-shape).
+// The dialog and the schema hook run against this exactly as against live; a
+// captured-live-sample parity test pins the agreement. Keep in lockstep with the
+// Rust registry when settings are added.
+const MOCK_SETTINGS_GROUPS = ["Appearance", "Graph"];
+
+const MOCK_SETTINGS_REGISTRY: SettingDef[] = [
+  {
+    key: "theme",
+    value_type: { type: "enum", members: ["system", "light", "dark", "high-contrast"] },
+    default: "system",
+    scope_eligible: false,
+    control: "segmented",
+    label: "Theme",
+    description: "Color theme for the dashboard. System follows your OS appearance.",
+    group: "Appearance",
+    order: 1,
+  },
+  {
+    key: "reduce_motion",
+    value_type: { type: "bool" },
+    default: "false",
+    scope_eligible: false,
+    control: "switch",
+    label: "Reduce motion",
+    description: "Minimize animations and transitions across the dashboard.",
+    group: "Appearance",
+    order: 2,
+  },
+  {
+    key: "default_granularity",
+    value_type: { type: "enum", members: ["feature", "document"] },
+    default: "feature",
+    scope_eligible: true,
+    control: "segmented",
+    label: "Default detail level",
+    description: "The graph level of detail to open with for this scope.",
+    group: "Graph",
+    order: 1,
+  },
+  {
+    key: "node_label_scale",
+    value_type: { type: "integer", min: 50, max: 200 },
+    default: "100",
+    scope_eligible: true,
+    control: "slider",
+    label: "Label size",
+    description: "Relative size of node labels in the graph, as a percentage.",
+    group: "Graph",
+    order: 2,
+    step: 10,
+    unit: "%",
+  },
+];
+
+/** Validate a settings write against the mock registry, mirroring the live
+ *  `validate()` typed rejections. Returns the canonical stored string, or throws
+ *  a {@link RouteError} carrying the typed `error_kind`. */
+function mockValidateSetting(key: string, value: string, scoped: boolean): string {
+  const def = MOCK_SETTINGS_REGISTRY.find((d) => d.key === key);
+  if (!def) throw new RouteError(400, `unknown setting key \`${key}\``, "unknown_key");
+  if (scoped && !def.scope_eligible) {
+    throw new RouteError(
+      400,
+      `setting \`${key}\` is global-only and cannot be scoped`,
+      "scope_not_allowed",
+    );
+  }
+  const vt = def.value_type;
+  const bad = (reason: string): never => {
+    throw new RouteError(400, `invalid value for \`${key}\`: ${reason}`, "invalid_value");
+  };
+  switch (vt.type) {
+    case "enum":
+      if (!vt.members.includes(value)) bad(`must be one of: ${vt.members.join(", ")}`);
+      return value;
+    case "bool":
+      if (value !== "true" && value !== "false") bad('must be "true" or "false"');
+      return value;
+    case "string":
+      if (value.length > vt.max_len) bad(`must be at most ${vt.max_len} characters`);
+      return value;
+    case "integer": {
+      const n = Number(value);
+      if (!Number.isInteger(n)) bad("must be an integer");
+      if (n < vt.min || n > vt.max) bad(`must be between ${vt.min} and ${vt.max}`);
+      return String(n);
+    }
+  }
+}
 
 export const MOCK_SCOPE = "wt-main";
 
@@ -568,10 +661,23 @@ export class MockEngine {
     this.workspaceRoots = this.workspaceRoots.filter((r) => r.id !== id);
   }
 
+  /** Build the `/settings/schema` data block — the engine-owned registry, mirrored
+   *  byte-for-byte from the live serialization (mock-mirrors-live-wire-shape). */
+  private settingsSchemaData(): unknown {
+    return {
+      settings: MOCK_SETTINGS_REGISTRY,
+      groups: MOCK_SETTINGS_GROUPS,
+      tiers: this.tiersBlock(),
+    };
+  }
+
   /**
    * Apply a single PUT /settings write (mirrors the live route): a key/value
-   * pair, global when `scope` is absent, scope-scoped otherwise. Returns the
-   * full updated settings — the same shape GET serves.
+   * pair, global when `scope` is absent, scope-scoped otherwise. The write is
+   * validated against the registry FIRST — an unknown key, an out-of-constraint
+   * value, or a scope on a global-only setting is a typed tiered 400 carrying the
+   * machine-readable error_kind (exact live parity). The canonical (normalized)
+   * value is what persists. Returns the full updated settings, the GET shape.
    */
   private applySettingsUpdate(init: RequestInit): unknown {
     const body = init.body
@@ -581,12 +687,15 @@ export class MockEngine {
           value: string;
         })
       : { key: "", value: "" };
-    if (body.scope !== undefined) {
-      const entries = this.scopedSettings.get(body.scope) ?? new Map<string, string>();
-      entries.set(body.key, body.value);
-      this.scopedSettings.set(body.scope, entries);
+    const scoped = body.scope !== undefined && body.scope !== "";
+    const canonical = mockValidateSetting(body.key, body.value, scoped);
+    if (scoped) {
+      const scope = body.scope as string;
+      const entries = this.scopedSettings.get(scope) ?? new Map<string, string>();
+      entries.set(body.key, canonical);
+      this.scopedSettings.set(scope, entries);
     } else {
-      this.globalSettings.set(body.key, body.value);
+      this.globalSettings.set(body.key, canonical);
     }
     return this.settingsData();
   }
@@ -700,9 +809,13 @@ export class MockEngine {
       return Promise.resolve(json(body));
     } catch (err) {
       if (err instanceof RouteError) {
-        return Promise.resolve(
-          json({ ok: false, error: err.message, tiers: this.tiersBlock() }, err.status),
-        );
+        const body: Record<string, unknown> = {
+          ok: false,
+          error: err.message,
+          tiers: this.tiersBlock(),
+        };
+        if (err.kind !== undefined) body.error_kind = err.kind;
+        return Promise.resolve(json(body, err.status));
       }
       throw err;
     }
@@ -749,6 +862,9 @@ export class MockEngine {
         return this.applySessionUpdate(init);
       }
       return this.sessionData();
+    }
+    if (path === "/settings/schema") {
+      return this.settingsSchemaData();
     }
     if (path === "/settings") {
       if (init?.method === "PUT") {
@@ -935,17 +1051,24 @@ export class MockEngine {
     }
     if (path === "/filters") {
       requireScope(params);
+      // Mirror the live `/filters` wire shape (mock-mirrors-live): the facets
+      // nest under `vocabulary` and `date_bounds` carries the live `{min, max}`
+      // field names (inclusive ISO corpus span), so the mock flows through the
+      // SAME `adaptFilters` mapping the live origin does rather than a convenient
+      // already-internal shortcut.
       return {
-        relations: [...new Set(c.edges.map((e) => e.relation))].sort(),
-        tiers: ["declared", "structural", "temporal", "semantic"],
-        doc_types: ["research", "adr", "plan", "exec", "audit"],
-        feature_tags: c.features,
-        kinds: [...new Set(c.nodes.map((n) => n.kind))].sort(),
-        date_bounds: {
-          from: c.events[0]?.ts,
-          to: c.events[c.events.length - 1]?.ts,
+        vocabulary: {
+          relations: [...new Set(c.edges.map((e) => e.relation))].sort(),
+          tiers: ["declared", "structural", "temporal", "semantic"],
+          doc_types: ["research", "adr", "plan", "exec", "audit"],
+          feature_tags: c.features,
+          kinds: [...new Set(c.nodes.map((n) => n.kind))].sort(),
+          date_bounds: {
+            min: c.events[0]?.ts,
+            max: c.events[c.events.length - 1]?.ts,
+          },
         },
-        tiers_block: tiers,
+        tiers,
       };
     }
     const nodeMatch =
@@ -1558,9 +1681,14 @@ export class MockEngine {
 
 class RouteError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /** Optional machine-readable error kind (dashboard-settings typed validation:
+   *  unknown_key / scope_not_allowed / invalid_value), mirrored onto the error
+   *  envelope exactly as the live `api_error_kind` helper does. */
+  readonly kind?: string;
+  constructor(status: number, message: string, kind?: string) {
     super(message);
     this.status = status;
+    this.kind = kind;
   }
 }
 
