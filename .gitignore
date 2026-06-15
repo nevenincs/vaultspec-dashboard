@@ -116,6 +116,7 @@ frontend/test-results/
 
 # Temporary / generated artifacts (debug screenshots, build outputs, runtime markers)
 /*.png
+*_proof*.png
 .qdrant-initialized
 storybook-static/
 playwright-report/
