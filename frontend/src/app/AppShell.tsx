@@ -6,7 +6,7 @@ import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
 import type { ThemePreference } from "../platform/theme/themeController";
 import { useTheme } from "../platform/theme/useTheme";
 import { useViewStore } from "../stores/view/viewStore";
-import { VaultBrowser } from "./left/VaultBrowser";
+import { LeftRail } from "./left/LeftRail";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { CommandPalette } from "./palette/CommandPalette";
@@ -15,7 +15,7 @@ import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
 import { OpsPanel } from "./right/OpsPanel";
 import { SearchTab } from "./right/SearchTab";
-import { WorktreePicker } from "./left/WorktreePicker";
+import { WorkTab } from "./right/WorkTab";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
 import { RangeSelect } from "./timeline/RangeSelect";
@@ -64,14 +64,16 @@ export function AppShell() {
             )}
           </div>
 
-          {/* Rail content */}
+          {/* Rail content — the ordered hosted-slot stack (dashboard-left-rail
+              IA): workspace → worktree → browser (vault|code + in-rail filter),
+              composed in LeftRail. The collapse toggle in the header above is
+              first in the rail's single top-to-bottom focus order; LeftRail is
+              the labelled landmark continuing it. */}
           {!leftCollapsed && (
             <ErrorBoundary region="left-rail">
               <CrashZone region="left-rail" />
-              <div className="flex-1 overflow-y-auto p-vs-2">
-                <WorktreePicker />
-                <hr className="my-vs-2 border-rule" />
-                <VaultBrowser />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <LeftRail />
               </div>
             </ErrorBoundary>
           )}
@@ -177,15 +179,23 @@ function ThemeToggle() {
   );
 }
 
-// Tab labels — compact to keep the rail header-aligned.
-const RAIL_TABS = [
+// Tab labels — compact to keep the rail header-aligned. The four-tab review-rail
+// IA (dashboard-activity-rail ADR): now / work / changes / search, a left-to-right
+// narrowing of attention (live status → in-flight work → material changes → find).
+// `work` sits second between the liveness pillar and the evidence pillar; the `now`
+// tab's internal id stays `activity` (unchanged membership: NowStrip, OpsPanel,
+// Inspector).
+export const RAIL_TABS = [
   { id: "activity" as const, label: "now" },
+  { id: "work" as const, label: "work" },
   { id: "changes" as const, label: "changes" },
   { id: "search" as const, label: "search" },
 ];
 
 function ActivityRail() {
-  const [tab, setTab] = useState<"activity" | "changes" | "search">("activity");
+  const [tab, setTab] = useState<"activity" | "work" | "changes" | "search">(
+    "activity",
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* Tab strip */}
@@ -221,6 +231,7 @@ function ActivityRail() {
             <Inspector />
           </>
         )}
+        {tab === "work" && <WorkTab />}
         {tab === "changes" && <ChangesOverview />}
         {tab === "search" && <SearchTab />}
       </div>

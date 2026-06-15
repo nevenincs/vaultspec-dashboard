@@ -22,6 +22,9 @@ import type {
   EngineStatus,
   GitFileDiff,
   GraphFilter,
+  InteriorStep,
+  PipelineArtifact,
+  PlanInterior,
   SessionUpdate,
   SettingUpdate,
   TiersBlock,
@@ -58,6 +61,14 @@ export const engineKeys = {
   // authoritative shape (dashboard-workspace-registry ADR).
   workspaces: () => [...engineKeys.all, "workspaces"] as const,
   vaultTree: (scope: string) => [...engineKeys.all, "vault-tree", scope] as const,
+  // The code (worktree) file tree is fetched ONE directory level per call
+  // (dashboard-code-tree ADR): the key folds (scope, dir-path, cursor) so each
+  // expanded directory — and each page of a paginated level — is its own cache
+  // entry, lazily fetched on first expansion and cached per scope. A wholesale
+  // scope/workspace swap removes the whole `file-tree` subtree so the prior
+  // corpus's levels never survive (mirrors the vault-tree cache discipline).
+  fileTree: (scope: string, path?: string, cursor?: string) =>
+    [...engineKeys.all, "file-tree", scope, path ?? "", cursor ?? ""] as const,
   filters: (scope: string) => [...engineKeys.all, "filters", scope] as const,
   graph: (
     scope: string,
@@ -95,6 +106,14 @@ export const engineKeys = {
     ] as const,
   diff: (scope: string, from: string | number, to: string | number) =>
     [...engineKeys.all, "diff", scope, String(from), String(to)] as const,
+  // The in-flight pipeline projection (dashboard-pipeline-status W01.P02.S06):
+  // (scope, as-of) — the same cacheability unit the graph slice uses, so a
+  // historical playhead reads a distinct cache entry from the live view.
+  pipeline: (scope: string, asOf?: string | number) =>
+    [...engineKeys.all, "pipeline", scope, asOf ?? "live"] as const,
+  // The bounded plan-container interior (dashboard-pipeline-status W01.P02.S07):
+  // keyed by the plan node id alone — lazily fetched only when a plan row expands.
+  planInterior: (id: string) => [...engineKeys.all, "plan-interior", id] as const,
   // The session/settings surface is workspace-singular (not scope-keyed): one
   // active session and one settings document per workspace, so a single stable
   // key each. Mutations invalidate exactly these.
@@ -277,6 +296,9 @@ export function useSwapWorkspace() {
     // entirely (vs invalidate, which would refetch the STALE-keyed read first).
     queryClient.removeQueries({ queryKey: engineKeys.map() });
     queryClient.removeQueries({ queryKey: [...engineKeys.all, "vault-tree"] });
+    // The prior project's lazily-fetched code-tree levels must not survive the
+    // swap either (dashboard-code-tree per-scope cache): drop the whole subtree.
+    queryClient.removeQueries({ queryKey: [...engineKeys.all, "file-tree"] });
     queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph"] });
     // (3) durably persist the active-workspace selection (the config write).
     return putSession.mutateAsync({ active_workspace: workspace });
@@ -340,6 +362,81 @@ export function useVaultTreeAvailability(scope: string | null): VaultTreeAvailab
   const fromData = tree.data?.tiers;
   const fromError = tree.error instanceof EngineError ? tree.error.tiers : undefined;
   return deriveVaultTreeAvailability(fromData ?? fromError);
+}
+
+// --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
+//
+// The read-only codebase file-tree browser's wire seam, consumed through these
+// stores hooks so the CodeTree (chrome) never fetches the engine or reads the raw
+// `tiers` block (dashboard-layer-ownership). The tree is fetched ONE directory
+// level at a time: `useFileTree(scope, path)` reads the children of `path`
+// (absent = the worktree root), so the rail expands a directory lazily on
+// interaction and each level is its own (scope, path)-keyed cache entry — the
+// rail never requests the whole tree (the bounded-read discipline,
+// graph-queries-are-bounded-by-default). `enabled` is gated on a non-null scope
+// AND, for a non-root level, on the level being requested (the directory was
+// expanded), mirroring `useNodeNeighbors`'s lazy-on-id pattern.
+
+export function useFileTree(scope: string | null, path?: string, enabled = true) {
+  return useQuery({
+    queryKey: engineKeys.fileTree(scope ?? "", path),
+    queryFn: () => engineClient.fileTree({ scope: scope!, path }),
+    enabled: scope !== null && enabled,
+  });
+}
+
+/**
+ * The file-tree's degradation truth, derived inside the stores layer so the code
+ * mode (chrome) never reads the raw `tiers` block (dashboard-layer-ownership /
+ * dashboard-code-tree ADR "States"). The code tree is a WORKTREE-ONLY capability
+ * resolved by the engine's STRUCTURAL read of the working tree, so the
+ * `structural` tier gates the code mode's availability: a remote-ref scope (no
+ * working tree) or a scope whose structural tier is absent renders the code mode
+ * as a designed degraded state, distinct from empty. Contract §2: a tier marked
+ * `available:false` OR absent from a served block is degradation (absence is
+ * degradation, not availability). The reason travels through both the success
+ * envelope (`data.tiers`) and the error envelope (`EngineError.tiers`). Mirrors
+ * `useVaultTreeAvailability`, scoped to the structural tier.
+ */
+export interface FileTreeAvailability {
+  degraded: boolean;
+  /** Names of the tiers reporting unavailable (or absent from the block). */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+}
+
+const FILE_TREE_TIERS = ["structural"] as const;
+
+export function deriveFileTreeAvailability(
+  tiers: TiersBlock | undefined,
+): FileTreeAvailability {
+  // A wholly absent block (a genuine transport fault with no envelope) is NOT
+  // treated as degraded here — that is the query's error state, which the code
+  // mode renders distinctly. Degradation is reported only from a block the engine
+  // actually served.
+  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of FILE_TREE_TIERS) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+}
+
+/** Stores hook: the file-tree degradation for the worktree ROOT level, read
+ *  through the wire client so the code mode consumes derived truth instead of the
+ *  raw `tiers` block. The root level's tiers gate the whole code mode (a
+ *  worktree-only capability); per-directory expansions inherit that availability. */
+export function useFileTreeAvailability(scope: string | null): FileTreeAvailability {
+  const tree = useFileTree(scope);
+  const fromData = tree.data?.tiers;
+  const fromError = tree.error instanceof EngineError ? tree.error.tiers : undefined;
+  return deriveFileTreeAvailability(fromData ?? fromError);
 }
 
 export function useFiltersVocabulary(scope: string | null) {
@@ -938,6 +1035,268 @@ export function useWorkPillarAvailability(): WorkPillarAvailability {
   const fromError =
     status.error instanceof EngineError ? status.error.tiers : undefined;
   return deriveWorkPillarAvailability(fromError ?? status.data?.tiers);
+}
+
+// --- in-flight pipeline status (dashboard-pipeline-status ADR) -------------------------
+//
+// The Work surface's content data: the in-flight pipeline projection (active plans +
+// in-flight ADRs) and a plan's bounded wave/phase/step interior. The surface is app
+// chrome under dashboard-layer-ownership: it consumes these stores hooks + the
+// tiers-reading view selectors ONLY, never fetching the engine and never inspecting the
+// raw `tiers` block. Degradation is read from the served tiers block (success data OR a
+// FRESH error envelope's tiers winning over a stale held-success block), per
+// degradation-is-read-from-tiers-not-guessed-from-errors — never guessed from a bare
+// transport error. The surface is a projection over the one model
+// (views-are-projections-of-one-model); the bounded interior + honest truncation honor
+// graph-queries-are-bounded-by-default.
+//
+// STAGED CAPABILITY (dashboard-pipeline-status ADR "Constraints"): the honest full
+// surface is gated on the sibling `dashboard-pipeline-wire`. These constants signal
+// which wire capabilities are served so the surface renders a designed per-capability
+// placeholder rather than a broken control when a capability is not yet live (mirroring
+// the `CHANGED_FILES_LIST_SERVED` constant). The wire is shipped, so all three are true
+// today; flipping one false degrades exactly that part of the surface to its placeholder.
+
+/** The in-flight pipeline projection (`GET /pipeline`) is served by the engine. */
+export const PIPELINE_STATUS_SERVED = true;
+/** The bounded plan-container interior (`/nodes/{id}/plan-interior`) is served. */
+export const PLAN_INTERIOR_SERVED = true;
+/** Real ADR frontmatter status is served as a doc-node facet. */
+export const ADR_STATUS_SERVED = true;
+
+/**
+ * The in-flight pipeline projection for the active scope (W01.P02.S06). Disabled when
+ * scope is null (no worktree resolved yet), following the `useGraphSlice` pattern. The
+ * `asOf` playhead folds into the cache key so a historical view reads a distinct entry
+ * (W03.P08.S36 / dashboard-timeline ADR). The live wire's `pipeline(scope)` takes no
+ * as-of yet, so a past playhead reuses the live projection until the wire grows the
+ * parameter — the surface still degrades honestly via the served tiers block.
+ */
+export function usePipelineStatus(scope: string | null, asOf?: string | number) {
+  return useQuery({
+    queryKey: engineKeys.pipeline(scope ?? "", asOf),
+    queryFn: () => engineClient.pipeline(scope!),
+    enabled: scope !== null,
+  });
+}
+
+/**
+ * A plan node's bounded wave/phase/step interior (W01.P02.S07). Disabled until a plan
+ * row is expanded (`planId === null` means collapsed), following the `useNodeNeighbors`
+ * enabled-on-id pattern so the interior is fetched lazily, never for every row.
+ */
+export function usePlanInterior(planId: string | null) {
+  return useQuery({
+    queryKey: engineKeys.planInterior(planId ?? ""),
+    queryFn: () => engineClient.planInterior(planId!),
+    enabled: planId !== null,
+  });
+}
+
+/**
+ * The interpreted pipeline-status view the Work surface renders (W01.P02.S08). Modeled on
+ * `deriveGraphSliceAvailability`: `loading` is the query's in-flight state, `degraded` is
+ * read from the served `tiers` block (the `structural` tier the pipeline projection
+ * resolves through), and `artifacts` is the in-flight list. The surface consumes this,
+ * never `pipeline.data.tiers`.
+ */
+export interface PipelineStatusView {
+  /** The pipeline query is in flight with no held data. */
+  loading: boolean;
+  /** A served tiers block reports the pipeline tier unavailable (or absent). */
+  degraded: boolean;
+  /** Names of the tiers reporting unavailable (or absent from the block). */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+  /** The in-flight artifacts (active plans + in-flight ADRs); empty while degraded. */
+  artifacts: PipelineArtifact[];
+}
+
+// The pipeline projection is resolved by the engine's STRUCTURAL read of the vault
+// corpus, so the `structural` tier gates availability (contract §2).
+const PIPELINE_STATUS_TIERS = ["structural"] as const;
+
+/**
+ * Derive the pipeline-status view from a pipeline query's data + error + pending flags,
+ * reading the served tiers block ONLY here in the stores layer. A served block (success
+ * data OR a tiers-bearing error envelope) that marks `structural` unavailable — or omits
+ * it — is designed degradation (contract §2: absence ≠ available). A wholly absent block
+ * (a tiers-less transport fault) is NOT degradation — that is the query's error state,
+ * and the surface must not guess "down" from a bare transport error
+ * (degradation-is-read-from-tiers-not-guessed-from-errors). The FRESH error envelope's
+ * tiers win over a stale held-success block (the `errTiers ?? dataTiers` order at the
+ * call site), so a backend that just went down surfaces as degradation immediately.
+ */
+export function derivePipelineStatusView(
+  tiers: TiersBlock | undefined,
+  artifacts: PipelineArtifact[],
+  loading: boolean,
+): PipelineStatusView {
+  if (!tiers) {
+    return { loading, degraded: false, degradedTiers: [], reasons: {}, artifacts };
+  }
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of PIPELINE_STATUS_TIERS) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  const degraded = degradedTiers.length > 0;
+  return {
+    loading,
+    degraded,
+    degradedTiers,
+    reasons,
+    // While degraded the projection cannot be trusted, so do not render a stale list as
+    // current in-flight work; the surface shows the degraded notice instead.
+    artifacts: degraded ? [] : artifacts,
+  };
+}
+
+/**
+ * Stores hook: the interpreted pipeline-status view for a scope + playhead (W01.P02.S09).
+ * Reads tiers from the success envelope, then the `EngineError` envelope (the FRESH error
+ * winning over a stale held block), so the Work surface consumes interpreted truth and
+ * never the raw tiers block. The active as-of playhead threads through so the surface
+ * reflects the historical pipeline under a past playhead (W03.P08.S36).
+ */
+export function usePipelineStatusView(
+  scope: string | null,
+  asOf?: string | number,
+): PipelineStatusView {
+  const query = usePipelineStatus(scope, asOf);
+  const fromError = query.error instanceof EngineError ? query.error.tiers : undefined;
+  const tiers = fromError ?? query.data?.tiers;
+  return derivePipelineStatusView(
+    tiers,
+    query.data?.artifacts ?? [],
+    scope !== null && query.isPending,
+  );
+}
+
+/**
+ * The interpreted plan-interior view the expandable step tree renders (W01.P02.S11):
+ * the ordered wave→phase→step tree with per-container rolled-up completion, the honest
+ * bounded-interior truncation block, and the loading flag. The surface consumes this,
+ * never the raw interior response.
+ */
+export interface InteriorRollup {
+  done: number;
+  total: number;
+}
+
+export type InteriorStepView = InteriorStep;
+
+export interface InteriorPhaseView {
+  node_id: string;
+  id: string;
+  heading?: string;
+  steps: InteriorStepView[];
+  rollup: InteriorRollup;
+}
+
+export interface InteriorWaveView {
+  node_id: string;
+  id: string;
+  heading?: string;
+  phases: InteriorPhaseView[];
+  rollup: InteriorRollup;
+}
+
+export interface PlanInteriorView {
+  /** The interior query is in flight with no held data (the expanded row is loading). */
+  loading: boolean;
+  /** The ordered waves (L3/L4 shape); empty for L1/L2 plans. */
+  waves: InteriorWaveView[];
+  /** The ordered phases (L2 shape); empty for L1 and L3/L4 plans. */
+  phases: InteriorPhaseView[];
+  /** The flat steps (L1 shape); empty for L2/L3/L4 plans. */
+  steps: InteriorStepView[];
+  /** The plan-level rolled-up completion across every step the interior carries. */
+  rollup: InteriorRollup;
+  /** Honest bounded-interior truncation when the engine capped the tree; null otherwise. */
+  truncated: PlanInterior["truncated"];
+}
+
+/** Roll up a step list to a done/total fraction (a done step is `done: true`). */
+function rollupSteps(steps: InteriorStep[]): InteriorRollup {
+  return { done: steps.filter((s) => s.done).length, total: steps.length };
+}
+
+/** Sum two rollups (phase → wave, wave → plan aggregation). */
+function sumRollups(rollups: InteriorRollup[]): InteriorRollup {
+  return rollups.reduce(
+    (acc, r) => ({ done: acc.done + r.done, total: acc.total + r.total }),
+    { done: 0, total: 0 },
+  );
+}
+
+/**
+ * Derive the plan-interior view (W01.P02.S11): attach per-container rolled-up completion
+ * bottom-up (steps → phase → wave → plan) and surface the truncated honesty block as a
+ * designed state, never a silent partial result (graph-queries-are-bounded-by-default).
+ * The tier-honest shape passes through: an L1 plan carries flat `steps`, an L2 plan
+ * `phases`, an L3/L4 plan `waves` — exactly as the wire serves it.
+ */
+export function derivePlanInteriorView(
+  interior: PlanInterior | undefined,
+  loading: boolean,
+): PlanInteriorView {
+  if (!interior) {
+    return {
+      loading,
+      waves: [],
+      phases: [],
+      steps: [],
+      rollup: { done: 0, total: 0 },
+      truncated: null,
+    };
+  }
+  const phases: InteriorPhaseView[] = interior.phases.map((p) => ({
+    ...p,
+    rollup: rollupSteps(p.steps),
+  }));
+  const waves: InteriorWaveView[] = interior.waves.map((w) => {
+    const phaseViews = w.phases.map((p) => ({ ...p, rollup: rollupSteps(p.steps) }));
+    return {
+      ...w,
+      phases: phaseViews,
+      rollup: sumRollups(phaseViews.map((p) => p.rollup)),
+    };
+  });
+  const steps: InteriorStepView[] = interior.steps.map((s) => ({ ...s }));
+  // Plan-level rollup spans whichever container shape the tier serves.
+  const planRollup = sumRollups([
+    ...waves.map((w) => w.rollup),
+    ...phases.map((p) => p.rollup),
+    rollupSteps(steps),
+  ]);
+  return {
+    loading,
+    waves,
+    phases,
+    steps,
+    rollup: planRollup,
+    truncated: interior.truncated ?? null,
+  };
+}
+
+/**
+ * Stores hook: the interpreted plan-interior view for an expanded plan node
+ * (W01.P02.S11). `planId === null` means the row is collapsed: the query is disabled and
+ * the view is the inert empty state. The Work step tree renders rolled-up completion and
+ * honest truncation directly from this, never the raw interior response.
+ */
+export function usePlanInteriorView(planId: string | null): PlanInteriorView {
+  const query = usePlanInterior(planId);
+  return derivePlanInteriorView(
+    query.data?.interior,
+    planId !== null && query.isPending,
+  );
 }
 
 /** The interpreted outcome of an ops dispatch, for the receipt copy. */

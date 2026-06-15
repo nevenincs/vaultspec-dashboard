@@ -39,6 +39,8 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/map",
     "/workspaces",
     "/vault-tree",
+    "/file-tree",
+    "/pipeline",
     "/graph/query",
     "/graph/asof",
     "/graph/diff",
@@ -47,12 +49,14 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/nodes/{id}/neighbors",
     "/nodes/{id}/evidence",
     "/nodes/{id}/discover",
+    "/nodes/{id}/plan-interior",
     "/events",
     "/status",
     "/stream",
     "/search",
     "/ops/core/{verb}",
     "/ops/rag/{verb}",
+    "/ops/git/{verb}",
     "/session",
     "/settings",
 ];
@@ -78,6 +82,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // envelope. Registry mutation rides /session (config), never here.
         .route("/workspaces", get(routes::registry::list_workspaces))
         .route("/vault-tree", get(routes::query::vault_tree))
+        // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
+        // bounded, ignore-aware directory level per call, metadata only, through
+        // the shared envelope so every response carries the tiers block.
+        .route("/file-tree", get(routes::file_tree::file_tree))
+        // In-flight pipeline projection (dashboard-pipeline-wire W02): active
+        // plans + in-flight ADRs in scope, through the shared envelope.
+        .route("/pipeline", get(routes::query::pipeline))
         .route("/graph/query", post(routes::query::graph_query_route))
         .route("/graph/asof", get(routes::temporal::graph_asof))
         .route("/graph/diff", get(routes::temporal::graph_diff))
@@ -86,12 +97,21 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/nodes/{id}/neighbors", get(routes::query::node_neighbors))
         .route("/nodes/{id}/evidence", get(routes::query::node_evidence))
         .route("/nodes/{id}/discover", post(routes::query::node_discover))
+        // Bounded plan-container interior (dashboard-pipeline-wire W03): the
+        // wave/phase/step tree of a plan node, under a node ceiling.
+        .route(
+            "/nodes/{id}/plan-interior",
+            get(routes::query::node_plan_interior),
+        )
         .route("/events", get(routes::temporal::events))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
         .route("/ops/rag/{verb}", post(routes::ops::ops_rag))
+        // Read-only git pass-through (dashboard-pipeline-wire W04): porcelain
+        // status, numstat, unified diff — whitelisted, no mutating verb.
+        .route("/ops/git/{verb}", post(routes::ops::ops_git))
         // Top-level session + settings surface (user-state-persistence W03):
         // the durable "where am I" session and user settings, both through the
         // shared envelope so every response carries the tiers block.
@@ -628,6 +648,156 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert!(body["data"]["vocabulary"]["tiers"].is_array());
+    }
+
+    #[tokio::test]
+    async fn pipeline_returns_active_artifacts_with_the_tiers_block_on_success() {
+        // W02.P05.S25: /pipeline returns the in-flight artifacts (active plan +
+        // proposed ADR) with the tiers block on success. A complete plan and a
+        // rejected ADR must be excluded — the projection is bounded to active.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/adr")).unwrap();
+        // Active plan (one open step), tier L3.
+        std::fs::write(
+            dir.path().join(".vault/plan/2026-06-14-w-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#w'\ntier: L3\n---\n\n- [x] `S01` - did it.\n- [ ] `S02` - todo.\n",
+        )
+        .unwrap();
+        // Complete plan — excluded.
+        std::fs::write(
+            dir.path().join(".vault/plan/2026-06-14-done-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#w'\ntier: L1\n---\n\n- [x] `S01` - done.\n",
+        )
+        .unwrap();
+        // Proposed ADR — included.
+        std::fs::write(
+            dir.path().join(".vault/adr/2026-06-14-w-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#w'\n---\n\n# `w` adr: `t` | (**status:** `proposed`)\n\nbody\n",
+        )
+        .unwrap();
+        // Rejected ADR — excluded.
+        std::fs::write(
+            dir.path().join(".vault/adr/2026-06-14-no-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#w'\n---\n\n# `no` adr: `t` | (**status:** `rejected`)\n\nbody\n",
+        )
+        .unwrap();
+        let state = app::build_state(dir.path().to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router,
+            &format!("/pipeline?scope={}", urlencode(&scope)),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "pipeline success: {body}");
+        let artifacts = body["data"]["artifacts"].as_array().unwrap();
+        let stems: Vec<&str> = artifacts
+            .iter()
+            .map(|a| a["stem"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            stems,
+            vec!["2026-06-14-w-adr", "2026-06-14-w-plan"],
+            "active plan + proposed ADR only, sorted by stable id"
+        );
+        // The active plan carries tier, progress, and the execute phase.
+        let plan = artifacts
+            .iter()
+            .find(|a| a["stem"] == "2026-06-14-w-plan")
+            .unwrap();
+        assert_eq!(plan["tier"], "L3");
+        assert_eq!(plan["progress"]["done"], 1);
+        assert_eq!(plan["progress"]["total"], 2);
+        assert_eq!(plan["phase"], "execute");
+        // The proposed ADR carries its status and the adr phase.
+        let adr = artifacts
+            .iter()
+            .find(|a| a["stem"] == "2026-06-14-w-adr")
+            .unwrap();
+        assert_eq!(adr["status"], "proposed");
+        assert_eq!(adr["phase"], "adr");
+        // Tiers block present on success.
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn plan_interior_carries_the_tiers_block_and_404s_an_unknown_node() {
+        // W03.P08.S47: /nodes/{id}/plan-interior carries the tiers block on
+        // success and 404s an unknown node, through the shared envelope.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
+        std::fs::write(
+            dir.path().join(".vault/plan/2026-06-14-pi-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#pi'\ntier: L3\n---\n\n# `pi` plan\n\n\
+             ## Wave `W01` - w\n\n### Phase `W01.P01` - p\n\n\
+             - [x] `W01.P01.S01` - done it.\n- [ ] `W01.P01.S02` - todo.\n",
+        )
+        .unwrap();
+        let state = app::build_state(dir.path().to_path_buf());
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router.clone(),
+            "/nodes/doc:2026-06-14-pi-plan/plan-interior",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "plan interior: {body}");
+        let interior = &body["data"]["interior"];
+        assert_eq!(interior["plan_node_id"], "doc:2026-06-14-pi-plan");
+        let waves = interior["waves"].as_array().unwrap();
+        assert_eq!(waves.len(), 1);
+        let steps = waves[0]["phases"][0]["steps"].as_array().unwrap();
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0]["id"], "S01");
+        assert_eq!(steps[0]["done"], true);
+        assert_eq!(steps[1]["done"], false);
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "tiers block on success"
+        );
+
+        // Unknown node → truthful 404 with the tiers block.
+        let (status, body) = get_with_token(
+            router.clone(),
+            "/nodes/doc:nope/plan-interior",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+
+        // A non-plan node (the wave container itself) also 404s — it has no
+        // plan interior.
+        let (status, _) = get_with_token(
+            router,
+            "/nodes/plan:2026-06-14-pi-plan%2FW01/plan-interior",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "a container is not a plan");
+    }
+
+    #[tokio::test]
+    async fn pipeline_unknown_scope_400s_with_the_tiers_block() {
+        // W02.P05.S26: an unknown scope 400s with the tiers block attached,
+        // never a hand-built body — the shared envelope/api_error path.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+        let (status, body) =
+            get_with_token(router, "/pipeline?scope=/nowhere/at/all", Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].is_string(), "honest error message");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the 400 still carries the tiers block"
+        );
     }
 
     #[tokio::test]

@@ -1,5 +1,6 @@
 //! Route families (contract §3–§8).
 
+pub mod file_tree;
 pub mod ops;
 pub mod query;
 pub mod registry;
@@ -53,6 +54,30 @@ pub(crate) fn degraded_tiers(cell: &ScopeCell, semantic_reason: &str) -> serde_j
         && let Some(reason) = status.as_ref()
     {
         unavailable.push(("declared", reason.clone()));
+    }
+    let refs: Vec<(&'static str, &str)> =
+        unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
+    serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize")
+}
+
+/// A tier block degrading ONE named tier with an explicit reason, layered onto
+/// the real declared-tier status (dashboard-code-tree ADR: worktree-only honest
+/// degradation). The file-tree's `structural` degradation (a scope with no
+/// listable working tree) rides this: the named tier is marked unavailable while
+/// the declared tier still reports truthfully (the same overlay `query_tiers` and
+/// `degraded_tiers` apply), so the code mode renders a designed degraded state
+/// rather than a bare error or a healthy-looking empty.
+pub(crate) fn degraded_tiers_for(
+    cell: &ScopeCell,
+    tier: &'static str,
+    reason: &str,
+) -> serde_json::Value {
+    let mut unavailable: Vec<(&'static str, String)> = vec![(tier, reason.to_string())];
+    if let Ok(status) = cell.declared_status.read()
+        && let Some(declared_reason) = status.as_ref()
+        && tier != "declared"
+    {
+        unavailable.push(("declared", declared_reason.clone()));
     }
     let refs: Vec<(&'static str, &str)> =
         unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();

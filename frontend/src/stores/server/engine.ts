@@ -11,9 +11,13 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  adaptFileTree,
   adaptFilters,
+  adaptGitOp,
   adaptGraphSlice,
   adaptMap,
+  adaptPipeline,
+  adaptPlanInterior,
   adaptSearch,
   adaptSession,
   adaptSettings,
@@ -152,10 +156,63 @@ export interface VaultTreeEntry {
   doc_type: string;
   feature_tags: string[];
   dates: { created?: string; modified?: string };
+  /** ADR H1 status (dashboard-pipeline-wire W01), when the entry is an ADR. */
+  status?: string;
+  /** Plan tier (dashboard-pipeline-wire W01), when the entry is a plan. */
+  tier?: string;
 }
 
 export interface VaultTreeResponse {
   entries: VaultTreeEntry[];
+  tiers: TiersBlock;
+}
+
+// --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
+//
+// The read-only codebase file-tree listing: `GET /file-tree?scope=&path=&cursor=`
+// returns ONE directory level within a worktree scope (the rail expands lazily),
+// metadata only (never file bytes), ignore-aware, hard-capped, and cursor-
+// paginated with an honest `truncated` block. Each child carries the stable
+// `code:<path>` node id derived through the SHARED `node_id` rule, so a file row
+// joins the graph exactly as the vault browser's `doc:<stem>` row does. Wire
+// shapes stay snake_case as the live `vaultspec-api` route serves them under the
+// `{data, tiers}` envelope.
+
+/** One child of a listed directory level (GET /file-tree data.entries). Metadata
+ *  only — the ADR's read-only/no-content constraint; never file bytes. */
+export interface FileTreeEntry {
+  /** Repo-relative POSIX path (forward slashes), e.g. `src/main.rs`. */
+  path: string;
+  /** `dir` for a directory, `file` for a file — the non-color row identity. */
+  kind: "dir" | "file";
+  /** For a directory, whether it has at least one non-ignored child (the
+   *  disclosure-affordance hint); always false for a file. */
+  has_children: boolean;
+  /** The stable `code:<path>` graph node id this path maps to (shared `node_id`
+   *  rule). Present for navigation even when no `code:` node yet exists in the
+   *  graph (unindexed / below the structural tier's reach) — the code mode renders
+   *  a quiet absent-interlink state for those, never an error. */
+  node_id: string;
+}
+
+/** The honest bounded-read marker (graph-queries-are-bounded-by-default): present
+ *  and non-null ONLY when the engine's per-level child ceiling capped the level.
+ *  The code mode renders it as a "more here — expand a subdirectory" state over
+ *  the capped level, never as a silent partial result. */
+export interface FileTreeTruncated {
+  total_children: number;
+  returned_children: number;
+  reason: string;
+}
+
+/** One directory level (GET /file-tree data). `path` echoes the listed directory
+ *  (empty for the worktree root); `truncated` is null on an uncapped level. */
+export interface FileTreeResponse {
+  entries: FileTreeEntry[];
+  path: string;
+  truncated: FileTreeTruncated | null;
+  /** Cursor for the next page when the level paginates; absent on the last page. */
+  next_cursor?: string;
   tiers: TiersBlock;
 }
 
@@ -167,6 +224,19 @@ export interface EngineNode {
   doc_type?: string;
   feature_tags?: string[];
   title?: string;
+  /**
+   * ADR H1 status (dashboard-pipeline-wire W01): one of
+   * `proposed`/`accepted`/`rejected`/`deprecated`. A query-time facet served on
+   * ADR doc nodes (and mirrored on vault-tree / graph-query nodes); absent
+   * everywhere else. Makes "in-flight ADR" honest — real status, not a checkbox
+   * guess (an ADR has no steps).
+   */
+  status?: string;
+  /**
+   * Plan frontmatter tier (dashboard-pipeline-wire W01): one of `L1`-`L4`,
+   * served on plan doc nodes; absent everywhere else.
+   */
+  tier?: string;
   dates?: { created?: string; modified?: string };
   lifecycle?: { state: string; progress?: { done: number; total: number } };
   degree_by_tier?: Partial<
@@ -371,22 +441,29 @@ export interface OpsResult {
   tiers: TiersBlock;
 }
 
-// --- PROPOSED read-only git file diff shape (NOT a live wire contract) ----------------
+// --- read-only /ops/git pass-through (dashboard-pipeline-wire W04) ---------------------
 //
-// IMPORTANT: the live engine does NOT serve a read-only diff. Its ops whitelist
-// is ONLY `/ops/core/{verb}` and `/ops/rag/{verb}` (POST); there is no `/ops/git/*`
-// route, and `engine-read-and-infer` forbids inventing one in this UI-adoption
-// cycle. The per-file diff body is therefore ENGINE-BLOCKED: the `DiffView`
-// surface renders the honest "engine capability pending" state, and no live query
-// calls a non-existent endpoint.
-//
-// The structured shapes below are kept ONLY as the `DiffView` component's prop
-// contract (so the chrome is complete and fully testable) and as a DOCUMENTED
-// FORWARD PROPOSAL for a future contract amendment — a separate engine feature
-// (a read-only diff pass-through plus a richer per-file dirty-entry shape), out of
-// scope here. A hunk-per-entry document with twin (old/new) line numbers and an
-// explicit per-line change type lets a future view render without re-parsing
-// unified-diff text. None of this is served by the current wire.
+// The live engine NOW serves a read-only `/ops/git/{verb}` pass-through (POST):
+// porcelain `status`, `numstat`, and unified `diff` for a path, forwarded
+// VERBATIM inside the shared `{data: {verb, output}, tiers}` envelope. The engine
+// implements NO diff algorithm and exposes NO mutating git verb — the whitelist
+// is read-only by construction (`engine-read-and-infer`). `output` is git's raw
+// text; the client parses it (the structured `GitFileDiff` below is the parse
+// target the DiffView renders).
+
+/** The raw `/ops/git/{verb}` pass-through envelope shape: the verb echoed back
+ *  and git's output forwarded verbatim. `verb` is `status` | `numstat` | `diff`. */
+export interface GitOpResponse {
+  verb: string;
+  /** Git's stdout, forwarded verbatim (porcelain status / numstat / unified diff). */
+  output: string;
+  tiers: TiersBlock;
+}
+
+// The structured shapes below are the `DiffView` component's prop contract — what
+// the client parses git's verbatim `diff` output INTO so the view renders without
+// re-parsing unified-diff text on every paint. A hunk-per-entry document with
+// twin (old/new) line numbers and an explicit per-line change type.
 
 /** A single changed line within a hunk. `kind` is the non-color identity. */
 export interface GitDiffLine {
@@ -417,6 +494,94 @@ export interface GitFileDiff {
   binary?: boolean;
   /** Honest truncation, when a future engine capped an oversized body. */
   truncated?: { total_hunks: number; returned_hunks: number; reason: string };
+}
+
+// --- in-flight pipeline projection (dashboard-pipeline-wire W02) -----------------------
+//
+// The Work pillar's data: active plans (by lifecycle) and in-flight ADRs (by
+// status) in scope, each with progress, status/tier, pipeline phase, and a
+// stable node id. Bounded to active artifacts by construction. Wire shapes stay
+// snake_case as the live `/pipeline` route serves them under `{data, tiers}`.
+
+/** The pipeline phase an artifact sits in (research → adr → plan → execute →
+ *  review), derived engine-side from doc_type and status. */
+export type PipelinePhase = "research" | "adr" | "plan" | "execute" | "review";
+
+/** One in-flight pipeline artifact (GET /pipeline data.artifacts). */
+export interface PipelineArtifact {
+  node_id: string;
+  stem: string;
+  title?: string;
+  doc_type?: string;
+  /** ADR status; absent on plans. */
+  status?: string;
+  /** Plan tier; absent on ADRs. */
+  tier?: string;
+  /** Plan checkbox progress; absent on ADRs. */
+  progress?: { done: number; total: number };
+  /**
+   * The artifact's feature tags (dashboard-pipeline-status W01): the ADR row's
+   * feature label is read from here. Truthful absence — forwarded only when the
+   * doc node carries it.
+   */
+  feature_tags?: string[];
+  /**
+   * The doc node's created/modified dates (dashboard-pipeline-status W01): the
+   * row's freshness stamp is derived from `modified`. Truthful absence — the
+   * stamp is hidden when dates are not served.
+   */
+  dates?: { created?: string; modified?: string };
+  phase: PipelinePhase;
+}
+
+/** The in-flight pipeline projection (GET /pipeline data). */
+export interface PipelineResponse {
+  artifacts: PipelineArtifact[];
+  tiers: TiersBlock;
+}
+
+// --- bounded plan-container interior (dashboard-pipeline-wire W03) ---------------------
+//
+// The Work pillar's step tree: a plan node's wave → phase → step interior, each
+// step bearing completion and the bound exec record, under a node ceiling with
+// honest `truncated`. Tier-shape honest: an L1 plan returns flat `steps`, an L2
+// plan `phases`, L3/L4 `waves`. Served by `/nodes/{id}/plan-interior`.
+
+export interface InteriorStep {
+  node_id: string;
+  id: string;
+  action?: string;
+  done: boolean;
+  /** The exec-record document node this step binds to, if any. */
+  exec_node_id?: string;
+}
+
+export interface InteriorPhase {
+  node_id: string;
+  id: string;
+  heading?: string;
+  steps: InteriorStep[];
+}
+
+export interface InteriorWave {
+  node_id: string;
+  id: string;
+  heading?: string;
+  phases: InteriorPhase[];
+}
+
+/** The bounded plan-container interior (GET /nodes/{id}/plan-interior data.interior). */
+export interface PlanInterior {
+  plan_node_id: string;
+  waves: InteriorWave[];
+  phases: InteriorPhase[];
+  steps: InteriorStep[];
+  truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
+}
+
+export interface PlanInteriorResponse {
+  interior: PlanInterior;
+  tiers: TiersBlock;
 }
 
 // --- §8 search ---------------------------------------------------------------------------
@@ -572,6 +737,26 @@ export class EngineClient {
     return adaptVaultTree(await this.get("/vault-tree", { scope }));
   }
 
+  /** One bounded, ignore-aware directory level of the worktree file tree
+   *  (dashboard-code-tree ADR): metadata only (no bytes), `path` defaults to the
+   *  worktree root, `cursor` resumes a paginated level, `page_size` clamps a
+   *  level. Each child carries the shared `code:<path>` interlink node id. */
+  async fileTree(params: {
+    scope: string;
+    path?: string;
+    cursor?: string;
+    page_size?: number;
+  }): Promise<FileTreeResponse> {
+    return adaptFileTree(
+      await this.get("/file-tree", {
+        scope: params.scope,
+        path: params.path,
+        cursor: params.cursor,
+        page_size: params.page_size,
+      }),
+    );
+  }
+
   // §4
   async graphQuery(body: {
     scope: string;
@@ -588,6 +773,12 @@ export class EngineClient {
     return adaptFilters(await this.get("/filters", { scope }));
   }
 
+  /** The in-flight pipeline projection (dashboard-pipeline-wire W02): active
+   *  plans + in-flight ADRs in scope. */
+  async pipeline(scope: string): Promise<PipelineResponse> {
+    return adaptPipeline(await this.get("/pipeline", { scope }));
+  }
+
   node(id: string): Promise<NodeDetail> {
     return this.get(`/nodes/${encodeURIComponent(id)}`);
   }
@@ -601,6 +792,14 @@ export class EngineClient {
 
   nodeEvidence(id: string): Promise<NodeEvidence> {
     return this.get(`/nodes/${encodeURIComponent(id)}/evidence`);
+  }
+
+  /** The bounded plan-container interior of a plan node (dashboard-pipeline-wire
+   *  W03): the wave/phase/step tree under a node ceiling. */
+  async planInterior(id: string): Promise<PlanInteriorResponse> {
+    return adaptPlanInterior(
+      await this.get(`/nodes/${encodeURIComponent(id)}/plan-interior`),
+    );
   }
 
   discover(id: string): Promise<DiscoverResponse> {
@@ -650,6 +849,16 @@ export class EngineClient {
 
   opsRag(verb: string, body: unknown = {}): Promise<OpsResult> {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
+  }
+
+  /** The read-only git pass-through (dashboard-pipeline-wire W04): a whitelisted
+   *  read-only git verb (`status` | `numstat` | `diff`), git output forwarded
+   *  verbatim. The `diff` verb requires a `path`; the others take none. */
+  async opsGit(
+    verb: "status" | "numstat" | "diff",
+    body: { path?: string } = {},
+  ): Promise<GitOpResponse> {
+    return adaptGitOp(await this.post(`/ops/git/${encodeURIComponent(verb)}`, body));
   }
 
   /** §7 — open the multiplexed SSE stream through the same transport. The

@@ -5,11 +5,15 @@
 
 import { describe, expect, it } from "vitest";
 
+import { EngineClient } from "./engine";
 import type { SearchResult } from "./engine";
 import {
   adaptFilters,
+  adaptGitOp,
   adaptGraphSlice,
   adaptMap,
+  adaptPipeline,
+  adaptPlanInterior,
   adaptSearch,
   adaptStatus,
   adaptVaultTree,
@@ -18,6 +22,7 @@ import {
   metaEdgeToEdge,
   unwrapEnvelope,
 } from "./liveAdapters";
+import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
 
 const TIERS = {
   declared: { available: true },
@@ -358,5 +363,300 @@ describe("adaptVaultTree (live stem entries)", () => {
     expect(docTypeFromStem("2026-06-12-x-P01-summary")).toBe("exec");
     expect(docTypeFromStem("dashboard-gui.index")).toBe("index");
     expect(docTypeFromStem("mystery")).toBe("document");
+  });
+});
+
+// --- dashboard-pipeline-wire W05.P12: consumer fidelity ----------------------------
+//
+// Each test feeds a sample CAPTURED from the live serve wire shape (the
+// `{data, tiers}` envelope the routes serve) through the SAME client path the app
+// uses (unwrapEnvelope + the adapter), then drives the MockEngine through that same
+// EngineClient and asserts the two shapes match — the mock-mirrors-live-wire-shape
+// verification in executable form. A divergence is a test-fidelity defect to fix
+// in the mock, never papered over by adapting only the live side.
+
+function clientOn(mock: MockEngine): EngineClient {
+  const client = new EngineClient({ baseUrl: "" });
+  client.useTransport(mock.fetchImpl);
+  return client;
+}
+
+describe("adaptPipeline + /pipeline consumer fidelity (W05.P12.S62)", () => {
+  // A live `/pipeline` envelope: an active L3 plan (work started → execute) and a
+  // proposed ADR (adr phase). The live route serves `{data: {artifacts}, tiers}`.
+  const live = {
+    data: {
+      artifacts: [
+        {
+          node_id: "doc:2026-06-14-x-adr",
+          stem: "2026-06-14-x-adr",
+          title: "x adr",
+          doc_type: "adr",
+          status: "proposed",
+          phase: "adr",
+        },
+        {
+          node_id: "doc:2026-06-14-x-plan",
+          stem: "2026-06-14-x-plan",
+          title: "x plan",
+          doc_type: "plan",
+          tier: "L3",
+          progress: { done: 2, total: 5 },
+          phase: "execute",
+        },
+      ],
+    },
+    tiers: TIERS,
+  };
+
+  it("unwraps + adapts the live pipeline envelope", () => {
+    const adapted = adaptPipeline(unwrapEnvelope(live));
+    expect(adapted.artifacts).toHaveLength(2);
+    expect(adapted.artifacts[0]).toMatchObject({
+      node_id: "doc:2026-06-14-x-adr",
+      status: "proposed",
+      phase: "adr",
+    });
+    expect(adapted.artifacts[1]).toMatchObject({
+      tier: "L3",
+      phase: "execute",
+      progress: { done: 2, total: 5 },
+    });
+    expect(adapted.tiers.semantic.available).toBe(false);
+  });
+
+  it("the mock serves the same pipeline shape through the client path", async () => {
+    const mock = new MockEngine();
+    const result = await clientOn(mock).pipeline(MOCK_SCOPE);
+    // The mock excludes complete plans and rejected/deprecated ADRs, includes
+    // active plans + proposed/accepted ADRs — same projection as the live engine.
+    expect(result.artifacts.length).toBeGreaterThan(0);
+    for (const a of result.artifacts) {
+      if (a.doc_type === "adr") {
+        expect(["proposed", "accepted"]).toContain(a.status);
+        expect(a.phase).toBe("adr");
+        expect(a.progress).toBeUndefined();
+      } else {
+        expect(a.doc_type).toBe("plan");
+        expect(["plan", "execute"]).toContain(a.phase);
+        // An active plan carries progress + tier, never a status.
+        expect(a.status).toBeUndefined();
+      }
+    }
+    // Sorted by node id (deterministic ordering), same as the live projection.
+    const ids = result.artifacts.map((a) => a.node_id);
+    expect([...ids].sort()).toEqual(ids);
+  });
+});
+
+describe("adaptPlanInterior + plan-interior consumer fidelity (W05.P12.S63)", () => {
+  // A live `/nodes/{id}/plan-interior` envelope: an L3 interior (one wave, one
+  // phase, two steps) with a truncated block. The route wraps under `interior`.
+  const live = {
+    data: {
+      interior: {
+        plan_node_id: "doc:2026-06-14-x-plan",
+        waves: [
+          {
+            node_id: "plan:2026-06-14-x-plan/W01",
+            id: "W01",
+            heading: "the wave",
+            phases: [
+              {
+                node_id: "plan:2026-06-14-x-plan/W01/P01",
+                id: "P01",
+                heading: "the phase",
+                steps: [
+                  {
+                    node_id: "plan:2026-06-14-x-plan/W01/P01/S01",
+                    id: "S01",
+                    action: "did it",
+                    done: true,
+                    exec_node_id: "doc:2026-06-14-x-W01-P01-S01",
+                  },
+                  {
+                    node_id: "plan:2026-06-14-x-plan/W01/P01/S02",
+                    id: "S02",
+                    action: "todo",
+                    done: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        phases: [],
+        steps: [],
+        truncated: {
+          total_nodes: 9001,
+          returned_nodes: 2000,
+          reason: "plan interior node ceiling",
+        },
+      },
+    },
+    tiers: TIERS,
+  };
+
+  it("unwraps + adapts the live plan-interior envelope, folding the truncated block", () => {
+    const adapted = adaptPlanInterior(unwrapEnvelope(live));
+    expect(adapted.interior.plan_node_id).toBe("doc:2026-06-14-x-plan");
+    expect(adapted.interior.waves).toHaveLength(1);
+    const steps = adapted.interior.waves[0].phases[0].steps;
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toMatchObject({
+      id: "S01",
+      done: true,
+      exec_node_id: "doc:2026-06-14-x-W01-P01-S01",
+    });
+    expect(steps[1].done).toBe(false);
+    expect(adapted.interior.truncated).toEqual({
+      total_nodes: 9001,
+      returned_nodes: 2000,
+      reason: "plan interior node ceiling",
+    });
+  });
+
+  it("the mock serves the same plan-interior shape through the client path", async () => {
+    const mock = new MockEngine();
+    // Find a plan node id from the corpus.
+    const planNode = mock.corpus.nodes.find((n) => n.doc_type === "plan");
+    expect(planNode).toBeDefined();
+    const result = await clientOn(mock).planInterior(planNode!.id);
+    expect(result.interior.plan_node_id).toBe(planNode!.id);
+    // The interior carries steps with the completion + canonical id shape, at
+    // whatever depth the plan's tier declares (flat L1, phases L2, waves L3/L4).
+    const allSteps = [
+      ...result.interior.steps,
+      ...result.interior.phases.flatMap((p) => p.steps),
+      ...result.interior.waves.flatMap((w) => w.phases.flatMap((p) => p.steps)),
+    ];
+    expect(allSteps.length).toBeGreaterThan(0);
+    for (const s of allSteps) {
+      expect(typeof s.id).toBe("string");
+      expect(s.id).toMatch(/^S\d+$/);
+      expect(typeof s.done).toBe("boolean");
+    }
+    expect(result.interior.truncated).toBeNull();
+
+    // A non-plan node has no interior — the client throws a tiered 404, exactly
+    // like the live route's truthful-None path.
+    const codeNode = mock.corpus.nodes.find((n) => n.kind === "code");
+    await expect(clientOn(mock).planInterior(codeNode!.id)).rejects.toThrow();
+  });
+});
+
+describe("adaptGitOp + /ops/git consumer fidelity (W05.P12.S64)", () => {
+  // Live `/ops/git/{verb}` envelopes: git output forwarded verbatim under
+  // `{data: {verb, output}, tiers}`.
+  const liveStatus = {
+    data: {
+      verb: "status",
+      output: "## main\n M .vault/plan/2026-01-05-editor-demo-plan.md\n",
+    },
+    tiers: TIERS,
+  };
+  const liveDiff = {
+    data: {
+      verb: "diff",
+      output:
+        "diff --git a/x.md b/x.md\n--- a/x.md\n+++ b/x.md\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+    },
+    tiers: TIERS,
+  };
+
+  it("unwraps + adapts the live git status + diff envelopes verbatim", () => {
+    const status = adaptGitOp(unwrapEnvelope(liveStatus));
+    expect(status.verb).toBe("status");
+    // Porcelain per-file `XY path` line forwarded verbatim.
+    expect(status.output).toContain(" M .vault/plan/");
+    const diff = adaptGitOp(unwrapEnvelope(liveDiff));
+    expect(diff.verb).toBe("diff");
+    expect(diff.output).toContain("@@ -1,1 +1,1 @@");
+    expect(diff.output).toContain("+new");
+  });
+
+  it("the mock serves the same git status + diff shapes through the client path", async () => {
+    const mock = new MockEngine();
+    mock.setGitDirty(true);
+    const client = clientOn(mock);
+
+    const status = await client.opsGit("status");
+    expect(status.verb).toBe("status");
+    // The mock emits the same porcelain per-file `XY path` shape the live engine
+    // forwards (a branch header line, then per-file status).
+    expect(status.output).toMatch(/^## main\n/);
+    expect(status.output).toMatch(/ M .+\.md\n/);
+
+    const numstat = await client.opsGit("numstat");
+    expect(numstat.output).toMatch(/^\d+\t\d+\t.+\.md\n/);
+
+    const diff = await client.opsGit("diff", { path: ".vault/plan/x.md" });
+    expect(diff.verb).toBe("diff");
+    expect(diff.output).toContain("@@ ");
+    expect(diff.output).toContain("+new line");
+
+    // A non-whitelisted verb is a tiered 403 (read-only whitelist), and diff
+    // without a path is a 400 — same as the live route.
+    await expect(client.opsGit("commit" as "status")).rejects.toThrow();
+    await expect(client.opsGit("diff")).rejects.toThrow();
+  });
+});
+
+describe("status + tier facets carried identically by mock and live (W05.P12.S65)", () => {
+  // A live `/vault-tree` sample carrying status/tier on its ADR and plan entries
+  // — the stem-keyed live shape the adapter maps, now with the new facets.
+  const liveTree = {
+    data: {
+      entries: [
+        {
+          stem: "2026-06-14-x-adr",
+          node_id: "doc:2026-06-14-x-adr",
+          feature_tags: ["x"],
+          status: "accepted",
+        },
+        {
+          stem: "2026-06-14-x-plan",
+          node_id: "doc:2026-06-14-x-plan",
+          feature_tags: ["x"],
+          tier: "L3",
+        },
+      ],
+    },
+    tiers: TIERS,
+  };
+
+  it("the live vault-tree carries status on its ADR and tier on its plan", () => {
+    const adapted = adaptVaultTree(unwrapEnvelope(liveTree));
+    const adr = adapted.entries.find((e) => e.doc_type === "adr");
+    const plan = adapted.entries.find((e) => e.doc_type === "plan");
+    expect(adr?.status).toBe("accepted");
+    expect(plan?.tier).toBe("L3");
+  });
+
+  it("the mock vault-tree and graph-query nodes carry status and tier identically", async () => {
+    const mock = new MockEngine();
+    const client = clientOn(mock);
+
+    // vault-tree: ADR entries carry status, plan entries carry tier.
+    const tree = await client.vaultTree(MOCK_SCOPE);
+    const adrEntry = tree.entries.find((e) => e.doc_type === "adr");
+    const planEntry = tree.entries.find((e) => e.doc_type === "plan");
+    expect(adrEntry?.status).toBeDefined();
+    expect(["proposed", "accepted", "rejected", "deprecated"]).toContain(
+      adrEntry?.status,
+    );
+    expect(planEntry?.tier).toBeDefined();
+    expect(["L1", "L2", "L3", "L4"]).toContain(planEntry?.tier);
+    // A non-ADR/non-plan entry carries neither facet (truthful absence).
+    const research = tree.entries.find((e) => e.doc_type === "research");
+    expect(research?.status).toBeUndefined();
+    expect(research?.tier).toBeUndefined();
+
+    // graph-query: the same facets ride on the doc nodes.
+    const slice = await client.graphQuery({ scope: MOCK_SCOPE });
+    const adrNode = slice.nodes.find((n) => n.doc_type === "adr");
+    const planNode = slice.nodes.find((n) => n.doc_type === "plan");
+    expect(adrNode?.status).toBeDefined();
+    expect(planNode?.tier).toBeDefined();
   });
 });

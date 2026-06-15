@@ -164,6 +164,182 @@ async fn run_sibling_bounded(
     Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({"raw": raw, "exit": status.code()})))
 }
 
+/// The READ-ONLY git whitelist (dashboard-pipeline-wire W04.P09.S48), mirroring
+/// `CORE_WHITELIST` / `RAG_WHITELIST`: porcelain status (per-file `XY`), numstat
+/// (`+adds`/`-dels` per file), and unified diff for a path. Every verb is a pure
+/// read of the working tree — NO mutating git verb (add, commit, checkout,
+/// reset, stash) is reachable, by construction (`engine-read-and-infer`). The
+/// `diff` verb takes a validated path argument appended by `git_args_for`; the
+/// others take none.
+///
+/// `--no-color` keeps the output machine-parseable; `--porcelain=v1` /
+/// `-z`-free porcelain is the stable per-file `XY` format the diff browser
+/// consumes. No working-tree mutation flag is ever present.
+const GIT_WHITELIST: &[(&str, &[&str])] = &[
+    ("status", &["status", "--porcelain=v1", "--branch"]),
+    ("numstat", &["diff", "--numstat", "--no-color"]),
+    ("diff", &["diff", "--no-color"]),
+];
+
+/// Verbs in [`GIT_WHITELIST`] that accept a single trailing path argument. Only
+/// `diff` takes one (the file whose unified diff is requested); the others are
+/// argument-free. A verb not in this set forwards its fixed args verbatim and
+/// rejects any supplied path.
+const GIT_PATH_VERBS: &[&str] = &["diff"];
+
+/// Locate the git binary: the PATH `git` (every dev/CI host has it). Mirrors
+/// `rag_invocation`'s PATH-first shape. NO working-tree mutation flag is ever
+/// appended anywhere — the whitelist args are the only args, plus a validated
+/// path for the `diff` verb.
+fn git_invocation() -> Vec<String> {
+    vec!["git".into()]
+}
+
+/// Validate the optional `path` argument for the `diff` verb (W04.P09.S50): only
+/// a bounded, in-tree relative path may be forwarded, never an arbitrary git
+/// argument channel. Rejects absolute paths, parent-dir traversal (`..`),
+/// and any token that begins with `-` (which git would read as a flag/option,
+/// the injection vector this guard closes). Returns the validated path, or an
+/// error envelope.
+fn validate_diff_path(state: &AppState, path: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let bad = path.is_empty()
+        || path.starts_with('-')
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        // A Windows drive-absolute path (`C:\...`).
+        || path.chars().nth(1) == Some(':')
+        || path.split(['/', '\\']).any(|seg| seg == "..");
+    if bad {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "diff path `{path}` must be a bounded, in-tree relative path \
+                 (no leading `-`, no absolute path, no `..` traversal)"
+            ),
+        ));
+    }
+    Ok(path.to_string())
+}
+
+/// Build the full git argument vector for a whitelisted verb: its fixed
+/// whitelist args, plus — for a path verb — the `--` separator and the validated
+/// path so the path can never be read as a flag. A path supplied to a
+/// non-path verb is rejected (no silent ignore).
+fn git_args_for(
+    state: &AppState,
+    verb: &str,
+    fixed: &[&str],
+    path: Option<&str>,
+) -> Result<Vec<String>, (StatusCode, Json<Value>)> {
+    let mut args: Vec<String> = fixed.iter().map(|s| s.to_string()).collect();
+    match (GIT_PATH_VERBS.contains(&verb), path) {
+        (true, Some(p)) => {
+            let validated = validate_diff_path(state, p)?;
+            args.push("--".into());
+            args.push(validated);
+        }
+        (true, None) => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!("git `{verb}` requires a `path` argument"),
+            ));
+        }
+        (false, Some(_)) => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!("git `{verb}` takes no path argument"),
+            ));
+        }
+        (false, None) => {}
+    }
+    Ok(args)
+}
+
+/// Run a whitelisted, read-only git invocation under the same bounds as the
+/// sibling runner (timeout + stdout cap) but WITHOUT appending `--json` (git
+/// has no such flag): git output is text, returned verbatim as a string for the
+/// client to parse. Mirrors `run_sibling_bounded`'s lifecycle exactly — spawn,
+/// bounded+timed read, kill-on-bound, exit-status check — so a hung or runaway
+/// git degrades the same way a sibling does.
+async fn run_git_bounded(
+    state: &AppState,
+    program: &[String],
+    args: &[String],
+    timeout: Duration,
+    cap: u64,
+) -> Result<String, (StatusCode, Json<Value>)> {
+    let cwd = state.active_cell().root.clone();
+    let mut child = tokio::process::Command::new(&program[0])
+        .args(&program[1..])
+        .args(args)
+        .current_dir(&cwd)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("spawning {}: {e}", program[0]),
+            )
+        })?;
+
+    let stdout = child.stdout.take().expect("piped stdout");
+    let collect = async {
+        let mut buf = Vec::new();
+        let read = stdout.take(cap).read_to_end(&mut buf).await;
+        (read, buf)
+    };
+    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err(super::api_error(
+                state,
+                StatusCode::GATEWAY_TIMEOUT,
+                format!("{} timed out after {}s", program[0], timeout.as_secs()),
+            ));
+        }
+    };
+    read_result.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("reading {} output: {e}", program[0]),
+        )
+    })?;
+    if buf.len() as u64 >= cap {
+        let _ = child.kill().await;
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{} produced over {cap} bytes of output (capped)",
+                program[0]
+            ),
+        ));
+    }
+    let status = child.wait().await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("awaiting {} exit: {e}", program[0]),
+        )
+    })?;
+    if !status.success() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("{} exited {:?}", program[0], status.code()),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&buf).to_string())
+}
+
 /// Locate the rag CLI: PATH binary, else the uv-managed environment.
 fn rag_invocation() -> Vec<String> {
     let on_path = std::env::var_os("PATH").is_some_and(|paths| {
@@ -210,6 +386,51 @@ pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String
     let envelope = run_sibling(&state, &rag_invocation(), args).await?;
     Ok(super::envelope(
         json!({"envelope": envelope}),
+        super::query_tiers(&state.active_cell()),
+        None,
+    ))
+}
+
+/// The optional request body for `/ops/git/{verb}`: the `diff` verb's path.
+/// Absent for argument-free verbs (status, numstat). The body is optional so a
+/// GET-shaped status call need not carry one.
+#[derive(serde::Deserialize, Default)]
+pub struct GitOpBody {
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+/// POST `/ops/git/{verb}` — the read-only git pass-through (dashboard-pipeline-
+/// wire W04.P10.S52): forward a whitelisted, read-only git verb through the
+/// bounded runner and the shared envelope helper, returning git's output
+/// VERBATIM inside `{data: {output, verb}}` with the tiers block. A
+/// non-whitelisted verb 403s before any subprocess; a git fault degrades to a
+/// tiers-carrying error envelope. The engine implements no diff algorithm and
+/// exposes no mutating git verb — `engine-read-and-infer`.
+pub async fn ops_git(
+    State(state): State<Arc<AppState>>,
+    Path(verb): Path<String>,
+    body: Option<Json<GitOpBody>>,
+) -> ApiResult {
+    let Some((name, fixed)) = GIT_WHITELIST.iter().find(|(name, _)| *name == verb) else {
+        return Err(super::api_error(
+            &state,
+            StatusCode::FORBIDDEN,
+            format!("git verb `{verb}` is not whitelisted (read-only ops/git)"),
+        ));
+    };
+    let path = body.and_then(|Json(b)| b.path);
+    let args = git_args_for(&state, name, fixed, path.as_deref())?;
+    let output = run_git_bounded(
+        &state,
+        &git_invocation(),
+        &args,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+    Ok(super::envelope(
+        json!({"verb": name, "output": output}),
         super::query_tiers(&state.active_cell()),
         None,
     ))
@@ -470,6 +691,226 @@ mod tests {
             flatten_and_annotate(&json!({"raw": "not json", "exit": 1})).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
+    }
+
+    // --- W04: read-only /ops/git pass-through -------------------------------
+
+    #[test]
+    fn every_whitelisted_git_verb_is_read_only_and_no_mutating_verb_is_reachable() {
+        // W04.P09.S51: every whitelisted git verb is a pure read; no mutating
+        // git verb (add/commit/checkout/reset/stash) is reachable, and no
+        // working-tree mutation flag is present in any whitelist entry.
+        const MUTATING: &[&str] = &[
+            "add",
+            "commit",
+            "checkout",
+            "reset",
+            "stash",
+            "rm",
+            "mv",
+            "merge",
+            "rebase",
+            "push",
+            "pull",
+            "fetch",
+            "clean",
+            "apply",
+            "restore",
+            "switch",
+            "tag",
+            "branch",
+            "cherry-pick",
+            "revert",
+            "gc",
+            "prune",
+            "init",
+            "clone",
+            "config",
+        ];
+        const READ_ONLY_FIRST_ARGS: &[&str] = &["status", "diff"];
+        for (verb, args) in GIT_WHITELIST {
+            // The leading git subcommand is read-only.
+            let first = args[0];
+            assert!(
+                READ_ONLY_FIRST_ARGS.contains(&first),
+                "whitelist verb `{verb}` leads with a non-read subcommand `{first}`"
+            );
+            assert!(
+                !MUTATING.contains(&first),
+                "whitelist verb `{verb}` is a mutating git subcommand"
+            );
+            // No argument is a mutating subcommand or a write flag.
+            for arg in *args {
+                assert!(
+                    !MUTATING.contains(arg),
+                    "whitelist verb `{verb}` carries the mutating token `{arg}`"
+                );
+            }
+        }
+        // A mutating verb name is simply not in the whitelist (so it 403s).
+        for m in MUTATING {
+            assert!(
+                !GIT_WHITELIST.iter().any(|(name, _)| name == m),
+                "mutating verb `{m}` must not be whitelisted"
+            );
+        }
+    }
+
+    #[test]
+    fn diff_path_validation_rejects_flags_absolute_and_traversal() {
+        // W04.P09.S50: the diff path argument is bounded — no leading `-`
+        // (flag injection), no absolute path, no `..` traversal.
+        let (_dir, state) = sibling_state();
+        for bad in [
+            "",
+            "--output=/etc/passwd",
+            "-x",
+            "/etc/passwd",
+            "C:\\Windows\\System32",
+            "../../secret",
+            "a/../../b",
+        ] {
+            assert!(
+                validate_diff_path(&state, bad).is_err(),
+                "`{bad}` must be rejected"
+            );
+        }
+        // A bounded in-tree relative path is accepted.
+        assert_eq!(
+            validate_diff_path(&state, "src/lib.rs").unwrap(),
+            "src/lib.rs"
+        );
+        assert_eq!(
+            validate_diff_path(&state, ".vault/plan/x.md").unwrap(),
+            ".vault/plan/x.md"
+        );
+    }
+
+    #[test]
+    fn git_args_for_appends_a_dash_dash_path_only_for_the_diff_verb() {
+        // W04.P09: the diff verb gets `-- <path>` so a path can never be read as
+        // a flag; non-path verbs reject a supplied path; diff requires one.
+        let (_dir, state) = sibling_state();
+        let diff_args =
+            git_args_for(&state, "diff", &["diff", "--no-color"], Some("src/a.rs")).unwrap();
+        assert_eq!(diff_args, vec!["diff", "--no-color", "--", "src/a.rs"]);
+        // status takes no path.
+        let status_args =
+            git_args_for(&state, "status", &["status", "--porcelain=v1"], None).unwrap();
+        assert_eq!(status_args, vec!["status", "--porcelain=v1"]);
+        // status with a path is rejected, diff with no path is rejected.
+        assert!(git_args_for(&state, "status", &["status"], Some("x")).is_err());
+        assert!(git_args_for(&state, "diff", &["diff"], None).is_err());
+    }
+
+    fn git_repo_state() -> (tempfile::TempDir, Arc<AppState>) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let run = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "f")
+                .env("GIT_AUTHOR_EMAIL", "f@t")
+                .env("GIT_COMMITTER_NAME", "f")
+                .env("GIT_COMMITTER_EMAIL", "f@t")
+                .output()
+                .expect("git runs");
+            assert!(out.status.success(), "git {args:?}");
+        };
+        run(&["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-14-g-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#g'\n---\n\nbody\n",
+        )
+        .unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "fixture"]);
+        // Leave a dirty change so status/diff have something to report.
+        std::fs::write(
+            root.join(".vault/plan/2026-06-14-g-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#g'\n---\n\nbody changed\n",
+        )
+        .unwrap();
+        let state = crate::app::build_state(root.to_path_buf());
+        (dir, state)
+    }
+
+    #[tokio::test]
+    async fn a_whitelisted_status_verb_forwards_git_output_verbatim_in_the_envelope() {
+        // W04.P10.S55: a whitelisted status verb forwards git output verbatim
+        // inside the envelope with the tiers block.
+        let (_dir, state) = git_repo_state();
+        let result = ops_git(State(state.clone()), Path("status".to_string()), None)
+            .await
+            .expect("status forwards");
+        let Json(body) = result;
+        // The verbatim git porcelain output names the dirty plan file.
+        let output = body["data"]["output"].as_str().unwrap();
+        assert!(
+            output.contains("2026-06-14-g-plan.md"),
+            "git status output forwarded verbatim: {output}"
+        );
+        assert_eq!(body["data"]["verb"], "status");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "tiers block on success"
+        );
+
+        // The diff verb forwards a path-scoped unified diff verbatim.
+        let result = ops_git(
+            State(state),
+            Path("diff".to_string()),
+            Some(Json(GitOpBody {
+                path: Some(".vault/plan/2026-06-14-g-plan.md".into()),
+            })),
+        )
+        .await
+        .expect("diff forwards");
+        let Json(body) = result;
+        let diff = body["data"]["output"].as_str().unwrap();
+        assert!(
+            diff.contains("body changed"),
+            "unified diff forwarded: {diff}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_non_whitelisted_git_verb_403s_before_the_subprocess() {
+        // W04.P10.S54: a non-whitelisted git verb 403s with the tiers block,
+        // never reaching the subprocess.
+        let (_dir, state) = sibling_state();
+        for mutating in ["commit", "add", "checkout", "reset", "stash", "push"] {
+            let err = ops_git(State(state.clone()), Path(mutating.to_string()), None)
+                .await
+                .unwrap_err();
+            assert_eq!(err.0, StatusCode::FORBIDDEN, "`{mutating}` must be denied");
+            assert!(
+                err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+                "the 403 carries the tiers block"
+            );
+            assert!(err.1.0["error"].as_str().unwrap().contains(mutating));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_git_fault_degrades_to_a_tiers_carrying_error_envelope() {
+        // W04.P10.S56: a sibling (git) fault degrades to a tiers-carrying error
+        // envelope, never a hand-built body. Running git in a NON-git directory
+        // makes `git status` exit non-zero — the bounded runner surfaces it as a
+        // 502 error envelope through the shared api_error helper (which always
+        // attaches the tiers block).
+        let (_dir, state) = sibling_state(); // no `git init` here
+        let err = ops_git(State(state), Path("status".to_string()), None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_GATEWAY, "git fault → 502");
+        assert!(
+            err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+            "the error envelope carries the tiers block"
+        );
+        assert!(err.1.0["error"].is_string(), "honest error message");
     }
 
     // --- H1 / M4: bounded sibling subprocess --------------------------------

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { RAIL_TABS } from "../AppShell";
 import { EngineError, type EngineStatus } from "../../stores/server/engine";
 import { classifyOpsOutcome, deriveRagStatusView } from "../../stores/server/queries";
 import { edgesByTier } from "./Inspector";
@@ -13,6 +14,28 @@ const status = (over: Partial<EngineStatus>): EngineStatus => ({
   degradations: [],
   tiers: {},
   ...over,
+});
+
+describe("rail tab strip IA (dashboard-activity-rail ADR, four-tab review rail)", () => {
+  it("is exactly now, work, changes, search in that order", () => {
+    // The four-tab review-rail IA: `work` is inserted SECOND between the liveness
+    // pillar (now) and the evidence pillar (changes); now / changes / search keep
+    // their membership. The `now` tab's internal id stays `activity`.
+    expect(RAIL_TABS.map((t) => t.label)).toEqual(["now", "work", "changes", "search"]);
+    expect(RAIL_TABS.map((t) => t.id)).toEqual([
+      "activity",
+      "work",
+      "changes",
+      "search",
+    ]);
+  });
+
+  it("places work second so it is reachable second in keyboard tab order", () => {
+    // a11y: the tab strip renders RAIL_TABS in array order, so the array order IS
+    // the keyboard tab order; `work` reachable second is the IA's narrowing of
+    // attention (live status → in-flight work → material changes → find).
+    expect(RAIL_TABS[1]).toMatchObject({ id: "work", label: "work" });
+  });
 });
 
 describe("now strip rollups (G2, honest degradation)", () => {

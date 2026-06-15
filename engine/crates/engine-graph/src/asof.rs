@@ -195,6 +195,12 @@ pub fn asof_graph_resolved(
                 modified: None,
             }),
             feature_tags: crate::index::frontmatter_feature_tags(&body.text),
+            // Status/tier facets are blob-true here too: both derive from
+            // frontmatter/H1 the historical view reads, so an as-of snapshot
+            // carries the ADR status and plan tier AS THEY STOOD at that commit
+            // (dashboard-pipeline-wire W01).
+            status: crate::index::frontmatter_adr_status(&body.text),
+            tier: crate::index::frontmatter_plan_tier(&body.text),
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,

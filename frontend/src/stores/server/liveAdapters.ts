@@ -14,9 +14,21 @@
 import type {
   EngineEdge,
   EngineStatus,
+  FileTreeEntry,
+  FileTreeResponse,
+  FileTreeTruncated,
   FiltersVocabulary,
+  GitOpResponse,
   GraphSlice,
+  InteriorPhase,
+  InteriorStep,
+  InteriorWave,
   MapResponse,
+  PipelineArtifact,
+  PipelinePhase,
+  PipelineResponse,
+  PlanInterior,
+  PlanInteriorResponse,
   ScopeContextWire,
   SessionState,
   SettingsState,
@@ -43,7 +55,15 @@ export function unwrapEnvelope(body: unknown): unknown {
     // events: {data: {payload: {...}, shape}} → payload
     data = data.payload;
   }
-  return { ...data, tiers: body.tiers as TiersBlock };
+  // A cursor-paginated route (e.g. /file-tree) carries `next_cursor` as a SIBLING
+  // of `data` at the envelope top level (vaultspec-api `envelope(data, tiers,
+  // next_cursor)`), not inside `data`. Preserve it onto the flattened body so the
+  // pagination consumer can read it; absent on a non-paginated or last-page
+  // response. Flat (already-unwrapped, e.g. mock) bodies hit the guard above and
+  // pass through with their own `next_cursor` intact.
+  const flat: Rec = { ...data, tiers: body.tiers as TiersBlock };
+  if (typeof body.next_cursor === "string") flat.next_cursor = body.next_cursor;
+  return flat;
 }
 
 // --- §4 graph slice: fold the separate meta-edge array into edges ----------------
@@ -311,10 +331,76 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
       feature_tags: Array.isArray(entry.feature_tags)
         ? (entry.feature_tags as string[])
         : [],
+      // Status/tier query-time facets (dashboard-pipeline-wire W01): forwarded
+      // when present so an ADR carries its status and a plan its tier; absent
+      // everywhere else (truthful absence).
+      ...(typeof entry.status === "string" ? { status: entry.status } : {}),
+      ...(typeof entry.tier === "string" ? { tier: entry.tier } : {}),
       dates: {},
     };
   });
   return { entries, tiers: (body.tiers ?? {}) as TiersBlock };
+}
+
+// --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
+//
+// Tolerant adapter for `GET /file-tree`. The live `{data, tiers, next_cursor?}`
+// envelope is already unwrapped by `unwrapEnvelope` before this runs (with the
+// top-level `next_cursor` preserved onto the flat body); a body already in the
+// internal shape (the mock) passes through unchanged — the one-code-path
+// property. Every missing field defaults to a safe empty so a sparse or older
+// shape NEVER throws and the chrome never reads the raw tiers block (the
+// degradation truth rides on `tiers`, defaulted to an empty block when absent).
+
+/** Default one child wire row, tolerating an absent or partial object: an
+ *  unknown/absent `kind` defaults to `file` (never wrongly shown expandable),
+ *  `has_children` to false, and an absent `node_id` to the empty string (the
+ *  code mode treats it as the quiet absent-interlink state). */
+function adaptFileTreeEntry(value: unknown): FileTreeEntry {
+  if (!isRec(value)) {
+    return { path: "", kind: "file", has_children: false, node_id: "" };
+  }
+  return {
+    path: typeof value.path === "string" ? value.path : "",
+    kind: value.kind === "dir" ? "dir" : "file",
+    has_children: value.has_children === true,
+    node_id: typeof value.node_id === "string" ? value.node_id : "",
+  };
+}
+
+/** Default the truncated honesty block: forwarded only when the engine capped the
+ *  level (a real object with the three fields); null/absent stays null. */
+function adaptFileTreeTruncated(value: unknown): FileTreeTruncated | null {
+  if (
+    isRec(value) &&
+    typeof value.total_children === "number" &&
+    typeof value.returned_children === "number" &&
+    typeof value.reason === "string"
+  ) {
+    return {
+      total_children: value.total_children,
+      returned_children: value.returned_children,
+      reason: value.reason,
+    };
+  }
+  return null;
+}
+
+/** Live `/file-tree` → the internal file-tree response. TOLERANT: an absent
+ *  `entries` array defaults to empty (the code mode renders its empty/degraded
+ *  state from the tiers block), and `truncated`/`next_cursor` default to
+ *  null/undefined. */
+export function adaptFileTree(body: unknown): FileTreeResponse {
+  if (!isRec(body)) {
+    return { entries: [], path: "", truncated: null, tiers: {} };
+  }
+  return {
+    entries: Array.isArray(body.entries) ? body.entries.map(adaptFileTreeEntry) : [],
+    path: typeof body.path === "string" ? body.path : "",
+    truncated: adaptFileTreeTruncated(body.truncated),
+    next_cursor: typeof body.next_cursor === "string" ? body.next_cursor : undefined,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
 }
 
 /**
@@ -472,6 +558,168 @@ export function adaptSettings(body: unknown): SettingsState {
   return {
     global: adaptStringMap(body.global),
     scoped,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- pipeline / plan-interior / git (dashboard-pipeline-wire W05.P11.S61) ---------
+//
+// Tolerant adapters for the three new wire capabilities, mirroring adaptGraphSlice:
+// the live `{data, tiers}` envelope is already unwrapped by `unwrapEnvelope` before
+// these run, and a body already in the internal shape (the mock) passes through
+// unchanged — the one-code-path property. Every missing field defaults to a safe
+// empty so a sparse or older shape NEVER throws and the chrome never reads the raw
+// tiers block (degradation truth rides on `tiers`, defaulted to an empty block).
+
+const PIPELINE_PHASES: PipelinePhase[] = [
+  "research",
+  "adr",
+  "plan",
+  "execute",
+  "review",
+];
+
+/** Default one in-flight artifact wire row, tolerating an absent or partial
+ *  object. An unknown phase falls back to `plan` (the safe neutral phase); the
+ *  optional status/tier/progress are forwarded only when present. */
+function adaptPipelineArtifact(value: unknown): PipelineArtifact {
+  if (!isRec(value)) {
+    return { node_id: "", stem: "", phase: "plan" };
+  }
+  const phaseRaw = typeof value.phase === "string" ? value.phase : "";
+  const phase = (PIPELINE_PHASES as string[]).includes(phaseRaw)
+    ? (phaseRaw as PipelinePhase)
+    : "plan";
+  const progress =
+    isRec(value.progress) &&
+    typeof value.progress.done === "number" &&
+    typeof value.progress.total === "number"
+      ? { done: value.progress.done, total: value.progress.total }
+      : undefined;
+  // Dates (dashboard-pipeline-status W01): forwarded only when a dates object is
+  // present, so the row's freshness stamp is hidden on truthful absence.
+  const dates = isRec(value.dates)
+    ? {
+        created:
+          typeof value.dates.created === "string" ? value.dates.created : undefined,
+        modified:
+          typeof value.dates.modified === "string" ? value.dates.modified : undefined,
+      }
+    : undefined;
+  return {
+    node_id: typeof value.node_id === "string" ? value.node_id : "",
+    stem: typeof value.stem === "string" ? value.stem : "",
+    title: typeof value.title === "string" ? value.title : undefined,
+    doc_type: typeof value.doc_type === "string" ? value.doc_type : undefined,
+    status: typeof value.status === "string" ? value.status : undefined,
+    tier: typeof value.tier === "string" ? value.tier : undefined,
+    progress,
+    feature_tags: Array.isArray(value.feature_tags)
+      ? (value.feature_tags as string[])
+      : undefined,
+    dates,
+    phase,
+  };
+}
+
+/** Live `/pipeline` → the internal pipeline response. TOLERANT: an absent
+ *  `artifacts` array defaults to empty (the Work pillar renders its empty state). */
+export function adaptPipeline(body: unknown): PipelineResponse {
+  if (!isRec(body)) return { artifacts: [], tiers: {} };
+  return {
+    artifacts: Array.isArray(body.artifacts)
+      ? body.artifacts.map(adaptPipelineArtifact)
+      : [],
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+/** Default one interior step wire row. `done` defaults to false (an unmarked
+ *  step is open, never wrongly shown complete); the optional action and exec
+ *  binding are forwarded only when present. */
+function adaptInteriorStep(value: unknown): InteriorStep {
+  if (!isRec(value)) return { node_id: "", id: "", done: false };
+  return {
+    node_id: typeof value.node_id === "string" ? value.node_id : "",
+    id: typeof value.id === "string" ? value.id : "",
+    action: typeof value.action === "string" ? value.action : undefined,
+    done: value.done === true,
+    exec_node_id:
+      typeof value.exec_node_id === "string" ? value.exec_node_id : undefined,
+  };
+}
+
+function adaptInteriorPhase(value: unknown): InteriorPhase {
+  if (!isRec(value)) return { node_id: "", id: "", steps: [] };
+  return {
+    node_id: typeof value.node_id === "string" ? value.node_id : "",
+    id: typeof value.id === "string" ? value.id : "",
+    heading: typeof value.heading === "string" ? value.heading : undefined,
+    steps: Array.isArray(value.steps) ? value.steps.map(adaptInteriorStep) : [],
+  };
+}
+
+function adaptInteriorWave(value: unknown): InteriorWave {
+  if (!isRec(value)) return { node_id: "", id: "", phases: [] };
+  return {
+    node_id: typeof value.node_id === "string" ? value.node_id : "",
+    id: typeof value.id === "string" ? value.id : "",
+    heading: typeof value.heading === "string" ? value.heading : undefined,
+    phases: Array.isArray(value.phases) ? value.phases.map(adaptInteriorPhase) : [],
+  };
+}
+
+/** Default the truncated honesty block: forwarded only when the engine capped the
+ *  interior (a real object with the three fields); null/absent stays null. */
+function adaptInteriorTruncated(value: unknown): PlanInterior["truncated"] {
+  if (
+    isRec(value) &&
+    typeof value.total_nodes === "number" &&
+    typeof value.returned_nodes === "number" &&
+    typeof value.reason === "string"
+  ) {
+    return {
+      total_nodes: value.total_nodes,
+      returned_nodes: value.returned_nodes,
+      reason: value.reason,
+    };
+  }
+  return null;
+}
+
+/** Live `/nodes/{id}/plan-interior` → the internal plan-interior response.
+ *  TOLERANT: a sparse body defaults waves/phases/steps to empty and truncated to
+ *  null, so the Work step-tree renders without guarding for missing keys. */
+export function adaptPlanInterior(body: unknown): PlanInteriorResponse {
+  const empty: PlanInterior = {
+    plan_node_id: "",
+    waves: [],
+    phases: [],
+    steps: [],
+    truncated: null,
+  };
+  if (!isRec(body)) return { interior: empty, tiers: {} };
+  const raw = isRec(body.interior) ? body.interior : body;
+  return {
+    interior: {
+      plan_node_id: typeof raw.plan_node_id === "string" ? raw.plan_node_id : "",
+      waves: Array.isArray(raw.waves) ? raw.waves.map(adaptInteriorWave) : [],
+      phases: Array.isArray(raw.phases) ? raw.phases.map(adaptInteriorPhase) : [],
+      steps: Array.isArray(raw.steps) ? raw.steps.map(adaptInteriorStep) : [],
+      truncated: adaptInteriorTruncated(raw.truncated),
+    },
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+/** Live `/ops/git/{verb}` → the internal git-op response. TOLERANT: an absent
+ *  `output` defaults to the empty string (no changes / empty diff), `verb` to the
+ *  empty string. git's text output is forwarded verbatim for the client to parse. */
+export function adaptGitOp(body: unknown): GitOpResponse {
+  if (!isRec(body)) return { verb: "", output: "", tiers: {} };
+  return {
+    verb: typeof body.verb === "string" ? body.verb : "",
+    output: typeof body.output === "string" ? body.output : "",
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

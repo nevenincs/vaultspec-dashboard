@@ -4,7 +4,13 @@ import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
 import { MockEngine } from "../../testing/mockEngine";
 import { EngineClient, EngineError } from "./engine";
-import type { DiscoverResponse, EngineStatus, TiersBlock } from "./engine";
+import type {
+  DiscoverResponse,
+  EngineStatus,
+  PipelineArtifact,
+  PlanInterior,
+  TiersBlock,
+} from "./engine";
 import { adaptStatus } from "./liveAdapters";
 import type { StreamChunk } from "./queries";
 import {
@@ -12,6 +18,8 @@ import {
   deriveDiscoverView,
   deriveGitStatusView,
   deriveGraphSliceAvailability,
+  derivePipelineStatusView,
+  derivePlanInteriorView,
   deriveVaultTreeAvailability,
   engineKeys,
   parseSseFrames,
@@ -434,5 +442,143 @@ describe("git status live-sample parity through adaptStatus", () => {
     };
     const status = adaptStatus(liveSample);
     expect(status.git?.dirty).toBe(true);
+  });
+});
+
+describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () => {
+  const structuralUp: TiersBlock = { structural: { available: true } };
+  const structuralDown: TiersBlock = {
+    structural: { available: false, reason: "vault index rebuilding" },
+  };
+  const artifacts: PipelineArtifact[] = [
+    {
+      node_id: "doc:2026-06-14-x-plan",
+      stem: "2026-06-14-x-plan",
+      title: "x plan",
+      doc_type: "plan",
+      tier: "L3",
+      progress: { done: 2, total: 5 },
+      phase: "execute",
+    },
+    {
+      node_id: "doc:2026-06-14-x-adr",
+      stem: "2026-06-14-x-adr",
+      title: "x adr",
+      doc_type: "adr",
+      status: "proposed",
+      phase: "adr",
+    },
+  ];
+
+  it("is not degraded and carries the artifacts when the structural tier is available", () => {
+    const view = derivePipelineStatusView(structuralUp, artifacts, false);
+    expect(view.degraded).toBe(false);
+    expect(view.degradedTiers).toEqual([]);
+    expect(view.artifacts).toHaveLength(2);
+  });
+
+  it("reports degraded when the structural tier is explicitly unavailable", () => {
+    const view = derivePipelineStatusView(structuralDown, artifacts, false);
+    expect(view.degraded).toBe(true);
+    expect(view.degradedTiers).toContain("structural");
+    expect(view.reasons.structural).toBe("vault index rebuilding");
+    // While degraded the projection is not trusted: no stale list is rendered.
+    expect(view.artifacts).toEqual([]);
+  });
+
+  it("reports degraded when the structural tier is ABSENT from the served block (absence != available)", () => {
+    const view = derivePipelineStatusView(
+      { semantic: { available: true } },
+      artifacts,
+      false,
+    );
+    expect(view.degraded).toBe(true);
+    expect(view.degradedTiers).toContain("structural");
+  });
+
+  it("does NOT guess degraded from a wholly absent tiers block (transport fault stays a query error)", () => {
+    const view = derivePipelineStatusView(undefined, artifacts, false);
+    expect(view.degraded).toBe(false);
+    // The held artifacts pass through; the surface renders them, not a degraded notice.
+    expect(view.artifacts).toHaveLength(2);
+  });
+
+  it("the FRESH error envelope tiers win over a stale held-success block (call-site order)", () => {
+    // The hook reads `errTiers ?? dataTiers`: a fresh error reporting the tier
+    // down outranks a previously held success that reported it up. Exercise the
+    // resolved truth the hook passes the selector.
+    const heldSuccess = structuralUp;
+    const freshError = structuralDown;
+    const resolved = freshError ?? heldSuccess;
+    const view = derivePipelineStatusView(resolved, artifacts, false);
+    expect(view.degraded).toBe(true);
+    expect(view.reasons.structural).toBe("vault index rebuilding");
+  });
+
+  it("carries the real pending flag through as loading", () => {
+    const view = derivePipelineStatusView(structuralUp, [], true);
+    expect(view.loading).toBe(true);
+  });
+});
+
+describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", () => {
+  it("rolls up completion bottom-up across the L3 wave/phase shape", () => {
+    const interior: PlanInterior = {
+      plan_node_id: "doc:x-plan",
+      waves: [
+        {
+          node_id: "x#W01",
+          id: "W01",
+          heading: "wave one",
+          phases: [
+            {
+              node_id: "x#W01/P01",
+              id: "P01",
+              heading: "phase one",
+              steps: [
+                { node_id: "x#S01", id: "S01", done: true },
+                { node_id: "x#S02", id: "S02", done: false },
+                { node_id: "x#S03", id: "S03", done: true },
+              ],
+            },
+          ],
+        },
+      ],
+      phases: [],
+      steps: [],
+      truncated: null,
+    };
+    const view = derivePlanInteriorView(interior, false);
+    expect(view.waves[0].phases[0].rollup).toEqual({ done: 2, total: 3 });
+    expect(view.waves[0].rollup).toEqual({ done: 2, total: 3 });
+    expect(view.rollup).toEqual({ done: 2, total: 3 });
+    expect(view.truncated).toBeNull();
+  });
+
+  it("rolls up the flat L1 step shape and surfaces honest truncation", () => {
+    const interior: PlanInterior = {
+      plan_node_id: "doc:x-plan",
+      waves: [],
+      phases: [],
+      steps: [
+        { node_id: "x#S01", id: "S01", done: true },
+        { node_id: "x#S02", id: "S02", done: false },
+      ],
+      truncated: { total_nodes: 9001, returned_nodes: 2000, reason: "node ceiling" },
+    };
+    const view = derivePlanInteriorView(interior, false);
+    expect(view.rollup).toEqual({ done: 1, total: 2 });
+    expect(view.truncated).toEqual({
+      total_nodes: 9001,
+      returned_nodes: 2000,
+      reason: "node ceiling",
+    });
+  });
+
+  it("is the inert empty view while loading with no held interior", () => {
+    const view = derivePlanInteriorView(undefined, true);
+    expect(view.loading).toBe(true);
+    expect(view.rollup).toEqual({ done: 0, total: 0 });
+    expect(view.waves).toEqual([]);
   });
 });

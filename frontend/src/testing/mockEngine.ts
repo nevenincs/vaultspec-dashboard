@@ -180,6 +180,18 @@ export class MockEngine {
   // the live shape so the canvas's "narrowed — refine your view" chrome state is
   // exercised through the real client path (mock-mirrors-live-wire-shape).
   private truncatedTotal: number | null = null;
+  // The plan-container interior node ceiling fired (dashboard-pipeline-status,
+  // graph-queries-are-bounded-by-default): when set, `/nodes/{id}/plan-interior`
+  // echoes the live engine's `truncated` block alongside the capped tree, the
+  // exact shape the live route serves, so the Work surface's "narrowed — refine"
+  // step-tree state is exercised through the real client path.
+  private planInteriorTruncatedTotal: number | null = null;
+  // The file-tree per-level child ceiling fired (dashboard-code-tree,
+  // graph-queries-are-bounded-by-default): when set, `/file-tree` caps the level
+  // to this many children and echoes the live engine's `truncated` block, the
+  // exact shape `vaultspec-api` `file_tree.rs` serves, so the code mode's "more
+  // here — expand a subdirectory" state is exercised through the real client path.
+  private fileTreeLevelCap: number | null = null;
   // Git working-tree state served on /status (git-diff-browser surface). The mock
   // mirrors the LIVE wire shape exactly (mock-mirrors-live-wire-shape): `dirty` is
   // a BOOLEAN ("is the tree dirty?") — the live engine serves NO per-file list —
@@ -241,6 +253,29 @@ export class MockEngine {
    */
   setTruncated(total: number | null): void {
     this.truncatedTotal = total;
+  }
+
+  /**
+   * Simulate the plan-interior node ceiling firing on `/nodes/{id}/plan-interior`:
+   * pass a pre-cap total (or `true` for a representative one) so the served
+   * interior carries the live `truncated` block alongside the capped tree. Pass
+   * null/false to clear. Mirrors the live route shape so the Work surface's honest
+   * step-tree truncation is exercised through the real client path.
+   */
+  setPlanInteriorTruncated(total: number | boolean | null): void {
+    this.planInteriorTruncatedTotal =
+      total === true ? 9001 : total === false || total === null ? null : total;
+  }
+
+  /**
+   * Simulate the file-tree per-level child ceiling firing on `/file-tree`: pass
+   * the cap so a directory level with more children truncates to it and carries
+   * the live `truncated` block alongside the capped (still-sorted) level. Pass
+   * null to clear. Mirrors the live `vaultspec-api` `file_tree.rs` shape so the
+   * code mode's honest level truncation is exercised through the real client path.
+   */
+  setFileTreeLevelCap(cap: number | null): void {
+    this.fileTreeLevelCap = cap;
   }
 
   /** Set the working-tree dirty BOOLEAN served on /status (live shape). */
@@ -485,6 +520,17 @@ export class MockEngine {
     return block;
   }
 
+  /** A tiers block with ONE named tier marked unavailable for THIS response only
+   *  (no persistent `degrade()` mutation), mirroring the live engine's per-request
+   *  `degraded_tiers_for` (dashboard-code-tree worktree-only degradation): the
+   *  file-tree's structural degradation on a scope with no listable working tree
+   *  rides this, so the code mode renders a designed degraded state. */
+  private degradedTiersFor(tier: string, reason: string): TiersBlock {
+    const block = this.tiersBlock();
+    block[tier] = { available: false, reason };
+    return block;
+  }
+
   /** Push a live event onto a stream channel (tests and demos drive this). */
   push(channel: string, data: unknown): void {
     for (const subscriber of this.subscribers) {
@@ -675,6 +721,23 @@ export class MockEngine {
       requireScope(params);
       return { entries: this.noVault ? [] : c.vaultTree, tiers };
     }
+    if (path === "/file-tree") {
+      // One bounded, ignore-aware directory level of the worktree file tree
+      // (dashboard-code-tree ADR), mirroring the live `vaultspec-api`
+      // `/file-tree` wire shape: per-child path + kind + has_children + the
+      // shared `code:<path>` interlink node id, a `truncated` honesty marker
+      // when the level is capped, and a top-level `next_cursor` when it
+      // paginates. A scope with no readable working tree (`setNoVault`) degrades
+      // the `structural` tier honestly with an empty level, never a bare error.
+      requireScope(params);
+      return this.fileTreeData(params);
+    }
+    if (path === "/pipeline") {
+      // In-flight pipeline projection (dashboard-pipeline-wire W02): active plans
+      // + in-flight ADRs in the resolved scope, byte-for-byte the live shape.
+      requireScope(params);
+      return this.pipelineData();
+    }
     if (path === "/graph/query") {
       // Match the live serve wire (contract §4, engine addendum S02): the
       // request's granularity selects document edges OR feature-convergence
@@ -749,10 +812,18 @@ export class MockEngine {
         tiers_block: tiers,
       };
     }
-    const nodeMatch = /^\/nodes\/([^/]+)(\/(neighbors|evidence|discover))?$/.exec(path);
+    const nodeMatch =
+      /^\/nodes\/([^/]+)(\/(neighbors|evidence|discover|plan-interior))?$/.exec(path);
     if (nodeMatch) {
       const id = decodeURIComponent(nodeMatch[1]);
       const sub = nodeMatch[3];
+      // plan-interior (dashboard-pipeline-wire W03): a truthful 404 for an
+      // unknown node OR a non-plan node, mirroring the live route's None path.
+      if (sub === "plan-interior") {
+        const data = this.planInteriorData(id);
+        if (!data) throw new RouteError(404, `no plan interior for node ${id}`);
+        return data;
+      }
       const node = c.nodes.find((n) => n.id === id);
       if (!node) throw new RouteError(404, `unknown node ${id}`);
       if (!sub) {
@@ -878,10 +949,13 @@ export class MockEngine {
         tiers,
       };
     }
-    // NB: there is intentionally NO `/ops/git/*` route — the live ops whitelist
-    // is `/ops/core/*` and `/ops/rag/*` only (engine-read-and-infer). The git
-    // diff capability is engine-blocked; the chrome renders that honestly without
-    // any mock endpoint. A request would correctly 404 below as "no mock route".
+    // Read-only `/ops/git/{verb}` pass-through (dashboard-pipeline-wire W04): the
+    // live engine now serves porcelain status, numstat, and unified diff for a
+    // path, forwarding git output verbatim inside the envelope. Mirror it.
+    const gitOp = /^\/ops\/git\/([^/]+)$/.exec(path);
+    if (gitOp) {
+      return this.gitOp(decodeURIComponent(gitOp[1]), init);
+    }
     const ops = /^\/ops\/(core|rag)\/([^/]+)$/.exec(path);
     if (ops) {
       if (ops[1] === "rag" && this.degradations.has("semantic")) {
@@ -896,6 +970,279 @@ export class MockEngine {
     const interior = this.corpus.planInteriors.get(id);
     if (!interior) return undefined;
     return { nodes: interior.nodes, edges: interior.edges, tiers: this.tiersBlock() };
+  }
+
+  /**
+   * Build one `/file-tree` directory level (dashboard-code-tree ADR), mirroring
+   * the live `vaultspec-api` `file_tree.rs` wire shape: the immediate children of
+   * `path` (empty for the worktree root) derived from the corpus's already-ignore-
+   * filtered flat path set, each carrying the shared `code:<path>` node id (the
+   * SAME kind+key rule `engine_model::node_id` uses — `code:` prefix + the repo-
+   * relative path), the `dir`/`file` kind, and a `has_children` hint. Directories
+   * sort before files (each group by path); the level is hard-capped (the bounded-
+   * read invariant) with the live `truncated` block, then cursor-paginated with a
+   * top-level `next_cursor`. A worktree with no listable source (`setNoVault`)
+   * degrades the `structural` tier honestly with an empty level — never an error.
+   */
+  private fileTreeData(params: URLSearchParams): unknown {
+    const rel = (params.get("path") ?? "").replace(/^\/+|\/+$/g, "");
+    // No working tree to list: degrade the structural tier honestly (the code
+    // mode renders a designed degraded state, not a healthy-looking empty).
+    if (this.noVault) {
+      return {
+        entries: [],
+        path: rel,
+        truncated: null,
+        tiers: this.degradedTiersFor("structural", "worktree not listable"),
+      };
+    }
+    // Derive the immediate children of `rel` from the flat path set: the next
+    // segment after the `rel/` prefix, deduped into dirs (more segments follow)
+    // and files (the segment is the leaf).
+    const prefix = rel.length > 0 ? `${rel}/` : "";
+    const dirs = new Set<string>();
+    const files = new Set<string>();
+    for (const full of this.corpus.codeTree) {
+      if (prefix.length > 0 && !full.startsWith(prefix)) continue;
+      const remainder = full.slice(prefix.length);
+      if (remainder.length === 0) continue;
+      const slash = remainder.indexOf("/");
+      if (slash === -1) {
+        files.add(`${prefix}${remainder}`);
+      } else {
+        dirs.add(`${prefix}${remainder.slice(0, slash)}`);
+      }
+    }
+    // Directories first, then files; each group sorted by path (the live order).
+    const sorted: { path: string; is_dir: boolean }[] = [
+      ...[...dirs].sort().map((p) => ({ path: p, is_dir: true })),
+      ...[...files].sort().map((p) => ({ path: p, is_dir: false })),
+    ];
+    const total = sorted.length;
+    // Hard-cap the level (the bounded-read invariant), then state it honestly.
+    const cap = this.fileTreeLevelCap;
+    const capped = cap !== null ? sorted.slice(0, cap) : sorted;
+    const truncated =
+      cap !== null && total > cap
+        ? {
+            total_children: total,
+            returned_children: cap,
+            reason:
+              "directory level child ceiling: expand a subdirectory to narrow; " +
+              "the level is capped to keep the wire bounded",
+          }
+        : null;
+    // Cursor pagination over the capped, already-sorted level (cursor exclusive).
+    const pageSizeRaw = Number(params.get("page_size"));
+    const pageSize =
+      Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? pageSizeRaw : 500;
+    const cursor = params.get("cursor");
+    const start = cursor !== null ? capped.findIndex((c) => c.path > cursor) : 0;
+    const from = start === -1 ? capped.length : start;
+    const page = capped.slice(from, from + pageSize);
+    const nextCursor =
+      from + page.length < capped.length ? page[page.length - 1]?.path : undefined;
+    const entries = page.map((child) => ({
+      path: child.path,
+      kind: child.is_dir ? "dir" : "file",
+      // has_children: a directory has children iff some corpus path nests below
+      // it; a file never does.
+      has_children: child.is_dir
+        ? this.corpus.codeTree.some((p) => p.startsWith(`${child.path}/`))
+        : false,
+      // The interlink: the stable `code:<path>` node id, the SAME kind+key rule
+      // the engine derives (no private convention) — present for navigation even
+      // when no `code:` graph node exists for the path (the absent-interlink
+      // state the code mode renders quietly).
+      node_id: `code:${child.path}`,
+    }));
+    return {
+      entries,
+      path: rel,
+      truncated,
+      ...(nextCursor !== undefined ? { next_cursor: nextCursor } : {}),
+      tiers: this.tiersBlock(),
+    };
+  }
+
+  /**
+   * Build the `/pipeline` data block (dashboard-pipeline-wire W02): the in-flight
+   * artifacts — active plans (by lifecycle) and in-flight ADRs (by status) — in
+   * the active scope, each with progress, status/tier, pipeline phase, and stable
+   * node id, sorted by node id. Mirrors the live `engine-query::pipeline::in_flight`
+   * projection byte-for-byte: a complete plan and a rejected/deprecated ADR are
+   * excluded; an active plan with work checked is in `execute`, otherwise `plan`.
+   */
+  private pipelineData(): unknown {
+    const artifacts: {
+      node_id: string;
+      stem: string;
+      title?: string;
+      doc_type?: string;
+      status?: string;
+      tier?: string;
+      progress?: { done: number; total: number };
+      feature_tags?: string[];
+      dates?: { created?: string; modified?: string };
+      phase: string;
+    }[] = [];
+    if (!this.noVault) {
+      for (const node of this.corpus.nodes) {
+        if (!node.id.startsWith("doc:")) continue;
+        const stem = node.id.replace(/^doc:/, "");
+        if (node.doc_type === "plan") {
+          const lc = node.lifecycle;
+          if (!lc || lc.state !== "active") continue; // complete plans excluded
+          const progress = lc.progress;
+          artifacts.push({
+            node_id: node.id,
+            stem,
+            title: node.title,
+            doc_type: node.doc_type,
+            tier: node.tier,
+            progress,
+            // Freshness + feature facets (dashboard-pipeline-status W01): the live
+            // engine mirrors the doc node's dates and feature tags on the artifact.
+            feature_tags: node.feature_tags,
+            dates: node.dates,
+            phase: progress && progress.done > 0 ? "execute" : "plan",
+          });
+        } else if (node.doc_type === "adr") {
+          // In-flight ADR: proposed or accepted; rejected/deprecated excluded.
+          if (node.status !== "proposed" && node.status !== "accepted") continue;
+          artifacts.push({
+            node_id: node.id,
+            stem,
+            title: node.title,
+            doc_type: node.doc_type,
+            status: node.status,
+            feature_tags: node.feature_tags,
+            dates: node.dates,
+            phase: "adr",
+          });
+        }
+      }
+    }
+    artifacts.sort((a, b) => a.node_id.localeCompare(b.node_id));
+    return { artifacts, tiers: this.tiersBlock() };
+  }
+
+  /**
+   * Build the `/nodes/{id}/plan-interior` data block (dashboard-pipeline-wire
+   * W03): the plan's wave/phase/step interior with per-step completion and the
+   * bound exec record, mirroring the live `engine-query::node::plan_interior`
+   * shape (tier-shape honest, optional `truncated`). The corpus interior is a flat
+   * step list; the mock groups it into the live tier shape by the plan's `tier`
+   * facet — L1 flat `steps`, L2 one `phases` block, L3/L4 one `waves` block — so
+   * the consumer exercises every depth the live engine can serve.
+   */
+  private planInteriorData(id: string): unknown | null {
+    const node = this.corpus.nodes.find((n) => n.id === id);
+    if (!node || node.doc_type !== "plan") return null;
+    const interior = this.corpus.planInteriors.get(id);
+    const tiers = this.tiersBlock();
+    const steps = (interior?.nodes ?? []).map((s) => ({
+      node_id: s.id,
+      // The corpus step id is `${planId}#S01`; the canonical leaf is `S01`.
+      id: s.id.replace(/^.*#/, ""),
+      action: s.title,
+      done: s.lifecycle?.state === "complete",
+    }));
+    // The bounded-interior honesty block (graph-queries-are-bounded-by-default):
+    // null unless the node ceiling was simulated, then the live `truncated` shape.
+    const truncated =
+      this.planInteriorTruncatedTotal !== null
+        ? {
+            total_nodes: this.planInteriorTruncatedTotal,
+            returned_nodes: steps.length,
+            reason: "plan interior node ceiling",
+          }
+        : null;
+    // Mirror the LIVE wire shape exactly: the route wraps the interior under an
+    // `interior` key inside the `{data, tiers}` envelope.
+    let interiorShape: unknown;
+    switch (node.tier) {
+      case "L1":
+        interiorShape = {
+          plan_node_id: id,
+          waves: [],
+          phases: [],
+          steps,
+          truncated,
+        };
+        break;
+      case "L2":
+        interiorShape = {
+          plan_node_id: id,
+          waves: [],
+          phases: [{ node_id: `${id}#P01`, id: "P01", heading: "phase", steps }],
+          steps: [],
+          truncated,
+        };
+        break;
+      default:
+        // L3 / L4 (and an untiered plan, defensively): one wave, one phase.
+        interiorShape = {
+          plan_node_id: id,
+          waves: [
+            {
+              node_id: `${id}#W01`,
+              id: "W01",
+              heading: "wave",
+              phases: [
+                { node_id: `${id}#W01/P01`, id: "P01", heading: "phase", steps },
+              ],
+            },
+          ],
+          phases: [],
+          steps: [],
+          truncated,
+        };
+        break;
+    }
+    return { interior: interiorShape, tiers };
+  }
+
+  /**
+   * Serve a read-only `/ops/git/{verb}` pass-through (dashboard-pipeline-wire
+   * W04), mirroring the live wire shape: git's output forwarded VERBATIM inside
+   * `{verb, output, tiers}`. The mock emits realistic porcelain status / numstat /
+   * unified-diff text for the dirty fixture file so the consumer parses the same
+   * verbatim format the live engine forwards. A non-whitelisted verb is a 403
+   * (the live read-only whitelist), and the `diff` verb requires a `path`.
+   */
+  private gitOp(verb: string, init?: RequestInit): unknown {
+    const whitelist = new Set(["status", "numstat", "diff"]);
+    if (!whitelist.has(verb)) {
+      throw new RouteError(
+        403,
+        `git verb ${verb} is not whitelisted (read-only ops/git)`,
+      );
+    }
+    const path = init?.body
+      ? (JSON.parse(String(init.body)) as { path?: string }).path
+      : undefined;
+    // The dirty fixture file the mock's git surface reports on.
+    const file = ".vault/plan/2026-01-05-editor-demo-plan.md";
+    let output = "";
+    if (verb === "status") {
+      // Porcelain v1: a branch header line, then per-file `XY path`.
+      output = this.gitDirty ? `## main\n M ${file}\n` : "## main\n";
+    } else if (verb === "numstat") {
+      output = this.gitDirty ? `3\t1\t${file}\n` : "";
+    } else if (verb === "diff") {
+      if (path === undefined) {
+        throw new RouteError(400, "git diff requires a path argument");
+      }
+      output = this.gitDirty
+        ? `diff --git a/${path} b/${path}\n` +
+          `index 1111111..2222222 100644\n` +
+          `--- a/${path}\n+++ b/${path}\n` +
+          `@@ -1,3 +1,3 @@\n` +
+          ` context line\n-old line\n+new line\n`
+        : "";
+    }
+    return { verb, output, tiers: this.tiersBlock() };
   }
 
   // --- SSE -----------------------------------------------------------------------

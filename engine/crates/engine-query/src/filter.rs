@@ -14,6 +14,10 @@ pub enum FilterError {
     UnknownTier(String),
     #[error("unknown structural state `{0}`")]
     UnknownState(String),
+    #[error("unknown status `{0}`")]
+    UnknownStatus(String),
+    #[error("unknown plan tier `{0}`")]
+    UnknownPlanTier(String),
     #[error("min_confidence for `{tier}` must be 0..=1, found {found}")]
     ConfidenceRange { tier: String, found: f32 },
 }
@@ -36,12 +40,26 @@ pub struct Filter {
     pub kinds: Vec<String>,
     /// Feature tags.
     pub feature_tags: Vec<String>,
+    /// ADR statuses (dashboard-pipeline-wire W01.P03.S12): one of
+    /// `proposed`/`accepted`/`rejected`/`deprecated`. A node passes if it
+    /// carries a status in this set; non-ADR nodes (no status) are excluded
+    /// when the facet is non-empty, the same way the kinds facet narrows.
+    pub statuses: Vec<String>,
+    /// Plan tiers (dashboard-pipeline-wire W01.P03.S13): one of `L1`-`L4`. A
+    /// node passes if it carries a tier in this set.
+    pub plan_tiers: Vec<String>,
     /// Case-insensitive text match over node key/title.
     pub text: Option<String>,
 }
 
 const TIER_NAMES: &[&str] = &["declared", "structural", "temporal", "semantic"];
 const STATE_NAMES: &[&str] = &["resolved", "stale", "broken"];
+/// The ADR H1 status enum (dashboard-pipeline-wire W01): the known status set
+/// a status facet is validated against.
+const STATUS_NAMES: &[&str] = &["proposed", "accepted", "rejected", "deprecated"];
+/// The plan tier enum (dashboard-pipeline-wire W01): the known tier set a
+/// plan-tier facet is validated against.
+const PLAN_TIER_NAMES: &[&str] = &["L1", "L2", "L3", "L4"];
 
 impl Filter {
     /// Validate and normalize (sort lists, lowercase names). The
@@ -65,6 +83,16 @@ impl Filter {
                 return Err(FilterError::UnknownState(state.clone()));
             }
         }
+        for status in &self.statuses {
+            if !STATUS_NAMES.contains(&status.as_str()) {
+                return Err(FilterError::UnknownStatus(status.clone()));
+            }
+        }
+        for tier in &self.plan_tiers {
+            if !PLAN_TIER_NAMES.contains(&tier.as_str()) {
+                return Err(FilterError::UnknownPlanTier(tier.clone()));
+            }
+        }
         self.relations.sort();
         self.relations.dedup();
         self.structural_state.sort();
@@ -73,6 +101,10 @@ impl Filter {
         self.kinds.dedup();
         self.feature_tags.sort();
         self.feature_tags.dedup();
+        self.statuses.sort();
+        self.statuses.dedup();
+        self.plan_tiers.sort();
+        self.plan_tiers.dedup();
         Ok(self)
     }
 
@@ -135,6 +167,27 @@ impl Filter {
         {
             return false;
         }
+        // Status facet (W01.P03.S12): a non-empty facet narrows to nodes whose
+        // status is in the requested set; a node with no status (non-ADR) does
+        // not match, the same exclusion the kinds facet applies.
+        if !self.statuses.is_empty()
+            && !node
+                .status
+                .as_deref()
+                .is_some_and(|s| self.statuses.iter().any(|f| f == s))
+        {
+            return false;
+        }
+        // Plan-tier facet (W01.P03.S13): narrows to nodes whose tier is in the
+        // requested set; a node with no tier (non-plan) does not match.
+        if !self.plan_tiers.is_empty()
+            && !node
+                .tier
+                .as_deref()
+                .is_some_and(|t| self.plan_tiers.iter().any(|f| f == t))
+        {
+            return false;
+        }
         if let Some(text) = &self.text {
             let needle = text.to_lowercase();
             let hit = node.key.to_lowercase().contains(&needle)
@@ -173,6 +226,13 @@ pub struct Vocabulary {
     pub kinds: Vec<String>,
     pub doc_types: Vec<String>,
     pub feature_tags: Vec<String>,
+    /// ADR statuses actually present in the graph (dashboard-pipeline-wire
+    /// W01.P03.S10): the data-driven status facet a client renders, sorted and
+    /// deduped, never a hardcoded enum.
+    pub statuses: Vec<String>,
+    /// Plan tiers actually present in the graph (dashboard-pipeline-wire
+    /// W01.P03.S11): the data-driven tier facet, sorted and deduped.
+    pub plan_tiers: Vec<String>,
     pub structural_states: Vec<&'static str>,
     /// Inclusive corpus date span; `null` when no node carries a created date.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -209,6 +269,15 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     feature_tags.sort();
     feature_tags.dedup();
+    // ADR statuses + plan tiers actually present (W01.P03.S10/S11): enumerated
+    // from the nodes' query-time facets, sorted and deduped — the same
+    // data-driven discipline as doc_types and feature_tags.
+    let mut statuses: Vec<String> = graph.nodes().filter_map(|n| n.status.clone()).collect();
+    statuses.sort();
+    statuses.dedup();
+    let mut plan_tiers: Vec<String> = graph.nodes().filter_map(|n| n.tier.clone()).collect();
+    plan_tiers.sort();
+    plan_tiers.dedup();
     // Corpus date span from frontmatter `created` dates (ISO yyyy-mm-dd,
     // lexically ordered): the bounds a date-range facet selects within.
     let date_bounds = graph
@@ -236,6 +305,8 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         kinds,
         doc_types,
         feature_tags,
+        statuses,
+        plan_tiers,
         structural_states: STATE_NAMES.to_vec(),
         date_bounds,
         refs,
@@ -289,6 +360,8 @@ mod tests {
                     modified: None,
                 }),
                 feature_tags: vec![feature.to_string()],
+                status: None,
+                tier: None,
                 facets: vec![Facet {
                     scope,
                     presence: Presence::Exists,
@@ -351,6 +424,123 @@ mod tests {
         let empty = vocabulary(&LinkageGraph::new());
         assert_eq!(empty.date_bounds, None);
         assert!(empty.doc_types.is_empty() && empty.refs.is_empty());
+    }
+
+    #[test]
+    fn status_and_plan_tier_facets_are_enumerated_sorted_and_deduped() {
+        // W01.P03.S14: the status and plan-tier vocabulary is data-driven —
+        // enumerated from the nodes actually present, sorted, deduped. A node
+        // with neither contributes to neither facet.
+        use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
+
+        fn node(stem: &str, doc_type: &str, status: Option<&str>, tier: Option<&str>) -> Node {
+            Node {
+                id: node_id(&CanonicalKey::Document { stem }),
+                kind: NodeKind::Document,
+                key: stem.to_string(),
+                title: None,
+                doc_type: Some(doc_type.to_string()),
+                dates: None,
+                feature_tags: vec![],
+                status: status.map(str::to_string),
+                tier: tier.map(str::to_string),
+                facets: vec![engine_model::Facet {
+                    scope: ScopeRef::Ref {
+                        name: "main".into(),
+                    },
+                    presence: Presence::Exists,
+                    content_hash: None,
+                    lifecycle: None,
+                }],
+            }
+        }
+
+        let mut graph = LinkageGraph::new();
+        // Two ADRs sharing `accepted` (proves dedup), one `proposed`.
+        graph.upsert_node(node("a1", "adr", Some("accepted"), None));
+        graph.upsert_node(node("a2", "adr", Some("proposed"), None));
+        graph.upsert_node(node("a3", "adr", Some("accepted"), None));
+        // Two plans, tiers L3 and L1 (proves sort), plus a duplicate L3.
+        graph.upsert_node(node("p1", "plan", None, Some("L3")));
+        graph.upsert_node(node("p2", "plan", None, Some("L1")));
+        graph.upsert_node(node("p3", "plan", None, Some("L3")));
+        // A research doc with neither — contributes to neither facet.
+        graph.upsert_node(node("r1", "research", None, None));
+
+        let vocab = vocabulary(&graph);
+        assert_eq!(
+            vocab.statuses,
+            vec!["accepted", "proposed"],
+            "statuses sorted + deduped from the graph"
+        );
+        assert_eq!(
+            vocab.plan_tiers,
+            vec!["L1", "L3"],
+            "plan tiers sorted + deduped from the graph"
+        );
+
+        // An empty graph carries empty facets, never a hardcoded enum.
+        let empty = vocabulary(&LinkageGraph::new());
+        assert!(empty.statuses.is_empty() && empty.plan_tiers.is_empty());
+    }
+
+    #[test]
+    fn status_and_plan_tier_filters_narrow_and_reject_out_of_enum() {
+        // W01.P03.S12/S13: the matches_node check narrows to the requested set;
+        // a node with no status/tier is excluded when the facet is non-empty;
+        // validation rejects an out-of-enum status or tier.
+        use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
+        let node = |status: Option<&str>, tier: Option<&str>| Node {
+            id: node_id(&CanonicalKey::Document { stem: "x" }),
+            kind: NodeKind::Document,
+            key: "x".into(),
+            title: None,
+            doc_type: None,
+            dates: None,
+            feature_tags: vec![],
+            status: status.map(str::to_string),
+            tier: tier.map(str::to_string),
+            facets: vec![engine_model::Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        };
+        let _ = NodeKind::Document;
+
+        let by_status = Filter {
+            statuses: vec!["accepted".into()],
+            ..Default::default()
+        };
+        assert!(by_status.matches_node(&node(Some("accepted"), None)));
+        assert!(!by_status.matches_node(&node(Some("proposed"), None)));
+        assert!(
+            !by_status.matches_node(&node(None, None)),
+            "a status-less node is excluded by a non-empty status facet"
+        );
+
+        let by_tier = Filter {
+            plan_tiers: vec!["L3".into()],
+            ..Default::default()
+        };
+        assert!(by_tier.matches_node(&node(None, Some("L3"))));
+        assert!(!by_tier.matches_node(&node(None, Some("L1"))));
+        assert!(!by_tier.matches_node(&node(None, None)));
+
+        // Out-of-enum facets fail validation loud.
+        let bad_status: Filter = serde_json::from_str(r#"{"statuses": ["superseded"]}"#).unwrap();
+        assert_eq!(
+            bad_status.validated(),
+            Err(FilterError::UnknownStatus("superseded".into()))
+        );
+        let bad_tier: Filter = serde_json::from_str(r#"{"plan_tiers": ["L9"]}"#).unwrap();
+        assert_eq!(
+            bad_tier.validated(),
+            Err(FilterError::UnknownPlanTier("L9".into()))
+        );
     }
 
     #[test]

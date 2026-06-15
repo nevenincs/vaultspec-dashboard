@@ -166,7 +166,7 @@ describe("WorkspacePicker honest states + add-a-project refusal (S18)", () => {
 
   it("surfaces the add-a-project validation refusal as a non-silent status line", async () => {
     // The mock's REAL PUT /session register validation 400s a `bad`-prefixed
-    // path (the same tiered refusal the live route emits for an unregisterable
+    // path (the same tiered refusal the live route emits for an unregistrable
     // path) — driving the honest add-refusal state, not a stubbed mutation.
     engineClient.useTransport(new MockEngine().fetchImpl);
     renderPicker({ defaultAdding: true });

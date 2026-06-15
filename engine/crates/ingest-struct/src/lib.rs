@@ -7,6 +7,7 @@
 //! stale/broken edges are kept and surfaced, not dropped (D3.3).
 
 pub mod extract;
+pub mod plan_structure;
 pub mod reader;
 pub mod resolve;
 

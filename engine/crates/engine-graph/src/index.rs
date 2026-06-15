@@ -275,6 +275,15 @@ fn index_structural(
             stats.duplicate_stems.push(stem.clone());
         }
         let feature_tags = frontmatter_feature_tags(&text);
+        // Plan-container minting (dashboard-pipeline-wire W03.P07): a plan
+        // document's interior becomes first-class-but-subordinate
+        // PlanContainer nodes + Contains edges, keyed only by plan stem +
+        // canonical container ids. Done here (the plan node is upserted just
+        // below) so the interior rides every structural index pass; the
+        // step->exec binding is a post-pass once all doc nodes exist.
+        if doc_type_of(&rel_path).as_deref() == Some("plan") {
+            mint_plan_containers(graph, &stem, &text, &feature_tags, scope, observed_at);
+        }
         // Contract §4 node fields on the LIST shape (addendum S03):
         // title from the body H1, created from the frontmatter date,
         // modified from the worktree mtime (ms), doc_type from the vault
@@ -295,6 +304,13 @@ fn index_structural(
                 modified,
             }),
             feature_tags,
+            // Status/tier query-time facets (dashboard-pipeline-wire W01.P02
+            // S07/S08): the ADR H1 status and the plan frontmatter tier, read
+            // the same deterministic way as dates/feature_tags. Both are
+            // truthful-absence Options — a non-ADR carries no status, a non-plan
+            // (or tier-less plan) carries no tier.
+            status: frontmatter_adr_status(&text),
+            tier: frontmatter_plan_tier(&text),
             facets: vec![Facet {
                 scope: scope.clone(),
                 presence: Presence::Exists,
@@ -372,6 +388,11 @@ fn index_structural(
             )?;
         }
     }
+
+    // Post-pass: bind each step plan-container node to its exec-record document
+    // node where one exists (W03.P07.S37). Runs after every doc node is in the
+    // graph so minting order is irrelevant; the binding edge id is identity-only.
+    bind_steps_to_exec_records(graph, scope, observed_at);
 
     phase!("structural");
 
@@ -500,6 +521,274 @@ pub fn ingest_declared_from_json(
     (count, None)
 }
 
+/// Mint the plan-container interior of one plan document (dashboard-pipeline-
+/// wire W03.P07): one `NodeKind::PlanContainer` node per wave/phase/step keyed
+/// by `CanonicalKey::PlanContainer { plan_stem, container_id }`, and the
+/// subordinate `Contains` edges plan -> wave -> phase -> step.
+///
+/// READ-AND-INFER + STABLE IDENTITY: this is inference over a document the
+/// engine reads, never authorship. Every node id and edge id is composed ONLY
+/// from the plan stem and the canonical container ids (and the step's
+/// completion lives OUTSIDE the key, on a facet), so re-indexing the same plan
+/// — even with a toggled checkbox — re-keys no existing node or edge
+/// (`provenance-stable-keys-are-identity-bearing`). The structure is bounded by
+/// the parser's ceiling (W03.P06.S31).
+///
+/// `container_id` strings are the canonical ids joined with `/` to a stable
+/// path under the plan stem: a wave is `W01`, a phase `W01/P02`, a step
+/// `W01/P02/S03`. The slashed form mirrors `CanonicalKey::PlanContainer`'s
+/// `{plan_stem}/{container_id}` rendering and keeps each child id unique within
+/// its plan regardless of duplicated leaf ids across branches.
+pub(crate) fn mint_plan_containers(
+    graph: &mut LinkageGraph,
+    plan_stem: &str,
+    text: &str,
+    feature_tags: &[String],
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+) {
+    let structure = ingest_struct::plan_structure::parse_plan_structure(text);
+    let plan_node = node_id(&CanonicalKey::Document { stem: plan_stem });
+
+    // A small closure minting one container node + its Contains edge from a
+    // parent node. The container_id is the slashed canonical path.
+    let mint = |graph: &mut LinkageGraph,
+                parent: &NodeId,
+                container_id: &str,
+                title: Option<String>,
+                lifecycle: Option<engine_model::Lifecycle>| {
+        let id = node_id(&CanonicalKey::PlanContainer {
+            plan_stem,
+            container_id,
+        });
+        graph.upsert_node(Node {
+            id: id.clone(),
+            kind: NodeKind::PlanContainer,
+            key: format!("{plan_stem}/{container_id}"),
+            title,
+            doc_type: None,
+            dates: None,
+            feature_tags: feature_tags.to_vec(),
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope.clone(),
+                presence: Presence::Exists,
+                content_hash: None,
+                // Per-step completion rides the lifecycle facet (W03.P07.S35):
+                // a closed step is `complete` 1/1, an open step `active` 0/1.
+                // Toggling a checkbox changes THIS facet, never the node id.
+                lifecycle,
+            }],
+        });
+        let _ = crate::edges::ingest(
+            graph,
+            contains_edge(parent, &id, container_id, scope, observed_at),
+            EdgeAttrs::default(),
+        );
+        id
+    };
+
+    // L1 steps directly under the plan.
+    for step in &structure.steps {
+        mint(
+            graph,
+            &plan_node,
+            &step.id,
+            Some(step.action.clone()),
+            Some(step_lifecycle(step.done)),
+        );
+    }
+    // L2 phases (and their steps) directly under the plan.
+    for phase in &structure.phases {
+        let phase_node = mint(
+            graph,
+            &plan_node,
+            &phase.id,
+            (!phase.heading.is_empty()).then(|| phase.heading.clone()),
+            None,
+        );
+        for step in &phase.steps {
+            let container_id = format!("{}/{}", phase.id, step.id);
+            mint(
+                graph,
+                &phase_node,
+                &container_id,
+                Some(step.action.clone()),
+                Some(step_lifecycle(step.done)),
+            );
+        }
+    }
+    // L3/L4 waves -> phases -> steps.
+    for wave in &structure.waves {
+        let wave_node = mint(
+            graph,
+            &plan_node,
+            &wave.id,
+            (!wave.heading.is_empty()).then(|| wave.heading.clone()),
+            None,
+        );
+        for phase in &wave.phases {
+            let phase_id = format!("{}/{}", wave.id, phase.id);
+            let phase_node = mint(
+                graph,
+                &wave_node,
+                &phase_id,
+                (!phase.heading.is_empty()).then(|| phase.heading.clone()),
+                None,
+            );
+            for step in &phase.steps {
+                let container_id = format!("{}/{}/{}", wave.id, phase.id, step.id);
+                mint(
+                    graph,
+                    &phase_node,
+                    &container_id,
+                    Some(step.action.clone()),
+                    Some(step_lifecycle(step.done)),
+                );
+            }
+        }
+    }
+}
+
+/// The per-step lifecycle facet carrying completion (W03.P07.S35): a closed
+/// step is `complete` (1/1), an open step `active` (0/1). One step = one unit
+/// of progress, so the Work surface renders a step's done-ness uniformly with
+/// the plan-level progress ring.
+fn step_lifecycle(done: bool) -> engine_model::Lifecycle {
+    engine_model::Lifecycle {
+        state: if done { "complete" } else { "active" }.to_string(),
+        progress: Some(engine_model::Progress {
+            done: u32::from(done),
+            total: 1,
+        }),
+    }
+}
+
+/// A subordinate `Contains` edge (W03.P07.S36) from a parent container (or the
+/// plan node) to a child container. Declared tier (the structure is authored,
+/// not inferred). The edge stable key is composed ONLY from the endpoint
+/// container ids: src/dst already encode plan stem + canonical id, and the
+/// provenance stable key is the child's canonical container id — never a
+/// resolution or rule outcome, so re-indexing never re-keys it.
+fn contains_edge(
+    parent: &NodeId,
+    child: &NodeId,
+    child_container_id: &str,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+) -> Edge {
+    let provenance = Provenance::CoreGraph {
+        // Volatile field, excluded from the stable key.
+        payload_hash: String::new(),
+        // Identity-bearing: the child's canonical container id.
+        edge_id: child_container_id.to_string(),
+    };
+    let relation = RelationKind::Contains;
+    let id = edge_id(parent, child, &relation, Tier::Declared, &provenance);
+    Edge {
+        id,
+        src: parent.clone(),
+        dst: child.clone(),
+        relation,
+        tier: Tier::Declared,
+        confidence: 1.0,
+        state: None,
+        provenance,
+        scope: scope.clone(),
+        observed_at,
+    }
+}
+
+/// Bind each step plan-container node to its exec-record document node where one
+/// exists (W03.P07.S37): a `References` edge with an IDENTITY-ONLY stable key.
+///
+/// Exec records are vault documents whose stem encodes the step's canonical
+/// display path with `-` separators (e.g. `2026-06-14-feature-W01-P01-S01`).
+/// The binding runs as a post-pass once every document node is in the graph, so
+/// minting order does not matter. The edge stable key is composed only from the
+/// two endpoint ids (the step container id and the exec stem) — never a
+/// resolution state — so it survives re-index unchanged.
+pub(crate) fn bind_steps_to_exec_records(
+    graph: &mut LinkageGraph,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+) {
+    // Collect step container ids and exec doc stems first (immutable borrow),
+    // then mint edges (mutable borrow) — no aliasing.
+    let step_nodes: Vec<(NodeId, String)> = graph
+        .nodes()
+        .filter(|n| {
+            n.kind == NodeKind::PlanContainer && n.key.rsplit('/').next().is_some_and(is_step_leaf)
+        })
+        .map(|n| (n.id.clone(), n.key.clone()))
+        .collect();
+    let exec_stems: Vec<String> = graph
+        .nodes()
+        .filter(|n| n.id.0.starts_with("doc:") && n.doc_type.as_deref() == Some("exec"))
+        .map(|n| n.key.clone())
+        .collect();
+
+    for (step_id, step_key) in &step_nodes {
+        // The step key is `{plan_stem}/{container_id}`, e.g.
+        // `2026-06-12-demo-plan/W01/P01/S01`. Bind only to THIS plan's exec
+        // record `{plan-prefix}-{tail}`, where the prefix is the plan stem minus
+        // its `-plan` suffix (the date+feature discriminator) and the tail is the
+        // container path joined with `-`. Anchoring on the prefix prevents a step
+        // binding to another plan whose exec records share the same container
+        // tail -- every L1/L2/L3 plan has a `W01-P01-S01`/`P01-S01`/`S01`.
+        let plan_stem = step_key.split('/').next().unwrap_or("");
+        let tail = step_key
+            .split('/')
+            .skip(1) // drop the plan stem
+            .collect::<Vec<_>>()
+            .join("-");
+        if tail.is_empty() || plan_stem.is_empty() {
+            continue;
+        }
+        let plan_prefix = plan_stem.strip_suffix("-plan").unwrap_or(plan_stem);
+        let expected_exec = format!("{plan_prefix}-{tail}");
+        for exec_stem in &exec_stems {
+            if exec_stem == &expected_exec {
+                let exec_node = node_id(&CanonicalKey::Document { stem: exec_stem });
+                let provenance = Provenance::CoreGraph {
+                    payload_hash: String::new(),
+                    // Identity-only: the step container id binds to the exec stem.
+                    edge_id: format!("{}->{}", step_id.0, exec_stem),
+                };
+                let relation = RelationKind::References;
+                let id = edge_id(step_id, &exec_node, &relation, Tier::Declared, &provenance);
+                let _ = crate::edges::ingest(
+                    graph,
+                    Edge {
+                        id,
+                        src: step_id.clone(),
+                        dst: exec_node,
+                        relation,
+                        tier: Tier::Declared,
+                        confidence: 1.0,
+                        state: None,
+                        provenance,
+                        scope: scope.clone(),
+                        observed_at,
+                    },
+                    EdgeAttrs::default(),
+                );
+            }
+        }
+    }
+}
+
+/// Is a slashed-key leaf a step container (`S##`)? Used to find step nodes for
+/// exec binding without re-parsing.
+fn is_step_leaf(leaf: &str) -> bool {
+    let mut chars = leaf.chars();
+    chars.next() == Some('S') && {
+        let digits: String = chars.collect();
+        digits.len() >= 2 && digits.chars().all(|c| c.is_ascii_digit())
+    }
+}
+
 /// Build the structural edge for one resolved mention. Shared with the
 /// blob-true as-of path so present and historical views mint identical
 /// edge identities for identical content.
@@ -621,6 +910,50 @@ pub(crate) fn frontmatter_date(text: &str) -> Option<String> {
     })
 }
 
+/// The ADR H1 status value (contract §4 status facet, dashboard-pipeline-wire
+/// W01.P01.S01): one of `proposed`, `accepted`, `rejected`, or `deprecated`,
+/// read from the H1 status marker the ADR template emits, e.g.
+/// `# `feature` adr: `topic` | (**status:** `accepted`)`. The marker is
+/// `(**status:** `<value>`)`; the value is the backtick-wrapped enum token.
+///
+/// An ADR with no recognizable status marker, or a status outside the four-
+/// value enum, returns `None` — "in-flight ADR" is honest only when the real
+/// status is present; a missing or out-of-enum status is truthful absence, not
+/// a guessed default.
+pub(crate) fn frontmatter_adr_status(text: &str) -> Option<String> {
+    const STATUSES: &[&str] = &["proposed", "accepted", "rejected", "deprecated"];
+    // The status marker lives on the H1 line. Scan for the `**status:**`
+    // sentinel and read the next backtick-wrapped token after it. Tolerant of
+    // spacing around the colon and the value's backticks, matching the template
+    // form `(**status:** `accepted`)` while not over-fitting to the exact
+    // surrounding punctuation.
+    let line = text.lines().find(|l| l.contains("**status:**"))?;
+    let after = line.split("**status:**").nth(1)?;
+    let start = after.find('`')? + 1;
+    let end = after[start..].find('`')? + start;
+    let value = after[start..end].trim().to_ascii_lowercase();
+    STATUSES.contains(&value.as_str()).then_some(value)
+}
+
+/// The plan frontmatter `tier` value (contract §4 tier facet,
+/// dashboard-pipeline-wire W01.P01.S02): one of `L1`, `L2`, `L3`, or `L4`,
+/// read from the `tier:` frontmatter key the plan template requires.
+///
+/// A document with no `tier:` key, or a tier outside the four-value enum,
+/// returns `None` — an out-of-enum tier is rejected (truthful absence) rather
+/// than carried through as a bogus facet.
+pub(crate) fn frontmatter_plan_tier(text: &str) -> Option<String> {
+    const TIERS: &[&str] = &["L1", "L2", "L3", "L4"];
+    let rest = text.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    let value = rest[..end].lines().find_map(|line| {
+        let value = line.trim().strip_prefix("tier:")?.trim();
+        let value = value.trim_matches('\'').trim_matches('"').trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })?;
+    TIERS.contains(&value.as_str()).then_some(value)
+}
+
 /// Vault document type from the repo-relative path: the `.vault/<type>/…`
 /// subdirectory (contract §4 `doc_type?`).
 pub(crate) fn doc_type_of(rel_path: &str) -> Option<String> {
@@ -732,6 +1065,59 @@ mod tests {
     }
 
     #[test]
+    fn adr_status_parser_extracts_each_status_and_none_when_absent() {
+        // W01.P01.S03: the H1 status marker the ADR template emits carries one
+        // of the four enum values; the parser reads each, and a status-less
+        // document (or an out-of-enum value) is truthful absence, not a guess.
+        for status in ["proposed", "accepted", "rejected", "deprecated"] {
+            let h1 = format!(
+                "---\ntags:\n  - '#adr'\n---\n\n# `x` adr: `topic` | (**status:** `{status}`)\n\nbody\n"
+            );
+            assert_eq!(
+                frontmatter_adr_status(&h1).as_deref(),
+                Some(status),
+                "extracts the `{status}` H1 status"
+            );
+        }
+        // Case-insensitive on the enum token (templates are lowercase but a
+        // hand-authored `Accepted` must still resolve to the canonical token).
+        let mixed = "# `x` adr: `t` | (**status:** `Accepted`)\n";
+        assert_eq!(frontmatter_adr_status(mixed).as_deref(), Some("accepted"));
+        // No status marker at all → None.
+        let no_status = "---\ntags:\n  - '#adr'\n---\n\n# `x` adr: `topic`\n\nbody\n";
+        assert_eq!(frontmatter_adr_status(no_status), None);
+        // An out-of-enum status token → None (rejected, never carried).
+        let bad = "# `x` adr: `t` | (**status:** `superseded`)\n";
+        assert_eq!(frontmatter_adr_status(bad), None);
+    }
+
+    #[test]
+    fn plan_tier_parser_extracts_each_tier_and_none_when_missing_or_invalid() {
+        // W01.P01.S04: the plan `tier:` frontmatter key carries one of L1-L4;
+        // the parser reads each, and a missing or out-of-enum tier is None.
+        for tier in ["L1", "L2", "L3", "L4"] {
+            let plan = format!("---\ntags:\n  - '#plan'\n  - '#x'\ntier: {tier}\n---\n\nbody\n");
+            assert_eq!(
+                frontmatter_plan_tier(&plan).as_deref(),
+                Some(tier),
+                "extracts the {tier} tier"
+            );
+        }
+        // Quoted value still resolves.
+        let quoted = "---\ntags:\n  - '#plan'\ntier: 'L3'\n---\n\nbody\n";
+        assert_eq!(frontmatter_plan_tier(quoted).as_deref(), Some("L3"));
+        // No tier key → None.
+        let no_tier = "---\ntags:\n  - '#plan'\n  - '#x'\n---\n\nbody\n";
+        assert_eq!(frontmatter_plan_tier(no_tier), None);
+        // Out-of-enum tier → None (rejected).
+        let bad = "---\ntags:\n  - '#plan'\ntier: L9\n---\n\nbody\n";
+        assert_eq!(frontmatter_plan_tier(bad), None);
+        // A tier marker outside the frontmatter fence is ignored.
+        let outside = "---\ntags:\n  - '#plan'\n---\n\ntier: L2 mentioned in prose\n";
+        assert_eq!(frontmatter_plan_tier(outside), None);
+    }
+
+    #[test]
     fn resolution_transitions_never_change_edge_identity() {
         // Audit W02P06-301: identity from mention text alone - a
         // broken-to-resolved transition mutates state, never the edge id.
@@ -760,6 +1146,270 @@ mod tests {
             assert_eq!(broken.id, healed.id, "identity survives resolution");
             assert_ne!(broken.state, healed.state, "state carries the signal");
         }
+    }
+
+    fn write_plan(root: &Path, name: &str, body: &str) {
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(root.join(format!(".vault/plan/{name}")), body).unwrap();
+    }
+
+    const PLAN_BODY_OPEN: &str = "\
+---
+tags:
+  - '#plan'
+  - '#pc'
+tier: L3
+---
+
+# `pc` plan
+
+## Wave `W01` - the wave
+
+### Phase `W01.P01` - the phase
+
+- [ ] `W01.P01.S01` - first step; `src/a.rs`.
+- [ ] `W01.P01.S02` - second step; `src/b.rs`.
+";
+
+    #[test]
+    fn reingesting_a_plan_re_keys_no_existing_step_node_or_edge() {
+        // W03.P07.S38: identity survives re-index. Minting the same plan twice
+        // (the watcher's partial re-ingest path) must converge to the same
+        // node and edge ids — stable keys are plan stem + canonical ids only.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_plan(root, "2026-06-14-pc-plan.md", PLAN_BODY_OPEN);
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+
+        let (g1, _) = index_worktree(root, &scope(), &store, 0).unwrap();
+        // Re-ingest into the SAME graph (idempotent partial re-index path) and
+        // into a FRESH graph; both must carry the identical container ids/edges.
+        let (g2, _) = index_worktree(root, &scope(), &store, 99).unwrap();
+
+        let step1 = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: "2026-06-14-pc-plan",
+            container_id: "W01/P01/S01",
+        });
+        assert!(g1.node(&step1).is_some(), "step container minted");
+        assert!(g2.node(&step1).is_some(), "same step id on re-index");
+
+        // The wave, phase, and both steps exist with their canonical ids.
+        for cid in ["W01", "W01/P01", "W01/P01/S01", "W01/P01/S02"] {
+            let id = node_id(&CanonicalKey::PlanContainer {
+                plan_stem: "2026-06-14-pc-plan",
+                container_id: cid,
+            });
+            assert!(g1.node(&id).is_some(), "container {cid} minted");
+        }
+
+        // The full container node + Contains edge sets are byte-identical
+        // across the two independent indexes — no re-keying, no churn.
+        let containers = |g: &LinkageGraph| {
+            let mut v: Vec<String> = g
+                .nodes()
+                .filter(|n| n.kind == NodeKind::PlanContainer)
+                .map(|n| n.id.0.clone())
+                .collect();
+            v.sort();
+            v
+        };
+        let contains = |g: &LinkageGraph| {
+            let mut v: Vec<String> = g
+                .edges()
+                .filter(|s| s.edge.relation == RelationKind::Contains)
+                .map(|s| s.edge.id.0.clone())
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            containers(&g1),
+            containers(&g2),
+            "node ids stable across re-index"
+        );
+        assert_eq!(
+            contains(&g1),
+            contains(&g2),
+            "Contains edge ids stable across re-index"
+        );
+        assert_eq!(
+            contains(&g1).len(),
+            4,
+            "plan->wave, wave->phase, phase->step x2"
+        );
+    }
+
+    #[test]
+    fn toggling_a_step_checkbox_updates_completion_without_changing_the_step_node_id() {
+        // W03.P07.S39: a `- [ ]` -> `- [x]` toggle changes the step's
+        // completion facet, never its node id (the id is identity-bearing, the
+        // completion lives outside the key).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let step_id = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: "2026-06-14-pc-plan",
+            container_id: "W01/P01/S01",
+        });
+
+        // Open.
+        write_plan(root, "2026-06-14-pc-plan.md", PLAN_BODY_OPEN);
+        let (g_open, _) = index_worktree(root, &scope(), &store, 0).unwrap();
+        let open_node = g_open.node(&step_id).expect("step before toggle");
+        let open_lc = open_node.facets[0].lifecycle.as_ref().unwrap();
+        assert_eq!(open_lc.state, "active", "open step is active");
+        assert_eq!(open_lc.progress.unwrap().done, 0);
+
+        // Toggle S01 closed.
+        let toggled = PLAN_BODY_OPEN.replace("- [ ] `W01.P01.S01`", "- [x] `W01.P01.S01`");
+        write_plan(root, "2026-06-14-pc-plan.md", &toggled);
+        let (g_closed, _) = index_worktree(root, &scope(), &store, 1).unwrap();
+        let closed_node = g_closed.node(&step_id).expect("step after toggle");
+
+        // Same node id (identity stable), changed completion (signal).
+        assert_eq!(open_node.id, closed_node.id, "step node id is unchanged");
+        let closed_lc = closed_node.facets[0].lifecycle.as_ref().unwrap();
+        assert_eq!(closed_lc.state, "complete", "toggled step is complete");
+        assert_eq!(closed_lc.progress.unwrap().done, 1);
+    }
+
+    #[test]
+    fn step_containers_bind_to_their_exec_records() {
+        // W03.P07.S37: a step container binds to its exec-record doc node when
+        // one exists, via an identity-only References edge.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_plan(root, "2026-06-14-pc-plan.md", PLAN_BODY_OPEN);
+        std::fs::create_dir_all(root.join(".vault/exec/2026-06-14-pc")).unwrap();
+        std::fs::write(
+            root.join(".vault/exec/2026-06-14-pc/2026-06-14-pc-W01-P01-S01.md"),
+            "---\ntags:\n  - '#exec'\n  - '#pc'\n---\n\nexec record body\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (g, _) = index_worktree(root, &scope(), &store, 0).unwrap();
+
+        let step_id = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: "2026-06-14-pc-plan",
+            container_id: "W01/P01/S01",
+        });
+        let exec_id = node_id(&CanonicalKey::Document {
+            stem: "2026-06-14-pc-W01-P01-S01",
+        });
+        let bound = g
+            .edges_of(&step_id)
+            .any(|s| s.edge.relation == RelationKind::References && s.edge.dst == exec_id);
+        assert!(bound, "step S01 binds to its exec record");
+        // S02 has no exec record — it binds to none.
+        let step2 = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: "2026-06-14-pc-plan",
+            container_id: "W01/P01/S02",
+        });
+        let unbound = g
+            .edges_of(&step2)
+            .all(|s| s.edge.relation != RelationKind::References);
+        assert!(unbound, "S02 has no exec record, so no binding");
+    }
+
+    #[test]
+    fn a_step_binds_only_to_its_own_plans_exec_record_not_a_sibling_plans() {
+        // Review HIGH-1 regression: two plans share the identical container tail
+        // `W01-P01-S01`. A step must bind ONLY to its own plan's exec record,
+        // never to a sibling plan's exec record carrying the same tail.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_plan(root, "2026-06-14-pc-plan.md", PLAN_BODY_OPEN);
+        write_plan(
+            root,
+            "2026-06-14-qc-plan.md",
+            "---\ntags:\n  - '#plan'\n  - '#qc'\ntier: L3\n---\n\n# `qc` plan\n\n## Wave `W01` - w\n\n### Phase `W01.P01` - p\n\n- [ ] `W01.P01.S01` - first step; `src/a.rs`.\n",
+        );
+        // Each plan owns its exec record, both with the SAME container tail.
+        std::fs::create_dir_all(root.join(".vault/exec/2026-06-14-pc")).unwrap();
+        std::fs::write(
+            root.join(".vault/exec/2026-06-14-pc/2026-06-14-pc-W01-P01-S01.md"),
+            "---\ntags:\n  - '#exec'\n  - '#pc'\n---\n\npc exec\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join(".vault/exec/2026-06-14-qc")).unwrap();
+        std::fs::write(
+            root.join(".vault/exec/2026-06-14-qc/2026-06-14-qc-W01-P01-S01.md"),
+            "---\ntags:\n  - '#exec'\n  - '#qc'\n---\n\nqc exec\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (g, _) = index_worktree(root, &scope(), &store, 0).unwrap();
+
+        let pc_step = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: "2026-06-14-pc-plan",
+            container_id: "W01/P01/S01",
+        });
+        let pc_exec = node_id(&CanonicalKey::Document {
+            stem: "2026-06-14-pc-W01-P01-S01",
+        });
+        let qc_exec = node_id(&CanonicalKey::Document {
+            stem: "2026-06-14-qc-W01-P01-S01",
+        });
+        let refs: Vec<NodeId> = g
+            .edges_of(&pc_step)
+            .filter(|s| s.edge.relation == RelationKind::References)
+            .map(|s| s.edge.dst.clone())
+            .collect();
+        assert!(
+            refs.contains(&pc_exec),
+            "pc step binds to its own exec record"
+        );
+        assert!(
+            !refs.contains(&qc_exec),
+            "pc step must NOT bind to the sibling qc plan's exec record with the same tail"
+        );
+    }
+
+    #[test]
+    fn ingested_adr_and_plan_carry_honest_status_and_tier_facets() {
+        // W01.P03.S15: an ingested ADR carries its real H1 status and a plan
+        // carries its frontmatter tier through to the doc node — the exact
+        // query-time facets the engine-query filter vocabulary enumerates
+        // (statuses/plan_tiers, tested data-driven in engine-query::filter).
+        // engine-graph cannot depend on engine-query (that would be circular),
+        // so the end-to-end assertion lands on the node facets the vocabulary
+        // reads, proving honest extraction from real files through ingest.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/adr/2026-06-14-x-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#x'\n---\n\n# `x` adr: `topic` | (**status:** `accepted`)\n\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-14-x-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#x'\ntier: L3\n---\n\n- [ ] `S01` - do a thing; `src/a.rs`.\n",
+        )
+        .unwrap();
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (graph, _) = index_worktree(root, &scope(), &store, 0).unwrap();
+
+        let adr = graph
+            .node(&node_id(&CanonicalKey::Document {
+                stem: "2026-06-14-x-adr",
+            }))
+            .expect("adr node ingested");
+        assert_eq!(
+            adr.status.as_deref(),
+            Some("accepted"),
+            "ADR carries its real H1 status"
+        );
+        assert_eq!(adr.tier, None, "an ADR carries no plan tier");
+
+        let plan = graph
+            .node(&node_id(&CanonicalKey::Document {
+                stem: "2026-06-14-x-plan",
+            }))
+            .expect("plan node ingested");
+        assert_eq!(plan.tier.as_deref(), Some("L3"), "plan carries its tier");
+        assert_eq!(plan.status, None, "a plan carries no ADR status");
     }
 
     #[test]

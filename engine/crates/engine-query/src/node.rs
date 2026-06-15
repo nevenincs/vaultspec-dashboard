@@ -22,6 +22,260 @@ pub fn node_detail(graph: &LinkageGraph, id: &NodeId) -> Option<NodeDetail> {
     context(graph, id).map(|bundle| NodeDetail { bundle })
 }
 
+// --- Plan-container interior (dashboard-pipeline-wire W03.P08) ----------------
+
+use engine_model::RelationKind;
+
+/// Hard ceiling on the number of plan-container entities serialized in one
+/// interior response (W03.P08.S42 / `graph-queries-are-bounded-by-default`): a
+/// large L4 plan's step tree is a real payload, so the interior is served under
+/// a node ceiling with honest `truncated` reporting, never an unbounded slice.
+/// The count is total entities (waves + phases + steps).
+pub const MAX_PLAN_INTERIOR_NODES: usize = 2000;
+
+/// One interior step entity: its container node id, canonical id, action text,
+/// completion, and the bound exec-record node id where one exists.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InteriorStep {
+    pub node_id: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    pub done: bool,
+    /// The exec-record document node this step binds to, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exec_node_id: Option<String>,
+}
+
+/// One interior phase entity with its ordered steps.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InteriorPhase {
+    pub node_id: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
+    pub steps: Vec<InteriorStep>,
+}
+
+/// One interior wave entity with its ordered phases.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InteriorWave {
+    pub node_id: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
+    pub phases: Vec<InteriorPhase>,
+}
+
+/// Honest truncation block (W03.P08.S42), mirroring the graph-query shape.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InteriorTruncated {
+    pub total_nodes: usize,
+    pub returned_nodes: usize,
+    pub reason: String,
+}
+
+/// The bounded interior of a plan node (W03.P08.S40): the ordered
+/// wave/phase/step entities the plan descends into, at whatever depth the plan
+/// declares, plus an optional truncation block. Tier-shape honest like the
+/// parser: an L1 plan returns flat `steps`, an L2 plan `phases`, L3/L4 `waves`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlanInterior {
+    /// The plan document node this interior belongs to.
+    pub plan_node_id: String,
+    pub waves: Vec<InteriorWave>,
+    pub phases: Vec<InteriorPhase>,
+    pub steps: Vec<InteriorStep>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<InteriorTruncated>,
+}
+
+/// Read one plan-container node's completion from its lifecycle facet (any
+/// scope: a step has one unit of progress). A closed step is `complete`.
+fn container_done(node: &Node) -> bool {
+    node.facets
+        .iter()
+        .find_map(|f| f.lifecycle.as_ref())
+        .map(|l| l.state == "complete")
+        .unwrap_or(false)
+}
+
+/// The exec-record node a step container binds to, if any: a `References` edge
+/// from the step to a `doc:*` node.
+fn exec_binding(graph: &LinkageGraph, step_id: &NodeId) -> Option<String> {
+    graph.edges_of(step_id).find_map(|s| {
+        (s.edge.relation == RelationKind::References && s.edge.src == *step_id)
+            .then(|| s.edge.dst.0.clone())
+    })
+}
+
+/// The canonical leaf id of a plan-container key (`{stem}/W01/P02/S03` -> `S03`).
+fn leaf_id(key: &str) -> &str {
+    key.rsplit('/').next().unwrap_or(key)
+}
+
+/// Children of a container reached over `Contains` edges (src -> dst), as their
+/// container nodes, sorted by key for deterministic ordering.
+fn contained_children<'a>(graph: &'a LinkageGraph, parent: &NodeId) -> Vec<&'a Node> {
+    let mut children: Vec<&Node> = graph
+        .edges_of(parent)
+        .filter(|s| s.edge.relation == RelationKind::Contains && s.edge.src == *parent)
+        .filter_map(|s| graph.node(&s.edge.dst))
+        .collect();
+    children.sort_by(|a, b| a.key.cmp(&b.key));
+    children
+}
+
+/// Project a plan node into its bounded plan-container interior (W03.P08.S41).
+/// Returns `None` for an unknown node or a node that is not a plan document
+/// (truthful absence). Descends the `Contains` hierarchy under a node ceiling;
+/// when the entity count exceeds the ceiling the returned subtree stays
+/// self-consistent (whole waves/phases are kept up to the cap) and the honest
+/// original total is reported.
+pub fn plan_interior(graph: &LinkageGraph, id: &NodeId) -> Option<PlanInterior> {
+    let node = graph.node(id)?;
+    if node.doc_type.as_deref() != Some("plan") {
+        return None;
+    }
+    let mut budget = Budget {
+        remaining: MAX_PLAN_INTERIOR_NODES,
+        total: 0,
+    };
+    let mut interior = PlanInterior {
+        plan_node_id: id.0.clone(),
+        waves: Vec::new(),
+        phases: Vec::new(),
+        steps: Vec::new(),
+        truncated: None,
+    };
+
+    for child in contained_children(graph, id) {
+        let leaf = leaf_id(&child.key);
+        match leaf.chars().next() {
+            Some('W') => {
+                if let Some(wave) = project_wave(graph, child, &mut budget) {
+                    interior.waves.push(wave);
+                }
+            }
+            Some('P') => {
+                if let Some(phase) = project_phase(graph, child, &mut budget) {
+                    interior.phases.push(phase);
+                }
+            }
+            Some('S') => {
+                if let Some(step) = project_step(graph, child, &mut budget) {
+                    interior.steps.push(step);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if budget.total > MAX_PLAN_INTERIOR_NODES {
+        interior.truncated = Some(InteriorTruncated {
+            total_nodes: budget.total,
+            returned_nodes: MAX_PLAN_INTERIOR_NODES - budget.remaining,
+            reason: format!(
+                "plan interior node ceiling ({MAX_PLAN_INTERIOR_NODES}); the \
+                 returned subtree is self-consistent up to the cap — narrow by \
+                 wave or phase"
+            ),
+        });
+    }
+    Some(interior)
+}
+
+/// Descent budget: `remaining` is the live cap, `total` counts every entity the
+/// full tree would contain (so truncation reports an honest original total even
+/// past the cap).
+struct Budget {
+    remaining: usize,
+    total: usize,
+}
+
+impl Budget {
+    /// Account for one entity; returns `true` if it fits within the cap.
+    fn take(&mut self) -> bool {
+        self.total += 1;
+        if self.remaining == 0 {
+            return false;
+        }
+        self.remaining -= 1;
+        true
+    }
+}
+
+fn project_step(graph: &LinkageGraph, node: &Node, budget: &mut Budget) -> Option<InteriorStep> {
+    if !budget.take() {
+        return None;
+    }
+    Some(InteriorStep {
+        node_id: node.id.0.clone(),
+        id: leaf_id(&node.key).to_string(),
+        action: node.title.clone(),
+        done: container_done(node),
+        exec_node_id: exec_binding(graph, &node.id),
+    })
+}
+
+fn project_phase(graph: &LinkageGraph, node: &Node, budget: &mut Budget) -> Option<InteriorPhase> {
+    if !budget.take() {
+        // Count the steps for an honest total even when the phase itself is
+        // past the cap, but keep none (self-consistency: a dropped phase keeps
+        // no orphan steps).
+        for child in contained_children(graph, &node.id) {
+            if leaf_id(&child.key).starts_with('S') {
+                budget.total += 1;
+            }
+        }
+        return None;
+    }
+    let mut steps = Vec::new();
+    for child in contained_children(graph, &node.id) {
+        if leaf_id(&child.key).starts_with('S')
+            && let Some(step) = project_step(graph, child, budget)
+        {
+            steps.push(step);
+        }
+    }
+    Some(InteriorPhase {
+        node_id: node.id.0.clone(),
+        id: leaf_id(&node.key).to_string(),
+        heading: node.title.clone(),
+        steps,
+    })
+}
+
+fn project_wave(graph: &LinkageGraph, node: &Node, budget: &mut Budget) -> Option<InteriorWave> {
+    if !budget.take() {
+        for child in contained_children(graph, &node.id) {
+            if leaf_id(&child.key).starts_with('P') {
+                budget.total += 1;
+                for gc in contained_children(graph, &child.id) {
+                    if leaf_id(&gc.key).starts_with('S') {
+                        budget.total += 1;
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    let mut phases = Vec::new();
+    for child in contained_children(graph, &node.id) {
+        if leaf_id(&child.key).starts_with('P')
+            && let Some(phase) = project_phase(graph, child, budget)
+        {
+            phases.push(phase);
+        }
+    }
+    Some(InteriorWave {
+        node_id: node.id.0.clone(),
+        id: leaf_id(&node.key).to_string(),
+        heading: node.title.clone(),
+        phases,
+    })
+}
+
 /// The lazy ego network: nodes and edges within `depth` hops, optionally
 /// restricted to `tiers` (contract §4 `/nodes/{id}/neighbors`).
 #[derive(Debug, Clone, Serialize)]
@@ -216,6 +470,8 @@ mod tests {
             doc_type: None,
             dates: None,
             feature_tags: vec![],
+            status: None,
+            tier: None,
             facets: vec![Facet {
                 scope: scope(),
                 presence: Presence::Exists,
@@ -358,6 +614,192 @@ mod tests {
         assert_eq!(ev.code_locations[0].state, Some(ResolutionState::Resolved));
         assert_eq!(ev.commits.len(), 1);
         assert_eq!(ev.commits[0].rule, "doc-and-code-in-one-commit");
+    }
+
+    // --- Plan-interior projection (W03.P08.S45/S46) -------------------------
+
+    fn plan_doc(stem: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::Document { stem }),
+            kind: NodeKind::Document,
+            key: stem.into(),
+            title: Some(format!("{stem} title")),
+            doc_type: Some("plan".into()),
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: Some("L3".into()),
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        }
+    }
+
+    fn container(plan_stem: &str, container_id: &str, done: Option<bool>) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::PlanContainer {
+                plan_stem,
+                container_id,
+            }),
+            kind: NodeKind::PlanContainer,
+            key: format!("{plan_stem}/{container_id}"),
+            title: Some(format!("{container_id} title")),
+            doc_type: None,
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: done.map(|d| engine_model::Lifecycle {
+                    state: if d { "complete" } else { "active" }.into(),
+                    progress: Some(engine_model::Progress {
+                        done: u32::from(d),
+                        total: 1,
+                    }),
+                }),
+            }],
+        }
+    }
+
+    fn contains(g: &mut LinkageGraph, parent: &NodeId, child: &NodeId, salt: &str) {
+        let provenance = Provenance::CoreGraph {
+            payload_hash: String::new(),
+            edge_id: salt.into(),
+        };
+        let id = edge_id(
+            parent,
+            child,
+            &RelationKind::Contains,
+            Tier::Declared,
+            &provenance,
+        );
+        engine_graph::ingest(
+            &mut *g,
+            Edge {
+                id,
+                src: parent.clone(),
+                dst: child.clone(),
+                relation: RelationKind::Contains,
+                tier: Tier::Declared,
+                confidence: 1.0,
+                state: None,
+                provenance,
+                scope: scope(),
+                observed_at: 0,
+            },
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_small_plan_interior_returns_whole_with_no_truncated_block() {
+        // W03.P08.S45: a small L3 interior returns the full wave/phase/step
+        // tree with completion, and no truncated block.
+        let mut g = LinkageGraph::new();
+        let stem = "2026-06-14-x-plan";
+        g.upsert_node(plan_doc(stem));
+        g.upsert_node(container(stem, "W01", None));
+        g.upsert_node(container(stem, "W01/P01", None));
+        g.upsert_node(container(stem, "W01/P01/S01", Some(true)));
+        g.upsert_node(container(stem, "W01/P01/S02", Some(false)));
+
+        let plan = node_id(&CanonicalKey::Document { stem });
+        let w = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: stem,
+            container_id: "W01",
+        });
+        let p = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: stem,
+            container_id: "W01/P01",
+        });
+        let s1 = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: stem,
+            container_id: "W01/P01/S01",
+        });
+        let s2 = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: stem,
+            container_id: "W01/P01/S02",
+        });
+        contains(&mut g, &plan, &w, "c1");
+        contains(&mut g, &w, &p, "c2");
+        contains(&mut g, &p, &s1, "c3");
+        contains(&mut g, &p, &s2, "c4");
+
+        let interior = plan_interior(&g, &plan).expect("plan interior");
+        assert!(
+            interior.truncated.is_none(),
+            "small interior is not truncated"
+        );
+        assert_eq!(interior.waves.len(), 1);
+        assert!(interior.phases.is_empty() && interior.steps.is_empty());
+        let wave = &interior.waves[0];
+        assert_eq!(wave.id, "W01");
+        assert_eq!(wave.phases.len(), 1);
+        let phase = &wave.phases[0];
+        assert_eq!(phase.id, "P01");
+        assert_eq!(phase.steps.len(), 2);
+        assert_eq!(phase.steps[0].id, "S01");
+        assert!(phase.steps[0].done, "S01 closed");
+        assert!(!phase.steps[1].done, "S02 open");
+
+        // A non-plan node has no interior (truthful None).
+        assert!(plan_interior(&g, &s1).is_none());
+        assert!(plan_interior(&g, &NodeId("doc:nope".into())).is_none());
+    }
+
+    #[test]
+    fn an_oversized_plan_interior_truncates_at_the_ceiling_and_reports_the_total() {
+        // W03.P08.S46: an interior exceeding the ceiling truncates at the cap,
+        // keeps a self-consistent subtree, and reports the honest original
+        // total. Build one phase with MAX + 100 steps directly under the plan.
+        let mut g = LinkageGraph::new();
+        let stem = "2026-06-14-big-plan";
+        g.upsert_node(plan_doc(stem));
+        let plan = node_id(&CanonicalKey::Document { stem });
+        // One top-level phase (L2 shape) so we can cleanly overflow with steps.
+        g.upsert_node(container(stem, "P01", None));
+        let phase = node_id(&CanonicalKey::PlanContainer {
+            plan_stem: stem,
+            container_id: "P01",
+        });
+        contains(&mut g, &plan, &phase, "cp");
+        let n_steps = MAX_PLAN_INTERIOR_NODES + 100;
+        for i in 0..n_steps {
+            let cid = format!("P01/S{i:04}");
+            g.upsert_node(container(stem, &cid, Some(false)));
+            let s = node_id(&CanonicalKey::PlanContainer {
+                plan_stem: stem,
+                container_id: &cid,
+            });
+            contains(&mut g, &phase, &s, &format!("cs{i}"));
+        }
+
+        let interior = plan_interior(&g, &plan).expect("plan interior");
+        let trunc = interior.truncated.expect("oversized interior truncates");
+        assert_eq!(
+            trunc.returned_nodes, MAX_PLAN_INTERIOR_NODES,
+            "kept exactly the ceiling"
+        );
+        assert_eq!(
+            trunc.total_nodes,
+            1 + n_steps,
+            "honest total: the phase + every step it contains"
+        );
+        // Self-consistent: the returned phase carries exactly the steps that fit
+        // under the cap (phase counts as 1, so MAX-1 steps).
+        assert_eq!(interior.phases.len(), 1);
+        assert_eq!(
+            interior.phases[0].steps.len(),
+            MAX_PLAN_INTERIOR_NODES - 1,
+            "phase keeps cap-minus-one steps; no orphan beyond the cap"
+        );
     }
 
     #[test]

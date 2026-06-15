@@ -481,6 +481,33 @@ pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<Stri
     ))
 }
 
+/// The bounded plan-container interior of a plan node (dashboard-pipeline-wire
+/// W03.P08.S43): serves the interior through the shared envelope helper, so the
+/// tiers block rides success and the unknown-node 404. Serves from the active
+/// scope's live graph like the rest of the /nodes/* family.
+pub async fn node_plan_interior(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult {
+    let cell = state.active_cell();
+    let graph = cell.graph_arc();
+    let interior =
+        engine_query::node::plan_interior(&graph, &NodeId(id.clone())).ok_or_else(|| {
+            // None covers both an unknown node and a node that is not a plan
+            // document — a truthful 404 in either case.
+            super::api_error(
+                &state,
+                StatusCode::NOT_FOUND,
+                format!("no plan interior for node `{id}`"),
+            )
+        })?;
+    Ok(super::envelope(
+        json!({"interior": interior}),
+        rag_tiers(&cell),
+        None,
+    ))
+}
+
 #[derive(Deserialize)]
 pub struct NeighborParams {
     #[serde(default)]

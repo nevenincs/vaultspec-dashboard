@@ -49,6 +49,12 @@ pub enum RelationKind {
     Mentions,
     Touches,
     Resembles,
+    /// Subordinate plan-container hierarchy (dashboard-pipeline-wire W03):
+    /// plan -> wave -> phase -> step. Declared-tier confidence (the structure
+    /// is authored, not inferred); the edge stable key is composed only from
+    /// the endpoint container ids, never a resolution or rule outcome, so
+    /// re-indexing a plan never re-keys an existing containment edge.
+    Contains,
     /// Core's `derived_edges`, ingested as a distinct relation at 0.8 —
     /// never mixed into declared (engine-spec §3).
     CoreDerived,
@@ -198,6 +204,19 @@ pub struct Node {
     /// the join key for feature-convergence synthesis and meta-edge
     /// aggregation.
     pub feature_tags: Vec<String>,
+    /// ADR H1 status (contract §4 status facet, dashboard-pipeline-wire W01):
+    /// one of `proposed`, `accepted`, `rejected`, `deprecated`. A query-time
+    /// facet in the same class as `doc_type` and `dates` — present only on ADR
+    /// nodes whose H1 carries a status marker, absent everywhere else. Makes
+    /// "in-flight ADR" honest (real status, not checkbox-guessed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Plan frontmatter tier (contract §4 tier facet, dashboard-pipeline-wire
+    /// W01): one of `L1`-`L4`. A query-time facet alongside `doc_type` and
+    /// `dates` — present only on plan nodes carrying a `tier:` frontmatter key,
+    /// absent everywhere else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
     pub facets: Vec<Facet>,
 }
 
@@ -217,6 +236,72 @@ mod tests {
         let b = NodeId::derive(&NodeKind::Feature, "editor-demo");
         assert_eq!(a, b);
         assert_eq!(a.0, "feature:editor-demo");
+    }
+
+    #[test]
+    fn node_status_and_tier_round_trip_through_serde() {
+        // W01.P02.S09: an ADR node carries its H1 status and a plan node carries
+        // its tier through serialization; a node with neither omits both fields
+        // (skip_serializing_if), so the wire stays clean for non-ADR/non-plan.
+        let adr = Node {
+            id: NodeId::derive(&NodeKind::Document, "2026-06-12-x-adr"),
+            kind: NodeKind::Document,
+            key: "2026-06-12-x-adr".into(),
+            title: None,
+            doc_type: Some("adr".into()),
+            dates: None,
+            feature_tags: vec!["x".into()],
+            status: Some("accepted".into()),
+            tier: None,
+            facets: vec![],
+        };
+        let json = serde_json::to_string(&adr).unwrap();
+        assert!(
+            json.contains("\"status\":\"accepted\""),
+            "status on the wire"
+        );
+        assert!(!json.contains("\"tier\""), "tier omitted on an ADR node");
+        let back: Node = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, adr);
+
+        let plan = Node {
+            id: NodeId::derive(&NodeKind::Document, "2026-06-12-x-plan"),
+            kind: NodeKind::Document,
+            key: "2026-06-12-x-plan".into(),
+            title: None,
+            doc_type: Some("plan".into()),
+            dates: None,
+            feature_tags: vec!["x".into()],
+            status: None,
+            tier: Some("L3".into()),
+            facets: vec![],
+        };
+        let json = serde_json::to_string(&plan).unwrap();
+        assert!(json.contains("\"tier\":\"L3\""), "tier on the wire");
+        assert!(
+            !json.contains("\"status\""),
+            "status omitted on a plan node"
+        );
+        let back: Node = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, plan);
+
+        // A node carrying neither omits BOTH; deserializing a body without them
+        // defaults to None (serde default), so older payloads still parse.
+        let plain = Node {
+            id: NodeId::derive(&NodeKind::Document, "plain"),
+            kind: NodeKind::Document,
+            key: "plain".into(),
+            title: None,
+            doc_type: None,
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![],
+        };
+        let json = serde_json::to_string(&plain).unwrap();
+        assert!(!json.contains("status") && !json.contains("tier"));
+        assert_eq!(serde_json::from_str::<Node>(&json).unwrap(), plain);
     }
 
     #[test]

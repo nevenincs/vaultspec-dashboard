@@ -73,6 +73,8 @@ mod tests {
             doc_type: None,
             dates: None,
             feature_tags: vec!["demo".into()],
+            status: None,
+            tier: None,
             facets: vec![Facet {
                 scope: ScopeRef::Ref {
                     name: "main".into(),

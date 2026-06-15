@@ -26,6 +26,17 @@ export interface FixtureCorpus {
   /** Dated event log, ts-ascending, seq monotonic from 1. */
   events: EngineEvent[];
   vaultTree: VaultTreeEntry[];
+  /**
+   * The worktree file tree the mock `/file-tree` route serves (dashboard-code-
+   * tree ADR): the ALREADY-ignore-filtered set of repo-relative paths (the live
+   * engine excludes `.git`/build/vendored trees before listing, so the fixture
+   * carries only what a real listing would show). The mock derives ONE directory
+   * level per call from this flat path set, mirroring the live one-level grammar.
+   * Some `src/<feature>/mod.rs` paths map to a `code:` graph node (the structural
+   * tier indexed them — the interlink lights up); others have no node (the quiet
+   * absent-interlink state).
+   */
+  codeTree: string[];
 }
 
 function mulberry32(seed: number): () => number {
@@ -107,12 +118,25 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
       const docId = `doc:${stem}`;
       docIds[docType] = docId;
       const created = startTs + di * DAY;
+      // Status/tier query-time facets (dashboard-pipeline-wire W01): an ADR
+      // carries its H1 status, a plan its frontmatter tier — the exact facets
+      // the live engine extracts and mirrors on doc nodes. Deterministic spread
+      // so the in-flight projection has both included (proposed/accepted, active
+      // plan) and excluded (rejected/deprecated, complete plan) artifacts.
+      const adrStatus =
+        docType === "adr"
+          ? (["proposed", "accepted", "rejected", "deprecated"] as const)[fi % 4]
+          : undefined;
+      const planTier =
+        docType === "plan" ? (["L1", "L2", "L3", "L4"] as const)[fi % 4] : undefined;
       nodes.push({
         id: docId,
         kind: docType,
         doc_type: docType,
         title: `${feature} ${docType}`,
         feature_tags: [feature],
+        ...(adrStatus ? { status: adrStatus } : {}),
+        ...(planTier ? { tier: planTier } : {}),
         dates: { created: iso(created), modified: iso(created + DAY) },
         lifecycle:
           docType === "plan"
@@ -124,6 +148,8 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         path: `.vault/${docType}/${stem}.md`,
         doc_type: docType,
         feature_tags: [feature],
+        ...(adrStatus ? { status: adrStatus } : {}),
+        ...(planTier ? { tier: planTier } : {}),
         dates: { created: iso(created), modified: iso(created + DAY) },
       });
       nextEvent(created, "doc-created", `${stem}.md`, [docId, featureId]);
@@ -269,5 +295,26 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
   events.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
   events.forEach((e, i) => (e.id = `evt-${i + 1}`));
 
-  return { features, nodes, edges, metaEdges, planInteriors, events, vaultTree };
+  // The worktree file tree the mock serves: already ignore-filtered repo-relative
+  // paths (no `.git`/build/vendored noise — the live engine excludes those before
+  // listing). Each feature gets a `src/<feature>/mod.rs` (these MATCH the
+  // `code:src/<feature>/mod.rs` graph nodes built above, so their interlink lights
+  // up) plus a `src/<feature>/helpers.rs` with NO graph node (the quiet absent-
+  // interlink state). Two root files round out a realistic root level.
+  const codeTree: string[] = ["Cargo.toml", "README.md"];
+  for (const feature of features) {
+    codeTree.push(`src/${feature}/mod.rs`);
+    codeTree.push(`src/${feature}/helpers.rs`);
+  }
+
+  return {
+    features,
+    nodes,
+    edges,
+    metaEdges,
+    planInteriors,
+    events,
+    vaultTree,
+    codeTree,
+  };
 }

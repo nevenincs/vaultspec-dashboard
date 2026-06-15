@@ -111,6 +111,7 @@ impl RelationKind {
             RelationKind::Mentions => "mentions",
             RelationKind::Touches => "touches",
             RelationKind::Resembles => "resembles",
+            RelationKind::Contains => "contains",
             RelationKind::CoreDerived => "core-derived",
         }
     }
