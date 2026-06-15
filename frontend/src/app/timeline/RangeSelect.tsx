@@ -94,6 +94,11 @@ let playState: PlayState | null = null;
 let kickRangePlay: (() => void) | null = null;
 
 export function startRangePlay(from: number, to: number, now: number): void {
+  // Play-the-range is a deliberate, eased reveal (the arc-growth fade should
+  // tween across the sweep), NOT a keyboard-instant step — clear the signal so
+  // the reveal animates. Under reduced motion the surface already collapses to a
+  // hard cut downstream; this only governs the keyboard-vs-eased distinction.
+  useTimelineStore.getState().setLastStepInstant(false);
   // Reduced-motion floor (ADR): swap the animated sweep for an instant jump to
   // the range end — the network is shown grown, with no per-frame animation.
   if (prefersReducedMotion()) {
@@ -195,6 +200,8 @@ export function RangeSelect() {
   const clearRange = () => {
     stopRangePlay();
     setDateRange({});
+    // Returning to LIVE is an eased re-anchor, not a keyboard step.
+    useTimelineStore.getState().setLastStepInstant(false);
     movePlayhead("live");
   };
 

@@ -16,7 +16,14 @@
 //    doubles, so the mark a11y contract is proven against reality.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { gateFamily } from "../../scene/field/markGate";
@@ -162,7 +169,9 @@ function resetTimeline() {
   cleanup();
   queryClient.clear();
   useViewStore.getState().setScope(null);
+  useViewStore.getState().setTimelineMode({ kind: "live" });
   useTimelineStore.getState().setHoveredNode(null);
+  useTimelineStore.getState().setLastStepInstant(false);
   useDegradationStore.getState().clearOverrides();
   engineClient.useTransport((input, init) => fetch(input, init));
   vi.restoreAllMocks();
@@ -318,6 +327,120 @@ describe("reduced-motion instant behaviour (S66)", () => {
       for (const mark of marks) {
         expect(mark.className).toMatch(/transition-\[color,opacity\]/);
       }
+    });
+  });
+});
+
+// =============================================================================
+// arc-growth reveal: keyboard steps are instant, drag/play scrubs ease
+// =============================================================================
+//
+// The animated arc-growth reveal fades lineage nodes/arcs in as the playhead time
+// T crosses their birth. The ADR motion grammar makes a KEYBOARD-initiated step a
+// HARD CUT ("keyboard-initiated steps are instant — never animate"), while a
+// pointer-drag scrub and a play-the-range sweep are deliberate EASED reveals. The
+// surface reads `useTimelineStore.lastStepInstant` (set true by the keyboard
+// handlers, false by drag/play/return-to-live) and, with the OS motion floor,
+// derives a `revealInstant` that (a) hard-cuts the reveal fade data and (b) drops
+// the mark/arc OPACITY transition so the reveal does not tween on a keyboard step.
+
+describe("arc-growth reveal: keyboard-instant vs eased scrub", () => {
+  beforeEach(() => {
+    engineClient.useTransport(new MockEngine().fetchImpl);
+    useViewStore.getState().setScope(MOCK_SCOPE);
+    // A scale that fits the corpus week (research 01-05 … audit 01-09) inside the
+    // 800px viewport so consecutive pipeline docs AND the arcs between them are
+    // CO-VISIBLE (an arc resolves only when both endpoints are positioned), which
+    // the fine same-day `dockOn` does not guarantee.
+    const pxPerMs = 700 / (7 * DAY);
+    const scrollOffset = timeToStripX(CORPUS_RESEARCH - DAY, 0, pxPerMs);
+    useTimelineStore.getState().setPxPerMs(pxPerMs);
+    useTimelineStore.getState().setScrollOffset(Math.max(0, scrollOffset));
+  });
+  afterEach(resetTimeline);
+
+  // Time-travel a few days past the corpus research doc's birth so the early
+  // pipeline docs AND the arcs between them are REVEALED (both endpoints' birth
+  // instants crossed) — the regime where the keyboard-vs-eased distinction and
+  // the under-gate arc flag are observable.
+  function timeTravelPastResearch() {
+    useViewStore
+      .getState()
+      .setTimelineMode({ kind: "time-travel", at: CORPUS_RESEARCH + 5 * DAY });
+  }
+
+  it("hard-cuts the reveal on a keyboard step: no opacity transition on marks/arcs", async () => {
+    renderTimeline();
+    const marks = await screen.findAllByRole("button", { name: /lineage degree/i });
+    // A keyboard step: time-travel the playhead AND raise the keyboard-instant
+    // signal, exactly as the Playhead keyboard handler does (set true, then move).
+    act(() => {
+      useTimelineStore.getState().setLastStepInstant(true);
+      timeTravelPastResearch();
+    });
+    await waitFor(() => {
+      for (const mark of marks) {
+        // The OPACITY tween is dropped (reveal is a cut); color still eases so the
+        // mark keeps `transition-colors`, never `transition-[color,opacity]`.
+        expect(mark.className).not.toMatch(/transition-\[color,opacity\]/);
+        expect(mark.className).toMatch(/transition-colors/);
+      }
+    });
+    // The revealed arcs (under the gate) also drop their opacity transition class.
+    const arcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
+    expect(arcs.length).toBeGreaterThan(0);
+    for (const arc of arcs) {
+      expect(arc.getAttribute("class") ?? "").not.toMatch(/transition-opacity/);
+    }
+  });
+
+  it("eases the reveal on a pointer-drag scrub: marks/arcs keep the opacity transition", async () => {
+    renderTimeline();
+    const marks = await screen.findAllByRole("button", { name: /lineage degree/i });
+    // A drag scrub: time-travel the playhead with the keyboard-instant signal
+    // CLEARED, exactly as the drag handler does (set false on grab/move, then move).
+    act(() => {
+      useTimelineStore.getState().setLastStepInstant(false);
+      timeTravelPastResearch();
+    });
+    await waitFor(() => {
+      for (const mark of marks) {
+        // The reveal eases: the mark carries the full color+opacity transition.
+        expect(mark.className).toMatch(/transition-\[color,opacity\]/);
+      }
+    });
+    // The revealed arcs keep their opacity transition class (the eased fade).
+    const arcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
+    expect(arcs.length).toBeGreaterThan(0);
+    expect(
+      arcs.some((arc) => /transition-opacity/.test(arc.getAttribute("class") ?? "")),
+    ).toBe(true);
+  });
+
+  it("marks the under-gate arcs with data-arc-gated in time-travel (not in LIVE)", async () => {
+    renderTimeline();
+    await screen.findAllByRole("button", { name: /lineage degree/i });
+    // LIVE (ungated): no arc carries the time-travel gate attribute.
+    act(() => {
+      useTimelineStore.getState().setLastStepInstant(false);
+      useViewStore.getState().setTimelineMode({ kind: "live" });
+    });
+    await waitFor(() => {
+      const liveArcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
+      expect(liveArcs.length).toBeGreaterThan(0);
+      for (const arc of liveArcs) {
+        expect(arc.getAttribute("data-arc-gated")).toBeNull();
+      }
+    });
+    // Time-travel: the revealed arcs are flagged as under the reveal gate.
+    act(() => {
+      timeTravelPastResearch();
+    });
+    await waitFor(() => {
+      const ttArcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
+      expect(ttArcs.some((arc) => arc.getAttribute("data-arc-gated") === "true")).toBe(
+        true,
+      );
     });
   });
 });

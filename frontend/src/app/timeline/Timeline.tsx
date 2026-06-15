@@ -211,6 +211,18 @@ interface TimelineState {
   // --- hovered-node view state (S27) ---
   hoveredNodeId: string | null;
   setHoveredNode: (hoveredNodeId: string | null) => void;
+  // --- last-playhead-move-was-keyboard signal (arc-growth motion grammar) ---
+  /**
+   * Whether the LAST playhead move was a keyboard/discrete step. The motion
+   * grammar makes keyboard-initiated steps a HARD CUT (never animate), so the
+   * arc-growth reveal reads this transient to collapse its fade to an instant
+   * cut on a keyboard step while still EASING on a pointer-drag scrub or a
+   * play-the-range sweep (both deliberate, state-communicating animations). It
+   * is a per-move signal the playhead writers set true (keyboard) or false
+   * (drag / play / return-to-live); the reveal memo reads it. Default false.
+   */
+  lastStepInstant: boolean;
+  setLastStepInstant: (lastStepInstant: boolean) => void;
 }
 
 export const useTimelineStore = create<TimelineState>((set) => ({
@@ -232,6 +244,8 @@ export const useTimelineStore = create<TimelineState>((set) => ({
     })),
   hoveredNodeId: null,
   setHoveredNode: (hoveredNodeId) => set({ hoveredNodeId }),
+  lastStepInstant: false,
+  setLastStepInstant: (lastStepInstant) => set({ lastStepInstant }),
 }));
 
 // --- pure render-prep helpers (unit-testable, no DOM) ----------------------------
@@ -260,6 +274,16 @@ const RECEDE_ALPHA = 0.22;
  * which cannot exist before both their documents do, are hidden until revealed.
  */
 const PRE_BIRTH_ALPHA = 0.06;
+
+/**
+ * The stable UNGATED reveal sentinel (LIVE mode): a single frozen empty map
+ * shared across renders so the reveal does not rebuild an O(nodes)/O(arcs) map on
+ * unrelated `timelineMode` identity changes while LIVE reveals everything anyway.
+ * Both the node lookup (`revealOf`) and the arc draw fall back to fully-revealed
+ * on a map miss, so an empty map IS "reveal everything" — LIVE correctness is
+ * preserved with no per-node work.
+ */
+const UNGATED_REVEAL: ReadonlyMap<string, RevealState> = new Map();
 
 /** The instant a node's mark is positioned at (blob-true creation), or null. */
 export function nodeInstant(node: LineageNode): number | null {
@@ -488,21 +512,35 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   // reduced motion the eased fade collapses to an instant cut.
   const timelineMode = useViewStore((s) => s.timelineMode);
   const ungated = isUngated(timelineMode);
+  // The last playhead move's instant signal (arc-growth motion grammar): a
+  // keyboard/discrete step is a HARD CUT (ADR: "keyboard-initiated steps are
+  // instant — never animate"), while a pointer-drag scrub or a play-the-range
+  // sweep EASES. The reveal is instant when reduced-motion is on OR the last move
+  // was a keyboard step.
+  const lastStepInstant = useTimelineStore((s) => s.lastStepInstant);
+  const revealInstant = reducedMotion || lastStepInstant;
+  // LIVE short-circuit (avoid recompute churn): in LIVE every in-range item is
+  // fully revealed, so the reveal is a single shared ungated sentinel rather than
+  // an O(nodes)/O(arcs) map rebuilt on unrelated `timelineMode` identity changes.
+  // The lookups below fall back to fully-revealed, so an empty map reveals
+  // everything (LIVE correctness preserved).
   const nodeReveal = useMemo(() => {
+    if (ungated) return UNGATED_REVEAL;
     const T = revealTimeFor(timelineMode, Date.now());
     return revealNodes(
       nodes.map((n) => ({ id: n.id, bornMs: nodeInstant(n) })),
-      { T, instant: reducedMotion, ungated },
+      { T, instant: revealInstant, ungated },
     );
-  }, [nodes, timelineMode, reducedMotion, ungated]);
+  }, [nodes, timelineMode, revealInstant, ungated]);
   const arcReveal = useMemo(() => {
+    if (ungated) return UNGATED_REVEAL;
     const T = revealTimeFor(timelineMode, Date.now());
     return revealArcs(
       arcInputs.map((a) => ({ id: a.id, src: a.src, dst: a.dst })),
       nodeReveal,
-      { T, instant: reducedMotion, ungated },
+      { T, instant: revealInstant, ungated },
     );
-  }, [arcInputs, nodeReveal, timelineMode, reducedMotion, ungated]);
+  }, [arcInputs, nodeReveal, timelineMode, revealInstant, ungated]);
   const revealOf = useMemo(
     () =>
       (id: string): RevealState =>
@@ -565,6 +603,18 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     }
     return byNode;
   }, [arcInputs, nodeNameOf]);
+
+  // Mark transition class (arc-growth motion grammar): the mark tweens both COLOR
+  // (hover/ego) and OPACITY (the reveal fade). When the reveal is a hard cut from
+  // a keyboard step (revealInstant but motion allowed) we drop OPACITY from the
+  // transition so the reveal is an instant cut, while color (hover) still eases.
+  // Under reduced motion nothing transitions (the app-wide motion floor). On a
+  // pointer-drag scrub / play-the-range sweep both ease.
+  const markTransitionClass = reducedMotion
+    ? ""
+    : revealInstant
+      ? "transition-colors duration-ui-fast ease-settle"
+      : "transition-[color,opacity] duration-ui-fast ease-settle";
 
   const noHistory =
     !loading &&
@@ -630,14 +680,19 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 strokeLinecap="round"
                 opacity={base * fade}
                 className={
-                  reducedMotion
+                  // The arc paint is opacity-only, so the whole transition class
+                  // is the reveal/ego OPACITY tween: drop it when the reveal is a
+                  // hard cut (reduced-motion OR a keyboard-initiated step — ADR
+                  // "keyboard-initiated steps are instant"); keep it when a
+                  // pointer-drag scrub or play-the-range sweep is easing.
+                  revealInstant
                     ? undefined
                     : "transition-opacity duration-ui-fast ease-settle"
                 }
                 data-timeline-arc
                 data-arc-tier={t.tier}
                 data-arc-recede={inEgo ? undefined : "true"}
-                data-arc-revealed={reveal && !ungated ? "true" : undefined}
+                data-arc-gated={reveal && !ungated ? "true" : undefined}
               >
                 <title>{arc.label}</title>
               </path>
@@ -718,11 +773,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 onMouseLeave={() => setHoveredNode(null)}
                 onFocus={() => setHoveredNode(node.id)}
                 onBlur={() => setHoveredNode(null)}
-                className={`pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-vs-sm text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                  reducedMotion
-                    ? ""
-                    : "transition-[color,opacity] duration-ui-fast ease-settle"
-                }`}
+                className={`pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-vs-sm text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${markTransitionClass}`}
                 style={{
                   left: `${x}px`,
                   top: `${y}px`,

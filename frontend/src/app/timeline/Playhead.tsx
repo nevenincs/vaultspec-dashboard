@@ -144,10 +144,19 @@ export function Playhead() {
     const onDown = (e: PointerEvent) => {
       if (!(e.target as HTMLElement).closest("[data-playhead-grip]")) return;
       dragging.current = true;
+      // A drag is an eased scrub, never an instant step — clear the signal at
+      // grab time so the reveal eases from the first move (arc-growth grammar).
+      useTimelineStore.getState().setLastStepInstant(false);
       e.preventDefault();
     };
     const onMove = (e: PointerEvent) => {
-      if (dragging.current) movePlayhead(toPlayhead(e));
+      if (dragging.current) {
+        // A pointer-drag scrub is a deliberate, eased reveal — NOT an instant
+        // step (arc-growth motion grammar): clear the keyboard-instant signal so
+        // the reveal fade tweens across the drag.
+        useTimelineStore.getState().setLastStepInstant(false);
+        movePlayhead(toPlayhead(e));
+      }
     };
     const onUp = () => {
       dragging.current = false;
@@ -195,6 +204,11 @@ export function Playhead() {
         return;
     }
     e.preventDefault();
+    // A keyboard-initiated step is a HARD CUT (ADR motion grammar: "keyboard-
+    // initiated steps are instant — never animate"): signal it so the arc-growth
+    // reveal collapses its fade to an instant cut for this move. Set before the
+    // shared-state write so the reveal memo recomputes with the signal already up.
+    useTimelineStore.getState().setLastStepInstant(true);
     movePlayhead(next);
   };
 
@@ -230,7 +244,13 @@ export function Playhead() {
       />
       <button
         type="button"
-        onClick={() => movePlayhead("live")}
+        onClick={() => {
+          // Returning to LIVE re-docks at the present — an eased re-anchor, not a
+          // keyboard step: clear the instant signal so a subsequent drag/play eases
+          // (LIVE is ungated regardless, so this only governs the next move).
+          useTimelineStore.getState().setLastStepInstant(false);
+          movePlayhead("live");
+        }}
         aria-label={
           reconnecting
             ? "reconnecting to the live stream"
@@ -298,7 +318,11 @@ export function TimeTravelChip() {
       <button
         type="button"
         className="inline-flex items-center gap-vs-1 rounded-vs-sm px-vs-1 underline transition-colors duration-ui-fast ease-settle hover:text-state-live focus-visible:no-underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        onClick={() => movePlayhead("live")}
+        onClick={() => {
+          // Eased re-anchor to LIVE (not a keyboard step) — clear the signal.
+          useTimelineStore.getState().setLastStepInstant(false);
+          movePlayhead("live");
+        }}
       >
         <RotateCcw size={10} aria-hidden />
         return to live
