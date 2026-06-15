@@ -31,12 +31,16 @@ const liveSchemaEnvelope = {
     settings: [
       {
         key: "theme",
-        value_type: { type: "enum", members: ["system", "light", "dark", "high-contrast"] },
+        value_type: {
+          type: "enum",
+          members: ["system", "light", "dark", "high-contrast"],
+        },
         default: "system",
         scope_eligible: false,
         control: "segmented",
         label: "Theme",
-        description: "Color theme for the dashboard. System follows your OS appearance.",
+        description:
+          "Color theme for the dashboard. System follows your OS appearance.",
         group: "Appearance",
         order: 1,
       },
@@ -96,7 +100,11 @@ describe("adaptSettingsSchema (live schema sample)", () => {
   });
 
   it("tolerates a sparse / malformed body without throwing (tolerant adapter)", () => {
-    expect(adaptSettingsSchema(undefined)).toEqual({ settings: [], groups: [], tiers: {} });
+    expect(adaptSettingsSchema(undefined)).toEqual({
+      settings: [],
+      groups: [],
+      tiers: {},
+    });
     expect(adaptSettingsSchema({})).toEqual({ settings: [], groups: [], tiers: {} });
     // An unknown control kind degrades to `text`; a malformed value_type degrades
     // to a permissive string; a def missing its key is dropped.
@@ -139,9 +147,11 @@ describe("MockEngine settings schema parity", () => {
     const client = clientOn(new MockEngine());
 
     // unknown key
-    await expect(client.putSettings({ key: "nope", value: "x" })).rejects.toMatchObject({
-      status: 400,
-    });
+    await expect(client.putSettings({ key: "nope", value: "x" })).rejects.toMatchObject(
+      {
+        status: 400,
+      },
+    );
     const unknown = await client
       .putSettings({ key: "nope", value: "x" })
       .catch((e: unknown) => e as EngineError);
@@ -172,7 +182,9 @@ describe("MockEngine settings schema parity", () => {
 // --- effective-value selector ---------------------------------------------------
 
 describe("settings effective-value resolution", () => {
-  const schema: SettingsSchema = adaptSettingsSchema(unwrapEnvelope(liveSchemaEnvelope));
+  const schema: SettingsSchema = adaptSettingsSchema(
+    unwrapEnvelope(liveSchemaEnvelope),
+  );
   const themeDef = schema.settings.find((s) => s.key === "theme")!;
   const sliderDef = schema.settings.find((s) => s.key === "node_label_scale")!;
 
@@ -183,7 +195,11 @@ describe("settings effective-value resolution", () => {
   });
 
   it("prefers the global value over the default", () => {
-    const settings: SettingsState = { global: { theme: "dark" }, scoped: {}, tiers: {} };
+    const settings: SettingsState = {
+      global: { theme: "dark" },
+      scoped: {},
+      tiers: {},
+    };
     const eff = resolveEffective(themeDef, settings, MOCK_SCOPE);
     expect(eff.value).toBe("dark");
     expect(eff.provenance).toBe("global");
@@ -216,6 +232,9 @@ describe("settings effective-value resolution", () => {
   it("groups and orders settings per the engine-declared schema", () => {
     const groups = resolveSettings(schema, undefined, MOCK_SCOPE);
     expect(groups.map((g) => g.name)).toEqual(["Appearance", "Graph"]);
-    expect(groups[0].settings.map((s) => s.def.key)).toEqual(["theme", "reduce_motion"]);
+    expect(groups[0].settings.map((s) => s.def.key)).toEqual([
+      "theme",
+      "reduce_motion",
+    ]);
   });
 });

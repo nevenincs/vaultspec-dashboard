@@ -99,7 +99,11 @@ function mockValidateSetting(key: string, value: string, scoped: boolean): strin
   }
   const vt = def.value_type;
   const bad = (reason: string): never => {
-    throw new RouteError(400, `invalid value for \`${key}\`: ${reason}`, "invalid_value");
+    throw new RouteError(
+      400,
+      `invalid value for \`${key}\`: ${reason}`,
+      "invalid_value",
+    );
   };
   switch (vt.type) {
     case "enum":
