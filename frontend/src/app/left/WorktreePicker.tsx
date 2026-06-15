@@ -117,9 +117,12 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     );
   }
 
-  if (map.isError) {
+  if (map.isError && !availability.degraded) {
     // Error: a genuine /map failure — contained and non-alarming, scoped to the
-    // control, distinct from a tiers-reported degradation. The 8s error-state
+    // control, distinct from a tiers-reported degradation. A tiers-bearing failure
+    // (a backend tier reported down) is degradation, so it falls through to the
+    // designed degraded banner below; only a tiers-less transport fault renders
+    // this error state (degradation-is-read-from-tiers). The 8s error-state
     // refetch (useWorkspaceMap) self-heals the picker after engine startup
     // without a page reload, so the retry is a manual nudge, not the only path.
     return (

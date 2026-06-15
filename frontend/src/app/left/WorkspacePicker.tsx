@@ -92,9 +92,12 @@ export function WorkspacePicker({
     );
   }
 
-  if (workspaces.isError) {
+  if (workspaces.isError && !availability.degraded) {
     // Error: a genuine /workspaces failure — contained and non-alarming, scoped
-    // to the control, distinct from a tiers-reported degradation. The 8s error-
+    // to the control, distinct from a tiers-reported degradation. A tiers-bearing
+    // failure (a backend tier reported down) is degradation, so it falls through
+    // to the designed degraded banner below; only a tiers-less transport fault
+    // renders this error state (degradation-is-read-from-tiers). The 8s error-
     // state refetch (useWorkspaces) self-heals after engine startup; the retry is
     // a manual nudge, not the only path.
     return (
@@ -196,6 +199,26 @@ export function WorkspacePicker({
       }
     };
 
+  // Degraded: a tier the engine reports unavailable renders as a designed
+  // degraded banner with the reason in copy tone — read through the stores
+  // selector, never the raw tiers. Shared by the single-root header and the
+  // multi-root control so a tiers-bearing failure (which falls through the error
+  // guard above) is never silently dropped (degradation-is-read-from-tiers).
+  const degradedBanner = availability.degraded ? (
+    <p
+      className="mt-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
+      role="status"
+      aria-live="polite"
+      data-workspace-degraded
+    >
+      the project list is partly unavailable right now
+      {availability.degradedTiers.map((t) => availability.reasons[t]).find(Boolean)
+        ? ` — ${availability.degradedTiers.map((t) => availability.reasons[t]).find(Boolean)}`
+        : ""}
+      . showing what loaded.
+    </p>
+  ) : null;
+
   // The add-a-project affordance + the transient status line, shared by the
   // header (single root) and the expanded control forms.
   const addAffordance = (
@@ -289,6 +312,7 @@ export function WorkspacePicker({
             </span>
           )}
         </div>
+        {degradedBanner}
         {addAffordance}
       </div>
     );
@@ -336,22 +360,9 @@ export function WorkspacePicker({
       </button>
 
       {/* Degraded: a tier the engine reports unavailable renders as a designed
-          degraded banner with the reason in copy tone — read through the stores
-          selector, never the raw tiers. */}
-      {availability.degraded && (
-        <p
-          className="mt-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
-          role="status"
-          aria-live="polite"
-          data-workspace-degraded
-        >
-          the project list is partly unavailable right now
-          {availability.degradedTiers.map((t) => availability.reasons[t]).find(Boolean)
-            ? ` — ${availability.degradedTiers.map((t) => availability.reasons[t]).find(Boolean)}`
-            : ""}
-          . showing what loaded.
-        </p>
-      )}
+          degraded banner — read through the stores selector, never the raw
+          tiers. Shared with the single-root header path. */}
+      {degradedBanner}
 
       {expanded && (
         <ul

@@ -120,6 +120,52 @@ describe("CodeTree surface states + lazy expansion + selection join (P04.S15)", 
     expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
   });
 
+  // F-M2 degradation-honesty: a FAILED root-level request whose error envelope
+  // carries a tiers block reporting a tier down is DEGRADATION, not a transport
+  // error. The designed degraded state must win over the generic error banner; a
+  // failure with NO tiers must still render the error banner.
+  it("renders the degraded state (not the error banner) when a tiers-bearing failure reports a tier down", async () => {
+    engineClient.useTransport(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: "structural tier down",
+            tiers: {
+              structural: { available: false, reason: "worktree not listable" },
+            },
+          }),
+          // 500 (not the realistic-but-retryable 503) so the query settles in
+          // one tick: the tiers block's presence — not the status code — is what
+          // drives degradation, and every error envelope carries tiers.
+          { status: 500, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderTree();
+    await waitFor(() => {
+      const degraded = document.querySelector("[data-code-degraded]");
+      expect(degraded).toBeTruthy();
+      expect(degraded?.textContent).toMatch(/no code tree/i);
+      expect(degraded?.textContent).toMatch(/worktree not listable/);
+    });
+    // The error banner must NOT have won the early return.
+    expect(document.querySelector("[data-code-error]")).toBeNull();
+    expect(screen.queryByText(/code tree unavailable/i)).toBeNull();
+  });
+
+  it("still renders the error banner on a tiers-less transport failure", async () => {
+    engineClient.useTransport(() =>
+      Promise.resolve(new Response("boom", { status: 500 })),
+    );
+    renderTree();
+    await waitFor(() => {
+      expect(screen.getByText(/code tree unavailable/i)).toBeTruthy();
+    });
+    expect(document.querySelector("[data-code-error]")).toBeTruthy();
+    expect(document.querySelector("[data-code-degraded]")).toBeNull();
+  });
+
   // --- lazy one-level-per-directory expansion -------------------------------------
 
   it("fetches a directory's children only on first expansion (lazy, one level per call)", async () => {

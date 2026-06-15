@@ -113,10 +113,13 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     );
   }
 
-  if (rootLevel.isError) {
+  if (rootLevel.isError && !availability.degraded) {
     // Error: a genuine /file-tree failure — contained, region-scoped, with retry,
     // distinguished from degradation so the user can tell "this read failed" from
-    // "a backend is down" (ADR "States").
+    // "a backend is down" (ADR "States"). A tiers-bearing failure (a backend tier
+    // reported down) is degradation, not a transport error, so it falls through to
+    // the designed degraded state below — only a tiers-less transport fault renders
+    // this error state (degradation-is-read-from-tiers).
     return (
       <div
         className="space-y-vs-1 px-vs-1 py-vs-0-5"

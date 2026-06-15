@@ -228,10 +228,13 @@ export function VaultBrowser({
     );
   }
 
-  if (tree.isError) {
+  if (tree.isError && !availability.degraded) {
     // Error: a genuine /vault-tree failure — contained and non-alarming, scoped
     // to the browser region and distinguished from degradation so the user can
-    // tell "this read failed" from "a backend is down".
+    // tell "this read failed" from "a backend is down". A tiers-bearing failure
+    // (a backend tier reported down) is degradation, not a transport error, so
+    // it falls through to the designed degraded banner below — only a tiers-less
+    // transport fault renders this error state (degradation-is-read-from-tiers).
     return (
       <div className="space-y-vs-1 px-vs-1 py-vs-0-5" role="status" aria-live="polite">
         <p className="text-label text-state-broken">vault tree unavailable</p>

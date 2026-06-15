@@ -103,6 +103,54 @@ describe("VaultBrowser surface states + a11y (S21)", () => {
     expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
   });
 
+  // F-M2 degradation-honesty: a FAILED request whose error envelope carries a
+  // tiers block reporting a tier down is DEGRADATION, not a transport error.
+  // The designed degraded banner must win over the generic error banner; a
+  // failure with NO tiers must still render the error banner.
+  it("renders the degraded banner (not the error banner) when a tiers-bearing failure reports a tier down", async () => {
+    // A non-ok response whose body carries a tiers block with a tier marked
+    // unavailable — a backend tier is down, the engine answered the failure
+    // truthfully. EngineError.tiers is defined, so availability.degraded is true.
+    engineClient.useTransport(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: "structural tier down",
+            tiers: {
+              structural: { available: false, reason: "index rebuilding" },
+            },
+          }),
+          // 500 (not the realistic-but-retryable 503) so the query settles in
+          // one tick: the tiers block's presence — not the status code — is what
+          // drives degradation, and every error envelope carries tiers.
+          { status: 500, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderBrowser();
+    await waitFor(() => {
+      const banner = document.querySelector("[data-vault-degraded]");
+      expect(banner).toBeTruthy();
+      expect(banner?.textContent).toMatch(/index rebuilding/);
+    });
+    // The error banner must NOT have won the early return.
+    expect(screen.queryByText(/vault tree unavailable/i)).toBeNull();
+  });
+
+  it("still renders the error banner on a tiers-less transport failure", async () => {
+    // A non-ok response with no tiers envelope — a genuine transport fault, not
+    // a reported tier outage. EngineError.tiers is undefined → not degraded.
+    engineClient.useTransport(() =>
+      Promise.resolve(new Response("boom", { status: 500 })),
+    );
+    renderBrowser();
+    await waitFor(() => {
+      expect(screen.getByText(/vault tree unavailable/i)).toBeTruthy();
+    });
+    expect(document.querySelector("[data-vault-degraded]")).toBeNull();
+  });
+
   // The single linear nav list: every navigable button (group disclosure
   // headers AND tree rows) in DOM order. Headers carry aria-expanded; rows
   // carry a `.vault/` title — the two together are the roving list.

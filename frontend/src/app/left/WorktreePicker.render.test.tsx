@@ -151,6 +151,51 @@ describe("WorktreePicker surface states + a11y (S30)", () => {
     expect(screen.getByRole("button", { name: /worktree scope/i })).toBeTruthy();
   });
 
+  // F-M2 degradation-honesty: a FAILED /map request whose error envelope carries
+  // a tiers block reporting a tier down is DEGRADATION, not a transport error.
+  // The designed degraded banner must win over the generic error banner; a
+  // failure with NO tiers must still render the error banner.
+  it("renders the degraded banner (not the error banner) when a tiers-bearing map failure reports a tier down", async () => {
+    engineClient.useTransport(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: "structural tier down",
+            tiers: {
+              structural: { available: false, reason: "git index locked" },
+            },
+          }),
+          // 500 (not the realistic-but-retryable 503) so the query settles in
+          // one tick: the tiers block's presence — not the status code — is what
+          // drives degradation, and every error envelope carries tiers.
+          { status: 500, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderPicker();
+    await waitFor(() => {
+      const banner = document.querySelector("[data-worktree-degraded]");
+      expect(banner).toBeTruthy();
+      expect(banner?.textContent).toMatch(/git index locked/);
+    });
+    // The error banner must NOT have won the early return.
+    expect(document.querySelector("[data-worktree-error]")).toBeNull();
+    expect(screen.queryByText(/workspace map unavailable/i)).toBeNull();
+  });
+
+  it("still renders the error banner on a tiers-less map transport failure", async () => {
+    engineClient.useTransport(() =>
+      Promise.resolve(new Response("boom", { status: 500 })),
+    );
+    renderPicker();
+    await waitFor(() => {
+      expect(screen.getByText(/workspace map unavailable/i)).toBeTruthy();
+    });
+    expect(document.querySelector("[data-worktree-error]")).toBeTruthy();
+    expect(document.querySelector("[data-worktree-degraded]")).toBeNull();
+  });
+
   it("switches scope wholesale via the keyboard (Enter on a corpus row)", async () => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     // Start parked on a DIFFERENT scope with residue, so the keyboard switch to

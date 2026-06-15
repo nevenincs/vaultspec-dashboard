@@ -164,6 +164,38 @@ describe("WorkspacePicker honest states + add-a-project refusal (S18)", () => {
     expect(screen.queryByText(/projects unavailable/i)).toBeNull();
   });
 
+  it("renders the degraded banner (not the error banner) when a tiers-bearing failure reports a tier down", async () => {
+    // F-M2 degradation-honesty: a FAILED /workspaces whose error envelope carries
+    // a tiers block reporting a tier down is DEGRADATION, not a transport error —
+    // the degraded banner must win over the generic error banner
+    // (degradation-is-read-from-tiers). 500 (not the realistic-but-retryable 503)
+    // so the query settles in one tick: the tiers block's presence — not the
+    // status code — is what drives degradation, and every error envelope carries
+    // tiers.
+    engineClient.useTransport(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: "structural tier down",
+            tiers: {
+              structural: { available: false, reason: "git index locked" },
+            },
+          }),
+          { status: 500, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    renderPicker();
+    await waitFor(() => {
+      const banner = document.querySelector("[data-workspace-degraded]");
+      expect(banner).toBeTruthy();
+      expect(banner?.textContent).toMatch(/git index locked/);
+    });
+    // The error banner must NOT have won the early return.
+    expect(screen.queryByText(/projects unavailable/i)).toBeNull();
+  });
+
   it("surfaces the add-a-project validation refusal as a non-silent status line", async () => {
     // The mock's REAL PUT /session register validation 400s a `bad`-prefixed
     // path (the same tiered refusal the live route emits for an unregistrable
