@@ -12,7 +12,6 @@ import { useState } from "react";
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
 import type { ThemePreference } from "../platform/theme/themeController";
-import { useTheme } from "../platform/theme/useTheme";
 import { useViewStore } from "../stores/view/viewStore";
 import { LeftRail } from "./left/LeftRail";
 import { KeyboardNav } from "./a11y/KeyboardNav";
@@ -23,6 +22,7 @@ import "./menus/registerAll";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsDialog } from "./settings/useSettingsDialog";
+import { useThemeSetting } from "./settings/themeSetting";
 import { ChangesOverview } from "./right/ChangesOverview";
 import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
@@ -44,6 +44,10 @@ export function AppShell() {
   const rightCollapsed = useViewStore((s) => s.rightRailCollapsed);
   const toggleLeft = useViewStore((s) => s.toggleLeftRail);
   const toggleRight = useViewStore((s) => s.toggleRightRail);
+  // Theme is an engine setting now (dashboard-settings W05): the bridge reconciles
+  // the server value to the framework-free controller and persists changes. Called
+  // once here so the reconcile runs regardless of rail collapse state.
+  const theme = useThemeSetting();
 
   return (
     <div className="grid h-screen grid-rows-[1fr_13rem] bg-paper text-ink">
@@ -75,7 +79,10 @@ export function AppShell() {
                 <span className="ml-vs-2 flex-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
                   Scope
                 </span>
-                <ThemeToggle />
+                <ThemeToggle
+                  preference={theme.preference}
+                  setPreference={theme.setPreference}
+                />
                 <SettingsButton />
               </>
             )}
@@ -189,9 +196,16 @@ const THEME_META: Record<ThemePreference, { icon: typeof Sun; label: string }> =
   "high-contrast": { icon: Contrast, label: "high-contrast theme" },
 };
 
-/** Theme model (S09): cycles preference through system/light/dark/high-contrast. */
-function ThemeToggle() {
-  const { preference, setPreference } = useTheme();
+/** Theme model: cycles preference through system/light/dark/high-contrast. The
+ *  preference is now an engine setting (dashboard-settings W05) — the shell owns
+ *  the bridge (useThemeSetting) and passes the current value + setter in. */
+function ThemeToggle({
+  preference,
+  setPreference,
+}: {
+  preference: ThemePreference;
+  setPreference: (p: ThemePreference) => void;
+}) {
   const current = THEME_META[preference];
   const Icon = current.icon;
   const next = THEME_CYCLE[(THEME_CYCLE.indexOf(preference) + 1) % THEME_CYCLE.length];
