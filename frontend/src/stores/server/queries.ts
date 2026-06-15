@@ -607,9 +607,21 @@ export function useNodeNeighbors(id: string | null, depth = 1) {
  * wire client. Mirrors `useNodeNeighbors`'s per-id key + shape; returns the query
  * results array so the caller reads each `.data` / `.dataUpdatedAt`.
  */
+/** Ceiling on concurrent ego fetches (perf-sweep F#6). Each working-set id fans
+ * out one `/neighbors` round-trip; without a bound, a pathological working set
+ * (a future "expand all", or a runaway expansion) fires unbounded concurrent
+ * requests at the engine. The cap is far above normal interactive use (a user
+ * expands a handful of nodes), so it never bites real usage — it only prevents
+ * the latent cliff. */
+const MAX_BULK_NEIGHBOR_IDS = 96;
+
 export function useNodeNeighborsBulk(ids: readonly string[], depth = 1) {
+  // Bound the fan-out; the most-recently-added ids (working-set tail) win when
+  // the set exceeds the cap, since those are the user's latest expansions.
+  const bounded =
+    ids.length > MAX_BULK_NEIGHBOR_IDS ? ids.slice(-MAX_BULK_NEIGHBOR_IDS) : ids;
   return useQueries({
-    queries: ids.map((id) => ({
+    queries: bounded.map((id) => ({
       queryKey: engineKeys.neighbors(id, depth),
       queryFn: () => engineClient.nodeNeighbors(id, { depth }),
     })),
