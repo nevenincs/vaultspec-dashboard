@@ -33,7 +33,7 @@ import { create } from "zustand";
 
 import { DocTypeMark } from "../../scene/field/markComponents";
 import type { EngineEvent, LineageArc, LineageNode } from "../../stores/server/engine";
-import { useTimelineLineage } from "../../stores/server/queries";
+import { useFiltersVocabulary, useTimelineLineage } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
@@ -69,8 +69,11 @@ import {
 import {
   MAX_TIMELINE_ARCS,
   MAX_TIMELINE_MARKS,
+  TIMELINE_ORIGIN_MS,
   capItems,
+  clampPxPerMs,
   isInVisibleRange,
+  timeToStripX,
   timeToX as timeToStripViewportX,
   visibleRange,
 } from "./scrollStrip";
@@ -410,8 +413,37 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const laneVisibility = useTimelineStore((s) => s.laneVisibility);
   const hoveredNodeId = useTimelineStore((s) => s.hoveredNodeId);
   const setHoveredNode = useTimelineStore((s) => s.setHoveredNode);
+  const setPxPerMs = useTimelineStore((s) => s.setPxPerMs);
+  const setScrollOffset = useTimelineStore((s) => s.setScrollOffset);
   const hostRef = useRef<HTMLDivElement>(null);
   const width = useElementWidth(hostRef) ?? 800;
+
+  // Auto-fit the corpus into view on first load and on scope change, so the
+  // timeline SHOWS its data by default. The scroll-strip origin is the epoch, so
+  // an un-positioned default window (`scrollOffset: 0`) opens decades from the
+  // corpus and renders nothing until the user finds fit-all — the "displays
+  // nothing regardless of data" defect. The engine-enumerated corpus date bounds
+  // (`/filters`, independent of the range-bounded lineage fetch, so no empty-
+  // window deadlock) give the span to fit. Runs ONCE per scope: after the initial
+  // fit the user's scroll/zoom is respected; a new scope re-fits its own corpus.
+  const vocabulary = useFiltersVocabulary(scope);
+  const corpusBounds = vocabulary.data?.date_bounds;
+  const autoFitScopeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (scope == null || width <= 0) return;
+    if (autoFitScopeRef.current === scope) return;
+    const fromMs = corpusBounds?.from ? Date.parse(corpusBounds.from) : NaN;
+    if (!Number.isFinite(fromMs)) return; // wait for the bounds (or no dated corpus)
+    const toRaw = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
+    const toMs = Number.isFinite(toRaw) ? toRaw : Date.now();
+    const inset = 24;
+    const usable = Math.max(1, width - inset * 2);
+    const px = clampPxPerMs(usable / Math.max(1, toMs - fromMs));
+    const offset = Math.max(0, timeToStripX(fromMs, TIMELINE_ORIGIN_MS, px) - inset);
+    setPxPerMs(px);
+    setScrollOffset(offset);
+    autoFitScopeRef.current = scope;
+  }, [scope, corpusBounds?.from, corpusBounds?.to, width, setPxPerMs, setScrollOffset]);
 
   // Degradation truth, pre-derived from the stores layer (ADR "States"): never
   // read from a transport error, never the raw `tiers` block. The RECONNECTING
