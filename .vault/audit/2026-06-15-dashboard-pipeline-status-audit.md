@@ -103,6 +103,20 @@ synthetic 4000-document / 2.1 s scale-hardening benchmark; real production docum
 far denser cross-references, so per-document resolution work dominates. Resident query
 latency after the build is unaffected (see the performance findings).
 
+F3 RESOLUTION (profiled 2026-06-15, `VAULTSPEC_INDEX_TIMING=1`). The 24-40 s figure was
+largely SHARED-BATTERY CONTENTION (concurrent agents building and indexing on the same
+host), not an engine defect. An uncontended cold structural index of the 7176-document
+corpus is ~6-9 s, with the phase breakdown read+extract ~0.1-3 s (varies with OS file
+cache), resolver-built ~0.2 s (the O(N) resolver-once fix holds - no super-linear
+regression), pass-1 node-upsert+mint+cache ~1.6 s, the parallel resolve-batch ~4 s
+(the dominant phase, already parallelized across cores), pass-2 edge ingest ~0.2 s, and
+exec-binding ~0.05 s. The declared tier adds ~6 s for the external `vaultspec-core
+vault graph --ref HEAD` subprocess, which the serve path already defers to an async fold
+(the resident dashboard is queryable on the structural tier first, "declared tier
+building"). Conclusion: no algorithmic regression and no proportionate engine-side perf
+fix; the cost centres are an already-parallel resolve and an external, already-deferred
+subprocess. No code change for F3 beyond confirming the characterization.
+
 ## Recommendations
 
 - F1: decide whether the structure parser should tolerate the older prose-phase and
@@ -111,12 +125,15 @@ latency after the build is unaffected (see the performance findings).
   mis-parse risk and is a feature decision, not a hardening hotfix). Until then, document
   the step-tree feature as requiring canonical plan structure; the surface already degrades
   honestly.
-- F2: confirm the intended boundary - if the CLI document export is meant to be unbounded
-  for local agent use, leave it and note the exception against the bounding rule; otherwise
-  apply the same document ceiling to the CLI graph verb.
-- F3: profile the engine ingest against a real corpus (the cross-reference resolution pass
-  is the suspected hot path) and confirm the incremental re-index can skip the global
-  rebuild when no edges change. Scope this under the graph-scale workstream, not review-rail.
+- F2: RESOLVED. The document ceiling and slice-bounding moved into `engine_query::graph`
+  so EVERY front door bounds identically; the CLI `graph --granularity document` verb now
+  applies the 5000-node ceiling with an honest `truncated` block (was 71 MB unbounded).
+  Landed in `d67fd21`.
+- F3: RESOLVED (profiled; see the F3 RESOLUTION above). No engine-side perf fix is
+  warranted - the inflated figure was shared-battery contention, the ingest is linear with
+  the dominant phases already parallel or deferred. A future incremental-graph-patch (so a
+  single file change need not rebuild the global graph) remains a graph-scale-workstream
+  opportunity, not a review-rail concern.
 - Carry the read-only scratch method forward: copy production vaults to scratch (engine
   writes a cache into `.vault/data/engine-data`, so in-place runs would touch production);
   the engine-data dir is not currently redirectable by configuration, which is itself a
