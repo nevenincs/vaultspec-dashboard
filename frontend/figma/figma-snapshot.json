@@ -1,0 +1,125 @@
+{
+  "fileKey": "8WDmXNOURdRQwdefWNGsBb",
+  "nodes": [
+    {
+      "id": "19:28",
+      "name": "BrowserModeToggle"
+    },
+    {
+      "id": "19:27",
+      "name": "BrowserRegion"
+    },
+    {
+      "id": "24:54",
+      "name": "ChangesOverview"
+    },
+    {
+      "id": "26:2",
+      "name": "CommandPalette"
+    },
+    {
+      "id": "26:40",
+      "name": "ContextMenuHost"
+    },
+    {
+      "id": "26:70",
+      "name": "Dialog"
+    },
+    {
+      "id": "29:12",
+      "name": "EnumControl"
+    },
+    {
+      "id": "22:46",
+      "name": "FacetChipGroup"
+    },
+    {
+      "id": "22:19",
+      "name": "FilterBar"
+    },
+    {
+      "id": "10:2",
+      "name": "HoverCard"
+    },
+    {
+      "id": "24:56",
+      "name": "Inspector"
+    },
+    {
+      "id": "19:2",
+      "name": "LeftRail"
+    },
+    {
+      "id": "22:72",
+      "name": "NavToolbar"
+    },
+    {
+      "id": "24:3",
+      "name": "NowStrip"
+    },
+    {
+      "id": "29:51",
+      "name": "NumberControl"
+    },
+    {
+      "id": "25:102",
+      "name": "Playhead"
+    },
+    {
+      "id": "19:37",
+      "name": "RailFilter"
+    },
+    {
+      "id": "24:49",
+      "name": "SearchTab"
+    },
+    {
+      "id": "29:2",
+      "name": "SettingsDialog"
+    },
+    {
+      "id": "22:2",
+      "name": "Stage"
+    },
+    {
+      "id": "29:26",
+      "name": "SwitchControl"
+    },
+    {
+      "id": "29:64",
+      "name": "TextControl"
+    },
+    {
+      "id": "22:24",
+      "name": "TierDial"
+    },
+    {
+      "id": "25:2",
+      "name": "Timeline"
+    },
+    {
+      "id": "25:3",
+      "name": "TimelineControls"
+    },
+    {
+      "id": "19:41",
+      "name": "VaultBrowser"
+    },
+    {
+      "id": "22:113",
+      "name": "WorkingSet"
+    },
+    {
+      "id": "19:3",
+      "name": "WorkspacePicker"
+    },
+    {
+      "id": "24:47",
+      "name": "WorkTab"
+    },
+    {
+      "id": "19:15",
+      "name": "WorktreePicker"
+    }
+  ]
+}
