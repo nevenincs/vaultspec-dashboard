@@ -233,6 +233,56 @@ impl Store {
         get_artifact(&self.conn, kind, input_hash)
     }
 
+    /// Bound a snapshot-style artifact `kind` to its `keep_newest` most-recently
+    /// written rows, deleting older generations. The declared-graph snapshot
+    /// mints a fresh, fat payload (megabytes) under a new `input_hash` on every
+    /// HEAD change and never replaced the old one — an unbounded leak (observed
+    /// in the field at 34 generations / 166 MB for a ~740-doc corpus). The cache
+    /// is pure and re-derivable (D8.1), so evicting an old generation costs only
+    /// warm-up if a past state is revisited. Returns the number of rows removed.
+    pub fn prune_artifacts_keep_newest(&self, kind: &str, keep_newest: usize) -> Result<usize> {
+        let n = self.conn.execute(
+            "DELETE FROM derived_artifacts
+             WHERE kind = ?1 AND input_hash NOT IN (
+                 SELECT input_hash FROM derived_artifacts
+                 WHERE kind = ?1
+                 ORDER BY created_at DESC, input_hash DESC
+                 LIMIT ?2
+             )",
+            params![kind, keep_newest.max(1) as i64],
+        )?;
+        Ok(n)
+    }
+
+    /// Retain only the artifacts of `kind` whose `input_hash` is in `live`,
+    /// deleting every stale generation. For per-item caches (e.g. the per-doc
+    /// `extract`) keyed by content hash, the live set is exactly the current
+    /// corpus and the stale rows are old versions of changed or deleted docs;
+    /// age-based eviction is WRONG here (a never-changed doc's row is old but
+    /// live), so the caller passes the live key set explicitly. A temp table
+    /// keeps this correct for any corpus size (no bound-parameter ceiling).
+    /// Returns the number of rows removed.
+    pub fn retain_artifacts(&self, kind: &str, live: &[String]) -> Result<usize> {
+        self.conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS _retain_keys (h TEXT PRIMARY KEY);
+             DELETE FROM _retain_keys;",
+        )?;
+        {
+            let mut stmt = self
+                .conn
+                .prepare("INSERT OR IGNORE INTO _retain_keys (h) VALUES (?1)")?;
+            for h in live {
+                stmt.execute(params![h])?;
+            }
+        }
+        let n = self.conn.execute(
+            "DELETE FROM derived_artifacts
+             WHERE kind = ?1 AND input_hash NOT IN (SELECT h FROM _retain_keys)",
+            params![kind],
+        )?;
+        Ok(n)
+    }
+
     // --- temporal event log --------------------------------------------------
 
     /// Append an event; returns its monotonic sequence number.
@@ -401,6 +451,98 @@ mod tests {
         assert_eq!(
             store.get_artifact("correlate", "h1").unwrap().as_deref(),
             Some("other-kind")
+        );
+    }
+
+    #[test]
+    fn prune_keeps_only_newest_generations_and_is_idempotent() {
+        let (_dir, path) = temp_db();
+        let store = Store::open_at(&path).unwrap();
+        for i in 0..6 {
+            store
+                .put_artifact("declared-graph-v2", &format!("h{i}"), "payload", i)
+                .unwrap();
+        }
+        assert_eq!(
+            store
+                .prune_artifacts_keep_newest("declared-graph-v2", 2)
+                .unwrap(),
+            4
+        );
+        // The two newest by created_at survive; older generations are gone.
+        assert!(
+            store
+                .get_artifact("declared-graph-v2", "h5")
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            store
+                .get_artifact("declared-graph-v2", "h4")
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            store
+                .get_artifact("declared-graph-v2", "h3")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get_artifact("declared-graph-v2", "h0")
+                .unwrap()
+                .is_none()
+        );
+        // A second prune is a no-op (already within the bound); never deletes the
+        // last survivors even with keep_newest below 1.
+        assert_eq!(
+            store
+                .prune_artifacts_keep_newest("declared-graph-v2", 2)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            store
+                .prune_artifacts_keep_newest("declared-graph-v2", 0)
+                .unwrap(),
+            1
+        );
+        assert!(
+            store
+                .get_artifact("declared-graph-v2", "h5")
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn retain_drops_stale_but_keeps_live_regardless_of_age() {
+        let (_dir, path) = temp_db();
+        let store = Store::open_at(&path).unwrap();
+        // h-old is the OLDEST but still live; h-stale is newer but not live —
+        // age-based eviction would wrongly drop h-old, so retain must key on the
+        // live set, not created_at.
+        store.put_artifact("extract", "h-old", "v", 1).unwrap();
+        store.put_artifact("extract", "h-stale", "v", 2).unwrap();
+        store.put_artifact("extract", "h-new", "v", 3).unwrap();
+        let removed = store
+            .retain_artifacts("extract", &["h-old".to_string(), "h-new".to_string()])
+            .unwrap();
+        assert_eq!(removed, 1);
+        assert!(store.get_artifact("extract", "h-old").unwrap().is_some());
+        assert!(store.get_artifact("extract", "h-new").unwrap().is_some());
+        assert!(store.get_artifact("extract", "h-stale").unwrap().is_none());
+        // A different kind is untouched by an extract retain.
+        store
+            .put_artifact("declared-graph-v2", "g1", "v", 1)
+            .unwrap();
+        store.retain_artifacts("extract", &[]).unwrap();
+        assert!(
+            store
+                .get_artifact("declared-graph-v2", "g1")
+                .unwrap()
+                .is_some()
         );
     }
 

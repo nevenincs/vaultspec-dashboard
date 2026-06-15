@@ -306,6 +306,14 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
 /// zone — fully deletable, rebuildable on the next miss.
 const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
 
+/// How many declared-graph snapshot generations to retain. Each generation is a
+/// full-graph JSON payload (megabytes) minted on every HEAD change; the cache is
+/// re-derivable, so we keep only a small recent window (the live HEAD plus a few
+/// for fast repeat-switch / near-HEAD time travel) and evict the rest. Without
+/// this bound the snapshots accumulated unbounded (166 MB / 34 generations
+/// observed in the field for a ~740-doc corpus).
+const DECLARED_GRAPH_KEEP: usize = 4;
+
 /// Cache key for the declared graph: the worktree HEAD sha qualified by the
 /// scope token, so two scopes at the same commit never alias each other's
 /// cached JSON (defensive — the JSON is scope-independent, but the qualified
@@ -471,6 +479,14 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
                             crate::app::now_ms(),
                         ) {
                             eprintln!("vaultspec serve: caching declared graph failed: {e}");
+                        }
+                        // Bound the snapshot cache: keep only the most recent
+                        // generations, evicting older full-graph payloads so the
+                        // cache cannot grow without limit across HEAD changes.
+                        if let Err(e) = store
+                            .prune_artifacts_keep_newest(DECLARED_GRAPH_KIND, DECLARED_GRAPH_KEEP)
+                        {
+                            eprintln!("vaultspec serve: pruning declared-graph cache failed: {e}");
                         }
                     }
                     fetched

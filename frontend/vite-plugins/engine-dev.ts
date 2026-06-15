@@ -165,49 +165,80 @@ export function engineDevPlugin(): Plugin {
     if (await isHealthy(port)) return;
     const stale = readService(repo);
     if (stale) {
-      warn(`port ${port} has a stale (unhealthy) engine pid ${stale.pid} — clearing it`);
+      warn(
+        `port ${port} has a stale (unhealthy) engine pid ${stale.pid} — clearing it`,
+      );
       killPid(stale.pid);
     }
+  }
+
+  // Schedule a bounded respawn. Shared by the exit and spawn-error paths so a
+  // crash NEVER escapes as an unhandled error that tears down the Vite process.
+  function scheduleRespawn(repo: string, reason: string): void {
+    if (shuttingDown) return;
+    if (respawns >= MAX_RESPAWNS) {
+      warn(
+        `${reason} and hit the respawn ceiling (${MAX_RESPAWNS}) — not respawning. ` +
+          `This is usually host memory/paging-file exhaustion; free memory, then restart the dev server.`,
+      );
+      return;
+    }
+    respawns += 1;
+    warn(`${reason} — respawn ${respawns}/${MAX_RESPAWNS} in ${RESPAWN_DELAY_MS}ms`);
+    setTimeout(() => {
+      if (shuttingDown || child) return;
+      // Never pile a second engine onto a port someone else already healed.
+      void isHealthy(port)
+        .then((up) => {
+          if (up) {
+            log(
+              "another healthy engine appeared on the port — adopting it instead of respawning",
+            );
+          } else if (!child) {
+            startEngine(repo);
+          }
+        })
+        .catch(() => {
+          /* health probe failed; the next change/respawn will retry */
+        });
+    }, RESPAWN_DELAY_MS);
   }
 
   function startEngine(repo: string): void {
     if (shuttingDown) return;
     const bin = binaryPath(repo);
     log(`starting: ${bin} serve --port ${port}`);
-    const proc = spawn(bin, ["serve", "--port", String(port)], {
-      cwd: repo,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let proc: ChildProcess;
+    try {
+      // spawn() can throw SYNCHRONOUSLY under host resource exhaustion
+      // (Windows "spawn UNKNOWN", errno -4094) — that escaping uncaught is what
+      // previously killed the whole dev server. Catch it and treat it as a
+      // recoverable engine failure.
+      proc = spawn(bin, ["serve", "--port", String(port)], {
+        cwd: repo,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      child = null;
+      scheduleRespawn(repo, `engine spawn threw (${(err as Error).message})`);
+      return;
+    }
     child = proc;
     proc.stdout?.setEncoding("utf8");
     proc.stderr?.setEncoding("utf8");
     proc.stdout?.on("data", (d: string) => process.stdout.write(d));
     proc.stderr?.on("data", (d: string) => process.stderr.write(d));
+    // An async spawn failure surfaces as an 'error' event; without this handler
+    // Node throws it as an uncaught exception and Vite dies with it.
+    proc.on("error", (err) => {
+      if (shuttingDown || child !== proc) return;
+      child = null;
+      scheduleRespawn(repo, `engine spawn error (${err.message})`);
+    });
     proc.on("exit", (code) => {
       if (shuttingDown || child !== proc) return;
       child = null;
-      if (respawns >= MAX_RESPAWNS) {
-        warn(
-          `engine exited (code ${code ?? "?"}) and hit the respawn ceiling (${MAX_RESPAWNS}) — ` +
-            `not respawning. Fix the engine, then restart the dev server.`,
-        );
-        return;
-      }
-      respawns += 1;
-      warn(
-        `engine exited (code ${code ?? "?"}) — respawn ${respawns}/${MAX_RESPAWNS} in ${RESPAWN_DELAY_MS}ms`,
-      );
-      setTimeout(() => {
-        if (shuttingDown || child) return;
-        // Never pile a second engine onto a port someone else already healed.
-        void isHealthy(port).then((up) => {
-          if (up) {
-            log("another healthy engine appeared on the port — adopting it instead of respawning");
-          } else if (!child) {
-            startEngine(repo);
-          }
-        });
-      }, RESPAWN_DELAY_MS);
+      scheduleRespawn(repo, `engine exited (code ${code ?? "?"})`);
     });
   }
 
@@ -222,24 +253,49 @@ export function engineDevPlugin(): Plugin {
     if (building) return;
     building = true;
     try {
+      // On Windows the running engine holds `target/debug/vaultspec.exe` open,
+      // so cargo cannot relink the binary in place — the build fails with
+      // "Access is denied (os error 5)" for as long as the engine runs, an
+      // unbreakable fail→overlay loop. There we must stop the engine BEFORE
+      // building; a failed build leaves the last-good binary on disk untouched,
+      // so we can always bring it back. On other platforms a running executable
+      // can be overwritten, so we keep building first and the last-good engine
+      // keeps serving through the build (design goal #3, preserved off-Windows).
+      const stopFirst = process.platform === "win32";
+      if (stopFirst) {
+        respawns = 0;
+        stopEngine();
+        const adopted = readService(repoRoot);
+        if (adopted) killPid(adopted.pid);
+        // Give Windows a beat to release the file handle before cargo relinks.
+        await new Promise((r) => setTimeout(r, 400));
+      }
       if (!buildEngine(repoRoot)) {
         server.ws.send({
           type: "error",
           err: {
             message:
-              "Engine rebuild failed — the running engine is unchanged. See terminal for cargo output.",
+              "Engine rebuild failed — see terminal for cargo output. The last-good engine is kept alive.",
             stack: "",
           },
         });
+        // On Windows we stopped the engine before the (failed) build; restart
+        // the untouched last-good binary so the dashboard keeps working.
+        if (stopFirst && !child) {
+          startEngine(repoRoot);
+          await waitHealthy(port, HEALTH_TIMEOUT_MS);
+        }
         return;
       }
       log("swapping in the rebuilt engine…");
       // We own the lifecycle here: kill whatever is on the port (our child, or
       // an adopted pid from service.json) before binding the fresh binary.
       respawns = 0;
-      stopEngine();
-      const adopted = readService(repoRoot);
-      if (adopted) killPid(adopted.pid);
+      if (!stopFirst) {
+        stopEngine();
+        const adopted = readService(repoRoot);
+        if (adopted) killPid(adopted.pid);
+      }
       startEngine(repoRoot);
       if (await waitHealthy(port, HEALTH_TIMEOUT_MS)) {
         log("engine healthy — reloading browser");

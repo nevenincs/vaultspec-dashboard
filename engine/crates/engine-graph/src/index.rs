@@ -351,6 +351,15 @@ fn index_structural(
         per_doc.push((stem, blob_hash, mentions));
     }
 
+    // Bound the per-doc extract cache to the live corpus: this rebuild visited
+    // every current document, so any cached extract whose content hash is not in
+    // this set is a stale generation (an old version of a changed doc, or a
+    // deleted doc) and is evicted. Keyed on the live set, not age, because an
+    // unchanged doc's extract is old-but-live. Re-derivable: a mis-evict only
+    // costs a re-extract on the next pass.
+    let live_extract_keys: Vec<String> = per_doc.iter().map(|(_, h, _)| h.clone()).collect();
+    store.retain_artifacts(EXTRACT_KIND, &live_extract_keys)?;
+
     // Resolve EVERY document's mentions in one parallel batch (perf ADR D2):
     // distinct symbols/steps are resolved across CPU cores, the per-document
     // result is byte-identical to the prior sequential `resolver.resolve(...)`
