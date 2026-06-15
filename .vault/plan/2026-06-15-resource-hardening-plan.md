@@ -66,6 +66,16 @@ Bound the still-live frontend leaks owned by this wave (not the concurrent perf-
 - [x] `P05.S18` - Consolidate ContextMenuHost into one useShallow store subscription (B8); `frontend/src/app/menu/ContextMenuHost.tsx`.
 - [x] `P05.S19` - Destroy the per-kind GraphicsContext in DomainGlyphs so it is not leaked alongside the cached texture (B6); `frontend/src/scene/field/domainGlyphs.ts`.
 
+### Phase `P06` - Residual closure
+
+Close every deferred/minor residual from P01-P05: the GPU-churn items previously left to the scene owner (now safe in-place wins), the minor cache-hygiene items, and the review nits — leaving no open finding in this campaign's scope.
+
+- [x] `P06.S20` - Guard edge-mesh setHighlight to skip rebuilds when the ego set is unchanged (B6); `frontend/src/scene/field/edgeMeshes.ts`.
+- [x] `P06.S21` - Cache overlay country-label Text by feature, reposition in place instead of per-frame recreate (B6); `frontend/src/scene/field/overlayLayer.ts`.
+- [x] `P06.S22` - Evict the superseded since-keyed stream cache entry promptly on keyframe advance (B7); `frontend/src/stores/server/graphSync.ts`.
+- [x] `P06.S23` - Give search results a shorter gcTime so distinct query strings do not accumulate (B7); `frontend/src/stores/server/queries.ts`.
+- [x] `P06.S24` - Make openedIds a true move-to-end LRU so re-opening refreshes recency (B3 nit); `frontend/src/stores/view/viewStore.ts`.
+
 ## Description
 
 Binding implementation of the accepted `resource-hardening` ADR: the engine

@@ -329,10 +329,12 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => (state.hoveredId === id ? state : { hoveredId: id })),
   openNode: (id) =>
     set((state) => {
-      if (state.openedIds.includes(id)) return state;
-      // LRU cap (B3): append, then drop the oldest beyond the cap so opened
-      // islands cannot retain queries/payloads without bound across a session.
-      const next = [...state.openedIds, id];
+      // Move-to-end LRU cap (B3): re-opening an already-open id refreshes its
+      // recency (so it is not evicted before genuinely-older entries), then the
+      // tail-cap drops the oldest beyond OPENED_IDS_CAP so opened islands cannot
+      // retain queries/payloads without bound across a session. openNode is a
+      // user gesture, so rebuilding the array on re-open is negligible.
+      const next = [...state.openedIds.filter((entry) => entry !== id), id];
       return {
         openedIds:
           next.length > OPENED_IDS_CAP

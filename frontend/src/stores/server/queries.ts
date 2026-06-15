@@ -791,6 +791,12 @@ export function useEngineSearch(query: string, target: "vault" | "code" = "vault
     queryKey: engineKeys.search(query, target),
     queryFn: () => engineClient.search({ query, target }),
     enabled: query.length > 0,
+    // Evict superseded search results promptly (B7, resource-hardening): a long
+    // search session issues many distinct query strings, each a fresh cache
+    // entry holding a SearchResponse. A short gcTime drops a result soon after
+    // its observer goes (query changed / panel closed), bounding cache count
+    // instead of holding every term for the global 120s default.
+    gcTime: 30_000,
   });
 }
 

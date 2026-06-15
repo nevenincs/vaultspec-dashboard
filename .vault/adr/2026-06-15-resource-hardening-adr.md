@@ -90,11 +90,17 @@ A waved, reproduce-then-fix sequence:
   `spawn_blocking` subprocess call sites in `tokio::time::timeout` (B1). Replace
   the unbounded watcher channel with a capacity-1 bounded channel that coalesces
   by dropping when a rebuild is pending (B2). Give the SQLite store
-  `auto_vacuum=INCREMENTAL` + post-prune `incremental_vacuum` + WAL truncate, a
-  time-window retention prune on `temporal_events`, and wire
-  `evict_expired_semantic` into the rebuild path (B5). Task hygiene: bound the
-  watcher dedup with a `HashSet`, give the heartbeat loop an abort handle, use
-  the cached projection in `commit_graph` (B9).
+  `auto_vacuum=INCREMENTAL` plus a post-prune `reclaim()` — a full `VACUUM`
+  followed by `wal_checkpoint(TRUNCATE)`; `incremental_vacuum` was tried first
+  but proved unreliable at returning a populated freelist under WAL, so the
+  shipped reclaim is a full VACUUM (cheap, since the stores are retention-bounded
+  and reclaim runs only on HEAD-change folds) — plus a time-window retention
+  prune on `temporal_events` and wiring `evict_expired_semantic` into the rebuild
+  path (B5). Task hygiene: bound the watcher dedup with a `HashSet`, give the
+  heartbeat loop an abort-on-drop guard (B9). The `commit_graph` projection (B9c)
+  needs NO change: its `meta_edges` projection already resolves through the
+  `LinkageGraph` `OnceLock` cache (`meta_edges()` → `meta_edges_cached()`), so the
+  expensive aggregation is memoized per graph instance, not recomputed per commit.
 - **Security tighten.** Replace the FNV-of-pid+time bearer token with a
   `getrandom` 128-bit token; attribute-escape (or single-quote) the token in the
   SPA HTML injection; validate the rag `search` target against the `{vault,code}`

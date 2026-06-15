@@ -298,6 +298,19 @@ function writeArrow(
   arrowPos[offset + 5] = baseY - py * ARROW_HALF_WIDTH;
 }
 
+/** Membership equality for two optional id sets (B6): used to skip a rebuild
+ *  when an ego-highlight re-fires with the same set. */
+function sameStringSet(
+  a: ReadonlySet<string> | null,
+  b: ReadonlySet<string> | null,
+): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
 export class EdgeMeshLayer {
   private container = new Container();
   private groups = new Map<string, MeshGroup>();
@@ -368,6 +381,12 @@ export class EdgeMeshLayer {
    * recede. Null clears. Rebuilds topology — fine at DOI-bounded sizes.
    */
   setHighlight(edgeIds: ReadonlySet<string> | null): void {
+    // Skip redundant rebuilds (B6, resource-hardening): hover frequently
+    // re-fires the SAME ego set, and a full rebuild destroys + re-uploads every
+    // group's GPU mesh/geometry. Only rebuild when the membership actually
+    // changed; when it does the topology genuinely changes (lifted edges move to
+    // a `+lift` group), so a rebuild is still correct there.
+    if (sameStringSet(this.highlight, edgeIds)) return;
     this.highlight = edgeIds;
     this.rebuild();
   }

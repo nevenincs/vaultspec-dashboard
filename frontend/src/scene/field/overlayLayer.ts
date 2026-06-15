@@ -26,6 +26,9 @@ export class OverlayLayer {
   private container = new Container();
   private hullGfx = new Graphics();
   private labels = new Container();
+  /** Country-label Text reused across frames, keyed by feature (B6): created/
+   *  destroyed only on membership change, repositioned in place each frame. */
+  private labelCache = new Map<string, Text>();
   private flags: OverlayFlags = { featureCountries: true, featureHulls: true };
 
   constructor(world: Container) {
@@ -52,7 +55,6 @@ export class OverlayLayer {
     level: SemanticLevel,
   ): void {
     this.hullGfx.clear();
-    this.labels.removeChildren().forEach((c) => c.destroy());
 
     const hullColor = getCssColor("--color-accent", 0x8a7d5a);
     const inkMuted = getCssColor("--color-ink-muted", 0x6a6258);
@@ -72,22 +74,45 @@ export class OverlayLayer {
       }
     }
 
-    // GMap country labels: overview LODs (constellation / feature).
-    if (this.flags.featureCountries && level !== "document") {
-      for (const country of countryLabels(nodes, positionOf)) {
-        const label = new Text({
+    // GMap country labels: overview LODs (constellation / feature). Reuse cached
+    // Text per feature (B6, resource-hardening) — repositioned in place each
+    // frame, created/destroyed only when the feature SET changes. The prior code
+    // destroyed and re-created every label on every position frame, churning the
+    // text atlas during the layout settle (the GPU's busiest moment).
+    const wanted =
+      this.flags.featureCountries && level !== "document"
+        ? countryLabels(nodes, positionOf)
+        : [];
+    const seen = new Set<string>();
+    for (const country of wanted) {
+      seen.add(country.feature);
+      let label = this.labelCache.get(country.feature);
+      if (!label) {
+        label = new Text({
           text: country.feature,
           style: { fontSize: 12, fill: inkMuted, fontWeight: "600" },
         });
         label.anchor.set(0.5);
-        label.position.set(country.x, country.y);
         label.alpha = 0.7;
         this.labels.addChild(label);
+        this.labelCache.set(country.feature, label);
+      } else {
+        // Keep theme-reactive: a no-op when the colour is unchanged.
+        label.style.fill = inkMuted;
+      }
+      label.position.set(country.x, country.y);
+    }
+    // Drop labels whose feature left the set.
+    for (const [feature, label] of this.labelCache) {
+      if (!seen.has(feature)) {
+        label.destroy();
+        this.labelCache.delete(feature);
       }
     }
   }
 
   destroy(): void {
+    this.labelCache.clear();
     this.container.destroy({ children: true });
   }
 }

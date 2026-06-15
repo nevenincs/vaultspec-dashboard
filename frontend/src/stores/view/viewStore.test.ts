@@ -50,10 +50,15 @@ describe("view store", () => {
     // oldest evicted (LRU), newest retained
     expect(opened).not.toContain("open0");
     expect(opened[opened.length - 1]).toBe(`open${OPENED_IDS_CAP + 7}`);
-    // re-opening an already-open id is a no-op (no duplicate, no churn)
+    // re-opening keeps the cap and does not duplicate
     const before = useViewStore.getState().openedIds.length;
-    store.openNode(`open${OPENED_IDS_CAP + 7}`);
-    expect(useViewStore.getState().openedIds).toHaveLength(before);
+    const oldest = opened[0];
+    store.openNode(oldest);
+    const after = useViewStore.getState().openedIds;
+    expect(after).toHaveLength(before);
+    expect(after.filter((id) => id === oldest)).toHaveLength(1);
+    // move-to-end LRU: re-opening the oldest refreshes it to the most-recent slot
+    expect(after[after.length - 1]).toBe(oldest);
   });
 
   it("caps session-pinned discoveries to the most-recent entries (P-LOW-10)", () => {

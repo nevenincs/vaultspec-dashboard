@@ -112,7 +112,18 @@ export function useGraphLiveSync(
     setFeatureDeltas([]);
     processedRef.current = 0;
     lastSeqRef.current = keyframeSeq;
-  }, [scope, keyframeSeq]);
+    // Drop the prior since-keyed stream entry promptly (B7, resource-hardening):
+    // each keyframe advance mints a new ["engine","stream","graph",<since>,scope]
+    // key; the live subscription has already switched, so the old one is an
+    // inactive 256-entry ring waiting out gcTime. The cleanup captures the OLD
+    // sinceArg/scopeArg and removes that exact entry on the next change.
+    return () => {
+      queryClient.removeQueries({
+        queryKey: engineKeys.stream(["graph"], sinceArg, scopeArg),
+        exact: true,
+      });
+    };
+  }, [scope, keyframeSeq, sinceArg, scopeArg, queryClient]);
 
   // Process newly arrived chunks: advance lastSeq, extract feature-granularity
   // deltas with gap detection, and trigger debounced invalidation for all.
