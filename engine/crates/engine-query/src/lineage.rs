@@ -31,13 +31,14 @@ use crate::filter::{Filter, FilterError};
 use crate::pipeline::{PipelineLanePhase, phase_for_doc_type};
 
 /// The document node ceiling every lineage read is bounded by (W01.P01.S04,
-/// `graph-queries-are-bounded-by-default`): the same 5000-node document ceiling
-/// the graph-query route enforces, applied here so the lineage never serializes
-/// an unbounded full-corpus slice. A query that would exceed it returns the
-/// capped, self-consistent subgraph plus an honest [`LineageTruncated`] block;
-/// descent into detail is scoped by date range or feature filter, never "return
-/// everything".
-pub const MAX_DOCUMENT_NODES: usize = 5000;
+/// `graph-queries-are-bounded-by-default`): the SAME ceiling the graph-query
+/// route enforces — sourced from the single [`crate::graph::MAX_GRAPH_NODES`]
+/// constant so the two bounds cannot drift — applied here so the lineage never
+/// serializes an unbounded full-corpus slice. A query that would exceed it
+/// returns the capped, self-consistent subgraph plus an honest
+/// [`LineageTruncated`] block; descent into detail is scoped by date range or
+/// feature filter, never "return everything".
+pub const MAX_DOCUMENT_NODES: usize = crate::graph::MAX_GRAPH_NODES;
 
 /// One dated document node in the lineage slice: everything the phase-lane mark
 /// renders. Identity rides the engine's stable node id
