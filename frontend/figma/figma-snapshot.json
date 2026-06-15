@@ -2,6 +2,10 @@
   "fileKey": "8WDmXNOURdRQwdefWNGsBb",
   "nodes": [
     {
+      "id": "30:2",
+      "name": "AlgorithmPanel"
+    },
+    {
       "id": "19:28",
       "name": "BrowserModeToggle"
     },
@@ -10,8 +14,16 @@
       "name": "BrowserRegion"
     },
     {
+      "id": "31:2",
+      "name": "CanvasStateOverlay"
+    },
+    {
       "id": "24:54",
       "name": "ChangesOverview"
+    },
+    {
+      "id": "38:2",
+      "name": "CodeTree"
     },
     {
       "id": "26:2",
@@ -26,6 +38,14 @@
       "name": "Dialog"
     },
     {
+      "id": "32:2",
+      "name": "DiffView"
+    },
+    {
+      "id": "34:2",
+      "name": "Discover"
+    },
+    {
       "id": "29:12",
       "name": "EnumControl"
     },
@@ -36,6 +56,10 @@
     {
       "id": "22:19",
       "name": "FilterBar"
+    },
+    {
+      "id": "39:2",
+      "name": "FilterSidebar"
     },
     {
       "id": "10:2",
@@ -50,6 +74,14 @@
       "name": "LeftRail"
     },
     {
+      "id": "43:2",
+      "name": "Minimap"
+    },
+    {
+      "id": "45:2",
+      "name": "MinimapWidget"
+    },
+    {
       "id": "22:72",
       "name": "NavToolbar"
     },
@@ -62,12 +94,24 @@
       "name": "NumberControl"
     },
     {
+      "id": "36:2",
+      "name": "OpsPanel"
+    },
+    {
       "id": "25:102",
       "name": "Playhead"
     },
     {
       "id": "19:37",
       "name": "RailFilter"
+    },
+    {
+      "id": "46:2",
+      "name": "RangeSelect"
+    },
+    {
+      "id": "42:2",
+      "name": "RepresentationModePanel"
     },
     {
       "id": "24:49",
