@@ -41,6 +41,25 @@ export default defineConfig(({ command }) => ({
               index: resolve(import.meta.dirname, "index.html"),
             }
           : undefined,
+      output: {
+        // Split stable vendor libraries into their own cacheable chunks
+        // (perf-sweep F#2): an app-code change no longer re-downloads
+        // React/TanStack/Pixi, and the eager entry chunk is smaller to parse and
+        // compile at startup. Pure chunk grouping — no behaviour change.
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("/pixi.js") || id.includes("/@pixi/")) return "vendor-pixi";
+          if (id.includes("/@tanstack/")) return "vendor-tanstack";
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/")
+          )
+            return "vendor-react";
+          if (id.includes("/graphology") || id.includes("/d3-")) return "vendor-graph";
+          return "vendor";
+        },
+      },
     },
   },
   server: {
