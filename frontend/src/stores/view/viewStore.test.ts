@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { EngineEdge } from "../server/engine";
 import { useLiveStatusStore } from "../server/liveStatus";
-import { PINNED_DISCOVERIES_CAP, WORKING_SET_CAP, useViewStore } from "./viewStore";
+import {
+  OPENED_IDS_CAP,
+  PINNED_DISCOVERIES_CAP,
+  WORKING_SET_CAP,
+  useViewStore,
+} from "./viewStore";
 
 describe("view store", () => {
   it("shares one selection concept", () => {
@@ -33,6 +38,22 @@ describe("view store", () => {
     // oldest evicted, newest retained
     expect(ws).not.toContain("n0");
     expect(ws[ws.length - 1]).toBe(`n${WORKING_SET_CAP + 9}`);
+  });
+
+  it("caps opened islands to the most-recent entries (B3, resource-hardening)", () => {
+    const store = useViewStore.getState();
+    for (let i = 0; i < OPENED_IDS_CAP + 8; i += 1) store.openNode(`open${i}`);
+    const opened = useViewStore.getState().openedIds;
+    // bounded — each opened island holds live node/neighbor query observers, so
+    // an uncapped list would retain payloads + prevent GC for the whole session
+    expect(opened).toHaveLength(OPENED_IDS_CAP);
+    // oldest evicted (LRU), newest retained
+    expect(opened).not.toContain("open0");
+    expect(opened[opened.length - 1]).toBe(`open${OPENED_IDS_CAP + 7}`);
+    // re-opening an already-open id is a no-op (no duplicate, no churn)
+    const before = useViewStore.getState().openedIds.length;
+    store.openNode(`open${OPENED_IDS_CAP + 7}`);
+    expect(useViewStore.getState().openedIds).toHaveLength(before);
   });
 
   it("caps session-pinned discoveries to the most-recent entries (P-LOW-10)", () => {

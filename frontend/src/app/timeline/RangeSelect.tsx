@@ -175,7 +175,11 @@ export function RangeSelect() {
     const onUp = (e: PointerEvent) => {
       if (!active) return;
       active = false;
-      const range = rangeFromDrag(startX, localX(e), pxPerMs, scrollOffset);
+      // Read scale/offset imperatively at event time (B8, resource-hardening):
+      // keeps them out of the effect deps so the global pointer listeners stop
+      // re-registering on every scroll/zoom frame during a range drag/play.
+      const { pxPerMs: px, scrollOffset: off } = useTimelineStore.getState();
+      const range = rangeFromDrag(startX, localX(e), px, off);
       setDrag(null);
       setDateRange({
         from: new Date(range.from).toISOString(),
@@ -190,7 +194,9 @@ export function RangeSelect() {
       globalThis.removeEventListener("pointermove", onMove);
       globalThis.removeEventListener("pointerup", onUp);
     };
-  }, [pxPerMs, scrollOffset, setDateRange]);
+    // Only the stable setDateRange action remains a dep (B8); pxPerMs/scrollOffset
+    // are read via getState, so scroll/zoom no longer re-registers the listeners.
+  }, [setDateRange]);
 
   const clearRange = () => {
     stopRangePlay();

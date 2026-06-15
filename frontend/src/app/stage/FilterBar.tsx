@@ -7,11 +7,13 @@
 // owns it (G4.c).
 
 import { PanelLeft } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useActiveScope } from "./Stage";
 import { FacetChipGroup } from "../chrome/FacetChipGroup";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
+import { debounce } from "../../platform/timing";
 import { TierDial } from "./TierDial";
 
 /** The "N hidden" cost chip text; null hides the chip. */
@@ -49,6 +51,18 @@ export function FilterBar({
   const dateRange = useFilterStore((s) => s.dateRange);
   const toggleFacet = useFilterStore((s) => s.toggleFacet);
   const setTextMatch = useFilterStore((s) => s.setTextMatch);
+
+  // Debounce the text filter (B7, resource-hardening): the raw input is locally
+  // controlled for instant feedback, but the store write — which drives a full
+  // computeVisibility recompute over the live slice — is trailing-edge debounced
+  // so it fires once per pause, not once per keystroke.
+  const [localText, setLocalText] = useState(textMatch);
+  useEffect(() => setLocalText(textMatch), [textMatch]);
+  const debouncedSetTextMatch = useMemo(
+    () => debounce((value: string) => setTextMatch(value), 200),
+    [setTextMatch],
+  );
+  useEffect(() => () => debouncedSetTextMatch.cancel(), [debouncedSetTextMatch]);
 
   const relations = useFilterStore((s) => s.relations);
 
@@ -111,8 +125,11 @@ export function FilterBar({
       />
       <input
         type="search"
-        value={textMatch}
-        onChange={(e) => setTextMatch(e.target.value)}
+        value={localText}
+        onChange={(e) => {
+          setLocalText(e.target.value);
+          debouncedSetTextMatch(e.target.value);
+        }}
         placeholder="text match…"
         aria-label="text match filter"
         className="w-28 rounded-vs-sm border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"

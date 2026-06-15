@@ -86,7 +86,11 @@ export class DomainGlyphs implements GlyphTextureProvider {
     if (!texture) {
       const g = markGraphics(def);
       texture = this.renderer.generateTexture(g);
-      g.destroy();
+      // Destroy the GraphicsContext too (B6, resource-hardening): markGraphics
+      // builds a fresh `GraphicsContext` per kind and passes it to `new
+      // Graphics(context)`, so a bare `g.destroy()` (which does not own a
+      // passed-in context) leaks the context's GPU geometry once per unique mark.
+      g.destroy({ context: true });
       this.cache.set(cacheKey, texture);
     }
     return texture;

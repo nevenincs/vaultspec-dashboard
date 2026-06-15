@@ -115,16 +115,15 @@ export function Playhead() {
     const toPlayhead = (e: PointerEvent) => {
       const rect = host.getBoundingClientRect();
       const now = Date.now();
+      // Read the scale/offset imperatively at event time (B8, resource-hardening)
+      // so this effect no longer lists them as deps — otherwise it tore down and
+      // re-added the global pointer listeners on every scroll/zoom frame (~60/s
+      // during scrubbing), with a stale-event window mid-drag.
+      const { pxPerMs: px, scrollOffset: off } = useTimelineStore.getState();
       // LIVE docks at the right viewport edge (`liveEdgeOffset` puts `now` at
       // viewport x = width); that is the snap zone the drag resolves against.
-      const liveDockX = timeToX(now, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
-      return dragToPlayhead(
-        e.clientX - rect.left,
-        pxPerMs,
-        scrollOffset,
-        liveDockX,
-        now,
-      );
+      const liveDockX = timeToX(now, TIMELINE_ORIGIN_MS, px, off);
+      return dragToPlayhead(e.clientX - rect.left, px, off, liveDockX, now);
     };
     const onDown = (e: PointerEvent) => {
       if (!(e.target as HTMLElement).closest("[data-playhead-grip]")) return;
@@ -147,7 +146,10 @@ export function Playhead() {
       globalThis.removeEventListener("pointermove", onMove);
       globalThis.removeEventListener("pointerup", onUp);
     };
-  }, [pxPerMs, scrollOffset]);
+    // Empty deps (B8): the handlers read pxPerMs/scrollOffset via getState at
+    // event time, so the effect references no reactive value and the listeners
+    // register ONCE for the component's life.
+  }, []);
 
   const live = playheadT === "live";
   // LIVE docks at the right viewport edge; a concrete instant maps through the

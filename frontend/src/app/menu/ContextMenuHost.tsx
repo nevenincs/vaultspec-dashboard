@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   ACTION_SECTION_ORDER,
@@ -57,13 +58,21 @@ function groupBySection(
 }
 
 export function ContextMenuHost() {
-  const open = useContextMenuStore((s) => s.open);
-  const entity = useContextMenuStore((s) => s.entity);
-  const anchor = useContextMenuStore((s) => s.anchor);
-  const armedItemId = useContextMenuStore((s) => s.armedItemId);
-  const closeMenu = useContextMenuStore((s) => s.closeMenu);
-  const arm = useContextMenuStore((s) => s.arm);
-  const disarm = useContextMenuStore((s) => s.disarm);
+  // One shallow-compared subscription (B8, resource-hardening) instead of seven
+  // independent ones: the host re-renders once per menu-state change, not once
+  // per subscribed field.
+  const { open, entity, anchor, armedItemId, closeMenu, arm, disarm } =
+    useContextMenuStore(
+      useShallow((s) => ({
+        open: s.open,
+        entity: s.entity,
+        anchor: s.anchor,
+        armedItemId: s.armedItemId,
+        closeMenu: s.closeMenu,
+        arm: s.arm,
+        disarm: s.disarm,
+      })),
+    );
   const timeTravel = useViewStore((s) => s.timelineMode.kind === "time-travel");
   const dispatch = useDispatch();
 

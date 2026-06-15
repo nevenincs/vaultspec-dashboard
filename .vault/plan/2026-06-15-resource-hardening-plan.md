@@ -55,6 +55,17 @@ Prevent dev-environment artifact sprawl from recurring (shared cargo target, wor
 - [x] `P04.S12` - Scope HF_HOME to the project for rag and add a just dev clean reclamation recipe; `justfile`.
 - [x] `P04.S13` - Codify bounded-by-default, subprocess-cap-and-timeout, and dev-artifacts-scoped rules; `.vaultspec/rules/rules`.
 
+### Phase `P05` - Frontend memory + GPU leaks
+
+Bound the still-live frontend leaks owned by this wave (not the concurrent perf-sweep session's scene/speed avenues): unbounded opened-island retention, un-debounced filter recompute, per-frame global-listener re-registration, over-subscription, and a GPU context leak.
+
+- [x] `P05.S14` - Cap openedIds with LRU eviction so opened islands stop retaining node/neighbor queries for the whole session (B3); `frontend/src/stores/view/viewStore.ts`.
+- [x] `P05.S15` - Debounce the FilterBar text filter so computeVisibility does not recompute the whole slice per keystroke (B7); `frontend/src/app/stage/FilterBar.tsx`.
+- [x] `P05.S16` - Stabilize the Playhead global pointer listeners: read pxPerMs/scrollOffset via getState, empty effect deps (B8); `frontend/src/app/timeline/Playhead.tsx`.
+- [x] `P05.S17` - Stabilize the RangeSelect global pointer listeners the same way (B8); `frontend/src/app/timeline/RangeSelect.tsx`.
+- [x] `P05.S18` - Consolidate ContextMenuHost into one useShallow store subscription (B8); `frontend/src/app/menu/ContextMenuHost.tsx`.
+- [x] `P05.S19` - Destroy the per-kind GraphicsContext in DomainGlyphs so it is not leaked alongside the cached texture (B6); `frontend/src/scene/field/domainGlyphs.ts`.
+
 ## Description
 
 Binding implementation of the accepted `resource-hardening` ADR: the engine

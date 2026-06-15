@@ -203,6 +203,13 @@ export const WORKING_SET_CAP = 24;
  *  for the session; keep the most-recent N so a long session stays bounded. */
 export const PINNED_DISCOVERIES_CAP = 50;
 
+/** Cap opened islands (B3, resource-hardening): each opened id mounts an island
+ *  that holds a live `useNodeDetail` (+ `useNodeNeighbors`) query observer, so
+ *  an uncapped `openedIds` retains every opened node's payload and prevents
+ *  TanStack GC for the whole session. Keep the most-recent N; the oldest island
+ *  closes (LRU), mirroring WORKING_SET_CAP. */
+export const OPENED_IDS_CAP = 12;
+
 export const useViewStore = create<ViewState>((set) => ({
   scope: null,
   activeFolder: null,
@@ -321,9 +328,18 @@ export const useViewStore = create<ViewState>((set) => ({
   setHoveredId: (id) =>
     set((state) => (state.hoveredId === id ? state : { hoveredId: id })),
   openNode: (id) =>
-    set((state) =>
-      state.openedIds.includes(id) ? state : { openedIds: [...state.openedIds, id] },
-    ),
+    set((state) => {
+      if (state.openedIds.includes(id)) return state;
+      // LRU cap (B3): append, then drop the oldest beyond the cap so opened
+      // islands cannot retain queries/payloads without bound across a session.
+      const next = [...state.openedIds, id];
+      return {
+        openedIds:
+          next.length > OPENED_IDS_CAP
+            ? next.slice(next.length - OPENED_IDS_CAP)
+            : next,
+      };
+    }),
   closeNode: (id) =>
     set((state) => ({
       openedIds: state.openedIds.filter((entry) => entry !== id),
