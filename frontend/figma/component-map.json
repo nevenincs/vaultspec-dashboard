@@ -256,7 +256,7 @@
     {
       "name": "SettingControl",
       "source": "src/app/settings/controls/registry.tsx",
-      "designSurface": true,
+      "designSurface": false,
       "figmaNodeId": null,
       "figmaUrl": null
     },
