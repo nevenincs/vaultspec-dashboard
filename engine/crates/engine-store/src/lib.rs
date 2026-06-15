@@ -182,6 +182,23 @@ impl Store {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Incremental auto-vacuum so the deleted pages from pruning snapshot
+        // generations, evicting expired semantic rows, and aging out temporal
+        // events can be returned to the OS via `reclaim()` — without it the
+        // file only ever grows and a `DELETE` frees pages logically but never
+        // shrinks the 100s-of-MB cache (B5, resource-hardening). auto_vacuum can
+        // only change on an empty DB or via a one-time VACUUM, so convert any
+        // legacy NONE/FULL database exactly once. The VACUUM is best-effort: a
+        // concurrent writer holding the lock simply defers conversion to a later
+        // open (the pragma persists), never fails the open.
+        let auto_vacuum: i64 = conn.query_row("PRAGMA auto_vacuum", [], |r| r.get(0))?;
+        if auto_vacuum != 2
+            && conn
+                .pragma_update(None, "auto_vacuum", "INCREMENTAL")
+                .is_ok()
+        {
+            let _ = conn.execute_batch("VACUUM");
+        }
         let found: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         match found {
             0 => {
@@ -279,6 +296,42 @@ impl Store {
             "DELETE FROM derived_artifacts
              WHERE kind = ?1 AND input_hash NOT IN (SELECT h FROM _retain_keys)",
             params![kind],
+        )?;
+        Ok(n)
+    }
+
+    /// Reclaim free pages and collapse the WAL after a prune/eviction batch
+    /// (B5, resource-hardening). `incremental_vacuum` returns the pages freed by
+    /// the snapshot/semantic/event prunes to the OS (requires the
+    /// `auto_vacuum=INCREMENTAL` set in `open_at`); `wal_checkpoint(TRUNCATE)`
+    /// flushes committed frames into the main DB and shrinks the WAL file back to
+    /// zero. Best-effort by nature: a checkpoint blocked by a concurrent reader
+    /// reclaims what it can now and the rest on the next call.
+    pub fn reclaim(&self) -> Result<()> {
+        // Full VACUUM compacts the file reliably across journal modes; under WAL,
+        // `incremental_vacuum` proved unreliable at returning a populated freelist
+        // to the OS (the freed pages stayed in the file). reclaim() runs only on
+        // HEAD-change folds, NOT per request, and the underlying stores are now
+        // bounded by the snapshot/semantic/event retention, so the compacted file
+        // is small and the brief exclusive lock is acceptable; the call site
+        // treats a failure (reader contention) as best-effort, deferring to the
+        // next fold. The trailing checkpoint(TRUNCATE) shrinks the WAL back to
+        // zero so it does not itself become the residual growth.
+        self.conn.execute_batch("VACUUM;")?;
+        self.conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        Ok(())
+    }
+
+    /// Delete temporal events older than `cutoff_ts`, bounding the append-only
+    /// event log to a rolling window (B5, resource-hardening). Without this the
+    /// `temporal_events` table grew once per correlated commit-event for the
+    /// life of the process. The `/events` and lineage reads bound their own time
+    /// ranges, so history beyond the window is never served. Returns rows removed.
+    pub fn prune_events_before(&self, cutoff_ts: i64) -> Result<usize> {
+        let n = self.conn.execute(
+            "DELETE FROM temporal_events WHERE ts < ?1",
+            params![cutoff_ts],
         )?;
         Ok(n)
     }
@@ -568,6 +621,79 @@ mod tests {
         assert_eq!(
             rows[0].node_ids,
             vec!["doc:x".to_string(), "feature:y".to_string()]
+        );
+    }
+
+    #[test]
+    fn prune_events_before_bounds_the_log() {
+        // B5 (resource-hardening): the append-only event log must age out past a
+        // retention cutoff, not grow with the full commit history.
+        let (_dir, path) = temp_db();
+        let store = Store::open_at(&path).unwrap();
+        for ts in [1000, 2000, 3000, 4000] {
+            store
+                .append_event(ts, "commit", "main", &["c".into()])
+                .unwrap();
+        }
+        let removed = store.prune_events_before(2500).unwrap();
+        assert_eq!(removed, 2, "the two events before the cutoff are pruned");
+        let survivors = store.events_in_range(0, i64::MAX).unwrap();
+        assert_eq!(survivors.len(), 2, "only events at/after the cutoff remain");
+        assert!(survivors.iter().all(|e| e.ts >= 2500));
+    }
+
+    #[test]
+    fn prune_then_reclaim_shrinks_the_db_file() {
+        // P01.S03 (reproduce) + B5 (fix): a `DELETE` alone frees pages only
+        // logically; with `auto_vacuum=INCREMENTAL` (set in `open_at`),
+        // `reclaim()` returns those pages to the OS so the file actually shrinks.
+        // Proves the 100s-of-MB cache cannot stay inflated after eviction.
+        let (_dir, path) = temp_db();
+        let store = Store::open_at(&path).unwrap();
+        // Confirm the DB really is in incremental auto-vacuum mode.
+        let mode: i64 = store
+            .conn
+            .query_row("PRAGMA auto_vacuum", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, 2, "open_at enables incremental auto_vacuum");
+
+        // ~6 MB of snapshot payloads across 30 generations.
+        let payload = "x".repeat(200 * 1024);
+        for i in 0..30 {
+            store
+                .put_artifact("declared-graph-v2", &format!("h{i}"), &payload, i)
+                .unwrap();
+        }
+        store.reclaim().unwrap();
+        let page_count = |s: &Store| -> i64 {
+            s.conn
+                .query_row("PRAGMA page_count", [], |r| r.get(0))
+                .unwrap()
+        };
+        let before = page_count(&store);
+
+        // Keep only the newest generation, then reclaim the freed pages.
+        store
+            .prune_artifacts_keep_newest("declared-graph-v2", 1)
+            .unwrap();
+        store
+            .conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .unwrap();
+        let freelist: i64 = store
+            .conn
+            .query_row("PRAGMA freelist_count", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            freelist > 100,
+            "the prune DELETE frees pages to the freelist (auto_vacuum on): {freelist}"
+        );
+        store.reclaim().unwrap();
+        let after = page_count(&store);
+
+        assert!(
+            after < before / 2,
+            "reclaim shrinks the file after pruning: {before} -> {after} pages"
         );
     }
 

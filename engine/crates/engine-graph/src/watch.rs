@@ -3,6 +3,7 @@
 //! re-ingestion of only the dirtied paths. Serve-mode machinery; the
 //! one-shot CLI never needs it.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
@@ -152,12 +153,17 @@ fn debounce_loop(
     // receiver itself is unaffected by a previous worker's panic.
     let rx = rx.lock().unwrap_or_else(|e| e.into_inner());
     while let Ok(first) = rx.recv() {
+        // `dirty` keeps insertion order for the callback; `seen` gives O(1)
+        // dedup (B9, resource-hardening) — the prior `Vec::contains` was O(N) per
+        // path, i.e. O(N^2) across a debounce window flooded by a large
+        // `git checkout` or bulk copy.
         let mut dirty: Vec<PathBuf> = Vec::new();
-        collect(first, &mut dirty);
+        let mut seen: HashSet<PathBuf> = HashSet::new();
+        collect(first, &mut dirty, &mut seen);
         let deadline = std::time::Instant::now() + debounce;
         while let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) {
             match rx.recv_timeout(remaining) {
-                Ok(event) => collect(event, &mut dirty),
+                Ok(event) => collect(event, &mut dirty, &mut seen),
                 Err(mpsc::RecvTimeoutError::Timeout) => break,
                 Err(mpsc::RecvTimeoutError::Disconnected) => return WorkerExit::Disconnected,
             }
@@ -172,7 +178,11 @@ fn debounce_loop(
     WorkerExit::Disconnected
 }
 
-fn collect(event: notify::Result<notify::Event>, dirty: &mut Vec<PathBuf>) {
+fn collect(
+    event: notify::Result<notify::Event>,
+    dirty: &mut Vec<PathBuf>,
+    seen: &mut HashSet<PathBuf>,
+) {
     if let Ok(event) = event {
         for path in event.paths {
             // Engine-owned cache/log zones under `.vault/` are SKIPPED: the
@@ -186,7 +196,7 @@ fn collect(event: notify::Result<notify::Event>, dirty: &mut Vec<PathBuf>) {
             if is_engine_owned_path(&path) {
                 continue;
             }
-            if !dirty.contains(&path) {
+            if seen.insert(path.clone()) {
                 dirty.push(path);
             }
         }
@@ -368,8 +378,9 @@ mod tests {
 
         // The full collect path drops the engine-owned writes from a batch.
         let mut dirty = Vec::new();
+        let mut seen = HashSet::new();
         for p in [cache, wal, log, doc, data_named_doc] {
-            collect(event_for(p), &mut dirty);
+            collect(event_for(p), &mut dirty, &mut seen);
         }
         assert!(
             dirty.iter().any(|p| p == doc) && dirty.iter().any(|p| p == data_named_doc),

@@ -228,12 +228,23 @@ fn build_and_insert(
 /// on THIS cell's clock. Mirrors the single-scope watcher loop that used to
 /// live in `serve`, now per warm scope.
 fn spawn_watcher(cell: &Arc<ScopeCell>) {
-    let (dirty_tx, mut dirty_rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
+    // Bounded, capacity-1, coalescing (B2, resource-hardening): the dirty value
+    // is only a rebuild TRIGGER, never consumed data, so a flood of FS events
+    // must not queue a flood of rebuilds. With capacity 1 there is at most one
+    // in-flight rebuild plus one queued; `try_send` drops further triggers while
+    // a rebuild is already pending. Coalescing is safe because the in-flight
+    // rebuild re-folds at the CURRENT HEAD on completion (the declared-fold
+    // trailing edge), so no change is lost — only redundant rebuilds are shed.
+    // An unbounded channel here let a large `git checkout` / bulk copy queue N
+    // sequential rebuilds, each driving the (now bounded, B1) core subprocess.
+    let (dirty_tx, mut dirty_rx) = tokio::sync::mpsc::channel::<usize>(1);
     let watch_handle = match engine_graph::watch::watch(
         &engine_graph::watch::watch_roots(&cell.root),
         std::time::Duration::from_millis(2000),
         move |paths| {
-            let _ = dirty_tx.send(paths.len());
+            // Non-blocking: full channel ⇒ a rebuild is already pending ⇒ drop
+            // (coalesce). A closed channel ⇒ the cell was evicted ⇒ drop.
+            let _ = dirty_tx.try_send(paths.len());
         },
     ) {
         Ok(handle) => handle,
@@ -313,6 +324,13 @@ const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
 /// this bound the snapshots accumulated unbounded (166 MB / 34 generations
 /// observed in the field for a ~740-doc corpus).
 const DECLARED_GRAPH_KEEP: usize = 4;
+
+/// Rolling retention window for the temporal event log (B5, resource-hardening):
+/// on each HEAD-change fold, events older than this are pruned so the append-only
+/// `temporal_events` table cannot grow with the full commit history of the
+/// process. The `/events` and lineage reads bound their own time ranges, so 90
+/// days of recent history is ample.
+const TEMPORAL_EVENT_RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1000;
 
 /// Cache key for the declared graph: the worktree HEAD sha qualified by the
 /// scope token, so two scopes at the same commit never alias each other's
@@ -487,6 +505,26 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
                             .prune_artifacts_keep_newest(DECLARED_GRAPH_KIND, DECLARED_GRAPH_KEEP)
                         {
                             eprintln!("vaultspec serve: pruning declared-graph cache failed: {e}");
+                        }
+                        // While we hold the write lock, bound the other growing
+                        // stores and reclaim the freed pages (B5,
+                        // resource-hardening): evict expired semantic-cache rows,
+                        // age out temporal events past the retention window, then
+                        // return freed pages to the OS and collapse the WAL. All
+                        // best-effort + logged — a contended reclaim retries on
+                        // the next HEAD-change fold.
+                        let now = crate::app::now_ms();
+                        if let Err(e) = store.evict_expired_semantic(now) {
+                            eprintln!(
+                                "vaultspec serve: evicting expired semantic cache failed: {e}"
+                            );
+                        }
+                        if let Err(e) = store.prune_events_before(now - TEMPORAL_EVENT_RETENTION_MS)
+                        {
+                            eprintln!("vaultspec serve: pruning temporal events failed: {e}");
+                        }
+                        if let Err(e) = store.reclaim() {
+                            eprintln!("vaultspec serve: reclaiming sqlite free pages failed: {e}");
                         }
                     }
                     fetched
@@ -848,6 +886,35 @@ mod tests {
             "the evicted cell leaked: its strong count never reached 0 — the \
              rebuild task is still holding it (HIGH-1 cycle), so WORKING_SET_CAP \
              is defeated and the evicted scope keeps rebuilding"
+        );
+    }
+
+    #[tokio::test]
+    async fn bounded_dirty_channel_sheds_a_flood_instead_of_queueing_it() {
+        // P01.S02 (reproduce) + B2 (fix): the watcher feeds rebuild triggers
+        // through a capacity-1 channel with `try_send`, exactly as `spawn_watcher`
+        // does. A flood (a large `git checkout` / bulk copy past the debounce)
+        // must be COALESCED — at most one trigger buffered behind the in-flight
+        // rebuild, the rest dropped — so it cannot queue N sequential rebuilds
+        // each driving the (now bounded, B1) core subprocess. The previous
+        // `unbounded_channel` accepted all N. This asserts the load-shedding.
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<usize>(1);
+        let mut accepted = 0usize;
+        for i in 0..1000 {
+            if tx.try_send(i).is_ok() {
+                accepted += 1;
+            }
+        }
+        assert!(
+            accepted <= 2,
+            "capacity-1 channel shed the flood: {accepted} of 1000 accepted \
+             (an unbounded channel would accept all 1000 and queue 1000 rebuilds)"
+        );
+        // Coalescing drops the EXTRAS, never the rebuild itself: the buffered
+        // trigger is still deliverable, so the latest change is not lost.
+        assert!(
+            rx.recv().await.is_some(),
+            "the coalesced trigger still drives a rebuild"
         );
     }
 

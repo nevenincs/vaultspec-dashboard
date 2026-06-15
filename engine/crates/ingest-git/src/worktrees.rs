@@ -55,6 +55,21 @@ pub fn enumerate(workspace: &Workspace) -> Result<Vec<WorktreeInfo>> {
     Ok(out)
 }
 
+/// The thread bound for gix's index-vs-worktree status diff (B5b). gix treats
+/// `None` and `Some(0)` as "one thread per logical core"; any `Some(n>0)` caps
+/// at `n`. Default to 2 (enough to overlap I/O without the per-core memory
+/// fan-out), overridable via `VAULTSPEC_GIT_STATUS_THREADS` (0 = gix default).
+fn git_status_thread_limit() -> Option<usize> {
+    match std::env::var("VAULTSPEC_GIT_STATUS_THREADS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+    {
+        Some(0) => None,
+        Some(n) => Some(n),
+        None => Some(2),
+    }
+}
+
 fn inspect(repo: &gix::Repository, path: PathBuf, is_main: bool) -> Result<WorktreeInfo> {
     let head_ref = repo
         .head_name()
@@ -66,7 +81,19 @@ fn inspect(repo: &gix::Repository, path: PathBuf, is_main: bool) -> Result<Workt
     let dirty = {
         let status = repo
             .status(gix::progress::Discard)
-            .map_err(|e| GitError::Other(e.to_string()))?;
+            .map_err(|e| GitError::Other(e.to_string()))?
+            // Bound the index-vs-worktree diff parallelism (B5b,
+            // resource-hardening). gix's default (`thread_limit: None`) spawns
+            // one diff thread per logical core, each with its own buffers; on a
+            // high-core machine under memory pressure that per-core fan-out is
+            // the allocation spike that panicked the engine ("paging file too
+            // small" / "insufficient system resources" inside gix `in_parallel`
+            // during scope indexing). The worktree dirty check only needs to
+            // know whether ANY change exists, so a small fixed bound makes peak
+            // memory independent of core count.
+            .index_worktree_options_mut(|opts| {
+                opts.thread_limit = git_status_thread_limit();
+            });
         let mut items = status
             .into_iter(None)
             .map_err(|e| GitError::Other(e.to_string()))?;

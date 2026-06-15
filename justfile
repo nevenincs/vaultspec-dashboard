@@ -42,6 +42,7 @@ _dev-help:
   @echo "  test      pytest"
   @echo "  build     uv build"
   @echo "  serve     live dev survey: engine + Vite HMR, auto-rebuild + auto-refresh"
+  @echo "  clean     reclaim dev artifact sprawl (cargo target, dead worktrees, tmp)"
   @echo "  tokens    regenerate the DTCG color CSS and check parity/drift"
   @echo "  storybook run the component gallery (append 'build' to build static)"
   @echo "  precommit pre-commit hook management (install, upgrade, run)"
@@ -65,6 +66,24 @@ _ci-run:
 
 # ---------------------------------------------------------------------------
 #  Internal recipes (prefixed with _ to hide from --list)
+# ---------------------------------------------------------------------------
+# clean - reclaim Class-A dev artifact sprawl (resource-hardening). Each line is
+# a single cross-shell command (sh + pwsh). `cargo clean` drops the multi-GB
+# engine target; `git worktree prune` clears administrative entries for removed
+# worktrees; `git clean -fdX -- tmp` drops gitignored scratch under tmp/. NOTE:
+# this does NOT delete the shared HuggingFace model cache (~/.cache/huggingface)
+# — it belongs to other tools; scope it per-project with HF_HOME if needed. And
+# it does NOT remove live agent worktrees under .claude/worktrees/ — remove
+# those with `git worktree remove --force <path>` once their work is merged
+# (the worktree teardown half of the policy).
+
+_dev-clean:
+  cargo clean --manifest-path engine/Cargo.toml
+  git worktree prune -v
+  git clean -fdX -- tmp
+  @echo "reclaimed: engine/target, pruned worktree admin entries, tmp/ scratch"
+  @echo "note: shared HF model cache and live agent worktrees are left intact (see recipe comment)"
+
 # ---------------------------------------------------------------------------
 
 _dev-deps target='--help':

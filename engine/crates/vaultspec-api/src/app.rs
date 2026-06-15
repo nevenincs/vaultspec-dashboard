@@ -541,10 +541,22 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         vaultspec_session::UserState::open(&workspace_root.join(".vault"))
             .unwrap_or_else(|e| panic!("user-state store unavailable: {e}")),
     ));
-    // Token: stable-enough randomness without a rand dependency.
-    let bearer = engine_model::content_hash(
-        format!("{}:{:?}", std::process::id(), std::time::SystemTime::now()).as_bytes(),
-    );
+    // Token: 128 bits from the OS CSPRNG (B10, resource-hardening). The prior
+    // token was a non-cryptographic FNV hash of pid + wall-clock time — a
+    // ~10^7 search space a co-resident process could brute-force, and the token
+    // also rides into `service.json` in cleartext. getrandom draws from the OS
+    // entropy source; hex-encoded it keeps the 32-char `[0-9a-f]` shape every
+    // consumer (and the SPA meta-tag injection) already expects.
+    let bearer = {
+        let mut bytes = [0u8; 16];
+        getrandom::fill(&mut bytes).expect("OS CSPRNG unavailable for bearer token");
+        let mut hex = String::with_capacity(32);
+        for b in bytes {
+            use std::fmt::Write as _;
+            let _ = write!(hex, "{b:02x}");
+        }
+        hex
+    };
     let state = Arc::new(AppState {
         workspace_root,
         registry: RwLock::new(ScopeRegistry::new()),

@@ -450,6 +450,20 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     // Search runs against the ACTIVE scope (no scope param, W02.P05.S18): rag
     // discovery and the tiers block both read that cell's root.
     let cell = state.active_cell();
+    // Validate the search target against rag's vocabulary BEFORE anything else
+    // (B10, resource-hardening): an unknown or dash-prefixed `--type` value is a
+    // client error (400), never forwarded to the sibling. Argv passing already
+    // blocks shell injection; this closes the value-validation gap and mirrors
+    // the whitelist discipline the ops proxy applies to every sibling verb.
+    if let Some(target) = &body.target
+        && !matches!(target.as_str(), "vault" | "code")
+    {
+        return Err(super::api_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            format!("search target `{target}` must be `vault` or `code`"),
+        ));
+    }
     // Degrade to the tier block when rag is absent — never a dead control
     // (contract §8).
     if let rag_client::RagAvailability::Unavailable { reason } =

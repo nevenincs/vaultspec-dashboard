@@ -323,15 +323,28 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
 
     // Discovery + heartbeat (contract §1), advertising the real bound port.
     app::write_service_json(&state, port)?;
-    {
+
+    // Abort-on-drop guard for the heartbeat task (B9, resource-hardening): the
+    // loop holds a cloned `Arc<AppState>` and runs forever. Without an abort
+    // handle it was a detached task that survives cancellation of this `serve`
+    // future (e.g. a test that drops the serve task), keeping the whole
+    // AppState — its locks and every warm ScopeCell — alive. The guard aborts
+    // the task whether `serve` returns normally or is cancelled.
+    struct AbortOnDrop(tokio::task::JoinHandle<()>);
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _heartbeat = {
         let state = state.clone();
-        tokio::spawn(async move {
+        AbortOnDrop(tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(15)).await;
                 let _ = app::write_service_json(&state, port);
             }
-        });
-    }
+        }))
+    };
 
     println!(
         "vaultspec serve: listening on http://127.0.0.1:{port} (bearer token in service.json)"

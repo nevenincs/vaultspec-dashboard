@@ -48,7 +48,14 @@ const PLACEHOLDER: &str = "<!doctype html><html><head><title>vaultspec</title></
 /// authenticate without reading `service.json` (which a browser cannot).
 /// Dev proxies inject Authorization themselves; meta-tag absence is legal.
 pub fn inject_token(html: &str, token: &str) -> String {
-    let meta = format!(r#"<meta name="vaultspec-token" content="{token}">"#);
+    // HTML-attribute-escape the token (B10, resource-hardening): the bearer is
+    // 32 hex chars today, but escaping makes the injection permanently safe
+    // against any future token format that could carry `"`/`<`/`&` and turn a
+    // served page into an XSS sink.
+    let meta = format!(
+        r#"<meta name="vaultspec-token" content="{}">"#,
+        escape_attr(token)
+    );
     if let Some(pos) = html.find("</head>") {
         let mut out = String::with_capacity(html.len() + meta.len());
         out.push_str(&html[..pos]);
@@ -59,6 +66,23 @@ pub fn inject_token(html: &str, token: &str) -> String {
         // Headless HTML: prepend, never drop the bootstrap.
         format!("{meta}{html}")
     }
+}
+
+/// HTML-escape a value destined for a double-quoted attribute (B10): the five
+/// characters that could break out of the attribute or the element.
+fn escape_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// API path prefixes: unknown paths under these are JSON 404s, never
@@ -151,5 +175,23 @@ mod tests {
         assert!(out.contains(r#"<meta name="vaultspec-token" content="tok-123"></head>"#));
         let headless = inject_token("<body>bare</body>", "tok-9");
         assert!(headless.starts_with(r#"<meta name="vaultspec-token""#));
+    }
+
+    #[test]
+    fn token_with_html_metacharacters_cannot_break_out_of_the_attribute() {
+        // B10 (resource-hardening): a token carrying `"`/`<`/`>`/`&` must be
+        // escaped so it cannot close the attribute or inject markup — the XSS
+        // sink that would open if the token format ever changed.
+        let evil = r#"a"><script>alert(1)</script>"#;
+        let out = inject_token("<head></head>", evil);
+        assert!(
+            !out.contains("<script>"),
+            "raw script tag must not survive: {out}"
+        );
+        assert!(out.contains("&quot;"), "the quote is escaped");
+        assert!(
+            out.contains("&lt;script&gt;"),
+            "the angle brackets are escaped"
+        );
     }
 }

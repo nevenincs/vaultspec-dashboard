@@ -8,6 +8,8 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -34,6 +36,28 @@ fn resolve_stdout_cap() -> u64 {
         .unwrap_or(DEFAULT_CORE_STDOUT_CAP)
 }
 
+/// Default wall-clock ceiling for a single core verb (B1, resource-hardening):
+/// a hung `vaultspec-core` (locked venv, stalled import) must not pin the
+/// calling thread forever. On the serve path the verb runs on a Tokio
+/// blocking-pool thread; an unbounded hang there saturates the pool and stalls
+/// every other blocking task. 120 s mirrors the sibling-proxy timeout already
+/// enforced on the async `/ops` path.
+const DEFAULT_CORE_TIMEOUT_SECS: u64 = 120;
+
+/// Resolve the per-verb wall-clock timeout, honoring `VAULTSPEC_CORE_TIMEOUT_SECS`.
+/// A value of `0` disables the timeout (escape hatch for debugging a genuinely
+/// long verb); any other value is the deadline in seconds.
+fn resolve_timeout() -> Option<Duration> {
+    match std::env::var("VAULTSPEC_CORE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        Some(0) => None,
+        Some(secs) => Some(Duration::from_secs(secs)),
+        None => Some(Duration::from_secs(DEFAULT_CORE_TIMEOUT_SECS)),
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
     #[error("spawning vaultspec-core: {0}")]
@@ -48,6 +72,8 @@ pub enum CoreError {
     MissingData,
     #[error("vaultspec-core produced over {cap_mib} MiB of output (capped)")]
     OutputTooLarge { cap_mib: u64 },
+    #[error("vaultspec-core timed out after {secs}s (killed)")]
+    Timeout { secs: u64 },
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
@@ -74,6 +100,9 @@ impl CoreError {
             CoreError::MissingData => "vaultspec-core envelope was missing its data payload".into(),
             CoreError::OutputTooLarge { cap_mib } => {
                 format!("vaultspec-core produced over {cap_mib} MiB of output")
+            }
+            CoreError::Timeout { secs } => {
+                format!("vaultspec-core did not respond within {secs}s and was stopped")
             }
         }
     }
@@ -116,6 +145,9 @@ pub struct CoreRunner {
     pub invocation: Vec<String>,
     /// Stdout ceiling in bytes; output past it fails typed (never OOM).
     stdout_cap: u64,
+    /// Wall-clock ceiling for a single verb; `None` disables it. A hung child
+    /// past this deadline is killed and the call fails typed (never hangs).
+    timeout: Option<Duration>,
 }
 
 impl CoreRunner {
@@ -123,6 +155,7 @@ impl CoreRunner {
         CoreRunner {
             invocation,
             stdout_cap: resolve_stdout_cap(),
+            timeout: resolve_timeout(),
         }
     }
 
@@ -130,6 +163,13 @@ impl CoreRunner {
     /// deterministically without emitting tens of MiB.
     pub fn with_stdout_cap(mut self, cap: u64) -> Self {
         self.stdout_cap = cap;
+        self
+    }
+
+    /// Override the wall-clock timeout. Used by tests to trip the deadline
+    /// deterministically without waiting the production default.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 
@@ -159,16 +199,54 @@ impl CoreRunner {
             .stderr(Stdio::piped());
         let mut child = cmd.spawn()?;
 
-        // Read stdout under an 8 MiB ceiling (robustness H1): a runaway core
-        // verb cannot OOM the engine by streaming unbounded stdout. A wall-clock
-        // timeout is NOT added here — ingest-core carries no async/threading
-        // dependency and a portable blocking-read timeout needs one; deferred as
-        // a follow-up (the dependency decision belongs to the engine owners).
-        // The async ops.rs path already enforces both cap AND timeout.
+        // Read stdout under the byte ceiling (robustness H1) on a worker thread,
+        // so the parent can enforce a wall-clock deadline AND kill a hung child
+        // (B1, resource-hardening). A blocking `read_to_end` here would pin this
+        // thread forever on a stalled child; on the serve path that thread is a
+        // Tokio blocking-pool worker, so an unbounded hang saturates the pool.
+        // std `thread` + `mpsc::recv_timeout` gives a portable deadline with no
+        // new dependency.
         let cap = self.stdout_cap;
-        let mut stdout_pipe = child.stdout.take().expect("piped stdout");
-        let mut stdout = Vec::new();
-        stdout_pipe.by_ref().take(cap).read_to_end(&mut stdout)?;
+        let stdout_pipe = child.stdout.take().expect("piped stdout");
+        let (tx, rx) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let res = stdout_pipe.take(cap).read_to_end(&mut buf).map(|_| buf);
+            let _ = tx.send(res);
+        });
+
+        let recv = match self.timeout {
+            Some(deadline) => rx.recv_timeout(deadline),
+            None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+        };
+        let stdout = match recv {
+            Ok(Ok(buf)) => buf,
+            Ok(Err(io_err)) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return Err(io_err.into());
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // The child outran its deadline: kill it (no zombie, frees the
+                // pipe so the reader unblocks) and fail typed rather than hang.
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return Err(CoreError::Timeout {
+                    secs: self.timeout.map(|d| d.as_secs()).unwrap_or_default(),
+                });
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(CoreError::Failed {
+                    code: None,
+                    stderr: "vaultspec-core stdout reader terminated unexpectedly".into(),
+                });
+            }
+        };
+        let _ = reader.join();
         // Output exceeded the cap: kill the child (no zombie) and fail typed
         // rather than parse a truncated envelope.
         if stdout.len() as u64 >= cap {
@@ -322,6 +400,41 @@ mod tests {
         assert!(
             matches!(err, CoreError::OutputTooLarge { .. }),
             "runaway stdout → OutputTooLarge, got {err:?}"
+        );
+    }
+
+    /// P01.S01 (reproduce) + P02.S05 (fix): a hung core verb is killed at the
+    /// wall-clock deadline and fails typed (Timeout), instead of pinning the
+    /// calling thread for the child's full lifetime. Proves the deadline frees
+    /// the thread promptly — the property that keeps the Tokio blocking pool
+    /// from saturating on a stalled subprocess.
+    #[test]
+    fn run_json_kills_a_hung_child_at_the_timeout() {
+        let runner = if cfg!(windows) {
+            // `& { ... }` so the trailing `--json` run_json appends lands in the
+            // block's $args (ignored) rather than erroring the -Command parse.
+            CoreRunner::new(vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                "& { Start-Sleep -Seconds 30 }".into(),
+            ])
+            .with_timeout(Duration::from_millis(400))
+        } else {
+            // `sh -c "sleep 30"` ignores the trailing `--json` ($0).
+            shell_runner("sleep 30").with_timeout(Duration::from_millis(400))
+        };
+        let cwd = std::env::current_dir().unwrap();
+        let start = std::time::Instant::now();
+        let err = runner.run_json(&cwd, &[], &["x.v1"]).unwrap_err();
+        let elapsed = start.elapsed();
+        assert!(
+            matches!(err, CoreError::Timeout { .. }),
+            "hung child → Timeout, got {err:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "returned at the deadline (~0.4s), not after the 30s sleep; took {elapsed:?}"
         );
     }
 }
