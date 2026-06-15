@@ -121,7 +121,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
       >
         <header className="flex shrink-0 items-start justify-between gap-vs-2 border-b border-rule px-vs-4 py-vs-3">
           <div className="min-w-0">
-            <h2 id={titleId} className="text-heading text-ink">
+            <h2 id={titleId} className="text-heading font-medium text-ink">
               {title}
             </h2>
             {description && (
@@ -136,7 +136,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
             aria-label="Close"
             className="shrink-0 rounded-vs-sm p-vs-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
-            <X aria-hidden className="size-4" />
+            <X aria-hidden className="size-3.5" />
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>

@@ -53,7 +53,7 @@ describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
     // A labelled control per declared setting.
     expect(screen.getByText("Theme")).toBeTruthy();
     expect(screen.getByText("Reduce motion")).toBeTruthy();
-    expect(screen.getByText("Default detail level")).toBeTruthy();
+    expect(screen.getByText("Default granularity")).toBeTruthy();
     // Theme renders as the segmented (radiogroup) control with its members.
     expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "dark" })).toBeTruthy();
@@ -75,7 +75,7 @@ describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
 
   it("offers the per-scope override target for a scope-eligible setting only", async () => {
     renderDialog();
-    await screen.findByText("Default detail level");
+    await screen.findByText("Default granularity");
     // The scope-eligible setting (default_granularity) exposes the
     // [Global | This scope] target; global-only ones (theme, reduce_motion) do not.
     const applyToGroups = screen.getAllByRole("radiogroup", { name: "apply to" });
@@ -84,7 +84,7 @@ describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
 
   it("persists a scope override when the target is 'This scope'", async () => {
     renderDialog();
-    await screen.findByText("Default detail level");
+    await screen.findByText("Default granularity");
     // Switch the first scope-eligible row's target to 'This scope', then pick a value.
     const thisScope = screen.getAllByRole("radio", { name: "This scope" })[0];
     fireEvent.click(thisScope);

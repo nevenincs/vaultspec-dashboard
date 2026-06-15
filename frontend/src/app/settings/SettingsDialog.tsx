@@ -45,7 +45,7 @@ export function SettingsDialog() {
       title="Settings"
       description="Preferences are saved to this workspace. Some apply per scope."
     >
-      <div className="px-vs-4 py-vs-3">
+      <div className="flex flex-col gap-vs-4 px-vs-4 pt-vs-3 pb-vs-4">
         {schemaQuery.isLoading && (
           <p className="py-vs-4 text-center text-label text-ink-faint">
             Loading settings…
@@ -57,11 +57,11 @@ export function SettingsDialog() {
           </p>
         )}
         {groups.map((group) => (
-          <section key={group.name} className="mb-vs-4 last:mb-0">
-            <h3 className="mb-vs-2 border-b border-rule pb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+          <section key={group.name} className="flex flex-col gap-vs-2">
+            <h3 className="border-b border-rule pb-vs-1 text-2xs font-semibold uppercase tracking-[0.6px] text-ink-faint">
               {group.name}
             </h3>
-            <div className="flex flex-col gap-vs-3">
+            <div className="flex flex-col gap-vs-2">
               {group.settings.map((eff) => (
                 <SettingRow key={eff.def.key} eff={eff} activeScope={activeScope} />
               ))}
