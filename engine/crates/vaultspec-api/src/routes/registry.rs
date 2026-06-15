@@ -47,14 +47,17 @@ fn probe_reachability(path: &str) -> (bool, Option<String>) {
     if !root.is_dir() {
         return (false, Some("path is not a readable directory".to_string()));
     }
-    let workspace = match ingest_git::workspace::Workspace::discover(&root) {
-        Ok(ws) => ws,
-        Err(_) => return (false, Some("not a git workspace".to_string())),
-    };
-    match ingest_git::worktrees::enumerate(&workspace) {
-        Ok(worktrees) if !worktrees.is_empty() => (true, None),
-        Ok(_) => (false, Some("no enumerable worktrees".to_string())),
-        Err(_) => (false, Some("worktrees are not enumerable".to_string())),
+    // Reachability is a CHEAP check: the path resolves and is a git workspace.
+    // We intentionally do NOT enumerate worktrees here. Enumeration is
+    // O(worktrees) and ran for every root on every /workspaces poll, which hung
+    // the endpoint at real scale once a large multi-worktree repo (~67 worktrees)
+    // was registered (live verification finding H2 — the workspace switcher UI
+    // could not load its second root). The full worktree walk belongs on /map
+    // (viewing a workspace's worktrees), not on the registry-list hot path; a
+    // discoverable git common dir is a sufficient and cheap reachability signal.
+    match ingest_git::workspace::Workspace::discover(&root) {
+        Ok(_) => (true, None),
+        Err(_) => (false, Some("not a git workspace".to_string())),
     }
 }
 
@@ -302,21 +305,35 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
         });
     }
 
-    // Engine-side guard (review M1): if the forgotten root was the active
-    // workspace, re-point the active-workspace pointer to the launch root so the
-    // persisted pointer never names a forgotten id. The active scope cell already
-    // falls back to the launch root, so this only keeps the stored selection
-    // honest and self-contained instead of depending on the caller pairing a
-    // forget with an active re-select.
-    {
+    // Engine-side guard (review M1 + live closeout H1): if the forgotten root was
+    // the active workspace, re-point BOTH the active-workspace pointer AND the
+    // active scope to the launch root, so neither names a forgotten workspace and
+    // the served corpus does not dangle on a forgotten project's worktree. This
+    // keeps the engine self-consistent without depending on the caller pairing a
+    // forget with an active re-select (the frontend swap still drives the UI
+    // reset). The user-state lock is dropped before the in-memory active_scope
+    // write to avoid nesting it under another lock.
+    let repoint = {
         let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
         if us.active_workspace().ok().flatten().as_deref() == Some(id) {
             let roots = us.list_roots().unwrap_or_default();
-            let target = roots.iter().find(|r| r.is_launch).or_else(|| roots.first());
-            if let Some(target) = target {
-                let _ = us.set_active_workspace(&target.id, crate::app::now_ms());
-            }
+            roots
+                .iter()
+                .find(|r| r.is_launch)
+                .or_else(|| roots.first())
+                .map(|r| (r.id.clone(), r.path.clone()))
+        } else {
+            None
         }
+    };
+    if let Some((target_id, target_path)) = repoint {
+        let now = crate::app::now_ms();
+        {
+            let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = us.set_active_workspace(&target_id, now);
+            let _ = us.set_active_scope(&target_id, &target_path, now);
+        }
+        *state.active_scope.write().unwrap_or_else(|e| e.into_inner()) = target_path;
     }
     Ok(())
 }
