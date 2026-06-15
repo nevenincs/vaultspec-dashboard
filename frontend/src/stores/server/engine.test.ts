@@ -37,6 +37,8 @@ describe("EngineClient", () => {
     await client.opsCore("vault-check");
     await client.opsRag("reindex");
     await client.search({ query: "auth" });
+    await client.pipeline("wt-1");
+    await client.planInterior("feature:a");
 
     const urls = calls.map((c) => c.url);
     expect(urls).toEqual([
@@ -55,6 +57,8 @@ describe("EngineClient", () => {
       "/api/ops/core/vault-check",
       "/api/ops/rag/reindex",
       "/api/search",
+      "/api/pipeline?scope=wt-1",
+      "/api/nodes/feature%3Aa/plan-interior",
     ]);
     // Mutating families post; reads get.
     const posts = calls.filter((c) => c.init?.method === "POST").map((c) => c.url);

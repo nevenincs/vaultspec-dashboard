@@ -38,6 +38,8 @@ describe("MockEngine routes", () => {
       await c.events({ scope: "wt-main", bucket: "1d" }),
       await c.search({ query: "auth" }),
       await c.opsCore("vault-check"),
+      await c.pipeline("wt-main"),
+      await c.planInterior(planId),
     ];
     for (const r of responses) {
       expect((r as { tiers: unknown }).tiers).toBeDefined();
