@@ -44,6 +44,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/graph/query",
     "/graph/asof",
     "/graph/diff",
+    "/graph/lineage",
     "/filters",
     "/nodes/{id}",
     "/nodes/{id}/neighbors",
@@ -92,6 +93,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/graph/query", post(routes::query::graph_query_route))
         .route("/graph/asof", get(routes::temporal::graph_asof))
         .route("/graph/diff", get(routes::temporal::graph_diff))
+        // Bounded temporal-lineage projection (dashboard-timeline ADR, W01.P02):
+        // dated nodes in a [from, to] range together with the self-consistent
+        // edges among them, through the shared envelope (tiers on success and
+        // error), bounded by the document node ceiling, semantic present-only.
+        .route("/graph/lineage", get(routes::temporal::graph_lineage))
         .route("/filters", get(routes::query::filters))
         .route("/nodes/{id}", get(routes::query::node_detail))
         .route("/nodes/{id}/neighbors", get(routes::query::node_neighbors))
@@ -586,6 +592,130 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn graph_lineage_carries_the_tiers_block_on_the_success_envelope() {
+        // W01.P02.S14: GET /graph/lineage returns the dated nodes + the arcs
+        // among them through the SHARED envelope, so the per-tier tiers block
+        // rides the success body. Semantic is reported present-only (excluded
+        // from the range lineage) while declared stays truthful per scope.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/adr")).unwrap();
+        // Two dated, lane-owning documents in range.
+        std::fs::write(
+            dir.path().join(".vault/adr/2026-06-12-lin-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#lin'\ndate: '2026-06-12'\n---\n\n# `lin` adr\n\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join(".vault/plan/2026-06-13-lin-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#lin'\ndate: '2026-06-13'\n---\n\n# `lin` plan\n\nbody\n",
+        )
+        .unwrap();
+        let state = app::build_state(dir.path().to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/lineage?scope={}&from=2026-06-01&to=2026-06-30",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "lineage success: {body}");
+        // The dated nodes ride the data payload.
+        assert!(
+            body["data"]["nodes"].is_array(),
+            "the lineage nodes ride the data payload"
+        );
+        assert!(body["data"]["arcs"].is_array(), "the arcs ride the payload");
+        // Tiers block on success, built through the shared envelope.
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the success envelope carries the tiers block"
+        );
+        assert_eq!(
+            body["tiers"]["semantic"]["available"], false,
+            "semantic is present-only, excluded from the range lineage"
+        );
+        assert!(
+            body["tiers"]["declared"]["available"].is_boolean(),
+            "declared tier reported truthfully per scope"
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_lineage_unknown_scope_400s_with_the_tiers_block() {
+        // W01.P02.S15: the lineage ERROR path (an unknown scope) also returns
+        // through the shared envelope, so the tiers block rides the error body —
+        // a healthy-looking error never ships without degradation truth.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router,
+            "/graph/lineage?scope=/nowhere/at/all&from=2026-06-01&to=2026-06-30",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].is_string(), "honest error message");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the 400 still carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_lineage_inverted_range_and_bad_filter_400_with_the_tiers_block() {
+        // W01.P02.S11/S15: a client-error on a VALID scope (inverted range or a
+        // malformed/unknown-facet filter) also rides the shared error envelope.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        // Inverted range: from > to is a 400, not a silently-empty slice.
+        let (status, body) = get_with_token(
+            router.clone(),
+            &format!(
+                "/graph/lineage?scope={}&from=2026-06-30&to=2026-06-01",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "inverted range: {body}");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the inverted-range 400 carries the tiers block"
+        );
+
+        // An unknown filter facet is rejected by the projection's validation and
+        // shaped through the shared envelope. The JSON value is fully
+        // percent-encoded so the query string is a valid URI.
+        let bad_filter = percent_encode(r#"{"tiers":{"not-a-tier":true}}"#);
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/lineage?scope={}&filter={bad_filter}",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "bad filter: {body}");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the bad-filter 400 carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
     async fn health_is_ungated_everything_else_is_bearer_gated() {
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();
@@ -846,6 +976,20 @@ mod tests {
 
     fn urlencode(s: &str) -> String {
         s.replace(':', "%3A").replace('/', "%2F")
+    }
+
+    /// Percent-encode every non-unreserved byte (RFC 3986) so an arbitrary
+    /// value (e.g. a JSON filter) is a valid query-string component.
+    fn percent_encode(s: &str) -> String {
+        let mut out = String::new();
+        for b in s.bytes() {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                out.push(b as char);
+            } else {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+        out
     }
 
     #[tokio::test]

@@ -333,7 +333,10 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
             let _ = us.set_active_workspace(&target_id, now);
             let _ = us.set_active_scope(&target_id, &target_path, now);
         }
-        *state.active_scope.write().unwrap_or_else(|e| e.into_inner()) = target_path;
+        *state
+            .active_scope
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = target_path;
     }
     Ok(())
 }

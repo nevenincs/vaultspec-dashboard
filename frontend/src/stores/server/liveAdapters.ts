@@ -23,6 +23,10 @@ import type {
   InteriorPhase,
   InteriorStep,
   InteriorWave,
+  LineageArc,
+  LineageNode,
+  LineagePhase,
+  LineageSlice,
   MapResponse,
   PipelineArtifact,
   PipelinePhase,
@@ -145,6 +149,125 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
     ...(rest as object),
     edges: [...edges, ...folded],
   } as GraphSlice;
+}
+
+// --- §5 bounded temporal-lineage slice (dashboard-timeline ADR) ------------------
+//
+// Tolerant adapter for `GET /graph/lineage`. The live `{data: {nodes, arcs,
+// truncated}, tiers}` envelope is already unwrapped by `unwrapEnvelope` before
+// this runs (the client's get path flattens `data` and lifts `tiers`); a body
+// already in the internal shape (the mock) passes through unchanged — the
+// one-code-path property (mock-mirrors-live-wire-shape). Every missing field
+// defaults to a safe empty so a sparse or older shape NEVER throws and the chrome
+// never reads the raw tiers block (degradation truth rides on `tiers`, defaulted
+// to an empty block when absent). The OPTIONAL wire fields — a node's `title`,
+// an arc's `derivation` (absent until the node-semantics field ships, the ADR's
+// one real dependency), and the whole `truncated` block — are tolerated absent.
+
+const LINEAGE_PHASES: LineagePhase[] = [
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "review",
+  "codify",
+];
+
+const ARC_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+
+/** Default one dated lineage node, tolerating an absent or partial object: an
+ *  unknown phase falls back to `research` (the first lane, never invents a new
+ *  one), `dates` defaults to empty (`created`/`modified` forwarded only when the
+ *  right type), and `degree` to 0. `modified` is the engine `Timestamp` (epoch-ms
+ *  NUMBER) — forwarded only when numeric, never coerced from a string. */
+function adaptLineageNode(value: unknown): LineageNode {
+  if (!isRec(value)) {
+    return { id: "", doc_type: "", phase: "research", dates: {}, degree: 0 };
+  }
+  const phaseRaw = typeof value.phase === "string" ? value.phase : "";
+  const phase = (LINEAGE_PHASES as string[]).includes(phaseRaw)
+    ? (phaseRaw as LineagePhase)
+    : "research";
+  const rawDates = isRec(value.dates) ? value.dates : {};
+  const dates: { created?: string; modified?: number } = {};
+  if (typeof rawDates.created === "string") dates.created = rawDates.created;
+  if (typeof rawDates.modified === "number") dates.modified = rawDates.modified;
+  return {
+    id: typeof value.id === "string" ? value.id : "",
+    doc_type: typeof value.doc_type === "string" ? value.doc_type : "",
+    phase,
+    dates,
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    degree: typeof value.degree === "number" ? value.degree : 0,
+  };
+}
+
+/** Default one lineage arc, tolerating an absent or partial object: an unknown
+ *  tier falls back to `structural` (the tier of the structural mentions the
+ *  fallback edges carry), `confidence` to 0, and the optional `derivation` is
+ *  forwarded only when present (absent until the node-semantics field lands —
+ *  the graceful-fallback the ADR mandates). */
+function adaptLineageArc(value: unknown): LineageArc {
+  if (!isRec(value)) {
+    return {
+      id: "",
+      src: "",
+      dst: "",
+      relation: "",
+      tier: "structural",
+      confidence: 0,
+    };
+  }
+  const tierRaw = typeof value.tier === "string" ? value.tier : "";
+  const tier = (ARC_TIERS as readonly string[]).includes(tierRaw)
+    ? (tierRaw as LineageArc["tier"])
+    : "structural";
+  return {
+    id: typeof value.id === "string" ? value.id : "",
+    src: typeof value.src === "string" ? value.src : "",
+    dst: typeof value.dst === "string" ? value.dst : "",
+    relation: typeof value.relation === "string" ? value.relation : "",
+    ...(typeof value.derivation === "string" ? { derivation: value.derivation } : {}),
+    tier,
+    confidence: typeof value.confidence === "number" ? value.confidence : 0,
+  };
+}
+
+/** Default the truncated honesty block: forwarded only when the engine capped the
+ *  slice (a real object with the three fields); null/absent stays null. */
+function adaptLineageTruncated(value: unknown): LineageSlice["truncated"] {
+  if (
+    isRec(value) &&
+    typeof value.total_nodes === "number" &&
+    typeof value.returned_nodes === "number" &&
+    typeof value.reason === "string"
+  ) {
+    return {
+      total_nodes: value.total_nodes,
+      returned_nodes: value.returned_nodes,
+      reason: value.reason,
+    };
+  }
+  return null;
+}
+
+/**
+ * Live `/graph/lineage` → the internal lineage slice. TOLERANT: an absent
+ * `nodes`/`arcs` array defaults to empty (the timeline renders its empty/degraded
+ * state from the tiers block), `truncated` defaults to null, and the per-node
+ * `title` / per-arc `derivation` optionals are tolerated absent. `tiers` rides
+ * through verbatim (the envelope's degradation truth, defaulted to an empty block
+ * when wholly absent) — the surface reads degradation only through the stores
+ * hook, never this raw block.
+ */
+export function adaptLineageSlice(body: unknown): LineageSlice {
+  if (!isRec(body)) return { nodes: [], arcs: [], tiers: {}, truncated: null };
+  return {
+    nodes: Array.isArray(body.nodes) ? body.nodes.map(adaptLineageNode) : [],
+    arcs: Array.isArray(body.arcs) ? body.arcs.map(adaptLineageArc) : [],
+    tiers: (body.tiers ?? {}) as TiersBlock,
+    truncated: adaptLineageTruncated(body.truncated),
+  };
 }
 
 /** Live workspace map → the internal repositories shape. */
