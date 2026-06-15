@@ -1,14 +1,15 @@
 ---
 tags:
-  - '#audit'
-  - '#dashboard-settings'
+  - "#audit"
+  - "#dashboard-settings"
 date: '2026-06-15'
-modified: '2026-06-15'
 related:
   - "[[2026-06-15-dashboard-settings-plan]]"
   - "[[2026-06-15-dashboard-settings-adr]]"
+promoted_to:
+  - 'rule:settings-are-schema-driven-from-one-registry'
+modified: '2026-06-15'
 ---
-
 <!-- FRONTMATTER RULES:
      tags: one directory tag (hardcoded #audit) and one feature tag.
      Replace dashboard-settings with a kebab-case feature tag, e.g. #foo-bar.
