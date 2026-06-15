@@ -359,10 +359,10 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   // fit the user's scroll/zoom is respected; a new scope re-fits its own corpus.
   const vocabulary = useFiltersVocabulary(scope);
   const corpusBounds = vocabulary.data?.date_bounds;
-  const autoFitScopeRef = useRef<string | null>(null);
+  const [fittedScope, setFittedScope] = useState<string | null>(null);
   useEffect(() => {
     if (scope == null || width <= 0) return;
-    if (autoFitScopeRef.current === scope) return;
+    if (fittedScope === scope) return;
     const fromMs = corpusBounds?.from ? Date.parse(corpusBounds.from) : NaN;
     if (!Number.isFinite(fromMs)) return; // wait for the bounds (or no dated corpus)
     const toRaw = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
@@ -373,8 +373,16 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     const offset = Math.max(0, timeToStripX(fromMs, TIMELINE_ORIGIN_MS, px) - inset);
     setPxPerMs(px);
     setScrollOffset(offset);
-    autoFitScopeRef.current = scope;
-  }, [scope, corpusBounds?.from, corpusBounds?.to, width, setPxPerMs, setScrollOffset]);
+    setFittedScope(scope);
+  }, [scope, corpusBounds?.from, corpusBounds?.to, width, fittedScope, setPxPerMs, setScrollOffset]);
+  // While the corpus auto-fit is still pending (the vocabulary bounds are loading,
+  // or they are known but not yet applied for this scope), the default scroll
+  // window has NOT been positioned onto the data. Suppress the "no lineage" empty
+  // state during that window so the surface never flashes a false "no data" before
+  // the fit lands — show the loading scaffold instead. Once bounds are absent (a
+  // genuinely undated corpus) or the fit has applied, the real empty state shows.
+  const autoFitPending =
+    vocabulary.isLoading || (!!corpusBounds?.from && fittedScope !== scope);
 
   // Degradation truth, pre-derived from the stores layer (ADR "States"): never
   // read from a transport error, never the raw `tiers` block. The RECONNECTING
@@ -526,6 +534,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const noHistory =
     !loading &&
     !errored &&
+    !autoFitPending &&
     nodes.length === 0 &&
     (surface === "empty" || surface === "normal" || surface === "lifecycle-sparse");
 
@@ -683,9 +692,11 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         </div>
       )}
 
-      {/* Loading: a quiet copy-toned liveness line — the scaffold above stays
-          visible, so the surface never flashes empty (ADR "States"). */}
-      {loading && (
+      {/* Loading / positioning: a quiet copy-toned liveness line — the lane
+          scaffold above stays visible, so the surface never flashes empty (ADR
+          "States"). Also shown while the corpus auto-fit is pending, so the
+          surface reads as "positioning" rather than a false "no lineage". */}
+      {(loading || autoFitPending) && (
         <div
           className="pointer-events-none absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-1 text-2xs text-ink-faint"
           role="status"
