@@ -121,6 +121,27 @@ pub(crate) fn api_error(
     )
 }
 
+/// An error carrying a machine-readable `error_kind` beside the message and the
+/// tiers block (dashboard-settings: typed settings-validation errors). The kind
+/// lets the client distinguish "your write was invalid" — and WHY — from "a
+/// backend tier is down", without parsing the human message. Built through this
+/// shared helper so no route hand-rolls a tiers-less or kind-less error body.
+pub(crate) fn api_error_kind(
+    state: &AppState,
+    status: StatusCode,
+    kind: &str,
+    message: String,
+) -> (StatusCode, Json<Value>) {
+    (
+        status,
+        Json(json!({
+            "error": message,
+            "error_kind": kind,
+            "tiers": query_tiers(&state.active_cell()),
+        })),
+    )
+}
+
 /// Client-safe error for an as-of / diff revision that could not be resolved
 /// (the `t` / `from` / `to` inputs and `graph/query`'s `as_of`). The
 /// underlying gix error string carries the BUILD MACHINE's cargo-registry

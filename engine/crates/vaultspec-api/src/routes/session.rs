@@ -326,21 +326,57 @@ pub async fn put_settings(
     Json(update): Json<SettingUpdate>,
 ) -> ApiResult {
     let now = crate::app::now_ms();
+
+    // Validate against the engine-owned schema registry BEFORE any write
+    // (dashboard-settings): an unknown key, a scope on a global-only setting, or
+    // an out-of-constraint value is a typed 400 carrying the machine-readable
+    // `error_kind` — never a silent accept. Validation returns the CANONICAL
+    // stored form (e.g. a normalized integer), which is what we persist.
+    let scoped = update.scope.as_deref().is_some_and(|s| !s.is_empty());
+    let canonical =
+        vaultspec_session::settings_schema::validate(&update.key, &update.value, scoped).map_err(
+            |err| super::api_error_kind(&state, StatusCode::BAD_REQUEST, err.kind(), err.message()),
+        )?;
+
     // SCOPED guard: the write happens here; the guard drops at the close brace,
     // never held across an `.await`.
     {
         let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
-        match update.scope.as_deref() {
+        match update.scope.as_deref().filter(|s| !s.is_empty()) {
             Some(scope) => {
-                let _ = us.set_scoped_setting(scope, &update.key, &update.value, now);
+                let _ = us.set_scoped_setting(scope, &update.key, &canonical, now);
             }
             None => {
-                let _ = us.set_global_setting(&update.key, &update.value, now);
+                let _ = us.set_global_setting(&update.key, &canonical, now);
             }
         }
     }
     // Return the updated settings — the same shape GET serves.
     let data = settings_data(&state);
+    Ok(super::envelope(
+        data,
+        super::query_tiers(&state.active_cell()),
+        None,
+    ))
+}
+
+// --- GET /settings/schema -----------------------------------------------------
+
+/// Serve the settings schema registry: the single source of truth for every
+/// declared setting (dashboard-settings). The client renders its controls and
+/// synthesizes defaults from this; the engine validates writes against it. Rides
+/// the shared `{data, tiers}` envelope like every other response.
+///
+/// Shape: `{ data: { settings: [ <def> ... ], groups: [ <name> ... ] }, tiers }`.
+/// Each `<def>` carries `key`, `value_type` (tagged), `default`, `scope_eligible`,
+/// `control`, `label`, `description`, `group`, `order`, and optional slider
+/// `step`/`unit`.
+pub async fn get_settings_schema(State(state): State<Arc<AppState>>) -> ApiResult {
+    let settings = serde_json::to_value(vaultspec_session::settings_schema::registry())
+        .expect("settings schema serialize");
+    let groups = serde_json::to_value(vaultspec_session::settings_schema::groups())
+        .expect("settings groups serialize");
+    let data = json!({ "settings": settings, "groups": groups });
     Ok(super::envelope(
         data,
         super::query_tiers(&state.active_cell()),

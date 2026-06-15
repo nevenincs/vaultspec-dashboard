@@ -41,11 +41,13 @@ use std::path::Path;
 pub mod schema;
 pub mod session;
 pub mod settings;
+pub mod settings_schema;
 pub mod store;
 
 pub use schema::WorkspaceRoot;
 pub use session::{MAX_RECENTS, RegistryError, ScopeContext};
 pub use settings::Setting;
+pub use settings_schema::{ControlKind, SettingDef, SettingType, ValidationError};
 pub use store::{Result, Store, StoreError};
 
 /// The public user-state handle, tying the best-effort store together with the

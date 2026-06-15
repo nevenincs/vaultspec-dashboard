@@ -129,6 +129,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/settings",
             get(routes::session::get_settings).put(routes::session::put_settings),
         )
+        // The engine-owned settings schema registry (dashboard-settings): the
+        // single source of truth the client renders controls and defaults from.
+        .route(
+            "/settings/schema",
+            get(routes::session::get_settings_schema),
+        )
         .fallback(get(routes::spa::spa_fallback))
         // Panic containment (robustness H2, 2026-06-13): a handler panic must
         // become a contained 500, never a dropped connection AND — critically
