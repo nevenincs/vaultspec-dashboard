@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#dashboard-pipeline-wire'
 date: '2026-06-14'
-modified: '2026-06-14'
+modified: '2026-06-15'
 tier: L3
 related:
   - '[[2026-06-14-dashboard-pipeline-wire-adr]]'
@@ -251,7 +251,7 @@ Feed captured live samples through the same client path the app uses, asserting 
 
 Run the full lint gate, Rust tests, and vitest to exit 0 across the engine and frontend.
 
-- [ ] `W05.P13.S66` - Run cargo test across the engine workspace and confirm every new and existing test passes; `engine/Cargo.toml`.
+- [x] `W05.P13.S66` - Run cargo test across the engine workspace and confirm every new and existing test passes; `engine/Cargo.toml`.
 - [x] `W05.P13.S67` - Run cargo fmt --check and cargo clippy across the engine workspace and confirm exit 0; `engine/Cargo.toml`.
 - [x] `W05.P13.S68` - Run the full frontend lint gate (eslint, prettier, tsc) and confirm exit 0; `frontend/package.json`.
 - [x] `W05.P13.S69` - Run vitest across the frontend and confirm every mock-fidelity and consumer test passes; `frontend/package.json`.
