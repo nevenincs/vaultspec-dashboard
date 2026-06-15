@@ -106,12 +106,14 @@ describe("session/settings client (mock transport)", () => {
     const client = clientOf(new MockEngine());
     const afterGlobal = await client.putSettings({ key: "theme", value: "dark" });
     expect(afterGlobal.global.theme).toBe("dark");
+    // The key must be a registry-declared, scope-eligible setting now that writes
+    // are validated (dashboard-settings); `default_granularity` is exactly that.
     const afterScoped = await client.putSettings({
       scope: MOCK_SCOPE,
-      key: "density",
-      value: "compact",
+      key: "default_granularity",
+      value: "document",
     });
-    expect(afterScoped.scoped[MOCK_SCOPE].density).toBe("compact");
+    expect(afterScoped.scoped[MOCK_SCOPE].default_granularity).toBe("document");
     // Global key survives the scoped write.
     expect(afterScoped.global.theme).toBe("dark");
   });
