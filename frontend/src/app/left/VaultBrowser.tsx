@@ -25,10 +25,32 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 
+import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import { useVaultTree, useVaultTreeAvailability } from "../../stores/server/queries";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { useActiveScope } from "../stage/Stage";
-import { handleEntryClick, pathStem, useHighlightedPath } from "./browserSelection";
+import {
+  handleEntryClick,
+  pathStem,
+  pathToNodeId,
+  useHighlightedPath,
+} from "./browserSelection";
+// Self-registering left-rail context-menu resolver (W03.P07): importing the
+// module runs its `registerResolver("vault-doc", …)` side effect once.
+import "./menus/vaultDocMenu";
+
+/** Build the vault-doc context-menu entity from a browser row's data. */
+function vaultDocEntity(entry: VaultTreeEntry): VaultDocEntity {
+  const nodeId = pathToNodeId(entry.path);
+  return {
+    kind: "vault-doc",
+    id: nodeId,
+    path: entry.path,
+    stem: pathStem(entry.path),
+    nodeId,
+  };
+}
 
 // --- pure helpers (unit-tested) ---------------------------------------------------
 
@@ -368,7 +390,32 @@ export function VaultBrowser({
                           tabIndex={rovingKey === rowKey ? 0 : -1}
                           onClick={() => clickHandler(entry)}
                           onFocus={() => setActiveKey(rowKey)}
-                          onKeyDown={navKeyDown(rowKey)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            openContextMenu(vaultDocEntity(entry), {
+                              x: e.clientX,
+                              y: e.clientY,
+                            });
+                          }}
+                          onKeyDown={(e) => {
+                            // Keyboard menu entry (ContextMenu key / Shift+F10):
+                            // anchor at the row's bottom-left, then fall through
+                            // to the roving-tabindex arrow handler for everything
+                            // else (preserves the single-Tab-stop nav model).
+                            if (
+                              e.key === "ContextMenu" ||
+                              (e.shiftKey && e.key === "F10")
+                            ) {
+                              e.preventDefault();
+                              const r = e.currentTarget.getBoundingClientRect();
+                              openContextMenu(vaultDocEntity(entry), {
+                                x: r.left,
+                                y: r.bottom,
+                              });
+                              return;
+                            }
+                            navKeyDown(rowKey)(e);
+                          }}
                           className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                             highlighted
                               ? "bg-accent-subtle font-medium text-ink"

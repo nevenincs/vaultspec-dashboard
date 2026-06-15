@@ -8,14 +8,21 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
+import { openContextMenu } from "../../stores/view/contextMenu";
 import type { EngineEdge } from "../../stores/server/engine";
 import {
   useNodeDetail,
   useNodeEvidence,
   useNodeNeighbors,
 } from "../../stores/server/queries";
+import { usePinStore } from "../../stores/view/pins";
 import { selectEdge } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
+
+// The edge resolver self-registers at module load. The "node" kind is served by
+// the canonical graph node resolver (registered via app/menus/registerAll), since
+// the inspector node and the stage node are the same entity - one resolver.
+import "./menus/edgeMenu";
 
 /** Bounded-list summary (contract §5): never silently partial. */
 export function eventTouchSummary(nodeIds: string[], truncated?: number): string {
@@ -81,9 +88,40 @@ export function Inspector() {
   const node = detail.data.node;
   const tiers = edgesByTier(neighbors.data?.edges);
 
+  // The NodeEntity the header region publishes to the context-menu host. Built
+  // from the inspected node plus the view-store membership flags (open / pinned /
+  // working-set) so the resolver can offer the right pin/unpin and omit a
+  // redundant open-island. Read at event time, not render time.
+  const nodeEntity = () => {
+    const view = useViewStore.getState();
+    return {
+      kind: "node" as const,
+      id: node.id,
+      title: node.title ?? undefined,
+      isOpen: view.openedIds.includes(node.id),
+      isPinned: usePinStore.getState().isPinned(node.id),
+      inWorkingSet: view.workingSet.includes(node.id),
+    };
+  };
+
   return (
     <div className="space-y-vs-3 text-body" data-inspector>
-      <div>
+      <div
+        tabIndex={0}
+        aria-label={`node ${node.title ?? node.id}`}
+        className="rounded-vs-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openContextMenu(nodeEntity(), { x: e.clientX, y: e.clientY });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            openContextMenu(nodeEntity(), { x: r.left, y: r.bottom });
+          }
+        }}
+      >
         <div className="truncate font-medium text-ink" title={node.id}>
           {node.title ?? node.id}
         </div>
@@ -163,6 +201,38 @@ export function Inspector() {
                         className="truncate text-left hover:underline"
                         title={edge.id}
                         onClick={() => selectEdge(edge.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          openContextMenu(
+                            {
+                              kind: "edge",
+                              id: edge.id,
+                              relation: edge.relation,
+                              dst: edge.dst,
+                              tier: edge.tier,
+                            },
+                            { x: e.clientX, y: e.clientY },
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            e.key === "ContextMenu" ||
+                            (e.shiftKey && e.key === "F10")
+                          ) {
+                            e.preventDefault();
+                            const r = e.currentTarget.getBoundingClientRect();
+                            openContextMenu(
+                              {
+                                kind: "edge",
+                                id: edge.id,
+                                relation: edge.relation,
+                                dst: edge.dst,
+                                tier: edge.tier,
+                              },
+                              { x: r.left, y: r.bottom },
+                            );
+                          }
+                        }}
                       >
                         {edge.relation} →{" "}
                         {edge.dst.replace(/^(doc|feature|code|commit):/, "")}

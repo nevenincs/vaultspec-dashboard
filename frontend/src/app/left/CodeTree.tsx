@@ -24,10 +24,28 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useState } from "react";
 
+import type { CodeFileEntity } from "../../platform/actions/entity";
 import type { FileTreeEntry } from "../../stores/server/engine";
 import { useFileTree, useFileTreeAvailability } from "../../stores/server/queries";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { useActiveScope } from "../stage/Stage";
 import { handleCodeEntryClick, useHighlightedCodePath } from "./browserSelection";
+// Self-registering left-rail context-menu resolver (W03.P07): importing the
+// module runs its `registerResolver("code-file", …)` side effect once.
+import "./menus/codeFileMenu";
+
+/** Build the code-file context-menu entity from a tree row's data. A directory
+ *  carries no graph node, so its `nodeId` is left undefined. */
+function codeFileEntity(entry: FileTreeEntry): CodeFileEntity {
+  const isDir = entry.kind === "dir";
+  return {
+    kind: "code-file",
+    id: entry.node_id,
+    path: entry.path,
+    isDir,
+    nodeId: isDir ? undefined : entry.node_id || undefined,
+  };
+}
 
 // --- pure helpers (unit-tested) ---------------------------------------------------
 
@@ -273,7 +291,23 @@ function DirectoryRow({
             clickHandler(entry);
           }
         }}
-        onKeyDown={onRowKeyDown(isDir, expanded, setExpanded)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openContextMenu(codeFileEntity(entry), { x: e.clientX, y: e.clientY });
+        }}
+        onKeyDown={(e) => {
+          // Keyboard menu entry (ContextMenu key / Shift+F10): anchor at the
+          // row's bottom-left, then fall through to the directory disclosure
+          // keyboard contract for everything else (ArrowRight/Left expand/
+          // collapse, Enter/Space activate).
+          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            openContextMenu(codeFileEntity(entry), { x: r.left, y: r.bottom });
+            return;
+          }
+          onRowKeyDown(isDir, expanded, setExpanded)(e);
+        }}
         style={indent}
         className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm py-vs-0-5 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted

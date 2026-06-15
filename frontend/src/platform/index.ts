@@ -22,6 +22,16 @@ export * from "./dispatch/dispatch";
 export * from "./dispatch/middleware";
 export * from "./dispatch/useAction";
 
+// Shared action descriptor + resolver registry (dashboard-context-menus W01)
+export * from "./actions/action";
+export * from "./actions/entity";
+export * from "./actions/registry";
+
+// Action verb families (dashboard-context-menus W02): copy + host-shell verbs.
+// Importing these modules registers their terminal handlers on the seam.
+export * from "./actions/clipboardActions";
+export * from "./actions/shellActions";
+
 // Exception-handling policy (P04)
 export * from "./policy/failurePolicy";
 

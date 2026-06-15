@@ -1,0 +1,105 @@
+// @vitest-environment happy-dom
+//
+// Menu host interactive contract (W05.P12.S53): keyboard navigation, activation,
+// dismiss, and focus management (capture on open, restore on close AND on
+// unmount-while-open, the M1 hardening). The pure resolver + slice transitions
+// are covered elsewhere; this exercises the host's a11y/keyboard behaviour.
+
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { registerResolver, resetResolvers } from "../../platform/actions/registry";
+import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
+import { useViewStore } from "../../stores/view/viewStore";
+import { ContextMenuHost } from "./ContextMenuHost";
+
+const first = vi.fn();
+const second = vi.fn();
+
+beforeEach(() => {
+  useViewStore.getState().setTimelineMode({ kind: "live" });
+  registerResolver("node", () => [
+    { id: "first", label: "First", section: "navigate", run: first },
+    { id: "second", label: "Second", section: "navigate", run: second },
+  ]);
+});
+afterEach(() => {
+  cleanup();
+  resetResolvers();
+  useContextMenuStore.getState().closeMenu();
+  first.mockReset();
+  second.mockReset();
+});
+
+function openAt(trigger?: HTMLElement) {
+  render(<ContextMenuHost />);
+  act(() => {
+    trigger?.focus();
+    openContextMenu({ kind: "node", id: "n1", title: "Alpha" }, { x: 20, y: 20 });
+  });
+}
+
+describe("ContextMenuHost interactive", () => {
+  it("moves focus to the first item on open", async () => {
+    openAt();
+    await waitFor(() => expect(document.activeElement?.textContent).toContain("First"));
+  });
+
+  it("ArrowDown/ArrowUp walk the items via roving focus", async () => {
+    openAt();
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => expect(document.activeElement?.textContent).toContain("First"));
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain("Second"),
+    );
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    await waitFor(() => expect(document.activeElement?.textContent).toContain("First"));
+  });
+
+  it("Enter activates the focused item and closes", async () => {
+    openAt();
+    const menu = await screen.findByRole("menu");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toContain("Second"),
+    );
+    fireEvent.keyDown(menu, { key: "Enter" });
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+    expect(useContextMenuStore.getState().open).toBe(false);
+  });
+
+  it("restores focus to the opener on Escape", async () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "opener";
+    document.body.appendChild(trigger);
+    openAt(trigger);
+    const menu = await screen.findByRole("menu");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
+  it("restores focus when the host unmounts while open (M1)", async () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "opener";
+    document.body.appendChild(trigger);
+    const view = render(<ContextMenuHost />);
+    act(() => {
+      trigger.focus();
+      openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 });
+    });
+    await screen.findByRole("menu");
+    view.unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+});

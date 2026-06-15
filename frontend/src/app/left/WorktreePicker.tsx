@@ -25,6 +25,7 @@ import {
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
 
+import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import { EngineError, useEngineStatus } from "../../stores/server/engine";
 import {
@@ -32,9 +33,24 @@ import {
   useWorkspaceMap,
   useWorkspaceMapAvailability,
 } from "../../stores/server/queries";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
 import { movePlayhead } from "../timeline/Playhead";
+// Self-registering left-rail context-menu resolver (W03.P07): importing the
+// module runs its `registerResolver("worktree", …)` side effect once.
+import "./menus/worktreeMenu";
+
+/** Build the worktree context-menu entity from a map worktree row's data. */
+function worktreeEntity(worktree: MapWorktree): WorktreeEntity {
+  return {
+    kind: "worktree",
+    id: worktree.id,
+    branch: worktree.branch,
+    path: worktree.path,
+    hasVault: worktree.has_vault,
+  };
+}
 
 // --- pure helpers (unit-tested) ---------------------------------------------------
 
@@ -387,7 +403,28 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                       : `${worktree.branch} — context only, no vault corpus to switch to`
                   }
                   onClick={() => selectWorktree(worktree)}
-                  onKeyDown={onRowKeyDown(worktree, index)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openContextMenu(worktreeEntity(worktree), {
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                  onKeyDown={(e) => {
+                    // Keyboard menu entry (ContextMenu key / Shift+F10): anchor
+                    // at the row's bottom-left, then fall through to the roving
+                    // arrow/Enter/Escape contract for everything else.
+                    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      openContextMenu(worktreeEntity(worktree), {
+                        x: r.left,
+                        y: r.bottom,
+                      });
+                      return;
+                    }
+                    onRowKeyDown(worktree, index)(e);
+                  }}
                   className={`flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     isActive
                       ? "bg-accent-subtle font-medium text-ink"

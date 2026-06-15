@@ -9,6 +9,9 @@ import { useViewStore } from "../stores/view/viewStore";
 import { LeftRail } from "./left/LeftRail";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
+import { ContextMenuHost } from "./menu/ContextMenuHost";
+// Register every per-surface context-menu resolver once at app load.
+import "./menus/registerAll";
 import { CommandPalette } from "./palette/CommandPalette";
 import { ChangesOverview } from "./right/ChangesOverview";
 import { Inspector } from "./right/Inspector";
@@ -19,8 +22,9 @@ import { WorkTab } from "./right/WorkTab";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
 import { RangeSelect } from "./timeline/RangeSelect";
-import { handleEventClick } from "./timeline/eventSelection";
 import { Timeline } from "./timeline/Timeline";
+import { TimelineControls } from "./timeline/TimelineControls";
+import { handleNodeClick } from "./timeline/eventSelection";
 
 // Four-region skeleton in the converged agentic-desktop idiom (gui-spec §2):
 // left scope rail, center stage, right activity rail, bottom timeline.
@@ -32,8 +36,9 @@ export function AppShell() {
   const toggleRight = useViewStore((s) => s.toggleRightRail);
 
   return (
-    <div className="grid h-screen grid-rows-[1fr_8rem] bg-paper text-ink">
+    <div className="grid h-screen grid-rows-[1fr_13rem] bg-paper text-ink">
       <CommandPalette />
+      <ContextMenuHost />
       <DegradationDebugSwitch />
       <KeyboardNav />
       <div
@@ -128,18 +133,30 @@ export function AppShell() {
       </div>
 
       {/* ── Bottom timeline ────────────────────────────────────────── */}
-      <footer className="border-t border-rule">
+      {/* The relational phase-lane timeline (dashboard-timeline ADR): the control
+          bar docks at the region's top edge, the lineage surface fills the rest.
+          Layer law (dashboard-layer-ownership): this region wires stores hooks and
+          shared-state intent only — no fetch, no raw `tiers`. A mark click flows
+          into the ONE shared selection + a bounded stage ego pulse through
+          `handleNodeClick` (the deferred S45 wiring); the surface hands its
+          visible-slice arcs so the bounded 1-hop join is derived honestly. */}
+      <footer className="flex min-h-0 flex-col border-t border-rule">
         <ErrorBoundary region="timeline">
           <CrashZone region="timeline" />
-          <Timeline
-            onEventClick={handleEventClick}
-            overlay={
-              <>
-                <RangeSelect />
-                <Playhead />
-              </>
-            }
-          />
+          <div className="shrink-0">
+            <TimelineControls />
+          </div>
+          <div className="relative min-h-0 flex-1">
+            <Timeline
+              onNodeClick={handleNodeClick}
+              overlay={
+                <>
+                  <RangeSelect />
+                  <Playhead />
+                </>
+              }
+            />
+          </div>
         </ErrorBoundary>
       </footer>
       <CrashInjector />

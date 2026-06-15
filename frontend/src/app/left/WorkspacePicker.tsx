@@ -21,6 +21,7 @@ import { ChevronDown, ChevronUp, FolderPlus, Star, TriangleAlert } from "lucide-
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
 
+import type { WorkspaceEntity } from "../../platform/actions/entity";
 import type { WorkspaceRoot } from "../../stores/server/engine";
 import { EngineError } from "../../stores/server/engine";
 import {
@@ -30,6 +31,20 @@ import {
   useWorkspaces,
   useWorkspacesAvailability,
 } from "../../stores/server/queries";
+import { openContextMenu } from "../../stores/view/contextMenu";
+// Self-registering left-rail context-menu resolver (W03.P07): importing the
+// module runs its `registerResolver("workspace", …)` side effect once.
+import "./menus/workspaceMenu";
+
+/** Build the workspace context-menu entity from a registered-root row's data. */
+function workspaceEntity(root: WorkspaceRoot): WorkspaceEntity {
+  return {
+    kind: "workspace",
+    id: root.id,
+    path: root.path,
+    isLaunchDefault: root.is_launch,
+  };
+}
 
 // Icon sizing aligned to the iconography ADR's grayscale-by-shape gate (14px),
 // with the disclosure caret one density step smaller so the structural chrome
@@ -143,7 +158,14 @@ export function WorkspacePicker({
     // Optimistic + durable: the stores hook runs the widened 022 reset and
     // clears the cached worktree set synchronously, then persists the selection.
     // A rejected switch surfaces as a non-silent status line.
-    swap(root.id, null).then(
+    //
+    // The new project's scope is its registered root worktree (`root.path`), not
+    // null: a workspace swap must re-point the active SCOPE to a worktree of the
+    // new workspace (dashboard-workspace-registry ADR), or the browser keeps
+    // showing the prior project's corpus while the workspace pointer moved (live
+    // verification finding H4). `root.path` is the operator-registered,
+    // vault-bearing root worktree — the correct default landing scope.
+    swap(root.id, root.path).then(
       () => setPendingId(null),
       (err: unknown) => {
         setPendingId(null);
@@ -391,7 +413,28 @@ export function WorkspacePicker({
                     (root.reachable ? "" : ", unreachable")
                   }
                   onClick={() => selectWorkspace(root)}
-                  onKeyDown={onRowKeyDown(root, index)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openContextMenu(workspaceEntity(root), {
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                  onKeyDown={(e) => {
+                    // Keyboard menu entry (ContextMenu key / Shift+F10): anchor
+                    // at the row's bottom-left, then fall through to the roving
+                    // arrow/Enter/Escape contract for everything else.
+                    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      openContextMenu(workspaceEntity(root), {
+                        x: r.left,
+                        y: r.bottom,
+                      });
+                      return;
+                    }
+                    onRowKeyDown(root, index)(e);
+                  }}
                   className={`flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     isActive
                       ? "bg-accent-subtle font-medium text-ink"

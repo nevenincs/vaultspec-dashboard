@@ -3,6 +3,31 @@ import { describe, expect, it } from "vitest";
 import { SceneController } from "./sceneController";
 
 describe("SceneController", () => {
+  it("forwards a context-menu event to listeners (W04.P10 additive seam)", () => {
+    const scene = new SceneController();
+    const seen: unknown[] = [];
+    const off = scene.on((e) => seen.push(e));
+    scene.emit({
+      kind: "context-menu",
+      id: "doc:a",
+      target: "node",
+      clientX: 12,
+      clientY: 34,
+    });
+    scene.emit({
+      kind: "context-menu",
+      id: null,
+      target: "node",
+      clientX: 1,
+      clientY: 2,
+    });
+    off();
+    expect(seen).toEqual([
+      { kind: "context-menu", id: "doc:a", target: "node", clientX: 12, clientY: 34 },
+      { kind: "context-menu", id: null, target: "node", clientX: 1, clientY: 2 },
+    ]);
+  });
+
   it("accepts graph data without positions — the renderer owns layout (RL-1)", () => {
     const scene = new SceneController();
     scene.command({

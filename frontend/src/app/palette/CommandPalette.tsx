@@ -18,6 +18,7 @@
 import { CornerDownLeft, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import type { ActionDescriptor } from "../../platform/actions/action";
 import { useConfirmable } from "../../platform/dispatch/useAction";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { BUILTIN_LENSES, useLensStore } from "../../stores/view/lenses";
@@ -32,14 +33,15 @@ import { useActiveScope } from "../stage/Stage";
 /** The four command families, ordered as they group in the list. */
 export type CommandFamily = "navigate" | "filters" | "core" | "rag";
 
-export interface PaletteCommand {
-  id: string;
-  label: string;
+// A palette command IS a shared `ActionDescriptor` (dashboard-context-menus ADR
+// layer 1) plus the palette-specific `family` grouping. Consuming the shared
+// descriptor is what keeps the palette and the context menu from drifting; the
+// palette requires `run` (every palette row is store-only or seam-routed via a
+// closure) and groups by `family` rather than the menu's `section`.
+export interface PaletteCommand extends ActionDescriptor {
   /** The family this command belongs to (drives grouping + the row hint). */
   family: CommandFamily;
   run: () => void;
-  /** Destructive verbs arm on first Enter, run on the second. */
-  confirm?: boolean;
 }
 
 /** Human-facing group heading per family (object-then-action taxonomy). */

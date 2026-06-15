@@ -32,8 +32,13 @@ import { useRef, useState } from "react";
 
 import type { SearchResult } from "../../stores/server/engine";
 import { useSearchController } from "../../stores/server/searchController";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { selectNode } from "../../stores/view/selection";
 import { useActiveScope } from "../stage/Stage";
+
+// Self-register the search-result resolver at module load so the context-menu
+// host can resolve a result's menu the moment a row publishes its entity.
+import "./menus/searchResultMenu";
 
 // Icon sizing — the iconography ADR's grayscale-by-shape gate is 14px; the
 // leading chrome adornment reads one density step smaller so the structural
@@ -95,10 +100,24 @@ interface ResultRowProps {
   fallback: boolean;
   /** Roving-tabindex: only the active row is in tab order. */
   tabbable: boolean;
+  /** True when the active search target is code (the source IS a shell path). */
+  isCode: boolean;
   onActivate: (id: string) => void;
 }
 
-function ResultRow({ result, fallback, tabbable, onActivate }: ResultRowProps) {
+/** The SearchResultEntity a result row publishes to the context-menu host. */
+function resultEntity(result: SearchResult, isCode: boolean) {
+  return {
+    kind: "search-result" as const,
+    id: result.node_id ?? result.source,
+    source: result.source,
+    nodeId: result.node_id ?? undefined,
+    score: result.score,
+    isCode,
+  };
+}
+
+function ResultRow({ result, fallback, tabbable, isCode, onActivate }: ResultRowProps) {
   const clickable = result.node_id !== null;
   const Mark = speciesMark(result.node_id);
   const percent = scorePercent(result.score);
@@ -118,6 +137,13 @@ function ResultRow({ result, fallback, tabbable, onActivate }: ResultRowProps) {
         aria-label={label}
         aria-disabled={!clickable || undefined}
         onClick={() => clickable && result.node_id && onActivate(result.node_id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openContextMenu(resultEntity(result, isCode), {
+            x: e.clientX,
+            y: e.clientY,
+          });
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -125,6 +151,13 @@ function ResultRow({ result, fallback, tabbable, onActivate }: ResultRowProps) {
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             moveRowFocus(e.currentTarget, -1);
+          } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            openContextMenu(resultEntity(result, isCode), {
+              x: r.left,
+              y: r.bottom,
+            });
           }
         }}
         className={`w-full rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
@@ -362,6 +395,9 @@ export function SearchTab() {
                 // disabled null-node_id row cannot receive focus), so Tab always
                 // enters the list on a usable result.
                 tabbable={i === firstClickable}
+                // The target IS the authoritative code/vault signal: a code
+                // result's `source` is the shell path open-in-editor needs.
+                isCode={target === "code"}
                 onActivate={selectNode}
               />
             ))}

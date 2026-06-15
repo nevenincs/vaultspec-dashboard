@@ -12,6 +12,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import type { SceneAnchor, SceneController } from "../../scene/sceneController";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { useViewStore } from "../../stores/view/viewStore";
 import { NodeInterior } from "./NodeInterior";
 
@@ -59,6 +60,10 @@ function Island({ scene, id, children }: IslandProps) {
       style={islandStyle(anchor)}
       className="pointer-events-auto rounded-vs-md border border-rule bg-paper-raised/95 p-vs-2 text-body shadow-float"
       data-island-for={id}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        openContextMenu({ kind: "island", id }, { x: e.clientX, y: e.clientY });
+      }}
     >
       <div className="flex items-center justify-between gap-vs-2">
         {/* The opened node's id is true identity → monospace (typography law). */}

@@ -38,10 +38,16 @@ import { useState } from "react";
 
 import type { EngineEvent } from "../../stores/server/engine";
 import { useEngineEvents, useGitStatus } from "../../stores/server/queries";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import type { Selection } from "../../stores/view/viewStore";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
 import { DiffView } from "./DiffView";
+
+// The "event" resolver (shared with the timeline) is registered centrally via
+// `app/menus/registerAll`; an activity/commit row only needs to publish an
+// EventEntity to openContextMenu. The change resolver (per-file / hunk rows) is
+// registered by DiffView, the surface that holds a concrete hunk path.
 
 // Icon sizing — the iconography ADR's grayscale-by-shape gate is 14px; the
 // structural chrome (chevrons) reads one density step smaller so it stays
@@ -258,6 +264,15 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
   const Mark = eventMark(ev.kind);
   const Chevron = expanded ? ChevronDown : ChevronRight;
 
+  // The EventEntity this row publishes to the context-menu host (carries the
+  // touched node ids the resolver's "show touched nodes" needs).
+  const eventEntity = () => ({
+    kind: "event" as const,
+    id: ev.id,
+    nodeIds: ev.node_ids,
+    truncatedNodeIds: ev.truncated_node_ids,
+  });
+
   return (
     <li>
       <button
@@ -271,6 +286,17 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             truncatedNodeIds: ev.truncated_node_ids,
           });
           if (hasNodes) setExpanded((v) => !v);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openContextMenu(eventEntity(), { x: e.clientX, y: e.clientY });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            openContextMenu(eventEntity(), { x: r.left, y: r.bottom });
+          }
         }}
         className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         title={

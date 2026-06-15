@@ -22,6 +22,11 @@
 import { FileDashed } from "@phosphor-icons/react";
 
 import type { GitDiffHunk, GitDiffLine, GitFileDiff } from "../../stores/server/engine";
+import { openContextMenu } from "../../stores/view/contextMenu";
+
+// Self-register the change resolver at module load so the context-menu host can
+// resolve a hunk's menu (open-in-editor / reveal / copy path / copy hunk).
+import "./menus/changeMenu";
 
 // The diff body is keyboard-navigable hunk-to-hunk; each hunk header is a
 // landmark a keyboard operator can step through without a pointer.
@@ -45,6 +50,15 @@ export function lineGlyph(kind: GitDiffLine["kind"]): string {
 /** The programmatic label a screen reader hears for a diff line. */
 export function lineLabel(kind: GitDiffLine["kind"]): string {
   return kind === "add" ? "added" : kind === "remove" ? "removed" : "context";
+}
+
+/**
+ * Serialize a hunk to its unified-diff text (header plus glyph-prefixed lines) —
+ * the text the "copy hunk" context-menu action writes to the clipboard.
+ */
+export function hunkText(hunk: GitDiffHunk): string {
+  const body = hunk.lines.map((line) => `${lineGlyph(line.kind)}${line.text}`);
+  return [hunk.header, ...body].join("\n");
 }
 
 // Per-kind treatment: the SACRED diff tokens for add/remove (never warmth-
@@ -91,7 +105,25 @@ function DiffLineRow({ line }: { line: GitDiffLine }) {
   );
 }
 
-function HunkBlock({ hunk, index }: { hunk: GitDiffHunk; index: number }) {
+function HunkBlock({
+  hunk,
+  index,
+  path,
+}: {
+  hunk: GitDiffHunk;
+  index: number;
+  /** The owning file path — the ChangeEntity path for this hunk's menu. */
+  path: string;
+}) {
+  // The ChangeEntity this hunk publishes to the context-menu host: the file path
+  // plus the hunk text, so the resolver offers open/reveal/copy-path AND copy-hunk.
+  const changeEntity = () => ({
+    kind: "change" as const,
+    id: `${path}:${index}`,
+    path,
+    hunk: hunkText(hunk),
+  });
+
   return (
     <div className="border-t border-rule first:border-t-0">
       {/* The range header is a keyboard landmark (focusable, arrow-navigable
@@ -101,6 +133,10 @@ function HunkBlock({ hunk, index }: { hunk: GitDiffHunk; index: number }) {
         tabIndex={0}
         role="button"
         aria-label={`hunk ${index + 1}: ${hunk.header}`}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openContextMenu(changeEntity(), { x: e.clientX, y: e.clientY });
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -108,6 +144,10 @@ function HunkBlock({ hunk, index }: { hunk: GitDiffHunk; index: number }) {
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             moveHunkFocus(e.currentTarget, -1);
+          } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            openContextMenu(changeEntity(), { x: r.left, y: r.bottom });
           }
         }}
         className="bg-paper-sunken px-vs-2 py-vs-0-5 font-mono text-2xs text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
@@ -189,7 +229,7 @@ export function DiffView({ engineBlocked = true, diff }: DiffViewProps) {
       data-diff-body
     >
       {diff.hunks.map((hunk, i) => (
-        <HunkBlock key={`${hunk.header}:${i}`} hunk={hunk} index={i} />
+        <HunkBlock key={`${hunk.header}:${i}`} hunk={hunk} index={i} path={diff.path} />
       ))}
       {diff.truncated && (
         <p
