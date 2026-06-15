@@ -72,4 +72,27 @@ describe("theme migrated into the settings model (W05)", () => {
     });
     expect(screen.getByTestId("pref").textContent).toBe("light");
   });
+
+  it("does not revert to the stale server theme when changing from a pre-existing one", async () => {
+    // Seed the server with "dark", mount (reconciles to dark), then change to
+    // "light": the reconcile must NOT flash back to the stale "dark" while the
+    // write is in flight (review MEDIUM: theme-reconcile revert). The settled
+    // state is "light".
+    const mock = new MockEngine();
+    engineClient.useTransport(mock.fetchImpl);
+    await engineClient.putSettings({ key: "theme", value: "dark" });
+    renderHarness();
+    await waitFor(() => {
+      expect(document.documentElement.dataset.theme).toBe("dark");
+    });
+    fireEvent.click(screen.getByText("light"));
+    // Settles on light; never gets stuck on dark.
+    await waitFor(() => {
+      expect(document.documentElement.dataset.theme).toBe("light");
+    });
+    // Give any stray reconcile a chance to (wrongly) revert; it must stay light.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(screen.getByTestId("pref").textContent).toBe("light");
+  });
 });

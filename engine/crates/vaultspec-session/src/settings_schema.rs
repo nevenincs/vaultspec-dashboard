@@ -146,35 +146,38 @@ pub fn validate(key: &str, value: &str, scoped: bool) -> Result<String, Validati
     if scoped && !def.scope_eligible {
         return Err(ValidationError::ScopeNotAllowed(key.to_string()));
     }
-    match &def.value_type {
+    check_value(&def.value_type, value).map_err(|reason| invalid(key, reason))
+}
+
+/// The pure type-level check: validate `value` against a [`SettingType`]'s
+/// constraint, returning the CANONICAL stored string on success or a
+/// human-facing reason on failure. The registry-aware [`validate`] wraps this
+/// after the key lookup + scope check; kept separate so each value type is
+/// unit-testable without a registry entry.
+pub fn check_value(value_type: &SettingType, value: &str) -> Result<String, String> {
+    match value_type {
         SettingType::Enum { members } => {
             if members.iter().any(|m| m == value) {
                 Ok(value.to_string())
             } else {
-                Err(invalid(
-                    key,
-                    format!("must be one of: {}", members.join(", ")),
-                ))
+                Err(format!("must be one of: {}", members.join(", ")))
             }
         }
         SettingType::Bool => match value {
             "true" | "false" => Ok(value.to_string()),
-            _ => Err(invalid(key, "must be \"true\" or \"false\"".to_string())),
+            _ => Err("must be \"true\" or \"false\"".to_string()),
         },
         SettingType::String { max_len } => {
             if value.len() <= *max_len {
                 Ok(value.to_string())
             } else {
-                Err(invalid(
-                    key,
-                    format!("must be at most {max_len} characters"),
-                ))
+                Err(format!("must be at most {max_len} characters"))
             }
         }
         SettingType::Integer { min, max } => match value.parse::<i64>() {
             Ok(n) if n >= *min && n <= *max => Ok(n.to_string()),
-            Ok(_) => Err(invalid(key, format!("must be between {min} and {max}"))),
-            Err(_) => Err(invalid(key, "must be an integer".to_string())),
+            Ok(_) => Err(format!("must be between {min} and {max}")),
+            Err(_) => Err("must be an integer".to_string()),
         },
     }
 }
@@ -237,19 +240,6 @@ fn build_registry() -> Vec<SettingDef> {
             step: None,
             unit: None,
         },
-        SettingDef {
-            key: "node_label_scale".to_string(),
-            value_type: SettingType::Integer { min: 50, max: 200 },
-            default: "100".to_string(),
-            scope_eligible: true,
-            control: ControlKind::Slider,
-            label: "Label size".to_string(),
-            description: "Relative size of node labels in the graph, as a percentage.".to_string(),
-            group: "Graph".to_string(),
-            order: 2,
-            step: Some(10),
-            unit: Some("%".to_string()),
-        },
     ]
 }
 
@@ -304,19 +294,15 @@ mod tests {
 
     #[test]
     fn integer_range_and_canonical_form() {
-        assert_eq!(validate("node_label_scale", "120", true).unwrap(), "120");
-        assert_eq!(
-            validate("node_label_scale", "9999", true)
-                .unwrap_err()
-                .kind(),
-            "invalid_value"
-        );
-        assert_eq!(
-            validate("node_label_scale", "1.5", true)
-                .unwrap_err()
-                .kind(),
-            "invalid_value"
-        );
+        // Integer support is exercised at the type level (no integer setting is
+        // currently in the registry; the slider control awaits a consuming
+        // setting). `check_value` is the pure validator the registry path wraps.
+        let ty = SettingType::Integer { min: 50, max: 200 };
+        assert_eq!(check_value(&ty, "120").unwrap(), "120");
+        assert!(check_value(&ty, "9999").is_err());
+        assert!(check_value(&ty, "1.5").is_err());
+        assert!(check_value(&ty, "").is_err());
+        assert!(check_value(&ty, " 80").is_err());
     }
 
     #[test]

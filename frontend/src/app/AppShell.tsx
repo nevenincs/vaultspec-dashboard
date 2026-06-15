@@ -22,6 +22,7 @@ import "./menus/registerAll";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsDialog } from "./settings/useSettingsDialog";
+import { useSettingsEffects } from "./settings/settingsEffects";
 import { useThemeSetting } from "./settings/themeSetting";
 import { ChangesOverview } from "./right/ChangesOverview";
 import { Inspector } from "./right/Inspector";
@@ -48,6 +49,9 @@ export function AppShell() {
   // the server value to the framework-free controller and persists changes. Called
   // once here so the reconcile runs regardless of rail collapse state.
   const theme = useThemeSetting();
+  // Apply the non-theme consumed settings (reduce_motion, default_granularity)
+  // to app state once at the shell top (review HIGH-1: no dead controls).
+  useSettingsEffects();
 
   return (
     <div className="grid h-screen grid-rows-[1fr_13rem] bg-paper text-ink">

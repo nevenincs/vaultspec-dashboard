@@ -10,7 +10,7 @@
 // provenance note. Writes go through usePutSettings (cache-seed + invalidate);
 // a typed rejection (the engine's error_kind) surfaces inline on the row.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { EngineError } from "../../stores/server/engine";
 import {
@@ -100,7 +100,9 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
       ? (eff.scopeValue ?? eff.value)
       : (eff.globalValue ?? def.default);
 
-  const write = (next: string) => {
+  // The one-shot persist. Discrete controls (enum/switch) call this directly;
+  // continuous controls route through the debounced path below.
+  const commit = (next: string) => {
     setError(null);
     putSettings.mutate(
       {
@@ -116,6 +118,31 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
       },
     );
   };
+
+  // Continuous controls (slider/text) would otherwise fire one PUT per tick /
+  // keystroke (review HIGH-2). Hold a local draft for instant feedback and
+  // debounce the persist; discrete controls commit immediately.
+  const continuous = def.control === "slider" || def.control === "text";
+  const [draft, setDraft] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shownValue = draft ?? controlValue;
+
+  const onControlChange = (next: string) => {
+    if (!continuous) {
+      commit(next);
+      return;
+    }
+    setDraft(next);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => commit(next), 250);
+  };
+
+  // Drop the draft once the persisted value catches up to it (write landed), so
+  // the control resumes tracking server truth.
+  useEffect(() => {
+    if (draft !== null && draft === controlValue) setDraft(null);
+  }, [draft, controlValue]);
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
 
   const fieldId = `setting-${def.key}`;
   const isDefaulted = controlValue === def.default;
@@ -134,7 +161,12 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
         <div className="flex shrink-0 flex-col items-end gap-vs-1">
           {/* Controls stay interactive during a write — discrete writes are fast
               and never disable mid-interaction (dashboard-settings review HIGH-2). */}
-          <SettingControl def={def} value={controlValue} onChange={write} id={fieldId} />
+          <SettingControl
+            def={def}
+            value={shownValue}
+            onChange={onControlChange}
+            id={fieldId}
+          />
           {scopeable && <ScopeTargetToggle target={target} onTarget={setTarget} />}
         </div>
       </div>
@@ -151,7 +183,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
           // removing the row — the label states exactly that effect.
           <button
             type="button"
-            onClick={() => write(eff.globalValue ?? def.default)}
+            onClick={() => commit(eff.globalValue ?? def.default)}
             className="text-2xs text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             Match global
@@ -161,7 +193,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
           !isDefaulted && (
             <button
               type="button"
-              onClick={() => write(def.default)}
+              onClick={() => commit(def.default)}
               className="text-2xs text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               Reset to default
