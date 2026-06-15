@@ -74,6 +74,10 @@
       "name": "LeftRail"
     },
     {
+      "id": "53:2",
+      "name": "LensSelector"
+    },
+    {
       "id": "43:2",
       "name": "Minimap"
     },
@@ -144,6 +148,10 @@
     {
       "id": "25:3",
       "name": "TimelineControls"
+    },
+    {
+      "id": "54:2",
+      "name": "TimeTravelChip"
     },
     {
       "id": "19:41",

@@ -166,8 +166,8 @@
       "name": "LensSelector",
       "source": "src/app/stage/LensSelector.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null
+      "figmaNodeId": "53:2",
+      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=53-2"
     },
     {
       "name": "Minimap",
@@ -313,8 +313,8 @@
       "name": "TimeTravelChip",
       "source": "src/app/timeline/Playhead.tsx",
       "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null
+      "figmaNodeId": "54:2",
+      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=54-2"
     },
     {
       "name": "VaultBrowser",
