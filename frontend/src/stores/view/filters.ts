@@ -14,7 +14,15 @@ import type { EngineEdge, EngineNode, GraphFilter } from "../server/engine";
 export type TierName = "declared" | "structural" | "temporal" | "semantic";
 
 export interface FilterState {
-  /** The tier dial: per-tier toggles + confidence floors (G3.f). */
+  /**
+   * The tier dial: per-tier visibility TOGGLES (view state, G3.f). NOTE (F-L2):
+   * this is NOT the wire `TiersBlock` degradation/availability block — the two
+   * share the word "tiers" but differ in type and meaning (`Record<TierName,
+   * boolean>` here vs the per-tier availability block in `stores/server`) and
+   * never interchange. A rename to `enabledTiers` was declined: this field is
+   * part of the persisted `FilterChoices`/lens shape, so renaming would force a
+   * lens-persistence migration disproportionate to the cosmetic gain.
+   */
   tiers: Record<TierName, boolean>;
   minConfidence: Partial<Record<"temporal" | "semantic", number>>;
   /** Facet chips — values come from the engine vocabulary. */
