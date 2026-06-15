@@ -26,12 +26,13 @@ import { selectNode } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { OPS_WHITELIST } from "../right/OpsPanel";
 import { dispatchOps } from "../right/opsActions";
+import { useSettingsDialog } from "../settings/useSettingsDialog";
 import { useActiveScope } from "../stage/Stage";
 
 // --- pure command assembly (unit-tested) --------------------------------------------
 
-/** The four command families, ordered as they group in the list. */
-export type CommandFamily = "navigate" | "filters" | "core" | "rag";
+/** The command families, ordered as they group in the list. */
+export type CommandFamily = "navigate" | "filters" | "core" | "rag" | "app";
 
 // A palette command IS a shared `ActionDescriptor` (dashboard-context-menus ADR
 // layer 1) plus the palette-specific `family` grouping. Consuming the shared
@@ -50,6 +51,7 @@ export const FAMILY_LABEL: Record<CommandFamily, string> = {
   filters: "filters",
   core: "core ops",
   rag: "rag ops",
+  app: "app",
 };
 
 export interface PaletteSources {
@@ -60,6 +62,8 @@ export interface PaletteSources {
   saveLens: (name: string) => void;
   runOp: (target: "core" | "rag", verb: string) => void;
   navigate: (nodeId: string) => void;
+  /** Open the settings dialog (dashboard-settings W04.P09). */
+  openSettings: () => void;
 }
 
 export function buildCommands(sources: PaletteSources): PaletteCommand[] {
@@ -89,6 +93,12 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
       run: () => sources.runOp(target, verb),
     });
   }
+  commands.push({
+    id: "app:settings",
+    label: "open settings",
+    family: "app",
+    run: () => sources.openSettings(),
+  });
   const trimmed = sources.query.trim();
   if (trimmed.length > 0) {
     commands.push({
@@ -117,7 +127,7 @@ export function filterCommands(
 }
 
 /** Group the flat list into families, preserving the canonical family order. */
-const FAMILY_ORDER: CommandFamily[] = ["navigate", "filters", "core", "rag"];
+const FAMILY_ORDER: CommandFamily[] = ["navigate", "filters", "core", "rag", "app"];
 
 export function groupByFamily(
   commands: readonly PaletteCommand[],
@@ -262,6 +272,7 @@ export function CommandPalette() {
         );
       },
       navigate: (nodeId) => selectNode(nodeId),
+      openSettings: () => useSettingsDialog.getState().openDialog(),
     });
     // Ops verbs disappear in time-travel (the G4.b gate applies everywhere).
     const gated = timeTravel ? all.filter((c) => !c.id.startsWith("ops:")) : all;

@@ -12,6 +12,7 @@ function sources(over: Partial<PaletteSources> = {}): PaletteSources {
     saveLens: () => undefined,
     runOp: () => undefined,
     navigate: () => undefined,
+    openSettings: () => undefined,
     ...over,
   };
 }
@@ -77,7 +78,14 @@ describe("groupByFamily", () => {
   it("groups in canonical family order and drops empty families", () => {
     const commands = buildCommands(sources());
     const groups = groupByFamily(commands);
-    expect(groups.map((g) => g.family)).toEqual(["navigate", "filters", "core", "rag"]);
+    // The "app" family is always present (the settings command is unconditional).
+    expect(groups.map((g) => g.family)).toEqual([
+      "navigate",
+      "filters",
+      "core",
+      "rag",
+      "app",
+    ]);
     // Every command lands in exactly one group.
     const grouped = groups.flatMap((g) => g.commands);
     expect(grouped).toHaveLength(commands.length);

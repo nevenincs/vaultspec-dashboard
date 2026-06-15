@@ -1,4 +1,12 @@
-import { ChevronLeft, ChevronRight, Contrast, Monitor, Moon, Sun } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Contrast,
+  Monitor,
+  Moon,
+  Settings,
+  Sun,
+} from "lucide-react";
 import { useState } from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
@@ -13,6 +21,8 @@ import { ContextMenuHost } from "./menu/ContextMenuHost";
 // Register every per-surface context-menu resolver once at app load.
 import "./menus/registerAll";
 import { CommandPalette } from "./palette/CommandPalette";
+import { SettingsDialog } from "./settings/SettingsDialog";
+import { useSettingsDialog } from "./settings/useSettingsDialog";
 import { ChangesOverview } from "./right/ChangesOverview";
 import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
@@ -38,6 +48,7 @@ export function AppShell() {
   return (
     <div className="grid h-screen grid-rows-[1fr_13rem] bg-paper text-ink">
       <CommandPalette />
+      <SettingsDialog />
       <ContextMenuHost />
       <DegradationDebugSwitch />
       <KeyboardNav />
@@ -65,6 +76,7 @@ export function AppShell() {
                   Scope
                 </span>
                 <ThemeToggle />
+                <SettingsButton />
               </>
             )}
           </div>
@@ -192,6 +204,23 @@ function ThemeToggle() {
       onClick={() => setPreference(next)}
     >
       <Icon size={12} />
+    </button>
+  );
+}
+
+/** The settings entry point (dashboard-settings W04.P09): a gear that opens the
+ *  schema-driven settings dialog. The command palette opens the same dialog. */
+function SettingsButton() {
+  const openDialog = useSettingsDialog((s) => s.openDialog);
+  return (
+    <button
+      type="button"
+      aria-label="open settings"
+      title="Settings"
+      className="ml-vs-1 flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+      onClick={openDialog}
+    >
+      <Settings size={12} />
     </button>
   );
 }
