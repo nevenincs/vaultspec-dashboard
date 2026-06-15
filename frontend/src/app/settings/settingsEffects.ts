@@ -8,7 +8,12 @@
 import { useEffect, useRef } from "react";
 
 import { useSettings, useSettingsSchema } from "../../stores/server/queries";
-import { decodeBool, resolveEffective } from "../../stores/server/settingsSelectors";
+import {
+  decodeBool,
+  decodeInt,
+  resolveEffective,
+} from "../../stores/server/settingsSelectors";
+import { useFilterStore } from "../../stores/view/filters";
 import { useViewStore } from "../../stores/view/viewStore";
 
 export function useSettingsEffects() {
@@ -16,6 +21,8 @@ export function useSettingsEffects() {
   const settings = useSettings();
   const scope = useViewStore((s) => s.scope);
   const setGranularity = useViewStore((s) => s.setGranularity);
+  const setMinConfidence = useFilterStore((s) => s.setMinConfidence);
+  const setTextMatch = useFilterStore((s) => s.setTextMatch);
 
   const defs = schema.data?.settings;
 
@@ -30,18 +37,53 @@ export function useSettingsEffects() {
     document.documentElement.dataset.reduceMotion = reduceMotion ? "true" : "false";
   }, [reduceMotion]);
 
-  // default_granularity -> the level of detail the graph OPENS WITH for a scope.
-  // Seed the view granularity once per scope (entering a scope applies its
-  // default); the user can still toggle granularity for the session afterward.
+  // The Graph defaults that the graph OPENS WITH for a scope. Seeded once per
+  // scope (entering a scope applies its persisted defaults); the user can still
+  // change the live controls for the session afterward. One shared seed ref so
+  // all three Graph defaults apply together on a scope transition, never
+  // clobbering mid-session edits.
   const granularityDef = defs?.find((d) => d.key === "default_granularity");
+  const confidenceDef = defs?.find((d) => d.key === "confidence_floor");
+  const labelFilterDef = defs?.find((d) => d.key === "label_filter");
   const seededScope = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (!granularityDef || !settings.data) return;
+    if (!settings.data) return;
     if (seededScope.current === scope) return;
-    const eff = resolveEffective(granularityDef, settings.data, scope).value;
-    if (eff === "feature" || eff === "document") {
-      setGranularity(eff);
-      seededScope.current = scope;
+
+    // default_granularity -> the level of detail the graph opens with.
+    if (granularityDef) {
+      const eff = resolveEffective(granularityDef, settings.data, scope).value;
+      if (eff === "feature" || eff === "document") setGranularity(eff);
     }
-  }, [granularityDef, settings.data, scope, setGranularity]);
+
+    // confidence_floor -> the inferred-edge (temporal + semantic) confidence
+    // floor DEFAULT the Stage's per-tier sliders initialize from. The setting
+    // is a percent (0..100); the filter store's floors are 0..1, so map down.
+    if (confidenceDef) {
+      const percent = decodeInt(
+        resolveEffective(confidenceDef, settings.data, scope).value,
+        0,
+      );
+      const floor = Math.min(1, Math.max(0, percent / 100));
+      setMinConfidence("temporal", floor);
+      setMinConfidence("semantic", floor);
+    }
+
+    // label_filter -> the node-stem text-match DEFAULT the Stage opens with.
+    if (labelFilterDef) {
+      const text = resolveEffective(labelFilterDef, settings.data, scope).value;
+      setTextMatch(text);
+    }
+
+    seededScope.current = scope;
+  }, [
+    granularityDef,
+    confidenceDef,
+    labelFilterDef,
+    settings.data,
+    scope,
+    setGranularity,
+    setMinConfidence,
+    setTextMatch,
+  ]);
 }

@@ -1017,6 +1017,8 @@ export interface SettingDef {
   step?: number;
   /** Unit suffix for display, e.g. "%" (slider controls only). */
   unit?: string;
+  /** Placeholder hint for an empty field (text controls only). */
+  placeholder?: string;
 }
 
 /** The served settings schema (GET /settings/schema data): the declared settings

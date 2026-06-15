@@ -79,6 +79,9 @@ pub struct SettingDef {
     /// A unit suffix for display, e.g. `"%"` (slider controls only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    /// Placeholder hint for an empty field (text controls only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
 }
 
 /// Why a settings write was rejected. Maps to a machine-readable `error_kind`
@@ -210,6 +213,7 @@ fn build_registry() -> Vec<SettingDef> {
             order: 1,
             step: None,
             unit: None,
+            placeholder: None,
         },
         SettingDef {
             key: "reduce_motion".to_string(),
@@ -223,6 +227,7 @@ fn build_registry() -> Vec<SettingDef> {
             order: 2,
             step: None,
             unit: None,
+            placeholder: None,
         },
         SettingDef {
             key: "default_granularity".to_string(),
@@ -238,6 +243,43 @@ fn build_registry() -> Vec<SettingDef> {
             order: 1,
             step: None,
             unit: None,
+            placeholder: None,
+        },
+        // The inferred-edge certainty floor, declared as a percent (0..100) so it
+        // renders as a `%` slider; the client maps the percent to the 0..1 float
+        // its per-tier confidence floors use. Global-only: it is the persisted
+        // default the Stage's live per-tier confidence sliders initialize from
+        // ("Using the global value." in the dialog, with no per-scope override).
+        SettingDef {
+            key: "confidence_floor".to_string(),
+            value_type: SettingType::Integer { min: 0, max: 100 },
+            default: "0".to_string(),
+            scope_eligible: false,
+            control: ControlKind::Slider,
+            label: "Confidence floor".to_string(),
+            description: "Hide inferred edges below this certainty.".to_string(),
+            group: "Graph".to_string(),
+            order: 2,
+            step: Some(1),
+            unit: Some("%".to_string()),
+            placeholder: None,
+        },
+        // The node-stem text filter's persisted default: the Stage's text/stem
+        // match initializes from this on scope load. Global, with a default ("");
+        // the dialog shows "Using the default.".
+        SettingDef {
+            key: "label_filter".to_string(),
+            value_type: SettingType::String { max_len: 200 },
+            default: String::new(),
+            scope_eligible: false,
+            control: ControlKind::Text,
+            label: "Label filter".to_string(),
+            description: "Only show nodes whose stem matches.".to_string(),
+            group: "Graph".to_string(),
+            order: 3,
+            step: None,
+            unit: None,
+            placeholder: Some("type a stem…".to_string()),
         },
     ]
 }
@@ -293,15 +335,53 @@ mod tests {
 
     #[test]
     fn integer_range_and_canonical_form() {
-        // Integer support is exercised at the type level (no integer setting is
-        // currently in the registry; the slider control awaits a consuming
-        // setting). `check_value` is the pure validator the registry path wraps.
+        // `check_value` is the pure validator the registry path wraps.
         let ty = SettingType::Integer { min: 50, max: 200 };
         assert_eq!(check_value(&ty, "120").unwrap(), "120");
         assert!(check_value(&ty, "9999").is_err());
         assert!(check_value(&ty, "1.5").is_err());
         assert!(check_value(&ty, "").is_err());
         assert!(check_value(&ty, " 80").is_err());
+    }
+
+    #[test]
+    fn confidence_floor_is_a_percent_slider_global_only() {
+        let def = find("confidence_floor").expect("confidence_floor is declared");
+        assert_eq!(def.value_type, SettingType::Integer { min: 0, max: 100 });
+        assert_eq!(def.control, ControlKind::Slider);
+        assert_eq!(def.unit.as_deref(), Some("%"));
+        assert_eq!(def.group, "Graph");
+        assert!(!def.scope_eligible, "confidence_floor is global-only");
+        // In range accepted, out of range rejected, scope rejected.
+        assert!(validate("confidence_floor", "60", false).is_ok());
+        assert!(validate("confidence_floor", "0", false).is_ok());
+        assert!(validate("confidence_floor", "100", false).is_ok());
+        assert_eq!(
+            validate("confidence_floor", "101", false)
+                .unwrap_err()
+                .kind(),
+            "invalid_value"
+        );
+        assert_eq!(
+            validate("confidence_floor", "60", true).unwrap_err().kind(),
+            "scope_not_allowed"
+        );
+    }
+
+    #[test]
+    fn label_filter_is_a_text_string_global() {
+        let def = find("label_filter").expect("label_filter is declared");
+        assert_eq!(def.control, ControlKind::Text);
+        assert!(matches!(def.value_type, SettingType::String { .. }));
+        assert_eq!(def.default, "");
+        assert!(!def.scope_eligible, "label_filter is global");
+        assert!(validate("label_filter", "", false).is_ok());
+        assert!(validate("label_filter", "adr", false).is_ok());
+        let long = "x".repeat(201);
+        assert_eq!(
+            validate("label_filter", &long, false).unwrap_err().kind(),
+            "invalid_value"
+        );
     }
 
     #[test]

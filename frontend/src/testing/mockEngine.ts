@@ -69,6 +69,31 @@ const MOCK_SETTINGS_REGISTRY: SettingDef[] = [
     group: "Graph",
     order: 1,
   },
+  {
+    key: "confidence_floor",
+    value_type: { type: "integer", min: 0, max: 100 },
+    default: "0",
+    scope_eligible: false,
+    control: "slider",
+    label: "Confidence floor",
+    description: "Hide inferred edges below this certainty.",
+    group: "Graph",
+    order: 2,
+    step: 1,
+    unit: "%",
+  },
+  {
+    key: "label_filter",
+    value_type: { type: "string", max_len: 200 },
+    default: "",
+    scope_eligible: false,
+    control: "text",
+    label: "Label filter",
+    description: "Only show nodes whose stem matches.",
+    group: "Graph",
+    order: 3,
+    placeholder: "type a stem…",
+  },
 ];
 
 /** Validate a settings write against the mock registry, mirroring the live

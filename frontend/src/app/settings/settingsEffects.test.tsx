@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
+import { DEFAULT_CHOICES, useFilterStore } from "../../stores/view/filters";
 import { useViewStore } from "../../stores/view/viewStore";
 import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
 import { useSettingsEffects } from "./settingsEffects";
@@ -37,6 +38,7 @@ describe("useSettingsEffects (consumed settings)", () => {
     cleanup();
     queryClient.clear();
     useViewStore.getState().setScope(null);
+    useFilterStore.getState().reset();
     document.documentElement.removeAttribute("data-reduce-motion");
     engineClient.useTransport((input, init) => fetch(input, init));
   });
@@ -72,6 +74,33 @@ describe("useSettingsEffects (consumed settings)", () => {
     renderEffects();
     await waitFor(() => {
       expect(useViewStore.getState().granularity).toBe("document");
+    });
+  });
+
+  it("seeds the temporal+semantic confidence floors from confidence_floor (percent -> 0..1)", async () => {
+    const mock = new MockEngine();
+    engineClient.useTransport(mock.fetchImpl);
+    // A global confidence floor of 60% must seed both inferred-edge floors at 0.6.
+    await engineClient.putSettings({ key: "confidence_floor", value: "60" });
+    expect(useFilterStore.getState().minConfidence).toEqual(
+      DEFAULT_CHOICES.minConfidence,
+    );
+    renderEffects();
+    await waitFor(() => {
+      const floors = useFilterStore.getState().minConfidence;
+      expect(floors.temporal).toBeCloseTo(0.6);
+      expect(floors.semantic).toBeCloseTo(0.6);
+    });
+  });
+
+  it("seeds the node-stem text match from label_filter for the scope", async () => {
+    const mock = new MockEngine();
+    engineClient.useTransport(mock.fetchImpl);
+    await engineClient.putSettings({ key: "label_filter", value: "adr" });
+    expect(useFilterStore.getState().textMatch).toBe("");
+    renderEffects();
+    await waitFor(() => {
+      expect(useFilterStore.getState().textMatch).toBe("adr");
     });
   });
 });

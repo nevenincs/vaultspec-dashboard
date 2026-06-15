@@ -54,6 +54,12 @@ describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
     expect(screen.getByText("Theme")).toBeTruthy();
     expect(screen.getByText("Reduce motion")).toBeTruthy();
     expect(screen.getByText("Default granularity")).toBeTruthy();
+    // The Graph section's two new rows (Figma 17:1702): a percent slider and a
+    // stem text field, rendered through the schema-driven NumberControl/TextControl.
+    expect(screen.getByText("Confidence floor")).toBeTruthy();
+    expect(screen.getByText("Label filter")).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Confidence floor" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Label filter" })).toBeTruthy();
     // Theme renders as the segmented (radiogroup) control with its members.
     expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "dark" })).toBeTruthy();

@@ -797,6 +797,7 @@ function adaptSettingDef(value: unknown): SettingDef | null {
     order: typeof value.order === "number" ? value.order : 0,
     step: typeof value.step === "number" ? value.step : undefined,
     unit: typeof value.unit === "string" ? value.unit : undefined,
+    placeholder: typeof value.placeholder === "string" ? value.placeholder : undefined,
   };
 }
 

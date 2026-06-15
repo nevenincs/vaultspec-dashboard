@@ -906,6 +906,45 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
             .is_some_and(|g| g.iter().any(|v| v == "Appearance")),
         "groups are ordered and include Appearance"
     );
+    // (dashboard-settings, Figma 17:1702) The Graph section carries five rows:
+    // default_granularity plus the confidence-floor percent slider and the
+    // label-filter text field, each a real consumed setting (not a dead control).
+    let confidence_def = defs
+        .iter()
+        .find(|d| d["key"] == "confidence_floor")
+        .expect("confidence_floor is a declared setting");
+    assert_eq!(
+        confidence_def["value_type"]["type"], "integer",
+        "confidence_floor is an integer (percent)"
+    );
+    assert_eq!(confidence_def["control"], "slider");
+    assert_eq!(confidence_def["unit"], "%");
+    assert_eq!(confidence_def["group"], "Graph");
+    assert_eq!(confidence_def["scope_eligible"], false);
+    let label_def = defs
+        .iter()
+        .find(|d| d["key"] == "label_filter")
+        .expect("label_filter is a declared setting");
+    assert_eq!(label_def["value_type"]["type"], "string");
+    assert_eq!(label_def["control"], "text");
+    assert_eq!(label_def["group"], "Graph");
+    // Both new settings validate on PUT: a percent in range and a stem string.
+    let (status, _) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "confidence_floor", "value": "60"}"#),
+    );
+    assert_eq!(status, 200, "confidence_floor accepts an in-range percent");
+    let (status, _) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "label_filter", "value": "adr"}"#),
+    );
+    assert_eq!(status, 200, "label_filter accepts a stem string");
 
     // --- PUT /settings validation: typed rejections -------------------------
     // (dashboard-settings) An unknown key, an out-of-constraint value, and a
