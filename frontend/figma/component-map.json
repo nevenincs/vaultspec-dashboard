@@ -58,6 +58,13 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=26-2"
     },
     {
+      "name": "ConfirmDialog",
+      "source": "src/app/chrome/ConfirmDialog.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "ContextMenuHost",
       "source": "src/app/menu/ContextMenuHost.tsx",
       "designSurface": true,

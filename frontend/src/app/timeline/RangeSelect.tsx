@@ -252,7 +252,7 @@ export function RangeSelect() {
                 onKeyDown: onBandKeyDown,
               }
             : { "aria-hidden": true })}
-          className={`absolute top-0 bottom-0 bg-accent-subtle/40 ring-1 ring-accent/50 ${
+          className={`absolute top-0 bottom-0 bg-accent-subtle/55 ring-1 ring-accent ${
             committed && !drag
               ? "pointer-events-auto transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               : ""

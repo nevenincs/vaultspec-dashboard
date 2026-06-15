@@ -293,7 +293,11 @@ export function ContextMenuHost() {
         {groups.map((group, gi) => (
           <div key={group.section} role="presentation">
             {gi > 0 && (
-              <div role="separator" className="my-vs-1 border-t border-rule" />
+              // Inset divider (figma 17:1306): a left-padded hairline, not a
+              // full-bleed rule, so the separator reads as a soft section break.
+              <div role="separator" className="py-vs-1 pl-vs-2 pr-vs-1">
+                <div className="h-px bg-rule" />
+              </div>
             )}
             {group.actions.map((action) => {
               const index = ordered.indexOf(action);

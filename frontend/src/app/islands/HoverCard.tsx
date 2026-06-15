@@ -118,7 +118,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       data-hover-card
       data-reduced-motion={reduce ? "" : undefined}
       data-motion={reduce ? "crossfade" : "bloom"}
-      className="w-64 rounded-vs-md border border-rule bg-paper-raised p-vs-2 text-ink shadow-float"
+      className="flex w-64 flex-col gap-vs-1-5 rounded-vs-md border border-rule bg-paper-raised p-vs-2 text-ink shadow-float"
       style={motionStyle}
     >
       {/* Header: kind glyph + title + open affordance. */}
@@ -150,7 +150,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
 
       {/* Status chip: the raw value, tinted by the class token (tint reinforces). */}
       {model.status?.value && (
-        <div className="mt-vs-1-5">
+        <div>
           <span
             data-status-chip
             className="inline-flex items-center gap-vs-1 rounded-vs-sm border px-vs-1 py-vs-0-5 text-label"
@@ -167,7 +167,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
 
       {/* Rollout bar: the SEPARATE progress channel (plan/feature), accent fill. */}
       {fraction !== null && model.progress && (
-        <div className="mt-vs-2" data-rollout>
+        <div data-rollout>
           <div className="mb-vs-0-5 flex items-center justify-between text-2xs text-ink-muted">
             <span>rollout</span>
             <span data-tabular className="tabular-nums">
@@ -192,13 +192,13 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
 
       {/* Microline: authority class + severity/tier magnitude (provenance tail). */}
       {(model.authorityClass || magnitude) && (
-        <p className="mt-vs-2 text-2xs text-ink-faint" data-microline>
+        <p className="text-2xs text-ink-faint" data-microline>
           {[model.authorityClass, magnitude].filter(Boolean).join(" · ")}
         </p>
       )}
 
       {/* Identity tail: the node id is true identity → monospace. */}
-      <p className="mt-vs-1 break-all font-mono text-2xs text-ink-faint" data-card-id>
+      <p className="break-all font-mono text-2xs text-ink-faint" data-card-id>
         {model.id}
       </p>
     </div>
