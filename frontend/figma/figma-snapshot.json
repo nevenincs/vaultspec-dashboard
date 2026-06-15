@@ -1,9 +1,14 @@
 {
   "fileKey": "8WDmXNOURdRQwdefWNGsBb",
+  "capturedAt": "2026-06-15",
   "nodes": [
     {
       "id": "30:2",
       "name": "AlgorithmPanel"
+    },
+    {
+      "id": "33:2",
+      "name": "AppShell"
     },
     {
       "id": "19:28",
@@ -32,6 +37,10 @@
     {
       "id": "26:40",
       "name": "ContextMenuHost"
+    },
+    {
+      "id": "37:2",
+      "name": "DegradationDebugSwitch"
     },
     {
       "id": "26:70",
@@ -66,15 +75,27 @@
       "name": "HoverCard"
     },
     {
+      "id": "41:2",
+      "name": "HoverCardLayer"
+    },
+    {
       "id": "24:56",
       "name": "Inspector"
+    },
+    {
+      "id": "44:2",
+      "name": "IslandLayer"
+    },
+    {
+      "id": "35:2",
+      "name": "KeyboardNav"
     },
     {
       "id": "19:2",
       "name": "LeftRail"
     },
     {
-      "id": "53:2",
+      "id": "4:72",
       "name": "LensSelector"
     },
     {
@@ -88,6 +109,10 @@
     {
       "id": "22:72",
       "name": "NavToolbar"
+    },
+    {
+      "id": "47:2",
+      "name": "NodeInterior"
     },
     {
       "id": "24:3",
@@ -120,6 +145,10 @@
     {
       "id": "24:49",
       "name": "SearchTab"
+    },
+    {
+      "id": "29:2",
+      "name": "SettingControl"
     },
     {
       "id": "29:2",
