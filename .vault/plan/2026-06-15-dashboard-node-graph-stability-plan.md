@@ -11,49 +11,41 @@ related:
 ---
 
 
-
-
-
-
-
-
 # `dashboard-node-graph-stability` plan
 
 ### Phase `P01` - d3-force solver driver behind the layout seam
 
 Replace the graphology ForceAtlas2 worker with a main-thread d3-force simulation that drives the existing FieldLayout interface, retiring the worker and its dependencies.
 
-
-
-- [ ] `P01.S01` - Add the d3-force runtime dependency and its types; `frontend/package.json`.
-- [ ] `P01.S02` - Author the main-thread d3-force FieldLayout driver - composed forces, fixed cooling lifecycle, phyllotaxis cold-seed plus verbatim warm-start, fx/fy pin support, and a finite-coordinate guard on emitted frames; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `P01.S03` - Define the Obsidian-knob LayoutParams type and map each knob onto its d3 force as the driver's tunable surface; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `P01.S04` - Retire the ForceAtlas2 worker and its convergence module, drop the graphology dependencies, and repoint LayoutParams importers to the new driver; `frontend/src/scene/field/fa2.worker.ts`.
+- [x] `P01.S01` - Add the d3-force runtime dependency and its types; `frontend/package.json`.
+- [x] `P01.S02` - Author the main-thread d3-force FieldLayout driver - composed forces, fixed cooling lifecycle, phyllotaxis cold-seed plus verbatim warm-start, fx/fy pin support, and a finite-coordinate guard on emitted frames; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `P01.S03` - Define the Obsidian-knob LayoutParams type and map each knob onto its d3 force as the driver's tunable surface; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `P01.S04` - Retire the ForceAtlas2 worker and its convergence module, drop the graphology dependencies, and repoint LayoutParams importers to the new driver; `frontend/src/scene/field/fa2.worker.ts`.
 
 ### Phase `P02` - Render-loop hardening: camera, gating, pinning, robustness
 
 Make the per-frame render loop in the field assembly rock-solid: fit the camera once on settle then hand it to the user, gate per-frame work on the simulation clock, pin at the solver, and guard the tick and listener bodies.
 
-- [ ] `P02.S05` - Replace the per-frame camera snap with a one-shot animated fit on first settle that then disarms auto-fit, re-arming only on a new slice; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `P02.S06` - Gate the per-frame overlay, hit-index, and edge-mesh work on actual movement so it ceases when the simulation freezes; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `P02.S07` - Route set-pinned to solver-level fx/fy pinning and remove the pinned-position display-overwrite of the authoritative frame; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `P02.S08` - Wrap the position-listener and ticker bodies so one throwing consumer cannot kill the loop, and close the async mount/destroy race; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P02.S05` - Replace the per-frame camera snap with a one-shot animated fit on first settle that then disarms auto-fit, re-arming only on a new slice; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P02.S06` - Gate the per-frame overlay, hit-index, and edge-mesh work on actual movement so it ceases when the simulation freezes; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P02.S07` - Route set-pinned to solver-level fx/fy pinning and remove the pinned-position display-overwrite of the authoritative frame; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `P02.S08` - Wrap the position-listener and ticker bodies so one throwing consumer cannot kill the loop, and close the async mount/destroy race; `frontend/src/scene/field/fieldAssembly.ts`.
 
 ### Phase `P03` - Control surface: the Obsidian knob set
 
 Replace the ForceAtlas2 parameter vocabulary with the Obsidian knob set across the scene controller command and the AlgorithmPanel UI.
 
-- [ ] `P03.S09` - Update the set-layout-params and layout-changed command surface and getLayoutState to the Obsidian LayoutParams vocabulary; `frontend/src/scene/sceneController.ts`.
-- [ ] `P03.S10` - Rebuild the layout panel sliders to Repel, Link force, Link distance, and Center with the new defaults and reset target; `frontend/src/app/stage/AlgorithmPanel.tsx`.
+- [x] `P03.S09` - Update the set-layout-params and layout-changed command surface and getLayoutState to the Obsidian LayoutParams vocabulary; `frontend/src/scene/sceneController.ts`.
+- [x] `P03.S10` - Rebuild the layout panel sliders to Repel, Link force, Link distance, and Center with the new defaults and reset target; `frontend/src/app/stage/AlgorithmPanel.tsx`.
 
 ### Phase `P04` - Tests, scope-fence verification, and the full gate
 
 Port the worker-oriented layout tests to the d3-force driver, add render-loop and scope-fence coverage, and bring the full frontend lint and test gate green.
 
-- [ ] `P04.S11` - Author the d3-force driver tests - warm-start and phyllotaxis seeding, cooling settle-then-freeze, finite-guard, and fx/fy pinning - replacing the retired worker and convergence tests; `frontend/src/scene/field/forceLayout.test.ts`.
-- [ ] `P04.S12` - Add render-loop coverage: fit-once-then-disarm, freeze-stops-per-frame-work, and listener-throw isolation; `frontend/src/scene/field/fieldAssembly.test.ts`.
-- [ ] `P04.S13` - Update the representation and controller tests to the new vocabulary and assert the connectivity-only scope fence - lineage and semantic stay deterministic and mode-switch object constancy holds; `frontend/src/scene/sceneController.representation.test.ts`.
-- [ ] `P04.S14` - Bring the full frontend gate green - eslint, prettier, tsc, and vitest; `frontend`.
+- [x] `P04.S11` - Author the d3-force driver tests - warm-start and phyllotaxis seeding, cooling settle-then-freeze, finite-guard, and fx/fy pinning - replacing the retired worker and convergence tests; `frontend/src/scene/field/forceLayout.test.ts`.
+- [x] `P04.S12` - Add render-loop coverage: fit-once-then-disarm, freeze-stops-per-frame-work, and listener-throw isolation; `frontend/src/scene/field/fieldAssembly.test.ts`.
+- [x] `P04.S13` - Update the representation and controller tests to the new vocabulary and assert the connectivity-only scope fence - lineage and semantic stay deterministic and mode-switch object constancy holds; `frontend/src/scene/sceneController.representation.test.ts`.
+- [x] `P04.S14` - Bring the full frontend gate green - eslint, prettier, tsc, and vitest; `frontend`.
 
 ## Description
 
