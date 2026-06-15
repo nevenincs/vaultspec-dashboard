@@ -233,6 +233,13 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=19-37"
     },
     {
+      "name": "RailTabs",
+      "source": "src/app/right/RailTabs.tsx",
+      "designSurface": true,
+      "figmaNodeId": "17:602",
+      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=17-602"
+    },
+    {
       "name": "RangeSelect",
       "source": "src/app/timeline/RangeSelect.tsx",
       "designSurface": true,
