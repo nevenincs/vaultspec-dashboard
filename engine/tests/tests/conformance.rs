@@ -561,11 +561,17 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         settings["data"]["scoped"].is_object(),
         "scoped settings is a map"
     );
+    // Before any USER settings write, the only global-settings key is the
+    // engine-managed `active_workspace` pointer, which the launch path seeds
+    // into the global kv surface (workspace-registry: active_workspace lives in
+    // the global-settings surface, session.rs). No user-authored keys are
+    // present yet.
     assert!(
         settings["data"]["global"]
             .as_object()
-            .is_some_and(|m| m.is_empty()),
-        "no global settings before any write"
+            .is_some_and(|m| { m.keys().all(|k| k == "active_workspace") }),
+        "no user global settings before any write: {}",
+        settings["data"]["global"]
     );
 
     // --- PUT /session: set scope_context + push_recent, read it back --------
