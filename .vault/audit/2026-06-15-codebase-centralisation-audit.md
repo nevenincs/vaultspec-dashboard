@@ -200,6 +200,54 @@ and have both call it.
 graph"; the single live caller (`vaultspec-cli/src/cmd/graph.rs`) can take
 `asof_graph_resolved(...).graph` directly. Per the no-shim mandate, inline and retire.
 
+### Second pass (2026-06-15)
+
+A wider net — codebase marker grep plus rag probes for cross-cutting utility duplication
+(formatting, id/key builders, transport wrappers, lane/mark vocab) — surfaced one new
+finding; the dimensions below are otherwise clean.
+
+**F-T1 (MED, deferred to timeline campaign) — dead retained event-mark transport in the
+timeline surface.** `app/timeline/Timeline.tsx` keeps a "retained legacy" event-kind cluster
+— `LANES`, a local `laneOf(kind)`, `EVENT_MARKS`, `eventMark(kind)`, and the `onEventClick`
+prop — plus `app/timeline/eventSelection.ts` `handleEventClick`. None have a live caller: the
+relational surface renders through `phaseLanes.ts` `laneOf` (`laneOfNode`) + `PHASE_LANES`,
+the only wired handler is `handleNodeClick`, and `onEventClick` is not even destructured. The
+timeline's `eventMark`/`EVENT_MARKS` also **duplicate** the live `eventMark` in
+`app/right/ChangesOverview.tsx` (the singular live owner). This is verifiably dead compat the
+mandate forbids — but it is freshly-delivered code that the timeline-lineage campaign retained
+deliberately "so wiring keeps type-checking while the primary marks switch to lineage nodes",
+i.e. an in-flight transition edge. *Action (timeline campaign):* once the lineage migration is
+declared final, delete the dead cluster (`LANES`/local `laneOf`/`EVENT_MARKS`/`eventMark`/
+`onEventClick` in `Timeline.tsx`, `handleEventClick` in `eventSelection.ts`, and the test
+cases pinning them); `ChangesOverview.eventMark` remains the one event-kind→mark owner.
+
+**F-S1 (MED) — REMEDIATED. One `useElementWidth` hook for three copied
+`ResizeObserver` width effects.** `app/timeline/Timeline.tsx`, `TimelineControls.tsx`, and
+`Playhead.tsx` each reimplemented the same observe-`contentRect.width`-into-state effect.
+Extracted `app/chrome/useElementWidth(ref, {parent?})` (treats a pre-layout 0 as
+not-yet-measured); all three route through it, each keeping its own fallback. `Stage.tsx`'s
+observer drives `SceneController.resize(w,h)` — a distinct scene-mount concern, correctly left
+alone. Behaviour-preserving (live code, no migration entanglement); tsc + 154 timeline/chrome
+tests + lint green. Committed `411b646`.
+
+**F-S2 (LOW, opportunity — not remediated) — Escape-to-dismiss handled independently in ~11
+surfaces** (`Dialog`, `CommandPalette`, `ContextMenuHost`, `WorkspacePicker`, `WorktreePicker`,
+`OpsPanel`, `SearchTab`, `AlgorithmPanel`, `Discover`, `FilterSidebar`, `RangeSelect`). These
+share the "listen for Escape" skeleton but each does a genuinely different dismiss action
+(close dialog / clear palette / cancel a drag / collapse a panel), so they are idiom
+repetition, not behavioural duplication. A `useDismissOnEscape(onDismiss)` hook would DRY the
+listener, but forcing 11 heterogeneous handlers through one hook risks over-abstraction for a
+thin win — recorded as a deliberate non-remediation, revisit only if the listener wiring
+itself drifts.
+
+Dimensions confirmed clean on the second pass: no `shim`/`stop-gap`/`to be removed`/`for now`
+markers in shipped code (the `deprecated`/`legacy` hits are all legitimate ADR-status domain
+vocabulary, the ADR-sanctioned `plan-structure-tolerance` legacy-plan reading fallback, or the
+mandated tolerant `git.dirty` wire adapter — none are code shims); no relative-time formatter
+duplication (none exists); no duplicate transport/fetch wrappers (one `EngineClient`); no
+duplicate id/key builders beyond the already-consolidated stem grammar; no `cx`/`clsx`-style
+className-joiner reimplemented across chrome.
+
 ## Recommendations
 
 Remediation order (each is mechanical consolidation with existing test coverage nearby,
