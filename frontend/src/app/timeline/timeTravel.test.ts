@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { EngineClient } from "../../stores/server/engine";
+import { engineClientSource } from "../../stores/server/timeTravelSource";
 import { MockEngine } from "../../testing/mockEngine";
 import type { SceneEdgeData, SceneNodeData } from "../../scene/sceneController";
 import {
@@ -26,7 +27,7 @@ function harness() {
     edges: SceneEdgeData[];
     at: number | "live";
   }[] = [];
-  const driver = new TimeTravelDriver(counting, "wt-main", {
+  const driver = new TimeTravelDriver(engineClientSource(counting), "wt-main", {
     pushSlice: (nodes, edges, at) => pushes.push({ nodes, edges, at }),
   });
   return { mock, driver, pushes, fetchCount: () => fetches };

@@ -20,7 +20,10 @@ import { useEffect, useRef } from "react";
 import type { TimelineMode } from "../../stores/view/viewStore";
 import type { SceneGraphModel } from "../../scene/graphModel";
 import { DeltaLog } from "../../scene/deltaLog";
-import { engineClient } from "../../stores/server/engine";
+import {
+  timeTravelSource,
+  type TimeTravelSource,
+} from "../../stores/server/timeTravelSource";
 import { useViewStore } from "../../stores/view/viewStore";
 import type {
   SceneController,
@@ -28,7 +31,7 @@ import type {
   SceneEdgeData,
   SceneNodeData,
 } from "../../scene/sceneController";
-import type { EngineClient, GraphDeltaEntry } from "../../stores/server/engine";
+import type { GraphDeltaEntry } from "../../stores/server/engine";
 import { engineEdgeToScene, engineNodeToScene } from "../../scene/sceneMapping";
 
 /** Loaded-range margin behind the requested T (local backward scrub room). */
@@ -103,7 +106,7 @@ export class TimeTravelDriver {
   private loadingFor: number | null = null;
 
   constructor(
-    private client: EngineClient,
+    private source: TimeTravelSource,
     private scope: string,
     private target: TimeTravelTarget,
   ) {}
@@ -131,12 +134,8 @@ export class TimeTravelDriver {
     this.loadingFor = t;
     const anchor = t - KEYFRAME_BACK_MARGIN_MS;
     const now = Date.now();
-    const asof = await this.client.graphAsof({ scope: this.scope, t: anchor });
-    const diff = await this.client.graphDiff({
-      scope: this.scope,
-      from: anchor,
-      to: now,
-    });
+    const asof = await this.source.asof(this.scope, anchor);
+    const diff = await this.source.diff(this.scope, anchor, now);
     // A newer scrub superseded this load; let it win.
     if (this.loadingFor !== t) return;
     const diffDeltas = diff.deltas.map(mapDelta);
@@ -181,7 +180,7 @@ export function useTimeTravel(scope: string | null, scene: SceneController): voi
 
   useEffect(() => {
     driver.current = scope
-      ? new TimeTravelDriver(engineClient, scope, sceneTarget(scene))
+      ? new TimeTravelDriver(timeTravelSource, scope, sceneTarget(scene))
       : null;
   }, [scope, scene]);
 
