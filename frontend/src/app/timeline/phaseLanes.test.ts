@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  LANE_HEIGHT,
+  PHASE_LANES,
+  laneCenterY,
+  laneIndex,
+  laneOf,
+  laneY,
+  lanesHeight,
+  phaseForDocType,
+} from "./phaseLanes";
+
+describe("phase-lane order (S32, dashboard-timeline ADR: few, fixed, pipeline order)", () => {
+  it("lists the six pipeline phases top-to-bottom in pipeline order", () => {
+    expect([...PHASE_LANES]).toEqual([
+      "research",
+      "adr",
+      "plan",
+      "exec",
+      "review",
+      "codify",
+    ]);
+  });
+
+  it("maps each phase token to its vertical lane index, null for a non-lane token", () => {
+    expect(laneIndex("research")).toBe(0);
+    expect(laneIndex("adr")).toBe(1);
+    expect(laneIndex("plan")).toBe(2);
+    expect(laneIndex("exec")).toBe(3);
+    expect(laneIndex("review")).toBe(4);
+    expect(laneIndex("codify")).toBe(5);
+    expect(laneIndex("commit")).toBeNull();
+    expect(laneIndex(undefined)).toBeNull();
+    expect(laneIndex(null)).toBeNull();
+  });
+});
+
+describe("doc-type fallback (S33, mirrors engine phase_for_doc_type)", () => {
+  it("maps every pipeline doc-type to its phase lane", () => {
+    expect(phaseForDocType("research")).toBe("research");
+    // reference shares the research lane (it grounds the work).
+    expect(phaseForDocType("reference")).toBe("research");
+    expect(phaseForDocType("adr")).toBe("adr");
+    expect(phaseForDocType("plan")).toBe("plan");
+    expect(phaseForDocType("exec")).toBe("exec");
+    // audit is the review phase; rule is the codify phase.
+    expect(phaseForDocType("audit")).toBe("review");
+    expect(phaseForDocType("rule")).toBe("codify");
+  });
+
+  it("returns null for ambient/unknown/absent doc-types (no invented phase)", () => {
+    expect(phaseForDocType("commit")).toBeNull();
+    expect(phaseForDocType("index")).toBeNull();
+    expect(phaseForDocType("nonsense")).toBeNull();
+    expect(phaseForDocType("")).toBeNull();
+    expect(phaseForDocType(undefined)).toBeNull();
+    expect(phaseForDocType(null)).toBeNull();
+  });
+});
+
+describe("laneOf: wire phase authoritative, doc-type the fallback", () => {
+  it("uses the authoritative wire phase when present", () => {
+    expect(laneOf({ phase: "plan", doc_type: "adr" })).toBe(2);
+    expect(laneOf({ phase: "codify" })).toBe(5);
+  });
+
+  it("falls back to the doc-type mapping when phase is absent or unrecognized", () => {
+    expect(laneOf({ doc_type: "audit" })).toBe(4);
+    expect(laneOf({ phase: "commit", doc_type: "rule" })).toBe(5);
+    expect(laneOf({ phase: undefined, doc_type: "research" })).toBe(0);
+  });
+
+  it("returns null for a node that belongs to no phase lane", () => {
+    expect(laneOf({ doc_type: "commit" })).toBeNull();
+    expect(laneOf({ phase: "commit", doc_type: "index" })).toBeNull();
+    expect(laneOf({})).toBeNull();
+  });
+});
+
+describe("lane geometry (S32)", () => {
+  it("computes the top-of-band y from the lane index and top padding", () => {
+    expect(laneY(0)).toBe(0);
+    expect(laneY(2)).toBe(2 * LANE_HEIGHT);
+    expect(laneY(2, 10)).toBe(2 * LANE_HEIGHT + 10);
+  });
+
+  it("centers a mark in the middle of its lane band", () => {
+    expect(laneCenterY(0)).toBe(LANE_HEIGHT / 2);
+    expect(laneCenterY(3, 4)).toBe(3 * LANE_HEIGHT + LANE_HEIGHT / 2 + 4);
+  });
+
+  it("sizes the whole phase-lane band from the lane count and padding", () => {
+    expect(lanesHeight()).toBe(PHASE_LANES.length * LANE_HEIGHT);
+    expect(lanesHeight(12)).toBe(PHASE_LANES.length * LANE_HEIGHT + 12);
+  });
+});

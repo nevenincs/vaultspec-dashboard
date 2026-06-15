@@ -1,12 +1,23 @@
-// Time travel (W02.P08.S34, ADR G4.b): the playhead drives the stage's
-// temporal state through asof keyframes plus client-held diff-log replay —
-// 60fps scrub with zero per-frame queries; full re-keyframe only on jumps
-// outside the loaded range. The DeltaLog (S06, seq-driven cursor per
-// finding 005) does the replay; this driver owns fetching, range policy,
-// and pushing materialized slices through the seam.
+// Time travel (W02.P08.S34, re-affirmed W03.P07.S44; ADR G4.b + dashboard-
+// timeline ADR "Time-travel mode (inherited, re-affirmed)"): the playhead drives
+// the stage's temporal state through asof keyframes plus client-held diff-log
+// replay — 60fps scrub with zero per-frame queries; full re-keyframe only on
+// jumps outside the loaded range. The DeltaLog (S06, seq-driven cursor per
+// finding 005) does the replay; this driver owns fetching, range policy, and
+// pushing materialized slices through the seam.
+//
+// Retained-and-adapted to the scroll-strip representation (S44): the driver is
+// coordinate-model-agnostic by design — it operates on absolute epoch-ms instants
+// (the `mode.at` the playhead writes), never on window/positioning, so the
+// scroll-strip supersession of the fit-to-window model changes nothing here. The
+// invariants are re-affirmed unchanged: the keyframe-plus-diff replay runs on the
+// ONE shared delta clock (no second clock — the LIVE splice stays in
+// `useGraphLiveSync`), the local DeltaLog replays when the range is loaded, an
+// out-of-range jump re-keyframes, and `timelineMode` binds to the scene seam.
 
 import { useEffect, useRef } from "react";
 
+import type { TimelineMode } from "../../stores/view/viewStore";
 import type { SceneGraphModel } from "../../scene/graphModel";
 import { DeltaLog } from "../../scene/deltaLog";
 import { engineClient } from "../../stores/server/engine";
@@ -22,6 +33,43 @@ import { engineEdgeToScene, engineNodeToScene } from "../../scene/sceneMapping";
 
 /** Loaded-range margin behind the requested T (local backward scrub room). */
 export const KEYFRAME_BACK_MARGIN_MS = 14 * 24 * 3600_000;
+
+// --- time-travel honesty: read off the ONE shared mode (S61) -------------------
+//
+// Time-travel honesty (ADR "Time-travel mode") is driven from a SINGLE truth: the
+// shared `timelineMode` in the view store, written ONLY through `movePlayhead`
+// (Playhead.tsx). Every honesty cue reads that one mode and never re-derives the
+// state per-surface:
+//   - the stage warm tint + the "viewing {date} — return to live" chip
+//     (TimeTravelChip) render off `useViewStore(s => s.timelineMode)`;
+//   - operational verbs disable off the same mode (OpsPanel);
+//   - the semantic tier renders INAPPLICABLE off the same mode (TierDial,
+//     `isTierInapplicable`);
+//   - this driver scrubs the stage's historical slice off the same mode
+//     (`useTimeTravel` below).
+// The predicates here name that single reading so no surface invents its own
+// "are we time travelling?" test or guesses the disable from a transport state.
+
+/**
+ * True when the shared mode is time-travel — the one honesty predicate (S61). A
+ * type predicate so a single reading both gates the honesty cues AND narrows the
+ * mode to its `time-travel` variant, so callers reach `mode.at` off the same one
+ * reading rather than re-testing `mode.kind`.
+ */
+export function isTimeTravel(
+  mode: TimelineMode,
+): mode is Extract<TimelineMode, { kind: "time-travel" }> {
+  return mode.kind === "time-travel";
+}
+
+/**
+ * True when operational verbs must be DISABLED (S61): history is read-only, so
+ * any time-travel mode disables ops. A single reading of the shared mode — the
+ * disable is never guessed from an error or re-derived per panel.
+ */
+export function opsDisabledFor(mode: TimelineMode): boolean {
+  return isTimeTravel(mode);
+}
 
 /** Map one wire diff entry onto the seam's delta shape. */
 export function mapDelta(entry: GraphDeltaEntry): SceneDelta {
@@ -138,7 +186,7 @@ export function useTimeTravel(scope: string | null, scene: SceneController): voi
   }, [scope, scene]);
 
   useEffect(() => {
-    if (mode.kind === "time-travel") {
+    if (isTimeTravel(mode)) {
       void driver.current?.scrubTo(mode.at);
     } else {
       scene.command({ kind: "set-time", at: "live" });

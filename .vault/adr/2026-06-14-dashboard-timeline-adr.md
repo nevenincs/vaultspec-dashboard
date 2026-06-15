@@ -11,7 +11,18 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 ---
 
-# `dashboard-timeline` adr: `timeline` | (**status:** `accepted`)
+# `dashboard-timeline` adr: `timeline` | (**status:** `deprecated`)
+
+> **Superseded (2026-06-15)** by the relational phase-lane timeline ADR
+> (`2026-06-15-dashboard-timeline-adr`) for its *representation* decisions only
+> — the fixed commit/document/lifecycle lanes, fit-to-window zoom, and
+> non-relational density model are replaced by pipeline-phase lanes, a
+> horizontally-scrollable read, and derivation arcs. Every *behavioral
+> invariant* stated below (time-travel honesty + ops-disable off the shared
+> mode, the single monotonic delta clock, the single date-range writer, layer
+> ownership, semantic present-only in history, bounded reads, and the
+> animated-transitions motion grammar) is re-affirmed unchanged by the successor
+> and remains binding. This document is retained for that invariant record.
 
 ## Problem Statement
 

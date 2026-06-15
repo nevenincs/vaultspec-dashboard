@@ -2,44 +2,54 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { useViewStore } from "../../stores/view/viewStore";
 import { LIVE_SNAP_PX, dragToPlayhead, keyboardStep, movePlayhead } from "./Playhead";
+import { TIMELINE_ORIGIN_MS, timeToX } from "./scrollStrip";
 import { useTimelineStore } from "./Timeline";
 
-const window_ = { from: 1000, to: 2000 };
+const DAY = 24 * 3600_000;
+const px = 100 / DAY; // 100px per day
+const scrollOffset = 0; // viewport left edge at the strip origin (epoch)
 
-describe("dragToPlayhead", () => {
-  it("snaps to LIVE at the right edge", () => {
-    expect(dragToPlayhead(800 - LIVE_SNAP_PX + 1, window_, 800, 5000)).toBe("live");
+describe("dragToPlayhead (scroll-strip model)", () => {
+  // The live dock is now's viewport x; a drag within LIVE_SNAP_PX of it snaps LIVE.
+  const now = 100 * DAY;
+  const liveDockX = timeToX(now, TIMELINE_ORIGIN_MS, px, scrollOffset);
+
+  it("snaps to LIVE within the right-edge snap zone of the live dock", () => {
+    expect(
+      dragToPlayhead(liveDockX - LIVE_SNAP_PX + 1, px, scrollOffset, liveDockX, now),
+    ).toBe("live");
   });
 
-  it("maps x to a clamped time otherwise", () => {
-    expect(dragToPlayhead(400, window_, 800, 5000)).toBe(1500);
-    expect(dragToPlayhead(-50, window_, 800, 5000)).toBe(1000);
-    // Never past now even if the window extends beyond it.
-    expect(dragToPlayhead(600, window_, 800, 1600)).toBe(1600);
+  it("maps a viewport x to its instant otherwise, clamped to now", () => {
+    // A drag one day's-worth of pixels left of the live dock lands one day back.
+    const x = liveDockX - 100;
+    expect(dragToPlayhead(x, px, scrollOffset, liveDockX, now)).toBeCloseTo(now - DAY);
+    // Never past now even from a viewport x to the right of the live dock (but
+    // outside the snap zone is impossible since the dock is the rightmost; a
+    // beyond-now instant still clamps to now).
+    expect(
+      dragToPlayhead(liveDockX + 1000, px, scrollOffset, liveDockX + 5000, now),
+    ).toBe(now);
   });
 });
 
 describe("keyboardStep (keyboard scrub is an instant pure projection)", () => {
-  const now = 1800;
+  const now = 100 * DAY;
 
   it("steps backward from LIVE into a concrete time anchored at now", () => {
-    // [ / ArrowLeft from LIVE lands at now - delta (not at the window end).
-    expect(keyboardStep("live", -200, window_, now)).toBe(1600);
+    // [ / ArrowLeft from LIVE lands at now - delta (anchored at the present).
+    expect(keyboardStep("live", -2 * DAY, now)).toBe(now - 2 * DAY);
   });
 
-  it("steps a concrete time backward and forward within the window", () => {
-    expect(keyboardStep(1500, -200, window_, now)).toBe(1300);
-    expect(keyboardStep(1300, 200, window_, now)).toBe(1500);
+  it("steps a concrete time backward and forward", () => {
+    expect(keyboardStep(now - 3 * DAY, -DAY, now)).toBe(now - 4 * DAY);
+    expect(keyboardStep(now - 4 * DAY, DAY, now)).toBe(now - 3 * DAY);
   });
 
   it("snaps back to LIVE when a forward step reaches or passes now", () => {
     // ] from a time near now reaches the live dock rather than overscrubbing.
-    expect(keyboardStep(1700, 200, window_, now)).toBe("live");
-    expect(keyboardStep("live", 200, window_, now)).toBe("live");
-  });
-
-  it("clamps a backward step to the window start", () => {
-    expect(keyboardStep(1050, -500, window_, now)).toBe(1000);
+    expect(keyboardStep(now - DAY / 2, DAY, now)).toBe("live");
+    expect(keyboardStep("live", DAY, now)).toBe("live");
   });
 });
 

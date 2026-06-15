@@ -1,22 +1,27 @@
-// Range selection (re-skinned W02.P12.S28 onto the OKLCH token layer and the
-// sanctioned Lucide chrome marks per the timeline surface ADR): shift-drag
-// across the timeline (the plain drag stays reserved for the playhead) to set
-// the product's SINGLE date-range filter — owned by the timeline, shown in the
-// filter bar as a chip. The committed range renders as a band in the ACCENT
-// token (not a literal sky tint) with the base language's selection ring. "Play"
-// animates the playhead across the range to watch the network grow: the
-// cheapest, most legible "history of this feature" story in the product.
+// Range selection (W03.P07.S43: retained from the prior re-skin and ADAPTED to
+// the scroll-strip coordinate model per the dashboard-timeline ADR). Shift-drag
+// across the timeline (the plain drag stays reserved for the playhead) to set the
+// product's SINGLE date-range filter — owned by the timeline, shown in the filter
+// bar as a chip. The committed range renders as a band in the ACCENT token (not a
+// literal sky tint) with the base language's selection ring. "Play" animates the
+// playhead across the range to watch the network grow: the cheapest, most legible
+// "history of this feature" story in the product.
+//
+// Scroll-strip coordinates (S43): the drag span maps to a time range through
+// `xToTime` over the SHARED store `pxPerMs` + `scrollOffset` (canonical epoch
+// origin `TIMELINE_ORIGIN_MS`), and the committed band positions through `timeToX`
+// over the same scale + offset — replacing the old fit-to-window math. The SINGLE
+// date-range writer invariant is unchanged: this surface alone writes the
+// date-range filter through the stores setter.
 //
 // Motion (ADR / base motion law): play-the-range is a deliberate, state-
 // communicating animation that runs on animation frames ONLY while a play is
 // active (an idle timeline schedules no per-frame callback). Under
-// prefers-reduced-motion the animated sweep is swapped for an instant jump to
-// the range end — the reduced-motion floor, honored at this surface's own path.
+// prefers-reduced-motion the animated sweep is swapped for an instant jump to the
+// range end — the reduced-motion floor, honored at this surface's own path.
 //
-// Keyboard (ADR "Keyboard contract, a11y"): the band exposes its bounds and a
-// keyboard escape clears the range; the play / clear controls are real buttons
-// with accessible names. Range keys clear from the keyboard so the feature is
-// reachable without a pointer.
+// Keyboard (ADR a11y): the band exposes its bounds and a keyboard escape clears
+// the range; the play / clear controls are real buttons with accessible names.
 //
 // Layer ownership (dashboard-layer-ownership / timeline ADR): app-chrome, the
 // SINGLE date-range writer in the product. It writes only the date-range filter
@@ -32,20 +37,25 @@ import {
 
 import { useFilterStore } from "../../stores/view/filters";
 import { movePlayhead } from "./Playhead";
-import { humanInstant, type TimeWindow } from "./Timeline";
-import { timeToX, useTimelineStore, xToTime } from "./Timeline";
+import { humanInstant, useTimelineStore } from "./Timeline";
+import { TIMELINE_ORIGIN_MS, timeToX, xToTime } from "./scrollStrip";
 
 // --- pure helpers (unit-tested) -------------------------------------------------
 
-/** Resolve a drag span to an ordered time range. */
+/**
+ * Resolve a drag span (two VIEWPORT x) to an ordered time range over the
+ * scroll-strip model: each x maps to its instant via `xToTime` over the shared
+ * `pxPerMs` + `scrollOffset` (canonical epoch origin), then ordered. Pure — the
+ * component passes the live scale/offset so this stays unit-testable.
+ */
 export function rangeFromDrag(
   x1: number,
   x2: number,
-  window: TimeWindow,
-  width: number,
+  pxPerMs: number,
+  scrollOffset: number,
 ): { from: number; to: number } {
-  const a = xToTime(Math.max(0, Math.min(width, x1)), window, width);
-  const b = xToTime(Math.max(0, Math.min(width, x2)), window, width);
+  const a = xToTime(x1, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
+  const b = xToTime(x2, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
   return { from: Math.min(a, b), to: Math.max(a, b) };
 }
 
@@ -101,8 +111,8 @@ export function stopRangePlay(): void {
 
 /**
  * Drives the playhead across an active range play on animation frames. The RAF
- * loop runs ONLY while a play is active and stops at completion: an idle
- * timeline schedules no per-frame callback.
+ * loop runs ONLY while a play is active and stops at completion: an idle timeline
+ * schedules no per-frame callback.
  */
 export function useRangePlayer(): void {
   useEffect(() => {
@@ -138,24 +148,13 @@ export function useRangePlayer(): void {
 // --- the overlay ---------------------------------------------------------------------
 
 export function RangeSelect() {
-  const window_ = useTimelineStore((s) => s.window);
+  const pxPerMs = useTimelineStore((s) => s.pxPerMs);
+  const scrollOffset = useTimelineStore((s) => s.scrollOffset);
   const dateRange = useFilterStore((s) => s.dateRange);
   const setDateRange = useFilterStore((s) => s.setDateRange);
   const hostRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ x1: number; x2: number } | null>(null);
-  const [width, setWidth] = useState(800);
   useRangePlayer();
-
-  useEffect(() => {
-    const host = hostRef.current?.parentElement;
-    if (!host) return;
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setWidth(rect.width);
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     const host = hostRef.current?.parentElement;
@@ -176,8 +175,7 @@ export function RangeSelect() {
     const onUp = (e: PointerEvent) => {
       if (!active) return;
       active = false;
-      const width = host.getBoundingClientRect().width;
-      const range = rangeFromDrag(startX, localX(e), window_, width);
+      const range = rangeFromDrag(startX, localX(e), pxPerMs, scrollOffset);
       setDrag(null);
       setDateRange({
         from: new Date(range.from).toISOString(),
@@ -192,7 +190,7 @@ export function RangeSelect() {
       globalThis.removeEventListener("pointermove", onMove);
       globalThis.removeEventListener("pointerup", onUp);
     };
-  }, [window_, setDateRange]);
+  }, [pxPerMs, scrollOffset, setDateRange]);
 
   const clearRange = () => {
     stopRangePlay();
@@ -203,14 +201,24 @@ export function RangeSelect() {
   const committed =
     dateRange.from && dateRange.to
       ? {
-          x1: timeToX(Date.parse(dateRange.from), window_, width),
-          x2: timeToX(Date.parse(dateRange.to), window_, width),
+          x1: timeToX(
+            Date.parse(dateRange.from),
+            TIMELINE_ORIGIN_MS,
+            pxPerMs,
+            scrollOffset,
+          ),
+          x2: timeToX(
+            Date.parse(dateRange.to),
+            TIMELINE_ORIGIN_MS,
+            pxPerMs,
+            scrollOffset,
+          ),
         }
       : null;
   const band = drag ?? committed;
 
-  // The committed band escapes the range from the keyboard (ADR: range keys
-  // clear from the keyboard) — Escape / Delete / Backspace clear, instantly.
+  // The committed band escapes the range from the keyboard (ADR: range keys clear
+  // from the keyboard) — Escape / Delete / Backspace clear, instantly.
   const onBandKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape" || e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
@@ -228,8 +236,8 @@ export function RangeSelect() {
       {band && (
         <div
           // The committed band is a focusable, labelled region announcing its
-          // bounds (ADR: the range band announces its bounds); the live drag is
-          // a transient visual without focus.
+          // bounds (ADR: the range band announces its bounds); the live drag is a
+          // transient visual without focus.
           {...(committed && !drag
             ? {
                 role: "region",

@@ -100,6 +100,16 @@ describe("PointerGestures", () => {
     ]);
   });
 
+  it("emits a context-menu event with the hit id and client coords (W04.P10)", () => {
+    const { events, gestures } = harness((x) => (x < 50 ? "n1" : null));
+    gestures.contextMenu({ x: 10, y: 0 }, { x: 110, y: 220 });
+    gestures.contextMenu({ x: 90, y: 0 }, { x: 300, y: 40 });
+    expect(events).toEqual([
+      { kind: "context-menu", id: "n1", target: "node", clientX: 110, clientY: 220 },
+      { kind: "context-menu", id: null, target: "node", clientX: 300, clientY: 40 },
+    ]);
+  });
+
   it("emits hover only on transitions", () => {
     const { events, gestures } = harness((x) => (x < 50 ? "n1" : null));
     gestures.pointerMove({ x: 10, y: 0 });

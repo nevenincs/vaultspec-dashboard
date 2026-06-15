@@ -1,26 +1,33 @@
-// The playhead (re-skinned W02.P12.S28 onto the OKLCH token layer and the
-// sanctioned Lucide chrome marks per the timeline surface ADR). The timeline's
-// default state is LIVE: now-anchored, docked at the right edge, drawn in the
-// accent / live-state token. Dragging the playhead off LIVE puts the product
-// into time-travel mode — unmistakably and from one shared truth (ADR
-// "Time-travel honesty is enforced and unmistakable"): the mode flips in the
-// shared view state (operational verbs disable on it, the stage tint shifts),
-// a "viewing {date} — return to live" chip docks on the stage, and the playhead
-// itself changes character to the stale / non-live token. Returning docks back.
+// The playhead (W03.P07.S42: retained from the prior re-skin and ADAPTED to the
+// scroll-strip model per the dashboard-timeline ADR "Density, bundling, and the
+// scroll model" + "Time-travel mode (inherited, re-affirmed)"). The timeline's
+// default state is LIVE: now-anchored, docked at the RIGHT edge of the viewport
+// (computed via `liveEdgeOffset`), drawn in the accent / live-state token.
+// Dragging the playhead off LIVE (outside the right-edge snap zone) puts the
+// product into time-travel mode — unmistakably and from one shared truth: the
+// mode flips in the shared view state (operational verbs disable on it, the stage
+// tint shifts), a "viewing {date} — return to live" chip docks on the stage, and
+// the playhead itself changes character to the stale / non-live token. Returning
+// docks back.
 //
-// Keyboard contract (ADR "Keyboard contract, a11y"): the playhead is an ARIA
-// slider. Bracket keys [ / ] step the playhead one bucket at a time, arrow keys
-// nudge, Home returns to LIVE; every keyboard-initiated step is INSTANT (it
-// never animates, per the base motion law) — the mutation writes the shared
-// state directly with no per-frame tween. The slider exposes aria-valuetext in
-// human time (LIVE or the ISO instant) and the time-travel mode is conveyed
-// non-visually through a live status region, so the enforced mode is honest to
-// assistive tech too, not only to the eye.
+// Scroll-strip coordinates (S42): position maps through `timeToX` / `xToTime` over
+// the SHARED store `pxPerMs` + `scrollOffset` (origin = epoch, t=0 in strip space,
+// the canonical `TIMELINE_ORIGIN_MS`), replacing the old fit-to-window math. LIVE
+// docks at the right viewport edge; scrolling left walks the present off the right
+// edge and back in time, so the snap-back-to-LIVE zone is the right edge of the
+// viewport, not a fixed window end.
 //
-// Layer ownership (dashboard-layer-ownership / timeline ADR): app-chrome. It
-// reads the degradation state and (through movePlayhead) writes the shared
-// timeline mode; it fetches nothing and never reads the raw `tiers` block. The
-// RECONNECTING state arrives pre-derived from the stores degradation layer.
+// Keyboard contract (ADR a11y): the playhead is an ARIA slider. Bracket keys [ / ]
+// step the playhead, arrow keys nudge, Home returns to LIVE; every
+// keyboard-initiated step is INSTANT (it never animates, per the base motion law)
+// — the mutation writes the shared state directly with no per-frame tween. The
+// slider exposes aria-valuetext in human time (LIVE or the ISO instant) and the
+// time-travel mode is conveyed non-visually through a live status region.
+//
+// Layer ownership (dashboard-layer-ownership / timeline ADR): app-chrome. It reads
+// the degradation state and (through movePlayhead) writes the shared timeline
+// mode; it fetches nothing and never reads the raw `tiers` block. The RECONNECTING
+// state arrives pre-derived from the stores degradation layer.
 
 import { Play, RotateCcw } from "lucide-react";
 import {
@@ -32,8 +39,8 @@ import {
 
 import { useViewStore } from "../../stores/view/viewStore";
 import { useSurfaceStates } from "../degradation/useDegradation";
-import { humanInstant, type TimeWindow } from "./Timeline";
-import { timeToX, useTimelineStore, xToTime } from "./Timeline";
+import { humanInstant, isoInstant, useTimelineStore } from "./Timeline";
+import { TIMELINE_ORIGIN_MS, timeToX, xToTime } from "./scrollStrip";
 
 /** Pixels from the right edge within which a drag snaps back to LIVE. */
 export const LIVE_SNAP_PX = 10;
@@ -43,39 +50,47 @@ export const LIVE_SNAP_PX = 10;
  *  arbitrary-px Tailwind class). */
 export const PLAYHEAD_W = 3;
 
-/** One keyboard step nudges the playhead this fraction of the window span. */
+/** One keyboard step nudges the playhead this fraction of the visible span. */
 export const KEY_STEP_FRACTION = 1 / 24;
 export const KEY_NUDGE_FRACTION = 1 / 96;
 
-/** Resolve a drag x to a playhead position: clamped time or LIVE snap. */
+/**
+ * Resolve a drag VIEWPORT x to a playhead position over the scroll-strip model:
+ * a drag within `LIVE_SNAP_PX` of the live dock (now's viewport x) snaps to LIVE;
+ * otherwise the x maps to its instant via `xToTime` over `pxPerMs` + `scrollOffset`
+ * (canonical epoch origin), clamped so it never scrubs past `now`. Pure — the
+ * component passes `now` and the live dock so this stays unit-testable.
+ */
 export function dragToPlayhead(
   x: number,
-  window: TimeWindow,
-  width: number,
+  pxPerMs: number,
+  scrollOffset: number,
+  liveDockX: number,
   now: number,
 ): number | "live" {
-  if (x >= width - LIVE_SNAP_PX) return "live";
-  const t = xToTime(Math.max(0, Math.min(width, x)), window, width);
-  return Math.min(now, Math.max(window.from, t));
+  // The right-edge snap zone is the live dock (now's viewport x), not a fixed
+  // window end: LIVE docks at the right, scroll-left walks back.
+  if (x >= liveDockX - LIVE_SNAP_PX) return "live";
+  const t = xToTime(x, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
+  return Math.min(now, t);
 }
 
 /**
- * Resolve a keyboard step/nudge to the next playhead position, clamped to the
- * window and to `now`. Stepping forward past `now` snaps back to LIVE so the
- * keyboard can reach the live dock; stepping from LIVE backward lands at `now`.
- * This is a PURE projection (unit-tested) — the keyboard path applies it
- * instantly, never on an animation frame (the motion law).
+ * Resolve a keyboard step/nudge to the next playhead position, clamped to `now`.
+ * Stepping forward past `now` snaps back to LIVE so the keyboard can reach the
+ * live dock; stepping from LIVE backward lands at `now` + delta. A PURE projection
+ * (unit-tested) — the keyboard path applies it instantly, never on an animation
+ * frame (the motion law).
  */
 export function keyboardStep(
   current: number | "live",
   deltaMs: number,
-  window: TimeWindow,
   now: number,
 ): number | "live" {
   const base = current === "live" ? now : current;
   const next = base + deltaMs;
   if (next >= now) return "live";
-  return Math.max(window.from, Math.min(now, next));
+  return Math.min(now, next);
 }
 
 /** One mutation for both stores: the playhead IS the mode (ADR). */
@@ -87,15 +102,15 @@ export function movePlayhead(t: number | "live"): void {
 }
 
 export function Playhead() {
-  const window_ = useTimelineStore((s) => s.window);
   const playheadT = useTimelineStore((s) => s.playheadT);
+  const pxPerMs = useTimelineStore((s) => s.pxPerMs);
+  const scrollOffset = useTimelineStore((s) => s.scrollOffset);
   // The LIVE chip becomes RECONNECTING when the engine stream is lost
   // (degradation matrix §8 — a designed state, not an error).
   const reconnecting = useSurfaceStates().timeline === "reconnecting";
   const hostRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
-  // Track the real rail width: the static fallback rendered LIVE mid-rail
-  // on wide screens.
+  // Track the real rail width: the live dock sits at the right viewport edge.
   const [width, setWidth] = useState(800);
 
   useEffect(() => {
@@ -114,7 +129,17 @@ export function Playhead() {
     if (!host) return;
     const toPlayhead = (e: PointerEvent) => {
       const rect = host.getBoundingClientRect();
-      return dragToPlayhead(e.clientX - rect.left, window_, rect.width, Date.now());
+      const now = Date.now();
+      // LIVE docks at the right viewport edge (`liveEdgeOffset` puts `now` at
+      // viewport x = width); that is the snap zone the drag resolves against.
+      const liveDockX = timeToX(now, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
+      return dragToPlayhead(
+        e.clientX - rect.left,
+        pxPerMs,
+        scrollOffset,
+        liveDockX,
+        now,
+      );
     };
     const onDown = (e: PointerEvent) => {
       if (!(e.target as HTMLElement).closest("[data-playhead-grip]")) return;
@@ -135,28 +160,33 @@ export function Playhead() {
       globalThis.removeEventListener("pointermove", onMove);
       globalThis.removeEventListener("pointerup", onUp);
     };
-  }, [window_]);
+  }, [pxPerMs, scrollOffset]);
 
   const live = playheadT === "live";
-  const x = live ? width - 2 : timeToX(playheadT, window_, width);
-  const span = window_.to - window_.from;
+  // LIVE docks at the right viewport edge; a concrete instant maps through the
+  // scroll-strip helper over the shared scale + offset.
+  const x = live
+    ? width - 2
+    : timeToX(playheadT, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
+  // One keyboard step is a fraction of the VISIBLE span (viewport width in time).
+  const visibleSpanMs = width / pxPerMs;
 
-  // Keyboard scrub (ADR): [ / ] step a bucket, arrows nudge, Home -> LIVE. Every
-  // branch applies the pure projection INSTANTLY (no animation frame). The grip
-  // is the slider, so it receives these keys when focused.
+  // Keyboard scrub (ADR): [ / ] step, arrows nudge, Home -> LIVE. Every branch
+  // applies the pure projection INSTANTLY (no animation frame). The grip is the
+  // slider, so it receives these keys when focused.
   const onGripKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const now = Date.now();
-    const step = span * KEY_STEP_FRACTION;
-    const nudge = span * KEY_NUDGE_FRACTION;
+    const step = visibleSpanMs * KEY_STEP_FRACTION;
+    const nudge = visibleSpanMs * KEY_NUDGE_FRACTION;
     let next: number | "live";
     switch (e.key) {
       case "[":
       case "ArrowLeft":
-        next = keyboardStep(playheadT, e.key === "[" ? -step : -nudge, window_, now);
+        next = keyboardStep(playheadT, e.key === "[" ? -step : -nudge, now);
         break;
       case "]":
       case "ArrowRight":
-        next = keyboardStep(playheadT, e.key === "]" ? step : nudge, window_, now);
+        next = keyboardStep(playheadT, e.key === "]" ? step : nudge, now);
         break;
       case "Home":
         next = "live";
@@ -168,8 +198,11 @@ export function Playhead() {
     movePlayhead(next);
   };
 
-  // ARIA slider value math: min = window start, max = now (LIVE), now = current.
-  const ariaNow = live ? window_.to : playheadT;
+  // ARIA slider value math: min = visible-range start, max = now (LIVE), now =
+  // current. The bounds track the scroll-strip viewport, not a fixed window.
+  const now = Date.now();
+  const viewportFrom = xToTime(0, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
+  const ariaNow = live ? now : playheadT;
 
   return (
     <div ref={hostRef} className="pointer-events-none absolute inset-0">
@@ -178,10 +211,14 @@ export function Playhead() {
         role="slider"
         tabIndex={0}
         aria-label="playhead"
-        aria-valuemin={Math.round(window_.from)}
-        aria-valuemax={Math.round(window_.to)}
+        aria-valuemin={Math.round(viewportFrom)}
+        aria-valuemax={Math.round(now)}
         aria-valuenow={Math.round(ariaNow)}
-        aria-valuetext={live ? "LIVE" : humanInstant(playheadT)}
+        // S62: the slider names LIVE or the current ISO instant (the canonical
+        // minute-precision ISO form so the value text is unambiguous to assistive
+        // tech; the tabular treatment applies wherever the same instant is shown
+        // visually, e.g. the time-travel chip and the ruler).
+        aria-valuetext={live ? "LIVE" : isoInstant(playheadT)}
         onKeyDown={onGripKeyDown}
         className={`pointer-events-auto absolute top-0 bottom-0 cursor-ew-resize transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           live ? "bg-state-live" : "bg-state-stale"

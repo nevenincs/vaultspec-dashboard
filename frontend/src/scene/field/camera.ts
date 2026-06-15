@@ -202,6 +202,21 @@ export class PointerGestures {
     if (hit) this.callbacks.emit({ kind: "open", id: hit });
   }
 
+  /**
+   * Right-click (dashboard-context-menus W04.P10): emit a context-menu event for
+   * the node under the pointer (or null for empty canvas). `client` carries the
+   * viewport coords for the menu anchor; the local sample is for the hit-test.
+   */
+  contextMenu(p: PointerSample, client: { x: number; y: number }): void {
+    this.callbacks.emit({
+      kind: "context-menu",
+      id: this.callbacks.hitTestScreen(p.x, p.y),
+      target: "node",
+      clientX: client.x,
+      clientY: client.y,
+    });
+  }
+
   /** The node currently under the pointer, if any. */
   get hoveredId(): string | null {
     return this.hovered;

@@ -12,14 +12,35 @@ import {
   startRangePlay,
   stopRangePlay,
 } from "./RangeSelect";
+import { TIMELINE_ORIGIN_MS, xToTime } from "./scrollStrip";
 import { useTimelineStore } from "./Timeline";
 
-const window_ = { from: 1000, to: 2000 };
+const DAY = 24 * 3600_000;
+const px = 100 / DAY; // 100px per day
+const scrollOffset = 0; // viewport left edge at the strip origin (epoch)
 
-describe("rangeFromDrag", () => {
-  it("orders and clamps the dragged span", () => {
-    expect(rangeFromDrag(600, 200, window_, 800)).toEqual({ from: 1250, to: 1750 });
-    expect(rangeFromDrag(-100, 900, window_, 800)).toEqual({ from: 1000, to: 2000 });
+describe("rangeFromDrag (scroll-strip model)", () => {
+  it("maps two viewport x to an ordered time range over the shared scale + offset", () => {
+    // Each viewport x maps through the same `xToTime` the scroll-strip model uses;
+    // the helper just orders the pair.
+    const tLow = xToTime(200, TIMELINE_ORIGIN_MS, px, scrollOffset);
+    const tHigh = xToTime(600, TIMELINE_ORIGIN_MS, px, scrollOffset);
+    // Dragging right-to-left still yields an ordered [from, to] range.
+    expect(rangeFromDrag(600, 200, px, scrollOffset)).toEqual({
+      from: tLow,
+      to: tHigh,
+    });
+    expect(rangeFromDrag(200, 600, px, scrollOffset)).toEqual({
+      from: tLow,
+      to: tHigh,
+    });
+  });
+
+  it("tracks the scroll offset: a later offset selects a later range", () => {
+    const at0 = rangeFromDrag(100, 300, px, 0);
+    const at500 = rangeFromDrag(100, 300, px, 500);
+    expect(at500.from).toBeGreaterThan(at0.from);
+    expect(at500.to).toBeGreaterThan(at0.to);
   });
 });
 

@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import { EngineClient } from "../../stores/server/engine";
 import { MockEngine } from "../../testing/mockEngine";
 import type { SceneEdgeData, SceneNodeData } from "../../scene/sceneController";
-import { KEYFRAME_BACK_MARGIN_MS, TimeTravelDriver, mapDelta } from "./timeTravel";
+import {
+  KEYFRAME_BACK_MARGIN_MS,
+  TimeTravelDriver,
+  isTimeTravel,
+  mapDelta,
+  opsDisabledFor,
+} from "./timeTravel";
 
 function harness() {
   const mock = new MockEngine();
@@ -25,6 +31,36 @@ function harness() {
   });
   return { mock, driver, pushes, fetchCount: () => fetches };
 }
+
+// Time-travel honesty predicates (S61): the ONE honesty reading off the shared
+// `timelineMode`. Both predicates are pure functions of that single mode — no
+// surface re-derives "are we time travelling?" and no disable is guessed from a
+// transport state. These assert the single-truth contract directly.
+describe("time-travel honesty predicates (S61)", () => {
+  it("isTimeTravel reads the shared mode, not a transport state", () => {
+    expect(isTimeTravel({ kind: "live" })).toBe(false);
+    expect(isTimeTravel({ kind: "time-travel", at: Date.now() })).toBe(true);
+  });
+
+  it("opsDisabledFor disables operational verbs in any time-travel mode", () => {
+    // History is read-only: time-travel disables ops; live never does. The
+    // disable is the same single mode reading, never guessed from an error.
+    expect(opsDisabledFor({ kind: "live" })).toBe(false);
+    expect(opsDisabledFor({ kind: "time-travel", at: 0 })).toBe(true);
+    expect(opsDisabledFor({ kind: "time-travel", at: Date.now() })).toBe(true);
+  });
+
+  it("ops-disable tracks time-travel exactly (the disable IS the mode)", () => {
+    // The disable predicate is congruent with the time-travel predicate, so
+    // there is no third state where one says travelling and the other not.
+    for (const mode of [
+      { kind: "live" } as const,
+      { kind: "time-travel", at: 1 } as const,
+    ]) {
+      expect(opsDisabledFor(mode)).toBe(isTimeTravel(mode));
+    }
+  });
+});
 
 describe("mapDelta", () => {
   it("maps wire deltas onto the seam shape preserving the clock", () => {
