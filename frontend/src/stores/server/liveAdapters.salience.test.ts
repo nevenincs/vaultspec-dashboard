@@ -81,6 +81,40 @@ describe("graph-representation consumed wire fields survive the client path", ()
     expect(withEmbedding!.embedding!.every((v) => typeof v === "number")).toBe(true);
   });
 
+  it("carries the per-type status fields (status_value/status_class) on document nodes", async () => {
+    const engine = new MockEngine();
+    const slice = await queryThroughClientPath(engine, { granularity: "document" });
+
+    // An adr carries the affirmed/provisional/negated/retired status family;
+    // every served adr has BOTH additive fields (node-visual-richness P01).
+    const adr = slice.nodes.find((n: EngineNode) => n.kind === "adr")!;
+    expect(typeof adr.status_value).toBe("string");
+    expect(typeof adr.status_class).toBe("string");
+
+    // A plan carries the tiered class with an L-tier value.
+    const plan = slice.nodes.find((n: EngineNode) => n.kind === "plan")!;
+    expect(plan.status_class).toBe("tiered");
+    expect(plan.status_value).toMatch(/^L[1-4]$/);
+
+    // An audit carries the graded class with a severity value.
+    const audit = slice.nodes.find((n: EngineNode) => n.kind === "audit")!;
+    expect(audit.status_class).toBe("graded");
+    expect(["low", "medium", "high", "critical"]).toContain(audit.status_value);
+
+    // A superseded rule is the compound case: class retired, value superseded.
+    const superseded = slice.nodes.find(
+      (n: EngineNode) => n.kind === "rule" && n.status_value === "superseded",
+    );
+    expect(superseded).toBeDefined();
+    expect(superseded!.status_class).toBe("retired");
+
+    // A type with no per-type status machine (exec) carries NEITHER field —
+    // honest absence survives the adapter, never a fabricated status.
+    const exec = slice.nodes.find((n: EngineNode) => n.kind === "exec")!;
+    expect(exec.status_value).toBeUndefined();
+    expect(exec.status_class).toBeUndefined();
+  });
+
   it("computes a per-lens salience for every node in the corpus", () => {
     const corpus = buildFixtureCorpus();
     for (const node of corpus.nodes) {

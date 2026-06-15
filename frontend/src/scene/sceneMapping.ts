@@ -3,6 +3,7 @@
 // only place the two vocabularies meet. Scene-layer module: framework-free.
 
 import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
+import { nodeStatusFromWire } from "./field/statusStamp";
 import type { SceneDelta, SceneEdgeData, SceneNodeData } from "./sceneController";
 
 export function engineNodeToScene(node: EngineNode): SceneNodeData {
@@ -21,6 +22,10 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     // embedding feeds the semantic UMAP worker (graph-representation §4).
     salience: node.salience,
     embedding: node.embedding,
+    // Per-type lifecycle status (node-visual-richness P01/P03) -> the status
+    // stamp. The ordinal magnitude is derived from the raw value by the scene's
+    // pure util (never a view component); absent when the wire carries no status.
+    status: nodeStatusFromWire(node.status_value, node.status_class),
   };
 }
 

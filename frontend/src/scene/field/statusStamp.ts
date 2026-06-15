@@ -117,6 +117,57 @@ export function stampFor(status: NodeStatus | undefined): StampDescriptor {
   }
 }
 
+/** The closed status-treatment family (the wire `status_class` vocabulary). */
+const STATUS_CLASSES: ReadonlySet<string> = new Set<StatusClass>([
+  "affirmed",
+  "provisional",
+  "negated",
+  "retired",
+  "graded",
+  "tiered",
+]);
+
+/** The tier-token → ordinal rank (tiered class): L1..L4 → 1..4. */
+const TIER_ORDINAL: Record<string, number> = { L1: 1, L2: 2, L3: 3, L4: 4 };
+
+/** The severity-token → ordinal grade (graded class): low..critical → 1..4. */
+const SEVERITY_ORDINAL: Record<string, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
+/**
+ * Build a `NodeStatus` from the engine's two additive wire fields
+ * (`status_value` + `status_class`, node-visual-richness P01), deriving the
+ * `ordinal` magnitude PURELY from the raw value. This is the wire→scene status
+ * derivation and it lives HERE — in the scene's pure util — never in a view
+ * component (`dashboard-layer-ownership`): the chrome reads the resolved status,
+ * it never re-derives it.
+ *
+ *   tier values    L1..L4              → ordinal 1..4 (the `tiered` rank)
+ *   severity values low|medium|high|critical → ordinal 1..4 (the `graded` grade)
+ *   any other value (or absent)        → no ordinal (undefined)
+ *
+ * Returns `undefined` when neither field is present (an absent status) or when
+ * `class` is not a member of the closed treatment vocabulary (an unparseable
+ * status the stamp renders blank), so the caller can omit the seam field
+ * entirely rather than carry a malformed status.
+ */
+export function nodeStatusFromWire(
+  value?: string,
+  cls?: string,
+): NodeStatus | undefined {
+  if (value === undefined && cls === undefined) return undefined;
+  const klass =
+    cls !== undefined && STATUS_CLASSES.has(cls) ? (cls as StatusClass) : undefined;
+  if (klass === undefined && value === undefined) return undefined;
+  const ordinal =
+    value !== undefined ? (TIER_ORDINAL[value] ?? SEVERITY_ORDINAL[value]) : undefined;
+  return { value, class: klass, ordinal };
+}
+
 /**
  * The CSS custom-property NAME whose tint REINFORCES a status class — never the
  * load-bearing channel (shape carries; this only echoes it). Returns a token

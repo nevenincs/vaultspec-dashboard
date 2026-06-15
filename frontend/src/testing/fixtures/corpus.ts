@@ -87,6 +87,73 @@ const AUTHORITY_CLASS: Record<string, string> = {
 const authorityClass = (docType: string): string =>
   AUTHORITY_CLASS[docType] ?? "unknown";
 
+// Per-type lifecycle status the live engine projects onto document nodes
+// (node-visual-richness ADR P01): the additive `status_value`/`status_class`
+// pair mirrored byte-for-byte so the mock matches the live wire
+// (mock-mirrors-live-wire-shape). The class is the closed treatment family
+// (`affirmed|provisional|negated|retired|graded|tiered`); the value is the raw
+// type-specific token (adr decision state, plan tier, audit severity, rule
+// state, feature lifecycle). A type with no per-type status machine
+// (research/exec/code/commit) carries NEITHER field — honest absence.
+interface WireStatus {
+  status_value: string;
+  status_class: string;
+}
+
+// The four ADR decision states across the closed status table (adr → affirmed /
+// provisional / negated / retired), cycled per feature so the stamp matrix is
+// fully exercised: an accepted (affirmed) ADR, a proposed (provisional) one, a
+// rejected (negated) one, and a deprecated (retired) one.
+const ADR_STATES: ReadonlyArray<WireStatus> = [
+  { status_value: "accepted", status_class: "affirmed" },
+  { status_value: "proposed", status_class: "provisional" },
+  { status_value: "rejected", status_class: "negated" },
+  { status_value: "deprecated", status_class: "retired" },
+];
+
+// The four plan tiers (plan → tiered ordinal 1..4), cycled per feature so every
+// tier-notch step appears at least once (includes the requested L2 plan).
+const PLAN_TIERS: ReadonlyArray<WireStatus> = [
+  { status_value: "L1", status_class: "tiered" },
+  { status_value: "L2", status_class: "tiered" },
+  { status_value: "L3", status_class: "tiered" },
+  { status_value: "L4", status_class: "tiered" },
+];
+
+// The four audit severities (audit → graded ordinal 1..4), cycled per feature so
+// every severity-dot fill level appears (includes the requested high audit).
+const AUDIT_SEVERITIES: ReadonlyArray<WireStatus> = [
+  { status_value: "high", status_class: "graded" },
+  { status_value: "critical", status_class: "graded" },
+  { status_value: "medium", status_class: "graded" },
+  { status_value: "low", status_class: "graded" },
+];
+
+// The two rule states (rule → affirmed / retired; `superseded` is retired AND
+// negated, the compound stamp case), cycled per feature.
+const RULE_STATES: ReadonlyArray<WireStatus> = [
+  { status_value: "active", status_class: "affirmed" },
+  { status_value: "superseded", status_class: "retired" },
+];
+
+/** The per-type wire status for a feature's doc of a given type, cycled by
+ *  feature index so the corpus covers the whole status table. Types with no
+ *  per-type status machine (research/exec) return undefined — no fields. */
+function statusForDoc(docType: string, fi: number): WireStatus | undefined {
+  switch (docType) {
+    case "adr":
+      return ADR_STATES[fi % ADR_STATES.length];
+    case "plan":
+      return PLAN_TIERS[fi % PLAN_TIERS.length];
+    case "audit":
+      return AUDIT_SEVERITIES[fi % AUDIT_SEVERITIES.length];
+    case "rule":
+      return RULE_STATES[fi % RULE_STATES.length];
+    default:
+      return undefined;
+  }
+}
+
 // The derivation label the live engine assigns to a pipeline edge between two
 // document types (graph-node-semantics ADR): carried alongside the §4 relation,
 // never instead of it. The representation layer's lineage layout consumes the
@@ -166,6 +233,11 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
       // Documents converging on the feature (contract §4, engine S02): one
       // per doc type, the constellation center-of-gravity sizing input.
       member_count: DOC_TYPES.length,
+      // Per-type lifecycle status (node-visual-richness P01): a feature's status
+      // is its lifecycle — in_flight (affirmed) while active, archived (retired)
+      // once complete. Mirrors the live `status_for_node` feature branch.
+      status_value: state === "complete" ? "archived" : "in_flight",
+      status_class: state === "complete" ? "retired" : "affirmed",
     });
 
     DOC_TYPES.forEach((docType, di) => {
@@ -190,6 +262,12 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         // aggregate-species hint (only exec records collapse).
         authority_class: authorityClass(docType),
         aggregate: docType === "exec",
+        // Per-type lifecycle status (node-visual-richness P01): the additive
+        // status_value/status_class pair the live engine projects, present only
+        // on types with a per-type status machine (adr/plan/audit). Mirrored
+        // byte-for-byte (mock-mirrors-live-wire-shape); spread so absent fields
+        // never appear as undefined keys.
+        ...(statusForDoc(docType, fi) ?? {}),
         // Per-node embedding (graph-representation §4): clustered by feature so
         // the semantic UMAP mode separates meaning-clusters.
         embedding: featureEmbedding(fi, di),
@@ -237,6 +315,43 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
             null) as EngineEdge["derivation"],
         });
       }
+    });
+
+    // A rule node bound to the feature (node-visual-richness P01 stamp matrix):
+    // the live engine projects a per-type status on rules — `active` (affirmed)
+    // or `superseded` (the compound retired-AND-negated stamp). Cycled per
+    // feature so both the affirmed-rule and the superseded-rule treatments
+    // appear in the corpus. The status fields mirror the live wire byte-for-byte.
+    const ruleStatus = RULE_STATES[fi % RULE_STATES.length];
+    const ruleStem = `${feature}-rule`;
+    const ruleId = `doc:${ruleStem}`;
+    nodes.push({
+      id: ruleId,
+      kind: "rule",
+      doc_type: "rule",
+      title: `${feature} rule`,
+      feature_tags: [feature],
+      dates: { created: iso(startTs + DAY), modified: iso(startTs + 5 * DAY) },
+      lifecycle: {
+        state: ruleStatus.status_value === "active" ? "active" : "archived",
+      },
+      degree_by_tier: { declared: 1 },
+      authority_class: authorityClass("rule"),
+      aggregate: false,
+      status_value: ruleStatus.status_value,
+      status_class: ruleStatus.status_class,
+      embedding: featureEmbedding(fi, DOC_TYPES.length),
+    });
+    edges.push({
+      id: `e:${ruleId}->${featureId}:binds`,
+      src: ruleId,
+      dst: featureId,
+      relation: "binds",
+      tier: "declared",
+      confidence: 1,
+      provenance: "frontmatter",
+      observed_at: iso(startTs + DAY),
+      derivation: "binds",
     });
 
     // Structural edge to a code artifact, state varies.

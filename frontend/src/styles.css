@@ -200,6 +200,17 @@
   --color-state-stale: #9f7100; /* oklch(0.58 0.120 80) - amber, >=3:1 */
   --color-state-broken: #ae4024; /* oklch(0.52 0.150 35) - warning */
 
+  /* status-stamp REINFORCEMENT tints (node-visual-richness P03). The status
+     STAMP is the shape channel; these tints only echo it, so they stay warm-
+     neutral (affirmed/retired/negated already reuse the --color-state-* tokens
+     via stampToken, so only provisional/graded/tiered are new). Emitted as
+     literal #rrggbb like the scene-read --color-state-* surface (HIGH-1): the
+     nodeSprites reader parses only hex, so an oklch() value would fall through
+     to the fallback. Diff red is untouched. */
+  --color-status-provisional: #806a44; /* warm taupe - a tentative, un-settled ink */
+  --color-status-graded: #9f7100; /* amber, tracks --color-state-stale (severity) */
+  --color-status-tiered: #5c5040; /* temporal warm-brown - the tier-rank reinforcement */
+
   /* == 5. TYPOGRAPHY (S14) - separate UI and code type scales ============== */
   /* UI scale: compact instrument-grade, fixed (not fluid). Tabular numerals
      are mandated on data-bearing contexts via the .tabular-nums utility and
@@ -347,6 +358,10 @@
     --color-state-archived: #898581;
     --color-state-stale: #9f7100;
     --color-state-broken: #ae4024;
+    /* status-stamp reinforcement tints (warm-neutral, literal hex) */
+    --color-status-provisional: #806a44;
+    --color-status-graded: #9f7100;
+    --color-status-tiered: #5c5040;
   }
 
   /* -- DARK (S06): warm-tinted near-black, equal peer to light ----------- */
@@ -390,6 +405,10 @@
     --color-state-archived: #74716c; /* oklch(0.55 0.008 75) */
     --color-state-stale: #dcaf61; /* oklch(0.78 0.110 80) */
     --color-state-broken: #e37f65; /* oklch(0.70 0.130 35) */
+    /* status-stamp reinforcement tints (warm-neutral, lifted for the dark canvas) */
+    --color-status-provisional: #c0a877; /* warm taupe, lifted */
+    --color-status-graded: #dcaf61; /* tracks dark --color-state-stale */
+    --color-status-tiered: #bdaf9d; /* tracks dark temporal warm-brown */
 
     /* shadows deepen against the dark ground */
     --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.25), 0 1px 2px -1px rgb(0 0 0 / 0.25);
@@ -445,6 +464,10 @@
     --color-state-archived: #82807c; /* oklch(0.60 0.006 75) */
     --color-state-stale: #e6bb5e; /* oklch(0.82 0.120 80) */
     --color-state-broken: #ec8166; /* oklch(0.72 0.150 35) */
+    /* status-stamp reinforcement tints (warm-neutral, max-separation HC) */
+    --color-status-provisional: #d2bd91; /* warm taupe, high-L */
+    --color-status-graded: #e6bb5e; /* tracks HC --color-state-stale */
+    --color-status-tiered: #dacbb9; /* tracks HC temporal warm-brown */
 
     --shadow-card: 0 0 0 1px oklch(0.7 0.01 75);
     --shadow-panel: 0 0 0 1px oklch(0.7 0.01 75);

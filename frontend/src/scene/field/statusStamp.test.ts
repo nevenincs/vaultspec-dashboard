@@ -7,7 +7,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { type NodeStatus, type StatusClass, stampFor, stampToken } from "./statusStamp";
+import {
+  type NodeStatus,
+  type StatusClass,
+  nodeStatusFromWire,
+  stampFor,
+  stampToken,
+} from "./statusStamp";
 
 // The authoritative doc-type → resolved-status fixtures (spec table). Each row
 // is the status the engine would carry for that vocabulary term, paired with
@@ -192,5 +198,62 @@ describe("stampToken — the reinforcing tint NAME (never load-bearing)", () => 
 
   it("falls back to muted ink for an absent class", () => {
     expect(stampToken(undefined)).toBe("--color-ink-muted");
+  });
+});
+
+describe("nodeStatusFromWire — wire (value, class) → NodeStatus with derived ordinal", () => {
+  it("derives the tiered ordinal from the L-tier value (L1..L4 → 1..4)", () => {
+    expect(nodeStatusFromWire("L1", "tiered")).toEqual({
+      value: "L1",
+      class: "tiered",
+      ordinal: 1,
+    });
+    expect(nodeStatusFromWire("L4", "tiered")).toEqual({
+      value: "L4",
+      class: "tiered",
+      ordinal: 4,
+    });
+  });
+
+  it("derives the graded ordinal from the severity value (low..critical → 1..4)", () => {
+    expect(nodeStatusFromWire("low", "graded")!.ordinal).toBe(1);
+    expect(nodeStatusFromWire("medium", "graded")!.ordinal).toBe(2);
+    expect(nodeStatusFromWire("high", "graded")!.ordinal).toBe(3);
+    expect(nodeStatusFromWire("critical", "graded")!.ordinal).toBe(4);
+  });
+
+  it("leaves the ordinal undefined for non-magnitude classes", () => {
+    expect(nodeStatusFromWire("accepted", "affirmed")).toEqual({
+      value: "accepted",
+      class: "affirmed",
+      ordinal: undefined,
+    });
+    expect(nodeStatusFromWire("superseded", "retired")!.ordinal).toBeUndefined();
+  });
+
+  it("drops a class outside the closed vocabulary (renders blank), keeping the value", () => {
+    const s = nodeStatusFromWire("mystery", "bogus");
+    expect(s).toBeDefined();
+    expect(s!.class).toBeUndefined();
+    expect(s!.value).toBe("mystery");
+    // stampFor with no class → the all-empty no-stamp descriptor.
+    expect(stampFor(s)).toEqual({ ghost: false, slash: false });
+  });
+
+  it("returns undefined when BOTH fields are absent (no status on the wire)", () => {
+    expect(nodeStatusFromWire(undefined, undefined)).toBeUndefined();
+  });
+
+  it("round-trips through stampFor to the right treatment", () => {
+    expect(stampFor(nodeStatusFromWire("L3", "tiered"))).toEqual({
+      ghost: false,
+      slash: false,
+      tierNotch: 3,
+    });
+    expect(stampFor(nodeStatusFromWire("high", "graded"))).toEqual({
+      ghost: false,
+      slash: false,
+      severityDot: 3,
+    });
   });
 });

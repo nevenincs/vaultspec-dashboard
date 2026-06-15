@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { groupColor } from "./edgeMeshes";
-import { stateColor } from "./nodeSprites";
+import { stampColor, stateColor } from "./nodeSprites";
 
 // The scene-read surface, light theme (matches styles.css @theme static 3b).
 const SCENE_TOKENS: Record<string, string> = {
@@ -32,6 +32,10 @@ const SCENE_TOKENS: Record<string, string> = {
   "--color-state-archived": "#898581",
   "--color-state-stale": "#9f7100",
   "--color-state-broken": "#ae4024",
+  // status-stamp reinforcement tints (node-visual-richness P03), light theme.
+  "--color-status-provisional": "#806a44",
+  "--color-status-graded": "#9f7100",
+  "--color-status-tiered": "#5c5040",
 };
 
 // Dark theme scene-read hex (matches styles.css [data-theme=dark] block 3b).
@@ -85,6 +89,35 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     expect(stateColor({ state: "stale" } as never)).toBe(hexToNum("#9f7100"));
     // missing lifecycle falls back to ink-muted, read from the token layer.
     expect(stateColor(undefined)).toBe(hexToNum("#5f5a53"));
+  });
+
+  it("nodeSprites.stampColor reads each --color-status-* token as literal hex", () => {
+    applyTokens(SCENE_TOKENS);
+    // affirmed / retired / negated REUSE the --color-state-* tokens via
+    // stampToken; provisional / graded / tiered are the new status tokens. Each
+    // must resolve to its literal hex through the same getCssColor seam the
+    // state tokens use (the HIGH-1 literal-hex contract: an oklch() value would
+    // silently fall through to the muted-ink fallback).
+    expect(stampColor({ id: "a", kind: "adr", status: { class: "affirmed" } })).toBe(
+      hexToNum("#3f774d"),
+    );
+    expect(stampColor({ id: "b", kind: "rule", status: { class: "retired" } })).toBe(
+      hexToNum("#898581"),
+    );
+    expect(stampColor({ id: "c", kind: "adr", status: { class: "negated" } })).toBe(
+      hexToNum("#898581"),
+    );
+    expect(stampColor({ id: "d", kind: "adr", status: { class: "provisional" } })).toBe(
+      hexToNum("#806a44"),
+    );
+    expect(
+      stampColor({ id: "e", kind: "audit", status: { class: "graded", ordinal: 3 } }),
+    ).toBe(hexToNum("#9f7100"));
+    expect(
+      stampColor({ id: "f", kind: "plan", status: { class: "tiered", ordinal: 2 } }),
+    ).toBe(hexToNum("#5c5040"));
+    // A node with no status falls back to muted ink, read from the token layer.
+    expect(stampColor({ id: "g", kind: "code" })).toBe(hexToNum("#5f5a53"));
   });
 
   it("re-resolves the dark theme hex when the token layer flips", () => {
