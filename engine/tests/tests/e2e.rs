@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use engine_model::ScopeRef;
@@ -104,14 +105,35 @@ fn run_cli(dir: &Path, args: &[&str]) -> (i32, serde_json::Value) {
     )
 }
 
-struct ServeGuard(Child);
+// A process-wide serial gate for the heavy serve-spawning e2e tests (F-T1):
+// each `start_serve` boots a real `serve` (port bind + cold index + the 30s
+// startup deadline below), and several racing under full-workspace
+// `cargo test` parallelism intermittently time out on startup. Holding this
+// gate for the life of the ServeGuard makes those tests run one-at-a-time;
+// ports stay distinct and each test's behaviour is unchanged. Poison-tolerant
+// so a panic in one test does not cascade-fail the rest.
+fn serve_serial() -> MutexGuard<'static, ()> {
+    static GATE: OnceLock<Mutex<()>> = OnceLock::new();
+    GATE.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+struct ServeGuard {
+    child: Child,
+    /// Held until drop so the serve test runs serially (see `serve_serial`).
+    _serial: MutexGuard<'static, ()>,
+}
 impl Drop for ServeGuard {
     fn drop(&mut self) {
-        let _ = self.0.kill();
+        let _ = self.child.kill();
     }
 }
 
 fn start_serve(root: &Path, port: u16) -> (ServeGuard, String) {
+    // Serialize from BEFORE spawn through the whole startup wait — the 30s
+    // deadline below is what flakes when several serves boot in parallel.
+    let serial = serve_serial();
     let child = Command::new(binary())
         .current_dir(root)
         .args(["serve", "--port", &port.to_string()])
@@ -131,7 +153,13 @@ fn start_serve(root: &Path, port: u16) -> (ServeGuard, String) {
         assert!(std::time::Instant::now() < deadline, "serve never came up");
         std::thread::sleep(Duration::from_millis(200));
     };
-    (ServeGuard(child), token)
+    (
+        ServeGuard {
+            child,
+            _serial: serial,
+        },
+        token,
+    )
 }
 
 fn http_get(port: u16, path: &str, token: &str) -> (u16, serde_json::Value) {
