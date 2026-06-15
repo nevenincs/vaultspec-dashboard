@@ -1,5 +1,17 @@
 # Figma seeding (plan W01.P09) — executed 2026-06-15
 
+> **DEDUPLICATION NOTE (2026-06-15).** A second concurrent session (`0fdecf45`) was
+> authoring the SAME Figma file in parallel — further along, in an organized `MIRROR`
+> canvas (node 23:2) with faithful, editable, variable-bound regions (LeftRail 19:2, Stage
+> 22:2, HoverCard 10:2, Foundations·Icons&Type 13:2 with real vectorized icons). To stop
+> double-encoding, **this session's duplicate seed nodes were removed** (the stub
+> Components grid 4:2 and the duplicate Foundations swatch board 5:2, which also held the
+> interim image-fill experiments), and the registry bindings were **reset to null**. The
+> live Figma editable recreation is owned by session `0fdecf45`; it will re-point the
+> registry at its MIRROR nodes. The code-side bridge (tokens → variables, registry,
+> validator, parity harness, stories, dom-extract/RECREATE pipeline) remains and is what
+> that session builds on. The node references below are HISTORICAL (now deleted).
+
 The Figma mirror was seeded directly via the claude.ai Figma MCP (full editor seat), not the
 Tokens Studio / importer route. One-way, code → Figma; Figma is never canonical.
 

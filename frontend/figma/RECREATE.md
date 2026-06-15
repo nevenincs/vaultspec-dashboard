@@ -40,8 +40,14 @@ Derive from `tokens/figma/tokens.json` `semantic-light`. Common: `#312d27`→`pu
 
 ## Status
 
-- Pipeline proven: `LensSelector` recreated editable + variable-bound (4:72).
-- Interim: `LeftRail` (4:69) and `ChangesOverview` (4:18) currently carry real-render IMAGE
-  fills (fast proof the real UI exists in Figma); to be re-done editable per this runbook.
-- Remaining: editable recreation of the other 47 components + write 34 missing stories.
-- SVG icon fidelity (createNodeFromSvg from marks.ts) is a dedicated pass.
+- Pipeline proven (this session): the DOM-extract → use_figma editable build works
+  (validated on LensSelector). This runbook + `dom-extract.js` are the durable method.
+- **Ownership (2026-06-15 deduplication):** a concurrent session (`0fdecf45`) owns the live
+  Figma editable recreation in the `MIRROR` canvas (it has assembled LeftRail, Stage,
+  HoverCard, and a vectorized-icon foundation). This session's parallel Figma nodes were
+  removed to stop double-encoding; the registry was reset to unbound pending that session
+  re-pointing it at the MIRROR nodes. Do not author the Figma file from two sessions at
+  once — coordinate first.
+- Remaining (owned by `0fdecf45`): the rest of the regions + the 34 missing stories + the
+  SVG icon fidelity pass (createNodeFromSvg from marks.ts, already underway there via
+  `figma/icons.json` / `scripts/figma-icons.mjs`).
