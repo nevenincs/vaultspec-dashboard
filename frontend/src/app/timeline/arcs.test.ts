@@ -2,21 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   ARC_TIERS,
-  BUNDLE_STRENGTH,
   type ArcInput,
   type ArcPoint,
   arcLabel,
   arcPath,
   arcTreatment,
-  bundledArcs,
-  bundledPath,
-  bundledWithHoverUnbundle,
   confidenceBucket,
-  disparityFilter,
-  groupByContainment,
   incidentArcIds,
-  rawArcs,
-  resolveArcs,
+  incidentResolvedArcs,
 } from "./arcs";
 
 const at =
@@ -101,136 +94,26 @@ describe("arc geometry (S36, bowed left-to-right-and-down read)", () => {
   });
 });
 
-describe("resolveArcs drops dangling arcs (S37, no dangling arc draws)", () => {
-  const positionOf = at({ a: { x: 0, y: 0 }, b: { x: 50, y: 22 } });
-
-  it("resolves an arc whose both endpoints are positioned", () => {
-    const resolved = resolveArcs([arc({ id: "e1" })], positionOf);
-    expect(resolved).toHaveLength(1);
-    expect(resolved[0].id).toBe("e1");
-    expect(resolved[0].path).toContain("C");
-  });
-
-  it("drops an arc with a missing endpoint (not in range / lane hidden)", () => {
-    const resolved = resolveArcs(
-      [arc({ id: "e1", src: "a", dst: "ghost" })],
-      positionOf,
-    );
-    expect(resolved).toHaveLength(0);
-  });
-});
-
-describe("rawArcs under the client cap (S37, the v1 working surface)", () => {
-  const positions: Record<string, ArcPoint> = {};
-  for (let i = 0; i < 10; i++) positions[`n${i}`] = { x: i * 10, y: 0 };
-  const positionOf = at(positions);
-  const many: ArcInput[] = [];
-  for (let i = 0; i < 9; i++)
-    many.push(arc({ id: `e${i}`, src: `n${i}`, dst: `n${i + 1}` }));
-
-  it("caps the resolved arcs and reports how many were dropped", () => {
-    const capped = rawArcs(many, positionOf, 4);
-    expect(capped.items).toHaveLength(4);
-    expect(capped.dropped).toBe(5);
-  });
-
-  it("returns all arcs when under the cap", () => {
-    const capped = rawArcs(many, positionOf, 100);
-    expect(capped.items).toHaveLength(9);
-    expect(capped.dropped).toBe(0);
-  });
-});
-
-describe("disparity filter (S38, thin weak tiers to the significant subset)", () => {
+describe("incidentArcIds (the focused node's 1-hop edge identities)", () => {
   const arcs: ArcInput[] = [
-    arc({ id: "d", tier: "declared", confidence: 0.1 }),
-    arc({ id: "s", tier: "structural", confidence: 0.1 }),
-    arc({ id: "t-weak", tier: "temporal", confidence: 0.2 }),
-    arc({ id: "t-strong", tier: "temporal", confidence: 0.9 }),
-    arc({ id: "m-weak", tier: "semantic", confidence: 0.2 }),
-    arc({ id: "m-strong", tier: "semantic", confidence: 0.9 }),
+    arc({ id: "incident-out", src: "h", dst: "x" }),
+    arc({ id: "incident-in", src: "y", dst: "h" }),
+    arc({ id: "far", src: "y", dst: "z" }),
   ];
 
-  it("never thins declared or structural (framework-named lineage)", () => {
-    const kept = disparityFilter(arcs, 0.5).map((a) => a.id);
-    expect(kept).toContain("d");
-    expect(kept).toContain("s");
+  it("returns exactly the arcs touching the node (src OR dst)", () => {
+    expect([...incidentArcIds(arcs, "h")].sort()).toEqual([
+      "incident-in",
+      "incident-out",
+    ]);
   });
 
-  it("drops weak temporal/semantic arcs below the confidence floor", () => {
-    const kept = disparityFilter(arcs, 0.5).map((a) => a.id);
-    expect(kept).not.toContain("t-weak");
-    expect(kept).not.toContain("m-weak");
-    expect(kept).toContain("t-strong");
-    expect(kept).toContain("m-strong");
+  it("returns an empty set when no node is focused (the marks-only default)", () => {
+    expect(incidentArcIds(arcs, null).size).toBe(0);
   });
 });
 
-describe("HEB grouping + bundled geometry (S38)", () => {
-  it("groups arcs by their containment key, insertion-ordered", () => {
-    const groups = groupByContainment(
-      [arc({ id: "1" }), arc({ id: "2" }), arc({ id: "3" })],
-      (a) => (a.id === "3" ? "g2" : "g1"),
-    );
-    expect([...groups.keys()]).toEqual(["g1", "g2"]);
-    expect(groups.get("g1")!.map((a) => a.id)).toEqual(["1", "2"]);
-  });
-
-  it("bundledPath pulls control points toward the meeting point by strength", () => {
-    const from = { x: 0, y: 0 };
-    const to = { x: 100, y: 0 };
-    const meet = { x: 50, y: 100 };
-    const strong = bundledPath(from, to, meet, 1);
-    // At full strength both control points sit AT the meeting point.
-    expect(strong).toContain("C 50 100 50 100");
-    const straight = bundledPath(from, to, meet, 0);
-    // At zero strength control points stay at the endpoints (a straight cubic).
-    expect(straight).toContain("C 0 0 100 0");
-  });
-
-  it("BUNDLE_STRENGTH is a strong pull in (0,1]", () => {
-    expect(BUNDLE_STRENGTH).toBeGreaterThan(0.5);
-    expect(BUNDLE_STRENGTH).toBeLessThanOrEqual(1);
-  });
-});
-
-describe("bundled vs raw is gated; raw stays the fallback (S37/S38)", () => {
-  const positions: Record<string, ArcPoint> = {
-    a: { x: 0, y: 0 },
-    b: { x: 100, y: 0 },
-    c: { x: 50, y: 22 },
-  };
-  const positionOf = at(positions);
-  const arcs: ArcInput[] = [
-    arc({ id: "e1", src: "a", dst: "b", tier: "declared", confidence: 1 }),
-    arc({ id: "e2", src: "a", dst: "c", tier: "temporal", confidence: 0.9 }),
-  ];
-
-  it("raw arcs use the bowed path; bundled arcs use the meeting-point path", () => {
-    const raw = rawArcs(arcs, positionOf, 100).items;
-    const bundled = bundledArcs(arcs, positionOf, () => "feat", {
-      minConfidence: 0.5,
-      max: 100,
-    }).items;
-    // Both produce the same arc identities (gating preserves the set)…
-    expect(raw.map((a) => a.id).sort()).toEqual(bundled.map((a) => a.id).sort());
-    // …but the geometry differs: bundled routes through the centroid.
-    const rawE1 = raw.find((a) => a.id === "e1")!;
-    const bunE1 = bundled.find((a) => a.id === "e1")!;
-    expect(rawE1.path).not.toBe(bunE1.path);
-  });
-
-  it("bundling respects the cap exactly like raw (never raises the ceiling)", () => {
-    const capped = bundledArcs(arcs, positionOf, () => "feat", {
-      minConfidence: 0,
-      max: 1,
-    });
-    expect(capped.items).toHaveLength(1);
-    expect(capped.dropped).toBe(1);
-  });
-});
-
-describe("un-bundle-on-hover (S39, the bundling-legibility affordance)", () => {
+describe("incidentResolvedArcs (the on-demand relations overlay)", () => {
   const positions: Record<string, ArcPoint> = {
     h: { x: 0, y: 0 },
     x: { x: 100, y: 22 },
@@ -243,41 +126,37 @@ describe("un-bundle-on-hover (S39, the bundling-legibility affordance)", () => {
     arc({ id: "far", src: "y", dst: "z", tier: "declared", confidence: 1 }),
   ];
 
-  it("incidentArcIds returns the arcs touching the hovered node", () => {
-    expect([...incidentArcIds(arcs, "h")]).toEqual(["incident"]);
-    expect(incidentArcIds(arcs, null).size).toBe(0);
+  it("draws NO arcs when no node is focused (marks-only default)", () => {
+    expect(incidentResolvedArcs(arcs, positionOf, null)).toHaveLength(0);
   });
 
-  it("renders the hovered node's incident arcs RAW and the rest bundled", () => {
-    const hovered = bundledWithHoverUnbundle(arcs, positionOf, () => "feat", "h", {
-      minConfidence: 0,
-      max: 100,
-    }).items;
-    const rawIncident = resolveArcs(
-      arcs.filter((a) => a.id === "incident"),
-      positionOf,
-    )[0];
-    const incidentRendered = hovered.find((a) => a.id === "incident")!;
-    // The incident arc is drawn with its RAW (bowed) path, not the bundled path.
-    expect(incidentRendered.path).toBe(rawIncident.path);
-    // The far arc is still present (bundled), so the rest never hides.
-    expect(hovered.some((a) => a.id === "far")).toBe(true);
+  it("draws ONLY the focused node's incident arcs, resolved with path + treatment", () => {
+    const resolved = incidentResolvedArcs(arcs, positionOf, "h");
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].id).toBe("incident");
+    // The arc resolves to its bowed cubic path and its tier treatment.
+    expect(resolved[0].path).toContain("C");
+    expect(resolved[0].treatment.tier).toBe("declared");
+    // The unrelated far arc is NOT drawn — relations are scoped to the focus.
+    expect(resolved.some((a) => a.id === "far")).toBe(false);
   });
 
-  it("at rest (no hover) adds no raw arcs — it is exactly the bundled set", () => {
-    const atRest = bundledWithHoverUnbundle(arcs, positionOf, () => "feat", null, {
-      minConfidence: 0,
-      max: 100,
-    }).items;
-    const bundled = bundledArcs(arcs, positionOf, () => "feat", {
-      minConfidence: 0,
-      max: 100,
-    }).items;
-    expect(atRest.map((a) => a.id).sort()).toEqual(bundled.map((a) => a.id).sort());
+  it("drops an incident arc whose other endpoint is not positioned (no dangling arc)", () => {
+    const dangling: ArcInput[] = [arc({ id: "e1", src: "h", dst: "ghost" })];
+    expect(incidentResolvedArcs(dangling, positionOf, "h")).toHaveLength(0);
+  });
+
+  it("resolves both an outgoing and an incoming incident arc of the focus", () => {
+    const both: ArcInput[] = [
+      arc({ id: "out", src: "h", dst: "x" }),
+      arc({ id: "in", src: "y", dst: "h" }),
+    ];
+    const resolved = incidentResolvedArcs(both, positionOf, "h").map((a) => a.id);
+    expect(resolved.sort()).toEqual(["in", "out"]);
   });
 });
 
-describe("arcLabel (S39, derivation > relation > tier for hover/a11y)", () => {
+describe("arcLabel (derivation > relation > tier for hover/a11y)", () => {
   it("prefers the derivation label, then relation, then a tier fallback", () => {
     expect(
       arcLabel(arc({ id: "1", derivation: "grounds", relation: "mentions" })),

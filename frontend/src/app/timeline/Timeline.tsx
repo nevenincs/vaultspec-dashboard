@@ -2,21 +2,22 @@
 // "Interaction", W03.P06): the corpus's diachronic lineage view. Lanes are the
 // framework pipeline phases (research/reference · adr · plan · exec · review ·
 // codify); each dated document is a node at its blob-true creation instant in its
-// phase lane, drawn with its Phosphor domain mark (shape-first, 14px grayscale
-// gate, currentColor); derivation arcs flow left-to-right across the lanes,
-// reusing the tier-as-treatment edge vocabulary (declared solid / structural
-// status-hued / temporal dotted / semantic haze, confidence as lightness).
+// phase lane, drawn at full opacity with its Phosphor domain mark (shape-first,
+// 14px grayscale gate, currentColor). The ALWAYS-ON surface is dated marks ONLY —
+// no arcs by default. Relations are an ON-DEMAND overlay (see Interaction).
 //
-// Scroll model (ADR "Density, bundling, and the scroll model"): a zoomable
-// pixels-per-time scale + a scroll offset, LIVE docked at the right, scrolling
-// left walks back in time; marks and arcs are virtualized to the visible range
-// plus a margin and held under a belt-and-suspenders client cap, so the surface
-// stays bounded at any corpus age. Raw arcs are the v1 surface; HEB bundling +
-// disparity is a coarse-scale hardening layer that falls back to raw arcs.
+// Scroll model: a zoomable pixels-per-time scale + a scroll offset, LIVE docked
+// at the right, scrolling left walks back in time; marks are virtualized to the
+// visible range plus a margin and held under a belt-and-suspenders client cap, so
+// the surface stays bounded at any corpus age.
 //
-// Interaction (ADR "Interaction"): hovering a node lifts its 1-hop lineage ego
-// (node + neighbors + incident arcs keep full treatment) and DIMS the rest — it
-// never hides; the hovered node's incident arcs un-bundle through any bundle.
+// Interaction (ADR "Interaction"): hovering or selecting a node draws ONLY that
+// node's 1-hop derivation arcs (to its neighbors), with the tier-as-treatment
+// edge vocabulary (declared solid / structural status-hued / temporal dotted /
+// semantic haze, confidence as lightness), and lifts its ego (node + neighbors +
+// incident arcs keep full treatment) while the rest DIM — never hide. A single
+// focused node's incident set is intrinsically small, so the arcs are drawn raw;
+// there is no always-on arc field and so no bundling/disparity hairball machinery.
 //
 // Layer ownership (dashboard-layer-ownership / ADR "Layer ownership"): this is
 // app-chrome. It reads the lineage slice through the stores hook and the
@@ -43,20 +44,12 @@ import { useActiveScope } from "../stage/Stage";
 // dashboard-context-menus surface and consumed by the generic menu host).
 import "./menus/eventMarkMenu";
 import {
-  type RevealState,
-  isUngated,
-  revealArcs,
-  revealNodes,
-  revealTimeFor,
-} from "./arcGrowth";
-import {
   type ArcInput,
   type ArcPoint,
   type ArcState,
   type ResolvedArc,
   arcEndpointLabel,
-  bundledWithHoverUnbundle,
-  rawArcs,
+  incidentResolvedArcs,
 } from "./arcs";
 import { prefersReducedMotion } from "./RangeSelect";
 import {
@@ -67,7 +60,6 @@ import {
   lanesHeight,
 } from "./phaseLanes";
 import {
-  MAX_TIMELINE_ARCS,
   MAX_TIMELINE_MARKS,
   TIMELINE_ORIGIN_MS,
   capItems,
@@ -215,18 +207,6 @@ interface TimelineState {
   // --- hovered-node view state (S27) ---
   hoveredNodeId: string | null;
   setHoveredNode: (hoveredNodeId: string | null) => void;
-  // --- last-playhead-move-was-keyboard signal (arc-growth motion grammar) ---
-  /**
-   * Whether the LAST playhead move was a keyboard/discrete step. The motion
-   * grammar makes keyboard-initiated steps a HARD CUT (never animate), so the
-   * arc-growth reveal reads this transient to collapse its fade to an instant
-   * cut on a keyboard step while still EASING on a pointer-drag scrub or a
-   * play-the-range sweep (both deliberate, state-communicating animations). It
-   * is a per-move signal the playhead writers set true (keyboard) or false
-   * (drag / play / return-to-live); the reveal memo reads it. Default false.
-   */
-  lastStepInstant: boolean;
-  setLastStepInstant: (lastStepInstant: boolean) => void;
 }
 
 export const useTimelineStore = create<TimelineState>((set) => ({
@@ -248,8 +228,6 @@ export const useTimelineStore = create<TimelineState>((set) => ({
     })),
   hoveredNodeId: null,
   setHoveredNode: (hoveredNodeId) => set({ hoveredNodeId }),
-  lastStepInstant: false,
-  setLastStepInstant: (lastStepInstant) => set({ lastStepInstant }),
 }));
 
 // --- pure render-prep helpers (unit-testable, no DOM) ----------------------------
@@ -258,40 +236,10 @@ const LANE_LABEL_W = 56;
 const TOP_PAD = 4;
 const MARK_PX = 13;
 const RULER_HEIGHT = 16;
-/** Virtualization margin (px) so a mark/arc partly off-screen stays drawn. */
+/** Virtualization margin (px) so a mark partly off-screen stays drawn. */
 const VIRTUAL_MARGIN_PX = 120;
-/** Debounce before refetching the lineage as-of a new playhead instant: a scrub or
- *  play-the-range moves T every frame, so the blob-true as-of fetch waits for the
- *  playhead to settle (the client-side reveal animates the growth in between). */
-const AS_OF_DEBOUNCE_MS = 200;
-/**
- * Pixels-per-ms threshold below which the surface bundles arcs (coarse scale).
- * Above it (zoomed in), raw arcs read cleanly and bundling is off — raw is the
- * v1 surface and the bundling fallback (graph-representation discipline).
- */
-const BUNDLE_BELOW_PX_PER_MS = 100 / (30 * 24 * 3600_000); // ~30 days / 100px
-/** The disparity-filter confidence floor used when bundling (thin weak tiers). */
-const BUNDLE_MIN_CONFIDENCE = 0.4;
 /** The dim alpha a receded (out-of-ego) mark/arc takes — never hidden (S40). */
 const RECEDE_ALPHA = 0.22;
-/**
- * The faint alpha a NOT-YET-REVEALED mark takes while scrubbing (animated arc
- * growth fast-follow): before its `created` instant is crossed by the playhead, a
- * node sits at a faint pre-birth ghost rather than vanishing, so the lineage reads
- * as growing INTO an anticipated shape rather than popping out of nothing. Arcs,
- * which cannot exist before both their documents do, are hidden until revealed.
- */
-const PRE_BIRTH_ALPHA = 0.06;
-
-/**
- * The stable UNGATED reveal sentinel (LIVE mode): a single frozen empty map
- * shared across renders so the reveal does not rebuild an O(nodes)/O(arcs) map on
- * unrelated `timelineMode` identity changes while LIVE reveals everything anyway.
- * Both the node lookup (`revealOf`) and the arc draw fall back to fully-revealed
- * on a map miss, so an empty map IS "reveal everything" — LIVE correctness is
- * preserved with no per-node work.
- */
-const UNGATED_REVEAL: ReadonlyMap<string, RevealState> = new Map();
 
 /** The instant a node's mark is positioned at (blob-true creation), or null. */
 export function nodeInstant(node: LineageNode): number | null {
@@ -299,23 +247,6 @@ export function nodeInstant(node: LineageNode): number | null {
   if (!created) return null;
   const t = Date.parse(created);
   return Number.isFinite(t) ? t : null;
-}
-
-/**
- * The containment key for an arc — its feature/lineage grouping for HEB bundling.
- * Derived from the src node's id stem prefix (the feature folder segment of a
- * `doc:{yyyy-mm-dd-feature-...}` stable id); arcs of the same feature bundle
- * together. Falls back to the arc id when no feature can be derived (its own
- * group, so it never wrongly bundles with an unrelated arc).
- */
-export function containmentKey(arc: ArcInput): string {
-  const stem = arc.src.replace(/^doc:/, "");
-  // `yyyy-mm-dd-feature-...`: the feature is the slug after the date prefix, up
-  // to the doc-type/identifier tail — a coarse but stable grouping key.
-  const m = stem.match(
-    /^\d{4}-\d{2}-\d{2}-(.+?)(?:-(?:research|reference|adr|plan|exec|audit|rule|summary).*)?$/,
-  );
-  return m ? m[1] : arc.id;
 }
 
 /**
@@ -454,12 +385,11 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const degraded = surface === "reconnecting";
 
   // Reduced-motion floor (S66, ADR "Accessibility & motion"): under
-  // prefers-reduced-motion the scrub/range-play/bundle ANIMATION swaps for instant
-  // state changes. The DOM-transition floor is honoured app-wide by the global CSS
-  // rule; this flag swaps the *behavioural* animation (the per-frame bundle
-  // morph + the mark/arc opacity transition) for an instant cut so the surface
-  // never tweens for a reduced-motion user. Read reactively so a media-query flip
-  // re-renders the surface.
+  // prefers-reduced-motion the ego-highlight ANIMATION swaps for an instant state
+  // change. The DOM-transition floor is honoured app-wide by the global CSS rule;
+  // this flag swaps the *behavioural* animation (the mark/arc opacity transition)
+  // for an instant cut so the surface never tweens for a reduced-motion user. Read
+  // reactively so a media-query flip re-renders the surface.
   const reducedMotion = useReducedMotion();
 
   // The visible time range for the current scroll position (virtualized + margin)
@@ -469,38 +399,15 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     [scrollOffset, width, pxPerMs],
   );
 
-  // Blob-true as-of (dashboard-timeline ADR fast-follow): in time-travel the slice
-  // is fetched AS OF the playhead instant, so it reflects the graph as it existed at
-  // T (the git object DB), not just the client-side creation-date reveal. DEBOUNCED
-  // (`AS_OF_DEBOUNCE_MS`): a scrub or play-the-range changes T every frame, so an
-  // un-debounced fetch would storm the engine; the client-side `arcGrowth` reveal
-  // gives the smooth per-frame growth BETWEEN fetches, and the as-of fetch settles
-  // to blob-true accuracy when the playhead rests. LIVE = undefined (live graph).
-  // One delta clock: this reads the shared `timelineMode`, never a second clock.
-  const ttAt = useViewStore((s) =>
-    s.timelineMode.kind === "time-travel" ? s.timelineMode.at : undefined,
-  );
-  const [asOf, setAsOf] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (ttAt === undefined) {
-      setAsOf(undefined);
-      return;
-    }
-    const id = setTimeout(() => setAsOf(ttAt), AS_OF_DEBOUNCE_MS);
-    return () => clearTimeout(id);
-  }, [ttAt]);
-
-  // The sole wire read: the bounded lineage slice for the scope + visible range,
-  // as of the (settled) playhead instant when time-travelling.
-  const lineage = useTimelineLineage(
-    scope,
-    {
-      from: new Date(range.fromMs).toISOString(),
-      to: new Date(range.toMs).toISOString(),
-    },
-    undefined,
-    asOf,
-  );
+  // The sole wire read: the bounded lineage slice for the scope + visible range.
+  // The playhead drives the stage time-travel ONLY; the timeline marks render the
+  // live in-range corpus and do NOT refetch per playhead instant. (The hook keeps
+  // its optional `asOf` param as a harmless capability; the UI just never drives
+  // it — no debounced per-playhead refetch storm.)
+  const lineage = useTimelineLineage(scope, {
+    from: new Date(range.fromMs).toISOString(),
+    to: new Date(range.toMs).toISOString(),
+  });
 
   const phaseBandH = lanesHeight(TOP_PAD);
   const height = phaseBandH + RULER_HEIGHT;
@@ -554,80 +461,31 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     [arcs],
   );
 
-  // --- animated arc growth (dashboard-timeline ADR deferred fast-follow) ----------
+  // --- on-demand relations overlay (the focused node's 1-hop arcs) ----------------
   //
-  // As the playhead scrubs — and during play-the-range — the lineage nodes and
-  // derivation arcs are REVEALED progressively up to the playhead's time, so the
-  // corpus lineage visibly grows. The reveal frontier T is read from the ONE shared
-  // playhead truth (`timelineMode`, which `movePlayhead` authoritatively writes for
-  // both drag and play-the-range), never a second clock. In LIVE mode the reveal is
-  // UNGATED — every in-range item is shown — so the default view is unchanged. Under
-  // reduced motion the eased fade collapses to an instant cut.
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const ungated = isUngated(timelineMode);
-  // The last playhead move's instant signal (arc-growth motion grammar): a
-  // keyboard/discrete step is a HARD CUT (ADR: "keyboard-initiated steps are
-  // instant — never animate"), while a pointer-drag scrub or a play-the-range
-  // sweep EASES. The reveal is instant when reduced-motion is on OR the last move
-  // was a keyboard step.
-  const lastStepInstant = useTimelineStore((s) => s.lastStepInstant);
-  const revealInstant = reducedMotion || lastStepInstant;
-  // LIVE short-circuit (avoid recompute churn): in LIVE every in-range item is
-  // fully revealed, so the reveal is a single shared ungated sentinel rather than
-  // an O(nodes)/O(arcs) map rebuilt on unrelated `timelineMode` identity changes.
-  // The lookups below fall back to fully-revealed, so an empty map reveals
-  // everything (LIVE correctness preserved).
-  const nodeReveal = useMemo(() => {
-    if (ungated) return UNGATED_REVEAL;
-    const T = revealTimeFor(timelineMode, Date.now());
-    return revealNodes(
-      nodes.map((n) => ({ id: n.id, bornMs: nodeInstant(n) })),
-      { T, instant: revealInstant, ungated },
-    );
-  }, [nodes, timelineMode, revealInstant, ungated]);
-  const arcReveal = useMemo(() => {
-    if (ungated) return UNGATED_REVEAL;
-    const T = revealTimeFor(timelineMode, Date.now());
-    return revealArcs(
-      arcInputs.map((a) => ({ id: a.id, src: a.src, dst: a.dst })),
-      nodeReveal,
-      { T, instant: revealInstant, ungated },
-    );
-  }, [arcInputs, nodeReveal, timelineMode, revealInstant, ungated]);
-  const revealOf = useMemo(
-    () =>
-      (id: string): RevealState =>
-        nodeReveal.get(id) ?? { revealed: true, fade: 1 },
-    [nodeReveal],
+  // The ALWAYS-ON surface is dated marks only — NO arcs by default. Relations are an
+  // on-demand overlay: arcs appear ONLY for the FOCUSED node (the hovered mark, or
+  // the selected document when nothing is hovered) and are ONLY that node's 1-hop
+  // incident set, resolved raw. A single node's incident set is intrinsically small,
+  // so there is no whole-corpus arc field to bundle or thin — the always-on hairball
+  // is structurally absent.
+  const selection = useViewStore((s) => s.selection);
+  const selectedNodeId = selection?.kind === "node" ? selection.id : null;
+  const focusedNodeId = hoveredNodeId ?? selectedNodeId;
+
+  const renderedArcs: ResolvedArc[] = useMemo(
+    () => incidentResolvedArcs(arcInputs, positionOf, focusedNodeId),
+    [arcInputs, positionOf, focusedNodeId],
   );
 
-  // Bundling is GATED: coarse scale bundles (with un-bundle-on-hover), fine scale
-  // draws raw arcs (the v1 surface). Either way the set is capped so the surface
-  // never draws an unbounded arc count. Under reduced motion the bundle/un-bundle
-  // affordance is an instant representation cut (no morph) — already the case here
-  // because bundling is a static path choice, not a tween; the reduced-motion
-  // flag additionally drops the hover OPACITY transition below.
-  const bundling = pxPerMs < BUNDLE_BELOW_PX_PER_MS;
-  const renderedArcs: ResolvedArc[] = useMemo(() => {
-    if (bundling) {
-      return bundledWithHoverUnbundle(
-        arcInputs,
-        positionOf,
-        containmentKey,
-        hoveredNodeId,
-        { minConfidence: BUNDLE_MIN_CONFIDENCE, max: MAX_TIMELINE_ARCS },
-      ).items;
-    }
-    return rawArcs(arcInputs, positionOf, MAX_TIMELINE_ARCS).items;
-  }, [bundling, arcInputs, positionOf, hoveredNodeId]);
-
-  // Ego-highlight (S40): the hovered node + its 1-hop neighbors + incident arcs
-  // keep full treatment; the rest RECEDE to a dim alpha — never hide.
+  // Ego-highlight (S40): the focused node (hovered or selected) + its 1-hop
+  // neighbors + incident arcs keep full treatment; the rest RECEDE to a dim alpha
+  // — never hide. Without a focus the marks all stay at full opacity (the default).
   const ego = useMemo(
-    () => egoNodeIds(arcInputs, hoveredNodeId),
-    [arcInputs, hoveredNodeId],
+    () => egoNodeIds(arcInputs, focusedNodeId),
+    [arcInputs, focusedNodeId],
   );
-  const hasHover = hoveredNodeId != null;
+  const hasFocus = focusedNodeId != null;
 
   // A short human name for a node id, for the arc endpoint announcements (S64):
   // its title when carried, else its doc-type, else the raw id stem.
@@ -657,17 +515,13 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     return byNode;
   }, [arcInputs, nodeNameOf]);
 
-  // Mark transition class (arc-growth motion grammar): the mark tweens both COLOR
-  // (hover/ego) and OPACITY (the reveal fade). When the reveal is a hard cut from
-  // a keyboard step (revealInstant but motion allowed) we drop OPACITY from the
-  // transition so the reveal is an instant cut, while color (hover) still eases.
-  // Under reduced motion nothing transitions (the app-wide motion floor). On a
-  // pointer-drag scrub / play-the-range sweep both ease.
+  // Mark transition class (ego-highlight motion): the mark eases its COLOR and
+  // OPACITY as the ego-highlight lifts/dims it on focus. Under reduced motion
+  // nothing transitions (the app-wide motion floor) — the highlight is an instant
+  // cut.
   const markTransitionClass = reducedMotion
     ? ""
-    : revealInstant
-      ? "transition-colors duration-ui-fast ease-settle"
-      : "transition-[color,opacity] duration-ui-fast ease-settle";
+    : "transition-[color,opacity] duration-ui-fast ease-settle";
 
   const noHistory =
     !loading &&
@@ -705,23 +559,19 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           ) : null,
         )}
 
-        {/* Derivation arcs (S36/S37/S38/S39): drawn UNDER the marks. Each arc's
-            tier-as-treatment descriptor styles the path; a hovered ego keeps full
-            treatment while the rest recede (never hide). The arcs are decorative
-            paint (`aria-hidden`): they are REACHABLE through their endpoints (S64),
-            whose mark labels announce each incident relation + the joined endpoint,
-            so the relation is announced without arcs becoming extra tab-stops. */}
+        {/* Derivation arcs (S36/S37): the ON-DEMAND relations overlay, drawn UNDER
+            the marks and ONLY for the focused node (hovered or selected) — its 1-hop
+            incident set, never an always-on field. Each arc's tier-as-treatment
+            descriptor styles the path; the focused ego keeps full treatment while
+            non-ego endpoints recede (never hide). The arcs are decorative paint
+            (`aria-hidden`): they are REACHABLE through their endpoints (S64), whose
+            mark labels announce each incident relation + the joined endpoint, so the
+            relation is announced without arcs becoming extra tab-stops. */}
         <g data-timeline-arcs aria-hidden="true">
           {renderedArcs.map((arc) => {
-            const inEgo = !hasHover || ego.has(arc.src) || ego.has(arc.dst);
+            const inEgo = !hasFocus || ego.has(arc.src) || ego.has(arc.dst);
             const t = arc.treatment;
-            // Animated arc growth: an arc cannot exist before BOTH its documents do,
-            // so a not-yet-revealed arc is hidden (not faint) and a freshly-revealed
-            // one fades in by its eased fade factor (1 in LIVE / under reduced motion).
-            const reveal = arcReveal.get(arc.id);
-            if (reveal && !reveal.revealed) return null;
-            const fade = reveal ? reveal.fade : 1;
-            const base = inEgo ? t.opacity : t.opacity * RECEDE_ALPHA;
+            const opacity = inEgo ? t.opacity : t.opacity * RECEDE_ALPHA;
             return (
               <path
                 key={arc.id}
@@ -731,21 +581,15 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 strokeWidth={t.widthPx}
                 strokeDasharray={t.dash || undefined}
                 strokeLinecap="round"
-                opacity={base * fade}
+                opacity={opacity}
                 className={
-                  // The arc paint is opacity-only, so the whole transition class
-                  // is the reveal/ego OPACITY tween: drop it when the reveal is a
-                  // hard cut (reduced-motion OR a keyboard-initiated step — ADR
-                  // "keyboard-initiated steps are instant"); keep it when a
-                  // pointer-drag scrub or play-the-range sweep is easing.
-                  revealInstant
+                  reducedMotion
                     ? undefined
                     : "transition-opacity duration-ui-fast ease-settle"
                 }
                 data-timeline-arc
                 data-arc-tier={t.tier}
                 data-arc-recede={inEgo ? undefined : "true"}
-                data-arc-gated={reveal && !ungated ? "true" : undefined}
               >
                 <title>{arc.label}</title>
               </path>
@@ -789,16 +633,12 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           aria-label="lineage marks"
         >
           {visibleMarks.items.map(({ node, x, y }) => {
-            const inEgo = !hasHover || ego.has(node.id);
-            // Animated arc growth: a node not yet born (its `created` instant not yet
-            // crossed by the playhead) sits at a faint pre-birth ghost rather than
-            // vanishing; a revealed node fades in by its eased fade factor. In LIVE /
-            // under reduced motion the factor is 1, so the default view is unchanged.
-            const reveal = revealOf(node.id);
-            const baseAlpha = inEgo ? 1 : RECEDE_ALPHA;
-            const markOpacity = reveal.revealed
-              ? baseAlpha * reveal.fade
-              : PRE_BIRTH_ALPHA;
+            const inEgo = !hasFocus || ego.has(node.id);
+            // Marks render at FULL opacity always — the always-on legible default.
+            // The only opacity treatment is the ego-highlight: when a node is
+            // focused (hovered/selected) the non-ego marks recede to a dim alpha
+            // (never hide); without a focus every mark is full.
+            const markOpacity = inEgo ? 1 : RECEDE_ALPHA;
             const created = node.dates?.created;
             // S63: the mark announces its kind, date, joined-node count, and
             // lineage degree. The joined-node count is the distinct 1-hop
@@ -835,7 +675,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 data-timeline-mark
                 data-doc-type={node.doc_type}
                 data-mark-recede={inEgo ? undefined : "true"}
-                data-mark-prebirth={reveal.revealed ? undefined : "true"}
               >
                 <DocTypeMark kind={node.doc_type} size={MARK_PX} />
               </button>

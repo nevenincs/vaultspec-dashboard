@@ -170,8 +170,8 @@ function resetTimeline() {
   queryClient.clear();
   useViewStore.getState().setScope(null);
   useViewStore.getState().setTimelineMode({ kind: "live" });
+  useViewStore.getState().selectEntity(null);
   useTimelineStore.getState().setHoveredNode(null);
-  useTimelineStore.getState().setLastStepInstant(false);
   useDegradationStore.getState().clearOverrides();
   engineClient.useTransport((input, init) => fetch(input, init));
   vi.restoreAllMocks();
@@ -195,11 +195,16 @@ describe("honest states (S57-S60)", () => {
   });
 
   it("renders the empty/no-history state approachably, never an error (S58)", async () => {
-    // Dock on a range with no corpus documents (a far-future week): the in-range
-    // filter excludes every node, so the slice resolves EMPTY — the approachable
-    // no-history copy renders, and no alert (error) is shown.
-    dockOn(Date.parse("2099-01-01T00:00:00Z"));
+    // The auto-fit-on-load effect fits the corpus into view ONCE per scope, so the
+    // surface SHOWS its data on mount. After that initial fit the user's scroll is
+    // respected: scrolling to a range with no corpus documents (a far-future week)
+    // excludes every node, the slice resolves EMPTY, and the approachable
+    // no-history copy renders — with no alert (error). Wait for the auto-fit to
+    // land (marks shown) before docking away so the once-per-scope fit cannot
+    // re-fit over the far-future dock.
     renderTimeline();
+    await screen.findAllByRole("button", { name: /lineage degree/i });
+    act(() => dockOn(Date.parse("2099-01-01T00:00:00Z")));
     const empty = await screen.findByText(/no lineage in this range yet/i);
     expect(empty.closest("[data-timeline-empty]")?.getAttribute("role")).toBe("status");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -332,19 +337,17 @@ describe("reduced-motion instant behaviour (S66)", () => {
 });
 
 // =============================================================================
-// arc-growth reveal: keyboard steps are instant, drag/play scrubs ease
+// on-demand relations overlay: marks-only default, arcs on hover/select
 // =============================================================================
 //
-// The animated arc-growth reveal fades lineage nodes/arcs in as the playhead time
-// T crosses their birth. The ADR motion grammar makes a KEYBOARD-initiated step a
-// HARD CUT ("keyboard-initiated steps are instant — never animate"), while a
-// pointer-drag scrub and a play-the-range sweep are deliberate EASED reveals. The
-// surface reads `useTimelineStore.lastStepInstant` (set true by the keyboard
-// handlers, false by drag/play/return-to-live) and, with the OS motion floor,
-// derives a `revealInstant` that (a) hard-cuts the reveal fade data and (b) drops
-// the mark/arc OPACITY transition so the reveal does not tween on a keyboard step.
+// The ALWAYS-ON surface is dated marks at full opacity, NO arcs. Relations are an
+// on-demand overlay: arcs appear ONLY for the focused node (hovered, or selected
+// when nothing is hovered) and are ONLY that node's 1-hop incident set. These tests
+// feed the REAL stores client transport (mockEngine over the live /graph/lineage
+// wire) — no component-internal doubles — and assert that the default draws no arcs
+// and that focusing a mark with incident lineage draws arcs scoped to that node.
 
-describe("arc-growth reveal: keyboard-instant vs eased scrub", () => {
+describe("on-demand relations overlay (marks-only default, arcs on focus)", () => {
   beforeEach(() => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     useViewStore.getState().setScope(MOCK_SCOPE);
@@ -359,87 +362,80 @@ describe("arc-growth reveal: keyboard-instant vs eased scrub", () => {
   });
   afterEach(resetTimeline);
 
-  // Time-travel a few days past the corpus research doc's birth so the early
-  // pipeline docs AND the arcs between them are REVEALED (both endpoints' birth
-  // instants crossed) — the regime where the keyboard-vs-eased distinction and
-  // the under-gate arc flag are observable.
-  function timeTravelPastResearch() {
-    useViewStore
-      .getState()
-      .setTimelineMode({ kind: "time-travel", at: CORPUS_RESEARCH + 5 * DAY });
+  // A mark whose aria-label names an incident relation ("... to <name>" / "...
+  // from <name>"): the surface only draws ITS incident arcs, so focusing it is the
+  // way to make arcs appear. The incident phrases are built from every in-slice
+  // arc, so a mark with a phrase definitely has a co-visible incident arc.
+  async function findMarkWithIncident() {
+    const marks = await screen.findAllByRole("button", { name: /lineage degree/i });
+    const mark = marks.find((m) =>
+      /\b(to|from)\b/i.test(m.getAttribute("aria-label") ?? ""),
+    );
+    expect(mark).toBeTruthy();
+    return mark!;
   }
 
-  it("hard-cuts the reveal on a keyboard step: no opacity transition on marks/arcs", async () => {
+  it("renders the dated marks at full opacity and draws NO arcs by default (marks-only)", async () => {
     renderTimeline();
     const marks = await screen.findAllByRole("button", { name: /lineage degree/i });
-    // A keyboard step: time-travel the playhead AND raise the keyboard-instant
-    // signal, exactly as the Playhead keyboard handler does (set true, then move).
-    act(() => {
-      useTimelineStore.getState().setLastStepInstant(true);
-      timeTravelPastResearch();
-    });
-    await waitFor(() => {
-      for (const mark of marks) {
-        // The OPACITY tween is dropped (reveal is a cut); color still eases so the
-        // mark keeps `transition-colors`, never `transition-[color,opacity]`.
-        expect(mark.className).not.toMatch(/transition-\[color,opacity\]/);
-        expect(mark.className).toMatch(/transition-colors/);
-      }
-    });
-    // The revealed arcs (under the gate) also drop their opacity transition class.
-    const arcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
-    expect(arcs.length).toBeGreaterThan(0);
-    for (const arc of arcs) {
-      expect(arc.getAttribute("class") ?? "").not.toMatch(/transition-opacity/);
+    expect(marks.length).toBeGreaterThan(0);
+    // Every mark is at full opacity (the legible always-on default — no creation-
+    // date reveal/fade, no ego-dimming when nothing is focused).
+    for (const mark of marks) {
+      expect(mark.style.opacity === "" || mark.style.opacity === "1").toBe(true);
     }
+    // No relation arcs are drawn at rest — the default surface is marks only.
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
   });
 
-  it("eases the reveal on a pointer-drag scrub: marks/arcs keep the opacity transition", async () => {
+  it("draws ONLY the focused node's incident arcs when a mark is hovered", async () => {
     renderTimeline();
-    const marks = await screen.findAllByRole("button", { name: /lineage degree/i });
-    // A drag scrub: time-travel the playhead with the keyboard-instant signal
-    // CLEARED, exactly as the drag handler does (set false on grab/move, then move).
-    act(() => {
-      useTimelineStore.getState().setLastStepInstant(false);
-      timeTravelPastResearch();
-    });
+    const mark = await findMarkWithIncident();
+    // At rest: no arcs.
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
+    // Hover the mark → its 1-hop incident arcs appear (the on-demand overlay).
+    fireEvent.mouseEnter(mark);
     await waitFor(() => {
-      for (const mark of marks) {
-        // The reveal eases: the mark carries the full color+opacity transition.
-        expect(mark.className).toMatch(/transition-\[color,opacity\]/);
+      const arcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
+      expect(arcs.length).toBeGreaterThan(0);
+      // Every drawn arc is incident to the focused node: it carries a tier and
+      // its title (the relation label) — decorative paint reachable via endpoints.
+      for (const arc of arcs) {
+        expect(arc.getAttribute("data-arc-tier")).toBeTruthy();
       }
     });
-    // The revealed arcs keep their opacity transition class (the eased fade).
-    const arcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
-    expect(arcs.length).toBeGreaterThan(0);
-    expect(
-      arcs.some((arc) => /transition-opacity/.test(arc.getAttribute("class") ?? "")),
-    ).toBe(true);
+    // Leaving the mark returns to the marks-only default.
+    fireEvent.mouseLeave(mark);
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
+    });
   });
 
-  it("marks the under-gate arcs with data-arc-gated in time-travel (not in LIVE)", async () => {
-    renderTimeline();
-    await screen.findAllByRole("button", { name: /lineage degree/i });
-    // LIVE (ungated): no arc carries the time-travel gate attribute.
+  it("draws the selected node's incident arcs when nothing is hovered", async () => {
+    // Wire the marks to the real selection handler so a click sets the ONE shared
+    // selection (exactly the AppShell composition). Mount through the real client
+    // transport — no component-internal doubles.
+    render(
+      <QueryClientProvider client={queryClient}>
+        <div style={{ position: "relative", width: "800px", height: "150px" }}>
+          <Timeline onNodeClick={handleNodeClick} />
+        </div>
+      </QueryClientProvider>,
+    );
+    const mark = await findMarkWithIncident();
+    // At rest: marks only, no arcs.
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
+    // Click the mark with incident lineage → the shared selection holds it.
+    fireEvent.click(mark);
+    expect(useViewStore.getState().selection).toMatchObject({ kind: "node" });
+    // Clear any hover (the click may have set one via focus): the SELECTION alone
+    // must keep the arcs drawn — a selection is an on-demand relations focus too.
     act(() => {
-      useTimelineStore.getState().setLastStepInstant(false);
-      useViewStore.getState().setTimelineMode({ kind: "live" });
+      useTimelineStore.getState().setHoveredNode(null);
     });
     await waitFor(() => {
-      const liveArcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
-      expect(liveArcs.length).toBeGreaterThan(0);
-      for (const arc of liveArcs) {
-        expect(arc.getAttribute("data-arc-gated")).toBeNull();
-      }
-    });
-    // Time-travel: the revealed arcs are flagged as under the reveal gate.
-    act(() => {
-      timeTravelPastResearch();
-    });
-    await waitFor(() => {
-      const ttArcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
-      expect(ttArcs.some((arc) => arc.getAttribute("data-arc-gated") === "true")).toBe(
-        true,
+      expect(document.querySelectorAll("[data-timeline-arc]").length).toBeGreaterThan(
+        0,
       );
     });
   });
