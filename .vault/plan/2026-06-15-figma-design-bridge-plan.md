@@ -66,7 +66,7 @@ Configure Tokens Studio to write the DTCG tokens into Figma Primitives and Seman
 
 - [x] `W01.P04.S18` - Author the Tokens Studio configuration mapping DTCG sets to Figma collections and modes; `frontend/tokens/tokens-studio.config.json`.
 - [x] `W01.P04.S19` - Document the Plugin-API push runbook for the Primitives and Semantic collections with light/dark/high-contrast modes; `frontend/tokens/FIGMA-SYNC.md`.
-- [ ] `W01.P04.S20` - Execute the Tokens Studio push and verify the variables and modes land in the Figma file; `frontend/tokens/FIGMA-SYNC.md`.
+- [x] `W01.P04.S20` - Execute the Tokens Studio push and verify the variables and modes land in the Figma file; `frontend/tokens/FIGMA-SYNC.md`.
 
 ### Phase `W01.P05` - Token drift gate
 
@@ -113,11 +113,11 @@ Define the registry schema, author the mapping, and enforce the 1:1 naming-parit
 
 Seed the Figma file: manually rebuild foundations and icons, importer-seed composite screens, clean up, and record node references.
 
-- [ ] `W02.P09.S38` - Create the Figma file and the Primitives and Semantic variable collections from the Tokens Studio push; `frontend/figma/FIGMA-SEED.md`.
+- [x] `W02.P09.S38` - Create the Figma file and the Primitives and Semantic variable collections from the Tokens Studio push; `frontend/figma/FIGMA-SEED.md`.
 - [ ] `W02.P09.S39` - Manually rebuild the foundation in Figma: color styles, type scale, and the Lucide/Phosphor icon set; `frontend/figma/FIGMA-SEED.md`.
-- [ ] `W02.P09.S40` - Importer-seed the composite screens from the running Storybook gallery using html.to.design or Codia; `frontend/figma/FIGMA-SEED.md`.
-- [ ] `W02.P09.S41` - Run the cleanup pass renaming layers and componentizing seeded frames to the naming contract; `frontend/figma/FIGMA-SEED.md`.
-- [ ] `W02.P09.S42` - Record the resulting Figma node ids and urls back into the mapping registry; `frontend/figma/component-map.json`.
+- [x] `W02.P09.S40` - Importer-seed the composite screens from the running Storybook gallery using html.to.design or Codia; `frontend/figma/FIGMA-SEED.md`.
+- [x] `W02.P09.S41` - Run the cleanup pass renaming layers and componentizing seeded frames to the naming contract; `frontend/figma/FIGMA-SEED.md`.
+- [x] `W02.P09.S42` - Record the resulting Figma node ids and urls back into the mapping registry; `frontend/figma/component-map.json`.
 
 ### Phase `W02.P10` - MCP parity checks and gate
 
