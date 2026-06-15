@@ -157,6 +157,172 @@ pub fn authority_class_for_kind(kind: &NodeKind, doc_type: Option<&str>) -> &'st
     }
 }
 
+/// The closed treatment-family vocabulary the scene status stamp maps onto
+/// (node-visual-richness ADR P01): a per-type lifecycle status collapses to one
+/// of exactly these six classes, while the literal type-specific status string
+/// rides in [`Status::value`]. The class is the rendering channel (which stamp
+/// family); the value is the human-meaningful state. An unknown or absent status
+/// has NO class — both fields are absent — never a fabricated treatment.
+pub const STATUS_CLASSES: &[&str] = &[
+    "affirmed",
+    "provisional",
+    "negated",
+    "retired",
+    "graded",
+    "tiered",
+];
+
+/// A per-type lifecycle status: the literal type-specific status string
+/// ([`value`](Status::value), e.g. `accepted`, `L2`, `high`) and the closed
+/// treatment-family class ([`class`](Status::class), one of [`STATUS_CLASSES`]).
+/// Both ride ADDITIVELY on the wire node; they perturb no existing field and are
+/// NEVER part of the node id derivation (a re-inferred status never re-keys the
+/// node). Absent status is the absence of this whole struct, never a filled
+/// fiction (ADR `read-and-infer`; semantics ADR `Frontier caution`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Status {
+    /// The literal type-specific status token (`accepted`, `L2`, `critical`,
+    /// `superseded`, `in_flight`, …) — carries the level for graded/tiered.
+    pub value: &'static str,
+    /// The closed treatment-family class, one of [`STATUS_CLASSES`].
+    pub class: &'static str,
+}
+
+/// Project the per-type lifecycle status (node-visual-richness ADR P01) from the
+/// node's `doc_type`/[`NodeKind`] and its ALREADY-PARSED lifecycle `state`
+/// string — a pure read-and-infer projection over what `engine-graph` already
+/// reads (`doc_lifecycle`: the ADR H1 status line, the plan frontmatter tier,
+/// the audit worst-severity, the rule active/superseded). NOTHING is re-parsed
+/// or written back, and the id derivation is untouched.
+///
+/// Returns `None` — BOTH wire fields absent — for any type whose lifecycle does
+/// not encode a per-type status (exec/research/reference/index), for an unknown
+/// or absent `doc_type`, and for a document that predates the status convention
+/// (its `lifecycle_state` is the generic `active`/`complete` checkbox collapse,
+/// never a type-specific token). A status is never fabricated.
+///
+/// `lifecycle_state` is the node's `lifecycle.state` in the queried scope (the
+/// same `lifecycle_in_scope(node, scope).state` the slice serves); `None` when
+/// the node carries no lifecycle facet.
+pub fn status(
+    kind: &NodeKind,
+    doc_type: Option<&str>,
+    lifecycle_state: Option<&str>,
+) -> Option<Status> {
+    // The synthesized feature-convergence species carries no `doc_type`; its
+    // lifecycle is the aggregate member progress (`active`/`complete`), which
+    // reads as IN-FLIGHT. An archived feature surfaces as `archived` (the
+    // salience lifecycle phase and the facet presence both name it).
+    if matches!(kind, NodeKind::Feature) {
+        return match lifecycle_state {
+            Some("archived") => Some(Status {
+                value: "archived",
+                class: "retired",
+            }),
+            // A live convergence (any non-archived lifecycle, or none) is
+            // in-flight: a feature with members in the corpus is being worked.
+            _ => Some(Status {
+                value: "in_flight",
+                class: "affirmed",
+            }),
+        };
+    }
+    let state = lifecycle_state?;
+    match doc_type {
+        // ADR: the four-state decision machine from the H1 status line.
+        Some("adr") => match state {
+            "proposed" => Some(Status {
+                value: "proposed",
+                class: "provisional",
+            }),
+            "accepted" => Some(Status {
+                value: "accepted",
+                class: "affirmed",
+            }),
+            "rejected" => Some(Status {
+                value: "rejected",
+                class: "negated",
+            }),
+            "deprecated" => Some(Status {
+                value: "deprecated",
+                class: "retired",
+            }),
+            // An ADR predating the H1 status line falls back to the generic
+            // checkbox collapse (`active`/`complete`): no per-type status.
+            _ => None,
+        },
+        // Plan: the complexity tier (`L1`..`L4`), carrying its ordinal in the
+        // value; the checkbox progress stays the SEPARATE `progress` channel.
+        Some("plan") => match state {
+            "L1" | "L2" | "L3" | "L4" => Some(Status {
+                value: match state {
+                    "L1" => "L1",
+                    "L2" => "L2",
+                    "L3" => "L3",
+                    _ => "L4",
+                },
+                class: "tiered",
+            }),
+            // A plan with no frontmatter tier collapses to checkbox state: no
+            // tiered status.
+            _ => None,
+        },
+        // Audit: the worst finding severity, carrying the level in the value.
+        Some("audit") => match state {
+            "critical" => Some(Status {
+                value: "critical",
+                class: "graded",
+            }),
+            "high" => Some(Status {
+                value: "high",
+                class: "graded",
+            }),
+            "medium" => Some(Status {
+                value: "medium",
+                class: "graded",
+            }),
+            "low" => Some(Status {
+                value: "low",
+                class: "graded",
+            }),
+            _ => None,
+        },
+        // Rule: active vs superseded (the `## Status` successor signal).
+        Some("rule") => match state {
+            "active" => Some(Status {
+                value: "active",
+                class: "affirmed",
+            }),
+            "superseded" => Some(Status {
+                value: "superseded",
+                class: "retired",
+            }),
+            _ => None,
+        },
+        // exec/research/reference/index or any other type: no per-type status
+        // (their lifecycle is the generic checkbox collapse). Honest absence.
+        _ => None,
+    }
+}
+
+/// The synthesized `Rule` node species (`.vaultspec/rules/`, outside `.vault/`)
+/// carries no `doc_type` but IS a rule: its status reads from its active/
+/// superseded lifecycle the same way a vault `rule` document does. Bridges the
+/// `NodeKind::Rule` species onto the [`status`] rule branch.
+pub fn status_for_node(
+    kind: &NodeKind,
+    doc_type: Option<&str>,
+    lifecycle_state: Option<&str>,
+) -> Option<Status> {
+    let effective_type = match kind {
+        // The native rule species answers the rule status machine even without
+        // a `doc_type` subdirectory.
+        NodeKind::Rule => Some("rule"),
+        _ => doc_type,
+    };
+    status(kind, effective_type, lifecycle_state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,6 +468,179 @@ mod tests {
             false,
         );
         assert_eq!(labelled, Some("authorizes"));
+    }
+
+    #[test]
+    fn status_maps_every_adr_decision_state() {
+        // node-visual-richness ADR P01: the four-state ADR machine.
+        for (state, value, class) in [
+            ("proposed", "proposed", "provisional"),
+            ("accepted", "accepted", "affirmed"),
+            ("rejected", "rejected", "negated"),
+            ("deprecated", "deprecated", "retired"),
+        ] {
+            let s = status(&NodeKind::Document, Some("adr"), Some(state))
+                .unwrap_or_else(|| panic!("adr {state} has a status"));
+            assert_eq!(s.value, value, "adr {state} value");
+            assert_eq!(s.class, class, "adr {state} class");
+        }
+    }
+
+    #[test]
+    fn status_maps_every_plan_tier_to_the_tiered_class() {
+        for tier in ["L1", "L2", "L3", "L4"] {
+            let s = status(&NodeKind::Document, Some("plan"), Some(tier))
+                .unwrap_or_else(|| panic!("plan {tier} has a status"));
+            assert_eq!(s.value, tier, "the tier ordinal rides in the value");
+            assert_eq!(s.class, "tiered");
+        }
+    }
+
+    #[test]
+    fn status_maps_every_audit_severity_to_the_graded_class() {
+        for sev in ["critical", "high", "medium", "low"] {
+            let s = status(&NodeKind::Document, Some("audit"), Some(sev))
+                .unwrap_or_else(|| panic!("audit {sev} has a status"));
+            assert_eq!(s.value, sev, "the severity level rides in the value");
+            assert_eq!(s.class, "graded");
+        }
+    }
+
+    #[test]
+    fn status_maps_rule_active_and_superseded() {
+        let active = status(&NodeKind::Document, Some("rule"), Some("active")).unwrap();
+        assert_eq!((active.value, active.class), ("active", "affirmed"));
+        let superseded = status(&NodeKind::Document, Some("rule"), Some("superseded")).unwrap();
+        assert_eq!(
+            (superseded.value, superseded.class),
+            ("superseded", "retired")
+        );
+        // The native Rule species (no doc_type) reads the same machine.
+        let native = status_for_node(&NodeKind::Rule, None, Some("superseded")).unwrap();
+        assert_eq!((native.value, native.class), ("superseded", "retired"));
+        let native_active = status_for_node(&NodeKind::Rule, None, Some("active")).unwrap();
+        assert_eq!(
+            (native_active.value, native_active.class),
+            ("active", "affirmed")
+        );
+    }
+
+    #[test]
+    fn status_maps_feature_in_flight_and_archived() {
+        // The synthesized feature convergence: a live (active/complete) feature
+        // is in-flight; an archived feature is retired.
+        let in_flight = status(&NodeKind::Feature, None, Some("active")).unwrap();
+        assert_eq!(
+            (in_flight.value, in_flight.class),
+            ("in_flight", "affirmed")
+        );
+        let complete = status(&NodeKind::Feature, None, Some("complete")).unwrap();
+        assert_eq!(
+            (complete.value, complete.class),
+            ("in_flight", "affirmed"),
+            "a complete-but-live convergence is still in-flight, not retired"
+        );
+        let no_lifecycle = status(&NodeKind::Feature, None, None).unwrap();
+        assert_eq!(
+            (no_lifecycle.value, no_lifecycle.class),
+            ("in_flight", "affirmed")
+        );
+        let archived = status(&NodeKind::Feature, None, Some("archived")).unwrap();
+        assert_eq!((archived.value, archived.class), ("archived", "retired"));
+    }
+
+    #[test]
+    fn status_is_absent_for_types_without_a_per_type_state_machine() {
+        // exec/research/reference/index carry only the generic checkbox
+        // collapse (`active`/`complete`), never a per-type status: BOTH fields
+        // absent, never fabricated.
+        for t in ["exec", "research", "reference", "index"] {
+            assert_eq!(
+                status(&NodeKind::Document, Some(t), Some("active")),
+                None,
+                "{t} has no per-type status"
+            );
+            assert_eq!(
+                status(&NodeKind::Document, Some(t), Some("complete")),
+                None,
+                "{t} has no per-type status"
+            );
+        }
+    }
+
+    #[test]
+    fn status_is_absent_for_unknown_type_and_for_a_doc_predating_the_convention() {
+        // An unknown or absent doc_type: no status.
+        assert_eq!(status(&NodeKind::Document, None, Some("active")), None);
+        assert_eq!(
+            status(&NodeKind::Document, Some("brainstorm"), Some("active")),
+            None
+        );
+        // A doc PREDATING the convention: an ADR with no H1 status line falls to
+        // the generic checkbox collapse (`active`), which is NOT a decision
+        // token, so the status is honestly absent (never a fabricated
+        // `accepted`).
+        assert_eq!(
+            status(&NodeKind::Document, Some("adr"), Some("active")),
+            None
+        );
+        assert_eq!(
+            status(&NodeKind::Document, Some("adr"), Some("complete")),
+            None
+        );
+        // A plan with no frontmatter tier: the lifecycle is the checkbox state,
+        // not an `L#` tier, so no tiered status.
+        assert_eq!(
+            status(&NodeKind::Document, Some("plan"), Some("active")),
+            None
+        );
+        // A node with no lifecycle at all: nothing to read for a doc node.
+        assert_eq!(status(&NodeKind::Document, Some("adr"), None), None);
+    }
+
+    #[test]
+    fn every_status_class_is_in_the_closed_vocabulary() {
+        // Drive every doc-type branch and the feature species and assert the
+        // class is one of the closed six — the scene's treatment-family enum.
+        let cases = [
+            status(&NodeKind::Document, Some("adr"), Some("proposed")),
+            status(&NodeKind::Document, Some("adr"), Some("accepted")),
+            status(&NodeKind::Document, Some("adr"), Some("rejected")),
+            status(&NodeKind::Document, Some("adr"), Some("deprecated")),
+            status(&NodeKind::Document, Some("plan"), Some("L3")),
+            status(&NodeKind::Document, Some("audit"), Some("high")),
+            status(&NodeKind::Document, Some("rule"), Some("active")),
+            status(&NodeKind::Document, Some("rule"), Some("superseded")),
+            status(&NodeKind::Feature, None, Some("active")),
+            status(&NodeKind::Feature, None, Some("archived")),
+        ];
+        for s in cases.into_iter().flatten() {
+            assert!(
+                STATUS_CLASSES.contains(&s.class),
+                "{} not in the closed status-class vocab",
+                s.class
+            );
+        }
+    }
+
+    #[test]
+    fn status_is_not_part_of_the_node_stable_key() {
+        // The status is a query-time projection: the node id derives from the
+        // canonical key alone (NodeKind + key), never from any status, so a
+        // re-inferred status (accepted -> deprecated on an ADR re-read) cannot
+        // re-key the node.
+        use engine_model::{CanonicalKey, node_id};
+        let id_a = node_id(&CanonicalKey::Document { stem: "x-adr" });
+        let id_b = node_id(&CanonicalKey::Document { stem: "x-adr" });
+        assert_eq!(id_a, id_b, "node identity excludes the status projection");
+        // And the two status outcomes the same ADR could carry never enter that
+        // computation — the function takes no NodeId and returns no id.
+        let accepted = status(&NodeKind::Document, Some("adr"), Some("accepted"));
+        let deprecated = status(&NodeKind::Document, Some("adr"), Some("deprecated"));
+        assert_ne!(
+            accepted, deprecated,
+            "the two states are distinct projections"
+        );
     }
 
     #[test]
