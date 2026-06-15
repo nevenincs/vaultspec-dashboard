@@ -117,6 +117,19 @@ building"). Conclusion: no algorithmic regression and no proportionate engine-si
 fix; the cost centres are an already-parallel resolve and an external, already-deferred
 subprocess. No code change for F3 beyond confirming the characterization.
 
+PASS - End-to-end browser verification (C, 2026-06-15). The built dashboard SPA was served
+single-origin by the engine (`VAULTSPEC_SPA_DIR`) over the aeat 7176-document production
+copy and driven in a real browser. The shell bootstrapped with the injected token; the
+four-tab review rail (now / work / changes / search) rendered; the Work tab showed the
+"work pipeline status" region with "404 in-flight items", real plan rows with progress
+rings ("0 of 18 steps complete - modelo-inventory plan (#108)", and other real aeat plans),
+and real ADR rows with their frontmatter status pills ("status: accepted"); the left vault
+browser listed the real aeat corpus. No console errors, no error-boundary text, 563
+interactive elements on first paint. The A fix manifests in the UI: the legacy
+modelo-inventory plan shows its 18-step count (matching both the lifecycle progress ring
+and the plan-interior projection). The review-rail surfaces are confirmed functional in a
+real browser against live production data, not only under the mock.
+
 ## Recommendations
 
 - F1: decide whether the structure parser should tolerate the older prose-phase and
