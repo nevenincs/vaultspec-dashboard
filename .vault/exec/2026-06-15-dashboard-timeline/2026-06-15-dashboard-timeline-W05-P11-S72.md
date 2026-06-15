@@ -60,19 +60,26 @@ related:
 
 ## Outcome
 
-Verified to the maximum extent the shared environment allowed. The timeline render
-suite passes (the AppShell-composition tests render the control bar + lane
-scaffold + dated marks and prove a mark click flows into the shared selection plus
-a bounded stage pulse). The dev app is confirmed live-serving (HTTP 200 on the
-Vite dev port) with the rebuilt timeline mounted in the AppShell footer. Backend
-post-merge: engine-query 87 tests and vaultspec-api 52 tests pass, 0 failures.
+Verified live in the running app AND via the render suite. A browser was driven to
+the dev app, fit-all was clicked, and a screenshot captured the relational
+phase-lane timeline POPULATED with this repo's own vault corpus: the control bar
+(the six phase-lane toggles research/adr/plan/exec/review/codify, the relation
+chips, the tier dial with confidence sliders, the feature filter, the
+zoom/fit/jump controls and the minimap scrubber), the lineage surface with a dense
+field of derivation arcs fanning across the phase lanes over time, and the LIVE
+playhead docked at the right edge. Honest degradation was observed working: the
+engine was mid-index (declared tier still building) and the surface rendered the
+available structural/temporal arcs plus the designed degraded copy rather than
+crashing. The render suite corroborates (the AppShell-composition tests render the
+control bar + lane scaffold + dated marks and prove a mark click flows into the
+shared selection plus a bounded stage pulse). Backend post-merge: engine-query 87
+and vaultspec-api 52 tests pass, 0 failures.
 
 ## Notes
 
-Pixel-level in-browser screenshot was not captured: both browser automation
-endpoints (playwright and chrome-devtools) were held by concurrent agents in this
-shared worktree, and the whole-app production build is transiently broken by a
-sibling campaign's `Dialog.render.test.tsx` (jest-dom matchers without the type
-setup) - neither is a timeline-feature defect. DOM-level render verification plus
-live-serving confirmation stand in for the pixel capture; a live screenshot can be
-taken once the shared browser frees up.
+Live capture required clearing a stale playwright MCP browser-profile lock (the
+ephemeral MCP chrome processes, not the user's browser or any repo state) and a
+reload once the dev server's engine backend finished starting (initial load showed
+502s during engine warmup, then recovered to 200). The default window range
+renders the honest "no lineage in this range yet" empty state until fit-all brings
+the corpus span into view - the designed empty state, not a defect.
