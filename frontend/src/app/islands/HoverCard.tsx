@@ -138,7 +138,11 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
           onClick={() => onOpen?.(model.id)}
           aria-label={`open ${model.title}`}
           data-hover-open
-          className="flex shrink-0 items-center rounded-vs-sm p-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
+          // The card may be hosted inside an inspect-only (pointer-events:none)
+          // wrapper so the transient hover card never steals the pointer; the
+          // open affordance is the one interactive escape, so it re-enables
+          // pointer events on itself (the bloom → open intent).
+          className="pointer-events-auto flex shrink-0 items-center rounded-vs-sm p-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
         >
           <ExternalLink size={14} strokeWidth={1.75} aria-hidden />
         </button>
