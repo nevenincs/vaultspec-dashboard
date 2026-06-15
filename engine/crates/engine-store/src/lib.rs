@@ -76,6 +76,48 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
+/// Above this size a derived-artifact payload is gzip-compressed at rest
+/// (perf-sweep A3). The declared-graph snapshot is ~6 MB of compact JSON that
+/// compresses ~10x; per-doc `extract` payloads are small enough that the gzip
+/// header would bloat them, so they stay plain. Self-identifying via the gzip
+/// magic on read, so old uncompressed rows and new compressed rows coexist with
+/// no schema bump or migration.
+const COMPRESS_THRESHOLD: usize = 4096;
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+
+/// Encode a payload for storage: gzip when large enough to pay, else plain UTF-8
+/// bytes. Compression never fails a write — on an encoder error the plain bytes
+/// are stored.
+fn encode_payload(payload: &str) -> Vec<u8> {
+    if payload.len() < COMPRESS_THRESHOLD {
+        return payload.as_bytes().to_vec();
+    }
+    use std::io::Write;
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    match enc.write_all(payload.as_bytes()).and_then(|_| enc.finish()) {
+        Ok(compressed) => compressed,
+        Err(_) => payload.as_bytes().to_vec(),
+    }
+}
+
+/// Decode a stored payload: gunzip when the gzip magic is present (a new
+/// compressed row), else interpret as plain UTF-8 (an old uncompressed row). Our
+/// payloads are JSON, which never begins with the gzip magic, so detection is
+/// unambiguous.
+fn decode_payload(bytes: Vec<u8>) -> Result<String> {
+    if bytes.len() >= 2 && bytes[0] == GZIP_MAGIC[0] && bytes[1] == GZIP_MAGIC[1] {
+        use std::io::Read;
+        let mut out = String::new();
+        flate2::read::GzDecoder::new(&bytes[..])
+            .read_to_string(&mut out)
+            .map_err(StoreError::Io)?;
+        Ok(out)
+    } else {
+        String::from_utf8(bytes)
+            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+    }
+}
+
 /// One row of the persisted temporal event log (contract §5 raw shape:
 /// stable seq, ts, kind, ref, node ids).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,7 +283,7 @@ impl Store {
         self.conn.execute(
             "INSERT OR REPLACE INTO derived_artifacts
              (kind, input_hash, payload, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![kind, input_hash, payload, created_at],
+            params![kind, input_hash, encode_payload(payload), created_at],
         )?;
         Ok(())
     }
@@ -412,13 +454,26 @@ impl ReadHandle {
 // Shared read implementations over any connection.
 
 fn get_artifact(conn: &Connection, kind: &str, input_hash: &str) -> Result<Option<String>> {
-    Ok(conn
+    use rusqlite::types::Value as SqlValue;
+    // Read the raw column value: new rows are BLOB (gzip or plain bytes), but old
+    // rows written before A3 are genuinely TEXT-typed and rusqlite refuses to
+    // coerce TEXT into Vec<u8> — so branch on the storage type.
+    let val: Option<SqlValue> = conn
         .query_row(
             "SELECT payload FROM derived_artifacts WHERE kind = ?1 AND input_hash = ?2",
             params![kind, input_hash],
             |r| r.get(0),
         )
-        .optional()?)
+        .optional()?;
+    match val {
+        None => Ok(None),
+        Some(SqlValue::Blob(bytes)) => decode_payload(bytes).map(Some),
+        Some(SqlValue::Text(text)) => Ok(Some(text)),
+        Some(other) => Err(StoreError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unexpected payload column type: {other:?}"),
+        ))),
+    }
 }
 
 fn events_in_range(conn: &Connection, from_ts: i64, to_ts: i64) -> Result<Vec<EventRow>> {
@@ -504,6 +559,54 @@ mod tests {
         assert_eq!(
             store.get_artifact("correlate", "h1").unwrap().as_deref(),
             Some("other-kind")
+        );
+    }
+
+    #[test]
+    fn large_payloads_compress_and_old_plain_rows_still_decode() {
+        let (_dir, path) = temp_db();
+        let store = Store::open_at(&path).unwrap();
+        // A large payload is gzip-compressed at rest and round-trips exactly.
+        let big = "{\"k\":\"".to_string() + &"v".repeat(COMPRESS_THRESHOLD * 4) + "\"}";
+        store
+            .put_artifact("declared-graph-v2", "h1", &big, 1)
+            .unwrap();
+        assert_eq!(
+            store
+                .get_artifact("declared-graph-v2", "h1")
+                .unwrap()
+                .as_deref(),
+            Some(big.as_str())
+        );
+        let stored: usize = store
+            .conn_for_tests()
+            .query_row(
+                "SELECT length(payload) FROM derived_artifacts WHERE input_hash='h1'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap() as usize;
+        assert!(stored < big.len() / 2, "large payload should compress");
+        // A small payload stays plain and round-trips.
+        store
+            .put_artifact("extract", "h2", "small-json", 2)
+            .unwrap();
+        assert_eq!(
+            store.get_artifact("extract", "h2").unwrap().as_deref(),
+            Some("small-json")
+        );
+        // Backward compatibility: an OLD uncompressed TEXT row decodes correctly.
+        store
+            .conn_for_tests()
+            .execute(
+                "INSERT INTO derived_artifacts (kind, input_hash, payload, created_at)
+                 VALUES ('extract', 'old', 'plain-uncompressed', 3)",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            store.get_artifact("extract", "old").unwrap().as_deref(),
+            Some("plain-uncompressed")
         );
     }
 
@@ -657,8 +760,20 @@ mod tests {
             .unwrap();
         assert_eq!(mode, 2, "open_at enables incremental auto_vacuum");
 
-        // ~6 MB of snapshot payloads across 30 generations.
-        let payload = "x".repeat(200 * 1024);
+        // Snapshot payloads across 30 generations. Use HIGH-ENTROPY content:
+        // payloads are now gzip-compressed at rest (A3), so a repetitive string
+        // would collapse to a single page and the vacuum page-reclaim mechanism
+        // this test exercises would be unobservable. Hex of an iterating PRNG is
+        // high-entropy enough that gzip cannot meaningfully shrink it, so each
+        // generation still occupies many real pages.
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut payload = String::with_capacity(210 * 1024);
+        while payload.len() < 200 * 1024 {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            payload.push_str(&format!("{state:016x}"));
+        }
         for i in 0..30 {
             store
                 .put_artifact("declared-graph-v2", &format!("h{i}"), &payload, i)
