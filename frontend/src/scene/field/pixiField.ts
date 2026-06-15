@@ -10,6 +10,7 @@
 import { Application, Container } from "pixi.js";
 
 import type { SceneFieldRenderer } from "../sceneController";
+import { cssColorNumber } from "./tokenReads";
 
 /**
  * Read the canvas background colour from the --color-canvas-bg CSS variable.
@@ -18,11 +19,7 @@ import type { SceneFieldRenderer } from "../sceneController";
  * variable is absent so the field is never transparent.
  */
 function readCanvasBg(): number {
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue("--color-canvas-bg")
-    .trim();
-  if (!raw || !raw.startsWith("#")) return 0xfaf9f7;
-  return parseInt(raw.slice(1), 16);
+  return cssColorNumber("--color-canvas-bg", 0xfaf9f7);
 }
 
 export class PixiField implements SceneFieldRenderer {

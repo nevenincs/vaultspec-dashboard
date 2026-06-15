@@ -5,7 +5,7 @@
 // subscribes to its node's screen-space anchor through the seam's
 // `trackNode`; React receives anchor CHANGES only (the AnchorDriver
 // epsilon-gates dispatch), never per-frame state. The island's content is
-// a placeholder shell until the open-in-place interiors land (W02.P06.S24).
+// rendered by the open-in-place `NodeInterior` (W02.P06.S24, landed).
 
 import { X } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";

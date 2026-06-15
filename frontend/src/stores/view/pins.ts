@@ -8,11 +8,17 @@ import { create } from "zustand";
 
 import type { KeyValueStore } from "../../scene/positionCache";
 import type { SceneController } from "../../scene/sceneController";
+import { createScopedStore } from "./scopedStore";
 
-const PREFIX = "vaultspec-dashboard:pins";
-
-const storageKey = (workspace: string, scope: string) =>
-  `${PREFIX}:${workspace}:${scope}`;
+// Pins are a `string[]` of node ids; the scope-keyed persistence scaffold
+// (key composition, corrupt-blob recovery, best-effort save, localStorage
+// guard) is owned by `createScopedStore` and configured here for that shape.
+const pinsStore = createScopedStore<string[]>({
+  prefix: "vaultspec-dashboard:pins",
+  parse: (raw) =>
+    Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [],
+  serialize: (ids) => ids,
+});
 
 /** Load persisted pins for a scope (corrupt blobs read as none). */
 export function loadPins(
@@ -20,15 +26,7 @@ export function loadPins(
   workspace: string,
   scope: string,
 ): string[] {
-  const raw = store.getItem(storageKey(workspace, scope));
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
-  } catch {
-    store.removeItem(storageKey(workspace, scope));
-    return [];
-  }
+  return pinsStore.load(store, workspace, scope);
 }
 
 export function savePins(
@@ -37,11 +35,7 @@ export function savePins(
   scope: string,
   ids: readonly string[],
 ): void {
-  try {
-    store.setItem(storageKey(workspace, scope), JSON.stringify(ids));
-  } catch {
-    // Best-effort persistence; a full store loses pins, never crashes.
-  }
+  pinsStore.save(store, workspace, scope, [...ids]);
 }
 
 interface PinState {
@@ -54,16 +48,12 @@ interface PinState {
   isPinned: (id: string) => boolean;
 }
 
-function backingStore(): KeyValueStore | null {
-  return typeof localStorage === "undefined" ? null : localStorage;
-}
-
 export const usePinStore = create<PinState>((set, get) => ({
   pinnedIds: [],
   workspace: "default",
   scope: "default",
   setScopeKey: (workspace, scope) => {
-    const store = backingStore();
+    const store = pinsStore.backingStore();
     set({
       workspace,
       scope,
@@ -76,7 +66,7 @@ export const usePinStore = create<PinState>((set, get) => ({
       ? pinnedIds.filter((p) => p !== id)
       : [...pinnedIds, id];
     set({ pinnedIds: next });
-    const store = backingStore();
+    const store = pinsStore.backingStore();
     if (store) savePins(store, workspace, scope, next);
   },
   isPinned: (id) => get().pinnedIds.includes(id),

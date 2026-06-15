@@ -15,14 +15,7 @@ import type { SemanticLevel } from "./camera";
 import { countryLabels } from "./overlays";
 import { featureHulls } from "./bubbleSets";
 import type { SceneNodeData } from "../sceneController";
-
-function getCssColor(varName: string, fallback: number): number {
-  if (typeof document === "undefined") return fallback;
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  return raw.startsWith("#") ? parseInt(raw.slice(1), 16) : fallback;
-}
+import { cssColorNumber as getCssColor } from "./tokenReads";
 
 export interface OverlayFlags {
   featureCountries: boolean;

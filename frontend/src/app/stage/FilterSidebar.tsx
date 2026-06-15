@@ -14,6 +14,7 @@ import { TierMark } from "../../scene/field/markComponents";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
 import { useViewStore } from "../../stores/view/viewStore";
+import { hiddenCountLabel } from "./FilterBar";
 import { TIER_ORDER, isTierInapplicable } from "./TierDial";
 
 // ---------------------------------------------------------------------------
@@ -224,7 +225,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
   const relations = useFilterStore((s) => s.relations);
   const structuralStates = useFilterStore((s) => s.structuralStates);
   const textMatch = useFilterStore((s) => s.textMatch);
-  const setFacet = useFilterStore((s) => s.setFacet);
+  const toggleFacet = useFilterStore((s) => s.toggleFacet);
   const setTextMatch = useFilterStore((s) => s.setTextMatch);
   const reset = useFilterStore((s) => s.reset);
 
@@ -244,26 +245,6 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
   useEffect(() => {
     if (open) panelRef.current?.focus();
   }, [open]);
-
-  const toggle = (
-    facet: "docTypes" | "featureTags" | "relations" | "structuralStates",
-    value: string,
-  ) => {
-    const current =
-      facet === "docTypes"
-        ? docTypes
-        : facet === "featureTags"
-          ? featureTags
-          : facet === "relations"
-            ? relations
-            : structuralStates;
-    setFacet(
-      facet,
-      current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value],
-    );
-  };
 
   const anyActive =
     docTypes.length > 0 ||
@@ -327,9 +308,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           <FacetList
             values={["resolved", "stale", "broken"]}
             selected={structuralStates}
-            onToggle={(v) =>
-              toggle("structuralStates", v as "resolved" | "stale" | "broken")
-            }
+            onToggle={(v) => toggleFacet("structuralStates", v)}
           />
         </Section>
 
@@ -342,7 +321,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           <FacetList
             values={vocabulary.data?.doc_types ?? []}
             selected={docTypes}
-            onToggle={(v) => toggle("docTypes", v)}
+            onToggle={(v) => toggleFacet("docTypes", v)}
             loading={vocabLoading}
           />
         </Section>
@@ -356,7 +335,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           <FacetList
             values={vocabulary.data?.feature_tags ?? []}
             selected={featureTags}
-            onToggle={(v) => toggle("featureTags", v)}
+            onToggle={(v) => toggleFacet("featureTags", v)}
             max={12}
             loading={vocabLoading}
           />
@@ -371,7 +350,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           <FacetList
             values={vocabulary.data?.relations ?? []}
             selected={relations}
-            onToggle={(v) => toggle("relations", v)}
+            onToggle={(v) => toggleFacet("relations", v)}
             loading={vocabLoading}
           />
         </Section>
@@ -395,10 +374,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
       {hiddenTotal > 0 && (
         <div className="border-t border-rule px-vs-3 py-vs-1-5">
           <span className="text-label text-state-stale">
-            {hidden.nodes > 0 && `${hidden.nodes} nodes`}
-            {hidden.nodes > 0 && hidden.edges > 0 && " · "}
-            {hidden.edges > 0 && `${hidden.edges} edges`}
-            {" hidden"}
+            {hiddenCountLabel(hidden.nodes, hidden.edges)}
           </span>
         </div>
       )}

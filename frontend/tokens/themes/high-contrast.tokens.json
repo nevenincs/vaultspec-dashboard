@@ -1,0 +1,58 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "HIGH-CONTRAST theme override set, mirrored from the [data-theme=\"high-contrast\"] block in frontend/src/styles.css (design-language ADR S08). The HC semantic tier is authored as raw oklch (max separation), not primitive aliases; the scene-read surface is literal hex. Per-theme shadow remaps (1px ring borders) remain hand-authored in styles.css and are out of the DTCG color scope.",
+  "semantic": {
+    "surface": {
+      "base": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.12, 0.004, 75] } },
+      "raised": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.18, 0.006, 75] } },
+      "sunken": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.07, 0.003, 75] } }
+    },
+    "border": {
+      "subtle": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.55, 0.01, 75] } },
+      "strong": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.01, 75] } }
+    },
+    "accent": {
+      "base": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.78, 0.1, 150] } },
+      "hover": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.85, 0.1, 150] } },
+      "pressed": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.1, 150] } },
+      "subtle": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.2, 0.05, 150] } },
+      "on-subtle": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.92, 0.08, 150] } }
+    },
+    "focus": {
+      "ring": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.85, 0.05, 150] } }
+    },
+    "ink": {
+      "faint": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.72, 0.008, 75] } },
+      "muted": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.86, 0.006, 75] } },
+      "body": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.99, 0, 75] } }
+    }
+  },
+  "public": {
+    "chrome": {
+      "paper-aged": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.16, 0.01, 75] } },
+      "accent-subtle": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.2, 0.05, 150] } },
+      "accent-text": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.92, 0.08, 150] } },
+      "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.12, 160] } },
+      "diff-add": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 150] } },
+      "diff-remove": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.17, 28] } }
+    },
+    "scene": {
+      "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#050403" } },
+      "ink": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#fefcf9" } },
+      "ink-muted": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ddd8d2" } },
+      "rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#767069" } },
+      "tier-declared": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#f7f5f1" } },
+      "tier-structural": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#63b376" } },
+      "tier-temporal": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dacbb9" } },
+      "tier-semantic": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#7a6fb1" } },
+      "state-active": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#63b376" } },
+      "state-complete": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dacbb9" } },
+      "state-archived": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#82807c" } },
+      "state-stale": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#e6bb5e" } },
+      "state-broken": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ec8166" } },
+      "status-provisional": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d2bd91" } },
+      "status-graded": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#e6bb5e" } },
+      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dacbb9" } }
+    }
+  }
+}

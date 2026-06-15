@@ -3,8 +3,8 @@
 // The domain-mark texture provider (S37). Pixi's SVG parser uses DOMParser, so
 // this runs in happy-dom like the texture spike. The parse-to-Graphics half is
 // exercised here (real, inspectable geometry); the live `generateTexture` GPU
-// upload stays untested (no GPU in the test env), matching `glyphs.test.ts` and
-// the spike — the provider's geometry is what we assert, not the renderer call.
+// upload stays untested (no GPU in the test env), matching the spike — the
+// provider's geometry is what we assert, not the renderer call.
 
 import { describe, expect, it } from "vitest";
 import { Graphics } from "pixi.js";

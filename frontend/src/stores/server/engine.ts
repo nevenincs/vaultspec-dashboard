@@ -40,6 +40,21 @@ const API_BASE = import.meta.env.DEV ? "/api" : "";
 /** Every response carries a per-tier degradation block — truthful absence. */
 export type TiersBlock = Record<string, { available: boolean; reason?: string }>;
 
+/**
+ * The canonical, ordered tier-name vocabulary (contract §2). The single source
+ * of truth for the four provenance tiers and their order — both the membership a
+ * `*Availability` reader inspects and the tie-break ordering a dominant-tier pick
+ * resolves by (liveAdapters `dominantTier`). Defined once here beside `TiersBlock`
+ * (its owning type) and imported everywhere; per-surface single-tier subsets
+ * (e.g. `["semantic"]`) stay local — this is the full ordered set, not a subset.
+ */
+export const CANONICAL_TIERS = [
+  "declared",
+  "structural",
+  "temporal",
+  "semantic",
+] as const;
+
 export class EngineError extends Error {
   readonly status: number;
   readonly path: string;
@@ -111,6 +126,74 @@ async function engineErrorFrom(path: string, response: Response): Promise<Engine
     // No structured JSON body — nothing to preserve.
   }
   return new EngineError(path, response.status, { tiers, body });
+}
+
+// --- the single per-tier degradation read (contract §2) -------------------------
+//
+// One reader for the whole stores layer, encoding the degradation honesty law
+// (degradation-is-read-from-tiers-not-guessed-from-errors) exactly once. Every
+// `*Availability` surface was previously re-declaring this same triplet and
+// re-walking the same loop by hand; collapsing them here means a new tier or a
+// precedence fix touches one place, not 8+.
+
+/**
+ * The interpreted per-tier degradation a stores reader hands to chrome — never
+ * the raw `tiers` block (dashboard-layer-ownership). The one shape the seven
+ * former `*Availability` interfaces re-declared. Surfaces that carry extra
+ * fields (loading, lens, items, artifacts) compose this triplet.
+ */
+export interface TierAvailability {
+  /** At least one of the inspected tiers is unavailable or absent from the block. */
+  degraded: boolean;
+  /** Names of the inspected tiers reporting unavailable (or absent from the block). */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+}
+
+/**
+ * The single per-tier degradation loop. For each requested tier name, a tier
+ * that is absent from the served block OR reports `available:false` is degraded
+ * (contract §2: absence is degradation, not availability), recording the
+ * engine's reason for copy-tone rendering. A wholly absent block (`undefined` —
+ * a tiers-less transport fault) is NOT treated as degraded: that is the query's
+ * error state, which each surface renders distinctly. Degradation is reported
+ * only from a block the engine actually served.
+ */
+export function readTierAvailability(
+  tiers: TiersBlock | undefined,
+  tierNames: readonly string[],
+): TierAvailability {
+  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  for (const tier of tierNames) {
+    const state = tiers[tier];
+    if (state === undefined || state.available === false) {
+      degradedTiers.push(tier);
+      if (state?.reason) reasons[tier] = state.reason;
+    }
+  }
+  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+}
+
+/**
+ * Pick the freshest tiers block out of a query's success data + error state,
+ * encoding the precedence the wire honesty law mandates in ONE place: a FRESH
+ * error envelope's tiers win over a STALE held-success block
+ * (degradation-is-read-from-tiers-not-guessed-from-errors). When the latest
+ * request errored with a tiers-bearing `EngineError`, that error's tiers are the
+ * freshest availability truth and override the previously held success snapshot;
+ * a tiers-less transport fault contributes nothing, falling back to the held
+ * success block. Every former per-site `errTiers ?? data?.tiers` (and the one
+ * BACKWARDS `fromData ?? fromError`) is replaced by this.
+ */
+export function tiersFromQuery(query: {
+  data?: { tiers?: TiersBlock } | undefined;
+  error?: unknown;
+}): TiersBlock | undefined {
+  const fromError = query.error instanceof EngineError ? query.error.tiers : undefined;
+  return fromError ?? query.data?.tiers;
 }
 
 // --- §3 workspace map / vault tree ----------------------------------------------

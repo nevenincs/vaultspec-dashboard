@@ -14,20 +14,7 @@ import type { SceneNodeData } from "../sceneController";
 import { RECEDE_ALPHA } from "./egoHighlight";
 import { drawProgressRing } from "./progressRing";
 import { type StampDescriptor, stampFor, stampToken } from "./statusStamp";
-
-// --- CSS-token helpers (browser-only; node test env sees the fallback) --------
-
-/**
- * Read a CSS custom property as a 24-bit RGB number.  In the node test
- * environment `document` is undefined, so the fallback is always returned.
- */
-function getCssColor(varName: string, fallback: number): number {
-  if (typeof document === "undefined") return fallback;
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  return raw.startsWith("#") ? parseInt(raw.slice(1), 16) : fallback;
-}
+import { cssColorNumber as getCssColor } from "./tokenReads";
 
 // --- pure anatomy helpers (unit-tested; rendering maps these) ---------------
 

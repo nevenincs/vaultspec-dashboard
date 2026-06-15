@@ -132,31 +132,41 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
           )}
         </label>
         <div className="flex shrink-0 flex-col items-end gap-vs-1">
-          <SettingControl
-            def={def}
-            value={controlValue}
-            onChange={write}
-            disabled={putSettings.isPending}
-            id={fieldId}
-          />
+          {/* Controls stay interactive during a write — discrete writes are fast
+              and never disable mid-interaction (dashboard-settings review HIGH-2). */}
+          <SettingControl def={def} value={controlValue} onChange={write} id={fieldId} />
           {scopeable && <ScopeTargetToggle target={target} onTarget={setTarget} />}
         </div>
       </div>
 
-      {/* Provenance + reset, beneath the row. */}
+      {/* Provenance + an honest reset/clear affordance, beneath the row. */}
       <div className="flex items-center justify-between gap-vs-2">
         <span className="text-2xs text-ink-faint">
           {provenanceNote(eff, effectiveTarget)}
         </span>
-        {!isDefaulted && (
+        {effectiveTarget === "scope" && eff.scopeValue !== undefined ? (
+          // Clear an existing scope override: write the inherited (global/default)
+          // value back so this scope matches it. The backend is PUT-only (no
+          // delete), so this makes the override match its parent rather than
+          // removing the row — the label states exactly that effect.
           <button
             type="button"
-            onClick={() => write(def.default)}
-            disabled={putSettings.isPending}
-            className="text-2xs text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
+            onClick={() => write(eff.globalValue ?? def.default)}
+            className="text-2xs text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
-            Reset to default
+            Match global
           </button>
+        ) : (
+          effectiveTarget === "global" &&
+          !isDefaulted && (
+            <button
+              type="button"
+              onClick={() => write(def.default)}
+              className="text-2xs text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            >
+              Reset to default
+            </button>
+          )
         )}
       </div>
 

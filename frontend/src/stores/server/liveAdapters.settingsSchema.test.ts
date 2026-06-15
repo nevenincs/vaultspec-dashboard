@@ -56,17 +56,15 @@ const liveSchemaEnvelope = {
         order: 2,
       },
       {
-        key: "node_label_scale",
-        value_type: { type: "integer", min: 50, max: 200 },
-        default: "100",
+        key: "default_granularity",
+        value_type: { type: "enum", members: ["feature", "document"] },
+        default: "feature",
         scope_eligible: true,
-        control: "slider",
-        label: "Label size",
-        description: "Relative size of node labels in the graph, as a percentage.",
+        control: "segmented",
+        label: "Default detail level",
+        description: "The graph level of detail to open with for this scope.",
         group: "Graph",
-        order: 2,
-        step: 10,
-        unit: "%",
+        order: 1,
       },
     ],
     groups: ["Appearance", "Graph"],
@@ -81,7 +79,7 @@ describe("adaptSettingsSchema (live schema sample)", () => {
     expect(schema.settings.map((s) => s.key)).toEqual([
       "theme",
       "reduce_motion",
-      "node_label_scale",
+      "default_granularity",
     ]);
     const theme = schema.settings.find((s) => s.key === "theme")!;
     expect(theme.value_type).toEqual({
@@ -90,13 +88,44 @@ describe("adaptSettingsSchema (live schema sample)", () => {
     });
     expect(theme.control).toBe("segmented");
     expect(theme.scope_eligible).toBe(false);
-    const slider = schema.settings.find((s) => s.key === "node_label_scale")!;
-    expect(slider.value_type).toEqual({ type: "integer", min: 50, max: 200 });
-    expect(slider.step).toBe(10);
-    expect(slider.unit).toBe("%");
-    expect(slider.scope_eligible).toBe(true);
+    const granularity = schema.settings.find((s) => s.key === "default_granularity")!;
+    expect(granularity.value_type).toEqual({
+      type: "enum",
+      members: ["feature", "document"],
+    });
+    expect(granularity.control).toBe("segmented");
+    expect(granularity.scope_eligible).toBe(true);
     // The tiers block rides through but is never read by chrome (degradation truth).
     expect(schema.tiers).toEqual(TIERS);
+  });
+
+  it("decodes the integer/slider value_type (adapter coverage for future settings)", () => {
+    // No integer setting is in the live registry yet, but the adapter must still
+    // decode the integer value_type + slider control + step/unit when one lands.
+    const schema = adaptSettingsSchema({
+      settings: [
+        {
+          key: "synthetic_scale",
+          value_type: { type: "integer", min: 50, max: 200 },
+          default: "100",
+          scope_eligible: true,
+          control: "slider",
+          label: "Scale",
+          description: "",
+          group: "Graph",
+          order: 9,
+          step: 10,
+          unit: "%",
+        },
+      ],
+      groups: ["Graph"],
+      tiers: {},
+    });
+    const s = schema.settings[0];
+    expect(s.value_type).toEqual({ type: "integer", min: 50, max: 200 });
+    expect(s.control).toBe("slider");
+    expect(s.step).toBe(10);
+    expect(s.unit).toBe("%");
   });
 
   it("tolerates a sparse / malformed body without throwing (tolerant adapter)", () => {
@@ -169,13 +198,13 @@ describe("MockEngine settings schema parity", () => {
       .catch((e: unknown) => e as EngineError);
     expect((badScope as EngineError).errorKind).toBe("scope_not_allowed");
 
-    // integer is canonicalized; a valid scoped write round-trips under its scope
+    // a valid scoped write round-trips under its scope
     const ok = await client.putSettings({
       scope: MOCK_SCOPE,
-      key: "node_label_scale",
-      value: "120",
+      key: "default_granularity",
+      value: "document",
     });
-    expect(ok.scoped[MOCK_SCOPE]?.node_label_scale).toBe("120");
+    expect(ok.scoped[MOCK_SCOPE]?.default_granularity).toBe("document");
   });
 });
 
@@ -186,7 +215,7 @@ describe("settings effective-value resolution", () => {
     unwrapEnvelope(liveSchemaEnvelope),
   );
   const themeDef = schema.settings.find((s) => s.key === "theme")!;
-  const sliderDef = schema.settings.find((s) => s.key === "node_label_scale")!;
+  const scopedDef = schema.settings.find((s) => s.key === "default_granularity")!;
 
   it("falls back to the schema default when nothing is persisted", () => {
     const eff = resolveEffective(themeDef, undefined, MOCK_SCOPE);
@@ -207,14 +236,14 @@ describe("settings effective-value resolution", () => {
 
   it("prefers a scope override over global for a scope-eligible setting", () => {
     const settings: SettingsState = {
-      global: { node_label_scale: "100" },
-      scoped: { [MOCK_SCOPE]: { node_label_scale: "150" } },
+      global: { default_granularity: "feature" },
+      scoped: { [MOCK_SCOPE]: { default_granularity: "document" } },
       tiers: {},
     };
-    const eff = resolveEffective(sliderDef, settings, MOCK_SCOPE);
-    expect(eff.value).toBe("150");
+    const eff = resolveEffective(scopedDef, settings, MOCK_SCOPE);
+    expect(eff.value).toBe("document");
     expect(eff.provenance).toBe("scope");
-    expect(eff.globalValue).toBe("100");
+    expect(eff.globalValue).toBe("feature");
   });
 
   it("ignores a scope override for a global-only setting", () => {

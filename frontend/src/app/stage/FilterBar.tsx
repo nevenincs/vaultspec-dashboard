@@ -9,6 +9,7 @@
 import { PanelLeft } from "lucide-react";
 
 import { useActiveScope } from "./Stage";
+import { FacetChipGroup } from "../chrome/FacetChipGroup";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
 import { TierDial } from "./TierDial";
@@ -23,40 +24,6 @@ export function hiddenCountLabel(
   if (hiddenNodes > 0) parts.push(`${hiddenNodes} nodes`);
   if (hiddenEdges > 0) parts.push(`${hiddenEdges} edges`);
   return `${parts.join(" · ")} hidden`;
-}
-
-interface FacetChipsProps {
-  label: string;
-  values: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-}
-
-function FacetChips({ label, values, selected, onToggle }: FacetChipsProps) {
-  if (values.length === 0) return null;
-  return (
-    <span className="flex items-center gap-1" aria-label={`${label} facet`}>
-      <span className="text-ink-faint">{label}</span>
-      {values.map((value) => {
-        const on = selected.includes(value);
-        return (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onToggle(value)}
-            className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-              on
-                ? "border-rule-strong bg-paper-sunken text-ink"
-                : "border-rule text-ink-muted hover:border-rule-strong"
-            }`}
-          >
-            {value}
-          </button>
-        );
-      })}
-    </span>
-  );
 }
 
 export function FilterBar({
@@ -80,29 +47,10 @@ export function FilterBar({
   const structuralStates = useFilterStore((s) => s.structuralStates);
   const textMatch = useFilterStore((s) => s.textMatch);
   const dateRange = useFilterStore((s) => s.dateRange);
-  const setFacet = useFilterStore((s) => s.setFacet);
+  const toggleFacet = useFilterStore((s) => s.toggleFacet);
   const setTextMatch = useFilterStore((s) => s.setTextMatch);
 
   const relations = useFilterStore((s) => s.relations);
-  const toggle = (
-    facet: "docTypes" | "featureTags" | "relations" | "structuralStates",
-    value: string,
-  ) => {
-    const current =
-      facet === "docTypes"
-        ? docTypes
-        : facet === "featureTags"
-          ? featureTags
-          : facet === "relations"
-            ? relations
-            : structuralStates;
-    setFacet(
-      facet,
-      current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value],
-    );
-  };
 
   const costLabel = hiddenCountLabel(hidden.nodes, hidden.edges);
 
@@ -133,29 +81,33 @@ export function FilterBar({
           loading facets…
         </span>
       )}
-      <FacetChips
+      <FacetChipGroup
         label="type"
+        groupLabel="facet"
         values={vocabulary.data?.doc_types ?? []}
         selected={docTypes}
-        onToggle={(v) => toggle("docTypes", v)}
+        onToggle={(v) => toggleFacet("docTypes", v)}
       />
-      <FacetChips
+      <FacetChipGroup
         label="feature"
+        groupLabel="facet"
         values={(vocabulary.data?.feature_tags ?? []).slice(0, 6)}
         selected={featureTags}
-        onToggle={(v) => toggle("featureTags", v)}
+        onToggle={(v) => toggleFacet("featureTags", v)}
       />
-      <FacetChips
+      <FacetChipGroup
         label="relation"
+        groupLabel="facet"
         values={(vocabulary.data?.relations ?? []).slice(0, 5)}
         selected={relations}
-        onToggle={(v) => toggle("relations", v)}
+        onToggle={(v) => toggleFacet("relations", v)}
       />
-      <FacetChips
+      <FacetChipGroup
         label="status"
+        groupLabel="facet"
         values={["resolved", "stale", "broken"]}
         selected={structuralStates}
-        onToggle={(v) => toggle("structuralStates", v)}
+        onToggle={(v) => toggleFacet("structuralStates", v)}
       />
       <input
         type="search"

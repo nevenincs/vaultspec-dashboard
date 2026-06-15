@@ -46,13 +46,18 @@ export function useThemeSetting(): UseThemeSettingResult {
   const putSettings = usePutSettings();
   const serverTheme = settings.data?.global?.[THEME_KEY];
 
-  // Keyed on the server value only: applying updates `preference`, so depending
-  // on it would loop. The server value is the reconcile trigger.
+  // Reconcile the server value onto the controller, but NEVER while a theme
+  // write is in flight: an optimistic change updates `preference` immediately,
+  // and reconciling against the still-stale server value would flash the old
+  // theme back for a frame (the FOUC-class revert this design exists to prevent,
+  // review MEDIUM). usePutSettings seeds the cache on success, so once the write
+  // settles `serverTheme` already equals `preference` and this is a no-op.
   useEffect(() => {
+    if (putSettings.isPending) return;
     if (isThemePreference(serverTheme) && serverTheme !== preference) {
       applyLocal(serverTheme);
     }
-  }, [serverTheme, preference, applyLocal]);
+  }, [serverTheme, preference, applyLocal, putSettings.isPending]);
 
   const setPreference = (next: ThemePreference) => {
     applyLocal(next); // optimistic apply + localStorage cache (no FOUC, instant)

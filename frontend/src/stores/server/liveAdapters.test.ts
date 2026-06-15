@@ -135,6 +135,32 @@ describe("adaptFilters (live vocabulary sample)", () => {
     expect(adapted.relations).toEqual(["mentions"]);
     expect(adapted.doc_types).toEqual([]);
   });
+
+  it("maps the live date_bounds {min, max} onto the internal {from, to}", () => {
+    // The live engine serves the corpus span as `{min, max}` (inclusive ISO);
+    // the timeline's fit-all / fit-feature / minimap consume `{from, to}`. The
+    // adapter reconciles the field names so the corpus-span controls work against
+    // the live origin, not only the mock (mock-mirrors-live-wire-shape).
+    const adapted = adaptFilters({
+      vocabulary: {
+        relations: ["mentions"],
+        tiers: ["declared", "structural", "temporal", "semantic"],
+        date_bounds: { min: "2026-06-10", max: "2026-06-14" },
+      },
+      tiers: TIERS,
+    });
+    expect(adapted.date_bounds).toEqual({ from: "2026-06-10", to: "2026-06-14" });
+  });
+
+  it("omits date_bounds when the live vocabulary carries none", () => {
+    // The live field is skipped when no node has a created date; the adapter must
+    // leave it undefined (the fit controls then disable) rather than fabricate a span.
+    const adapted = adaptFilters({
+      vocabulary: { relations: [], tiers: [] },
+      tiers: TIERS,
+    });
+    expect(adapted.date_bounds).toBeUndefined();
+  });
 });
 
 describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {

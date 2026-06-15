@@ -31,10 +31,19 @@ import type {
   PlanInterior,
   SessionUpdate,
   SettingUpdate,
+  TierAvailability,
   TiersBlock,
   WorkspaceRoot,
 } from "./engine";
-import { EngineError, engineClient, useEngineStatus } from "./engine";
+import {
+  CANONICAL_TIERS,
+  EngineError,
+  engineClient,
+  readTierAvailability,
+  tiersFromQuery,
+  useEngineStatus,
+} from "./engine";
+import { isRagRunning } from "./liveAdapters";
 import { useViewStore } from "../view/viewStore";
 
 // --- stable serialization for key parts -----------------------------------------
@@ -171,44 +180,21 @@ export function useWorkspaceMap() {
  * preserved). Returns `degraded` plus the per-tier reasons for copy-tone
  * rendering; the switcher consumes this, never `map.data.tiers`.
  */
-export interface WorkspaceMapAvailability {
-  degraded: boolean;
-  /** Names of the tiers reporting unavailable (or absent from the block). */
-  degradedTiers: string[];
-  /** Per-tier human reason the engine supplied, keyed by tier name. */
-  reasons: Record<string, string>;
-}
+export type WorkspaceMapAvailability = TierAvailability;
 
 const WORKSPACE_MAP_TIERS = ["structural"] as const;
 
 export function deriveWorkspaceMapAvailability(
   tiers: TiersBlock | undefined,
 ): WorkspaceMapAvailability {
-  // A wholly absent block (a genuine transport fault with no envelope) is NOT
-  // treated as degraded here — that is the query's error state, which the
-  // switcher renders distinctly. Degradation is reported only from a block the
-  // engine actually served.
-  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  for (const tier of WORKSPACE_MAP_TIERS) {
-    const state = tiers[tier];
-    if (state === undefined || state.available === false) {
-      degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
-    }
-  }
-  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return readTierAvailability(tiers, WORKSPACE_MAP_TIERS);
 }
 
 /** Stores hook: the workspace map's degradation, read through the wire client so
  *  the worktree switcher consumes derived truth instead of the raw `tiers`
  *  block. Mirrors `useVaultTreeAvailability`. */
 export function useWorkspaceMapAvailability(): WorkspaceMapAvailability {
-  const map = useWorkspaceMap();
-  const fromData = map.data?.tiers;
-  const fromError = map.error instanceof EngineError ? map.error.tiers : undefined;
-  return deriveWorkspaceMapAvailability(fromData ?? fromError);
+  return deriveWorkspaceMapAvailability(tiersFromQuery(useWorkspaceMap()));
 }
 
 // --- workspace registry (dashboard-workspace-registry ADR) -----------------------
@@ -241,39 +227,21 @@ export function useWorkspaces() {
  * through both the success envelope (`data.tiers`) and the error envelope
  * (`EngineError.tiers`). Mirrors `useWorkspaceMapAvailability`.
  */
-export interface WorkspacesAvailability {
-  degraded: boolean;
-  degradedTiers: string[];
-  reasons: Record<string, string>;
-}
+export type WorkspacesAvailability = TierAvailability;
 
 const WORKSPACES_TIERS = ["structural"] as const;
 
 export function deriveWorkspacesAvailability(
   tiers: TiersBlock | undefined,
 ): WorkspacesAvailability {
-  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  for (const tier of WORKSPACES_TIERS) {
-    const state = tiers[tier];
-    if (state === undefined || state.available === false) {
-      degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
-    }
-  }
-  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return readTierAvailability(tiers, WORKSPACES_TIERS);
 }
 
 /** Stores hook: the workspace registry's degradation, read through the wire
  *  client so the picker consumes derived truth instead of the raw `tiers`
  *  block. */
 export function useWorkspacesAvailability(): WorkspacesAvailability {
-  const workspaces = useWorkspaces();
-  const fromData = workspaces.data?.tiers;
-  const fromError =
-    workspaces.error instanceof EngineError ? workspaces.error.tiers : undefined;
-  return deriveWorkspacesAvailability(fromData ?? fromError);
+  return deriveWorkspacesAvailability(tiersFromQuery(useWorkspaces()));
 }
 
 /** Stores selector: the active workspace's id (from the registry's
@@ -373,43 +341,20 @@ export function useVaultTree(scope: string | null) {
  * error. Returns `degraded` plus the per-tier reasons for copy-tone rendering;
  * the sidebar consumes this, never `tree.data.tiers`.
  */
-export interface VaultTreeAvailability {
-  degraded: boolean;
-  /** Names of the tiers reporting unavailable (or absent from the block). */
-  degradedTiers: string[];
-  /** Per-tier human reason the engine supplied, keyed by tier name. */
-  reasons: Record<string, string>;
-}
-
-const VAULT_TREE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+export type VaultTreeAvailability = TierAvailability;
 
 export function deriveVaultTreeAvailability(
   tiers: TiersBlock | undefined,
 ): VaultTreeAvailability {
-  // A wholly absent block (a genuine transport fault with no envelope) is NOT
-  // treated as every-tier-degraded here — that is the query's error state, which
-  // the sidebar renders distinctly. Degradation is reported only from a block
-  // the engine actually served.
-  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  for (const tier of VAULT_TREE_TIERS) {
-    const state = tiers[tier];
-    if (state === undefined || state.available === false) {
-      degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
-    }
-  }
-  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return readTierAvailability(tiers, CANONICAL_TIERS);
 }
 
 /** Stores hook: the vault-tree degradation, read through the wire client so the
- *  sidebar consumes derived truth instead of the raw `tiers` block. */
+ *  sidebar consumes derived truth instead of the raw `tiers` block. Reads the
+ *  FRESH error envelope's tiers over a stale held-success block via
+ *  `tiersFromQuery` (degradation-is-read-from-tiers-not-guessed-from-errors). */
 export function useVaultTreeAvailability(scope: string | null): VaultTreeAvailability {
-  const tree = useVaultTree(scope);
-  const fromData = tree.data?.tiers;
-  const fromError = tree.error instanceof EngineError ? tree.error.tiers : undefined;
-  return deriveVaultTreeAvailability(fromData ?? fromError);
+  return deriveVaultTreeAvailability(tiersFromQuery(useVaultTree(scope)));
 }
 
 // --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
@@ -446,34 +391,14 @@ export function useFileTree(scope: string | null, path?: string, enabled = true)
  * envelope (`data.tiers`) and the error envelope (`EngineError.tiers`). Mirrors
  * `useVaultTreeAvailability`, scoped to the structural tier.
  */
-export interface FileTreeAvailability {
-  degraded: boolean;
-  /** Names of the tiers reporting unavailable (or absent from the block). */
-  degradedTiers: string[];
-  /** Per-tier human reason the engine supplied, keyed by tier name. */
-  reasons: Record<string, string>;
-}
+export type FileTreeAvailability = TierAvailability;
 
 const FILE_TREE_TIERS = ["structural"] as const;
 
 export function deriveFileTreeAvailability(
   tiers: TiersBlock | undefined,
 ): FileTreeAvailability {
-  // A wholly absent block (a genuine transport fault with no envelope) is NOT
-  // treated as degraded here — that is the query's error state, which the code
-  // mode renders distinctly. Degradation is reported only from a block the engine
-  // actually served.
-  if (!tiers) return { degraded: false, degradedTiers: [], reasons: {} };
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  for (const tier of FILE_TREE_TIERS) {
-    const state = tiers[tier];
-    if (state === undefined || state.available === false) {
-      degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
-    }
-  }
-  return { degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return readTierAvailability(tiers, FILE_TREE_TIERS);
 }
 
 /** Stores hook: the file-tree degradation for the worktree ROOT level, read
@@ -481,10 +406,7 @@ export function deriveFileTreeAvailability(
  *  raw `tiers` block. The root level's tiers gate the whole code mode (a
  *  worktree-only capability); per-directory expansions inherit that availability. */
 export function useFileTreeAvailability(scope: string | null): FileTreeAvailability {
-  const tree = useFileTree(scope);
-  const fromData = tree.data?.tiers;
-  const fromError = tree.error instanceof EngineError ? tree.error.tiers : undefined;
-  return deriveFileTreeAvailability(fromData ?? fromError);
+  return deriveFileTreeAvailability(tiersFromQuery(useFileTree(scope)));
 }
 
 export function useFiltersVocabulary(scope: string | null) {
@@ -561,19 +483,13 @@ export interface SalienceSliceView {
   reasons: Record<string, string>;
 }
 
-const SALIENCE_SLICE_TIERS = [
-  "declared",
-  "structural",
-  "temporal",
-  "semantic",
-] as const;
-
 /**
  * Derive the salience slice view from the served data + error + in-flight state.
- * Degradation is read from the `tiers` block (success data, or the error
- * envelope's tiers, with FRESH error tiers winning over a stale held-success
- * block — degradation-is-read-from-tiers), and `partial` honors the engine's
- * own `salience_partial` flag OR a degraded tier in that block. A wholly absent
+ * Degradation is read from the `tiers` block through the single reader (success
+ * data, or the error envelope's tiers, with FRESH error tiers winning over a
+ * stale held-success block via `tiersFromQuery` —
+ * degradation-is-read-from-tiers), and `partial` honors the engine's own
+ * `salience_partial` flag OR a degraded tier in that block. A wholly absent
  * block (a bare transport fault) is NOT treated as degraded here — that is the
  * query's error state, which the scene renders distinctly.
  */
@@ -583,22 +499,10 @@ export function deriveSalienceSliceView(
   error: unknown,
   loading: boolean,
 ): SalienceSliceView {
-  // Fresh error tiers win over a stale held-success block (the rule's ordering):
-  // when the latest request errored with a tiers-bearing envelope, that error's
-  // tiers are the freshest availability truth.
-  const errTiers = error instanceof EngineError ? error.tiers : undefined;
-  const tiers = errTiers ?? data?.tiers;
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  if (tiers) {
-    for (const tier of SALIENCE_SLICE_TIERS) {
-      const state = tiers[tier];
-      if (state === undefined || state.available === false) {
-        degradedTiers.push(tier);
-        if (state?.reason) reasons[tier] = state.reason;
-      }
-    }
-  }
+  const { degradedTiers, reasons } = readTierAvailability(
+    tiersFromQuery({ data, error }),
+    CANONICAL_TIERS,
+  );
   // Partial: the engine's explicit flag, OR a degraded tier in the served block.
   // Never inferred from a bare transport error (no tiers => not partial here).
   const partial = data?.salience_partial === true || degradedTiers.length > 0;
@@ -638,38 +542,16 @@ export function useSalienceSliceView(
  * error. `loading` is the query's in-flight state for the affected slice. The nav
  * toolbar consumes this, never `slice.data.tiers`.
  */
-export interface GraphSliceAvailability {
+export interface GraphSliceAvailability extends TierAvailability {
   /** The slice query is in flight (no held data yet). */
   loading: boolean;
-  /** A served tiers block reports at least one tier unavailable/absent. */
-  degraded: boolean;
-  /** Names of the tiers reporting unavailable (or absent from the block). */
-  degradedTiers: string[];
-  /** Per-tier human reason the engine supplied, keyed by tier name. */
-  reasons: Record<string, string>;
 }
-
-const GRAPH_SLICE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
 
 export function deriveGraphSliceAvailability(
   tiers: TiersBlock | undefined,
   loading: boolean,
 ): GraphSliceAvailability {
-  // A wholly absent block (a genuine transport fault with no envelope) is NOT
-  // treated as every-tier-degraded — that is the query's error state, distinct
-  // from served degradation. Degradation is reported only from a block the
-  // engine actually served (success data or a tiers-bearing error envelope).
-  if (!tiers) return { loading, degraded: false, degradedTiers: [], reasons: {} };
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  for (const tier of GRAPH_SLICE_TIERS) {
-    const state = tiers[tier];
-    if (state === undefined || state.available === false) {
-      degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
-    }
-  }
-  return { loading, degraded: degradedTiers.length > 0, degradedTiers, reasons };
+  return { loading, ...readTierAvailability(tiers, CANONICAL_TIERS) };
 }
 
 /**
@@ -684,10 +566,8 @@ export function useGraphSliceAvailability(
   granularity?: "document" | "feature",
 ): GraphSliceAvailability {
   const slice = useGraphSlice(scope, undefined, undefined, granularity);
-  const fromData = slice.data?.tiers;
-  const fromError = slice.error instanceof EngineError ? slice.error.tiers : undefined;
   return deriveGraphSliceAvailability(
-    fromData ?? fromError,
+    tiersFromQuery(slice),
     scope !== null && slice.isPending,
   );
 }
@@ -1113,14 +993,14 @@ export function deriveRagStatusView(
   error: unknown,
   pending: boolean,
 ): RagStatusView {
-  const tiers = data?.tiers ?? (error instanceof EngineError ? error.tiers : undefined);
+  const tiers = tiersFromQuery({ data, error });
   const tier = tiers?.[RAG_TIER];
   const degraded = tier !== undefined && tier.available === false;
   const reason = degraded ? tier?.reason : undefined;
 
   if (data?.rag) {
     const rag = data.rag;
-    const running = rag.service === "running";
+    const running = isRagRunning(rag.service);
     const ready =
       running && !degraded && rag.index !== undefined && rag.watcher !== undefined;
     return {
@@ -1233,12 +1113,10 @@ export interface WorkPillarAvailability {
 export function deriveWorkPillarAvailability(
   tiers: TiersBlock | undefined,
 ): WorkPillarAvailability {
-  if (!tiers) return { degraded: false, items: [] };
-  const state = tiers[WORK_PILLAR_TIER];
-  const degraded = state === undefined || state.available === false;
+  const { degraded, reasons } = readTierAvailability(tiers, [WORK_PILLAR_TIER]);
   return {
     degraded,
-    reason: degraded ? state?.reason : undefined,
+    reason: reasons[WORK_PILLAR_TIER],
     items: [],
   };
 }
@@ -1251,10 +1129,7 @@ export function deriveWorkPillarAvailability(
  * `useVaultTreeAvailability` / `useGraphSliceAvailability`.
  */
 export function useWorkPillarAvailability(): WorkPillarAvailability {
-  const status = useEngineStatus();
-  const fromError =
-    status.error instanceof EngineError ? status.error.tiers : undefined;
-  return deriveWorkPillarAvailability(fromError ?? status.data?.tiers);
+  return deriveWorkPillarAvailability(tiersFromQuery(useEngineStatus()));
 }
 
 // --- in-flight pipeline status (dashboard-pipeline-status ADR) -------------------------
@@ -1320,15 +1195,9 @@ export function usePlanInterior(planId: string | null) {
  * resolves through), and `artifacts` is the in-flight list. The surface consumes this,
  * never `pipeline.data.tiers`.
  */
-export interface PipelineStatusView {
+export interface PipelineStatusView extends TierAvailability {
   /** The pipeline query is in flight with no held data. */
   loading: boolean;
-  /** A served tiers block reports the pipeline tier unavailable (or absent). */
-  degraded: boolean;
-  /** Names of the tiers reporting unavailable (or absent from the block). */
-  degradedTiers: string[];
-  /** Per-tier human reason the engine supplied, keyed by tier name. */
-  reasons: Record<string, string>;
   /** The in-flight artifacts (active plans + in-flight ADRs); empty while degraded. */
   artifacts: PipelineArtifact[];
 }
@@ -1353,27 +1222,13 @@ export function derivePipelineStatusView(
   artifacts: PipelineArtifact[],
   loading: boolean,
 ): PipelineStatusView {
-  if (!tiers) {
-    return { loading, degraded: false, degradedTiers: [], reasons: {}, artifacts };
-  }
-  const degradedTiers: string[] = [];
-  const reasons: Record<string, string> = {};
-  for (const tier of PIPELINE_STATUS_TIERS) {
-    const state = tiers[tier];
-    if (state === undefined || state.available === false) {
-      degradedTiers.push(tier);
-      if (state?.reason) reasons[tier] = state.reason;
-    }
-  }
-  const degraded = degradedTiers.length > 0;
+  const availability = readTierAvailability(tiers, PIPELINE_STATUS_TIERS);
   return {
     loading,
-    degraded,
-    degradedTiers,
-    reasons,
+    ...availability,
     // While degraded the projection cannot be trusted, so do not render a stale list as
     // current in-flight work; the surface shows the degraded notice instead.
-    artifacts: degraded ? [] : artifacts,
+    artifacts: availability.degraded ? [] : artifacts,
   };
 }
 
@@ -1389,10 +1244,8 @@ export function usePipelineStatusView(
   asOf?: string | number,
 ): PipelineStatusView {
   const query = usePipelineStatus(scope, asOf);
-  const fromError = query.error instanceof EngineError ? query.error.tiers : undefined;
-  const tiers = fromError ?? query.data?.tiers;
   return derivePipelineStatusView(
-    tiers,
+    tiersFromQuery(query),
     query.data?.artifacts ?? [],
     scope !== null && query.isPending,
   );

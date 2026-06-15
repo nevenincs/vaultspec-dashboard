@@ -11,6 +11,7 @@
 // are NOT absorbed here; they are flagged in the S49 record and to the
 // engine owners (loose-scoping stance).
 
+import { CANONICAL_TIERS } from "./engine";
 import type {
   EngineEdge,
   EngineStatus,
@@ -76,23 +77,21 @@ export function unwrapEnvelope(body: unknown): unknown {
 
 // --- §4 graph slice: fold the separate meta-edge array into edges ----------------
 
-/** Canonical tier order — also the tie-break for a meta-edge's dominant tier. */
-const TIER_ORDER = ["declared", "structural", "temporal", "semantic"] as const;
-
 /**
  * The tier treatment a constellation ribbon takes: the tier carrying the most
  * underlying edges in the aggregation (ties resolve by canonical order). A
  * meta-edge spans tiers, but the line treatment needs one — the dominant tier
- * is the honest single answer. An empty/all-zero breakdown (degenerate; the
- * live engine never emits one) falls back to `structural`, the tier of the
- * cross-feature mentions that produce meta-edges.
+ * is the honest single answer. Ties resolve by the canonical tier order
+ * (`CANONICAL_TIERS`). An empty/all-zero breakdown (degenerate; the live engine
+ * never emits one) falls back to `structural`, the tier of the cross-feature
+ * mentions that produce meta-edges.
  */
 function dominantTier(breakdown: Record<string, number>): EngineEdge["tier"] {
   let best: EngineEdge["tier"] = "structural";
   // Seed at 0 so a tier only wins on a POSITIVE count: an empty breakdown
   // keeps the `structural` default rather than the first-enumerated tier.
   let bestCount = 0;
-  for (const tier of TIER_ORDER) {
+  for (const tier of CANONICAL_TIERS) {
     const count = breakdown[tier] ?? 0;
     if (count > bestCount) {
       best = tier;
@@ -177,8 +176,6 @@ const LINEAGE_PHASES: LineagePhase[] = [
   "codify",
 ];
 
-const ARC_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
-
 /** Default one dated lineage node, tolerating an absent or partial object: an
  *  unknown phase falls back to `research` (the first lane, never invents a new
  *  one), `dates` defaults to empty (`created`/`modified` forwarded only when the
@@ -223,7 +220,7 @@ function adaptLineageArc(value: unknown): LineageArc {
     };
   }
   const tierRaw = typeof value.tier === "string" ? value.tier : "";
-  const tier = (ARC_TIERS as readonly string[]).includes(tierRaw)
+  const tier = (CANONICAL_TIERS as readonly string[]).includes(tierRaw)
     ? (tierRaw as LineageArc["tier"])
     : "structural";
   return {
@@ -311,8 +308,21 @@ export function adaptMap(body: unknown): MapResponse {
   };
 }
 
-/** Canonical tier names — an absent tier is a degraded state (contract §2). */
-const CANONICAL_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+/** The canonical rag-running lifecycle token — the one source of the `"running"`
+ *  string both produced (by `adaptStatus`) and tested (by `isRagRunning`). */
+const RAG_RUNNING = "running";
+
+/**
+ * Whether rag is up given its lifecycle word. The single predicate the whole
+ * stores layer routes through: rag is running IFF the lifecycle word is exactly
+ * `"running"` (any other word — `stopped`/`absent`/loading — is down). Defined
+ * once here beside `adaptStatus` (the status-rollup home) and consumed by
+ * `adaptStatus`, `deriveRagStatusView`, and the search controller, replacing the
+ * three independent `=== "running"` checks that previously drifted apart.
+ */
+export function isRagRunning(word: string | undefined): boolean {
+  return word === RAG_RUNNING;
+}
 
 /**
  * Live status rollup → the internal status shape.
@@ -382,7 +392,10 @@ export function adaptStatus(body: unknown): EngineStatus {
             typeof core.vault_health === "string" ? core.vault_health : undefined,
         }
       : undefined,
-    rag: { service: rag.available === true ? "running" : "stopped" },
+    // Emit the canonical lifecycle word `isRagRunning` later tests: a reachable
+    // backend maps to exactly `"running"` (the running token), anything else to
+    // `"stopped"`. One source of the `"running"` token, one predicate over it.
+    rag: { service: rag.available === true ? RAG_RUNNING : "stopped" },
   };
 }
 
@@ -543,15 +556,34 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
   };
 }
 
+// --- shared doc-node-id grammar (§2 identity) --------------------------------------
+//
+// The single owner of the `doc:{stem}` grammar: strip the directory and the `.md`
+// suffix to recover a vault document's stem, then prefix `doc:` for its node id.
+// Both `deriveSearchNodeId` (the live search adapter) and the search controller's
+// `pathStem`/`pathToDocNodeId` consume this pair, so the grammar lives in exactly
+// one place instead of being re-implemented per consumer (centralisation audit L2).
+
+/** A vault path → its canonical stem: the filename without directory or `.md`. */
+export function stemFromPath(path: string): string {
+  return path.replace(/^.*\//, "").replace(/\.md$/, "");
+}
+
+/** A vault document stem → its contract document node id (`doc:{stem}`). */
+export function docNodeIdFromStem(stem: string): string {
+  return `doc:${stem}`;
+}
+
 /**
  * Click-through node id for a search hit. The engine's `node_id` annotation
  * always wins (contract §8 — the engine's sole value-add over the rag
  * pass-through). When it is absent, the client may only derive a fallback
  * along the node-id grammar (§2 identity, M-B1): a CODE hit derives
- * `code:{repo-relative path}`, a vault hit derives `doc:{stem}`. A code result
- * must NEVER be papered as a `doc:` id — that loses the directory and mislabels
- * the kind, pointing at no graph node (finding wire-03). When no honest id can
- * be formed the value is null, never a guess.
+ * `code:{repo-relative path}`, a vault hit derives `doc:{stem}` through the
+ * shared `stemFromPath`/`docNodeIdFromStem` grammar. A code result must NEVER be
+ * papered as a `doc:` id — that loses the directory and mislabels the kind,
+ * pointing at no graph node (finding wire-03). When no honest id can be formed
+ * the value is null, never a guess.
  */
 export function deriveSearchNodeId(item: Record<string, unknown>): string | null {
   if (typeof item.node_id === "string") return item.node_id;
@@ -562,9 +594,8 @@ export function deriveSearchNodeId(item: Record<string, unknown>): string | null
   const isCode =
     item.source === "code" || (path !== undefined && !path.endsWith(".md"));
   if (isCode) return path ? `code:${path}` : null;
-  const docStem =
-    stem ?? (path ? path.replace(/^.*\//, "").replace(/\.md$/, "") : null);
-  return docStem ? `doc:${docStem}` : null;
+  const docStem = stem ?? (path ? stemFromPath(path) : null);
+  return docStem ? docNodeIdFromStem(docStem) : null;
 }
 
 // --- session / settings (user-state-persistence W04.P08.S28) ---------------------

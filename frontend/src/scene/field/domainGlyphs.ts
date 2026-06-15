@@ -1,9 +1,7 @@
 // The domain-mark texture provider — the GlyphTextureProvider the scene uses
-// once the Phosphor domain-mark family lands (W02.P17.S37). Adopting the new
-// family is a PROVIDER SWAP behind the unchanged `GlyphTextureProvider` seam,
-// not a change to the sprite, edge, or browse code (iconography + node-canvas
-// ADRs). The placeholder `ProgrammaticGlyphs` stays intact as the GPU-free
-// fallback for the node test env.
+// for the Phosphor domain-mark family (W02.P17.S37). It is the single
+// implementation behind the `GlyphTextureProvider` seam (iconography +
+// node-canvas ADRs).
 //
 // Each texture is produced by the proven path (the W01.P04.S20 spike):
 // the mark's `currentColor` SVG → resolve `currentColor` to white ink (Pixi's
@@ -28,8 +26,7 @@ const DEFAULT_KIND = "reference";
 /**
  * Resolve a node kind to its mark def. Known doc-type/feature species resolve
  * directly; anything else falls back to the default species silhouette, so the
- * provider never throws on an unexpected kind (matching the placeholder's
- * circle-ish default). Tier/state/event marks are addressed by their full id
+ * provider never throws on an unexpected kind. Tier/state/event marks are addressed by their full id
  * through `markDef` for the chrome plane and the gate, not by node kind.
  */
 export function markForKind(kind: string): MarkDef {
@@ -63,7 +60,7 @@ export function markGraphics(def: MarkDef): Graphics {
  * through the same `generateTexture` seam the placeholder provider uses. The
  * sprite layer tints them with state colour. Requires a live renderer (texture
  * generation is a GPU operation), which the field assembly supplies after
- * mount — identical lifecycle to `ProgrammaticGlyphs`.
+ * mount.
  */
 export class DomainGlyphs implements GlyphTextureProvider {
   private renderer: Renderer;

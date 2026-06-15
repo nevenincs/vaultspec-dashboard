@@ -69,19 +69,6 @@ const MOCK_SETTINGS_REGISTRY: SettingDef[] = [
     group: "Graph",
     order: 1,
   },
-  {
-    key: "node_label_scale",
-    value_type: { type: "integer", min: 50, max: 200 },
-    default: "100",
-    scope_eligible: true,
-    control: "slider",
-    label: "Label size",
-    description: "Relative size of node labels in the graph, as a percentage.",
-    group: "Graph",
-    order: 2,
-    step: 10,
-    unit: "%",
-  },
 ];
 
 /** Validate a settings write against the mock registry, mirroring the live
@@ -116,8 +103,10 @@ function mockValidateSetting(key: string, value: string, scoped: boolean): strin
       if (value.length > vt.max_len) bad(`must be at most ${vt.max_len} characters`);
       return value;
     case "integer": {
+      // Strict decimal-integer match, mirroring the live `value.parse::<i64>()`
+      // (rejects empty, whitespace, hex, floats) — mock-mirrors-live-wire-shape.
+      if (!/^-?\d+$/.test(value)) bad("must be an integer");
       const n = Number(value);
-      if (!Number.isInteger(n)) bad("must be an integer");
       if (n < vt.min || n > vt.max) bad(`must be between ${vt.min} and ${vt.max}`);
       return String(n);
     }

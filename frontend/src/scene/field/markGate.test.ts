@@ -2,7 +2,7 @@
 // offline. The gate rasterizer is pure (`svgRaster.ts` — no Pixi, no DOM), so
 // these tests run in the default node env. They exercise the silhouette
 // geometry — the part the a11y gate is actually about — not the GPU upload,
-// which stays untested (no GPU in the test env), matching `glyphs.test.ts`.
+// which stays untested (no GPU in the test env).
 
 import { describe, expect, it } from "vitest";
 

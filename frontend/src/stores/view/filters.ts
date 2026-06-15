@@ -32,6 +32,15 @@ export interface FilterState {
     facet: "docTypes" | "featureTags" | "relations" | "structuralStates",
     values: string[],
   ) => void;
+  /**
+   * Toggle one value in a facet array: remove it if present, append it
+   * otherwise. The store owns the arrays, so callers pass only the facet and
+   * the value — no `current` need be threaded through the chrome (M5).
+   */
+  toggleFacet: (
+    facet: "docTypes" | "featureTags" | "relations" | "structuralStates",
+    value: string,
+  ) => void;
   setTextMatch: (text: string) => void;
   setDateRange: (range: { from?: string; to?: string }) => void;
   reset: () => void;
@@ -68,6 +77,15 @@ export const useFilterStore = create<FilterState>((set) => ({
   setMinConfidence: (tier, floor) =>
     set((s) => ({ minConfidence: { ...s.minConfidence, [tier]: floor } })),
   setFacet: (facet, values) => set({ [facet]: values }),
+  toggleFacet: (facet, value) =>
+    set((s) => {
+      const current = s[facet] as string[];
+      return {
+        [facet]: current.includes(value)
+          ? current.filter((v) => v !== value)
+          : [...current, value],
+      };
+    }),
   setTextMatch: (textMatch) => set({ textMatch }),
   setDateRange: (dateRange) => set({ dateRange }),
   reset: () => set(structuredClone(DEFAULT_CHOICES)),

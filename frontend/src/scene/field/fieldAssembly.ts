@@ -70,11 +70,8 @@ export class DashboardField implements SceneFieldRenderer {
   /** Canvas registered before onReady fires — applied once the layer exists. */
   private pendingMinimapCanvas: HTMLCanvasElement | null = null;
   private hitTester = new SpatialHitTester();
-  // The domain-mark texture provider (W02.P17.S37). `ProgrammaticGlyphs` in
-  // `glyphs.ts` stays intact as the GPU-free placeholder/fallback; the live
-  // assembly uses `DomainGlyphs`, the Phosphor-family provider, behind the
-  // unchanged `GlyphTextureProvider` seam — a provider swap, not a sprite-code
-  // change.
+  // The domain-mark texture provider (W02.P17.S37): `DomainGlyphs`, the
+  // Phosphor-family provider, behind the `GlyphTextureProvider` seam.
   private glyphs: GlyphTextureProvider | null = null;
   private detachListeners: (() => void)[] = [];
   /** Guard: mount() is idempotent — only the first call assembles the scene (S06). */

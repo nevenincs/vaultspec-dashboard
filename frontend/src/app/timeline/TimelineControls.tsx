@@ -23,10 +23,11 @@
 // state, filled brush); every control is a real keyboard-reachable button / switch.
 
 import { CalendarDays, Maximize2, Scan, X, ZoomIn, ZoomOut } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
+import { FacetChipGroup } from "../chrome/FacetChipGroup";
 import { TierDial } from "../stage/TierDial";
 import { useActiveScope } from "../stage/Stage";
 import { movePlayhead } from "./Playhead";
@@ -96,53 +97,6 @@ export function parseDateInput(value: string): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
-// --- the chip group (mirrors the stage FilterBar facet-chip pattern) -------------
-
-interface ChipGroupProps {
-  label: string;
-  values: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-  emptyHint?: string;
-}
-
-/** A facet-chip group: vocabulary-driven SWITCH toggles (S65: `role="switch"` /
- *  `aria-checked`, consistent with the TierDial), token styling — the same shape
- *  the stage FilterBar uses, reused here so the bars read alike. Each chip is a
- *  two-state on/off filter, so the switch role names its state to assistive tech
- *  with the non-color pressed cue as the visual channel. */
-function ChipGroup({ label, values, selected, onToggle, emptyHint }: ChipGroupProps) {
-  return (
-    <span className="flex items-center gap-1" aria-label={`${label} filter`}>
-      <span className="text-ink-faint">{label}</span>
-      {values.length === 0 && emptyHint ? (
-        <span className="text-ink-faint">{emptyHint}</span>
-      ) : (
-        values.map((value) => {
-          const on = selected.includes(value);
-          return (
-            <button
-              key={value}
-              type="button"
-              role="switch"
-              aria-checked={on}
-              aria-label={`${label} ${value}`}
-              onClick={() => onToggle(value)}
-              className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                on
-                  ? "border-rule-strong bg-paper-sunken text-ink"
-                  : "border-rule text-ink-muted hover:border-rule-strong"
-              }`}
-            >
-              {value}
-            </button>
-          );
-        })
-      )}
-    </span>
-  );
-}
-
 // --- the control bar -------------------------------------------------------------
 
 export interface TimelineControlsProps {
@@ -172,11 +126,30 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
   // is written ONLY through setDateRange (the single date-range writer invariant).
   const relations = useFilterStore((s) => s.relations);
   const featureTags = useFilterStore((s) => s.featureTags);
-  const setFacet = useFilterStore((s) => s.setFacet);
+  const toggleFacet = useFilterStore((s) => s.toggleFacet);
   const dateRange = useFilterStore((s) => s.dateRange);
   const setDateRange = useFilterStore((s) => s.setDateRange);
 
   const [jumpValue, setJumpValue] = useState("");
+
+  // The control bar spans the full footer width, the same width as the timeline
+  // surface it drives, so it measures its OWN rendered width as the fit / zoom /
+  // jump / minimap viewport rather than trusting a hardcoded default. The
+  // `viewportWidth` prop is the pre-measurement fallback (and the standalone /
+  // test default). LOW-1: the AppShell mounts this without a measured width.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const host = rootRef.current;
+    if (!host) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) setMeasuredWidth(w);
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+  const effectiveWidth = measuredWidth ?? viewportWidth;
 
   // The range player RAF loop lives wherever the play trigger is mounted; the
   // control bar owns the chip's play trigger, so it drives the loop here.
@@ -192,23 +165,10 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
   );
   const corpusBounds = vocabulary.data?.date_bounds;
 
-  const toggleFacet = (
-    facet: "relations" | "featureTags",
-    value: string,
-    current: string[],
-  ) => {
-    setFacet(
-      facet,
-      current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value],
-    );
-  };
-
   // S50 zoom: rescale about the viewport centre, preserving the centred instant
   // (the scroll-model analogue of zoom-to-cursor), clamped to the supported band.
   const zoomBy = (factor: number) => {
-    const next = zoomAt(pxPerMs, scrollOffset, viewportWidth / 2, factor);
+    const next = zoomAt(pxPerMs, scrollOffset, effectiveWidth / 2, factor);
     setPxPerMs(next.pxPerMs);
     setScrollOffset(next.scrollOffset);
   };
@@ -221,7 +181,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
     const from = corpusBounds?.from ? Date.parse(corpusBounds.from) : NaN;
     const to = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
     if (!Number.isFinite(from)) return;
-    const next = fitSpan(from, Number.isFinite(to) ? to : Date.now(), viewportWidth);
+    const next = fitSpan(from, Number.isFinite(to) ? to : Date.now(), effectiveWidth);
     setPxPerMs(next.pxPerMs);
     setScrollOffset(next.scrollOffset);
   };
@@ -243,7 +203,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
         ? Date.parse(corpusBounds.to)
         : Date.now();
     if (!Number.isFinite(from)) return;
-    const next = fitSpan(from, Number.isFinite(to) ? to : Date.now(), viewportWidth);
+    const next = fitSpan(from, Number.isFinite(to) ? to : Date.now(), effectiveWidth);
     setPxPerMs(next.pxPerMs);
     setScrollOffset(next.scrollOffset);
   };
@@ -252,7 +212,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
   const jump = () => {
     const t = parseDateInput(jumpValue);
     if (t == null) return;
-    setScrollOffset(jumpToDateOffset(t, pxPerMs, viewportWidth));
+    setScrollOffset(jumpToDateOffset(t, pxPerMs, effectiveWidth));
   };
 
   // S55 range chip: clearing returns toward LIVE (the single date-range writer);
@@ -274,6 +234,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
 
   return (
     <div
+      ref={rootRef}
       className="pointer-events-auto flex flex-wrap items-center gap-vs-3 border-b border-rule bg-paper-raised/90 px-vs-2 py-vs-1 text-label backdrop-blur-sm"
       data-timeline-controls
     >
@@ -305,11 +266,11 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
       </span>
 
       {/* S47 relation/derivation filter chips — vocabulary from the engine enum. */}
-      <ChipGroup
+      <FacetChipGroup
         label="relation"
         values={relationVocab}
         selected={relations}
-        onToggle={(v) => toggleFacet("relations", v, relations)}
+        onToggle={(v) => toggleFacet("relations", v)}
         emptyHint="…"
       />
 
@@ -319,11 +280,11 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
 
       {/* S49 feature filter — vocabulary from the engine feature-tag enum; writing
           featureTags collapses the arcs to that feature's lineage thread. */}
-      <ChipGroup
+      <FacetChipGroup
         label="feature"
         values={featureVocab}
         selected={featureTags}
-        onToggle={(v) => toggleFacet("featureTags", v, featureTags)}
+        onToggle={(v) => toggleFacet("featureTags", v)}
         emptyHint="…"
       />
 
@@ -398,7 +359,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
 
       {/* S54 the minimap as scrubber — a dumb overview ribbon reading the corpus
           span + store, doubling as a horizontal scrubber. */}
-      <Minimap viewportWidth={viewportWidth} />
+      <Minimap viewportWidth={effectiveWidth} />
 
       {/* S55 the range-select chip with play-the-range. Renders the committed
           dateRange as a clearable, tabular chip; clearing returns toward LIVE. */}

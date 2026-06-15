@@ -1,0 +1,67 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "Semantic tier (default = LIGHT theme) plus the public token surface, mirrored from frontend/src/styles.css layers 2/3a/3b (design-language ADR S02/S03). The semantic.* roles are the layer a [data-theme] remaps; the public.* surface is what chrome utilities and the scene getComputedStyle readers consume. Each public token pins its exact CSS custom-property name and emit mode in $extensions['com.vaultspec.css'] so the Style Dictionary format reproduces styles.css byte-for-byte. emit: 'alias' -> var(...) ; 'hex' -> literal #rrggbb (scene-read subset, HIGH-1) ; 'raw' -> literal oklch().",
+  "semantic": {
+    "$description": "Radix-style role tier aliasing primitives; remapped per [data-theme].",
+    "surface": {
+      "base": { "$type": "color", "$value": "{primitive.neutral.50}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-surface-base", "emit": "alias" } } },
+      "raised": { "$type": "color", "$value": "{primitive.neutral.0}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-surface-raised", "emit": "alias" } } },
+      "sunken": { "$type": "color", "$value": "{primitive.neutral.150}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-surface-sunken", "emit": "alias" } } }
+    },
+    "border": {
+      "subtle": { "$type": "color", "$value": "{primitive.neutral.200}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-border-subtle", "emit": "alias" } } },
+      "strong": { "$type": "color", "$value": "{primitive.neutral.300}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-border-strong", "emit": "alias" } } }
+    },
+    "accent": {
+      "base": { "$type": "color", "$value": "{primitive.accent.500}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-accent-base", "emit": "alias" } } },
+      "hover": { "$type": "color", "$value": "{primitive.accent.600}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-accent-hover", "emit": "alias" } } },
+      "pressed": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.34, 0.085, 150] }, "$extensions": { "com.vaultspec.css": { "var": "--semantic-accent-pressed", "emit": "raw" } } },
+      "subtle": { "$type": "color", "$value": "{primitive.accent.300}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-accent-subtle", "emit": "alias" } } },
+      "on-subtle": { "$type": "color", "$value": "{primitive.accent.600}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-accent-on-subtle", "emit": "alias" } } }
+    },
+    "focus": {
+      "ring": { "$type": "color", "$value": "{primitive.accent.500}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-focus-ring", "emit": "alias" } } }
+    },
+    "ink": {
+      "faint": { "$type": "color", "$value": "{primitive.neutral.500}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-ink-faint", "emit": "alias" } } },
+      "muted": { "$type": "color", "$value": "{primitive.neutral.700}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-ink-muted", "emit": "alias" } } },
+      "body": { "$type": "color", "$value": "{primitive.neutral.850}", "$extensions": { "com.vaultspec.css": { "var": "--semantic-ink-body", "emit": "alias" } } }
+    }
+  },
+  "public": {
+    "$description": "The --color-* surface. 'chrome' tokens are var() aliases (oklch ok, not scene-read); 'scene' tokens are literal hex parsed by the canvas getComputedStyle readers.",
+    "chrome": {
+      "paper": { "$type": "color", "$value": "{semantic.surface.base}", "$extensions": { "com.vaultspec.css": { "var": "--color-paper", "emit": "alias" } } },
+      "paper-raised": { "$type": "color", "$value": "{semantic.surface.raised}", "$extensions": { "com.vaultspec.css": { "var": "--color-paper-raised", "emit": "alias" } } },
+      "paper-sunken": { "$type": "color", "$value": "{semantic.surface.sunken}", "$extensions": { "com.vaultspec.css": { "var": "--color-paper-sunken", "emit": "alias" } } },
+      "paper-aged": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.96, 0.018, 75] }, "$extensions": { "com.vaultspec.css": { "var": "--color-paper-aged", "emit": "raw" } } },
+      "ink-faint": { "$type": "color", "$value": "{semantic.ink.faint}", "$extensions": { "com.vaultspec.css": { "var": "--color-ink-faint", "emit": "alias" } } },
+      "rule-strong": { "$type": "color", "$value": "{semantic.border.strong}", "$extensions": { "com.vaultspec.css": { "var": "--color-rule-strong", "emit": "alias" } } },
+      "accent": { "$type": "color", "$value": "{semantic.accent.base}", "$extensions": { "com.vaultspec.css": { "var": "--color-accent", "emit": "alias" } } },
+      "accent-subtle": { "$type": "color", "$value": "{semantic.accent.subtle}", "$extensions": { "com.vaultspec.css": { "var": "--color-accent-subtle", "emit": "alias" } } },
+      "accent-text": { "$type": "color", "$value": "{semantic.accent.on-subtle}", "$extensions": { "com.vaultspec.css": { "var": "--color-accent-text", "emit": "alias" } } },
+      "focus": { "$type": "color", "$value": "{semantic.focus.ring}", "$extensions": { "com.vaultspec.css": { "var": "--color-focus", "emit": "alias" } } },
+      "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.55, 0.11, 160] }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-live", "emit": "raw" } } },
+      "diff-add": { "$type": "color", "$value": "{primitive.diff.add-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-add", "emit": "alias" } } },
+      "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-remove", "emit": "alias" } } }
+    },
+    "scene": {
+      "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#fdfaf6" }, "$extensions": { "com.vaultspec.css": { "var": "--color-canvas-bg", "emit": "hex" } } },
+      "ink": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#312d27" }, "$extensions": { "com.vaultspec.css": { "var": "--color-ink", "emit": "hex" } } },
+      "ink-muted": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5f5a53" }, "$extensions": { "com.vaultspec.css": { "var": "--color-ink-muted", "emit": "hex" } } },
+      "rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ebe6e0" }, "$extensions": { "com.vaultspec.css": { "var": "--color-rule", "emit": "hex" } } },
+      "tier-declared": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#312d27" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-declared", "emit": "hex" } } },
+      "tier-structural": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#3f774d" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-structural", "emit": "hex" } } },
+      "tier-temporal": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5c5040" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-temporal", "emit": "hex" } } },
+      "tier-semantic": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8b85b7" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-semantic", "emit": "hex" } } },
+      "state-active": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#3f774d" }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-active", "emit": "hex" } } },
+      "state-complete": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5c5040" }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-complete", "emit": "hex" } } },
+      "state-archived": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#898581" }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-archived", "emit": "hex" } } },
+      "state-stale": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#9f7100" }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-stale", "emit": "hex" } } },
+      "state-broken": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ae4024" }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-broken", "emit": "hex" } } },
+      "status-provisional": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#806a44" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-provisional", "emit": "hex" } } },
+      "status-graded": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#9f7100" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-graded", "emit": "hex" } } },
+      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5c5040" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-tiered", "emit": "hex" } } }
+    }
+  }
+}

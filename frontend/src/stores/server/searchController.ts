@@ -31,6 +31,7 @@ import type {
   VaultTreeEntry,
 } from "./engine";
 import { EngineError } from "./engine";
+import { docNodeIdFromStem, isRagRunning, stemFromPath } from "./liveAdapters";
 import {
   engineKeys,
   useEngineSearch,
@@ -41,19 +42,22 @@ import {
 
 // --- node-id grammar (stores-owned, §2 identity) -----------------------------------
 //
-// The same `doc:{stem}` grammar `deriveSearchNodeId` (liveAdapters) recovers for a
-// live hit, kept HERE in the stores layer so the fallback never reaches up into a
-// chrome helper for it (the old fallback imported `pathToNodeId` from `app/left/`,
-// an upward dependency the boundary correction removes).
+// The `doc:{stem}` grammar has ONE stores-layer home: `stemFromPath` /
+// `docNodeIdFromStem` in liveAdapters, the same pair `deriveSearchNodeId` derives a
+// live hit's id through (centralisation audit L2). These thin wrappers preserve the
+// fallback's existing call shape while consuming that single grammar, so the
+// controller never re-implements the strip-dir-and-`.md` regex and never reaches up
+// into a chrome helper for it (the old fallback imported `pathToNodeId` from
+// `app/left/`, an upward dependency the boundary correction removes).
 
 /** Vault path → its canonical stem (filename without directory or `.md`). */
 export function pathStem(path: string): string {
-  return path.replace(/^.*\//, "").replace(/\.md$/, "");
+  return stemFromPath(path);
 }
 
 /** Vault path → the contract's document node id (`doc:{stem}`). */
 export function pathToDocNodeId(path: string): string {
-  return `doc:${pathStem(path)}`;
+  return docNodeIdFromStem(stemFromPath(path));
 }
 
 // --- pure fallback matching (unit-tested) ------------------------------------------
@@ -131,8 +135,10 @@ export function isTransportError(error: unknown): boolean {
 // The §7 `backends` stream reports each backend's lifecycle word. The search
 // controller subscribes only to `backends`, so every retained chunk's `data` is a
 // `{ rag?: <lifecycle> }` frame; rag is available only when the word is exactly
-// "running" (mirrors `adaptStatus`/`deriveRagStatusView`: `service === "running"`).
-// We read the MOST-RECENT such frame BY VALUE rather than counting accumulator
+// "running", tested through the shared `isRagRunning` predicate (the one stores-
+// layer home `adaptStatus`/`deriveRagStatusView` also route through — no local
+// re-implementation to drift). We read the MOST-RECENT such frame BY VALUE rather
+// than counting accumulator
 // length, because `streamReducer` ring-caps the accumulator at STREAM_RETENTION —
 // a length-based detector silently stops firing once the stream saturates, so a
 // recovered rag would stay pinned to the text-match fallback for the rest of the
@@ -154,7 +160,7 @@ function ragWordOf(chunk: { data: unknown }): string | undefined {
  * guard the initial state and not treat "no frame" as a transition). Robust to
  * the STREAM_RETENTION ring cap: it reads the newest carried value, never a
  * monotonically-growing count. Available iff the lifecycle word is exactly
- * "running".
+ * "running" (the shared `isRagRunning` predicate).
  */
 export function latestBackendsRagAvailable(
   chunks: readonly { data: unknown }[] | undefined,
@@ -162,7 +168,7 @@ export function latestBackendsRagAvailable(
   if (!chunks) return undefined;
   for (let i = chunks.length - 1; i >= 0; i--) {
     const word = ragWordOf(chunks[i]);
-    if (word !== undefined) return word === "running";
+    if (word !== undefined) return isRagRunning(word);
   }
   return undefined;
 }

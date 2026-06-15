@@ -8,6 +8,7 @@ import { create } from "zustand";
 import type { KeyValueStore } from "../../scene/positionCache";
 import type { FilterChoices } from "./filters";
 import { DEFAULT_CHOICES, useFilterStore } from "./filters";
+import { createScopedStore } from "./scopedStore";
 
 export interface Lens {
   name: string;
@@ -42,28 +43,24 @@ export const BUILTIN_LENSES: Lens[] = [
 // Lenses are keyed by workspace + scope like every other client-side
 // persistence surface (G5.d; finding lens-scope-key-018): lens choices
 // embed scope-dependent vocabulary (feature tags), so cross-scope bleed is
-// real, not theoretical.
-const PREFIX = "vaultspec-dashboard:lenses";
-
-const storageKey = (workspace: string, scope: string) =>
-  `${PREFIX}:${workspace}:${scope}`;
+// real, not theoretical. The scope-keyed scaffold is owned by
+// `createScopedStore`; this configures it for the `Lens[]` shape, dropping
+// builtins on save (they are shipped, not persisted).
+const lensesStore = createScopedStore<Lens[]>({
+  prefix: "vaultspec-dashboard:lenses",
+  parse: (raw) =>
+    Array.isArray(raw)
+      ? (raw as Lens[]).filter((l) => l && typeof l.name === "string" && l.choices)
+      : [],
+  serialize: (lenses) => lenses.filter((l) => !l.builtin),
+});
 
 export function loadLenses(
   store: KeyValueStore,
   workspace: string,
   scope: string,
 ): Lens[] {
-  const raw = store.getItem(storageKey(workspace, scope));
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed)
-      ? (parsed as Lens[]).filter((l) => typeof l.name === "string" && l.choices)
-      : [];
-  } catch {
-    store.removeItem(storageKey(workspace, scope));
-    return [];
-  }
+  return lensesStore.load(store, workspace, scope);
 }
 
 export function saveLenses(
@@ -72,18 +69,7 @@ export function saveLenses(
   scope: string,
   lenses: readonly Lens[],
 ): void {
-  try {
-    store.setItem(
-      storageKey(workspace, scope),
-      JSON.stringify(lenses.filter((l) => !l.builtin)),
-    );
-  } catch {
-    // Best-effort persistence.
-  }
-}
-
-function backingStore(): KeyValueStore | null {
-  return typeof localStorage === "undefined" ? null : localStorage;
+  lensesStore.save(store, workspace, scope, [...lenses]);
 }
 
 interface LensState {
@@ -101,11 +87,13 @@ interface LensState {
 }
 
 export const useLensStore = create<LensState>((set, get) => ({
-  saved: backingStore() ? loadLenses(backingStore()!, "default", "default") : [],
+  saved: lensesStore.backingStore()
+    ? loadLenses(lensesStore.backingStore()!, "default", "default")
+    : [],
   workspace: "default",
   scope: "default",
   setScopeKey: (workspace, scope) => {
-    const store = backingStore();
+    const store = lensesStore.backingStore();
     set({
       workspace,
       scope,
@@ -129,7 +117,7 @@ export const useLensStore = create<LensState>((set, get) => ({
     };
     const saved = [...get().saved.filter((l) => l.name !== name), lens];
     set({ saved });
-    const store = backingStore();
+    const store = lensesStore.backingStore();
     if (store) saveLenses(store, get().workspace, get().scope, saved);
   },
   apply: (name) => {
@@ -143,7 +131,7 @@ export const useLensStore = create<LensState>((set, get) => ({
   remove: (name) => {
     const saved = get().saved.filter((l) => l.name !== name);
     set({ saved });
-    const store = backingStore();
+    const store = lensesStore.backingStore();
     if (store) saveLenses(store, get().workspace, get().scope, saved);
   },
   all: () => [...BUILTIN_LENSES, ...get().saved],

@@ -24,6 +24,7 @@
 import type { NodePosition } from "../positionCache";
 import type { SceneNodeData } from "../sceneController";
 import type { CameraState } from "./camera";
+import { cssColorString } from "./tokenReads";
 
 /** The fixed canvas size the chrome should create (width × height in px). */
 export const MINIMAP_SIZE = 120;
@@ -222,7 +223,7 @@ export class MinimapLayer {
     // theme and uses no off-palette colour (MEDIUM-3). Resolved once per pass.
     const cssRoot = getComputedStyle(document.documentElement);
     const token = (name: string, fallback: string) =>
-      cssRoot.getPropertyValue(name).trim() || fallback;
+      cssColorString(name, fallback, cssRoot);
 
     const bgColor = token("--color-canvas-bg", BG_FALLBACK);
     const ruleColor = token("--color-rule", RULE_FALLBACK);

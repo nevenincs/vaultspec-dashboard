@@ -1,0 +1,58 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "DARK theme override set, mirrored from the [data-theme=\"dark\"] block in frontend/src/styles.css (design-language ADR S06). Overrides the semantic tier, the diverging public chrome tokens, and the full scene-read hex surface. Chrome tokens that merely follow the remapped semantic tier are not restated (they alias the semantic roles, which are overridden here). Per-theme shadow remaps remain hand-authored in styles.css and are out of the DTCG color scope.",
+  "semantic": {
+    "surface": {
+      "base": { "$type": "color", "$value": "{primitive.neutral.900}" },
+      "raised": { "$type": "color", "$value": "{primitive.neutral.850}" },
+      "sunken": { "$type": "color", "$value": "{primitive.neutral.940}" }
+    },
+    "border": {
+      "subtle": { "$type": "color", "$value": "{primitive.neutral.800}" },
+      "strong": { "$type": "color", "$value": "{primitive.neutral.700}" }
+    },
+    "accent": {
+      "base": { "$type": "color", "$value": "{primitive.accent.700}" },
+      "hover": { "$type": "color", "$value": "{primitive.accent.800}" },
+      "pressed": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.62, 0.085, 150] } },
+      "subtle": { "$type": "color", "$value": "{primitive.accent.dark-subtle}" },
+      "on-subtle": { "$type": "color", "$value": "{primitive.accent.800}" }
+    },
+    "focus": {
+      "ring": { "$type": "color", "$value": "{primitive.accent.700}" }
+    },
+    "ink": {
+      "faint": { "$type": "color", "$value": "{primitive.neutral.500}" },
+      "muted": { "$type": "color", "$value": "{primitive.neutral.400}" },
+      "body": { "$type": "color", "$value": "{primitive.neutral.150}" }
+    }
+  },
+  "public": {
+    "chrome": {
+      "paper-aged": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.27, 0.018, 75] } },
+      "accent-subtle": { "$type": "color", "$value": "{primitive.accent.dark-subtle}" },
+      "accent-text": { "$type": "color", "$value": "{primitive.accent.800}" },
+      "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.75, 0.11, 160] } },
+      "diff-add": { "$type": "color", "$value": "{primitive.diff.add-d}" },
+      "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-d}" }
+    },
+    "scene": {
+      "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#1a1713" } },
+      "ink": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#f4efea" } },
+      "ink-muted": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#a9a49c" } },
+      "rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#46423b" } },
+      "tier-declared": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dbd7d0" } },
+      "tier-structural": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5d9d6b" } },
+      "tier-temporal": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#bdaf9d" } },
+      "tier-semantic": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#6e659f" } },
+      "state-active": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5d9d6b" } },
+      "state-complete": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#bdaf9d" } },
+      "state-archived": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#74716c" } },
+      "state-stale": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dcaf61" } },
+      "state-broken": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#e37f65" } },
+      "status-provisional": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#c0a877" } },
+      "status-graded": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dcaf61" } },
+      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#bdaf9d" } }
+    }
+  }
+}
