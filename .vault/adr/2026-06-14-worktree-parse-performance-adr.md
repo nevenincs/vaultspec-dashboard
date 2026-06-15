@@ -7,6 +7,7 @@ modified: '2026-06-14'
 related:
   - '[[2026-06-14-user-state-persistence-audit]]'
   - '[[2026-06-13-graph-scale-hardening-adr]]'
+  - '[[2026-06-13-graph-scale-hardening-research]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'
 ---
 

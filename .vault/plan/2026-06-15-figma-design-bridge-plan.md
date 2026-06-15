@@ -114,7 +114,7 @@ Define the registry schema, author the mapping, and enforce the 1:1 naming-parit
 Seed the Figma file: manually rebuild foundations and icons, importer-seed composite screens, clean up, and record node references.
 
 - [x] `W02.P09.S38` - Create the Figma file and the Primitives and Semantic variable collections from the Tokens Studio push; `frontend/figma/FIGMA-SEED.md`.
-- [ ] `W02.P09.S39` - Manually rebuild the foundation in Figma: color styles, type scale, and the Lucide/Phosphor icon set; `frontend/figma/FIGMA-SEED.md`.
+- [x] `W02.P09.S39` - Manually rebuild the foundation in Figma: color styles, type scale, and the Lucide/Phosphor icon set; `frontend/figma/FIGMA-SEED.md`.
 - [x] `W02.P09.S40` - Importer-seed the composite screens from the running Storybook gallery using html.to.design or Codia; `frontend/figma/FIGMA-SEED.md`.
 - [x] `W02.P09.S41` - Run the cleanup pass renaming layers and componentizing seeded frames to the naming contract; `frontend/figma/FIGMA-SEED.md`.
 - [x] `W02.P09.S42` - Record the resulting Figma node ids and urls back into the mapping registry; `frontend/figma/component-map.json`.
