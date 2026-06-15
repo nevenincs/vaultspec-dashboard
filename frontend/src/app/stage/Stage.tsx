@@ -235,7 +235,15 @@ export function Stage() {
       if (rect) scene.controller.resize(rect.width, rect.height);
     });
     observer.observe(host);
-    return () => observer.disconnect();
+    // Reversible teardown (perf-sweep F#1): on unmount, release the field's
+    // canvas listeners, ticker callback, theme observers, and FA2 worker rather
+    // than leaking them. The scene singleton survives; its renderer is rebuilt on
+    // the next mount (PixiField's generation guard makes the StrictMode
+    // mount→destroy→mount cycle safe).
+    return () => {
+      observer.disconnect();
+      scene.controller.destroy();
+    };
   }, []);
 
   // Seam events → the shared view state (selection is one concept, G2.b);

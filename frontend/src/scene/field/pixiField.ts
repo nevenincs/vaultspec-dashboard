@@ -28,6 +28,11 @@ export class PixiField implements SceneFieldRenderer {
   private world = new Container();
   private mounting: Promise<void> | null = null;
   private destroyed = false;
+  /** Bumped by every mount() and destroy(); the async init bails if its captured
+   * generation is stale, so a fast mount→destroy→mount cycle (React StrictMode,
+   * or a real Stage remount) can neither leak an Application nor wedge with a
+   * blank canvas (perf-sweep F#1). */
+  private gen = 0;
   private pendingResize: { width: number; height: number } | null = null;
   private readyListeners = new Set<(app: Application) => void>();
   /** Watches for data-theme changes to keep the canvas background in sync. */
@@ -40,10 +45,13 @@ export class PixiField implements SceneFieldRenderer {
    * (React StrictMode-style) can never leak an Application.
    */
   mount(host: HTMLElement): void {
-    if (this.mounting || this.app) return;
     // No DOM → no renderer; safe no-op for SSR / node test environment.
     if (typeof document === "undefined") return;
+    // Idempotent: already live, or an init is in flight that a destroy() has not
+    // cancelled. (The assembly's own guard usually prevents a redundant call.)
+    if (this.app || (this.mounting && !this.destroyed)) return;
     this.destroyed = false;
+    const myGen = ++this.gen;
     const app = new Application();
     this.mounting = app
       .init({
@@ -53,11 +61,15 @@ export class PixiField implements SceneFieldRenderer {
         preference: "webgl",
       })
       .then(() => {
-        this.mounting = null;
-        if (this.destroyed) {
+        // A destroy() or a newer mount() superseded this init during the async
+        // window: discard this Application so the cycle neither leaks it nor
+        // wedges the field with a blank canvas (F#1).
+        if (myGen !== this.gen || this.destroyed) {
           app.destroy(true, { children: true });
+          if (myGen === this.gen) this.mounting = null;
           return;
         }
+        this.mounting = null;
         this.app = app;
         app.stage.addChild(this.world);
         host.appendChild(app.canvas);
@@ -106,6 +118,7 @@ export class PixiField implements SceneFieldRenderer {
   /** Tear down the renderer; safe to call mid-mount and idempotent. */
   destroy(): void {
     this.destroyed = true;
+    this.gen++; // cancel any in-flight mount so its app is discarded on resolve
     this.pendingResize = null;
     this.themeObserver?.disconnect();
     this.themeObserver = null;
