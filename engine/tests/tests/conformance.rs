@@ -347,6 +347,67 @@ fn typed_client_expectations_hold_over_live_serve() {
         plan_node["lifecycle"]["progress"]["done"].is_number(),
         "plan lifecycle progress on the list shape"
     );
+
+    // --- graph-node-semantics: the ADDITIVE ontology wire fields --------------
+    // The node gains authority_class (the register) and an aggregate hint, both
+    // additive and never re-keying the node (the §4 id is unchanged).
+    assert_eq!(
+        plan_node["authority_class"], "roadmap",
+        "plan maps to the roadmap authority register"
+    );
+    assert_eq!(
+        plan_node["aggregate"], false,
+        "a plan is individually weighted, not an aggregate species"
+    );
+    assert_eq!(
+        plan_node["id"], "doc:2026-06-13-conf-plan",
+        "additive ontology fields leave the node id untouched"
+    );
+    // The ADR node carries its design register.
+    let adr_node = docs["data"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "doc:2026-06-13-conf-adr")
+        .expect("adr doc node")
+        .clone();
+    assert_eq!(
+        adr_node["authority_class"], "design",
+        "an ADR is design authority"
+    );
+    // The edge gains a `derivation` label, distinct from the §4 `relation`,
+    // carried alongside it. The plan -> adr wiki-link is `authorizes`.
+    let plan_adr_edge = docs["data"]["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["src"] == "doc:2026-06-13-conf-plan" && e["dst"] == "doc:2026-06-13-conf-adr")
+        .expect("plan -> adr edge")
+        .clone();
+    assert!(
+        plan_adr_edge["relation"].is_string(),
+        "the §4 relation is still present"
+    );
+    assert_eq!(
+        plan_adr_edge["derivation"], "authorizes",
+        "the additive derivation label rides alongside the §4 relation"
+    );
+    // Every edge carries the `derivation` key (null when no pipeline shape) —
+    // the field is unconditionally part of the additive §4 edge view.
+    assert!(
+        docs["data"]["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e.get("derivation").is_some()),
+        "every edge view carries the additive derivation key"
+    );
+    // The additive fields ride through the SHARED envelope: tiers present on
+    // this success response (every-wire-response-carries-the-tiers-block).
+    assert!(
+        docs["tiers"].is_object(),
+        "the success envelope carries the tiers block"
+    );
     // S50: a LIVE document keyframe also anchors the clock (numeric last_seq),
     // so both species resume on the single monotonic clock.
     assert!(

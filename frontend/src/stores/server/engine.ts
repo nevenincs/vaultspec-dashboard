@@ -10,11 +10,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { DEFAULT_SALIENCE_LENS, type SalienceLens } from "../view/salienceLens";
 import {
   adaptFileTree,
   adaptFilters,
   adaptGitOp,
   adaptGraphSlice,
+  adaptLineageSlice,
   adaptMap,
   adaptPipeline,
   adaptPlanInterior,
@@ -248,6 +250,43 @@ export interface EngineNode {
    * center-of-gravity sizing (ADR D4.1); absent on document nodes.
    */
   member_count?: number;
+  /**
+   * The authority register the node answers in (graph-node-semantics ADR):
+   * `design` (ADR), `roadmap` (plan/feature), `evidence` (exec), `judgment`
+   * (audit), `law` (rule), `substrate` (research/reference), `manifest`
+   * (index), or `unknown` (an unrecognized type, surfaced honestly). The
+   * stable handle the salience lenses bias toward; an ADDITIVE projection, it
+   * never re-keys the node.
+   */
+  authority_class?: string;
+  /**
+   * The aggregate-species hint (graph-node-semantics ADR): `true` for exec
+   * records, collapsible into their parent plan at overview LOD so the long
+   * tail does not swamp the field. `false`/absent for individually-weighted
+   * species (ADR, plan, audit, rule).
+   */
+  aggregate?: boolean;
+  /**
+   * The single active-lens Degree-of-Interest salience float in [0,1]
+   * (graph-node-salience ADR): the engine-computed, per-lens, CPU-bound node
+   * importance for the REQUESTED lens. Present on document nodes; absent on
+   * feature-convergence nodes (the salience model ranks documents). It is a
+   * single float for the active lens, NEVER a per-lens map — treating it as a
+   * fixed number anywhere discards the intent dimension the ADR exists for.
+   * The representation layer CONSUMES this (node size + label priority,
+   * graph-representation ADR encoding map); now produced for real by the
+   * merged salience engine, no longer a representation mock stub.
+   */
+  salience?: number;
+  /**
+   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
+   * the rag embedding delivered to the CPU worker for the semantic UMAP layout
+   * mode. The engine never serves layout coordinates (graph-compute-is-CPU); it
+   * serves the raw embedding and the worker projects it. Absent on nodes lacking
+   * an embedding — the semantic mode draws those in a connectivity-fallback
+   * position and says so.
+   */
+  embedding?: number[];
 }
 
 /**
@@ -279,9 +318,46 @@ export interface EngineEdge {
   state?: "resolved" | "stale" | "broken";
   provenance?: string;
   observed_at?: string;
+  /**
+   * The pipeline-derivation label (graph-node-semantics ADR), carried
+   * ALONGSIDE the §4 `relation`/`tier` and NEVER instead of them: a first-class
+   * labeled relation drawn from the closed `DerivationRelation` vocabulary
+   * (`grounds`, `authorizes`/`binds`, `generated-by`, `aggregates`, `reviews`,
+   * `promoted-from`), or `null` when the edge carries no pipeline relationship.
+   * The two name different facts — derivation says WHAT the relationship is in
+   * the framework, the tier says HOW the engine knows it. The representation
+   * layer's lineage layout consumes it on the derivation axis. ADDITIVE: the
+   * label is not part of the edge stable key, so labeling never re-keys.
+   */
+  derivation?: DerivationRelation | null;
   /** Constellation meta-edges only (engine-aggregated, §4). */
   meta?: { count: number; breakdown_by_tier: Record<string, number> };
 }
+
+/** The closed pipeline-derivation vocabulary (graph-node-semantics ADR). */
+export type DerivationRelation =
+  | "grounds"
+  | "authorizes"
+  // `binds` is a deliberate inbound-tolerant alias of `authorizes`: the engine
+  // wire only ever emits `authorizes`, but the client accepts `binds` (the ADR's
+  // synonym) so an older/alternate producer can never break edge styling.
+  | "binds"
+  | "generated-by"
+  | "aggregates"
+  | "reviews"
+  | "promoted-from";
+
+/**
+ * The salience lens (graph-node-salience ADR): the per-viewer-intent
+ * parameterization the engine biases its importance computation toward.
+ * `status` (the default, "what is in-flight") leads with betweenness + hub
+ * score + high recency; `design` ("why is the system this way") leads with
+ * authority PageRank + coreness. The canonical definition (and its active-lens
+ * view store) lives in `view/salienceLens.ts`; re-exported here so the §4 wire
+ * surface and its representation-layer consumers share one type and one default.
+ */
+export { DEFAULT_SALIENCE_LENS };
+export type { SalienceLens };
 
 /** The engine-owned filter object, echoed back normalized (§4). */
 export interface GraphFilter {
@@ -324,6 +400,18 @@ export interface GraphSlice {
    * silent partial result.
    */
   truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
+  /**
+   * The active salience lens the engine computed for (graph-node-salience ADR
+   * wire amendment), echoed so the client never re-derives which lens it renders.
+   * Defaults to `status` when the request omitted it.
+   */
+  lens?: SalienceLens;
+  /**
+   * True when the salience was computed while a relevant tier was degraded (read
+   * from the `tiers` block, never guessed): the client renders the ranking as
+   * partial, never as a complete one. The degraded tier itself is in `tiers`.
+   */
+  salience_partial?: boolean;
 }
 
 export interface FiltersVocabulary {
@@ -377,6 +465,96 @@ export interface EventsResponse {
   events?: EngineEvent[];
   buckets?: EventBucket[];
   tiers: TiersBlock;
+}
+
+// --- §5 bounded temporal-lineage projection (dashboard-timeline ADR) ----------------
+//
+// The diachronic lineage the phase-lane timeline draws: for a scope and an
+// inclusive `[from, to]` ISO date range, the dated document nodes in range
+// together with the self-consistent edges among them (every arc's src/dst is a
+// returned node). Served by `GET /graph/lineage?scope&from&to&filter=` under the
+// shared `{data: {nodes, arcs, truncated}, tiers, next_cursor?}` envelope; wire
+// shapes stay snake_case exactly as the live `vaultspec-api` `graph_lineage`
+// route serves them (mirrored from `engine-query` `lineage.rs`). The slice is
+// bounded under the document node ceiling with an honest `truncated` block
+// (graph-queries-are-bounded-by-default), and the semantic tier is present-only
+// in the range lineage (reported degraded in the envelope `tiers` block).
+
+/** The pipeline-phase LANE a dated document sits in (engine `PipelineLanePhase`,
+ *  kebab-case on the wire): research/reference share the research lane, then adr,
+ *  plan, exec, audit→review, rule→codify. The static lane a document belongs to
+ *  by its kind alone — what the timeline lanes ARE. */
+export type LineagePhase = "research" | "adr" | "plan" | "exec" | "review" | "codify";
+
+/**
+ * One dated document node in the lineage slice (engine `LineageNode`): everything
+ * the phase-lane mark renders. Identity rides the engine's stable node id
+ * (`doc:{stem}`, provenance-stable-keys-are-identity-bearing) — the timeline
+ * caches and animates marks and arcs by it across scrub and live update.
+ */
+export interface LineageNode {
+  /** Stable node id (`doc:{stem}`) — identity-bearing. */
+  id: string;
+  /** Vault doc type (`research`/`adr`/`plan`/`exec`/`audit`/`rule`/...). */
+  doc_type: string;
+  /** The derived pipeline-phase lane this document sits in. */
+  phase: LineagePhase;
+  /**
+   * Blob-true date(s) the node carries: `created` from frontmatter is the mark
+   * position; `modified` (engine `Timestamp` = i64 epoch-ms, when present) is the
+   * faint trailing tick. Both optional — the engine omits an absent date.
+   */
+  dates: { created?: string; modified?: number };
+  /** Body H1 title, when the document carries one. */
+  title?: string;
+  /** Total degree (edges touching this node over all tiers) — the v1 salience
+   *  input the mark weight rides. */
+  degree: number;
+}
+
+/**
+ * One relation arc between two dated marks (engine `LineageArc`): the lineage
+ * edge the timeline draws. Carries the stable edge id (arc identity), the
+ * endpoints, the typed relation, the optional `derivation` framework label, the
+ * provenance tier (the arc's tier-as-treatment styling), and the calibrated
+ * confidence.
+ *
+ * `derivation` is the additive framework-relationship label specified by the
+ * node-semantics ADR (`grounds`/`authorizes`/`generated-by`/...) — NOT yet
+ * shipped on the engine `Edge`. Until it lands the arc carries the shipped
+ * `relation`/`tier` truth and `derivation` is absent; the surface draws REAL
+ * lineage from day one and gains the richer label when the field arrives.
+ */
+export interface LineageArc {
+  /** Stable edge id — arc identity, preserved across scrub and live update. */
+  id: string;
+  src: string;
+  dst: string;
+  /** Typed relation wire name (`mentions`/`references`/`contains`/...). */
+  relation: string;
+  /** The framework derivation label, when shipped (absent until the
+   *  node-semantics `derivation` field lands). */
+  derivation?: string;
+  /** Provenance tier wire name. The range lineage serves declared/structural/
+   *  temporal; semantic is present-only (excluded). */
+  tier: "declared" | "structural" | "temporal" | "semantic";
+  /** Tier-calibrated, fixed-band confidence. */
+  confidence: number;
+}
+
+/**
+ * The bounded temporal-lineage slice (engine `LineageSlice`, unwrapped from the
+ * `{data, tiers}` envelope): the dated nodes in range, the self-consistent edges
+ * among them, the per-tier `tiers` availability block, and an honest `truncated`
+ * block. `truncated` is present and non-null ONLY when the engine's document node
+ * ceiling capped the slice (the route serves `null` otherwise); the timeline
+ * renders it as the "narrowed — refine your range" state, never a silent partial.
+ */
+export interface LineageSlice {
+  nodes: LineageNode[];
+  arcs: LineageArc[];
+  tiers: TiersBlock;
+  truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
 }
 
 /**
@@ -765,6 +943,17 @@ export class EngineClient {
      *  feature-convergence nodes + meta-edges. Omitted = document. */
     granularity?: "document" | "feature";
     as_of?: string | number;
+    /**
+     * The active salience lens (graph-node-salience ADR §4 amendment): a request
+     * parameter selecting which per-lens importance field the engine computes
+     * and — via DOI — which node set is served. `status` (default) or `design`;
+     * omitted = the engine defaults to status. Switching lens is a re-query the
+     * stores layer issues. The representation layer drives this from its
+     * active-lens view state.
+     */
+    lens?: SalienceLens;
+    /** The DOI focus node id folded into the salience distance term. */
+    focus?: string | null;
   }): Promise<GraphSlice> {
     return adaptGraphSlice(await this.post("/graph/query", body));
   }
@@ -815,6 +1004,23 @@ export class EngineClient {
     bucket?: string;
   }): Promise<EventsResponse> {
     return this.get("/events", params);
+  }
+
+  /** The bounded temporal-lineage projection (dashboard-timeline ADR, contract
+   *  §5): for a scope and an inclusive `[from, to]` ISO `yyyy-mm-dd` date range
+   *  (either bound optional/open), the dated document nodes in range plus the
+   *  self-consistent edges among them. `filter` is the engine-owned wire filter
+   *  as a URL-encoded JSON string, exactly as `/graph/lineage` accepts it (the
+   *  same grammar `/graph/query` uses). Built and unwrapped through the same
+   *  client path as `events`/`graphQuery`; the tolerant adapter reconciles the
+   *  slice shape. */
+  async lineage(params: {
+    scope: string;
+    from?: string;
+    to?: string;
+    filter?: string;
+  }): Promise<LineageSlice> {
+    return adaptLineageSlice(await this.get("/graph/lineage", params));
   }
 
   graphAsof(params: {

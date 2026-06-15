@@ -112,22 +112,22 @@ Deliver the tier-weighted backbone over the bounded subgraph and the per-graph-g
 
 Build the bounded subgraph's adjacency weighted by provenance tier so the declared/structural backbone dominates topology and the dense semantic tier cannot hijack centrality.
 
-- [ ] `W01.P01.S01` - Add a salience module to engine-query exporting the per-lens scalar projection surface and its public types; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P01.S02` - Define the tier-weight vector (declared >= structural >> temporal >= semantic) and build the weighted backbone adjacency over the bounded subgraph from the LinkageGraph; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P01.S03` - Restrict the headline-centrality backbone to the high-precision declared and structural tiers, admitting temporal and semantic only as damped enrichment; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P01.S04` - Unit-test the backbone builder: tier weighting applied, semantic-tier edges damped, bounded-subgraph membership preserved; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P01.S01` - Add a salience module to engine-query exporting the per-lens scalar projection surface and its public types; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P01.S02` - Define the tier-weight vector (declared >= structural >> temporal >= semantic) and build the weighted backbone adjacency over the bounded subgraph from the LinkageGraph; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P01.S03` - Restrict the headline-centrality backbone to the high-precision declared and structural tiers, admitting temporal and semantic only as damped enrichment; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P01.S04` - Unit-test the backbone builder: tier weighting applied, semantic-tier edges damped, bounded-subgraph membership preserved; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W01.P02` - The centrality basis precomputed per graph generation
 
 Compute sparse power-iteration Personalized PageRank with shared partial-vector hubs, one Brandes betweenness pass, one k-core peeling, and the structural-role and aggregated-exec features in a single sweep, memoized per graph generation.
 
-- [ ] `W01.P02.S05` - Implement sparse power-iteration PageRank over the weighted backbone with a configurable damping/teleport, returning the stationary distribution; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P02.S06` - Implement the Personalized PageRank partial-vector basis: a shared hub basis combined per biased teleport vector so per-lens vectors are cheap; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P02.S07` - Implement one Brandes betweenness pass over the backbone, returning per-node betweenness under the node ceiling; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P02.S08` - Implement linear-time k-core peeling returning per-node coreness over the backbone; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P02.S09` - Compute the structural-role feature (hub/authority/bridge/leaf) and the aggregated-exec feature (children rolled into the parent plan) reading the semantics aggregate hint, authority_class, and lifecycle fields; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P02.S10` - Assemble the lens-basis struct memoized per graph generation, computing PPR hubs, betweenness, coreness, and role features in one sweep keyed to the immutable graph generation; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W01.P02.S11` - Unit-test the basis: PageRank convergence on a known graph, partial-vector linearity, Brandes betweenness against a hand-computed bridge, coreness peeling of pendant exec leaves; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S05` - Implement sparse power-iteration PageRank over the weighted backbone with a configurable damping/teleport, returning the stationary distribution; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S06` - Implement the Personalized PageRank partial-vector basis: a shared hub basis combined per biased teleport vector so per-lens vectors are cheap; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S07` - Implement one Brandes betweenness pass over the backbone, returning per-node betweenness under the node ceiling; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S08` - Implement linear-time k-core peeling returning per-node coreness over the backbone; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S09` - Compute the structural-role feature (hub/authority/bridge/leaf) and the aggregated-exec feature (children rolled into the parent plan) reading the semantics aggregate hint, authority_class, and lifecycle fields; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S10` - Assemble the lens-basis struct memoized per graph generation, computing PPR hubs, betweenness, coreness, and role features in one sweep keyed to the immutable graph generation; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W01.P02.S11` - Unit-test the basis: PageRank convergence on a known graph, partial-vector linearity, Brandes betweenness against a hand-computed bridge, coreness peeling of pendant exec leaves; `engine/crates/engine-query/src/salience.rs`.
 
 ## Wave `W02` - Rank-normalized DOI composition and the weight-sensitivity sweep
 
@@ -137,26 +137,26 @@ Rank-normalize each criterion within the bounded subgraph and compose the per-le
 
 Compute exponential recency with a per-lens half-life, the discrete lifecycle multiplier, and the status-lens activity-burst term over recent temporal-tier edges, kept as separate inputs.
 
-- [ ] `W02.P03.S12` - Implement exponential recency decay exp(-ln2 * age / half_life) reading node modified dates, with the half-life a per-lens parameter; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P03.S13` - Implement the discrete per-lens lifecycle multiplier reading the semantics lifecycle vocabulary, kept distinct from recency so recent-but-archived and old-but-in-flight resolve correctly; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P03.S14` - Implement the status-lens activity-burst term over recent temporal-tier edge activity (new exec records and commit-correlation edges in the recent window); `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P03.S15` - Unit-test recency decay half-life behavior, lifecycle multiplier per state, and the burst term over a windowed temporal edge set; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S12` - Implement exponential recency decay exp(-ln2 * age / half_life) reading node modified dates, with the half-life a per-lens parameter; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S13` - Implement the discrete per-lens lifecycle multiplier reading the semantics lifecycle vocabulary, kept distinct from recency so recent-but-archived and old-but-in-flight resolve correctly; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S14` - Implement the status-lens activity-burst term over recent temporal-tier edge activity (new exec records and commit-correlation edges in the recent window); `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P03.S15` - Unit-test recency decay half-life behavior, lifecycle multiplier per state, and the burst term over a windowed temporal edge set; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W02.P04` - Rank-normalization and weighted-linear DOI composition
 
 Rank-normalize each criterion to [0,1] within the bounded subgraph and compose the per-lens a-priori importance minus focus-distance into the DOI scalar.
 
-- [ ] `W02.P04.S16` - Implement rank-normalization of each criterion to [0,1] within the bounded served subgraph, robust to the heavy tails of PageRank and betweenness; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P04.S17` - Implement the weighted-linear a-priori composition (type-prior, personalized centrality, recency, lifecycle, structural role) parameterized by a per-lens weight row; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P04.S18` - Subtract the backbone focus-distance term to realize the DOI scalar I(n|L) = API(n|L) - gamma_L * D_backbone(n, focus); `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P04.S19` - Unit-test normalization range and rank stability, weighted composition against a hand-computed blend, and the DOI focus-distance subtraction; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S16` - Implement rank-normalization of each criterion to [0,1] within the bounded served subgraph, robust to the heavy tails of PageRank and betweenness; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S17` - Implement the weighted-linear a-priori composition (type-prior, personalized centrality, recency, lifecycle, structural role) parameterized by a per-lens weight row; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S18` - Subtract the backbone focus-distance term to realize the DOI scalar I(n|L) = API(n|L) - gamma_L * D_backbone(n, focus); `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P04.S19` - Unit-test normalization range and rank stability, weighted composition against a hand-computed blend, and the DOI focus-distance subtraction; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W02.P05` - The weight-sensitivity sweep artifact
 
 Produce the top-k Kendall-tau stability sweep under weight perturbation as the artifact that justifies the lens-derived weights.
 
-- [ ] `W02.P05.S20` - Implement the weight-sensitivity sweep computing top-k Kendall-tau stability under +/- weight perturbation per lens; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W02.P05.S21` - Add a sweep test asserting top-k ordering stays stable under bounded perturbation for both launch lenses, failing if a lens top-k flips; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P05.S20` - Implement the weight-sensitivity sweep computing top-k Kendall-tau stability under +/- weight perturbation per lens; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W02.P05.S21` - Add a sweep test asserting top-k ordering stays stable under bounded perturbation for both launch lenses, failing if a lens top-k flips; `engine/crates/engine-query/src/salience.rs`.
 
 ## Wave `W03` - The two launch lenses, focus folding, and the wire amendment
 
@@ -166,30 +166,30 @@ Parameterize the design and status lenses from one model (default status), fold 
 
 Define the design and status lenses as teleport-bias and weight-row parameterizations of the one DOI model, with status the default lens.
 
-- [ ] `W03.P06.S22` - Define the Lens enum and per-lens parameter rows (teleport bias, dominant centrality, type-prior weights, recency emphasis, lifecycle modulation) with status as the default; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P06.S23` - Parameterize the design lens: teleport biased to ADR and research authority, PageRank-led with high coreness and low recency weight; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P06.S24` - Parameterize the status lens: teleport biased to in-flight plans, betweenness-and-hub-led with high recency, the activity burst, and exec children aggregated into the parent; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P06.S25` - Unit-test that both lenses derive from one model and yield distinct orderings on the same graph (authority-led vs pivotal-bridge-led); `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S22` - Define the Lens enum and per-lens parameter rows (teleport bias, dominant centrality, type-prior weights, recency emphasis, lifecycle modulation) with status as the default; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S23` - Parameterize the design lens: teleport biased to ADR and research authority, PageRank-led with high coreness and low recency weight; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S24` - Parameterize the status lens: teleport biased to in-flight plans, betweenness-and-hub-led with high recency, the activity burst, and exec children aggregated into the parent; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P06.S25` - Unit-test that both lenses derive from one model and yield distinct orderings on the same graph (authority-led vs pivotal-bridge-led); `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W03.P07` - Focus folding and per-key memoization
 
 Fold focus-bias into the lens teleport vector and re-run the warm-started PPR on demand, memoizing the basis per (graph-generation, lens) and the focus-folded score per (lens, focus).
 
-- [ ] `W03.P07.S26` - Implement focus folding: mix focus-bias into the lens teleport vector and re-run the warm-started PPR so a-priori minus distance is one computation; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P07.S27` - Memoize the lens basis per (graph-generation, lens) and the focus-folded final score per (lens, focus), recomputing only on graph change; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P07.S28` - Unit-test that a no-focus lens switch is a warm-cache hit and a focus change runs exactly one warm-started PPR pass; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P07.S26` - Implement focus folding: mix focus-bias into the lens teleport vector and re-run the warm-started PPR so a-priori minus distance is one computation; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P07.S27` - Memoize the lens basis per (graph-generation, lens) and the focus-folded final score per (lens, focus), recomputing only on graph change; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P07.S28` - Unit-test that a no-focus lens switch is a warm-cache hit and a focus change runs exactly one warm-started PPR pass; `engine/crates/engine-query/src/salience.rs`.
 
 ### Phase `W03.P08` - The lens wire amendment and DOI-bounded serving
 
 Add the lens request parameter to the four graph endpoints, serve the single active-lens salience node field through the shared envelope helper with the tiers block, make DOI truncation under MAX_GRAPH_NODES lens-and-focus dependent, and flag degraded-tier salience partial.
 
-- [ ] `W03.P08.S29` - Add the lens request parameter to the graph query body and parse it, defaulting to the status lens when omitted; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P08.S30` - Thread lens through graph_query and attach the single active-lens salience float to each served document node view; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W03.P08.S31` - Make MAX_GRAPH_NODES truncation select the top-DOI nodes for the active lens and focus, keeping the subgraph self-consistent and the truncated block honest; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P08.S32` - Add the lens parameter to the asof, diff, and neighbors routes, serving salience through the same shared envelope helper with the tiers block; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W03.P08.S33` - Flag salience partial via the tiers block when a tier is degraded, computing over available tiers and never presenting a guessed-complete score; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W03.P08.S34` - Amend the foundation reference section 4 prose to document the lens request parameter, the salience node field, and the lens-dependent DOI truncation semantics; `.vault/reference/2026-06-12-dashboard-foundation-reference.md`.
-- [ ] `W03.P08.S35` - Add route-level tests asserting lens default, salience presence on nodes, lens-dependent truncation, and the tiers block on success and error envelopes; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S29` - Add the lens request parameter to the graph query body and parse it, defaulting to the status lens when omitted; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S30` - Thread lens through graph_query and attach the single active-lens salience float to each served document node view; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W03.P08.S31` - Make MAX_GRAPH_NODES truncation select the top-DOI nodes for the active lens and focus, keeping the subgraph self-consistent and the truncated block honest; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S32` - Add the lens parameter to the asof, diff, and neighbors routes, serving salience through the same shared envelope helper with the tiers block; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W03.P08.S33` - Flag salience partial via the tiers block when a tier is degraded, computing over available tiers and never presenting a guessed-complete score; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W03.P08.S34` - Amend the foundation reference section 4 prose to document the lens request parameter, the salience node field, and the lens-dependent DOI truncation semantics; `.vault/reference/2026-06-12-dashboard-foundation-reference.md`.
+- [x] `W03.P08.S35` - Add route-level tests asserting lens default, salience presence on nodes, lens-dependent truncation, and the tiers block on success and error envelopes; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
 ## Wave `W04` - Stores layer: active-lens state, lens query, and mock parity
 
@@ -199,19 +199,19 @@ Wire the stores layer as the sole wire client: active-lens view state distinct f
 
 Hold the active-lens state in the stores view layer, distinct from the tier-dial lens, parameterize the graph query by lens, and drive a focus-change loading state into the scene; read degradation from the tiers block.
 
-- [ ] `W04.P09.S36` - Add an active-salience-lens view store (status default) distinct from the saved-filter-set lenses store, exposing the active lens and a setter; `frontend/src/stores/view/salienceLens.ts`.
-- [ ] `W04.P09.S37` - Add the lens parameter to the engine graphQuery adapter request body so the wire client sends the active lens; `frontend/src/stores/server/engine.ts`.
-- [ ] `W04.P09.S38` - Parameterize the useGraphSlice query by active lens, keying the query cache on lens so a lens switch is a re-query; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P09.S39` - Surface a focus-change loading state from the stores layer into the scene loading channel, derived from the lens-and-focus query state; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P09.S40` - Read salience degradation from the tiers block (fresh error tiers winning over a stale held-success block), never from a bare transport error; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P09.S41` - Test the active-lens store default and setter, the lens-keyed query re-fetch, the focus loading state, and the tiers-based degradation read; `frontend/src/stores/view/salienceLens.test.ts`.
+- [x] `W04.P09.S36` - Add an active-salience-lens view store (status default) distinct from the saved-filter-set lenses store, exposing the active lens and a setter; `frontend/src/stores/view/salienceLens.ts`.
+- [x] `W04.P09.S37` - Add the lens parameter to the engine graphQuery adapter request body so the wire client sends the active lens; `frontend/src/stores/server/engine.ts`.
+- [x] `W04.P09.S38` - Parameterize the useGraphSlice query by active lens, keying the query cache on lens so a lens switch is a re-query; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P09.S39` - Surface a focus-change loading state from the stores layer into the scene loading channel, derived from the lens-and-focus query state; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P09.S40` - Read salience degradation from the tiers block (fresh error tiers winning over a stale held-success block), never from a bare transport error; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P09.S41` - Test the active-lens store default and setter, the lens-keyed query re-fetch, the focus loading state, and the tiers-based degradation read; `frontend/src/stores/view/salienceLens.test.ts`.
 
 ### Phase `W04.P10` - Mock-engine parity and the live-sample conformance test
 
 Bring the mock engine to live-wire parity for the lens parameter and the salience field, and prove fidelity by feeding a captured live sample through the same client path the app uses.
 
-- [ ] `W04.P10.S42` - Extend the mock engine to honor the lens request parameter and emit the single active-lens salience float on document nodes, byte-for-byte the live wire shape; `frontend/src/testing/mockEngine.ts`.
-- [ ] `W04.P10.S43` - Add a conformance test feeding a captured live salience sample through adaptGraphSlice and the same client path the app uses, asserting lens default and salience fidelity; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `W04.P10.S42` - Extend the mock engine to honor the lens request parameter and emit the single active-lens salience float on document nodes, byte-for-byte the live wire shape; `frontend/src/testing/mockEngine.ts`.
+- [x] `W04.P10.S43` - Add a conformance test feeding a captured live salience sample through adaptGraphSlice and the same client path the app uses, asserting lens default and salience fidelity; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ## Wave `W05` - Benchmarks, tests, and the closing green gate
 
@@ -221,16 +221,16 @@ Establish the engine benchmark proving Brandes betweenness feasibility under the
 
 Add the engine benchmark proving Brandes betweenness is affordable under the node ceiling and round out the engine-side salience test suite.
 
-- [ ] `W05.P11.S44` - Add an engine benchmark measuring Brandes betweenness and the full basis precompute at the node ceiling, proving feasibility under MAX_GRAPH_NODES; `engine/crates/engine-query/benches/salience_bench.rs`.
-- [ ] `W05.P11.S45` - Add an integration test asserting basis memoization survives a no-op query and recomputes on graph generation change; `engine/crates/engine-query/src/salience.rs`.
-- [ ] `W05.P11.S46` - Add a degraded-tier integration test asserting salience computed over available tiers is flagged partial in the tiers block end to end; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W05.P11.S44` - Add an engine benchmark measuring Brandes betweenness and the full basis precompute at the node ceiling, proving feasibility under MAX_GRAPH_NODES; `engine/crates/engine-query/benches/salience_bench.rs`.
+- [x] `W05.P11.S45` - Add an integration test asserting basis memoization survives a no-op query and recomputes on graph generation change; `engine/crates/engine-query/src/salience.rs`.
+- [x] `W05.P11.S46` - Add a degraded-tier integration test asserting salience computed over available tiers is flagged partial in the tiers block end to end; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
 ### Phase `W05.P12` - The closing full green gate
 
 Run the full lint and test gate across engine and frontend as the closing verification, confirming exit 0 including prettier and rustfmt.
 
-- [ ] `W05.P12.S47` - Run cargo fmt --check, cargo clippy, and cargo test across the engine workspace and confirm exit 0; `engine/Cargo.toml`.
-- [ ] `W05.P12.S48` - Run just dev lint frontend (eslint, prettier, tsc) plus the stores test suite and confirm exit 0 including format:check; `frontend/package.json`.
+- [x] `W05.P12.S47` - Run cargo fmt --check, cargo clippy, and cargo test across the engine workspace and confirm exit 0; `engine/Cargo.toml`.
+- [x] `W05.P12.S48` - Run just dev lint frontend (eslint, prettier, tsc) plus the stores test suite and confirm exit 0 including format:check; `frontend/package.json`.
 
 ## Description
 

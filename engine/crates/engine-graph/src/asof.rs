@@ -183,12 +183,13 @@ pub fn asof_graph_resolved(
             .unwrap_or(doc_path)
             .trim_end_matches(".md")
             .to_string();
+        let doc_type = crate::index::doc_type_of(doc_path);
         graph.upsert_node(Node {
             id: node_id(&CanonicalKey::Document { stem: &stem }),
             kind: NodeKind::Document,
             key: stem.clone(),
             title: crate::index::doc_title(&body.text),
-            doc_type: crate::index::doc_type_of(doc_path),
+            doc_type: doc_type.clone(),
             dates: Some(engine_model::Dates {
                 created: crate::index::frontmatter_date(&body.text),
                 // Blob-true historical views carry no worktree mtime.
@@ -205,7 +206,10 @@ pub fn asof_graph_resolved(
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: Some(body.blob_hash.clone()),
-                lifecycle: crate::index::doc_lifecycle(&body.text),
+                // Type-specific lifecycle, blob-true at T (graph-node-semantics
+                // ADR): the historical playhead reads each species' state from
+                // the committed blob, not the present working tree.
+                lifecycle: crate::index::doc_lifecycle(doc_type.as_deref(), &body.text),
             }],
         });
 

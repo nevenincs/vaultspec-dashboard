@@ -40,6 +40,68 @@ impl PipelinePhase {
     }
 }
 
+/// The pipeline-phase LANE a vault document sits in (dashboard-timeline ADR,
+/// W01.P01.S01), derived from its doc_type by a single deterministic mapping —
+/// the framework's research -> adr -> plan -> exec -> review -> codify arc the
+/// phase-lane timeline draws documents into.
+///
+/// Distinct from [`PipelinePhase`]: that enum is the in-flight Work-surface
+/// phase derived from doc_type AND status/progress (an active plan with checked
+/// work reads `execute`). This enum is the STATIC lane a document belongs to by
+/// its kind alone, with one lane per pipeline phase including the audit-driven
+/// `codify` step — what the timeline lanes are, not where a unit of work is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PipelineLanePhase {
+    /// research + reference both ground the work — they share the first lane.
+    Research,
+    Adr,
+    Plan,
+    /// Execution records (`exec`).
+    Exec,
+    /// Audits (`audit`) — the review phase.
+    Review,
+    /// Rules (`rule`) — the discretionary codify phase.
+    Codify,
+}
+
+impl PipelineLanePhase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PipelineLanePhase::Research => "research",
+            PipelineLanePhase::Adr => "adr",
+            PipelineLanePhase::Plan => "plan",
+            PipelineLanePhase::Exec => "exec",
+            PipelineLanePhase::Review => "review",
+            PipelineLanePhase::Codify => "codify",
+        }
+    }
+}
+
+/// The single deterministic doc-type -> pipeline-lane mapping (dashboard-timeline
+/// ADR, W01.P01.S01): research/reference -> research; adr -> adr; plan -> plan;
+/// exec -> exec; audit -> review; rule -> codify.
+///
+/// Returns `None` for a doc-type with no pipeline lane: a `commit` is ambient
+/// (off by default, toggle-on in the surface, per the ADR — it has no phase
+/// lane), and an unknown or absent doc-type maps to no lane so the projection
+/// never invents a phase for an artifact the pipeline does not own. The match is
+/// over the `.vault/` subdirectory vocabulary the ingest already stamps on
+/// `Node.doc_type`.
+pub fn phase_for_doc_type(doc_type: &str) -> Option<PipelineLanePhase> {
+    match doc_type {
+        "research" | "reference" => Some(PipelineLanePhase::Research),
+        "adr" => Some(PipelineLanePhase::Adr),
+        "plan" => Some(PipelineLanePhase::Plan),
+        "exec" => Some(PipelineLanePhase::Exec),
+        "audit" => Some(PipelineLanePhase::Review),
+        "rule" => Some(PipelineLanePhase::Codify),
+        // `commit` is ambient (no phase lane); `index` and any unknown
+        // doc-type own no pipeline lane.
+        _ => None,
+    }
+}
+
 /// One in-flight pipeline artifact (dashboard-pipeline-wire W02.P04.S17): a
 /// plan or ADR currently being worked on, projected with everything the Work
 /// surface renders. All fields are derived from node facets the ingest already
@@ -107,10 +169,12 @@ fn artifact_if_active(node: &Node, scope: &ScopeRef) -> Option<PipelineArtifact>
 
     let (active, phase) = match doc_type {
         "plan" => {
-            // Active plan: lifecycle present AND state == active. A plan with no
-            // checkboxes (no lifecycle) is not an in-flight work unit; a
-            // complete plan is excluded.
-            let active = lifecycle.is_some_and(|l| l.state == "active");
+            // Active plan: incomplete checkbox progress. Post graph-node-semantics
+            // a plan's lifecycle.state carries its TIER (L1-L4), so in-flight-ness
+            // is read from progress, not the state string — a plan with steps still
+            // open (done < total) is active; a fully-checked plan is complete
+            // (past); a plan with no checkboxes (no progress) is not a work unit.
+            let active = progress.is_some_and(|p| p.done < p.total);
             (active, plan_phase(progress))
         }
         "adr" => {
@@ -260,6 +324,53 @@ mod tests {
         let result = in_flight(&g, &scope());
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].phase, PipelinePhase::Plan);
+    }
+
+    #[test]
+    fn doc_type_maps_to_its_single_pipeline_lane_for_each_phase() {
+        // W01.P01.S07 (dashboard-timeline): the doc-type -> pipeline-lane
+        // mapping is deterministic and total over the framework's phases —
+        // research/reference -> research, adr -> adr, plan -> plan, exec ->
+        // exec, audit -> review, rule -> codify. The mapping is what the
+        // timeline lanes are.
+        assert_eq!(
+            phase_for_doc_type("research"),
+            Some(PipelineLanePhase::Research)
+        );
+        assert_eq!(
+            phase_for_doc_type("reference"),
+            Some(PipelineLanePhase::Research),
+            "reference shares the research lane (it grounds the work)"
+        );
+        assert_eq!(phase_for_doc_type("adr"), Some(PipelineLanePhase::Adr));
+        assert_eq!(phase_for_doc_type("plan"), Some(PipelineLanePhase::Plan));
+        assert_eq!(phase_for_doc_type("exec"), Some(PipelineLanePhase::Exec));
+        assert_eq!(
+            phase_for_doc_type("audit"),
+            Some(PipelineLanePhase::Review),
+            "audit is the review phase"
+        );
+        assert_eq!(
+            phase_for_doc_type("rule"),
+            Some(PipelineLanePhase::Codify),
+            "rule is the codify phase"
+        );
+
+        // A commit is ambient (no phase lane); index and any unknown doc-type
+        // own no lane — the projection never invents a phase.
+        assert_eq!(phase_for_doc_type("commit"), None);
+        assert_eq!(phase_for_doc_type("index"), None);
+        assert_eq!(phase_for_doc_type("nonsense"), None);
+        assert_eq!(phase_for_doc_type(""), None);
+
+        // The wire form is the kebab-case lane token (serialized identically to
+        // `as_str`).
+        assert_eq!(PipelineLanePhase::Review.as_str(), "review");
+        assert_eq!(PipelineLanePhase::Codify.as_str(), "codify");
+        assert_eq!(
+            serde_json::to_value(PipelineLanePhase::Codify).unwrap(),
+            serde_json::Value::String("codify".into())
+        );
     }
 
     #[test]

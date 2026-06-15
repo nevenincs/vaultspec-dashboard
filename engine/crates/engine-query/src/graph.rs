@@ -26,10 +26,16 @@ pub enum Granularity {
 pub struct GraphSlice {
     /// Contract §4 node views: at document granularity, the stored node
     /// enriched with the list-shape projections (`degree_by_tier`,
-    /// hoisted `lifecycle` — addendum S03); at feature granularity,
-    /// synthesized feature-convergence nodes (addendum S02, ADR D4.1).
+    /// hoisted `lifecycle` — addendum S03) and the additive ontology fields
+    /// (`authority_class`, `aggregate` — graph-node-semantics ADR); at feature
+    /// granularity, synthesized feature-convergence nodes (addendum S02, ADR
+    /// D4.1).
     pub nodes: Vec<Value>,
-    pub edges: Vec<Edge>,
+    /// Contract §4 edge views: the serialized edge plus the additive
+    /// `derivation` label (graph-node-semantics ADR), carried as a `Value` so
+    /// the label rides ALONGSIDE the §4 `relation`/`tier` fields without
+    /// touching the edge stable key.
+    pub edges: Vec<Value>,
     /// Feature-level meta-edges; populated at `Feature` granularity only.
     pub meta_edges: Vec<MetaEdge>,
     /// The validated, normalized filter, echoed back (D7.2).
@@ -61,9 +67,13 @@ pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
         .iter()
         .filter_map(|n| n["id"].as_str().map(str::to_string))
         .collect();
+    // Edges are serialized §4 views (`Value`, carrying the additive `derivation`
+    // label), so endpoints are read by key; a self-consistent slice keeps only
+    // edges whose both endpoints survived the node cap.
+    let kept_endpoint = |e: &Value, key: &str| e[key].as_str().is_some_and(|s| kept.contains(s));
     slice
         .edges
-        .retain(|e| kept.contains(&e.src.0) && kept.contains(&e.dst.0));
+        .retain(|e| kept_endpoint(e, "src") && kept_endpoint(e, "dst"));
     slice
         .meta_edges
         .retain(|m| kept.contains(&m.src) && kept.contains(&m.dst));
@@ -72,14 +82,66 @@ pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
 
 /// One document node in the contract §4 list shape: the serialized node
 /// plus the query-time projections (`degree_by_tier`, the scope facet's
-/// `lifecycle` hoisted to the top level).
+/// `lifecycle` hoisted to the top level) and the ADDITIVE ontology fields
+/// (graph-node-semantics ADR): `authority_class` (the register `doc_type`
+/// answers in) and `aggregate` (the collapsibility hint). Both are pure
+/// re-computable projections — they perturb no existing field and do NOT touch
+/// the node id (the §4 identity guarantee is preserved).
 fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     let mut view = serde_json::to_value(node).expect("node serializes");
     view["degree_by_tier"] =
         serde_json::to_value(degree_by_tier(graph, &node.id)).expect("degrees serialize");
     view["lifecycle"] =
         serde_json::to_value(lifecycle_in_scope(node, scope)).expect("lifecycle serializes");
+    // Ontology projection (additive): the authority register and the
+    // aggregate-species hint, both inferred from the node's kind/doc_type.
+    view["authority_class"] = Value::String(
+        crate::ontology::authority_class_for_kind(&node.kind, node.doc_type.as_deref()).to_string(),
+    );
+    view["aggregate"] = Value::Bool(crate::ontology::is_aggregate_species(
+        node.doc_type.as_deref(),
+    ));
     view
+}
+
+/// One edge in the contract §4 list shape plus the ADDITIVE `derivation` label
+/// (graph-node-semantics ADR). The label is inferred from the relation, the
+/// endpoint document types, the provenance, and the exec-record container-path
+/// signal — carried ALONGSIDE the §4 `relation`/`tier`, never instead of them,
+/// and DELIBERATELY not threaded into the edge id (labeling never re-keys).
+/// A `null` `derivation` is serialized for edges with no pipeline relationship.
+fn edge_view(graph: &LinkageGraph, edge: &Edge) -> Value {
+    let mut view = serde_json::to_value(edge).expect("edge serializes");
+    let src_type = doc_type_of(graph, &edge.src);
+    let dst_type = doc_type_of(graph, &edge.dst);
+    // The exec container-path signal: a plan→exec `generated-by` edge whose
+    // exec endpoint is a step/summary record (its id encodes the plan
+    // container path, the most reliable derivation in the corpus).
+    let is_exec_container_path = matches!(
+        (src_type.as_deref(), dst_type.as_deref()),
+        (Some("plan"), Some("exec")) | (Some("exec"), Some("plan"))
+    ) && [&edge.src, &edge.dst]
+        .iter()
+        .filter_map(|id| graph.node(id))
+        .any(|n| crate::ontology::stem_is_exec_record(&n.key));
+    let label = crate::ontology::derivation_label(
+        &edge.relation,
+        src_type.as_deref(),
+        dst_type.as_deref(),
+        &edge.provenance,
+        is_exec_container_path,
+    );
+    view["derivation"] = match label {
+        Some(label) => Value::String(label.to_string()),
+        None => Value::Null,
+    };
+    view
+}
+
+/// The `doc_type` of the node an edge endpoint addresses, if it is a document
+/// node present in the graph (used by the derivation projection).
+fn doc_type_of(graph: &LinkageGraph, id: &engine_model::NodeId) -> Option<String> {
+    graph.node(id).and_then(|n| n.doc_type.clone())
 }
 
 /// Synthesize feature-convergence nodes (kind `feature`, id
@@ -161,18 +223,19 @@ pub fn graph_query(
 
     let (nodes, edges, meta) = match granularity {
         Granularity::Document => {
-            let mut edges: Vec<Edge> = graph
+            let mut edges: Vec<&Edge> = graph
                 .edges()
                 .filter(|s| &s.edge.scope == scope)
                 .filter(|s| filter.matches_edge(s))
-                .map(|s| s.edge.clone())
+                .map(|s| &s.edge)
                 .collect();
             edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+            let edge_views = edges.iter().map(|&e| edge_view(graph, e)).collect();
             let views = matched
                 .iter()
                 .map(|&n| node_view(graph, scope, n))
                 .collect();
-            (views, edges, Vec::new())
+            (views, edge_views, Vec::new())
         }
         // Constellation granularity (contract §4, ADR D4.1): synthesized
         // feature-convergence nodes plus engine-aggregated meta-edges —
@@ -304,12 +367,20 @@ mod tests {
     }
 
     fn doc(stem: &str, feature: &str) -> Node {
+        // Infer a doc_type from the stem's trailing segment so the ontology
+        // projection (authority_class, derivation) has real types to read.
+        let doc_type = match stem.rsplit('-').next() {
+            Some(t @ ("plan" | "adr" | "exec" | "audit" | "research" | "reference")) => {
+                Some(t.to_string())
+            }
+            _ => None,
+        };
         Node {
             id: node_id(&CanonicalKey::Document { stem }),
             kind: NodeKind::Document,
             key: stem.into(),
             title: None,
-            doc_type: None,
+            doc_type,
             dates: None,
             feature_tags: vec![feature.into()],
             status: None,
@@ -376,7 +447,7 @@ mod tests {
         let filter: Filter = serde_json::from_str(r#"{"structural_state": ["resolved"]}"#).unwrap();
         let slice = graph_query(&g, &scope(), filter, Granularity::Document).unwrap();
         assert_eq!(slice.edges.len(), 1);
-        assert_eq!(slice.edges[0].state, Some(ResolutionState::Resolved));
+        assert_eq!(slice.edges[0]["state"], "resolved");
         assert_eq!(slice.filter.structural_state, vec!["resolved"]);
     }
 
@@ -391,7 +462,7 @@ mod tests {
         .unwrap();
         let slice = graph_query(&g, &scope(), filter, Granularity::Document).unwrap();
         assert_eq!(slice.edges.len(), 1);
-        assert_eq!(slice.edges[0].state, Some(ResolutionState::Broken));
+        assert_eq!(slice.edges[0]["state"], "broken");
     }
 
     #[test]
@@ -434,6 +505,61 @@ mod tests {
             .expect("a-plan listed");
         assert!(a["degree_by_tier"]["structural"].as_u64().unwrap() >= 1);
         assert!(a.get("lifecycle").is_some(), "lifecycle key present");
+        // Ontology projection (graph-node-semantics ADR): authority_class and
+        // aggregate ride additively on the document list shape.
+        assert_eq!(
+            a["authority_class"], "roadmap",
+            "a-plan maps to the roadmap register"
+        );
+        assert_eq!(a["aggregate"], false, "a plan is individually weighted");
+        let b = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "doc:b-adr")
+            .expect("b-adr listed");
+        assert_eq!(b["authority_class"], "design", "b-adr maps to design");
+    }
+
+    #[test]
+    fn ontology_is_additive_and_leaves_the_id_unchanged() {
+        // Adding authority_class/aggregate must NOT perturb the §4 identity:
+        // the node id on the enriched view equals the stored node id.
+        let g = fixture();
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let a = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "doc:a-plan")
+            .expect("a-plan listed");
+        assert_eq!(
+            a["id"], "doc:a-plan",
+            "the additive ontology fields do not re-key the node"
+        );
+        // The thin §4 fields are retained verbatim alongside the additions.
+        assert_eq!(a["kind"], "document");
+        assert!(a.get("authority_class").is_some());
+        assert!(a.get("aggregate").is_some());
+    }
+
+    #[test]
+    fn edges_carry_a_derivation_label_distinct_from_relation() {
+        // a-plan -> b-adr is plan↔adr: the derivation label is `authorizes`,
+        // carried ALONGSIDE the §4 relation, never replacing it.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "feature-a"));
+        g.upsert_node(doc("b-adr", "feature-a"));
+        engine_graph::ingest(
+            &mut g,
+            structural("a-plan", "b-adr", ResolutionState::Resolved, 0.9),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let e = &slice.edges[0];
+        // The §4 relation is preserved; the derivation rides alongside.
+        assert_eq!(e["relation"], "mentions", "the §4 relation is untouched");
+        assert_eq!(e["derivation"], "authorizes", "plan↔adr derivation label");
+        assert!(e.get("tier").is_some(), "the §4 tier is still present");
     }
 
     #[test]

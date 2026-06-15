@@ -11,17 +11,21 @@ import {
   experimental_streamedQuery as streamedQuery,
   queryOptions,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
+import type { SalienceLens } from "../view/salienceLens";
+import { DEFAULT_SALIENCE_LENS, useSalienceLensStore } from "../view/salienceLens";
 import type {
   DiscoverResponse,
   EngineEdge,
   EngineStatus,
   GitFileDiff,
   GraphFilter,
+  GraphSlice,
   InteriorStep,
   PipelineArtifact,
   PlanInterior,
@@ -75,6 +79,8 @@ export const engineKeys = {
     filter?: GraphFilter,
     asOf?: string | number,
     granularity?: "document" | "feature",
+    lens?: SalienceLens,
+    focus?: string | null,
   ) =>
     [
       ...engineKeys.all,
@@ -83,6 +89,12 @@ export const engineKeys = {
       stableKey(filter),
       asOf ?? "live",
       granularity ?? "document",
+      // The active lens and focus are identity-bearing (graph-node-salience ADR:
+      // a lens switch is a re-query, a focus change runs a warm-started PPR pass):
+      // two lenses/focuses carry different salience and must not share a cache
+      // entry. Defaulted so the omitted case is the status-lens, no-focus key.
+      lens ?? DEFAULT_SALIENCE_LENS,
+      focus ?? "none",
     ] as const,
   node: (id: string) => [...engineKeys.all, "node", id] as const,
   neighbors: (id: string, depth: number) =>
@@ -106,6 +118,13 @@ export const engineKeys = {
     ] as const,
   diff: (scope: string, from: string | number, to: string | number) =>
     [...engineKeys.all, "diff", scope, String(from), String(to)] as const,
+  // The bounded temporal-lineage projection (dashboard-timeline W02.P04.S22):
+  // keyed by (scope, range, filter) — the contract's cacheability unit (range +
+  // the engine-owned filter), so two date ranges or two filters never collide on
+  // one cache entry, mirroring how `events` folds (range, bucket). `filter` is
+  // the URL-encoded JSON filter string the route accepts; absent = no constraint.
+  lineage: (scope: string, range: { from?: string; to?: string }, filter?: string) =>
+    [...engineKeys.all, "lineage", scope, stableKey(range), filter ?? ""] as const,
   // The in-flight pipeline projection (dashboard-pipeline-status W01.P02.S06):
   // (scope, as-of) — the same cacheability unit the graph slice uses, so a
   // historical playhead reads a distinct cache entry from the live view.
@@ -300,8 +319,32 @@ export function useSwapWorkspace() {
     // swap either (dashboard-code-tree per-scope cache): drop the whole subtree.
     queryClient.removeQueries({ queryKey: [...engineKeys.all, "file-tree"] });
     queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph"] });
-    // (3) durably persist the active-workspace selection (the config write).
-    return putSession.mutateAsync({ active_workspace: workspace });
+    // (3) durably persist the active-workspace selection AND the new active
+    // scope (the new project's default worktree) in one config write. Persisting
+    // the workspace alone left the served/persisted active_scope dangling on the
+    // prior project's worktree, so the browser kept showing the old corpus after
+    // a switch (live verification finding H4). Sending the scope keeps the server
+    // session consistent with the optimistic local swap above.
+    return putSession
+      .mutateAsync(
+        scope
+          ? { active_workspace: workspace, active_scope: scope }
+          : { active_workspace: workspace },
+      )
+      .then((res) => {
+        // The PUT builds/warms the new scope server-side. The optimistic scope
+        // change above already fired the scoped reads (map / vault-tree /
+        // file-tree / graph) against a still-COLD scope, which validate_scope
+        // 400s until the build completes — so without a refetch here the rail
+        // stays empty after a switch until a manual reload (live verification
+        // finding H6). Re-fetch now that the scope is warm so the switch lands
+        // its corpus in-session.
+        queryClient.invalidateQueries({ queryKey: engineKeys.map() });
+        queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "vault-tree"] });
+        queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "file-tree"] });
+        queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
+        return res;
+      });
   };
   return { swap, mutation: putSession };
 }
@@ -452,13 +495,131 @@ export function useGraphSlice(
   filter?: GraphFilter,
   asOf?: string | number,
   granularity?: "document" | "feature",
+  lens?: SalienceLens,
+  focus?: string | null,
 ) {
   return useQuery({
-    queryKey: engineKeys.graph(scope ?? "", filter, asOf, granularity),
+    queryKey: engineKeys.graph(scope ?? "", filter, asOf, granularity, lens, focus),
     queryFn: () =>
-      engineClient.graphQuery({ scope: scope!, filter, as_of: asOf, granularity }),
+      engineClient.graphQuery({
+        scope: scope!,
+        filter,
+        as_of: asOf,
+        granularity,
+        lens,
+        focus,
+      }),
     enabled: scope !== null,
   });
+}
+
+/**
+ * The active-lens graph slice (graph-node-salience W04.P09): reads the active
+ * salience lens + focus from the stores view layer (`useSalienceLensStore`) and
+ * parameterizes the graph query by them, so a lens switch or focus change is a
+ * re-query keyed on (lens, focus). This is the seam the scene consumes for the
+ * salience-ranked node set; the chrome lens selector drives `setLens`/`setFocus`
+ * on the store and never fetches the engine itself (dashboard-layer-ownership).
+ */
+export function useSalienceGraphSlice(
+  scope: string | null,
+  filter?: GraphFilter,
+  asOf?: string | number,
+  granularity?: "document" | "feature",
+) {
+  const lens = useSalienceLensStore((s) => s.lens);
+  const focus = useSalienceLensStore((s) => s.focus);
+  return useGraphSlice(scope, filter, asOf, granularity, lens, focus);
+}
+
+/**
+ * The salience query's loading + degradation truth, derived in the stores layer
+ * so the scene loading channel and the chrome never read the raw `tiers` block or
+ * re-derive partiality (dashboard-layer-ownership / degradation-is-read-from-
+ * tiers). `loading` covers BOTH the initial fetch and a focus-change re-query
+ * (`isFetching`), so the scene can show a loading state on a focus change behind
+ * the stores->scene boundary (W04.P09.S39). `partial` is the engine's
+ * `salience_partial` flag when served, OR derived from a degraded tier in the
+ * served block — read from tiers, fresh error tiers winning over a stale held
+ * success block, NEVER from a bare transport error (S40).
+ */
+export interface SalienceSliceView {
+  /** The active lens the slice was (or is being) computed for. */
+  lens: SalienceLens;
+  /** The slice is in flight: an initial fetch, a lens switch, or a focus change. */
+  loading: boolean;
+  /** The salience ranking is partial (a relevant tier degraded). */
+  partial: boolean;
+  /** Names of the tiers reporting unavailable/absent in the served block. */
+  degradedTiers: string[];
+  /** Per-tier human reason the engine supplied, keyed by tier name. */
+  reasons: Record<string, string>;
+}
+
+const SALIENCE_SLICE_TIERS = [
+  "declared",
+  "structural",
+  "temporal",
+  "semantic",
+] as const;
+
+/**
+ * Derive the salience slice view from the served data + error + in-flight state.
+ * Degradation is read from the `tiers` block (success data, or the error
+ * envelope's tiers, with FRESH error tiers winning over a stale held-success
+ * block — degradation-is-read-from-tiers), and `partial` honors the engine's
+ * own `salience_partial` flag OR a degraded tier in that block. A wholly absent
+ * block (a bare transport fault) is NOT treated as degraded here — that is the
+ * query's error state, which the scene renders distinctly.
+ */
+export function deriveSalienceSliceView(
+  lens: SalienceLens,
+  data: GraphSlice | undefined,
+  error: unknown,
+  loading: boolean,
+): SalienceSliceView {
+  // Fresh error tiers win over a stale held-success block (the rule's ordering):
+  // when the latest request errored with a tiers-bearing envelope, that error's
+  // tiers are the freshest availability truth.
+  const errTiers = error instanceof EngineError ? error.tiers : undefined;
+  const tiers = errTiers ?? data?.tiers;
+  const degradedTiers: string[] = [];
+  const reasons: Record<string, string> = {};
+  if (tiers) {
+    for (const tier of SALIENCE_SLICE_TIERS) {
+      const state = tiers[tier];
+      if (state === undefined || state.available === false) {
+        degradedTiers.push(tier);
+        if (state?.reason) reasons[tier] = state.reason;
+      }
+    }
+  }
+  // Partial: the engine's explicit flag, OR a degraded tier in the served block.
+  // Never inferred from a bare transport error (no tiers => not partial here).
+  const partial = data?.salience_partial === true || degradedTiers.length > 0;
+  return { lens: data?.lens ?? lens, loading, partial, degradedTiers, reasons };
+}
+
+/**
+ * Stores hook: the active-lens salience slice view (loading on lens/focus change,
+ * partiality + degradation read from tiers), so the scene loading channel and the
+ * lens-selector chrome consume interpreted truth, never the raw `tiers` block.
+ * `loading` is true on a focus change too (the warm-started PPR re-query), which
+ * is the focus-change loading state the scene shows behind the stores boundary.
+ */
+export function useSalienceSliceView(
+  scope: string | null,
+  filter?: GraphFilter,
+  asOf?: string | number,
+  granularity?: "document" | "feature",
+): SalienceSliceView {
+  const lens = useSalienceLensStore((s) => s.lens);
+  const slice = useSalienceGraphSlice(scope, filter, asOf, granularity);
+  // isFetching covers a focus-change/lens-switch re-query while held data is
+  // shown; isPending is the initial fetch. Either is a loading state for the
+  // scene on a focus change.
+  const loading = scope !== null && (slice.isPending || slice.isFetching);
+  return deriveSalienceSliceView(lens, slice.data, slice.error, loading);
 }
 
 /**
@@ -539,6 +700,22 @@ export function useNodeNeighbors(id: string | null, depth = 1) {
     queryKey: engineKeys.neighbors(id ?? "", depth),
     queryFn: () => engineClient.nodeNeighbors(id!, { depth }),
     enabled: id !== null,
+  });
+}
+
+/**
+ * Bulk ego-network fetch for the stage's working set (layer-ownership, F-H1):
+ * one neighbors query per id, fanned out through `useQueries`, so the app/scene
+ * layers never call the engine client directly - the stores layer stays the sole
+ * wire client. Mirrors `useNodeNeighbors`'s per-id key + shape; returns the query
+ * results array so the caller reads each `.data` / `.dataUpdatedAt`.
+ */
+export function useNodeNeighborsBulk(ids: readonly string[], depth = 1) {
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: engineKeys.neighbors(id, depth),
+      queryFn: () => engineClient.nodeNeighbors(id, { depth }),
+    })),
   });
 }
 
@@ -642,6 +819,29 @@ export function useEngineEvents(
   return useQuery({
     queryKey: engineKeys.events(scope ?? "", range, bucket),
     queryFn: () => engineClient.events({ scope: scope!, ...range, bucket }),
+    enabled: scope !== null,
+  });
+}
+
+/**
+ * The bounded temporal-lineage projection for the timeline (dashboard-timeline
+ * ADR, W02.P04.S22). Wraps `engineClient.lineage` so the timeline surface is a
+ * dumb single-selector consumer (dashboard-layer-ownership: the stores layer is
+ * the sole wire client) — the surface never fetches the engine, never reads the
+ * raw `tiers` block, and defines no lineage shape of its own. Returns the dated
+ * nodes + self-consistent arcs + `tiers` + honest `truncated`; disabled when
+ * scope is null (no worktree resolved yet), following the `useGraphSlice` /
+ * `useEngineEvents` enabled-on-scope pattern. The (scope, range, filter) key
+ * triple makes a range scrub or a feature filter its own cache entry.
+ */
+export function useTimelineLineage(
+  scope: string | null,
+  range: { from?: string; to?: string } = {},
+  filter?: string,
+) {
+  return useQuery({
+    queryKey: engineKeys.lineage(scope ?? "", range, filter),
+    queryFn: () => engineClient.lineage({ scope: scope!, ...range, filter }),
     enabled: scope !== null,
   });
 }

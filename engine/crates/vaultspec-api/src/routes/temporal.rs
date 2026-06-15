@@ -92,6 +92,15 @@ pub struct AsofParams {
     /// own feature species, not as a disjoint document graph).
     #[serde(default)]
     pub granularity: Option<String>,
+    /// The active salience lens (graph-node-salience ADR wire amendment): the
+    /// `lens` request parameter is accepted on `/graph/asof` too, defaulting to
+    /// status. The historical slice's salience is computed over the historical
+    /// graph's own basis (the live per-generation cache holds the present view).
+    #[serde(default)]
+    pub lens: Option<String>,
+    /// The DOI focus node id (folded into the historical salience).
+    #[serde(default)]
+    pub focus: Option<String>,
 }
 
 pub async fn graph_asof(
@@ -100,6 +109,7 @@ pub async fn graph_asof(
 ) -> ApiResult {
     let cell = validate_scope(&state, &params.scope)?;
     let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
+    let lens = super::query::parse_lens(&state, params.lens.as_deref())?;
     // Scope the historical snapshot to the SERVED WORKTREE (same as the
     // present view), NOT the ref name: the ref is the TIME axis (`t`), not the
     // corpus-view label. Stamping the ref as the facet scope makes two
@@ -114,13 +124,43 @@ pub async fn graph_asof(
     // revision/timestamp readings can collide on an all-digit value).
     let resolved = engine_graph::asof::asof_graph_resolved(&cell.root, &params.t, &scope, 0)
         .map_err(|e| super::revision_error(&state, &params.t, &e))?;
-    let slice = engine_query::graph::graph_query(
+    let mut slice = engine_query::graph::graph_query(
         &resolved.graph,
         &scope,
         engine_query::filter::Filter::default(),
         granularity,
     )
     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+    // Attach the active-lens salience to the historical document nodes (ADR wire
+    // amendment: lens on /graph/asof). The basis is computed over the HISTORICAL
+    // graph (the live per-generation cache holds the present view); the as-of
+    // tiers block already flags the historical degradation, and the salience
+    // partial flag inherits the structural-degraded-at-T note. Document
+    // granularity only — feature-convergence nodes are not salience-ranked.
+    if granularity == engine_query::graph::Granularity::Document {
+        let members: Vec<&engine_model::Node> = resolved
+            .graph
+            .nodes()
+            .filter(|n| n.facets.iter().any(|f| f.scope == scope))
+            .collect();
+        let basis = engine_query::salience::LensBasis::compute(&resolved.graph, &scope, &members);
+        // Historical structural resolution degrades to stale at T (the as-of
+        // tiers block says so), so the salience is computed partial for honesty.
+        let focus = params
+            .focus
+            .as_ref()
+            .map(|f| engine_model::NodeId(f.clone()));
+        let scores = engine_query::salience::compute_salience(
+            &basis,
+            &resolved.graph,
+            lens,
+            focus.as_ref(),
+            crate::app::now_ms(),
+            true,
+        );
+        engine_query::salience::annotate_nodes(&mut slice.nodes, &scores);
+        engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
+    }
     Ok(super::envelope(
         json!({
             "t": params.t,
@@ -137,8 +177,102 @@ pub async fn graph_asof(
             // splicing to LIVE requires a present keyframe whose deltas
             // arrive on the stream's sequence.
             "last_seq": Value::Null,
+            // The active lens echoed (graph-node-salience ADR wire amendment).
+            "lens": lens.as_str(),
         }),
         serde_json::to_value(engine_query::envelope::asof_tiers_block()).expect("tiers serialize"),
+        None,
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct LineageParams {
+    pub scope: String,
+    /// Inclusive ISO `yyyy-mm-dd` lower bound; absent = open on that side.
+    #[serde(default)]
+    pub from: Option<String>,
+    /// Inclusive ISO `yyyy-mm-dd` upper bound; absent = open on that side.
+    #[serde(default)]
+    pub to: Option<String>,
+    /// The engine-owned wire filter as a URL-encoded JSON object (contract §4,
+    /// §5 `&filter=`). Absent = no constraint (`Filter::default()`). The same
+    /// filter grammar `/graph/query` accepts; a malformed value or an unknown
+    /// facet is a client error shaped through the shared envelope.
+    #[serde(default)]
+    pub filter: Option<String>,
+}
+
+/// `GET /graph/lineage?scope&from&to&filter=` — the bounded temporal-lineage
+/// projection (dashboard-timeline ADR, contract §5; W01.P02). For a scope and an
+/// inclusive `[from, to]` ISO date range, return the dated document nodes in
+/// range together with the self-consistent edges among them — the diachronic
+/// lineage the phase-lane timeline draws.
+///
+/// Read-and-infer behind the shared envelope (engine-read-and-infer,
+/// every-wire-response-carries-the-tiers-block): the success body and every
+/// error path travel through `super::envelope` / `super::api_error`, so the
+/// per-tier `tiers` block rides both. The slice is bounded under the document
+/// node ceiling by the projection itself (graph-queries-are-bounded-by-default),
+/// with an honest `truncated` block; the semantic tier is present-only in the
+/// range lineage (ADR), reported via the degraded tiers block.
+pub async fn graph_lineage(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<LineageParams>,
+) -> ApiResult {
+    let cell = validate_scope(&state, &params.scope)?;
+    // Parse the optional URL-encoded JSON filter; a malformed value is a client
+    // error through the shared envelope (the projection validates the facet
+    // vocabulary below, so this only catches a syntactically-broken value).
+    let filter = match &params.filter {
+        None => engine_query::filter::Filter::default(),
+        Some(raw) => serde_json::from_str(raw).map_err(|e| {
+            super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("invalid filter: {e}"),
+            )
+        })?,
+    };
+    // An inverted range is a client error, not a silently-empty result — fail
+    // fast before the projection walk (mirrors the events handler). ISO dates
+    // compare lexically, the same well-ordering the projection's range test uses.
+    if let (Some(from), Some(to)) = (&params.from, &params.to)
+        && from > to
+    {
+        return Err(super::api_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            format!("lineage range: from ({from}) must be <= to ({to})"),
+        ));
+    }
+    // Present-range lineage over THIS scope's live graph (mirrors the
+    // graph_query present branch + the events handler). The projection bounds
+    // the slice under its document node ceiling and returns only edges among
+    // kept nodes; a bad filter facet (unknown tier/relation/state) surfaces as a
+    // client error through the shared envelope.
+    let graph = cell.graph_arc();
+    let slice = engine_query::lineage::lineage(
+        &graph,
+        &cell.scope,
+        params.from.as_deref(),
+        params.to.as_deref(),
+        filter,
+    )
+    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+    // The semantic tier is present-only in the range lineage (ADR; mirrors the
+    // as-of view): the success envelope marks semantic unavailable with that
+    // reason while overlaying the cell's REAL declared-tier status, so a degraded
+    // declared tier is reported truthfully per scope rather than defaulted true.
+    Ok(super::envelope(
+        json!({
+            "nodes": slice.nodes,
+            "arcs": slice.arcs,
+            "truncated": slice.truncated,
+        }),
+        super::degraded_tiers(
+            &cell,
+            "present-only by design; excluded from the range lineage",
+        ),
         None,
     ))
 }
@@ -152,6 +286,13 @@ pub struct DiffParams {
     /// meta-edge/feature-node delta log (S50), each entry tagged `feature`.
     #[serde(default)]
     pub granularity: Option<String>,
+    /// The active salience lens (graph-node-salience ADR wire amendment): the
+    /// `lens` parameter is accepted on `/graph/diff` for wire uniformity and
+    /// echoed back; the delta log itself carries node deltas, not a per-node
+    /// salience map (a scrub re-keyframes through `/graph/asof`, which serves the
+    /// lens-salience). Defaults to status; validated so a bad lens is a 400.
+    #[serde(default)]
+    pub lens: Option<String>,
 }
 
 pub async fn graph_diff(
@@ -160,6 +301,7 @@ pub async fn graph_diff(
 ) -> ApiResult {
     let cell = validate_scope(&state, &params.scope)?;
     let granularity = super::query::parse_granularity(&state, params.granularity.as_deref())?;
+    let lens = super::query::parse_lens(&state, params.lens.as_deref())?;
     // BOTH endpoints are scoped to the SAME served worktree so the delta log
     // reflects CONTENT changes (content_hash, presence, lifecycle, edges)
     // between the refs — not the ref LABEL. Using each ref name as the facet
@@ -189,6 +331,7 @@ pub async fn graph_diff(
                 "clock": "result-local",
                 "from_resolved_sha": from_sha,
                 "to_resolved_sha": to_sha,
+                "lens": lens.as_str(),
             }),
             serde_json::to_value(engine_query::envelope::asof_tiers_block())
                 .expect("tiers serialize"),
@@ -238,6 +381,8 @@ pub async fn graph_diff(
             "to_resolved_sha": to_resolved.resolved_sha,
             "from_interpretation": from_resolved.interpretation,
             "to_interpretation": to_resolved.interpretation,
+            // The active lens echoed (graph-node-salience ADR wire amendment).
+            "lens": lens.as_str(),
         }),
         serde_json::to_value(engine_query::envelope::asof_tiers_block()).expect("tiers serialize"),
         None,

@@ -11,6 +11,7 @@ import {
   adaptFilters,
   adaptGitOp,
   adaptGraphSlice,
+  adaptLineageSlice,
   adaptMap,
   adaptPipeline,
   adaptPlanInterior,
@@ -250,6 +251,269 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     const slice = adaptGraphSlice(docSlice);
     expect(slice.edges).toHaveLength(1);
     expect(slice.edges[0].meta).toBeUndefined();
+  });
+});
+
+describe("adaptLineageSlice (live lineage sample, dashboard-timeline W02.P03.S21)", () => {
+  // Captured from the live `/graph/lineage` wire shape (engine `lineage.rs` →
+  // `graph_lineage` route, unwrapped from `{data: {nodes, arcs, truncated},
+  // tiers}`): dated document nodes in range with their derived phase lane, the
+  // self-consistent arcs among them (derivation-fallback: NO `derivation` field
+  // until the node-semantics field ships), and a null truncated block under the
+  // ceiling. `dates.modified` is the engine `Timestamp` (epoch-ms NUMBER).
+  const liveLineage = {
+    nodes: [
+      {
+        id: "doc:2026-06-10-x-research",
+        doc_type: "research",
+        phase: "research",
+        dates: { created: "2026-06-10", modified: 1718000000000 },
+        title: "x research",
+        degree: 3,
+      },
+      {
+        id: "doc:2026-06-12-x-adr",
+        doc_type: "adr",
+        phase: "adr",
+        // An undated-modified, untitled node: both optionals absent on the wire.
+        dates: { created: "2026-06-12" },
+        degree: 2,
+      },
+    ],
+    arcs: [
+      {
+        id: "edge:abc",
+        src: "doc:2026-06-12-x-adr",
+        dst: "doc:2026-06-10-x-research",
+        relation: "mentions",
+        // derivation-fallback: the field is ABSENT on the wire (engine `Edge`
+        // carries no `derivation` yet); the arc is real structural lineage.
+        tier: "structural",
+        confidence: 0.9,
+      },
+    ],
+    truncated: null,
+    tiers: TIERS,
+  };
+
+  it("reconciles the lineage slice: nodes, arcs, tiers, and the optional fields", () => {
+    const slice = adaptLineageSlice(liveLineage);
+    expect(slice.nodes).toHaveLength(2);
+    // The research node carries its title and the numeric epoch-ms modified tick.
+    const research = slice.nodes[0];
+    expect(research.id).toBe("doc:2026-06-10-x-research");
+    expect(research.phase).toBe("research");
+    expect(research.dates.created).toBe("2026-06-10");
+    expect(research.dates.modified).toBe(1718000000000);
+    expect(research.title).toBe("x research");
+    expect(research.degree).toBe(3);
+    // The ADR node tolerates both optionals absent (no title, no modified tick).
+    const adr = slice.nodes[1];
+    expect(adr.title).toBeUndefined();
+    expect(adr.dates.modified).toBeUndefined();
+    expect(adr.dates.created).toBe("2026-06-12");
+    // The arc is real structural lineage with NO derivation (graceful fallback).
+    expect(slice.arcs).toHaveLength(1);
+    const arc = slice.arcs[0];
+    expect(arc.relation).toBe("mentions");
+    expect(arc.tier).toBe("structural");
+    expect(arc.derivation).toBeUndefined();
+    // Self-consistency: the arc's endpoints are both returned nodes.
+    const ids = new Set(slice.nodes.map((n) => n.id));
+    expect(ids.has(arc.src) && ids.has(arc.dst)).toBe(true);
+    // The tiers block rides through (semantic present-only/degraded in range).
+    expect(slice.tiers.semantic.available).toBe(false);
+    // Under the ceiling: no truncation block.
+    expect(slice.truncated).toBeNull();
+  });
+
+  it("carries the truncated honesty block when the engine capped the slice", () => {
+    const capped = adaptLineageSlice({
+      nodes: [],
+      arcs: [],
+      truncated: {
+        total_nodes: 6000,
+        returned_nodes: 5000,
+        reason: "lineage document node ceiling",
+      },
+      tiers: TIERS,
+    });
+    expect(capped.truncated).toEqual({
+      total_nodes: 6000,
+      returned_nodes: 5000,
+      reason: "lineage document node ceiling",
+    });
+  });
+
+  it("tolerates a sparse body: absent arrays default to empty, never throws", () => {
+    const sparse = adaptLineageSlice({ tiers: TIERS });
+    expect(sparse.nodes).toEqual([]);
+    expect(sparse.arcs).toEqual([]);
+    expect(sparse.truncated).toBeNull();
+    expect(sparse.tiers.declared.available).toBe(true);
+    // A non-object body degrades to safe empties rather than crashing the load.
+    expect(adaptLineageSlice(null)).toEqual({
+      nodes: [],
+      arcs: [],
+      tiers: {},
+      truncated: null,
+    });
+  });
+});
+
+describe("adaptGraphSlice ontology fields (graph-node-semantics)", () => {
+  // A document-granularity slice in the EXACT shape the live engine's edge_view
+  // and node_view now serve: nodes carry the additive `authority_class` register
+  // and the `aggregate` hint; edges carry the additive `derivation` label
+  // alongside the §4 `relation`/`tier`. Fed through the SAME client path the app
+  // uses (adaptGraphSlice), proving the ontology survives the adapter intact
+  // (mock-mirrors-live-wire-shape: one code path serves both origins).
+  const liveOntologySlice = {
+    nodes: [
+      {
+        id: "doc:2026-06-13-conf-plan",
+        kind: "document",
+        doc_type: "plan",
+        title: "conf plan",
+        feature_tags: ["conf-feature"],
+        lifecycle: { state: "L2", progress: { done: 1, total: 2 } },
+        degree_by_tier: { declared: 1, structural: 1 },
+        authority_class: "roadmap",
+        aggregate: false,
+      },
+      {
+        id: "doc:2026-06-13-conf-exec-S01",
+        kind: "document",
+        doc_type: "exec",
+        title: "conf exec",
+        feature_tags: ["conf-feature"],
+        lifecycle: { state: "complete" },
+        authority_class: "evidence",
+        aggregate: true,
+      },
+    ],
+    edges: [
+      {
+        id: "e:plan->adr",
+        src: "doc:2026-06-13-conf-plan",
+        dst: "doc:2026-06-13-conf-adr",
+        relation: "mentions",
+        tier: "structural",
+        confidence: 0.9,
+        derivation: "authorizes",
+      },
+      {
+        id: "e:plan->feature",
+        src: "doc:2026-06-13-conf-plan",
+        dst: "feature:conf-feature",
+        relation: "declares",
+        tier: "declared",
+        confidence: 1,
+        derivation: null,
+      },
+    ],
+    meta_edges: [],
+    tiers: TIERS,
+  };
+
+  it("preserves authority_class and the aggregate hint on document nodes", () => {
+    const slice = adaptGraphSlice(liveOntologySlice);
+    const plan = slice.nodes.find((n) => n.id === "doc:2026-06-13-conf-plan");
+    const exec = slice.nodes.find((n) => n.id === "doc:2026-06-13-conf-exec-S01");
+    expect(plan?.authority_class).toBe("roadmap");
+    expect(plan?.aggregate).toBe(false);
+    // The exec record is the collapsible aggregate species.
+    expect(exec?.authority_class).toBe("evidence");
+    expect(exec?.aggregate).toBe(true);
+  });
+
+  it("preserves the derivation label alongside the relation on edges", () => {
+    const slice = adaptGraphSlice(liveOntologySlice);
+    const pipeline = slice.edges.find((e) => e.id === "e:plan->adr");
+    // The §4 relation is untouched; the derivation rides alongside it.
+    expect(pipeline?.relation).toBe("mentions");
+    expect(pipeline?.derivation).toBe("authorizes");
+    // A feature-membership edge carries an explicit null derivation, not absent.
+    const membership = slice.edges.find((e) => e.id === "e:plan->feature");
+    expect(membership?.derivation).toBeNull();
+  });
+});
+
+describe("adaptGraphSlice salience conformance (live sample, graph-node-salience W04.P10.S43)", () => {
+  // A sample CAPTURED from the live `vaultspec serve` `/graph/query` document
+  // response under the graph-node-salience wire amendment: the `{data, tiers}`
+  // envelope carrying the single active-lens `salience` float on each document
+  // node, the active `lens` echo, `salience_partial`, and the bounded-query
+  // metadata. Feeding it through the SAME client path the app uses
+  // (unwrapEnvelope -> adaptGraphSlice) and asserting salience fidelity is the
+  // mock-mirrors-live-wire-shape verification for the salience field.
+  const liveSalienceEnvelope = {
+    data: {
+      nodes: [
+        // The live wire serves document nodes ORDERED by descending salience for
+        // the active lens (status default), each carrying a single salience float.
+        {
+          id: "doc:2026-06-14-x-plan",
+          kind: "document",
+          doc_type: "plan",
+          feature_tags: ["x"],
+          salience: 0.91,
+          degree_by_tier: { declared: 1, structural: 2, temporal: 0, semantic: 0 },
+        },
+        {
+          id: "doc:2026-06-14-x-adr",
+          kind: "document",
+          doc_type: "adr",
+          feature_tags: ["x"],
+          salience: 0.54,
+          degree_by_tier: { declared: 1, structural: 1, temporal: 0, semantic: 0 },
+        },
+      ],
+      edges: [],
+      meta_edges: [],
+      filter: {},
+      as_of: null,
+      last_seq: 12,
+      truncated: null,
+      lens: "status",
+      salience_partial: false,
+    },
+    tiers: TIERS,
+  };
+
+  it("preserves the active-lens salience float through the live client path", () => {
+    const slice = adaptGraphSlice(unwrapEnvelope(liveSalienceEnvelope));
+    // The active lens defaults to status on the live wire, surfaced verbatim.
+    expect(slice.lens).toBe("status");
+    expect(slice.salience_partial).toBe(false);
+    // Each document node carries its single active-lens salience float, fidelity
+    // preserved (not dropped, not re-derived).
+    expect(slice.nodes).toHaveLength(2);
+    expect(slice.nodes[0].salience).toBe(0.91);
+    expect(slice.nodes[1].salience).toBe(0.54);
+    // The wire order (descending salience) is preserved: the top-DOI node leads.
+    expect(slice.nodes[0].id).toBe("doc:2026-06-14-x-plan");
+    expect((slice.nodes[0].salience ?? 0) > (slice.nodes[1].salience ?? 0)).toBe(true);
+    // The tiers block rides through for the degradation read.
+    expect(slice.tiers.semantic.available).toBe(false);
+  });
+
+  it("surfaces salience_partial when the live sample flags a degraded ranking", () => {
+    const partialEnvelope = {
+      data: {
+        ...liveSalienceEnvelope.data,
+        lens: "design",
+        salience_partial: true,
+      },
+      tiers: {
+        ...TIERS,
+        declared: { available: false, reason: "core graph unavailable" },
+      },
+    };
+    const slice = adaptGraphSlice(unwrapEnvelope(partialEnvelope));
+    expect(slice.lens).toBe("design");
+    expect(slice.salience_partial).toBe(true);
+    expect(slice.tiers.declared.available).toBe(false);
   });
 });
 

@@ -432,13 +432,27 @@ fn cli_and_serve_agree_on_the_graph() {
         .filter_map(|e| e["id"].as_str())
         .collect();
 
+    // D6.1 parity is on the graph PAYLOAD (the same node and edge set), modulo
+    // envelope AND modulo the serve front door's salience presentation order:
+    // `/graph/query` orders document nodes by descending active-lens DOI so the
+    // bounded wire keeps the top-salience nodes (graph-node-salience ADR), while
+    // the CLI `graph` export is a raw id-ordered dump. Both expose the identical
+    // graph — assert that by comparing the sorted id sets, not the wire order.
+    let mut cli_nodes_sorted = cli_nodes.clone();
+    cli_nodes_sorted.sort_unstable();
+    let mut serve_nodes_sorted = serve_nodes.clone();
+    serve_nodes_sorted.sort_unstable();
     assert_eq!(
-        cli_nodes, serve_nodes,
-        "identical node ids, identical order"
+        cli_nodes_sorted, serve_nodes_sorted,
+        "identical node id set across both front doors"
     );
+    let mut cli_edges_sorted = cli_edges.clone();
+    cli_edges_sorted.sort_unstable();
+    let mut serve_edges_sorted = serve_edges.clone();
+    serve_edges_sorted.sort_unstable();
     assert_eq!(
-        cli_edges, serve_edges,
-        "identical edge ids, identical order"
+        cli_edges_sorted, serve_edges_sorted,
+        "identical edge id set across both front doors"
     );
     // Identity stability across repeated queries (plan verification).
     let (_, again) = http(

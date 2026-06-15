@@ -33,6 +33,10 @@ pub enum CanonicalKey<'a> {
         path: &'a str,
         symbol: Option<&'a str>,
     },
+    /// Rule slug (kebab-case): the codify pipeline's output projected from the
+    /// rules tree (graph-node-semantics ADR). Identity is the slug, stable
+    /// across re-projection.
+    Rule { slug: &'a str },
 }
 
 impl CanonicalKey<'_> {
@@ -43,6 +47,7 @@ impl CanonicalKey<'_> {
             CanonicalKey::PlanContainer { .. } => NodeKind::PlanContainer,
             CanonicalKey::Commit { .. } => NodeKind::Commit,
             CanonicalKey::CodeArtifact { .. } => NodeKind::CodeArtifact,
+            CanonicalKey::Rule { .. } => NodeKind::Rule,
         }
     }
 
@@ -60,6 +65,7 @@ impl CanonicalKey<'_> {
                 Some(symbol) => format!("{path}#{symbol}"),
                 None => (*path).to_string(),
             },
+            CanonicalKey::Rule { slug } => (*slug).to_string(),
         }
     }
 }
@@ -71,6 +77,7 @@ pub(crate) fn kind_prefix(kind: &NodeKind) -> &'static str {
         NodeKind::PlanContainer => "plan",
         NodeKind::Commit => "commit",
         NodeKind::CodeArtifact => "code",
+        NodeKind::Rule => "rule",
     }
 }
 

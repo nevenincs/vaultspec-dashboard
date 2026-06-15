@@ -6,24 +6,25 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { graphDeltaToScene, sliceToScene } from "../../scene/sceneMapping";
-import { engineClient } from "../../stores/server/engine";
 import { useGraphLiveSync } from "../../stores/server/graphSync";
 import { useLiveStatusStore } from "../../stores/server/liveStatus";
 import {
   engineKeys,
   useGraphSlice,
   useGraphSliceAvailability,
+  useNodeNeighborsBulk,
   usePutSession,
   useSession,
   useWorkspaceMap,
 } from "../../stores/server/queries";
 import { computeVisibility, useFilterStore } from "../../stores/view/filters";
 import { useLensStore } from "../../stores/view/lenses";
+import { openContextMenu } from "../../stores/view/contextMenu";
 import { bindPinsToScene, usePinStore } from "../../stores/view/pins";
 import {
   bindSelectionToScene,
@@ -37,6 +38,8 @@ import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { AlgorithmPanel } from "./AlgorithmPanel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
+import { LensSelector } from "./LensSelector";
+import { RepresentationModePanel } from "./RepresentationModePanel";
 import { Discover } from "./Discover";
 import { useGraphWalkKeyboard } from "./graphWalk";
 import { FilterBar } from "./FilterBar";
@@ -175,7 +178,19 @@ export function Stage() {
   // full document graph (~200 nodes, the Obsidian mental model). Resets to
   // "feature" on scope swap (viewStore.setScope).
   const granularity = useViewStore((s) => s.granularity);
-  const slice = useGraphSlice(scope, undefined, undefined, granularity);
+  // The active salience lens (graph-node-salience): a lens switch is a RE-QUERY
+  // (the lens folds into the slice cache key), which the active representation
+  // mode then re-lays-out with id-keyed object constancy — the composition rule
+  // (graph-representation ADR). Owned by the view store; the chrome never fetches.
+  const activeLens = useViewStore((s) => s.activeLens);
+  const slice = useGraphSlice(scope, undefined, undefined, granularity, activeLens);
+  // The active representation mode + overlay visibility (graph-representation
+  // ADR): view state the chrome owns and emits to the scene. A mode switch
+  // re-lays-out the CURRENT set (no re-query); the lens re-query is the slice key
+  // change above. Composition sequencing (lens re-query then mode re-layout) is
+  // realized by these two being independent reactive inputs.
+  const activeRepresentationMode = useViewStore((s) => s.activeRepresentationMode);
+  const overlays = useViewStore((s) => s.overlays);
   const availability = useGraphSliceAvailability(scope, granularity);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
@@ -203,13 +218,10 @@ export function Stage() {
     expand: (id: string) => useViewStore.getState().addToWorkingSet(id),
   });
 
-  // Each working-set entry materializes its ego network on stage (G3.b).
-  const expansions = useQueries({
-    queries: workingSet.map((id) => ({
-      queryKey: engineKeys.neighbors(id, 1),
-      queryFn: () => engineClient.nodeNeighbors(id, { depth: 1 }),
-    })),
-  });
+  // Each working-set entry materializes its ego network on stage (G3.b). The
+  // fan-out lives behind the stores boundary (useNodeNeighborsBulk, F-H1) so the
+  // app layer never calls the engine client directly (dashboard-layer-ownership).
+  const expansions = useNodeNeighborsBulk(workingSet, 1);
 
   // Mount the field into the host; resize observation keeps it fitted.
   useEffect(() => {
@@ -234,6 +246,29 @@ export function Stage() {
         openNode(event.id);
       }
       if (event.kind === "expand") addToWorkingSet(event.id);
+      if (event.kind === "context-menu") {
+        // Right-click on the field: a node opens the graph node menu, empty
+        // canvas opens the canvas menu. Membership flags are read at event time
+        // so the resolver shows the right open/pin/working-set labels (the
+        // resolver stays pure; the descriptor carries the state).
+        const anchor = { x: event.clientX, y: event.clientY };
+        if (event.id) {
+          const id = event.id;
+          const view = useViewStore.getState();
+          openContextMenu(
+            {
+              kind: "node",
+              id,
+              isOpen: view.openedIds.includes(id),
+              isPinned: usePinStore.getState().isPinned(id),
+              inWorkingSet: view.workingSet.includes(id),
+            },
+            anchor,
+          );
+        } else {
+          openContextMenu({ kind: "canvas", id: "canvas" }, anchor);
+        }
+      }
     });
     const offBind = bindSelectionToScene(scene.controller);
     const offPins = bindPinsToScene(scene.controller);
@@ -298,6 +333,28 @@ export function Stage() {
       edges: mapped.edges,
     });
   }, [merged, scope, timelineMode.kind]);
+
+  // Representation mode -> scene (graph-representation ADR): a mode switch
+  // re-lays-out the current set with id-keyed object constancy (no re-query). The
+  // scene echoes `representation-mode-changed` with the APPLIED mode (a held
+  // semantic mode downgrades honestly). Emitted whenever the mode changes; the
+  // animated incremental transition is the scene's job.
+  useEffect(() => {
+    scene.controller.command({
+      kind: "set-representation-mode",
+      mode: activeRepresentationMode,
+    });
+  }, [activeRepresentationMode]);
+
+  // Overlay visibility -> scene: toggling never re-lays-out (set overlays are
+  // projections that do not move nodes).
+  useEffect(() => {
+    scene.controller.command({
+      kind: "set-overlays",
+      featureCountries: overlays.featureCountries,
+      featureHulls: overlays.featureHulls,
+    });
+  }, [overlays.featureCountries, overlays.featureHulls]);
 
   // spliceLive: route feature-granularity deltas directly to the scene so
   // feature-node and meta-edge changes animate without a constellation refetch.
@@ -432,6 +489,14 @@ export function Stage() {
       {algorithmPanelOpen && (
         <AlgorithmPanel onClose={() => setAlgorithmPanelOpen(false)} />
       )}
+      {/* Representation-mode + lens selectors (graph-representation, canvas-
+          controls amendment): docked on-stage controls. The mode selector emits a
+          scene re-layout; the lens selector emits a wire re-query — composition
+          sequencing keeps the two from contending. */}
+      <div className="pointer-events-auto absolute left-1/2 top-vs-2 z-10 flex -translate-x-1/2 items-center gap-vs-2">
+        <RepresentationModePanel />
+        <LensSelector />
+      </div>
       <MinimapWidget />
       <WorkingSet />
       <Discover />

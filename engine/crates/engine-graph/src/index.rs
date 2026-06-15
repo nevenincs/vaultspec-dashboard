@@ -287,18 +287,21 @@ fn index_structural(
         // Contract §4 node fields on the LIST shape (addendum S03):
         // title from the body H1, created from the frontmatter date,
         // modified from the worktree mtime (ms), doc_type from the vault
-        // subdirectory, lifecycle from checkbox progress.
+        // subdirectory, lifecycle from the type-specific vocabulary
+        // (graph-node-semantics ADR: ADR status / plan tier+progress / audit
+        // max-severity / rule active-superseded, else checkbox progress).
         let modified = std::fs::metadata(root.join(&rel_path))
             .ok()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as Timestamp);
+        let doc_type = doc_type_of(&rel_path);
         graph.upsert_node(Node {
             id: node_id(&CanonicalKey::Document { stem: &stem }),
             kind: NodeKind::Document,
             key: stem.clone(),
             title: doc_title(&text),
-            doc_type: doc_type_of(&rel_path),
+            doc_type: doc_type.clone(),
             dates: Some(engine_model::Dates {
                 created: frontmatter_date(&text),
                 modified,
@@ -315,7 +318,7 @@ fn index_structural(
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: Some(blob_hash.clone()),
-                lifecycle: doc_lifecycle(&text),
+                lifecycle: doc_lifecycle(doc_type.as_deref(), &text),
             }],
         });
 
@@ -394,9 +397,145 @@ fn index_structural(
     // graph so minting order is irrelevant; the binding edge id is identity-only.
     bind_steps_to_exec_records(graph, scope, observed_at);
 
+    // Rule node species (graph-node-semantics ADR): project the codify
+    // pipeline's output from the rules tree as authority-class `law` nodes with
+    // `promoted-from` edges back into the audit that bore them. Read-and-infer:
+    // rules live OUTSIDE `.vault/` and are NEVER minted as vault documents — the
+    // node is a re-computable projection, deletable and re-derivable.
+    project_rules(graph, root, scope, observed_at);
+
     phase!("structural");
 
     Ok(stats)
+}
+
+/// Project the rules tree (`.vaultspec/rules/rules/*.md`, OUTSIDE `.vault/`)
+/// into `rule` species nodes (graph-node-semantics ADR). Each rule becomes a
+/// node of kind `Rule` (authority class `law`) carrying its active/superseded
+/// lifecycle, and — when the rule names the audit it was promoted from
+/// (`derived_from:` frontmatter, or a `## Source` audit-stem reference) — a
+/// `promoted-from` declared edge from the rule back into that audit's document
+/// node. Best-effort: a missing or unreadable rules tree simply projects no
+/// rule nodes (the corpus has none), never failing the index.
+pub(crate) fn project_rules(
+    graph: &mut LinkageGraph,
+    root: &Path,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+) {
+    let rules_dir = root.join(".vaultspec").join("rules").join("rules");
+    let Ok(entries) = std::fs::read_dir(&rules_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.ends_with(".md") {
+            continue;
+        }
+        // The rule slug is the filename sans `.md` and the `.builtin` infix.
+        let slug = name
+            .trim_end_matches(".md")
+            .trim_end_matches(".builtin")
+            .to_string();
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let rule_id = node_id(&CanonicalKey::Rule { slug: &slug });
+        graph.upsert_node(Node {
+            id: rule_id.clone(),
+            kind: NodeKind::Rule,
+            key: slug.clone(),
+            title: doc_title(&text),
+            // A rule has no `.vault/` subdirectory type; the `rule` doc_type is
+            // the ontology's species handle, NOT a claim that rules are vault
+            // documents (the node kind already says `rule`).
+            doc_type: Some("rule".to_string()),
+            dates: Some(engine_model::Dates {
+                created: frontmatter_date(&text),
+                modified: None,
+            }),
+            feature_tags: vec![],
+            // A rule carries neither an ADR status nor a plan tier — those are
+            // the adr/plan species' lifecycle handles; the rule's active/superseded
+            // state lives in its facet lifecycle below.
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope.clone(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: Some(engine_model::Lifecycle {
+                    state: rule_status(&text),
+                    progress: None,
+                }),
+            }],
+        });
+
+        // The `promoted-from` derivation edge back into the audit that bore the
+        // rule: read the audit stem from `derived_from:` frontmatter or a
+        // `## Source` audit reference, and mint a declared edge ONLY when that
+        // audit document node already exists in the graph (an honest edge to a
+        // real node, never a dangling one).
+        if let Some(audit_stem) = rule_source_audit(&text) {
+            let audit_id = node_id(&CanonicalKey::Document { stem: &audit_stem });
+            if graph.node(&audit_id).is_some() {
+                let provenance = Provenance::CoreGraph {
+                    payload_hash: "rule-projection".into(),
+                    edge_id: format!("promoted-from:{slug}->{audit_stem}"),
+                };
+                let edge = Edge {
+                    id: edge_id(
+                        &rule_id,
+                        &audit_id,
+                        &RelationKind::References,
+                        Tier::Declared,
+                        &provenance,
+                    ),
+                    src: rule_id.clone(),
+                    dst: audit_id,
+                    relation: RelationKind::References,
+                    tier: Tier::Declared,
+                    confidence: 1.0,
+                    state: None,
+                    provenance,
+                    scope: scope.clone(),
+                    observed_at,
+                };
+                let _ = crate::edges::ingest(graph, edge, EdgeAttrs::default());
+            }
+        }
+    }
+}
+
+/// The audit stem a rule was promoted from: `derived_from:` frontmatter wins,
+/// else the first `…-audit` stem named in backticks in the `## Source` section.
+/// `None` when the rule names no source audit (a directly-authored rule).
+pub(crate) fn rule_source_audit(text: &str) -> Option<String> {
+    // 1) `derived_from:` frontmatter (the promote path stamps this).
+    if let Some(rest) = text.strip_prefix("---")
+        && let Some(end) = rest.find("\n---")
+    {
+        for line in rest[..end].lines() {
+            if let Some(value) = line.trim().strip_prefix("derived_from:") {
+                let value = value.trim().trim_matches('\'').trim_matches('"');
+                if value.ends_with("-audit") {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    // 2) A backtick-quoted `…-audit` stem anywhere in the body (the `## Source`
+    //    section names it). Backtick-delimited spans are the odd-indexed pieces
+    //    of a split on '`'; take the first that looks like an audit stem.
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        .find(|token| {
+            token.ends_with("-audit")
+                && token.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        })
+        .map(str::to_string)
 }
 
 /// Ingest core's authored `vault graph` as declared-tier edges (engine-spec
@@ -966,7 +1105,7 @@ pub(crate) fn doc_type_of(rel_path: &str) -> Option<String> {
 /// Lifecycle from checkbox progress (contract §4 `lifecycle {state,
 /// progress?}`): documents carrying task lists report done/total; complete
 /// when every box is checked.
-pub(crate) fn doc_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
+fn checkbox_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
     let mut done: u32 = 0;
     let mut total: u32 = 0;
     for line in text.lines() {
@@ -982,6 +1121,109 @@ pub(crate) fn doc_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
         state: if done == total { "complete" } else { "active" }.to_string(),
         progress: Some(engine_model::Progress { done, total }),
     })
+}
+
+/// Type-specific lifecycle vocabulary (graph-node-semantics ADR): the single
+/// generic `state` string is a lossy collapse, so each species surfaces its
+/// own state machine, parsed from frontmatter and body. This is the ADDITIVE
+/// lifecycle extension — it RETAINS the §4 `{state, progress?}` shape and only
+/// chooses a richer, type-correct `state` value (and keeps the checkbox
+/// progress for plans). Parsed from body conventions (ADR H1 status line, audit
+/// finding-severity headings, frontmatter tier/status), it DEGRADES HONESTLY:
+/// a document predating the convention falls back to the generic checkbox
+/// lifecycle (or `None`), never a fabricated state (ADR `Frontier caution`).
+pub(crate) fn doc_lifecycle(doc_type: Option<&str>, text: &str) -> Option<engine_model::Lifecycle> {
+    match doc_type {
+        // ADR: the H1 status line — `(**status:** \`accepted\`)`.
+        Some("adr") => adr_status(text)
+            .map(|state| engine_model::Lifecycle {
+                state,
+                progress: None,
+            })
+            .or_else(|| checkbox_lifecycle(text)),
+        // Plan: tier (frontmatter) + checkbox progress. The tier is the
+        // ontological weight a generic state cannot carry; it rides as the
+        // state while progress stays on the §4 progress channel.
+        Some("plan") => {
+            let progress = checkbox_lifecycle(text).and_then(|l| l.progress);
+            let tier = plan_tier(text);
+            match (tier, progress) {
+                (Some(tier), progress) => Some(engine_model::Lifecycle {
+                    state: tier,
+                    progress,
+                }),
+                (None, _) => checkbox_lifecycle(text),
+            }
+        }
+        // Audit: the worst finding severity drives the lifecycle.
+        Some("audit") => audit_max_severity(text)
+            .map(|severity| engine_model::Lifecycle {
+                state: severity,
+                progress: None,
+            })
+            .or_else(|| checkbox_lifecycle(text)),
+        // Rule: active vs superseded (a `## Status` naming a successor).
+        Some("rule") => Some(engine_model::Lifecycle {
+            state: rule_status(text),
+            progress: None,
+        }),
+        // Every other type keeps the generic checkbox lifecycle.
+        _ => checkbox_lifecycle(text),
+    }
+}
+
+/// The ADR status from the H1 status line (`… (**status:** \`accepted\`)`).
+/// Recognizes the four-state machine; an ADR predating the convention yields
+/// `None` (honest absence, not a fabricated `accepted`).
+pub(crate) fn adr_status(text: &str) -> Option<String> {
+    let h1 = text.lines().find(|l| l.starts_with("# "))?;
+    let lower = h1.to_lowercase();
+    for status in ["deprecated", "rejected", "accepted", "proposed"] {
+        // Match `status:` followed (loosely) by the keyword on the H1 line.
+        if lower.contains("status") && lower.contains(status) {
+            return Some(status.to_string());
+        }
+    }
+    None
+}
+
+/// The plan tier from frontmatter (`tier: L2`). The L1–L4 complexity signal a
+/// generic `state` cannot carry; `None` when absent.
+pub(crate) fn plan_tier(text: &str) -> Option<String> {
+    let rest = text.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    rest[..end].lines().find_map(|line| {
+        let value = line.trim().strip_prefix("tier:")?.trim();
+        let value = value.trim_matches('\'').trim_matches('"');
+        matches!(value, "L1" | "L2" | "L3" | "L4").then(|| value.to_string())
+    })
+}
+
+/// The worst finding severity in an audit body. Audits surface findings with a
+/// severity word (critical/high/medium/low) on heading or label lines; the
+/// lifecycle reports the worst one present. `None` when no severity is found
+/// (an audit predating the convention degrades honestly).
+pub(crate) fn audit_max_severity(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    for severity in ["critical", "high", "medium", "low"] {
+        if lower.contains(severity) {
+            return Some(severity.to_string());
+        }
+    }
+    None
+}
+
+/// A rule's active/superseded status: a `## Status` section that names a
+/// successor (a `superseded` keyword, or "successor"/"superseded by" prose)
+/// reads as `superseded`; otherwise `active`. Rules default to active because a
+/// shipped rule binds by default (ADR: pinned to shipped reality).
+pub(crate) fn rule_status(text: &str) -> String {
+    let lower = text.to_lowercase();
+    if lower.contains("superseded by") || lower.contains("supersedes") {
+        "superseded".to_string()
+    } else {
+        "active".to_string()
+    }
 }
 
 /// Feature tags from vault frontmatter: `- '#tag'` entries that are not
@@ -1115,6 +1357,105 @@ mod tests {
         // A tier marker outside the frontmatter fence is ignored.
         let outside = "---\ntags:\n  - '#plan'\n---\n\ntier: L2 mentioned in prose\n";
         assert_eq!(frontmatter_plan_tier(outside), None);
+    }
+
+    #[test]
+    fn rule_species_projects_from_the_rules_tree_with_promoted_from_edges() {
+        // graph-node-semantics ADR: rules live OUTSIDE `.vault/` and project as
+        // `rule` species nodes (authority law) with a `promoted-from` edge back
+        // into the audit that bore them — never minted as vault documents.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // An audit document the rule will point back to.
+        std::fs::create_dir_all(root.join(".vault/audit")).unwrap();
+        std::fs::write(
+            root.join(".vault/audit/2026-06-14-x-audit.md"),
+            "---\ntags:\n  - '#audit'\n  - '#x'\n---\n\n# x audit\n",
+        )
+        .unwrap();
+        // A project rule whose `## Source` names that audit.
+        std::fs::create_dir_all(root.join(".vaultspec/rules/rules")).unwrap();
+        std::fs::write(
+            root.join(".vaultspec/rules/rules/x-rule.md"),
+            "---\nname: x-rule\n---\n\n# X rule\n\n## Status\n\nActive.\n\n## Source\n\nAudit `2026-06-14-x-audit`.\n",
+        )
+        .unwrap();
+
+        let store = engine_store::Store::open(&root.join(".vault")).unwrap();
+        let (graph, _) = index_worktree(root, &scope(), &store, 0).unwrap();
+
+        // The rule node exists, is kind Rule, and is active.
+        let rule_id = node_id(&CanonicalKey::Rule { slug: "x-rule" });
+        let rule = graph.node(&rule_id).expect("rule node projected");
+        assert_eq!(rule.kind, NodeKind::Rule);
+        assert_eq!(rule.id.0, "rule:x-rule", "rule id is slug-keyed, not doc:");
+        assert_eq!(rule.facets[0].lifecycle.as_ref().unwrap().state, "active");
+
+        // A promoted-from edge bridges the rule to the audit document node.
+        let audit_id = node_id(&CanonicalKey::Document {
+            stem: "2026-06-14-x-audit",
+        });
+        let bridged = graph
+            .edges_of(&rule_id)
+            .any(|s| s.edge.src == rule_id && s.edge.dst == audit_id);
+        assert!(bridged, "rule -> audit promoted-from edge minted");
+    }
+
+    #[test]
+    fn type_specific_lifecycle_parses_per_species_with_honest_degradation() {
+        // ADR status from the H1 status line.
+        let adr = "---\ntags: ['#adr']\n---\n\n# `x` adr: `y` | (**status:** `accepted`)\n";
+        assert_eq!(
+            doc_lifecycle(Some("adr"), adr).unwrap().state,
+            "accepted",
+            "ADR status drives the lifecycle"
+        );
+        let deprecated = "# `x` adr (**status:** `deprecated`)\n";
+        assert_eq!(
+            doc_lifecycle(Some("adr"), deprecated).unwrap().state,
+            "deprecated"
+        );
+
+        // Plan tier rides as the state; checkbox progress stays on progress.
+        let plan = "---\ntier: L2\n---\n\n- [x] done\n- [ ] todo\n";
+        let plan_lc = doc_lifecycle(Some("plan"), plan).unwrap();
+        assert_eq!(plan_lc.state, "L2", "plan tier is the lifecycle state");
+        assert_eq!(plan_lc.progress.unwrap().done, 1);
+        assert_eq!(plan_lc.progress.unwrap().total, 2);
+
+        // Audit worst-finding severity.
+        let audit = "# audit\n\n### Finding A (high)\n### Finding B (low)\n";
+        assert_eq!(
+            doc_lifecycle(Some("audit"), audit).unwrap().state,
+            "high",
+            "the worst severity present wins"
+        );
+
+        // Rule active vs superseded.
+        let active_rule = "# rule\n\n## Status\n\nActive.\n";
+        assert_eq!(
+            doc_lifecycle(Some("rule"), active_rule).unwrap().state,
+            "active"
+        );
+        let superseded = "# rule\n\n## Status\n\nSuperseded by `new-rule`.\n";
+        assert_eq!(
+            doc_lifecycle(Some("rule"), superseded).unwrap().state,
+            "superseded"
+        );
+
+        // Honest degradation: an ADR predating the status convention falls back
+        // to the generic checkbox lifecycle (or None), never a fabricated state.
+        let old_adr = "# an adr with no status line\n\n- [ ] a box\n";
+        assert_eq!(
+            doc_lifecycle(Some("adr"), old_adr).unwrap().state,
+            "active",
+            "no status line degrades to the checkbox lifecycle, not a lie"
+        );
+        let bare_adr = "# an adr with neither status nor checkboxes\n";
+        assert!(
+            doc_lifecycle(Some("adr"), bare_adr).is_none(),
+            "no signal at all is honest absence"
+        );
     }
 
     #[test]

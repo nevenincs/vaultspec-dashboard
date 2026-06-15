@@ -18,6 +18,7 @@
 // members renamed or removed.
 
 import type { LayoutParams } from "./field/layoutWorker";
+import type { RepresentationMode } from "./field/representationLayout";
 import type { SemanticLevel } from "./field/camera";
 
 /**
@@ -33,6 +34,13 @@ export interface SceneNodeData {
   kind: string;
   /** Display title — drives the DOI-culled label (contract §4 node field). */
   title?: string;
+  /**
+   * Feature-membership tags (contract §4 node field). Drives the feature overlays
+   * (graph-representation ADR): GMap country labels and BubbleSets hulls group
+   * nodes by feature. Additive optional seam field; absent on nodes outside any
+   * feature (a bare code/commit artifact).
+   */
+  featureTags?: string[];
   /** Lifecycle state + progress — drives ring/fill treatment. */
   lifecycle?: { state: string; progress?: { done: number; total: number } };
   /** Per-tier degree counts — drives tier badges (contract §4). */
@@ -55,6 +63,25 @@ export interface SceneNodeData {
    * harmlessly.
    */
   memberCount?: number;
+  /**
+   * Per-lens importance scalar in [0,1] (graph-node-salience ADR, consumed via
+   * graph-representation). Drives node SIZE (superseding the member-count radius
+   * for non-feature species) and LABEL PRIORITY in the DOI cull. Absent when the
+   * origin does not serve it; the sprite layer falls back to the base radius.
+   *
+   * SEAM REDLINE (graph-representation W01.P01): additive, optional,
+   * backward-compatible on the locked RL-1 node-data surface — flagged per the
+   * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
+   */
+  salience?: number;
+  /**
+   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
+   * the rag embedding the CPU worker projects with UMAP for the semantic layout
+   * mode. The renderer never receives layout coordinates from the engine; it
+   * receives this raw vector and the worker projects it. Absent on nodes lacking
+   * an embedding (drawn in a connectivity-fallback position).
+   */
+  embedding?: number[];
   /** Optional warm-start seed only; the renderer owns positions (RL-1). */
   seedPosition?: { x: number; y: number };
 }
@@ -78,6 +105,14 @@ export interface SceneEdgeData {
    * ribbon's thickness is the count, the breakdown unfolds on hover.
    */
   meta?: { count: number; breakdownByTier: Record<string, number> };
+  /**
+   * Pipeline-derivation relation label (graph-node-semantics ADR), carried
+   * ALONGSIDE the inference `tier`. Drives the lineage layout's derivation axis
+   * (research -> adr -> plan -> exec -> audit -> rule) and the lineage edge
+   * treatment. Absent on edges without a framework-derivation meaning (e.g. a
+   * raw semantic similarity). Not part of the edge identity.
+   */
+  derivation?: string;
 }
 
 /**
@@ -125,7 +160,26 @@ export type SceneCommand =
   | { kind: "reset-view" }
   // Layout algorithm controls (AlgorithmPanel seam contract).
   | { kind: "set-layout-params"; params: LayoutParams }
-  | { kind: "set-layout-mode"; mode: "force" | "circular" };
+  | { kind: "set-layout-mode"; mode: "force" | "circular" }
+  // --- graph-representation addenda (W03.P08) -------------------------------
+  // Representation-mode switch (graph-representation ADR): connectivity (FA2,
+  // default) | lineage (derivation-DAG axis) | semantic (UMAP over embeddings).
+  // EXPLICITLY DISTINCT from `set-layout-mode` (force|circular): representation
+  // mode changes WHICH CPU-worker layout runs and what data it consumes;
+  // force/circular only tunes the force solver. The scene re-runs the mode's
+  // worker layout with id-keyed object constancy (the position cache seeds the
+  // transition) and echoes `representation-mode-changed`. Additive to the locked
+  // union; no existing member is renamed or removed.
+  | { kind: "set-representation-mode"; mode: RepresentationMode }
+  // Overlay visibility (graph-representation ADR): feature-country labels at
+  // overview, BubbleSets hulls at document LOD. View state owned by the
+  // view-store; the scene toggles the hull/label layer WITHOUT re-layout (set
+  // overlays are projections that do not move nodes).
+  | {
+      kind: "set-overlays";
+      featureCountries: boolean;
+      featureHulls: boolean;
+    };
 
 // RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
@@ -140,7 +194,36 @@ export type SceneEvent =
   /** Emitted on every camera.onChange — toolbar zoom display + LOD level. */
   | { kind: "camera-change"; scale: number; level: SemanticLevel }
   /** Emitted after set-layout-params or set-layout-mode is applied. */
-  | { kind: "layout-changed"; mode: "force" | "circular"; params: LayoutParams };
+  | { kind: "layout-changed"; mode: "force" | "circular"; params: LayoutParams }
+  // --- context menu (2026-06-15, dashboard-context-menus W04.P10) -------------
+  /**
+   * Emitted on right-click over the field: `id` is the node under the pointer or
+   * null for empty canvas; `clientX`/`clientY` are viewport coords for the menu
+   * anchor. ADR-flagged additive redline (dashboard-context-menus ADR, layer 6)
+   * per the W01.P01.S04 lock discipline - additive to the locked union, no
+   * existing member changed. The scene only REPORTS the gesture; app-chrome owns
+   * the menu and all intent.
+   */
+  | {
+      kind: "context-menu";
+      id: string | null;
+      target: "node" | "edge";
+      clientX: number;
+      clientY: number;
+    }
+  // --- graph-representation addenda (W03.P08) -------------------------------
+  /**
+   * Emitted after a set-representation-mode is applied. Carries the mode the
+   * scene ACTUALLY ran — which may DOWNGRADE from the requested mode when a gated
+   * mode (semantic) is held by its promotion gate, so the chrome reflects the
+   * honest applied mode, never the requested-but-held one.
+   */
+  | {
+      kind: "representation-mode-changed";
+      requested: RepresentationMode;
+      applied: RepresentationMode;
+      downgradeReason?: string;
+    };
 
 type SceneEventListener = (event: SceneEvent) => void;
 
@@ -184,6 +267,12 @@ export class SceneController {
   // --- graph-quality: layout state (P01.S02) -----------------------------------
   private _layoutMode: "force" | "circular" = "force";
   private _layoutParams: LayoutParams = {};
+  // --- graph-representation: representation-mode + overlay state (W03.P08) ------
+  private _representationMode: RepresentationMode = "connectivity";
+  private _overlays: { featureCountries: boolean; featureHulls: boolean } = {
+    featureCountries: true,
+    featureHulls: true,
+  };
 
   constructor(field: SceneFieldRenderer | null = null) {
     this.field = field;
@@ -222,6 +311,15 @@ export class SceneController {
         break;
       case "set-layout-mode":
         this._layoutMode = cmd.mode;
+        break;
+      case "set-representation-mode":
+        this._representationMode = cmd.mode;
+        break;
+      case "set-overlays":
+        this._overlays = {
+          featureCountries: cmd.featureCountries,
+          featureHulls: cmd.featureHulls,
+        };
         break;
       case "apply-deltas":
         // Delta log (RL-3) applied by the field renderer.
@@ -317,5 +415,17 @@ export class SceneController {
   /** Synchronous snapshot of the current layout mode and params. */
   getLayoutState(): { mode: "force" | "circular"; params: LayoutParams } {
     return { mode: this._layoutMode, params: { ...this._layoutParams } };
+  }
+
+  // --- graph-representation: representation-mode + overlay reads (W03.P08) ------
+
+  /** Synchronous snapshot of the active representation mode (connectivity by
+   *  default) and overlay visibility — the AlgorithmPanel/RepresentationModePanel
+   *  read their initial truth from here, never from the wire. */
+  getRepresentationState(): {
+    mode: RepresentationMode;
+    overlays: { featureCountries: boolean; featureHulls: boolean };
+  } {
+    return { mode: this._representationMode, overlays: { ...this._overlays } };
   }
 }

@@ -159,6 +159,97 @@ function toWireMetaEdge(edge: EngineEdge): WireMetaEdge {
   };
 }
 
+// --- temporal-lineage projection (dashboard-timeline ADR) ------------------------
+//
+// The mock serves the EXACT live `/graph/lineage` wire shape (mock-mirrors-live-
+// wire-shape): the dated document nodes in range with their derived phase lane,
+// the self-consistent arcs among them drawn from the corpus's REAL relation/tier
+// edges (derivation-FALLBACK: NO `derivation` field, exactly as the engine emits
+// until the node-semantics field ships — engine `lineage.rs` `lineage_arc` sets
+// `derivation: None`), bounded with an honest `truncated` block (null here), and
+// the per-tier envelope `tiers` block with semantic present-only. A divergence
+// from the live shape is a test-fidelity defect to fix HERE, never papered over.
+
+/** The single deterministic doc-type → pipeline-lane mapping (engine
+ *  `phase_for_doc_type`, kebab-case lane token): research/reference → research;
+ *  adr → adr; plan → plan; exec → exec; audit → review; rule → codify. Returns
+ *  null for a doc-type with no lane (commit is ambient; index/unknown own none),
+ *  so the projection never invents a phase for an artifact the pipeline does not
+ *  own — byte-for-byte the engine's mapping. */
+function lineagePhaseForDocType(docType: string | undefined): string | null {
+  switch (docType) {
+    case "research":
+    case "reference":
+      return "research";
+    case "adr":
+      return "adr";
+    case "plan":
+      return "plan";
+    case "exec":
+      return "exec";
+    case "audit":
+      return "review";
+    case "rule":
+      return "codify";
+    default:
+      // commit (ambient), index, and any unknown doc-type own no lane.
+      return null;
+  }
+}
+
+/**
+ * The two launch salience lenses (graph-node-salience ADR), the exact wire
+ * tokens the mock honors on `/graph/query`. STATUS is the default (omitted lens).
+ */
+type MockLens = "status" | "design";
+
+function parseMockLens(raw: unknown): MockLens {
+  return raw === "design" ? "design" : "status";
+}
+
+/**
+ * A deterministic mock salience that mirrors the LIVE wire SHAPE exactly
+ * (mock-mirrors-live-wire-shape): a single active-lens `salience` float in [0,1]
+ * on each DOCUMENT node, lens-dependent so the two lenses order the same node set
+ * differently — the design lens favors authority documents (adr/research),
+ * the status lens favors roadmap documents (plan) and recent exec activity. This
+ * is NOT the real DOI engine (that is CPU-side); it is a faithful stand-in for the
+ * field's SHAPE and lens-dependence so the client path that reads/orders by
+ * salience is exercised against the same wire contract the live engine serves.
+ */
+function mockSalienceFor(node: EngineNode, lens: MockLens): number {
+  const docType = node.doc_type ?? "document";
+  const authorityWeight: Record<string, number> = {
+    adr: 1.0,
+    research: 0.8,
+    reference: 0.7,
+    plan: 0.4,
+    audit: 0.5,
+    rule: 0.5,
+    exec: 0.1,
+    index: 0.0,
+  };
+  const roadmapWeight: Record<string, number> = {
+    plan: 1.0,
+    audit: 0.6,
+    adr: 0.5,
+    exec: 0.3,
+    research: 0.3,
+    reference: 0.3,
+    rule: 0.4,
+    index: 0.0,
+  };
+  const base =
+    lens === "design"
+      ? (authorityWeight[docType] ?? 0.2)
+      : (roadmapWeight[docType] ?? 0.2);
+  // A small connectivity nudge so nodes of the same type still differ, clamped
+  // to [0,1]. Deterministic from the served degree projection.
+  const degree =
+    (node.degree_by_tier?.declared ?? 0) + (node.degree_by_tier?.structural ?? 0);
+  return Math.min(1, Math.max(0, base * 0.9 + Math.min(0.1, degree * 0.02)));
+}
+
 // --- the mock engine --------------------------------------------------------------
 
 type StreamSubscriber = (channel: string, data: unknown) => void;
@@ -746,9 +837,27 @@ export class MockEngine {
       // tiers gate content here too (011); an absent corpus serves
       // nothing (035).
       const reqBody = init?.body
-        ? (JSON.parse(String(init.body)) as { granularity?: string; filter?: unknown })
+        ? (JSON.parse(String(init.body)) as {
+            granularity?: string;
+            filter?: unknown;
+            lens?: string;
+            focus?: string | null;
+          })
         : {};
       const filter = reqBody.filter;
+      // The active salience lens (graph-node-salience ADR wire amendment): the
+      // mock honors the `lens` request parameter and defaults to STATUS when
+      // omitted, byte-for-byte the live engine (Lens::parse). The lens is echoed.
+      const lens = parseMockLens(reqBody.lens);
+      // salience_partial read from the SAME tiers block the response carries
+      // (degradation-is-read-from-tiers), mirroring the live `is_partial`: a
+      // degraded backbone tier (declared/structural) flags any lens partial; a
+      // degraded temporal tier flags the STATUS lens partial.
+      const degraded = (t: string) => tiers[t]?.available === false;
+      const saliencePartial =
+        degraded("declared") ||
+        degraded("structural") ||
+        (lens === "status" && degraded("temporal"));
       // The bounded-query honesty block, mirroring the live `vaultspec-api`
       // `query.rs`: `null` on an unbounded slice, the object when the ceiling
       // fired. The reason text matches the live "narrow with a filter" copy.
@@ -771,12 +880,16 @@ export class MockEngine {
           tiers,
           last_seq: null,
           truncated: null,
+          lens,
+          salience_partial: saliencePartial,
         };
       }
       // LIVE /graph/query carries `last_seq` — the delta clock's tip at query
       // time — so a held keyframe splices live `graph` deltas with no gap
       // (contract §4; the live engine emits it, so the mock must mirror it).
       if (reqBody.granularity === "feature") {
+        // Feature-convergence nodes are NOT salience-ranked (the model ranks
+        // documents), so they carry no salience field — live parity.
         return {
           nodes: c.nodes.filter((n) => n.kind === "feature"),
           edges: [],
@@ -785,16 +898,39 @@ export class MockEngine {
           tiers,
           last_seq: this.lastSeq,
           truncated,
+          lens,
+          salience_partial: saliencePartial,
         };
       }
+      // Document granularity: attach the single active-lens salience float to each
+      // document node and order by descending salience, so a truncation keeps the
+      // top-DOI nodes for the active lens — byte-for-byte the live wire SHAPE.
+      const docNodes = c.nodes
+        .filter((n) => n.kind !== "feature")
+        .map((n) => ({ ...n, salience: mockSalienceFor(n, lens) }))
+        .sort(
+          (a, b) => (b.salience ?? 0) - (a.salience ?? 0) || a.id.localeCompare(b.id),
+        );
       return {
-        nodes: c.nodes.filter((n) => n.kind !== "feature"),
-        edges: c.edges.filter((e) => this.tierServed(e)),
+        // Document nodes carry the single active-lens salience float, ordered
+        // by descending salience (graph-node-salience), AND the additive
+        // ontology (authority_class/aggregate) + embedding projections ride on
+        // each node from the corpus fixture (spread through docNodes).
+        nodes: docNodes,
+        // The live engine's edge_view adds the additive `derivation` key to
+        // EVERY edge (null when no pipeline relationship). Mirror that at the
+        // serving boundary so the mock matches the live wire byte-for-byte
+        // (graph-node-semantics ADR; mock-mirrors-live-wire-shape).
+        edges: c.edges
+          .filter((e) => this.tierServed(e))
+          .map((e) => ({ derivation: e.derivation ?? null, ...e })),
         meta_edges: [],
         filter,
         tiers,
         last_seq: this.lastSeq,
         truncated,
+        lens,
+        salience_partial: saliencePartial,
       };
     }
     if (path === "/filters") {
@@ -891,6 +1027,15 @@ export class MockEngine {
         return { buckets: bucketEvents(within, bucket), tiers };
       }
       return { events: within, tiers };
+    }
+    if (path === "/graph/lineage") {
+      // The bounded temporal-lineage projection (dashboard-timeline ADR),
+      // mirroring the live `/graph/lineage` wire shape EXACTLY: dated document
+      // nodes in the `[from, to]` ISO range with their derived phase lane, the
+      // self-consistent arcs among them (derivation-fallback), bounded with an
+      // honest `truncated` block. An absent corpus serves nothing (035).
+      requireScope(params);
+      return this.lineageData(params);
     }
     if (path === "/graph/asof") {
       requireScope(params);
@@ -1125,6 +1270,110 @@ export class MockEngine {
     }
     artifacts.sort((a, b) => a.node_id.localeCompare(b.node_id));
     return { artifacts, tiers: this.tiersBlock() };
+  }
+
+  /**
+   * Build the `/graph/lineage` data block (dashboard-timeline ADR), mirroring the
+   * live `engine-query::lineage::lineage` projection + the `graph_lineage` route
+   * shape byte-for-byte: the dated, lane-owning document nodes whose blob-true
+   * `created` falls within the `[from, to]` ISO range (inclusive, open on an
+   * absent bound, lexical compare — the same well-ordering the engine uses), each
+   * carrying its stable id, doc-type, derived phase lane, blob-true dates
+   * (`created` string + `modified` epoch-ms NUMBER, the engine `Timestamp`), title,
+   * and total degree; then the SELF-CONSISTENT arcs among ONLY the kept nodes
+   * (every arc's src/dst is a returned node — no dangling arc), drawn from the
+   * corpus's REAL relation/tier edges with NO `derivation` field (the graceful
+   * fallback the engine emits until the node-semantics field ships). Bounded with
+   * an honest `truncated` block (null under the corpus's small node count). The
+   * envelope `tiers` block marks semantic present-only (excluded from the range
+   * lineage), exactly as the live `degraded_tiers` overlay does.
+   */
+  private lineageData(params: URLSearchParams): unknown {
+    const c = this.corpus;
+    const tiers = this.lineageTiersBlock();
+    if (this.noVault) {
+      return { nodes: [], arcs: [], truncated: null, tiers };
+    }
+    const from = params.get("from");
+    const to = params.get("to");
+    // ISO `yyyy-mm-dd` strings compare lexically — the bounds are well-ordered
+    // without date parsing (the same discipline the engine's `created_in_range`
+    // uses). An undated node has no position on the timeline and is excluded.
+    const inRange = (created: string | undefined): boolean => {
+      if (!created) return false;
+      // The corpus stores full ISO instants (`...T09:00:00Z`); the engine matches
+      // on the `yyyy-mm-dd` prefix, so compare on the date prefix lexically.
+      const day = created.slice(0, 10);
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return true;
+    };
+    // Degree: total edges (src or dst) touching a node, over all tiers — the v1
+    // salience input, summed-endpoint count (mirrors the engine's degree_by_tier
+    // sum). Built once over the corpus edges.
+    const degreeOf = (id: string): number =>
+      c.edges.reduce((n, e) => n + (e.src === id ? 1 : 0) + (e.dst === id ? 1 : 0), 0);
+    // Collect the dated, lane-owning document nodes in range, id-sorted (the
+    // engine sorts by stable id so the kept page is deterministic).
+    const nodes = c.nodes
+      .filter((n) => n.id.startsWith("doc:"))
+      .map((n) => ({ n, phase: lineagePhaseForDocType(n.doc_type) }))
+      .filter((x): x is { n: EngineNode; phase: string } => x.phase !== null)
+      .filter((x) => inRange(x.n.dates?.created))
+      .map(({ n, phase }) => ({
+        id: n.id,
+        doc_type: n.doc_type!,
+        phase,
+        // Blob-true dates: `created` (string) is the mark position; `modified` is
+        // the engine `Timestamp` (epoch-ms NUMBER) — the corpus stores it as an
+        // ISO string, so convert to ms to match the LIVE wire (a string here
+        // would be a mock-vs-live divergence). Both omitted when absent.
+        dates: {
+          ...(n.dates?.created ? { created: n.dates.created } : {}),
+          ...(n.dates?.modified ? { modified: Date.parse(n.dates.modified) } : {}),
+        },
+        ...(n.title ? { title: n.title } : {}),
+        degree: degreeOf(n.id),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    // Self-consistency: only edges whose BOTH endpoints are in the kept node set
+    // ship (no dangling arc), drawn from the corpus's real relation/tier edges.
+    // derivation-FALLBACK: NO `derivation` field — exactly the engine's output
+    // until the node-semantics field lands.
+    const kept = new Set(nodes.map((n) => n.id));
+    const arcs = c.edges
+      .filter((e) => this.tierServed(e))
+      .filter((e) => kept.has(e.src) && kept.has(e.dst))
+      .map((e) => ({
+        id: e.id,
+        src: e.src,
+        dst: e.dst,
+        relation: e.relation,
+        tier: e.tier,
+        confidence: e.confidence,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return { nodes, arcs, truncated: null, tiers };
+  }
+
+  /**
+   * The lineage envelope's `tiers` block (mirrors the live `degraded_tiers`
+   * overlay): the cell's real declared/structural/temporal availability with
+   * `semantic` marked unavailable for THIS response — present-only by design,
+   * excluded from the range lineage (the engine's `LineageTiers::range_view`).
+   * Layered over the persistent `degrade()` switches so a debug-degraded tier
+   * still reports degraded.
+   */
+  private lineageTiersBlock(): TiersBlock {
+    const block = this.tiersBlock();
+    // semantic is present-only in the range lineage even when not debug-degraded.
+    if (block.semantic?.available !== false) {
+      block.semantic = {
+        available: false,
+        reason: "present-only by design; excluded from the range lineage",
+      };
+    }
+    return block;
   }
 
   /**

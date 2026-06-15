@@ -2,16 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
-import { MockEngine } from "../../testing/mockEngine";
+import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
 import { EngineClient, EngineError } from "./engine";
 import type {
   DiscoverResponse,
   EngineStatus,
+  LineageSlice,
   PipelineArtifact,
   PlanInterior,
   TiersBlock,
 } from "./engine";
-import { adaptStatus } from "./liveAdapters";
+import { adaptLineageSlice, adaptStatus, unwrapEnvelope } from "./liveAdapters";
 import type { StreamChunk } from "./queries";
 import {
   STREAM_RETENTION,
@@ -196,22 +197,44 @@ describe("deriveDiscoverView (canvas-controls discover, contract §4)", () => {
 });
 
 describe("engineKeys", () => {
-  it("keys graph slices by the (scope, filter, as-of, granularity) tuple", () => {
+  it("keys graph slices by the (scope, filter, as-of, granularity, lens, focus) tuple", () => {
     const a = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
     const b = engineKeys.graph("wt-1", { tiers: { semantic: false } }, 123);
     const c = engineKeys.graph("wt-2", { tiers: { semantic: false } }, 123);
     const d = engineKeys.graph("wt-1", { tiers: { semantic: false } });
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    // Defaults: as-of "live", granularity "document" (the engine's default).
-    expect(d[d.length - 2]).toBe("live");
-    expect(d[d.length - 1]).toBe("document");
+    // Defaults (key tail is [..., asOf, granularity, lens, focus]): as-of "live",
+    // granularity "document", lens "status", focus "none" (the engine's defaults).
+    expect(d[d.length - 4]).toBe("live");
+    expect(d[d.length - 3]).toBe("document");
+    expect(d[d.length - 2]).toBe("status");
+    expect(d[d.length - 1]).toBe("none");
     // Granularity is part of the cache identity: the constellation (feature)
     // and a document slice never collide in cache.
     const feature = engineKeys.graph("wt-1", undefined, undefined, "feature");
     const document = engineKeys.graph("wt-1", undefined, undefined, "document");
     expect(feature).not.toEqual(document);
-    expect(feature[feature.length - 1]).toBe("feature");
+    expect(feature[feature.length - 3]).toBe("feature");
+    // Lens and focus are part of the cache identity (graph-node-salience): two
+    // lenses or two focuses never collide in cache.
+    const statusLens = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "status",
+    );
+    const designLens = engineKeys.graph(
+      "wt-1",
+      undefined,
+      undefined,
+      "document",
+      "design",
+    );
+    expect(statusLens).not.toEqual(designLens);
+    // With focus appended as the key tail, the lens sits at length-2.
+    expect(designLens[designLens.length - 2]).toBe("design");
   });
 });
 
@@ -580,5 +603,174 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
     expect(view.loading).toBe(true);
     expect(view.rollup).toEqual({ done: 0, total: 0 });
     expect(view.waves).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// adaptLineageSlice + /graph/lineage consumer fidelity (dashboard-timeline
+// W02.P04.S24) — the mock-mirrors-live-wire-shape PROOF in executable form.
+//
+// A sample CAPTURED from the live `/graph/lineage` wire shape (the engine
+// `graph_lineage` route's `{data: {nodes, arcs, truncated}, tiers}` envelope) is
+// fed through the SAME client path the app uses (unwrapEnvelope + adaptLineageSlice),
+// then the MockEngine is driven through that same EngineClient and the two shapes
+// are asserted to match. A divergence is a test-fidelity defect to fix in the mock,
+// never papered over by adapting only the live side (mock-mirrors-live-wire-shape).
+// ---------------------------------------------------------------------------
+
+function clientOn(mock: MockEngine): EngineClient {
+  const client = new EngineClient({ baseUrl: "" });
+  client.useTransport(mock.fetchImpl);
+  return client;
+}
+
+describe("adaptLineageSlice + /graph/lineage consumer fidelity (W02.P04.S24)", () => {
+  // A live `/graph/lineage` envelope: two dated, lane-owning document nodes in
+  // range and ONE self-consistent structural arc between them. The live route
+  // serves `{data: {nodes, arcs, truncated}, tiers}`; the semantic tier is
+  // present-only (degraded) in the range lineage. `dates.modified` is the engine
+  // `Timestamp` (epoch-ms NUMBER), and the arc carries NO `derivation` field
+  // (the graceful fallback until the node-semantics field ships).
+  const liveLineageTiers = {
+    declared: { available: true },
+    structural: { available: true },
+    temporal: { available: true },
+    semantic: {
+      available: false,
+      reason: "present-only by design; excluded from the range lineage",
+    },
+  };
+  const live = {
+    data: {
+      nodes: [
+        {
+          id: "doc:2026-06-10-x-research",
+          doc_type: "research",
+          phase: "research",
+          dates: { created: "2026-06-10", modified: 1718000000000 },
+          title: "x research",
+          degree: 2,
+        },
+        {
+          id: "doc:2026-06-12-x-adr",
+          doc_type: "adr",
+          phase: "adr",
+          dates: { created: "2026-06-12" },
+          title: "x adr",
+          degree: 2,
+        },
+      ],
+      arcs: [
+        {
+          id: "edge:abc",
+          src: "doc:2026-06-12-x-adr",
+          dst: "doc:2026-06-10-x-research",
+          relation: "mentions",
+          tier: "structural",
+          confidence: 0.9,
+        },
+      ],
+      truncated: null,
+    },
+    tiers: liveLineageTiers,
+  };
+
+  it("unwraps + adapts the live lineage envelope through the app's client path", () => {
+    const slice = adaptLineageSlice(unwrapEnvelope(live)) as LineageSlice;
+    expect(slice.nodes).toHaveLength(2);
+    expect(slice.nodes[0]).toMatchObject({
+      id: "doc:2026-06-10-x-research",
+      phase: "research",
+      degree: 2,
+    });
+    // The numeric epoch-ms modified tick survives as a number, not a string.
+    expect(slice.nodes[0].dates.modified).toBe(1718000000000);
+    // The undated-modified node tolerates the absent optional.
+    expect(slice.nodes[1].dates.modified).toBeUndefined();
+    expect(slice.arcs).toHaveLength(1);
+    expect(slice.arcs[0].derivation).toBeUndefined(); // graceful fallback
+    expect(slice.tiers.semantic.available).toBe(false);
+    expect(slice.truncated).toBeNull();
+  });
+
+  it("the mock serves the SAME lineage shape through the client path", async () => {
+    const mock = new MockEngine();
+    const result = await clientOn(mock).lineage({ scope: MOCK_SCOPE });
+
+    // Non-empty: the corpus carries dated, lane-owning documents.
+    expect(result.nodes.length).toBeGreaterThan(0);
+    expect(result.arcs.length).toBeGreaterThan(0);
+
+    // Every node carries the exact live field shape, with the live types.
+    const lanePhases = ["research", "adr", "plan", "exec", "review", "codify"];
+    for (const n of result.nodes) {
+      expect(n.id).toMatch(/^doc:/);
+      expect(typeof n.doc_type).toBe("string");
+      expect(lanePhases).toContain(n.phase);
+      expect(typeof n.degree).toBe("number");
+      // `created` is an ISO string; `modified`, when present, is an epoch-ms
+      // NUMBER (the engine `Timestamp`) — NOT a string. This is the precise
+      // mock-vs-live divergence point the fidelity test guards.
+      if (n.dates.created !== undefined) expect(typeof n.dates.created).toBe("string");
+      if (n.dates.modified !== undefined)
+        expect(typeof n.dates.modified).toBe("number");
+      // Only lane-owning doc-types are projected (commits/code/features excluded).
+      expect([
+        "research",
+        "adr",
+        "plan",
+        "exec",
+        "audit",
+        "reference",
+        "rule",
+      ]).toContain(n.doc_type);
+    }
+
+    // Self-consistency: every arc's src AND dst is a returned node (no dangling
+    // arc), exactly the engine's invariant — and the arc carries NO derivation.
+    const ids = new Set(result.nodes.map((n) => n.id));
+    for (const a of result.arcs) {
+      expect(ids.has(a.src)).toBe(true);
+      expect(ids.has(a.dst)).toBe(true);
+      expect(typeof a.confidence).toBe("number");
+      expect(["declared", "structural", "temporal", "semantic"]).toContain(a.tier);
+      expect(a.derivation).toBeUndefined(); // derivation-fallback, like live
+    }
+
+    // Bounded + honest: a small corpus is not truncated.
+    expect(result.truncated).toBeNull();
+    // The envelope tiers ride through with semantic present-only (range lineage).
+    expect(result.tiers.semantic.available).toBe(false);
+  });
+
+  it("honors the [from, to] range: an out-of-range document is excluded", async () => {
+    const mock = new MockEngine();
+    const client = clientOn(mock);
+    // The corpus is dated from 2026-01-05 onward; a window before it is empty.
+    const before = await client.lineage({
+      scope: MOCK_SCOPE,
+      from: "2025-01-01",
+      to: "2025-12-31",
+    });
+    expect(before.nodes).toHaveLength(0);
+    expect(before.arcs).toHaveLength(0);
+    // A window covering the first feature's research date returns at least it.
+    const within = await client.lineage({
+      scope: MOCK_SCOPE,
+      from: "2026-01-01",
+      to: "2026-01-06",
+    });
+    expect(within.nodes.length).toBeGreaterThan(0);
+    // Every returned node's created date is within the requested bounds.
+    for (const n of within.nodes) {
+      const day = (n.dates.created ?? "").slice(0, 10);
+      expect(day >= "2026-01-01" && day <= "2026-01-06").toBe(true);
+    }
+  });
+
+  it("a missing scope is a tiered 400, like the live route", async () => {
+    const mock = new MockEngine();
+    // `lineage` requires a scope; the route 400s an unknown/non-vault scope.
+    await expect(clientOn(mock).lineage({ scope: "wt-unknown" })).rejects.toThrow();
   });
 });
