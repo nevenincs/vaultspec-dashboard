@@ -374,7 +374,15 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     setPxPerMs(px);
     setScrollOffset(offset);
     setFittedScope(scope);
-  }, [scope, corpusBounds?.from, corpusBounds?.to, width, fittedScope, setPxPerMs, setScrollOffset]);
+  }, [
+    scope,
+    corpusBounds?.from,
+    corpusBounds?.to,
+    width,
+    fittedScope,
+    setPxPerMs,
+    setScrollOffset,
+  ]);
   // While the corpus auto-fit is still pending (the vocabulary bounds are loading,
   // or they are known but not yet applied for this scope), the default scroll
   // window has NOT been positioned onto the data. Suppress the "no lineage" empty
@@ -532,6 +540,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     : "transition-[color,opacity] duration-ui-fast ease-settle";
 
   const noHistory =
+    scope != null &&
     !loading &&
     !errored &&
     !autoFitPending &&
