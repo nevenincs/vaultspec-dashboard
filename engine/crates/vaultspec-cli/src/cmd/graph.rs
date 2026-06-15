@@ -2,7 +2,7 @@
 //! as tier-labelled node-link JSON through the shared query core.
 
 use engine_query::filter::Filter;
-use engine_query::graph::{Granularity, graph_query};
+use engine_query::graph::{Granularity, bound_slice, graph_query};
 use serde_json::{Value, json};
 
 use super::{CliError, Ctx};
@@ -44,7 +44,18 @@ pub fn run(
         }
     };
 
-    let slice = graph_query(&graph, &scope, filter, granularity)?;
+    let mut slice = graph_query(&graph, &scope, filter, granularity)?;
+    // Bound every front door (graph-queries-are-bounded-by-default): the local
+    // CLI export is an engine front door too, so it honors the same node ceiling
+    // the HTTP route does, reporting truncation honestly instead of streaming a
+    // multi-gigabyte slice.
+    let truncated = bound_slice(&mut slice).map(|total| {
+        json!({
+            "total_nodes": total,
+            "returned_nodes": slice.nodes.len(),
+            "reason": "graph node ceiling; narrow with a filter (the feature constellation is the smallest view)",
+        })
+    });
     Ok(json!({
         "as_of": as_of,
         "nodes": slice.nodes,
@@ -53,5 +64,6 @@ pub fn run(
         // meta-edges, never client-side flattening (audit G4).
         "meta_edges": slice.meta_edges,
         "filter": slice.filter,
+        "truncated": truncated,
     }))
 }

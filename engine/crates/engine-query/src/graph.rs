@@ -36,6 +36,40 @@ pub struct GraphSlice {
     pub filter: Filter,
 }
 
+/// Hard ceiling on nodes serialized at either granularity (perf ADR D2 /
+/// research F2): an unbounded slice is linear but reaches a multi-gigabyte body
+/// at corpus scale, so NO engine front door — the HTTP route or the CLI `graph`
+/// verb — ever serializes more than this. Beyond it the client narrows with a
+/// filter; the feature constellation is the smallest view.
+pub const MAX_GRAPH_NODES: usize = 5000;
+
+/// Bound a slice to [`MAX_GRAPH_NODES`], keeping the returned subgraph
+/// self-consistent: document edges AND feature meta-edges that reference a
+/// dropped node are removed. Returns the original node total when truncation
+/// happened so the caller can state it honestly. Nodes are already id-sorted, so
+/// the kept page is deterministic. Works at both granularities — at document
+/// granularity `meta_edges` is empty (its retain is a no-op); at feature
+/// granularity `edges` is empty and the meta-edge retain does the work.
+pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
+    let total = slice.nodes.len();
+    if total <= MAX_GRAPH_NODES {
+        return None;
+    }
+    slice.nodes.truncate(MAX_GRAPH_NODES);
+    let kept: std::collections::HashSet<String> = slice
+        .nodes
+        .iter()
+        .filter_map(|n| n["id"].as_str().map(str::to_string))
+        .collect();
+    slice
+        .edges
+        .retain(|e| kept.contains(&e.src.0) && kept.contains(&e.dst.0));
+    slice
+        .meta_edges
+        .retain(|m| kept.contains(&m.src) && kept.contains(&m.dst));
+    Some(total)
+}
+
 /// One document node in the contract §4 list shape: the serialized node
 /// plus the query-time projections (`degree_by_tier`, the scope facet's
 /// `lifecycle` hoisted to the top level).

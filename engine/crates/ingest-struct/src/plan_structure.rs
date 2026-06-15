@@ -196,7 +196,85 @@ pub fn parse_plan_structure(text: &str) -> PlanStructure {
             ),
         });
     }
+    // Canonical-first with a legacy fallback (plan-structure-tolerance ADR): the
+    // strict parse above is authoritative. Only when it found NO canonical step
+    // rows do we fall back to a flat checklist of the body's two-state checkboxes
+    // — exactly the items the lifecycle progress ring already counts — so a
+    // legacy plan's step tree is a useful flat list instead of empty. A canonical
+    // plan (any S## row) never reaches the fallback.
+    if total_steps(&structure) == 0 {
+        return parse_flat_checklist(text);
+    }
     structure
+}
+
+/// Total parsed step rows across every depth (the canonical-vs-legacy switch).
+fn total_steps(s: &PlanStructure) -> usize {
+    let mut n = s.steps.len();
+    for w in &s.waves {
+        for p in &w.phases {
+            n += p.steps.len();
+        }
+    }
+    for p in &s.phases {
+        n += p.steps.len();
+    }
+    n
+}
+
+/// Legacy fallback (plan-structure-tolerance ADR): list every two-state checkbox
+/// in the body as a flat L1 step list with positional ids (`S01`, `S02`, ... in
+/// document order), matching exactly the checkbox set the lifecycle progress ring
+/// counts. No phases or waves are inferred from legacy prose — a flat, accurate
+/// list is more honest than a guessed hierarchy. Bounded with honest truncation.
+fn parse_flat_checklist(text: &str) -> PlanStructure {
+    let mut steps: Vec<PlanStep> = Vec::new();
+    let mut total = 0usize;
+    let mut capped = false;
+    for raw in text.lines() {
+        let Some((done, action)) = checkbox_line(raw) else {
+            continue;
+        };
+        total += 1;
+        if steps.len() >= MAX_PLAN_STRUCTURE_NODES {
+            capped = true;
+            continue;
+        }
+        steps.push(PlanStep {
+            id: format!("S{:02}", steps.len() + 1),
+            action: action.to_string(),
+            done,
+        });
+    }
+    let truncated = capped.then(|| PlanTruncated {
+        total_nodes: total,
+        returned_nodes: steps.len(),
+        reason: format!(
+            "plan structure node ceiling ({MAX_PLAN_STRUCTURE_NODES}); \
+             the returned checklist is bounded at the cap"
+        ),
+    });
+    PlanStructure {
+        waves: Vec::new(),
+        phases: Vec::new(),
+        steps,
+        truncated,
+    }
+}
+
+/// Classify a line as a two-state checkbox, returning `(done, action-text)` for
+/// ANY `- [ ]`/`- [x]`/`- [X]` row regardless of whether it carries a canonical
+/// id. Used only by the legacy flat fallback; the canonical parse keeps its
+/// stricter `classify_line` grammar.
+fn checkbox_line(raw: &str) -> Option<(bool, &str)> {
+    let rest = raw.trim_start().strip_prefix("- [")?;
+    let done = match rest.as_bytes().first() {
+        Some(b'x') | Some(b'X') => true,
+        Some(b' ') => false,
+        _ => return None,
+    };
+    let action = rest.get(1..)?.strip_prefix(']')?.trim();
+    Some((done, action))
 }
 
 /// Classify one line into the canonical plan grammar, or `None` for prose.
@@ -417,18 +495,94 @@ mod tests {
     }
 
     #[test]
+    fn a_legacy_plan_falls_back_to_a_flat_checklist_matching_the_progress_count() {
+        // plan-structure-tolerance ADR (F1): a plan with prose phase headings and
+        // plain (non-canonical) checkbox steps has NO canonical S## rows, so the
+        // strict parse yields nothing. The flat fallback then lists every two-state
+        // checkbox in document order with positional ids — the same set the
+        // lifecycle progress ring counts.
+        let legacy = "\
+# modelo-inventory plan
+
+## Phases
+
+### Phase 1 - Scaffolding
+
+Prose describing the phase, no checkboxes here.
+
+## Acceptance checklist
+
+- [x] `ModeloCode` StrEnum with 20 members - Phase 2.
+- [ ] registry assembly invariant holds - Phase 5.
+- [X] CLI command `aeat modelo list` works - Phase 7.
+";
+        let s = parse_plan_structure(legacy);
+        assert!(s.waves.is_empty(), "no waves inferred from legacy prose");
+        assert!(s.phases.is_empty(), "no phases inferred from legacy prose");
+        assert_eq!(s.steps.len(), 3, "every body checkbox becomes a flat step");
+        assert_eq!(s.steps[0].id, "S01");
+        assert!(s.steps[0].done, "- [x] is closed");
+        assert!(s.steps[0].action.starts_with("`ModeloCode` StrEnum"));
+        assert_eq!(s.steps[1].id, "S02");
+        assert!(!s.steps[1].done, "- [ ] is open");
+        assert_eq!(s.steps[2].id, "S03");
+        assert!(s.steps[2].done, "- [X] is closed");
+    }
+
+    #[test]
+    fn a_canonical_plan_never_uses_the_legacy_fallback() {
+        // The authoritative canonical parse wins even when stray non-canonical
+        // checkboxes exist elsewhere in the document: those are NOT pulled into
+        // the step list by the fallback, because canonical steps were found.
+        let mixed = "\
+# `demo` plan
+
+### Phase `P01` - the phase
+
+- [ ] `P01.S01` - the one real step; `src/a.rs`.
+
+## Acceptance checklist
+
+- [ ] a stray checklist item that is not a plan step.
+";
+        let s = parse_plan_structure(mixed);
+        assert_eq!(s.phases.len(), 1, "canonical phase parsed");
+        assert_eq!(s.phases[0].steps.len(), 1, "exactly the canonical step");
+        assert_eq!(s.phases[0].steps[0].id, "S01");
+        assert!(
+            s.steps.is_empty(),
+            "the stray checklist item is not adopted"
+        );
+    }
+
+    #[test]
     fn prose_backticks_and_non_canonical_tokens_do_not_mis_parse() {
-        // A `- [ ]` line whose first backtick wraps a path, not a canonical id,
-        // is not a step; a `## Wave` heading whose token is not W## is ignored.
+        // On the canonical path (a real S## row is present, so the legacy
+        // fallback never runs): a `- [ ]` whose first backtick wraps a path, not
+        // a canonical id, is not a step; a `## Wave` heading whose token is not
+        // W## is ignored.
         let body = "\
 # `demo` plan
 
+### Phase `P01` - p
+
+- [x] `P01.S01` - the real canonical step.
 - [ ] `src/not-a-step.rs` - a checkbox that mentions a file, not a step.
 
 ## Wave `notwave` - bogus heading
 ";
         let s = parse_plan_structure(body);
-        assert!(s.steps.is_empty(), "a non-id checkbox is not a step");
+        assert_eq!(s.phases.len(), 1);
+        assert_eq!(
+            s.phases[0].steps.len(),
+            1,
+            "only the canonical S01 is a step; the path-backtick checkbox is not"
+        );
+        assert_eq!(s.phases[0].steps[0].id, "S01");
         assert!(s.waves.is_empty(), "a non-W## wave heading is ignored");
+        assert!(
+            s.steps.is_empty(),
+            "the non-canonical checkbox is not adopted on the canonical path"
+        );
     }
 }

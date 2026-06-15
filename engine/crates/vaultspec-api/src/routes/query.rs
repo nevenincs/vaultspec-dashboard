@@ -7,7 +7,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{NodeId, Tier};
 use engine_query::filter::{Filter, vocabulary};
-use engine_query::graph::{Granularity, GraphSlice, graph_query};
+use engine_query::graph::{Granularity, MAX_GRAPH_NODES, bound_slice, graph_query};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -208,47 +208,15 @@ pub(crate) fn parse_granularity(
     }
 }
 
-/// Hard ceiling on the number of nodes serialized onto the wire (perf ADR D2 /
-/// research F2): an unbounded slice is linear but can reach a multi-gigabyte
-/// body at corpus scale, so the engine never serves more than this — at EITHER
-/// granularity. Document granularity is the obvious offender (one node per doc),
-/// but the feature constellation is only bounded by feature count, and a corpus
-/// with near-unique tags per document could explode it too — so the ceiling
-/// applies to both, and "every graph read is bounded" holds without an
-/// assumption about the tag vocabulary. Beyond it the client narrows with a
-/// filter.
-const MAX_GRAPH_NODES: usize = 5000;
-
-/// Bound a slice to `MAX_GRAPH_NODES`, keeping the returned subgraph
-/// self-consistent: both document edges AND feature meta-edges that reference a
-/// dropped node are removed. Returns the original node total when truncation
-/// happened, so the response can state it honestly. Nodes are already id-sorted,
-/// so the kept page is deterministic. Works for both granularities — at document
-/// granularity `meta_edges` is empty (the retain is a no-op); at feature
-/// granularity `edges` is empty and the meta-edge retain does the work.
-fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
-    let total = slice.nodes.len();
-    if total <= MAX_GRAPH_NODES {
-        return None;
-    }
-    slice.nodes.truncate(MAX_GRAPH_NODES);
-    let kept: std::collections::HashSet<String> = slice
-        .nodes
-        .iter()
-        .filter_map(|n| n["id"].as_str().map(str::to_string))
-        .collect();
-    slice
-        .edges
-        .retain(|e| kept.contains(&e.src.0) && kept.contains(&e.dst.0));
-    slice
-        .meta_edges
-        .retain(|m| kept.contains(&m.src) && kept.contains(&m.dst));
-    Some(total)
-}
+// The document/graph node ceiling and the slice-bounding helper now live in
+// `engine_query::graph` (imported above) so EVERY engine front door — this HTTP
+// route AND the CLI `graph` verb — bounds identically (graph-queries-are-bounded
+// -by-default). The `bound_tests` below exercise that shared helper.
 
 #[cfg(test)]
 mod bound_tests {
     use super::*;
+    use engine_query::graph::GraphSlice;
 
     fn node_ids(prefix: &str, n: usize) -> Vec<Value> {
         (0..n)
