@@ -238,8 +238,12 @@ impl CoreRunner {
                 });
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // The reader thread ended (panicked) — that is WHY the channel
+                // disconnected — so the join returns immediately; kept for
+                // symmetry with the other exit arms (no orphaned thread).
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = reader.join();
                 return Err(CoreError::Failed {
                     code: None,
                     stderr: "vaultspec-core stdout reader terminated unexpectedly".into(),
