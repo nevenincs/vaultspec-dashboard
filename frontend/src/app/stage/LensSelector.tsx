@@ -48,7 +48,7 @@ export function LensSelector() {
     <div
       role="group"
       aria-label="salience lens"
-      className="flex items-center gap-vs-0-5 rounded-vs border border-border bg-surface/80 p-vs-0-5 shadow-vs-1"
+      className="flex items-center gap-vs-0-5 rounded-vs-md border border-rule bg-paper-raised/95 p-vs-0-5 shadow-card backdrop-blur-sm"
     >
       {LENS_OPTIONS.map(({ lens: l, label, hint, Icon }) => {
         const active = lens === l;
@@ -62,10 +62,10 @@ export function LensSelector() {
             title={hint}
             onClick={() => setLens(l)}
             className={[
-              "flex items-center gap-vs-0-5 rounded-vs px-vs-1-5 py-vs-0-5 text-label transition-colors",
+              "flex items-center gap-vs-1 rounded-vs-sm px-vs-1-5 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
               active
-                ? "bg-accent/15 text-ink ring-1 ring-accent/40"
-                : "text-ink-muted hover:bg-ink/5",
+                ? "border border-accent bg-accent-subtle text-ink"
+                : "border border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",
             ].join(" ")}
           >
             <Icon size={14} aria-hidden />

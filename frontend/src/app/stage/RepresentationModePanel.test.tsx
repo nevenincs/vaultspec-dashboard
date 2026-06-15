@@ -49,6 +49,17 @@ describe("RepresentationModePanel", () => {
     fireEvent.click(lineage);
     expect(useViewStore.getState().activeRepresentationMode).toBe("lineage");
   });
+
+  it("styles the active segment with canonical accent tokens (not dropped ones)", () => {
+    render(createElement(RepresentationModePanel));
+    const connectivity = screen.getByRole("switch", { name: "Connectivity" });
+    // The active segment reads as the Figma accent-subtle pill with an accent
+    // border — the canonical token vocabulary, never the non-existent
+    // border-border/bg-surface/bg-accent-15 utilities that silently drop.
+    expect(connectivity.className).toContain("bg-accent-subtle");
+    expect(connectivity.className).toContain("border-accent");
+    expect(connectivity.className).not.toMatch(/bg-accent\/15|ring-accent/);
+  });
 });
 
 describe("LensSelector", () => {

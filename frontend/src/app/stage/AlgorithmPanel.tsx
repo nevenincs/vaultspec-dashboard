@@ -162,21 +162,26 @@ export function AlgorithmPanel({ onClose }: AlgorithmPanelProps) {
         </div>
       </div>
 
-      {/* Layout mode toggle */}
+      {/* Layout mode toggle — a filled segmented control: the active segment is a
+          raised pill on the sunken track (Figma 17:1610). */}
       <div className="border-b border-rule px-vs-3 py-vs-2">
         <span className="mb-vs-1 block text-label font-medium text-ink-muted">
           Mode
         </span>
-        <div className="flex rounded-vs-sm border border-rule text-label">
+        <div
+          role="group"
+          aria-label="layout mode"
+          className="flex gap-vs-0-5 rounded-vs-sm border border-rule bg-paper-sunken p-vs-0-5 text-label"
+        >
           {(["force", "circular"] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => applyMode(m)}
               aria-pressed={mode === m}
-              className={`flex-1 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
+              className={`flex-1 rounded-vs-sm py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
                 mode === m
-                  ? "bg-paper-sunken text-ink"
+                  ? "bg-paper-raised font-medium text-ink shadow-card"
                   : "text-ink-faint hover:text-ink-muted"
               }`}
             >
