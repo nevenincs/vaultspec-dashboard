@@ -30,7 +30,7 @@ export const MODE_OPTIONS: ModeOption[] = [
   {
     mode: "connectivity",
     label: "Connectivity",
-    hint: "ForceAtlas2 topology layout (force/circular tuning applies here)",
+    hint: "Force-directed topology layout (force/circular tuning applies here)",
     Icon: Network,
   },
   {

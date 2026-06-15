@@ -315,6 +315,9 @@ export class FieldLayout {
     }
     this.snapshot();
     this.emitPositions();
+    // A listener may have synchronously stopped or re-initialized the layout
+    // during the fan-out; if so, do not re-arm the loop against that intent.
+    if (!this.running) return;
     if (this.sim.alpha() < ALPHA_MIN) {
       this.running = false;
       this.emitSettle();

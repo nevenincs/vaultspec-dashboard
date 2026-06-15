@@ -190,6 +190,22 @@ describe("FieldLayout (d3-force driver)", () => {
     expect(sched.hasPending).toBe(false);
   });
 
+  it("does not re-arm the loop if a listener stops it mid-frame (re-entrancy guard)", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    let frames = 0;
+    layout.onPositions(() => {
+      frames += 1;
+      if (frames >= 2) layout.stop(); // stop from inside the fan-out
+    });
+    layout.init(["a", "b"], [edge("e1", "a", "b")], new Map());
+    layout.start();
+    const ran = sched.runFrames(50);
+    // The stop() taken during a frame must win — the loop must not reschedule.
+    expect(sched.hasPending).toBe(false);
+    expect(ran).toBeLessThanOrEqual(2);
+  });
+
   it("setParams reheats a settled layout", () => {
     const sched = new ManualScheduler();
     const layout = new FieldLayout(sched);
