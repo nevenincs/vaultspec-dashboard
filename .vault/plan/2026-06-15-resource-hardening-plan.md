@@ -3,7 +3,6 @@ tags:
   - '#plan'
   - '#resource-hardening'
 date: '2026-06-15'
-modified: '2026-06-15'
 tier: L2
 related:
   - '[[2026-06-15-resource-hardening-adr]]'
@@ -68,7 +67,7 @@ Bound the still-live frontend leaks owned by this wave (not the concurrent perf-
 
 ### Phase `P06` - Residual closure
 
-Close every deferred/minor residual from P01-P05: the GPU-churn items previously left to the scene owner (now safe in-place wins), the minor cache-hygiene items, and the review nits — leaving no open finding in this campaign's scope.
+Close every deferred/minor residual from P01-P05: the GPU-churn items previously left to the scene owner (now safe in-place wins), the minor cache-hygiene items, and the review nits - leaving no open finding in this campaign's scope.
 
 - [x] `P06.S20` - Guard edge-mesh setHighlight to skip rebuilds when the ego set is unchanged (B6); `frontend/src/scene/field/edgeMeshes.ts`.
 - [x] `P06.S21` - Cache overlay country-label Text by feature, reposition in place instead of per-frame recreate (B6); `frontend/src/scene/field/overlayLayer.ts`.
