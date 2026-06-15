@@ -16,7 +16,13 @@ describe("figma registry", () => {
   it("builds a registry with null Figma bindings, preserving existing ones", () => {
     const existing: Registry = {
       components: [
-        { name: "AppShell", source: "src/app/AppShell.tsx", figmaNodeId: "12:34", figmaUrl: "u" },
+        {
+          name: "AppShell",
+          source: "src/app/AppShell.tsx",
+          designSurface: true,
+          figmaNodeId: "12:34",
+          figmaUrl: "u",
+        },
       ],
     };
     const reg = buildRegistry(discovered, existing);
@@ -31,7 +37,7 @@ describe("figma registry", () => {
   });
 
   it("flags a missing component", () => {
-    const reg: Registry = { components: [discovered[0]].map((c) => ({ ...c, figmaNodeId: null, figmaUrl: null })) };
+    const reg: Registry = { components: [discovered[0]].map((c) => ({ ...c, designSurface: true, figmaNodeId: null, figmaUrl: null })) };
     const problems = validateRegistry(reg, discovered);
     expect(problems.join("\n")).toContain("missing: component LeftRail");
   });

@@ -15,6 +15,13 @@ export type Component = { name: string; source: string };
 export type RegistryEntry = {
   name: string;
   source: string;
+  /**
+   * Whether this export is a visual DESIGN SURFACE that should have a Figma node.
+   * False for non-visual exports the discovery scan picks up but which have nothing to
+   * draw (PixiJS scene-layer wrappers, keyboard/behaviour handlers, or the AppShell
+   * composition itself). Only design surfaces are expected to bind to Figma.
+   */
+  designSurface: boolean;
   figmaNodeId: string | null;
   figmaUrl: string | null;
 };
@@ -101,6 +108,7 @@ export function buildRegistry(discovered: Component[], existing?: Registry): Reg
     components: discovered.map((c) => ({
       name: c.name,
       source: c.source,
+      designSurface: prev.get(c.name)?.designSurface ?? true,
       figmaNodeId: prev.get(c.name)?.figmaNodeId ?? null,
       figmaUrl: prev.get(c.name)?.figmaUrl ?? null,
     })),

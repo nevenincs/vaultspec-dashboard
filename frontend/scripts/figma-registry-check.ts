@@ -51,12 +51,15 @@ function main(): void {
 
   const registry = JSON.parse(readFileSync(registryPath, "utf8")) as Registry;
   const problems = validateRegistry(registry, discovered);
-  const bound = registry.components.filter((c) => c.figmaNodeId).length;
+  const surfaces = registry.components.filter((c) => c.designSurface);
+  const boundSurfaces = surfaces.filter((c) => c.figmaNodeId).length;
+  const nonVisual = registry.components.length - surfaces.length;
 
   if (problems.length === 0) {
     console.log(
-      `figma-registry: OK — ${registry.components.length} components mapped, ` +
-        `${bound} bound to Figma nodes.`,
+      `figma-registry: OK — ${registry.components.length} components mapped ` +
+        `(${surfaces.length} design surfaces, ${nonVisual} non-visual exports). ` +
+        `${boundSurfaces}/${surfaces.length} design surfaces bound to Figma nodes.`,
     );
     return;
   }

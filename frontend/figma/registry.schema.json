@@ -11,7 +11,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "source", "figmaNodeId", "figmaUrl"],
+        "required": ["name", "source", "designSurface", "figmaNodeId", "figmaUrl"],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -22,6 +22,10 @@
           "source": {
             "type": "string",
             "description": "POSIX-relative path from frontend/ to the component's source file."
+          },
+          "designSurface": {
+            "type": "boolean",
+            "description": "Whether this export is a visual design surface expected to bind to a Figma node. False for non-visual exports (scene-layer wrappers, behaviour handlers, the AppShell composition) that have no standalone Figma design."
           },
           "figmaNodeId": {
             "type": ["string", "null"],
