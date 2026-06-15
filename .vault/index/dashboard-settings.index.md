@@ -7,6 +7,7 @@ date: '2026-06-15'
 modified: '2026-06-15'
 related:
   - '[[2026-06-15-dashboard-settings-adr]]'
+  - '[[2026-06-15-dashboard-settings-audit]]'
   - '[[2026-06-15-dashboard-settings-plan]]'
   - '[[2026-06-15-dashboard-settings-research]]'
 ---
@@ -20,6 +21,10 @@ Auto-generated index of all documents tagged with `#dashboard-settings`.
 ### adr
 
 - `2026-06-15-dashboard-settings-adr` - `dashboard-settings` adr: `engine-owned served settings schema with modal UI` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-15-dashboard-settings-audit` - `dashboard-settings` audit: `code review and revision`
 
 ### plan
 

@@ -101,19 +101,19 @@ Compose the Dialog, control registry, schema, and effective values into the Sett
 
 Compose Dialog, control registry, schema, and effective values into the SettingsDialog with write-through and scope-override affordances.
 
-- [ ] `W04.P08.S24` - Build the SettingsDialog composing the Dialog with categories built from the served schema and effective values; `frontend/src/app/settings/SettingsDialog.tsx`.
-- [ ] `W04.P08.S25` - Render per-setting rows through the control registry with label, description, group, and ordering from the schema; `frontend/src/app/settings/SettingsDialog.tsx`.
-- [ ] `W04.P08.S26` - Implement write-through on change via usePutSettings with pending and error handling; `frontend/src/app/settings/SettingsDialog.tsx`.
-- [ ] `W04.P08.S27` - Implement the scope-override affordance: global versus active-scope, inheriting-global cue, and clear-override or reset-to-default; `frontend/src/app/settings/SettingsDialog.tsx`.
-- [ ] `W04.P08.S28` - Add SettingsDialog render tests covering schema-driven rendering and override states; `frontend/src/app/settings/SettingsDialog.render.test.tsx`.
+- [x] `W04.P08.S24` - Build the SettingsDialog composing the Dialog with categories built from the served schema and effective values; `frontend/src/app/settings/SettingsDialog.tsx`.
+- [x] `W04.P08.S25` - Render per-setting rows through the control registry with label, description, group, and ordering from the schema; `frontend/src/app/settings/SettingsDialog.tsx`.
+- [x] `W04.P08.S26` - Implement write-through on change via usePutSettings with pending and error handling; `frontend/src/app/settings/SettingsDialog.tsx`.
+- [x] `W04.P08.S27` - Implement the scope-override affordance: global versus active-scope, inheriting-global cue, and clear-override or reset-to-default; `frontend/src/app/settings/SettingsDialog.tsx`.
+- [x] `W04.P08.S28` - Add SettingsDialog render tests covering schema-driven rendering and override states; `frontend/src/app/settings/SettingsDialog.render.test.tsx`.
 
 ### Phase `W04.P09` - Entry points
 
 Mount the gear entry point and the command-palette Settings command, both opening the dialog, with open/close wiring.
 
-- [ ] `W04.P09.S29` - Add the gear entry point using the Lucide Settings icon in the chrome to open the dialog; `frontend/src/app/AppShell.tsx`.
-- [ ] `W04.P09.S30` - Add a Settings command to the command palette routing to the dialog; `frontend/src/app/palette/CommandPalette.tsx`.
-- [ ] `W04.P09.S31` - Wire dialog open and close state for both entry points and add coverage tests; `frontend/src/app/settings/useSettingsDialog.ts`.
+- [x] `W04.P09.S29` - Add the gear entry point using the Lucide Settings icon in the chrome to open the dialog; `frontend/src/app/AppShell.tsx`.
+- [x] `W04.P09.S30` - Add a Settings command to the command palette routing to the dialog; `frontend/src/app/palette/CommandPalette.tsx`.
+- [x] `W04.P09.S31` - Wire dialog open and close state for both entry points and add coverage tests; `frontend/src/app/settings/useSettingsDialog.ts`.
 
 ## Wave `W05` - Platform: theme migration into the unified model and full verification
 
@@ -123,19 +123,19 @@ Migrate theme into the registry as a global enum setting with cache-then-reconci
 
 Migrate theme into the registry as a global enum setting with cache-then-reconcile to preserve the no-FOUC guarantee.
 
-- [ ] `W05.P10.S32` - Add the theme registry entry as a scope-ineligible global enum setting; `engine/crates/vaultspec-session/src/settings_schema.rs`.
-- [ ] `W05.P10.S33` - Reconcile the theme controller to the unified model: localStorage as pre-paint cache, server as authority, cache-then-reconcile on load; `frontend/src/platform/theme/themeController.ts`.
-- [ ] `W05.P10.S34` - Route theme writes through the settings model while updating the pre-paint cache; `frontend/src/platform/theme/useTheme.ts`.
-- [ ] `W05.P10.S35` - Update theme controller and useTheme tests for the reconcile path preserving no-FOUC; `frontend/src/platform/theme/themeController.test.ts`.
+- [x] `W05.P10.S32` - Add the theme registry entry as a scope-ineligible global enum setting; `engine/crates/vaultspec-session/src/settings_schema.rs`.
+- [x] `W05.P10.S33` - Reconcile the theme controller to the unified model: localStorage as pre-paint cache, server as authority, cache-then-reconcile on load; `frontend/src/platform/theme/themeController.ts`.
+- [x] `W05.P10.S34` - Route theme writes through the settings model while updating the pre-paint cache; `frontend/src/platform/theme/useTheme.ts`.
+- [x] `W05.P10.S35` - Update theme controller and useTheme tests for the reconcile path preserving no-FOUC; `frontend/src/platform/theme/themeController.test.ts`.
 
 ### Phase `W05.P11` - Full verification and review
 
 Run the full lint gate, engine and frontend test suites, and a code-review pass over the complete feature.
 
-- [ ] `W05.P11.S36` - Update mockEngine and conformance fixtures for the theme setting end-to-end; `frontend/src/stores/server/mockEngine.ts`.
-- [ ] `W05.P11.S37` - Run the full lint gate (just dev lint all) to exit 0 including prettier and rustfmt; `.`.
-- [ ] `W05.P11.S38` - Run the engine and frontend test suites to green; `.`.
-- [ ] `W05.P11.S39` - Run a vaultspec-code-review pass over the full feature and record the audit; `.vault/audit/`.
+- [x] `W05.P11.S36` - Update mockEngine and conformance fixtures for the theme setting end-to-end; `frontend/src/stores/server/mockEngine.ts`.
+- [x] `W05.P11.S37` - Run the full lint gate (just dev lint all) to exit 0 including prettier and rustfmt; `.`.
+- [x] `W05.P11.S38` - Run the engine and frontend test suites to green; `.`.
+- [x] `W05.P11.S39` - Run a vaultspec-code-review pass over the full feature and record the audit; `.vault/audit/`.
 
 ## Description
 
