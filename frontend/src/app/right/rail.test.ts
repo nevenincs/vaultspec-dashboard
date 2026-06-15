@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { RAIL_TABS } from "../AppShell";
 import { EngineError, type EngineStatus } from "../../stores/server/engine";
 import { classifyOpsOutcome, deriveRagStatusView } from "../../stores/server/queries";
 import { edgesByTier } from "./Inspector";
 import { coreCard, gitCard, ragCardView } from "./NowStrip";
 import { OPS_WHITELIST } from "./OpsPanel";
+import { RAIL_TABS } from "./RailTabs";
 
 const status = (over: Partial<EngineStatus>): EngineStatus => ({
   ok: true,
@@ -16,25 +16,33 @@ const status = (over: Partial<EngineStatus>): EngineStatus => ({
   ...over,
 });
 
-describe("rail tab strip IA (dashboard-activity-rail ADR, four-tab review rail)", () => {
-  it("is exactly now, work, changes, search in that order", () => {
-    // The four-tab review-rail IA: `work` is inserted SECOND between the liveness
-    // pillar (now) and the evidence pillar (changes); now / changes / search keep
-    // their membership. The `now` tab's internal id stays `activity`.
-    expect(RAIL_TABS.map((t) => t.label)).toEqual(["now", "work", "changes", "search"]);
+describe("rail tab strip IA (binding Figma RightRail, node 17:563)", () => {
+  it("is exactly Inspect, Work, Search, Changes in that order", () => {
+    // The binding Figma `ActivityTabs` order: Inspect | Work | Search | Changes.
+    // The liveness pillars are no longer a tab — they are a PERSISTENT header
+    // above the tab bar — so the first pane is the selected-node lens (Inspect).
+    expect(RAIL_TABS.map((t) => t.label)).toEqual([
+      "Inspect",
+      "Work",
+      "Search",
+      "Changes",
+    ]);
     expect(RAIL_TABS.map((t) => t.id)).toEqual([
-      "activity",
+      "inspect",
       "work",
-      "changes",
       "search",
+      "changes",
     ]);
   });
 
-  it("places work second so it is reachable second in keyboard tab order", () => {
-    // a11y: the tab strip renders RAIL_TABS in array order, so the array order IS
-    // the keyboard tab order; `work` reachable second is the IA's narrowing of
-    // attention (live status → in-flight work → material changes → find).
-    expect(RAIL_TABS[1]).toMatchObject({ id: "work", label: "work" });
+  it("carries the binding design's leading chrome marks on Inspect and Search only", () => {
+    // The design shows a leading Lucide mark on Inspect (Eye) and Search; Work
+    // and Changes are label-only.
+    const byId = Object.fromEntries(RAIL_TABS.map((t) => [t.id, t]));
+    expect(byId.inspect!.mark).toBeTruthy();
+    expect(byId.search!.mark).toBeTruthy();
+    expect(byId.work!.mark).toBeUndefined();
+    expect(byId.changes!.mark).toBeUndefined();
   });
 });
 

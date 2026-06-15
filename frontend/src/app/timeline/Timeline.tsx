@@ -27,13 +27,11 @@
 // the shared domain-mark family (`scene/field/markComponents`) — the same
 // presentational SVG source the inspector and legends already consume from chrome.
 
-import { type Icon } from "@phosphor-icons/react";
-import { FilePlus, FileText, FlagPennant, GitCommit } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 
 import { DocTypeMark } from "../../scene/field/markComponents";
-import type { EngineEvent, LineageArc, LineageNode } from "../../stores/server/engine";
+import type { LineageArc, LineageNode } from "../../stores/server/engine";
 import { useFiltersVocabulary, useTimelineLineage } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useElementWidth } from "../chrome/useElementWidth";
@@ -76,27 +74,6 @@ import {
 // time-travel, event selection) which still consumes these window-form helpers
 // and the event-kind lane/mark vocabulary; they are kept here, alongside the new
 // scroll-strip + phase-lane model the relational surface renders against.
-
-/** ≤4 fixed event lanes (the retained event-kind lane vocabulary). */
-export const LANES = ["commits", "documents", "lifecycle"] as const;
-
-/** The event-kind lane index (retained for the event-mark transport). */
-export function laneOf(kind: string): number {
-  if (kind === "commit") return 0;
-  if (kind.startsWith("doc-")) return 1;
-  return 2; // vault lifecycle
-}
-
-const EVENT_MARKS: Record<string, Icon> = {
-  commit: GitCommit,
-  "doc-created": FilePlus,
-  "doc-modified": FileText,
-};
-
-/** The Phosphor mark for an event kind (retained for the event-mark transport). */
-export function eventMark(kind: string): Icon {
-  return EVENT_MARKS[kind] ?? FlagPennant;
-}
 
 /** A short human label for an event kind (retained for accessible names). */
 export function eventKindLabel(kind: string): string {
@@ -327,13 +304,6 @@ export interface TimelineSurfaceProps {
    * argument is optional so a bare `(node) => void` consumer still type-checks.
    */
   onNodeClick?: (node: LineageNode, arcs: readonly LineageArc[]) => void;
-  /**
-   * Deprecated event-mark select intent. Retained on the surface so the AppShell
-   * wiring (W05.P10) and the event-mark transport (W03.P07) keep type-checking
-   * while the primary marks switch to lineage nodes; the relational surface no
-   * longer renders the event-mark path.
-   */
-  onEventClick?: (event: EngineEvent) => void;
   overlay?: React.ReactNode;
 }
 

@@ -105,7 +105,7 @@ export function Inspector() {
   };
 
   return (
-    <div className="space-y-vs-3 text-body" data-inspector>
+    <div className="space-y-vs-2 text-body" data-inspector>
       <div
         tabIndex={0}
         aria-label={`node ${node.title ?? node.id}`}
@@ -122,10 +122,12 @@ export function Inspector() {
           }
         }}
       >
+        {/* Title: 13px medium (text-body) over an 11px muted sub-line — the
+            binding design's inspector header (node 17:618). */}
         <div className="truncate font-medium text-ink" title={node.id}>
           {node.title ?? node.id}
         </div>
-        <p className="text-ink-muted">
+        <p className="text-label text-ink-muted">
           {node.kind}
           {node.lifecycle ? ` · ${node.lifecycle.state}` : ""}
           {node.lifecycle?.progress
@@ -136,8 +138,8 @@ export function Inspector() {
       </div>
 
       {evidence.data && (
-        <section>
-          <div className="mb-vs-1 font-medium text-ink-muted">evidence</div>
+        <section className="text-label">
+          <div className="mb-vs-0-5 font-medium text-ink-muted">evidence</div>
           <ul className="space-y-vs-0-5 text-ink-muted">
             {evidence.data.documents.slice(0, 5).map((doc) => (
               <li key={doc.path} className="truncate" title={doc.path}>
@@ -169,8 +171,8 @@ export function Inspector() {
         </section>
       )}
 
-      <section>
-        <div className="mb-vs-1 font-medium text-ink-muted">edges by tier</div>
+      <section className="text-label">
+        <div className="mb-vs-0-5 font-medium text-ink-muted">edges by tier</div>
         {[...tiers.entries()].map(([tier, edges]) => {
           const open = unfolded.has(tier);
           return (
@@ -186,11 +188,13 @@ export function Inspector() {
                     return next;
                   })
                 }
-                className="flex items-center gap-vs-1 text-ink-muted hover:text-ink"
+                className="flex items-center gap-vs-1 rounded-vs-sm text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>{tier}</span>
-                <span className="text-ink-faint">{edges.length}</span>
+                <span className="text-2xs text-ink-faint" data-tabular>
+                  {edges.length}
+                </span>
               </button>
               {open && (
                 <ul className="ml-vs-3 mt-vs-0-5 space-y-vs-0-5 text-ink-muted">

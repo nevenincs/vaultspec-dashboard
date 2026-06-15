@@ -1,4 +1,4 @@
-// Timeline selection (W02.P08.S36 event path; W03.P07.S45 lineage-node path).
+// Timeline selection (W03.P07.S45 lineage-node path).
 //
 // The relational timeline's PRIMARY marks are lineage nodes (the dated document
 // marks). Clicking one selects it through the ONE shared `Selection` concept
@@ -9,17 +9,12 @@
 // "Interaction": "the stage pulses the joined nodes via the bounded `node_ids`
 // join, with any truncation count carried so it is stated, not silently dropped").
 //
-// The earlier event-mark path (`handleEventClick`) is RETAINED unchanged so the
-// contributed context-menu resolver (`./menus/eventMarkMenu`, the concurrent
-// event-entity work) and any deprecated event-mark wiring keep type-checking and
-// behaving: it selects through the shared `Selection` as an `event` and pulses the
-// event's carried `node_ids`. Selection is EMITTED here, never owned — the view
-// store holds the one selection; this module only fires intent into it and pushes
-// a bounded cross-highlight pulse through the scene seam.
+// Selection is EMITTED here, never owned — the view store holds the one selection;
+// this module only fires intent into it and pushes a bounded cross-highlight pulse
+// through the scene seam.
 
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
-import type { EngineEvent } from "../../stores/server/engine";
-import { selectEvent, selectNode } from "../../stores/view/selection";
+import { selectNode } from "../../stores/view/selection";
 import type { SceneController } from "../../scene/sceneController";
 import { getScene } from "../stage/Stage";
 
@@ -68,23 +63,5 @@ export function handleNodeClick(
   const { ids } = joinedNodeIds(node.id, arcs);
   if (ids.length > 0) {
     scene.command({ kind: "pulse", ids: new Set(ids) });
-  }
-}
-
-/**
- * Click a timeline event mark (retained event path; the context-menu resolver
- * uses the same `selectEvent` intent). Selects the event through the shared
- * selection and pulses its carried nodes — `node_ids` is bounded (contract §5,
- * cap 20): pulse what's carried; the truncation count rides the selection so the
- * inspector surfaces it honestly. A silent partial pulse would violate the
- * truthfulness stance.
- */
-export function handleEventClick(
-  event: EngineEvent,
-  scene: SceneController = getScene().controller,
-): void {
-  selectEvent(event.id, event.node_ids, event.truncated_node_ids);
-  if (event.node_ids.length > 0) {
-    scene.command({ kind: "pulse", ids: new Set(event.node_ids) });
   }
 }

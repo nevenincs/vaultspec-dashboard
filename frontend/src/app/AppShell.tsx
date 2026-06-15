@@ -29,6 +29,7 @@ import { ChangesOverview } from "./right/ChangesOverview";
 import { Inspector } from "./right/Inspector";
 import { NowStrip } from "./right/NowStrip";
 import { OpsPanel } from "./right/OpsPanel";
+import { RailTabs, type RailTabId } from "./right/RailTabs";
 import { SearchTab } from "./right/SearchTab";
 import { WorkTab } from "./right/WorkTab";
 import { Stage } from "./stage/Stage";
@@ -248,61 +249,40 @@ function SettingsButton() {
   );
 }
 
-// Tab labels — compact to keep the rail header-aligned. The four-tab review-rail
-// IA (dashboard-activity-rail ADR): now / work / changes / search, a left-to-right
-// narrowing of attention (live status → in-flight work → material changes → find).
-// `work` sits second between the liveness pillar and the evidence pillar; the `now`
-// tab's internal id stays `activity` (unchanged membership: NowStrip, OpsPanel,
-// Inspector).
-export const RAIL_TABS = [
-  { id: "activity" as const, label: "now" },
-  { id: "work" as const, label: "work" },
-  { id: "changes" as const, label: "changes" },
-  { id: "search" as const, label: "search" },
-];
-
+// The activity-rail composition (binding Figma `RightRail`, node 17:563): the
+// NowStrip status pillars are a PERSISTENT header above the tab bar — git / core
+// / rag liveness stays visible regardless of which pane is open — then the
+// segmented tab bar (Inspect | Work | Search | Changes) and the active pane. The
+// Inspect pane is the selected-node lens (Inspector) plus the modest ops surface;
+// Work / Search / Changes own their pillars.
 function ActivityRail() {
-  const [tab, setTab] = useState<"activity" | "work" | "changes" | "search">(
-    "activity",
-  );
+  const [tab, setTab] = useState<RailTabId>("inspect");
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      {/* Tab strip */}
-      <div
-        className="flex shrink-0 gap-vs-0-5 border-b border-rule px-vs-2 py-vs-1-5"
-        role="tablist"
-        aria-label="rail tabs"
-      >
-        {RAIL_TABS.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={`rounded-vs-sm px-vs-2 py-vs-0-5 text-label transition-colors ${
-              tab === id
-                ? "bg-paper-sunken font-medium text-ink"
-                : "text-ink-faint hover:text-ink-muted"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-vs-2 overflow-y-auto p-vs-2">
+      {/* Persistent liveness header — the three status pillars, always visible. */}
+      <NowStrip />
 
-      {/* Tab content */}
-      <div className="flex-1 space-y-vs-3 overflow-y-auto p-vs-2">
-        {tab === "activity" && (
-          <>
-            <NowStrip />
-            <OpsPanel />
+      {/* Segmented tab bar (roving-keys tablist). */}
+      <RailTabs active={tab} onChange={setTab} />
+
+      {/* Active pane. Each pane is the tabpanel for its tab; only the active one
+          is mounted, so the rail body stays light. */}
+      <div
+        className="min-h-0 flex-1"
+        role="tabpanel"
+        id={`rail-panel-${tab}`}
+        aria-labelledby={`rail-tab-${tab}`}
+        tabIndex={0}
+      >
+        {tab === "inspect" && (
+          <div className="space-y-vs-3">
             <Inspector />
-          </>
+            <OpsPanel />
+          </div>
         )}
         {tab === "work" && <WorkTab />}
-        {tab === "changes" && <ChangesOverview />}
         {tab === "search" && <SearchTab />}
+        {tab === "changes" && <ChangesOverview />}
       </div>
     </div>
   );
