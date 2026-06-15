@@ -273,7 +273,7 @@ export function NavToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="pointer-events-auto absolute right-vs-2 top-8 z-20 flex items-center gap-vs-0-5 rounded-vs-md border border-rule bg-paper-raised/90 px-vs-1 py-vs-0-5 shadow-panel backdrop-blur-sm"
+      className="pointer-events-auto absolute right-vs-2 top-8 z-20 flex items-center gap-vs-0-5 rounded-vs-md border border-rule bg-paper-raised px-vs-1 py-vs-0-5 shadow-panel"
       role="toolbar"
       aria-label="graph navigation"
       aria-orientation="horizontal"

@@ -70,7 +70,7 @@ export function FilterBar({
 
   return (
     <div
-      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-vs-3 border-b border-rule bg-paper-raised/90 px-vs-2 py-vs-1 text-label backdrop-blur-sm"
+      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap content-center items-center gap-x-vs-3 gap-y-0 border-b border-rule bg-paper-raised px-vs-2 py-vs-1-5 text-label"
       data-filter-bar
     >
       {onSidebarToggle !== undefined && (
@@ -146,7 +146,7 @@ export function FilterBar({
       {costLabel && (
         <span
           data-tabular
-          className="ml-auto rounded-full border border-state-stale/40 bg-paper-raised px-vs-1-5 py-vs-0-5 tabular-nums text-state-stale"
+          className="rounded-full border border-state-stale bg-paper-raised px-vs-1-5 py-vs-0-5 tabular-nums text-state-stale"
         >
           {costLabel}
         </span>

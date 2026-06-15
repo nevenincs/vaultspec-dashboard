@@ -60,7 +60,7 @@ export function FacetChipGroup({
               onClick={() => onToggle(value)}
               className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 on
-                  ? "border-rule-strong bg-paper-sunken text-ink"
+                  ? "border-rule-strong bg-paper-sunken font-medium text-ink"
                   : "border-rule text-ink-muted hover:border-rule-strong"
               }`}
             >

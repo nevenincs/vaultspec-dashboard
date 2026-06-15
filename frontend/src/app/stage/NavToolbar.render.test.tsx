@@ -258,6 +258,27 @@ describe("NavToolbar surface + a11y + states (S22)", () => {
     expect(screen.getByRole("button", { name: "feat" })).toBeTruthy();
   });
 
+  it("styles the active LOD segment with the accent token and medium weight (Figma 17:1456)", () => {
+    renderToolbar();
+    const feat = screen.getByRole("button", { name: "feat" });
+    const docs = screen.getByRole("button", { name: "docs" });
+    // feat is the default-active segment: accent-subtle ground + medium weight.
+    expect(feat.className).toContain("bg-accent-subtle");
+    expect(feat.className).toContain("font-medium");
+    // docs is the quiet inactive segment: faint ink, no accent ground.
+    expect(docs.className).toContain("text-ink-faint");
+    expect(docs.className).not.toContain("bg-accent-subtle");
+  });
+
+  it("renders the rail on the solid paper-raised surface, not a translucent blur (Figma 17:1428)", () => {
+    renderToolbar();
+    const toolbar = screen.getByRole("toolbar", { name: "graph navigation" });
+    expect(toolbar.className).toContain("bg-paper-raised");
+    // The Figma rail is opaque: no /90 alpha and no backdrop-blur.
+    expect(toolbar.className).not.toContain("bg-paper-raised/90");
+    expect(toolbar.className).not.toContain("backdrop-blur");
+  });
+
   it("writes the granularity setter on segment click (stores write, not a fetch)", () => {
     renderToolbar();
     expect(useViewStore.getState().granularity).toBe("feature");

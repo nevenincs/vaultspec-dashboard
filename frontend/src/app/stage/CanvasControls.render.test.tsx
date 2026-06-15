@@ -160,6 +160,17 @@ describe("FilterBar surface + a11y (S26)", () => {
     renderWithClient(createElement(FilterBar, { hidden: { nodes: 12, edges: 3 } }));
     const chip = screen.getByText("12 nodes · 3 edges hidden");
     expect(chip.hasAttribute("data-tabular")).toBe(true);
+    // The bounded-indicator pill carries the stale/warning tone from the token
+    // tier (Figma 17:1426: solid state-stale border + ink), so "filtered-out is
+    // recoverable context" reads as a quiet caution, never an error.
+    expect(chip.className).toContain("border-state-stale");
+    expect(chip.className).toContain("text-state-stale");
+    expect(chip.className).toContain("rounded-full");
+  });
+
+  it("hides the cost chip when nothing is filtered out (honest zero, no fabricated count)", () => {
+    renderWithClient(createElement(FilterBar, { hidden: { nodes: 0, edges: 0 } }));
+    expect(screen.queryByText(/hidden$/)).toBeNull();
   });
 });
 

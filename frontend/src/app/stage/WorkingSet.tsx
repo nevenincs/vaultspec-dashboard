@@ -79,7 +79,7 @@ export function WorkingSet() {
       {workingSet.map((id) => (
         <span
           key={id}
-          className="flex items-center gap-vs-1 rounded-full border border-rule bg-paper-raised/90 px-vs-2 py-vs-0-5 text-2xs text-ink shadow-card"
+          className="flex items-center gap-vs-1 rounded-full border border-rule bg-paper-raised px-vs-2 py-vs-0-5 text-2xs text-ink shadow-card"
         >
           {id.replace(/^(feature|doc):/, "")}
           <button
