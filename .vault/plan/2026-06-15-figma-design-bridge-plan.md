@@ -128,6 +128,25 @@ Author the read-only MCP parity-check script and wire registry completeness and 
 - [x] `W02.P10.S45` - Wire registry completeness and naming parity into the CI gate; `justfile`.
 - [x] `W02.P10.S46` - Document the end-to-end Figma parity verification workflow; `frontend/figma/README.md`.
 
+## Wave `W03` - Editable Figma recreation
+
+Replace the seed nodes with editable, variable-bound Figma recreations of every component, writing the missing Storybook stories first so each component has a render to recreate from. Depends on W01 tokens (variables) and W02 (registry, gallery). User-directed scope expansion 2026-06-15: editable fidelity, all 50 components.
+
+### Phase `W03.P11` - Editable-recreation pipeline
+
+Build the DOM-extraction plus Figma-builder pipeline that turns a rendered story into an editable, variable-bound Figma node tree.
+
+
+### Phase `W03.P12` - Missing component stories
+
+Write Storybook stories for the 34 components that lack one, so every component has a clean render to recreate from.
+
+
+### Phase `W03.P13` - Editable recreation of all components
+
+Recreate each component as an editable, variable-bound Figma node tree from its rendered story, replacing the seed node and updating the registry binding.
+
+
 ## Description
 
 This plan executes the accepted figma-design-bridge ADR, grounded in the
