@@ -180,10 +180,10 @@ export function nodeStatusFromWire(
  *   graded      → --color-status-graded      (a severity-bearing warm hue)
  *   tiered      → --color-status-tiered       (the tier-rank reinforcement)
  *
- * The `--color-status-*` names are defined prototype-locally (the prototype
- * scopes them in its own stylesheet) to stay collision-free with the in-flight
- * token work in `styles.css`; the names are stable and a post-merge integration
- * can promote them into the shared semantic tier.
+ * The `--color-status-*` names are promoted into the shared semantic token tier
+ * in `styles.css` as literal hex per theme (light/dark/high-contrast) and read
+ * by the scene through `getCssColor`; affirmed/retired/negated reuse the
+ * existing `--color-state-*` tokens.
  */
 export function stampToken(cls: StatusClass | undefined): string {
   switch (cls) {

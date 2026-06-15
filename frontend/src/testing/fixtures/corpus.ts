@@ -351,7 +351,8 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
       confidence: 1,
       provenance: "frontmatter",
       observed_at: iso(startTs + DAY),
-      derivation: "binds",
+      // No derivation label: rule->feature is not a pipeline-derivation edge in
+      // the engine's closed vocabulary, so the live wire omits it (honest absence).
     });
 
     // Structural edge to a code artifact, state varies.
