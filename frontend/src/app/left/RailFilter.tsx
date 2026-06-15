@@ -34,7 +34,11 @@ export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
   const has = value.length > 0;
   return (
     <div
-      className="flex shrink-0 items-center gap-vs-1 rounded-vs-sm border border-rule bg-paper px-vs-2 py-vs-0-5 focus-within:border-rule-strong"
+      // Figma `SearchField`: a paper-raised pill with the funnel mark. The
+      // placeholder says "filter …" (not "search") and carries the funnel — NOT
+      // the magnifying glass — so this client-side narrowing never looks like the
+      // global right-rail search pillar (the deliberate distinction the IA fixes).
+      className="flex shrink-0 items-center gap-vs-1-5 rounded-vs-md border border-rule bg-paper-raised px-vs-2 py-vs-1 focus-within:border-rule-strong"
       data-rail-filter
     >
       {/* The FUNNEL mark — deliberately NOT the right-rail search glass — so the

@@ -302,6 +302,14 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         feature_tags: [feature],
         ...(adrStatus ? { status: adrStatus } : {}),
         ...(planTier ? { tier: planTier } : {}),
+        // Plan checkbox progress (dashboard-pipeline-wire): the SAME {done,total}
+        // the plan NODE's lifecycle carries, projected onto the vault-tree entry
+        // so the left-rail plan-status pip (✓/◐/○) lights up from real lifecycle
+        // truth — byte-for-byte the new live `/vault-tree` shape
+        // (mock-mirrors-live-wire-shape). Present only on plan rows; absent
+        // everywhere else (truthful absence, matching `skip_serializing_if` =>
+        // null on the live wire).
+        ...(docType === "plan" ? { progress: { done, total } } : {}),
         dates: { created: iso(created), modified: iso(created + DAY) },
       });
       nextEvent(created, "doc-created", `${stem}.md`, [docId, featureId]);

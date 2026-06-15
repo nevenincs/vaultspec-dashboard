@@ -1,7 +1,10 @@
-// The browser region (dashboard-left-rail ADR "Browser" + "In-rail filter"): the
-// single file-thinking region of the rail that hosts the two browser modes —
-// VAULT (existing) and CODE (new) — behind a compact keyboard-reachable toggle,
-// with an in-rail filter scoped to the active mode above the listing.
+// The browser region (dashboard-left-rail ADR "Browser" + "In-rail filter" /
+// Figma `LeftRail_*`): the single file-thinking region of the rail that hosts the
+// THREE browser modes — VAULT (grouped by `.vault/` subtree), TREE (the same
+// `/vault-tree` projection re-nested feature → doc_type → document, a pure
+// client-side re-projection), and CODE (the `/file-tree` projection) — behind a
+// compact keyboard-reachable toggle, with an in-rail filter scoped to the active
+// mode above the listing.
 //
 // Composition only (dashboard-layer-ownership): this region fetches nothing,
 // mints no node identity, and reads no `tiers` block — the VaultBrowser and
@@ -21,6 +24,7 @@ import { useBrowserModeStore } from "../../stores/view/browserMode";
 import { BrowserModeToggle } from "./BrowserModeToggle";
 import { CodeTree } from "./CodeTree";
 import { RailFilter } from "./RailFilter";
+import { TreeBrowser } from "./TreeBrowser";
 import { VaultBrowser } from "./VaultBrowser";
 
 export function BrowserRegion() {
@@ -40,11 +44,13 @@ export function BrowserRegion() {
       <BrowserModeToggle mode={mode} onModeChange={setMode} />
       <RailFilter modeLabel={mode} value={filter} onChange={setFilter} />
 
-      {/* The active mode's browser, both narrowed by the same in-rail filter. The
-          listing scrolls; the affordances above stay pinned. */}
+      {/* The active mode's browser, all three narrowed by the same in-rail
+          filter. The listing scrolls; the affordances above stay pinned. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {mode === "code" ? (
           <CodeTree filter={filter} />
+        ) : mode === "tree" ? (
+          <TreeBrowser filter={filter} />
         ) : (
           <VaultBrowser filter={filter} />
         )}

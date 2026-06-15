@@ -1,29 +1,38 @@
-// The browser-region mode toggle (dashboard-left-rail ADR "Browser"): a compact,
-// keyboard-reachable control that switches the file-thinking surface between its
-// two modes — VAULT (the `/vault-tree` projection, the default) and CODE (the
-// `/file-tree` projection). The chosen mode is view-local state re-keyed per
-// scope (`stores/view/browserMode`), so it never bleeds across a swap.
+// The browser-region mode toggle (dashboard-left-rail ADR "Browser" / Figma
+// `LeftRail_*` segmented vault·tree·code control): a compact, keyboard-reachable
+// control that switches the file-thinking surface between its THREE modes — VAULT
+// (the `/vault-tree` projection grouped by `.vault/` subtree, the default), TREE
+// (the SAME `/vault-tree` projection nested feature → doc_type → document, a pure
+// client-side re-projection — no engine work), and CODE (the `/file-tree`
+// projection). The chosen mode is view-local state re-keyed per scope
+// (`stores/view/browserMode`), so it never bleeds across a swap.
 //
 // Read-only navigation law: this is a view-local affordance only — it emits no
 // scope/node selection and issues no wire request; it flips the mode in the
 // browser-mode store and nothing else (the rail's single-navigation-law "adjust
-// a local view affordance"). Two Phosphor domain marks (the vault corpus vs the
-// source tree) carry the mode identity; the toggle is one ARIA tablist so the
-// two modes read as a segmented choice, with roving arrow-key movement.
+// a local view affordance"). Three Phosphor domain marks carry the mode identity,
+// each distinct by SHAPE (a stack of books / a top-down hierarchy / a sideways
+// source tree); the toggle is one ARIA tablist so the modes read as a segmented
+// choice, with roving arrow-key movement that auto-scales to the mode count.
 
-import { Books, TreeStructure } from "@phosphor-icons/react";
+import { Books, TreeStructure, TreeView } from "@phosphor-icons/react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef } from "react";
 
 import type { BrowserMode } from "../../stores/view/browserMode";
 
-// 14px is the iconography ADR's grayscale-by-shape gate size; the two domain
-// marks are distinct by SHAPE (a stack of books vs a branching tree) so the
-// mode reads without relying on hue.
+// 14px is the iconography ADR's grayscale-by-shape gate size; the three domain
+// marks are distinct by SHAPE (a stack of books / a top-down hierarchy / a
+// sideways branching tree) so the mode reads without relying on hue.
 const MARK_PX = 14;
 
+// vault · tree · code, left to right, matching the binding design's segmented
+// control. `TreeView` (a top-down org hierarchy) is the tree mode's mark — the
+// vault corpus RE-nested — distinct in shape from `TreeStructure` (the sideways
+// source tree) the code mode carries.
 const MODES: { id: BrowserMode; label: string; mark: typeof Books }[] = [
   { id: "vault", label: "vault", mark: Books },
+  { id: "tree", label: "tree", mark: TreeView },
   { id: "code", label: "code", mark: TreeStructure },
 ];
 
@@ -86,10 +95,10 @@ export function BrowserModeToggle({ mode, onModeChange }: BrowserModeToggleProps
             data-browser-mode-active={active ? "" : undefined}
             onClick={() => onModeChange(id)}
             onKeyDown={onKeyDown(index)}
-            className={`flex flex-1 items-center justify-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            className={`flex flex-1 items-center justify-center gap-vs-1-5 rounded-vs-sm border px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
               active
-                ? "bg-paper-raised font-medium text-ink shadow-card"
-                : "text-ink-faint hover:text-ink-muted"
+                ? "border-rule bg-paper-raised font-medium text-ink shadow-card"
+                : "border-transparent text-ink-faint hover:text-ink-muted"
             }`}
           >
             {/* Grayscale-safe active cue: fill + weight + the leading mark, so

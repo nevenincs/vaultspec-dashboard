@@ -489,6 +489,15 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
       // everywhere else (truthful absence).
       ...(typeof entry.status === "string" ? { status: entry.status } : {}),
       ...(typeof entry.tier === "string" ? { tier: entry.tier } : {}),
+      // Plan checkbox progress (dashboard-pipeline-wire): forwarded only when
+      // the wire carries a well-formed {done,total} pair so the plan-status pip
+      // (✓/◐/○) lights up from real lifecycle truth; absent (and so honest
+      // not-started) on every non-plan row and progress-less plan.
+      ...(isRec(entry.progress) &&
+      typeof entry.progress.done === "number" &&
+      typeof entry.progress.total === "number"
+        ? { progress: { done: entry.progress.done, total: entry.progress.total } }
+        : {}),
       dates: {},
     };
   });

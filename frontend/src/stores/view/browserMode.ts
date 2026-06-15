@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 // Browser-region view-local state (dashboard-left-rail ADR "Browser" + "In-rail
-// filter"): the chosen mode (vault | code) and the in-rail filter text, BOTH
-// re-keyed per scope so they do not bleed across a worktree or workspace swap.
+// filter"): the chosen mode (vault | tree | code) and the in-rail filter text,
+// BOTH re-keyed per scope so they do not bleed across a worktree/workspace swap.
 //
 // The ADR is explicit on two points this store realizes:
 //   1. The mode is "view-local state re-keyed per scope so it does not bleed
@@ -19,7 +19,13 @@ import { create } from "zustand";
 // place — the rail control never resets this itself (the single-navigation-law
 // "no surface owns the reset; the stores layer does").
 
-export type BrowserMode = "vault" | "code";
+// The three file-thinking modes (dashboard-left-rail / Figma `LeftRail_*`): VAULT
+// (the `/vault-tree` projection grouped by `.vault/` subtree, the default), TREE
+// (a pure CLIENT-SIDE projection of the SAME `/vault-tree` response nested
+// feature → doc_type → document — no engine work, views-are-projections-of-one-
+// model), and CODE (the `/file-tree` projection). The segmented toggle in the
+// rail reads vault·tree·code, left to right, matching the binding design.
+export type BrowserMode = "vault" | "tree" | "code";
 
 /** The default mode for a fresh scope: vault, "the corpus the product is about"
  *  (ADR "Browser" — the default mode is vault). */

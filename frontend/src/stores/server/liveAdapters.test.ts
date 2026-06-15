@@ -909,25 +909,52 @@ describe("status + tier facets carried identically by mock and live (W05.P12.S65
           node_id: "doc:2026-06-14-x-plan",
           feature_tags: ["x"],
           tier: "L3",
+          progress: { done: 2, total: 5 },
         },
       ],
     },
     tiers: TIERS,
   };
 
-  it("the live vault-tree carries status on its ADR and tier on its plan", () => {
+  it("the live vault-tree carries status on its ADR and tier + progress on its plan", () => {
     const adapted = adaptVaultTree(unwrapEnvelope(liveTree));
     const adr = adapted.entries.find((e) => e.doc_type === "adr");
     const plan = adapted.entries.find((e) => e.doc_type === "plan");
     expect(adr?.status).toBe("accepted");
     expect(plan?.tier).toBe("L3");
+    // The plan's checkbox progress rides through so the rail's status pip lights
+    // up from real lifecycle truth (planStatus => in-progress here).
+    expect(plan?.progress).toEqual({ done: 2, total: 5 });
+    // An ADR carries no checkbox progress (truthful absence).
+    expect(adr?.progress).toBeUndefined();
+  });
+
+  it("ignores a malformed progress pair (tolerant adapter, honest absence)", () => {
+    const adapted = adaptVaultTree(
+      unwrapEnvelope({
+        data: {
+          entries: [
+            {
+              stem: "2026-06-14-y-plan",
+              node_id: "doc:2026-06-14-y-plan",
+              feature_tags: ["y"],
+              tier: "L1",
+              progress: { done: "2", total: null },
+            },
+          ],
+        },
+        tiers: TIERS,
+      }),
+    );
+    const plan = adapted.entries.find((e) => e.doc_type === "plan");
+    expect(plan?.progress).toBeUndefined();
   });
 
   it("the mock vault-tree and graph-query nodes carry status and tier identically", async () => {
     const mock = new MockEngine();
     const client = clientOn(mock);
 
-    // vault-tree: ADR entries carry status, plan entries carry tier.
+    // vault-tree: ADR entries carry status, plan entries carry tier + progress.
     const tree = await client.vaultTree(MOCK_SCOPE);
     const adrEntry = tree.entries.find((e) => e.doc_type === "adr");
     const planEntry = tree.entries.find((e) => e.doc_type === "plan");
@@ -937,10 +964,31 @@ describe("status + tier facets carried identically by mock and live (W05.P12.S65
     );
     expect(planEntry?.tier).toBeDefined();
     expect(["L1", "L2", "L3", "L4"]).toContain(planEntry?.tier);
-    // A non-ADR/non-plan entry carries neither facet (truthful absence).
+    // Every plan row carries a well-formed checkbox progress pair, and the
+    // corpus spreads them across ALL THREE design states (✓ complete / ◐
+    // in-progress / ○ not-started) so the rail's status pip is exercised end to
+    // end against the mock that mirrors the new live shape.
+    const planEntries = tree.entries.filter((e) => e.doc_type === "plan");
+    expect(planEntries.length).toBeGreaterThan(0);
+    for (const p of planEntries) {
+      expect(typeof p.progress?.done).toBe("number");
+      expect(typeof p.progress?.total).toBe("number");
+    }
+    const planState = (p?: { done: number; total: number }) =>
+      !p || p.total <= 0
+        ? "not-started"
+        : p.done >= p.total
+          ? "complete"
+          : p.done > 0
+            ? "in-progress"
+            : "not-started";
+    const statuses = new Set(planEntries.map((p) => planState(p.progress)));
+    expect(statuses).toEqual(new Set(["complete", "in-progress", "not-started"]));
+    // A non-ADR/non-plan entry carries no plan facets (truthful absence).
     const research = tree.entries.find((e) => e.doc_type === "research");
     expect(research?.status).toBeUndefined();
     expect(research?.tier).toBeUndefined();
+    expect(research?.progress).toBeUndefined();
 
     // graph-query: the same facets ride on the doc nodes.
     const slice = await client.graphQuery({ scope: MOCK_SCOPE });

@@ -145,6 +145,16 @@ pub async fn vault_tree(
         .nodes()
         .filter(|n| n.id.0.starts_with("doc:"))
         .map(|n| {
+            // Plan lifecycle progress for THIS scope (dashboard-pipeline-wire):
+            // read from the SAME `lifecycle_in_scope` facet the node-graph
+            // pipeline projection consumes (`engine_query::pipeline::in_flight`),
+            // never recomputed differently. Read-and-infer projection — no
+            // mutation. Present only on plan rows that carry checkbox progress;
+            // truthfully absent everywhere else so the client paints the honest
+            // not-started baseline rather than guessing a ✓/◐.
+            let progress = engine_graph::lifecycle_in_scope(n, &cell.scope)
+                .and_then(|l| l.progress)
+                .map(|p| json!({ "done": p.done, "total": p.total }));
             json!({
                 "stem": n.key,
                 "node_id": n.id.0,
@@ -154,6 +164,13 @@ pub async fn vault_tree(
                 "title": n.title,
                 "doc_type": n.doc_type,
                 "dates": n.dates,
+                // Status/tier query-time facets (dashboard-pipeline-wire W01):
+                // forwarded so an ADR carries its status and a plan its tier.
+                "status": n.status,
+                "tier": n.tier,
+                // Plan checkbox progress (done/total); null on every non-plan
+                // row and on plans with no checkboxes (truthful absence).
+                "progress": progress,
             })
         })
         .collect();

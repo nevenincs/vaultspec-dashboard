@@ -550,6 +550,35 @@ fn typed_client_expectations_hold_over_live_serve() {
         .clone();
     assert_eq!(entry["doc_type"], "plan", "doc_type server-side");
     assert_eq!(entry["dates"]["created"], "2026-06-13", "dates server-side");
+    // Plan checkbox progress projected onto the vault-tree entry from the SAME
+    // lifecycle facet the node-graph pipeline reads (dashboard-pipeline-wire):
+    // the conf plan has `[x] S01` + `[ ] S02` => done 1 / total 2 (in-progress),
+    // so the left rail's plan-status pip lights up from real lifecycle truth.
+    assert_eq!(
+        entry["progress"]["done"], 1,
+        "vault-tree plan progress done from the lifecycle facet"
+    );
+    assert_eq!(
+        entry["progress"]["total"], 2,
+        "vault-tree plan progress total from the lifecycle facet"
+    );
+    // The plan also forwards its tier facet; a non-plan entry carries no progress.
+    assert_eq!(
+        entry["tier"], "L2",
+        "vault-tree forwards the plan tier facet"
+    );
+    let research_entry = tree["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["doc_type"] == "audit")
+        .cloned();
+    if let Some(audit) = research_entry {
+        assert!(
+            audit["progress"].is_null(),
+            "a non-plan entry carries no checkbox progress (truthful absence)"
+        );
+    }
 
     // --- S49 divergence 5: bounded commit-event node_ids ----------------------
     let (status, events) = http(

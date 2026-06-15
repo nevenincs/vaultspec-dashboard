@@ -317,6 +317,13 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=54-2"
     },
     {
+      "name": "TreeBrowser",
+      "source": "src/app/left/TreeBrowser.tsx",
+      "designSurface": true,
+      "figmaNodeId": "40:2",
+      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=40-2"
+    },
+    {
       "name": "VaultBrowser",
       "source": "src/app/left/VaultBrowser.tsx",
       "designSurface": true,

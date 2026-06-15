@@ -267,6 +267,11 @@ export interface VaultTreeEntry {
   status?: string;
   /** Plan tier (dashboard-pipeline-wire W01), when the entry is a plan. */
   tier?: string;
+  /** Plan checkbox lifecycle progress (done/total) for the active scope,
+   *  projected from the SAME `lifecycle_in_scope` facet the node-graph pipeline
+   *  reads. Present only on plan rows that carry checkbox progress; absent
+   *  everywhere else so the left rail paints the honest not-started baseline. */
+  progress?: { done: number; total: number };
 }
 
 export interface VaultTreeResponse {

@@ -10,17 +10,6 @@
 // document node id. It fetches nothing and defines no model — chrome over the
 // one projection.
 
-import {
-  BookOpen,
-  ClipboardText,
-  Diamond,
-  FileDashed,
-  type Icon,
-  ListBullets,
-  Pencil,
-  SealCheck,
-  Stack,
-} from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
@@ -39,6 +28,31 @@ import {
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
 // module runs its `registerResolver("vault-doc", …)` side effect once.
 import "./menus/vaultDocMenu";
+// Shared row presentation (doc marks, freshness, sizing) — the SAME helpers the
+// tree browser paints with, so the two projections of `/vault-tree` never drift.
+import {
+  CHEVRON_PX,
+  DOC_MARK_PX,
+  docMark,
+  docMarkName as sharedDocMarkName,
+  docGroupLabel,
+  freshnessLabel as sharedFreshnessLabel,
+  isFresh as sharedIsFresh,
+  planStatus,
+  planStatusLabel,
+  planStatusMark,
+  planStatusToneClass,
+  STATUS_MARK_PX,
+  VAULT_GROUPS as SHARED_VAULT_GROUPS,
+} from "./vaultRowPresentation";
+
+// Re-exported from the shared presentation module so existing importers (and the
+// unit test) keep their stable import surface while the definitions live in ONE
+// place shared with the tree browser.
+export const VAULT_GROUPS = SHARED_VAULT_GROUPS;
+export const docMarkName = sharedDocMarkName;
+export const freshnessLabel = sharedFreshnessLabel;
+export const isFresh = sharedIsFresh;
 
 /** Build the vault-doc context-menu entity from a browser row's data. */
 function vaultDocEntity(entry: VaultTreeEntry): VaultDocEntity {
@@ -53,17 +67,6 @@ function vaultDocEntity(entry: VaultTreeEntry): VaultDocEntity {
 }
 
 // --- pure helpers (unit-tested) ---------------------------------------------------
-
-/** Canonical `.vault/` group order; unknown groups append alphabetically. */
-export const VAULT_GROUPS = [
-  "research",
-  "adr",
-  "plan",
-  "exec",
-  "audit",
-  "reference",
-  "index",
-] as const;
 
 export function groupEntries(
   entries: readonly VaultTreeEntry[],
@@ -82,63 +85,10 @@ export function groupEntries(
   return groups;
 }
 
-// Doc-type marks (sidebar ADR / iconography ADR): one Phosphor mark per doc type,
-// each grayscale-distinct by SHAPE at 14px (pencil / diamond / clipboard /
-// stacked layers / sealed check / open book / list lines), with a dashed-file
-// fallback. They read in `currentColor` and inherit the rail's dimmed ink, so
-// hue is never the identity channel — this retires the legacy Unicode glyph map.
-const DOC_MARKS: Record<string, Icon> = {
-  research: Pencil,
-  adr: Diamond,
-  plan: ClipboardText,
-  exec: Stack,
-  audit: SealCheck,
-  reference: BookOpen,
-  index: ListBullets,
-};
-
-export function docMark(docType: string): Icon {
-  return DOC_MARKS[docType] ?? FileDashed;
-}
-
-/**
- * The set of doc types with a distinct mark — exported so the unit test can
- * assert grayscale-by-shape distinctness without rendering React.
- */
-export function docMarkName(docType: string): string {
-  const mark = docMark(docType);
-  return mark.displayName ?? mark.name ?? "FileDashed";
-}
-
-/** Compact freshness label: <1h "now", then h/d/w buckets; cooled = "". */
-export function freshnessLabel(modified: string | undefined, now: number): string {
-  if (!modified) return "";
-  const at = Date.parse(modified);
-  if (!Number.isFinite(at)) return "";
-  const age = now - at;
-  if (age < 3600_000) return "now";
-  if (age < 24 * 3600_000) return `${Math.floor(age / 3600_000)}h`;
-  if (age < 7 * 24 * 3600_000) return `${Math.floor(age / (24 * 3600_000))}d`;
-  if (age < 30 * 24 * 3600_000) return `${Math.floor(age / (7 * 24 * 3600_000))}w`;
-  return "";
-}
-
-/** True only for genuinely fresh items (<1h) — the accent tints these alone. */
-export function isFresh(label: string): boolean {
-  return label === "now";
-}
-
 /** Display stem — the shared derivation from the selection join (024). */
 export function entryStem(path: string): string {
   return pathStem(path);
 }
-
-// --- icon sizing (token-aligned, not arbitrary px) -------------------------------
-// 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure
-// chevrons read one density step smaller so the structural chrome stays
-// attenuated relative to the doc-type marks.
-const DOC_MARK_PX = 14;
-const CHEVRON_PX = 12;
 
 /**
  * Client-side narrowing of the ALREADY-FETCHED vault listing (dashboard-left-
@@ -343,8 +293,11 @@ export function VaultBrowser({
           const isCollapsed = collapsed.has(group);
           const sectionId = `vault-group-${group}`;
           const headerKey = `header:${group}`;
+          // The group header carries the doc-type mark of the group it labels
+          // (Figma `Pencil`/`Diamond`/`ClipboardText` … beside the group name).
+          const GroupMark = docMark(group);
           return (
-            <section key={group} className="mt-vs-1">
+            <section key={group} className="mt-vs-2 first:mt-0">
               <button
                 ref={registerNav(headerKey)}
                 type="button"
@@ -361,15 +314,21 @@ export function VaultBrowser({
                     return next;
                   })
                 }
-                className="flex w-full items-center gap-vs-1 rounded-vs-sm py-vs-0-5 font-medium text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                // Group header (Figma `ResearchHeader`/`PlanHeader` …): chevron +
+                // doc-type mark + a SEMIBOLD body-ink label, with the count quietly
+                // right-aligned. The whole row is the disclosure control.
+                className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {isCollapsed ? (
                   <ChevronRight size={CHEVRON_PX} aria-hidden />
                 ) : (
                   <ChevronDown size={CHEVRON_PX} aria-hidden />
                 )}
-                <span className="capitalize">{group}</span>
-                <span className="text-ink-faint" data-tabular>
+                <span className="shrink-0 text-ink-faint" aria-hidden>
+                  <GroupMark size={DOC_MARK_PX} />
+                </span>
+                <span>{docGroupLabel(group)}</span>
+                <span className="ml-auto text-2xs text-ink-faint" data-tabular>
                   {entries.length}
                 </span>
               </button>
@@ -378,8 +337,13 @@ export function VaultBrowser({
                   {entries.map((entry) => {
                     const fresh = freshnessLabel(entry.dates.modified, now);
                     const highlighted = entry.path === highlight;
-                    const Mark = docMark(entry.doc_type);
                     const rowKey = `row:${entry.path}`;
+                    // Plan rows carry the grayscale-safe status pip (✓/◐/○) in the
+                    // leading slot, derived from the engine-projected checkbox
+                    // progress (the SAME `lifecycle_in_scope` facet the node graph
+                    // reads). Absent progress reads the honest not-started baseline.
+                    const status = group === "plan" ? planStatus(entry.progress) : null;
+                    const StatusMark = status ? planStatusMark(status) : null;
                     return (
                       <li key={entry.path}>
                         <button
@@ -422,29 +386,42 @@ export function VaultBrowser({
                               : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
                           }`}
                         >
-                          {/* Grayscale-safe selection: the highlight rides fill
-                              + weight, and a leading accent bar marks the active
-                              row so the cue survives without hue. */}
+                          {/* Grayscale-safe selection (Figma `bar`): a leading
+                              2px accent bar marks the active row, transparent
+                              otherwise, so the cue survives without hue. The
+                              per-row doc-type mark lives on the GROUP header, not
+                              the row (matching the binding design). PLAN rows
+                              additionally carry the status pip (✓/◐/○) beside the
+                              bar — the bar still wins the leading slot when the
+                              row is selected, exactly as the design paints it. */}
                           <span
                             aria-hidden
                             className={`-ml-vs-0-5 h-3 w-0.5 shrink-0 rounded-full ${
                               highlighted ? "bg-accent" : "bg-transparent"
                             }`}
                           />
-                          <span className="shrink-0 text-ink-faint">
-                            <Mark size={DOC_MARK_PX} />
-                          </span>
-                          <span className="min-w-0 truncate font-mono">
+                          {StatusMark && status && (
+                            <span
+                              className={`shrink-0 ${planStatusToneClass(status)}`}
+                              aria-label={`plan ${planStatusLabel(status)}`}
+                              data-plan-status={status}
+                            >
+                              <StatusMark size={STATUS_MARK_PX} />
+                            </span>
+                          )}
+                          <span className="min-w-0 shrink-0 truncate">
                             {entryStem(entry.path)}
                           </span>
+                          {/* Feature tag fills the gap and truncates, as in the
+                              design — quiet faint ink, never the identity. */}
                           {entry.feature_tags[0] && (
-                            <span className="shrink-0 text-ink-faint">
+                            <span className="min-w-0 flex-1 truncate text-2xs text-ink-faint">
                               #{entry.feature_tags[0]}
                             </span>
                           )}
                           {fresh && (
                             <span
-                              className={`ml-auto shrink-0 ${
+                              className={`ml-auto shrink-0 text-2xs ${
                                 isFresh(fresh) ? "text-state-active" : "text-ink-faint"
                               }`}
                               data-tabular
