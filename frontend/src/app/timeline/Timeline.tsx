@@ -35,6 +35,7 @@ import { DocTypeMark } from "../../scene/field/markComponents";
 import type { EngineEvent, LineageArc, LineageNode } from "../../stores/server/engine";
 import { useTimelineLineage } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
+import { useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { useActiveScope } from "../stage/Stage";
 // Side-effect import: registers the timeline's event-mark menu resolver at load
@@ -406,7 +407,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const hoveredNodeId = useTimelineStore((s) => s.hoveredNodeId);
   const setHoveredNode = useTimelineStore((s) => s.setHoveredNode);
   const hostRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(800);
+  const width = useElementWidth(hostRef) ?? 800;
 
   // Degradation truth, pre-derived from the stores layer (ADR "States"): never
   // read from a transport error, never the raw `tiers` block. The RECONNECTING
@@ -437,17 +438,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     from: new Date(range.fromMs).toISOString(),
     to: new Date(range.toMs).toISOString(),
   });
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setWidth(rect.width);
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
 
   const phaseBandH = lanesHeight(TOP_PAD);
   const height = phaseBandH + RULER_HEIGHT;

@@ -23,11 +23,12 @@
 // state, filled brush); every control is a real keyboard-reachable button / switch.
 
 import { CalendarDays, Maximize2, Scan, X, ZoomIn, ZoomOut } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
 import { FacetChipGroup } from "../chrome/FacetChipGroup";
+import { useElementWidth } from "../chrome/useElementWidth";
 import { TierDial } from "../stage/TierDial";
 import { useActiveScope } from "../stage/Stage";
 import { movePlayhead } from "./Playhead";
@@ -138,17 +139,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
   // `viewportWidth` prop is the pre-measurement fallback (and the standalone /
   // test default). LOW-1: the AppShell mounts this without a measured width.
   const rootRef = useRef<HTMLDivElement>(null);
-  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
-  useEffect(() => {
-    const host = rootRef.current;
-    if (!host) return;
-    const observer = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w && w > 0) setMeasuredWidth(w);
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
+  const measuredWidth = useElementWidth(rootRef);
   const effectiveWidth = measuredWidth ?? viewportWidth;
 
   // The range player RAF loop lives wherever the play trigger is mounted; the

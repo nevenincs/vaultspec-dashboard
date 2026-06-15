@@ -30,14 +30,10 @@
 // state arrives pre-derived from the stores degradation layer.
 
 import { Play, RotateCcw } from "lucide-react";
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef } from "react";
 
 import { useViewStore } from "../../stores/view/viewStore";
+import { useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { humanInstant, isoInstant, useTimelineStore } from "./Timeline";
 import { TIMELINE_ORIGIN_MS, timeToX, xToTime } from "./scrollStrip";
@@ -111,18 +107,7 @@ export function Playhead() {
   const hostRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   // Track the real rail width: the live dock sits at the right viewport edge.
-  const [width, setWidth] = useState(800);
-
-  useEffect(() => {
-    const host = hostRef.current?.parentElement;
-    if (!host) return;
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setWidth(rect.width);
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
+  const width = useElementWidth(hostRef, { parent: true }) ?? 800;
 
   useEffect(() => {
     const host = hostRef.current?.parentElement;
