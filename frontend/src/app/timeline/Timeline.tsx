@@ -54,6 +54,7 @@ import {
   PHASE_LANES,
   type PhaseLane,
   laneCenterY,
+  laneDescriptor,
   laneOf as laneOfNode,
   lanesHeight,
 } from "./phaseLanes";
@@ -209,7 +210,16 @@ export const useTimelineStore = create<TimelineState>((set) => ({
 
 // --- pure render-prep helpers (unit-testable, no DOM) ----------------------------
 
-const LANE_LABEL_W = 56;
+// The lane rail gutter (binding Figma 17:647): the lane rule starts at x=91, the
+// label text sits at x=11 and the lane's doc-type mark at x=71 — the rail reads
+// "label · mark │ ———" exactly as the design draws it.
+const LANE_LABEL_W = 91;
+/** The x of the lane label text on the rail (Figma 17:649 etc.). */
+const LANE_LABEL_X = 11;
+/** The x of the lane's doc-type mark on the rail (Figma 17:650 etc.). */
+const LANE_MARK_X = 71;
+/** The lane rail mark edge length in px (Figma 12px lane marks). */
+const LANE_MARK_PX = 12;
 const TOP_PAD = 4;
 const MARK_PX = 13;
 const RULER_HEIGHT = 16;
@@ -525,25 +535,20 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         aria-label="lineage timeline"
         aria-busy={loading || undefined}
       >
+        {/* Lane rails — the soft low-contrast rule per visible lane, drawn from the
+            label gutter to the right edge (Figma 17:648 etc.: structure felt, not
+            seen). The label text + doc-type mark live in the HTML overlay below so
+            the mark renders in-family (DocTypeMark). */}
         {PHASE_LANES.map((lane, i) =>
           laneVisibility[lane] ? (
-            <g key={lane}>
-              <text
-                x={4}
-                y={laneCenterY(i, TOP_PAD) + 3}
-                className="fill-ink-faint text-2xs"
-              >
-                {lane}
-              </text>
-              {/* Soft low-contrast lane rule — structure felt, not seen (ADR). */}
-              <line
-                x1={LANE_LABEL_W}
-                x2={width}
-                y1={laneCenterY(i, TOP_PAD)}
-                y2={laneCenterY(i, TOP_PAD)}
-                className="stroke-rule"
-              />
-            </g>
+            <line
+              key={lane}
+              x1={LANE_LABEL_W}
+              x2={width}
+              y1={laneCenterY(i, TOP_PAD)}
+              y2={laneCenterY(i, TOP_PAD)}
+              className="stroke-rule"
+            />
           ) : null,
         )}
 
@@ -594,6 +599,38 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           className="stroke-rule-strong"
         />
       </svg>
+
+      {/* Lane rail labels + doc-type marks (binding Figma 17:647): each visible
+          lane shows its human label and the doc-type mark the phase owns, in-family
+          via DocTypeMark (icons-come-from-the-two-sanctioned-families). The label is
+          the phase's owned doc-type name — the `review` phase reads "audit" with the
+          audit mark, matching the design and the `.vault/audit/` directory. Decorative
+          (the focusable controls are the dated marks); marks are aria-hidden. */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        {PHASE_LANES.map((lane, i) => {
+          if (!laneVisibility[lane]) return null;
+          const d = laneDescriptor(lane);
+          const cy = laneCenterY(i, TOP_PAD);
+          return (
+            <div key={lane} data-lane-rail={lane}>
+              <span
+                className="absolute -translate-y-1/2 text-2xs text-ink-muted"
+                style={{ left: `${LANE_LABEL_X}px`, top: `${cy}px` }}
+              >
+                {d.label}
+              </span>
+              {d.markKind ? (
+                <span
+                  className="absolute -translate-y-1/2 text-ink-faint"
+                  style={{ left: `${LANE_MARK_X}px`, top: `${cy}px` }}
+                >
+                  <DocTypeMark kind={d.markKind} size={LANE_MARK_PX} />
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Ruler endpoints as HTML so tabular numerals apply (ADR: mandated on
           dates). The visible range's edges, tabular-rendered. */}

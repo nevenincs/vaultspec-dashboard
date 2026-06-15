@@ -35,7 +35,7 @@ import { movePlayhead } from "./Playhead";
 import { startRangePlay, stopRangePlay, useRangePlayer } from "./RangeSelect";
 import { humanInstant, useTimelineStore } from "./Timeline";
 import { Minimap } from "./Minimap";
-import { PHASE_LANES } from "./phaseLanes";
+import { PHASE_LANES, laneLabel } from "./phaseLanes";
 import {
   MAX_PX_PER_MS,
   MIN_PX_PER_MS,
@@ -226,22 +226,29 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
   return (
     <div
       ref={rootRef}
-      className="pointer-events-auto flex flex-wrap items-center gap-vs-3 border-b border-rule bg-paper-raised/90 px-vs-2 py-vs-1 text-label backdrop-blur-sm"
+      // A single non-wrapping instrument row (binding Figma 17:694: the control
+      // bar is ONE compact row docked at the top edge, not a stack that grows
+      // downward and starves the chart). Overflow scrolls horizontally so the
+      // full ADR control set (tier dial + feature filter, which the Figma mock
+      // omits) stays reachable without eating the lineage surface's height. Each
+      // group is `shrink-0` so it keeps its intrinsic width inside the scroller.
+      className="pointer-events-auto flex items-center gap-vs-3 overflow-x-auto border-b border-rule bg-paper-raised/90 px-vs-2 py-vs-1 text-label backdrop-blur-sm [scrollbar-width:thin]"
       data-timeline-controls
     >
       {/* S46 phase-lane show/hide toggles — one per PHASE_LANES entry, shape-first
           label, non-color active cue (pressed = sunken + strong rule). */}
-      <span className="flex items-center gap-1" aria-label="phase lanes">
+      <span className="flex shrink-0 items-center gap-1" aria-label="phase lanes">
         <span className="text-ink-faint">lanes</span>
         {PHASE_LANES.map((lane) => {
           const visible = laneVisibility[lane];
+          const label = laneLabel(lane);
           return (
             <button
               key={lane}
               type="button"
               role="switch"
               aria-checked={visible}
-              aria-label={`${lane} lane`}
+              aria-label={`${label} lane`}
               onClick={() => toggleLane(lane)}
               data-lane-toggle={lane}
               className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
@@ -250,37 +257,43 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
                   : "border-dashed border-rule text-ink-faint hover:border-rule-strong"
               }`}
             >
-              {lane}
+              {label}
             </button>
           );
         })}
       </span>
 
       {/* S47 relation/derivation filter chips — vocabulary from the engine enum. */}
-      <FacetChipGroup
-        label="relation"
-        values={relationVocab}
-        selected={relations}
-        onToggle={(v) => toggleFacet("relations", v)}
-        emptyHint="…"
-      />
+      <span className="flex shrink-0 items-center">
+        <FacetChipGroup
+          label="relation"
+          values={relationVocab}
+          selected={relations}
+          onToggle={(v) => toggleFacet("relations", v)}
+          emptyHint="…"
+        />
+      </span>
 
       {/* S48 the reused tier dial (semantic inapplicable in time-travel is read
           from the shared timelineMode inside the dial itself). */}
-      <TierDial />
+      <span className="flex shrink-0 items-center">
+        <TierDial />
+      </span>
 
       {/* S49 feature filter — vocabulary from the engine feature-tag enum; writing
           featureTags collapses the arcs to that feature's lineage thread. */}
-      <FacetChipGroup
-        label="feature"
-        values={featureVocab}
-        selected={featureTags}
-        onToggle={(v) => toggleFacet("featureTags", v)}
-        emptyHint="…"
-      />
+      <span className="flex shrink-0 items-center">
+        <FacetChipGroup
+          label="feature"
+          values={featureVocab}
+          selected={featureTags}
+          onToggle={(v) => toggleFacet("featureTags", v)}
+          emptyHint="…"
+        />
+      </span>
 
       {/* S50/S51/S52/S53 zoom / fit / jump controls. */}
-      <span className="flex items-center gap-vs-1" aria-label="zoom and fit">
+      <span className="flex shrink-0 items-center gap-vs-1" aria-label="zoom and fit">
         <button
           type="button"
           aria-label="zoom out"
@@ -323,7 +336,10 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
       </span>
 
       {/* S53 jump-to-date — a real date input + go button; tabular by the input. */}
-      <span className="flex items-center gap-vs-1" aria-label="jump to date controls">
+      <span
+        className="flex shrink-0 items-center gap-vs-1"
+        aria-label="jump to date controls"
+      >
         <CalendarDays size={13} aria-hidden className="text-ink-faint" />
         <input
           type="date"
@@ -350,13 +366,15 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
 
       {/* S54 the minimap as scrubber — a dumb overview ribbon reading the corpus
           span + store, doubling as a horizontal scrubber. */}
-      <Minimap viewportWidth={effectiveWidth} />
+      <span className="flex shrink-0 items-center">
+        <Minimap viewportWidth={effectiveWidth} />
+      </span>
 
       {/* S55 the range-select chip with play-the-range. Renders the committed
           dateRange as a clearable, tabular chip; clearing returns toward LIVE. */}
       {rangeSet && (
         <span
-          className="flex items-center gap-vs-1 rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 text-ink-muted"
+          className="flex shrink-0 items-center gap-vs-1 rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 text-ink-muted"
           data-range-chip
         >
           <span data-tabular className="tabular-nums">

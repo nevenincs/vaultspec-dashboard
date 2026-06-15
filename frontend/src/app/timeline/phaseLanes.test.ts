@@ -4,7 +4,9 @@ import {
   LANE_HEIGHT,
   PHASE_LANES,
   laneCenterY,
+  laneDescriptor,
   laneIndex,
+  laneLabel,
   laneOf,
   laneY,
   lanesHeight,
@@ -75,6 +77,49 @@ describe("laneOf: wire phase authoritative, doc-type the fallback", () => {
     expect(laneOf({ doc_type: "commit" })).toBeNull();
     expect(laneOf({ phase: "commit", doc_type: "index" })).toBeNull();
     expect(laneOf({})).toBeNull();
+  });
+});
+
+describe("lane display descriptors (Figma 17:647: label + doc-type mark)", () => {
+  it("labels and marks the pipeline lanes with the doc-type the phase owns", () => {
+    // research/adr/plan/exec read their own name + mark.
+    expect(laneDescriptor("research")).toEqual({
+      token: "research",
+      label: "research",
+      markKind: "research",
+    });
+    expect(laneDescriptor("exec")).toEqual({
+      token: "exec",
+      label: "exec",
+      markKind: "exec",
+    });
+    // The `review` phase owns the `audit` documents — the rail reads "audit" with
+    // the audit mark (Figma lane row + the `.vault/audit/` directory name).
+    expect(laneDescriptor("review")).toEqual({
+      token: "review",
+      label: "audit",
+      markKind: "audit",
+    });
+    // The `codify` phase owns `rule` documents; no rule mark ships in-family, so
+    // the lane renders label-only (markKind null).
+    expect(laneDescriptor("codify")).toEqual({
+      token: "codify",
+      label: "codify",
+      markKind: null,
+    });
+  });
+
+  it("exposes the display label for every lane (the rail + chip text)", () => {
+    expect(laneLabel("review")).toBe("audit");
+    expect(laneLabel("research")).toBe("research");
+    expect(PHASE_LANES.map(laneLabel)).toEqual([
+      "research",
+      "adr",
+      "plan",
+      "exec",
+      "audit",
+      "codify",
+    ]);
   });
 });
 

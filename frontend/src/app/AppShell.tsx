@@ -169,13 +169,13 @@ export function AppShell() {
           into the ONE shared selection + a bounded stage ego pulse through
           `handleNodeClick` (the deferred S45 wiring); the surface hands its
           visible-slice arcs so the bounded 1-hop join is derived honestly. */}
-      <footer className="flex min-h-0 flex-col border-t border-rule">
+      <footer className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-rule">
         <ErrorBoundary region="timeline">
           <CrashZone region="timeline" />
-          <div className="shrink-0">
+          <div className="min-w-0 shrink-0">
             <TimelineControls />
           </div>
-          <div className="relative min-h-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
             <Timeline
               onNodeClick={handleNodeClick}
               overlay={

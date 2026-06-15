@@ -36,6 +36,49 @@ export const PHASE_LANES = [
 export type PhaseLane = (typeof PHASE_LANES)[number];
 
 /**
+ * The presentational descriptor a lane renders with (binding Figma `Timeline`
+ * node 17:647): the human label shown on the lane rail + control chip, and the
+ * doc-type mark kind drawn beside it (the `scene/field` domain-mark family —
+ * icons-come-from-the-two-sanctioned-families). The lane TOKEN stays the engine
+ * wire `LineagePhase` (`review`, `codify`); the LABEL/mark are the doc-type the
+ * phase owns, which is what the design and the `.vault/` directory name show:
+ * the `review` phase holds `audit` documents (`.vault/audit/`), so its rail reads
+ * "audit" with the audit mark — byte-for-byte the Figma lane row. `codify` holds
+ * `rule` documents; the domain-mark family carries no rule/codify glyph (adding
+ * one is a gated icon change, out of scope here), so that lane renders label-only.
+ */
+export interface PhaseLaneDescriptor {
+  /** The engine wire phase token (the lane's identity + per-lane visibility key). */
+  readonly token: PhaseLane;
+  /** The human label shown on the lane rail and the control chip. */
+  readonly label: string;
+  /** The doc-type mark kind drawn beside the label, or null when none ships. */
+  readonly markKind: string | null;
+}
+
+const PHASE_LANE_DESCRIPTORS: Record<PhaseLane, PhaseLaneDescriptor> = {
+  research: { token: "research", label: "research", markKind: "research" },
+  adr: { token: "adr", label: "adr", markKind: "adr" },
+  plan: { token: "plan", label: "plan", markKind: "plan" },
+  exec: { token: "exec", label: "exec", markKind: "exec" },
+  // The `review` phase owns the `audit` documents — labeled + marked as "audit",
+  // matching Figma's lane rail and the `.vault/audit/` directory name.
+  review: { token: "review", label: "audit", markKind: "audit" },
+  // The `codify` phase owns `rule` documents; no rule/codify mark ships in-family.
+  codify: { token: "codify", label: "codify", markKind: null },
+};
+
+/** The presentational descriptor (label + mark) for a phase lane token. */
+export function laneDescriptor(lane: PhaseLane): PhaseLaneDescriptor {
+  return PHASE_LANE_DESCRIPTORS[lane];
+}
+
+/** The human label a lane renders on its rail + chip (Figma 17:647). */
+export function laneLabel(lane: PhaseLane): string {
+  return PHASE_LANE_DESCRIPTORS[lane].label;
+}
+
+/**
  * The deterministic doc-type -> phase-lane fallback, mirroring the engine's
  * canonical `phase_for_doc_type` (`engine-query/src/pipeline.rs`): the wire
  * `LineageNode.phase` is authoritative, but when a consumer holds only a

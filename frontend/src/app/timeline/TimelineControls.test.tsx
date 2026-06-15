@@ -168,10 +168,14 @@ describe("TimelineControls component (S46-S55)", () => {
         .getByRole("switch", { name: "research lane" })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    // Every phase lane has a toggle (the lane vocabulary is the one source).
-    for (const lane of ["research", "adr", "plan", "exec", "review", "codify"]) {
-      expect(screen.getByRole("switch", { name: `${lane} lane` })).toBeTruthy();
+    // Every phase lane has a toggle (the lane vocabulary is the one source); the
+    // switch names use the DISPLAY label (Figma 17:647) — the `review` phase reads
+    // "audit", matching the lane rail and the `.vault/audit/` directory.
+    for (const label of ["research", "adr", "plan", "exec", "audit", "codify"]) {
+      expect(screen.getByRole("switch", { name: `${label} lane` })).toBeTruthy();
     }
+    // The `review` phase's data attribute keeps the wire token, not the label.
+    expect(document.querySelector('[data-lane-toggle="review"]')).not.toBeNull();
   });
 
   it("sources relation chips from the engine enumeration as switches and toggling writes the store (S47/S65)", async () => {
