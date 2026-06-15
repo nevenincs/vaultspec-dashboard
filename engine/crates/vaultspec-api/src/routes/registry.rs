@@ -253,9 +253,11 @@ pub fn register_root(state: &AppState, path: &str) -> Result<String, (StatusCode
 /// touches the repository on disk. The launch workspace cannot be forgotten
 /// while it is the only registered root (an honest refusal). Any warm scope
 /// cells belonging to the forgotten workspace are evicted so the forgotten
-/// project's corpus does not linger warm. The active workspace is NOT re-pointed
-/// here — the frontend's workspace swap handles re-selection; this only removes
-/// the registry entry and evicts cells.
+/// project's corpus does not linger warm. If the forgotten root WAS the active
+/// workspace, the active-workspace pointer is re-pointed engine-side to the
+/// launch root (review M1), so the stored selection never names a forgotten id
+/// and the invariant does not depend on the caller pairing the forget with an
+/// active re-select; the frontend swap still drives the wholesale UI reset.
 pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<Value>)> {
     // Resolve the forgotten root's path BEFORE deleting it, so we can scope the
     // warm-cell eviction to its worktree subtree.
@@ -283,8 +285,7 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
     }
 
     // Evict any warm scope cells under the forgotten workspace's root subtree.
-    // The active scope is pinned and never evicted here (a forget of the active
-    // workspace is preceded by an active re-point from the frontend swap).
+    // The active scope cell is pinned and never evicted here.
     if let Some(prefix) = forgotten_path {
         let active = {
             state
@@ -299,6 +300,23 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
             let t = token.trim_end_matches('/');
             t == normalized || t.starts_with(&format!("{normalized}/"))
         });
+    }
+
+    // Engine-side guard (review M1): if the forgotten root was the active
+    // workspace, re-point the active-workspace pointer to the launch root so the
+    // persisted pointer never names a forgotten id. The active scope cell already
+    // falls back to the launch root, so this only keeps the stored selection
+    // honest and self-contained instead of depending on the caller pairing a
+    // forget with an active re-select.
+    {
+        let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
+        if us.active_workspace().ok().flatten().as_deref() == Some(id) {
+            let roots = us.list_roots().unwrap_or_default();
+            let target = roots.iter().find(|r| r.is_launch).or_else(|| roots.first());
+            if let Some(target) = target {
+                let _ = us.set_active_workspace(&target.id, crate::app::now_ms());
+            }
+        }
     }
     Ok(())
 }
