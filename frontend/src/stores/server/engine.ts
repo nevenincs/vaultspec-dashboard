@@ -1192,6 +1192,10 @@ export class EngineClient {
     from?: string;
     to?: string;
     filter?: string;
+    /** Optional as-of time-travel token (ts | sha | ref) — when present the engine
+     *  serves BLOB-TRUE lineage as it existed at T (dashboard-timeline ADR fast-
+     *  follow). Absent = lineage over the live graph. */
+    t?: string;
   }): Promise<LineageSlice> {
     return adaptLineageSlice(await this.get("/graph/lineage", params));
   }

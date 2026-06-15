@@ -768,6 +768,30 @@ describe("adaptLineageSlice + /graph/lineage consumer fidelity (W02.P04.S24)", (
     }
   });
 
+  it("serves a BLOB-TRUE as-of subset for a past `t` (dashboard-timeline fast-follow)", async () => {
+    const mock = new MockEngine();
+    const client = clientOn(mock);
+    // The full live-graph slice (no `t`) over the whole corpus.
+    const live = await client.lineage({ scope: MOCK_SCOPE });
+    // As of an early instant (just after the first feature's research+adr days,
+    // 2026-01-05/06): only nodes that existed at T survive — strictly fewer than
+    // the full corpus, mirroring the engine's `asof_graph_resolved` resolution.
+    const tEarly = String(Date.parse("2026-01-06T23:59:59Z"));
+    const asof = await client.lineage({ scope: MOCK_SCOPE, t: tEarly });
+    expect(asof.nodes.length).toBeGreaterThan(0);
+    expect(asof.nodes.length).toBeLessThan(live.nodes.length);
+    // Every surviving node was created at/before T (blob-true existence at T).
+    for (const n of asof.nodes) {
+      expect(Date.parse(n.dates.created ?? "")).toBeLessThanOrEqual(Number(tEarly));
+    }
+    // Self-consistency holds under the as-of cut: every arc's endpoints survived.
+    const ids = new Set(asof.nodes.map((n) => n.id));
+    for (const a of asof.arcs) {
+      expect(ids.has(a.src)).toBe(true);
+      expect(ids.has(a.dst)).toBe(true);
+    }
+  });
+
   it("a missing scope is a tiered 400, like the live route", async () => {
     const mock = new MockEngine();
     // `lineage` requires a scope; the route 400s an unknown/non-vault scope.

@@ -132,8 +132,20 @@ export const engineKeys = {
   // the engine-owned filter), so two date ranges or two filters never collide on
   // one cache entry, mirroring how `events` folds (range, bucket). `filter` is
   // the URL-encoded JSON filter string the route accepts; absent = no constraint.
-  lineage: (scope: string, range: { from?: string; to?: string }, filter?: string) =>
-    [...engineKeys.all, "lineage", scope, stableKey(range), filter ?? ""] as const,
+  lineage: (
+    scope: string,
+    range: { from?: string; to?: string },
+    filter?: string,
+    asOf?: string | number,
+  ) =>
+    [
+      ...engineKeys.all,
+      "lineage",
+      scope,
+      stableKey(range),
+      filter ?? "",
+      asOf == null ? "live" : String(asOf),
+    ] as const,
   // The in-flight pipeline projection (dashboard-pipeline-status W01.P02.S06):
   // (scope, as-of) — the same cacheability unit the graph slice uses, so a
   // historical playhead reads a distinct cache entry from the live view.
@@ -723,10 +735,21 @@ export function useTimelineLineage(
   scope: string | null,
   range: { from?: string; to?: string } = {},
   filter?: string,
+  asOf?: string | number,
 ) {
   return useQuery({
-    queryKey: engineKeys.lineage(scope ?? "", range, filter),
-    queryFn: () => engineClient.lineage({ scope: scope!, ...range, filter }),
+    queryKey: engineKeys.lineage(scope ?? "", range, filter, asOf),
+    queryFn: () =>
+      engineClient.lineage({
+        scope: scope!,
+        ...range,
+        filter,
+        // BLOB-TRUE as-of (dashboard-timeline ADR fast-follow): when the timeline
+        // is in time-travel it passes the (settled/debounced) playhead instant, so
+        // the slice reflects the graph at T, not just creation-date gating. Absent
+        // (LIVE) = live graph. A distinct `asOf` is its own cache entry (above).
+        t: asOf == null ? undefined : String(asOf),
+      }),
     enabled: scope !== null,
   });
 }

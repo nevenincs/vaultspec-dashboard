@@ -200,6 +200,16 @@ pub struct LineageParams {
     /// facet is a client error shaped through the shared envelope.
     #[serde(default)]
     pub filter: Option<String>,
+    /// Optional as-of time-travel token (a ref name, commit sha, or millisecond
+    /// timestamp — the SAME vocabulary as [`AsofParams::t`]). ABSENT = lineage
+    /// over the live cell graph (unchanged). PRESENT = BLOB-TRUE lineage as of T:
+    /// the historical graph is resolved via `asof_graph_resolved` and the bounded
+    /// lineage projection runs over THAT graph, so the timeline's lineage is
+    /// time-accurate (the graph as it existed at instant T via the git object DB),
+    /// not just client-side creation-date gating (dashboard-timeline ADR
+    /// deferred fast-follow: the as-of lineage form).
+    #[serde(default)]
+    pub t: Option<String>,
 }
 
 /// `GET /graph/lineage?scope&from&to&filter=` — the bounded temporal-lineage
@@ -245,6 +255,52 @@ pub async fn graph_lineage(
             format!("lineage range: from ({from}) must be <= to ({to})"),
         ));
     }
+    // BLOB-TRUE as-of branch (dashboard-timeline ADR deferred fast-follow). When
+    // the client supplies `t`, the lineage must reflect the graph AS IT EXISTED
+    // at instant T — resolved from the git object DB — not the live graph
+    // creation-date-gated by range. Resolve the historical graph the SAME way
+    // `graph_asof` does (scoped to the served worktree, NOT the ref label —
+    // §5/2026-06-13 hardening), then run the graph-agnostic lineage projection
+    // over it. The slice stays bounded + self-consistent + enveloped, and the
+    // resolved sha + token interpretation are echoed so a client learns which
+    // commit T landed on without re-deriving (ADD-901, consistency with
+    // `graph_asof`). Read-and-infer: this reads history and projects, mints no
+    // semantics, writes nothing.
+    if let Some(t) = params.t.as_deref() {
+        let scope = cell.scope.clone();
+        let resolved = engine_graph::asof::asof_graph_resolved(&cell.root, t, &scope, 0)
+            .map_err(|e| super::revision_error(&state, t, &e))?;
+        let slice = engine_query::lineage::lineage(
+            &resolved.graph,
+            &scope,
+            params.from.as_deref(),
+            params.to.as_deref(),
+            filter,
+        )
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+        // Historical tiers: semantic present-only/excluded and structural
+        // degraded-to-stale-at-T — the SAME `asof_tiers_block` treatment the
+        // as-of / diff paths carry, so an as-of lineage matches an as-of keyframe
+        // exactly. Built through the shared envelope (tiers on success AND error).
+        return Ok(super::envelope(
+            json!({
+                "t": t,
+                // Echo the resolved commit + token reading (ADD-901), as
+                // `graph_asof` does: the client learns which commit T resolved to
+                // and how the engine read the token (a revision/timestamp reading
+                // can collide on an all-digit value).
+                "resolved_sha": resolved.resolved_sha,
+                "interpretation": resolved.interpretation,
+                "nodes": slice.nodes,
+                "arcs": slice.arcs,
+                "truncated": slice.truncated,
+            }),
+            serde_json::to_value(engine_query::envelope::asof_tiers_block())
+                .expect("tiers serialize"),
+            None,
+        ));
+    }
+
     // Present-range lineage over THIS scope's live graph (mirrors the
     // graph_query present branch + the events handler). The projection bounds
     // the slice under its document node ceiling and returns only edges among
@@ -265,6 +321,11 @@ pub async fn graph_lineage(
     // declared tier is reported truthfully per scope rather than defaulted true.
     Ok(super::envelope(
         json!({
+            // The present view echoes neither field, so a client never reads a
+            // resolution that did not happen (mirrors the graph_query present
+            // branch's null echoes).
+            "resolved_sha": Value::Null,
+            "interpretation": Value::Null,
             "nodes": slice.nodes,
             "arcs": slice.arcs,
             "truncated": slice.truncated,

@@ -200,6 +200,27 @@ until implementation.
     plan check-state) is reconstructed from document blobs as committed at
     T via the git object DB, never from the present working tree — the
     playhead's progress rings are time-accurate.
+- **Lineage projection (phase-lane timeline; dashboard-timeline ADR).**
+  - `GET /graph/lineage?scope&from&to&filter=&t=` — the bounded temporal-lineage
+    projection: for a scope and inclusive `[from, to]` ISO range, the dated
+    document nodes in range together with the self-consistent edges among them,
+    enveloped as `{nodes, arcs, truncated}`. Node:
+    `{id, doc_type, phase (research|adr|plan|exec|review|codify), dates {created, modified}, title?, degree}`;
+    arc: `{id, src, dst, relation, derivation?, tier, confidence}` — `derivation`
+    is absent until the node-semantics field ships (the projection falls back to
+    the shipped relation/tier edges). Bounded by the same document node ceiling
+    `/graph/query` enforces, with an honest `truncated` block; only edges among the
+    kept nodes ship; the semantic tier is present-only (excluded from the range
+    lineage). It is a temporal projection of the one `LinkageGraph`, not a new
+    model.
+  - **As-of (`t`, amendment 2026-06-15 — dashboard-timeline fast-follow):** an
+    optional `t=<ts|sha|ref>` (the same revision vocabulary as `/graph/asof`)
+    serves BLOB-TRUE lineage as of T — the historical graph resolved from the git
+    object DB, then run through the same bounded projection — so the timeline's
+    lineage is time-accurate, not merely client-side creation-gated. The response
+    echoes `resolved_sha` + `interpretation` (ADD-901, matching `/graph/asof`) and
+    carries the as-of tiers block (semantic excluded, structural stale-at-T).
+    Absent `t` = lineage over the live graph.
 
 ## 6. Ops proxy and status (right rail, pillar 2)
 

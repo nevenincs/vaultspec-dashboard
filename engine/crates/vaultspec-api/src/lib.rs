@@ -722,6 +722,154 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn graph_lineage_asof_serves_a_bounded_slice_with_the_tiers_block_and_resolved_sha() {
+        // dashboard-timeline ADR deferred fast-follow: GET /graph/lineage with a
+        // `t` token serves the BLOB-TRUE lineage as of T — the historical graph
+        // resolved from the git object DB, projected by the same bounded lineage
+        // projection — through the SHARED envelope. The as-of tiers block rides
+        // the success body (semantic present-only/excluded, structural stale-at-T)
+        // and the resolved sha + interpretation are echoed, matching /graph/asof.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/adr/2026-06-12-asoflin-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#asoflin'\ndate: '2026-06-12'\n---\n\n# `asoflin` adr\n\nbody\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-13-asoflin-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#asoflin'\ndate: '2026-06-13'\n---\n\n# `asoflin` plan\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "fixture"]);
+
+        let head_sha = {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let state = app::build_state(root.to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/lineage?scope={}&from=2026-06-01&to=2026-06-30&t=HEAD",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "as-of lineage success: {body}");
+        assert!(
+            body["data"]["nodes"].is_array(),
+            "the as-of lineage nodes ride the data payload"
+        );
+        assert!(
+            body["data"]["arcs"].is_array(),
+            "the as-of arcs ride the payload"
+        );
+        // The historical graph resolved from the git object DB is non-empty: the
+        // two committed, in-range, lane-owning documents are projected.
+        assert_eq!(
+            body["data"]["nodes"].as_array().unwrap().len(),
+            2,
+            "the blob-true as-of slice projects the committed documents"
+        );
+        // Resolved-sha + interpretation echoed, matching /graph/asof (ADD-901).
+        assert_eq!(
+            body["data"]["resolved_sha"], head_sha,
+            "the as-of lineage echoes the resolved HEAD sha"
+        );
+        assert_eq!(body["data"]["interpretation"], "revision");
+        // The as-of tiers block rides the success envelope: semantic excluded
+        // (present-only) and structural reported (degraded-to-stale-at-T).
+        assert_eq!(
+            body["tiers"]["semantic"]["available"], false,
+            "semantic is present-only, excluded from the historical lineage"
+        );
+        assert!(
+            body["tiers"]["structural"]["reason"].is_string(),
+            "structural carries the stale-at-T reason in the as-of view"
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_lineage_asof_unresolvable_token_400s_with_the_tiers_block() {
+        // The as-of lineage ERROR path: an unresolvable `t` token is a client
+        // error shaped through the shared revision_error helper, so the error
+        // body carries the tiers block — a healthy-looking error never ships
+        // without degradation truth.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/lineage?scope={}&t=not-a-real-ref-or-sha",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "unresolvable t: {body}");
+        assert!(body["error"].is_string(), "honest revision error message");
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "the unresolvable-t 400 still carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_lineage_present_view_echoes_null_resolution() {
+        // The no-`t` (present) path is unchanged and echoes neither resolution
+        // field — the additive fields never invent a resolution that did not
+        // happen (mirrors the graph_query present branch's null echoes).
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".vault/adr")).unwrap();
+        std::fs::write(
+            dir.path().join(".vault/adr/2026-06-12-presentlin-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#presentlin'\ndate: '2026-06-12'\n---\n\n# `presentlin` adr\n\nbody\n",
+        )
+        .unwrap();
+        let state = app::build_state(dir.path().to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/lineage?scope={}&from=2026-06-01&to=2026-06-30",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "present lineage: {body}");
+        assert!(
+            body["data"]["resolved_sha"].is_null(),
+            "no resolved_sha without t"
+        );
+        assert!(
+            body["data"]["interpretation"].is_null(),
+            "no interpretation without t"
+        );
+    }
+
+    #[tokio::test]
     async fn health_is_ungated_everything_else_is_bearer_gated() {
         let (_dir, state) = fixture_state();
         let token = state.bearer.clone();

@@ -257,6 +257,10 @@ const MARK_PX = 13;
 const RULER_HEIGHT = 16;
 /** Virtualization margin (px) so a mark/arc partly off-screen stays drawn. */
 const VIRTUAL_MARGIN_PX = 120;
+/** Debounce before refetching the lineage as-of a new playhead instant: a scrub or
+ *  play-the-range moves T every frame, so the blob-true as-of fetch waits for the
+ *  playhead to settle (the client-side reveal animates the growth in between). */
+const AS_OF_DEBOUNCE_MS = 200;
 /**
  * Pixels-per-ms threshold below which the surface bundles arcs (coarse scale).
  * Above it (zoomed in), raw arcs read cleanly and bundling is off — raw is the
@@ -433,11 +437,38 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     [scrollOffset, width, pxPerMs],
   );
 
-  // The sole wire read: the bounded lineage slice for the scope + visible range.
-  const lineage = useTimelineLineage(scope, {
-    from: new Date(range.fromMs).toISOString(),
-    to: new Date(range.toMs).toISOString(),
-  });
+  // Blob-true as-of (dashboard-timeline ADR fast-follow): in time-travel the slice
+  // is fetched AS OF the playhead instant, so it reflects the graph as it existed at
+  // T (the git object DB), not just the client-side creation-date reveal. DEBOUNCED
+  // (`AS_OF_DEBOUNCE_MS`): a scrub or play-the-range changes T every frame, so an
+  // un-debounced fetch would storm the engine; the client-side `arcGrowth` reveal
+  // gives the smooth per-frame growth BETWEEN fetches, and the as-of fetch settles
+  // to blob-true accuracy when the playhead rests. LIVE = undefined (live graph).
+  // One delta clock: this reads the shared `timelineMode`, never a second clock.
+  const ttAt = useViewStore((s) =>
+    s.timelineMode.kind === "time-travel" ? s.timelineMode.at : undefined,
+  );
+  const [asOf, setAsOf] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (ttAt === undefined) {
+      setAsOf(undefined);
+      return;
+    }
+    const id = setTimeout(() => setAsOf(ttAt), AS_OF_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [ttAt]);
+
+  // The sole wire read: the bounded lineage slice for the scope + visible range,
+  // as of the (settled) playhead instant when time-travelling.
+  const lineage = useTimelineLineage(
+    scope,
+    {
+      from: new Date(range.fromMs).toISOString(),
+      to: new Date(range.toMs).toISOString(),
+    },
+    undefined,
+    asOf,
+  );
 
   const phaseBandH = lanesHeight(TOP_PAD);
   const height = phaseBandH + RULER_HEIGHT;

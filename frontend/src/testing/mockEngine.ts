@@ -1424,6 +1424,14 @@ export class MockEngine {
       if (to && day > to) return false;
       return true;
     };
+    // Blob-true as-of (dashboard-timeline ADR fast-follow): when `t` is present the
+    // slice reflects the graph as it existed at instant T — a node exists at T iff
+    // it was created at/before T (the granularity the mock models, mirroring the
+    // live `asof_graph_resolved` resolution). `t` is an epoch-ms token; absent = the
+    // live graph. Arcs among the kept set are restricted transitively below.
+    const asOfMs = params.get("t") != null ? Number(params.get("t")) : null;
+    const existsAsOf = (created: string | undefined): boolean =>
+      asOfMs == null || (!!created && Date.parse(created) <= asOfMs);
     // Degree: total edges (src or dst) touching a node, over all tiers — the v1
     // salience input, summed-endpoint count (mirrors the engine's degree_by_tier
     // sum). Built once over the corpus edges.
@@ -1436,6 +1444,7 @@ export class MockEngine {
       .map((n) => ({ n, phase: lineagePhaseForDocType(n.doc_type) }))
       .filter((x): x is { n: EngineNode; phase: string } => x.phase !== null)
       .filter((x) => inRange(x.n.dates?.created))
+      .filter((x) => existsAsOf(x.n.dates?.created))
       .map(({ n, phase }) => ({
         id: n.id,
         doc_type: n.doc_type!,
