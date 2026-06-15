@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-left-rail'
-date: '2026-06-14'
-modified: '2026-06-14'
+date: '2026-06-15'
+modified: '2026-06-15'
 related:
   - '[[2026-06-14-dashboard-left-rail-P01-S01]]'
   - '[[2026-06-14-dashboard-left-rail-P01-S02]]'
@@ -26,6 +26,7 @@ related:
   - '[[2026-06-14-dashboard-left-rail-adr]]'
   - '[[2026-06-14-dashboard-left-rail-plan]]'
   - '[[2026-06-14-dashboard-left-rail-research]]'
+  - '[[2026-06-15-dashboard-left-rail-audit]]'
 ---
 
 # `dashboard-left-rail` feature index
@@ -37,6 +38,10 @@ Auto-generated index of all documents tagged with `#dashboard-left-rail`.
 ### adr
 
 - `2026-06-14-dashboard-left-rail-adr` - `dashboard-left-rail` adr: `left scope rail information architecture` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-15-dashboard-left-rail-audit` - `dashboard-left-rail` audit: `left scope rail campaign review, verification, and closeout`
 
 ### exec
 
