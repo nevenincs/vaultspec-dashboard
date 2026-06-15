@@ -267,6 +267,26 @@ export interface EngineNode {
    */
   aggregate?: boolean;
   /**
+   * The literal per-type lifecycle status TOKEN the node answers in
+   * (node-visual-richness ADR P01): the raw vocabulary term the type's status
+   * machine resolved — e.g. `accepted`/`deprecated` (adr), `L2` (plan tier),
+   * `high` (audit severity), `superseded` (rule), `in_flight` (feature). An
+   * ADDITIVE projection beside `authority_class`/`aggregate`: present only when
+   * the type carries a per-type status (absent on exec/research/etc. and on docs
+   * predating the convention — honest absence, never a fabricated status). It
+   * never re-keys the node (the §2 identity guarantee holds).
+   */
+  status_value?: string;
+  /**
+   * The closed status-treatment family the `status_value` resolves into
+   * (node-visual-richness ADR P01): one of
+   * `affirmed|provisional|negated|retired|graded|tiered`. The shape channel for
+   * status — the scene maps it to ONE grayscale-safe stamp treatment, tint only
+   * reinforces. ADDITIVE beside `status_value`; the two ride together and are
+   * both absent when the type carries no per-type status.
+   */
+  status_class?: string;
+  /**
    * The single active-lens Degree-of-Interest salience float in [0,1]
    * (graph-node-salience ADR): the engine-computed, per-lens, CPU-bound node
    * importance for the REQUESTED lens. Present on document nodes; absent on

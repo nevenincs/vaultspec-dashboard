@@ -69,6 +69,16 @@ export interface ViewState {
   /** The shared selection; `selectedId` mirrors its id for convenience. */
   selection: Selection;
   selectedId: string | null;
+  /**
+   * The transiently-hovered node id (node-visual-richness P04): the third LOD
+   * rung between the far glyph and the heavyweight opened island — it drives the
+   * hover-bloom card. This is a DISTINCT concept from `selection` (the focus/pin)
+   * and `openedIds` (the opened interior): hovering one node never selects or
+   * opens it, so the three intents stay cleanly separate. Null when nothing is
+   * hovered. The dwell delay before the card shows, and the suppression when the
+   * id is already opened, live at the host — this slice carries the raw truth.
+   */
+  hoveredId: string | null;
   /** The stage's explicit working set — "why is this node on my screen?" */
   workingSet: string[];
   /** Nodes opened in place — rendered as DOM islands above the field (G6.a). */
@@ -155,6 +165,12 @@ export interface ViewState {
   setScopeContext: (context: { folder: string | null; featureTags: string[] }) => void;
   /** Select a node by id (the common path); null clears. */
   select: (id: string | null) => void;
+  /**
+   * Set the transiently-hovered node id (node-visual-richness P04); null clears.
+   * A no-op write (same id) is short-circuited so a stream of identical hover
+   * events does not churn subscribers.
+   */
+  setHoveredId: (id: string | null) => void;
   /** Select any entity kind (edge, event with node ids, …). */
   selectEntity: (selection: Selection) => void;
   openNode: (id: string) => void;
@@ -193,6 +209,7 @@ export const useViewStore = create<ViewState>((set) => ({
   featureContexts: [],
   selection: null,
   selectedId: null,
+  hoveredId: null,
   workingSet: [],
   openedIds: [],
   pinnedDiscoveries: [],
@@ -244,6 +261,9 @@ export const useViewStore = create<ViewState>((set) => ({
       featureContexts: [],
       selection: null,
       selectedId: null,
+      // A hover is scoped to the previous corpus's node — clear it on a swap so
+      // a stale hovered id cannot anchor a card against the new slice.
+      hoveredId: null,
       workingSet: [],
       openedIds: [],
       pinnedDiscoveries: [],
@@ -278,6 +298,7 @@ export const useViewStore = create<ViewState>((set) => ({
       featureContexts: [],
       selection: null,
       selectedId: null,
+      hoveredId: null,
       workingSet: [],
       openedIds: [],
       pinnedDiscoveries: [],
@@ -297,6 +318,8 @@ export const useViewStore = create<ViewState>((set) => ({
       selectedId: id,
     }),
   selectEntity: (selection) => set({ selection, selectedId: selection?.id ?? null }),
+  setHoveredId: (id) =>
+    set((state) => (state.hoveredId === id ? state : { hoveredId: id })),
   openNode: (id) =>
     set((state) =>
       state.openedIds.includes(id) ? state : { openedIds: [...state.openedIds, id] },

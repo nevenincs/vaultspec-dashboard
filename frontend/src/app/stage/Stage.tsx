@@ -33,6 +33,7 @@ import {
 } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useSurfaceStates } from "../degradation/useDegradation";
+import { HoverCardLayer } from "../islands/HoverCardLayer";
 import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
@@ -194,6 +195,7 @@ export function Stage() {
   const availability = useGraphSliceAvailability(scope, granularity);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
+  const setHoveredId = useViewStore((s) => s.setHoveredId);
   const addToWorkingSet = useViewStore((s) => s.addToWorkingSet);
   const workingSet = useViewStore((s) => s.workingSet);
   const pinnedDiscoveries = useViewStore((s) => s.pinnedDiscoveries);
@@ -240,6 +242,11 @@ export function Stage() {
   // store selections from OTHER regions flow back as focus commands.
   useEffect(() => {
     const offEvents = scene.controller.on((event) => {
+      // The hover bloom is the THIRD LOD rung and a distinct intent: it sets the
+      // hovered id only (the dwell delay + opened-id suppression live in the card
+      // host), never touching selection or the opened set. The scene-side ego-lift
+      // keeps firing alongside it. `hover` carries the node id or null on exit.
+      if (event.kind === "hover") setHoveredId(event.id);
       if (event.kind === "select") selectFromScene(event.id);
       if (event.kind === "open") {
         selectFromScene(event.id);
@@ -277,7 +284,7 @@ export function Stage() {
       offBind();
       offPins();
     };
-  }, [openNode, addToWorkingSet]);
+  }, [openNode, addToWorkingSet, setHoveredId]);
 
   // Constellation + working-set expansions → seam command (keyframe path).
   const expansionData = expansions
@@ -501,6 +508,10 @@ export function Stage() {
       <WorkingSet />
       <Discover />
       <TimeTravelChip />
+      {/* The hover-bloom card (third LOD rung) sits BELOW the opened islands so a
+          card never paints over an opened interior; open-suppression keeps the
+          two from ever targeting the same node anyway. */}
+      <HoverCardLayer scene={scene.controller} />
       <IslandLayer scene={scene.controller} />
       <CanvasStateOverlay state={canvasState} />
     </div>

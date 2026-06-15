@@ -19,6 +19,7 @@
 
 import type { LayoutParams } from "./field/layoutWorker";
 import type { RepresentationMode } from "./field/representationLayout";
+import type { StatusClass } from "./field/statusStamp";
 import type { SemanticLevel } from "./field/camera";
 
 /**
@@ -82,6 +83,21 @@ export interface SceneNodeData {
    * an embedding (drawn in a connectivity-fallback position).
    */
   embedding?: number[];
+  /**
+   * The node's resolved per-type lifecycle status (node-visual-richness ADR
+   * P01/P03): the raw `value` token, its resolved treatment `class`, and an
+   * `ordinal` magnitude (tiered 1..4 / graded 1..4) when the class carries one.
+   * Drives the status STAMP — the single grayscale-safe status treatment per
+   * node at field LOD (`statusStamp.ts` `stampFor`). Absent on nodes with no
+   * per-type status (a bare code/commit artifact, or a type with no status
+   * machine); the sprite layer renders no stamp then.
+   *
+   * SEAM REDLINE (node-visual-richness P03.S08): additive, optional,
+   * backward-compatible on the locked RL-1 node-data surface — flagged per the
+   * W01.P01.S04 lock discipline, mirroring the `salience`/`memberCount`
+   * redlines. The sigma.js fallback ignores it harmlessly.
+   */
+  status?: { value?: string; class?: StatusClass; ordinal?: number };
   /** Optional warm-start seed only; the renderer owns positions (RL-1). */
   seedPosition?: { x: number; y: number };
 }

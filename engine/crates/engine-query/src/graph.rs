@@ -82,11 +82,13 @@ pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
 
 /// One document node in the contract §4 list shape: the serialized node
 /// plus the query-time projections (`degree_by_tier`, the scope facet's
-/// `lifecycle` hoisted to the top level) and the ADDITIVE ontology fields
-/// (graph-node-semantics ADR): `authority_class` (the register `doc_type`
-/// answers in) and `aggregate` (the collapsibility hint). Both are pure
-/// re-computable projections — they perturb no existing field and do NOT touch
-/// the node id (the §4 identity guarantee is preserved).
+/// `lifecycle` hoisted to the top level) and the ADDITIVE ontology fields:
+/// `authority_class` (the register `doc_type` answers in) and `aggregate` (the
+/// collapsibility hint) from the graph-node-semantics ADR, plus the OPTIONAL
+/// `status_value`/`status_class` per-type lifecycle status (node-visual-richness
+/// ADR P01) when the type carries one. All are pure re-computable projections —
+/// they perturb no existing field and do NOT touch the node id (the §4 identity
+/// guarantee is preserved).
 fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     let mut view = serde_json::to_value(node).expect("node serializes");
     view["degree_by_tier"] =
@@ -101,6 +103,20 @@ fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     view["aggregate"] = Value::Bool(crate::ontology::is_aggregate_species(
         node.doc_type.as_deref(),
     ));
+    // Per-type lifecycle status (node-visual-richness ADR P01): TWO additive
+    // fields — `status_value` (the literal type-specific status token) and
+    // `status_class` (the closed treatment-family enum) — projected from the
+    // node's kind/doc_type and its ALREADY-PARSED lifecycle state. Both are
+    // OPTIONAL: a type without a per-type status machine (exec/research/…), an
+    // unknown type, or a doc predating the convention serializes NEITHER field
+    // (honest absence, never a fabricated status). The id is untouched.
+    let lifecycle_state = lifecycle_in_scope(node, scope).map(|l| l.state.as_str());
+    if let Some(status) =
+        crate::ontology::status_for_node(&node.kind, node.doc_type.as_deref(), lifecycle_state)
+    {
+        view["status_value"] = Value::String(status.value.to_string());
+        view["status_class"] = Value::String(status.class.to_string());
+    }
     view
 }
 
@@ -176,13 +192,21 @@ fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> V
                     total += t;
                 }
             }
-            let lifecycle = (total > 0).then(|| {
+            let lifecycle_state =
+                (total > 0).then_some(if done == total { "complete" } else { "active" });
+            let lifecycle = lifecycle_state.map(|state| {
                 json!({
-                    "state": if done == total { "complete" } else { "active" },
+                    "state": state,
                     "progress": {"done": done, "total": total},
                 })
             });
-            json!({
+            // Per-type status (node-visual-richness ADR P01): the synthesized
+            // convergence carries its in-flight/archived status additively, the
+            // SAME two fields the document node_view attaches. A live feature in
+            // the corpus is in-flight; the projection reads its aggregate
+            // lifecycle state through the shared `status` owner.
+            let status = crate::ontology::status(&NodeKind::Feature, None, lifecycle_state);
+            let mut node = json!({
                 "id": NodeId::derive(&NodeKind::Feature, tag).0,
                 "kind": "feature",
                 "key": tag,
@@ -194,7 +218,12 @@ fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> V
                 // Facet projection: the convergence exists in the queried
                 // scope by construction (its members carry the facets).
                 "facets": [{"scope": scope, "presence": "exists"}],
-            })
+            });
+            if let Some(status) = status {
+                node["status_value"] = Value::String(status.value.to_string());
+                node["status_class"] = Value::String(status.class.to_string());
+            }
+            node
         })
         .collect()
 }
@@ -539,6 +568,112 @@ mod tests {
         assert_eq!(a["kind"], "document");
         assert!(a.get("authority_class").is_some());
         assert!(a.get("aggregate").is_some());
+    }
+
+    /// A document node carrying a specific parsed lifecycle `state` in scope,
+    /// so the status projection has a real per-type state to read.
+    fn doc_with_state(stem: &str, doc_type: &str, state: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::Document { stem }),
+            kind: NodeKind::Document,
+            key: stem.into(),
+            title: None,
+            doc_type: Some(doc_type.into()),
+            dates: None,
+            feature_tags: vec!["feature-a".into()],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: Some(engine_model::Lifecycle {
+                    state: state.into(),
+                    progress: None,
+                }),
+            }],
+        }
+    }
+
+    #[test]
+    fn document_node_carries_per_type_status_when_the_type_has_one() {
+        // node-visual-richness ADR P01: status_value/status_class ride additively
+        // on the document list shape, projected from the parsed lifecycle state.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc_with_state("x-adr", "adr", "accepted"));
+        g.upsert_node(doc_with_state("y-plan", "plan", "L2"));
+        g.upsert_node(doc_with_state("z-audit", "audit", "high"));
+        g.upsert_node(doc_with_state("w-rule", "rule", "superseded"));
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let node = |id: &str| {
+            slice
+                .nodes
+                .iter()
+                .find(|n| n["id"] == id)
+                .unwrap_or_else(|| panic!("{id} listed"))
+                .clone()
+        };
+        let adr = node("doc:x-adr");
+        assert_eq!(adr["status_value"], "accepted");
+        assert_eq!(adr["status_class"], "affirmed");
+        let plan = node("doc:y-plan");
+        assert_eq!(
+            plan["status_value"], "L2",
+            "the tier ordinal rides in value"
+        );
+        assert_eq!(plan["status_class"], "tiered");
+        let audit = node("doc:z-audit");
+        assert_eq!(audit["status_value"], "high");
+        assert_eq!(audit["status_class"], "graded");
+        let rule = node("doc:w-rule");
+        assert_eq!(rule["status_value"], "superseded");
+        assert_eq!(rule["status_class"], "retired");
+        // The id is untouched by the additive status fields.
+        assert_eq!(adr["id"], "doc:x-adr", "status does not re-key the node");
+    }
+
+    #[test]
+    fn document_node_omits_both_status_fields_when_the_type_has_none() {
+        // An exec record, and an ADR predating the H1 status convention (generic
+        // checkbox `active`), both serialize NEITHER status field — honest
+        // absence, never a fabricated status.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc_with_state("e-exec", "exec", "active"));
+        g.upsert_node(doc_with_state("old-adr", "adr", "active"));
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        for id in ["doc:e-exec", "doc:old-adr"] {
+            let n = slice
+                .nodes
+                .iter()
+                .find(|n| n["id"] == id)
+                .unwrap_or_else(|| panic!("{id} listed"));
+            assert!(
+                n.get("status_value").is_none(),
+                "{id} carries no status_value"
+            );
+            assert!(
+                n.get("status_class").is_none(),
+                "{id} carries no status_class"
+            );
+            // The thin lifecycle is still present — only the per-type status is
+            // absent.
+            assert!(n.get("lifecycle").is_some(), "{id} keeps its lifecycle");
+        }
+    }
+
+    #[test]
+    fn feature_convergence_node_carries_in_flight_status() {
+        // The synthesized feature node carries the in-flight status the same way
+        // a document node carries its per-type status (node-visual-richness P01).
+        let g = fixture();
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Feature).unwrap();
+        let a = slice
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "feature:feature-a")
+            .expect("feature-a synthesized");
+        assert_eq!(a["status_value"], "in_flight");
+        assert_eq!(a["status_class"], "affirmed");
     }
 
     #[test]

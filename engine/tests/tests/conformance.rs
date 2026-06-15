@@ -44,21 +44,61 @@ fn fixture() -> (tempfile::TempDir, PathBuf) {
     git(&root, &["config", "core.autocrlf", "false"]);
     std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
     std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+    std::fs::create_dir_all(root.join(".vault/audit")).unwrap();
+    std::fs::create_dir_all(root.join(".vault/exec")).unwrap();
+    std::fs::create_dir_all(root.join(".vault/rule")).unwrap();
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(root.join("src/lib.rs"), "pub fn alpha() {}\n").unwrap();
+    // The ADR carries the H1 status line (`accepted`) so the per-type status
+    // projection (node-visual-richness ADR P01) has a real decision token to
+    // read — `accepted` -> status_class `affirmed`.
     std::fs::write(
         root.join(".vault/adr/2026-06-13-conf-adr.md"),
         "---\ntags:\n  - '#adr'\n  - '#conf-feature'\ndate: '2026-06-13'\n---\n\n\
-         # conf adr title\n\nDecides things.\n",
+         # conf adr title (**status:** `accepted`)\n\nDecides things.\n",
     )
     .unwrap();
     git(&root, &["add", "."]);
     git(&root, &["commit", "-m", "T1: adr"]);
+    // The plan carries a frontmatter `tier` so its per-type status reads as the
+    // `tiered` class with the ordinal `L2` in the value (the checkbox progress
+    // stays the SEPARATE generic progress channel).
     std::fs::write(
         root.join(".vault/plan/2026-06-13-conf-plan.md"),
-        "---\ntags:\n  - '#plan'\n  - '#conf-feature'\ndate: '2026-06-13'\n---\n\n\
+        "---\ntags:\n  - '#plan'\n  - '#conf-feature'\ndate: '2026-06-13'\ntier: L2\n---\n\n\
          # conf plan title\n\n- [x] `S01` - touch `src/lib.rs`; see [[2026-06-13-conf-adr]]\n\
          - [ ] `S02` - later\n",
+    )
+    .unwrap();
+    // An audit whose worst finding severity is `high` -> status_class `graded`.
+    std::fs::write(
+        root.join(".vault/audit/2026-06-13-conf-audit.md"),
+        "---\ntags:\n  - '#audit'\n  - '#conf-feature'\ndate: '2026-06-13'\n---\n\n\
+         # conf audit\n\n## Finding FA1 (high)\n\nReviews [[2026-06-13-conf-plan]].\n",
+    )
+    .unwrap();
+    // A second ADR with the `proposed` token -> status_class `provisional`,
+    // covering the provisional decision state.
+    std::fs::write(
+        root.join(".vault/adr/2026-06-13-conf-adr-two.md"),
+        "---\ntags:\n  - '#adr'\n  - '#conf-feature'\ndate: '2026-06-13'\n---\n\n\
+         # conf adr two (**status:** `proposed`)\n\nA provisional decision.\n",
+    )
+    .unwrap();
+    // A vault rule whose `## Status` names a successor (`superseded by`) ->
+    // `superseded` -> status_class `retired`.
+    std::fs::write(
+        root.join(".vault/rule/2026-06-13-conf-rule.md"),
+        "---\ntags:\n  - '#reference'\n  - '#conf-feature'\ndate: '2026-06-13'\n---\n\n\
+         # conf rule\n\n## Status\n\nSuperseded by the conf-rule-two successor.\n",
+    )
+    .unwrap();
+    // An exec record: a type with no per-type status machine -> BOTH status
+    // fields absent (the honest-absence case).
+    std::fs::write(
+        root.join(".vault/exec/2026-06-13-conf-S01.md"),
+        "---\ntags:\n  - '#exec'\n  - '#conf-feature'\ndate: '2026-06-13'\n---\n\n\
+         # conf exec record\n\nExecuted [[2026-06-13-conf-plan]].\n",
     )
     .unwrap();
     std::fs::write(
@@ -261,6 +301,16 @@ fn typed_client_expectations_hold_over_live_serve() {
         conf["degree_by_tier"].is_object(),
         "feature nodes carry the degree projection"
     );
+    // node-visual-richness P01: the synthesized convergence carries the same two
+    // additive status fields — a live feature is in-flight (affirmed).
+    assert_eq!(
+        conf["status_value"], "in_flight",
+        "a live feature convergence is in-flight"
+    );
+    assert_eq!(
+        conf["status_class"], "affirmed",
+        "in-flight -> affirmed treatment class"
+    );
     let metas = constellation["data"]["meta_edges"]
         .as_array()
         .expect("meta_edges");
@@ -375,6 +425,67 @@ fn typed_client_expectations_hold_over_live_serve() {
         adr_node["authority_class"], "design",
         "an ADR is design authority"
     );
+
+    // --- node-visual-richness P01: the per-type status wire fields ------------
+    // status_value (the literal type token) + status_class (the closed
+    // treatment family) ride additively on the document node, projected
+    // read-and-infer from the parsed lifecycle. A type with no status machine
+    // (exec) carries NEITHER field — honest absence.
+    let node_by_id = |id: &str| {
+        docs["data"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == id)
+            .unwrap_or_else(|| panic!("{id} node listed in {docs}"))
+            .clone()
+    };
+    // ADR `accepted` -> affirmed.
+    assert_eq!(adr_node["status_value"], "accepted", "ADR H1 status token");
+    assert_eq!(adr_node["status_class"], "affirmed", "accepted -> affirmed");
+    // ADR `proposed` -> provisional.
+    let adr_two = node_by_id("doc:2026-06-13-conf-adr-two");
+    assert_eq!(adr_two["status_value"], "proposed");
+    assert_eq!(
+        adr_two["status_class"], "provisional",
+        "proposed -> provisional"
+    );
+    // Plan tier `L2` -> tiered, with the ordinal in the value; progress stays a
+    // SEPARATE channel (the plan still carries lifecycle.progress).
+    assert_eq!(
+        plan_node["status_value"], "L2",
+        "plan tier ordinal in the value"
+    );
+    assert_eq!(plan_node["status_class"], "tiered", "plan tier -> tiered");
+    assert!(
+        plan_node["lifecycle"]["progress"]["done"].is_number(),
+        "the checkbox progress is a separate channel from the tiered status"
+    );
+    // Audit worst severity `high` -> graded.
+    let audit_node = node_by_id("doc:2026-06-13-conf-audit");
+    assert_eq!(audit_node["status_value"], "high", "audit worst severity");
+    assert_eq!(audit_node["status_class"], "graded", "severity -> graded");
+    // Rule `superseded` -> retired (the native vault rule doc_type).
+    let rule_node = node_by_id("doc:2026-06-13-conf-rule");
+    assert_eq!(
+        rule_node["status_value"], "superseded",
+        "rule successor signal"
+    );
+    assert_eq!(
+        rule_node["status_class"], "retired",
+        "superseded -> retired"
+    );
+    // Exec: a type with no per-type status machine -> BOTH fields absent.
+    let exec_node = node_by_id("doc:2026-06-13-conf-S01");
+    assert!(
+        exec_node.get("status_value").is_none(),
+        "an exec record carries no status_value (honest absence): {exec_node}"
+    );
+    assert!(
+        exec_node.get("status_class").is_none(),
+        "an exec record carries no status_class (honest absence): {exec_node}"
+    );
+
     // The edge gains a `derivation` label, distinct from the §4 `relation`,
     // carried alongside it. The plan -> adr wiki-link is `authorizes`.
     let plan_adr_edge = docs["data"]["edges"]
@@ -694,20 +805,22 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         Some("dark"),
         "PUT /settings response echoes the persisted global key"
     );
-    // A scoped key on the active (warm) scope, read back under that scope.
+    // A scoped key on the active (warm) scope, read back under that scope. The
+    // key must be a registry-declared, scope-eligible setting now that writes
+    // are validated (dashboard-settings); `default_granularity` is exactly that.
     let (status, scoped) = http(
         port,
         "PUT",
         "/settings",
         &token,
         Some(&format!(
-            r#"{{"scope": "{scope}", "key": "panel", "value": "open"}}"#
+            r#"{{"scope": "{scope}", "key": "default_granularity", "value": "document"}}"#
         )),
     );
     assert_eq!(status, 200, "PUT scoped setting: {scoped}");
     assert_eq!(
-        scoped["data"]["scoped"][&scope]["panel"].as_str(),
-        Some("open"),
+        scoped["data"]["scoped"][&scope]["default_granularity"].as_str(),
+        Some("document"),
         "scoped key surfaces under its scope in the settings map"
     );
     // Fresh GET sees both the global and the scoped key persisted.
@@ -719,9 +832,98 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         "global setting persisted across a fresh GET"
     );
     assert_eq!(
-        allset["data"]["scoped"][&scope]["panel"].as_str(),
-        Some("open"),
+        allset["data"]["scoped"][&scope]["default_granularity"].as_str(),
+        Some("document"),
         "scoped setting persisted across a fresh GET"
+    );
+
+    // --- GET /settings/schema: the served registry --------------------------
+    // (dashboard-settings) The schema is the single source of truth the client
+    // renders from. It rides the shared envelope (tiers present), lists declared
+    // settings with their type/control/default, and orders the groups.
+    let (status, schema) = http(port, "GET", "/settings/schema", &token, None);
+    assert_eq!(status, 200, "GET /settings/schema: {schema}");
+    assert!(
+        schema["tiers"].is_object(),
+        "GET /settings/schema carries the tiers block"
+    );
+    let defs = schema["data"]["settings"]
+        .as_array()
+        .expect("schema carries a settings array");
+    assert!(!defs.is_empty(), "the registry is non-empty");
+    let theme_def = defs
+        .iter()
+        .find(|d| d["key"] == "theme")
+        .expect("theme is a declared setting");
+    assert_eq!(theme_def["value_type"]["type"], "enum", "theme is an enum");
+    assert!(
+        theme_def["value_type"]["members"]
+            .as_array()
+            .is_some_and(|m| m.iter().any(|v| v == "dark")),
+        "theme enum members include dark"
+    );
+    assert_eq!(
+        theme_def["control"], "segmented",
+        "theme renders as segmented"
+    );
+    assert_eq!(theme_def["default"], "system", "theme default is system");
+    assert_eq!(
+        theme_def["scope_eligible"], false,
+        "theme is global-only (not scope-eligible)"
+    );
+    assert!(
+        schema["data"]["groups"]
+            .as_array()
+            .is_some_and(|g| g.iter().any(|v| v == "Appearance")),
+        "groups are ordered and include Appearance"
+    );
+
+    // --- PUT /settings validation: typed rejections -------------------------
+    // (dashboard-settings) An unknown key, an out-of-constraint value, and a
+    // scope on a global-only setting are each a tiered 400 carrying a
+    // machine-readable error_kind — distinguishable from a tier being down.
+    let (status, unknown) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "not_a_real_setting", "value": "x"}"#),
+    );
+    assert_eq!(status, 400, "unknown key is rejected: {unknown}");
+    assert!(unknown["tiers"].is_object(), "the 400 carries tiers");
+    assert_eq!(
+        unknown["error_kind"], "unknown_key",
+        "the rejection names the typed kind"
+    );
+    let (status, badval) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "theme", "value": "chartreuse"}"#),
+    );
+    assert_eq!(status, 400, "out-of-enum value is rejected: {badval}");
+    assert_eq!(badval["error_kind"], "invalid_value");
+    let (status, badscope) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(&format!(
+            r#"{{"scope": "{scope}", "key": "theme", "value": "dark"}}"#
+        )),
+    );
+    assert_eq!(
+        status, 400,
+        "scoping a global-only key is rejected: {badscope}"
+    );
+    assert_eq!(badscope["error_kind"], "scope_not_allowed");
+    // A rejected write did not change persisted state: theme is still dark global.
+    let (_, after_bad) = http(port, "GET", "/settings", &token, None);
+    assert_eq!(
+        after_bad["data"]["global"]["theme"].as_str(),
+        Some("dark"),
+        "a rejected write leaves the prior value intact"
     );
 
     // --- PUT /session with an unknown scope -> tiered 400 -------------------

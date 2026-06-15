@@ -25,13 +25,18 @@ function serviceToken(): string | null {
 // SPA build served by `vaultspec serve` in production (gui-spec §5.1).
 // The spike page (spike.html) is a separate dev-only entry for the renderer
 // frame-time gate (gui-spec §6.1); it is excluded from the production build.
+// The prototype page (prototype.html) is likewise a dev-only entry for the
+// node-visual-richness status-stamp + hover-bloom harness, dev-served only and
+// excluded from the production wheel (it is never imported by the app router).
 export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss()],
   build: {
     rollupOptions: {
       input:
         command === "build"
-          ? { index: resolve(import.meta.dirname, "index.html") }
+          ? {
+              index: resolve(import.meta.dirname, "index.html"),
+            }
           : undefined,
     },
   },
