@@ -1,40 +1,50 @@
 /**
- * Style Dictionary build for the vaultspec-dashboard color framework (plan W01.P02).
+ * Style Dictionary build for the vaultspec-dashboard color framework (plan W01.P02/P03).
  *
- * Reads the DTCG token source (primitives + semantic + per-theme overrides) declared by
- * `tokens/resolver.json`, uses Style Dictionary to parse and merge each theme mode, and
- * emits `src/styles.generated.css` — the candidate that the parity script
- * (`scripts/token-parity.ts`) diffs against the committed `src/styles.css` color tier
- * before the canonical flip (W01.P03).
+ * Canonical source: the DTCG token files under `tokens/`. This build regenerates the
+ * COLOR portion of `src/styles.css` in place, inside two generator-managed marker regions
+ * (the repo's `vaultspec:generated:*` discipline) so the colors stay inside Tailwind's
+ * `@theme static` block (required for utility generation) while the non-color tokens,
+ * shadows, keyframes, and contrast proof remain hand-authored around them:
  *
- * Run: `node style-dictionary.config.ts` (Node 22.6+ strips the TS types at runtime).
+ *   @theme static {            ... vaultspec:generated:colors:begin/end (primitives +
+ *                                  semantic + public surface) ... hand-authored type/
+ *                                  spacing/shadow/radius/motion ...
+ *   @layer base {              ... vaultspec:generated:themes:begin/end ([data-theme]
+ *                                  color remaps) ... hand-authored shadow remaps, body ...
  *
- * Output shape mirrors styles.css:
- *   :root { primitives + semantic(default) + public(default) }   == @theme static
- *   [data-theme="light"|"dark"|"high-contrast"] { themed subset }
- * where the "themed subset" is exactly the set of token paths the override files carry
- * (the semantic tier plus the diverging public tokens and the scene-read hex) — the same
- * subset styles.css restates per [data-theme] block.
+ * Run: `node style-dictionary.config.ts` (rewrites the managed regions, then the caller
+ * runs prettier). Node 22.6+ strips the TS types at runtime.
  */
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import StyleDictionary from "style-dictionary";
-import { cssValue, defaultCssVar, type DtcgColorValue } from "./build/sd-transforms.ts";
+import { cssValue, defaultCssVar, type DtcgColorValue } from "./scripts/sd-transforms.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokensDir = join(here, "tokens");
-const outFile = join(here, "src", "styles.generated.css");
+export const STYLES_FILE = join(here, "src", "styles.css");
 
-type Leaf = { path: string[]; original: { $value: DtcgColorValue }; $extensions?: any };
+type Leaf = { path: string[]; original: { $value: DtcgColorValue } };
 
 const PRIMITIVES = join(tokensDir, "primitives.tokens.json");
 const SEMANTIC = join(tokensDir, "semantic.tokens.json");
 const DARK = join(tokensDir, "themes", "dark.tokens.json");
 const HC = join(tokensDir, "themes", "high-contrast.tokens.json");
 
-/** Collect leaf token dotted-paths from a raw DTCG file (paths that have a $value). */
+export const MARKERS = {
+  colors: {
+    begin: "/* vaultspec:generated:colors:begin */",
+    end: "/* vaultspec:generated:colors:end */",
+  },
+  themes: {
+    begin: "/* vaultspec:generated:themes:begin */",
+    end: "/* vaultspec:generated:themes:end */",
+  },
+};
+
 function leafPaths(obj: any, prefix: string[] = [], acc = new Set<string>()): Set<string> {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
@@ -45,17 +55,9 @@ function leafPaths(obj: any, prefix: string[] = [], acc = new Set<string>()): Se
   return acc;
 }
 
-/** The set of token paths that appear in a [data-theme] block (== the override files). */
+/** The token paths that appear in a [data-theme] block (== the override files). */
 const THEMED = leafPaths(JSON.parse(readFileSync(DARK, "utf8")));
 
-/** Build the path -> css-var-name map from the base definitions (primitives + semantic). */
-function buildVarMap(): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const file of [PRIMITIVES, SEMANTIC]) {
-    walkVars(JSON.parse(readFileSync(file, "utf8")), [], map);
-  }
-  return map;
-}
 function walkVars(obj: any, prefix: string[], map: Map<string, string>): void {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
@@ -70,6 +72,14 @@ function walkVars(obj: any, prefix: string[], map: Map<string, string>): void {
   }
 }
 
+function buildVarMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const file of [PRIMITIVES, SEMANTIC]) {
+    walkVars(JSON.parse(readFileSync(file, "utf8")), [], map);
+  }
+  return map;
+}
+
 const VAR_OF = buildVarMap();
 const varForPath = (p: string): string => {
   const v = VAR_OF.get(p);
@@ -77,11 +87,9 @@ const varForPath = (p: string): string => {
   return v;
 };
 
-/** Parse + merge a mode's sources via Style Dictionary, returning leaf tokens. */
 async function tokensFor(sources: string[]): Promise<Leaf[]> {
   const sd = new StyleDictionary({
     source: sources,
-    // We emit ourselves; give SD a no-op platform so it only parses + merges.
     platforms: { noop: { transformGroup: "css", files: [] } },
     log: { verbosity: "silent", warnings: "disabled" },
   });
@@ -89,59 +97,61 @@ async function tokensFor(sources: string[]): Promise<Leaf[]> {
   return dict.allTokens as unknown as Leaf[];
 }
 
-/** Emit a CSS declaration block body for the given tokens, filtered by predicate. */
-function emitBlock(tokens: Leaf[], keep: (path: string) => boolean): string {
-  const lines: string[] = [];
+/** Emit `name: value;` declaration lines for tokens kept by the predicate, at `indent`. */
+function declLines(tokens: Leaf[], keep: (path: string) => boolean, indent: string): string {
+  const out: string[] = [];
   for (const t of tokens) {
     const path = t.path.join(".");
     if (!keep(path)) continue;
     const name = VAR_OF.get(path) ?? defaultCssVar(path);
-    lines.push(`  ${name}: ${cssValue(t.original.$value, varForPath)};`);
+    out.push(`${indent}${name}: ${cssValue(t.original.$value, varForPath)};`);
   }
-  return lines.join("\n");
+  return out.join("\n");
 }
 
-/** Generate the full color CSS string from the DTCG source (no file write). */
-export async function generateCss(): Promise<string> {
+/** Build the two managed-region bodies (without the marker comments). */
+export async function generateRegions(): Promise<{ colors: string; themes: string }> {
   const base = await tokensFor([PRIMITIVES, SEMANTIC]);
   const dark = await tokensFor([PRIMITIVES, SEMANTIC, DARK]);
   const hc = await tokensFor([PRIMITIVES, SEMANTIC, HC]);
 
-  const header =
-    "/* GENERATED by style-dictionary.config.ts from tokens/*.tokens.json. DO NOT EDIT.\n" +
-    "   Canonical source: frontend/tokens/ (DTCG). Regenerate: `npm run tokens:build`.\n" +
-    "   Parity-checked against src/styles.css by scripts/token-parity.ts (plan W01.P02). */\n";
+  const colors = declLines(base, () => true, "  ");
 
-  return (
-    header +
-    "\n:root {\n" +
-    emitBlock(base, () => true) +
-    "\n}\n" +
-    `\n[data-theme="light"] {\n` +
-    emitBlock(base, (p) => THEMED.has(p)) +
-    "\n}\n" +
-    `\n[data-theme="dark"] {\n` +
-    emitBlock(dark, (p) => THEMED.has(p)) +
-    "\n}\n" +
-    `\n[data-theme="high-contrast"] {\n` +
-    emitBlock(hc, (p) => THEMED.has(p)) +
-    "\n}\n"
-  );
+  const block = (selector: string, toks: Leaf[]): string =>
+    `  ${selector} {\n${declLines(toks, (p) => THEMED.has(p), "    ")}\n  }`;
+
+  const themes = [
+    block('[data-theme="light"]', base),
+    block('[data-theme="dark"]', dark),
+    block('[data-theme="high-contrast"]', hc),
+  ].join("\n\n");
+
+  return { colors, themes };
 }
 
-export const OUT_FILE = outFile;
-export const THEMED_COUNT = THEMED.size;
+/** Replace the body between a region's begin/end markers in `css`. */
+function spliceRegion(css: string, begin: string, end: string, body: string): string {
+  const b = css.indexOf(begin);
+  const e = css.indexOf(end);
+  if (b < 0 || e < 0 || e < b) {
+    throw new Error(`markers not found or out of order: ${begin} .. ${end}`);
+  }
+  return css.slice(0, b + begin.length) + "\n" + body + "\n  " + css.slice(e);
+}
 
-async function build(): Promise<void> {
-  const css = await generateCss();
-  writeFileSync(outFile, css, "utf8");
-  console.log(`wrote ${outFile}`);
+/** Rewrite the managed color regions of styles.css from the DTCG source. */
+export async function writeStyles(): Promise<void> {
+  const { colors, themes } = await generateRegions();
+  let css = readFileSync(STYLES_FILE, "utf8");
+  css = spliceRegion(css, MARKERS.colors.begin, MARKERS.colors.end, colors);
+  css = spliceRegion(css, MARKERS.themes.begin, MARKERS.themes.end, themes);
+  writeFileSync(STYLES_FILE, css, "utf8");
+  console.log(`rewrote managed color regions in ${STYLES_FILE}`);
   console.log(`  themed per mode: ${THEMED.size}`);
 }
 
-// Run the writer only when invoked directly (not when imported by the drift check).
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  build().catch((err) => {
+  writeStyles().catch((err) => {
     console.error(err);
     process.exit(1);
   });

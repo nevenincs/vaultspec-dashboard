@@ -1,0 +1,305 @@
+{
+  "$schema": "./registry.schema.json",
+  "components": [
+    {
+      "name": "AlgorithmPanel",
+      "source": "src/app/stage/AlgorithmPanel.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "AppShell",
+      "source": "src/app/AppShell.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "BrowserModeToggle",
+      "source": "src/app/left/BrowserModeToggle.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "BrowserRegion",
+      "source": "src/app/left/BrowserRegion.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "CanvasStateOverlay",
+      "source": "src/app/stage/CanvasStateOverlay.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "ChangesOverview",
+      "source": "src/app/right/ChangesOverview.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "CodeTree",
+      "source": "src/app/left/CodeTree.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "CommandPalette",
+      "source": "src/app/palette/CommandPalette.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "ContextMenuHost",
+      "source": "src/app/menu/ContextMenuHost.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "DegradationDebugSwitch",
+      "source": "src/app/degradation/DebugSwitch.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Dialog",
+      "source": "src/app/chrome/Dialog.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "DiffView",
+      "source": "src/app/right/DiffView.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Discover",
+      "source": "src/app/stage/Discover.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "EnumControl",
+      "source": "src/app/settings/controls/EnumControl.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "FacetChipGroup",
+      "source": "src/app/chrome/FacetChipGroup.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "FilterBar",
+      "source": "src/app/stage/FilterBar.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "FilterSidebar",
+      "source": "src/app/stage/FilterSidebar.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "HoverCard",
+      "source": "src/app/islands/HoverCard.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "HoverCardLayer",
+      "source": "src/app/islands/HoverCardLayer.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Inspector",
+      "source": "src/app/right/Inspector.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "IslandLayer",
+      "source": "src/app/islands/IslandLayer.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "KeyboardNav",
+      "source": "src/app/a11y/KeyboardNav.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "LeftRail",
+      "source": "src/app/left/LeftRail.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "LensSelector",
+      "source": "src/app/stage/LensSelector.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Minimap",
+      "source": "src/app/timeline/Minimap.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "MinimapWidget",
+      "source": "src/app/stage/MinimapWidget.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "NavToolbar",
+      "source": "src/app/stage/NavToolbar.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "NodeInterior",
+      "source": "src/app/islands/NodeInterior.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "NowStrip",
+      "source": "src/app/right/NowStrip.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "NumberControl",
+      "source": "src/app/settings/controls/NumberControl.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "OpsPanel",
+      "source": "src/app/right/OpsPanel.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Playhead",
+      "source": "src/app/timeline/Playhead.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "RailFilter",
+      "source": "src/app/left/RailFilter.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "RangeSelect",
+      "source": "src/app/timeline/RangeSelect.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "RepresentationModePanel",
+      "source": "src/app/stage/RepresentationModePanel.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "SearchTab",
+      "source": "src/app/right/SearchTab.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "SettingControl",
+      "source": "src/app/settings/controls/registry.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "SettingsDialog",
+      "source": "src/app/settings/SettingsDialog.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Stage",
+      "source": "src/app/stage/Stage.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "SwitchControl",
+      "source": "src/app/settings/controls/SwitchControl.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "TextControl",
+      "source": "src/app/settings/controls/TextControl.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "TierDial",
+      "source": "src/app/stage/TierDial.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Timeline",
+      "source": "src/app/timeline/Timeline.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "TimelineControls",
+      "source": "src/app/timeline/TimelineControls.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "TimeTravelChip",
+      "source": "src/app/timeline/Playhead.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "VaultBrowser",
+      "source": "src/app/left/VaultBrowser.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "WorkingSet",
+      "source": "src/app/stage/WorkingSet.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "WorkspacePicker",
+      "source": "src/app/left/WorkspacePicker.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "WorkTab",
+      "source": "src/app/right/WorkTab.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "WorktreePicker",
+      "source": "src/app/left/WorktreePicker.tsx",
+      "figmaNodeId": null,
+      "figmaUrl": null
+    }
+  ]
+}

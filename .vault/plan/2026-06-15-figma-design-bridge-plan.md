@@ -54,18 +54,18 @@ Build the DTCG-to-CSS pipeline and prove the generated CSS is byte-equivalent to
 
 Make generation canonical, remove the hand-authored color blocks, and prove theme switching and scene hex reads are unchanged.
 
-- [ ] `W01.P03.S13` - Replace the hand-authored color blocks with the generated token output as the canonical source; `frontend/src/styles.css`.
-- [ ] `W01.P03.S14` - Remove the now-duplicated primitive and semantic color declarations left in the stylesheet; `frontend/src/styles.css`.
-- [ ] `W01.P03.S15` - Verify the scene getComputedStyle hex readers still resolve every scene-read token; `frontend/src/scene/field/tokenReads.test.ts`.
-- [ ] `W01.P03.S16` - Verify light, dark, and high-contrast theme switching is unchanged after the flip; `frontend/src/platform/theme/themeController.test.ts`.
-- [ ] `W01.P03.S17` - Run the full frontend lint gate and confirm exit zero; `justfile`.
+- [x] `W01.P03.S13` - Replace the hand-authored color blocks with the generated token output as the canonical source; `frontend/src/styles.css`.
+- [x] `W01.P03.S14` - Remove the now-duplicated primitive and semantic color declarations left in the stylesheet; `frontend/src/styles.css`.
+- [x] `W01.P03.S15` - Verify the scene getComputedStyle hex readers still resolve every scene-read token; `frontend/src/scene/field/tokenReads.test.ts`.
+- [x] `W01.P03.S16` - Verify light, dark, and high-contrast theme switching is unchanged after the flip; `frontend/src/platform/theme/themeController.test.ts`.
+- [x] `W01.P03.S17` - Run the full frontend lint gate and confirm exit zero; `justfile`.
 
 ### Phase `W01.P04` - Tokens Studio push to Figma Variables
 
 Configure Tokens Studio to write the DTCG tokens into Figma Primitives and Semantic collections with modes via the Plugin API, one way.
 
-- [ ] `W01.P04.S18` - Author the Tokens Studio configuration mapping DTCG sets to Figma collections and modes; `frontend/tokens/tokens-studio.config.json`.
-- [ ] `W01.P04.S19` - Document the Plugin-API push runbook for the Primitives and Semantic collections with light/dark/high-contrast modes; `frontend/tokens/FIGMA-SYNC.md`.
+- [x] `W01.P04.S18` - Author the Tokens Studio configuration mapping DTCG sets to Figma collections and modes; `frontend/tokens/tokens-studio.config.json`.
+- [x] `W01.P04.S19` - Document the Plugin-API push runbook for the Primitives and Semantic collections with light/dark/high-contrast modes; `frontend/tokens/FIGMA-SYNC.md`.
 - [ ] `W01.P04.S20` - Execute the Tokens Studio push and verify the variables and modes land in the Figma file; `frontend/tokens/FIGMA-SYNC.md`.
 
 ### Phase `W01.P05` - Token drift gate
@@ -84,30 +84,30 @@ Stand up a Storybook gallery, a repo-maintained code-to-Figma mapping registry w
 
 Stand up Storybook on the Vite builder with token CSS and theme switching as the seeding and parity substrate.
 
-- [ ] `W02.P06.S24` - Add Storybook with the Vite builder and its core configuration; `frontend/.storybook/main.ts`.
-- [ ] `W02.P06.S25` - Configure the Storybook preview to load the token CSS and a light/dark/high-contrast theme switcher; `frontend/.storybook/preview.tsx`.
-- [ ] `W02.P06.S26` - Wire just recipes to run and build the Storybook gallery; `justfile`.
+- [x] `W02.P06.S24` - Add Storybook with the Vite builder and its core configuration; `frontend/.storybook/main.ts`.
+- [x] `W02.P06.S25` - Configure the Storybook preview to load the token CSS and a light/dark/high-contrast theme switcher; `frontend/.storybook/preview.tsx`.
+- [x] `W02.P06.S26` - Wire just recipes to run and build the Storybook gallery; `justfile`.
 
 ### Phase `W02.P07` - Story coverage of the chrome inventory
 
 Author stories covering the app chrome regions and shared marks so every component has a clean render surface.
 
-- [ ] `W02.P07.S27` - Author a foundations story showcasing color tokens, type scale, spacing, shadow, and radius; `frontend/src/app/foundations.stories.tsx`.
-- [ ] `W02.P07.S28` - Author stories for the left-rail chrome region components; `frontend/src/app/left/left.stories.tsx`.
-- [ ] `W02.P07.S29` - Author stories for the stage region components; `frontend/src/app/stage/stage.stories.tsx`.
-- [ ] `W02.P07.S30` - Author stories for the right-rail region components; `frontend/src/app/right/right.stories.tsx`.
-- [ ] `W02.P07.S31` - Author stories for the timeline region components; `frontend/src/app/timeline/timeline.stories.tsx`.
-- [ ] `W02.P07.S32` - Author stories for the islands, palette, and menu region components; `frontend/src/app/islands/islands.stories.tsx`.
-- [ ] `W02.P07.S33` - Author stories for the shared domain marks and iconography; `frontend/src/scene/field/marks.stories.tsx`.
+- [x] `W02.P07.S27` - Author a foundations story showcasing color tokens, type scale, spacing, shadow, and radius; `frontend/src/app/foundations.stories.tsx`.
+- [x] `W02.P07.S28` - Author stories for the left-rail chrome region components; `frontend/src/app/left/left.stories.tsx`.
+- [x] `W02.P07.S29` - Author stories for the stage region components; `frontend/src/app/stage/stage.stories.tsx`.
+- [x] `W02.P07.S30` - Author stories for the right-rail region components; `frontend/src/app/right/right.stories.tsx`.
+- [x] `W02.P07.S31` - Author stories for the timeline region components; `frontend/src/app/timeline/timeline.stories.tsx`.
+- [x] `W02.P07.S32` - Author stories for the islands, palette, and menu region components; `frontend/src/app/islands/islands.stories.tsx`.
+- [x] `W02.P07.S33` - Author stories for the shared domain marks and iconography; `frontend/src/scene/field/marks.stories.tsx`.
 
 ### Phase `W02.P08` - Code-to-Figma mapping registry
 
 Define the registry schema, author the mapping, and enforce the 1:1 naming-parity contract.
 
-- [ ] `W02.P08.S34` - Define the code-to-Figma mapping registry JSON schema; `frontend/figma/registry.schema.json`.
-- [ ] `W02.P08.S35` - Author the mapping registry enumerating each chrome component with its Figma node reference field; `frontend/figma/component-map.json`.
-- [ ] `W02.P08.S36` - Author the naming-parity validator asserting every registry entry resolves to a real component under the naming contract; `frontend/scripts/figma-registry-check.ts`.
-- [ ] `W02.P08.S37` - Document the 1:1 code-to-Figma naming-parity contract; `frontend/figma/README.md`.
+- [x] `W02.P08.S34` - Define the code-to-Figma mapping registry JSON schema; `frontend/figma/registry.schema.json`.
+- [x] `W02.P08.S35` - Author the mapping registry enumerating each chrome component with its Figma node reference field; `frontend/figma/component-map.json`.
+- [x] `W02.P08.S36` - Author the naming-parity validator asserting every registry entry resolves to a real component under the naming contract; `frontend/scripts/figma-registry-check.ts`.
+- [x] `W02.P08.S37` - Document the 1:1 code-to-Figma naming-parity contract; `frontend/figma/README.md`.
 
 ### Phase `W02.P09` - Figma seeding
 
@@ -123,10 +123,10 @@ Seed the Figma file: manually rebuild foundations and icons, importer-seed compo
 
 Author the read-only MCP parity-check script and wire registry completeness and naming parity into CI.
 
-- [ ] `W02.P10.S43` - Author the read-only MCP parity-check script pulling metadata, design context, and screenshots per registry entry; `frontend/scripts/figma-parity.ts`.
+- [x] `W02.P10.S43` - Author the read-only MCP parity-check script pulling metadata, design context, and screenshots per registry entry; `frontend/scripts/figma-parity.ts`.
 - [ ] `W02.P10.S44` - Add the screenshot-diff comparison of the Figma node against the Storybook render; `frontend/scripts/figma-parity.ts`.
-- [ ] `W02.P10.S45` - Wire registry completeness and naming parity into the CI gate; `justfile`.
-- [ ] `W02.P10.S46` - Document the end-to-end Figma parity verification workflow; `frontend/figma/README.md`.
+- [x] `W02.P10.S45` - Wire registry completeness and naming parity into the CI gate; `justfile`.
+- [x] `W02.P10.S46` - Document the end-to-end Figma parity verification workflow; `frontend/figma/README.md`.
 
 ## Description
 

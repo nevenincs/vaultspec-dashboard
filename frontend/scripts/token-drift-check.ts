@@ -1,47 +1,49 @@
 /**
  * Token drift gate (plan W01.P05.S21).
  *
- * Fails the build when the committed generated color CSS (`src/styles.generated.css`) no
- * longer matches a fresh regeneration from the DTCG source, i.e. someone edited the
- * tokens without regenerating, or hand-edited the generated file. Runs as part of the
- * frontend lint gate (`just dev lint frontend`).
+ * Fails the build when the generator-managed color regions in `src/styles.css` no longer
+ * match a fresh regeneration from the DTCG source under `tokens/` — i.e. someone edited
+ * the tokens without running `npm run tokens:build`, or hand-edited inside the markers.
+ * Runs as part of the frontend lint gate (`just dev lint frontend`).
  *
- * Run: `node scripts/token-drift-check.ts` (exit 0 = in sync; exit 1 = drift).
+ * Comparison is on parsed declaration values, so prettier's formatting of styles.css is
+ * not drift. Run: `node scripts/token-drift-check.ts` (exit 0 = in sync; 1 = drift).
  */
 
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
-import { generateCss } from "../style-dictionary.config.ts";
-import { diffCss } from "./token-css-diff.ts";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const committedPath = join(here, "..", "src", "styles.generated.css");
+import { generateRegions, MARKERS, STYLES_FILE } from "../style-dictionary.config.ts";
+import { compareDecls, extractRegion, parseScopedDecls } from "./token-css-diff.ts";
 
 async function main(): Promise<void> {
-  const fresh = await generateCss();
-  let committed: string;
-  try {
-    committed = readFileSync(committedPath, "utf8");
-  } catch {
-    console.error(
-      "token-drift: src/styles.generated.css is missing. Run `npm run tokens:build`.",
-    );
-    process.exit(1);
-    return;
-  }
+  const fresh = await generateRegions();
+  const css = readFileSync(STYLES_FILE, "utf8");
 
-  const diffs = diffCss(committed, fresh);
+  const current = {
+    colors: extractRegion(css, MARKERS.colors.begin, MARKERS.colors.end),
+    themes: extractRegion(css, MARKERS.themes.begin, MARKERS.themes.end),
+  };
+
+  const diffs = [
+    ...compareDecls(
+      parseScopedDecls(current.colors, ":root"),
+      parseScopedDecls(fresh.colors, ":root"),
+    ),
+    ...compareDecls(
+      parseScopedDecls(current.themes, ":root"),
+      parseScopedDecls(fresh.themes, ":root"),
+    ),
+  ];
+
   if (diffs.length === 0) {
-    console.log("token-drift: OK — committed generated CSS matches the DTCG source.");
+    console.log("token-drift: OK — styles.css color regions match the DTCG source.");
     return;
   }
-  console.error("token-drift: DRIFT — regenerate with `npm run tokens:build` and commit.");
+  console.error("token-drift: DRIFT — run `npm run tokens:build` and commit styles.css.");
   console.error(diffs.join("\n"));
   process.exit(1);
 }
 
-// Run only when invoked directly, so tests can import helpers without side effects.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((err) => {
     console.error(err);

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://vaultspec.dev/figma/registry.schema.json",
+  "title": "Code-to-Figma component mapping registry",
+  "description": "Pro-tier stand-in for Figma Code Connect: a 1:1 mapping from each React chrome component to its Figma node, enforced by scripts/figma-registry-check.ts. Authored by the generator (--write); Figma bindings filled after seeding (plan W01.P09).",
+  "type": "object",
+  "required": ["components"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "source", "figmaNodeId", "figmaUrl"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9]*$",
+            "description": "The exported React component name; the Figma main-component name must match it verbatim (naming-parity contract)."
+          },
+          "source": {
+            "type": "string",
+            "description": "POSIX-relative path from frontend/ to the component's source file."
+          },
+          "figmaNodeId": {
+            "type": ["string", "null"],
+            "pattern": "^\\d+[:-]\\d+$",
+            "description": "The Figma node id of the bound main component, or null until seeded."
+          },
+          "figmaUrl": {
+            "type": ["string", "null"],
+            "description": "The Figma URL of the bound node, or null until seeded."
+          }
+        }
+      }
+    }
+  }
+}

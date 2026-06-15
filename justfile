@@ -43,6 +43,7 @@ _dev-help:
   @echo "  build     uv build"
   @echo "  serve     live dev survey: engine + Vite HMR, auto-rebuild + auto-refresh"
   @echo "  tokens    regenerate the DTCG color CSS and check parity/drift"
+  @echo "  storybook run the component gallery (append 'build' to build static)"
   @echo "  precommit pre-commit hook management (install, upgrade, run)"
 
 # ===========================================================================
@@ -142,11 +143,16 @@ _dev-lint-frontend:
   npm --prefix frontend run format:check
   npm --prefix frontend run typecheck
   npm --prefix frontend run tokens:check
+  npm --prefix frontend run figma:registry
 
-# Regenerate the DTCG-derived color CSS and verify it against the committed tier.
+# Regenerate the DTCG-derived color regions in styles.css and verify no drift.
 _dev-tokens:
   npm --prefix frontend run tokens:build
-  npm --prefix frontend run tokens:parity
+  npm --prefix frontend run tokens:check
+
+# Run the Storybook component gallery (the Figma seeding + parity substrate).
+_dev-storybook *args='':
+  npm --prefix frontend run {{ if args == "build" { "build-storybook" } else { "storybook" } }}
 
 _dev-lint-typos:
   @{{ if os() == "windows" { \
