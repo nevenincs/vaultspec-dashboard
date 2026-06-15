@@ -39,6 +39,16 @@ export const PULSE_MS = 1200;
 /** Per-node movement (world units) below which a frame is skipped (D4 gate). */
 const MOVE_EPSILON = 0.4;
 
+/** Idle GPU throttle (perf-sweep F#4). Pixi's ticker auto-presents a frame on
+ * every display refresh even when the field is static and converged — a
+ * continuous GPU/compositor cost on an idle dashboard. When nothing is
+ * animating, settling, or being interacted with, the present rate is capped to
+ * IDLE_FPS; every activity source (commands, camera, layout, pointer, fade
+ * animation) calls wakeTicker() to lift the cap for a short grace window. Worst
+ * case is one idle frame of lag (~1/IDLE_FPS s), never a frozen frame. */
+const IDLE_FPS = 8;
+const TICKER_ACTIVE_GRACE_MS = 500;
+
 /** Reduced motion collapses the field's fade band to imperceptible (G7.d). */
 function fadeDuration(): number | undefined {
   const reduced =
@@ -84,6 +94,11 @@ export class DashboardField implements SceneFieldRenderer {
   /** Last rendered frame, for the movement gate (D4); a reference, never copied. */
   private lastFrame: ReadonlyMap<string, NodePosition> | null = null;
   private lastSave = 0;
+  /** Idle-ticker throttle (perf-sweep F#4): activity keeps `maxFPS` uncapped
+   * until this timestamp; afterwards the tick caps the present rate to IDLE_FPS. */
+  private tickerActiveUntil = 0;
+  /** Set in onReady — lifts the idle FPS cap immediately on any activity. */
+  private wakeTicker: (() => void) | null = null;
   private layoutMode: "force" | "circular" = "force";
   private layoutParams: LayoutParams = {};
   // --- graph-representation: representation mode + overlay state (W03) ----------
@@ -144,6 +159,7 @@ export class DashboardField implements SceneFieldRenderer {
       // Layout frames drive sprites, edges, hit-testing, anchors, and the
       // periodic warm-start save.
       const offPositions = this.layout.onPositions((positions) => {
+        this.wakeTicker?.(); // layout is producing frames — present at full rate
         // One throwing consumer must never wedge the frame loop (D8).
         try {
           // Movement gate (D4): skip the heavy per-frame work once motion drops
@@ -198,6 +214,7 @@ export class DashboardField implements SceneFieldRenderer {
       }
 
       const offCamera = this.camera.onChange((state, level) => {
+        this.wakeTicker?.(); // camera moved (pan/zoom/wheel) — present promptly
         this.lastLevel = level;
         this.sprites?.setLod(state.scale, this.focusedIds());
         this.edges?.setArrowVisibility(state.scale >= ARROW_VISIBLE_SCALE);
@@ -228,16 +245,31 @@ export class DashboardField implements SceneFieldRenderer {
             this.edges?.applyVisibility(edgeSample.progress);
           }
           this.lastAnimating = nodeSample.animating || edgeSample.animating;
+          // Idle throttle (F#4): keep the present rate uncapped while anything
+          // is animating or within the post-activity grace window; otherwise
+          // cap it so a static field stops burning 60fps of GPU presents.
+          const active =
+            nodeSample.animating ||
+            edgeSample.animating ||
+            now < this.tickerActiveUntil;
+          app.ticker.maxFPS = active ? 0 : IDLE_FPS;
         } catch (err) {
           this.assemblyLog.error(`ticker frame threw: ${(err as Error).message}`);
         }
       };
       app.ticker.add(tick);
+      // Activity lifts the idle cap immediately (next present is prompt) and
+      // arms the grace window; the tick re-caps once the field goes quiet.
+      this.wakeTicker = () => {
+        this.tickerActiveUntil = performance.now() + TICKER_ACTIVE_GRACE_MS;
+        app.ticker.maxFPS = 0;
+      };
 
       // Pointer gestures on the canvas emit the locked seam events; hover
       // additionally drives the ego-highlight (G3.b) inside the field.
       const gestures = new PointerGestures({
         emit: (event) => {
+          this.wakeTicker?.(); // pointer activity (hover/select/context) — wake
           if (event.kind === "hover") this.applyEgoHighlight(event.id);
           this.controller?.emit(event);
         },
@@ -344,6 +376,9 @@ export class DashboardField implements SceneFieldRenderer {
   private pulseToken = 0;
 
   command(cmd: SceneCommand): void {
+    // Any command may mutate the scene (data, focus, camera, time) — wake the
+    // ticker so the resulting frame presents promptly past the idle cap (F#4).
+    this.wakeTicker?.();
     switch (cmd.kind) {
       case "set-data": {
         this.model.setData(cmd.nodes, cmd.edges);
@@ -468,17 +503,24 @@ export class DashboardField implements SceneFieldRenderer {
       case "set-layout-mode": {
         this.layoutMode = cmd.mode;
         if (cmd.mode === "circular") {
-          // Switch to circular: seed positions on circle, stop FA2.
+          // Switch to circular: seed positions on a circle, stop the solver.
           if (this.layout && this.model.nodeCount > 0) {
             const nodeIds = [...this.model.nodes].map((n) => n.id);
             const positions = circularArrange(nodeIds);
             this.layout.stop();
             this.layout.init(nodeIds, [], positions);
-            // Don't restart FA2 in circular mode — positions are already set.
+            // Don't restart in circular mode — positions are already set.
           }
         } else {
-          // Switch back to force: restart FA2 from current positions.
-          if (this.layout) {
+          // Switch back to force: re-init from the layout backbone (the circular
+          // switch cleared the link force) and warm-start from current positions,
+          // so the springs return rather than re-settling a disconnected blob.
+          if (this.layout && this.model.nodeCount > 0) {
+            const nodeIds = [...this.model.nodes].map((n) => n.id);
+            const backboneRefs = splitBackbone([...this.model.edges]).backbone.map(
+              (e) => ({ id: e.id, src: e.src, dst: e.dst }),
+            );
+            this.layout.init(nodeIds, backboneRefs, this.layout.positions);
             this.layout.start();
           }
         }
