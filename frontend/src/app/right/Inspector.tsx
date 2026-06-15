@@ -81,7 +81,11 @@ export function Inspector() {
     );
   }
   if (detail.isPending) return <p className="text-body text-ink-faint">inspecting…</p>;
-  if (detail.isError || !detail.data) {
+  // Guard the node payload itself, not just the envelope: a resolved detail
+  // response can carry no `node` (e.g. an id the engine no longer resolves), so
+  // render the same designed "unavailable" state rather than throwing on a
+  // missing field.
+  if (detail.isError || !detail.data?.node) {
     return <p className="text-body text-state-broken">node unavailable</p>;
   }
 
