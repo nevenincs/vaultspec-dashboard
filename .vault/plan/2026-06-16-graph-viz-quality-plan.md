@@ -231,9 +231,9 @@ Harden every layout against NaN, empty, singleton, disconnected, degenerate, and
 
 Add fuzz and property tests asserting no glitch or crash and fix every defect the scorecard and fuzzers surface.
 
-- [ ] `W04.P12.S54` - Add property tests over randomized seeded graphs asserting every layout emits finite, bounded positions with no NaN or crash; `frontend/src/scene/field/scorecard/property.test.ts`.
-- [ ] `W04.P12.S55` - Add a degenerate-input fuzz suite feeding empty, singleton, disconnected, and all-same-position slices to all six layouts; `frontend/src/scene/field/scorecard/fuzz.test.ts`.
-- [ ] `W04.P12.S56` - Fix every defect the scorecard, property, and fuzz suites surface across the six layout modules and re-run to green; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W04.P12.S54` - Add property tests over randomized seeded graphs asserting every layout emits finite, bounded positions with no NaN or crash; `frontend/src/scene/field/scorecard/property.test.ts`.
+- [x] `W04.P12.S55` - Add a degenerate-input fuzz suite feeding empty, singleton, disconnected, and all-same-position slices to all six layouts; `frontend/src/scene/field/scorecard/fuzz.test.ts`.
+- [x] `W04.P12.S56` - Fix every defect the scorecard, property, and fuzz suites surface across the six layout modules and re-run to green; `frontend/src/scene/field/representationLayout.ts`.
 
 ## Wave `W05` - Backend deferrals and feature followups
 
@@ -273,16 +273,16 @@ Close the campaign with the full quality gate and the visible goal-met artifact:
 
 Run the complete engine and frontend gate and verify the live stack of engine serve, rag, and Qdrant.
 
-- [ ] `W06.P16.S68` - Run the engine gate to exit 0: cargo fmt check, cargo clippy, and cargo test across the engine workspace; `engine/Cargo.toml`.
-- [ ] `W06.P16.S69` - Run the frontend gate to exit 0: just dev lint frontend (eslint, prettier, tsc) and the full vitest suite including the scorecard gates; `frontend/package.json`.
+- [x] `W06.P16.S68` - Run the engine gate to exit 0: cargo fmt check, cargo clippy, and cargo test across the engine workspace; `engine/Cargo.toml`.
+- [x] `W06.P16.S69` - Run the frontend gate to exit 0: just dev lint frontend (eslint, prettier, tsc) and the full vitest suite including the scorecard gates; `frontend/package.json`.
 - [ ] `W06.P16.S70` - Verify the live stack end to end: engine serve plus rag plus Qdrant answering /graph/query, /graph/embeddings, /graph/lineage, and /ops/git; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W06-P16-summary.md`.
 
 ### Phase `W06.P17` - Quality report and Definition of Done
 
 Emit the committed quality report and assert the Definition-of-Done checklist that all six layouts pass with no glitch or crash.
 
-- [ ] `W06.P17.S71` - Have the scorecard emit the committed quality report scoring each of the six layouts against its per-metric thresholds as the quantified visible goal-met artifact; `frontend/src/scene/field/scorecard/qualityReport.ts`.
-- [ ] `W06.P17.S72` - Commit the generated quality report fixture and assert it regenerates deterministically under the current METRIC_VERSION; `frontend/src/scene/field/scorecard/qualityReport.test.ts`.
+- [x] `W06.P17.S71` - Have the scorecard emit the committed quality report scoring each of the six layouts against its per-metric thresholds as the quantified visible goal-met artifact; `frontend/src/scene/field/scorecard/qualityReport.ts`.
+- [x] `W06.P17.S72` - Commit the generated quality report fixture and assert it regenerates deterministically under the current METRIC_VERSION; `frontend/src/scene/field/scorecard/qualityReport.test.ts`.
 - [ ] `W06.P17.S73` - Assert the Definition-of-Done checklist that all six layouts deliver their backend capabilities with no glitch, issue, or crash, both quantifiably via the scorecard and visibly via live verification; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W06-P17-summary.md`.
 
 ## Description
