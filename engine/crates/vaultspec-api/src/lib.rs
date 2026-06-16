@@ -59,6 +59,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/search",
     "/ops/core/{verb}",
     "/ops/core/{verb}/write",
+    "/ops/core/create",
     "/ops/rag/{verb}",
     "/ops/git/{verb}",
     "/session",
@@ -137,6 +138,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // OWNING sibling's stdin, and forwards its envelope verbatim — a
         // conflict/refusal (`status:"failed"`) and a success both ride one 200.
         .route("/ops/core/{verb}/write", post(routes::ops::ops_core_write))
+        // The core CREATE channel (W02): forward
+        // `vaultspec-core vault add <type> --feature <tag> [--title] [--related]`
+        // through the bounded sibling runner so the editor can scaffold a new
+        // document. No stdin body — typed create params only. Read-and-infer: the
+        // engine validates, bounds, and forwards the sibling's envelope verbatim;
+        // a `status:"created"` success and a `status:"failed"` refusal ride one
+        // 200, the client branching on `envelope.status`. The static `create`
+        // segment is registered after `/ops/core/{verb}` so matchit prefers it.
+        .route("/ops/core/create", post(routes::ops::ops_core_create))
         // The brokered rag control plane (rag-control-plane ADR D2): GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher

@@ -801,6 +801,130 @@ pub async fn ops_core_write(
     ))
 }
 
+/// The typed request body for `POST /ops/core/create` (W02): the typed params of
+/// `vaultspec-core vault add <type> --feature <tag> [--title <t>] [--related …]`.
+/// Unlike the write channel this carries NO body/stdin — `vault add` scaffolds a
+/// new document from typed create params alone. Every field is validated/bounded
+/// BEFORE the subprocess spawns (the same injection-guard surface as the write
+/// body).
+#[derive(serde::Deserialize, Default)]
+pub struct CoreCreateBody {
+    pub doc_type: String,
+    pub feature: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub related: Option<Vec<String>>,
+}
+
+/// Validate a bounded kebab/word token (`doc_type`, `feature`) for the create
+/// channel (W02): non-empty, not flag-shaped (no leading `-` — the injection
+/// vector), and restricted to the kebab/word grammar `[A-Za-z0-9_-]+` so it can
+/// never carry a path separator, whitespace, or shell-meaningful character into
+/// the sibling argv. The named `field` is woven into the error message.
+fn validate_token(
+    state: &AppState,
+    field: &str,
+    token: &str,
+) -> Result<String, (StatusCode, Json<Value>)> {
+    let ok = !token.is_empty()
+        && !token.starts_with('-')
+        && token
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if !ok {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{field}` `{token}` must be a non-empty kebab/word token \
+                 (letters, digits, `-`, `_`; no leading `-`)"
+            ),
+        ));
+    }
+    Ok(token.to_string())
+}
+
+/// POST `/ops/core/create` — the core CREATE channel (W02): forward a
+/// `vaultspec-core vault add <type> --feature <tag> [--title <t>] [--related …]`
+/// through the bounded sibling runner so the dashboard editor can scaffold a new
+/// document. The engine stays READ-AND-INFER — it validates and bounds the typed
+/// create params (no stdin body) and forwards the sibling's envelope VERBATIM
+/// under `data.envelope`. It persists nothing and grows no create semantics: the
+/// scaffolding/validation policy lives entirely in the sibling
+/// (`engine-read-and-infer`).
+///
+/// Identical contract to the write channel: a success (`status:"created"`) and a
+/// business refusal (`status:"failed"`) BOTH ride the SAME HTTP 200 forwarded
+/// envelope — the client branches on `envelope.status`, never the HTTP code. Only
+/// a genuine engine/sibling fault (spawn failure, timeout, capped runaway, or an
+/// unparseable crash) degrades through `api_error` to a tiers-carrying 5xx.
+pub async fn ops_core_create(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CoreCreateBody>,
+) -> ApiResult {
+    // Validate every field BEFORE spawning (the injection-guard surface): the
+    // required doc_type and feature tokens, the optional title (flag-injection
+    // guard only — the title is free prose the sibling stores verbatim), and each
+    // related entry. A bad value is a tiers-carrying 400 that never reaches the
+    // sibling.
+    let doc_type = validate_token(&state, "doc_type", &body.doc_type)?;
+    let feature = validate_token(&state, "feature", &body.feature)?;
+    let title = match body.title.as_deref() {
+        Some(t) if t.is_empty() || t.starts_with('-') => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("`title` `{t}` must be non-empty and not flag-shaped (no leading `-`)"),
+            ));
+        }
+        Some(t) => Some(t.to_string()),
+        None => None,
+    };
+    let mut related: Vec<String> = Vec::new();
+    if let Some(list) = &body.related {
+        for entry in list {
+            related.push(validate_list_entry(&state, "related", entry)?);
+        }
+    }
+
+    // Assemble the sibling argv: `vault add <doc_type> --feature <feature>
+    // [--title <title>] [--related <r>]* --json`. Every token is a fixed verb arg
+    // or a validated input; no client string is ever read as a flag.
+    let mut args: Vec<String> = vec!["vault".into(), "add".into(), doc_type];
+    args.push("--feature".into());
+    args.push(feature);
+    if let Some(t) = &title {
+        args.push("--title".into());
+        args.push(t.clone());
+    }
+    for r in &related {
+        args.push("--related".into());
+        args.push(r.clone());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    // No stdin body — `vault add` takes its params from argv. The same bounded
+    // runner forwards verbatim: a parseable `status`-bearing envelope (created OR
+    // failed) is Ok; only a true crash is an Err.
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let envelope = run_sibling_write_bounded(
+        &state,
+        &runner.invocation,
+        &arg_refs,
+        None,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
+        super::query_tiers(&state.active_cell()),
+        None,
+    ))
+}
+
 // --- /ops/rag/* brokering (rag-control-plane ADR D1/D2) ----------------------
 //
 // One namespace, two transports: GET reads + POST controls go over rag's HTTP
@@ -2413,5 +2537,203 @@ mod tests {
             "hung write sibling → 504"
         );
         assert!(err.1.0["error"].as_str().unwrap().contains("timed out"));
+    }
+
+    // --- W02: core CREATE channel (/ops/core/create) ------------------------
+
+    #[tokio::test]
+    async fn create_with_a_missing_required_field_400s_with_tiers() {
+        // W02: a missing required `doc_type`/`feature` (empty after deserialize)
+        // is a tiers-carrying 400 before any subprocess.
+        let (_dir, state) = sibling_state();
+        // Missing doc_type.
+        let err = ops_core_create(
+            State(state.clone()),
+            Json(CoreCreateBody {
+                doc_type: "".into(),
+                feature: "editor-demo".into(),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST, "missing doc_type → 400");
+        assert!(err.1.0["error"].as_str().unwrap().contains("doc_type"));
+        assert!(
+            err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+            "the 400 carries the tiers block"
+        );
+        // Missing feature.
+        let err = ops_core_create(
+            State(state),
+            Json(CoreCreateBody {
+                doc_type: "adr".into(),
+                feature: "".into(),
+                ..Default::default()
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST, "missing feature → 400");
+        assert!(err.1.0["error"].as_str().unwrap().contains("feature"));
+    }
+
+    #[tokio::test]
+    async fn create_field_validation_rejects_dangerous_inputs_with_a_tiered_400() {
+        // W02: a flag-shaped or out-of-grammar doc_type/feature, a flag-shaped
+        // title, and a flag-shaped related entry are each a tiers-carrying 400.
+        let (_dir, state) = sibling_state();
+        let cases: &[CoreCreateBody] = &[
+            CoreCreateBody {
+                doc_type: "--force".into(),
+                feature: "f".into(),
+                ..Default::default()
+            },
+            CoreCreateBody {
+                doc_type: "adr/evil".into(),
+                feature: "f".into(),
+                ..Default::default()
+            },
+            CoreCreateBody {
+                doc_type: "adr".into(),
+                feature: "--feature=x".into(),
+                ..Default::default()
+            },
+            CoreCreateBody {
+                doc_type: "adr".into(),
+                feature: "has space".into(),
+                ..Default::default()
+            },
+            CoreCreateBody {
+                doc_type: "adr".into(),
+                feature: "f".into(),
+                title: Some("--title-injection".into()),
+                ..Default::default()
+            },
+            CoreCreateBody {
+                doc_type: "adr".into(),
+                feature: "f".into(),
+                related: Some(vec!["--related-injection".into()]),
+                ..Default::default()
+            },
+        ];
+        for case in cases {
+            let body = CoreCreateBody {
+                doc_type: case.doc_type.clone(),
+                feature: case.feature.clone(),
+                title: case.title.clone(),
+                related: case.related.clone(),
+            };
+            let label = format!("{}/{}", body.doc_type, body.feature);
+            let err = ops_core_create(State(state.clone()), Json(body))
+                .await
+                .unwrap_err();
+            assert_eq!(
+                err.0,
+                StatusCode::BAD_REQUEST,
+                "case `{label}` must be a 400"
+            );
+            assert!(
+                err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+                "the 400 carries the tiers block"
+            );
+        }
+        // Clean kebab/word tokens pass validation; the subprocess is exercised by
+        // the forward tests below (which drive the runner directly).
+        assert!(validate_token(&state, "doc_type", "adr").is_ok());
+        assert!(validate_token(&state, "feature", "editor-demo").is_ok());
+        assert!(validate_token(&state, "feature", "grid_layout").is_ok());
+    }
+
+    /// A stub `vault add` that emits a `status:"created"` success envelope, exit
+    /// 0, carrying the new doc path/stem under `data` — vault add's real shape.
+    fn create_success() -> Vec<String> {
+        let payload = r#"{"schema":"vaultspec.vault.add.v1","status":"created","data":{"path":".vault/adr/2026-06-16-editor-demo-adr.md","stem":"2026-06-16-editor-demo-adr"}}"#;
+        if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ [Console]::Out.Write('{}') }}",
+                    payload.replace('\'', "''")
+                ),
+            ]
+        } else {
+            shell(&format!("printf '%s' '{payload}'"))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_create_success_is_forwarded_verbatim_under_data_envelope_with_tiers() {
+        // W02: a `status:"created"` success forwards VERBATIM under data.envelope
+        // with the tiers block — identical contract to the write channel. We drive
+        // the runner directly (the route's field validation is covered above) and
+        // assert the verbatim-forward shape the route emits.
+        let (_dir, state) = sibling_state();
+        let value = run_sibling_write_bounded(
+            &state,
+            &create_success(),
+            &[],
+            None,
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .expect("create success envelope is forwarded");
+        let Json(body) = super::super::envelope(
+            json!({ "envelope": value }),
+            super::super::query_tiers(&state.active_cell()),
+            None,
+        );
+        assert_eq!(body["data"]["envelope"]["status"], "created");
+        assert_eq!(
+            body["data"]["envelope"]["data"]["stem"],
+            "2026-06-16-editor-demo-adr"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "tiers block on the create success envelope"
+        );
+    }
+
+    /// A stub `vault add` that exits 1 emitting a `status:"failed"` envelope — a
+    /// business refusal that must forward VERBATIM as a 200, NOT a 502.
+    fn create_failed_exit1() -> Vec<String> {
+        let payload = r#"{"schema":"vaultspec.vault.add.v1","status":"failed","data":{"refused":true,"errors":["unknown doc type"],"checks":[]}}"#;
+        if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ [Console]::Out.Write('{}'); exit 1 }}",
+                    payload.replace('\'', "''")
+                ),
+            ]
+        } else {
+            shell(&format!("printf '%s' '{payload}'; exit 1"))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_create_envelope_exiting_1_is_forwarded_verbatim_not_a_502() {
+        // W02 (the load-bearing test): a `status:"failed"` create that exits 1 is
+        // a VALID business refusal forwarded VERBATIM under data.envelope on a 200,
+        // never a 502. The client branches on envelope.status + data.refused.
+        let (_dir, state) = sibling_state();
+        let value = run_sibling_write_bounded(
+            &state,
+            &create_failed_exit1(),
+            &[],
+            None,
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .expect("a status:failed create envelope is Ok (forwarded), not an Err");
+        assert_eq!(value["status"], "failed");
+        assert_eq!(value["data"]["refused"], true);
+        assert_eq!(value["data"]["errors"][0], "unknown doc type");
     }
 }
