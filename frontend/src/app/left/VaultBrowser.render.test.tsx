@@ -57,10 +57,14 @@ describe("VaultBrowser surface states + a11y (S21)", () => {
     renderBrowser();
     const nav = await screen.findByRole("navigation", { name: "vault browser" });
     expect(nav).toBeTruthy();
-    // Disclosure controls expose their expanded state for assistive tech.
+    // Flat sections (binding `LeftRail` 244:750): each group is a quiet
+    // SectionLabel eyebrow over its rows — no disclosure controls. The landmark
+    // lists navigable rows, each carrying its `.vault/` path as title.
     await waitFor(() => {
-      const groups = screen.getAllByRole("button", { expanded: true });
-      expect(groups.length).toBeGreaterThan(0);
+      const rows = screen
+        .getAllByRole("button")
+        .filter((b) => b.getAttribute("title")?.startsWith(".vault/"));
+      expect(rows.length).toBeGreaterThan(0);
     });
   });
 
@@ -151,16 +155,15 @@ describe("VaultBrowser surface states + a11y (S21)", () => {
     expect(document.querySelector("[data-vault-degraded]")).toBeNull();
   });
 
-  // The single linear nav list: every navigable button (group disclosure
-  // headers AND tree rows) in DOM order. Headers carry aria-expanded; rows
-  // carry a `.vault/` title — the two together are the roving list.
+  // The single linear nav list: every navigable ROW in DOM order. The binding
+  // `LeftRail` 244:750 vault state paints FLAT sections — a quiet SectionLabel
+  // eyebrow with no disclosure twisty — so only the rows are navigable; each
+  // carries a `.vault/` title and together they are the roving list.
   function navButtons(): HTMLButtonElement[] {
     return screen
       .getAllByRole("button")
-      .filter(
-        (b) =>
-          b.hasAttribute("aria-expanded") ||
-          b.getAttribute("title")?.startsWith(".vault/"),
+      .filter((b) =>
+        b.getAttribute("title")?.startsWith(".vault/"),
       ) as HTMLButtonElement[];
   }
 
@@ -179,59 +182,54 @@ describe("VaultBrowser surface states + a11y (S21)", () => {
     const others = navButtons().filter((b) => b.tabIndex !== 0);
     expect(others.length).toBeGreaterThan(0);
     expect(others.every((b) => b.tabIndex === -1)).toBe(true);
-    // The first navigable element is a group disclosure header (top-to-bottom
-    // focus order starts at the first header, not the first row).
-    expect(tabZero()[0].hasAttribute("aria-expanded")).toBe(true);
+    // The first navigable element is the first row (the flat vault state has no
+    // disclosure headers; top-to-bottom focus order starts at the first row).
+    expect(tabZero()[0].getAttribute("title")?.startsWith(".vault/")).toBe(true);
   });
 
-  it("moves the roving tabIndex 0 with ArrowDown/ArrowUp, stepping header → row", async () => {
+  it("moves the roving tabIndex 0 with ArrowDown/ArrowUp across the flat row list", async () => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
     await waitFor(() => expect(navButtons().length).toBeGreaterThan(2));
 
-    const header = tabZero()[0];
-    expect(header.hasAttribute("aria-expanded")).toBe(true);
-    header.focus();
-    // ArrowDown from the first header lands on its first row; the "0" follows.
-    fireEvent.keyDown(header, { key: "ArrowDown" });
+    const first = tabZero()[0];
+    expect(first.getAttribute("title")?.startsWith(".vault/")).toBe(true);
+    first.focus();
+    // ArrowDown moves the "0" to the next row in the single linear list.
+    fireEvent.keyDown(first, { key: "ArrowDown" });
     const second = navButtons().find((b) => b.tabIndex === 0)!;
     expect(tabZero()).toHaveLength(1);
     expect(document.activeElement).toBe(second);
+    expect(second).not.toBe(first);
     expect(second.getAttribute("title")?.startsWith(".vault/")).toBe(true);
-    // ArrowUp returns to the header — disclosure headers ARE arrow-reachable
-    // (so a collapsed group can be reopened from the keyboard).
+    // ArrowUp returns to the first row.
     fireEvent.keyDown(second, { key: "ArrowUp" });
     expect(tabZero()).toHaveLength(1);
-    expect(document.activeElement).toBe(header);
-    expect(header.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(first);
+    expect(first.tabIndex).toBe(0);
     // ArrowUp at the top edge clamps rather than wrapping or escaping the rail.
-    fireEvent.keyDown(header, { key: "ArrowUp" });
-    expect(document.activeElement).toBe(header);
+    fireEvent.keyDown(first, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(first);
   });
 
-  it("keeps a collapsed group's header arrow-reachable to reopen it", async () => {
+  it("paints flat sections (no disclosure headers) whose rows form one list spanning groups", async () => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
     await waitFor(() => expect(navButtons().length).toBeGreaterThan(2));
-
-    const headers = navButtons().filter((b) => b.hasAttribute("aria-expanded"));
-    expect(headers.length).toBeGreaterThan(0);
-    const first = headers[0];
-    // Collapse the first group.
-    fireEvent.click(first);
-    expect(first.getAttribute("aria-expanded")).toBe("false");
-    // The header is still in the roving list and still reachable: arrowing from
-    // it down reaches the NEXT header (its rows are gone), and arrowing back up
-    // returns to it — it never falls out of the keyboard path.
+    // The binding vault state has NO collapse affordance — no button carries
+    // aria-expanded anywhere in the browser.
+    expect(
+      screen.getAllByRole("button").filter((b) => b.hasAttribute("aria-expanded")),
+    ).toHaveLength(0);
+    // Arrowing down from the first row walks the single linear row list, which
+    // crosses section boundaries (the flat list is not partitioned by header).
+    const first = tabZero()[0];
     first.focus();
     fireEvent.keyDown(first, { key: "ArrowDown" });
     const next = navButtons().find((b) => b.tabIndex === 0)!;
     expect(next).not.toBe(first);
-    expect(next.hasAttribute("aria-expanded")).toBe(true);
-    fireEvent.keyDown(next, { key: "ArrowUp" });
-    expect(document.activeElement).toBe(first);
-    expect(first.tabIndex).toBe(0);
+    expect(next.getAttribute("title")?.startsWith(".vault/")).toBe(true);
   });
 });

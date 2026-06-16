@@ -10,7 +10,6 @@
 // document node id. It fetches nothing and defines no model — chrome over the
 // one projection.
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 
@@ -32,7 +31,6 @@ import "./menus/vaultDocMenu";
 // Shared row presentation (doc marks, freshness, sizing) — the SAME helpers the
 // tree browser paints with, so the two projections of `/vault-tree` never drift.
 import {
-  CHEVRON_PX,
   DOC_MARK_PX,
   docMark,
   docMarkName as sharedDocMarkName,
@@ -135,7 +133,6 @@ export function VaultBrowser({
   const scope = useActiveScope();
   const tree = useVaultTree(scope);
   const availability = useVaultTreeAvailability(scope);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // Bidirectional selection by default (S39): clicks select, selections
   // highlight; explicit props override for embedding contexts.
   const sharedHighlight = useHighlightedPath(tree.data?.entries);
@@ -233,16 +230,14 @@ export function VaultBrowser({
   const filteredToNothing = activeFilter.length > 0 && filteredEntries.length === 0;
   const now = Date.now();
 
-  // Build the single linear nav order for THIS render: each group's header,
-  // then (when expanded) its rows, in top-to-bottom order. Drives the arrow
-  // handler and the roving-tabindex "0" placement. The active key defaults to
-  // the first navigable element until the user moves it (M2 top-to-bottom).
+  // Build the single linear nav order for THIS render: every visible row, in
+  // top-to-bottom order. The binding `LeftRail` 244:750 vault state paints flat
+  // sections — a quiet SectionLabel eyebrow with NO disclosure twisty and NO
+  // count, all rows always visible — so the section headers are not navigable
+  // controls and the roving-tabindex "0" rides the rows alone.
   const order: string[] = [];
-  for (const [group, entries] of groups) {
-    order.push(`header:${group}`);
-    if (!collapsed.has(group)) {
-      for (const entry of entries) order.push(`row:${entry.path}`);
-    }
+  for (const [, entries] of groups) {
+    for (const entry of entries) order.push(`row:${entry.path}`);
   }
   navOrder.current = order;
   // Resolve the element that holds tabIndex 0: the tracked active key when it
@@ -292,9 +287,6 @@ export function VaultBrowser({
         )
       ) : (
         [...groups.entries()].map(([group, entries]) => {
-          const isCollapsed = collapsed.has(group);
-          const sectionId = `vault-group-${group}`;
-          const headerKey = `header:${group}`;
           // Per-group leading cue: the doc type's bound scene/category color (the
           // kit StatusDot), with the doc-type mark as the fallback for a type with
           // no bound color (e.g. reference).
@@ -302,94 +294,64 @@ export function VaultBrowser({
           const FallbackMark = docMark(group);
           return (
             <section key={group} className="mt-fg-2 first:mt-0">
-              <button
-                ref={registerNav(headerKey)}
-                type="button"
-                aria-expanded={!isCollapsed}
-                aria-controls={sectionId}
-                tabIndex={rovingKey === headerKey ? 0 : -1}
-                onKeyDown={navKeyDown(headerKey)}
-                onFocus={() => setActiveKey(headerKey)}
-                onClick={() =>
-                  setCollapsed((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(group)) next.delete(group);
-                    else next.add(group);
-                    return next;
-                  })
-                }
-                // Group header (binding `LeftRail` 244:750): a disclosure twisty
-                // plus the kit `SectionLabel` eyebrow (RESEARCH / DECISIONS / …)
-                // with the count. SectionLabel supplies the row's type + padding;
-                // the whole row is the disclosure control.
-                className="flex w-full items-center rounded-fg-xs transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-              >
-                <span className="shrink-0 ps-fg-1 text-ink-faint" aria-hidden>
-                  {isCollapsed ? (
-                    <ChevronRight size={CHEVRON_PX} />
-                  ) : (
-                    <ChevronDown size={CHEVRON_PX} />
-                  )}
-                </span>
-                <SectionLabel count={entries.length} className="min-w-0 flex-1">
-                  {docGroupLabel(group)}
-                </SectionLabel>
-              </button>
-              {!isCollapsed && (
-                <ul id={sectionId} className="ml-fg-3 mt-fg-0-5 space-y-fg-0-5">
-                  {entries.map((entry) => {
-                    const fresh = freshnessLabel(entry.dates.modified, now);
-                    const highlighted = entry.path === highlight;
-                    const rowKey = `row:${entry.path}`;
-                    // Plan rows carry the grayscale-safe status pip (✓/◐/○) in the
-                    // leading slot, derived from the engine-projected checkbox
-                    // progress (the SAME `lifecycle_in_scope` facet the node graph
-                    // reads). Absent progress reads the honest not-started baseline.
-                    const status = group === "plan" ? planStatus(entry.progress) : null;
-                    const StatusMark = status ? planStatusMark(status) : null;
-                    return (
-                      <li key={entry.path}>
-                        <button
-                          ref={registerNav(rowKey)}
-                          type="button"
-                          title={entry.path}
-                          aria-current={highlighted ? "page" : undefined}
-                          tabIndex={rovingKey === rowKey ? 0 : -1}
-                          onClick={() => clickHandler(entry)}
-                          onFocus={() => setActiveKey(rowKey)}
-                          onContextMenu={(e) => {
+              {/* Flat group header (binding `LeftRail` 244:750 vault state): a
+                  quiet kit SectionLabel eyebrow — NO disclosure twisty, NO count.
+                  The board paints flat, always-expanded sections. */}
+              <SectionLabel className="px-fg-1">{docGroupLabel(group)}</SectionLabel>
+              <ul className="mt-fg-0-5 space-y-fg-0-5">
+                {entries.map((entry) => {
+                  const fresh = freshnessLabel(entry.dates.modified, now);
+                  const highlighted = entry.path === highlight;
+                  const rowKey = `row:${entry.path}`;
+                  // Plan rows carry the grayscale-safe status pip (✓/◐/○) in the
+                  // leading slot, derived from the engine-projected checkbox
+                  // progress (the SAME `lifecycle_in_scope` facet the node graph
+                  // reads). Absent progress reads the honest not-started baseline.
+                  const status = group === "plan" ? planStatus(entry.progress) : null;
+                  const StatusMark = status ? planStatusMark(status) : null;
+                  return (
+                    <li key={entry.path}>
+                      <button
+                        ref={registerNav(rowKey)}
+                        type="button"
+                        title={entry.path}
+                        aria-current={highlighted ? "page" : undefined}
+                        tabIndex={rovingKey === rowKey ? 0 : -1}
+                        onClick={() => clickHandler(entry)}
+                        onFocus={() => setActiveKey(rowKey)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          openContextMenu(vaultDocEntity(entry), {
+                            x: e.clientX,
+                            y: e.clientY,
+                          });
+                        }}
+                        onKeyDown={(e) => {
+                          // Keyboard menu entry (ContextMenu key / Shift+F10):
+                          // anchor at the row's bottom-left, then fall through
+                          // to the roving-tabindex arrow handler for everything
+                          // else (preserves the single-Tab-stop nav model).
+                          if (
+                            e.key === "ContextMenu" ||
+                            (e.shiftKey && e.key === "F10")
+                          ) {
                             e.preventDefault();
+                            const r = e.currentTarget.getBoundingClientRect();
                             openContextMenu(vaultDocEntity(entry), {
-                              x: e.clientX,
-                              y: e.clientY,
+                              x: r.left,
+                              y: r.bottom,
                             });
-                          }}
-                          onKeyDown={(e) => {
-                            // Keyboard menu entry (ContextMenu key / Shift+F10):
-                            // anchor at the row's bottom-left, then fall through
-                            // to the roving-tabindex arrow handler for everything
-                            // else (preserves the single-Tab-stop nav model).
-                            if (
-                              e.key === "ContextMenu" ||
-                              (e.shiftKey && e.key === "F10")
-                            ) {
-                              e.preventDefault();
-                              const r = e.currentTarget.getBoundingClientRect();
-                              openContextMenu(vaultDocEntity(entry), {
-                                x: r.left,
-                                y: r.bottom,
-                              });
-                              return;
-                            }
-                            navKeyDown(rowKey)(e);
-                          }}
-                          className={`flex w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 py-fg-0-5 pe-fg-1 ps-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                            highlighted
-                              ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
-                              : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
-                          }`}
-                        >
-                          {/* Leading category cue (binding `LeftRail` 244:750 row):
+                            return;
+                          }
+                          navKeyDown(rowKey)(e);
+                        }}
+                        className={`flex w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 py-fg-0-5 pe-fg-1 ps-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                          highlighted
+                            ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
+                            : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
+                        }`}
+                      >
+                        {/* Leading category cue (binding `LeftRail` 244:750 row):
                               the kit StatusDot tinted by the doc type's bound scene/
                               category color, so the dot and its graph node agree.
                               PLAN rows instead carry the grayscale-safe status pip
@@ -397,50 +359,49 @@ export function VaultBrowser({
                               falls back to its doc-type mark so the row is never
                               blank. Selection is the kit ListRow treatment — a 2px
                               left accent bar + accent-subtle tint on the row. */}
-                          {StatusMark && status ? (
-                            <span
-                              className={`flex shrink-0 items-center ${planStatusToneClass(status)}`}
-                              aria-label={`plan ${planStatusLabel(status)}`}
-                              data-plan-status={status}
-                            >
-                              <StatusMark size={STATUS_MARK_PX} />
-                            </span>
-                          ) : rowCategory ? (
-                            <span className="flex shrink-0 items-center">
-                              <StatusDot category={rowCategory} />
-                            </span>
-                          ) : (
-                            <span
-                              className="flex shrink-0 items-center text-ink-faint"
-                              aria-hidden
-                            >
-                              <FallbackMark size={DOC_MARK_PX} />
-                            </span>
-                          )}
-                          <span className="min-w-0 shrink truncate">
-                            {entryStem(entry.path)}
+                        {StatusMark && status ? (
+                          <span
+                            className={`flex shrink-0 items-center ${planStatusToneClass(status)}`}
+                            aria-label={`plan ${planStatusLabel(status)}`}
+                            data-plan-status={status}
+                          >
+                            <StatusMark size={STATUS_MARK_PX} />
                           </span>
-                          {/* Feature tag as the kit Chip (feature-toned), matching
+                        ) : rowCategory ? (
+                          <span className="flex shrink-0 items-center">
+                            <StatusDot category={rowCategory} />
+                          </span>
+                        ) : (
+                          <span
+                            className="flex shrink-0 items-center text-ink-faint"
+                            aria-hidden
+                          >
+                            <FallbackMark size={DOC_MARK_PX} />
+                          </span>
+                        )}
+                        <span className="min-w-0 shrink truncate">
+                          {entryStem(entry.path)}
+                        </span>
+                        {/* Feature tag as the kit Chip (feature-toned), matching
                               the binding row's #feature-tag chip. */}
-                          {entry.feature_tags[0] && (
-                            <Chip category="feature">#{entry.feature_tags[0]}</Chip>
-                          )}
-                          {fresh && (
-                            <span
-                              className={`ml-auto shrink-0 text-caption ${
-                                isFresh(fresh) ? "text-state-active" : "text-ink-faint"
-                              }`}
-                              data-tabular
-                            >
-                              {fresh}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+                        {entry.feature_tags[0] && (
+                          <Chip category="feature">#{entry.feature_tags[0]}</Chip>
+                        )}
+                        {fresh && (
+                          <span
+                            className={`ml-auto shrink-0 text-caption ${
+                              isFresh(fresh) ? "text-state-active" : "text-ink-faint"
+                            }`}
+                            data-tabular
+                          >
+                            {fresh}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
           );
         })
