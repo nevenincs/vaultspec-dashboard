@@ -869,6 +869,123 @@ export interface OpsResult {
   tiers: TiersBlock;
 }
 
+// --- §6 vault write/create ops (document-editor backend) -------------------------
+//
+// Document mutation goes through the engine's brokered core-ops front door, which
+// forwards vaultspec-core's sibling `{schema, status, data}` envelope VERBATIM
+// under `data.envelope` with the tiers block (engine-read-and-infer: the engine
+// owns no vault-write semantics — it forwards core's verb result). Writes hit
+// `POST /ops/core/{verb}/write` (verb ∈ set-body | set-frontmatter | edit); create
+// hits `POST /ops/core/create`. BOTH success and business-refusal return HTTP 200
+// — the client branches on the sibling envelope's `status` + the inner
+// `conflict`/`refused`/`checks` fields, NEVER on the HTTP code (a transport error
+// is a tiers-bearing EngineError, distinct from a refusal).
+
+/** The body of a write op (`set-body` | `set-frontmatter` | `edit`). `ref` is the
+ *  doc STEM (the `doc:` prefix stripped from the node id). `body` carries the new
+ *  document text for `set-body`/`edit`; the frontmatter fields carry the new
+ *  metadata for `set-frontmatter`. `expected_blob_hash` is the optimistic-
+ *  concurrency token echoed from the last read's `blob_hash`; a mismatch is the
+ *  conflict the editor reconciles (never a silent overwrite). */
+export interface OpsWriteBody {
+  ref: string;
+  body?: string;
+  expected_blob_hash?: string;
+  date?: string;
+  tags?: string[];
+  related?: string[];
+}
+
+/** The body of a create op (`POST /ops/core/create`). */
+export interface OpsCreateBody {
+  doc_type: string;
+  feature: string;
+  title?: string;
+  related?: string[];
+}
+
+/**
+ * The typed, discriminated result of a write/create op, interpreted by
+ * `adaptOpsWrite` from the sibling envelope's `status` + `data` fields (never the
+ * HTTP code). Four outcomes the editor drives its state from:
+ *  - `saved`    — `set-body`/`edit`/`set-frontmatter` succeeded; the new
+ *                 `blobHash` is the next optimistic-concurrency base, and `checks`
+ *                 carries any non-fatal advisory checks.
+ *  - `conflict` — the `expected_blob_hash` did not match the on-disk blob
+ *                 (someone else wrote); `expected`/`actual` drive the reconcile UI.
+ *  - `refused`  — a frontmatter (or other) validation refusal; `checks`/`errors`
+ *                 explain why the write was rejected without parsing prose.
+ *  - `created`  — a `create` succeeded; the new doc's `path` + `stem`.
+ */
+export type OpsWriteResult =
+  | { kind: "saved"; path: string; blobHash: string; checks: unknown[] }
+  | { kind: "conflict"; expected: string; actual: string; path?: string }
+  | { kind: "refused"; checks: unknown[]; errors: string[]; path?: string }
+  | { kind: "created"; path: string; stem: string };
+
+/** Narrow the sibling envelope (`{schema, status, data}`) the engine forwards
+ *  verbatim under `data.envelope`. The transport already unwrapped `{data, tiers}`
+ *  onto the flat `OpsResult` shape, so `envelope` here is that sibling object. */
+function envelopeData(envelope: unknown): {
+  status?: string;
+  data: Record<string, unknown>;
+} {
+  if (!envelope || typeof envelope !== "object") return { data: {} };
+  const env = envelope as { status?: unknown; data?: unknown };
+  const status = typeof env.status === "string" ? env.status : undefined;
+  const data =
+    env.data && typeof env.data === "object"
+      ? (env.data as Record<string, unknown>)
+      : {};
+  return { status, data };
+}
+
+const asString = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/**
+ * Interpret a write/create `OpsResult` into the typed `OpsWriteResult`, branching
+ * on the sibling envelope's `status` + the inner `data` fields, NEVER on an HTTP
+ * code (the wire returns 200 for both success and business-refusal). A blob-hash
+ * conflict (`data.conflict === true`) and a validation refusal (`data.refused ===
+ * true`) are distinct non-fatal outcomes the editor reconciles, NOT thrown errors;
+ * an unrecognized failure shape degrades to a `refused` with the message it
+ * carries so the caller still surfaces it honestly rather than swallowing it.
+ */
+export function adaptOpsWrite(result: OpsResult): OpsWriteResult {
+  const { status, data } = envelopeData(result.envelope);
+  // A conflict and a refusal both ride a `status: "failed"` envelope; the inner
+  // `conflict`/`refused` flags discriminate them (branch on data, not HTTP).
+  if (data.conflict === true) {
+    return {
+      kind: "conflict",
+      expected: asString(data.expected),
+      actual: asString(data.actual),
+      path: typeof data.path === "string" ? data.path : undefined,
+    };
+  }
+  if (data.refused === true) {
+    return {
+      kind: "refused",
+      checks: Array.isArray(data.checks) ? data.checks : [],
+      errors: Array.isArray(data.errors)
+        ? data.errors.filter((e): e is string => typeof e === "string")
+        : [],
+      path: typeof data.path === "string" ? data.path : undefined,
+    };
+  }
+  if (status === "created") {
+    return { kind: "created", path: asString(data.path), stem: asString(data.stem) };
+  }
+  // Any non-failed write status (`updated` / `set` / `ok`) with no conflict/refusal
+  // flag is a successful save; the new blob hash is the next concurrency base.
+  return {
+    kind: "saved",
+    path: asString(data.path),
+    blobHash: asString(data.blob_hash),
+    checks: Array.isArray(data.checks) ? data.checks : [],
+  };
+}
+
 // --- read-only /ops/git pass-through (dashboard-pipeline-wire W04) ---------------------
 //
 // The live engine NOW serves a read-only `/ops/git/{verb}` pass-through (POST):
@@ -1442,6 +1559,24 @@ export class EngineClient {
 
   opsRag(verb: string, body: unknown = {}): Promise<OpsResult> {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
+  }
+
+  /** A document WRITE op (document-editor backend): `set-body` | `set-frontmatter`
+   *  | `edit` against `POST /ops/core/{verb}/write`. The engine forwards core's
+   *  `{schema, status, data}` envelope VERBATIM under `data.envelope` with the
+   *  tiers block (engine-read-and-infer), HTTP 200 for both success and business-
+   *  refusal; the caller interprets the outcome via `adaptOpsWrite`, branching on
+   *  the envelope status + data, never the HTTP code. */
+  opsCoreWrite(verb: string, body: OpsWriteBody): Promise<OpsResult> {
+    return this.post(`/ops/core/${encodeURIComponent(verb)}/write`, body);
+  }
+
+  /** A document CREATE op (document-editor backend): `POST /ops/core/create`. The
+   *  engine forwards core's `vaultspec.vault.add.v1` `created` envelope verbatim
+   *  under `data.envelope` with the tiers block; `adaptOpsWrite` yields the new
+   *  doc's path + stem. */
+  opsCoreCreate(body: OpsCreateBody): Promise<OpsResult> {
+    return this.post("/ops/core/create", body);
   }
 
   /** The brokered rag READ verbs (rag-control-plane ADR D2): a GET against the

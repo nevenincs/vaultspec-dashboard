@@ -26,6 +26,7 @@ import type {
   DiscoverResponse,
   EmbeddingsResponse,
   EngineEdge,
+  EngineNode,
   EngineStatus,
   GitFileDiff,
   GraphFilter,
@@ -34,6 +35,8 @@ import type {
   HistoryResponse,
   InteriorStep,
   MapResponse,
+  OpsResult,
+  OpsWriteResult,
   PipelineArtifact,
   PlanInterior,
   SessionUpdate,
@@ -45,11 +48,14 @@ import type {
 import {
   CANONICAL_TIERS,
   EngineError,
+  adaptOpsWrite,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
   useEngineStatus,
 } from "./engine";
+import { dispatchOps } from "./opsActions";
+import { parseDocument } from "../../app/viewer/FrontmatterHeader";
 import {
   isRagRunning,
   mergeNumstat,
@@ -1319,6 +1325,349 @@ export function usePutSettings() {
       void queryClient.invalidateQueries({ queryKey: engineKeys.settings() });
     },
   });
+}
+
+// --- document write/create mutations (document-editor backend) -------------------
+//
+// The save/create/frontmatter mutations the editor drives. They run through the
+// ONE platform ops-dispatch seam (`dispatchOps`, opsActions) — NOT a direct
+// engine-client call — so every vault mutation stays logged, traced, and centrally
+// guardable, exactly like the rag control verbs (dashboard-layer-ownership: the app
+// layer never reaches the engine client itself). The dispatch resolves with the
+// brokered `OpsResult`; `adaptOpsWrite` interprets the sibling envelope's `status`
+// + `data` into the typed `OpsWriteResult` (saved / conflict / refused / created),
+// branching on those fields and NEVER on the HTTP code (the wire returns 200 for
+// both success and business-refusal). A conflict/refusal is a typed result the
+// caller drives editor state from — NOT a thrown error — so the mutation resolves
+// (never rejects) on a business outcome; only a transport fault (a tiers-bearing
+// EngineError) rejects. Concurrency rides the read's echoed `blob_hash`; degradation
+// is read from the result's tiers, never guessed from transport
+// (degradation-is-read-from-tiers-not-guessed-from-errors).
+
+/** Strip the `doc:` prefix from a node id to recover the document STEM the write
+ *  ops address by (`ref`). A non-`doc:` id passes through unchanged so a caller
+ *  that already holds a bare stem is tolerated. */
+export function stemFromNodeId(nodeId: string): string {
+  return nodeId.startsWith("doc:") ? nodeId.slice("doc:".length) : nodeId;
+}
+
+/** Run a write op through the ops-dispatch seam and interpret its result; surface
+ *  the brokered tiers alongside the typed outcome so the caller can read
+ *  degradation from tiers (never from transport). */
+async function runWriteOp(
+  verb: string,
+  body: {
+    ref: string;
+    body?: string;
+    expected_blob_hash?: string;
+    date?: string;
+    tags?: string[];
+    related?: string[];
+  },
+): Promise<{ result: OpsWriteResult; tiers: TiersBlock }> {
+  const ops: OpsResult = await dispatchOps({
+    target: "core",
+    verb,
+    mode: "write",
+    body,
+  });
+  return { result: adaptOpsWrite(ops), tiers: ops.tiers };
+}
+
+/** The arguments to a body save: the open doc's node id + scope, the new text, and
+ *  the optimistic-concurrency base (the `blob_hash` the draft was read at). */
+export interface SaveBodyArgs {
+  nodeId: string;
+  scope: string | null;
+  text: string;
+  baseBlobHash: string;
+}
+
+/**
+ * Invalidate the reads a successful write/create makes stale: the open doc's
+ * content entry (so the next read returns the new `blob_hash` + bytes), the whole
+ * `graph` subtree (a body/frontmatter change can shift edges/derivations), and the
+ * scope's `vault-tree` (frontmatter dates/tags feed the tree row). Centralized so
+ * the three mutations stay consistent. A create additionally refreshes `filters`
+ * (a new doc can introduce a new feature/doc-type facet).
+ */
+function invalidateAfterWrite(
+  queryClient: ReturnType<typeof useQueryClient>,
+  scope: string | null,
+  nodeId?: string,
+): void {
+  if (scope !== null && nodeId !== undefined) {
+    void queryClient.invalidateQueries({
+      queryKey: engineKeys.content(scope, nodeId),
+    });
+  }
+  void queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
+  if (scope !== null) {
+    void queryClient.invalidateQueries({ queryKey: engineKeys.vaultTree(scope) });
+  }
+}
+
+/**
+ * Save the open document's body (`set-body`). Resolves with the typed
+ * `OpsWriteResult` — a `conflict` (the optimistic blob-hash base went stale) or a
+ * `refused` (a validation rejection) is a typed result the caller drives editor
+ * state from, NOT a thrown error; only a transport fault rejects. On a `saved`
+ * outcome the content / graph / vault-tree reads are invalidated so the next read
+ * returns the new blob. The new `blob_hash` is echoed in the result for the caller
+ * to adopt as the next optimistic-concurrency base.
+ */
+export function useSaveBody() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: SaveBodyArgs) =>
+      runWriteOp("set-body", {
+        ref: stemFromNodeId(args.nodeId),
+        body: args.text,
+        expected_blob_hash: args.baseBlobHash,
+      }),
+    onSuccess: ({ result }, args) => {
+      if (result.kind === "saved") {
+        invalidateAfterWrite(queryClient, args.scope, args.nodeId);
+      }
+    },
+  });
+}
+
+/** The arguments to a frontmatter write (`set-frontmatter`): the open doc + scope,
+ *  plus the metadata fields to set. The body text is untouched. */
+export interface SetFrontmatterArgs {
+  nodeId: string;
+  scope: string | null;
+  date?: string;
+  tags?: string[];
+  related?: string[];
+  baseBlobHash: string;
+}
+
+/**
+ * Set the open document's frontmatter (`set-frontmatter`): date / tags / related.
+ * Same typed-result discipline as `useSaveBody` — a `conflict`/`refused` resolves
+ * (never throws); a frontmatter validation refusal arrives as a `refused` carrying
+ * the `checks` + `errors` so the editor explains the rejection without parsing
+ * prose. Invalidates content / graph / vault-tree on a successful save.
+ */
+export function useSetFrontmatter() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: SetFrontmatterArgs) =>
+      runWriteOp("set-frontmatter", {
+        ref: stemFromNodeId(args.nodeId),
+        expected_blob_hash: args.baseBlobHash,
+        date: args.date,
+        tags: args.tags,
+        related: args.related,
+      }),
+    onSuccess: ({ result }, args) => {
+      if (result.kind === "saved") {
+        invalidateAfterWrite(queryClient, args.scope, args.nodeId);
+      }
+    },
+  });
+}
+
+/** The arguments to a document create (`create`): the scope it lands in, the doc
+ *  type + feature (the only required fields), an optional title, and optional
+ *  related stems. */
+export interface CreateDocArgs {
+  scope: string | null;
+  docType: string;
+  feature: string;
+  title?: string;
+  related?: string[];
+}
+
+/**
+ * Create a new document (`create`). Resolves with `{ result, nodeId }` where
+ * `result` is the typed `OpsWriteResult` (`created` on success, carrying the new
+ * doc's `path` + `stem`; `refused` on a validation rejection) and `nodeId` is the
+ * synthesized `doc:<stem>` id (null when the create was refused). On a `created`
+ * outcome the scope's `vault-tree`, the whole `graph` subtree, and the scope's
+ * `filters` vocabulary are invalidated (a new doc can introduce a new facet).
+ */
+export function useCreateDoc() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      args: CreateDocArgs,
+    ): Promise<{
+      result: OpsWriteResult;
+      tiers: TiersBlock;
+      nodeId: string | null;
+    }> => {
+      const ops: OpsResult = await dispatchOps({
+        target: "core",
+        verb: "create",
+        mode: "create",
+        body: {
+          doc_type: args.docType,
+          feature: args.feature,
+          title: args.title,
+          related: args.related,
+        },
+      });
+      const result = adaptOpsWrite(ops);
+      const nodeId = result.kind === "created" ? `doc:${result.stem}` : null;
+      return { result, tiers: ops.tiers, nodeId };
+    },
+    onSuccess: ({ result }, args) => {
+      if (result.kind === "created" && args.scope !== null) {
+        void queryClient.invalidateQueries({
+          queryKey: engineKeys.vaultTree(args.scope),
+        });
+        void queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
+        void queryClient.invalidateQueries({
+          queryKey: engineKeys.filters(args.scope),
+        });
+      }
+    },
+  });
+}
+
+// --- read-side editor derivations (document-editor backend) ----------------------
+//
+// The editor's read-side projections — all derived from EXISTING wire reads (the
+// graph node payload, the content text, the parsed frontmatter), NO new content-
+// endpoint field. Each is a pure projection over a query the stores layer already
+// owns (views-are-projections-of-one-model): the editor chrome consumes the derived
+// view, never re-deriving from the raw graph slice or re-fetching.
+
+/**
+ * Derive a node's `doc_type` from the graph slice (the `EngineNode.doc_type`
+ * facet). Pure: scans the served nodes for the id and returns its type, or null
+ * when the node is absent / carries no type. No new wire field — the doc type
+ * already rides every document node.
+ */
+export function deriveDocType(
+  nodeId: string | null,
+  nodes: EngineNode[] | undefined,
+): string | null {
+  if (nodeId === null || !nodes) return null;
+  const node = nodes.find((n) => n.id === nodeId);
+  return node?.doc_type ?? null;
+}
+
+/**
+ * Stores hook: the open node's `doc_type`, read from the active scope's graph
+ * slice. A projection over the SAME `/graph/query` the canvas consumes (no new
+ * read); the editor uses it to pick the right frontmatter template / validation.
+ */
+export function useDocType(nodeId: string | null, scope: string | null): string | null {
+  const slice = useGraphSlice(scope, undefined, undefined, "document");
+  return deriveDocType(nodeId, slice.data?.nodes);
+}
+
+/** Words-per-minute the read-time estimate assumes (a common prose reading pace). */
+export const READ_TIME_WPM = 200;
+
+/** A read-time estimate derived from the document text: the minute count and
+ *  whether it is a floor (the served body was truncated, so the true read time is
+ *  AT LEAST this — honest "≥ N min"). */
+export interface ReadTimeEstimate {
+  /** Whole minutes (ceil of words ÷ WPM); at least 1 for any non-empty body. */
+  minutes: number;
+  /** True when the served body was truncated — the estimate is a floor. */
+  atLeast: boolean;
+  /** The counted word total of the served (possibly truncated) text. */
+  words: number;
+}
+
+/**
+ * Derive a read-time estimate from the content text (word count ÷ ~200 wpm). When
+ * the served body was truncated (`truncated` non-null), the estimate is an honest
+ * FLOOR (`atLeast: true`) — the true read time is at least this, never a fabricated
+ * exact value over a partial body. Pure over the already-fetched content text; no
+ * new wire field.
+ */
+export function deriveReadTime(
+  text: string,
+  truncated: ContentTruncated | null,
+): ReadTimeEstimate {
+  const words = text.trim().length === 0 ? 0 : text.trim().split(/\s+/).length;
+  const minutes = words === 0 ? 0 : Math.max(1, Math.ceil(words / READ_TIME_WPM));
+  return { minutes, atLeast: truncated !== null, words };
+}
+
+/**
+ * Stores hook: the open document's read-time estimate, derived from its content
+ * view's text (a projection over the SAME `/nodes/{id}/content` read the markdown
+ * reader consumes). Honest floor when the body was truncated.
+ */
+export function useReadTime(
+  nodeId: string | null,
+  scope: string | null,
+): ReadTimeEstimate {
+  const content = useContentView(nodeId, scope);
+  return deriveReadTime(content.text, content.truncated);
+}
+
+/** One resolved related-link: the related document's `doc:<stem>` id and the
+ *  structural state of the open node's outbound edge to it (`resolved` when the
+ *  link lands on a live node, `stale`/`broken` when the edge says so, or `absent`
+ *  when the frontmatter names a related stem the graph carries no edge for). */
+export interface LinkResolution {
+  /** The related document stem named in the frontmatter. */
+  stem: string;
+  /** The synthesized `doc:<stem>` target node id. */
+  nodeId: string;
+  /** The structural state of the open node's outbound edge to the target, or
+   *  `absent` when no such edge exists in the served slice. */
+  state: "resolved" | "stale" | "broken" | "absent";
+}
+
+/**
+ * Derive the resolution state of each frontmatter `related:` link: join the parsed
+ * related stems (→ `doc:<stem>`) against the open node's OUTBOUND structural edges
+ * in the graph slice, reading each edge's `state` (`resolved`/`stale`/`broken`). A
+ * related stem the slice carries no matching outbound edge for is `absent` (the
+ * frontmatter names it but the graph has no structural link yet) — surfaced
+ * honestly, never silently dropped. Pure over the parsed frontmatter + the served
+ * edges; no new wire field.
+ */
+export function deriveLinkResolution(
+  nodeId: string | null,
+  text: string,
+  edges: EngineEdge[] | undefined,
+): LinkResolution[] {
+  if (nodeId === null) return [];
+  const related = parseDocument(text).frontmatter?.related ?? [];
+  // Index the open node's outbound STRUCTURAL edges by destination so each related
+  // stem reads its edge state in one pass.
+  const outbound = new Map<string, EngineEdge["state"]>();
+  for (const edge of edges ?? []) {
+    if (edge.src === nodeId && edge.tier === "structural") {
+      outbound.set(edge.dst, edge.state);
+    }
+  }
+  return related.map((stem) => {
+    const targetId = `doc:${stem}`;
+    const state = outbound.get(targetId);
+    return {
+      stem,
+      nodeId: targetId,
+      state: state ?? "absent",
+    };
+  });
+}
+
+/**
+ * Stores hook: the resolution state of the open document's frontmatter `related:`
+ * links — each related stem joined to the open node's outbound structural edge
+ * state in the graph slice. A projection over the content text (frontmatter) + the
+ * SAME `/graph/query` the canvas consumes; the editor renders resolved / stale /
+ * broken / absent affordances from it without re-fetching.
+ */
+export function useLinkResolution(
+  nodeId: string | null,
+  scope: string | null,
+): LinkResolution[] {
+  const content = useContentView(nodeId, scope);
+  const slice = useGraphSlice(scope, undefined, undefined, "document");
+  return deriveLinkResolution(nodeId, content.text, slice.data?.edges);
 }
 
 // --- git working-tree state (git-diff-browser ADR) -----------------------------------

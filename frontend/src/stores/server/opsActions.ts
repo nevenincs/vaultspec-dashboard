@@ -6,28 +6,53 @@
 // engine client itself.
 
 import { appDispatcher } from "../../platform/dispatch/middleware";
-import { engineClient, type OpsResult } from "./engine";
+import {
+  engineClient,
+  type OpsCreateBody,
+  type OpsResult,
+  type OpsWriteBody,
+} from "./engine";
 
 export const OPS_ACTION = "ops:run";
 
 export interface OpsPayload {
   target: "core" | "rag";
   verb: string;
-  /** Optional validated control args (rag-control-plane: reindex type/clean,
-   *  watcher debounce/cooldown, evict root). Forwarded as the POST body to the
-   *  brokered control verb; absent for argument-free verbs. */
+  /**
+   * The dispatch mode for a `core` target (document-editor backend): `control`
+   * (default) runs the argument-free `opsCore` control verb; `write` runs a
+   * document mutation (`set-body` | `set-frontmatter` | `edit`) against
+   * `/ops/core/{verb}/write`; `create` runs `/ops/core/create`. The write/create
+   * modes carry their payload in `body`. A `rag` target ignores `mode` (it always
+   * forwards `body` to the brokered control verb).
+   */
+  mode?: "control" | "write" | "create";
+  /** Optional validated args. For a `rag` control verb: the reindex/watcher/evict
+   *  args (rag-control-plane). For a `core` `write`/`create` mode: the
+   *  `OpsWriteBody` / `OpsCreateBody` document-mutation payload. Absent for an
+   *  argument-free control verb. */
   body?: unknown;
 }
 
 // Register the terminal effect once (module load): run the whitelisted verb
 // against the engine ops proxy. Cache invalidation stays with the caller so the
-// handler is a pure manipulation effect.
+// handler is a pure manipulation effect. Document write/create (document-editor
+// backend) routes through the same seam so vault mutations stay logged, traced,
+// and centrally guardable — the app layer never reaches the engine client itself.
 appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
   const payload = action.payload;
   if (!payload) throw new Error("ops:run dispatched without a payload");
-  return payload.target === "core"
-    ? engineClient.opsCore(payload.verb)
-    : engineClient.opsRag(payload.verb, payload.body ?? {});
+  if (payload.target === "rag") {
+    return engineClient.opsRag(payload.verb, payload.body ?? {});
+  }
+  switch (payload.mode) {
+    case "write":
+      return engineClient.opsCoreWrite(payload.verb, payload.body as OpsWriteBody);
+    case "create":
+      return engineClient.opsCoreCreate(payload.body as OpsCreateBody);
+    default:
+      return engineClient.opsCore(payload.verb);
+  }
 });
 
 /** Dispatch an ops intent through the seam; resolves with the ops envelope. */

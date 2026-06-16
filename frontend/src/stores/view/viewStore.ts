@@ -41,6 +41,36 @@ export interface ViewerTarget {
   surface: ViewerSurface;
 }
 
+/**
+ * The editor lifecycle status (document-editor backend). A bounded, single-value
+ * enum — NOT an append-only history of states (an undo/draft log would violate
+ * bounded-by-default-for-every-accumulator): `idle` (nothing open), `dirty` (the
+ * draft diverges from the saved text), `saving` (a write is in flight), `saved`
+ * (the last write landed), `save-failed` (a transport/validation failure), and
+ * `conflict` (the optimistic blob-hash base went stale — someone else wrote). The
+ * status drives the editor chrome; the typed write result (`OpsWriteResult`) is
+ * what the mutation hook returns, and the caller maps it onto this status.
+ */
+export type EditorStatus =
+  | "idle"
+  | "dirty"
+  | "saving"
+  | "saved"
+  | "save-failed"
+  | "conflict";
+
+/**
+ * The single open editor target (document-editor backend), shaped exactly like
+ * `viewerTarget` — ONE open doc at a time, never a list (bounded-by-default). A
+ * `doc:<stem>` node id whose body the editor is mutating; the code viewer stays
+ * read-only, so the editor only ever opens markdown documents. Null when no
+ * document is open for editing.
+ */
+export interface EditorTarget {
+  /** The stable `doc:<stem>` node id the editor is mutating. */
+  nodeId: string;
+}
+
 export interface TierFilter {
   declared: boolean;
   structural: boolean;
@@ -114,6 +144,31 @@ export interface ViewState {
    * scope/workspace swap so a stale viewer does not survive a corpus change.
    */
   viewerTarget: ViewerTarget | null;
+  /**
+   * The single open editor target (document-editor backend): the `doc:<stem>`
+   * node the editor is mutating, or null when nothing is open for editing. ONE
+   * doc at a time (like `viewerTarget`), never a list — bounded-by-default. Scoped
+   * to the corpus: cleared on a scope/workspace swap so a stale editor cannot
+   * survive a corpus change.
+   */
+  editorTarget: EditorTarget | null;
+  /**
+   * The current draft body text the editor holds for `editorTarget` (the working
+   * copy diverging from the saved document while `status` is `dirty`). A SINGLE
+   * draft string, NOT an append-only edit/undo history (which would be an
+   * unbounded accumulator — bounded-by-default-for-every-accumulator). Empty when
+   * no editor is open.
+   */
+  draftText: string;
+  /**
+   * The optimistic-concurrency base for the open editor: the `blob_hash` of the
+   * document text the draft was opened FROM, echoed back as `expected_blob_hash`
+   * on save. A save whose base no longer matches the on-disk blob is a `conflict`
+   * the editor reconciles (never a silent overwrite). Empty when no editor is open.
+   */
+  baseBlobHash: string;
+  /** The editor lifecycle status for the open document; `idle` when none is open. */
+  editorStatus: EditorStatus;
   /**
    * Session-pinned discovery candidates (G3.c): probabilistic suggestions
    * never join the persistent graph — pinning keeps them on stage for THIS
@@ -216,6 +271,32 @@ export interface ViewState {
   openInViewer: (nodeId: string, surface: ViewerSurface) => void;
   /** Close the viewer surface (clears the open-in-viewer target). */
   closeViewer: () => void;
+  /**
+   * Open a document for editing (document-editor backend): seed the editor with
+   * the target node id, the just-read body text as the initial draft, and that
+   * read's `blob_hash` as the optimistic-concurrency base; status begins `idle`
+   * (the draft equals the saved text). Replaces any prior open editor (one doc at
+   * a time, bounded-by-default).
+   */
+  openEditor: (nodeId: string, text: string, baseBlobHash: string) => void;
+  /** Update the draft body; marks the editor `dirty` (the draft diverges from the
+   *  saved text). A no-op write (same text) is short-circuited so an idle keypress
+   *  stream does not churn subscribers. */
+  setDraft: (text: string) => void;
+  /** Mark a save in flight (status → `saving`). */
+  markSaving: () => void;
+  /** Mark a save landed (status → `saved`): adopt the new `blob_hash` as the next
+   *  concurrency base so a subsequent edit saves against the fresh blob. */
+  markSaved: (blobHash: string) => void;
+  /** Mark a blob-hash conflict (status → `conflict`): the optimistic base went
+   *  stale (someone else wrote). The draft is retained for the reconcile UI. */
+  markConflict: () => void;
+  /** Mark a save failure (status → `save-failed`): a transport fault or a
+   *  validation refusal. The draft is retained so the edit is not lost. */
+  markFailed: () => void;
+  /** Close the editor (clears the target, draft, base, and resets status to
+   *  `idle`) — the same single-value clear a scope swap performs. */
+  closeEditor: () => void;
   pinDiscovery: (edge: EngineEdge) => void;
   unpinDiscovery: (edgeId: string) => void;
   addToWorkingSet: (id: string) => void;
@@ -261,6 +342,10 @@ export const useViewStore = create<ViewState>((set) => ({
   workingSet: [],
   openedIds: [],
   viewerTarget: null,
+  editorTarget: null,
+  draftText: "",
+  baseBlobHash: "",
+  editorStatus: "idle",
   pinnedDiscoveries: [],
   tierFilter: {
     declared: true,
@@ -318,6 +403,14 @@ export const useViewStore = create<ViewState>((set) => ({
       // The open viewer is scoped to the previous corpus's doc/file — clear it on
       // a swap so a stale viewer target does not survive the corpus change.
       viewerTarget: null,
+      // The open EDITOR (document-editor backend) is scoped to the previous
+      // corpus's doc too — clear it (and its draft/base/status) on a swap so a
+      // stale draft cannot be saved against the new corpus (the same isolation
+      // discipline as viewerTarget; findings 022/023).
+      editorTarget: null,
+      draftText: "",
+      baseBlobHash: "",
+      editorStatus: "idle",
       pinnedDiscoveries: [],
       timelineMode: { kind: "live" },
       // Reset to constellation overview on scope swap: loading 200 document
@@ -356,6 +449,13 @@ export const useViewStore = create<ViewState>((set) => ({
       // Clear the open viewer too: the coarser workspace swap must clear at least
       // as much as a worktree swap, so a prior project's viewer cannot survive.
       viewerTarget: null,
+      // Clear the open EDITOR + its draft/base/status (document-editor backend):
+      // the coarser workspace swap must clear at least as much as a worktree swap,
+      // so a prior project's unsaved draft cannot survive into the new corpus.
+      editorTarget: null,
+      draftText: "",
+      baseBlobHash: "",
+      editorStatus: "idle",
       pinnedDiscoveries: [],
       timelineMode: { kind: "live" },
       // Reset to the constellation overview so the new project does not open at
@@ -396,6 +496,30 @@ export const useViewStore = create<ViewState>((set) => ({
     })),
   openInViewer: (nodeId, surface) => set({ viewerTarget: { nodeId, surface } }),
   closeViewer: () => set({ viewerTarget: null }),
+  openEditor: (nodeId, text, baseBlobHash) =>
+    set({
+      editorTarget: { nodeId },
+      draftText: text,
+      baseBlobHash,
+      editorStatus: "idle",
+    }),
+  setDraft: (text) =>
+    set((state) =>
+      state.draftText === text ? state : { draftText: text, editorStatus: "dirty" },
+    ),
+  markSaving: () => set({ editorStatus: "saving" }),
+  // Adopt the new blob hash as the next concurrency base so a follow-on edit saves
+  // against the fresh on-disk blob, not the stale one (no phantom conflict).
+  markSaved: (blobHash) => set({ editorStatus: "saved", baseBlobHash: blobHash }),
+  markConflict: () => set({ editorStatus: "conflict" }),
+  markFailed: () => set({ editorStatus: "save-failed" }),
+  closeEditor: () =>
+    set({
+      editorTarget: null,
+      draftText: "",
+      baseBlobHash: "",
+      editorStatus: "idle",
+    }),
   pinDiscovery: (edge) =>
     set((state) => {
       if (state.pinnedDiscoveries.some((e) => e.id === edge.id)) return state;

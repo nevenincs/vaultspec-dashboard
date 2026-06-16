@@ -371,6 +371,39 @@ function synthContent(path: string): string {
   return `// ${path}\n// synthesized mock content\nfn demo() {}\n`;
 }
 
+/**
+ * Apply a frontmatter update (document-editor backend) to a document's leading
+ * `---` block, preserving the body. Rewrites only the provided fields
+ * (`date`/`tags`/`related`); an absent field leaves any existing value untouched.
+ * A document with no leading fence gains one. Deliberately small — it produces a
+ * valid frontmatter block whose re-hash differs from the original, so a write
+ * round-trip is observable; it is NOT a general YAML editor.
+ */
+function applyFrontmatter(
+  text: string,
+  fields: { date?: string; tags?: string[]; related?: string[] },
+): string {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  const body = match ? text.slice(match[0].length) : text;
+  // Parse the existing block's date so an untouched field survives.
+  const existing = match ? match[1] : "";
+  const dateLine = /^date:\s*(.*)$/m.exec(existing);
+  const date =
+    fields.date ?? (dateLine ? dateLine[1].replace(/['"]/g, "").trim() : undefined);
+  const lines: string[] = ["---"];
+  if (fields.tags !== undefined) {
+    lines.push("tags:");
+    for (const tag of fields.tags) lines.push(`  - '#${tag.replace(/^#/, "")}'`);
+  }
+  if (date !== undefined) lines.push(`date: '${date}'`);
+  if (fields.related !== undefined) {
+    lines.push("related:");
+    for (const stem of fields.related) lines.push(`  - '[[${stem}]]'`);
+  }
+  lines.push("---", "");
+  return `${lines.join("\n")}\n${body}`;
+}
+
 // --- temporal-lineage projection (dashboard-timeline ADR) ------------------------
 //
 // The mock serves the EXACT live `/graph/lineage` wire shape (mock-mirrors-live-
@@ -471,6 +504,18 @@ export class MockEngine {
   readonly timeline: TimelineDelta[];
   private degradations = new Map<string, string>();
   private subscribers = new Set<StreamSubscriber>();
+  // In-memory write overrides (document-editor backend): a successful `set-body`/
+  // `edit`/`set-frontmatter` write MUTATES the corpus here, keyed by vault path, so
+  // a subsequent `/nodes/{id}/content` read returns the new bytes and the RE-HASHED
+  // `blob_hash` (mock-mirrors-live-wire-shape: the live engine writes to disk and a
+  // re-read reflects it). An absent override falls back to the deterministic
+  // synthesized body — an unwritten doc reads exactly as before.
+  private contentOverrides = new Map<string, string>();
+  // Documents created in-session through `/ops/core/create` (document-editor
+  // backend): each adds a vault-tree entry + a graph node so a subsequent
+  // `/vault-tree` / `/graph/query` / content read reflects the new doc, mirroring
+  // the live engine's post-create corpus.
+  private createdDocs: { stem: string; docType: string; feature: string }[] = [];
   // Debug-switch conditions that degrade SERVED data (finding 035): the
   // corpus disappears (no vault) or the lifecycle lane runs dry (core
   // date-mandate not landed).
@@ -1447,6 +1492,20 @@ export class MockEngine {
     if (gitOp) {
       return this.gitOp(decodeURIComponent(gitOp[1]), init);
     }
+    // Document WRITE ops (document-editor backend): `POST /ops/core/{verb}/write`
+    // for set-body | set-frontmatter | edit, mirroring the live engine's brokered
+    // core-write front door. The engine forwards core's `{schema, status, data}`
+    // envelope VERBATIM under `data.envelope` with the tiers block, HTTP 200 for
+    // BOTH success and business-refusal (the client branches on the envelope, not
+    // the HTTP code). Matched BEFORE the single-segment ops regex below.
+    const coreWrite = /^\/ops\/core\/([^/]+)\/write$/.exec(path);
+    if (coreWrite) {
+      return this.coreWriteOp(decodeURIComponent(coreWrite[1]), init);
+    }
+    // Document CREATE op (document-editor backend): `POST /ops/core/create`.
+    if (path === "/ops/core/create") {
+      return this.coreCreateOp(init);
+    }
     const ops = /^\/ops\/(core|rag)\/([^/]+)$/.exec(path);
     if (ops) {
       const target = ops[1];
@@ -1454,7 +1513,7 @@ export class MockEngine {
       if (target === "rag") {
         return this.ragControlRoute(verb, params, init, tiers);
       }
-      // core ops: generic success envelope (unchanged).
+      // core control ops: generic success envelope (argument-free verbs, unchanged).
       return { ok: true, envelope: { status: "success", verb }, tiers };
     }
     throw new RouteError(404, `no mock route for ${path}`);
@@ -1734,17 +1793,22 @@ export class MockEngine {
       const entry = this.corpus.vaultTree.find(
         (e) => e.path.replace(/^.*\//, "").replace(/\.md$/, "") === stem,
       );
-      if (!entry) {
+      // A doc created in-session (document-editor backend) has no corpus vaultTree
+      // entry yet; resolve its synthesized path so a post-create read succeeds.
+      const created = this.createdDocs.find((d) => d.stem === stem);
+      if (!entry && !created) {
         throw new RouteError(404, `no readable content for ${id} in this scope`);
       }
-      path = entry.path;
+      path = entry ? entry.path : `.vault/${created!.docType}/${stem}.md`;
     } else {
       throw new RouteError(
         400,
         `node ${id} has no file content (only documents and code files do)`,
       );
     }
-    const text = synthContent(path);
+    // A successful write mutates `contentOverrides`; prefer it so a re-read returns
+    // the new bytes + re-hashed blob (document-editor backend).
+    const text = this.contentOverrides.get(path) ?? synthContent(path);
     return {
       path,
       blob_hash: mockBlobHash(text),
@@ -2205,6 +2269,243 @@ export class MockEngine {
         `-original line\n+rewritten line\n`;
     }
     return { verb, output, tiers: this.tiersBlock() };
+  }
+
+  // --- document write/create ops (document-editor backend) -----------------------
+
+  /** Resolve the vault `.md` path for a doc stem (corpus entry first, then an
+   *  in-session created doc), or null when the stem names no known document. */
+  private docPathForStem(stem: string): string | null {
+    const entry = this.corpus.vaultTree.find(
+      (e) => e.path.replace(/^.*\//, "").replace(/\.md$/, "") === stem,
+    );
+    if (entry) return entry.path;
+    const created = this.createdDocs.find((d) => d.stem === stem);
+    return created ? `.vault/${created.docType}/${stem}.md` : null;
+  }
+
+  /** True when a related stem names a document the corpus (or an in-session create)
+   *  carries — the dangling-wiki-link check the refusal path exercises. */
+  private knowsStem(stem: string): boolean {
+    return this.docPathForStem(stem) !== null;
+  }
+
+  /**
+   * Serve a document WRITE op (`set-body` | `set-frontmatter` | `edit`), mirroring
+   * the live engine's brokered core-write front door EXACTLY (mock-mirrors-live-
+   * wire-shape). The engine forwards core's `{schema, status, data}` envelope
+   * VERBATIM under `data.envelope` with the tiers block, HTTP 200 for BOTH success
+   * and business-refusal. The three outcomes the editor reconciles:
+   *   • blob-hash conflict — an `expected_blob_hash` that no longer matches the
+   *     current blob → the `status:"failed"` envelope with `conflict:true` +
+   *     `expected`/`actual`/`path`.
+   *   • frontmatter refusal — a `set-frontmatter` whose `related` names a dangling
+   *     stem → the `status:"failed"` envelope with `refused:true` + `checks` +
+   *     `errors` (the dangling-wiki-link check a real vault validation runs).
+   *   • success — the corpus is MUTATED (the override map) and RE-HASHED so a
+   *     subsequent `/nodes/{id}/content` read returns the new bytes + `blob_hash`;
+   *     the `updated` envelope carries `path`/`blob_hash`/`checks:[]`.
+   */
+  private coreWriteOp(verb: string, init?: RequestInit): unknown {
+    const tiers = this.tiersBlock();
+    const schema = `vaultspec.vault.${verb}.v1`;
+    if (verb !== "set-body" && verb !== "set-frontmatter" && verb !== "edit") {
+      throw new RouteError(400, `unknown core write verb \`${verb}\``);
+    }
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          ref?: string;
+          body?: string;
+          expected_blob_hash?: string;
+          date?: string;
+          tags?: string[];
+          related?: string[];
+        })
+      : {};
+    const ref = body.ref ?? "";
+    const path = this.docPathForStem(ref);
+    if (path === null) {
+      // An unknown ref is a refusal (the doc does not exist), carrying the check.
+      return {
+        ok: true,
+        envelope: {
+          schema,
+          status: "failed",
+          data: {
+            path: `.vault/${ref}.md`,
+            refused: true,
+            checks: [
+              {
+                path: ref,
+                message: `no document with stem \`${ref}\``,
+                severity: "error",
+                check: "exists",
+              },
+            ],
+            errors: [`no document with stem \`${ref}\``],
+          },
+        },
+        tiers,
+      };
+    }
+    const currentText = this.contentOverrides.get(path) ?? synthContent(path);
+    const currentHash = mockBlobHash(currentText);
+    // Optimistic concurrency: an expected hash that no longer matches the on-disk
+    // blob is a conflict the editor reconciles — NEVER a silent overwrite.
+    if (
+      body.expected_blob_hash !== undefined &&
+      body.expected_blob_hash !== currentHash
+    ) {
+      return {
+        ok: true,
+        envelope: {
+          schema,
+          status: "failed",
+          data: {
+            message: "Blob-hash conflict: the document changed since it was read",
+            conflict: true,
+            expected: body.expected_blob_hash,
+            actual: currentHash,
+            path,
+          },
+        },
+        tiers,
+      };
+    }
+    if (verb === "set-frontmatter") {
+      // Frontmatter validation: a `related` entry naming a dangling stem is
+      // refused (the dangling-wiki-link check), the live frontmatter-refusal path.
+      const dangling = (body.related ?? []).filter((stem) => !this.knowsStem(stem));
+      if (dangling.length > 0) {
+        return {
+          ok: true,
+          envelope: {
+            schema,
+            status: "failed",
+            data: {
+              path,
+              refused: true,
+              checks: dangling.map((stem) => ({
+                path,
+                message: `related link \`${stem}\` resolves to no document`,
+                severity: "error",
+                check: "frontmatter",
+              })),
+              errors: dangling.map(
+                (stem) => `related link \`${stem}\` resolves to no document`,
+              ),
+            },
+          },
+          tiers,
+        };
+      }
+      // Apply the frontmatter to the document's leading block, then re-hash.
+      const next = applyFrontmatter(currentText, {
+        date: body.date,
+        tags: body.tags,
+        related: body.related,
+      });
+      this.contentOverrides.set(path, next);
+      return {
+        ok: true,
+        envelope: {
+          schema,
+          status: "updated",
+          data: { path, blob_hash: mockBlobHash(next), checks: [] },
+        },
+        tiers,
+      };
+    }
+    // set-body | edit: replace the body, MUTATE the corpus, and re-hash so a
+    // re-read reflects the new content (the success path under test).
+    const nextText = body.body ?? currentText;
+    this.contentOverrides.set(path, nextText);
+    return {
+      ok: true,
+      envelope: {
+        schema,
+        status: "updated",
+        data: { path, blob_hash: mockBlobHash(nextText), checks: [] },
+      },
+      tiers,
+    };
+  }
+
+  /**
+   * Serve the document CREATE op (`POST /ops/core/create`), mirroring the live
+   * engine's `vaultspec.vault.add.v1` `created` envelope: the new doc's `path` +
+   * `stem` under `data.envelope` with the tiers block. The doc is added to the
+   * in-session corpus (a vault-tree entry + a graph node) so a subsequent
+   * `/vault-tree` / content read reflects it. A create missing `doc_type` or
+   * `feature` is a refusal (the two required fields), the live validation split.
+   */
+  private coreCreateOp(init?: RequestInit): unknown {
+    const tiers = this.tiersBlock();
+    const schema = "vaultspec.vault.add.v1";
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          doc_type?: string;
+          feature?: string;
+          title?: string;
+          related?: string[];
+        })
+      : {};
+    const docType = body.doc_type ?? "";
+    const feature = body.feature ?? "";
+    if (docType.length === 0 || feature.length === 0) {
+      return {
+        ok: true,
+        envelope: {
+          schema,
+          status: "failed",
+          data: {
+            refused: true,
+            checks: [
+              {
+                path: "",
+                message: "create requires both `doc_type` and `feature`",
+                severity: "error",
+                check: "create",
+              },
+            ],
+            errors: ["create requires both `doc_type` and `feature`"],
+          },
+        },
+        tiers,
+      };
+    }
+    // Synthesize a stable stem (date-feature-doctype, the vault filename grammar);
+    // disambiguate a collision so two creates in a session never clash.
+    const date = "2026-06-16";
+    let stem = `${date}-${feature}-${docType}`;
+    let n = 1;
+    while (this.docPathForStem(stem) !== null) {
+      n += 1;
+      stem = `${date}-${feature}-${docType}-${n}`;
+    }
+    const path = `.vault/${docType}/${stem}.md`;
+    this.createdDocs.push({ stem, docType, feature });
+    // Add a vault-tree entry + a graph node so the new doc is browsable/readable.
+    this.corpus.vaultTree.push({
+      path,
+      doc_type: docType,
+      feature_tags: [feature],
+      dates: { created: date, modified: date },
+    });
+    this.corpus.nodes.push({
+      id: `doc:${stem}`,
+      kind: docType,
+      doc_type: docType,
+      title: body.title ?? stem,
+      feature_tags: [feature],
+      dates: { created: date, modified: date },
+      lifecycle: { state: "active" },
+    });
+    return {
+      ok: true,
+      envelope: { schema, status: "created", data: { path, stem } },
+      tiers,
+    };
   }
 
   // --- SSE -----------------------------------------------------------------------
