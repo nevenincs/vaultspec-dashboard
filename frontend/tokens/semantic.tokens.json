@@ -61,7 +61,15 @@
       "state-broken": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ae4024" }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-broken", "emit": "hex" } } },
       "status-provisional": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#806a44" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-provisional", "emit": "hex" } } },
       "status-graded": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#9f7100" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-graded", "emit": "hex" } } },
-      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5c5040" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-tiered", "emit": "hex" } } }
+      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5c5040" }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-tiered", "emit": "hex" } } },
+      "category-feature": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b3823c" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-feature", "emit": "hex" } } },
+      "category-research": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#4f7a9e" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-research", "emit": "hex" } } },
+      "category-adr": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8a72b5" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-adr", "emit": "hex" } } },
+      "category-plan": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#3f8457" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-plan", "emit": "hex" } } },
+      "category-exec": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b5703f" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-exec", "emit": "hex" } } },
+      "category-audit": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#3f9aa6" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-audit", "emit": "hex" } } },
+      "category-index": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8f9a7e" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-index", "emit": "hex" } } },
+      "category-code": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b05a6b" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-code", "emit": "hex" } } }
     }
   }
 }

@@ -52,7 +52,15 @@
       "state-broken": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#e37f65" } },
       "status-provisional": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#c0a877" } },
       "status-graded": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dcaf61" } },
-      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#bdaf9d" } }
+      "status-tiered": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#bdaf9d" } },
+      "category-feature": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d3a45f" } },
+      "category-research": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#7aa6c8" } },
+      "category-adr": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ab95d2" } },
+      "category-plan": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5fa97a" } },
+      "category-exec": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d59468" } },
+      "category-audit": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#6cc0cf" } },
+      "category-index": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b3bd9f" } },
+      "category-code": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d07f8e" } }
     }
   }
 }

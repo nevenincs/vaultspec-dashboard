@@ -16,6 +16,21 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { groupColor } from "./edgeMeshes";
 import { stampColor, stateColor } from "./nodeSprites";
+import { cssColorNumber } from "./tokenReads";
+
+// Node-category scene-read hex (Figma-canonical, light theme). These drive the
+// headline graph node-category colouring and are emitted as LITERAL HEX per
+// theme so the getComputedStyle readers resolve them (HIGH-1 contract).
+const CATEGORY_TOKENS: Record<string, string> = {
+  "--color-scene-category-feature": "#b3823c",
+  "--color-scene-category-research": "#4f7a9e",
+  "--color-scene-category-adr": "#8a72b5",
+  "--color-scene-category-plan": "#3f8457",
+  "--color-scene-category-exec": "#b5703f",
+  "--color-scene-category-audit": "#3f9aa6",
+  "--color-scene-category-index": "#8f9a7e",
+  "--color-scene-category-code": "#b05a6b",
+};
 
 // The scene-read surface, light theme (matches styles.css @theme static 3b).
 const SCENE_TOKENS: Record<string, string> = {
@@ -118,6 +133,15 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     ).toBe(hexToNum("#5c5040"));
     // A node with no status falls back to muted ink, read from the token layer.
     expect(stampColor({ id: "g", kind: "code" })).toBe(hexToNum("#5f5a53"));
+  });
+
+  it("cssColorNumber resolves each scene-read node-category token as literal hex", () => {
+    applyTokens(CATEGORY_TOKENS);
+    for (const [name, hex] of Object.entries(CATEGORY_TOKENS)) {
+      // The scene reader parses #rrggbb only; an oklch() or var() chain would
+      // fall through to the fallback. -1 fallback proves a real hex was read.
+      expect(cssColorNumber(name, -1)).toBe(hexToNum(hex));
+    }
   });
 
   it("re-resolves the dark theme hex when the token layer flips", () => {

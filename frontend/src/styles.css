@@ -145,6 +145,14 @@
   --color-status-provisional: #806a44;
   --color-status-graded: #9f7100;
   --color-status-tiered: #5c5040;
+  --color-scene-category-feature: #b3823c;
+  --color-scene-category-research: #4f7a9e;
+  --color-scene-category-adr: #8a72b5;
+  --color-scene-category-plan: #3f8457;
+  --color-scene-category-exec: #b5703f;
+  --color-scene-category-audit: #3f9aa6;
+  --color-scene-category-index: #8f9a7e;
+  --color-scene-category-code: #b05a6b;
   /* vaultspec:generated:colors:end */
 
   /* == 5. TYPOGRAPHY (S14) - separate UI and code type scales ============== */
@@ -296,6 +304,14 @@
     --color-status-provisional: #806a44;
     --color-status-graded: #9f7100;
     --color-status-tiered: #5c5040;
+    --color-scene-category-feature: #b3823c;
+    --color-scene-category-research: #4f7a9e;
+    --color-scene-category-adr: #8a72b5;
+    --color-scene-category-plan: #3f8457;
+    --color-scene-category-exec: #b5703f;
+    --color-scene-category-audit: #3f9aa6;
+    --color-scene-category-index: #8f9a7e;
+    --color-scene-category-code: #b05a6b;
   }
 
   [data-theme="dark"] {
@@ -335,6 +351,14 @@
     --color-status-provisional: #c0a877;
     --color-status-graded: #dcaf61;
     --color-status-tiered: #bdaf9d;
+    --color-scene-category-feature: #d3a45f;
+    --color-scene-category-research: #7aa6c8;
+    --color-scene-category-adr: #ab95d2;
+    --color-scene-category-plan: #5fa97a;
+    --color-scene-category-exec: #d59468;
+    --color-scene-category-audit: #6cc0cf;
+    --color-scene-category-index: #b3bd9f;
+    --color-scene-category-code: #d07f8e;
   }
 
   [data-theme="high-contrast"] {
@@ -374,6 +398,14 @@
     --color-status-provisional: #d2bd91;
     --color-status-graded: #e6bb5e;
     --color-status-tiered: #dacbb9;
+    --color-scene-category-feature: #e8c074;
+    --color-scene-category-research: #92c0e0;
+    --color-scene-category-adr: #c3b0e6;
+    --color-scene-category-plan: #79c596;
+    --color-scene-category-exec: #ecab7e;
+    --color-scene-category-audit: #8fd8e6;
+    --color-scene-category-index: #cdd6ba;
+    --color-scene-category-code: #e69aa8;
   }
   /* vaultspec:generated:themes:end */
 
