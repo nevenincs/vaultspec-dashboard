@@ -30,6 +30,16 @@ export function handleEntryClick(entry: VaultTreeEntry): void {
   selectNode(pathToNodeId(entry.path));
 }
 
+/** Browser row OPEN (double-click / activate) → select the node AND open its
+ *  body in the markdown reader. The two-intent model (select vs open,
+ *  review-rail-viewers ADR): a single click focuses the node on the stage; an
+ *  explicit open additionally surfaces the reader. */
+export function handleEntryOpen(entry: VaultTreeEntry): void {
+  const id = pathToNodeId(entry.path);
+  selectNode(id);
+  useViewStore.getState().openInViewer(id, "markdown");
+}
+
 /**
  * The browser row to highlight for the current selection, if the selected
  * entity is a document with a row in the given tree.
@@ -81,6 +91,14 @@ export function nodeIdToCodePath(id: string): string | null {
  *  falling back to deriving it from the path so a sparse entry still joins. */
 export function handleCodeEntryClick(entry: FileTreeEntry): void {
   selectNode(entry.node_id || codePathToNodeId(entry.path));
+}
+
+/** Code-tree row OPEN (double-click / activate) → select the `code:` node AND
+ *  open its source in the code viewer (the two-intent model, for the code tree). */
+export function handleCodeEntryOpen(entry: FileTreeEntry): void {
+  const id = entry.node_id || codePathToNodeId(entry.path);
+  selectNode(id);
+  useViewStore.getState().openInViewer(id, "code");
 }
 
 /**

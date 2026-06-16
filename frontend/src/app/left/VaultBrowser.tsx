@@ -21,6 +21,7 @@ import { openContextMenu } from "../../stores/view/contextMenu";
 import { useActiveScope } from "../stage/Stage";
 import {
   handleEntryClick,
+  handleEntryOpen,
   pathStem,
   pathToNodeId,
   useHighlightedPath,
@@ -115,6 +116,9 @@ export function filterVaultEntries(
 export interface VaultBrowserProps {
   /** Row click handler (S39 wires bidirectional selection). */
   onEntryClick?: (entry: VaultTreeEntry) => void;
+  /** Row open handler (double-click / activate → open in the reader). Defaults
+   *  to selecting the node and opening its body in the markdown reader. */
+  onEntryOpen?: (entry: VaultTreeEntry) => void;
   /** The entry currently highlighted by the shared selection (S39). */
   highlightedPath?: string | null;
   /**
@@ -127,6 +131,7 @@ export interface VaultBrowserProps {
 
 export function VaultBrowser({
   onEntryClick,
+  onEntryOpen,
   highlightedPath,
   filter,
 }: VaultBrowserProps) {
@@ -137,6 +142,7 @@ export function VaultBrowser({
   // highlight; explicit props override for embedding contexts.
   const sharedHighlight = useHighlightedPath(tree.data?.entries);
   const clickHandler = onEntryClick ?? handleEntryClick;
+  const openHandler = onEntryOpen ?? handleEntryOpen;
   const highlight = highlightedPath ?? sharedHighlight;
 
   // TRUE roving-tabindex focus model (a11y contract, S21 review M1/M2): the
@@ -318,6 +324,7 @@ export function VaultBrowser({
                         aria-current={highlighted ? "page" : undefined}
                         tabIndex={rovingKey === rowKey ? 0 : -1}
                         onClick={() => clickHandler(entry)}
+                        onDoubleClick={() => openHandler(entry)}
                         onFocus={() => setActiveKey(rowKey)}
                         onContextMenu={(e) => {
                           e.preventDefault();
@@ -341,6 +348,13 @@ export function VaultBrowser({
                               x: r.left,
                               y: r.bottom,
                             });
+                            return;
+                          }
+                          // Enter opens the row in the reader (select + open);
+                          // a bare click still selects/focuses the graph only.
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            openHandler(entry);
                             return;
                           }
                           navKeyDown(rowKey)(e);

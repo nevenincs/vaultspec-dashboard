@@ -31,6 +31,7 @@ import { openContextMenu } from "../../stores/view/contextMenu";
 import { useActiveScope } from "../stage/Stage";
 import {
   handleEntryClick,
+  handleEntryOpen,
   pathStem,
   pathToNodeId,
   useHighlightedPath,
@@ -158,6 +159,9 @@ export function filterTreeEntries(
 export interface TreeBrowserProps {
   /** Row click handler (defaults to the shared bidirectional selection). */
   onEntryClick?: (entry: VaultTreeEntry) => void;
+  /** Row open handler (double-click / Enter → open in the reader). Defaults to
+   *  selecting the node and opening its body in the markdown reader. */
+  onEntryOpen?: (entry: VaultTreeEntry) => void;
   /** The document path currently highlighted by the shared selection. */
   highlightedPath?: string | null;
   /** In-rail filter — a client-side narrowing of the visible listing by
@@ -180,6 +184,7 @@ function vaultDocEntity(entry: VaultTreeEntry): VaultDocEntity {
 
 export function TreeBrowser({
   onEntryClick,
+  onEntryOpen,
   highlightedPath,
   filter,
 }: TreeBrowserProps) {
@@ -188,6 +193,7 @@ export function TreeBrowser({
   const availability = useVaultTreeAvailability(scope);
   const sharedHighlight = useHighlightedPath(tree.data?.entries);
   const clickHandler = onEntryClick ?? handleEntryClick;
+  const openHandler = onEntryOpen ?? handleEntryOpen;
   const highlight = highlightedPath ?? sharedHighlight;
 
   // Collapsed state, keyed by a stable nav-key: feature groups `f:<feature>` and
@@ -428,6 +434,7 @@ export function TreeBrowser({
                                   setActiveKey={setActiveKey}
                                   navKeyDown={navKeyDown}
                                   onClick={() => clickHandler(entry)}
+                                  onOpen={() => openHandler(entry)}
                                   entity={vaultDocEntity(entry)}
                                 />
                               ))}
@@ -460,6 +467,7 @@ interface TreeRowProps {
   setActiveKey: (key: string) => void;
   navKeyDown: (key: string) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
   onClick: () => void;
+  onOpen: () => void;
   entity: VaultDocEntity;
 }
 
@@ -480,6 +488,7 @@ function TreeRow({
   setActiveKey,
   navKeyDown,
   onClick,
+  onOpen,
   entity,
 }: TreeRowProps) {
   const rowKey = `r:${entry.path}`;
@@ -502,6 +511,7 @@ function TreeRow({
         aria-current={highlighted ? "page" : undefined}
         tabIndex={rovingKey === rowKey ? 0 : -1}
         onClick={onClick}
+        onDoubleClick={onOpen}
         onFocus={() => setActiveKey(rowKey)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -512,6 +522,11 @@ function TreeRow({
             e.preventDefault();
             const r = e.currentTarget.getBoundingClientRect();
             openContextMenu(entity, { x: r.left, y: r.bottom });
+            return;
+          }
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onOpen();
             return;
           }
           navKeyDown(rowKey)(e);
