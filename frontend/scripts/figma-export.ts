@@ -11,12 +11,17 @@
  * A `$themes` array binds each mode so Tokens Studio's "Create Variables" produces the
  * Semantic collection with Light/Dark/High Contrast modes.
  *
+ * The non-color foundation families (figma-parity-reconciliation W01.P01.S06) are mirrored
+ * alongside color as a single `foundation` set (active as source across all modes): the
+ * Figma role-named type scale as Tokens Studio `typography` composites plus a `fontFamily`
+ * set, radius as `borderRadius`, elevation as `boxShadow`, and spacing as `spacing`.
+ *
  * Run: `node scripts/figma-export.ts` (npm run tokens:figma). One-way, code -> Figma.
  */
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { formatHex, oklch as toOklch } from "culori";
 import StyleDictionary from "style-dictionary";
 import { isAliasRef, type DtcgColorValue } from "./sd-transforms.ts";
@@ -31,6 +36,11 @@ const PRIMITIVES = join(tokensDir, "primitives.tokens.json");
 const SEMANTIC = join(tokensDir, "semantic.tokens.json");
 const DARK = join(tokensDir, "themes", "dark.tokens.json");
 const HC = join(tokensDir, "themes", "high-contrast.tokens.json");
+
+const TYPE = join(tokensDir, "type.tokens.json");
+const RADIUS = join(tokensDir, "radius.tokens.json");
+const ELEVATION = join(tokensDir, "elevation.tokens.json");
+const SPACING = join(tokensDir, "spacing.tokens.json");
 
 async function tokensFor(sources: string[]): Promise<Leaf[]> {
   const sd = new StyleDictionary({
@@ -71,6 +81,76 @@ function nest(tokens: Leaf[], keep: (p: string) => boolean): Record<string, unkn
   return root;
 }
 
+/** Read and JSON-parse a token file. */
+function readJson(path: string): any {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+/** Flatten a DTCG file to {path, value} leaves carrying the raw scalar $value. */
+function flatLeaves(
+  obj: any,
+  prefix: string[] = [],
+  acc: { path: string[]; value: string | number }[] = [],
+): { path: string[]; value: string | number }[] {
+  for (const k of Object.keys(obj)) {
+    if (k.startsWith("$")) continue;
+    const v = obj[k];
+    if (v && typeof v === "object" && "$value" in v) {
+      acc.push({ path: [...prefix, k], value: v.$value as string | number });
+    } else if (v && typeof v === "object") {
+      flatLeaves(v, [...prefix, k], acc);
+    }
+  }
+  return acc;
+}
+
+/** Nest {value,type} leaves into a Tokens Studio set object by dotted path. */
+function nestNonColor(
+  leaves: { path: string[]; value: string | number }[],
+  type: string,
+): Record<string, unknown> {
+  const root: Record<string, unknown> = {};
+  for (const leaf of leaves) {
+    let node = root;
+    for (let i = 0; i < leaf.path.length - 1; i++) {
+      const k = leaf.path[i];
+      node[k] = (node[k] as Record<string, unknown>) ?? {};
+      node = node[k] as Record<string, unknown>;
+    }
+    node[leaf.path[leaf.path.length - 1]] = { value: leaf.value, type };
+  }
+  return root;
+}
+
+/**
+ * Build the Tokens Studio `typography` set from the role DTCG: each role becomes one
+ * composite typography token (fontFamily/fontSize/lineHeight/fontWeight), and the two
+ * font families become a fontFamilies set. This is the binding Figma type layer.
+ */
+function buildType(): { typography: Record<string, unknown>; fontFamilies: Record<string, unknown> } {
+  const type = readJson(TYPE).type;
+  const fontFamilies: Record<string, unknown> = {};
+  for (const fam of Object.keys(type.family).filter((k) => !k.startsWith("$"))) {
+    fontFamilies[fam] = { value: type.family[fam].$value, type: "fontFamilies" };
+  }
+  const sans = type.family.sans.$value;
+  const mono = type.family.mono.$value;
+  const typography: Record<string, unknown> = {};
+  for (const role of Object.keys(type.role).filter((k) => !k.startsWith("$"))) {
+    const r = type.role[role];
+    typography[role] = {
+      value: {
+        fontFamily: role === "mono" ? mono : sans,
+        fontSize: r.size.$value,
+        lineHeight: r["line-height"].$value,
+        fontWeight: String(r.weight.$value),
+      },
+      type: "typography",
+    };
+  }
+  return { typography, fontFamilies };
+}
+
 async function build(): Promise<void> {
   const isPrimitive = (p: string) => p.startsWith("primitive.");
   const isSurface = (p: string) => p.startsWith("semantic.") || p.startsWith("public.");
@@ -79,18 +159,38 @@ async function build(): Promise<void> {
   const dark = await tokensFor([PRIMITIVES, SEMANTIC, DARK]);
   const hc = await tokensFor([PRIMITIVES, SEMANTIC, HC]);
 
+  // Non-color foundation families (figma-parity-reconciliation W01.P01.S06): mirrored
+  // to Figma as Tokens Studio borderRadius / boxShadow / spacing / typography sets.
+  const { typography, fontFamilies } = buildType();
+  const radius = nestNonColor(flatLeaves(readJson(RADIUS).radius), "borderRadius");
+  const elevation = nestNonColor(flatLeaves(readJson(ELEVATION).elevation), "boxShadow");
+  const spacing = nestNonColor(flatLeaves(readJson(SPACING).spacing), "spacing");
+
   const file = {
     primitives: nest(base, isPrimitive),
     "semantic-light": nest(base, isSurface),
     "semantic-dark": nest(dark, isSurface),
     "semantic-high-contrast": nest(hc, isSurface),
+    foundation: {
+      type: typography,
+      "font-family": fontFamilies,
+      radius,
+      elevation,
+      spacing,
+    },
     $themes: [
       theme("Light", "semantic-light"),
       theme("Dark", "semantic-dark"),
       theme("High Contrast", "semantic-high-contrast"),
     ],
     $metadata: {
-      tokenSetOrder: ["primitives", "semantic-light", "semantic-dark", "semantic-high-contrast"],
+      tokenSetOrder: [
+        "primitives",
+        "semantic-light",
+        "semantic-dark",
+        "semantic-high-contrast",
+        "foundation",
+      ],
     },
   };
 
@@ -103,7 +203,11 @@ function theme(name: string, semanticSet: string) {
   return {
     name,
     group: "Semantic",
-    selectedTokenSets: { primitives: "source", [semanticSet]: "enabled" },
+    selectedTokenSets: {
+      primitives: "source",
+      foundation: "source",
+      [semanticSet]: "enabled",
+    },
   };
 }
 
