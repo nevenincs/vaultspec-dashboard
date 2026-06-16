@@ -1,11 +1,25 @@
-// The PixiJS v8 field behind the SceneController lifecycle (W01.P03.S09,
-// ADR G6.b — substrate confirmed by the W01.P01 spike gate).
+// The PixiJS v8 field behind the SceneController lifecycle — the GPU substrate
+// for the binding node-connection canvas (graph/Hero 85:2, graph/Node-items 83:2;
+// figma-parity-reconciliation W03.P07). Scene-layer module: framework-free by
+// design — no React imports, ever.
 //
-// The field implements the renderer side of the locked seam: the
-// SceneController delegates mount/resize/destroy and forwards commands; the
-// field owns the Pixi Application, the world container the camera drives,
-// and (as the later P03 steps land) the sprite, edge, and layout layers.
-// Scene-layer module: framework-free by design — no React imports, ever.
+// CONNECTION-FIELD TREATMENT (graph/Hero 85:2 — binding): the field is a clean
+// instrument register — a warm paper ground with category-coloured circles on a
+// thin flat-grey connection mesh, nothing more. This renderer owns only the GPU
+// substrate of that treatment: the Pixi Application, its warm background ground
+// (the field on which the clean connection lines and circles read), and the
+// camera-driven world container the sprite, edge, and overlay layers parent
+// under. The node circles (nodeSprites), the flat-grey edges (edgeMeshes), and
+// the category hues (categoryColor) layer on top; this file establishes the
+// ground they read against.
+//
+// FROZEN SCENECONTROLLER CONTRACT: this is the renderer side of the locked seam
+// (sceneController.ts RL-1..RL-5). The SceneController delegates mount/resize/
+// destroy here and forwards SceneCommands to the field assembly's command(); this
+// file widens neither the command nor the event union. Data reaches the field
+// ONLY through that command channel; selection/hover flow BACK through the
+// controller's event channel (dashboard-layer-ownership). This module never
+// fetches and never reaches into the stores layer.
 
 import { Application, Container } from "pixi.js";
 
@@ -13,13 +27,14 @@ import type { SceneFieldRenderer } from "../sceneController";
 import { cssColorNumber } from "./tokenReads";
 
 /**
- * Read the canvas background colour from the --color-canvas-bg CSS variable.
- * Returns a numeric RGB hex suitable for Pixi (e.g. 0xfaf9f7 in light mode,
- * 0x211e1a in dark mode).  Falls back to the paper-warm light value if the
- * variable is absent so the field is never transparent.
+ * The warm paper ground the clean connection field reads against (graph/Hero):
+ * the --color-canvas-bg scene token as literal hex per theme (0xfdfaf6 light,
+ * 0x1a1713 dark; themes-are-oklch: a scene-read token is literal hex, never a
+ * var() chain getComputedStyle cannot flatten). Falls back to the light paper
+ * value so the field is never transparent in the node test env.
  */
 function readCanvasBg(): number {
-  return cssColorNumber("--color-canvas-bg", 0xfaf9f7);
+  return cssColorNumber("--color-canvas-bg", 0xfdfaf6);
 }
 
 export class PixiField implements SceneFieldRenderer {
@@ -29,23 +44,23 @@ export class PixiField implements SceneFieldRenderer {
   private mounting: Promise<void> | null = null;
   private destroyed = false;
   /** Bumped by every mount() and destroy(); the async init bails if its captured
-   * generation is stale, so a fast mount→destroy→mount cycle (React StrictMode,
+   * generation is stale, so a fast mount->destroy->mount cycle (React StrictMode,
    * or a real Stage remount) can neither leak an Application nor wedge with a
    * blank canvas (perf-sweep F#1). */
   private gen = 0;
   private pendingResize: { width: number; height: number } | null = null;
   private readyListeners = new Set<(app: Application) => void>();
-  /** Watches for data-theme changes to keep the canvas background in sync. */
+  /** Watches data-theme changes to keep the field ground in sync with the theme. */
   private themeObserver: MutationObserver | null = null;
 
   /**
-   * Attach the renderer's canvas into the host element. Pixi v8 init is
-   * async; mount() is fire-and-forget from the seam's perspective and
-   * internally serializes against destroy() so a fast mount/destroy cycle
-   * (React StrictMode-style) can never leak an Application.
+   * Attach the renderer's canvas into the host element. Pixi v8 init is async;
+   * mount() is fire-and-forget from the seam's perspective and internally
+   * serializes against destroy() so a fast mount/destroy cycle (React
+   * StrictMode-style) can never leak an Application.
    */
   mount(host: HTMLElement): void {
-    // No DOM → no renderer; safe no-op for SSR / node test environment.
+    // No DOM -> no renderer; safe no-op for SSR / node test environment.
     if (typeof document === "undefined") return;
     // Idempotent: already live, or an init is in flight that a destroy() has not
     // cancelled. (The assembly's own guard usually prevents a redundant call.)
@@ -55,6 +70,9 @@ export class PixiField implements SceneFieldRenderer {
     const app = new Application();
     this.mounting = app
       .init({
+        // The warm paper ground the clean connection field reads against
+        // (graph/Hero): literal-hex --color-canvas-bg per theme, never a var()
+        // chain (themes-are-oklch: scene tokens are literal hex).
         background: readCanvasBg(),
         resizeTo: host,
         antialias: true,
@@ -73,17 +91,7 @@ export class PixiField implements SceneFieldRenderer {
         this.app = app;
         app.stage.addChild(this.world);
         host.appendChild(app.canvas);
-        // Track theme switches so the canvas background stays in sync with
-        // the --color-canvas-bg token as data-theme flips on <html>.
-        this.themeObserver = new MutationObserver(() => {
-          if (this.app) {
-            this.app.renderer.background.color = readCanvasBg();
-          }
-        });
-        this.themeObserver.observe(document.documentElement, {
-          attributes: true,
-          attributeFilter: ["data-theme"],
-        });
+        this.watchTheme(app);
         if (this.pendingResize) {
           this.resize(this.pendingResize.width, this.pendingResize.height);
           this.pendingResize = null;
@@ -92,6 +100,20 @@ export class PixiField implements SceneFieldRenderer {
           listener(app);
         }
       });
+  }
+
+  /** Keep the field ground synced to the active theme — a data-theme flip on
+   *  <html> re-reads the literal-hex --color-canvas-bg so the connection field
+   *  always reads against the correct warm/dark ground. */
+  private watchTheme(app: Application): void {
+    this.themeObserver = new MutationObserver(() => {
+      if (this.app) this.app.renderer.background.color = readCanvasBg();
+    });
+    this.themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    void app;
   }
 
   /** Fires once per successful mount, with the live Application. */
@@ -129,7 +151,7 @@ export class PixiField implements SceneFieldRenderer {
     }
   }
 
-  /** The world container later field layers parent under (camera target). */
+  /** The world container the field layers parent under (the camera target). */
   get worldContainer(): Container {
     return this.world;
   }
