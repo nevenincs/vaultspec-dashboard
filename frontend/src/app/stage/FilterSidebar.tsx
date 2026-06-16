@@ -43,12 +43,12 @@ function Section({ title, badge, defaultOpen = true, children }: SectionProps) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-vs-3 py-vs-1-5 text-left text-label font-medium uppercase tracking-wider text-ink-muted hover:bg-paper-sunken"
+        className="flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium uppercase tracking-wider text-ink-muted hover:bg-paper-sunken"
       >
         <span>{title}</span>
-        <span className="flex items-center gap-vs-1-5">
+        <span className="flex items-center gap-fg-1-5">
           {badge !== undefined && badge > 0 && (
-            <span className="rounded-fg-pill bg-paper-sunken px-vs-1-5 py-vs-0-5 text-caption font-normal text-ink-muted">
+            <span className="rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted">
               {badge}
             </span>
           )}
@@ -85,7 +85,7 @@ function FacetList({ values, selected, onToggle, max, loading }: FacetListProps)
     // flight is "loading…", an actually-empty corpus is "none in corpus".
     return (
       <p
-        className="px-vs-3 py-vs-1 text-label italic text-ink-faint"
+        className="px-fg-3 py-fg-1 text-label italic text-ink-faint"
         aria-busy={loading || undefined}
       >
         {loading ? "loading…" : "none in corpus"}
@@ -94,12 +94,12 @@ function FacetList({ values, selected, onToggle, max, loading }: FacetListProps)
   }
 
   return (
-    <ul className="space-y-vs-0-5 px-vs-3" role="list">
+    <ul className="space-y-fg-0-5 px-fg-3" role="list">
       {shown.map((value) => {
         const on = selected.includes(value);
         return (
           <li key={value}>
-            <label className="flex cursor-pointer items-center gap-vs-2 rounded-fg-xs px-vs-1 py-vs-0-5 text-label hover:bg-paper-sunken">
+            <label className="flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken">
               <input
                 type="checkbox"
                 checked={on}
@@ -116,7 +116,7 @@ function FacetList({ values, selected, onToggle, max, loading }: FacetListProps)
           <button
             type="button"
             onClick={() => setShowAll(true)}
-            className="ml-vs-1 text-label text-ink-faint underline hover:text-ink-muted"
+            className="ml-fg-1 text-label text-ink-faint underline hover:text-ink-muted"
           >
             +{overflow} more
           </button>
@@ -141,18 +141,18 @@ function TierSection() {
 
   return (
     <Section title="Tiers" badge={activeCount < 4 ? activeCount : undefined}>
-      <ul className="space-y-vs-1 px-vs-3" role="list">
+      <ul className="space-y-fg-1 px-fg-3" role="list">
         {TIER_ORDER.map(({ tier, label }) => {
           const inapplicable = isTierInapplicable(tier, timelineMode);
           const on = tiers[tier] && !inapplicable;
           return (
             <li key={tier}>
               <label
-                className={`flex flex-col gap-vs-0-5 rounded-fg-xs px-vs-1 py-vs-0-5 ${
+                className={`flex flex-col gap-fg-0-5 rounded-fg-xs px-fg-1 py-fg-0-5 ${
                   inapplicable ? "opacity-40" : "hover:bg-paper-sunken"
                 }`}
               >
-                <span className="flex cursor-pointer items-center gap-vs-2">
+                <span className="flex cursor-pointer items-center gap-fg-2">
                   <input
                     type="checkbox"
                     checked={on}
@@ -161,12 +161,12 @@ function TierSection() {
                     className="accent-accent"
                   />
                   <span
-                    className={`flex items-center gap-vs-1 text-label ${on ? "text-ink" : "text-ink-faint"}`}
+                    className={`flex items-center gap-fg-1 text-label ${on ? "text-ink" : "text-ink-faint"}`}
                   >
                     <TierMark tier={tier} size={14} title={`${label} tier mark`} />
                     {label}
                     {inapplicable && (
-                      <span className="ml-vs-1 text-caption text-ink-faint">
+                      <span className="ml-fg-1 text-caption text-ink-faint">
                         (time-travel)
                       </span>
                     )}
@@ -175,7 +175,7 @@ function TierSection() {
                 {(tier === "temporal" || tier === "semantic") &&
                   !inapplicable &&
                   on && (
-                    <span className="flex items-center gap-vs-2 pl-vs-4">
+                    <span className="flex items-center gap-fg-2 pl-fg-4">
                       <input
                         type="range"
                         min={0}
@@ -268,11 +268,11 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
       data-filter-sidebar
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-rule px-vs-3 py-vs-1-5">
+      <div className="flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5">
         <span className="text-label font-semibold uppercase tracking-wider text-ink-muted">
           Filters
         </span>
-        <div className="flex items-center gap-vs-2">
+        <div className="flex items-center gap-fg-2">
           {anyActive && (
             <button
               type="button"
@@ -287,7 +287,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             type="button"
             onClick={onClose}
             aria-label="close filter panel"
-            className="rounded-fg-xs p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
+            className="rounded-fg-xs p-fg-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
           >
             <X size={13} />
           </button>
@@ -364,7 +364,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
               onChange={(e) => setTextMatch(e.target.value)}
               placeholder="match node labels…"
               aria-label="text match filter"
-              className="w-full rounded-fg-xs border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
+              className="w-full rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
             />
           </div>
         </Section>
@@ -372,7 +372,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
 
       {/* Footer: hidden count */}
       {hiddenTotal > 0 && (
-        <div className="border-t border-rule px-vs-3 py-vs-1-5">
+        <div className="border-t border-rule px-fg-3 py-fg-1-5">
           <span className="text-label text-state-stale">
             {hiddenCountLabel(hidden.nodes, hidden.edges)}
           </span>

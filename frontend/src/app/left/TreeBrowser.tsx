@@ -248,7 +248,7 @@ export function TreeBrowser({
   if (tree.isPending) {
     return (
       <p
-        className="animate-pulse-live px-vs-1 py-vs-0-5 text-label text-ink-faint"
+        className="animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint"
         role="status"
         aria-live="polite"
       >
@@ -262,7 +262,7 @@ export function TreeBrowser({
     // degradation (degradation-is-read-from-tiers).
     return (
       <div
-        className="space-y-vs-1 px-vs-1 py-vs-0-5"
+        className="space-y-fg-1 px-fg-1 py-fg-0-5"
         role="status"
         aria-live="polite"
         data-tree-error
@@ -311,7 +311,7 @@ export function TreeBrowser({
     <nav className="text-label" aria-label="tree browser" data-tree-browser>
       {availability.degraded && (
         <p
-          className="mb-vs-1 rounded-fg-xs bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-caption text-ink-muted"
+          className="mb-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
           role="status"
           aria-live="polite"
           data-tree-degraded
@@ -324,18 +324,18 @@ export function TreeBrowser({
       {groups.length === 0 ? (
         filteredToNothing ? (
           <p
-            className="px-vs-1 py-vs-0-5 text-label text-ink-faint"
+            className="px-fg-1 py-fg-0-5 text-label text-ink-faint"
             data-tree-filter-empty
           >
             no vault documents match the filter.
           </p>
         ) : (
-          <p className="px-vs-1 py-vs-0-5 text-label text-ink-faint" data-tree-empty>
+          <p className="px-fg-1 py-fg-0-5 text-label text-ink-faint" data-tree-empty>
             no vault documents in this scope yet.
           </p>
         )
       ) : (
-        <div className="space-y-vs-0-5">
+        <div className="space-y-fg-0-5">
           {groups.map((group) => {
             const fKey = `f:${group.feature}`;
             const fCollapsed = collapsed.has(fKey);
@@ -356,7 +356,7 @@ export function TreeBrowser({
                     onArrowRight: () => fCollapsed && toggleCollapsed(fKey),
                     onArrowLeft: () => !fCollapsed && toggleCollapsed(fKey),
                   })}
-                  className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                  className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 >
                   {fCollapsed ? (
                     <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -372,7 +372,7 @@ export function TreeBrowser({
                 </button>
 
                 {!fCollapsed && (
-                  <div id={fSectionId} className="mt-vs-0-5 space-y-vs-0-5">
+                  <div id={fSectionId} className="mt-fg-0-5 space-y-fg-0-5">
                     {group.docTypes.map((sub) => {
                       const dKey = `d:${group.feature}/${sub.docType}`;
                       const dCollapsed = collapsed.has(dKey);
@@ -394,7 +394,7 @@ export function TreeBrowser({
                               onArrowRight: () => dCollapsed && toggleCollapsed(dKey),
                               onArrowLeft: () => !dCollapsed && toggleCollapsed(dKey),
                             })}
-                            className="flex w-full items-center gap-vs-1 rounded-fg-xs py-vs-0-5 pl-vs-3 pr-vs-1 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                            className="flex w-full items-center gap-fg-1 rounded-fg-xs py-fg-0-5 pl-fg-3 pr-fg-1 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                           >
                             {dCollapsed ? (
                               <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -414,7 +414,7 @@ export function TreeBrowser({
                           </button>
 
                           {!dCollapsed && (
-                            <ul id={dSectionId} className="space-y-vs-0-5">
+                            <ul id={dSectionId} className="space-y-fg-0-5">
                               {sub.entries.map((entry) => (
                                 <TreeRow
                                   key={entry.path}
@@ -511,7 +511,7 @@ function TreeRow({
         }}
         // Level-2 indent (Figma `pl-36px`) lines the rows up under the doc-type
         // mark; the leading cue + stem + freshness follow.
-        className={`flex w-full items-center gap-vs-1 truncate rounded-fg-xs py-vs-0-5 pl-vs-6 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex w-full items-center gap-fg-1 truncate rounded-fg-xs py-fg-0-5 pl-fg-6 pr-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "bg-accent-subtle font-medium text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -524,7 +524,7 @@ function TreeRow({
           <>
             <span
               aria-hidden
-              className={`-ml-vs-0-5 h-3 w-0.5 shrink-0 rounded-full ${
+              className={`-ml-fg-0-5 h-3 w-0.5 shrink-0 rounded-full ${
                 highlighted ? "bg-accent" : "bg-transparent"
               }`}
             />
@@ -539,7 +539,7 @@ function TreeRow({
         ) : (
           <span
             aria-hidden
-            className={`-ml-vs-0-5 h-3 w-0.5 shrink-0 rounded-full ${
+            className={`-ml-fg-0-5 h-3 w-0.5 shrink-0 rounded-full ${
               highlighted ? "bg-accent" : "bg-transparent"
             }`}
           />

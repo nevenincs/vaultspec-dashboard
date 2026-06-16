@@ -133,7 +133,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       data-category={model.category}
       data-reduced-motion={reduce ? "" : undefined}
       data-motion={reduce ? "crossfade" : "bloom"}
-      className="relative flex w-64 flex-col gap-vs-1-5 overflow-hidden rounded-vs-md border border-rule bg-paper-raised p-vs-2 pl-vs-3 text-ink shadow-float"
+      className="relative flex w-64 flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper-raised p-fg-2 pl-fg-3 text-ink shadow-fg-overlay"
       style={motionStyle}
     >
       {/* Category-accent strip: a single-token vertical rule that names the
@@ -142,11 +142,11 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       <span
         data-category-strip
         aria-hidden
-        className="absolute inset-y-0 left-0 w-vs-0-5"
+        className="absolute inset-y-0 left-0 w-fg-0-5"
         style={{ backgroundColor: `var(${accentVar})` }}
       />
       {/* Header: category dot + kind glyph + title + open affordance. */}
-      <div className="flex items-center gap-vs-1-5">
+      <div className="flex items-center gap-fg-1-5">
         <span
           className="flex shrink-0 items-center"
           style={{ color: `var(${accentVar})` }}
@@ -154,7 +154,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
         >
           <DocTypeMark kind={model.kind} size={16} />
         </span>
-        <h3 className="min-w-0 flex-1 truncate text-title font-medium text-ink">
+        <h3 className="min-w-0 flex-1 truncate text-body-strong font-medium text-ink">
           {model.title}
         </h3>
         <button
@@ -166,7 +166,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
           // wrapper so the transient hover card never steals the pointer; the
           // open affordance is the one interactive escape, so it re-enables
           // pointer events on itself (the bloom → open intent).
-          className="pointer-events-auto flex shrink-0 items-center rounded-vs-sm p-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
+          className="pointer-events-auto flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
         >
           <ExternalLink size={14} strokeWidth={1.75} aria-hidden />
         </button>
@@ -177,7 +177,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
         <div>
           <span
             data-status-chip
-            className="inline-flex items-center gap-vs-1 rounded-vs-sm border px-vs-1 py-vs-0-5 text-label"
+            className="inline-flex items-center gap-fg-1 rounded-fg-xs border px-fg-1 py-fg-0-5 text-label"
             style={{
               color: `var(${tintVar})`,
               borderColor: `var(${tintVar})`,
@@ -195,14 +195,14 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       {/* Rollout bar: the SEPARATE progress channel (plan/feature), accent fill. */}
       {fraction !== null && model.progress && (
         <div data-rollout>
-          <div className="mb-vs-0-5 flex items-center justify-between text-2xs text-ink-muted">
+          <div className="mb-fg-0-5 flex items-center justify-between text-caption text-ink-muted">
             <span>rollout</span>
             <span data-tabular className="tabular-nums">
               {model.progress.done}/{model.progress.total}
             </span>
           </div>
           <div
-            className="h-vs-1-5 w-full overflow-hidden rounded-vs-sm bg-paper-sunken"
+            className="h-fg-1-5 w-full overflow-hidden rounded-fg-xs bg-paper-sunken"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={model.progress.total}
@@ -210,7 +210,7 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
           >
             <div
               data-rollout-fill
-              className="h-full rounded-vs-sm bg-accent"
+              className="h-full rounded-fg-xs bg-accent"
               style={{ width: `${Math.round(fraction * 100)}%` }}
             />
           </div>
@@ -219,13 +219,13 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
 
       {/* Microline: authority class + severity/tier magnitude (provenance tail). */}
       {(model.authorityClass || magnitude) && (
-        <p className="text-2xs text-ink-faint" data-microline>
+        <p className="text-caption text-ink-faint" data-microline>
           {[model.authorityClass, magnitude].filter(Boolean).join(" · ")}
         </p>
       )}
 
       {/* Identity tail: the node id is true identity → monospace. */}
-      <p className="break-all font-mono text-2xs text-ink-faint" data-card-id>
+      <p className="break-all font-mono text-caption text-ink-faint" data-card-id>
         {model.id}
       </p>
     </div>
@@ -254,7 +254,7 @@ function StatusGlyph({ status }: { status: NodeStatus }) {
 /** One info line of the type-content plane: a muted, tabular-friendly row. */
 function InfoLine({ children }: { children: ReactNode }) {
   return (
-    <p className="text-2xs text-ink-muted" data-type-line>
+    <p className="text-caption text-ink-muted" data-type-line>
       {children}
     </p>
   );
@@ -280,7 +280,7 @@ function TypeContentBlock({ content }: { content: TypeCardContent }) {
       }
       if (parts.length === 0) return null;
       return (
-        <div data-type-content="plan" className="flex flex-col gap-vs-0-5">
+        <div data-type-content="plan" className="flex flex-col gap-fg-0-5">
           <InfoLine>{parts.join(" · ")}</InfoLine>
         </div>
       );
@@ -341,8 +341,8 @@ function TypeContentBlock({ content }: { content: TypeCardContent }) {
     }
     case "code": {
       return (
-        <div data-type-content="code" className="flex flex-col gap-vs-0-5">
-          <p className="break-all font-mono text-2xs text-ink-muted" data-code-path>
+        <div data-type-content="code" className="flex flex-col gap-fg-0-5">
+          <p className="break-all font-mono text-caption text-ink-muted" data-code-path>
             {content.path}
           </p>
           {(content.language || content.gitDirty) && (

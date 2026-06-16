@@ -232,7 +232,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
       // full ADR control set (tier dial + feature filter, which the Figma mock
       // omits) stays reachable without eating the lineage surface's height. Each
       // group is `shrink-0` so it keeps its intrinsic width inside the scroller.
-      className="pointer-events-auto flex items-center gap-vs-3 overflow-x-auto border-b border-rule bg-paper-raised/90 px-vs-2 py-vs-1 text-label backdrop-blur-sm [scrollbar-width:thin]"
+      className="pointer-events-auto flex items-center gap-fg-3 overflow-x-auto border-b border-rule bg-paper-raised/90 px-fg-2 py-fg-1 text-label backdrop-blur-sm [scrollbar-width:thin]"
       data-timeline-controls
     >
       {/* S46 phase-lane show/hide toggles — one per PHASE_LANES entry, shape-first
@@ -251,7 +251,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
               aria-label={`${label} lane`}
               onClick={() => toggleLane(lane)}
               data-lane-toggle={lane}
-              className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`rounded-fg-pill border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 visible
                   ? "border-rule-strong bg-paper-sunken text-ink"
                   : "border-dashed border-rule text-ink-faint hover:border-rule-strong"
@@ -293,14 +293,14 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
       </span>
 
       {/* S50/S51/S52/S53 zoom / fit / jump controls. */}
-      <span className="flex shrink-0 items-center gap-vs-1" aria-label="zoom and fit">
+      <span className="flex shrink-0 items-center gap-fg-1" aria-label="zoom and fit">
         <button
           type="button"
           aria-label="zoom out"
           title="zoom out"
           disabled={!canZoomOut}
           onClick={() => zoomBy(1 / ZOOM_STEP)}
-          className="flex items-center rounded-vs-sm border border-rule p-vs-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
+          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
           <ZoomOut size={13} aria-hidden />
         </button>
@@ -310,7 +310,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           title="zoom in"
           disabled={!canZoomIn}
           onClick={() => zoomBy(ZOOM_STEP)}
-          className="flex items-center rounded-vs-sm border border-rule p-vs-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
+          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
           <ZoomIn size={13} aria-hidden />
         </button>
@@ -319,7 +319,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           aria-label="fit all"
           title="fit the whole corpus"
           onClick={fitAll}
-          className="flex items-center rounded-vs-sm border border-rule p-vs-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <Maximize2 size={13} aria-hidden />
         </button>
@@ -329,7 +329,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           title="fit the active feature's span"
           disabled={!featureActive}
           onClick={fitFeature}
-          className="flex items-center rounded-vs-sm border border-rule p-vs-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
+          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
           <Scan size={13} aria-hidden />
         </button>
@@ -337,7 +337,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
 
       {/* S53 jump-to-date — a real date input + go button; tabular by the input. */}
       <span
-        className="flex shrink-0 items-center gap-vs-1"
+        className="flex shrink-0 items-center gap-fg-1"
         aria-label="jump to date controls"
       >
         <CalendarDays size={13} aria-hidden className="text-ink-faint" />
@@ -350,7 +350,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           }}
           aria-label="jump to date"
           data-tabular
-          className="rounded-vs-sm border border-rule bg-paper-raised px-vs-1 py-vs-0-5 tabular-nums text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
+          className="rounded-fg-xs border border-rule bg-paper-raised px-fg-1 py-fg-0-5 tabular-nums text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
         />
         <button
           type="button"
@@ -358,7 +358,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           title="jump to the chosen date"
           disabled={parseDateInput(jumpValue) == null}
           onClick={jump}
-          className="rounded-vs-sm border border-rule px-vs-1-5 py-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
+          className="rounded-fg-xs border border-rule px-fg-1-5 py-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
           go
         </button>
@@ -374,7 +374,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           dateRange as a clearable, tabular chip; clearing returns toward LIVE. */}
       {rangeSet && (
         <span
-          className="flex shrink-0 items-center gap-vs-1 rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 text-ink-muted"
+          className="flex shrink-0 items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper px-fg-1-5 py-fg-0-5 text-ink-muted"
           data-range-chip
         >
           <span data-tabular className="tabular-nums">
@@ -386,7 +386,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
             aria-label="play the selected range"
             title="play the range — watch the network grow"
             onClick={playRange}
-            className="rounded-vs-sm bg-accent-subtle px-vs-1 py-vs-0-5 text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs bg-accent-subtle px-fg-1 py-fg-0-5 text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             play
           </button>
@@ -395,7 +395,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
             aria-label="clear date range"
             title="clear the range and return to live"
             onClick={clearRange}
-            className="flex items-center rounded-vs-sm text-ink-faint transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="flex items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <X size={11} aria-hidden />
           </button>

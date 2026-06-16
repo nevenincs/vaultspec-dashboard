@@ -84,7 +84,7 @@ function lineClass(kind: GitDiffLine["kind"]): string {
 function GutterNum({ n }: { n: number | null | undefined }) {
   return (
     <span
-      className="w-8 shrink-0 select-none px-vs-1 text-right text-ink-faint"
+      className="w-8 shrink-0 select-none px-fg-1 text-right text-ink-faint"
       data-tabular
       aria-hidden
     >
@@ -108,7 +108,7 @@ function DiffLineRow({ line }: { line: GitDiffLine }) {
         {glyph}
       </span>
       <span className="sr-only">{label}: </span>
-      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pr-vs-1">
+      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words pr-fg-1">
         {line.text}
       </span>
     </div>
@@ -160,7 +160,7 @@ function HunkBlock({
             openContextMenu(changeEntity(), { x: r.left, y: r.bottom });
           }
         }}
-        className="bg-paper-sunken px-vs-2 py-vs-0-5 font-mono text-caption text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="bg-paper-sunken px-fg-2 py-fg-0-5 font-mono text-caption text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         {hunk.header}
       </div>
@@ -195,7 +195,7 @@ export interface DiffViewProps {
 export function DiffView({ diff }: DiffViewProps) {
   if (diff.binary) {
     return (
-      <p className="px-vs-2 py-vs-1 text-label text-ink-faint" data-diff-binary>
+      <p className="px-fg-2 py-fg-1 text-label text-ink-faint" data-diff-binary>
         no textual diff — binary file or pure rename
       </p>
     );
@@ -203,7 +203,7 @@ export function DiffView({ diff }: DiffViewProps) {
 
   if (diff.hunks.length === 0) {
     return (
-      <p className="px-vs-2 py-vs-1 text-label text-ink-faint" data-diff-empty>
+      <p className="px-fg-2 py-fg-1 text-label text-ink-faint" data-diff-empty>
         no changes to show in this file
       </p>
     );
@@ -219,7 +219,7 @@ export function DiffView({ diff }: DiffViewProps) {
       ))}
       {diff.truncated && (
         <p
-          className="border-t border-rule px-vs-2 py-vs-0-5 text-caption text-ink-faint"
+          className="border-t border-rule px-fg-2 py-fg-0-5 text-caption text-ink-faint"
           data-diff-truncated
           data-tabular
         >

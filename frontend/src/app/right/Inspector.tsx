@@ -118,7 +118,7 @@ export function Inspector() {
   };
 
   return (
-    <div className="space-y-vs-2 text-body" data-inspector>
+    <div className="space-y-fg-2 text-body" data-inspector>
       <div
         tabIndex={0}
         aria-label={`node ${node.title ?? node.id}`}
@@ -152,8 +152,8 @@ export function Inspector() {
 
       {evidence.data && (
         <section className="text-label">
-          <div className="mb-vs-0-5 font-medium text-ink-muted">evidence</div>
-          <ul className="space-y-vs-0-5 text-ink-muted">
+          <div className="mb-fg-0-5 font-medium text-ink-muted">evidence</div>
+          <ul className="space-y-fg-0-5 text-ink-muted">
             {evidence.data.documents.slice(0, 5).map((doc) => (
               <li key={doc.path} className="truncate" title={doc.path}>
                 {doc.doc_type}: {doc.path.replace(/^.*\//, "")}
@@ -185,11 +185,11 @@ export function Inspector() {
       )}
 
       <section className="text-label">
-        <div className="mb-vs-0-5 font-medium text-ink-muted">edges by tier</div>
+        <div className="mb-fg-0-5 font-medium text-ink-muted">edges by tier</div>
         {[...tiers.entries()].map(([tier, edges]) => {
           const open = unfolded.has(tier);
           return (
-            <div key={tier} className="mb-vs-0-5">
+            <div key={tier} className="mb-fg-0-5">
               <button
                 type="button"
                 aria-expanded={open}
@@ -201,7 +201,7 @@ export function Inspector() {
                     return next;
                   })
                 }
-                className="flex items-center gap-vs-1 rounded-fg-xs text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="flex items-center gap-fg-1 rounded-fg-xs text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>{tier}</span>
@@ -210,7 +210,7 @@ export function Inspector() {
                 </span>
               </button>
               {open && (
-                <ul className="ml-vs-3 mt-vs-0-5 space-y-vs-0-5 text-ink-muted">
+                <ul className="ml-fg-3 mt-fg-0-5 space-y-fg-0-5 text-ink-muted">
                   {edges.map((edge) => (
                     <li key={edge.id}>
                       <button

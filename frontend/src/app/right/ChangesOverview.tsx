@@ -170,7 +170,7 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
   const behindN = behind ?? 0;
   return (
     <div
-      className="flex items-center gap-vs-1-5 rounded-fg-md border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label shadow-fg-raised"
+      className="flex items-center gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label shadow-fg-raised"
       aria-label="git status"
     >
       <span className="shrink-0 text-ink-faint" aria-hidden>
@@ -182,7 +182,7 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
         // Divergence counts are data-bearing → tabular numerals, with an
         // explicit up/down label so the divergence reads in grayscale.
         <span
-          className="flex shrink-0 items-center gap-vs-1 text-ink-faint"
+          className="flex shrink-0 items-center gap-fg-1 text-ink-faint"
           data-tabular
         >
           {aheadN > 0 && (
@@ -203,7 +203,7 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
           in grayscale (never colour-only). The live wire serves a dirty BOOLEAN,
           not a count, so the pill states clean vs. "changes" without a number. */}
       {dirty ? (
-        <span className="shrink-0 rounded-fg-pill bg-accent-subtle px-vs-1-5 py-vs-0-5 text-caption text-accent-text">
+        <span className="shrink-0 rounded-fg-pill bg-accent-subtle px-fg-1-5 py-fg-0-5 text-caption text-accent-text">
           changes
         </span>
       ) : (
@@ -275,7 +275,7 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         title={file.path}
       >
         <span className="shrink-0 text-ink-faint" aria-hidden>
@@ -306,7 +306,7 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
             sacred diff hues, label-reinforced so they read in grayscale. */}
         {(file.adds !== null || file.dels !== null) && (
           <span
-            className="flex shrink-0 items-center gap-vs-1 text-caption"
+            className="flex shrink-0 items-center gap-fg-1 text-caption"
             data-tabular
           >
             {file.adds !== null && (
@@ -323,17 +323,17 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
         )}
       </button>
       {open && (
-        <div className="ml-vs-4 mt-vs-0-5 animate-fade-in motion-reduce:animate-none">
+        <div className="ml-fg-4 mt-fg-0-5 animate-fade-in motion-reduce:animate-none">
           {diff.loading && (
             <p
-              className="animate-pulse-live px-vs-1 text-caption text-ink-faint motion-reduce:animate-none"
+              className="animate-pulse-live px-fg-1 text-caption text-ink-faint motion-reduce:animate-none"
               data-diff-loading
             >
               reading diff…
             </p>
           )}
           {diff.errored && (
-            <p className="px-vs-1 text-caption text-state-broken" data-diff-error>
+            <p className="px-fg-1 text-caption text-state-broken" data-diff-error>
               diff unavailable
             </p>
           )}
@@ -352,17 +352,17 @@ function ChangedFilesList({ files, scope }: { files: ChangedFile[]; scope: strin
 
   return (
     <section aria-label="working tree changes" data-working-changes>
-      <h3 className="mb-vs-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
+      <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
         Changes
       </h3>
-      <ul className="space-y-vs-2" aria-label="changed files">
+      <ul className="space-y-fg-2" aria-label="changed files">
         {groups.map(({ group, rows }) => (
           <li key={group}>
-            <h4 className="mb-vs-0-5 flex items-center gap-vs-1 text-caption text-ink-faint">
+            <h4 className="mb-fg-0-5 flex items-center gap-fg-1 text-caption text-ink-faint">
               <span className="uppercase tracking-wider">{GROUP_LABEL[group]}</span>
               <span data-tabular>{rows.length}</span>
             </h4>
-            <ul className="space-y-vs-0-5">
+            <ul className="space-y-fg-0-5">
               {rows.map((file) => (
                 <ChangedFileRow key={file.path} file={file} scope={scope} />
               ))}
@@ -424,7 +424,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             openContextMenu(eventEntity(), { x: r.left, y: r.bottom });
           }
         }}
-        className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         title={
           hasNodes
             ? `${ev.kind} · ${ev.node_ids.length} node${ev.node_ids.length !== 1 ? "s" : ""}${ev.truncated_node_ids ? ` (+${ev.truncated_node_ids} more)` : ""}`
@@ -454,13 +454,13 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
         )}
       </button>
       {expanded && ev.node_ids.length > 0 && (
-        <ul className="ml-vs-4 mt-vs-0-5 space-y-vs-0-5">
+        <ul className="ml-fg-4 mt-fg-0-5 space-y-fg-0-5">
           {ev.node_ids.map((id) => (
             <li key={id}>
               <button
                 type="button"
                 onClick={() => onSelect({ kind: "node", id })}
-                className="w-full truncate rounded-fg-xs px-vs-1 py-vs-0-5 text-left font-mono text-caption text-ink-faint hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="w-full truncate rounded-fg-xs px-fg-1 py-fg-0-5 text-left font-mono text-caption text-ink-faint hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 title={id}
               >
                 {id.split(":").pop() ?? id}
@@ -468,7 +468,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             </li>
           ))}
           {ev.truncated_node_ids && ev.truncated_node_ids > 0 && (
-            <li className="px-vs-1 text-caption text-ink-faint" data-tabular>
+            <li className="px-fg-1 text-caption text-ink-faint" data-tabular>
               +{ev.truncated_node_ids} more (contract §5 cap)
             </li>
           )}
@@ -502,7 +502,7 @@ export function ChangesOverview() {
   const now = Date.now();
 
   return (
-    <div className="space-y-vs-3 text-label" data-changes-overview>
+    <div className="space-y-fg-3 text-label" data-changes-overview>
       {/* Repository status header (shown whenever git state is available, even on
           a clean tree). */}
       {gitView.git && (
@@ -529,7 +529,7 @@ export function ChangesOverview() {
           the rest of the chrome unaffected (git-diff-browser ADR States). */}
       {gitView.degraded && (
         <p
-          className="flex items-start gap-vs-1-5 rounded-fg-xs bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          className="flex items-start gap-fg-1-5 rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted"
           data-git-degraded
         >
           <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
@@ -543,7 +543,7 @@ export function ChangesOverview() {
           from degradation, with a retry affordance. */}
       {gitView.errored && (
         <div
-          className="flex items-center gap-vs-1-5 rounded-fg-xs border border-state-broken/40 px-vs-2 py-vs-1"
+          className="flex items-center gap-fg-1-5 rounded-fg-xs border border-state-broken/40 px-fg-2 py-fg-1"
           data-git-error
         >
           <span className="shrink-0 text-state-broken" aria-hidden>
@@ -573,7 +573,7 @@ export function ChangesOverview() {
         </p>
       )}
       {changed.errored && (
-        <p className="px-vs-1 py-vs-1 text-label text-state-broken" data-changes-error>
+        <p className="px-fg-1 py-fg-1 text-label text-state-broken" data-changes-error>
           changed files unavailable
         </p>
       )}
@@ -586,7 +586,7 @@ export function ChangesOverview() {
           authority on emptiness — git's `dirty` boolean and the parsed file
           count agree, but a clean tree never renders a per-file list. */}
       {gitView.git && !changed.loading && changed.files.length === 0 && (
-        <p className="px-vs-1 py-vs-1 text-label text-ink-faint" data-git-clean>
+        <p className="px-fg-1 py-fg-1 text-label text-ink-faint" data-git-clean>
           working tree clean — no changes to review.
         </p>
       )}
@@ -594,10 +594,10 @@ export function ChangesOverview() {
       {/* Recent commits */}
       {commits.length > 0 && (
         <section aria-label="recent commits">
-          <h3 className="mb-vs-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
+          <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
             Commits
           </h3>
-          <ul className="space-y-vs-0-5">
+          <ul className="space-y-fg-0-5">
             {commits.slice(0, 20).map((ev) => (
               <EventRow key={ev.id} ev={ev} now={now} onSelect={selectEntity} />
             ))}
@@ -608,10 +608,10 @@ export function ChangesOverview() {
       {/* Doc + step activity */}
       {docActivity.length > 0 && (
         <section aria-label="vault activity">
-          <h3 className="mb-vs-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
+          <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
             Activity
           </h3>
-          <ul className="space-y-vs-0-5">
+          <ul className="space-y-fg-0-5">
             {docActivity.map((ev) => (
               <EventRow key={ev.id} ev={ev} now={now} onSelect={selectEntity} />
             ))}
@@ -624,7 +624,7 @@ export function ChangesOverview() {
         <p className="text-label text-ink-faint">loading activity…</p>
       )}
       {events.isError && (
-        <div className="space-y-vs-1">
+        <div className="space-y-fg-1">
           <p className="text-label text-state-broken">activity unavailable</p>
           <button
             type="button"

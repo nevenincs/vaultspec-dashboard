@@ -42,13 +42,13 @@ const RADIUS = ["vs-sm", "vs-md", "vs-lg", "vs-xl"];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section style={{ marginBottom: "var(--spacing-vs-6)" }}>
+    <section style={{ marginBottom: "var(--spacing-fg-6)" }}>
       <h3
         style={{
-          font: "var(--text-title)",
-          fontSize: "var(--text-title)",
+          font: "var(--text-body-strong)",
+          fontSize: "var(--text-body-strong)",
           color: "var(--color-ink)",
-          margin: "0 0 var(--spacing-vs-2)",
+          margin: "0 0 var(--spacing-fg-2)",
           fontWeight: 600,
         }}
       >
@@ -65,7 +65,7 @@ function Foundations() {
       style={{
         background: "var(--color-paper)",
         color: "var(--color-ink)",
-        padding: "var(--spacing-vs-6)",
+        padding: "var(--spacing-fg-6)",
         fontFamily: "var(--font-sans)",
         minWidth: 720,
       }}
@@ -75,7 +75,7 @@ function Foundations() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(5, 1fr)",
-            gap: "var(--spacing-vs-2)",
+            gap: "var(--spacing-fg-2)",
           }}
         >
           {COLORS.map((c) => (
@@ -83,13 +83,16 @@ function Foundations() {
               <div
                 style={{
                   height: 40,
-                  borderRadius: "var(--radius-vs-sm)",
+                  borderRadius: "var(--radius-fg-xs)",
                   background: `var(--color-${c})`,
                   border: "1px solid var(--color-rule)",
                 }}
               />
               <span
-                style={{ fontSize: "var(--text-2xs)", color: "var(--color-ink-muted)" }}
+                style={{
+                  fontSize: "var(--text-caption)",
+                  color: "var(--color-ink-muted)",
+                }}
               >
                 {c}
               </span>
@@ -111,7 +114,7 @@ function Foundations() {
           style={{
             display: "flex",
             alignItems: "flex-end",
-            gap: "var(--spacing-vs-2)",
+            gap: "var(--spacing-fg-2)",
           }}
         >
           {SPACE.map((s) => (
@@ -124,7 +127,10 @@ function Foundations() {
                 }}
               />
               <span
-                style={{ fontSize: "var(--text-2xs)", color: "var(--color-ink-muted)" }}
+                style={{
+                  fontSize: "var(--text-caption)",
+                  color: "var(--color-ink-muted)",
+                }}
               >
                 {s}
               </span>
@@ -134,7 +140,7 @@ function Foundations() {
       </Section>
 
       <Section title="Elevation">
-        <div style={{ display: "flex", gap: "var(--spacing-vs-4)" }}>
+        <div style={{ display: "flex", gap: "var(--spacing-fg-4)" }}>
           {SHADOW.map((s) => (
             <div key={s} style={{ textAlign: "center" }}>
               <div
@@ -142,12 +148,15 @@ function Foundations() {
                   width: 64,
                   height: 48,
                   background: "var(--color-paper-raised)",
-                  borderRadius: "var(--radius-vs-md)",
+                  borderRadius: "var(--radius-fg-md)",
                   boxShadow: `var(--shadow-${s})`,
                 }}
               />
               <span
-                style={{ fontSize: "var(--text-2xs)", color: "var(--color-ink-muted)" }}
+                style={{
+                  fontSize: "var(--text-caption)",
+                  color: "var(--color-ink-muted)",
+                }}
               >
                 {s}
               </span>
@@ -157,7 +166,7 @@ function Foundations() {
       </Section>
 
       <Section title="Radius">
-        <div style={{ display: "flex", gap: "var(--spacing-vs-4)" }}>
+        <div style={{ display: "flex", gap: "var(--spacing-fg-4)" }}>
           {RADIUS.map((r) => (
             <div key={r} style={{ textAlign: "center" }}>
               <div
@@ -170,7 +179,10 @@ function Foundations() {
                 }}
               />
               <span
-                style={{ fontSize: "var(--text-2xs)", color: "var(--color-ink-muted)" }}
+                style={{
+                  fontSize: "var(--text-caption)",
+                  color: "var(--color-ink-muted)",
+                }}
               >
                 {r}
               </span>

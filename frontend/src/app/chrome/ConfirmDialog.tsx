@@ -61,14 +61,14 @@ export function ConfirmDialog({
     <Dialog open={open} onClose={onCancel} title={title}>
       <div className="flex flex-col">
         {/* Body copy: the consequence, in muted ink (figma 17:1284). */}
-        <p className="px-vs-4 py-vs-4 text-body text-ink-muted">{message}</p>
+        <p className="px-fg-4 py-fg-4 text-body text-ink-muted">{message}</p>
 
         {/* Footer: a top-ruled button row, right-aligned (figma 17:1285). */}
-        <div className="flex shrink-0 items-center justify-end gap-vs-2 border-t border-rule px-vs-4 py-vs-3">
+        <div className="flex shrink-0 items-center justify-end gap-fg-2 border-t border-rule px-fg-4 py-fg-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-vs-sm border border-rule px-vs-3 py-vs-1-5 text-body font-medium text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs border border-rule px-fg-3 py-fg-1-5 text-body font-medium text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             {cancelLabel}
           </button>
@@ -76,7 +76,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="rounded-vs-sm bg-accent-subtle px-vs-3 py-vs-1-5 text-body font-medium text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs bg-accent-subtle px-fg-3 py-fg-1-5 text-body font-medium text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             {confirmLabel}
           </button>

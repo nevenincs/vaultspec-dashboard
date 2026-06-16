@@ -108,13 +108,13 @@ function CodeLines({
               }}
             >
               <span
-                className="sticky left-0 select-none pr-vs-2 text-right text-ink-faint"
+                className="sticky left-0 select-none pr-fg-2 text-right text-ink-faint"
                 style={{ width: gutterWidth, flex: "0 0 auto" }}
                 aria-hidden
               >
                 {lineNo + 1}
               </span>
-              <code className="px-vs-1">
+              <code className="px-fg-1">
                 {tokenLines && tokenLines[lineNo] ? (
                   <TokenizedLine tokens={tokenLines[lineNo]} />
                 ) : (
@@ -142,11 +142,11 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
   const { lines: tokenLines } = useTokenLines(text, content.languageHint);
 
   if (content.loading) {
-    return <div className="p-vs-3 text-body text-ink-faint">Loading file…</div>;
+    return <div className="p-fg-3 text-body text-ink-faint">Loading file…</div>;
   }
   if (content.errored) {
     return (
-      <div className="p-vs-3 text-body text-state-broken">
+      <div className="p-fg-3 text-body text-state-broken">
         The file could not be loaded.
       </div>
     );
@@ -154,31 +154,31 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
   if (content.degraded) {
     const reason = content.reasons.structural;
     return (
-      <div className="p-vs-3 text-body text-ink-muted">
+      <div className="p-fg-3 text-body text-ink-muted">
         File unavailable{reason ? `: ${reason}` : ""}.
       </div>
     );
   }
   if (!content.available || text.length === 0) {
-    return <div className="p-vs-3 text-body text-ink-faint">This file is empty.</div>;
+    return <div className="p-fg-3 text-body text-ink-faint">This file is empty.</div>;
   }
 
   const rawLines = text.replace(/\n$/, "").split("\n");
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-vs-2 border-b border-rule bg-paper px-vs-3 py-vs-1">
+      <header className="flex items-center gap-fg-2 border-b border-rule bg-paper px-fg-3 py-fg-1">
         <span className="truncate font-mono text-label text-ink-muted">
           {content.path}
         </span>
         {content.languageHint && (
-          <span className="rounded-vs-xs bg-accent-subtle px-vs-1 text-label text-accent-text">
+          <span className="rounded-fg-xs bg-accent-subtle px-fg-1 text-label text-accent-text">
             {content.languageHint}
           </span>
         )}
       </header>
       {content.truncated && (
-        <div className="border-b border-rule bg-paper-sunken px-vs-3 py-vs-1 text-label text-ink-muted">
+        <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
           Truncated to the first {content.truncated.returned_bytes.toLocaleString()} of{" "}
           {content.truncated.total_bytes.toLocaleString()} bytes — open the file
           directly for the full contents.

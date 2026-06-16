@@ -183,27 +183,27 @@ function RollupCard({ card, jobs, loading }: RollupCardProps) {
   const ToneMark = loading ? Loader2 : TONE_MARK[card.tone];
   return (
     <div
-      className={`flex items-center justify-between gap-vs-2 rounded-vs-md border px-vs-2 py-vs-1 shadow-card transition-colors duration-ui-fast ease-settle ${
+      className={`flex items-center justify-between gap-fg-2 rounded-fg-md border px-fg-2 py-fg-1 shadow-fg-raised transition-colors duration-ui-fast ease-settle ${
         TONE_CLASSES[card.tone]
       }`}
       data-rollup-card
       data-card={card.label}
       data-tone={card.tone}
     >
-      <span className="flex min-w-0 items-center gap-vs-1-5">
+      <span className="flex min-w-0 items-center gap-fg-1-5">
         <span className="shrink-0 text-ink-faint" aria-hidden>
           <LeadMark size={MARK_PX} />
         </span>
         <span className="font-medium text-ink">{card.label}</span>
       </span>
-      <span className="flex min-w-0 items-center gap-vs-1-5 text-label">
+      <span className="flex min-w-0 items-center gap-fg-1-5 text-label">
         <span className="min-w-0 truncate text-ink-muted" title={card.detail}>
           {card.detail}
         </span>
         {jobs !== undefined && (
           // Job count is data-bearing → tabular numerals (typography law).
           <span
-            className="shrink-0 rounded-vs-sm bg-paper-sunken px-vs-1 text-2xs text-ink-muted"
+            className="shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-muted"
             data-tabular
             data-rag-jobs
           >
@@ -275,7 +275,7 @@ export function NowStrip() {
           : `rag ${rag.service ?? "absent"}`;
 
   return (
-    <div className="space-y-vs-1 text-label" data-now-strip>
+    <div className="space-y-fg-1 text-label" data-now-strip>
       <p className="sr-only" role="status" aria-live="polite">
         {ragLive}
       </p>
@@ -288,7 +288,7 @@ export function NowStrip() {
         />
       ))}
       {status.data && status.data.degradations.length > 0 && (
-        <p className="flex items-start gap-vs-1-5 text-state-broken">
+        <p className="flex items-start gap-fg-1-5 text-state-broken">
           <span className="mt-px shrink-0" aria-hidden>
             <AlertTriangle size={MARK_PX} />
           </span>

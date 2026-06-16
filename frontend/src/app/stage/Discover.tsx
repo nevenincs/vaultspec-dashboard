@@ -59,7 +59,7 @@ export function Discover() {
         <button
           type="button"
           onClick={() => setOpenFor(selectedId)}
-          className="flex items-center gap-vs-1 rounded-fg-xs border border-tier-semantic/50 bg-paper-raised/90 px-vs-2 py-vs-1 text-accent-text shadow-fg-raised transition-colors duration-ui-fast ease-settle hover:border-tier-semantic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex items-center gap-fg-1 rounded-fg-xs border border-tier-semantic/50 bg-paper-raised/90 px-fg-2 py-fg-1 text-accent-text shadow-fg-raised transition-colors duration-ui-fast ease-settle hover:border-tier-semantic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <TierMark tier="semantic" size={14} title="semantic" />
           discover related…
@@ -71,11 +71,11 @@ export function Discover() {
           aria-label="semantic discovery"
           aria-modal={false}
           tabIndex={-1}
-          className="rounded-fg-md border border-tier-semantic/40 bg-paper-raised/95 p-vs-2 shadow-fg-overlay backdrop-blur-sm focus:outline-none animate-slide-in-up"
+          className="rounded-fg-md border border-tier-semantic/40 bg-paper-raised/95 p-fg-2 shadow-fg-overlay backdrop-blur-sm focus:outline-none animate-slide-in-up"
           data-discover-panel
         >
-          <div className="flex items-center justify-between gap-vs-2">
-            <span className="flex items-center gap-vs-1 font-medium text-ink">
+          <div className="flex items-center justify-between gap-fg-2">
+            <span className="flex items-center gap-fg-1 font-medium text-ink">
               <TierMark tier="semantic" size={14} title="semantic discovery" />
               discovery — {openFor.replace(/^(feature|doc):/, "")}
             </span>
@@ -90,27 +90,27 @@ export function Discover() {
           </div>
           {discovery.loading && (
             // The liveness cue is tied to the real in-progress request.
-            <p className="mt-vs-1 text-ink-faint" aria-busy>
+            <p className="mt-fg-1 text-ink-faint" aria-busy>
               <span className="animate-pulse-live">asking rag…</span>
             </p>
           )}
           {discovery.offline && (
             // Designed degraded state (rag absent): discover-offline, never an
             // anonymous error.
-            <p className="mt-vs-1 text-state-stale" data-discover-offline>
+            <p className="mt-fg-1 text-state-stale" data-discover-offline>
               semantic discovery offline — rag is not available
             </p>
           )}
           {!discovery.loading &&
             !discovery.offline &&
             discovery.candidates.length === 0 && (
-              <p className="mt-vs-1 text-ink-faint">no candidates above the floor</p>
+              <p className="mt-fg-1 text-ink-faint">no candidates above the floor</p>
             )}
-          <ul className="mt-vs-1 space-y-vs-1" role="list">
+          <ul className="mt-fg-1 space-y-fg-1" role="list">
             {discovery.candidates.map((candidate) => {
               const isPinned = pinned.some((e) => e.id === candidate.id);
               return (
-                <li key={candidate.id} className="flex items-center gap-vs-2">
+                <li key={candidate.id} className="flex items-center gap-fg-2">
                   {/* Question-mark-qualified semantic mark: a quarantined
                       suggestion, distinct from an asserted edge. */}
                   <span

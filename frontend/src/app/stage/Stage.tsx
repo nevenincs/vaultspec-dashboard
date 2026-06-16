@@ -504,7 +504,7 @@ export function Stage() {
           (a distinct concern from layout/zoom), so it stays docked on its own
           rather than being silently dropped — it remains a real, consumed
           capability. */}
-      <div className="pointer-events-auto absolute left-1/2 top-vs-2 z-10 flex -translate-x-1/2 items-center gap-vs-2">
+      <div className="pointer-events-auto absolute left-1/2 top-fg-2 z-10 flex -translate-x-1/2 items-center gap-fg-2">
         <LensSelector />
       </div>
       <WorkingSet />

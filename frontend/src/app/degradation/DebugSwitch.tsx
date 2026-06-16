@@ -50,8 +50,8 @@ export function DegradationDebugSwitch() {
   return (
     <div className="pointer-events-auto fixed bottom-2 left-2 z-50 text-caption">
       {open ? (
-        <div className="rounded-fg-md border border-rule bg-paper-raised/95 p-vs-2 text-ink shadow-fg-overlay backdrop-blur-sm">
-          <div className="flex items-center justify-between gap-vs-3">
+        <div className="rounded-fg-md border border-rule bg-paper-raised/95 p-fg-2 text-ink shadow-fg-overlay backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-fg-3">
             <span className="text-label font-medium text-state-stale">
               degradation debug
             </span>
@@ -63,12 +63,12 @@ export function DegradationDebugSwitch() {
               ×
             </button>
           </div>
-          <ul className="mt-vs-1 space-y-vs-0-5">
+          <ul className="mt-fg-1 space-y-fg-0-5">
             {CONDITIONS.map(({ key, label }) => {
               const on = Boolean(overrides?.[key]);
               return (
                 <li key={key}>
-                  <label className="flex items-center gap-vs-1 text-ink-muted">
+                  <label className="flex items-center gap-fg-1 text-ink-muted">
                     <input
                       type="checkbox"
                       checked={on}
@@ -86,7 +86,7 @@ export function DegradationDebugSwitch() {
           </ul>
           <button
             type="button"
-            className="mt-vs-1 text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="mt-fg-1 text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() => {
               clearOverrides();
               void driveMock("ragDown", false);
@@ -101,7 +101,7 @@ export function DegradationDebugSwitch() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-fg-xs border border-rule bg-paper-raised/80 px-vs-1-5 py-vs-0-5 text-state-stale transition-colors hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="rounded-fg-xs border border-rule bg-paper-raised/80 px-fg-1-5 py-fg-0-5 text-state-stale transition-colors hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           title="degradation debug switch (dev only, G8.a)"
         >
           ⚒ degrade

@@ -124,7 +124,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     // Loading: a quiet copy-toned pending line — no spinner theatre.
     return (
       <p
-        className="px-vs-1 py-vs-0-5 text-label text-ink-faint"
+        className="px-fg-1 py-fg-0-5 text-label text-ink-faint"
         role="status"
         aria-live="polite"
       >
@@ -143,7 +143,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     // without a page reload, so the retry is a manual nudge, not the only path.
     return (
       <div
-        className="space-y-vs-1 px-vs-1 py-vs-0-5"
+        className="space-y-fg-1 px-fg-1 py-fg-0-5"
         role="status"
         aria-live="polite"
         data-worktree-error
@@ -153,7 +153,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           type="button"
           onClick={() => void map.refetch()}
           aria-label="retry loading the workspace map"
-          className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           retry
         </button>
@@ -279,7 +279,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             ? `worktree scope: ${headlineBranch}${pending ? ", switching" : ""}`
             : "choose a worktree scope"
         }
-        className="flex w-full items-center gap-vs-1 rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 shadow-card transition-colors duration-ui-fast hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-fg-1 rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 shadow-fg-raised transition-colors duration-ui-fast hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         <span
           className={`min-w-0 flex-1 truncate text-left font-medium ${
@@ -290,7 +290,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         </span>
         {/* Honest pending cue on the trigger while a switch is in flight. */}
         {pending && (
-          <span className="shrink-0 text-2xs text-ink-faint" role="status">
+          <span className="shrink-0 text-caption text-ink-faint" role="status">
             switching…
           </span>
         )}
@@ -303,7 +303,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           git &&
           ((git.ahead ?? 0) > 0 || (git.behind ?? 0) > 0 || git.dirty) && (
             <span
-              className="flex shrink-0 items-center gap-vs-0-5 text-2xs text-ink-faint"
+              className="flex shrink-0 items-center gap-fg-0-5 text-caption text-ink-faint"
               title={[
                 (git.ahead ?? 0) > 0 ? `${git.ahead} ahead` : "",
                 (git.behind ?? 0) > 0 ? `${git.behind} behind` : "",
@@ -341,7 +341,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           what it can. Read through the stores selector, never the raw tiers. */}
       {availability.degraded && (
         <p
-          className="mt-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
+          className="mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
           role="status"
           aria-live="polite"
           data-worktree-degraded
@@ -357,7 +357,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
       {expanded && (
         <ul
           id={listId}
-          className={`mt-vs-1 space-y-vs-0-5 ${
+          className={`mt-fg-1 space-y-fg-0-5 ${
             keyboardToggle ? "" : "animate-slide-in-down"
           }`}
           aria-label="worktree scopes"
@@ -366,14 +366,14 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             // Empty: an approachable empty state — a workspace resolving to no
             // selectable corpus-bearing worktree is a real condition, not a fault.
             <li
-              className="px-vs-2 py-vs-1 text-label text-ink-faint"
+              className="px-fg-2 py-fg-1 text-label text-ink-faint"
               data-worktree-empty
             >
               no worktrees mapped yet — point the engine at a repository to begin.
             </li>
           ) : selectable.length === 0 ? (
             <li
-              className="px-vs-2 py-vs-1 text-label text-ink-faint"
+              className="px-fg-2 py-fg-1 text-label text-ink-faint"
               data-worktree-empty
             >
               no vault-bearing worktree to switch to here. listed refs are context only.
@@ -425,7 +425,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                     }
                     onRowKeyDown(worktree, index)(e);
                   }}
-                  className={`flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                  className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     isActive
                       ? "bg-accent-subtle font-medium text-ink"
                       : worktree.has_vault
@@ -438,7 +438,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                       (the base-language grayscale-safe gate). */}
                   <span
                     aria-hidden
-                    className={`-ml-vs-1 h-3 w-0.5 shrink-0 rounded-full ${
+                    className={`-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full ${
                       isActive ? "bg-accent" : "bg-transparent"
                     }`}
                   />
@@ -459,7 +459,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
                     </span>
                   )}
                   {isPendingRow && (
-                    <span className="ml-auto shrink-0 text-2xs text-ink-faint">
+                    <span className="ml-auto shrink-0 text-caption text-ink-faint">
                       switching…
                     </span>
                   )}
@@ -469,7 +469,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           })}
           {singleScope && (
             <li
-              className="px-vs-2 py-vs-0-5 text-2xs text-ink-faint"
+              className="px-fg-2 py-fg-0-5 text-caption text-ink-faint"
               data-worktree-single
             >
               this is the only vault-bearing worktree.
@@ -482,7 +482,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           but the selection did not persist. role=status so it is announced. */}
       {switchError && (
         <p
-          className="mt-vs-1 px-vs-1 text-2xs text-state-broken"
+          className="mt-fg-1 px-fg-1 text-caption text-state-broken"
           role="status"
           aria-live="polite"
           data-worktree-switch-error

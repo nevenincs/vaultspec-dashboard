@@ -70,7 +70,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
       aria-label={`${model.kind} ${model.title}`}
       data-hover-card
       data-category={model.category}
-      className="relative flex w-64 flex-col gap-vs-1-5 overflow-hidden rounded-vs-md border border-rule bg-paper-raised p-vs-2 pl-vs-3 text-ink shadow-float"
+      className="relative flex w-64 flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper-raised p-fg-2 pl-fg-3 text-ink shadow-fg-overlay"
     >
       {/* Category-accent strip: a single-token vertical rule naming the node's
           category by hue. Warmth lives in this one token, never decoration. */}
@@ -78,13 +78,13 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
         <span
           data-category-strip
           aria-hidden
-          className="absolute inset-y-0 left-0 w-vs-0-5"
+          className="absolute inset-y-0 left-0 w-fg-0-5"
           style={{ backgroundColor: `var(${accentVar})` }}
         />
       )}
 
       {/* Header: kind glyph in the category accent + title. */}
-      <div className="flex items-center gap-vs-1-5">
+      <div className="flex items-center gap-fg-1-5">
         <span
           className="flex shrink-0 items-center"
           style={accentVar ? { color: `var(${accentVar})` } : undefined}
@@ -92,7 +92,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
         >
           <DocTypeMark kind={model.kind} size={16} />
         </span>
-        <h3 className="min-w-0 flex-1 truncate text-title font-medium text-ink">
+        <h3 className="min-w-0 flex-1 truncate text-body-strong font-medium text-ink">
           {model.title}
         </h3>
         {onOpen && (
@@ -105,7 +105,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
             // wrapper so the transient hover card never steals the pointer; the
             // open affordance is the one interactive escape, so it re-enables
             // pointer events on itself (the bloom → open intent).
-            className="pointer-events-auto flex shrink-0 items-center rounded-vs-sm p-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
+            className="pointer-events-auto flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
           >
             <ExternalLink size={14} strokeWidth={1.75} aria-hidden />
           </button>
@@ -120,8 +120,8 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
           className="text-label"
           data-evidence-group={group.heading}
         >
-          <div className="mb-vs-0-5 font-medium text-ink-muted">{group.heading}</div>
-          <ul className="space-y-vs-0-5 text-ink-muted">
+          <div className="mb-fg-0-5 font-medium text-ink-muted">{group.heading}</div>
+          <ul className="space-y-fg-0-5 text-ink-muted">
             {group.lines.map((line) => (
               <li key={line.key} className="truncate" title={line.label}>
                 <span>{line.label}</span>
@@ -143,7 +143,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
       ))}
 
       {/* Identity tail: the node id is true identity → monospace. */}
-      <p className="break-all font-mono text-2xs text-ink-faint" data-card-id>
+      <p className="break-all font-mono text-caption text-ink-faint" data-card-id>
         {model.id}
       </p>
     </div>

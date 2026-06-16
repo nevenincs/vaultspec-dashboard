@@ -108,7 +108,7 @@ function CenteredNotice({
 }) {
   return (
     <div
-      className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-vs-2 px-vs-4 text-center"
+      className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-fg-2 px-fg-4 text-center"
       data-canvas-state={testid}
       role="status"
     >
@@ -129,13 +129,13 @@ function CornerBanner({
 }) {
   return (
     <div
-      className={`pointer-events-none absolute inset-x-0 bottom-vs-3 flex justify-center px-vs-4 ${
+      className={`pointer-events-none absolute inset-x-0 bottom-fg-3 flex justify-center px-fg-4 ${
         tone === "warn" ? "text-state-stale" : "text-ink-muted"
       }`}
       data-canvas-state={testid}
       role="status"
     >
-      <div className="pointer-events-auto flex items-center gap-vs-2 rounded-vs-md border border-rule bg-paper-raised/95 px-vs-3 py-vs-1-5 text-label shadow-float">
+      <div className="pointer-events-auto flex items-center gap-fg-2 rounded-fg-md border border-rule bg-paper-raised/95 px-fg-3 py-fg-1-5 text-label shadow-fg-overlay">
         {children}
       </div>
     </div>

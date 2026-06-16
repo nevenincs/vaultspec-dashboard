@@ -96,7 +96,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className="flex max-h-[80vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-vs-xl border border-rule bg-paper-raised shadow-deep outline-none animate-slide-in-down"
+        className="flex max-h-[80vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover outline-none animate-slide-in-down"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // Real focus trap: Tab / Shift+Tab cycle within the dialog so focus
@@ -119,13 +119,13 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
           }
         }}
       >
-        <header className="flex shrink-0 items-start justify-between gap-vs-2 border-b border-rule px-vs-4 py-vs-3">
+        <header className="flex shrink-0 items-start justify-between gap-fg-2 border-b border-rule px-fg-4 py-fg-3">
           <div className="min-w-0">
-            <h2 id={titleId} className="text-heading font-medium text-ink">
+            <h2 id={titleId} className="text-title font-medium text-ink">
               {title}
             </h2>
             {description && (
-              <p id={descId} className="mt-vs-0-5 text-label text-ink-faint">
+              <p id={descId} className="mt-fg-0-5 text-label text-ink-faint">
                 {description}
               </p>
             )}
@@ -134,7 +134,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 rounded-vs-sm p-vs-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="shrink-0 rounded-fg-xs p-fg-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <X aria-hidden className="size-3.5" />
           </button>

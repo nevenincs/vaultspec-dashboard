@@ -87,7 +87,7 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
       className={
         embedded
           ? "overflow-hidden rounded-fg-md border border-rule bg-paper-raised"
-          : "pointer-events-auto absolute bottom-vs-2 right-vs-2 z-10 overflow-hidden rounded-fg-md border border-rule bg-paper-raised/90 shadow-fg-raised backdrop-blur-sm"
+          : "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden rounded-fg-md border border-rule bg-paper-raised/90 shadow-fg-raised backdrop-blur-sm"
       }
       style={{ width: collapsed ? "auto" : MINIMAP_W + 2 }}
       role="group"
@@ -97,11 +97,11 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
       {/* Header strip — a quiet "Map" label in the faint ink role at the smallest
           UI step, plus the recenter + collapse controls in the Lucide chrome
           family. Attenuated supporting chrome: the field leads. */}
-      <div className="flex items-center justify-between gap-vs-1 border-b border-rule px-vs-2 py-vs-1">
+      <div className="flex items-center justify-between gap-fg-1 border-b border-rule px-fg-2 py-fg-1">
         <span className="text-caption font-medium uppercase tracking-wider text-ink-faint">
           Map
         </span>
-        <div className="flex items-center gap-vs-0-5">
+        <div className="flex items-center gap-fg-0-5">
           {!collapsed && (
             <button
               type="button"

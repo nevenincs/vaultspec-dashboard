@@ -191,7 +191,7 @@ export function VaultBrowser({
     // subtle liveness pulse is tied to genuine in-flight work, not ambient.
     return (
       <p
-        className="animate-pulse-live px-vs-1 py-vs-0-5 text-label text-ink-faint"
+        className="animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint"
         role="status"
         aria-live="polite"
       >
@@ -208,7 +208,7 @@ export function VaultBrowser({
     // it falls through to the designed degraded banner below — only a tiers-less
     // transport fault renders this error state (degradation-is-read-from-tiers).
     return (
-      <div className="space-y-vs-1 px-vs-1 py-vs-0-5" role="status" aria-live="polite">
+      <div className="space-y-fg-1 px-fg-1 py-fg-0-5" role="status" aria-live="polite">
         <p className="text-label text-state-broken">vault tree unavailable</p>
         <button
           type="button"
@@ -260,7 +260,7 @@ export function VaultBrowser({
           error. Read through the stores selector, never the raw tiers block. */}
       {availability.degraded && (
         <p
-          className="mb-vs-1 rounded-fg-xs bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-caption text-ink-muted"
+          className="mb-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
           role="status"
           aria-live="polite"
           data-vault-degraded
@@ -276,7 +276,7 @@ export function VaultBrowser({
           // matches no row — an honest, distinct state, not "no documents". The
           // filter is client-side; clearing it restores the full tree.
           <p
-            className="px-vs-1 py-vs-0-5 text-label text-ink-faint"
+            className="px-fg-1 py-fg-0-5 text-label text-ink-faint"
             data-vault-filter-empty
           >
             no vault documents match the filter.
@@ -284,7 +284,7 @@ export function VaultBrowser({
         ) : (
           // Empty: an approachable empty state — a non-vault worktree resolving to
           // no documents is a real, common condition, not a fault.
-          <p className="px-vs-1 py-vs-0-5 text-label text-ink-faint" data-vault-empty>
+          <p className="px-fg-1 py-fg-0-5 text-label text-ink-faint" data-vault-empty>
             no vault documents in this scope yet.
           </p>
         )
@@ -297,7 +297,7 @@ export function VaultBrowser({
           // (Figma `Pencil`/`Diamond`/`ClipboardText` … beside the group name).
           const GroupMark = docMark(group);
           return (
-            <section key={group} className="mt-vs-2 first:mt-0">
+            <section key={group} className="mt-fg-2 first:mt-0">
               <button
                 ref={registerNav(headerKey)}
                 type="button"
@@ -317,7 +317,7 @@ export function VaultBrowser({
                 // Group header (Figma `ResearchHeader`/`PlanHeader` …): chevron +
                 // doc-type mark + a SEMIBOLD body-ink label, with the count quietly
                 // right-aligned. The whole row is the disclosure control.
-                className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {isCollapsed ? (
                   <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -333,7 +333,7 @@ export function VaultBrowser({
                 </span>
               </button>
               {!isCollapsed && (
-                <ul id={sectionId} className="ml-vs-3 mt-vs-0-5 space-y-vs-0-5">
+                <ul id={sectionId} className="ml-fg-3 mt-fg-0-5 space-y-fg-0-5">
                   {entries.map((entry) => {
                     const fresh = freshnessLabel(entry.dates.modified, now);
                     const highlighted = entry.path === highlight;
@@ -380,7 +380,7 @@ export function VaultBrowser({
                             }
                             navKeyDown(rowKey)(e);
                           }}
-                          className={`flex w-full items-center gap-vs-1 truncate rounded-fg-xs px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                          className={`flex w-full items-center gap-fg-1 truncate rounded-fg-xs px-fg-1 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                             highlighted
                               ? "bg-accent-subtle font-medium text-ink"
                               : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -396,7 +396,7 @@ export function VaultBrowser({
                               row is selected, exactly as the design paints it. */}
                           <span
                             aria-hidden
-                            className={`-ml-vs-0-5 h-3 w-0.5 shrink-0 rounded-full ${
+                            className={`-ml-fg-0-5 h-3 w-0.5 shrink-0 rounded-full ${
                               highlighted ? "bg-accent" : "bg-transparent"
                             }`}
                           />

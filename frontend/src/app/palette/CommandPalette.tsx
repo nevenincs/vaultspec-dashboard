@@ -412,7 +412,7 @@ export function CommandPalette() {
         }}
       >
         {/* Search affordance + query input (combobox over the listbox). */}
-        <div className="flex items-center gap-vs-2 border-b border-rule px-vs-4">
+        <div className="flex items-center gap-fg-2 border-b border-rule px-fg-4">
           <Search aria-hidden className="size-4 shrink-0 text-ink-faint" />
           <input
             ref={inputRef}
@@ -445,7 +445,7 @@ export function CommandPalette() {
               }
             }}
             placeholder="type a command, feature, or lens…"
-            className="w-full bg-transparent py-vs-3 text-body text-ink outline-none placeholder:text-ink-faint"
+            className="w-full bg-transparent py-fg-3 text-body text-ink outline-none placeholder:text-ink-faint"
           />
         </div>
 
@@ -454,19 +454,19 @@ export function CommandPalette() {
           id={listboxId}
           role="listbox"
           aria-label="commands"
-          className="max-h-80 overflow-y-auto py-vs-1 text-body"
+          className="max-h-80 overflow-y-auto py-fg-1 text-body"
         >
           {noMatch && (
             <li
               role="presentation"
-              className="px-vs-4 py-vs-3 text-center text-ink-faint"
+              className="px-fg-4 py-fg-3 text-center text-ink-faint"
             >
               nothing matches
             </li>
           )}
           {groups.map((group) => (
             <li key={group.family} role="presentation">
-              <div className="px-vs-4 pt-vs-2 pb-vs-0-5 text-caption font-medium uppercase tracking-wide text-ink-faint">
+              <div className="px-fg-4 pt-fg-2 pb-fg-0-5 text-caption font-medium uppercase tracking-wide text-ink-faint">
                 {FAMILY_LABEL[group.family]}
               </div>
               <ul role="presentation">
@@ -484,7 +484,7 @@ export function CommandPalette() {
                         tabIndex={-1}
                         onMouseEnter={() => setCursorTo(index)}
                         onClick={() => runAt(index)}
-                        className={`flex w-full items-center justify-between border-l-2 rounded-r-fg-xs py-vs-1-5 pr-vs-4 pl-vs-3 text-left transition-colors duration-ui-fast ease-settle ${
+                        className={`flex w-full items-center justify-between border-l-2 rounded-r-fg-xs py-fg-1-5 pr-fg-4 pl-fg-3 text-left transition-colors duration-ui-fast ease-settle ${
                           selected
                             ? "border-accent bg-paper-sunken text-ink"
                             : "border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -493,10 +493,10 @@ export function CommandPalette() {
                         <span className={armed ? "text-state-stale" : undefined}>
                           {armed ? `confirm ${command.label}?` : command.label}
                         </span>
-                        <span className="flex items-center gap-vs-2 text-label text-ink-faint">
+                        <span className="flex items-center gap-fg-2 text-label text-ink-faint">
                           {command.confirm && (
                             <span
-                              className="rounded-fg-xs border border-rule px-vs-1 py-vs-0-5 font-mono text-caption"
+                              className="rounded-fg-xs border border-rule px-fg-1 py-fg-0-5 font-mono text-caption"
                               aria-hidden
                             >
                               ⏎ ⏎
@@ -519,7 +519,7 @@ export function CommandPalette() {
           {navLoading && (
             <li
               role="presentation"
-              className="flex items-center gap-vs-2 px-vs-4 py-vs-2 text-label text-ink-faint"
+              className="flex items-center gap-fg-2 px-fg-4 py-fg-2 text-label text-ink-faint"
             >
               <span
                 aria-hidden
@@ -534,7 +534,7 @@ export function CommandPalette() {
         {opsMessage && (
           <div
             role="status"
-            className="border-t border-rule px-vs-4 py-vs-2 text-label text-ink-muted"
+            className="border-t border-rule px-fg-4 py-fg-2 text-label text-ink-muted"
           >
             {opsMessage}
           </div>

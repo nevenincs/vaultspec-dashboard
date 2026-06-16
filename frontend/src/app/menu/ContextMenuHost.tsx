@@ -283,10 +283,10 @@ export function ContextMenuHost() {
           top: placed ? pos.y : anchor.y,
           visibility: placed ? "visible" : "hidden",
         }}
-        className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-vs-lg border border-rule bg-paper-raised py-vs-1 text-body shadow-deep animate-fade-in"
+        className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised py-fg-1 text-body shadow-fg-popover animate-fade-in"
       >
         {ordered.length === 0 && (
-          <div className="px-vs-3 py-vs-2 text-center text-label text-ink-faint">
+          <div className="px-fg-3 py-fg-2 text-center text-label text-ink-faint">
             no actions
           </div>
         )}
@@ -295,7 +295,7 @@ export function ContextMenuHost() {
             {gi > 0 && (
               // Inset divider (figma 17:1306): a left-padded hairline, not a
               // full-bleed rule, so the separator reads as a soft section break.
-              <div role="separator" className="py-vs-1 pl-vs-2 pr-vs-1">
+              <div role="separator" className="py-fg-1 pl-fg-2 pr-fg-1">
                 <div className="h-px bg-rule" />
               </div>
             )}
@@ -321,7 +321,7 @@ export function ContextMenuHost() {
                     }
                   }}
                   onClick={() => activate(action)}
-                  className={`flex w-full items-center gap-vs-2 px-vs-3 py-vs-1-5 text-left transition-colors duration-ui-fast ${
+                  className={`flex w-full items-center gap-fg-2 px-fg-3 py-fg-1-5 text-left transition-colors duration-ui-fast ${
                     disabled
                       ? "cursor-default text-ink-faint"
                       : selected
@@ -342,13 +342,13 @@ export function ContextMenuHost() {
                   {action.confirm && (
                     <span
                       aria-hidden
-                      className="rounded-vs-sm border border-rule px-vs-1 font-mono text-2xs text-ink-faint"
+                      className="rounded-fg-xs border border-rule px-fg-1 font-mono text-caption text-ink-faint"
                     >
                       ⏎⏎
                     </span>
                   )}
                   {action.accelerator && !action.confirm && (
-                    <span className="font-mono text-2xs text-ink-faint">
+                    <span className="font-mono text-caption text-ink-faint">
                       {action.accelerator}
                     </span>
                   )}

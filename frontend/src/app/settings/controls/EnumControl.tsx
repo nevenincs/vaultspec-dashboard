@@ -39,7 +39,7 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
       role="radiogroup"
       aria-label={def.label}
       id={id}
-      className="flex shrink-0 flex-wrap gap-vs-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-vs-0-5"
+      className="flex shrink-0 flex-wrap gap-fg-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-fg-0-5"
     >
       {members.map((member, index) => {
         const active = member === value;
@@ -59,7 +59,7 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(member)}
             onKeyDown={onKeyDown(index)}
-            className={`rounded-fg-xs px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
+            className={`rounded-fg-xs px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
               active
                 ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
                 : "text-ink-faint hover:text-ink-muted"

@@ -189,7 +189,7 @@ export function Minimap({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onKeyDown={onKeyDown}
-      className="cursor-pointer rounded-vs-sm border border-rule bg-paper-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      className="cursor-pointer rounded-fg-xs border border-rule bg-paper-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       data-timeline-minimap
     >
       {/* The corpus baseline — a soft token rule so the ribbon reads as ground. */}

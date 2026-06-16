@@ -641,7 +641,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       {/* Ruler endpoints as HTML so tabular numerals apply (ADR: mandated on
           dates). The visible range's edges, tabular-rendered. */}
       <div
-        className="pointer-events-none absolute inset-x-0 flex justify-between px-vs-1 text-caption text-ink-faint"
+        className="pointer-events-none absolute inset-x-0 flex justify-between px-fg-1 text-caption text-ink-faint"
         style={{ bottom: "2px" }}
       >
         <time data-tabular dateTime={new Date(range.fromMs).toISOString()}>
@@ -720,7 +720,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           surface reads as "positioning" rather than a false "no lineage". */}
       {(loading || autoFitPending) && (
         <div
-          className="pointer-events-none absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-1 text-caption text-ink-faint"
+          className="pointer-events-none absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-1 text-caption text-ink-faint"
           role="status"
           data-timeline-loading
         >
@@ -749,7 +749,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           not a blanked surface. A live status region announces the transition. */}
       {degraded && !errored && (
         <div
-          className="pointer-events-none absolute top-vs-1 right-vs-2 flex items-center gap-vs-1 rounded-fg-pill bg-paper-raised/95 px-vs-1-5 py-vs-0-5 text-caption text-state-stale shadow-fg-raised"
+          className="pointer-events-none absolute top-fg-1 right-fg-2 flex items-center gap-fg-1 rounded-fg-pill bg-paper-raised/95 px-fg-1-5 py-fg-0-5 text-caption text-state-stale shadow-fg-raised"
           role="status"
           aria-live="polite"
           data-timeline-degraded
@@ -762,7 +762,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       {/* Error: a contained, copy-toned message scoped to the timeline. */}
       {errored && (
         <div
-          className="absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-2 text-caption text-ink-muted"
+          className="absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-2 text-caption text-ink-muted"
           role="alert"
           data-timeline-error
         >
@@ -770,7 +770,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           <button
             type="button"
             onClick={() => void lineage.refetch()}
-            className="rounded-fg-xs bg-paper-sunken px-vs-1-5 py-vs-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs bg-paper-sunken px-fg-1-5 py-fg-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             retry
           </button>

@@ -120,14 +120,14 @@ function OpsButton({ op, onFire, disabled, pending }: OpsButtonProps) {
     // confirm button auto-focuses so the two-step flow is completable by
     // keyboard (rag-manager ADR: "arm focuses the confirm affordance").
     return (
-      <span className="flex items-center gap-vs-1">
+      <span className="flex items-center gap-fg-1">
         <button
           type="button"
           disabled={disabled}
           autoFocus
           onClick={handleFire}
           aria-label={`confirm ${label}`}
-          className="inline-flex items-center gap-vs-1 rounded-vs-sm border border-accent bg-accent-subtle px-vs-1-5 py-vs-0-5 font-medium text-accent-text transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="inline-flex items-center gap-fg-1 rounded-fg-xs border border-accent bg-accent-subtle px-fg-1-5 py-fg-0-5 font-medium text-accent-text transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <span aria-hidden>
             <Mark size={MARK_PX} />
@@ -141,7 +141,7 @@ function OpsButton({ op, onFire, disabled, pending }: OpsButtonProps) {
             if (e.key === "Escape") confirmable.cancel();
           }}
           aria-label={`cancel ${label}`}
-          className="rounded-vs-sm px-vs-1 text-2xs text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="rounded-fg-xs px-fg-1 text-caption text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           cancel
         </button>
@@ -155,7 +155,7 @@ function OpsButton({ op, onFire, disabled, pending }: OpsButtonProps) {
       disabled={disabled}
       aria-busy={pending || undefined}
       onClick={handleArm}
-      className={`inline-flex items-center gap-vs-1 rounded-vs-sm border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+      className={`inline-flex items-center gap-fg-1 rounded-fg-xs border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
         disabled
           ? "cursor-not-allowed border-rule text-ink-faint"
           : "border-rule text-ink hover:border-rule-strong hover:bg-paper-sunken"
@@ -255,8 +255,8 @@ export function OpsPanel() {
   };
 
   return (
-    <div className="space-y-vs-1-5 text-body" data-ops-panel>
-      <div className="flex items-center gap-vs-1-5 font-medium text-ink-muted">
+    <div className="space-y-fg-1-5 text-body" data-ops-panel>
+      <div className="flex items-center gap-fg-1-5 font-medium text-ink-muted">
         <span aria-hidden>
           <Settings2 size={MARK_PX} />
         </span>
@@ -278,7 +278,7 @@ export function OpsPanel() {
           (rag-manager ADR: "history is read-only"). */}
       {timeTravel && (
         <p
-          className="flex items-start gap-vs-1-5 text-label text-state-stale"
+          className="flex items-start gap-fg-1-5 text-label text-state-stale"
           role="status"
         >
           <span className="mt-px shrink-0" aria-hidden>
@@ -288,7 +288,7 @@ export function OpsPanel() {
         </p>
       )}
 
-      <ul className="flex flex-wrap gap-vs-1" aria-label="operations">
+      <ul className="flex flex-wrap gap-fg-1" aria-label="operations">
         {verbs.map((op) => (
           <li key={`${op.target}:${op.verb}`}>
             <OpsButton
@@ -310,7 +310,7 @@ export function OpsPanel() {
           alone). */}
       {receipt && (
         <p
-          className={`flex items-center gap-vs-1 text-label ${receiptTone[receipt.tone]}`}
+          className={`flex items-center gap-fg-1 text-label ${receiptTone[receipt.tone]}`}
           data-testid="ops-receipt"
           data-ops-receipt
           data-ops-tone={receipt.tone}
@@ -346,7 +346,7 @@ function SectionLabel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-vs-1 text-label font-medium text-ink-muted">
+    <div className="flex items-center gap-fg-1 text-label font-medium text-ink-muted">
       <span aria-hidden>
         <Icon size={SECTION_MARK_PX} />
       </span>
@@ -379,14 +379,14 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
   const slots = projects.data?.envelope?.projects ?? [];
 
   return (
-    <section className="space-y-vs-1-5 border-t border-rule pt-vs-1-5" data-rag-control>
+    <section className="space-y-fg-1-5 border-t border-rule pt-fg-1-5" data-rag-control>
       <SectionLabel icon={Database}>semantic index</SectionLabel>
 
       {semanticOffline ? (
         // The held state (ADR D5): rag is down, the engine does not auto-start it,
         // so the surface invites the operator to start rag rather than erroring.
         <p
-          className="flex items-start gap-vs-1-5 text-label text-state-stale"
+          className="flex items-start gap-fg-1-5 text-label text-state-stale"
           role="status"
           data-testid="rag-offline"
         >
@@ -399,10 +399,10 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
         <>
           {/* Service / GPU / index health readout. */}
           <dl
-            className="grid grid-cols-2 gap-x-vs-2 gap-y-vs-0-5 text-label"
+            className="grid grid-cols-2 gap-x-fg-2 gap-y-fg-0-5 text-label"
             data-testid="rag-health"
           >
-            <dt className="flex items-center gap-vs-1 text-ink-faint">
+            <dt className="flex items-center gap-fg-1 text-ink-faint">
               <span aria-hidden>
                 <Cpu size={SECTION_MARK_PX} />
               </span>
@@ -426,13 +426,13 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
           </dl>
 
           {/* Reindex trigger + live job progress (trigger-then-poll, ADR D3). */}
-          <div className="space-y-vs-0-5" data-testid="rag-reindex">
+          <div className="space-y-fg-0-5" data-testid="rag-reindex">
             <button
               type="button"
               disabled={disabled || reindex.pending || reindex.progress.polling}
               aria-busy={reindex.pending || reindex.progress.polling || undefined}
               onClick={() => reindex.trigger({ type: "vault" })}
-              className={`inline-flex items-center gap-vs-1 rounded-vs-sm border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`inline-flex items-center gap-fg-1 rounded-fg-xs border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 disabled
                   ? "cursor-not-allowed border-rule text-ink-faint"
                   : "border-rule text-ink hover:border-rule-strong hover:bg-paper-sunken"
@@ -449,13 +449,13 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
             </button>
             {reindex.jobId && (
               <div
-                className="space-y-vs-0-5"
+                className="space-y-fg-0-5"
                 role="status"
                 aria-live="polite"
                 data-testid="rag-progress"
               >
-                <div className="flex items-center justify-between text-2xs text-ink-muted">
-                  <span className="flex items-center gap-vs-1">
+                <div className="flex items-center justify-between text-caption text-ink-muted">
+                  <span className="flex items-center gap-fg-1">
                     <span aria-hidden>
                       <Activity size={SECTION_MARK_PX} />
                     </span>
@@ -473,7 +473,7 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
                 </div>
                 {/* A bounded progress track: a determinate width when rag reports
                     a fraction, an indeterminate pulse otherwise. */}
-                <div className="h-1 overflow-hidden rounded-vs-sm bg-paper-sunken">
+                <div className="h-1 overflow-hidden rounded-fg-xs bg-paper-sunken">
                   <div
                     className={`h-full bg-accent transition-all duration-ui-fast ${
                       reindex.progress.fraction === undefined &&
@@ -506,13 +506,13 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
 
           {/* Resident projects + evict. */}
           {slots.length > 0 && (
-            <div className="space-y-vs-0-5" data-testid="rag-projects">
+            <div className="space-y-fg-0-5" data-testid="rag-projects">
               <SectionLabel icon={Database}>resident projects</SectionLabel>
-              <ul className="space-y-vs-0-5">
+              <ul className="space-y-fg-0-5">
                 {slots.map((slot) => (
                   <li
                     key={slot.root}
-                    className="flex items-center justify-between gap-vs-1 text-2xs"
+                    className="flex items-center justify-between gap-fg-1 text-caption"
                   >
                     <span className="truncate text-ink-muted" title={slot.root}>
                       {slot.root}
@@ -522,7 +522,7 @@ function RagControlSection({ timeTravel }: { timeTravel: boolean }) {
                       disabled={disabled || evict.isPending}
                       onClick={() => evict.mutate(slot.root)}
                       aria-label={`evict ${slot.root}`}
-                      className="shrink-0 rounded-vs-sm p-vs-0-5 text-ink-faint hover:text-state-broken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed"
+                      className="shrink-0 rounded-fg-xs p-fg-0-5 text-ink-faint hover:text-state-broken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed"
                     >
                       <span aria-hidden>
                         <Trash2 size={SECTION_MARK_PX} />
@@ -551,13 +551,13 @@ function WatcherConfig({ watch, disabled, pending, onApply }: WatcherConfigProps
   const [cooldown, setCooldown] = useState(String(watch.cooldown_s));
 
   const fieldClass =
-    "w-16 rounded-vs-sm border border-rule bg-paper px-vs-1 py-vs-0-5 text-2xs text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint";
+    "w-16 rounded-fg-xs border border-rule bg-paper px-fg-1 py-fg-0-5 text-caption text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint";
 
   return (
-    <div className="space-y-vs-0-5" data-testid="rag-watcher">
+    <div className="space-y-fg-0-5" data-testid="rag-watcher">
       <SectionLabel icon={Settings2}>watcher</SectionLabel>
-      <div className="flex flex-wrap items-center gap-vs-1-5 text-2xs text-ink-muted">
-        <label className="flex items-center gap-vs-1">
+      <div className="flex flex-wrap items-center gap-fg-1-5 text-caption text-ink-muted">
+        <label className="flex items-center gap-fg-1">
           debounce ms
           <input
             type="number"
@@ -569,7 +569,7 @@ function WatcherConfig({ watch, disabled, pending, onApply }: WatcherConfigProps
             data-testid="rag-watcher-debounce"
           />
         </label>
-        <label className="flex items-center gap-vs-1">
+        <label className="flex items-center gap-fg-1">
           cooldown s
           <input
             type="number"
@@ -591,7 +591,7 @@ function WatcherConfig({ watch, disabled, pending, onApply }: WatcherConfigProps
               cooldown_s: Number(cooldown),
             })
           }
-          className="inline-flex items-center gap-vs-1 rounded-vs-sm border border-rule px-vs-1-5 py-vs-0-5 text-ink hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
+          className="inline-flex items-center gap-fg-1 rounded-fg-xs border border-rule px-fg-1-5 py-fg-0-5 text-ink hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
           {pending ? <Loader2 size={MARK_PX} className="animate-pulse-live" /> : null}
           apply

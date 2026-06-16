@@ -76,7 +76,7 @@ export function FilterBar({
 
   return (
     <div
-      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap content-center items-center gap-x-vs-3 gap-y-0 border-b border-rule bg-paper-raised px-vs-2 py-vs-1-5 text-label"
+      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap content-center items-center gap-x-fg-3 gap-y-0 border-b border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label"
       data-filter-bar
     >
       {onSidebarToggle !== undefined && (
@@ -86,7 +86,7 @@ export function FilterBar({
           aria-label={sidebarOpen ? "close filter panel" : "open filter panel"}
           onClick={onSidebarToggle}
           title="toggle filter sidebar"
-          className={`flex items-center rounded-fg-xs border p-vs-1 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+          className={`flex items-center rounded-fg-xs border p-fg-1 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             sidebarOpen
               ? "border-rule-strong bg-paper-sunken text-ink"
               : "border-rule text-ink-muted hover:border-rule-strong"
@@ -138,12 +138,12 @@ export function FilterBar({
         }}
         placeholder="text match…"
         aria-label="text match filter"
-        className="w-28 rounded-fg-xs border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
+        className="w-28 rounded-fg-xs border border-rule bg-paper-raised px-fg-1-5 py-fg-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
       />
       {(dateRange.from || dateRange.to) && (
         <span
           data-tabular
-          className="rounded-fg-pill border border-rule bg-paper px-vs-1-5 py-vs-0-5 tabular-nums text-ink-muted"
+          className="rounded-fg-pill border border-rule bg-paper px-fg-1-5 py-fg-0-5 tabular-nums text-ink-muted"
         >
           {dateRange.from?.slice(0, 10) ?? "…"} → {dateRange.to?.slice(0, 10) ?? "…"}{" "}
           <span className="text-ink-faint">(timeline)</span>
@@ -152,7 +152,7 @@ export function FilterBar({
       {costLabel && (
         <span
           data-tabular
-          className="rounded-fg-pill border border-state-stale bg-paper-raised px-vs-1-5 py-vs-0-5 tabular-nums text-state-stale"
+          className="rounded-fg-pill border border-state-stale bg-paper-raised px-fg-1-5 py-fg-0-5 tabular-nums text-state-stale"
         >
           {costLabel}
         </span>

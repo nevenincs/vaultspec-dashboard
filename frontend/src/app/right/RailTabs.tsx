@@ -92,7 +92,7 @@ export function RailTabs({ active, onChange }: RailTabsProps) {
       aria-label="activity rail tabs"
       aria-orientation="horizontal"
       data-rail-tabs
-      className="flex shrink-0 gap-vs-0-5 rounded-fg-md border border-rule bg-paper-sunken p-vs-0-5"
+      className="flex shrink-0 gap-fg-0-5 rounded-fg-md border border-rule bg-paper-sunken p-fg-0-5"
     >
       {RAIL_TABS.map(({ id, label, mark: Mark }, index) => {
         const isActive = active === id;
@@ -112,7 +112,7 @@ export function RailTabs({ active, onChange }: RailTabsProps) {
             data-rail-tab-active={isActive ? "" : undefined}
             onClick={() => onChange(id)}
             onKeyDown={onKeyDown(index)}
-            className={`flex min-w-0 flex-1 items-center justify-center gap-vs-1 rounded-fg-xs px-vs-1-5 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            className={`flex min-w-0 flex-1 items-center justify-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
               isActive
                 ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
                 : "text-ink-faint hover:text-ink-muted"

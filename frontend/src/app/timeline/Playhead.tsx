@@ -229,7 +229,7 @@ export function Playhead() {
               ? "live"
               : "return to live"
         }
-        className={`pointer-events-auto absolute top-0 right-1 flex items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-label font-medium transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`pointer-events-auto absolute top-0 right-1 flex items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-label font-medium transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           reconnecting
             ? "text-state-stale"
             : live
@@ -281,14 +281,14 @@ export function TimeTravelChip() {
   const mode = useViewStore((s) => s.timelineMode);
   if (mode.kind !== "time-travel") return null;
   return (
-    <div className="pointer-events-auto absolute bottom-2 right-2 z-10 flex items-center gap-vs-1 rounded-full border border-state-stale/40 bg-paper-raised/95 px-vs-3 py-vs-1 text-label text-state-stale shadow-card">
+    <div className="pointer-events-auto absolute bottom-2 right-2 z-10 flex items-center gap-fg-1 rounded-fg-pill border border-state-stale/40 bg-paper-raised/95 px-fg-3 py-fg-1 text-label text-state-stale shadow-fg-raised">
       <Play size={11} aria-hidden className="rotate-180" />
       <span>
         viewing <time data-tabular>{humanInstant(mode.at)}</time>
       </span>
       <button
         type="button"
-        className="inline-flex items-center gap-vs-1 rounded-vs-sm px-vs-1 underline transition-colors duration-ui-fast ease-settle hover:text-state-live focus-visible:no-underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="inline-flex items-center gap-fg-1 rounded-fg-xs px-fg-1 underline transition-colors duration-ui-fast ease-settle hover:text-state-live focus-visible:no-underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         onClick={() => {
           movePlayhead("live");
         }}

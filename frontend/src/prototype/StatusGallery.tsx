@@ -256,36 +256,36 @@ export function StatusGallery() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
   return (
-    <div className="prototype-tokens min-h-screen bg-paper p-vs-8 text-ink">
-      <header className="mb-vs-8">
-        <h1 className="text-heading font-medium">node-visual-richness prototype</h1>
-        <p className="mt-vs-1 text-body text-ink-muted">
+    <div className="prototype-tokens min-h-screen bg-paper p-fg-8 text-ink">
+      <header className="mb-fg-8">
+        <h1 className="text-title font-medium">node-visual-richness prototype</h1>
+        <p className="mt-fg-1 text-body text-ink-muted">
           status stamps (shape-carries, tint-reinforces) and the hover-bloom card,
           mocked in DOM/SVG. The Pixi sprite integration is deferred to post-merge.
         </p>
       </header>
 
       {/* (a) the stamp matrix --------------------------------------------- */}
-      <section className="mb-vs-8" aria-labelledby="matrix-heading">
-        <h2 id="matrix-heading" className="mb-vs-3 text-title font-medium">
+      <section className="mb-fg-8" aria-labelledby="matrix-heading">
+        <h2 id="matrix-heading" className="mb-fg-3 text-body-strong font-medium">
           stamp matrix · doc-type × status class
         </h2>
-        <div className="overflow-x-auto rounded-vs-md border border-rule bg-paper-raised p-vs-3 shadow-card">
+        <div className="overflow-x-auto rounded-fg-md border border-rule bg-paper-raised p-fg-3 shadow-fg-raised">
           <table className="border-collapse">
             <thead>
               <tr>
-                <th className="px-vs-3 py-vs-1 text-left text-2xs font-medium text-ink-muted">
+                <th className="px-fg-3 py-fg-1 text-left text-caption font-medium text-ink-muted">
                   doc-type
                 </th>
                 {STATUS_COLUMNS.map((col) => (
                   <th
                     key={col.label}
-                    className="px-vs-2 py-vs-1 text-center text-2xs font-medium text-ink-muted"
+                    className="px-fg-2 py-fg-1 text-center text-caption font-medium text-ink-muted"
                   >
                     {col.label}
                   </th>
                 ))}
-                <th className="px-vs-2 py-vs-1 text-center text-2xs font-medium text-ink-muted">
+                <th className="px-fg-2 py-fg-1 text-center text-caption font-medium text-ink-muted">
                   none
                 </th>
               </tr>
@@ -293,15 +293,15 @@ export function StatusGallery() {
             <tbody>
               {DOC_TYPES.map((kind) => (
                 <tr key={kind} className="border-t border-rule">
-                  <td className="px-vs-3 py-vs-1 text-2xs text-ink">{kind}</td>
+                  <td className="px-fg-3 py-fg-1 text-caption text-ink">{kind}</td>
                   {STATUS_COLUMNS.map((col) => (
-                    <td key={col.label} className="px-vs-2 py-vs-1 text-center">
+                    <td key={col.label} className="px-fg-2 py-fg-1 text-center">
                       <div className="flex justify-center">
                         <StampedNode kind={kind} status={col.status} />
                       </div>
                     </td>
                   ))}
-                  <td className="px-vs-2 py-vs-1 text-center">
+                  <td className="px-fg-2 py-fg-1 text-center">
                     <div className="flex justify-center">
                       <StampedNode kind={kind} status={undefined} />
                     </div>
@@ -315,11 +315,11 @@ export function StatusGallery() {
 
       {/* (b) the hover-bloom demo ----------------------------------------- */}
       <section aria-labelledby="hover-heading">
-        <div className="mb-vs-3 flex items-center justify-between">
-          <h2 id="hover-heading" className="text-title font-medium">
+        <div className="mb-fg-3 flex items-center justify-between">
+          <h2 id="hover-heading" className="text-body-strong font-medium">
             hover-bloom · sample nodes
           </h2>
-          <label className="flex items-center gap-vs-1 text-2xs text-ink-muted">
+          <label className="flex items-center gap-fg-1 text-caption text-ink-muted">
             <input
               type="checkbox"
               checked={reducedMotion}
@@ -328,11 +328,11 @@ export function StatusGallery() {
             force reduced motion
           </label>
         </div>
-        <p className="mb-vs-3 text-2xs text-ink-faint">
+        <p className="mb-fg-3 text-caption text-ink-faint">
           hover a node to bloom its card. Toggle reduced motion to swap the grow for an
           instant crossfade.
         </p>
-        <div className="flex flex-wrap gap-vs-8">
+        <div className="flex flex-wrap gap-fg-8">
           {SAMPLES.map((sample) => (
             <div
               key={sample.id}
@@ -342,7 +342,7 @@ export function StatusGallery() {
             >
               <button
                 type="button"
-                className="flex flex-col items-center gap-vs-1 rounded-vs-md border border-rule bg-paper-raised p-vs-3 text-2xs text-ink-muted shadow-card transition-colors duration-ui-fast ease-settle hover:border-rule-strong"
+                className="flex flex-col items-center gap-fg-1 rounded-fg-md border border-rule bg-paper-raised p-fg-3 text-caption text-ink-muted shadow-fg-raised transition-colors duration-ui-fast ease-settle hover:border-rule-strong"
                 onFocus={() => setHovered(sample.id)}
                 onBlur={() => setHovered((h) => (h === sample.id ? null : h))}
               >
@@ -350,7 +350,7 @@ export function StatusGallery() {
                 <span className="max-w-24 truncate">{sample.title}</span>
               </button>
               {hovered === sample.id && (
-                <div className="absolute left-full top-0 z-10 ml-vs-2">
+                <div className="absolute left-full top-0 z-10 ml-fg-2">
                   <HoverCard
                     key={`${sample.id}-${reducedMotion}`}
                     model={sample}

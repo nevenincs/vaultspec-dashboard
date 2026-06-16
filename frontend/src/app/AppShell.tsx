@@ -75,7 +75,7 @@ export function AppShell() {
         {/* ── Left scope rail ────────────────────────────────────── */}
         <aside className="flex flex-col overflow-hidden border-r border-rule">
           {/* Rail header */}
-          <div className="flex h-9 shrink-0 items-center border-b border-rule px-vs-2">
+          <div className="flex h-9 shrink-0 items-center border-b border-rule px-fg-2">
             <button
               type="button"
               onClick={toggleLeft}
@@ -86,7 +86,7 @@ export function AppShell() {
             </button>
             {!leftCollapsed && (
               <>
-                <span className="ml-vs-2 flex-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
+                <span className="ml-fg-2 flex-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
                   Scope
                 </span>
                 <ThemeToggle
@@ -124,7 +124,7 @@ export function AppShell() {
         {/* ── Right activity rail ────────────────────────────────── */}
         <aside className="flex flex-col overflow-hidden border-l border-rule">
           {/* Rail header */}
-          <div className="flex h-9 shrink-0 items-center border-b border-rule px-vs-2">
+          <div className="flex h-9 shrink-0 items-center border-b border-rule px-fg-2">
             {rightCollapsed ? (
               <button
                 type="button"
@@ -241,7 +241,7 @@ function SettingsButton() {
       type="button"
       aria-label="open settings"
       title="Settings"
-      className="ml-vs-1 flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+      className="ml-fg-1 flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
       onClick={openDialog}
     >
       <Settings size={12} />
@@ -260,7 +260,7 @@ function SettingsButton() {
 function ActivityRail() {
   const [tab, setTab] = useState<RailTabId>("status");
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-vs-2 overflow-y-auto p-vs-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-fg-2 overflow-y-auto p-fg-2">
       {/* Persistent liveness header — the three status pillars, always visible. */}
       <NowStrip />
 
@@ -278,7 +278,7 @@ function ActivityRail() {
       >
         {tab === "status" && <StatusTab />}
         {tab === "inspect" && (
-          <div className="space-y-vs-3">
+          <div className="space-y-fg-3">
             <Inspector />
             <OpsPanel />
           </div>

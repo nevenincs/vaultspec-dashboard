@@ -53,13 +53,13 @@ export function FrontmatterHeader({
   if (!hasContent) return null;
 
   return (
-    <header className="mb-vs-3 space-y-vs-2 border-b border-rule pb-vs-2">
+    <header className="mb-fg-3 space-y-fg-2 border-b border-rule pb-fg-2">
       {tags.length > 0 && (
-        <ul className="flex flex-wrap gap-vs-1" aria-label="tags">
+        <ul className="flex flex-wrap gap-fg-1" aria-label="tags">
           {tags.map((tag) => (
             <li
               key={tag}
-              className="rounded-vs-sm bg-accent-subtle px-vs-1 py-vs-0-5 text-label text-accent-text"
+              className="rounded-fg-xs bg-accent-subtle px-fg-1 py-fg-0-5 text-label text-accent-text"
             >
               #{tag}
             </li>
@@ -67,15 +67,15 @@ export function FrontmatterHeader({
         </ul>
       )}
       {(date !== undefined || modified !== undefined) && (
-        <dl className="flex flex-wrap gap-vs-3 text-label text-ink-muted">
+        <dl className="flex flex-wrap gap-fg-3 text-label text-ink-muted">
           {date !== undefined && (
-            <div className="flex gap-vs-1">
+            <div className="flex gap-fg-1">
               <dt className="text-ink-faint">created</dt>
               <dd className="font-medium text-ink">{date}</dd>
             </div>
           )}
           {modified !== undefined && (
-            <div className="flex gap-vs-1">
+            <div className="flex gap-fg-1">
               <dt className="text-ink-faint">modified</dt>
               <dd className="font-medium text-ink">{modified}</dd>
             </div>
@@ -83,9 +83,9 @@ export function FrontmatterHeader({
         </dl>
       )}
       {related.length > 0 && (
-        <div className="space-y-vs-0-5">
+        <div className="space-y-fg-0-5">
           <span className="text-label text-ink-faint">related</span>
-          <ul className="flex flex-wrap gap-vs-2">
+          <ul className="flex flex-wrap gap-fg-2">
             {related.map((stem) => (
               <li key={stem}>
                 <button

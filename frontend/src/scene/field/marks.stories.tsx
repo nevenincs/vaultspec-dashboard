@@ -25,12 +25,12 @@ function Grid({
   render: (k: string, size: number) => React.ReactNode;
 }) {
   return (
-    <section style={{ marginBottom: "var(--spacing-vs-6)" }}>
+    <section style={{ marginBottom: "var(--spacing-fg-6)" }}>
       <h3
         style={{
-          fontSize: "var(--text-title)",
+          fontSize: "var(--text-body-strong)",
           fontWeight: 600,
-          margin: "0 0 var(--spacing-vs-2)",
+          margin: "0 0 var(--spacing-fg-2)",
         }}
       >
         {title}
@@ -39,7 +39,7 @@ function Grid({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(6, 1fr)",
-          gap: "var(--spacing-vs-3)",
+          gap: "var(--spacing-fg-3)",
         }}
       >
         {keys.map((k) => (
@@ -64,7 +64,10 @@ function Grid({
               {render(k, 24)}
             </div>
             <span
-              style={{ fontSize: "var(--text-2xs)", color: "var(--color-ink-muted)" }}
+              style={{
+                fontSize: "var(--text-caption)",
+                color: "var(--color-ink-muted)",
+              }}
             >
               {k}
             </span>
@@ -81,7 +84,7 @@ function Marks() {
       style={{
         background: "var(--color-paper)",
         color: "var(--color-ink)",
-        padding: "var(--spacing-vs-6)",
+        padding: "var(--spacing-fg-6)",
         fontFamily: "var(--font-sans)",
         minWidth: 720,
       }}

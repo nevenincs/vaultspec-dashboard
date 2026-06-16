@@ -97,7 +97,7 @@ export function WorkspacePicker({
     // Loading: a quiet copy-toned pending line — no spinner theatre.
     return (
       <p
-        className="px-vs-1 py-vs-0-5 text-label text-ink-faint"
+        className="px-fg-1 py-fg-0-5 text-label text-ink-faint"
         role="status"
         aria-live="polite"
         data-workspace-loading
@@ -117,7 +117,7 @@ export function WorkspacePicker({
     // a manual nudge, not the only path.
     return (
       <div
-        className="space-y-vs-1 px-vs-1 py-vs-0-5"
+        className="space-y-fg-1 px-fg-1 py-fg-0-5"
         role="status"
         aria-live="polite"
         data-workspace-error
@@ -127,7 +127,7 @@ export function WorkspacePicker({
           type="button"
           onClick={() => void workspaces.refetch()}
           aria-label="retry loading the project list"
-          className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           retry
         </button>
@@ -228,7 +228,7 @@ export function WorkspacePicker({
   // guard above) is never silently dropped (degradation-is-read-from-tiers).
   const degradedBanner = availability.degraded ? (
     <p
-      className="mt-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
+      className="mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
       role="status"
       aria-live="polite"
       data-workspace-degraded
@@ -247,7 +247,7 @@ export function WorkspacePicker({
     <>
       {adding ? (
         <form
-          className="mt-vs-1 space-y-vs-1"
+          className="mt-fg-1 space-y-fg-1"
           onSubmit={submitAdd}
           data-workspace-add-form
         >
@@ -258,13 +258,13 @@ export function WorkspacePicker({
             placeholder="absolute path to a git project…"
             aria-label="absolute path to a git project to register"
             autoFocus
-            className="w-full rounded-vs-sm border border-rule bg-paper px-vs-2 py-vs-0-5 font-mono text-2xs text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="w-full rounded-fg-xs border border-rule bg-paper px-fg-2 py-fg-0-5 font-mono text-caption text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           />
-          <div className="flex gap-vs-1">
+          <div className="flex gap-fg-1">
             <button
               type="submit"
               disabled={mutation.isPending || addPath.trim().length === 0}
-              className="rounded-vs-sm bg-accent-subtle px-vs-2 py-vs-0-5 text-2xs font-medium text-ink transition-colors hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
+              className="rounded-fg-xs bg-accent-subtle px-fg-2 py-fg-0-5 text-caption font-medium text-ink transition-colors hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
             >
               {mutation.isPending ? "adding…" : "add"}
             </button>
@@ -275,7 +275,7 @@ export function WorkspacePicker({
                 setAddPath("");
                 setStatusError(null);
               }}
-              className="rounded-vs-sm px-vs-2 py-vs-0-5 text-2xs text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              className="rounded-fg-xs px-fg-2 py-fg-0-5 text-caption text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               cancel
             </button>
@@ -289,7 +289,7 @@ export function WorkspacePicker({
             setStatusError(null);
           }}
           aria-label="add a project to the workspace"
-          className="mt-vs-1 flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left text-2xs text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="mt-fg-1 flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left text-caption text-ink-faint transition-colors hover:bg-paper-sunken hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           data-workspace-add
         >
           <FolderPlus size={MARK_PX} aria-hidden />
@@ -300,7 +300,7 @@ export function WorkspacePicker({
           did not take. role=status so it is announced. */}
       {statusError && (
         <p
-          className="mt-vs-1 px-vs-1 text-2xs text-state-broken"
+          className="mt-fg-1 px-fg-1 text-caption text-state-broken"
           role="status"
           aria-live="polite"
           data-workspace-status-error
@@ -317,7 +317,7 @@ export function WorkspacePicker({
   if (singleRoot) {
     return (
       <div className="text-label" data-workspace-picker data-workspace-header>
-        <div className="flex items-center gap-vs-1 px-vs-2 py-vs-0-5">
+        <div className="flex items-center gap-fg-1 px-fg-2 py-fg-0-5">
           <span
             className="min-w-0 flex-1 truncate font-medium text-ink"
             title={current?.path}
@@ -362,7 +362,7 @@ export function WorkspacePicker({
             ? `project: ${headlineLabel}${pending ? ", switching" : ""}`
             : "choose a project"
         }
-        className="flex w-full items-center gap-vs-1 rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 shadow-card transition-colors duration-ui-fast hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-fg-1 rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 shadow-fg-raised transition-colors duration-ui-fast hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         <span
           className={`min-w-0 flex-1 truncate text-left font-medium ${
@@ -372,7 +372,7 @@ export function WorkspacePicker({
           {headlineLabel ?? "pick a project…"}
         </span>
         {pending && (
-          <span className="shrink-0 text-2xs text-ink-faint" role="status">
+          <span className="shrink-0 text-caption text-ink-faint" role="status">
             switching…
           </span>
         )}
@@ -389,7 +389,7 @@ export function WorkspacePicker({
       {expanded && (
         <ul
           id={listId}
-          className="mt-vs-1 space-y-vs-0-5"
+          className="mt-fg-1 space-y-fg-0-5"
           aria-label="registered projects"
         >
           {roots.map((root, index) => {
@@ -435,7 +435,7 @@ export function WorkspacePicker({
                     }
                     onRowKeyDown(root, index)(e);
                   }}
-                  className={`flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-2 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                  className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     isActive
                       ? "bg-accent-subtle font-medium text-ink"
                       : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -445,7 +445,7 @@ export function WorkspacePicker({
                       weight, so the active project reads without relying on hue. */}
                   <span
                     aria-hidden
-                    className={`-ml-vs-1 h-3 w-0.5 shrink-0 rounded-full ${
+                    className={`-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full ${
                       isActive ? "bg-accent" : "bg-transparent"
                     }`}
                   />
@@ -474,7 +474,7 @@ export function WorkspacePicker({
                     </span>
                   )}
                   {isPendingRow && (
-                    <span className="ml-auto shrink-0 text-2xs text-ink-faint">
+                    <span className="ml-auto shrink-0 text-caption text-ink-faint">
                       switching…
                     </span>
                   )}

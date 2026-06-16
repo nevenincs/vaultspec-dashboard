@@ -51,23 +51,23 @@ export function SettingsDialog() {
       title="Settings"
       description="Preferences are saved to this workspace. Some apply per scope."
     >
-      <div className="flex flex-col gap-vs-4 px-vs-4 pt-vs-3 pb-vs-4">
+      <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
         {schemaQuery.isLoading && (
-          <p className="py-vs-4 text-center text-label text-ink-faint">
+          <p className="py-fg-4 text-center text-label text-ink-faint">
             Loading settings…
           </p>
         )}
         {!schemaQuery.isLoading && groups.length === 0 && (
-          <p className="py-vs-4 text-center text-label text-ink-faint">
+          <p className="py-fg-4 text-center text-label text-ink-faint">
             No settings are available.
           </p>
         )}
         {groups.map((group) => (
-          <section key={group.name} className="flex flex-col gap-vs-2">
-            <h3 className="border-b border-rule pb-vs-1 text-caption font-semibold uppercase tracking-[0.6px] text-ink-faint">
+          <section key={group.name} className="flex flex-col gap-fg-2">
+            <h3 className="border-b border-rule pb-fg-1 text-caption font-semibold uppercase tracking-[0.6px] text-ink-faint">
               {group.name}
             </h3>
-            <div className="flex flex-col gap-vs-2">
+            <div className="flex flex-col gap-fg-2">
               {group.settings.map((eff) => (
                 <SettingRow key={eff.def.key} eff={eff} activeScope={activeScope} />
               ))}
@@ -154,17 +154,17 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
   const isDefaulted = controlValue === def.default;
 
   return (
-    <div className="flex flex-col gap-vs-1">
-      <div className="flex items-start justify-between gap-vs-3">
+    <div className="flex flex-col gap-fg-1">
+      <div className="flex items-start justify-between gap-fg-3">
         <label htmlFor={fieldId} className="min-w-0 flex-1">
           <span className="block text-body text-ink">{def.label}</span>
           {def.description && (
-            <span className="mt-vs-0-5 block text-label text-ink-faint">
+            <span className="mt-fg-0-5 block text-label text-ink-faint">
               {def.description}
             </span>
           )}
         </label>
-        <div className="flex shrink-0 flex-col items-end gap-vs-1">
+        <div className="flex shrink-0 flex-col items-end gap-fg-1">
           {/* Controls stay interactive during a write — discrete writes are fast
               and never disable mid-interaction (dashboard-settings review HIGH-2). */}
           <SettingControl
@@ -178,7 +178,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
       </div>
 
       {/* Provenance + an honest reset/clear affordance, beneath the row. */}
-      <div className="flex items-center justify-between gap-vs-2">
+      <div className="flex items-center justify-between gap-fg-2">
         <span className="text-caption text-ink-faint">
           {provenanceNote(eff, effectiveTarget)}
         </span>
@@ -229,7 +229,7 @@ function ScopeTargetToggle({
     <div
       role="radiogroup"
       aria-label="apply to"
-      className="flex gap-vs-0-5 text-caption"
+      className="flex gap-fg-0-5 text-caption"
     >
       {(["global", "scope"] as const).map((t) => (
         <button
@@ -238,7 +238,7 @@ function ScopeTargetToggle({
           role="radio"
           aria-checked={target === t}
           onClick={() => onTarget(t)}
-          className={`rounded-fg-xs px-vs-1 py-vs-0-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+          className={`rounded-fg-xs px-fg-1 py-fg-0-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             target === t
               ? "font-medium text-accent-text"
               : "text-ink-faint hover:text-ink-muted"

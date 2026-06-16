@@ -38,7 +38,7 @@ export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
       // placeholder says "filter …" (not "search") and carries the funnel — NOT
       // the magnifying glass — so this client-side narrowing never looks like the
       // global right-rail search pillar (the deliberate distinction the IA fixes).
-      className="flex shrink-0 items-center gap-vs-1-5 rounded-fg-md border border-rule bg-paper-raised px-vs-2 py-vs-1 focus-within:border-rule-strong"
+      className="flex shrink-0 items-center gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1 focus-within:border-rule-strong"
       data-rail-filter
     >
       {/* The FUNNEL mark — deliberately NOT the right-rail search glass — so the

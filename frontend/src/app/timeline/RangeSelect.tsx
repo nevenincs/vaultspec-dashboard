@@ -266,13 +266,13 @@ export function RangeSelect() {
       )}
       {committed && !drag && (
         <div
-          className="pointer-events-auto absolute top-0 flex gap-vs-1 text-label"
+          className="pointer-events-auto absolute top-0 flex gap-fg-1 text-label"
           style={{ left: `${Math.min(committed.x1, committed.x2)}px` }}
         >
           <button
             type="button"
             aria-label="play the selected range"
-            className="flex items-center gap-vs-1 rounded-vs-sm bg-accent-subtle px-vs-1-5 py-vs-0-5 text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="flex items-center gap-fg-1 rounded-fg-xs bg-accent-subtle px-fg-1-5 py-fg-0-5 text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() =>
               startRangePlay(
                 Date.parse(dateRange.from!),
@@ -287,7 +287,7 @@ export function RangeSelect() {
           <button
             type="button"
             aria-label="clear date range"
-            className="flex items-center rounded-vs-sm bg-paper-sunken px-vs-1 py-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="flex items-center rounded-fg-xs bg-paper-sunken px-fg-1 py-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={clearRange}
           >
             <X size={10} aria-hidden />

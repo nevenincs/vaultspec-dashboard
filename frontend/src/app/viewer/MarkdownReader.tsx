@@ -58,7 +58,7 @@ function CodeFence({
   }
   // Pre-tokenization (or plain): show the raw code in a neutral pre block.
   return (
-    <pre className="vs-code-fence overflow-x-auto rounded-vs-sm bg-paper-sunken p-vs-2 text-body">
+    <pre className="vs-code-fence overflow-x-auto rounded-fg-xs bg-paper-sunken p-fg-2 text-body">
       <code>{code}</code>
     </pre>
   );
@@ -110,7 +110,7 @@ const COMPONENTS: Components = {
       );
     }
     return (
-      <code className="rounded-vs-xs bg-paper-sunken px-vs-0-5 text-body">{text}</code>
+      <code className="rounded-fg-xs bg-paper-sunken px-fg-0-5 text-body">{text}</code>
     );
   },
 };
@@ -144,11 +144,11 @@ function MarkdownBody({ text }: { text: string }): ReactElement {
  */
 export function MarkdownReader({ content }: { content: ContentView }): ReactElement {
   if (content.loading) {
-    return <div className="p-vs-3 text-body text-ink-faint">Loading document…</div>;
+    return <div className="p-fg-3 text-body text-ink-faint">Loading document…</div>;
   }
   if (content.errored) {
     return (
-      <div className="p-vs-3 text-body text-state-broken">
+      <div className="p-fg-3 text-body text-state-broken">
         The document could not be loaded.
       </div>
     );
@@ -156,26 +156,26 @@ export function MarkdownReader({ content }: { content: ContentView }): ReactElem
   if (content.degraded) {
     const reason = content.reasons.structural;
     return (
-      <div className="p-vs-3 text-body text-ink-muted">
+      <div className="p-fg-3 text-body text-ink-muted">
         Document unavailable{reason ? `: ${reason}` : ""}.
       </div>
     );
   }
   if (!content.available || content.text.length === 0) {
     return (
-      <div className="p-vs-3 text-body text-ink-faint">This document is empty.</div>
+      <div className="p-fg-3 text-body text-ink-faint">This document is empty.</div>
     );
   }
   return (
     <div className="flex h-full flex-col">
       {content.truncated && (
-        <div className="border-b border-rule bg-paper-sunken px-vs-3 py-vs-1 text-label text-ink-muted">
+        <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
           Truncated to the first {content.truncated.returned_bytes.toLocaleString()} of{" "}
           {content.truncated.total_bytes.toLocaleString()} bytes — open the file
           directly for the full document.
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto p-vs-3">
+      <div className="min-h-0 flex-1 overflow-auto p-fg-3">
         <MarkdownBody text={content.text} />
       </div>
     </div>

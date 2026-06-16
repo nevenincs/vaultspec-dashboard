@@ -83,7 +83,7 @@ export function NodeInterior({ id }: { id: string }) {
   const detail = useNodeDetail(id);
   const kind = detail.data?.node.kind;
   if (detail.isPending) {
-    return <p className="mt-vs-1 text-label text-ink-faint">unfolding…</p>;
+    return <p className="mt-fg-1 text-label text-ink-faint">unfolding…</p>;
   }
   // Contained per-island failure (ADR "States"): an interior/detail fetch
   // failure is rendered on THIS island, never as a canvas-wide error. A
@@ -91,7 +91,7 @@ export function NodeInterior({ id }: { id: string }) {
   if (detail.isError || !detail.data) {
     return (
       <p
-        className="mt-vs-1 flex items-center gap-vs-1 text-label text-state-broken"
+        className="mt-fg-1 flex items-center gap-fg-1 text-label text-state-broken"
         role="status"
         data-interior-error
       >
@@ -109,13 +109,13 @@ export function NodeInterior({ id }: { id: string }) {
 function FeatureLifecycle({ id }: { id: string }) {
   const neighbors = useNodeNeighbors(id);
   if (!neighbors.data) {
-    return <p className="mt-vs-1 text-label text-ink-faint">unfolding lifecycle…</p>;
+    return <p className="mt-fg-1 text-label text-ink-faint">unfolding lifecycle…</p>;
   }
   const docs = arrangeLifecycleAxis(neighbors.data.nodes);
   return (
-    <ol className="mt-vs-1 flex items-center gap-vs-1" data-lifecycle-axis>
+    <ol className="mt-fg-1 flex items-center gap-fg-1" data-lifecycle-axis>
       {docs.map((doc, i) => (
-        <li key={doc.id} className="flex items-center gap-vs-1">
+        <li key={doc.id} className="flex items-center gap-fg-1">
           {i > 0 && (
             <span className="text-ink-faint" aria-hidden>
               →
@@ -124,7 +124,7 @@ function FeatureLifecycle({ id }: { id: string }) {
           <button
             type="button"
             onClick={() => selectNode(doc.id)}
-            className="flex items-center gap-vs-1 rounded-vs-sm border border-rule px-vs-1 py-vs-0-5 text-2xs text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken"
+            className="flex items-center gap-fg-1 rounded-fg-xs border border-rule px-fg-1 py-fg-0-5 text-caption text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken"
             title={doc.title ?? doc.kind}
           >
             <DocTypeMark kind={doc.kind} size={12} aria-hidden />
@@ -141,9 +141,9 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
   const steps = interiorSteps(detail.interior);
   const progress = detail.node.lifecycle?.progress;
   return (
-    <div className="mt-vs-1" data-plan-interior>
+    <div className="mt-fg-1" data-plan-interior>
       {progress && (
-        <p className="text-2xs text-ink-muted">
+        <p className="text-caption text-ink-muted">
           {/* Counts are data-bearing → tabular numerals (typography law). */}
           <span data-tabular className="tabular-nums">
             {progress.done}
@@ -155,7 +155,7 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
           steps done
         </p>
       )}
-      <ul className="mt-vs-1 grid grid-cols-4 gap-vs-1">
+      <ul className="mt-fg-1 grid grid-cols-4 gap-fg-1">
         {steps.map((step) => (
           <li key={step.id}>
             <button
@@ -164,7 +164,7 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
               // Done state is carried by a check glyph + fill + border, not hue
               // alone — grayscale-safe (ADR a11y). The accent token reinforces.
               aria-pressed={step.done}
-              className={`flex w-full items-center gap-vs-0-5 rounded-vs-sm border px-vs-1 py-vs-0-5 text-2xs ${
+              className={`flex w-full items-center gap-fg-0-5 rounded-fg-xs border px-fg-1 py-fg-0-5 text-caption ${
                 step.done
                   ? "border-state-active/40 bg-accent-subtle text-accent-text"
                   : "border-rule text-ink-muted"
@@ -184,25 +184,25 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
 function NodeSummary({ node }: { node: EngineNode }) {
   const mark = stateMarkKey(node.lifecycle?.state);
   return (
-    <dl className="mt-vs-1 text-2xs text-ink-muted">
-      <div className="flex items-center gap-vs-1">
+    <dl className="mt-fg-1 text-caption text-ink-muted">
+      <div className="flex items-center gap-fg-1">
         <dt className="inline font-medium">kind:</dt>
-        <dd className="inline flex items-center gap-vs-1">
+        <dd className="inline flex items-center gap-fg-1">
           <DocTypeMark kind={node.kind} size={12} aria-hidden />
           {node.kind}
         </dd>
       </div>
       {node.lifecycle && (
-        <div className="flex items-center gap-vs-1">
+        <div className="flex items-center gap-fg-1">
           <dt className="inline font-medium">state:</dt>
-          <dd className="inline flex items-center gap-vs-1">
+          <dd className="inline flex items-center gap-fg-1">
             {mark && <StateMark state={mark} size={12} aria-hidden />}
             {node.lifecycle.state}
           </dd>
         </div>
       )}
       {/* The node id is true identity → monospace (typography law). */}
-      <div className="mt-vs-0-5">
+      <div className="mt-fg-0-5">
         <dt className="inline font-medium">id:</dt>{" "}
         <dd className="inline break-all font-mono text-ink-faint">{node.id}</dd>
       </div>

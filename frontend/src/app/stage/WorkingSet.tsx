@@ -71,7 +71,7 @@ export function WorkingSet() {
       {/* Working-set size: a data-bearing count, tabular numerals. */}
       <span
         data-tabular
-        className="rounded-full bg-paper-sunken px-vs-1-5 py-vs-0-5 text-2xs tabular-nums text-ink-muted"
+        className="rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption tabular-nums text-ink-muted"
         aria-label={`${workingSet.length} expansions in working set`}
       >
         {workingSet.length}
@@ -79,7 +79,7 @@ export function WorkingSet() {
       {workingSet.map((id) => (
         <span
           key={id}
-          className="flex items-center gap-vs-1 rounded-full border border-rule bg-paper-raised px-vs-2 py-vs-0-5 text-2xs text-ink shadow-card"
+          className="flex items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-raised px-fg-2 py-fg-0-5 text-caption text-ink shadow-fg-raised"
         >
           {id.replace(/^(feature|doc):/, "")}
           <button
@@ -95,7 +95,7 @@ export function WorkingSet() {
       <button
         type="button"
         onClick={clear}
-        className="rounded-full border border-rule bg-paper-sunken px-vs-2 py-vs-0-5 text-2xs text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-caption text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         clear to constellation
       </button>

@@ -229,13 +229,9 @@
      `font-sans` / `font-mono` adopt Inter + JetBrains Mono and the role-named
      utilities resolve to the canonical --text-fg-* tokens.
 
-     COLLISION GUARD (S10): the Tailwind utility name `text-title` is load-bearing
-     for the current app, where it means the legacy 13px section label - NOT the
-     binding Figma `title` (15px). So `text-title` stays bound to the legacy 13px
-     (= the new body-strong metrics) during the alias window, and the binding 15px
-     Figma title is reached as `text-heading` (its legacy meaning) and as the
-     canonical `--text-fg-title`. The W02/W03 rewrite consumes `--text-fg-*`
-     directly and the `text-title` shim is removed in W04. */
+     The W04 metrics-taxonomy cutover retired the legacy text-title/heading/2xs
+     usages, so the Tailwind utility names now bind straight to their canonical
+     Figma roles (text-title -> --text-fg-title). */
   --font-sans: var(--font-fg-sans);
   --font-mono: var(--font-fg-mono);
 
@@ -257,59 +253,15 @@
   --text-caption--line-height: var(--text-fg-caption--line-height);
   --text-mono: var(--text-fg-mono);
   --text-mono--line-height: var(--text-fg-mono--line-height);
+  --text-title: var(--text-fg-title);
+  --text-title--line-height: var(--text-fg-title--line-height);
+  --text-title--font-weight: var(--text-fg-title--weight);
 
-  /* == DEPRECATED ALIASES (figma-parity-reconciliation W01.P01.S08-S10) =====
-     The retired legacy scales are kept as deprecated aliases onto the new
-     Figma-binding foundation so the current app (frontend/src/app + scene,
-     both being rewritten in W02/W03) stays green WITHOUT a mass usage sweep.
-     The real usage cutover happens in the W02/W03 rewrite; W04 removes these.
-
-     S10 - type. The text-title vs text-heading collision is guarded above:
-     legacy `text-title` (13px section label) keeps 13px via the body-strong
-     metrics; legacy `text-heading` (15px panel/rail) maps to the Figma title. */
-  --text-title: var(
-    --text-fg-body-strong
-  ); /* legacy 13px section label -> body-strong */
-  --text-title--line-height: var(--text-fg-body-strong--line-height);
-  --text-title--font-weight: var(--text-fg-body-strong--weight);
-  --text-heading: var(--text-fg-title); /* legacy 15px panel heading -> Figma title */
-  --text-heading--line-height: var(--text-fg-title--line-height);
-  --text-heading--font-weight: var(--text-fg-title--weight);
-  --text-2xs: var(--text-fg-caption); /* legacy 10px dense metadata -> caption */
-  --text-2xs--line-height: var(--text-fg-caption--line-height);
-  /* legacy code scale retained verbatim (no Figma role change; ADR layer 5) */
+  /* Code scale retained verbatim (no Figma role; ADR layer 5). */
   --text-code-sm: 0.75rem; /* 12px - dense code/hash */
   --text-code-sm--line-height: 1.125rem;
   --text-code: 0.8125rem; /* 13px - code body */
   --text-code--line-height: 1.375rem;
-
-  /* S08 - spacing: legacy --spacing-vs-* alias the generated --spacing-fg-* */
-  --spacing-vs-0-5: var(--spacing-fg-0-5); /* 2px */
-  --spacing-vs-1: var(--spacing-fg-1); /* 4px */
-  --spacing-vs-1-5: var(--spacing-fg-1-5); /* 6px */
-  --spacing-vs-2: var(--spacing-fg-2); /* 8px */
-  --spacing-vs-3: var(--spacing-fg-3); /* 12px */
-  --spacing-vs-4: var(--spacing-fg-4); /* 16px */
-  --spacing-vs-6: var(--spacing-fg-6); /* 24px */
-  --spacing-vs-8: var(--spacing-fg-8); /* 32px */
-
-  /* S08 - elevation: legacy six-level --shadow-* mapped onto the three Figma
-     levels (flat=none kept literal; card/panel=raised; float=overlay;
-     dialog/deep=popover). The per-theme dark/HC remaps below override these. */
-  --shadow-flat: none;
-  --shadow-card: var(--shadow-fg-raised);
-  --shadow-panel: var(--shadow-fg-raised);
-  --shadow-float: var(--shadow-fg-overlay);
-  --shadow-dialog: var(--shadow-fg-popover);
-  --shadow-deep: var(--shadow-fg-popover);
-
-  /* S09 - radius: legacy --radius-vs-* mapped onto the Figma scale
-     (sm 4px -> xs4; md 6px -> md7; lg 10px -> lg10; xl 14px -> lg10 nearest;
-     the new pill18 has no legacy alias - rounded-full re-keys to it in W02/W03). */
-  --radius-vs-sm: var(--radius-fg-xs); /* legacy 4px -> Figma xs 4px */
-  --radius-vs-md: var(--radius-fg-md); /* legacy 6px -> Figma md 7px */
-  --radius-vs-lg: var(--radius-fg-lg); /* legacy 10px -> Figma lg 10px */
-  --radius-vs-xl: var(--radius-fg-lg); /* legacy 14px -> Figma lg 10px (nearest) */
 
   /* == MOTION (S15) - fast, subtle, state-communicating ================== */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
@@ -511,22 +463,19 @@
 
   /* -- DARK (S06): warm-tinted near-black, equal peer to light ----------- */
   [data-theme="dark"] {
-    /* shadows deepen against the dark ground */
-    --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.25), 0 1px 2px -1px rgb(0 0 0 / 0.25);
-    --shadow-panel: 0 2px 8px -2px rgb(0 0 0 / 0.3), 0 1px 3px -1px rgb(0 0 0 / 0.2);
-    --shadow-float: 0 4px 16px -2px rgb(0 0 0 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.2);
-    --shadow-dialog:
+    /* The three-level Figma elevation deepens against the dark ground. */
+    --shadow-fg-raised: 0 1px 3px 0 rgb(0 0 0 / 0.25), 0 1px 2px -1px rgb(0 0 0 / 0.25);
+    --shadow-fg-overlay:
+      0 4px 16px -2px rgb(0 0 0 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.2);
+    --shadow-fg-popover:
       0 10px 32px -6px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.3);
-    --shadow-deep: 0 16px 48px -8px rgb(0 0 0 / 0.55);
   }
 
   /* -- HIGH-CONTRAST (S08): first-class peer, max separation ------------- */
   [data-theme="high-contrast"] {
-    --shadow-card: 0 0 0 1px oklch(0.7 0.01 75);
-    --shadow-panel: 0 0 0 1px oklch(0.7 0.01 75);
-    --shadow-float: 0 0 0 1px oklch(0.7 0.01 75);
-    --shadow-dialog: 0 0 0 1px oklch(0.7 0.01 75);
-    --shadow-deep: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-fg-raised: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-fg-overlay: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-fg-popover: 0 0 0 1px oklch(0.7 0.01 75);
   }
 
   body {

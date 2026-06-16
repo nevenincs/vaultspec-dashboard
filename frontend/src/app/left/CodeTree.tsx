@@ -122,7 +122,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     // "States"). The subtle liveness pulse is tied to genuine in-flight work.
     return (
       <p
-        className="animate-pulse-live px-vs-1 py-vs-0-5 text-label text-ink-faint"
+        className="animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint"
         role="status"
         aria-live="polite"
       >
@@ -140,7 +140,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     // this error state (degradation-is-read-from-tiers).
     return (
       <div
-        className="space-y-vs-1 px-vs-1 py-vs-0-5"
+        className="space-y-fg-1 px-fg-1 py-fg-0-5"
         role="status"
         aria-live="polite"
         data-code-error
@@ -167,7 +167,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
       "";
     return (
       <p
-        className="mx-vs-1 my-vs-1 rounded-fg-xs bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-caption text-ink-muted"
+        className="mx-fg-1 my-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
         role="status"
         aria-live="polite"
         data-code-degraded
@@ -184,7 +184,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     // Empty: an approachable empty state — a worktree that resolves to no
     // listable source is a real condition, not a fault (ADR "States").
     return (
-      <p className="px-vs-1 py-vs-0-5 text-label text-ink-faint" data-code-empty>
+      <p className="px-fg-1 py-fg-0-5 text-label text-ink-faint" data-code-empty>
         no source files in this scope yet.
       </p>
     );
@@ -192,7 +192,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
 
   return (
     <nav className="text-label" aria-label="code browser" data-code-browser>
-      <ul className="space-y-vs-0-5">
+      <ul className="space-y-fg-0-5">
         {entries.map((entry) => (
           <DirectoryRow
             key={entry.path}
@@ -219,7 +219,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
 function TruncatedNote({ total }: { total: number }) {
   return (
     <p
-      className="px-vs-1 py-vs-0-5 text-caption text-ink-faint"
+      className="px-fg-1 py-fg-0-5 text-caption text-ink-faint"
       role="status"
       data-code-truncated
     >
@@ -309,7 +309,7 @@ function DirectoryRow({
           onRowKeyDown(isDir, expanded, setExpanded)(e);
         }}
         style={indent}
-        className={`flex w-full items-center gap-vs-1 truncate rounded-fg-xs py-vs-0-5 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex w-full items-center gap-fg-1 truncate rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "bg-accent-subtle font-medium text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -418,7 +418,7 @@ function ChildLevel({
   if (level.isPending) {
     return (
       <p
-        className="animate-pulse-live px-vs-1 py-vs-0-5 text-caption text-ink-faint"
+        className="animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint"
         style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
         role="status"
         aria-live="polite"
@@ -432,7 +432,7 @@ function ChildLevel({
   if (level.isError) {
     return (
       <p
-        className="px-vs-1 py-vs-0-5 text-caption text-state-broken"
+        className="px-fg-1 py-fg-0-5 text-caption text-state-broken"
         style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
         role="status"
         data-code-level-error
@@ -446,7 +446,7 @@ function ChildLevel({
   if (entries.length === 0) return null;
 
   return (
-    <ul className="space-y-vs-0-5">
+    <ul className="space-y-fg-0-5">
       {entries.map((entry) => (
         <DirectoryRow
           key={entry.path}

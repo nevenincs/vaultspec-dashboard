@@ -163,24 +163,24 @@ function ResultRow({ result, fallback, tabbable, isCode, onActivate }: ResultRow
             });
           }
         }}
-        className={`w-full rounded-fg-xs border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           clickable
             ? "hover:border-rule-strong hover:bg-paper-sunken"
             : "cursor-default opacity-70"
         }`}
       >
-        <span className="flex items-center justify-between gap-vs-2">
-          <span className="flex min-w-0 items-center gap-vs-1-5">
+        <span className="flex items-center justify-between gap-fg-2">
+          <span className="flex min-w-0 items-center gap-fg-1-5">
             <span className="shrink-0 text-ink-faint" aria-hidden>
               <Mark size={SPECIES_PX} />
             </span>
             {/* Identity is true path/stem — mono per the typography law. */}
             <span className="min-w-0 truncate font-mono text-ink">{result.source}</span>
           </span>
-          <span className="flex shrink-0 items-center gap-vs-1-5 text-ink-faint">
+          <span className="flex shrink-0 items-center gap-fg-1-5 text-ink-faint">
             {fallback && (
               // Fallback marker — not colour-only; a labelled tag the SR reads.
-              <span className="rounded-fg-xs bg-paper-sunken px-vs-1 text-caption text-ink-muted">
+              <span className="rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-muted">
                 text match
               </span>
             )}
@@ -196,7 +196,7 @@ function ResultRow({ result, fallback, tabbable, isCode, onActivate }: ResultRow
           </span>
         </span>
         {result.excerpt && (
-          <span className="mt-vs-0-5 block truncate text-ink-muted">
+          <span className="mt-fg-0-5 block truncate text-ink-muted">
             {result.excerpt}
           </span>
         )}
@@ -246,13 +246,13 @@ export function SearchTab() {
           : "";
 
   return (
-    <div className="space-y-vs-2 text-body" data-search-tab>
+    <div className="space-y-fg-2 text-body" data-search-tab>
       {/* Query input — Lucide search adornment + a clear affordance once the
           field is non-empty; native search type, accessible label, accent focus
           ring from the 12-step role model. */}
       <div className="relative">
         <span
-          className="pointer-events-none absolute inset-y-0 left-vs-2 flex items-center text-ink-faint"
+          className="pointer-events-none absolute inset-y-0 left-fg-2 flex items-center text-ink-faint"
           aria-hidden
         >
           <Search size={CHROME_PX} />
@@ -265,7 +265,7 @@ export function SearchTab() {
           onKeyDown={onFieldKeyDown}
           placeholder="search vault and code…"
           aria-label="search query"
-          className="w-full rounded-fg-xs border border-rule bg-paper-raised py-vs-1 pl-vs-6 pr-vs-6 text-ink placeholder:text-ink-faint focus-visible:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="w-full rounded-fg-xs border border-rule bg-paper-raised py-fg-1 pl-fg-6 pr-fg-6 text-ink placeholder:text-ink-faint focus-visible:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         />
         {query && (
           <button
@@ -275,7 +275,7 @@ export function SearchTab() {
               fieldRef.current?.focus();
             }}
             aria-label="clear search"
-            className="absolute inset-y-0 right-vs-1 flex items-center rounded-fg-xs px-vs-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="absolute inset-y-0 right-fg-1 flex items-center rounded-fg-xs px-fg-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <X size={CHROME_PX} />
           </button>
@@ -285,7 +285,7 @@ export function SearchTab() {
       {/* Target selector — stays a radiogroup; an active chip is marked by the
           accent AND aria-checked, never colour alone (grayscale-safe). Keyboard-
           initiated, so the toggle is instant (no animation). */}
-      <div className="flex gap-vs-1" role="radiogroup" aria-label="search target">
+      <div className="flex gap-fg-1" role="radiogroup" aria-label="search target">
         {(["vault", "code"] as const).map((t) => {
           const on = target === t;
           return (
@@ -295,7 +295,7 @@ export function SearchTab() {
               role="radio"
               aria-checked={on}
               onClick={() => setTarget(t)}
-              className={`rounded-fg-pill border px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`rounded-fg-pill border px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 on
                   ? "border-accent bg-accent-subtle font-medium text-ink"
                   : "border-rule text-ink-muted hover:border-rule-strong hover:text-ink"
@@ -317,7 +317,7 @@ export function SearchTab() {
 
       {/* Idle / empty: an approachable prompt, never a blank panel. */}
       {!hasQuery && (
-        <p className="px-vs-1 py-vs-2 text-label text-ink-faint" data-search-idle>
+        <p className="px-fg-1 py-fg-2 text-label text-ink-faint" data-search-idle>
           search semantically across the vault and code. select a result to focus it on
           the stage.
         </p>
@@ -328,7 +328,7 @@ export function SearchTab() {
           neutralizes the pulse). */}
       {search.state === "loading" && (
         <p
-          className="animate-pulse-live px-vs-1 py-vs-0-5 text-label text-ink-faint"
+          className="animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint"
           data-search-loading
         >
           searching…
@@ -341,7 +341,7 @@ export function SearchTab() {
           fallback, so the notice states that plainly. */}
       {search.semanticOffline && (
         <p
-          className="flex items-start gap-vs-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          className="flex items-start gap-fg-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted"
           data-semantic-offline
         >
           <span className="mt-px shrink-0 text-state-stale" aria-hidden>
@@ -359,7 +359,7 @@ export function SearchTab() {
           from the degraded state per the tiers contract. */}
       {search.error && (
         <div
-          className="space-y-vs-1 rounded-fg-xs border border-state-broken/40 px-vs-2 py-vs-1"
+          className="space-y-fg-1 rounded-fg-xs border border-state-broken/40 px-fg-2 py-fg-1"
           data-search-error
         >
           <p className="text-label text-state-broken">search request failed</p>
@@ -375,7 +375,7 @@ export function SearchTab() {
 
       {/* No results: honest and non-alarming, distinct from idle and degraded. */}
       {noResults && !search.semanticOffline && (
-        <p className="px-vs-1 py-vs-2 text-label text-ink-faint" data-search-empty>
+        <p className="px-fg-1 py-fg-2 text-label text-ink-faint" data-search-empty>
           no matches for “{trimmed}”. try broadening the query or switching target.
         </p>
       )}
@@ -384,13 +384,13 @@ export function SearchTab() {
       {showResults && (
         <>
           <p
-            className="px-vs-1 text-caption text-ink-faint"
+            className="px-fg-1 text-caption text-ink-faint"
             data-search-count
             data-tabular
           >
             {search.results.length} result{search.results.length === 1 ? "" : "s"}
           </p>
-          <ul className="space-y-vs-1" role="list" aria-label="search results">
+          <ul className="space-y-fg-1" role="list" aria-label="search results">
             {search.results.map((result, i) => (
               <ResultRow
                 // Object constancy: key on stable node id where present so a

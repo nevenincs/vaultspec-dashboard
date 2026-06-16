@@ -40,11 +40,11 @@
 //
 // W03.P09.S52/S53 (figma-parity-reconciliation): rebuilt over the REGENERATED
 // Figma foundation. The type usages read the Figma role-named scale (text-label /
-// text-caption) rather than the deprecated legacy aliases (text-xs / text-2xs)
-// the W01.P01.S10 migration scheduled for removal in W04. The radius and
-// elevation classes (rounded-vs-*, shadow-float/card) resolve onto the Figma
-// xs/sm/md/lg/pill radius and three-level elevation through the foundation alias
-// layer. The Layout group delegates to the binding `LayoutSelector` (S53) so the
+// text-caption) directly. The radius and elevation classes (rounded-fg-*,
+// shadow-fg-overlay/raised) resolve onto the canonical Figma xs/sm/md/lg/pill
+// radius and three-level elevation tokens; the W01.P01.S10 deprecated -vs-/legacy
+// aliases were retired in the W04 metrics-taxonomy cutover. The Layout group
+// delegates to the binding `LayoutSelector` (S53) so the
 // canonical Network / Tree / Grouped / Timeline picker has a single home.
 
 import {
@@ -71,7 +71,7 @@ const ICON_PX = 15;
 
 // A faint vertical hairline separating inline groups in the slim toolbar.
 function Divider() {
-  return <span className="mx-vs-1 h-6 w-px self-center bg-rule" aria-hidden />;
+  return <span className="mx-fg-1 h-6 w-px self-center bg-rule" aria-hidden />;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ function NavBtn({ label, title, icon, onClick }: NavBtnProps) {
       aria-label={label}
       title={title ?? label}
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-vs-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      className="flex h-8 w-8 items-center justify-center rounded-fg-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
     >
       {icon}
     </button>
@@ -140,7 +140,7 @@ function FreezeToggle() {
       }
       onClick={toggle}
       disabled={!connectivity}
-      className="flex h-8 w-8 items-center justify-center rounded-vs-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-paper-sunken aria-pressed:text-ink"
+      className="flex h-8 w-8 items-center justify-center rounded-fg-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-paper-sunken aria-pressed:text-ink"
       data-freeze-toggle
     >
       {frozen ? (
@@ -156,7 +156,7 @@ function NavigateGroup() {
   const scene = getScene();
   return (
     <div
-      className="flex items-center gap-vs-0-5"
+      className="flex items-center gap-fg-0-5"
       role="group"
       aria-label="Navigate"
       data-nav-group
@@ -226,7 +226,7 @@ function Slider({
 }: SliderProps) {
   const display = format ? format(value) : String(value);
   return (
-    <label className="flex w-full flex-col gap-vs-1" title={title}>
+    <label className="flex w-full flex-col gap-fg-1" title={title}>
       <span className="flex h-3.5 items-center justify-between">
         <span className="text-label text-ink-muted">{label}</span>
         {!ends && (
@@ -310,7 +310,7 @@ function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
         aria-controls={panelId}
         title={label}
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-8 items-center gap-vs-1 rounded-vs-md px-vs-2 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex h-8 items-center gap-fg-1 rounded-fg-md px-fg-2 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           open
             ? "bg-paper-sunken text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -330,7 +330,7 @@ function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
           id={panelId}
           role="group"
           aria-label={label}
-          className="absolute bottom-full right-0 z-30 mb-vs-2 flex flex-col gap-vs-2 rounded-vs-lg border border-rule bg-paper-raised/95 p-vs-3 shadow-float backdrop-blur-sm"
+          className="absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 rounded-fg-lg border border-rule bg-paper-raised/95 p-fg-3 shadow-fg-overlay backdrop-blur-sm"
           data-popover-panel
         >
           {children}
@@ -358,7 +358,7 @@ function ZoomGroup() {
 
   return (
     <div
-      className={`flex w-36 items-center gap-vs-1 ${timeTravelling ? "opacity-40" : ""}`}
+      className={`flex w-36 items-center gap-fg-1 ${timeTravelling ? "opacity-40" : ""}`}
       role="group"
       aria-label="Zoom"
     >
@@ -475,7 +475,7 @@ function TuneBody() {
   }
 
   return (
-    <div className="flex w-44 flex-col gap-vs-3">
+    <div className="flex w-44 flex-col gap-fg-3">
       <Slider
         label="Spacing"
         title="How far nodes push each other apart"
@@ -529,11 +529,11 @@ function TuneBody() {
 export function GraphControls() {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-vs-2 z-20 flex justify-center px-vs-2"
+      className="pointer-events-none absolute inset-x-0 bottom-fg-2 z-20 flex justify-center px-fg-2"
       data-graph-controls-shell
     >
       <div
-        className="pointer-events-auto flex max-w-full items-stretch rounded-vs-xl border border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm"
+        className="pointer-events-auto flex max-w-full items-stretch rounded-fg-lg border border-rule bg-paper-raised/95 shadow-fg-overlay backdrop-blur-sm"
         role="group"
         aria-label="graph controls"
         data-graph-controls
@@ -543,7 +543,7 @@ export function GraphControls() {
             the canvas. The popover triggers live OUTSIDE this scroll region so
             their above-bar panels are not clipped by overflow. */}
         <div
-          className="flex min-w-0 items-center gap-vs-1 overflow-x-auto px-vs-2 py-vs-1-5"
+          className="flex min-w-0 items-center gap-fg-1 overflow-x-auto px-fg-2 py-fg-1-5"
           data-graph-controls-inline
         >
           <NavigateGroup />
@@ -554,7 +554,7 @@ export function GraphControls() {
         </div>
         {/* Heavy groups, collapsed behind popover triggers (canvas stays clear).
             Outside the scroll region so the popover bodies can overflow upward. */}
-        <div className="flex items-center gap-vs-1 border-l border-rule px-vs-2 py-vs-1-5">
+        <div className="flex items-center gap-fg-1 border-l border-rule px-fg-2 py-fg-1-5">
           <PopoverGroup
             label="Tune"
             marker="tune"

@@ -18,7 +18,7 @@ export function TextControl({ def, value, onChange, disabled, id }: ControlProps
       placeholder={def.placeholder}
       aria-label={def.label}
       onChange={(e) => onChange(e.target.value)}
-      className="w-48 rounded-fg-xs border border-rule bg-paper-sunken px-vs-2 py-vs-1 text-body text-ink outline-none transition-colors duration-ui-fast focus-within:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 placeholder:text-ink-faint"
+      className="w-48 rounded-fg-xs border border-rule bg-paper-sunken px-fg-2 py-fg-1 text-body text-ink outline-none transition-colors duration-ui-fast focus-within:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 placeholder:text-ink-faint"
     />
   );
 }

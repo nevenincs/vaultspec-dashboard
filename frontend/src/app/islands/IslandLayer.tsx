@@ -58,14 +58,14 @@ function Island({ scene, id, children }: IslandProps) {
   return (
     <div
       style={islandStyle(anchor)}
-      className="pointer-events-auto rounded-vs-md border border-rule bg-paper-raised/95 p-vs-2 text-body shadow-float"
+      className="pointer-events-auto rounded-fg-md border border-rule bg-paper-raised/95 p-fg-2 text-body shadow-fg-overlay"
       data-island-for={id}
       onContextMenu={(e) => {
         e.preventDefault();
         openContextMenu({ kind: "island", id }, { x: e.clientX, y: e.clientY });
       }}
     >
-      <div className="flex items-center justify-between gap-vs-2">
+      <div className="flex items-center justify-between gap-fg-2">
         {/* The opened node's id is true identity → monospace (typography law). */}
         <span className="truncate font-mono text-label text-ink">{id}</span>
         <button

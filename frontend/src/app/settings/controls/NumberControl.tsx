@@ -16,7 +16,7 @@ export function NumberControl({ def, value, onChange, disabled, id }: ControlPro
     def.value_type.type === "integer" ? def.value_type : { min: 0, max: 100 };
   const current = decodeInt(value, range.min);
   return (
-    <div className="flex shrink-0 items-center gap-vs-2">
+    <div className="flex shrink-0 items-center gap-fg-2">
       <input
         type="range"
         id={id}

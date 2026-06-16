@@ -69,7 +69,7 @@ const RECENT_COMMITS = 12;
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+    <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
       {children}
     </h3>
   );
@@ -98,11 +98,11 @@ function LocationAnchor({ scope }: { scope: string | null }) {
       aria-label="location"
       data-location-anchor
       data-location-state="located"
-      className="space-y-vs-1 rounded-vs-md border border-rule bg-paper-raised px-vs-2 py-vs-1-5 shadow-card"
+      className="space-y-fg-1 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1-5 shadow-fg-raised"
     >
       {/* Absolute path — identity, so monospace per the typography law; forward
           slashes already canonical from the scope token. */}
-      <div className="flex items-center gap-vs-1-5">
+      <div className="flex items-center gap-fg-1-5">
         <span className="shrink-0 text-ink-faint" aria-hidden>
           <FolderGit2 size={DOMAIN_PX} />
         </span>
@@ -115,7 +115,7 @@ function LocationAnchor({ scope }: { scope: string | null }) {
         </span>
         {anchor.isMain && (
           <span
-            className="shrink-0 rounded-vs-sm border border-rule px-vs-1 text-2xs font-medium text-ink-muted"
+            className="shrink-0 rounded-fg-xs border border-rule px-fg-1 text-caption font-medium text-ink-muted"
             data-location-main
             aria-label="main worktree"
           >
@@ -125,7 +125,7 @@ function LocationAnchor({ scope }: { scope: string | null }) {
       </div>
 
       {/* Branch + divergence + dirty chips. */}
-      <div className="flex items-center gap-vs-1-5 text-label">
+      <div className="flex items-center gap-fg-1-5 text-label">
         <span className="shrink-0 text-ink-faint" aria-hidden>
           <GitBranch size={GATE_PX} />
         </span>
@@ -137,7 +137,7 @@ function LocationAnchor({ scope }: { scope: string | null }) {
         </span>
         {hasUpstream && (aheadN > 0 || behindN > 0) && (
           <span
-            className="flex shrink-0 items-center gap-vs-1 text-ink-faint"
+            className="flex shrink-0 items-center gap-fg-1 text-ink-faint"
             data-tabular
           >
             {aheadN > 0 && (
@@ -155,11 +155,11 @@ function LocationAnchor({ scope }: { scope: string | null }) {
           </span>
         )}
         {anchor.dirty ? (
-          <span className="shrink-0 rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-accent-text">
+          <span className="shrink-0 rounded-fg-pill bg-accent-subtle px-fg-1-5 py-fg-0-5 text-caption text-accent-text">
             changes
           </span>
         ) : (
-          <span className="shrink-0 text-2xs text-state-active">clean</span>
+          <span className="shrink-0 text-caption text-state-active">clean</span>
         )}
       </div>
     </section>
@@ -195,8 +195,8 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
   };
 
   return (
-    <li className="space-y-vs-0-5" data-open-plan data-node-id={artifact.node_id}>
-      <div className="flex items-stretch gap-vs-0-5">
+    <li className="space-y-fg-0-5" data-open-plan data-node-id={artifact.node_id}>
+      <div className="flex items-stretch gap-fg-0-5">
         {/* Expand/collapse — an accessible disclosure; lazily enables the
             interior query for THIS plan only. */}
         <button
@@ -206,7 +206,7 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
           aria-controls={treeId}
           aria-label={`${expanded ? "collapse" : "expand"} steps for ${artifact.title ?? artifact.stem}`}
           data-open-plan-toggle
-          className="flex shrink-0 items-center rounded-vs-sm px-vs-0-5 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex shrink-0 items-center rounded-fg-xs px-fg-0-5 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <Chevron size={SMALL_PX} aria-hidden />
         </button>
@@ -217,17 +217,17 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
           onClick={openPlan}
           data-open-plan-row
           aria-label={`open plan ${artifact.title ?? artifact.stem} in the reader`}
-          className="flex min-w-0 flex-1 items-center gap-vs-1-5 rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex min-w-0 flex-1 items-center gap-fg-1-5 rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           {progress && <ProgressRing done={progress.done} total={progress.total} />}
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-vs-1-5">
+            <span className="flex items-center gap-fg-1-5">
               <span className="min-w-0 truncate text-body text-ink">
                 {artifact.title ?? artifact.stem}
               </span>
               {artifact.tier && (
                 <span
-                  className="shrink-0 rounded-vs-sm border border-rule px-vs-1 text-2xs font-medium text-ink-muted"
+                  className="shrink-0 rounded-fg-xs border border-rule px-fg-1 text-caption font-medium text-ink-muted"
                   data-plan-tier
                   aria-label={`tier ${artifact.tier}`}
                 >
@@ -235,7 +235,7 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
                 </span>
               )}
             </span>
-            <span className="mt-px flex items-center gap-vs-1-5 text-2xs text-ink-faint">
+            <span className="mt-px flex items-center gap-fg-1-5 text-caption text-ink-faint">
               <span data-pipeline-phase>{artifact.phase}</span>
               {fresh && (
                 <span data-tabular data-freshness>
@@ -248,7 +248,7 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
       </div>
       {/* The reused step-tree dropdown (lazily-loaded interior). */}
       {expanded && (
-        <div id={treeId} className="pl-vs-4">
+        <div id={treeId} className="pl-fg-4">
           <PlanStepTree view={interior} />
         </div>
       )}
@@ -284,7 +284,7 @@ function OpenPlans({ scope }: { scope: string | null }) {
           guess (degradation-is-read-from-tiers-not-guessed-from-errors). */}
       {view.degraded ? (
         <p
-          className="flex items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          className="flex items-start gap-fg-1-5 rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted"
           data-open-plans-state="degraded"
         >
           <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
@@ -302,7 +302,7 @@ function OpenPlans({ scope }: { scope: string | null }) {
         </p>
       ) : plans.length === 0 ? (
         <p
-          className="flex items-start gap-vs-1-5 px-vs-1 py-vs-1 text-label text-ink-faint"
+          className="flex items-start gap-fg-1-5 px-fg-1 py-fg-1 text-label text-ink-faint"
           data-open-plans-state="empty"
         >
           <span className="mt-px shrink-0" aria-hidden>
@@ -311,7 +311,7 @@ function OpenPlans({ scope }: { scope: string | null }) {
           <span>no plans in flight on this branch</span>
         </p>
       ) : (
-        <ul className="space-y-vs-1" role="list" data-open-plans-list>
+        <ul className="space-y-fg-1" role="list" data-open-plans-list>
           {plans.map((artifact) => (
             <OpenPlanRow
               key={artifact.node_id}
@@ -343,7 +343,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
 
       {view.degraded ? (
         <p
-          className="flex items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          className="flex items-start gap-fg-1-5 rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted"
           data-recent-commits-state="degraded"
         >
           <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
@@ -369,13 +369,13 @@ function RecentCommits({ scope }: { scope: string | null }) {
         </p>
       ) : view.commits.length === 0 ? (
         <p
-          className="px-vs-1 py-vs-1 text-label text-ink-faint"
+          className="px-fg-1 py-fg-1 text-label text-ink-faint"
           data-recent-commits-state="empty"
         >
           no commits yet on this branch.
         </p>
       ) : (
-        <ul className="space-y-vs-0-5" role="list" data-recent-commits-list>
+        <ul className="space-y-fg-0-5" role="list" data-recent-commits-list>
           {view.commits.slice(0, RECENT_COMMITS).map((commit) => {
             const touched = commit.node_ids.filter((id) => !id.startsWith("commit:"));
             const select = () => {
@@ -395,7 +395,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
                   aria-label={`commit ${commit.short_hash}: ${commit.subject}${
                     touched.length ? `, ${touched.length} touched nodes` : ""
                   }`}
-                  className={`flex w-full items-center gap-vs-1-5 rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                  className={`flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     touched.length
                       ? "hover:bg-paper-sunken"
                       : "cursor-default opacity-90"
@@ -410,13 +410,13 @@ function RecentCommits({ scope }: { scope: string | null }) {
                   </span>
                   {/* Short hash is identity → mono. */}
                   <span
-                    className="shrink-0 font-mono text-2xs text-ink-faint"
+                    className="shrink-0 font-mono text-caption text-ink-faint"
                     data-tabular
                     data-short-hash
                   >
                     {commit.short_hash}
                   </span>
-                  <span className="shrink-0 text-2xs text-ink-faint" data-tabular>
+                  <span className="shrink-0 text-caption text-ink-faint" data-tabular>
                     {relativeTs(new Date(commit.ts).toISOString(), now)}
                   </span>
                 </button>
@@ -436,7 +436,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
 export function StatusTab() {
   const scope = useActiveScope();
   return (
-    <div className="space-y-vs-3 text-body" data-status-tab>
+    <div className="space-y-fg-3 text-body" data-status-tab>
       <LocationAnchor scope={scope} />
       <OpenPlans scope={scope} />
       <RecentCommits scope={scope} />

@@ -58,7 +58,7 @@ export function FacetChipGroup({
               aria-checked={on}
               aria-label={`${label} ${value}`}
               onClick={() => onToggle(value)}
-              className={`rounded-full border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`rounded-fg-pill border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 on
                   ? "border-rule-strong bg-paper-sunken font-medium text-ink"
                   : "border-rule text-ink-muted hover:border-rule-strong"

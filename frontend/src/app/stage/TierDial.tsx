@@ -51,7 +51,7 @@ export function TierDial() {
 
   return (
     <fieldset
-      className="flex items-center gap-vs-2 text-label"
+      className="flex items-center gap-fg-2 text-label"
       aria-label="tier dial"
       data-tier-dial
     >
@@ -70,7 +70,7 @@ export function TierDial() {
               ? "on"
               : "off";
         return (
-          <span key={tier} className="flex items-center gap-vs-1">
+          <span key={tier} className="flex items-center gap-fg-1">
             <button
               type="button"
               role="switch"
@@ -90,7 +90,7 @@ export function TierDial() {
                     : `${label} tier ${stateLabel}`
               }
               onClick={() => setTier(tier, !tiers[tier])}
-              className={`flex items-center gap-vs-1 rounded-vs-sm border px-vs-1-5 py-vs-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`flex items-center gap-fg-1 rounded-fg-xs border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 blocked
                   ? "cursor-not-allowed border-dashed border-rule text-ink-faint"
                   : on
@@ -102,10 +102,12 @@ export function TierDial() {
                   on/off ring below is the non-color active cue. */}
               <TierMark tier={tier} size={14} title={`${label} tier mark`} />
               <span>{label}</span>
-              {offline && <span className="text-2xs text-state-stale">offline</span>}
+              {offline && (
+                <span className="text-caption text-state-stale">offline</span>
+              )}
             </button>
             {(tier === "temporal" || tier === "semantic") && !blocked && on && (
-              <span className="flex items-center gap-vs-1">
+              <span className="flex items-center gap-fg-1">
                 <input
                   type="range"
                   min={0}
@@ -120,7 +122,7 @@ export function TierDial() {
                 />
                 <span
                   data-tabular
-                  className="w-7 text-right text-2xs tabular-nums text-ink-faint"
+                  className="w-7 text-right text-caption tabular-nums text-ink-faint"
                 >
                   {Math.round((minConfidence[tier] ?? 0) * 100)}%
                 </span>

@@ -96,7 +96,7 @@ function Segmented<T extends string>({
       ref={groupRef}
       role="group"
       aria-label={label}
-      className="flex gap-vs-0-5 rounded-vs-md bg-paper-sunken p-vs-0-5"
+      className="flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5"
     >
       {segments.map((seg) => {
         const isActive = seg.value === active;
@@ -111,9 +111,9 @@ function Segmented<T extends string>({
             tabIndex={seg.value === tabStopValue ? 0 : -1}
             onKeyDown={onKeyDown}
             onClick={() => onSelect(seg.value)}
-            className={`flex items-center justify-center rounded-vs-sm px-vs-2 py-vs-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
+            className={`flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
               isActive
-                ? "bg-paper-raised font-medium text-ink shadow-card"
+                ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
                 : "text-ink-muted hover:text-ink"
             } ${seg.available === false ? "italic" : ""}`}
           >
@@ -216,7 +216,7 @@ export function LayoutSelector() {
   }
 
   return (
-    <div className="flex items-center gap-vs-1" data-layout-picker>
+    <div className="flex items-center gap-fg-1" data-layout-picker>
       <Segmented
         label="spatial layout"
         segments={SPATIAL_SEGMENTS(SEMANTIC_MODE_GATE.shipped)}
@@ -278,7 +278,7 @@ export function LensSelector() {
     <div
       role="group"
       aria-label="salience lens"
-      className="flex items-center gap-vs-0-5 rounded-vs-md border border-rule bg-paper-raised/95 p-vs-0-5 shadow-card backdrop-blur-sm"
+      className="flex items-center gap-fg-0-5 rounded-fg-md border border-rule bg-paper-raised/95 p-fg-0-5 shadow-fg-raised backdrop-blur-sm"
     >
       {LENS_OPTIONS.map(({ lens: l, label, hint, Icon }) => {
         const active = lens === l;
@@ -292,7 +292,7 @@ export function LensSelector() {
             title={hint}
             onClick={() => setLens(l)}
             className={[
-              "flex items-center gap-vs-1 rounded-vs-sm px-vs-1-5 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+              "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
               active
                 ? "border border-accent bg-accent-subtle text-ink"
                 : "border border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",

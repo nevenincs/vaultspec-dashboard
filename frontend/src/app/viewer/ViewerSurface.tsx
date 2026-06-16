@@ -36,14 +36,14 @@ export function ViewerSurface(): ReactElement | null {
 
   return (
     <section className="flex h-full flex-col bg-paper" aria-label="document viewer">
-      <div className="flex items-center justify-between border-b border-rule px-vs-3 py-vs-1">
+      <div className="flex items-center justify-between border-b border-rule px-fg-3 py-fg-1">
         <span className="truncate font-mono text-label text-ink-muted">
           {target.nodeId}
         </span>
         <button
           type="button"
           onClick={closeViewer}
-          className="rounded-vs-xs p-vs-0-5 text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="rounded-fg-xs p-fg-0-5 text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           aria-label="close viewer"
         >
           <X size={15} aria-hidden />
