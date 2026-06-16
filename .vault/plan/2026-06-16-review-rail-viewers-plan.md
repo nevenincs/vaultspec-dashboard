@@ -58,21 +58,21 @@ Stand up the one shared Shiki highlighter (fine-grained core, JS regex engine, l
 
 Build the display-only markdown reader: structured frontmatter, GFM, wiki-link navigation, and Shiki-highlighted fences.
 
-- [ ] `P04.S16` - Add react-markdown, remark-gfm, and frontmatter handling to the frontend dependencies; `frontend/package.json`.
-- [ ] `P04.S17` - Build the MarkdownReader component rendering GFM including plan task-list checkboxes, themed entirely from the existing --color tokens; `frontend/src/app/viewer/MarkdownReader.tsx`.
-- [ ] `P04.S18` - Render the leading YAML block through a dedicated FrontmatterHeader: tags as pills, date and modified as stamps, related as clickable wiki-links; `frontend/src/app/viewer/FrontmatterHeader.tsx`.
-- [ ] `P04.S19` - Add a custom remark plugin rewriting double-bracket stem and stem-pipe-label wiki-link syntax into in-app link nodes resolving to doc:stem and emitting the navigation intent; `frontend/src/app/viewer/remarkWikiLink.ts`.
-- [ ] `P04.S20` - Override fenced code rendering to delegate to the shared useHighlighter hook so reader fences and the code viewer share one tokenizer; `frontend/src/app/viewer/MarkdownReader.tsx`.
-- [ ] `P04.S21` - Render the reader degraded, empty, and error states from the tiers-derived content selector; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `P04.S16` - Add react-markdown, remark-gfm, and frontmatter handling to the frontend dependencies; `frontend/package.json`.
+- [x] `P04.S17` - Build the MarkdownReader component rendering GFM including plan task-list checkboxes, themed entirely from the existing --color tokens; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `P04.S18` - Render the leading YAML block through a dedicated FrontmatterHeader: tags as pills, date and modified as stamps, related as clickable wiki-links; `frontend/src/app/viewer/FrontmatterHeader.tsx`.
+- [x] `P04.S19` - Add a custom remark plugin rewriting double-bracket stem and stem-pipe-label wiki-link syntax into in-app link nodes resolving to doc:stem and emitting the navigation intent; `frontend/src/app/viewer/remarkWikiLink.ts`.
+- [x] `P04.S20` - Override fenced code rendering to delegate to the shared useHighlighter hook so reader fences and the code viewer share one tokenizer; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `P04.S21` - Render the reader degraded, empty, and error states from the tiers-derived content selector; `frontend/src/app/viewer/MarkdownReader.tsx`.
 
 ### Phase `P05` - read-only code-file viewer
 
 Build the display-only code viewer over the shared highlighter with lazy grammar loading and virtualized lines.
 
-- [ ] `P05.S22` - Build the CodeViewer component taking {path, text, language_hint}, picking the grammar via the shared hook, rendering highlighted lines with line numbers and a monospace path header; `frontend/src/app/viewer/CodeViewer.tsx`.
-- [ ] `P05.S23` - Virtualize the line list so a large capped file scrolls cheaply, with no editing affordances; `frontend/src/app/viewer/CodeViewer.tsx`.
-- [ ] `P05.S24` - Render the viewer degraded, empty, truncated, and error states from the tiers-derived content selector and the truncated block; `frontend/src/app/viewer/CodeViewer.tsx`.
-- [ ] `P05.S25` - Host the two viewers behind the open-in-viewer view-store intent so a selection routes to the markdown reader or the code viewer by node kind; `frontend/src/app/viewer/ViewerSurface.tsx`.
+- [x] `P05.S22` - Build the CodeViewer component taking {path, text, language_hint}, picking the grammar via the shared hook, rendering highlighted lines with line numbers and a monospace path header; `frontend/src/app/viewer/CodeViewer.tsx`.
+- [x] `P05.S23` - Virtualize the line list so a large capped file scrolls cheaply, with no editing affordances; `frontend/src/app/viewer/CodeViewer.tsx`.
+- [x] `P05.S24` - Render the viewer degraded, empty, truncated, and error states from the tiers-derived content selector and the truncated block; `frontend/src/app/viewer/CodeViewer.tsx`.
+- [x] `P05.S25` - Host the two viewers behind the open-in-viewer view-store intent so a selection routes to the markdown reader or the code viewer by node kind; `frontend/src/app/viewer/ViewerSurface.tsx`.
 
 ### Phase `P06` - right-rail overview re-scope and cross-link wiring
 
@@ -90,8 +90,8 @@ Recast the Changes pillar as the Overview snapshot and wire every row's cross-li
 
 Prove the content contract, viewer rendering, theming, IA, and gates green; code-review to PASS.
 
-- [ ] `P07.S33` - Run the full frontend lint gate and the engine fmt-plus-clippy gate to exit 0 including prettier format:check and tsc; `frontend/package.json`.
-- [ ] `P07.S34` - Add component tests for frontmatter rendering, wiki-link navigation, GFM task lists, and code highlighting across light, dark, and high-contrast themes; `frontend/src/app/viewer/MarkdownReader.test.tsx`.
+- [x] `P07.S33` - Run the full frontend lint gate and the engine fmt-plus-clippy gate to exit 0 including prettier format:check and tsc; `frontend/package.json`.
+- [x] `P07.S34` - Add component tests for frontmatter rendering, wiki-link navigation, GFM task lists, and code highlighting across light, dark, and high-contrast themes; `frontend/src/app/viewer/MarkdownReader.test.tsx`.
 - [ ] `P07.S35` - Verify the four-tab law holds and every Overview row cross-links to file, node, and viewer with no inlined content; `frontend/src/app/right/ChangesOverview.test.tsx`.
 - [ ] `P07.S36` - Run vaultspec-code-review over the feature and land any required revisions to a PASS verdict; `.vault/audit/2026-06-16-review-rail-viewers-audit.md`.
 

@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from "react";
 import type { Root } from "hast";
-import type { HighlighterCore } from "shiki/core";
+import type { HighlighterCore, ThemedToken } from "shiki/core";
 import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
@@ -118,6 +118,65 @@ export function useHighlightedHast(
         // Tokenization failed (a grammar that would not load): degrade to plain
         // text, never throw into the viewer. The consumer renders `code` raw.
         if (!cancelled) setResult({ hast: null, loading: false, languageId: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [code, languageHint]);
+
+  return result;
+}
+
+/** The per-line tokenization the code viewer renders: each line is an array of
+ *  styled tokens, so the viewer can window the line list (render only the visible
+ *  range) with a line-number gutter — the same tokenizer the reader fences use. */
+export type TokenLine = ThemedToken[];
+
+/** The state a `useTokenLines` consumer renders. */
+export interface TokenLinesResult {
+  /** Tokens per line, or null while loading / on failure (render plain lines). */
+  lines: TokenLine[] | null;
+  /** Tokenization is in flight. */
+  loading: boolean;
+  /** The resolved grammar id, or null when the text renders as plain. */
+  languageId: string | null;
+}
+
+/**
+ * Tokenize `code` into per-line token arrays through the shared singleton
+ * highlighter (the same instance + grammar registration the reader fences use),
+ * for the code viewer's windowed, line-numbered render. While the highlighter or
+ * grammar loads, `loading` is true and `lines` is null (the viewer shows plain
+ * lines). An unknown hint or a tokenization failure yields `lines: null` so the
+ * viewer renders plain text — never a throw.
+ */
+export function useTokenLines(
+  code: string,
+  languageHint: string | null | undefined,
+): TokenLinesResult {
+  const [result, setResult] = useState<TokenLinesResult>({
+    lines: null,
+    loading: true,
+    languageId: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setResult((prev) => ({ ...prev, loading: true }));
+    void (async () => {
+      try {
+        const highlighter = await getHighlighter();
+        const languageId = await ensureLanguage(highlighter, languageHint);
+        if (cancelled) return;
+        const lines = await highlighter.codeToTokensBase(code, {
+          lang: languageId ?? "text",
+          theme: VAULTSPEC_SHIKI_THEME_NAME,
+        });
+        if (cancelled) return;
+        setResult({ lines, loading: false, languageId });
+      } catch {
+        if (!cancelled) setResult({ lines: null, loading: false, languageId: null });
       }
     })();
     return () => {

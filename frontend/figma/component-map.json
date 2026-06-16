@@ -44,6 +44,13 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=38-2"
     },
     {
+      "name": "CodeViewer",
+      "source": "src/app/viewer/CodeViewer.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "CommandPalette",
       "source": "src/app/palette/CommandPalette.tsx",
       "designSurface": true,
@@ -121,6 +128,13 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=39-2"
     },
     {
+      "name": "FrontmatterHeader",
+      "source": "src/app/viewer/FrontmatterHeader.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "GraphControls",
       "source": "src/app/stage/GraphControls.tsx",
       "designSurface": true,
@@ -175,6 +189,13 @@
       "designSurface": true,
       "figmaNodeId": "53:2",
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=53-2"
+    },
+    {
+      "name": "MarkdownReader",
+      "source": "src/app/viewer/MarkdownReader.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
     },
     {
       "name": "Minimap",
@@ -329,6 +350,13 @@
       "designSurface": true,
       "figmaNodeId": "19:41",
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=19-41"
+    },
+    {
+      "name": "ViewerSurface",
+      "source": "src/app/viewer/ViewerSurface.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
     },
     {
       "name": "WorkingSet",
