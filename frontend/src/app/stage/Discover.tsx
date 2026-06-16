@@ -14,6 +14,12 @@
 // (stores is the sole wire client). The panel consumes the interpreted view and
 // emits pin/unpin/select intent; it never calls `engineClient` and never reads
 // the raw `tiers` block.
+//
+// W02.P06 (figma-parity-reconciliation): rebuilt faithfully to the binding Figma
+// Discover frame (17:778) on the canonical Figma radius/elevation scales
+// (rounded-fg-*, shadow-fg-*) in place of the legacy alias shims. The
+// discover-offline state stays read from the stores-derived discovery view (the
+// tiers truth), never guessed from a transport error.
 
 import { HelpCircle, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -53,7 +59,7 @@ export function Discover() {
         <button
           type="button"
           onClick={() => setOpenFor(selectedId)}
-          className="flex items-center gap-vs-1 rounded-vs-sm border border-tier-semantic/50 bg-paper-raised/90 px-vs-2 py-vs-1 text-accent-text shadow-card transition-colors duration-ui-fast ease-settle hover:border-tier-semantic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex items-center gap-vs-1 rounded-fg-xs border border-tier-semantic/50 bg-paper-raised/90 px-vs-2 py-vs-1 text-accent-text shadow-fg-raised transition-colors duration-ui-fast ease-settle hover:border-tier-semantic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <TierMark tier="semantic" size={14} title="semantic" />
           discover related…
@@ -65,7 +71,7 @@ export function Discover() {
           aria-label="semantic discovery"
           aria-modal={false}
           tabIndex={-1}
-          className="rounded-vs-md border border-tier-semantic/40 bg-paper-raised/95 p-vs-2 shadow-float backdrop-blur-sm focus:outline-none animate-slide-in-up"
+          className="rounded-fg-md border border-tier-semantic/40 bg-paper-raised/95 p-vs-2 shadow-fg-overlay backdrop-blur-sm focus:outline-none animate-slide-in-up"
           data-discover-panel
         >
           <div className="flex items-center justify-between gap-vs-2">
@@ -77,7 +83,7 @@ export function Discover() {
               type="button"
               aria-label="close discovery"
               onClick={() => setOpenFor(null)}
-              className="flex items-center rounded-vs-sm text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              className="flex items-center rounded-fg-xs text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               <X size={13} aria-hidden />
             </button>
@@ -131,7 +137,7 @@ export function Discover() {
                     onClick={() =>
                       isPinned ? unpinDiscoveryById(candidate.id) : pin(candidate)
                     }
-                    className={`rounded-vs-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                    className={`rounded-fg-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                       isPinned
                         ? "text-accent-text"
                         : "text-ink-faint hover:text-ink-muted"
