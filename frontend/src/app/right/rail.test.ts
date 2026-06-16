@@ -16,34 +16,22 @@ const status = (over: Partial<EngineStatus>): EngineStatus => ({
   ...over,
 });
 
-describe("rail tab strip IA (Figma RightRail 17:563, refined by status-overview 112:2)", () => {
-  it("is exactly Status, Inspect, Search, Changes in that order", () => {
-    // The status-overview ADR makes Status the primary (leading) tab and folds
-    // the Work pillar's in-flight plans into it; Inspect and Search are
-    // unchanged, Changes keeps the working-tree/diff capability. The liveness
-    // pillars remain a PERSISTENT header above the tab bar, never a tab.
-    expect(RAIL_TABS.map((t) => t.label)).toEqual([
-      "Status",
-      "Inspect",
-      "Search",
-      "Changes",
-    ]);
-    expect(RAIL_TABS.map((t) => t.id)).toEqual([
-      "status",
-      "inspect",
-      "search",
-      "changes",
-    ]);
+describe("rail tab strip IA (binding Figma ActivityRail 244:753)", () => {
+  it("is exactly Status, Changes, Search in that order", () => {
+    // The figma-frontend-rewrite ActivityRail board (244:753) shows EXACTLY three
+    // label-only tabs in this order, superseding the status-overview ADR's prior
+    // four-id IA (which added an Inspect pane) and its persistent liveness-pillar
+    // header. Status is the primary (leading) tab.
+    expect(RAIL_TABS.map((t) => t.label)).toEqual(["Status", "Changes", "Search"]);
+    expect(RAIL_TABS.map((t) => t.id)).toEqual(["status", "changes", "search"]);
   });
 
-  it("carries leading chrome marks on Status, Inspect and Search; Changes is label-only", () => {
-    // The design shows a leading Lucide mark on Status (Activity), Inspect (Eye),
-    // and Search; Changes is label-only.
-    const byId = Object.fromEntries(RAIL_TABS.map((t) => [t.id, t]));
-    expect(byId.status!.mark).toBeTruthy();
-    expect(byId.inspect!.mark).toBeTruthy();
-    expect(byId.search!.mark).toBeTruthy();
-    expect(byId.changes!.mark).toBeUndefined();
+  it("renders every tab label-only — the board carries no leading tab marks", () => {
+    // The binding board paints the tabs as plain labels with an accent underline;
+    // none carries a leading glyph.
+    expect(
+      RAIL_TABS.every((t) => !("mark" in t) || (t as { mark?: unknown }).mark == null),
+    ).toBe(true);
   });
 });
 

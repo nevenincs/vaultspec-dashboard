@@ -147,9 +147,7 @@ export function Inspector() {
         </div>
         <dl className="mt-fg-1">
           <PropertyRow label="kind" value={node.kind} />
-          {node.lifecycle && (
-            <PropertyRow label="state" value={node.lifecycle.state} />
-          )}
+          {node.lifecycle && <PropertyRow label="state" value={node.lifecycle.state} />}
           {node.lifecycle?.progress && (
             <PropertyRow
               label="progress"

@@ -19,9 +19,6 @@ import { useSettingsDialog } from "./settings/useSettingsDialog";
 import { useSettingsEffects } from "./settings/settingsEffects";
 import { useThemeSetting } from "./settings/themeSetting";
 import { ChangesOverview } from "./right/ChangesOverview";
-import { Inspector } from "./right/Inspector";
-import { NowStrip } from "./right/NowStrip";
-import { OpsPanel } from "./right/OpsPanel";
 import { RailTabs, type RailTabId } from "./right/RailTabs";
 import { SearchTab } from "./right/SearchTab";
 import { StatusTab } from "./right/StatusTab";
@@ -33,6 +30,7 @@ import { RangeSelect } from "./timeline/RangeSelect";
 import { Timeline } from "./timeline/Timeline";
 import { TimelineControls } from "./timeline/TimelineControls";
 import { handleNodeClick } from "./timeline/eventSelection";
+import { ViewerSurface } from "./viewer/ViewerSurface";
 
 // Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): four
 // fluid/fixed columns at full viewport height —
@@ -52,6 +50,8 @@ const RIGHT_PANE = "290px";
 export function AppShell() {
   const leftCollapsed = useViewStore((s) => s.leftRailCollapsed);
   const rightCollapsed = useViewStore((s) => s.rightRailCollapsed);
+  // Whether a document viewer is open — drives the stage-area reader overlay.
+  const viewerOpen = useViewStore((s) => s.viewerTarget !== null);
   const toggleLeft = useViewStore((s) => s.toggleLeftRail);
   const toggleRight = useViewStore((s) => s.toggleRightRail);
   const openSettings = useSettingsDialog((s) => s.openDialog);
@@ -112,12 +112,25 @@ export function AppShell() {
       <main className="flex min-h-0 min-w-0 flex-col">
         <StageTopbar trail={["Vault", "Live delta sync"]} />
 
-        {/* Graph area — fills the remaining height; renders the existing Stage. */}
+        {/* Graph area — fills the remaining height; renders the existing Stage.
+            The reader/code viewer (review-rail-viewers) overlays this area when an
+            open-in-viewer target is set: the Pixi graph stays mounted underneath
+            (its state and the SceneController seam are preserved — view-rewrite-
+            preserves-the-state-and-scene-contract) and ViewerSurface paints an
+            opaque bg-paper surface over it; it renders null when no viewer is
+            open, so the graph shows through. */}
         <div className="relative min-h-0 min-w-0 flex-1">
           <ErrorBoundary region="stage">
             <CrashZone region="stage" />
             <Stage />
           </ErrorBoundary>
+          {viewerOpen && (
+            <div className="absolute inset-0 z-10">
+              <ErrorBoundary region="viewer">
+                <ViewerSurface />
+              </ErrorBoundary>
+            </div>
+          )}
         </div>
 
         {/* Bottom timeline (212px). The relational phase-lane timeline
@@ -188,22 +201,18 @@ export function AppShell() {
   );
 }
 
-// The activity-rail composition (binding Figma `RightRail`, node 17:563; the
-// Status overview node 112:2): the NowStrip status pillars are a PERSISTENT
-// header above the tab bar — git / core / rag liveness stays visible regardless
-// of which pane is open — then the segmented tab bar (Status | Inspect | Search |
-// Changes) and the active pane. Status is the primary tab (the status-overview
-// ADR): the location anchor + plan-derived open work + recent commits. Inspect is
-// the selected-node lens (Inspector) plus the modest ops surface; Search and
-// Changes own their pillars.
+// The activity-rail composition (binding Figma `ActivityRail`, node 244:753): the
+// rail is EXACTLY three label-only tabs — Status | Changes | Search — over their
+// panes, with NO persistent pillar header (the rewrite retires the status-overview
+// liveness pillars and the Inspect pane that board 112:2 carried; node detail now
+// lives in the reader / DocHeader, and worktree/branch identity rides the Status
+// pane's context card). Status is the primary tab: the location anchor +
+// plan-derived open work + recent commits.
 function ActivityRail() {
   const [tab, setTab] = useState<RailTabId>("status");
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-fg-2 overflow-y-auto p-fg-2">
-      {/* Persistent liveness header — the three status pillars, always visible. */}
-      <NowStrip />
-
-      {/* Segmented tab bar (roving-keys tablist). */}
+      {/* Tab bar (roving-keys tablist) — the board's three label-only tabs. */}
       <RailTabs active={tab} onChange={setTab} />
 
       {/* Active pane. Each pane is the tabpanel for its tab; only the active one
@@ -216,14 +225,8 @@ function ActivityRail() {
         tabIndex={0}
       >
         {tab === "status" && <StatusTab />}
-        {tab === "inspect" && (
-          <div className="space-y-fg-3">
-            <Inspector />
-            <OpsPanel />
-          </div>
-        )}
-        {tab === "search" && <SearchTab />}
         {tab === "changes" && <ChangesOverview />}
+        {tab === "search" && <SearchTab />}
       </div>
     </div>
   );

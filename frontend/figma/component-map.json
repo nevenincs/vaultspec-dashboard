@@ -58,6 +58,13 @@
       "figmaUrl": null
     },
     {
+      "name": "CategoryLegend",
+      "source": "src/app/stage/CategoryLegend.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "ChangesOverview",
       "source": "src/app/right/ChangesOverview.tsx",
       "designSurface": true,
@@ -144,6 +151,13 @@
     {
       "name": "Divider",
       "source": "src/app/kit/Divider.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "DocHeader",
+      "source": "src/app/right/DocHeader.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null

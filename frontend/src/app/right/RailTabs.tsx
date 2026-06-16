@@ -10,16 +10,14 @@
 // loose font-size: the label rides the `body` type role and the colors resolve to
 // the bound ink / accent tokens.
 //
-// IA NOTE — the binding board shows THREE label tabs (Status · Changes · Search).
-// The shipped host (`ActivityRail` in AppShell) still renders a FOUR-id IA
-// (status · inspect · search · changes): the Inspect pane is a shipped capability
-// the board does not depict. The tab IDENTITY contract is shared with the host
-// across the scope boundary (AppShell owns the tab->pane mapping and the
-// `rail-panel-*` ids), so this leaf tab bar keeps the four-id union stable; the
-// board's three-tab IA collapse is a HOST rewire (the Inspect-pane retirement /
-// fold), not this presentation rewrite. S08 brings the tab bar's VISUAL treatment
-// to the board (the underline idiom, replacing the prior raised-pill segmented
-// control); the id contract is untouched.
+// IA NOTE — the binding ActivityRail board (244:753) shows EXACTLY THREE
+// label-only tabs in this order: Status · Changes · Search. This is the
+// figma-frontend-rewrite IA, which supersedes the status-overview ADR's prior
+// four-id (Status · Inspect · Search · Changes) plus persistent liveness-pillar
+// header (board 112:2). The Inspect pane and the pillar header are retired from
+// the rail in the rewrite — node detail lives in the reader / DocHeader, and the
+// context card in the Status pane carries worktree/branch identity. The host
+// (`ActivityRail` in AppShell) maps these three ids to their panes.
 //
 // Layer ownership (dashboard-layer-ownership): this is pure chrome — it holds no
 // wire state, fetches nothing, and reads no `tiers` block; it only flips the
@@ -28,17 +26,14 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef } from "react";
 
-export type RailTabId = "status" | "inspect" | "search" | "changes";
+export type RailTabId = "status" | "changes" | "search";
 
-// Status · Inspect · Search · Changes, left to right. The board depicts Status,
-// Changes, and Search as label-only tabs (no leading mark); Inspect is the shipped
-// pane the board does not show, carried in the same label-only idiom for a uniform
-// tab row until the host folds the IA to the board's three.
+// Status · Changes · Search, left to right — the binding board's three label-only
+// tabs (no leading marks). Status is the primary, leading tab.
 export const RAIL_TABS: { id: RailTabId; label: string }[] = [
   { id: "status", label: "Status" },
-  { id: "inspect", label: "Inspect" },
-  { id: "search", label: "Search" },
   { id: "changes", label: "Changes" },
+  { id: "search", label: "Search" },
 ];
 
 export interface RailTabsProps {

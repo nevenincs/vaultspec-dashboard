@@ -86,9 +86,7 @@ describe("DocHeader (Figma board 283:1170)", () => {
 
   it("fires the close intent through the kit IconButton", () => {
     const onClose = vi.fn();
-    render(
-      createElement(DocHeader, { title: "the plan", onClose }),
-    );
+    render(createElement(DocHeader, { title: "the plan", onClose }));
     fireEvent.click(screen.getByRole("button", { name: "Close document" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

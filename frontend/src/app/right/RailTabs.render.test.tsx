@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 //
-// The activity-rail segmented tab bar (binding Figma `RightRail` / `ActivityTabs`,
-// node 17:563; refined by the status-overview ADR node 112:2): a roving-keys ARIA
-// tablist with Status | Inspect | Search | Changes, the active tab a raised pill.
-// These assertions exercise the a11y contract — the roving tabindex, arrow-key
-// movement that activates, and the active styling cue — not just that it renders.
+// The activity-rail tab bar (binding Figma `ActivityRail`, node 244:753): a
+// roving-keys ARIA tablist with exactly three label-only tabs — Status | Changes
+// | Search — the active tab underlined with an accent bar. These assertions
+// exercise the a11y contract — the roving tabindex, arrow-key movement that
+// activates, and the active styling cue — not just that it renders.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement, useState } from "react";
@@ -20,16 +20,15 @@ function Harness({ initial = "status" as RailTabId }) {
 afterEach(() => cleanup());
 
 describe("RailTabs segmented control (Figma node 17:563 / 112:2)", () => {
-  it("renders the four refined tabs in order with a single tablist", () => {
+  it("renders the three board tabs in order with a single tablist", () => {
     render(createElement(Harness));
     const tablist = screen.getByRole("tablist", { name: "activity rail tabs" });
     expect(tablist).toBeTruthy();
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.getAttribute("data-rail-tab"))).toEqual([
       "status",
-      "inspect",
-      "search",
       "changes",
+      "search",
     ]);
   });
 
@@ -55,7 +54,7 @@ describe("RailTabs segmented control (Figma node 17:563 / 112:2)", () => {
     const tabs = screen.getAllByRole("tab");
     tabs[0]!.focus();
     fireEvent.keyDown(tabs[0]!, { key: "ArrowRight" });
-    // Inspect becomes selected and focused.
+    // Changes becomes selected and focused.
     expect(tabs[1]!.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(tabs[1]);
   });
@@ -65,9 +64,9 @@ describe("RailTabs segmented control (Figma node 17:563 / 112:2)", () => {
     const tabs = screen.getAllByRole("tab");
     tabs[0]!.focus();
     fireEvent.keyDown(tabs[0]!, { key: "ArrowLeft" });
-    // Wraps to Changes (the last tab).
-    expect(tabs[3]!.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement).toBe(tabs[3]);
+    // Wraps to Search (the last of the three tabs).
+    expect(tabs[2]!.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tabs[2]);
   });
 
   it("activates a tab on click", () => {

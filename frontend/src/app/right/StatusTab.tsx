@@ -123,7 +123,9 @@ function LocationAnchor({ scope }: { scope: string | null }) {
           <ContextChip
             label="branch"
             value={anchor.branch}
-            valueProps={{ "data-location-branch": "" } as HTMLAttributes<HTMLSpanElement>}
+            valueProps={
+              { "data-location-branch": "" } as HTMLAttributes<HTMLSpanElement>
+            }
           />
         )}
       </div>
@@ -145,7 +147,13 @@ interface OpenPlanRowProps {
   onToggle: () => void;
 }
 
-function OpenPlanRow({ artifact, now, selected, expanded, onToggle }: OpenPlanRowProps) {
+function OpenPlanRow({
+  artifact,
+  now,
+  selected,
+  expanded,
+  onToggle,
+}: OpenPlanRowProps) {
   const openInViewer = useViewStore((s) => s.openInViewer);
   const progress = artifact.progress;
   const fresh = freshnessLabel(artifact.dates?.modified, now);
