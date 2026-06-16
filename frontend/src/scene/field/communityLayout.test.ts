@@ -142,6 +142,51 @@ describe("communityLayout (two-level deterministic placement)", () => {
   it("returns an empty map for an empty slice", () => {
     expect(communityLayout([], []).size).toBe(0);
   });
+
+  // W04.P11.S51: degenerate-input hardening — singleton-community and
+  // all-isolated-nodes slices must yield finite positions with no NaN and no throw.
+  // The all-isolated case (no backbone edges -> every node its own community,
+  // merged into the singletons placement bucket) and a single node exercise the
+  // m2 === 0 path and the COMMUNITY_MIN_SIZE merge.
+  describe("degenerate-input hardening (S51)", () => {
+    const finite = (m: Map<string, { x: number; y: number }>) => {
+      for (const [, p] of m) {
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+      }
+      return true;
+    };
+
+    it("places a single node finitely (singleton community, no throw)", () => {
+      const pos = communityLayout([n("solo")], []);
+      expect(pos.size).toBe(1);
+      expect(finite(pos)).toBe(true);
+    });
+
+    it("places all-isolated nodes (no edges) finitely via the singletons bucket", () => {
+      const nodes = Array.from({ length: 9 }, (_, i) => n(`iso-${i}`));
+      const pos = communityLayout(nodes, []);
+      expect(pos.size).toBe(9);
+      expect(finite(pos)).toBe(true);
+    });
+
+    it("places a singleton community alongside a real cluster without NaN", () => {
+      // One dense triangle plus a single lone node: the lone node is a
+      // singleton community merged for placement; every node stays finite.
+      const cluster = ["c0", "c1", "c2"];
+      const nodes = [...cluster, "lone"].map(n);
+      const edges = clique(cluster);
+      const pos = communityLayout(nodes, edges);
+      expect(pos.size).toBe(4);
+      expect(finite(pos)).toBe(true);
+    });
+
+    it("stays finite on a ceiling-sized all-isolated slice", () => {
+      const nodes = Array.from({ length: 1500 }, (_, i) => n(`s-${i}`));
+      const pos = communityLayout(nodes, []);
+      expect(pos.size).toBe(1500);
+      expect(finite(pos)).toBe(true);
+    });
+  });
 });
 
 // W02.P07.S34 (node-representation ADR D5): the Louvain partition stays CLIENT-SIDE

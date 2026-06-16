@@ -71,6 +71,92 @@ describe("representationLayout — new catalog modes register and dispatch (D1/D
   });
 });
 
+// W04.P11.S53: degenerate-input + large-graph hardening of the dispatcher. Every
+// seed mode must return finite, bounded positions on an empty slice and on a
+// ceiling-sized slice (no NaN, no throw), and the semantic mode must carry an
+// HONEST downgradeReason on each fallback path it takes.
+describe("representationLayout — degenerate + ceiling hardening (S53)", () => {
+  const SEED_AND_SOLVER: RepresentationMode[] = [
+    "connectivity",
+    "hierarchical",
+    "radial",
+    "community",
+    "lineage",
+    "semantic",
+  ];
+
+  const finite = (m: Map<string, { x: number; y: number }> | null) => {
+    if (m === null) return true; // connectivity / held: the solver owns positions
+    for (const [, p] of m) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+    }
+    return true;
+  };
+
+  for (const mode of SEED_AND_SOLVER) {
+    it(`${mode} handles an empty slice without throwing and stays finite`, () => {
+      const result = representationLayout(mode, [], []);
+      expect(finite(result.positions)).toBe(true);
+      // An empty slice for a seed mode is an empty (not null) positions map.
+      if (result.positions !== null) expect(result.positions.size).toBe(0);
+    });
+  }
+
+  for (const mode of ["hierarchical", "radial", "community", "lineage"] as const) {
+    it(`${mode} stays finite on a ceiling-sized slice`, () => {
+      // A ceiling-sized backbone: one hub plus many spokes, exercising the seed
+      // layout at scale. Every emitted position must be finite.
+      const count = 1500;
+      const nodes: SceneNodeData[] = Array.from({ length: count }, (_, i) => ({
+        id: `n${String(i).padStart(4, "0")}`,
+        kind: "doc",
+        salience: (i % 7) / 7,
+      }));
+      const edges: SceneEdgeData[] = nodes.slice(1).map((node) => e("n0000", node.id));
+      const result = representationLayout(mode, nodes, edges);
+      expect(result.positions).not.toBeNull();
+      expect(result.positions!.size).toBe(count);
+      expect(finite(result.positions)).toBe(true);
+    });
+  }
+
+  it("downgrades semantic with an HONEST reason when embeddings are absent", () => {
+    // A served slice with NO embeddings: the embedding-presence floor holds the
+    // semantic mode, downgrading to connectivity with a reason that names the
+    // honest absence (never an error). positions is null (the solver takes over).
+    const nodes: SceneNodeData[] = [
+      { id: "a", kind: "doc" },
+      { id: "b", kind: "doc" },
+    ];
+    const result = representationLayout("semantic", nodes, []);
+    expect(result.applied).toBe("connectivity");
+    expect(result.positions).toBeNull();
+    expect(result.downgradeReason).toBeDefined();
+    expect(result.downgradeReason).toMatch(/HELD|held/);
+    expect(result.downgradeReason).toMatch(/embedding|meaning/i);
+  });
+
+  it("applies semantic with finite positions when the slice carries embeddings", () => {
+    // Enough embedded nodes to clear the presence floor: the mode ships and lays a
+    // finite meaning cloud (no NaN), and carries no downgradeReason.
+    const nodes: SceneNodeData[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `m${i}`,
+      kind: "doc",
+      embedding: [Math.sin(i), Math.cos(i), (i % 3) - 1],
+    }));
+    const result = representationLayout("semantic", nodes, []);
+    if (result.applied === "semantic") {
+      expect(result.positions).not.toBeNull();
+      expect(finite(result.positions)).toBe(true);
+      expect(result.downgradeReason).toBeUndefined();
+    } else {
+      // If the synthetic time-gate ever held the mode, the downgrade is honest.
+      expect(result.applied).toBe("connectivity");
+      expect(result.downgradeReason).toBeDefined();
+    }
+  });
+});
+
 describe("representationLayout — golden-position determinism per seed mode (D5/D9)", () => {
   for (const mode of SEED_MODES) {
     it(`${mode} yields identical positions across re-runs and input shuffles`, () => {

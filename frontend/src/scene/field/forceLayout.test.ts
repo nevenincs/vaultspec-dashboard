@@ -416,6 +416,104 @@ describe("FieldLayout live loop — held alphaTarget interaction (D2)", () => {
   });
 });
 
+// W04.P11.S48: degenerate-slice hardening — re-confirm the force layout stays
+// stable (finite positions, settles, no throw, no infinite loop) on the empty,
+// singleton, and disconnected slices. The NaN guard and settle-then-freeze were
+// landed in the node-graph-stability cycle; these drive the live loop on the
+// degenerate slices the prior 20 tests never exercised, so a regression in the
+// freeze/snapshot path on a degenerate input surfaces here.
+describe("FieldLayout degenerate-slice hardening (S48)", () => {
+  const finite = (m: ReadonlyMap<string, { x: number; y: number }>) => {
+    for (const [, p] of m) {
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+    }
+    return true;
+  };
+
+  it("an empty slice settles immediately with no positions and no throw", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const settles = vi.fn();
+    layout.onSettle(settles);
+    expect(() => layout.init([], [], new Map())).not.toThrow();
+    layout.start();
+    const ran = sched.runFrames(5000);
+    // No node to move -> the velocity-freeze fires on the first sub-epsilon dwell.
+    expect(sched.hasPending).toBe(false);
+    expect(settles).toHaveBeenCalledTimes(1);
+    expect(ran).toBeLessThan(5000);
+    expect(layout.positions.size).toBe(0);
+  });
+
+  it("a singleton slice places one finite node and settles", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const settles = vi.fn();
+    layout.onSettle(settles);
+    layout.init(["solo"], [], new Map());
+    layout.start();
+    const ran = sched.runFrames(5000);
+    expect(settles).toHaveBeenCalledTimes(1);
+    expect(ran).toBeLessThan(5000);
+    expect(finite(layout.positions)).toBe(true);
+    expect(layout.positions.size).toBe(1);
+  });
+
+  it("a disconnected slice (two islands, no edge between) settles with finite positions", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const settles = vi.fn();
+    layout.onSettle(settles);
+    // Two separate two-node islands and one isolated node — no edge bridges them.
+    layout.init(
+      ["a", "b", "x", "y", "lone"],
+      [edge("e1", "a", "b"), edge("e2", "x", "y")],
+      new Map(),
+    );
+    layout.start();
+    const ran = sched.runFrames(5000);
+    expect(settles).toHaveBeenCalledTimes(1);
+    expect(ran).toBeLessThan(5000);
+    expect(finite(layout.positions)).toBe(true);
+    expect(layout.positions.size).toBe(5);
+  });
+
+  it("a self-loop and an edge to a missing node never wedge the loop or throw", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const settles = vi.fn();
+    layout.onSettle(settles);
+    // A self-loop (a->a) and a dangling edge (b->ghost, ghost absent): forceLink
+    // throws on a link to an unknown node, so init must filter both to intra-set.
+    expect(() =>
+      layout.init(
+        ["a", "b"],
+        [edge("self", "a", "a"), edge("ghost", "b", "ghost")],
+        new Map(),
+      ),
+    ).not.toThrow();
+    layout.start();
+    const ran = sched.runFrames(5000);
+    expect(settles).toHaveBeenCalledTimes(1);
+    expect(ran).toBeLessThan(5000);
+    expect(finite(layout.positions)).toBe(true);
+  });
+
+  it("applyChanges that removes every node leaves an empty, finite, settled field", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(["a", "b"], [edge("e1", "a", "b")], new Map());
+    layout.start();
+    sched.runFrames(5000);
+    expect(() =>
+      layout.applyChanges({ removeNodeIds: ["a", "b"], removeEdgeIds: ["e1"] }),
+    ).not.toThrow();
+    sched.runFrames(5000);
+    expect(layout.positions.size).toBe(0);
+    expect(finite(layout.positions)).toBe(true);
+  });
+});
+
 describe("FieldLayout live loop — velocity/dwell freeze (D5)", () => {
   it("freezes the sim early once motion drops below the epsilon for the dwell", () => {
     const sched = new ManualScheduler();

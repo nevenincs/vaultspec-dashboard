@@ -51,13 +51,24 @@ export function semanticProjection(
   const positions = new Map<string, { x: number; y: number }>();
 
   if (embedded.length > 0) {
-    const dim = embedded[0].embedding!.length;
-    const vectors = embedded.map((n) => n.embedding!.slice(0, dim));
+    // The projection dimension is the WIDEST embedding in the slice; a ragged
+    // (shorter) or non-finite vector is sanitized to that dim rather than letting
+    // an `undefined`/NaN component poison the covariance into NaN positions. Real
+    // rag vectors are uniform, but a partial-index slice or a corrupt vector must
+    // never reach the camera as NaN, so sanitize at the boundary (S52 hardening).
+    let dim = 0;
+    for (const n of embedded) dim = Math.max(dim, n.embedding!.length);
+    dim = Math.max(1, dim);
+    const vectors = embedded.map((n) => sanitizeVector(n.embedding!, dim));
     const projected = projectTo2D(vectors);
     // Normalize to the spread band so the cloud fills the field consistently.
     const norm = normalize2D(projected, SEMANTIC_SPREAD);
     embedded.forEach((n, i) => {
-      positions.set(n.id, { x: norm[i][0], y: norm[i][1] });
+      const p = norm[i] ?? [0, 0];
+      positions.set(n.id, {
+        x: Number.isFinite(p[0]) ? p[0] : 0,
+        y: Number.isFinite(p[1]) ? p[1] : 0,
+      });
     });
   }
 
@@ -81,6 +92,21 @@ export function semanticLayout(
   nodes: readonly SceneNodeData[],
 ): Map<string, { x: number; y: number }> {
   return semanticProjection(nodes).positions;
+}
+
+/**
+ * Coerce an embedding to a finite `dim`-length vector (S52 hardening): pad a short
+ * (ragged) vector with zeros, truncate a long one, and replace any non-finite
+ * (NaN/Inf) component with 0. A single bad component would otherwise propagate
+ * through the covariance accumulation into NaN positions that reach the camera.
+ */
+export function sanitizeVector(v: readonly number[], dim: number): number[] {
+  const out = new Array<number>(dim);
+  for (let i = 0; i < dim; i++) {
+    const x = v[i];
+    out[i] = typeof x === "number" && Number.isFinite(x) ? x : 0;
+  }
+  return out;
 }
 
 // --- the projection (classical linear DR; deterministic, torch-free) ----------

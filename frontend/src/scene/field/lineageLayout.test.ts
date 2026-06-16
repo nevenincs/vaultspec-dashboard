@@ -249,6 +249,76 @@ describe("lineageLayout", () => {
     expect(pos.has("y")).toBe(true);
   });
 
+  // W04.P11.S49: degenerate-input hardening — the lineage Sugiyama pipeline must
+  // return finite, bounded, deterministic positions (no NaN, no throw, no infinite
+  // loop) on EVERY degenerate input: empty, singleton, all-isolated (no spine),
+  // a longer cycle where a DAG is expected, a self-loop, and a ceiling-sized slice.
+  describe("degenerate-input hardening (S49)", () => {
+    const finite = (r: ReturnType<typeof lineageLayout>) => {
+      for (const [, p] of r.positions) {
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+      }
+      return true;
+    };
+
+    it("returns an empty result on an empty slice (no throw)", () => {
+      const r = lineageLayout([], []);
+      expect(r.positions.size).toBe(0);
+      expect(r.routes.size).toBe(0);
+    });
+
+    it("places a single node finitely with the grid fallback (no spine)", () => {
+      const r = lineageLayout([n("solo")], []);
+      expect(r.positions.size).toBe(1);
+      expect(finite(r)).toBe(true);
+    });
+
+    it("lays all-isolated nodes as a finite grid (no derivation edges at all)", () => {
+      const nodes = Array.from({ length: 7 }, (_, i) => n(`iso-${i}`));
+      const r = lineageLayout(nodes, []);
+      expect(r.positions.size).toBe(7);
+      expect(finite(r)).toBe(true);
+    });
+
+    it("removes back-edges on a longer cycle (a->b->c->a) without looping or NaN", () => {
+      const nodes = [n("a"), n("b"), n("c")];
+      const edges = [
+        lineageEdge("a", "b", "grounds"),
+        lineageEdge("b", "c", "authorizes"),
+        lineageEdge("c", "a", "grounds"), // back-edge closing a 3-cycle
+      ];
+      const r = lineageLayout(nodes, edges);
+      expect(r.positions.size).toBe(3);
+      expect(finite(r)).toBe(true);
+      // Deterministic across re-runs even with the cycle present.
+      const again = lineageLayout(nodes, edges);
+      expect([...again.positions]).toEqual([...r.positions]);
+    });
+
+    it("ignores a self-loop derivation edge (src === dst) without NaN", () => {
+      const nodes = [n("plan"), n("exec")];
+      const edges = [
+        lineageEdge("plan", "plan", "generated-by"), // self-loop
+        lineageEdge("plan", "exec", "generated-by"),
+      ];
+      const r = lineageLayout(nodes, edges);
+      expect(finite(r)).toBe(true);
+      expect(r.positions.has("plan")).toBe(true);
+      expect(r.positions.has("exec")).toBe(true);
+    });
+
+    it("stays finite and bounded on a ceiling-sized fan (1 plan, many execs)", () => {
+      const plan = n("plan");
+      const execs = Array.from({ length: 1200 }, (_, i) =>
+        n(`exec-${String(i).padStart(4, "0")}`),
+      );
+      const edges = execs.map((e) => lineageEdge("plan", e.id, "generated-by"));
+      const r = lineageLayout([plan, ...execs], edges);
+      expect(r.positions.size).toBe(execs.length + 1);
+      expect(finite(r)).toBe(true);
+    });
+  });
+
   it("is a golden-position determinism: identical inputs yield identical positions (S47)", () => {
     const nodes = [
       n("research"),

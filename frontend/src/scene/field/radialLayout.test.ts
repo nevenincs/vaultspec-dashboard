@@ -145,6 +145,67 @@ describe("radialLayout", () => {
     expect(radius(pos.get("hub")!)).toBeGreaterThan(0);
   });
 
+  // W04.P11.S50: degenerate-input hardening — empty-root, singleton, all-isolated,
+  // and degree-tie degenerate slices must yield finite, bounded, deterministic
+  // positions with no NaN and no throw. The empty-root and singleton paths and the
+  // deterministic degree-tie root were landed in W02; these assert the all-isolated
+  // sector math (where the proportional sector share can collapse) and a large
+  // ceiling-sized degenerate fan stay finite.
+  describe("degenerate-input hardening (S50)", () => {
+    const finite = (m: Map<string, { x: number; y: number }>) => {
+      for (const [, p] of m) {
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+      }
+      return true;
+    };
+
+    it("a single-node slice places one finite node (no throw)", () => {
+      const pos = radialLayout([n("solo", 0.5)], []);
+      expect(pos.size).toBe(1);
+      expect(finite(pos)).toBe(true);
+    });
+
+    it("all-isolated nodes (no edges) get finite distinct positions, no origin pile-up", () => {
+      const nodes = Array.from({ length: 12 }, (_, i) => n(`iso-${i}`, 0.5));
+      const pos = radialLayout(nodes, []);
+      expect(pos.size).toBe(12);
+      expect(finite(pos)).toBe(true);
+      // None pile at the shared origin (each isolated singleton gets its own wedge).
+      for (const [, p] of pos) expect(Math.hypot(p.x, p.y)).toBeGreaterThan(0);
+    });
+
+    it("many isolated singletons stay finite even when the sector share collapses", () => {
+      // A large all-isolated slice: the proportional sector share floors at
+      // RADIAL_MIN_SECTOR and the padding can consume the whole circle; the math
+      // must still yield finite positions, never NaN from a 0/0 renormalization.
+      const nodes = Array.from({ length: 200 }, (_, i) => n(`s-${i}`, 0));
+      const pos = radialLayout(nodes, []);
+      expect(pos.size).toBe(200);
+      expect(finite(pos)).toBe(true);
+    });
+
+    it("all-degree-tie nodes pick a deterministic root and stay finite", () => {
+      // A ring: every node has degree 2 (a perfect degree tie). The lowest-id node
+      // wins the deterministic root tie-break; all positions stay finite.
+      const ids = ["a", "b", "c", "d", "e"];
+      const nodes = ids.map((id) => n(id));
+      const edges = ids.map((id, i) => edge(id, ids[(i + 1) % ids.length]));
+      const pos = radialLayout(nodes, edges);
+      expect(finite(pos)).toBe(true);
+      // The lowest id (a) is the deterministic root at the centre.
+      expect(radius(pos.get("a")!)).toBeLessThan(1e-6);
+    });
+
+    it("stays finite on a ceiling-sized star (one hub, many leaves)", () => {
+      const leaves = Array.from({ length: 1000 }, (_, i) => n(`leaf-${i}`));
+      const hub = n("hub");
+      const edges = leaves.map((l) => edge("hub", l.id));
+      const pos = radialLayout([hub, ...leaves], edges);
+      expect(pos.size).toBe(1001);
+      expect(finite(pos)).toBe(true);
+    });
+  });
+
   it("keeps the salience-first policy when any node carries salience", () => {
     // `lo` is salient (0.9) but low degree; `hub` has max degree but no salience.
     // Because at least one node carries salience, the salience-first policy holds

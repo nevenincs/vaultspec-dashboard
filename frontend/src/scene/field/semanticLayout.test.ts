@@ -14,6 +14,7 @@ import {
 } from "./semanticGate";
 import {
   SEMANTIC_FALLBACK_RADIUS,
+  SEMANTIC_SPREAD,
   projectTo2D,
   semanticProjection,
 } from "./semanticLayout";
@@ -64,6 +65,85 @@ describe("semanticProjection", () => {
     const { positions } = semanticProjection(nodes);
     const sep = clusterSeparation(positions, labelOf);
     expect(sep).toBeGreaterThan(SEMANTIC_GATE_SEPARATION_MIN);
+  });
+});
+
+// W04.P11.S52: degenerate-input hardening — the semantic projection must return
+// finite, bounded positions (or the honest fallback ring) on EVERY degenerate
+// input: a ragged/short vector, a non-finite component, a single embedded vector,
+// an all-embeddingless slice, and a ceiling-sized slice. A ragged or poison vector
+// was a real reachable NaN before this hardening (the covariance accumulation
+// propagated an undefined/NaN component into NaN positions).
+describe("semanticProjection — degenerate-input hardening (S52)", () => {
+  const finite = (p: { x: number; y: number }) =>
+    Number.isFinite(p.x) && Number.isFinite(p.y);
+
+  it("never emits NaN on a ragged (shorter) embedding vector", () => {
+    const nodes: SceneNodeData[] = [
+      embedded("a", [1, 2, 3, 4]),
+      embedded("b", [5, 6]), // shorter than a -> would poison the covariance
+      embedded("c", [7, 8, 9, 10]),
+    ];
+    const { positions } = semanticProjection(nodes);
+    expect(positions.size).toBe(3);
+    for (const [, p] of positions) expect(finite(p)).toBe(true);
+  });
+
+  it("never emits NaN on a non-finite (NaN/Inf) embedding component", () => {
+    const nodes: SceneNodeData[] = [
+      embedded("a", [1, 2, NaN]),
+      embedded("b", [3, Infinity, 1]),
+      embedded("c", [0, 1, 2]),
+    ];
+    const { positions } = semanticProjection(nodes);
+    expect(positions.size).toBe(3);
+    for (const [, p] of positions) expect(finite(p)).toBe(true);
+  });
+
+  it("places a single embedded vector at a finite position (no throw)", () => {
+    const { positions, fallbackIds } = semanticProjection([
+      embedded("solo", [1, 2, 3]),
+    ]);
+    expect(fallbackIds).toHaveLength(0);
+    expect(finite(positions.get("solo")!)).toBe(true);
+  });
+
+  it("rings every node honestly when the slice carries no embeddings (fallback ring)", () => {
+    const nodes: SceneNodeData[] = [
+      { id: "a", kind: "doc" },
+      { id: "b", kind: "doc" },
+      { id: "c", kind: "doc", embedding: [] }, // empty is NOT a real embedding
+    ];
+    const { positions, fallbackIds } = semanticProjection(nodes);
+    expect(new Set(fallbackIds)).toEqual(new Set(["a", "b", "c"]));
+    for (const [, p] of positions) {
+      expect(finite(p)).toBe(true);
+      expect(Math.hypot(p.x, p.y)).toBeCloseTo(SEMANTIC_FALLBACK_RADIUS, 5);
+    }
+  });
+
+  it("bounds a ceiling-sized slice: every position finite and within the spread band", () => {
+    const dim = 16;
+    const count = 1500;
+    const nodes: SceneNodeData[] = Array.from({ length: count }, (_, i) => {
+      const v = Array.from({ length: dim }, (_, d) => Math.sin(i * 0.13 + d));
+      return embedded(`n${i}`, v);
+    });
+    const { positions } = semanticProjection(nodes);
+    expect(positions.size).toBe(count);
+    for (const [, p] of positions) {
+      expect(finite(p)).toBe(true);
+      // The projection is normalized to SEMANTIC_SPREAD; a small slack guards the
+      // rounding/normalization edge.
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(SEMANTIC_SPREAD + 1);
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(SEMANTIC_SPREAD + 1);
+    }
+  });
+
+  it("returns an empty projection on an empty slice (no throw)", () => {
+    const { positions, fallbackIds } = semanticProjection([]);
+    expect(positions.size).toBe(0);
+    expect(fallbackIds).toHaveLength(0);
   });
 });
 
