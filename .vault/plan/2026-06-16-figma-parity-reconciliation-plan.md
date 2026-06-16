@@ -177,7 +177,7 @@ Rebuild the timeline, the degradation and discover overlays, the settings dialog
 - [x] `W02.P06.S35` - Rebuild the timeline from the binding Timeline Kit primitive over the preserved events query and time-travel store; `frontend/src/app/timeline/Timeline.tsx`.
 - [x] `W02.P06.S36` - Rebuild the degradation overlays from their binding frames reading availability from the tiers block; `frontend/src/app/degradation/`.
 - [x] `W02.P06.S37` - Rebuild the discover overlay from its binding frame over the preserved rag-backed discover query; `frontend/src/app/stage/Discover.tsx`.
-- [ ] `W02.P06.S38` - Rebuild the settings dialog from its binding frame, schema-driven from the served settings registry; `frontend/src/app/settings/SettingsDialog.tsx`.
+- [x] `W02.P06.S38` - Rebuild the settings dialog from its binding frame, schema-driven from the served settings registry; `frontend/src/app/settings/SettingsDialog.tsx`.
 - [ ] `W02.P06.S39` - Rebuild the schema-driven settings controls from the binding Switch, Slider, and SegmentedToggle Kit primitives; `frontend/src/app/settings/controls/`.
 - [ ] `W02.P06.S40` - Rebuild the command palette from its binding frame over the preserved command registry; `frontend/src/app/palette/CommandPalette.tsx`.
 

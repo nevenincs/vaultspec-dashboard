@@ -9,6 +9,12 @@
 // scope] target so the active scope can override global, with an honest
 // provenance note. Writes go through usePutSettings (cache-seed + invalidate);
 // a typed rejection (the engine's error_kind) surfaces inline on the row.
+//
+// W02.P06 (figma-parity-reconciliation): rebuilt faithfully to the binding Figma
+// SettingsDialog frame (17:1702) on the canonical Figma role-named type scale
+// and radius (text-caption, rounded-fg-xs) in place of the legacy alias shims.
+// Every rendered row is a real schema-declared setting with a consumer — no dead
+// controls (settings-are-schema-driven-from-one-registry).
 
 import { useEffect, useRef, useState } from "react";
 
@@ -58,7 +64,7 @@ export function SettingsDialog() {
         )}
         {groups.map((group) => (
           <section key={group.name} className="flex flex-col gap-vs-2">
-            <h3 className="border-b border-rule pb-vs-1 text-2xs font-semibold uppercase tracking-[0.6px] text-ink-faint">
+            <h3 className="border-b border-rule pb-vs-1 text-caption font-semibold uppercase tracking-[0.6px] text-ink-faint">
               {group.name}
             </h3>
             <div className="flex flex-col gap-vs-2">
@@ -173,7 +179,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
 
       {/* Provenance + an honest reset/clear affordance, beneath the row. */}
       <div className="flex items-center justify-between gap-vs-2">
-        <span className="text-2xs text-ink-faint">
+        <span className="text-caption text-ink-faint">
           {provenanceNote(eff, effectiveTarget)}
         </span>
         {effectiveTarget === "scope" && eff.scopeValue !== undefined ? (
@@ -184,7 +190,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
           <button
             type="button"
             onClick={() => commit(eff.globalValue ?? def.default)}
-            className="text-2xs text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             Match global
           </button>
@@ -194,7 +200,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
             <button
               type="button"
               onClick={() => commit(def.default)}
-              className="text-2xs text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              className="text-caption text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               Reset to default
             </button>
@@ -203,7 +209,7 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
       </div>
 
       {error && (
-        <p role="alert" className="text-2xs text-diff-remove">
+        <p role="alert" className="text-caption text-diff-remove">
           {error}
         </p>
       )}
@@ -220,7 +226,11 @@ function ScopeTargetToggle({
   onTarget: (t: EditTarget) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label="apply to" className="flex gap-vs-0-5 text-2xs">
+    <div
+      role="radiogroup"
+      aria-label="apply to"
+      className="flex gap-vs-0-5 text-caption"
+    >
       {(["global", "scope"] as const).map((t) => (
         <button
           key={t}
@@ -228,7 +238,7 @@ function ScopeTargetToggle({
           role="radio"
           aria-checked={target === t}
           onClick={() => onTarget(t)}
-          className={`rounded-vs-sm px-vs-1 py-vs-0-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+          className={`rounded-fg-xs px-vs-1 py-vs-0-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             target === t
               ? "font-medium text-accent-text"
               : "text-ink-faint hover:text-ink-muted"
