@@ -199,9 +199,9 @@ Wire runSemanticGateOnRealData as the Meaning verdict, retain the synthetic fixt
 
 Ensure the served workspace is rag-indexed, calibrate to the 808-vector baseline, and live-verify the constellation renders against real embeddings.
 
-- [ ] `W03.P09.S41` - Index the served dev workspace with rag so /graph/embeddings returns real vectors, documenting the operational indexing step; `frontend/src/stores/server/devEngine.ts`.
-- [ ] `W03.P09.S42` - Calibrate the semantic composite thresholds to the measured 808-vector baseline and commit them under METRIC_VERSION; `frontend/src/scene/field/scorecard/thresholds.ts`.
-- [ ] `W03.P09.S43` - Live-verify against the running engine plus rag plus Qdrant that the constellation renders meaning-clusters on real embeddings, recording the verification in the phase summary; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W03-P09-summary.md`.
+- [x] `W03.P09.S41` - Index the served dev workspace with rag so /graph/embeddings returns real vectors, documenting the operational indexing step; `frontend/src/stores/server/devEngine.ts`.
+- [x] `W03.P09.S42` - Calibrate the semantic composite thresholds to the measured 808-vector baseline and commit them under METRIC_VERSION; `frontend/src/scene/field/scorecard/thresholds.ts`.
+- [x] `W03.P09.S43` - Live-verify against the running engine plus rag plus Qdrant that the constellation renders meaning-clusters on real embeddings, recording the verification in the phase summary; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W03-P09-summary.md`.
 
 ## Wave `W04` - All-six algorithm verification and robustness hardening
 
@@ -275,7 +275,7 @@ Run the complete engine and frontend gate and verify the live stack of engine se
 
 - [x] `W06.P16.S68` - Run the engine gate to exit 0: cargo fmt check, cargo clippy, and cargo test across the engine workspace; `engine/Cargo.toml`.
 - [x] `W06.P16.S69` - Run the frontend gate to exit 0: just dev lint frontend (eslint, prettier, tsc) and the full vitest suite including the scorecard gates; `frontend/package.json`.
-- [ ] `W06.P16.S70` - Verify the live stack end to end: engine serve plus rag plus Qdrant answering /graph/query, /graph/embeddings, /graph/lineage, and /ops/git; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W06-P16-summary.md`.
+- [x] `W06.P16.S70` - Verify the live stack end to end: engine serve plus rag plus Qdrant answering /graph/query, /graph/embeddings, /graph/lineage, and /ops/git; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W06-P16-summary.md`.
 
 ### Phase `W06.P17` - Quality report and Definition of Done
 
@@ -283,7 +283,7 @@ Emit the committed quality report and assert the Definition-of-Done checklist th
 
 - [x] `W06.P17.S71` - Have the scorecard emit the committed quality report scoring each of the six layouts against its per-metric thresholds as the quantified visible goal-met artifact; `frontend/src/scene/field/scorecard/qualityReport.ts`.
 - [x] `W06.P17.S72` - Commit the generated quality report fixture and assert it regenerates deterministically under the current METRIC_VERSION; `frontend/src/scene/field/scorecard/qualityReport.test.ts`.
-- [ ] `W06.P17.S73` - Assert the Definition-of-Done checklist that all six layouts deliver their backend capabilities with no glitch, issue, or crash, both quantifiably via the scorecard and visibly via live verification; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W06-P17-summary.md`.
+- [x] `W06.P17.S73` - Assert the Definition-of-Done checklist that all six layouts deliver their backend capabilities with no glitch, issue, or crash, both quantifiably via the scorecard and visibly via live verification; `.vault/exec/2026-06-16-graph-viz-quality/2026-06-16-graph-viz-quality-W06-P17-summary.md`.
 
 ## Description
 
