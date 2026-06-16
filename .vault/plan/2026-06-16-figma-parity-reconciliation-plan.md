@@ -120,7 +120,7 @@ Close the non-color DTCG token pipeline (generator plus Figma mirror) for type, 
 - [x] `W01.P01.S07` - Adopt Inter and JetBrains Mono as the bound font families, replacing the system stack; `frontend/src/styles.css`.
 - [x] `W01.P01.S08` - Migrate the ~30 elevation usages from the six-level scale to the three Figma levels, smallest blast radius first; `frontend/src/`.
 - [x] `W01.P01.S09` - Migrate the ~167 radius usages to the Figma scale, re-keying and converting rounded-full to pill18; `frontend/src/`.
-- [ ] `W01.P01.S10` - Migrate the ~309 text usages to the Figma role-named type scale, guarding the text-title versus text-heading collision; `frontend/src/`.
+- [x] `W01.P01.S10` - Migrate the ~309 text usages to the Figma role-named type scale, guarding the text-title versus text-heading collision; `frontend/src/`.
 
 ### Phase `W01.P02` - Backend base and stable contract
 
