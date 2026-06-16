@@ -14,7 +14,7 @@
 // viewer is open.
 
 import type { ReactElement } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { X } from "lucide-react";
 
 import { parseDocument } from "../../stores/server/parseDocument";
@@ -97,6 +97,20 @@ export function ViewerSurface(): ReactElement | null {
   const closeViewer = useViewStore((s) => s.closeViewer);
   // The single content query (sole wire client); disabled when no viewer is open.
   const content = useContentView(target?.nodeId ?? null, scope);
+
+  // Escape closes the reader (standard overlay dismissal), restoring the graph
+  // beneath it. Only bound while a viewer is open.
+  useEffect(() => {
+    if (!target) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closeViewer();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [target, closeViewer]);
 
   const headerProps = useMemo(
     () =>
