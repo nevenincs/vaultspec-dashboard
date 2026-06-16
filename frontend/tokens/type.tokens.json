@@ -11,6 +11,10 @@
       "mono": {
         "$type": "fontFamily",
         "$value": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", \"Cascadia Code\", Menlo, Consolas, monospace"
+      },
+      "serif": {
+        "$type": "fontFamily",
+        "$value": "Fraunces, Georgia, \"Times New Roman\", \"Noto Serif\", serif"
       }
     },
     "role": {

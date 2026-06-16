@@ -1,11 +1,12 @@
 @import "tailwindcss";
 
-/* Figma-binding webfonts (figma-parity-reconciliation W01.P01.S07): Inter (UI/text)
-   and JetBrains Mono (code/identity) replace the prior system stack. Loaded with
-   display=swap so the warm-neutral fallback stack (--font-fg-sans / --font-fg-mono)
-   renders immediately and the bound faces swap in when available - the app stays
-   legible offline. The Tailwind import must remain first per CSS @import ordering. */
-@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
+/* Figma-binding webfonts: Inter (UI/text), JetBrains Mono (code/identity), and
+   Fraunces (serif titles/headings — the binding Reader type roles, added by the
+   figma-frontend-rewrite W01.P01). Loaded with display=swap so the warm-neutral
+   fallback stack (--font-fg-sans / --font-fg-mono / --font-fg-serif) renders
+   immediately and the bound faces swap in when available - the app stays legible
+   offline. The Tailwind import must remain first per CSS @import ordering. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap");
 
 /* ============================================================================
    DESIGN TOKEN LAYER - OKLCH generative core (W01.P01-P03, design-language ADR).
@@ -178,6 +179,7 @@
   --font-fg-mono:
     "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas,
     monospace;
+  --font-fg-serif: Fraunces, Georgia, "Times New Roman", "Noto Serif", serif;
   --text-fg-display: 1.25rem;
   --text-fg-display--line-height: 1.75rem;
   --text-fg-display--weight: 600;
@@ -234,6 +236,7 @@
      or alias tokens: the type foundation is exactly the Figma roles. */
   --font-sans: var(--font-fg-sans);
   --font-mono: var(--font-fg-mono);
+  --font-serif: var(--font-fg-serif);
 
   /* Non-colliding Figma roles map straight to their utility name. */
   --text-display: var(--text-fg-display);
