@@ -65,12 +65,12 @@ describe("GraphControls — grouped Layout picker (D11)", () => {
     const spatial = screen.getByRole("group", { name: "spatial layout" });
     const segs = Array.from(spatial.querySelectorAll("button[data-seg]"));
     expect(segs.map((s) => s.getAttribute("aria-label"))).toEqual([
-      "Network",
-      "Tree",
-      "Layered",
+      "Free",
+      "Lineage",
+      "Hierarchy",
       "Radial",
-      "Communities",
-      "Grouped by meaning",
+      "Clusters",
+      "Meaning",
     ]);
     // Timeline lives in its OWN distinct group, never folded into the Spatial row.
     const temporal = screen.getByRole("group", { name: "temporal view" });
@@ -78,22 +78,22 @@ describe("GraphControls — grouped Layout picker (D11)", () => {
     expect(tSegs.map((s) => s.getAttribute("aria-label"))).toEqual(["Timeline"]);
   });
 
-  it("Network maps to the connectivity representation mode", () => {
+  it("Free maps to the connectivity representation mode", () => {
     useViewStore.setState({ activeRepresentationMode: "lineage" });
     render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "Network" }));
+    fireEvent.click(screen.getByRole("button", { name: "Free" }));
     expect(useViewStore.getState().activeRepresentationMode).toBe("connectivity");
   });
 
-  it("Tree maps to the lineage representation mode", () => {
+  it("Lineage maps to the lineage representation mode", () => {
     render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "Tree" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lineage" }));
     expect(useViewStore.getState().activeRepresentationMode).toBe("lineage");
   });
 
-  it("Layered maps to the hierarchical representation mode (W02.P06)", () => {
+  it("Hierarchy maps to the hierarchical representation mode (W02.P06)", () => {
     render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "Layered" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hierarchy" }));
     expect(useViewStore.getState().activeRepresentationMode).toBe("hierarchical");
   });
 
@@ -103,15 +103,15 @@ describe("GraphControls — grouped Layout picker (D11)", () => {
     expect(useViewStore.getState().activeRepresentationMode).toBe("radial");
   });
 
-  it("Communities maps to the community representation mode (W02.P07)", () => {
+  it("Clusters maps to the community representation mode (W02.P07)", () => {
     render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "Communities" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clusters" }));
     expect(useViewStore.getState().activeRepresentationMode).toBe("community");
   });
 
-  it("Grouped by meaning maps to the semantic representation mode", () => {
+  it("Meaning maps to the semantic representation mode", () => {
     render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "Grouped by meaning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Meaning" }));
     expect(useViewStore.getState().activeRepresentationMode).toBe("semantic");
   });
 
@@ -119,10 +119,10 @@ describe("GraphControls — grouped Layout picker (D11)", () => {
     useViewStore.setState({ activeRepresentationMode: "lineage" });
     render(createElement(GraphControls));
     expect(
-      screen.getByRole("button", { name: "Tree" }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: "Lineage" }).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      screen.getByRole("button", { name: "Network" }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: "Free" }).getAttribute("aria-pressed"),
     ).toBe("false");
   });
 
@@ -130,7 +130,7 @@ describe("GraphControls — grouped Layout picker (D11)", () => {
     render(createElement(GraphControls));
     // The new modes carry no italic/unavailable affordance — they are live the
     // moment they ship (no gate, no fallback copy).
-    for (const label of ["Layered", "Radial", "Communities"]) {
+    for (const label of ["Hierarchy", "Radial", "Clusters"]) {
       const btn = screen.getByRole("button", { name: label });
       const title = btn.getAttribute("title") ?? "";
       expect(title).not.toMatch(/falls back/i);
@@ -159,13 +159,13 @@ describe("GraphControls — grouped Layout picker (D11)", () => {
     render(createElement(GraphControls));
     // No spatial segment is pressed while Timeline is active.
     expect(
-      screen.getByRole("button", { name: "Network" }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: "Free" }).getAttribute("aria-pressed"),
     ).toBe("false");
   });
 
-  it("marks Grouped by meaning (semantic) as available only when its gate ships", () => {
+  it("marks Meaning (semantic) as available only when its gate ships", () => {
     render(createElement(GraphControls));
-    const grouped = screen.getByRole("button", { name: "Grouped by meaning" });
+    const grouped = screen.getByRole("button", { name: "Meaning" });
     // The control is rendered regardless; its title states the honest fallback
     // when the semantic projection has not shipped (no dead control, no lie).
     const title = grouped.getAttribute("title") ?? "";

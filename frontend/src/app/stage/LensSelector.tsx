@@ -1,9 +1,10 @@
 // Stage layout + salience selectors (figma-parity-reconciliation W03.P09.S53;
 // graph-node-salience ADR; graph-layout-catalog ADR D11).
 //
-// This module owns the binding `graph/Controls` 88:2 LAYOUT control — the
-// plain-language Network / Tree / Grouped / Timeline picker — and the distinct
-// salience LENS selector (status / design). Both are dumb projections over the
+// This module owns the binding `graph/Layout picker` 216:633 LAYOUT control — the
+// plain-language Free / Lineage / Hierarchy / Radial / Clusters / Meaning picker
+// (plus the distinct Timeline temporal entry) — and the distinct salience LENS
+// selector (status / design). Both are dumb projections over the
 // preserved view store (the stores layer is the sole wire client): switching the
 // layout writes the representation mode, switching the lens writes the active
 // salience lens (a wire re-query, folded into the graph-slice cache key).
@@ -137,35 +138,35 @@ function Segmented<T extends string>({
 const SPATIAL_SEGMENTS = (semanticShipped: boolean): Segment<RepresentationMode>[] => [
   {
     value: "connectivity",
-    label: "Network",
-    title: "Force-directed topology — how everything links",
+    label: "Free",
+    title: "Connections pull related items together — force-directed",
   },
   {
     value: "lineage",
-    label: "Tree",
-    title: "Derivation tree — research → adr → plan → exec → audit",
+    label: "Lineage",
+    title: "What came from what — top to bottom (derivation DAG)",
   },
   {
     value: "hierarchical",
-    label: "Layered",
-    title: "Layered flow — a Sugiyama hierarchy over the structural backbone",
+    label: "Hierarchy",
+    title: "Ranked in tiers, fewest crossings — Sugiyama layered",
   },
   {
     value: "radial",
     label: "Radial",
-    title: "Radial tree — hops from the most salient node outward",
+    title: "Rings around a chosen root — concentric tree",
   },
   {
     value: "community",
-    label: "Communities",
-    title: "Clustered by community — Louvain groups packed two-level",
+    label: "Clusters",
+    title: "Topics group together — Louvain community",
   },
   {
     value: "semantic",
-    label: "Grouped by meaning",
+    label: "Meaning",
     title: semanticShipped
-      ? "Clustered by meaning (embedding projection)"
-      : "Clustered by meaning — falls back to Network until the semantic projection ships",
+      ? "Nearby = similar in meaning — semantic (UMAP)"
+      : "Nearby = similar in meaning — falls back to Free until the semantic projection ships",
     available: semanticShipped,
   },
 ];
