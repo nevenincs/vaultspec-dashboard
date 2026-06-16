@@ -22,6 +22,9 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     // embedding feeds the semantic UMAP worker (graph-representation §4).
     salience: node.salience,
     embedding: node.embedding,
+    // Authority register (graph-node-semantics) -> the lineage layout suppresses
+    // `manifest` (generated index) nodes from the derivation spine (W03 D5).
+    authorityClass: node.authority_class,
     // Per-type lifecycle status (node-visual-richness P01/P03) -> the status
     // stamp. The ordinal magnitude is derived from the raw value by the scene's
     // pure util (never a view component); absent when the wire carries no status.

@@ -98,6 +98,13 @@ export interface SceneNodeData {
    * redlines. The sigma.js fallback ignores it harmlessly.
    */
   status?: { value?: string; class?: StatusClass; ordinal?: number };
+  /**
+   * The authority register the node answers in (graph-node-semantics ADR):
+   * `design`/`roadmap`/`evidence`/`judgment`/`manifest`. The lineage layout
+   * (W03 D5) suppresses `manifest` (generated index) nodes from the derivation
+   * spine — they are manifests, not lineage members. Additive/optional.
+   */
+  authorityClass?: string;
   /** Optional warm-start seed only; the renderer owns positions (RL-1). */
   seedPosition?: { x: number; y: number };
 }

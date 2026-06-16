@@ -167,13 +167,18 @@ function withFakeLayout(field: DashboardField): FakeLayout {
   const f = field as unknown as {
     layout: FakeLayout;
     sprites: { sync: () => void; setLod: () => void };
-    edges: { setEdges: () => { rejected: unknown[] }; setArrowVisibility: () => void };
+    edges: {
+      setEdges: () => { rejected: unknown[] };
+      setArrowVisibility: () => void;
+      setRoutes: () => void;
+    };
   };
   f.layout = layout;
   f.sprites = { sync: vi.fn(), setLod: vi.fn() };
   f.edges = {
     setEdges: vi.fn(() => ({ rejected: [] })),
     setArrowVisibility: vi.fn(),
+    setRoutes: vi.fn(),
   };
   return layout;
 }
