@@ -7,7 +7,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { FrameScheduler, LayoutEdgeRef } from "./forceLayout";
-import { FieldLayout, SEED_JITTER, seedPositions } from "./forceLayout";
+import {
+  FieldLayout,
+  FREEZE_DWELL_MAX,
+  FREEZE_DWELL_MIN,
+  INCREMENTAL_REHEAT_ALPHA,
+  INTERACTION_ALPHA_TARGET,
+  SEED_JITTER,
+  freezeDwellTicks,
+  seedPositions,
+} from "./forceLayout";
 
 /** Tiny deterministic PRNG (mulberry32) so seeding assertions are stable. */
 function mulberry32(seed: number): () => number {
@@ -228,5 +237,216 @@ describe("FieldLayout (d3-force driver)", () => {
     // A further init would only fan out to live listeners; there are none.
     layout.init(["a"], [], new Map());
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// graph-force-stability W01.P04.S15 — LIVE-LOOP driver tests.
+//
+// The prior cycle's 20 layout tests never drove the live onPositions loop; this
+// block does, running REAL ticks under the manual scheduler so the incremental
+// reheat, the held alphaTarget, and the velocity/dwell freeze are exercised as
+// the field actually behaves, not asserted on internals. Tuned against the
+// 12/50/300-node slices the ADR's open question names.
+// ---------------------------------------------------------------------------
+
+/** A grid of n nodes seeded on a coarse lattice with a spanning chain of edges,
+ *  a stand-in for a connectivity slice of the requested size. */
+function gridSlice(n: number): {
+  ids: string[];
+  edges: LayoutEdgeRef[];
+  seeds: Map<string, { x: number; y: number }>;
+} {
+  const ids: string[] = [];
+  const edges: LayoutEdgeRef[] = [];
+  const seeds = new Map<string, { x: number; y: number }>();
+  const cols = Math.ceil(Math.sqrt(n));
+  for (let i = 0; i < n; i++) {
+    const id = `n${i}`;
+    ids.push(id);
+    seeds.set(id, { x: (i % cols) * 50, y: Math.floor(i / cols) * 50 });
+    if (i > 0) edges.push({ id: `e${i}`, src: `n${i - 1}`, dst: id });
+  }
+  return { ids, edges, seeds };
+}
+
+/** Drive the live loop to a settle and report how many frames it took. */
+function runToSettle(layout: FieldLayout, sched: ManualScheduler, cap = 5000) {
+  let settled = false;
+  layout.onSettle(() => {
+    settled = true;
+  });
+  const ran = sched.runFrames(cap);
+  return { settled, ran };
+}
+
+function snapshot(layout: FieldLayout): Map<string, { x: number; y: number }> {
+  return new Map([...layout.positions].map(([id, p]) => [id, { x: p.x, y: p.y }]));
+}
+
+describe("freezeDwellTicks (D5 node-count-scaled dwell)", () => {
+  it("clamps to the dwell band across the 12/50/300-node slices", () => {
+    expect(freezeDwellTicks(12)).toBe(FREEZE_DWELL_MIN);
+    expect(freezeDwellTicks(50)).toBe(FREEZE_DWELL_MIN);
+    expect(freezeDwellTicks(300)).toBeGreaterThanOrEqual(FREEZE_DWELL_MIN);
+    // A very large island scales up toward (and clamps at) the max.
+    expect(freezeDwellTicks(100000)).toBe(FREEZE_DWELL_MAX);
+  });
+});
+
+describe("FieldLayout live loop — incremental reheat (D1)", () => {
+  it("preserves survivor positions when nodes are added via applyChanges", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const { ids, edges, seeds } = gridSlice(50);
+    layout.init(ids, edges, seeds);
+    layout.start();
+    runToSettle(layout, sched);
+    const before = snapshot(layout);
+
+    // Add 5 nodes around the surviving set — the incremental case.
+    const addIds = ["x0", "x1", "x2", "x3", "x4"];
+    const addEdges = addIds.map((id, i) => ({
+      id: `xe${i}`,
+      src: `n${i}`,
+      dst: id,
+    }));
+    layout.applyChanges({ addNodeIds: addIds, addEdges });
+    sched.runFrames(5000);
+    const after = snapshot(layout);
+
+    // Every survivor is preserved to within a small local perturbation — the
+    // low INCREMENTAL_REHEAT_ALPHA nudges, it does not re-settle the whole field.
+    let maxDrift = 0;
+    for (const id of ids) {
+      const b = before.get(id)!;
+      const a = after.get(id)!;
+      maxDrift = Math.max(maxDrift, Math.hypot(a.x - b.x, a.y - b.y));
+    }
+    // A re-init from warm (0.5) would shuffle survivors hundreds of units; the
+    // incremental reheat keeps the drift bounded to a local nudge.
+    expect(maxDrift).toBeLessThan(120);
+    // The added nodes were actually placed (not left at a degenerate origin).
+    for (const id of addIds) {
+      const p = after.get(id)!;
+      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
+    }
+  });
+
+  it("applyChanges reheats only to the low incremental alpha, not warm-start", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(["a", "b"], [{ id: "e", src: "a", dst: "b" }], new Map());
+    layout.start();
+    sched.runFrames(5000); // settle
+    layout.applyChanges({
+      addNodeIds: ["c"],
+      addEdges: [{ id: "e2", src: "a", dst: "c" }],
+    });
+    // Immediately after applyChanges the sim alpha is the LOW reheat, not 0.5.
+    const alpha = (layout as unknown as { sim: { alpha(): number } }).sim.alpha();
+    expect(alpha).toBeCloseTo(INCREMENTAL_REHEAT_ALPHA, 5);
+  });
+});
+
+describe("FieldLayout live loop — held alphaTarget interaction (D2)", () => {
+  it("keeps the field warm while interaction is active and does not freeze", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const { ids, edges, seeds } = gridSlice(12);
+    layout.init(ids, edges, seeds);
+    layout.start();
+    runToSettle(layout, sched);
+    expect(sched.hasPending).toBe(false); // settled
+
+    layout.beginInteraction();
+    // The held target floors the alpha — the loop runs and stays warm.
+    const ran = sched.runFrames(1000);
+    expect(ran).toBe(1000); // never froze: the loop kept rescheduling
+    const alpha = (layout as unknown as { sim: { alpha(): number } }).sim.alpha();
+    expect(alpha).toBeGreaterThanOrEqual(INTERACTION_ALPHA_TARGET - 1e-6);
+
+    // endInteraction releases the floor; the field re-cools to a freeze.
+    layout.endInteraction();
+    const { settled } = runToSettle(layout, sched);
+    expect(settled).toBe(true);
+    expect(sched.hasPending).toBe(false);
+  });
+
+  it("setParams during interaction applies without a one-shot reheat kick", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(["a", "b"], [{ id: "e", src: "a", dst: "b" }], new Map());
+    layout.start();
+    sched.runFrames(5000); // settle
+    layout.beginInteraction();
+    // Run the loop until alpha decays down near the held interaction floor, so a
+    // would-be PARAM_REHEAT kick (0.3) would be a visible jump UP.
+    sched.runFrames(400);
+    const before = (layout as unknown as { sim: { alpha(): number } }).sim.alpha();
+    layout.setParams({ repel: 300 });
+    const after = (layout as unknown as { sim: { alpha(): number } }).sim.alpha();
+    // No one-shot kick: setParams during interaction must NOT raise alpha (the
+    // held floor governs). A kick would have lifted it toward PARAM_REHEAT (0.3).
+    expect(after).toBeLessThanOrEqual(before + 1e-9);
+    // And the held floor keeps the field warm at the interaction target.
+    expect(after).toBeGreaterThanOrEqual(INTERACTION_ALPHA_TARGET - 0.05);
+  });
+
+  it("dragNode fixes fx/fy and holds the interaction floor (D3)", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(
+      ["a", "b"],
+      [{ id: "e", src: "a", dst: "b" }],
+      new Map([["a", { x: 0, y: 0 }]]),
+    );
+    layout.start();
+    sched.runFrames(5000);
+    layout.dragNode("a", 123, 456);
+    const node = (
+      layout as unknown as {
+        nodeById: Map<string, { fx?: number | null; fy?: number | null }>;
+      }
+    ).nodeById.get("a")!;
+    expect(node.fx).toBe(123);
+    expect(node.fy).toBe(456);
+    // dragNode begins an interaction so the neighbourhood reflows.
+    expect(sched.hasPending).toBe(true);
+  });
+});
+
+describe("FieldLayout live loop — velocity/dwell freeze (D5)", () => {
+  it("freezes the sim early once motion drops below the epsilon for the dwell", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const { ids, edges, seeds } = gridSlice(50);
+    layout.init(ids, edges, seeds);
+    layout.start();
+    const settles = vi.fn();
+    layout.onSettle(settles);
+    const ran = sched.runFrames(5000);
+    // The sim STOPPED on its own (the velocity-freeze or the alpha floor).
+    expect(sched.hasPending).toBe(false);
+    expect(settles).toHaveBeenCalledTimes(1);
+    expect(ran).toBeLessThan(5000);
+  });
+
+  it("the early freeze beats the alpha-floor — settles before alpha hits the min", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    // A pre-settled warm-start (positions already near equilibrium) converges
+    // to sub-epsilon motion well before the alpha clock reaches ALPHA_MIN.
+    const { ids, edges, seeds } = gridSlice(12);
+    layout.init(ids, edges, seeds);
+    layout.start();
+    let alphaAtSettle = 1;
+    layout.onSettle(() => {
+      alphaAtSettle = (layout as unknown as { sim: { alpha(): number } }).sim.alpha();
+    });
+    sched.runFrames(5000);
+    // The velocity-freeze fired above the floor: alpha at settle is > ALPHA_MIN
+    // for a quickly-converging warm slice (the early-freeze win, not the floor).
+    expect(alphaAtSettle).toBeGreaterThan(0.001);
   });
 });

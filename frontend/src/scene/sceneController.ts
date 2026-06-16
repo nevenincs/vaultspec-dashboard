@@ -185,6 +185,18 @@ export type SceneCommand =
   // Layout algorithm controls (AlgorithmPanel seam contract).
   | { kind: "set-layout-params"; params: LayoutParams }
   | { kind: "set-layout-mode"; mode: "force" | "circular" }
+  // --- graph-force-stability addenda (W01) -----------------------------------
+  // Held-warmth interaction seam (graph-force-stability D2): the chrome brackets
+  // a slider-tune drag with begin/end-interaction so the driver holds an
+  // alphaTarget floor and the set-layout-params during the drag reflow
+  // continuously instead of kicking the field on every onChange. Additive to the
+  // locked union; no existing member changed.
+  | { kind: "begin-interaction" }
+  | { kind: "end-interaction" }
+  // Freeze toggle (graph-force-stability D7): Obsidian's pause. `frozen:true`
+  // stops the solver where it is; `frozen:false` resumes it at a low alpha. The
+  // cooling schedule stays fixed and unexposed; this is the ONE new control knob.
+  | { kind: "set-frozen"; frozen: boolean }
   // --- graph-representation addenda (W03.P08) -------------------------------
   // Representation-mode switch (graph-representation ADR): connectivity (FA2,
   // default) | lineage (derivation-DAG axis) | semantic (UMAP over embeddings).
@@ -358,6 +370,9 @@ export class SceneController {
       case "zoom-out":
       case "fit-to-view":
       case "reset-view":
+      case "begin-interaction":
+      case "end-interaction":
+      case "set-frozen":
         // Renderer concerns — forwarded below.
         break;
     }

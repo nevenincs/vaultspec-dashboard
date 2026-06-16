@@ -67,24 +67,82 @@ describe("SpatialHitTester", () => {
 });
 
 describe("PointerGestures", () => {
+  interface DragLog {
+    to: [string, number, number][];
+    ends: [string, boolean][];
+  }
   function harness(hit: (x: number, y: number) => string | null) {
     const events: SceneEvent[] = [];
     const pans: [number, number][] = [];
+    const drag: DragLog = { to: [], ends: [] };
     const gestures = new PointerGestures({
       emit: (e) => events.push(e),
       panBy: (dx, dy) => pans.push([dx, dy]),
       hitTestScreen: hit,
+      // Identity screen→world so the node-drag world coords are predictable.
+      screenToWorld: (sx, sy) => ({ x: sx, y: sy }),
+      nodeDragTo: (id, wx, wy) => drag.to.push([id, wx, wy]),
+      nodeDragEnd: (id, moved) => drag.ends.push([id, moved]),
     });
-    return { events, pans, gestures };
+    return { events, pans, drag, gestures };
   }
 
-  it("pans on drag and suppresses the click", () => {
-    const { events, pans, gestures } = harness(() => "n1");
+  it("pans on EMPTY-CANVAS drag and suppresses the click (D3)", () => {
+    // Empty canvas on down → camera pan, exactly as before the node-drag branch.
+    const { events, pans, drag, gestures } = harness(() => null);
     gestures.pointerDown({ x: 0, y: 0 });
     gestures.pointerMove({ x: DRAG_THRESHOLD_PX + 2, y: 0 });
     gestures.pointerMove({ x: DRAG_THRESHOLD_PX + 10, y: 5 });
     gestures.pointerUp({ x: DRAG_THRESHOLD_PX + 10, y: 5 });
     expect(pans.length).toBe(2);
+    expect(drag.to).toEqual([]); // no node-drag — empty canvas
+    expect(events).toEqual([]);
+  });
+
+  it("drags the NODE (not the camera) when a node was hit on down (D3)", () => {
+    // Node under the pointer at down-time → node-drag past the threshold; the
+    // node's world position is emitted each move, the camera never pans.
+    const { events, pans, drag, gestures } = harness(() => "n1");
+    gestures.pointerDown({ x: 0, y: 0 });
+    gestures.pointerMove({ x: DRAG_THRESHOLD_PX + 2, y: 3 });
+    gestures.pointerMove({ x: DRAG_THRESHOLD_PX + 20, y: 9 });
+    gestures.pointerUp({ x: DRAG_THRESHOLD_PX + 20, y: 9 });
+    expect(pans).toEqual([]); // camera did not pan
+    expect(drag.to).toEqual([
+      ["n1", DRAG_THRESHOLD_PX + 2, 3],
+      ["n1", DRAG_THRESHOLD_PX + 20, 9],
+    ]);
+    // A drag PAST the threshold records a sticky pin (moved:true) and no select.
+    expect(drag.ends).toEqual([["n1", true]]);
+    expect(events).toEqual([]);
+  });
+
+  it("a below-threshold node press is STILL a select, never a drag (D3)", () => {
+    // Down on a node, up within the threshold → click/select semantics unchanged;
+    // nodeDragEnd reports moved:false so no sticky pin is recorded.
+    const { events, drag, gestures } = harness((x) => (x < 50 ? "n1" : null));
+    gestures.pointerDown({ x: 10, y: 0 });
+    gestures.pointerMove({ x: 11, y: 1 }); // within the 4px threshold
+    gestures.pointerUp({ x: 11, y: 1 });
+    expect(drag.to).toEqual([]); // never crossed the threshold
+    expect(drag.ends).toEqual([["n1", false]]); // moved:false → no sticky pin
+    expect(events).toEqual([{ kind: "select", id: "n1" }]);
+  });
+
+  it("a drag that STARTS on a node then moves onto empty canvas stays a node-drag (D3)", () => {
+    // The branch is fixed at DOWN-TIME: a node hit on down is a node-drag for the
+    // whole gesture even as the pointer leaves the node onto empty canvas.
+    const { events, pans, drag, gestures } = harness((x) => (x < 5 ? "n1" : null));
+    gestures.pointerDown({ x: 0, y: 0 }); // hits n1
+    gestures.pointerMove({ x: 40, y: 40 }); // now over empty canvas
+    gestures.pointerMove({ x: 80, y: 80 });
+    gestures.pointerUp({ x: 80, y: 80 });
+    expect(pans).toEqual([]); // never a camera pan
+    expect(drag.to).toEqual([
+      ["n1", 40, 40],
+      ["n1", 80, 80],
+    ]);
+    expect(drag.ends).toEqual([["n1", true]]);
     expect(events).toEqual([]);
   });
 

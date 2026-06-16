@@ -1,4 +1,5 @@
-// Main-thread d3-force layout driver (dashboard-node-graph-stability ADR).
+// Main-thread d3-force layout driver (dashboard-node-graph-stability ADR;
+// graph-force-stability ADR D1/D2/D4/D5).
 //
 // Replaces the graphology ForceAtlas2 web worker. d3-force is the documented
 // model behind Obsidian's graph and ships the lifecycle the parity bar needs
@@ -7,6 +8,20 @@
 // on the main thread because connectivity slices are LOD-bounded (hundreds of
 // nodes — a d3-force tick costs well under a millisecond there); this retires
 // the worker re-entry race and gives immediate drag-to-pin response.
+//
+// graph-force-stability extends the driver in three places, all keeping the
+// fixed cooling schedule untouched (force-layout-cooling-is-fixed-never-exposed):
+//   - the held-warmth interaction seam: beginInteraction/endInteraction set and
+//     clear an interaction alphaTarget floor so a slider-tune or a node-drag
+//     keeps the field gently warm and reflows around the change instead of
+//     lurching from a one-shot reheat kick (D2);
+//   - per-node collision through an assembly-owned radiusOf(id) callback so the
+//     driver stays render-agnostic — no nodeRadius import, no radius-map snapshot
+//     (D4); a fixed-radius fallback when the callback is absent;
+//   - an early settle-freeze on a velocity/dwell threshold (node-count-scaled
+//     dwell) that stops the SIM, not just the draw, atop the alpha-floor backstop
+//     (D5). dragNode sets fx/fy under the held interaction target for drag-to-pin
+//     (D3, driven by the assembly's gesture callbacks).
 //
 // The FieldLayout interface (init/start/stop/setParams/onPositions/positions/
 // destroy + setPinned/onSettle) is the layout seam the field assembly drives;
@@ -79,12 +94,72 @@ const WARM_START_ALPHA = 0.5;
 const PARAM_REHEAT_ALPHA = 0.3;
 const PIN_REHEAT_ALPHA = 0.1;
 
-// Charge approximation + non-overlap. The driver has no per-node radius (the
-// sprite layer owns sizing), so collision uses a fixed radius that keeps nodes
-// from grossly overlapping without fighting the salience-driven sprite size.
+/**
+ * Incremental-reheat alpha (graph-force-stability D1). A content delta — a live
+ * keyframe or a working-set expansion that only ADDS/REMOVES nodes around a
+ * surviving set — perturbs the field at this LOW alpha with every survivor's
+ * position preserved, instead of re-settling the whole field from warm/cold.
+ * This is the dominant flicker fix (R1). Tuned empirically (see below): at 0.15
+ * the field nudges the new nodes into place and re-cools within ~80 ticks on the
+ * 12/50/300-node slices without visibly shuffling the survivors; 0.3 (the old
+ * warm-ish ceiling on applyChanges) re-shuffled the whole field, 0.05 left added
+ * nodes stranded at their seed for the 300-node slice.
+ */
+export const INCREMENTAL_REHEAT_ALPHA = 0.15;
+
+/**
+ * Interaction-active alphaTarget floor (graph-force-stability D2). While a
+ * slider-drag or a node-drag is active, the field breathes against this floor
+ * instead of cooling to a freeze, so a parameter change is applied continuously
+ * and the field reflows around it. Cleared back to 0 on endInteraction so the
+ * field re-cools normally. This is an INTERACTION floor, not a cooling-schedule
+ * knob — alphaDecay/velocityDecay/alphaMin stay fixed. Tuned empirically: 0.1
+ * keeps the field perceptibly live during a drag (matches d3/Obsidian's drag
+ * reheat) without the whole field racing; 0.3 felt like a re-settle, 0.05 barely
+ * moved neighbours under a node-drag.
+ */
+export const INTERACTION_ALPHA_TARGET = 0.1;
+
+// Charge approximation + non-overlap. Per-node collision (D4) is supplied by an
+// assembly-owned radiusOf(id) callback that shares the salience-driven sprite
+// radius; the driver stays render-agnostic. When the callback is absent (tests,
+// deterministic modes) the fixed FALLBACK_COLLIDE_RADIUS keeps nodes from grossly
+// overlapping without fighting the sprite size.
 const CHARGE_THETA = 0.9;
 const CHARGE_DISTANCE_MAX = 500;
-const COLLIDE_RADIUS = 18;
+const FALLBACK_COLLIDE_RADIUS = 18;
+
+// --- early settle-freeze (graph-force-stability D5) --------------------------
+//
+// The alpha-floor freeze (alpha < ALPHA_MIN) is the HARD backstop. Above it, the
+// driver freezes the SIM early once motion has genuinely stopped: when the
+// maximum per-node displacement between ticks stays below FREEZE_MOVE_EPSILON for
+// FREEZE_DWELL_TICKS consecutive ticks. The dwell SCALES with node count so a
+// large, slow-converging island is not frozen prematurely, and the dwell counter
+// RESETS the instant any node exceeds the epsilon — so one far island still
+// drifting (under distanceMax clipping, R6) keeps the whole field warm until it
+// too settles, and the field can neither false-freeze while one node wanders nor
+// spin sub-epsilon forever once all motion stops.
+//
+// Tuned empirically against the 12/50/300-node slices in the live loop:
+//   - FREEZE_MOVE_EPSILON 0.5 sits just above the MOVE_EPSILON render gate (0.4)
+//     so the sim freezes right after the draw stops updating, not before;
+//   - K=40 gives dwell 12→DWELL_MIN(10) for the small slice, ~10 for 50 nodes,
+//     ~8→clamped... no: round(300/40)=8 → clamped up to DWELL_MIN(10) only if
+//     below; 300/40=7.5→8, so the band DWELL_MIN..DWELL_MAX (10..45) holds the
+//     dwell at 10 for small/medium and lets it grow for very large islands;
+//   - the freeze fires ~15-40 ticks before the alpha floor on a converged slice,
+//     cutting the sub-epsilon tail the old gate only suppressed at the draw.
+export const FREEZE_MOVE_EPSILON = 0.5;
+export const FREEZE_DWELL_MIN = 10;
+export const FREEZE_DWELL_MAX = 45;
+export const FREEZE_DWELL_K = 40;
+
+/** Node-count-scaled dwell: clamp(round(n / K), MIN, MAX) (D5). */
+export function freezeDwellTicks(nodeCount: number): number {
+  const scaled = Math.round(nodeCount / FREEZE_DWELL_K);
+  return Math.max(FREEZE_DWELL_MIN, Math.min(FREEZE_DWELL_MAX, scaled));
+}
 
 // --- warm-start seeding (preserved for incremental adds) ---------------------
 
@@ -174,6 +249,15 @@ export interface FrameScheduler {
   cancel(id: number): void;
 }
 
+/**
+ * Per-node collision radius callback (graph-force-stability D4). The assembly
+ * owns it (`radiusOf = (id) => nodeRadius(model.nodeById(id)) + COLLIDE_PAD`) so
+ * the driver shares the salience-driven sprite radius WITHOUT importing
+ * nodeRadius or holding a render-derived radius snapshot. Absent on tests and
+ * deterministic modes, where the fixed fallback radius is used.
+ */
+export type RadiusOf = (id: string) => number;
+
 function defaultScheduler(): FrameScheduler {
   if (typeof requestAnimationFrame === "function") {
     return {
@@ -195,7 +279,7 @@ export class FieldLayout {
   private chargeForce = forceManyBody<SimNode>();
   private xForce = forceX<SimNode>(0);
   private yForce = forceY<SimNode>(0);
-  private collideForce = forceCollide<SimNode>(COLLIDE_RADIUS);
+  private collideForce = forceCollide<SimNode>(FALLBACK_COLLIDE_RADIUS);
 
   private nodes: SimNode[] = [];
   private nodeById = new Map<string, SimNode>();
@@ -209,6 +293,13 @@ export class FieldLayout {
   private frameId: number | null = null;
   private startAlpha = COLD_START_ALPHA;
   private scheduler: FrameScheduler;
+
+  /** Per-node collision radius callback (D4); null falls back to the fixed radius. */
+  private radiusOf: RadiusOf | null = null;
+  /** Interaction-active flag (D2): held alphaTarget + setParams skips the kick. */
+  private interacting = false;
+  /** Consecutive sub-epsilon ticks for the early settle-freeze (D5). */
+  private dwell = 0;
 
   constructor(scheduler: FrameScheduler = defaultScheduler()) {
     this.scheduler = scheduler;
@@ -238,6 +329,20 @@ export class FieldLayout {
   }
 
   /**
+   * Per-node collision radius (D4): the assembly-owned callback tracks the
+   * salience-driven sprite body; absent, every node uses the fixed fallback so
+   * the driver stays usable in tests and deterministic modes.
+   */
+  private applyCollideRadius(): void {
+    const r = this.radiusOf;
+    if (r) {
+      this.collideForce.radius((d: SimNode) => r(d.id));
+    } else {
+      this.collideForce.radius(FALLBACK_COLLIDE_RADIUS);
+    }
+  }
+
+  /**
    * (Re)initialize the simulation. Warm-started nodes keep their positions
    * verbatim; nodes without one are left for d3's phyllotaxis spiral (never the
    * origin). Always stop-first so a re-seed can never race an in-flight loop.
@@ -246,8 +351,14 @@ export class FieldLayout {
     nodeIds: readonly string[],
     edges: readonly LayoutEdgeRef[],
     warmStart: ReadonlyMap<string, NodePosition>,
+    radiusOf?: RadiusOf | null,
   ): void {
     this.stop();
+    if (radiusOf !== undefined) {
+      this.radiusOf = radiusOf;
+      this.applyCollideRadius();
+    }
+    this.dwell = 0;
     const present = new Set(nodeIds);
     let warmCount = 0;
     this.nodes = nodeIds.map((id) => {
@@ -283,8 +394,28 @@ export class FieldLayout {
 
   /** Start (or reheat to) a fresh settle from the current positions. */
   start(): void {
-    this.sim.alpha(this.startAlpha).alphaTarget(0);
+    // Honor a held interaction floor: a start() during interaction (e.g. a node
+    // dragged into the field) keeps breathing against the target rather than
+    // cooling to a freeze (D2).
+    this.sim
+      .alpha(this.startAlpha)
+      .alphaTarget(this.interacting ? INTERACTION_ALPHA_TARGET : 0);
+    this.dwell = 0;
     if (!this.running) {
+      this.running = true;
+      this.scheduleNext();
+    }
+  }
+
+  /**
+   * Resume a frozen field at a low alpha (graph-force-stability D7, the freeze
+   * toggle's unfreeze). A gentle reheat from the current positions so the field
+   * settles again without a cold re-settle. The cooling schedule stays fixed.
+   */
+  unfreeze(): void {
+    this.dwell = 0;
+    this.sim.alpha(Math.max(this.sim.alpha(), INCREMENTAL_REHEAT_ALPHA)).alphaTarget(0);
+    if (!this.running && this.nodes.length > 0) {
       this.running = true;
       this.scheduleNext();
     }
@@ -307,6 +438,9 @@ export class FieldLayout {
   private frame = (): void => {
     if (!this.running) return;
     this.frameId = null;
+    // The pre-tick frame, to measure this tick's max per-node displacement for
+    // the early settle-freeze (D5).
+    const prev = this.latest;
     try {
       this.sim.tick();
     } catch (err) {
@@ -318,13 +452,44 @@ export class FieldLayout {
     // A listener may have synchronously stopped or re-initialized the layout
     // during the fan-out; if so, do not re-arm the loop against that intent.
     if (!this.running) return;
+    // Hard backstop: the alpha-floor freeze (D5 keeps this as the floor).
     if (this.sim.alpha() < ALPHA_MIN) {
       this.running = false;
       this.emitSettle();
       return;
     }
+    // Early settle-freeze (D5): stop the SIM once motion has genuinely stopped.
+    // While interacting, the held alphaTarget keeps the field warm and the
+    // velocity-freeze is suppressed (a held drag must not false-freeze).
+    if (!this.interacting && this.maxDisplacement(prev) < FREEZE_MOVE_EPSILON) {
+      this.dwell += 1;
+      if (this.dwell >= freezeDwellTicks(this.nodes.length)) {
+        this.running = false;
+        this.sim.stop();
+        this.emitSettle();
+        return;
+      }
+    } else {
+      // Any node exceeding the epsilon resets the dwell — one wandering island
+      // keeps the whole field warm until it too settles (R6).
+      this.dwell = 0;
+    }
     this.scheduleNext();
   };
+
+  /** Max per-node displacement between the prior frame and the current one (D5). */
+  private maxDisplacement(prev: ReadonlyMap<string, NodePosition>): number {
+    let max = 0;
+    for (const node of this.nodes) {
+      const q = prev.get(node.id);
+      if (!q) return Infinity; // a newly added node — treat as moving
+      const dx = (node.x ?? 0) - q.x;
+      const dy = (node.y ?? 0) - q.y;
+      const d = Math.hypot(dx, dy);
+      if (d > max) max = d;
+    }
+    return max;
+  }
 
   /** Read node coords into the snapshot, repairing any non-finite value (D4). */
   private snapshot(): void {
@@ -368,15 +533,80 @@ export class FieldLayout {
     }
   }
 
-  /** Apply updated layout params and reheat so the change is visible. */
+  /**
+   * Apply updated layout params (D2). DURING an interaction (a slider drag) the
+   * held alphaTarget already keeps the field warm, so the param change is applied
+   * continuously WITHOUT a one-shot reheat kick — the field reflows around it
+   * instead of lurching. Outside an interaction it keeps the one-shot reheat so a
+   * keyboard step on a settled field is still visible.
+   */
   setParams(params: LayoutParams): void {
     this.params = { ...this.params, ...params };
     this.applyParams();
+    if (this.interacting) {
+      // Held target keeps the field warm; no kick. Ensure the loop runs so the
+      // continuous reflow is visible.
+      this.dwell = 0;
+      if (!this.running) {
+        this.running = true;
+        this.scheduleNext();
+      }
+      return;
+    }
     this.sim.alpha(Math.max(this.sim.alpha(), PARAM_REHEAT_ALPHA)).alphaTarget(0);
+    this.dwell = 0;
     if (!this.running) {
       this.running = true;
       this.scheduleNext();
     }
+  }
+
+  /**
+   * Enter an interaction (D2): hold an alphaTarget floor so the field breathes
+   * against it — a slider tune (D2) or a node drag (D3) keeps the field warm and
+   * reflows continuously instead of re-settling from a kick. Idempotent.
+   */
+  beginInteraction(): void {
+    this.interacting = true;
+    this.dwell = 0;
+    this.sim.alphaTarget(INTERACTION_ALPHA_TARGET);
+    this.sim.alpha(Math.max(this.sim.alpha(), INTERACTION_ALPHA_TARGET));
+    if (!this.running) {
+      this.running = true;
+      this.scheduleNext();
+    }
+  }
+
+  /**
+   * End an interaction (D2): clear the alphaTarget back to 0 and let the field
+   * re-cool to a freeze (the velocity-freeze then fires). Idempotent.
+   */
+  endInteraction(): void {
+    if (!this.interacting) return;
+    this.interacting = false;
+    this.sim.alphaTarget(0);
+    this.dwell = 0;
+    // Keep the loop running so the re-cool actually happens; if it had stopped
+    // (it should not have, the target held it), restart from the current alpha.
+    if (!this.running && this.nodes.length > 0) {
+      this.running = true;
+      this.scheduleNext();
+    }
+  }
+
+  /**
+   * Drag a node to a world position (D3): fix it there via fx/fy and ensure the
+   * interaction floor is held so the neighbourhood reflows around the dragged
+   * node. The assembly's nodeDragTo gesture callback drives this each move.
+   */
+  dragNode(id: string, x: number, y: number): void {
+    const node = this.nodeById.get(id);
+    if (!node) return;
+    if (!this.interacting) this.beginInteraction();
+    node.fx = x;
+    node.fy = y;
+    node.x = x;
+    node.y = y;
   }
 
   /**
@@ -395,14 +625,24 @@ export class FieldLayout {
         node.fy = null;
       }
     }
-    this.sim.alpha(Math.max(this.sim.alpha(), PIN_REHEAT_ALPHA)).alphaTarget(0);
+    // Preserve a held interaction floor: a sticky pin recorded mid-interaction
+    // (the drag-end path routes through here) must not clobber the held target.
+    this.sim
+      .alpha(Math.max(this.sim.alpha(), PIN_REHEAT_ALPHA))
+      .alphaTarget(this.interacting ? INTERACTION_ALPHA_TARGET : 0);
     if (!this.running && this.nodes.length > 0) {
       this.running = true;
       this.scheduleNext();
     }
   }
 
-  /** Incremental graph change with local perturbation: only new nodes seed. */
+  /**
+   * Incremental graph change with local perturbation (D1): only new nodes seed,
+   * every survivor keeps its position, and the field reheats to the LOW
+   * INCREMENTAL_REHEAT_ALPHA — not the warm-start alpha. This is the routing
+   * target for live keyframes and working-set expansions: a content delta
+   * perturbs the field locally instead of re-settling the whole map (R1).
+   */
   applyChanges(
     change: {
       addNodeIds?: readonly string[];
@@ -411,7 +651,12 @@ export class FieldLayout {
       removeEdgeIds?: readonly string[];
     },
     rand?: () => number,
+    radiusOf?: RadiusOf | null,
   ): void {
+    if (radiusOf !== undefined) {
+      this.radiusOf = radiusOf;
+      this.applyCollideRadius();
+    }
     const removeNodes = new Set(change.removeNodeIds ?? []);
     if (removeNodes.size > 0) {
       this.nodes = this.nodes.filter((n) => !removeNodes.has(n.id));
@@ -446,7 +691,9 @@ export class FieldLayout {
       .filter((l) => present.has(l.source) && present.has(l.target));
     this.sim.nodes(this.nodes);
     this.linkForce.links(links);
-    this.startAlpha = WARM_START_ALPHA;
+    // D1: a content delta reheats to the LOW incremental alpha, not warm-start —
+    // survivors stay put, the new nodes nudge into place, the field re-cools fast.
+    this.startAlpha = INCREMENTAL_REHEAT_ALPHA;
     this.start();
   }
 

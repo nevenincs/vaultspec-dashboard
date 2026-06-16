@@ -7,10 +7,12 @@
 // so the synchronous part of DashboardField.mount() — registering the onReady
 // cleanup in detachListeners — runs without side-effects and is fully observable.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DashboardField } from "./fieldAssembly";
+import { INCREMENTAL_REHEAT_ALPHA } from "./forceLayout";
 import type { NodePosition } from "../positionCache";
+import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 
 /** Cast to reach the private detachListeners array (read-only inspection). */
 function detachCount(field: DashboardField): number {
@@ -123,5 +125,156 @@ describe("DashboardField movement gate (D4: per-frame work ceases when still)", 
         ]),
       ),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// graph-force-stability W01.P04.S17 — incremental-reheat routing,
+// double-init/double-fit collapse, and the per-node collision callback.
+//
+// PixiField.mount() is a no-op in node, so this.layout/sprites/edges are never
+// assembled by mount(). These tests inject minimal recording stubs for the
+// live-after-mount parts so the routing logic (which method gets called) is
+// observable without a GPU. The constants are re-confirmed against the lowered
+// INCREMENTAL_REHEAT_ALPHA the live-loop driver tests tuned (S15).
+// ---------------------------------------------------------------------------
+
+interface FakeLayout {
+  init: ReturnType<typeof vi.fn>;
+  applyChanges: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
+  beginInteraction: ReturnType<typeof vi.fn>;
+  endInteraction: ReturnType<typeof vi.fn>;
+  positions: ReadonlyMap<string, NodePosition>;
+}
+
+function fakeLayout(): FakeLayout {
+  return {
+    init: vi.fn(),
+    applyChanges: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+    beginInteraction: vi.fn(),
+    endInteraction: vi.fn(),
+    positions: new Map<string, NodePosition>(),
+  };
+}
+
+/** Inject the live-after-mount stubs so the routing logic runs without a GPU. */
+function withFakeLayout(field: DashboardField): FakeLayout {
+  const layout = fakeLayout();
+  const f = field as unknown as {
+    layout: FakeLayout;
+    sprites: { sync: () => void; setLod: () => void };
+    edges: { setEdges: () => { rejected: unknown[] }; setArrowVisibility: () => void };
+  };
+  f.layout = layout;
+  f.sprites = { sync: vi.fn(), setLod: vi.fn() };
+  f.edges = {
+    setEdges: vi.fn(() => ({ rejected: [] })),
+    setArrowVisibility: vi.fn(),
+  };
+  return layout;
+}
+
+const n = (id: string, salience?: number): SceneNodeData => ({
+  id,
+  kind: "doc",
+  ...(salience !== undefined ? { salience } : {}),
+});
+const e = (id: string, src: string, dst: string): SceneEdgeData => ({
+  id,
+  src,
+  dst,
+  relation: "links",
+  tier: "structural",
+  confidence: 1,
+});
+
+describe("DashboardField incremental-reheat routing (D1)", () => {
+  it("first set-data full-inits (no prior laid-out set)", () => {
+    const field = new DashboardField();
+    const layout = withFakeLayout(field);
+    field.command({
+      kind: "set-data",
+      nodes: [n("a"), n("b")],
+      edges: [e("e1", "a", "b")],
+    });
+    expect(layout.init).toHaveBeenCalledTimes(1);
+    expect(layout.applyChanges).not.toHaveBeenCalled();
+  });
+
+  it("a content delta over a surviving set routes through applyChanges, not re-init", () => {
+    const field = new DashboardField();
+    const layout = withFakeLayout(field);
+    // First load lays out {a,b}.
+    field.command({
+      kind: "set-data",
+      nodes: [n("a"), n("b")],
+      edges: [e("e1", "a", "b")],
+    });
+    layout.init.mockClear();
+    // A live keyframe adds c around the surviving {a,b}.
+    field.command({
+      kind: "set-data",
+      nodes: [n("a"), n("b"), n("c")],
+      edges: [e("e1", "a", "b"), e("e2", "b", "c")],
+    });
+    expect(layout.init).not.toHaveBeenCalled();
+    expect(layout.applyChanges).toHaveBeenCalledTimes(1);
+    const change = layout.applyChanges.mock.calls[0][0];
+    expect(change.addNodeIds).toEqual(["c"]);
+    expect(change.removeNodeIds).toEqual([]);
+    // The radiusOf callback is passed (D4): the third arg is a function.
+    expect(typeof layout.applyChanges.mock.calls[0][2]).toBe("function");
+  });
+
+  it("a fully-disjoint set (no survivors) re-inits, not a reheat", () => {
+    const field = new DashboardField();
+    const layout = withFakeLayout(field);
+    field.command({ kind: "set-data", nodes: [n("a"), n("b")], edges: [] });
+    layout.init.mockClear();
+    field.command({ kind: "set-data", nodes: [n("x"), n("y")], edges: [] });
+    expect(layout.applyChanges).not.toHaveBeenCalled();
+    expect(layout.init).toHaveBeenCalledTimes(1);
+  });
+
+  it("a scope swap re-inits even with a surviving id set (new mental map)", () => {
+    const field = new DashboardField();
+    const layout = withFakeLayout(field);
+    field.command({ kind: "set-data", nodes: [n("a"), n("b")], edges: [] });
+    layout.init.mockClear();
+    // Same ids but a different persistence scope = a workspace swap → re-init.
+    field.setPersistenceScope("default", "other-scope");
+    field.command({
+      kind: "set-data",
+      nodes: [n("a"), n("b"), n("c")],
+      edges: [],
+    });
+    expect(layout.applyChanges).not.toHaveBeenCalled();
+    expect(layout.init).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DashboardField double-init collapse (D6)", () => {
+  it("set-representation-mode connectivity is a no-op once set-data laid it out", () => {
+    const field = new DashboardField();
+    const layout = withFakeLayout(field);
+    // set-data is the single connectivity initializer on first load.
+    field.command({ kind: "set-data", nodes: [n("a"), n("b")], edges: [] });
+    layout.init.mockClear();
+    layout.start.mockClear();
+    // The mount-time set-representation-mode:connectivity must NOT re-init.
+    field.command({ kind: "set-representation-mode", mode: "connectivity" });
+    expect(layout.init).not.toHaveBeenCalled();
+    expect(layout.start).not.toHaveBeenCalled();
+  });
+});
+
+describe("INCREMENTAL_REHEAT_ALPHA (S17 re-baseline)", () => {
+  it("is the lowered reheat the live-loop driver tuned, below the old warm 0.5", () => {
+    expect(INCREMENTAL_REHEAT_ALPHA).toBeLessThan(0.5);
+    expect(INCREMENTAL_REHEAT_ALPHA).toBeCloseTo(0.15, 5);
   });
 });

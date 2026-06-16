@@ -146,12 +146,24 @@ interface GestureCallbacks {
   emit(event: SceneEvent): void;
   panBy(dx: number, dy: number): void;
   hitTestScreen(sx: number, sy: number): string | null;
+  /** Convert a screen sample to a world coordinate (node-drag, D3). */
+  screenToWorld(sx: number, sy: number): { x: number; y: number };
+  /** Drag a node to a world position each move past the threshold (D3). */
+  nodeDragTo(id: string, worldX: number, worldY: number): void;
+  /** End a node-drag; `moved` records a sticky pin only when the drag crossed
+   *  the threshold (a below-threshold press stays a plain select). (D3) */
+  nodeDragEnd(id: string, moved: boolean): void;
 }
 
 /**
- * Click-vs-drag discrimination and hover tracking. Down + move beyond the
- * threshold pans; down + up within it selects (hit or clears selection);
- * double-click opens; plain moves emit hover transitions only on change.
+ * Click-vs-drag discrimination, node-drag, and hover tracking (D3). On
+ * pointer-down the gesture HIT-TESTS: if a node is under the pointer it records a
+ * PENDING node-drag on that id; empty canvas arms a pan. On move past the 4px
+ * threshold the gesture diverges by WHAT WAS UNDER THE POINTER AT DOWN-TIME — a
+ * node hit becomes a node-drag (fx/fy via nodeDragTo), empty canvas a camera pan.
+ * On up: a below-threshold press is still a select (hit or clear), exactly as
+ * before; a node-drag past threshold ends and records a sticky pin; a pan past
+ * threshold is swallowed. Double-click opens; plain moves emit hover transitions.
  */
 export class PointerGestures {
   private callbacks: GestureCallbacks;
@@ -159,6 +171,8 @@ export class PointerGestures {
   private dragging = false;
   private last: PointerSample = { x: 0, y: 0 };
   private hovered: string | null = null;
+  /** The node hit at pointer-down, if any — the node-drag candidate (D3). */
+  private downHit: string | null = null;
 
   constructor(callbacks: GestureCallbacks) {
     this.callbacks = callbacks;
@@ -168,16 +182,27 @@ export class PointerGestures {
     this.down = p;
     this.dragging = false;
     this.last = p;
+    // Disambiguate at DOWN-TIME (D3): a node under the pointer is a node-drag
+    // candidate; empty canvas arms a camera pan. The branch is only TAKEN once
+    // the move crosses the threshold, so a press-and-release stays a select.
+    this.downHit = this.callbacks.hitTestScreen(p.x, p.y);
   }
 
   pointerMove(p: PointerSample): void {
     if (this.down) {
-      if (
+      const past =
         this.dragging ||
-        Math.hypot(p.x - this.down.x, p.y - this.down.y) > DRAG_THRESHOLD_PX
-      ) {
+        Math.hypot(p.x - this.down.x, p.y - this.down.y) > DRAG_THRESHOLD_PX;
+      if (past) {
         this.dragging = true;
-        this.callbacks.panBy(p.x - this.last.x, p.y - this.last.y);
+        if (this.downHit) {
+          // Node-drag (D3): move the node to the world point under the pointer.
+          const world = this.callbacks.screenToWorld(p.x, p.y);
+          this.callbacks.nodeDragTo(this.downHit, world.x, world.y);
+        } else {
+          // Empty-canvas drag stays a camera pan, exactly as before.
+          this.callbacks.panBy(p.x - this.last.x, p.y - this.last.y);
+        }
       }
       this.last = p;
       return;
@@ -191,8 +216,21 @@ export class PointerGestures {
 
   pointerUp(p: PointerSample): void {
     const wasDrag = this.dragging;
+    const downHit = this.downHit;
     this.down = null;
     this.dragging = false;
+    this.downHit = null;
+    if (downHit) {
+      // A node was grabbed on down: end the drag (record a sticky pin only if it
+      // actually moved past the threshold). A below-threshold node press is still
+      // a plain select — click semantics are unchanged (D3).
+      this.callbacks.nodeDragEnd(downHit, wasDrag);
+      if (!wasDrag) {
+        this.callbacks.emit({ kind: "select", id: downHit });
+      }
+      return;
+    }
+    // Empty-canvas: a pan is swallowed; a below-threshold press selects/clears.
     if (wasDrag) return;
     this.callbacks.emit({ kind: "select", id: this.callbacks.hitTestScreen(p.x, p.y) });
   }

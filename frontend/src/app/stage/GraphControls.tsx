@@ -46,6 +46,8 @@ import {
   Crosshair,
   Map as MapIcon,
   Minus,
+  Pause,
+  Play,
   Plus,
   SlidersHorizontal,
   Square,
@@ -101,6 +103,59 @@ function NavBtn({ label, title, icon, onClick }: NavBtnProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Freeze toggle (graph-force-stability D7): Obsidian's pause. Emits a single
+// `set-frozen` scene command and reflects the local frozen state. Meaningful
+// only in connectivity mode (the deterministic modes hold the solver stopped),
+// so it disables itself outside it. The cooling schedule stays fixed and
+// unexposed; the collision/separation/damping knobs are NOT exposed (D7).
+// ---------------------------------------------------------------------------
+
+function FreezeToggle() {
+  const scene = getScene();
+  const representationMode = useViewStore((s) => s.activeRepresentationMode);
+  const timelineMode = useViewStore((s) => s.timelineMode);
+  const live = timelineMode.kind === "live";
+  const connectivity = representationMode === "connectivity" && live;
+  const [frozen, setFrozen] = useState(false);
+
+  // A mode switch re-runs the solver, so a stale frozen flag must not persist.
+  useEffect(() => {
+    if (!connectivity && frozen) setFrozen(false);
+  }, [connectivity, frozen]);
+
+  function toggle() {
+    const next = !frozen;
+    setFrozen(next);
+    scene.controller.command({ kind: "set-frozen", frozen: next });
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={frozen ? "resume layout" : "freeze layout"}
+      aria-pressed={frozen}
+      title={
+        connectivity
+          ? frozen
+            ? "resume the force layout"
+            : "freeze the force layout in place"
+          : "freeze is available in the Network layout"
+      }
+      onClick={toggle}
+      disabled={!connectivity}
+      className="flex h-8 w-8 items-center justify-center rounded-vs-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-paper-sunken aria-pressed:text-ink"
+      data-freeze-toggle
+    >
+      {frozen ? (
+        <Play size={ICON_PX} aria-hidden />
+      ) : (
+        <Pause size={ICON_PX} aria-hidden />
+      )}
+    </button>
+  );
+}
+
 function NavigateGroup() {
   const scene = getScene();
   return (
@@ -132,6 +187,7 @@ function NavigateGroup() {
         icon={<Crosshair size={ICON_PX} aria-hidden />}
         onClick={() => scene.controller.command({ kind: "reset-view" })}
       />
+      <FreezeToggle />
     </div>
   );
 }
@@ -236,6 +292,10 @@ interface SliderProps {
   title?: string;
   /** Optional end captions rendered under the track (Zoom: Overview / Detail). */
   ends?: [string, string];
+  /** Fired when a drag/keyboard interaction with the track begins (D2 coalesce). */
+  onInteractStart?: () => void;
+  /** Fired when the interaction ends (pointerup / blur / keyboard settle, D2). */
+  onInteractEnd?: () => void;
 }
 
 function Slider({
@@ -248,6 +308,8 @@ function Slider({
   format,
   title,
   ends,
+  onInteractStart,
+  onInteractEnd,
 }: SliderProps) {
   const display = format ? format(value) : String(value);
   return (
@@ -269,6 +331,10 @@ function Slider({
         aria-label={label}
         aria-valuetext={display}
         onChange={(e) => onChange(Number(e.target.value))}
+        onPointerDown={onInteractStart}
+        onPointerUp={onInteractEnd}
+        onKeyDown={onInteractStart}
+        onBlur={onInteractEnd}
         className="h-1 w-full cursor-pointer accent-accent"
       />
       {ends && (
@@ -500,12 +566,47 @@ function ZoomGroup() {
 // default — FLAGGED in the report.
 const TUNE_DEFAULTS: Required<LayoutParams> = { ...LAYOUT_DEFAULTS };
 
+/** Trailing-debounce window (ms) for ending a keyboard-driven slider interaction
+ *  (D2): a key step has no pointerup, so end-interaction fires once the steps
+ *  stop. Short enough that the field re-cools promptly, long enough to coalesce a
+ *  burst of held-arrow steps into one interaction. */
+const KEYBOARD_SETTLE_MS = 250;
+
 function TuneBody() {
   const liveState = getScene().controller.getLayoutState();
   const [params, setParams] = useState<Required<LayoutParams>>({
     ...TUNE_DEFAULTS,
     ...liveState.params,
   });
+  // Coalesce the held-warmth interaction (D2): begin once on the FIRST onChange/
+  // pointer/key of a drag, hold it across the drag (the driver applies the latest
+  // params each tick under the held alphaTarget — no per-onChange reheat kick),
+  // and end on pointerup/blur or a trailing debounce for keyboard steps.
+  const interactingRef = useRef(false);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const beginInteraction = useCallback(() => {
+    if (interactingRef.current) return;
+    interactingRef.current = true;
+    getScene().controller.command({ kind: "begin-interaction" });
+  }, []);
+
+  const endInteraction = useCallback(() => {
+    if (settleTimerRef.current) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+    if (!interactingRef.current) return;
+    interactingRef.current = false;
+    getScene().controller.command({ kind: "end-interaction" });
+  }, []);
+
+  // Trailing debounce: a keyboard step (no pointerup) ends the interaction once
+  // the steps stop. Re-armed on every change while a key interaction is live.
+  const armKeyboardSettle = useCallback(() => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(endInteraction, KEYBOARD_SETTLE_MS);
+  }, [endInteraction]);
 
   // Stay in sync with layout-changed events (another actor may set params).
   useEffect(() => {
@@ -516,10 +617,18 @@ function TuneBody() {
     });
   }, []);
 
+  // End any in-flight interaction if the popover unmounts mid-drag.
+  useEffect(() => endInteraction, [endInteraction]);
+
   function apply(update: Partial<LayoutParams>) {
     const next = { ...params, ...update };
     setParams(next);
+    // Ensure the held floor is up for the very first change of a drag (covers the
+    // case where onChange fires before pointerdown handlers in some browsers).
+    beginInteraction();
     getScene().controller.command({ kind: "set-layout-params", params: next });
+    // Re-arm the keyboard settle each change; a pointerup/blur ends it sooner.
+    armKeyboardSettle();
   }
 
   return (
@@ -533,6 +642,8 @@ function TuneBody() {
         step={10}
         onChange={(v) => apply({ repel: v })}
         format={(v) => String(Math.round(v))}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
       />
       <Slider
         label="Connection reach"
@@ -543,6 +654,8 @@ function TuneBody() {
         step={5}
         onChange={(v) => apply({ linkDistance: v })}
         format={(v) => String(Math.round(v))}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
       />
       <Slider
         label="Clustering"
@@ -553,6 +666,8 @@ function TuneBody() {
         step={0.05}
         onChange={(v) => apply({ linkForce: v })}
         format={(v) => v.toFixed(2)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
       />
     </div>
   );
