@@ -2,13 +2,6 @@
   "$schema": "./registry.schema.json",
   "components": [
     {
-      "name": "AlgorithmPanel",
-      "source": "src/app/stage/AlgorithmPanel.tsx",
-      "designSurface": true,
-      "figmaNodeId": "30:2",
-      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=30-2"
-    },
-    {
       "name": "AppShell",
       "source": "src/app/AppShell.tsx",
       "designSurface": false,
@@ -128,6 +121,13 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=39-2"
     },
     {
+      "name": "GraphControls",
+      "source": "src/app/stage/GraphControls.tsx",
+      "designSurface": true,
+      "figmaNodeId": "88:2",
+      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=88-2"
+    },
+    {
       "name": "HoverCard",
       "source": "src/app/islands/HoverCard.tsx",
       "designSurface": true,
@@ -191,13 +191,6 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=45-2"
     },
     {
-      "name": "NavToolbar",
-      "source": "src/app/stage/NavToolbar.tsx",
-      "designSurface": true,
-      "figmaNodeId": "22:72",
-      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=22-72"
-    },
-    {
       "name": "NodeInterior",
       "source": "src/app/islands/NodeInterior.tsx",
       "designSurface": false,
@@ -252,13 +245,6 @@
       "designSurface": true,
       "figmaNodeId": "46:2",
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=46-2"
-    },
-    {
-      "name": "RepresentationModePanel",
-      "source": "src/app/stage/RepresentationModePanel.tsx",
-      "designSurface": true,
-      "figmaNodeId": "42:2",
-      "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=42-2"
     },
     {
       "name": "SearchTab",

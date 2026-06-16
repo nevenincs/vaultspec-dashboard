@@ -50,7 +50,13 @@ const CANVAS_REGION_ID = "minimap-canvas-region";
 // dark / light / high-contrast for free (iconography ADR).
 const ICON_PX = 11;
 
-export function MinimapWidget() {
+interface MinimapWidgetProps {
+  /** When true the widget renders in normal flow (hosted inside the consolidated
+   *  GraphControls Overview column) rather than docked absolute on the stage. */
+  embedded?: boolean;
+}
+
+export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
   const [collapsed, setCollapsed] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -78,7 +84,11 @@ export function MinimapWidget() {
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-vs-2 right-vs-2 z-10 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/90 shadow-panel backdrop-blur-sm"
+      className={
+        embedded
+          ? "overflow-hidden rounded-vs-md border border-rule bg-paper-raised"
+          : "pointer-events-auto absolute bottom-vs-2 right-vs-2 z-10 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/90 shadow-panel backdrop-blur-sm"
+      }
       style={{ width: collapsed ? "auto" : MINIMAP_W + 2 }}
       role="group"
       aria-label="graph minimap navigator"

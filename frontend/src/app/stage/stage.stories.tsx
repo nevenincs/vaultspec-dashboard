@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { Discover } from "./Discover";
+import { GraphControls } from "./GraphControls";
 import { LensSelector } from "./LensSelector";
 import { MinimapWidget } from "./MinimapWidget";
-import { RepresentationModePanel } from "./RepresentationModePanel";
 
 /**
  * Stage region gallery (plan W01.P07.S29). The central canvas controls, rendered against
@@ -16,9 +16,9 @@ export const DiscoverPanel: StoryObj = { name: "Discover", render: () => <Discov
 export const Lens: StoryObj = { name: "LensSelector", render: () => <LensSelector /> };
 export const Minimap: StoryObj = {
   name: "MinimapWidget",
-  render: () => <MinimapWidget />,
+  render: () => <MinimapWidget embedded />,
 };
-export const Representation: StoryObj = {
-  name: "RepresentationModePanel",
-  render: () => <RepresentationModePanel />,
+export const Controls: StoryObj = {
+  name: "GraphControls",
+  render: () => <GraphControls />,
 };

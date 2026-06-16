@@ -37,16 +37,13 @@ import { HoverCardLayer } from "../islands/HoverCardLayer";
 import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
-import { AlgorithmPanel } from "./AlgorithmPanel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
+import { GraphControls } from "./GraphControls";
 import { LensSelector } from "./LensSelector";
-import { RepresentationModePanel } from "./RepresentationModePanel";
 import { Discover } from "./Discover";
 import { useGraphWalkKeyboard } from "./graphWalk";
 import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
-import { MinimapWidget } from "./MinimapWidget";
-import { NavToolbar } from "./NavToolbar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene per app lifetime — survives route remounts; destroyed never.
@@ -173,7 +170,6 @@ export function Stage() {
   useSeedSessionContext();
   const scope = useActiveScope();
   const [filterSidebarOpen, setFilterSidebarOpen] = useState(false);
-  const [algorithmPanelOpen, setAlgorithmPanelOpen] = useState(false);
   // Granularity is user-switchable (NavToolbar toggle): "feature" renders the
   // constellation overview (~12 nodes, ADR D4.1); "document" renders the
   // full document graph (~200 nodes, the Obsidian mental model). Resets to
@@ -488,10 +484,6 @@ export function Stage() {
         sidebarOpen={filterSidebarOpen}
         onSidebarToggle={() => setFilterSidebarOpen((v) => !v)}
       />
-      <NavToolbar
-        algorithmPanelOpen={algorithmPanelOpen}
-        onAlgorithmPanelToggle={() => setAlgorithmPanelOpen((v) => !v)}
-      />
       <FilterSidebar
         open={filterSidebarOpen}
         onClose={() => setFilterSidebarOpen(false)}
@@ -501,18 +493,19 @@ export function Stage() {
           edges: membership?.hiddenEdgeCount ?? 0,
         }}
       />
-      {algorithmPanelOpen && (
-        <AlgorithmPanel onClose={() => setAlgorithmPanelOpen(false)} />
-      )}
-      {/* Representation-mode + lens selectors (graph-representation, canvas-
-          controls amendment): docked on-stage controls. The mode selector emits a
-          scene re-layout; the lens selector emits a wire re-query — composition
-          sequencing keeps the two from contending. */}
+      {/* The consolidated graph controls (binding Figma redesign `graph/Controls`
+          88:2): Navigate / Layout / Zoom / Overview / Tune in plain language —
+          supersedes the scattered NavToolbar / RepresentationModePanel /
+          AlgorithmPanel / minimap surfaces. */}
+      <GraphControls />
+      {/* Salience lens (graph-node-salience): the viewer-intent re-query. FLAGGED:
+          the binding Figma `graph/Controls` consolidation has no slot for the lens
+          (a distinct concern from layout/zoom), so it stays docked on its own
+          rather than being silently dropped — it remains a real, consumed
+          capability. */}
       <div className="pointer-events-auto absolute left-1/2 top-vs-2 z-10 flex -translate-x-1/2 items-center gap-vs-2">
-        <RepresentationModePanel />
         <LensSelector />
       </div>
-      <MinimapWidget />
       <WorkingSet />
       <Discover />
       <TimeTravelChip />
