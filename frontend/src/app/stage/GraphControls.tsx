@@ -10,24 +10,12 @@
 //
 //   Navigate — a horizontal icon row: zoom in (+), zoom out (−), fit (□),
 //              reset (◎). Camera commands only (SceneController.command).
-//   Layout   — a GROUPED picker (graph-layout-catalog ADR D11): a labelled
-//              "Spatial" group of the six spatial representation modes, with
-//              Timeline kept as the DISTINCT temporal entry beside it (a flat
-//              seven-wide row is illegible, so the catalog is grouped):
-//                Spatial group —
-//                  Network              → "connectivity" (force topology)
-//                  Tree                 → "lineage" (derivation DAG)
-//                  Layered              → "hierarchical" (Sugiyama, W02.P06)
-//                  Radial               → "radial" (tidy-tree, W02.P05)
-//                  Communities          → "community" (Louvain, W02.P07)
-//                  Grouped-by-meaning   → "semantic" (UMAP) — GATED via the
-//                                         `available` flag until its projection ships
-//                Timeline → enters time-travel (the temporal seam). FLAGGED:
-//                         Timeline is NOT a spatial representation layout — the
-//                         scene has no time-axis layout — so this entry is the
-//                         entry point to the temporal mode (movePlayhead), and
-//                         reflects `timelineMode === time-travel` as active. It is
-//                         visually distinct from the Spatial group, never folded in.
+//   Layout   — the binding plain-language Network / Tree / Grouped / Timeline
+//              picker (graph/Controls 88:2), delegated to `LayoutSelector`
+//              (S53, in `LensSelector.tsx`) so the canonical layout control has
+//              ONE home. The preserved layout catalog (graph-layout-catalog D11)
+//              is surfaced there as the labelled Spatial group with Timeline kept
+//              DISTINCT as the temporal time-travel seam.
 //   Zoom     — a two-stop slider Overview ↔ Detail driving the LOD descent
 //              (granularity feature ↔ document). FLAGGED: rendered as a slider
 //              per Figma but snaps to two stops, because the scene seam exposes
@@ -50,14 +38,14 @@
 // block, holds no node shape. Icons are Lucide structural marks (the sanctioned
 // chrome family). Tokens only — no raw hex.
 //
-// W03.P09.S52 (figma-parity-reconciliation): rebuilt over the REGENERATED Figma
-// foundation. The type usages now read the Figma role-named scale (text-label /
+// W03.P09.S52/S53 (figma-parity-reconciliation): rebuilt over the REGENERATED
+// Figma foundation. The type usages read the Figma role-named scale (text-label /
 // text-caption) rather than the deprecated legacy aliases (text-xs / text-2xs)
 // the W01.P01.S10 migration scheduled for removal in W04. The radius and
 // elevation classes (rounded-vs-*, shadow-float/card) resolve onto the Figma
-// xs/sm/md/lg/pill radius and three-level elevation through the foundation
-// alias layer. The binding `graph/Controls` 88:2 group structure (Navigate /
-// Layout / Zoom / Tune) is preserved; S53 supplies the canonical Layout picker.
+// xs/sm/md/lg/pill radius and three-level elevation through the foundation alias
+// layer. The Layout group delegates to the binding `LayoutSelector` (S53) so the
+// canonical Network / Tree / Grouped / Timeline picker has a single home.
 
 import {
   ChevronDown,
@@ -70,22 +58,12 @@ import {
   SlidersHorizontal,
   Square,
 } from "lucide-react";
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { LayoutParams } from "../../scene/field/forceLayout";
 import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
-import type { RepresentationMode } from "../../scene/field/representationLayout";
-import { SEMANTIC_MODE_GATE } from "../../scene/field/semanticGate";
 import { useViewStore } from "../../stores/view/viewStore";
-import { movePlayhead } from "../timeline/Playhead";
-import { useTimelineStore } from "../timeline/Timeline";
+import { LayoutSelector } from "./LensSelector";
 import { MinimapWidget } from "./MinimapWidget";
 import { getScene } from "./Stage";
 
@@ -206,98 +184,6 @@ function NavigateGroup() {
         onClick={() => scene.controller.command({ kind: "reset-view" })}
       />
       <FreezeToggle />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Segmented control — a roving-tabstop group: one Tab-stop, arrow keys walk the
-// segments. Reused by the grouped layout picker (the Spatial group and the
-// distinct Timeline entry are each a Segmented).
-// ---------------------------------------------------------------------------
-
-interface Segment<T extends string> {
-  value: T;
-  label: string;
-  title: string;
-  /** When false, the segment is shown but reflects an unavailable state. */
-  available?: boolean;
-}
-
-interface SegmentedProps<T extends string> {
-  label: string;
-  segments: Segment<T>[];
-  /** The active segment value, or null when no segment in this group is active
-   *  (e.g. the Spatial group while time-travel owns the highlight). */
-  active: T | null;
-  onSelect: (value: T) => void;
-}
-
-function Segmented<T extends string>({
-  label,
-  segments,
-  active,
-  onSelect,
-}: SegmentedProps<T>) {
-  const groupRef = useRef<HTMLDivElement>(null);
-
-  // Roving tabstop: the active segment owns the Tab-stop; when nothing in this
-  // group is active (the Spatial group while Timeline owns the highlight), the
-  // FIRST segment owns it so the group stays keyboard-reachable.
-  const tabStopValue: T | null =
-    active ?? (segments.length > 0 ? segments[0].value : null);
-
-  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    const buttons = Array.from(
-      groupRef.current?.querySelectorAll<HTMLButtonElement>("button[data-seg]") ?? [],
-    );
-    const at = buttons.indexOf(e.currentTarget);
-    if (at === -1) return;
-    const next =
-      e.key === "ArrowRight"
-        ? at + 1
-        : e.key === "ArrowLeft"
-          ? at - 1
-          : e.key === "Home"
-            ? 0
-            : e.key === "End"
-              ? buttons.length - 1
-              : null;
-    if (next === null) return;
-    e.preventDefault();
-    buttons[Math.min(buttons.length - 1, Math.max(0, next))]?.focus();
-  }, []);
-
-  return (
-    <div
-      ref={groupRef}
-      role="group"
-      aria-label={label}
-      className="flex gap-vs-0-5 rounded-vs-md bg-paper-sunken p-vs-0-5"
-    >
-      {segments.map((seg) => {
-        const isActive = seg.value === active;
-        return (
-          <button
-            key={seg.value}
-            type="button"
-            data-seg
-            aria-pressed={isActive}
-            aria-label={seg.label}
-            title={seg.title}
-            tabIndex={seg.value === tabStopValue ? 0 : -1}
-            onKeyDown={onKeyDown}
-            onClick={() => onSelect(seg.value)}
-            className={`flex items-center justify-center rounded-vs-sm px-vs-2 py-vs-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
-              isActive
-                ? "bg-paper-raised font-medium text-ink shadow-card"
-                : "text-ink-muted hover:text-ink"
-            } ${seg.available === false ? "italic" : ""}`}
-          >
-            {seg.label}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -450,109 +336,6 @@ function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
           {children}
         </div>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Layout group: a GROUPED layout picker (graph-layout-catalog ADR D11) — a
-// labelled Spatial group of the six spatial representation modes plus the
-// DISTINCT Timeline temporal entry — and the Zoom (LOD) descent.
-// ---------------------------------------------------------------------------
-
-/** The Spatial group: the six spatial representation modes (D11). The three new
- *  catalog modes (Layered/Radial/Communities) ship UN-GATED (D10) — no
- *  `available` flag. Only Grouped-by-meaning (semantic) carries the gate, reusing
- *  the existing `available` flag for the held mode. */
-const SPATIAL_SEGMENTS = (semanticShipped: boolean): Segment<RepresentationMode>[] => [
-  {
-    value: "connectivity",
-    label: "Network",
-    title: "Force-directed topology — how everything links",
-  },
-  {
-    value: "lineage",
-    label: "Tree",
-    title: "Derivation tree — research → adr → plan → exec → audit",
-  },
-  {
-    value: "hierarchical",
-    label: "Layered",
-    title: "Layered flow — a Sugiyama hierarchy over the structural backbone",
-  },
-  {
-    value: "radial",
-    label: "Radial",
-    title: "Radial tree — hops from the most salient node outward",
-  },
-  {
-    value: "community",
-    label: "Communities",
-    title: "Clustered by community — Louvain groups packed two-level",
-  },
-  {
-    value: "semantic",
-    label: "Grouped by meaning",
-    title: semanticShipped
-      ? "Clustered by meaning (embedding projection)"
-      : "Clustered by meaning — falls back to Network until the semantic projection ships",
-    available: semanticShipped,
-  },
-];
-
-/** The Timeline entry, kept DISTINCT from the spatial modes (D11): it enters the
- *  temporal time-travel seam, not a spatial layout. */
-const TIMELINE_SEGMENT: Segment<"timeline">[] = [
-  {
-    value: "timeline",
-    label: "Timeline",
-    title: "Arrange along time — enter the temporal view (time-travel)",
-  },
-];
-
-function LayoutGroup() {
-  const representationMode = useViewStore((s) => s.activeRepresentationMode);
-  const setRepresentationMode = useViewStore((s) => s.setRepresentationMode);
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const timeTravelling = timelineMode.kind === "time-travel";
-  const corpusTo = useTimelineStore((s) => s.window.to);
-
-  // The active spatial segment reflects the representation mode UNLESS time-travel
-  // is active (then no spatial mode is active and Timeline owns the highlight).
-  // Semantic is downgraded honestly when its gate is held, so the active segment
-  // reflects the APPLIED mode.
-  const spatialActive: RepresentationMode | null = timeTravelling
-    ? null
-    : representationMode;
-
-  function onSpatial(value: RepresentationMode) {
-    // Selecting a spatial mode returns to LIVE (leaving the temporal view) and
-    // sets the representation mode.
-    if (timeTravelling) movePlayhead("live");
-    setRepresentationMode(value);
-  }
-
-  function onTimeline() {
-    // Enter the temporal view at the corpus's latest instant (the real
-    // time-travel seam — `movePlayhead`). FLAGGED: this is the temporal mode,
-    // not a spatial representation layout.
-    movePlayhead(corpusTo);
-  }
-
-  return (
-    <div className="flex items-center gap-vs-1" data-layout-picker>
-      <Segmented
-        label="spatial layout"
-        segments={SPATIAL_SEGMENTS(SEMANTIC_MODE_GATE.shipped)}
-        active={spatialActive}
-        onSelect={onSpatial}
-      />
-      <Segmented
-        label="temporal view"
-        segments={TIMELINE_SEGMENT}
-        active={timeTravelling ? "timeline" : null}
-        onSelect={onTimeline}
-      />
     </div>
   );
 }
@@ -765,7 +548,7 @@ export function GraphControls() {
         >
           <NavigateGroup />
           <Divider />
-          <LayoutGroup />
+          <LayoutSelector />
           <Divider />
           <ZoomGroup />
         </div>
