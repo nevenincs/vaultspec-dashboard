@@ -1,0 +1,21 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "Figma-binding elevation scale (figma-parity-reconciliation ADR; research F1). The binding Figma scale is three levels raised/overlay/popover, collapsing the prior six-level flat/card/panel/float/dialog/deep scale. Each level is an ink-tinted layered drop shadow harmonising with the warm neutral ground (warmth-lives-in-tokens: depth via soft elevation, never gradients/textures). These are the LIGHT/base shadow values; the per-theme dark and high-contrast shadow remaps stay hand-authored in styles.css (the README scope boundary - per-mode shadows are not in the generated set). Emits as --shadow-fg-* CSS custom properties via the non-color token pipeline; the legacy --shadow-* names remain as deprecated aliases until the view rewrite cuts usages over (W04 removes them).",
+  "elevation": {
+    "raised": {
+      "$description": "Lowest binding level; resting cards and raised surfaces.",
+      "$type": "shadow",
+      "$value": "0 1px 3px 0 rgb(43 38 32 / 0.08), 0 1px 2px -1px rgb(43 38 32 / 0.08)"
+    },
+    "overlay": {
+      "$description": "Middle binding level; floating panels and menus over the page.",
+      "$type": "shadow",
+      "$value": "0 4px 16px -2px rgb(43 38 32 / 0.12), 0 2px 6px -2px rgb(43 38 32 / 0.06)"
+    },
+    "popover": {
+      "$description": "Highest binding level; dialogs, popovers, and command surfaces.",
+      "$type": "shadow",
+      "$value": "0 10px 32px -6px rgb(43 38 32 / 0.16), 0 4px 12px -4px rgb(43 38 32 / 0.1)"
+    }
+  }
+}
