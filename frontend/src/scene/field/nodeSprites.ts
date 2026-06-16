@@ -37,7 +37,7 @@ import { Container, Graphics, Text, Texture } from "pixi.js";
 import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
 import { categoryColor } from "./categoryColor";
-import { RECEDE_ALPHA } from "./egoHighlight";
+import { RECEDE_ALPHA, selectedRingAlpha } from "./egoHighlight";
 import { drawProgressRing } from "./progressRing";
 import { stampFor } from "./statusStamp";
 import { cssColorNumber as getCssColor } from "./tokenReads";
@@ -466,12 +466,16 @@ export class NodeSpriteLayer {
       // ego-recede dims the non-lifted field while an ego is held, and the ghost
       // floor caps a retired node. The filtered-out fade is applied separately by
       // `applyVisibility`.
-      const recede = this.highlight && !lifted ? RECEDE_ALPHA : 1;
+      const egoHeld = this.highlight !== null;
+      const recede = egoHeld && !lifted ? RECEDE_ALPHA : 1;
       visual.body.alpha = recede * this.ghostFloor(visual.node);
-      // The selected ring is an always-legible accent: it follows the recede (a
-      // non-ego selection still dims with its body) but never the ghost floor (a
-      // selected retired node still shows a clear ring).
-      if (visual.ring) visual.ring.alpha = recede;
+      // The SELECTED ring is the single persistent accent (graph/Node-items
+      // "selected"): it never dissolves into the receded field the way a body
+      // does. A selected node that is itself lifted keeps a full ring; a selected
+      // node outside a held ego holds the legibility FLOOR (above the body
+      // recede), so the selection stays visible. It never follows the ghost floor
+      // (a selected retired node still shows a clear ring).
+      if (visual.ring) visual.ring.alpha = selectedRingAlpha(egoHeld, lifted);
       if (visual.anatomy) visual.anatomy.alpha = recede;
     }
   }

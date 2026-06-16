@@ -201,7 +201,7 @@ Rewrite the scene foundation: the connection-field render, category circles, and
 Rebuild the three node states (default, selected, filtered-out), the hover-card from the binding graph HoverCard frame, and selection and hover routed through the SceneController event channel.
 
 - [x] `W03.P08.S47` - Rebuild the default node state render faithful to the binding Node-items frame; `frontend/src/scene/field/nodeSprites.ts`.
-- [ ] `W03.P08.S48` - Rebuild the selected node state with the single-accent selection ring per the binding frame; `frontend/src/scene/field/egoHighlight.ts`.
+- [x] `W03.P08.S48` - Rebuild the selected node state with the single-accent selection ring per the binding frame; `frontend/src/scene/field/egoHighlight.ts`.
 - [ ] `W03.P08.S49` - Rebuild the filtered-out node state treatment per the binding frame; `frontend/src/scene/field/visibility.ts`.
 - [ ] `W03.P08.S50` - Rebuild the hover-card from the binding graph HoverCard frame 84:2 over the enriched node-evidence query; `frontend/src/app/right/menus/`.
 - [ ] `W03.P08.S51` - Route node selection and hover intent back through the preserved SceneController event channel; `frontend/src/scene/sceneController.ts`.

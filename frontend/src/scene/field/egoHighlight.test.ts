@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { SceneGraphModel } from "../graphModel";
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
-import { RECEDE_ALPHA, computeEgo } from "./egoHighlight";
+import {
+  RECEDE_ALPHA,
+  SELECTED_RING_RECEDE_FLOOR,
+  computeEgo,
+  selectedRingAlpha,
+} from "./egoHighlight";
 
 const node = (id: string): SceneNodeData => ({ id, kind: "feature" });
 const edge = (id: string, src: string, dst: string): SceneEdgeData => ({
@@ -36,5 +41,25 @@ describe("computeEgo", () => {
   it("recede stays a dim, not a hide", () => {
     expect(RECEDE_ALPHA).toBeGreaterThan(0);
     expect(RECEDE_ALPHA).toBeLessThan(0.5);
+  });
+});
+
+describe("selectedRingAlpha — the single persistent selection accent", () => {
+  it("is full when no ego is held (the plain selected state)", () => {
+    expect(selectedRingAlpha(false, false)).toBe(1);
+    expect(selectedRingAlpha(false, true)).toBe(1);
+  });
+
+  it("is full when the selected node is itself the lifted ego", () => {
+    expect(selectedRingAlpha(true, true)).toBe(1);
+  });
+
+  it("holds a legibility floor — never the deep body recede — when outside a held ego", () => {
+    const alpha = selectedRingAlpha(true, false);
+    expect(alpha).toBe(SELECTED_RING_RECEDE_FLOOR);
+    // The selection stays clearly visible: well above the body recede so the
+    // user never loses where their selection is.
+    expect(alpha).toBeGreaterThan(RECEDE_ALPHA);
+    expect(alpha).toBeLessThan(1);
   });
 });
