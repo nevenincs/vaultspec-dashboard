@@ -5,6 +5,7 @@ import type { SceneEdgeData } from "../sceneController";
 import {
   DASHES_PER_EDGE,
   EdgeMeshLayer,
+  SCENE_RULE_FALLBACK,
   UnknownTierError,
   bucketLightness,
   confidenceBucket,
@@ -59,7 +60,10 @@ describe("confidence encoding", () => {
     expect(confidenceBucket(-1)).toBe(0);
   });
 
-  it("carries confidence as lightness toward paper, not transparency", () => {
+  it("carries confidence as lightness toward paper (pure helpers, still data-bearing)", () => {
+    // The confidence→lightness MATH is preserved (the timeline arcs reuse it and
+    // the data still carries confidence), even though the canvas edge stroke no
+    // longer paints it — the Hero redesign flattened the stroke to one grey.
     expect(bucketLightness(3)).toBe(0);
     expect(bucketLightness(0)).toBeCloseTo(0.6);
     const ink = 0x000000;
@@ -67,9 +71,18 @@ describe("confidence encoding", () => {
     expect(faint).not.toBe(ink);
     // Faint is lighter (closer to paper) on every channel.
     expect((faint >> 16) & 0xff).toBeGreaterThan(0);
-    // Full-confidence groups stay at base colour.
-    expect(groupColor("temporal:3")).toBe(0x4a4137);
-    expect(groupColor("temporal:0")).not.toBe(0x4a4137);
+  });
+
+  it("flattens EVERY edge group to the uniform scene-rule grey (Hero redesign)", () => {
+    // The stroke colour no longer varies by tier/state/confidence — only the
+    // geometry partition survives. In the node test env the scene seam returns
+    // the SCENE_RULE_FALLBACK light grey for every key.
+    expect(groupColor("declared")).toBe(SCENE_RULE_FALLBACK);
+    expect(groupColor("temporal:3")).toBe(SCENE_RULE_FALLBACK);
+    expect(groupColor("temporal:0")).toBe(SCENE_RULE_FALLBACK);
+    expect(groupColor("structural:broken")).toBe(SCENE_RULE_FALLBACK);
+    expect(groupColor("semantic:2")).toBe(SCENE_RULE_FALLBACK);
+    expect(groupColor("meta")).toBe(SCENE_RULE_FALLBACK);
   });
 
   it("optional paper arg mixes toward the supplied ground (FG1-02 — dark-mode path)", () => {

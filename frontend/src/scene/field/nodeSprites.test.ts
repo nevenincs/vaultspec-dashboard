@@ -7,8 +7,6 @@ import {
   SELECTED_RING_GAP,
   SELECTED_RING_WIDTH,
   bodyColor,
-  coarseStamp,
-  fineStampMarkId,
   freshnessAlpha,
   lodFor,
   nodeRadius,
@@ -19,7 +17,6 @@ import {
   tierBadgeText,
 } from "./nodeSprites";
 import { categoryColor } from "./categoryColor";
-import { stampFor } from "./statusStamp";
 
 describe("lodFor", () => {
   it("draws silhouette-only below the near threshold", () => {
@@ -151,87 +148,10 @@ describe("tierBadgeText", () => {
   });
 });
 
-// The status-stamp render split (node-visual-richness P03): the COARSE treatment
-// (ring / slash / ghost) shows at far LOD; the FINE treatment (exact severity
-// dot, tier notch) unfolds only at near LOD. These pure selectors are what the
-// render layer maps onto Pixi, so the class→treatment mapping is asserted here
-// GPU-free — exactly the field discipline (nodeRadius/stateColor are tested the
-// same way).
-describe("coarseStamp — the far-LOD status treatment (ring / slash / ghost)", () => {
-  it("affirmed → solid ring, no slash, no ghost", () => {
-    expect(coarseStamp(stampFor({ class: "affirmed" }))).toEqual({
-      ring: "solid",
-      slash: false,
-      ghost: false,
-    });
-  });
-
-  it("provisional → dashed ring", () => {
-    expect(coarseStamp(stampFor({ class: "provisional" })).ring).toBe("dashed");
-  });
-
-  it("negated → slash, no ring (ring:'none' normalizes to undefined)", () => {
-    const c = coarseStamp(stampFor({ class: "negated" }));
-    expect(c.ring).toBeUndefined();
-    expect(c.slash).toBe(true);
-    expect(c.ghost).toBe(false);
-  });
-
-  it("retired → ghost, no ring, no slash", () => {
-    const c = coarseStamp(stampFor({ class: "retired", value: "deprecated" }));
-    expect(c.ghost).toBe(true);
-    expect(c.ring).toBeUndefined();
-    expect(c.slash).toBe(false);
-  });
-
-  it("superseded rule → ghost AND slash (the compound coarse treatment)", () => {
-    const c = coarseStamp(stampFor({ class: "retired", value: "superseded" }));
-    expect(c.ghost).toBe(true);
-    expect(c.slash).toBe(true);
-  });
-
-  it("graded / tiered carry NO coarse mark (their treatment is the fine stamp)", () => {
-    expect(coarseStamp(stampFor({ class: "graded", ordinal: 3 }))).toEqual({
-      ring: undefined,
-      slash: false,
-      ghost: false,
-    });
-    expect(coarseStamp(stampFor({ class: "tiered", ordinal: 2 }))).toEqual({
-      ring: undefined,
-      slash: false,
-      ghost: false,
-    });
-  });
-});
-
-describe("fineStampMarkId — the near-LOD magnitude mark (dot / notch)", () => {
-  it("graded → the severity-dot mark at the exact ordinal", () => {
-    expect(fineStampMarkId(stampFor({ class: "graded", ordinal: 1 }))).toBe(
-      "status-severity-1",
-    );
-    expect(fineStampMarkId(stampFor({ class: "graded", ordinal: 4 }))).toBe(
-      "status-severity-4",
-    );
-  });
-
-  it("tiered → the tier-notch mark at the exact ordinal", () => {
-    expect(fineStampMarkId(stampFor({ class: "tiered", ordinal: 2 }))).toBe(
-      "status-tier-2",
-    );
-    expect(fineStampMarkId(stampFor({ class: "tiered", ordinal: 4 }))).toBe(
-      "status-tier-4",
-    );
-  });
-
-  it("ring / slash / ghost classes carry NO fine mark (the rule of one)", () => {
-    expect(fineStampMarkId(stampFor({ class: "affirmed" }))).toBeNull();
-    expect(fineStampMarkId(stampFor({ class: "negated" }))).toBeNull();
-    expect(
-      fineStampMarkId(stampFor({ class: "retired", value: "archived" })),
-    ).toBeNull();
-  });
-
-  it("a graded node with no magnitude (severityDot 0) carries no fine mark", () => {
-    expect(fineStampMarkId(stampFor({ class: "graded" }))).toBeNull();
-  });
-});
+// Canvas status STAMPS were removed in the Hero redesign (graph/Hero 85:2): the
+// node body is a clean category circle with three states (default / selected /
+// filtered-out), no ring/slash/severity/tier overlay. The status DATA still flows
+// to the hover-card + inspector — that descriptor mapping (`stampFor`) is asserted
+// in `statusStamp.test.ts` and the HoverCard render tests, not on the canvas. The
+// one surviving canvas status treatment is circle-level (the ghost desaturation in
+// `bodyColor`, asserted above).

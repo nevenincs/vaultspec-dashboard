@@ -133,6 +133,7 @@
   --color-ink: #312d27;
   --color-ink-muted: #5f5a53;
   --color-rule: #ebe6e0;
+  --color-scene-rule: #d8d2ca;
   --color-tier-declared: #312d27;
   --color-tier-structural: #3f774d;
   --color-tier-temporal: #5c5040;
@@ -292,6 +293,7 @@
     --color-ink: #312d27;
     --color-ink-muted: #5f5a53;
     --color-rule: #ebe6e0;
+    --color-scene-rule: #d8d2ca;
     --color-tier-declared: #312d27;
     --color-tier-structural: #3f774d;
     --color-tier-temporal: #5c5040;
@@ -339,6 +341,7 @@
     --color-ink: #f4efea;
     --color-ink-muted: #a9a49c;
     --color-rule: #46423b;
+    --color-scene-rule: #3a352e;
     --color-tier-declared: #dbd7d0;
     --color-tier-structural: #5d9d6b;
     --color-tier-temporal: #bdaf9d;
@@ -386,6 +389,7 @@
     --color-ink: #fefcf9;
     --color-ink-muted: #ddd8d2;
     --color-rule: #767069;
+    --color-scene-rule: #8a847c;
     --color-tier-declared: #f7f5f1;
     --color-tier-structural: #63b376;
     --color-tier-temporal: #dacbb9;

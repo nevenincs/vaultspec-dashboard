@@ -1,13 +1,16 @@
-// Tier-treated edge rendering (W01.P03.S11, ADR G3.c and G7.d).
+// Edge rendering (W01.P03.S11, ADR G3.c and G7.d).
 //
-// Four provenance tiers, four fixed line treatments — the product-wide
-// encoding: declared = solid inked line; structural = solid,
-// status-coloured (resolved/stale/broken); temporal = dotted; semantic =
-// soft light "haze" stroke with width by score. Line treatment is the
-// primary channel and hue secondary, so the encoding reads in grayscale;
-// confidence rides LIGHTNESS (mix toward the paper ground), never
-// transparency-only, per the Guo et al. channel-interference findings the
-// ADR cites.
+// EDGE STROKE COLOUR (graph/Hero 85:2, graph/Node-items 83:2 — the binding
+// redesign): every edge draws in ONE uniform thin grey, the --color-scene-rule
+// scene token (literal hex per theme), thin and low-opacity, behind the nodes —
+// matching the Hero's clean rule lines. This SUPERSEDES the prior tier-coloured
+// stroke encoding ON THE CANVAS (Figma is gospel): declared/structural/temporal/
+// semantic no longer paint distinct hues. The tier DATA survives untouched — the
+// model still carries `tier`/`state`/`confidence`, filtering and selection still
+// key off it, and the grouping below still PARTITIONS by tier so each treatment's
+// geometry (dashes / haze quads / meta ribbon) is preserved; only the resolved
+// TINT flattens to the single grey. (Codify follow-up: this deliberately retires
+// the tier-edge colour encoding per the headline-canvas redesign.)
 //
 // Geometry strategy proven by the W01.P01 spike: static topology built per
 // edge-set change, position buffers re-uploaded in place per frame. Solid
@@ -29,27 +32,8 @@ import { cssColorNumber as getCssColor } from "./tokenReads";
 export const EDGE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
 export type EdgeTier = (typeof EDGE_TIERS)[number];
 
-/**
- * Resolve the paper-mix target (canvas background) from the
- * --color-canvas-bg token so low-confidence edges fade toward the actual
- * canvas ground in both light and dark themes.
- */
-function readPaper(): { r: number; g: number; b: number } {
-  const c = getCssColor("--color-canvas-bg", 0xfaf9f7);
-  return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
-}
-
-/** Resolve the four tier base colours from the token layer. */
-function readTierColors(): Record<string, number> {
-  return {
-    declared: getCssColor("--color-tier-declared", 0x3a342c),
-    "structural:resolved": getCssColor("--color-state-active", 0x2f7d4f),
-    "structural:stale": getCssColor("--color-state-stale", 0xa07520),
-    "structural:broken": getCssColor("--color-state-broken", 0xb3502d),
-    temporal: getCssColor("--color-tier-temporal", 0x4a4137),
-    semantic: getCssColor("--color-tier-semantic", 0x7d6f9e),
-  };
-}
+/** Light-mode fallback for the scene rule grey (node test env has no document). */
+export const SCENE_RULE_FALLBACK = 0xd8d2ca;
 
 /** Dash slots per temporal edge — fixed so buffers never resize per frame. */
 export const DASHES_PER_EDGE = 8;
@@ -146,23 +130,16 @@ export function bucketLightness(bucket: number): number {
 }
 
 /**
- * Resolved colour for a group key.  Reads tier colours and the paper-mix
- * target from the CSS token layer so the palette adapts to light/dark themes.
- * In the node test environment both helpers return their hardcoded fallbacks,
- * so existing unit tests see the same values as before.
+ * Resolved stroke colour for a group key — now a SINGLE uniform grey for every
+ * tier (graph/Hero 85:2 binding redesign): the --color-scene-rule scene token,
+ * read as literal hex per theme through the scene token seam. The `key` argument
+ * is retained (the grouping still partitions by tier so each treatment's geometry
+ * survives), but the resolved tint no longer varies by tier/state/confidence —
+ * the canvas edge is one clean grey rule, the way the Hero shows it. In the node
+ * test environment the seam returns the SCENE_RULE_FALLBACK light-mode grey.
  */
-export function groupColor(key: string): number {
-  const tc = readTierColors();
-  const paper = readPaper();
-  if (key === "meta") return mixTowardPaper(tc.declared, 0.35, paper);
-  const [head, sub] = key.split(":");
-  if (head === "structural")
-    return tc[`structural:${sub}`] ?? tc["structural:resolved"];
-  const base = tc[head] ?? tc.declared;
-  if (head === "temporal" || head === "semantic") {
-    return mixTowardPaper(base, bucketLightness(Number(sub)), paper);
-  }
-  return base;
+export function groupColor(_key: string): number {
+  return getCssColor("--color-scene-rule", SCENE_RULE_FALLBACK);
 }
 
 /** Semantic haze half-width from the score (width by score per G3.c). */
@@ -537,9 +514,11 @@ export class EdgeMeshLayer {
     const geometry = new MeshGeometry({ positions, uvs, indices, topology });
     const mesh = new Mesh({ geometry, texture: Texture.WHITE });
     mesh.tint = groupColor(base);
-    // Alpha supports the treatment but never carries confidence alone;
-    // while an ego is lifted, non-lifted groups recede (G3.b).
-    const treatmentAlpha = isSemantic ? 0.45 : 0.8;
+    // Uniform thin grey rule (graph/Hero 85:2): edges sit low-opacity behind the
+    // nodes so the field reads as clean circles on faint connective lines, not a
+    // coloured web. The semantic haze quad stays a touch fainter than the crisp
+    // line tiers; while an ego is lifted, non-lifted groups recede (G3.b).
+    const treatmentAlpha = isSemantic ? 0.3 : 0.45;
     const baseAlpha =
       this.highlight && !lifted ? treatmentAlpha * 0.25 : treatmentAlpha;
     mesh.alpha = baseAlpha;

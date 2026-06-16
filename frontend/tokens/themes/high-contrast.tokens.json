@@ -41,6 +41,7 @@
       "ink": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#fefcf9" } },
       "ink-muted": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ddd8d2" } },
       "rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#767069" } },
+      "scene-rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8a847c" } },
       "tier-declared": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#f7f5f1" } },
       "tier-structural": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#63b376" } },
       "tier-temporal": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#dacbb9" } },

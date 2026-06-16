@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { groupColor } from "./edgeMeshes";
-import { stampColor, stateColor } from "./nodeSprites";
+import { stateColor } from "./nodeSprites";
 import { cssColorNumber } from "./tokenReads";
 
 // Node-category scene-read hex (Figma-canonical, light theme). These drive the
@@ -38,6 +38,8 @@ const SCENE_TOKENS: Record<string, string> = {
   "--color-ink": "#312d27",
   "--color-ink-muted": "#5f5a53",
   "--color-rule": "#ebe6e0",
+  // The uniform grey edge stroke (Hero redesign) — every tier resolves to this.
+  "--color-scene-rule": "#d8d2ca",
   "--color-tier-declared": "#312d27",
   "--color-tier-structural": "#3f774d",
   "--color-tier-temporal": "#5c5040",
@@ -60,6 +62,7 @@ const SCENE_TOKENS: Record<string, string> = {
 const DARK_TOKENS: Record<string, string> = {
   "--color-canvas-bg": "#1a1713",
   "--color-ink-muted": "#a9a49c",
+  "--color-scene-rule": "#3a352e",
   "--color-state-active": "#5d9d6b",
   "--color-state-complete": "#bdaf9d",
   "--color-state-archived": "#74716c",
@@ -83,14 +86,17 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     document.documentElement.removeAttribute("style");
   });
 
-  it("edgeMeshes.groupColor reads tier/state hex from the token layer", () => {
+  it("edgeMeshes.groupColor reads the uniform scene-rule grey for EVERY tier", () => {
     applyTokens(SCENE_TOKENS);
-    // declared edge resolves to the declared tier token verbatim.
-    expect(groupColor("declared")).toBe(hexToNum("#312d27"));
-    // structural:resolved edge resolves to state-active.
-    expect(groupColor("structural:resolved")).toBe(hexToNum("#3f774d"));
-    // structural:broken edge resolves to state-broken.
-    expect(groupColor("structural:broken")).toBe(hexToNum("#ae4024"));
+    // The Hero redesign flattened the edge stroke: every group key resolves to
+    // the single --color-scene-rule grey, not a per-tier/state hue.
+    const grey = hexToNum("#d8d2ca");
+    expect(groupColor("declared")).toBe(grey);
+    expect(groupColor("structural:resolved")).toBe(grey);
+    expect(groupColor("structural:broken")).toBe(grey);
+    expect(groupColor("temporal:3")).toBe(grey);
+    expect(groupColor("semantic:0")).toBe(grey);
+    expect(groupColor("meta")).toBe(grey);
   });
 
   it("nodeSprites.stateColor reads ALL FIVE lifecycle states as hex (HIGH-1)", () => {
@@ -106,34 +112,9 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     expect(stateColor(undefined)).toBe(hexToNum("#5f5a53"));
   });
 
-  it("nodeSprites.stampColor reads each --color-status-* token as literal hex", () => {
-    applyTokens(SCENE_TOKENS);
-    // affirmed / retired / negated REUSE the --color-state-* tokens via
-    // stampToken; provisional / graded / tiered are the new status tokens. Each
-    // must resolve to its literal hex through the same getCssColor seam the
-    // state tokens use (the HIGH-1 literal-hex contract: an oklch() value would
-    // silently fall through to the muted-ink fallback).
-    expect(stampColor({ id: "a", kind: "adr", status: { class: "affirmed" } })).toBe(
-      hexToNum("#3f774d"),
-    );
-    expect(stampColor({ id: "b", kind: "rule", status: { class: "retired" } })).toBe(
-      hexToNum("#898581"),
-    );
-    expect(stampColor({ id: "c", kind: "adr", status: { class: "negated" } })).toBe(
-      hexToNum("#898581"),
-    );
-    expect(stampColor({ id: "d", kind: "adr", status: { class: "provisional" } })).toBe(
-      hexToNum("#806a44"),
-    );
-    expect(
-      stampColor({ id: "e", kind: "audit", status: { class: "graded", ordinal: 3 } }),
-    ).toBe(hexToNum("#9f7100"));
-    expect(
-      stampColor({ id: "f", kind: "plan", status: { class: "tiered", ordinal: 2 } }),
-    ).toBe(hexToNum("#5c5040"));
-    // A node with no status falls back to muted ink, read from the token layer.
-    expect(stampColor({ id: "g", kind: "code" })).toBe(hexToNum("#5f5a53"));
-  });
+  // (The canvas status-stamp tint reader `stampColor` was retired with the
+  // on-canvas stamps in the Hero redesign; the status tint now lives only in the
+  // hover-card, exercised by the HoverCard render tests + statusStamp.test.ts.)
 
   it("cssColorNumber resolves each scene-read node-category token as literal hex", () => {
     applyTokens(CATEGORY_TOKENS);
@@ -151,7 +132,8 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
     // which calls getComputedStyle on every read, picks up the new hex.
     applyTokens(DARK_TOKENS);
     expect(stateColor({ state: "active" } as never)).toBe(hexToNum("#5d9d6b"));
-    expect(groupColor("structural:broken")).toBe(hexToNum("#e37f65"));
+    // The edge grey re-resolves to the dark scene-rule hex on the theme flip.
+    expect(groupColor("structural:broken")).toBe(hexToNum("#3a352e"));
   });
 
   it("complete + archived resolve to the DARK hex after a theme flip (HIGH-1)", () => {

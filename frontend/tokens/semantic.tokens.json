@@ -50,6 +50,7 @@
       "ink": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#312d27" }, "$extensions": { "com.vaultspec.css": { "var": "--color-ink", "emit": "hex" } } },
       "ink-muted": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5f5a53" }, "$extensions": { "com.vaultspec.css": { "var": "--color-ink-muted", "emit": "hex" } } },
       "rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ebe6e0" }, "$extensions": { "com.vaultspec.css": { "var": "--color-rule", "emit": "hex" } } },
+      "scene-rule": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#d8d2ca" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-rule", "emit": "hex" } } },
       "tier-declared": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#312d27" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-declared", "emit": "hex" } } },
       "tier-structural": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#3f774d" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-structural", "emit": "hex" } } },
       "tier-temporal": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#5c5040" }, "$extensions": { "com.vaultspec.css": { "var": "--color-tier-temporal", "emit": "hex" } } },

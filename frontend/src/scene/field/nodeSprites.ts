@@ -10,18 +10,31 @@
 // on the canvas, size carries salience, the ring carries selection.
 //
 // LOD discipline is the anti-hairball rule: the zoomed-out field draws the
-// coloured circle (+ any coarse status stamp); full anatomy (progress ring,
-// tier badges, label) renders only above the near-zoom threshold and for focused
-// nodes. Scene-layer module: framework-free.
+// coloured circle; full anatomy (progress ring, tier badges, label) renders only
+// above the near-zoom threshold and for focused nodes. Scene-layer module:
+// framework-free.
+//
+// STATUS STAMPS REMOVED FROM THE CANVAS (graph/Hero 85:2, graph/Node-items 83:2
+// binding redesign): the node-visual-richness status STAMP overlays — the coarse
+// ring/slash and the fine severity-dot / tier-notch glyphs drawn around the disc —
+// no longer render on the canvas. The Hero shows clean category circles with
+// exactly three states (default / selected accent ring / filtered-out fade), no
+// stamp marks. The status DATA and its projection survive untouched (the hover-
+// card and inspector still read `node.status` via statusStamp.ts and show the
+// status pill); only the on-canvas stamp draw is gone. The single CIRCLE-LEVEL
+// retired treatment is kept (a ghost node desaturates its disc to the archived
+// neutral and dims to the ghost floor — that is a property of the circle, matching
+// the Hero's "filtered-out/archived" look, not a stamp overlay). (Codify follow-
+// up: this deliberately retires node-visual-richness's CANVAS status stamps.)
 
-import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Container, Graphics, Text, Texture } from "pixi.js";
 
 import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
 import { categoryColor } from "./categoryColor";
 import { RECEDE_ALPHA } from "./egoHighlight";
 import { drawProgressRing } from "./progressRing";
-import { type StampDescriptor, stampFor, stampToken } from "./statusStamp";
+import { stampFor } from "./statusStamp";
 import { cssColorNumber as getCssColor } from "./tokenReads";
 
 // --- pure anatomy helpers (unit-tested; rendering maps these) ---------------
@@ -60,61 +73,16 @@ export function stateColor(lifecycle?: SceneNodeData["lifecycle"]): number {
   return readStateColors()[lifecycle.state] ?? defaultColor;
 }
 
-// --- status stamp (node-visual-richness P03) ----------------------------------
+// --- retired-status circle treatment (node-visual-richness, canvas-reduced) ---
 //
-// The rule of one: exactly ONE status treatment per node at field LOD. Type
-// stays on the silhouette (the glyph), salience on size, and status is the one
-// stamp — a grayscale-safe SHAPE (ring weight / ghost dim / slash / severity dot
-// / tier notch). Tint (read through the SAME getCssColor seam as state colour)
-// only ever REINFORCES the shape; it is never the load-bearing channel.
+// The canvas no longer draws status STAMP overlays (graph/Hero binding redesign).
+// The one status treatment that survives on the canvas is CIRCLE-LEVEL: a ghost
+// (retired/archived/superseded) node desaturates its disc to the archived neutral
+// (`bodyColor`) and dims to this floor — matching the Hero's filtered-out/archived
+// look. The full status (severity/tier/value) reads in the hover-card + inspector.
 
-/** Alpha floor a ghosted (retired/archived/superseded) silhouette dims to. */
+/** Alpha floor a ghosted (retired/archived/superseded) node disc dims to. */
 export const GHOST_ALPHA = 0.4;
-
-/** Resolve the reinforcing stamp tint for a descriptor's class, through the
- *  same CSS-token seam state colour uses (literal hex per theme; the node test
- *  env sees the muted-ink fallback). */
-export function stampColor(node: SceneNodeData): number {
-  const token = stampToken(node.status?.class);
-  return getCssColor(token, getCssColor("--color-ink-muted", 0x6a6258));
-}
-
-/**
- * The COARSE status treatment — what shows at FAR LOD (and near): the outline
- * ring (solid/dashed), the slash, and the ghost flag. These read as a single
- * silhouette-level mark without needing the exact magnitude. `none`/absent ring
- * is normalized to undefined so the caller draws nothing.
- */
-export interface CoarseStamp {
-  ring?: "solid" | "dashed";
-  slash: boolean;
-  ghost: boolean;
-}
-
-export function coarseStamp(stamp: StampDescriptor): CoarseStamp {
-  return {
-    ring: stamp.ring && stamp.ring !== "none" ? stamp.ring : undefined,
-    slash: stamp.slash,
-    ghost: stamp.ghost,
-  };
-}
-
-/**
- * The FINE status treatment — what unfolds only at NEAR LOD / focus: the exact
- * severity-dot fill level (graded 1..4) and the exact tier-notch step
- * (tiered 1..4). Returns the mark id to rasterize through the glyph provider, or
- * null when the descriptor carries no fine magnitude. The two are mutually
- * exclusive (a node is graded OR tiered, never both — the rule of one).
- */
-export function fineStampMarkId(stamp: StampDescriptor): string | null {
-  if (stamp.severityDot && stamp.severityDot >= 1) {
-    return `status-severity-${stamp.severityDot}`;
-  }
-  if (stamp.tierNotch && stamp.tierNotch >= 1) {
-    return `status-tier-${stamp.tierNotch}`;
-  }
-  return null;
-}
 
 /** Freshness halo decay: 1 at modification, cooling to a floor over 30 days. */
 export const FRESHNESS_WINDOW_MS = 30 * 24 * 3600 * 1000;
@@ -269,15 +237,8 @@ interface NodeVisual {
    * Null otherwise.
    */
   ring: Graphics | null;
-  /**
-   * The COARSE status stamp (node-visual-richness P03): the outline ring +
-   * slash drawn just outside the body. Rendered at ALL LOD (the coarse treatment
-   * survives the far field), so it lives beside the body, not inside the
-   * near-only anatomy. Null when the node carries no ring/slash stamp.
-   */
-  stamp: Graphics | null;
-  /** Lazily built full anatomy (ring, badges, label, fine status dot/notch) —
-   *  near LOD only. */
+  /** Lazily built full anatomy (progress ring, tier badges, label) — near LOD
+   *  only. Carries no status stamp (the canvas stamp was retired). */
   anatomy: Container | null;
   /** The label Text within the anatomy, kept for DOI label-priority culling. */
   label: Text | null;
@@ -304,14 +265,16 @@ export function ambientLabelFloor(scale: number): number {
 export class NodeSpriteLayer {
   private container = new Container();
   private visuals = new Map<string, NodeVisual>();
-  private glyphs: GlyphTextureProvider;
   private focused = new Set<string>();
   /** The currently selected node ids (graph/Node-items "selected"): each draws
    *  the concentric accent ring. Driven by the `set-selected` seam command. */
   private selected = new Set<string>();
 
-  constructor(world: Container, glyphs: GlyphTextureProvider) {
-    this.glyphs = glyphs;
+  // The node body is a category-coloured Graphics circle (Hero redesign), and the
+  // canvas no longer draws status-mark glyphs, so the layer needs no glyph texture
+  // provider. The `GlyphTextureProvider` seam is retained (chrome/legend/hover-card
+  // marks still use it via the React MarkById path), just not consumed here.
+  constructor(world: Container) {
     world.addChild(this.container);
   }
 
@@ -328,7 +291,6 @@ export class NodeSpriteLayer {
           node,
           body,
           ring: null,
-          stamp: null,
           anatomy: null,
           label: null,
           drawnRadius: -1,
@@ -351,12 +313,10 @@ export class NodeSpriteLayer {
         if (visual.ring) this.drawRing(visual);
       }
       visual.body.alpha = freshnessAlpha(node.dates?.modified, now);
-      // The status stamp is the SINGLE status treatment (rule of one): a ghost
-      // node desaturates to the retired/archived token (handled in bodyColor)
-      // and dims to the ghost floor (refresh's alpha math); every other class
-      // keeps its category hue. Status rides the stamp, never the body colour.
-      const stamp = stampFor(node.status);
-      this.rebuildStamp(visual, stamp);
+      // Status no longer draws a stamp overlay on the canvas (Hero redesign):
+      // the only surviving canvas treatment is the circle-level ghost desaturation
+      // + dim (bodyColor + the refresh alpha math). Full status reads in the
+      // hover-card / inspector. Category hue otherwise carries the disc.
       this.syncRing(visual);
       if (visual.anatomy) this.rebuildAnatomy(visual);
     }
@@ -364,7 +324,6 @@ export class NodeSpriteLayer {
       if (!seen.has(id)) {
         visual.body.destroy();
         visual.ring?.destroy();
-        visual.stamp?.destroy();
         visual.anatomy?.destroy({ children: true });
         this.visuals.delete(id);
       }
@@ -385,9 +344,9 @@ export class NodeSpriteLayer {
     const want = this.selected.has(visual.node.id);
     if (want && !visual.ring) {
       const ring = new Graphics();
-      // The ring sits ABOVE the body but BELOW the coarse stamp/anatomy in z;
-      // adding it to the container puts it on top of bodies added earlier — its
-      // own body is added first, so the ring reads as a halo around its disc.
+      // The ring sits ABOVE the body but BELOW the anatomy in z; adding it to the
+      // container puts it on top of bodies added earlier — its own body is added
+      // first, so the ring reads as a halo around its disc.
       this.container.addChild(ring);
       ring.position.copyFrom(visual.body.position);
       visual.ring = ring;
@@ -417,7 +376,6 @@ export class NodeSpriteLayer {
       if (!p) continue;
       visual.body.position.set(p.x, p.y);
       visual.ring?.position.set(p.x, p.y);
-      visual.stamp?.position.set(p.x, p.y);
       visual.anatomy?.position.set(p.x, p.y);
     }
   }
@@ -478,7 +436,6 @@ export class NodeSpriteLayer {
       // (so a non-ego selection still dims with its body) but never the ghost
       // floor (a selected retired node still shows a clear ring).
       if (visual.ring) visual.ring.alpha = recede;
-      if (visual.stamp) visual.stamp.alpha = recede * ghost;
       if (visual.anatomy) visual.anatomy.alpha = recede;
     }
   }
@@ -505,10 +462,6 @@ export class NodeSpriteLayer {
         visual.ring.alpha = p;
         visual.ring.scale.set(0.6 + 0.4 * p);
       }
-      if (visual.stamp) {
-        visual.stamp.visible = p > 0;
-        visual.stamp.alpha = p * ghost;
-      }
       if (visual.anatomy) {
         visual.anatomy.visible = visual.anatomy.visible && p > 0;
         visual.anatomy.alpha = p;
@@ -529,53 +482,6 @@ export class NodeSpriteLayer {
   destroy(): void {
     this.container.destroy({ children: true });
     this.visuals.clear();
-  }
-
-  // --- status stamp construction (coarse: ring + slash, all LOD) --------------
-
-  /**
-   * (Re)build the COARSE status stamp — the outline ring (solid/dashed) just
-   * outside the silhouette and the slash diagonal — as a `Graphics` beside the
-   * sprite so it survives the far field (the coarse treatment is LOD-stable).
-   * The fine severity-dot / tier-notch unfolds only at near LOD in the anatomy.
-   * Tint reinforces through the stampColor seam; shape carries. A descriptor
-   * with no coarse mark (a bare graded/tiered/affirmed-without-ring node) tears
-   * down any existing stamp and draws nothing.
-   */
-  private rebuildStamp(visual: NodeVisual, stamp: StampDescriptor): void {
-    const coarse = coarseStamp(stamp);
-    if (!coarse.ring && !coarse.slash) {
-      visual.stamp?.destroy();
-      visual.stamp = null;
-      return;
-    }
-    let g = visual.stamp;
-    if (!g) {
-      g = new Graphics();
-      this.container.addChild(g);
-      g.position.copyFrom(visual.body.position);
-      visual.stamp = g;
-    } else {
-      g.clear();
-    }
-    const color = stampColor(visual.node);
-    const r = nodeRadius(visual.node) + 2;
-    if (coarse.ring === "solid") {
-      g.circle(0, 0, r).stroke({ width: 1.5, color });
-    } else if (coarse.ring === "dashed") {
-      // A dashed ring as eight round-capped arc segments (Pixi has no native
-      // dash): the segmented silhouette reads "provisional" by shape alone.
-      const seg = (2 * Math.PI) / 8;
-      for (let i = 0; i < 8; i += 2) {
-        const a0 = -Math.PI / 2 + i * seg;
-        g.arc(0, 0, r, a0, a0 + seg).stroke({ width: 1.5, color });
-      }
-    }
-    if (coarse.slash) {
-      // A bold single diagonal strike-through (negated / superseded).
-      const d = r + 1;
-      g.moveTo(-d, d).lineTo(d, -d).stroke({ width: 2, color });
-    }
   }
 
   // --- anatomy construction ---------------------------------------------------
@@ -620,26 +526,10 @@ export class NodeSpriteLayer {
       badgeText.position.set(ringRadius + 2, -ringRadius);
       anatomy.addChild(badgeText);
     }
-    // The FINE status stamp (node-visual-richness P03): the exact severity-dot
-    // fill level (graded) and tier-notch step (tiered) unfold ONLY here at near
-    // LOD / focus — the coarse ring/slash already showed in the far field. Drawn
-    // through the glyph provider's textureForMark so the gate-cleared status
-    // marks render as a small positioned, tinted sprite. Severity sits at ~4-5
-    // o'clock, tier at ~7-8 o'clock (mutually exclusive by the rule of one).
-    const fineMark = fineStampMarkId(stampFor(node.status));
-    if (fineMark && this.glyphs.textureForMark) {
-      const dot = new Sprite(this.glyphs.textureForMark(fineMark));
-      dot.anchor.set(0.5);
-      const size = Math.max(6, nodeRadius(node) * 0.9);
-      dot.setSize(size, size);
-      dot.tint = stampColor(node);
-      const isSeverity = fineMark.startsWith("status-severity");
-      // 4-5 o'clock (down-right) for severity; 7-8 o'clock (down-left) for tier.
-      const angle = isSeverity ? Math.PI / 4 : (3 * Math.PI) / 4;
-      const dist = nodeRadius(node) + size * 0.5;
-      dot.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist);
-      anatomy.addChild(dot);
-    }
+    // Status no longer draws a fine severity-dot / tier-notch stamp on the canvas
+    // (Hero redesign): the exact severity/tier magnitude reads in the hover-card
+    // and inspector. The near-LOD anatomy carries only the progress ring, the tier
+    // degree badges, and the label.
     // The label sits BELOW the circle in the scene ink-muted token at the small
     // meta size (graph/Hero: "Research notes" / "Clock decision" — ink-muted,
     // ~9.5px). Hub/high-salience labels read slightly louder via ink — but the
