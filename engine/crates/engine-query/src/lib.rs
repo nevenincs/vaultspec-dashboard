@@ -77,6 +77,7 @@ mod tests {
     }
 }
 
+pub mod embeddings;
 pub mod envelope;
 pub mod events;
 pub mod filter;

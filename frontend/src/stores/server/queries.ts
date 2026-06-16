@@ -24,6 +24,7 @@ import type {
   ContentResponse,
   ContentTruncated,
   DiscoverResponse,
+  EmbeddingsResponse,
   EngineEdge,
   EngineStatus,
   GitFileDiff,
@@ -114,6 +115,21 @@ export const engineKeys = {
       // a lens switch is a re-query, a focus change runs a warm-started PPR pass):
       // two lenses/focuses carry different salience and must not share a cache
       // entry. Defaulted so the omitted case is the status-lens, no-focus key.
+      lens ?? DEFAULT_SALIENCE_LENS,
+      focus ?? "none",
+    ] as const,
+  // The dedicated bounded embedding read (graph-semantic-embeddings ADR D2):
+  // keyed by (scope, lens, focus) — the SAME DOI selection unit `/graph/query`
+  // uses, so the embedding set aligns with the served constellation node set.
+  // Fetched LAZILY only on entering semantic mode (the hook's `enabled` gate),
+  // and invalidated on a generation bump by the same `graph-embeddings` subtree
+  // sweep the watcher rebuild drives — so a re-index re-fetches fresh vectors
+  // (full re-fetch per generation for v1, ADR D8) rather than diffing stale ones.
+  graphEmbeddings: (scope: string, lens?: SalienceLens, focus?: string | null) =>
+    [
+      ...engineKeys.all,
+      "graph-embeddings",
+      scope,
       lens ?? DEFAULT_SALIENCE_LENS,
       focus ?? "none",
     ] as const,
@@ -342,6 +358,10 @@ export function useSwapWorkspace() {
     // swap either (dashboard-code-tree per-scope cache): drop the whole subtree.
     queryClient.removeQueries({ queryKey: [...engineKeys.all, "file-tree"] });
     queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph"] });
+    // The lazily-fetched semantic embeddings are per-scope too (graph-semantic-
+    // embeddings ADR): drop the prior project's vectors so the swap never serves
+    // a stale meaning constellation.
+    queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph-embeddings"] });
     // (3) durably persist the active-workspace selection AND the new active
     // scope (the new project's default worktree) in one config write. Persisting
     // the workspace alone left the served/persisted active_scope dangling on the
@@ -366,6 +386,9 @@ export function useSwapWorkspace() {
         queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "vault-tree"] });
         queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "file-tree"] });
         queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
+        queryClient.invalidateQueries({
+          queryKey: [...engineKeys.all, "graph-embeddings"],
+        });
         return res;
       });
   };
@@ -579,6 +602,100 @@ export function useSalienceSliceView(
   // scene on a focus change.
   const loading = scope !== null && (slice.isPending || slice.isFetching);
   return deriveSalienceSliceView(lens, slice.data, slice.error, loading);
+}
+
+// --- semantic embeddings (graph-semantic-embeddings ADR) ---------------------
+//
+// `GET /graph/embeddings` is the dedicated bounded embedding read. It is fetched
+// LAZILY only on entering semantic mode (the `enabled` gate, ADR D2) and cached
+// per generation (the watcher's gap-driven invalidation re-fetches on a
+// generation bump, ADR D8). The scene is a dumb consumer: it reads the
+// interpreted view below, never `engineClient.graphEmbeddings` or the raw `tiers`
+// block. Semantic availability is read from the `tiers` block (ADR D7 /
+// degradation-is-read-from-tiers), with FRESH error tiers winning over a stale
+// held-success block, never from a bare fetch rejection — so the scene draws the
+// honest fallback ring rather than flapping offline on a transport blip.
+
+/** The interpreted semantic-embeddings view the scene consumes: loading /
+ *  unavailable / the embeddings keyed by node id. `unavailable` is a DESIGNED
+ *  state (rag/Qdrant down → the semantic tier reports unavailable), never an
+ *  anonymous error; the scene rings every node in the honest fallback. */
+export interface SemanticEmbeddingsView {
+  /** The embedding read is in flight with no held vectors. */
+  loading: boolean;
+  /**
+   * Designed degradation: the semantic tier is unavailable (rag/Qdrant down).
+   * Read from the served `tiers` block (success OR a tiers-bearing error
+   * envelope, fresh error winning), NEVER from a bare transport fault. When true
+   * the scene draws the fallback ring as honest absence.
+   */
+  unavailable: boolean;
+  /** The served vectors keyed by node id — the scene merges these onto its nodes
+   *  for the UMAP projection. Empty while loading/unavailable. */
+  embeddings: Map<string, number[]>;
+  /** The graph generation the held vectors were read at (the cache key); 0 when
+   *  none held yet. */
+  generation: number;
+}
+
+const SEMANTIC_TIER = "semantic";
+
+/**
+ * Derive the semantic-embeddings view from the embedding query's data + error +
+ * pending flags, reading the `semantic` tier ONLY here in the stores layer so the
+ * scene consumes interpreted truth, never the raw `tiers` block. A served block
+ * (success or a tiers-bearing error envelope, fresh error winning via
+ * `tiersFromQuery`) marking `semantic` unavailable degrades; a tiers-less
+ * transport fault is NOT rendered as unavailable here — that is the query's error
+ * state. The embeddings are keyed by node id for the scene's per-node merge.
+ */
+export function deriveSemanticEmbeddingsView(
+  data: EmbeddingsResponse | undefined,
+  error: unknown,
+  loading: boolean,
+  enabled: boolean,
+): SemanticEmbeddingsView {
+  if (!enabled) {
+    return { loading: false, unavailable: false, embeddings: new Map(), generation: 0 };
+  }
+  const tiers = tiersFromQuery({ data, error });
+  const semantic = tiers?.[SEMANTIC_TIER];
+  const unavailable = semantic !== undefined && semantic.available === false;
+  const embeddings = new Map<string, number[]>();
+  if (!unavailable && data) {
+    for (const e of data.embeddings) embeddings.set(e.node_id, e.vector);
+  }
+  return { loading, unavailable, embeddings, generation: data?.generation ?? 0 };
+}
+
+/**
+ * Stores hook: the lazy per-generation semantic embedding read for the active
+ * scope, enabled ONLY when semantic mode is entered (`enabled`). Returns the
+ * interpreted view (loading / unavailable from tiers / the node-id-keyed
+ * vectors) so the scene consumes derived truth instead of fetching itself
+ * (dashboard-layer-ownership). The lens + focus align the embedding set with the
+ * constellation's served node set. `retry: false` so a rag-down read surfaces
+ * immediately as the designed fallback state rather than after backoff.
+ */
+export function useGraphEmbeddings(
+  scope: string | null,
+  enabled: boolean,
+  lens?: SalienceLens,
+  focus?: string | null,
+): SemanticEmbeddingsView {
+  const active = scope !== null && enabled;
+  const query = useQuery({
+    queryKey: engineKeys.graphEmbeddings(scope ?? "", lens, focus),
+    queryFn: () => engineClient.graphEmbeddings({ scope: scope!, lens, focus }),
+    enabled: active,
+    retry: false,
+  });
+  return deriveSemanticEmbeddingsView(
+    query.data,
+    query.error ?? null,
+    active && query.isPending,
+    active,
+  );
 }
 
 /**

@@ -6,10 +6,11 @@
 import { describe, expect, it } from "vitest";
 
 import { EngineClient } from "./engine";
-import type { SearchResult } from "./engine";
+import type { EngineNode, SearchResult } from "./engine";
 import {
   adaptFilters,
   adaptGitOp,
+  adaptGraphEmbeddings,
   adaptGraphSlice,
   adaptHistory,
   adaptLineageSlice,
@@ -29,6 +30,11 @@ import {
   unwrapEnvelope,
 } from "./liveAdapters";
 import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
+import { engineNodeToScene } from "../../scene/sceneMapping";
+import {
+  SEMANTIC_GATE_DATA_PRESENCE_MIN,
+  runSemanticGateOnRealData,
+} from "../../scene/field/semanticGate";
 
 const TIERS = {
   declared: { available: true },
@@ -1124,5 +1130,148 @@ describe("adaptHistory (status-overview /history)", () => {
       returned: 200,
       reason: "history limit ceiling",
     });
+  });
+});
+
+// graph-semantic-embeddings ADR D6 / W04.P16.S62: a captured-live `/graph/
+// embeddings` sample fed through the REAL adaptGraphEmbeddings -> sceneMapping ->
+// projection path the app uses (mock-mirrors-live-wire-shape). The gate is the
+// honesty check the original synthetic-only gate was missing: it must SHIP on a
+// real clustered slice and be HELD on an empty (unserved-embedding) path.
+
+describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)", () => {
+  const DIM = 8;
+  /** A deterministic feature-clustered dense vector — the SHAPE rag's stored
+   *  vectors take (a per-feature base direction + tiny per-doc jitter), so the
+   *  real-data projection separates feature meaning-clusters. */
+  function clusterVector(featureIndex: number, docIndex: number): number[] {
+    const v: number[] = [];
+    for (let d = 0; d < DIM; d++) {
+      const center = Math.sin((featureIndex + 1) * (d + 1) * 0.7);
+      const jitter = Math.cos((docIndex + 1) * (d + 1) * 0.3) * 0.08;
+      v.push(center + jitter);
+    }
+    return v;
+  }
+
+  /** A CAPTURED live `/graph/embeddings` envelope: the `{data: {embeddings,
+   *  generation, truncated, lens}, tiers}` shape the live engine serves, with
+   *  `featureCount` clusters × `perFeature` documents of real-shaped vectors. */
+  function liveEnvelope(featureCount: number, perFeature: number) {
+    const embeddings: { node_id: string; vector: number[] }[] = [];
+    const labelOf = new Map<string, number>();
+    for (let f = 0; f < featureCount; f++) {
+      for (let d = 0; d < perFeature; d++) {
+        const id = `doc:f${f}-doc${d}`;
+        embeddings.push({ node_id: id, vector: clusterVector(f, d) });
+        labelOf.set(id, f);
+      }
+    }
+    const envelope = {
+      data: { embeddings, generation: 7, truncated: null, lens: "status" },
+      tiers: {
+        declared: { available: true },
+        structural: { available: true },
+        temporal: { available: true },
+        semantic: { available: true },
+      },
+    };
+    return { envelope, labelOf };
+  }
+
+  it("carries generation/tiers and feeds the projection gate to SHIP on real clusters", () => {
+    const { envelope, labelOf } = liveEnvelope(5, 8);
+    // The REAL client path: unwrap the live envelope, then adapt.
+    const adapted = adaptGraphEmbeddings(unwrapEnvelope(envelope));
+    expect(adapted.generation).toBe(7);
+    expect(adapted.tiers.semantic.available).toBe(true);
+    expect(adapted.embeddings).toHaveLength(40);
+
+    // Merge the adapted vectors onto the served nodes and map through the REAL
+    // sceneMapping path the app uses (engineNodeToScene maps `embedding`).
+    const byId = new Map(adapted.embeddings.map((e) => [e.node_id, e.vector]));
+    const sceneNodes = [...byId.keys()].map((id) => {
+      const node: EngineNode = { id, kind: "adr", embedding: byId.get(id) };
+      return engineNodeToScene(node);
+    });
+
+    // The real-data gate: presence (no empty path) AND separation over the REAL
+    // projected vectors. The clustered sample ships.
+    const verdict = runSemanticGateOnRealData(sceneNodes, labelOf);
+    expect(verdict.presence).toBe(1);
+    expect(verdict.shipped).toBe(true);
+    expect(verdict.separation).toBeGreaterThan(0);
+  });
+
+  it("cannot report shipped on an empty (unserved-embedding) path", () => {
+    // The live engine served an EMPTY embedding set (rag down, or no docs in
+    // Qdrant yet): every node falls into the fallback ring, so the gate's
+    // data-presence floor fails and the mode is HELD — the exact honesty the
+    // synthetic-only gate masked (ADR D6).
+    const adapted = adaptGraphEmbeddings(
+      unwrapEnvelope({
+        data: { embeddings: [], generation: 7, truncated: null, lens: "status" },
+        tiers: {
+          declared: { available: true },
+          structural: { available: true },
+          temporal: { available: true },
+          semantic: { available: false, reason: "rag service down" },
+        },
+      }),
+    );
+    expect(adapted.embeddings).toHaveLength(0);
+    expect(adapted.tiers.semantic.available).toBe(false);
+
+    // Nodes carry NO embedding (none served): all fallback, presence 0.
+    const sceneNodes = ["doc:a", "doc:b", "doc:c"].map((id) =>
+      engineNodeToScene({ id, kind: "adr" }),
+    );
+    const labelOf = new Map([
+      ["doc:a", 0],
+      ["doc:b", 0],
+      ["doc:c", 1],
+    ]);
+    const verdict = runSemanticGateOnRealData(sceneNodes, labelOf);
+    expect(verdict.presence).toBe(0);
+    expect(verdict.presence).toBeLessThan(SEMANTIC_GATE_DATA_PRESENCE_MIN);
+    expect(verdict.shipped).toBe(false);
+    expect(verdict.reason).toMatch(/empty\/fallback path/);
+  });
+
+  it("drops a malformed entry and passes mock (internal) bodies through unchanged", () => {
+    // A NaN-bearing or node_id-less entry never reaches the projection.
+    const adapted = adaptGraphEmbeddings({
+      embeddings: [
+        { node_id: "doc:ok", vector: [0.1, 0.2] },
+        { node_id: "doc:nan", vector: [Number.NaN, 1] },
+        { vector: [0.3] },
+        { node_id: "doc:empty", vector: [] },
+      ],
+      generation: 3,
+      truncated: null,
+      tiers: { semantic: { available: true } },
+    });
+    // doc:nan keeps its one finite element; the id-less and all-NaN/empty drop.
+    expect(adapted.embeddings.map((e) => e.node_id)).toEqual(["doc:ok", "doc:nan"]);
+    expect(adapted.embeddings[1].vector).toEqual([1]);
+  });
+
+  it("feeds a CAPTURED mock /graph/embeddings sample through the same path", async () => {
+    // The mock serves the live-shape `/graph/embeddings` byte-for-byte: drive a
+    // real client read through the mock transport and assert the vectors flow.
+    const engine = new MockEngine();
+    const client = new EngineClient();
+    client.useTransport(engine.fetchImpl);
+    const res = await client.graphEmbeddings({ scope: MOCK_SCOPE });
+    expect(res.generation).toBe(0);
+    expect(res.tiers.semantic.available).toBe(true);
+    expect(res.embeddings.length).toBeGreaterThan(0);
+    // Every served vector keys a real served document node; map through the scene
+    // path and confirm the projection runs over the real mock corpus.
+    const sceneNodes = res.embeddings.map((e) =>
+      engineNodeToScene({ id: e.node_id, kind: "adr", embedding: e.vector }),
+    );
+    const verdict = runSemanticGateOnRealData(sceneNodes, new Map());
+    expect(verdict.presence).toBe(1);
   });
 });

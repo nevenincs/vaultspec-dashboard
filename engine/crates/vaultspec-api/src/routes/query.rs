@@ -537,6 +537,170 @@ pub async fn graph_query_route(
     ))
 }
 
+// --- GET /graph/embeddings?scope= -------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct EmbeddingsParams {
+    pub scope: String,
+    /// The active salience lens (kept consistent with `/graph/query`'s DOI
+    /// selection so the embedding set matches the served node set, ADR D2 / open
+    /// question). Defaults to status when omitted.
+    #[serde(default)]
+    pub lens: Option<String>,
+    /// The DOI focus node id, folded into the same salience ordering
+    /// `/graph/query` uses so the bounded embedding slice aligns with the bounded
+    /// constellation slice.
+    #[serde(default)]
+    pub focus: Option<String>,
+}
+
+/// The wall-clock deadline on the Qdrant embedding scroll (subprocess-calls-carry
+/// -cap-and-timeout HTTP-read analog, ADR open question): the read inherits the
+/// transport's `MAX_RAG_BODY` byte cap AND this deadline, so a stalled or runaway
+/// Qdrant cannot hang or OOM the engine. A breach degrades the semantic tier
+/// (no vectors), never blocks the request.
+const EMBEDDING_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The dedicated bounded embedding route (graph-semantic-embeddings ADR D2): the
+/// stored rag dense vectors for the SERVED document node set, keyed by node id,
+/// as raw float32 JSON `number[]` (ADR D3 — no server-side reduction, ADR D4),
+/// capped at `MAX_GRAPH_NODES` with an honest `truncated` block, stamped with the
+/// graph generation it was read at (ADR D8 — so the client caches per generation;
+/// the embedding enters no node/edge stable key). Built through the shared
+/// envelope helper so success AND the rag-down degradation both carry the tiers
+/// block (every-wire-response-carries-the-tiers-block). NEVER inline on
+/// `/graph/query` — semantic is the non-default mode; the 99% of queries pay no
+/// embedding tax (ADR D2). The stores layer fetches this LAZILY only on entering
+/// semantic mode and reads semantic availability from the tiers block (ADR D7).
+pub async fn graph_embeddings(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<EmbeddingsParams>,
+) -> ApiResult {
+    let cell = validate_scope(&state, &params.scope)?;
+    let lens = parse_lens(&state, params.lens.as_deref())?;
+    let graph = cell.graph_arc();
+    let generation = cell.generation.load(std::sync::atomic::Ordering::SeqCst);
+
+    // The SERVED document node set, selected EXACTLY as `/graph/query` selects it
+    // at document granularity (same enriched views, same active-lens DOI order,
+    // same MAX_GRAPH_NODES bound) so the embedding set matches the constellation's
+    // served node set (ADR D2 / open question). Reusing the per-generation cached
+    // views keeps this off the hot projection path.
+    let views = cell.document_views();
+    let mut slice = engine_query::graph::graph_query_cached(
+        &graph,
+        &cell.scope,
+        engine_query::filter::Filter::default(),
+        engine_query::graph::Granularity::Document,
+        &views.0,
+        &views.1,
+    )
+    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+    let tiers = rag_tiers(&cell);
+    // DOI-order the document nodes the same way the constellation does, then bound
+    // — so the embedding slice's node set is byte-identical to the served graph.
+    let basis = cell.salience_basis();
+    let focus = params
+        .focus
+        .as_ref()
+        .map(|f| engine_model::NodeId(f.clone()));
+    let partial = engine_query::salience::is_partial(lens, &unavailable_tier_names(&tiers));
+    let scores = engine_query::salience::compute_salience(
+        &basis,
+        &graph,
+        lens,
+        focus.as_ref(),
+        crate::app::now_ms(),
+        partial,
+    );
+    engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
+    engine_query::graph::bound_slice(&mut slice);
+    // Only DOCUMENT nodes carry embeddings (ADR D10): the served set is already
+    // document-granularity, so every id is a `doc:` node; collect them in order.
+    let served_node_ids: Vec<String> = slice
+        .nodes
+        .iter()
+        .filter_map(|n| n["id"].as_str().map(str::to_string))
+        .collect();
+
+    // Read the stored vectors from rag's Qdrant over loopback HTTP. rag/Qdrant
+    // down ⇒ semantic tier Unavailable in the envelope tiers, no vectors returned
+    // (ADR D7) — the engine builds no embeddings, ever (ADR D1).
+    let vault_root = cell.root.join(".vault");
+    let (availability, info) = rag_client::client::discover(&vault_root);
+    let rag_client::RagAvailability::Available = availability else {
+        let rag_client::RagAvailability::Unavailable { reason } = availability else {
+            unreachable!()
+        };
+        return Ok(super::envelope(
+            json!({
+                "embeddings": [],
+                "generation": generation,
+                "truncated": Value::Null,
+                "lens": lens.as_str(),
+            }),
+            super::degraded_tiers(&cell, reason.as_str()),
+            None,
+        ));
+    };
+    let info = info.expect("available implies info");
+    // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's
+    // service port — discovered the same `service.json` way. The transport carries
+    // the MAX_RAG_BODY byte cap (its bounded read) AND a wall-clock deadline (ADR
+    // open question: the subprocess-calls-carry-cap-and-timeout HTTP-read analog).
+    let transport = rag_client::client::LoopbackTransport {
+        port: info.qdrant_port(),
+        // Qdrant's loopback HTTP needs no bearer; rag's service token is for rag's
+        // own routes. The store is loopback-only by design.
+        bearer: None,
+        timeout: EMBEDDING_READ_TIMEOUT,
+    };
+    let vectors = match rag_client::vectors::read_embeddings(&transport) {
+        Ok(vectors) => vectors,
+        Err(e) => {
+            // Qdrant was reachable through discovery but the scroll itself failed
+            // (store down, timeout, shape-miss): semantic suggestions are simply
+            // unavailable right now. Degrade the semantic tier (no vectors), never
+            // a 500 — the stores layer reads availability from tiers (ADR D7).
+            let reason = rag_client::search::degradation_reason(&e);
+            return Ok(super::envelope(
+                json!({
+                    "embeddings": [],
+                    "generation": generation,
+                    "truncated": Value::Null,
+                    "lens": lens.as_str(),
+                }),
+                super::degraded_tiers(&cell, reason.as_str()),
+                None,
+            ));
+        }
+    };
+
+    let (embedding_slice, truncated_total) =
+        engine_query::embeddings::build_embedding_slice(&served_node_ids, &vectors);
+    let truncated = truncated_total.map(|total| {
+        json!({
+            "total_nodes": total,
+            "returned_nodes": engine_query::graph::MAX_GRAPH_NODES,
+            "reason": "graph node ceiling: narrow with a filter; the feature \
+                       constellation is the smallest view",
+        })
+    });
+    Ok(super::envelope(
+        json!({
+            "embeddings": embedding_slice.embeddings,
+            // The graph generation the vectors were read at (ADR D8): the client
+            // caches per generation and re-fetches on change. It is NOT folded
+            // into any node or edge stable key.
+            "generation": generation,
+            "truncated": truncated,
+            "lens": lens.as_str(),
+        }),
+        tiers,
+        None,
+    ))
+}
+
 // --- GET /pipeline?scope= ---------------------------------------------------------
 
 /// The in-flight pipeline projection (dashboard-pipeline-wire W02.P05.S22):

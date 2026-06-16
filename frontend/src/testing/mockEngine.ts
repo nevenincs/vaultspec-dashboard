@@ -483,6 +483,18 @@ export class MockEngine {
   // the live shape so the canvas's "narrowed — refine your view" chrome state is
   // exercised through the real client path (mock-mirrors-live-wire-shape).
   private truncatedTotal: number | null = null;
+  // The graph generation served on /graph/embeddings (graph-semantic-embeddings
+  // ADR D8): the client caches vectors per generation and re-fetches on a bump.
+  // The mock serves one static corpus, so a stable generation; a test can bump it
+  // (setGeneration) to drive the cache-per-generation re-fetch behavior. Mirrors
+  // the live cell's generation counter, byte-for-byte the wire stamp.
+  private mockGeneration = 0;
+  // The embedding-read degradation state (graph-semantic-embeddings ADR D7):
+  // when set, /graph/embeddings reports the semantic tier Unavailable and serves
+  // NO vectors even though the rest of the corpus is healthy — the rag/Qdrant-down
+  // path, distinct from a wholesale `degrade("semantic", ...)`. Mirrors the live
+  // route's per-response semantic degradation.
+  private embeddingsDown = false;
   // The plan-container interior node ceiling fired (dashboard-pipeline-status,
   // graph-queries-are-bounded-by-default): when set, `/nodes/{id}/plan-interior`
   // echoes the live engine's `truncated` block alongside the capped tree, the
@@ -555,6 +567,21 @@ export class MockEngine {
    */
   setTruncated(total: number | null): void {
     this.truncatedTotal = total;
+  }
+
+  /** Bump (or set) the graph generation served on /graph/embeddings (graph-
+   *  semantic-embeddings ADR D8): drives the client's cache-per-generation
+   *  re-fetch in tests. */
+  setGeneration(generation: number): void {
+    this.mockGeneration = generation;
+  }
+
+  /** Simulate rag/Qdrant down on the embedding read (graph-semantic-embeddings
+   *  ADR D7): /graph/embeddings reports the semantic tier Unavailable and serves
+   *  no vectors, the honest-degradation path the scene draws as the fallback
+   *  ring. Distinct from a wholesale `degrade("semantic", ...)`. */
+  setEmbeddingsDown(down: boolean): void {
+    this.embeddingsDown = down;
   }
 
   /**
@@ -1062,6 +1089,18 @@ export class MockEngine {
       // + in-flight ADRs in the resolved scope, byte-for-byte the live shape.
       requireScope(params);
       return this.pipelineData();
+    }
+    if (path === "/graph/embeddings") {
+      // The dedicated bounded embedding read (graph-semantic-embeddings ADR D2),
+      // mirroring the live `/graph/embeddings` wire shape BYTE-FOR-BYTE
+      // (mock-mirrors-live-wire-shape / ADR D6): the stored rag vectors for the
+      // SERVED document node set, keyed by node id as raw float32 `number[]` (ADR
+      // D3 — no reduction), carrying the graph `generation` they were read at (ADR
+      // D8 — the client caches per generation), bounded with an honest `truncated`
+      // block, and the per-tier `tiers` block on every response (success AND the
+      // rag-down degradation). The embedding is NEVER inline on /graph/query.
+      requireScope(params);
+      return this.embeddingsData(params);
     }
     if (path === "/graph/query") {
       // Match the live serve wire (contract §4, engine addendum S02): the
@@ -1587,6 +1626,73 @@ export class MockEngine {
    * projection byte-for-byte: a complete plan and a rejected/deprecated ADR are
    * excluded; an active plan with work checked is in `execute`, otherwise `plan`.
    */
+  /**
+   * The dedicated bounded embedding slice (graph-semantic-embeddings ADR D2),
+   * mirroring the live `/graph/embeddings` wire shape BYTE-FOR-BYTE: the stored
+   * vectors for the SERVED document node set (the SAME lens-ordered doc nodes
+   * /graph/query serves, so the embedding set aligns with the constellation),
+   * keyed by node id as raw float32 `number[]` (ADR D3 — no reduction), stamped
+   * with the graph `generation` (ADR D8), bounded with an honest `truncated`
+   * block, and the `tiers` block on every response. rag/Qdrant down (or a
+   * degraded semantic tier) ⇒ semantic Unavailable + NO vectors (ADR D7) — the
+   * scene rings every node in the honest fallback. The vectors come from the
+   * corpus's SEPARATE `embeddingsByNode` map, NOT a node field — exactly the
+   * separate-route path the live origin takes.
+   */
+  private embeddingsData(params: URLSearchParams): unknown {
+    const lens = parseMockLens(params.get("lens"));
+    const generation = this.mockGeneration;
+    // rag/Qdrant down (per-response or a degraded semantic tier): report the
+    // semantic tier Unavailable and serve no vectors — honest degradation, read
+    // from tiers by the stores layer (ADR D7), never a bare error.
+    if (this.embeddingsDown || this.degradations.has("semantic")) {
+      const reason =
+        this.degradations.get("semantic") ?? "rag service down (connection failed)";
+      return {
+        embeddings: [],
+        generation,
+        truncated: null,
+        lens,
+        tiers: this.degradedTiersFor("semantic", reason),
+      };
+    }
+    // The SERVED document node set, ordered exactly as /graph/query orders it at
+    // document granularity (descending active-lens salience), so the embedding
+    // set's node order matches the served constellation node set (ADR D2 / open
+    // question). An absent corpus serves nothing (035).
+    const servedDocIds = this.noVault
+      ? []
+      : this.corpus.nodes
+          .filter((n) => n.kind !== "feature")
+          .map((n) => ({ id: n.id, salience: mockSalienceFor(n, lens) }))
+          .sort((a, b) => b.salience - a.salience || a.id.localeCompare(b.id))
+          .map((n) => n.id);
+    // Each served node that HAS a stored vector emits an entry, preserving the
+    // served order; a served node with no stored vector is OMITTED (honest
+    // absence → the scene's fallback ring, ADR D7). float32 `number[]` verbatim.
+    const embeddings = servedDocIds
+      .map((id) => ({ id, vector: this.corpus.embeddingsByNode.get(id) }))
+      .filter((e): e is { id: string; vector: number[] } => e.vector !== undefined)
+      .map((e) => ({ node_id: e.id, vector: e.vector }));
+    const truncated =
+      this.truncatedTotal !== null
+        ? {
+            total_nodes: this.truncatedTotal,
+            returned_nodes: this.truncatedTotal,
+            reason:
+              "graph node ceiling: narrow with a filter; the feature " +
+              "constellation is the smallest view",
+          }
+        : null;
+    return {
+      embeddings,
+      generation,
+      truncated,
+      lens,
+      tiers: this.tiersBlock(),
+    };
+  }
+
   private pipelineData(): unknown {
     const artifacts: {
       node_id: string;

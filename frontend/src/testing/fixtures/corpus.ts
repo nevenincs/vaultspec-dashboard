@@ -45,6 +45,18 @@ export interface FixtureCorpus {
    * and recency; the engine producer is an integration seam.
    */
   salienceByLens: Map<string, { status: number; design: number }>;
+  /**
+   * Per-node dense embedding vector by node id (graph-semantic-embeddings ADR):
+   * the rag-stored vectors the mock serves on the DEDICATED `/graph/embeddings`
+   * route — NEVER inline on `/graph/query` (ADR D2; the default constellation
+   * path carries no embedding). Document nodes only (ADR D10), clustered by
+   * feature so the semantic UMAP mode separates meaning-clusters. A node absent
+   * from this map has no stored vector — the scene rings it in the honest
+   * fallback. This replaces the prior synthetic-only inline `embedding` seed, so
+   * the mock serves the embedding through the same separate-route path the live
+   * origin does (mock-mirrors-live-wire-shape).
+   */
+  embeddingsByNode: Map<string, number[]>;
 }
 
 function mulberry32(seed: number): () => number {
@@ -219,6 +231,9 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
   const events: EngineEvent[] = [];
   const vaultTree: VaultTreeEntry[] = [];
   const planInteriors = new Map<string, { nodes: EngineNode[]; edges: EngineEdge[] }>();
+  // Embeddings ride the dedicated /graph/embeddings route, NOT the node
+  // (graph-semantic-embeddings ADR D2): collect them keyed by node id here.
+  const embeddingsByNode = new Map<string, number[]>();
   let seq = 0;
   const nextEvent = (ts: number, kind: string, ref: string, nodeIds: string[]) => {
     seq += 1;
@@ -292,10 +307,11 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         // byte-for-byte (mock-mirrors-live-wire-shape); spread so absent fields
         // never appear as undefined keys.
         ...(statusForDoc(docType, fi) ?? {}),
-        // Per-node embedding (graph-representation §4): clustered by feature so
-        // the semantic UMAP mode separates meaning-clusters.
-        embedding: featureEmbedding(fi, di),
       });
+      // The dense embedding rides the dedicated /graph/embeddings route, NOT the
+      // node (graph-semantic-embeddings ADR D2 / no inline on /graph/query):
+      // clustered by feature so the semantic UMAP mode separates meaning-clusters.
+      embeddingsByNode.set(docId, featureEmbedding(fi, di));
       vaultTree.push({
         path: `.vault/${docType}/${stem}.md`,
         doc_type: docType,
@@ -374,8 +390,9 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
       aggregate: false,
       status_value: ruleStatus.status_value,
       status_class: ruleStatus.status_class,
-      embedding: featureEmbedding(fi, DOC_TYPES.length),
     });
+    // Embedding on the dedicated /graph/embeddings route (ADR D2), not the node.
+    embeddingsByNode.set(ruleId, featureEmbedding(fi, DOC_TYPES.length));
     edges.push({
       id: `e:${ruleId}->${featureId}:binds`,
       src: ruleId,
@@ -533,6 +550,7 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
     vaultTree,
     codeTree,
     salienceByLens,
+    embeddingsByNode,
   };
 }
 

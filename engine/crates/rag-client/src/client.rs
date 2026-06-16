@@ -75,6 +75,24 @@ pub struct ServiceInfo {
     /// also accepted. Absent in older files.
     #[serde(default)]
     pub last_heartbeat: Option<Heartbeat>,
+    /// The resident Qdrant store's HTTP port (graph-semantic-embeddings ADR D1):
+    /// embeddings are scrolled DIRECTLY from Qdrant, not through rag's own
+    /// service. rag writes this into `service.json` (the `storage_path` port);
+    /// absent in files that predate the embedding read, where the documented
+    /// default port is used. Accepts the `storage_port` field name (and the
+    /// alias `qdrant_port`) so a future rag-side rename of the key still binds.
+    #[serde(default, alias = "qdrant_port")]
+    pub storage_port: Option<u16>,
+}
+
+impl ServiceInfo {
+    /// The Qdrant HTTP port to scroll embeddings from: the discovered
+    /// `storage_port`, or the documented default ([`crate::vectors::DEFAULT_QDRANT_PORT`])
+    /// when `service.json` does not carry one.
+    pub fn qdrant_port(&self) -> u16 {
+        self.storage_port
+            .unwrap_or(crate::vectors::DEFAULT_QDRANT_PORT)
+    }
 }
 
 /// Heartbeat in either wire format.
@@ -339,6 +357,20 @@ mod tests {
         let info = info.unwrap();
         assert_eq!(info.port, 8766);
         assert_eq!(info.service_token.as_deref(), Some("tok-1"));
+        // No storage_port in the file: the documented Qdrant default is used.
+        assert_eq!(info.qdrant_port(), crate::vectors::DEFAULT_QDRANT_PORT);
+    }
+
+    #[test]
+    fn storage_port_is_discovered_for_the_qdrant_embedding_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = service_json_path(dir.path());
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        // rag writes the resident Qdrant port into service.json; the embedding
+        // read scrolls THAT port directly, not rag's own service port.
+        std::fs::write(&p, r#"{"port": 8766, "storage_port": 8765}"#).unwrap();
+        let (_availability, info) = discover_at(&[p]);
+        assert_eq!(info.unwrap().qdrant_port(), 8765);
     }
 
     #[test]

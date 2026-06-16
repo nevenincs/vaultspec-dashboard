@@ -42,6 +42,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/file-tree",
     "/pipeline",
     "/graph/query",
+    "/graph/embeddings",
     "/graph/asof",
     "/graph/diff",
     "/graph/lineage",
@@ -92,6 +93,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // plans + in-flight ADRs in scope, through the shared envelope.
         .route("/pipeline", get(routes::query::pipeline))
         .route("/graph/query", post(routes::query::graph_query_route))
+        // The dedicated bounded embedding route (graph-semantic-embeddings ADR
+        // D2): rag's stored dense vectors for the served document node set,
+        // tiers-gated, generation-stamped, NEVER inline on /graph/query.
+        .route("/graph/embeddings", get(routes::query::graph_embeddings))
         .route("/graph/asof", get(routes::temporal::graph_asof))
         .route("/graph/diff", get(routes::temporal::graph_diff))
         // Bounded temporal-lineage projection (dashboard-timeline ADR, W01.P02):
@@ -1099,6 +1104,52 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert!(body["data"]["vocabulary"]["tiers"].is_array());
+    }
+
+    #[tokio::test]
+    async fn graph_embeddings_carries_generation_and_degrades_semantic_when_rag_is_down() {
+        // graph-semantic-embeddings ADR D7/D8: /graph/embeddings rides the shared
+        // envelope so the tiers block is carried on every response, stamps the
+        // graph generation it was read at, and — with rag/Qdrant down in this
+        // test environment — reports the semantic tier Unavailable and returns NO
+        // vectors (honest degradation, never a bare error). The bad-scope path
+        // still 400s honestly with the tiers block attached.
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let served = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        // Unknown scope: a tiered 400 (the bad-scope honesty path).
+        let (status, _) = get_with_token(
+            router.clone(),
+            "/graph/embeddings?scope=/nowhere",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // Served scope, rag absent: 200 with an empty embedding set, the
+        // generation stamp, and the semantic tier reported Unavailable.
+        let (status, body) = get_with_token(
+            router,
+            &format!("/graph/embeddings?scope={}", urlencode(&served)),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        // The shared envelope carries the tiers block (every-wire-response rule);
+        // semantic is Unavailable because rag/Qdrant is not running here (D7).
+        assert_eq!(body["tiers"]["semantic"]["available"], Value::Bool(false));
+        // No vectors served while rag is down — honest absence, not an error.
+        assert_eq!(
+            body["data"]["embeddings"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+        // The generation stamp the client caches per generation (D8) is present
+        // and is an integer (read off the cell's generation counter).
+        assert!(body["data"]["generation"].is_u64());
+        // truncated is null on a degraded read (no bound fired).
+        assert_eq!(body["data"]["truncated"], Value::Null);
     }
 
     #[tokio::test]

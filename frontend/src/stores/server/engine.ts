@@ -16,6 +16,7 @@ import {
   adaptFileTree,
   adaptFilters,
   adaptGitOp,
+  adaptGraphEmbeddings,
   adaptGraphSlice,
   adaptHistory,
   adaptLineageSlice,
@@ -596,6 +597,40 @@ export interface FiltersVocabulary {
   kinds: string[];
   date_bounds?: { from?: string; to?: string };
   tiers_block?: TiersBlock;
+}
+
+/**
+ * One served node embedding (graph-semantic-embeddings ADR D3): the stable node
+ * id and its raw float32 vector as a JSON `number[]` — the shape the semantic
+ * UMAP worker projects. Identity rides the stable node id (`doc:{stem}`,
+ * provenance-stable-keys); the vector is an additive value, never an id input.
+ */
+export interface NodeEmbedding {
+  node_id: string;
+  vector: number[];
+}
+
+/**
+ * The dedicated bounded embedding slice (engine `/graph/embeddings`, unwrapped
+ * from the `{data, tiers}` envelope): the stored rag vectors for the SERVED
+ * document node set, carrying the graph `generation` they were read at (ADR D8 —
+ * the client caches per generation), the per-tier `tiers` availability block
+ * (ADR D7 — semantic availability is read from here, never a bare transport
+ * error), and an honest `truncated` block present and non-null ONLY when the node
+ * ceiling capped the slice. Fetched LAZILY, only on entering semantic mode (ADR
+ * D2). A node not present here has no stored vector — the scene draws the honest
+ * fallback ring.
+ */
+export interface EmbeddingsResponse {
+  embeddings: NodeEmbedding[];
+  /** The graph generation the vectors were read at — the cache-per-generation
+   *  key. Echoes the same generation `/graph/query` is anchored to. */
+  generation: number;
+  tiers: TiersBlock;
+  /** The active salience lens echoed, so the embedding set's node order matches
+   *  the constellation's DOI-ordered served set. */
+  lens?: SalienceLens;
+  truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
 }
 
 export interface NodeDetail {
@@ -1254,6 +1289,30 @@ export class EngineClient {
     focus?: string | null;
   }): Promise<GraphSlice> {
     return adaptGraphSlice(await this.post("/graph/query", body));
+  }
+
+  /**
+   * The dedicated bounded embedding read (graph-semantic-embeddings ADR D2):
+   * rag's stored dense vectors for the SERVED document node set, fetched LAZILY
+   * only on entering semantic mode and cached per generation (the stores hook
+   * owns the laziness). `lens`/`focus` keep the embedding set aligned with
+   * `/graph/query`'s DOI-ordered served node set. NEVER inline on `/graph/query`
+   * — the default constellation path pays no embedding tax. The tolerant adapter
+   * reconciles the wire shape; the stores layer reads semantic availability from
+   * the `tiers` block (ADR D7), never a bare transport error.
+   */
+  async graphEmbeddings(params: {
+    scope: string;
+    lens?: SalienceLens;
+    focus?: string | null;
+  }): Promise<EmbeddingsResponse> {
+    return adaptGraphEmbeddings(
+      await this.get("/graph/embeddings", {
+        scope: params.scope,
+        lens: params.lens,
+        focus: params.focus ?? undefined,
+      }),
+    );
   }
 
   async filters(scope: string): Promise<FiltersVocabulary> {

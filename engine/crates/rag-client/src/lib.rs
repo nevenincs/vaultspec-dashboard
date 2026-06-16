@@ -10,6 +10,7 @@
 pub mod client;
 pub mod discover;
 pub mod search;
+pub mod vectors;
 
 /// Semantic confidence is capped below structural (engine-spec §3, D3.5).
 pub const SEMANTIC_CONFIDENCE_CAP: f32 = 0.7;

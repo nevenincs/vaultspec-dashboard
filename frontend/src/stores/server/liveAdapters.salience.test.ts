@@ -71,14 +71,36 @@ describe("graph-representation consumed wire fields survive the client path", ()
     ]).toContain(lineageEdge.derivation);
   });
 
-  it("carries per-node embedding vectors on document nodes", async () => {
+  it("does NOT inline embeddings on /graph/query document nodes (ADR D2)", async () => {
+    // graph-semantic-embeddings ADR D2: embeddings ride the DEDICATED bounded
+    // /graph/embeddings route, NEVER inline on /graph/query — the default
+    // constellation path pays no embedding tax. No document node carries an
+    // `embedding` field (the synthetic-only inline seed was removed, mock + live
+    // moving together per mock-mirrors-live-wire-shape / NO backwards compat).
     const engine = new MockEngine();
     const slice = await queryThroughClientPath(engine, { granularity: "document" });
     const withEmbedding = slice.nodes.find(
       (n: EngineNode) => Array.isArray(n.embedding) && n.embedding.length > 0,
     );
-    expect(withEmbedding).toBeDefined();
-    expect(withEmbedding!.embedding!.every((v) => typeof v === "number")).toBe(true);
+    expect(withEmbedding).toBeUndefined();
+  });
+
+  it("serves per-node embeddings on the dedicated /graph/embeddings route (ADR D2/D3)", async () => {
+    // The embeddings arrive on the SEPARATE route as raw float32 `number[]` keyed
+    // by node id, with the generation stamp (ADR D8) and the tiers block (ADR D7).
+    const engine = new MockEngine();
+    const res = await engine.fetchImpl("/graph/embeddings?scope=wt-main");
+    const body = unwrapEnvelope(await res.json()) as {
+      embeddings: { node_id: string; vector: number[] }[];
+      generation: number;
+      tiers: Record<string, { available: boolean }>;
+    };
+    expect(body.embeddings.length).toBeGreaterThan(0);
+    const first = body.embeddings[0];
+    expect(first.node_id.startsWith("doc:")).toBe(true);
+    expect(first.vector.every((v) => typeof v === "number")).toBe(true);
+    expect(typeof body.generation).toBe("number");
+    expect(body.tiers.semantic.available).toBe(true);
   });
 
   it("carries the per-type status fields (status_value/status_class) on document nodes", async () => {

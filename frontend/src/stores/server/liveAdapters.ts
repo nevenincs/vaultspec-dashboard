@@ -16,6 +16,7 @@ import type {
   ChangedFile,
   ContentResponse,
   ContentTruncated,
+  EmbeddingsResponse,
   EngineEdge,
   EngineStatus,
   FileTreeEntry,
@@ -39,6 +40,7 @@ import type {
   LineagePhase,
   LineageSlice,
   MapResponse,
+  NodeEmbedding,
   PipelineArtifact,
   PipelinePhase,
   PipelineResponse,
@@ -162,6 +164,84 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
     ...(rest as object),
     edges: [...edges, ...folded],
   } as GraphSlice;
+}
+
+// --- §4 bounded embedding slice (graph-semantic-embeddings ADR) ------------------
+//
+// Tolerant adapter for `GET /graph/embeddings`. The live `{data: {embeddings,
+// generation, truncated, lens}, tiers}` envelope is already unwrapped by
+// `unwrapEnvelope` before this runs; a body already in the internal shape (the
+// mock) passes through unchanged — the one-code-path property
+// (mock-mirrors-live-wire-shape). Every entry defaults defensively: an entry
+// without a `node_id` string or a numeric `vector` array is dropped, so a sparse
+// or malformed shape NEVER throws and never carries a half-formed vector into the
+// projection. `tiers` rides through verbatim (the envelope's degradation truth,
+// defaulted to an empty block when absent) — the stores layer reads semantic
+// availability from it (ADR D7), never a bare transport error. `generation`
+// defaults to 0 (the cache-per-generation key) and `truncated` to null.
+
+/** Default one served embedding, tolerating an absent/partial object: a missing
+ *  `node_id` string or non-numeric `vector` array yields null (dropped by the
+ *  caller). The vector is filtered to finite numbers so a `NaN`/string element
+ *  can never reach the projection. */
+function adaptNodeEmbedding(value: unknown): NodeEmbedding | null {
+  if (!isRec(value)) return null;
+  if (typeof value.node_id !== "string") return null;
+  if (!Array.isArray(value.vector)) return null;
+  const vector = value.vector.filter(
+    (x): x is number => typeof x === "number" && Number.isFinite(x),
+  );
+  // A vector that lost every element to the finite filter is not a real
+  // embedding — drop it so the node falls into the honest fallback ring rather
+  // than a degenerate zero-length projection.
+  if (vector.length === 0) return null;
+  return { node_id: value.node_id, vector };
+}
+
+/** Default the truncated honesty block: forwarded only when the engine capped the
+ *  slice (a real object with the three fields); null/absent stays null. */
+function adaptEmbeddingsTruncated(value: unknown): EmbeddingsResponse["truncated"] {
+  if (
+    isRec(value) &&
+    typeof value.total_nodes === "number" &&
+    typeof value.returned_nodes === "number" &&
+    typeof value.reason === "string"
+  ) {
+    return {
+      total_nodes: value.total_nodes,
+      returned_nodes: value.returned_nodes,
+      reason: value.reason,
+    };
+  }
+  return null;
+}
+
+/**
+ * Live `/graph/embeddings` → the internal embedding slice. TOLERANT: an absent
+ * `embeddings` array defaults to empty (the semantic mode draws every node in the
+ * fallback ring), `generation` defaults to 0, `truncated` to null, and the
+ * optional `lens` echo is forwarded only when a string. `tiers` rides through
+ * verbatim — the surface reads semantic availability through the stores hook,
+ * never this raw block (degradation-is-read-from-tiers).
+ */
+export function adaptGraphEmbeddings(body: unknown): EmbeddingsResponse {
+  if (!isRec(body)) {
+    return { embeddings: [], generation: 0, tiers: {}, truncated: null };
+  }
+  const embeddings = Array.isArray(body.embeddings)
+    ? body.embeddings
+        .map(adaptNodeEmbedding)
+        .filter((e): e is NodeEmbedding => e !== null)
+    : [];
+  return {
+    embeddings,
+    generation: typeof body.generation === "number" ? body.generation : 0,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+    ...(typeof body.lens === "string"
+      ? { lens: body.lens as EmbeddingsResponse["lens"] }
+      : {}),
+    truncated: adaptEmbeddingsTruncated(body.truncated),
+  };
 }
 
 // --- §5 bounded temporal-lineage slice (dashboard-timeline ADR) ------------------

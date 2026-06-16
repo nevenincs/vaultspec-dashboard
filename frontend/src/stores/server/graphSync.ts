@@ -82,6 +82,15 @@ export function useGraphLiveSync(
           queryKey: [...engineKeys.all, "graph", scopeArg],
           exact: false,
         });
+        // The semantic embeddings are cached per generation (graph-semantic-
+        // embeddings ADR D8): a graph delta means a new generation, so invalidate
+        // the lazy per-scope embedding read too. When semantic mode is active this
+        // re-fetches fresh vectors; when it is not, the disabled query is left
+        // untouched until the mode is re-entered (the lazy-fetch contract, D2).
+        void queryClient.invalidateQueries({
+          queryKey: [...engineKeys.all, "graph-embeddings", scopeArg],
+          exact: false,
+        });
       }, GRAPH_INVALIDATE_DEBOUNCE_MS),
     [queryClient],
   );

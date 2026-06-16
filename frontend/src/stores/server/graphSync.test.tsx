@@ -55,10 +55,21 @@ describe("useGraphLiveSync", () => {
       // ...but the invalidation is debounced, not fired per delta (the fix).
       expect(invalidate).not.toHaveBeenCalled();
       vi.advanceTimersByTime(150);
-      expect(invalidate).toHaveBeenCalledTimes(1);
+      // ONE coalesced trailing refetch per burst PER affected subtree — the
+      // constellation slice AND the per-generation semantic embeddings (graph-
+      // semantic-embeddings ADR D8: a generation bump re-fetches the embeddings),
+      // each invalidated EXACTLY ONCE for the whole burst (the P-HIGH-1
+      // coalescing), never once per delta.
+      expect(invalidate).toHaveBeenCalledTimes(2);
       expect(invalidate).toHaveBeenCalledWith(
         expect.objectContaining({
           queryKey: ["engine", "graph", "scopeA"],
+          exact: false,
+        }),
+      );
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: ["engine", "graph-embeddings", "scopeA"],
           exact: false,
         }),
       );
