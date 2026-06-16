@@ -220,13 +220,6 @@ describe("GraphControls — non-occluding overlay (collapsed heavy groups)", () 
     ).toBe("true");
   });
 
-  it("does not render the Overview minimap until the Overview popover is opened", () => {
-    render(createElement(GraphControls));
-    expect(screen.queryByRole("group", { name: "graph minimap navigator" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
-    expect(screen.getByRole("group", { name: "graph minimap navigator" })).toBeTruthy();
-  });
-
   it("closes the Tune popover on a second trigger click (toggle)", () => {
     render(createElement(GraphControls));
     openTune();

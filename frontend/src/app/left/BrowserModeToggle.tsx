@@ -1,8 +1,11 @@
-// The browser-region mode toggle (dashboard-left-rail ADR "Browser" / Figma
-// `LeftRail_*` segmented vault·tree·code control): a compact, keyboard-reachable
-// control that switches the file-thinking surface between its THREE modes — VAULT
-// (the `/vault-tree` projection grouped by `.vault/` subtree, the default), TREE
-// (the SAME `/vault-tree` projection nested feature → doc_type → document, a pure
+// The browser-region mode toggle (binding Figma `LeftRail` 244:750 — the
+// "Vault / Tree / Code" SegmentedToggle). Re-skinned (W02.P04.S07) onto the
+// centralized kit `SegmentedToggle` + `Segment` (board "Design System —
+// Components" 135:2) so the control is a real shared definition, not a
+// per-surface hand-built tablist (design-system-is-centralized). It switches the
+// file-thinking surface between its THREE modes — VAULT (the `/vault-tree`
+// projection grouped by `.vault/` subtree, the default), TREE (the SAME
+// `/vault-tree` projection nested feature → doc_type → document, a pure
 // client-side re-projection — no engine work), and CODE (the `/file-tree`
 // projection). The chosen mode is view-local state re-keyed per scope
 // (`stores/view/browserMode`), so it never bleeds across a swap.
@@ -12,13 +15,12 @@
 // browser-mode store and nothing else (the rail's single-navigation-law "adjust
 // a local view affordance"). Three Phosphor domain marks carry the mode identity,
 // each distinct by SHAPE (a stack of books / a top-down hierarchy / a sideways
-// source tree); the toggle is one ARIA tablist so the modes read as a segmented
-// choice, with roving arrow-key movement that auto-scales to the mode count.
+// source tree) so the mode reads without relying on hue; the kit `SegmentedToggle`
+// owns the roving-keys radiogroup a11y model and the raised-paper active cue.
 
 import { Books, TreeStructure, TreeView } from "@phosphor-icons/react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useRef } from "react";
 
+import { Segment, SegmentedToggle } from "../kit";
 import type { BrowserMode } from "../../stores/view/browserMode";
 
 // 14px is the iconography ADR's grayscale-by-shape gate size; the three domain
@@ -31,9 +33,9 @@ const MARK_PX = 14;
 // vault corpus RE-nested — distinct in shape from `TreeStructure` (the sideways
 // source tree) the code mode carries.
 const MODES: { id: BrowserMode; label: string; mark: typeof Books }[] = [
-  { id: "vault", label: "vault", mark: Books },
-  { id: "tree", label: "tree", mark: TreeView },
-  { id: "code", label: "code", mark: TreeStructure },
+  { id: "vault", label: "Vault", mark: Books },
+  { id: "tree", label: "Tree", mark: TreeView },
+  { id: "code", label: "Code", mark: TreeStructure },
 ];
 
 export interface BrowserModeToggleProps {
@@ -42,74 +44,27 @@ export interface BrowserModeToggleProps {
 }
 
 export function BrowserModeToggle({ mode, onModeChange }: BrowserModeToggleProps) {
-  const tabEls = useRef(new Map<BrowserMode, HTMLButtonElement>());
-  const registerTab = useCallback(
-    (id: BrowserMode) => (el: HTMLButtonElement | null) => {
-      if (el) tabEls.current.set(id, el);
-      else tabEls.current.delete(id);
-    },
-    [],
-  );
-
-  // Roving arrow-key movement across the two-tab segmented control (ADR
-  // "Keyboard and a11y"): ArrowLeft/Right (and Up/Down) move and activate, so
-  // the mode is reachable and switchable from the keyboard alone.
-  const onKeyDown = (index: number) => (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (
-      e.key === "ArrowRight" ||
-      e.key === "ArrowDown" ||
-      e.key === "ArrowLeft" ||
-      e.key === "ArrowUp"
-    ) {
-      e.preventDefault();
-      const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
-      const next = (index + (forward ? 1 : MODES.length - 1)) % MODES.length;
-      const target = MODES[next]!;
-      onModeChange(target.id);
-      tabEls.current.get(target.id)?.focus();
-    }
-  };
-
   return (
-    <div
-      role="tablist"
-      aria-label="browser mode"
-      aria-orientation="horizontal"
-      data-browser-mode-toggle
-      className="flex shrink-0 gap-fg-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-fg-0-5"
-    >
-      {MODES.map(({ id, label, mark: Mark }, index) => {
-        const active = mode === id;
-        return (
-          <button
-            key={id}
-            ref={registerTab(id)}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            aria-label={`${label} browser${active ? ", current" : ""}`}
-            // Roving tabindex: only the active tab is in the Tab order; arrows
-            // move between the two (the segmented-control a11y pattern).
-            tabIndex={active ? 0 : -1}
-            data-browser-mode={id}
-            data-browser-mode-active={active ? "" : undefined}
-            onClick={() => onModeChange(id)}
-            onKeyDown={onKeyDown(index)}
-            className={`flex flex-1 items-center justify-center gap-fg-1-5 rounded-fg-xs border px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-              active
-                ? "border-rule bg-paper-raised font-medium text-ink shadow-fg-raised"
-                : "border-transparent text-ink-faint hover:text-ink-muted"
-            }`}
-          >
-            {/* Grayscale-safe active cue: fill + weight + the leading mark, so
-                the active mode reads without relying on hue. */}
-            <span className="shrink-0" aria-hidden>
-              <Mark size={MARK_PX} weight={active ? "fill" : "regular"} />
+    <div data-browser-mode-toggle>
+      <SegmentedToggle
+        value={mode}
+        onChange={(v) => onModeChange(v as BrowserMode)}
+        ariaLabel="browser mode"
+      >
+        {MODES.map(({ id, label, mark: Mark }) => (
+          <Segment key={id} value={id}>
+            {/* Grayscale-safe active cue: the kit Segment carries the raised-paper
+                fill + medium weight; the leading domain mark adds shape so the
+                active mode reads without relying on hue. */}
+            <span className="flex items-center gap-fg-1-5" data-browser-mode={id}>
+              <span className="shrink-0" aria-hidden>
+                <Mark size={MARK_PX} weight={mode === id ? "fill" : "regular"} />
+              </span>
+              <span>{label}</span>
             </span>
-            <span>{label}</span>
-          </button>
-        );
-      })}
+          </Segment>
+        ))}
+      </SegmentedToggle>
     </div>
   );
 }

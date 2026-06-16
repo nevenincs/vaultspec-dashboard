@@ -11,10 +11,11 @@
 // states read from the content view + the truncated block. All color comes from
 // the token-bound theme (themes-are-oklch / warmth-lives-in-tokens).
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ContentView } from "../../stores/server/queries";
+import { Badge } from "../kit";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
 
@@ -142,25 +143,21 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
   const { lines: tokenLines } = useTokenLines(text, content.languageHint);
 
   if (content.loading) {
-    return <div className="p-fg-3 text-body text-ink-faint">Loading file…</div>;
+    return <ViewerState>Loading file…</ViewerState>;
   }
   if (content.errored) {
-    return (
-      <div className="p-fg-3 text-body text-state-broken">
-        The file could not be loaded.
-      </div>
-    );
+    return <ViewerState tone="broken">The file could not be loaded.</ViewerState>;
   }
   if (content.degraded) {
     const reason = content.reasons.structural;
     return (
-      <div className="p-fg-3 text-body text-ink-muted">
+      <ViewerState tone="muted">
         File unavailable{reason ? `: ${reason}` : ""}.
-      </div>
+      </ViewerState>
     );
   }
   if (!content.available || text.length === 0) {
-    return <div className="p-fg-3 text-body text-ink-faint">This file is empty.</div>;
+    return <ViewerState>This file is empty.</ViewerState>;
   }
 
   const rawLines = text.replace(/\n$/, "").split("\n");
@@ -171,11 +168,7 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
         <span className="truncate font-mono text-label text-ink-muted">
           {content.path}
         </span>
-        {content.languageHint && (
-          <span className="rounded-fg-xs bg-accent-subtle px-fg-1 text-label text-accent-text">
-            {content.languageHint}
-          </span>
-        )}
+        {content.languageHint && <Badge tone="accent">{content.languageHint}</Badge>}
       </header>
       {content.truncated && (
         <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
@@ -185,6 +178,30 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
         </div>
       )}
       <CodeLines rawLines={rawLines} tokenLines={tokenLines} />
+    </div>
+  );
+}
+
+/** A centred placeholder for the viewer's loading / empty / degraded / error
+ *  states. Reads the Reader/Meta role; the tone selects the ink token. */
+function ViewerState({
+  children,
+  tone = "faint",
+}: {
+  children: ReactNode;
+  tone?: "faint" | "muted" | "broken";
+}): ReactElement {
+  const inkClass =
+    tone === "broken"
+      ? "text-state-broken"
+      : tone === "muted"
+        ? "text-ink-muted"
+        : "text-ink-faint";
+  return (
+    <div
+      className={`reader-meta flex h-full items-center justify-center p-fg-6 text-center ${inkClass}`}
+    >
+      <p>{children}</p>
     </div>
   );
 }

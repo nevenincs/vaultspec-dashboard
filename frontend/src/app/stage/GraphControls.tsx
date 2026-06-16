@@ -1,70 +1,64 @@
-// Consolidated graph controls (binding Figma redesign `graph/Controls` 88:2,
-// `graph/Hero` 85:2): a COMPACT, NON-OCCLUDING edge overlay. The Hero binding
+// Consolidated graph controls (binding Figma stage chrome: the zoom cluster +
+// settings popover, `graph/Settings popover` 88:2, `graph/Hero` 213:505,
+// NavControls 260:893). A COMPACT, NON-OCCLUDING edge overlay: the Hero binding
 // shows the category-circle canvas CLEAN with the controls as an unobtrusive
-// bottom-edge toolbar — never a panel that covers the field. So this surface is
-// a single slim toolbar docked to the bottom edge: the light, always-reachable
-// groups (Navigate, Layout, Zoom) sit inline, and the heavier groups (Tune
-// sliders, Overview minimap) are COLLAPSED behind small affordances that pop
-// up ABOVE the bar on demand — the canvas stays visible at every stage width,
-// including the narrow ~450px 3-pane stage.
+// bottom-edge toolbar — never a panel that covers the field. So this surface is a
+// single slim toolbar docked to the bottom edge: the light, always-reachable
+// groups (Navigate, Layout, Zoom) sit inline, and the heavier Tune (force) knobs
+// are COLLAPSED behind a settings affordance that pops up ABOVE the bar on demand.
+// The minimap is a DOCKED card bottom-right (rendered by Stage), not a popover
+// here — matching the binding stage layout.
 //
-//   Navigate — a horizontal icon row: zoom in (+), zoom out (−), fit (□),
-//              reset (◎). Camera commands only (SceneController.command).
+//   Navigate — a horizontal icon row of kit IconButtons: zoom in (+), zoom out
+//              (−), fit (Maximize), reset (Crosshair). Camera commands only
+//              (SceneController.command).
 //   Layout   — the binding plain-language Network / Tree / Grouped / Timeline
-//              picker (graph/Controls 88:2), delegated to `LayoutSelector`
-//              (S53, in `LensSelector.tsx`) so the canonical layout control has
-//              ONE home. The preserved layout catalog (graph-layout-catalog D11)
-//              is surfaced there as the labelled Spatial group with Timeline kept
-//              DISTINCT as the temporal time-travel seam.
-//   Zoom     — a two-stop slider Overview ↔ Detail driving the LOD descent
-//              (granularity feature ↔ document). FLAGGED: rendered as a slider
-//              per Figma but snaps to two stops, because the scene seam exposes
-//              no absolute-zoom command (only incremental zoom-in/out, owned by
+//              picker, delegated to `LayoutSelector` (in `LensSelector.tsx`) so the
+//              canonical layout control has ONE home.
+//   Zoom     — a two-stop kit Slider Overview ↔ Detail driving the LOD descent
+//              (granularity feature ↔ document). FLAGGED: rendered as a slider per
+//              Figma but snaps to two stops, because the scene seam exposes no
+//              absolute-zoom command (only incremental zoom-in/out, owned by
 //              another builder); the flanking − / + issue real camera zoom.
-//   Tune     — three plain-language sliders mapping to the real d3-force knobs
+//   Tune     — three plain-language kit Sliders mapping to the real d3-force knobs
 //              (forceLayout.ts): Spacing → repel, Connection reach → linkDistance,
-//              Clustering → linkForce. These names REPLACE the old Repel / Link
-//              force / Link distance / Center grammar. The `center` knob has no
-//              plain-language home in the design and is left at its default
-//              (FLAGGED below); only knobs the driver actually has are exposed.
-//              Lives in a COLLAPSED popover so the canvas is never occluded.
-//   Overview — the minimap, also a COLLAPSED popover for the same reason.
+//              Clustering → linkForce. Lives in a COLLAPSED settings popover (a kit
+//              Card) so the canvas is never occluded.
+//
+// figma-frontend-rewrite W03.P07.S10 / W04.P11.S17: the hand-built `NavBtn`/`Slider`
+// primitives and the bespoke popover shell are RETIRED in favour of the centralized
+// kit — Navigate + the freeze toggle + the flanking camera zoom are kit
+// `IconButton`s, the Tune + Zoom-descent controls are kit `Slider`s, the settings
+// trigger is a kit `DropdownButton`, and the popover body is a kit `Card`. Every
+// control on screen now resolves to a real, shared kit definition
+// (design-system-is-centralized).
 //
 // Layer ownership (dashboard-layer-ownership): app chrome steering the scene.
-// Camera + layout affordances emit SceneController.command() ONLY; granularity
-// is a stores write (viewStore.setGranularity); representation mode is a stores
-// write (viewStore.setRepresentationMode) that Stage's single scene-owner effect
-// turns into a scene command. The panel fetches nothing, reads no raw `tiers`
-// block, holds no node shape. Icons are Lucide structural marks (the sanctioned
-// chrome family). Tokens only — no raw hex.
-//
-// W03.P09.S52/S53 (figma-parity-reconciliation): rebuilt over the REGENERATED
-// Figma foundation. The type usages read the Figma role-named scale (text-label /
-// text-caption) directly. The radius and elevation classes (rounded-fg-*,
-// shadow-fg-overlay/raised) resolve onto the canonical Figma xs/sm/md/lg/pill
-// radius and three-level elevation tokens; the W01.P01.S10 deprecated -vs-/legacy
-// aliases were retired in the W04 metrics-taxonomy cutover. The Layout group
-// delegates to the binding `LayoutSelector` (S53) so the
-// canonical Network / Tree / Grouped / Timeline picker has a single home.
+// Camera + layout affordances emit SceneController.command() ONLY; granularity is a
+// stores write (viewStore.setGranularity); representation mode is a stores write
+// (viewStore.setRepresentationMode) that Stage's single scene-owner effect turns
+// into a scene command. The panel fetches nothing, reads no raw `tiers` block,
+// holds no node shape. Icons are Lucide structural marks (the sanctioned chrome
+// family) from the kit. Tokens only — no raw hex.
 
-import {
-  ChevronDown,
-  Crosshair,
-  Map as MapIcon,
-  Minus,
-  Pause,
-  Play,
-  Plus,
-  SlidersHorizontal,
-  Square,
-} from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
+import { Pause, Play, SlidersHorizontal } from "lucide-react";
+
+import {
+  Card,
+  Crosshair,
+  DropdownButton,
+  IconButton,
+  Maximize,
+  Minus,
+  Plus,
+  Slider,
+} from "../kit";
 import type { LayoutParams } from "../../scene/field/forceLayout";
 import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { useViewStore } from "../../stores/view/viewStore";
 import { LayoutSelector } from "./LensSelector";
-import { MinimapWidget } from "./MinimapWidget";
 import { getScene } from "./Stage";
 
 const ICON_PX = 15;
@@ -75,36 +69,12 @@ function Divider() {
 }
 
 // ---------------------------------------------------------------------------
-// Navigate — horizontal camera icon row (inline in the slim toolbar).
-// ---------------------------------------------------------------------------
-
-interface NavBtnProps {
-  label: string;
-  title?: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}
-
-function NavBtn({ label, title, icon, onClick }: NavBtnProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={title ?? label}
-      onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-fg-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-    >
-      {icon}
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Freeze toggle (graph-force-stability D7): Obsidian's pause. Emits a single
-// `set-frozen` scene command and reflects the local frozen state. Meaningful
-// only in connectivity mode (the deterministic modes hold the solver stopped),
-// so it disables itself outside it. The cooling schedule stays fixed and
-// unexposed; the collision/separation/damping knobs are NOT exposed (D7).
+// `set-frozen` scene command and reflects the local frozen state. Meaningful only
+// in connectivity mode (the deterministic modes hold the solver stopped), so it
+// disables itself outside it. The cooling schedule stays fixed and unexposed; the
+// collision/separation/damping knobs are NOT exposed (D7). A kit IconButton: the
+// pressed (frozen) state reads through the kit's accent-subtle active treatment.
 // ---------------------------------------------------------------------------
 
 function FreezeToggle() {
@@ -127,10 +97,8 @@ function FreezeToggle() {
   }
 
   return (
-    <button
-      type="button"
-      aria-label={frozen ? "resume layout" : "freeze layout"}
-      aria-pressed={frozen}
+    <IconButton
+      label={frozen ? "resume layout" : "freeze layout"}
       title={
         connectivity
           ? frozen
@@ -138,9 +106,9 @@ function FreezeToggle() {
             : "freeze the force layout in place"
           : "freeze is available in the Network layout"
       }
-      onClick={toggle}
+      active={frozen}
       disabled={!connectivity}
-      className="flex h-8 w-8 items-center justify-center rounded-fg-md text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-paper-sunken aria-pressed:text-ink"
+      onClick={toggle}
       data-freeze-toggle
     >
       {frozen ? (
@@ -148,7 +116,7 @@ function FreezeToggle() {
       ) : (
         <Pause size={ICON_PX} aria-hidden />
       )}
-    </button>
+    </IconButton>
   );
 }
 
@@ -161,40 +129,48 @@ function NavigateGroup() {
       aria-label="Navigate"
       data-nav-group
     >
-      <NavBtn
+      <IconButton
         label="zoom in"
-        icon={<Plus size={ICON_PX} aria-hidden />}
         onClick={() => scene.controller.command({ kind: "zoom-in" })}
-      />
-      <NavBtn
+      >
+        <Plus size={ICON_PX} aria-hidden />
+      </IconButton>
+      <IconButton
         label="zoom out"
-        icon={<Minus size={ICON_PX} aria-hidden />}
         onClick={() => scene.controller.command({ kind: "zoom-out" })}
-      />
-      <NavBtn
+      >
+        <Minus size={ICON_PX} aria-hidden />
+      </IconButton>
+      <IconButton
         label="fit to view"
         title="fit all nodes into the viewport"
-        icon={<Square size={ICON_PX} aria-hidden />}
         onClick={() => scene.controller.command({ kind: "fit-to-view" })}
-      />
-      <NavBtn
+      >
+        <Maximize size={ICON_PX} aria-hidden />
+      </IconButton>
+      <IconButton
         label="reset view"
         title="reset the camera to the origin"
-        icon={<Crosshair size={ICON_PX} aria-hidden />}
         onClick={() => scene.controller.command({ kind: "reset-view" })}
-      />
+      >
+        <Crosshair size={ICON_PX} aria-hidden />
+      </IconButton>
       <FreezeToggle />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Slider — the Tune knobs and the Zoom descent. A labelled native range input
-// with a quiet readout, accent track, reduced-motion-safe (no transition on
-// the thumb), no layout shift (fixed-height readout).
+// LabelledSlider — a kit Slider with a label row and a quiet tabular readout, used
+// for the Tune knobs and the Zoom descent. The kit Slider owns the native range
+// input (drag + keyboard arrows, accent track); this composes the binding label /
+// readout / end-caption chrome around it. The optional interaction callbacks drive
+// the D2 force-coalescing (begin/end-interaction) — the kit Slider has no such
+// hooks, so they ride a wrapper whose bubbling pointer/key/blur events bracket the
+// drag.
 // ---------------------------------------------------------------------------
 
-interface SliderProps {
+interface LabelledSliderProps {
   label: string;
   value: number;
   min: number;
@@ -211,7 +187,7 @@ interface SliderProps {
   onInteractEnd?: () => void;
 }
 
-function Slider({
+function LabelledSlider({
   label,
   value,
   min,
@@ -223,10 +199,10 @@ function Slider({
   ends,
   onInteractStart,
   onInteractEnd,
-}: SliderProps) {
+}: LabelledSliderProps) {
   const display = format ? format(value) : String(value);
   return (
-    <label className="flex w-full flex-col gap-fg-1" title={title}>
+    <div className="flex w-full flex-col gap-fg-1" title={title}>
       <span className="flex h-3.5 items-center justify-between">
         <span className="text-label text-ink-muted">{label}</span>
         {!ends && (
@@ -235,40 +211,41 @@ function Slider({
           </span>
         )}
       </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        aria-label={label}
-        aria-valuetext={display}
-        onChange={(e) => onChange(Number(e.target.value))}
+      <div
         onPointerDown={onInteractStart}
         onPointerUp={onInteractEnd}
         onKeyDown={onInteractStart}
         onBlur={onInteractEnd}
-        className="h-1 w-full cursor-pointer accent-accent"
-      />
+      >
+        <Slider
+          label={label}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={onChange}
+        />
+      </div>
       {ends && (
         <span className="flex justify-between text-caption text-ink-faint">
           <span>{ends[0]}</span>
           <span>{ends[1]}</span>
         </span>
       )}
-    </label>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Popover — a small collapsible group docked to a toolbar trigger. The heavy
-// groups (Tune, Overview) live here so they are COLLAPSED by default and never
-// occlude the canvas; the trigger is a slim labelled icon button, the body pops
-// up ABOVE the bar (so it grows away from the field, not over it). Closes on
-// outside click and Escape. Reduced-motion-safe: no entrance animation.
+// SettingsPopover — a small collapsible group docked to a kit DropdownButton
+// trigger. The heavy Tune (force) knobs live here so they are COLLAPSED by default
+// and never occlude the canvas; the trigger is a labelled DropdownButton, the body
+// pops up ABOVE the bar (so it grows away from the field, not over it) inside a kit
+// Card. Closes on outside click and Escape. Reduced-motion-safe: no entrance
+// animation.
 // ---------------------------------------------------------------------------
 
-interface PopoverGroupProps {
+interface SettingsPopoverProps {
   label: string;
   icon: React.ReactNode;
   /** data-attribute marker for tests / styling hooks. */
@@ -276,7 +253,7 @@ interface PopoverGroupProps {
   children: React.ReactNode;
 }
 
-function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
+function SettingsPopover({ label, icon, marker, children }: SettingsPopoverProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
@@ -303,48 +280,37 @@ function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
       ref={wrapRef}
       data-popover-group={marker}
     >
-      <button
-        type="button"
-        aria-label={label}
-        aria-expanded={open}
-        aria-controls={panelId}
-        title={label}
-        onClick={() => setOpen((v) => !v)}
-        className={`flex h-8 items-center gap-fg-1 rounded-fg-md px-fg-2 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-          open
-            ? "bg-paper-sunken text-ink"
-            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
-        }`}
-        data-popover-trigger
-      >
-        {icon}
-        <span>{label}</span>
-        <ChevronDown
-          size={12}
-          aria-hidden
-          className={open ? "rotate-180" : undefined}
+      <span data-popover-trigger>
+        <DropdownButton
+          label={label}
+          ariaLabel={label}
+          icon={icon}
+          open={open}
+          onClick={() => setOpen((v) => !v)}
         />
-      </button>
+      </span>
       {open && (
-        <div
+        <Card
           id={panelId}
+          elevation="overlay"
+          padded={false}
           role="group"
           aria-label={label}
-          className="absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 rounded-fg-lg border border-rule bg-paper-raised/95 p-fg-3 shadow-fg-overlay backdrop-blur-sm"
+          className="absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 bg-paper-raised/95 p-fg-3 backdrop-blur-sm"
           data-popover-panel
         >
           {children}
-        </div>
+        </Card>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Zoom (LOD descent): a two-stop slider Overview ↔ Detail. 0 = feature
-// overview, 1 = document detail. Snaps; no intermediate state exists on the
-// wire. Disabled in time-travel (the driver owns the scene's data). Compact
-// inline form: flanking − / + camera zoom around the snap slider.
+// Zoom (LOD descent): a two-stop kit Slider Overview ↔ Detail. 0 = feature
+// overview, 1 = document detail. Snaps; no intermediate state exists on the wire.
+// Disabled in time-travel (the driver owns the scene's data). Compact inline form:
+// flanking − / + (kit IconButtons) camera zoom around the snap slider.
 // ---------------------------------------------------------------------------
 
 function ZoomGroup() {
@@ -358,21 +324,19 @@ function ZoomGroup() {
 
   return (
     <div
-      className={`flex w-36 items-center gap-fg-1 ${timeTravelling ? "opacity-40" : ""}`}
+      className={`flex items-center gap-fg-1 ${timeTravelling ? "opacity-40" : ""}`}
       role="group"
       aria-label="Zoom"
     >
-      <button
-        type="button"
-        aria-label="zoom camera out"
+      <IconButton
+        label="zoom camera out"
         title="zoom the camera out"
         onClick={() => scene.controller.command({ kind: "zoom-out" })}
-        className="text-base leading-none text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
-        −
-      </button>
-      <div className="flex-1">
-        <Slider
+        <Minus size={ICON_PX} aria-hidden />
+      </IconButton>
+      <div className="w-40">
+        <LabelledSlider
           label="detail level"
           value={zoomValue}
           min={0}
@@ -384,21 +348,19 @@ function ZoomGroup() {
           ends={["Overview", "Detail"]}
         />
       </div>
-      <button
-        type="button"
-        aria-label="zoom camera in"
+      <IconButton
+        label="zoom camera in"
         title="zoom the camera in"
         onClick={() => scene.controller.command({ kind: "zoom-in" })}
-        className="text-base leading-none text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
-        +
-      </button>
+        <Plus size={ICON_PX} aria-hidden />
+      </IconButton>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Tune group — the plain-language d3-force knobs (collapsed popover body).
+// Tune group — the plain-language d3-force knobs (collapsed settings-popover body).
 // ---------------------------------------------------------------------------
 
 // The Figma names map onto the real driver knobs (forceLayout.ts LayoutParams):
@@ -475,8 +437,8 @@ function TuneBody() {
   }
 
   return (
-    <div className="flex w-44 flex-col gap-fg-3">
-      <Slider
+    <div className="flex w-48 flex-col gap-fg-3">
+      <LabelledSlider
         label="Spacing"
         title="How far nodes push each other apart"
         value={params.repel}
@@ -488,7 +450,7 @@ function TuneBody() {
         onInteractStart={beginInteraction}
         onInteractEnd={endInteraction}
       />
-      <Slider
+      <LabelledSlider
         label="Connection reach"
         title="The rest length of the links between connected nodes"
         value={params.linkDistance}
@@ -500,7 +462,7 @@ function TuneBody() {
         onInteractStart={beginInteraction}
         onInteractEnd={endInteraction}
       />
-      <Slider
+      <LabelledSlider
         label="Clustering"
         title="How tightly connected nodes pull together into groups"
         value={params.linkForce}
@@ -517,12 +479,12 @@ function TuneBody() {
 }
 
 // ---------------------------------------------------------------------------
-// The consolidated panel — a slim bottom-edge toolbar. Light groups inline;
-// the heavy Tune + Overview groups collapsed behind popover triggers so the
+// The consolidated panel — a slim bottom-edge toolbar. Light groups inline; the
+// heavy Tune group collapsed behind a settings popover trigger so the
 // category-circle canvas is ALWAYS visible. `pointer-events-auto` is on the bar
 // only, so the field reads through the space around it. The bar never spans the
-// full stage: it sizes to its content and stays anchored at the bottom edge; on
-// a narrow stage it scrolls horizontally rather than wrapping into a tall,
+// full stage: it sizes to its content and stays anchored at the bottom edge; on a
+// narrow stage it scrolls horizontally rather than wrapping into a tall,
 // canvas-covering block.
 // ---------------------------------------------------------------------------
 
@@ -532,16 +494,18 @@ export function GraphControls() {
       className="pointer-events-none absolute inset-x-0 bottom-fg-2 z-20 flex justify-center px-fg-2"
       data-graph-controls-shell
     >
-      <div
-        className="pointer-events-auto flex max-w-full items-stretch rounded-fg-lg border border-rule bg-paper-raised/95 shadow-fg-overlay backdrop-blur-sm"
+      <Card
+        elevation="overlay"
+        padded={false}
+        className="pointer-events-auto flex max-w-full items-stretch bg-paper-raised/95 backdrop-blur-sm"
         role="group"
         aria-label="graph controls"
         data-graph-controls
       >
         {/* Inline light groups. This section alone scrolls horizontally on a
             narrow stage, so the bar never grows TALL (no wrap) and never covers
-            the canvas. The popover triggers live OUTSIDE this scroll region so
-            their above-bar panels are not clipped by overflow. */}
+            the canvas. The settings trigger lives OUTSIDE this scroll region so
+            its above-bar panel is not clipped by overflow. */}
         <div
           className="flex min-w-0 items-center gap-fg-1 overflow-x-auto px-fg-2 py-fg-1-5"
           data-graph-controls-inline
@@ -552,25 +516,19 @@ export function GraphControls() {
           <Divider />
           <ZoomGroup />
         </div>
-        {/* Heavy groups, collapsed behind popover triggers (canvas stays clear).
-            Outside the scroll region so the popover bodies can overflow upward. */}
+        {/* Heavy Tune group, collapsed behind a settings popover trigger (canvas
+            stays clear). Outside the scroll region so the popover body can
+            overflow upward. */}
         <div className="flex items-center gap-fg-1 border-l border-rule px-fg-2 py-fg-1-5">
-          <PopoverGroup
+          <SettingsPopover
             label="Tune"
             marker="tune"
             icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
           >
             <TuneBody />
-          </PopoverGroup>
-          <PopoverGroup
-            label="Overview"
-            marker="overview"
-            icon={<MapIcon size={ICON_PX} aria-hidden />}
-          >
-            <MinimapWidget embedded />
-          </PopoverGroup>
+          </SettingsPopover>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

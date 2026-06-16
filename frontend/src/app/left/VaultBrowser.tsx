@@ -14,6 +14,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 
+import { Chip, SectionLabel, StatusDot } from "../kit";
 import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import { useVaultTree, useVaultTreeAvailability } from "../../stores/server/queries";
@@ -36,6 +37,7 @@ import {
   docMark,
   docMarkName as sharedDocMarkName,
   docGroupLabel,
+  docTypeCategory,
   freshnessLabel as sharedFreshnessLabel,
   isFresh as sharedIsFresh,
   planStatus,
@@ -293,9 +295,11 @@ export function VaultBrowser({
           const isCollapsed = collapsed.has(group);
           const sectionId = `vault-group-${group}`;
           const headerKey = `header:${group}`;
-          // The group header carries the doc-type mark of the group it labels
-          // (Figma `Pencil`/`Diamond`/`ClipboardText` … beside the group name).
-          const GroupMark = docMark(group);
+          // Per-group leading cue: the doc type's bound scene/category color (the
+          // kit StatusDot), with the doc-type mark as the fallback for a type with
+          // no bound color (e.g. reference).
+          const rowCategory = docTypeCategory(group);
+          const FallbackMark = docMark(group);
           return (
             <section key={group} className="mt-fg-2 first:mt-0">
               <button
@@ -314,23 +318,22 @@ export function VaultBrowser({
                     return next;
                   })
                 }
-                // Group header (Figma `ResearchHeader`/`PlanHeader` …): chevron +
-                // doc-type mark + a SEMIBOLD body-ink label, with the count quietly
-                // right-aligned. The whole row is the disclosure control.
-                className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                // Group header (binding `LeftRail` 244:750): a disclosure twisty
+                // plus the kit `SectionLabel` eyebrow (RESEARCH / DECISIONS / …)
+                // with the count. SectionLabel supplies the row's type + padding;
+                // the whole row is the disclosure control.
+                className="flex w-full items-center rounded-fg-xs transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
-                {isCollapsed ? (
-                  <ChevronRight size={CHEVRON_PX} aria-hidden />
-                ) : (
-                  <ChevronDown size={CHEVRON_PX} aria-hidden />
-                )}
-                <span className="shrink-0 text-ink-faint" aria-hidden>
-                  <GroupMark size={DOC_MARK_PX} />
+                <span className="shrink-0 ps-fg-1 text-ink-faint" aria-hidden>
+                  {isCollapsed ? (
+                    <ChevronRight size={CHEVRON_PX} />
+                  ) : (
+                    <ChevronDown size={CHEVRON_PX} />
+                  )}
                 </span>
-                <span>{docGroupLabel(group)}</span>
-                <span className="ml-auto text-caption text-ink-faint" data-tabular>
-                  {entries.length}
-                </span>
+                <SectionLabel count={entries.length} className="min-w-0 flex-1">
+                  {docGroupLabel(group)}
+                </SectionLabel>
               </button>
               {!isCollapsed && (
                 <ul id={sectionId} className="ml-fg-3 mt-fg-0-5 space-y-fg-0-5">
@@ -380,44 +383,47 @@ export function VaultBrowser({
                             }
                             navKeyDown(rowKey)(e);
                           }}
-                          className={`flex w-full items-center gap-fg-1 truncate rounded-fg-xs px-fg-1 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                          className={`flex w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 py-fg-0-5 pe-fg-1 ps-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                             highlighted
-                              ? "bg-accent-subtle font-medium text-ink"
-                              : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+                              ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
+                              : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
                           }`}
                         >
-                          {/* Grayscale-safe selection (Figma `bar`): a leading
-                              2px accent bar marks the active row, transparent
-                              otherwise, so the cue survives without hue. The
-                              per-row doc-type mark lives on the GROUP header, not
-                              the row (matching the binding design). PLAN rows
-                              additionally carry the status pip (✓/◐/○) beside the
-                              bar — the bar still wins the leading slot when the
-                              row is selected, exactly as the design paints it. */}
-                          <span
-                            aria-hidden
-                            className={`-ml-fg-0-5 h-3 w-0.5 shrink-0 rounded-full ${
-                              highlighted ? "bg-accent" : "bg-transparent"
-                            }`}
-                          />
-                          {StatusMark && status && (
+                          {/* Leading category cue (binding `LeftRail` 244:750 row):
+                              the kit StatusDot tinted by the doc type's bound scene/
+                              category color, so the dot and its graph node agree.
+                              PLAN rows instead carry the grayscale-safe status pip
+                              (✓/◐/○); a doc type with no bound color (reference)
+                              falls back to its doc-type mark so the row is never
+                              blank. Selection is the kit ListRow treatment — a 2px
+                              left accent bar + accent-subtle tint on the row. */}
+                          {StatusMark && status ? (
                             <span
-                              className={`shrink-0 ${planStatusToneClass(status)}`}
+                              className={`flex shrink-0 items-center ${planStatusToneClass(status)}`}
                               aria-label={`plan ${planStatusLabel(status)}`}
                               data-plan-status={status}
                             >
                               <StatusMark size={STATUS_MARK_PX} />
                             </span>
+                          ) : rowCategory ? (
+                            <span className="flex shrink-0 items-center">
+                              <StatusDot category={rowCategory} />
+                            </span>
+                          ) : (
+                            <span
+                              className="flex shrink-0 items-center text-ink-faint"
+                              aria-hidden
+                            >
+                              <FallbackMark size={DOC_MARK_PX} />
+                            </span>
                           )}
-                          <span className="min-w-0 shrink-0 truncate">
+                          <span className="min-w-0 shrink truncate">
                             {entryStem(entry.path)}
                           </span>
-                          {/* Feature tag fills the gap and truncates, as in the
-                              design — quiet faint ink, never the identity. */}
+                          {/* Feature tag as the kit Chip (feature-toned), matching
+                              the binding row's #feature-tag chip. */}
                           {entry.feature_tags[0] && (
-                            <span className="min-w-0 flex-1 truncate text-caption text-ink-faint">
-                              #{entry.feature_tags[0]}
-                            </span>
+                            <Chip category="feature">#{entry.feature_tags[0]}</Chip>
                           )}
                           {fresh && (
                             <span

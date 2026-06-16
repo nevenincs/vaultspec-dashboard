@@ -23,6 +23,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 
+import { SectionLabel, StatusDot } from "../kit";
 import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import { useVaultTree, useVaultTreeAvailability } from "../../stores/server/queries";
@@ -45,6 +46,7 @@ import {
   DOC_MARK_PX,
   docGroupLabel,
   docMark,
+  docTypeCategory,
   freshnessLabel,
   isFresh,
   planStatus,
@@ -377,11 +379,11 @@ export function TreeBrowser({
                       const dKey = `d:${group.feature}/${sub.docType}`;
                       const dCollapsed = collapsed.has(dKey);
                       const dSectionId = `tree-doctype-${group.feature}-${sub.docType}`;
-                      const GroupMark = docMark(sub.docType);
                       return (
                         <div key={sub.docType} data-tree-doctype>
-                          {/* Level 1 — the doc-type group header: indented one step,
-                              chevron + doc-type mark + a SEMIBOLD capitalised label. */}
+                          {/* Level 1 — the doc-type group header (binding `LeftRail`
+                              244:750): indented one step, a disclosure twisty plus
+                              the kit SectionLabel eyebrow with the count. */}
                           <button
                             ref={registerNav(dKey)}
                             type="button"
@@ -394,23 +396,21 @@ export function TreeBrowser({
                               onArrowRight: () => dCollapsed && toggleCollapsed(dKey),
                               onArrowLeft: () => !dCollapsed && toggleCollapsed(dKey),
                             })}
-                            className="flex w-full items-center gap-fg-1 rounded-fg-xs py-fg-0-5 pl-fg-3 pr-fg-1 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                            className="flex w-full items-center rounded-fg-xs pl-fg-3 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                           >
-                            {dCollapsed ? (
-                              <ChevronRight size={CHEVRON_PX} aria-hidden />
-                            ) : (
-                              <ChevronDown size={CHEVRON_PX} aria-hidden />
-                            )}
                             <span className="shrink-0 text-ink-faint" aria-hidden>
-                              <GroupMark size={DOC_MARK_PX} />
+                              {dCollapsed ? (
+                                <ChevronRight size={CHEVRON_PX} />
+                              ) : (
+                                <ChevronDown size={CHEVRON_PX} />
+                              )}
                             </span>
-                            <span>{docGroupLabel(sub.docType)}</span>
-                            <span
-                              className="ml-auto text-caption text-ink-faint"
-                              data-tabular
+                            <SectionLabel
+                              count={sub.entries.length}
+                              className="min-w-0 flex-1"
                             >
-                              {sub.entries.length}
-                            </span>
+                              {docGroupLabel(sub.docType)}
+                            </SectionLabel>
                           </button>
 
                           {!dCollapsed && (
@@ -419,6 +419,7 @@ export function TreeBrowser({
                                 <TreeRow
                                   key={entry.path}
                                   entry={entry}
+                                  docType={sub.docType}
                                   isPlan={sub.docType === "plan"}
                                   highlighted={entry.path === highlight}
                                   fresh={freshnessLabel(entry.dates.modified, now)}
@@ -450,6 +451,7 @@ export function TreeBrowser({
 
 interface TreeRowProps {
   entry: VaultTreeEntry;
+  docType: string;
   isPlan: boolean;
   highlighted: boolean;
   fresh: string;
@@ -461,12 +463,15 @@ interface TreeRowProps {
   entity: VaultDocEntity;
 }
 
-/** One document row at level 2 (Figma `DocumentRow` at `pl-36px`): the leading
- *  selection cue (a plan-status pip for PLAN rows, else the 2px accent bar), the
- *  stem, the freshness label. The selected row alone gets the accent background +
- *  bar — exactly one selected row across the whole tree. */
+/** One document row at level 2 (binding `LeftRail` 244:750 document row): the
+ *  leading category cue (a plan-status pip for PLAN rows, else the kit StatusDot
+ *  tinted by the doc type's bound scene/category color, or the doc-type mark when
+ *  no bound color exists), the stem, and the freshness label. The selected row
+ *  alone gets the kit ListRow accent treatment — a 2px left accent bar +
+ *  accent-subtle tint — exactly one selected row across the whole tree. */
 function TreeRow({
   entry,
+  docType,
   isPlan,
   highlighted,
   fresh,
@@ -478,6 +483,8 @@ function TreeRow({
   entity,
 }: TreeRowProps) {
   const rowKey = `r:${entry.path}`;
+  const rowCategory = docTypeCategory(docType);
+  const FallbackMark = docMark(docType);
   // Plan-status pip: derived from the entry's real checkbox progress, projected
   // by the engine `/vault-tree` route from the SAME `lifecycle_in_scope` facet
   // the node-graph pipeline reads. Absent progress reads the honest not-started
@@ -509,42 +516,37 @@ function TreeRow({
           }
           navKeyDown(rowKey)(e);
         }}
-        // Level-2 indent (Figma `pl-36px`) lines the rows up under the doc-type
-        // mark; the leading cue + stem + freshness follow.
-        className={`flex w-full items-center gap-fg-1 truncate rounded-fg-xs py-fg-0-5 pl-fg-6 pr-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        // Level-2 indent (binding row at `pl-36px`) lines the rows up under the
+        // doc-type group; the kit ListRow accent treatment (2px left bar + tint)
+        // marks selection, the leading category cue + stem + freshness follow.
+        className={`flex w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 py-fg-0-5 pe-fg-1 ps-fg-6 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
-            ? "bg-accent-subtle font-medium text-ink"
-            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+            ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
+            : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
         }`}
       >
+        {/* Leading category cue: plan rows carry the grayscale-safe status pip
+            (✓ / ◐ / ○); other rows carry the kit StatusDot tinted by the doc
+            type's bound scene/category color; a doc type with no bound color
+            (reference) falls back to its doc-type mark so the row is never blank. */}
         {StatusMark && status ? (
-          // Plan rows: a grayscale-safe status pip (✓ / ◐ / ○) in place of the
-          // accent bar. When this row is ALSO selected, the accent bar wins the
-          // leading slot (selection is the louder cue) and the pip rides beside it.
-          <>
-            <span
-              aria-hidden
-              className={`-ml-fg-0-5 h-3 w-0.5 shrink-0 rounded-full ${
-                highlighted ? "bg-accent" : "bg-transparent"
-              }`}
-            />
-            <span
-              className={`shrink-0 ${planStatusToneClass(status)}`}
-              aria-label={`plan ${planStatusLabel(status)}`}
-              data-plan-status={status}
-            >
-              <StatusMark size={STATUS_MARK_PX} />
-            </span>
-          </>
-        ) : (
           <span
-            aria-hidden
-            className={`-ml-fg-0-5 h-3 w-0.5 shrink-0 rounded-full ${
-              highlighted ? "bg-accent" : "bg-transparent"
-            }`}
-          />
+            className={`flex shrink-0 items-center ${planStatusToneClass(status)}`}
+            aria-label={`plan ${planStatusLabel(status)}`}
+            data-plan-status={status}
+          >
+            <StatusMark size={STATUS_MARK_PX} />
+          </span>
+        ) : rowCategory ? (
+          <span className="flex shrink-0 items-center">
+            <StatusDot category={rowCategory} />
+          </span>
+        ) : (
+          <span className="flex shrink-0 items-center text-ink-faint" aria-hidden>
+            <FallbackMark size={DOC_MARK_PX} />
+          </span>
         )}
-        <span className="min-w-0 truncate">{entryStem(entry.path)}</span>
+        <span className="min-w-0 shrink truncate">{entryStem(entry.path)}</span>
         {fresh && (
           <span
             className={`ml-auto shrink-0 text-caption ${

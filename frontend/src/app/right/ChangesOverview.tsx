@@ -32,7 +32,7 @@
 // discard, or checkout affordance exists or is accepted here (engine-read-and-
 // infer). The browser observes git state; it never changes it.
 
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import {
   File as FileMark,
   FileDashed,
@@ -60,6 +60,10 @@ import type { Selection } from "../../stores/view/viewStore";
 import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
 import { DiffView } from "./DiffView";
+// Centralized kit primitives (design-system-is-centralized): the context-card
+// surface for the git status header, the section eyebrows, the status/count
+// badges, and the chrome chevrons all derive from one shared definition.
+import { Badge, Card, ChevronDown, ChevronRight, SectionLabel } from "../kit";
 
 // The "event" resolver (shared with the timeline) is registered centrally via
 // `app/menus/registerAll`; an activity/commit row only needs to publish an
@@ -169,8 +173,10 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
   const aheadN = ahead ?? 0;
   const behindN = behind ?? 0;
   return (
-    <div
-      className="flex items-center gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label shadow-fg-raised"
+    <Card
+      elevation="raised"
+      padded={false}
+      className="flex items-center gap-fg-1-5 px-fg-2 py-fg-1 text-label"
       aria-label="git status"
     >
       <span className="shrink-0 text-ink-faint" aria-hidden>
@@ -203,13 +209,11 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
           in grayscale (never colour-only). The live wire serves a dirty BOOLEAN,
           not a count, so the pill states clean vs. "changes" without a number. */}
       {dirty ? (
-        <span className="shrink-0 rounded-fg-pill bg-accent-subtle px-fg-1-5 py-fg-0-5 text-caption text-accent-text">
-          changes
-        </span>
+        <Badge tone="accent">changes</Badge>
       ) : (
         <span className="shrink-0 text-caption text-state-active">clean</span>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -295,11 +299,8 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
           {basename(file.path)}
         </span>
         {file.vault && (
-          <span
-            className="shrink-0 text-caption text-accent-text"
-            aria-label="vault file"
-          >
-            vault
+          <span className="shrink-0" aria-label="vault file">
+            <Badge tone="accent">vault</Badge>
           </span>
         )}
         {/* numstat add/remove tallies — data-bearing → tabular numerals, with the
@@ -352,16 +353,13 @@ function ChangedFilesList({ files, scope }: { files: ChangedFile[]; scope: strin
 
   return (
     <section aria-label="working tree changes" data-working-changes>
-      <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
-        Changes
-      </h3>
+      <SectionLabel className="mb-fg-1">Changes</SectionLabel>
       <ul className="space-y-fg-2" aria-label="changed files">
         {groups.map(({ group, rows }) => (
           <li key={group}>
-            <h4 className="mb-fg-0-5 flex items-center gap-fg-1 text-caption text-ink-faint">
-              <span className="uppercase tracking-wider">{GROUP_LABEL[group]}</span>
-              <span data-tabular>{rows.length}</span>
-            </h4>
+            <SectionLabel className="mb-fg-0-5" count={rows.length}>
+              {GROUP_LABEL[group]}
+            </SectionLabel>
             <ul className="space-y-fg-0-5">
               {rows.map((file) => (
                 <ChangedFileRow key={file.path} file={file} scope={scope} />
@@ -594,9 +592,7 @@ export function ChangesOverview() {
       {/* Recent commits */}
       {commits.length > 0 && (
         <section aria-label="recent commits">
-          <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
-            Commits
-          </h3>
+          <SectionLabel className="mb-fg-1">Commits</SectionLabel>
           <ul className="space-y-fg-0-5">
             {commits.slice(0, 20).map((ev) => (
               <EventRow key={ev.id} ev={ev} now={now} onSelect={selectEntity} />
@@ -608,9 +604,7 @@ export function ChangesOverview() {
       {/* Doc + step activity */}
       {docActivity.length > 0 && (
         <section aria-label="vault activity">
-          <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
-            Activity
-          </h3>
+          <SectionLabel className="mb-fg-1">Activity</SectionLabel>
           <ul className="space-y-fg-0-5">
             {docActivity.map((ev) => (
               <EventRow key={ev.id} ev={ev} now={now} onSelect={selectEntity} />

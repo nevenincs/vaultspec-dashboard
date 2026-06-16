@@ -157,13 +157,15 @@ describe("phase-lane marks render as activatable buttons (S34/S35)", () => {
 // W04.P09: honest states, a11y contract, reduced-motion (S57-S67)
 // =============================================================================
 
-// The lane rail DISPLAY labels (binding Figma 17:647): the `review` phase shows
-// "audit" (the doc-type it owns / the `.vault/audit/` directory name) and `codify`
-// shows "codify". The lane TOKENS stay the engine wire phases; these are the labels
-// the rail + chips render.
-const PHASE_BAND_LANE_LABELS = ["research", "adr", "plan", "exec", "audit", "codify"];
-/** The lane wire tokens (the per-lane visibility keys / data attributes). */
-const PHASE_BAND_LANE_TOKENS = ["research", "adr", "plan", "exec", "review", "codify"];
+// The binding two-lane scaffold (figma-frontend-rewrite W03.P08.S11, AppShell
+// 117:2): the six pipeline phases collapse into TWO visual lanes. Each rail is keyed
+// by its group id (the per-group data attribute) and labelled with the binding
+// middot-joined category list.
+const TIMELINE_LANE_GROUP_IDS = ["design", "execution"];
+const TIMELINE_LANE_GROUP_LABELS = [
+  "Research · Decisions · Plans · Audits",
+  "Execution · Summaries",
+];
 
 function withTimeline() {
   engineClient.useTransport(new MockEngine().fetchImpl);
@@ -187,17 +189,17 @@ describe("honest states (S57-S60)", () => {
   beforeEach(withTimeline);
   afterEach(resetTimeline);
 
-  it("renders the six-lane scaffold immediately, never a flash of empty (S57)", () => {
+  it("renders the two-lane scaffold immediately, never a flash of empty (S57)", () => {
     // The lane scaffold is present on first paint (before the lineage resolves):
-    // every phase lane rail is drawn (token data attribute + display label), so the
-    // surface never flashes empty while the first slice loads.
+    // both visual lane rails are drawn (group id data attribute + middot label), so
+    // the surface never flashes empty while the first slice loads.
     renderTimeline();
-    for (let i = 0; i < PHASE_BAND_LANE_TOKENS.length; i++) {
+    for (let i = 0; i < TIMELINE_LANE_GROUP_IDS.length; i++) {
       const rail = document.querySelector(
-        `[data-lane-rail="${PHASE_BAND_LANE_TOKENS[i]}"]`,
+        `[data-lane-rail="${TIMELINE_LANE_GROUP_IDS[i]}"]`,
       );
       expect(rail).not.toBeNull();
-      expect(rail?.textContent).toContain(PHASE_BAND_LANE_LABELS[i]);
+      expect(rail?.textContent).toContain(TIMELINE_LANE_GROUP_LABELS[i]);
     }
     // The liveness cue is shown while loading — a quiet status, not a blank.
     const loading = document.querySelector("[data-timeline-loading]");
@@ -232,7 +234,7 @@ describe("honest states (S57-S60)", () => {
     expect(region?.getAttribute("aria-live")).toBe("polite");
     expect(screen.queryByRole("alert")).toBeNull();
     // The lane scaffold stays behind the badge (not blanked).
-    expect(screen.getByText("research")).toBeTruthy();
+    expect(document.querySelector('[data-lane-rail="design"]')).not.toBeNull();
   });
 
   it("renders a contained, retry-able error scoped to the timeline (S60)", async () => {
@@ -245,7 +247,7 @@ describe("honest states (S57-S60)", () => {
     expect(error.closest("[data-timeline-error]")?.getAttribute("role")).toBe("alert");
     expect(screen.getByRole("button", { name: "retry" })).toBeTruthy();
     // The lane scaffold is still drawn behind the contained error.
-    expect(screen.getByText("research")).toBeTruthy();
+    expect(document.querySelector('[data-lane-rail="design"]')).not.toBeNull();
   });
 });
 
@@ -502,15 +504,14 @@ describe("Timeline mounted in the AppShell composition (S69)", () => {
     );
     // The control bar is present (the surface's docked instrument bar).
     expect(document.querySelector("[data-timeline-controls]")).not.toBeNull();
-    // The six-lane scaffold is drawn — the surface shows its structure, not empty.
-    // Each lane rail (the surface's own scaffold, distinct from the control bar's
-    // lane-toggle chips) carries its wire token + display label.
-    for (let i = 0; i < PHASE_BAND_LANE_TOKENS.length; i++) {
+    // The two-lane scaffold is drawn — the surface shows its structure, not empty.
+    // Each lane rail (the surface's own scaffold) carries its group id + middot label.
+    for (let i = 0; i < TIMELINE_LANE_GROUP_IDS.length; i++) {
       const rail = document.querySelector(
-        `[data-lane-rail="${PHASE_BAND_LANE_TOKENS[i]}"]`,
+        `[data-lane-rail="${TIMELINE_LANE_GROUP_IDS[i]}"]`,
       );
       expect(rail).not.toBeNull();
-      expect(rail?.textContent).toContain(PHASE_BAND_LANE_LABELS[i]);
+      expect(rail?.textContent).toContain(TIMELINE_LANE_GROUP_LABELS[i]);
     }
     // The dated lineage marks resolve through the real client transport.
     const marks = await screen.findAllByRole("button", { name: /lineage degree/i });

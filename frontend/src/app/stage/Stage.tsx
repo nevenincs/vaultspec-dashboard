@@ -38,7 +38,9 @@ import { IslandLayer } from "../islands/IslandLayer";
 import { TimeTravelChip } from "../timeline/Playhead";
 import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
+import { CategoryLegend } from "./CategoryLegend";
 import { GraphControls } from "./GraphControls";
+import { MinimapWidget } from "./MinimapWidget";
 import { LensSelector } from "./LensSelector";
 import { Discover } from "./Discover";
 import { useGraphWalkKeyboard } from "./graphWalk";
@@ -482,9 +484,18 @@ export function Stage() {
           nodes: membership?.hiddenNodeCount ?? 0,
           edges: membership?.hiddenEdgeCount ?? 0,
         }}
+        nodeCounts={
+          merged
+            ? {
+                visible: merged.nodes.length - (membership?.hiddenNodeCount ?? 0),
+                total: merged.nodes.length,
+              }
+            : undefined
+        }
         sidebarOpen={filterSidebarOpen}
         onSidebarToggle={() => setFilterSidebarOpen((v) => !v)}
       />
+      <CategoryLegend />
       <FilterSidebar
         open={filterSidebarOpen}
         onClose={() => setFilterSidebarOpen(false)}
@@ -499,6 +510,11 @@ export function Stage() {
           supersedes the scattered NavToolbar / RepresentationModePanel /
           AlgorithmPanel / minimap surfaces. */}
       <GraphControls />
+      {/* The overview minimap is a DOCKED card bottom-right (binding stage layout
+          "minimap card bottom-right", AppShell 117:2) — it owns the bottom-right
+          corner directly rather than hiding inside a controls popover. The scene
+          owns every pixel inside its canvas through the unchanged seam. */}
+      <MinimapWidget />
       {/* Salience lens (graph-node-salience): the viewer-intent re-query. FLAGGED:
           the binding Figma `graph/Controls` consolidation has no slot for the lens
           (a distinct concern from layout/zoom), so it stays docked on its own

@@ -1,26 +1,26 @@
-// The filter bar (figma-parity-reconciliation W02.P05.S33; binding FacetChipGroup
-// primitive, Figma node 136:27), docked at the stage's top edge — part of the
-// instrument, not global chrome. The tier dial leads; facet chips (doc type,
-// feature, relation, structural status, text match) draw their legal values from
-// the engine-enumerated vocabulary — nothing hardcoded. Filtered-out is
-// recoverable context: the hidden-count chip names the cost. The date-range chip
-// is read-only here — the timeline owns it.
+// The stage toolbar (binding Figma stage chrome: the top toolbar of AppShell 117:2
+// — "Search the graph", a Filter control with its active count, an "N of M" node
+// count, and the recoverable filtered-out cost). Docked at the stage's top edge —
+// part of the instrument, not global chrome.
 //
-// Rebuilt onto the NEW Figma role-named token foundation: the sidebar toggle and
-// text-match field on the canonical radius (`rounded-fg-xs`), the date-range and
-// cost chips on the canonical pill radius (`rounded-fg-pill`). A dumb projection
-// over the PRESERVED filter store and the `useFiltersVocabulary` query — it
-// fetches nothing of its own and reads no raw tiers block.
+// figma-frontend-rewrite W03.P07.S10 / W04.P11.S17: the toolbar now follows the
+// binding Filter-MENU model — the busy inline tier dial + facet chip strip is
+// RETIRED from the toolbar; the full facet instrument lives behind the Filter
+// control in the `FilterSidebar` (the binding "Filter menu" 217:633). The toolbar
+// composes the centralized kit: a `SearchField` for the live text match, a Filter
+// toggle (`IconButton` + active-count `Badge`) that opens the menu, and quiet
+// count/cost pills. Filtered-out is recoverable context: the cost pill names what
+// the filter removed, carrying the stale/caution token tone (not an error).
+//
+// A dumb projection over the PRESERVED filter store — it fetches nothing of its own
+// and reads no raw tiers block (dashboard-layer-ownership). Tokens only; icons are
+// the sanctioned Lucide chrome family from the kit.
 
-import { PanelLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { useActiveScope } from "./Stage";
-import { FacetChipGroup } from "../chrome/FacetChipGroup";
-import { useFiltersVocabulary } from "../../stores/server/queries";
+import { Badge, IconButton, PanelLeft, SearchField } from "../kit";
 import { useFilterStore } from "../../stores/view/filters";
 import { debounce } from "../../platform/timing";
-import { TierDial } from "./TierDial";
 
 /** The "N hidden" cost chip text; null hides the chip. */
 export function hiddenCountLabel(
@@ -38,27 +38,33 @@ export function FilterBar({
   hidden,
   sidebarOpen,
   onSidebarToggle,
+  nodeCounts,
 }: {
   hidden: { nodes: number; edges: number };
-  /** Pass to render a sidebar expand/collapse button at the leading edge. */
+  /** Pass to render a Filter (sidebar expand/collapse) control at the leading edge. */
   sidebarOpen?: boolean;
   onSidebarToggle?: () => void;
+  /** Optional visible/total node count for the "N of M" toolbar readout. */
+  nodeCounts?: { visible: number; total: number };
 }) {
-  const scope = useActiveScope();
-  const vocabulary = useFiltersVocabulary(scope);
-  // The vocabulary query is enabled only when scope is set; "no scope yet" and
-  // "in flight" both render the strip without facet chips (a designed loading
-  // state) — text-match still works as a fallback throughout.
-  const vocabLoading = scope === null || vocabulary.isPending;
   const docTypes = useFilterStore((s) => s.docTypes);
   const featureTags = useFilterStore((s) => s.featureTags);
   const structuralStates = useFilterStore((s) => s.structuralStates);
+  const relations = useFilterStore((s) => s.relations);
   const textMatch = useFilterStore((s) => s.textMatch);
   const dateRange = useFilterStore((s) => s.dateRange);
-  const toggleFacet = useFilterStore((s) => s.toggleFacet);
   const setTextMatch = useFilterStore((s) => s.setTextMatch);
 
-  // Debounce the text filter (B7, resource-hardening): the raw input is locally
+  // The number of active facet selections — surfaced as a count Badge on the
+  // Filter control so the menu's effect is legible without opening it.
+  const activeFilterCount =
+    docTypes.length +
+    featureTags.length +
+    relations.length +
+    structuralStates.length +
+    (textMatch.length > 0 ? 1 : 0);
+
+  // Debounce the text filter (B7, resource-hardening): the field is locally
   // controlled for instant feedback, but the store write — which drives a full
   // computeVisibility recompute over the live slice — is trailing-edge debounced
   // so it fires once per pause, not once per keystroke.
@@ -70,76 +76,46 @@ export function FilterBar({
   );
   useEffect(() => () => debouncedSetTextMatch.cancel(), [debouncedSetTextMatch]);
 
-  const relations = useFilterStore((s) => s.relations);
-
   const costLabel = hiddenCountLabel(hidden.nodes, hidden.edges);
 
   return (
     <div
-      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap content-center items-center gap-x-fg-3 gap-y-0 border-b border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label"
+      className="pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap content-center items-center gap-x-fg-2 gap-y-fg-1 border-b border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label"
       data-filter-bar
     >
       {onSidebarToggle !== undefined && (
-        <button
-          type="button"
-          aria-pressed={sidebarOpen}
-          aria-label={sidebarOpen ? "close filter panel" : "open filter panel"}
-          onClick={onSidebarToggle}
-          title="toggle filter sidebar"
-          className={`flex items-center rounded-fg-xs border p-fg-1 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-            sidebarOpen
-              ? "border-rule-strong bg-paper-sunken text-ink"
-              : "border-rule text-ink-muted hover:border-rule-strong"
-          }`}
-        >
-          <PanelLeft size={13} aria-hidden />
-        </button>
+        <div className="flex items-center gap-fg-1">
+          <IconButton
+            label={sidebarOpen ? "close filter panel" : "open filter panel"}
+            title="toggle filter sidebar"
+            active={sidebarOpen}
+            onClick={onSidebarToggle}
+          >
+            <PanelLeft size={14} aria-hidden />
+          </IconButton>
+          {activeFilterCount > 0 && (
+            <Badge tone="accent">{activeFilterCount}</Badge>
+          )}
+        </div>
       )}
-      <TierDial />
-      {vocabLoading && (
-        <span className="text-ink-faint" aria-busy data-filter-loading>
-          loading facets…
+      <SearchField
+        value={localText}
+        onChange={(value) => {
+          setLocalText(value);
+          debouncedSetTextMatch(value);
+        }}
+        placeholder="Search the graph…"
+        ariaLabel="text match filter"
+        onClear={() => {
+          setLocalText("");
+          setTextMatch("");
+        }}
+      />
+      {nodeCounts && (
+        <span data-tabular className="tabular-nums text-ink-muted">
+          {nodeCounts.visible} of {nodeCounts.total}
         </span>
       )}
-      <FacetChipGroup
-        label="type"
-        groupLabel="facet"
-        values={vocabulary.data?.doc_types ?? []}
-        selected={docTypes}
-        onToggle={(v) => toggleFacet("docTypes", v)}
-      />
-      <FacetChipGroup
-        label="feature"
-        groupLabel="facet"
-        values={(vocabulary.data?.feature_tags ?? []).slice(0, 6)}
-        selected={featureTags}
-        onToggle={(v) => toggleFacet("featureTags", v)}
-      />
-      <FacetChipGroup
-        label="relation"
-        groupLabel="facet"
-        values={(vocabulary.data?.relations ?? []).slice(0, 5)}
-        selected={relations}
-        onToggle={(v) => toggleFacet("relations", v)}
-      />
-      <FacetChipGroup
-        label="status"
-        groupLabel="facet"
-        values={["resolved", "stale", "broken"]}
-        selected={structuralStates}
-        onToggle={(v) => toggleFacet("structuralStates", v)}
-      />
-      <input
-        type="search"
-        value={localText}
-        onChange={(e) => {
-          setLocalText(e.target.value);
-          debouncedSetTextMatch(e.target.value);
-        }}
-        placeholder="text match…"
-        aria-label="text match filter"
-        className="w-28 rounded-fg-xs border border-rule bg-paper-raised px-fg-1-5 py-fg-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
-      />
       {(dateRange.from || dateRange.to) && (
         <span
           data-tabular

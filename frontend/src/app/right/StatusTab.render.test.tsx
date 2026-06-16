@@ -100,7 +100,7 @@ describe("StatusTab — the status overview (status-overview ADR, honest-against
 
   // --- Open plans ("What is being worked on?") -----------------------------------
 
-  it("renders the plan-derived open-work list with progress, tier, and phase", async () => {
+  it("renders the plan-derived open-work list with progress and tier (board 238:601)", async () => {
     useMock();
     renderStatus();
 
@@ -109,16 +109,17 @@ describe("StatusTab — the status overview (status-overview ADR, honest-against
       expect(el).toBeTruthy();
       return el!;
     });
-    const row = list.querySelector<HTMLElement>("[data-open-plan-row]");
-    expect(row).toBeTruthy();
-    // The progress ring carries the fraction as tabular-numeral TEXT (grayscale-safe).
-    expect(row!.querySelector("[data-progress-text]")?.textContent).toMatch(
+    // The board paints the plan row as a flat list item (twisty · dot · title ·
+    // count · tier); the row body opens the plan in the reader.
+    const item = list.querySelector<HTMLElement>("[data-open-plan]");
+    expect(item).toBeTruthy();
+    // The completion count is shown as tabular-numeral TEXT (board "18/24").
+    expect(item!.querySelector("[data-plan-progress]")?.textContent).toMatch(
       /^\d+\/\d+$/,
     );
-    // The tier badge reads the real plan-tier facet (L1–L4).
-    expect(row!.querySelector("[data-plan-tier]")?.textContent).toMatch(/^L[1-4]$/);
-    // The pipeline phase reads from the artifact.
-    expect(row!.querySelector("[data-pipeline-phase]")?.textContent).toBeTruthy();
+    // The tier reads the real plan-tier facet (L1–L4), shown as the board's
+    // bare tier text (board "L3").
+    expect(item!.querySelector("[data-plan-tier]")?.textContent).toMatch(/^L[1-4]$/);
   });
 
   it("expands an open-plan row into its lazily-loaded open steps (reused step tree)", async () => {

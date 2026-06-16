@@ -73,8 +73,11 @@ describe("LeftRail composition (ordered hosted-slot stack + read-only law)", () 
 
   it("the browser region defaults to vault mode and renders the vault browser", async () => {
     renderRail();
-    // The mode toggle is present and the vault browser (default) renders.
-    expect(await screen.findByRole("tablist", { name: "browser mode" })).toBeTruthy();
+    // The mode toggle is present (the kit SegmentedToggle radiogroup) and the
+    // vault browser (default) renders.
+    expect(
+      await screen.findByRole("radiogroup", { name: "browser mode" }),
+    ).toBeTruthy();
     expect(
       await screen.findByRole("navigation", { name: "vault browser" }),
     ).toBeTruthy();
@@ -85,7 +88,9 @@ describe("LeftRail composition (ordered hosted-slot stack + read-only law)", () 
   it("toggling the mode swaps the vault browser for the code browser (P02)", async () => {
     renderRail();
     await screen.findByRole("navigation", { name: "vault browser" });
-    fireEvent.click(screen.getByRole("tab", { name: /code browser/i }));
+    // The kit SegmentedToggle renders each mode as a radio; selecting "Code"
+    // swaps the listing for the code browser.
+    fireEvent.click(screen.getByRole("radio", { name: /code/i }));
     expect(
       await screen.findByRole("navigation", { name: "code browser" }),
     ).toBeTruthy();
@@ -95,10 +100,11 @@ describe("LeftRail composition (ordered hosted-slot stack + read-only law)", () 
   it("the in-rail filter is present and visibly distinct from the global search (P03)", async () => {
     renderRail();
     await screen.findByRole("navigation", { name: "vault browser" });
-    const filter = document.querySelector("[data-rail-filter-input]");
+    // The filter is now the kit SearchField; its input carries the kit data hook.
+    const filter = document.querySelector("[data-kit-search-input]");
     expect(filter).toBeTruthy();
-    // The filter names the client-side narrowing ("filter vault…"), NOT "search"
-    // — the deliberate distinction from the global right-rail search pillar.
+    // The placeholder names the client-side narrowing ("Filter documents…"), NOT
+    // "search" — the deliberate distinction from the global right-rail search pillar.
     expect(filter?.getAttribute("placeholder")).toMatch(/^filter/i);
     expect(filter?.getAttribute("placeholder")).not.toMatch(/search/i);
   });
@@ -135,8 +141,8 @@ describe("LeftRail composition (ordered hosted-slot stack + read-only law)", () 
     await screen.findByRole("navigation", { name: "vault browser" });
     await waitFor(() => expect(seen.length).toBeGreaterThan(0));
     const before = seen.length;
-    // Type into the in-rail filter.
-    fireEvent.change(document.querySelector("[data-rail-filter-input]")!, {
+    // Type into the in-rail filter (the kit SearchField input).
+    fireEvent.change(document.querySelector("[data-kit-search-input]")!, {
       target: { value: "left-rail" },
     });
     // Give any (erroneous) query a tick to fire — it must not.

@@ -38,6 +38,9 @@ import { useSearchController } from "../../stores/server/searchController";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { selectNode } from "../../stores/view/selection";
 import { useActiveScope } from "../stage/Stage";
+// Centralized kit Badge (design-system-is-centralized) for the text-match
+// fallback marker — the shared pill definition, not a per-surface chip.
+import { Badge } from "../kit";
 
 // Self-register the search-result resolver at module load so the context-menu
 // host can resolve a result's menu the moment a row publishes its entity.
@@ -180,9 +183,8 @@ function ResultRow({ result, fallback, tabbable, isCode, onActivate }: ResultRow
           <span className="flex shrink-0 items-center gap-fg-1-5 text-ink-faint">
             {fallback && (
               // Fallback marker — not colour-only; a labelled tag the SR reads.
-              <span className="rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-muted">
-                text match
-              </span>
+              // The kit Badge is the shared pill definition.
+              <Badge>text match</Badge>
             )}
             {/* Score is data-bearing → tabular numerals. Fallback scores sit
                 in a visibly lower ink band so a fallback hit never reads as

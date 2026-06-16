@@ -12,7 +12,7 @@
 // new color. It fetches nothing: it is dumb `app/` chrome that reads the
 // tiers-derived content view the stores layer supplies (dashboard-layer-ownership).
 
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useMemo } from "react";
 import type { Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
@@ -56,9 +56,10 @@ function CodeFence({
   if (hast) {
     return <div className="vs-code-fence">{hastToReact(hast)}</div>;
   }
-  // Pre-tokenization (or plain): show the raw code in a neutral pre block.
+  // Pre-tokenization (or plain): show the raw code in the neutral fence surface
+  // (chrome/typography supplied by the `.vs-code-fence` reader scale).
   return (
-    <pre className="vs-code-fence overflow-x-auto rounded-fg-xs bg-paper-sunken p-fg-2 text-body">
+    <pre className="vs-code-fence">
       <code>{code}</code>
     </pre>
   );
@@ -110,7 +111,9 @@ const COMPONENTS: Components = {
       );
     }
     return (
-      <code className="rounded-fg-xs bg-paper-sunken px-fg-0-5 text-body">{text}</code>
+      <code className="rounded-fg-xs border border-rule bg-paper-sunken px-fg-0-5 font-mono text-ink">
+        {text}
+      </code>
     );
   },
 };
@@ -122,7 +125,7 @@ const REMARK_PLUGINS = [remarkGfm, remarkWikiLink];
 function MarkdownBody({ text }: { text: string }): ReactElement {
   const { frontmatter, body } = useMemo(() => parseDocument(text), [text]);
   return (
-    <article className="vs-markdown text-body text-ink">
+    <article className="vs-markdown">
       <FrontmatterHeader frontmatter={frontmatter} />
       <Markdown
         remarkPlugins={REMARK_PLUGINS}
@@ -144,40 +147,60 @@ function MarkdownBody({ text }: { text: string }): ReactElement {
  */
 export function MarkdownReader({ content }: { content: ContentView }): ReactElement {
   if (content.loading) {
-    return <div className="p-fg-3 text-body text-ink-faint">Loading document…</div>;
+    return <ReaderState>Loading document…</ReaderState>;
   }
   if (content.errored) {
-    return (
-      <div className="p-fg-3 text-body text-state-broken">
-        The document could not be loaded.
-      </div>
-    );
+    return <ReaderState tone="broken">The document could not be loaded.</ReaderState>;
   }
   if (content.degraded) {
     const reason = content.reasons.structural;
     return (
-      <div className="p-fg-3 text-body text-ink-muted">
+      <ReaderState tone="muted">
         Document unavailable{reason ? `: ${reason}` : ""}.
-      </div>
+      </ReaderState>
     );
   }
   if (!content.available || content.text.length === 0) {
-    return (
-      <div className="p-fg-3 text-body text-ink-faint">This document is empty.</div>
-    );
+    return <ReaderState>This document is empty.</ReaderState>;
   }
   return (
     <div className="flex h-full flex-col">
       {content.truncated && (
-        <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
+        <div className="reader-meta border-b border-rule bg-paper-sunken px-fg-6 py-fg-1 text-ink-muted">
           Truncated to the first {content.truncated.returned_bytes.toLocaleString()} of{" "}
           {content.truncated.total_bytes.toLocaleString()} bytes — open the file
           directly for the full document.
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto p-fg-3">
+      <div className="min-h-0 flex-1 overflow-auto px-fg-6 py-fg-4">
         <MarkdownBody text={content.text} />
       </div>
+    </div>
+  );
+}
+
+/** A centred reader placeholder for the loading / empty / degraded / error
+ *  states (Reader states board 271:1121). Reads the binding Reader/Meta role; the
+ *  tone selects the ink token (faint for empty/loading, muted for degraded,
+ *  state-broken for error). */
+function ReaderState({
+  children,
+  tone = "faint",
+}: {
+  children: ReactNode;
+  tone?: "faint" | "muted" | "broken";
+}): ReactElement {
+  const inkClass =
+    tone === "broken"
+      ? "text-state-broken"
+      : tone === "muted"
+        ? "text-ink-muted"
+        : "text-ink-faint";
+  return (
+    <div
+      className={`reader-meta flex h-full items-center justify-center p-fg-6 text-center ${inkClass}`}
+    >
+      <p>{children}</p>
     </div>
   );
 }

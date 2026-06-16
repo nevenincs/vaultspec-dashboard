@@ -169,3 +169,91 @@ export function laneCenterY(index: number, topPad = 0): number {
 export function lanesHeight(topPad = 0): number {
   return PHASE_LANES.length * LANE_HEIGHT + topPad;
 }
+
+// --- the binding two-lane grouping (figma-frontend-rewrite W03.P08.S11) ----------
+//
+// The binding AppShell timeline (Figma `SlhonORmySdoSMTQgDWw3w`, AppShell 117:2
+// bottom panel) draws the six pipeline phases collapsed into TWO event lanes: a
+// top "design" lane aggregating the research / decision / plan / audit documents,
+// and a bottom "execution" lane aggregating the step-record and summary documents.
+// The six `PHASE_LANES` tokens above remain the DATA identity (a node's phase, its
+// per-phase visibility key, the dated-mark vocabulary); this grouping is only the
+// VISUAL lane a mark is drawn in. The control bar's "Steps & summaries" switch
+// toggles the execution lane. Figma is binding (figma-is-the-binding-source-of-
+// truth) and this two-lane representation supersedes the prior six-row band.
+
+/** A binding visual lane group: a labelled row aggregating several phase lanes. */
+export interface TimelineLaneGroup {
+  /** The group's stable id (the per-group visibility / data attribute key). */
+  readonly id: "design" | "execution";
+  /** The human label drawn on the lane rail (the binding middot-joined list). */
+  readonly label: string;
+  /** The phase tokens whose nodes are drawn in this lane. */
+  readonly phases: readonly PhaseLane[];
+}
+
+/** One visual lane-group id. */
+export type TimelineLaneGroupId = TimelineLaneGroup["id"];
+
+/**
+ * The two binding visual lanes, top-to-bottom: the design lane (research +
+ * decisions + plans + audits) over the execution lane (steps + summaries). Codify
+ * (rules) is a pipeline output with no slot of its own on the binding board, so it
+ * rides the execution lane rather than dropping its dated marks.
+ */
+export const TIMELINE_LANE_GROUPS: readonly TimelineLaneGroup[] = [
+  {
+    id: "design",
+    label: "Research · Decisions · Plans · Audits",
+    phases: ["research", "adr", "plan", "review"],
+  },
+  {
+    id: "execution",
+    label: "Execution · Summaries",
+    phases: ["exec", "codify"],
+  },
+] as const;
+
+const GROUP_OF_PHASE: Record<PhaseLane, TimelineLaneGroupId> = {
+  research: "design",
+  adr: "design",
+  plan: "design",
+  review: "design",
+  exec: "execution",
+  codify: "execution",
+};
+
+/** The visual lane group a phase token is drawn in. */
+export function groupIdOfPhase(phase: PhaseLane): TimelineLaneGroupId {
+  return GROUP_OF_PHASE[phase];
+}
+
+/** The 0-based vertical index of a lane group (top = design, bottom = execution). */
+export function groupIndexOfId(id: TimelineLaneGroupId): number {
+  return TIMELINE_LANE_GROUPS.findIndex((g) => g.id === id);
+}
+
+/**
+ * The visual lane-group index a dated node is drawn in: resolve the node's phase
+ * lane (authoritative wire `phase`, doc-type fallback), then map that phase to its
+ * group. Returns `null` when the node belongs to no phase lane (an ambient commit,
+ * an index doc, an unknown kind) so the renderer places it in no lane.
+ */
+export function groupIndexOf(node: LaneNode): number | null {
+  const li = laneOf(node);
+  if (li == null) return null;
+  return groupIndexOfId(GROUP_OF_PHASE[PHASE_LANES[li]]);
+}
+
+/** The pixel height of one visual lane-group row. */
+export const GROUP_LANE_HEIGHT = 30;
+
+/** The y of a group row's vertical centre — where its marks are drawn. */
+export function groupLaneCenterY(index: number, topPad = 0): number {
+  return index * GROUP_LANE_HEIGHT + GROUP_LANE_HEIGHT / 2 + topPad;
+}
+
+/** The total pixel height of the stacked lane-group band plus a top padding. */
+export function groupLanesHeight(topPad = 0): number {
+  return TIMELINE_LANE_GROUPS.length * GROUP_LANE_HEIGHT + topPad;
+}

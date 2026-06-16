@@ -155,27 +155,24 @@ describe("TimelineControls component (S46-S55)", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders one show/hide toggle per phase lane as a switch and toggling writes the store (S46/S65)", () => {
+  it("toggles the execution lane via the Steps & summaries switch and writes the store (S46/S65)", () => {
     renderControls();
-    // S65: lane toggles carry the switch role + aria-checked (consistent with the
-    // TierDial), not aria-pressed — they are two-state on/off switches.
-    const research = screen.getByRole("switch", { name: "research lane" });
-    expect(research.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(research);
-    expect(useTimelineStore.getState().laneVisibility.research).toBe(false);
+    // The binding board (AppShell 117:2) collapses the lanes to two and exposes ONE
+    // control — the "Steps & summaries" switch — which toggles the execution lane.
+    // It carries the switch role + aria-checked (consistent with the TierDial), and
+    // flips the execution group's exec + codify phase keys together.
+    const sw = screen.getByRole("switch", { name: "Steps & summaries" });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(sw);
+    expect(useTimelineStore.getState().laneVisibility.exec).toBe(false);
+    expect(useTimelineStore.getState().laneVisibility.codify).toBe(false);
     expect(
       screen
-        .getByRole("switch", { name: "research lane" })
+        .getByRole("switch", { name: "Steps & summaries" })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    // Every phase lane has a toggle (the lane vocabulary is the one source); the
-    // switch names use the DISPLAY label (Figma 17:647) — the `review` phase reads
-    // "audit", matching the lane rail and the `.vault/audit/` directory.
-    for (const label of ["research", "adr", "plan", "exec", "audit", "codify"]) {
-      expect(screen.getByRole("switch", { name: `${label} lane` })).toBeTruthy();
-    }
-    // The `review` phase's data attribute keeps the wire token, not the label.
-    expect(document.querySelector('[data-lane-toggle="review"]')).not.toBeNull();
+    // The design lane has no toggle of its own (always shown); its phases stay on.
+    expect(useTimelineStore.getState().laneVisibility.research).toBe(true);
   });
 
   it("sources relation chips from the engine enumeration as switches and toggling writes the store (S47/S65)", async () => {

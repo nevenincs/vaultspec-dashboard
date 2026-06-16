@@ -1,10 +1,14 @@
-// The timeline control bar (dashboard-timeline ADR "Control surfaces (the bars)",
-// W04.P08): the instrument's control surface, docked at the timeline's top edge.
-// It composes — left to right — the phase-lane show/hide toggles (S46), the
+// The timeline control bar (re-skinned for figma-frontend-rewrite W03.P08.S11 to
+// the binding AppShell timeline header, Figma SlhonORmySdoSMTQgDWw3w / 117:2): the
+// instrument's control surface, docked at the timeline's top edge. It leads with the
+// binding header — the "Timeline" eyebrow (kit SectionLabel), the visible-range date
+// pills (kit Badge), the "Steps & summaries" switch (kit Switch, toggling the
+// execution lane), and the zoom / fit cluster (kit IconButton + the two-family
+// glyphs) — then keeps the richer ADR control set the binding mock omits: the
 // relation/derivation filter chips (S47), the reused tier dial (S48), the feature
-// filter (S49), the zoom / fit-all / fit-feature / jump-to-date controls (S50-S53)
-// with the minimap as scrubber (S54), and the range-select chip with play-the-range
-// (S55).
+// filter (S49), jump-to-date (S53), the minimap scrubber (S54), and the range-select
+// chip with play-the-range (S55). Every primitive composes the centralized kit
+// (design-system-is-centralized); nothing is hand-built per surface.
 //
 // Vocabulary discipline (ADR / icons-come-from-the-two-sanctioned-families): the
 // relation/derivation chip vocabulary AND the feature-tag vocabulary come from the
@@ -22,11 +26,22 @@
 // tabular numerals on every date and count; non-color active cues (rings, pressed
 // state, filled brush); every control is a real keyboard-reachable button / switch.
 
-import { CalendarDays, Maximize2, Scan, X, ZoomIn, ZoomOut } from "lucide-react";
+import { X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
+import {
+  Badge,
+  Calendar,
+  Crosshair,
+  IconButton,
+  Maximize,
+  Minus,
+  Plus,
+  SectionLabel,
+  Switch,
+} from "../kit";
 import { FacetChipGroup } from "../chrome/FacetChipGroup";
 import { useElementWidth } from "../chrome/useElementWidth";
 import { TierDial } from "../stage/TierDial";
@@ -35,13 +50,13 @@ import { movePlayhead } from "./Playhead";
 import { startRangePlay, stopRangePlay, useRangePlayer } from "./RangeSelect";
 import { humanInstant, useTimelineStore } from "./Timeline";
 import { Minimap } from "./Minimap";
-import { PHASE_LANES, laneLabel } from "./phaseLanes";
 import {
   MAX_PX_PER_MS,
   MIN_PX_PER_MS,
   TIMELINE_ORIGIN_MS,
   clampPxPerMs,
   timeToStripX,
+  visibleRange,
   zoomAt,
 } from "./scrollStrip";
 
@@ -96,6 +111,14 @@ export function parseDateInput(value: string): number | null {
   if (!value) return null;
   const t = Date.parse(value);
   return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * A short "MMM D" day label for the binding date-range pills (e.g. "Apr 3"). The
+ * `en-US` locale matches the binding board's month abbreviations exactly.
+ */
+export function formatDayMonth(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 // --- the control bar -------------------------------------------------------------
@@ -223,6 +246,18 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
     );
   };
 
+  // The visible window's [from, to] for the binding date-range pills — a dumb
+  // read of the same scroll-strip view state the surface renders against.
+  const visible = visibleRange(scrollOffset, effectiveWidth, pxPerMs, 0);
+
+  // The "Steps & summaries" switch toggles the execution lane: its exec + codify
+  // phase visibility keys flip together (exec is the lead key the switch reflects).
+  const executionVisible = laneVisibility.exec;
+  const toggleExecution = (next: boolean) => {
+    toggleLane("exec", next);
+    toggleLane("codify", next);
+  };
+
   return (
     <div
       ref={rootRef}
@@ -235,32 +270,29 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
       className="pointer-events-auto flex items-center gap-fg-3 overflow-x-auto border-b border-rule bg-paper-raised/90 px-fg-2 py-fg-1 text-label backdrop-blur-sm [scrollbar-width:thin]"
       data-timeline-controls
     >
-      {/* S46 phase-lane show/hide toggles — one per PHASE_LANES entry, shape-first
-          label, non-color active cue (pressed = sunken + strong rule). */}
-      <span className="flex shrink-0 items-center gap-1" aria-label="phase lanes">
-        <span className="text-ink-faint">lanes</span>
-        {PHASE_LANES.map((lane) => {
-          const visible = laneVisibility[lane];
-          const label = laneLabel(lane);
-          return (
-            <button
-              key={lane}
-              type="button"
-              role="switch"
-              aria-checked={visible}
-              aria-label={`${label} lane`}
-              onClick={() => toggleLane(lane)}
-              data-lane-toggle={lane}
-              className={`rounded-fg-pill border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                visible
-                  ? "border-rule-strong bg-paper-sunken text-ink"
-                  : "border-dashed border-rule text-ink-faint hover:border-rule-strong"
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
+      {/* Binding header (AppShell 117:2): the "Timeline" eyebrow. */}
+      <SectionLabel className="shrink-0">Timeline</SectionLabel>
+
+      {/* Date-range pills — the visible window's start → end, tabular (kit Badge),
+          exactly the "Apr 3 → Jun 18" readout the binding board draws. */}
+      <span
+        className="flex shrink-0 items-center gap-fg-1 text-ink-faint"
+        aria-label="visible date range"
+      >
+        <Badge>{formatDayMonth(visible.fromMs)}</Badge>
+        <span aria-hidden>→</span>
+        <Badge>{formatDayMonth(visible.toMs)}</Badge>
+      </span>
+
+      {/* "Steps & summaries" switch (kit Switch) — toggles the execution lane (its
+          exec + codify phase keys) on the surface, per the binding board. */}
+      <span className="flex shrink-0 items-center gap-fg-1-5">
+        <span className="text-ink-muted">Steps &amp; summaries</span>
+        <Switch
+          checked={executionVisible}
+          onChange={toggleExecution}
+          label="Steps & summaries"
+        />
       </span>
 
       {/* S47 relation/derivation filter chips — vocabulary from the engine enum. */}
@@ -292,47 +324,35 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
         />
       </span>
 
-      {/* S50/S51/S52/S53 zoom / fit / jump controls. */}
-      <span className="flex shrink-0 items-center gap-fg-1" aria-label="zoom and fit">
-        <button
-          type="button"
-          aria-label="zoom out"
+      {/* S50/S51/S52 zoom / fit cluster — kit IconButton + the two-family glyphs. */}
+      <span className="flex shrink-0 items-center gap-fg-0-5" aria-label="zoom and fit">
+        <IconButton
+          label="zoom out"
           title="zoom out"
           disabled={!canZoomOut}
           onClick={() => zoomBy(1 / ZOOM_STEP)}
-          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
-          <ZoomOut size={13} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="zoom in"
+          <Minus size={14} aria-hidden />
+        </IconButton>
+        <IconButton
+          label="zoom in"
           title="zoom in"
           disabled={!canZoomIn}
           onClick={() => zoomBy(ZOOM_STEP)}
-          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
-          <ZoomIn size={13} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="fit all"
-          title="fit the whole corpus"
-          onClick={fitAll}
-          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        >
-          <Maximize2 size={13} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="fit feature"
+          <Plus size={14} aria-hidden />
+        </IconButton>
+        <IconButton label="fit all" title="fit the whole corpus" onClick={fitAll}>
+          <Maximize size={14} aria-hidden />
+        </IconButton>
+        <IconButton
+          label="fit feature"
           title="fit the active feature's span"
           disabled={!featureActive}
           onClick={fitFeature}
-          className="flex items-center rounded-fg-xs border border-rule p-fg-1 text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint"
         >
-          <Scan size={13} aria-hidden />
-        </button>
+          <Crosshair size={14} aria-hidden />
+        </IconButton>
       </span>
 
       {/* S53 jump-to-date — a real date input + go button; tabular by the input. */}
@@ -340,7 +360,7 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
         className="flex shrink-0 items-center gap-fg-1"
         aria-label="jump to date controls"
       >
-        <CalendarDays size={13} aria-hidden className="text-ink-faint" />
+        <Calendar size={13} aria-hidden className="text-ink-faint" />
         <input
           type="date"
           value={jumpValue}

@@ -27,11 +27,14 @@
 // the shared domain-mark family (`scene/field/markComponents`) — the same
 // presentational SVG source the inspector and legends already consume from chrome.
 //
-// W02.P06 (figma-parity-reconciliation): rebuilt faithfully to the binding Figma
-// Timeline frame (17:647 / Kit 239:713) on the canonical Figma role-named token
-// foundation — the role utilities (text-caption etc.) and the Figma radius /
-// elevation scales (rounded-fg-*, shadow-fg-*) replace the legacy alias shims.
-// The dumb-projection contract over the preserved stores hooks is unchanged.
+// W03.P08.S11 (figma-frontend-rewrite): re-skinned to the binding AppShell timeline
+// panel (Figma SlhonORmySdoSMTQgDWw3w, AppShell 117:2). The six pipeline phases now
+// collapse into TWO event lanes — a top "design" lane (research · decisions · plans
+// · audits) over a bottom "execution" lane (steps · summaries) — per the binding
+// board, superseding the prior six-row band (figma-is-the-binding-source-of-truth).
+// The lane TOKENS and per-phase visibility keys are unchanged data identity; the
+// grouping is purely visual. The dumb-projection contract over the preserved stores
+// hooks is unchanged: no new fetch, no minted node shape, no raw `tiers` read.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
@@ -59,10 +62,12 @@ import { prefersReducedMotion } from "./RangeSelect";
 import {
   PHASE_LANES,
   type PhaseLane,
-  laneCenterY,
-  laneDescriptor,
+  type TimelineLaneGroup,
+  TIMELINE_LANE_GROUPS,
+  groupIndexOf,
+  groupLaneCenterY,
+  groupLanesHeight,
   laneOf as laneOfNode,
-  lanesHeight,
 } from "./phaseLanes";
 import {
   MAX_TIMELINE_MARKS,
@@ -216,17 +221,14 @@ export const useTimelineStore = create<TimelineState>((set) => ({
 
 // --- pure render-prep helpers (unit-testable, no DOM) ----------------------------
 
-// The lane rail gutter (binding Figma 17:647): the lane rule starts at x=91, the
-// label text sits at x=11 and the lane's doc-type mark at x=71 — the rail reads
-// "label · mark │ ———" exactly as the design draws it.
-const LANE_LABEL_W = 91;
-/** The x of the lane label text on the rail (Figma 17:649 etc.). */
+// The binding two-lane rail (figma-frontend-rewrite W03.P08.S11, AppShell 117:2):
+// each lane shows a middot-joined category label in a left gutter, then the lane
+// rule and the dated marks. The gutter is wide enough for the design lane's full
+// "Research · Decisions · Plans · Audits" label; the label text sits at x=11.
+const GROUP_LABEL_W = 184;
+/** The x of the lane-group label text in the rail gutter. */
 const LANE_LABEL_X = 11;
-/** The x of the lane's doc-type mark on the rail (Figma 17:650 etc.). */
-const LANE_MARK_X = 71;
-/** The lane rail mark edge length in px (Figma 12px lane marks). */
-const LANE_MARK_PX = 12;
-const TOP_PAD = 4;
+const TOP_PAD = 8;
 const MARK_PX = 13;
 const RULER_HEIGHT = 16;
 /** Virtualization margin (px) so a mark partly off-screen stays drawn. */
@@ -411,8 +413,14 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     to: new Date(range.toMs).toISOString(),
   });
 
-  const phaseBandH = lanesHeight(TOP_PAD);
+  const phaseBandH = groupLanesHeight(TOP_PAD);
   const height = phaseBandH + RULER_HEIGHT;
+
+  // A visual lane group is drawn when ANY of its phase tokens is visible. The
+  // design lane stays on; the execution lane is toggled by the control bar's
+  // "Steps & summaries" switch (which flips its exec + codify phase keys together).
+  const groupVisible = (g: TimelineLaneGroup) =>
+    g.phases.some((p) => laneVisibility[p]);
 
   const loading = lineage.isLoading;
   const errored = lineage.isError;
@@ -429,9 +437,13 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         if (laneIdx == null) return null;
         const lane = PHASE_LANES[laneIdx];
         if (!laneVisibility[lane]) return null;
+        // The mark is drawn in its VISUAL lane group (design over execution),
+        // even though its per-phase token still drives visibility + identity.
+        const groupIdx = groupIndexOf(node);
+        if (groupIdx == null) return null;
         // Origin = the range start, so x is the in-viewport position directly.
         const x = timeToStripViewportX(t, range.fromMs, pxPerMs, 0);
-        const y = laneCenterY(laneIdx, TOP_PAD);
+        const y = groupLaneCenterY(groupIdx, TOP_PAD);
         return { node, x, y };
       })
       .filter((m): m is { node: LineageNode; x: number; y: number } => m !== null);
@@ -541,18 +553,18 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         aria-label="lineage timeline"
         aria-busy={loading || undefined}
       >
-        {/* Lane rails — the soft low-contrast rule per visible lane, drawn from the
-            label gutter to the right edge (Figma 17:648 etc.: structure felt, not
-            seen). The label text + doc-type mark live in the HTML overlay below so
-            the mark renders in-family (DocTypeMark). */}
-        {PHASE_LANES.map((lane, i) =>
-          laneVisibility[lane] ? (
+        {/* Lane rails — the soft low-contrast rule per visible lane group, drawn
+            from the label gutter to the right edge (binding AppShell 117:2: two
+            event lanes, structure felt not seen). The label text lives in the HTML
+            overlay below. */}
+        {TIMELINE_LANE_GROUPS.map((group, i) =>
+          groupVisible(group) ? (
             <line
-              key={lane}
-              x1={LANE_LABEL_W}
+              key={group.id}
+              x1={GROUP_LABEL_W}
               x2={width}
-              y1={laneCenterY(i, TOP_PAD)}
-              y2={laneCenterY(i, TOP_PAD)}
+              y1={groupLaneCenterY(i, TOP_PAD)}
+              y2={groupLaneCenterY(i, TOP_PAD)}
               className="stroke-rule"
             />
           ) : null,
@@ -606,34 +618,24 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         />
       </svg>
 
-      {/* Lane rail labels + doc-type marks (binding Figma 17:647): each visible
-          lane shows its human label and the doc-type mark the phase owns, in-family
-          via DocTypeMark (icons-come-from-the-two-sanctioned-families). The label is
-          the phase's owned doc-type name — the `review` phase reads "audit" with the
-          audit mark, matching the design and the `.vault/audit/` directory. Decorative
-          (the focusable controls are the dated marks); marks are aria-hidden. */}
+      {/* Lane-group rail labels (binding AppShell 117:2): each visible lane shows
+          its middot-joined category list in the left gutter — the design lane reads
+          "Research · Decisions · Plans · Audits", the execution lane "Execution ·
+          Summaries". Decorative (the focusable controls are the dated marks); the
+          per-node domain mark identity lives on the marks themselves. */}
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        {PHASE_LANES.map((lane, i) => {
-          if (!laneVisibility[lane]) return null;
-          const d = laneDescriptor(lane);
-          const cy = laneCenterY(i, TOP_PAD);
+        {TIMELINE_LANE_GROUPS.map((group, i) => {
+          if (!groupVisible(group)) return null;
+          const cy = groupLaneCenterY(i, TOP_PAD);
           return (
-            <div key={lane} data-lane-rail={lane}>
-              <span
-                className="absolute -translate-y-1/2 text-caption text-ink-muted"
-                style={{ left: `${LANE_LABEL_X}px`, top: `${cy}px` }}
-              >
-                {d.label}
-              </span>
-              {d.markKind ? (
-                <span
-                  className="absolute -translate-y-1/2 text-ink-faint"
-                  style={{ left: `${LANE_MARK_X}px`, top: `${cy}px` }}
-                >
-                  <DocTypeMark kind={d.markKind} size={LANE_MARK_PX} />
-                </span>
-              ) : null}
-            </div>
+            <span
+              key={group.id}
+              data-lane-rail={group.id}
+              className="absolute -translate-y-1/2 whitespace-nowrap text-caption font-medium text-ink-muted"
+              style={{ left: `${LANE_LABEL_X}px`, top: `${cy}px` }}
+            >
+              {group.label}
+            </span>
           );
         })}
       </div>

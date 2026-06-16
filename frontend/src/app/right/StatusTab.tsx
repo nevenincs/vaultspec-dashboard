@@ -1,20 +1,24 @@
-// The Status overview — the rail's primary informational surface
-// (status-overview ADR): a snapshot answering the three operator questions at a
-// glance — "Where are we?" (the location anchor header), "What is being worked
-// on?" (the plan-derived open-work list with the step-tree dropdown), and "What
-// has been committed?" (the recent-commit list with subjects). Where the prior
-// Work + Changes pillars split these, this consolidates them as the headline
-// surface and fixes their data sources to the plan-derived model the ADR pins.
+// The Status overview — the rail's primary informational surface (status-overview
+// ADR), rebuilt to the binding Figma board EXACTLY (ActivityRail Status state, node
+// 238:601). The board answers the three operator questions at a glance:
+//   • "Where are we?"        → the context Card: the absolute path (mono) plus a
+//     "worktree <name>" chip and a "branch <name>" chip, both on the accent-subtle
+//     ground (board nodes 112:15–112:23).
+//   • "What is being worked on?" → "OPEN PLANS — N" then the plan tree: each plan
+//     row is a twisty + StatusDot + title + a "done/total" count + a tier Badge,
+//     the selected row carrying the accent-subtle ground and a trailing accent
+//     selection bar; expanded children are the open step rows (board 112:24–112:57).
+//   • "What has been committed?" → "RECENT COMMITS" then commit rows: a mono short
+//     hash in accent-text and the subject in muted ink (board 112:58–112:70).
 //
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
 // DUMB app-chrome view. It consumes stores selectors EXCLUSIVELY
 // (`useLocationAnchor`, `usePipelineStatusView`, `usePlanInteriorView`,
-// `useHistoryView`) — it fetches nothing, never inspects the raw `tiers` block,
-// and defines no node model. Open/in-flight work is read from the plan-step
-// projection, NEVER from graph connectivity or transport state
-// (open-work-is-read-from-plan-steps candidate; the deliberately-dropped
-// "connections" section is a non-goal). Degradation is read from the tiers truth
-// the selectors interpret (degradation-is-read-from-tiers-not-guessed-from-errors).
+// `useHistoryView`) — it fetches nothing, never inspects the raw `tiers` block, and
+// defines no node model. Open/in-flight work is read from the plan-step projection,
+// NEVER from graph connectivity or transport state. Degradation is read from the
+// tiers truth the selectors interpret
+// (degradation-is-read-from-tiers-not-guessed-from-errors).
 //
 // Plan rows OPEN the plan document in the markdown reader via the existing
 // `openInViewer` intent (review-rail-viewers viewers) and EXPAND into their open
@@ -22,19 +26,12 @@
 // commits cross-link to the vault docs the commit touched through the existing
 // selection seam.
 //
-// Design language: warmth lives in the tokens — every color is a `--color-*`
-// semantic token (light / dark / high-contrast), no raw hex, no third icon
-// family. Structural chrome is Lucide; the domain plane is Phosphor. Status
-// carriers read by shape + text first, hue as redundant reinforcement.
+// Design system (design-system-is-centralized): the context surface is the kit
+// Card, the eyebrows the kit SectionLabel, the category mark the kit StatusDot, the
+// tier the kit Badge; chrome chevrons come from the centralized kit glyphs. No raw
+// hex, no loose font-size — every color and size resolves to a bound token.
 
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleSlash,
-  FolderGit2,
-  GitBranch,
-} from "lucide-react";
-import { GitCommit, ListChecks } from "@phosphor-icons/react";
+import type { HTMLAttributes } from "react";
 import { useState } from "react";
 
 import type { PipelineArtifact } from "../../stores/server/engine";
@@ -49,41 +46,45 @@ import { useViewStore } from "../../stores/view/viewStore";
 import { useActiveScope } from "../stage/Stage";
 import { freshnessLabel } from "../left/VaultBrowser";
 import { relativeTs } from "./ChangesOverview";
-import { PlanStepTree, ProgressRing } from "./WorkTab";
+import { PlanStepTree } from "./WorkTab";
+// Centralized kit primitives (design-system-is-centralized).
+import { Card, ChevronDown, ChevronRight, SectionLabel, StatusDot } from "../kit";
 
-// Icon sizing — 14px is the iconography ADR's grayscale-by-shape gate; the
-// disclosure chevron + structural chrome read one density step smaller so they
-// stay attenuated relative to the domain plane (design-language ADR layer 4).
-const DOMAIN_PX = 16;
-const GATE_PX = 14;
-const CHROME_PX = 13;
-const SMALL_PX = 13;
+// Disclosure chevron sizing — the board paints a 10px twisty on the plan row.
+const TWISTY_PX = 10;
 
 // How many recent commits the rail renders (the stores query is bounded; this
-// trims the rendered list to the ADR's short snapshot).
+// trims the rendered list to the board's short snapshot).
 const RECENT_COMMITS = 12;
 
 // ---------------------------------------------------------------------------
-// Section header — the shared uppercase label idiom the rail already uses.
+// Location anchor — "Where are we?" (path · worktree chip · branch chip).
 // ---------------------------------------------------------------------------
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+/** A "label value" key/value chip on the accent-subtle ground (board 112:18).
+ *  The `valueProps` ride the value span so a caller can hang a data-attr on the
+ *  value text alone (e.g. the branch name) without the label leaking into it. */
+function ContextChip({
+  label,
+  value,
+  valueProps,
+}: {
+  label: string;
+  value: string;
+  valueProps?: HTMLAttributes<HTMLSpanElement>;
+}) {
   return (
-    <h3 className="mb-fg-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
-      {children}
-    </h3>
+    <span className="inline-flex shrink-0 items-center gap-fg-1 rounded-fg-pill bg-accent-subtle px-fg-2 py-px text-caption">
+      <span className="font-normal text-ink-faint">{label}</span>
+      <span className="truncate font-medium text-accent-text" {...valueProps}>
+        {value}
+      </span>
+    </span>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Location anchor — "Where are we?" (absolute path · worktree · branch).
-// ---------------------------------------------------------------------------
-
 function LocationAnchor({ scope }: { scope: string | null }) {
   const anchor = useLocationAnchor(scope);
-  const hasUpstream = anchor.ahead !== undefined || anchor.behind !== undefined;
-  const aheadN = anchor.ahead ?? 0;
-  const behindN = anchor.behind ?? 0;
 
   if (!anchor.path) {
     return (
@@ -94,92 +95,57 @@ function LocationAnchor({ scope }: { scope: string | null }) {
   }
 
   return (
-    <section
+    <Card
+      elevation="flat"
+      padded={false}
       aria-label="location"
       data-location-anchor
       data-location-state="located"
-      className="space-y-fg-1 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1-5 shadow-fg-raised"
+      className="space-y-fg-2 bg-paper-sunken px-fg-3 py-fg-2"
     >
       {/* Absolute path — identity, so monospace per the typography law; forward
           slashes already canonical from the scope token. */}
-      <div className="flex items-center gap-fg-1-5">
-        <span className="shrink-0 text-ink-faint" aria-hidden>
-          <FolderGit2 size={DOMAIN_PX} />
-        </span>
-        <span
-          className="min-w-0 flex-1 truncate font-mono text-label text-ink-muted"
-          data-location-path
-          title={anchor.path}
-        >
-          {anchor.path}
-        </span>
-        {anchor.isMain && (
-          <span
-            className="shrink-0 rounded-fg-xs border border-rule px-fg-1 text-caption font-medium text-ink-muted"
-            data-location-main
-            aria-label="main worktree"
-          >
-            main
+      <p
+        className="w-full break-all font-mono text-mono text-ink"
+        data-location-path
+        title={anchor.path}
+      >
+        {anchor.path}
+      </p>
+      {/* Worktree + branch chips on the accent-subtle ground, wrapping. */}
+      <div className="flex flex-wrap items-center gap-fg-1-5">
+        {anchor.isMain ? (
+          <span data-location-main>
+            <ContextChip label="worktree" value="main" />
           </span>
+        ) : null}
+        {anchor.branch && (
+          <ContextChip
+            label="branch"
+            value={anchor.branch}
+            valueProps={{ "data-location-branch": "" } as HTMLAttributes<HTMLSpanElement>}
+          />
         )}
       </div>
-
-      {/* Branch + divergence + dirty chips. */}
-      <div className="flex items-center gap-fg-1-5 text-label">
-        <span className="shrink-0 text-ink-faint" aria-hidden>
-          <GitBranch size={GATE_PX} />
-        </span>
-        <span
-          className="min-w-0 flex-1 truncate font-mono text-ink-muted"
-          data-location-branch
-        >
-          {anchor.branch ?? "—"}
-        </span>
-        {hasUpstream && (aheadN > 0 || behindN > 0) && (
-          <span
-            className="flex shrink-0 items-center gap-fg-1 text-ink-faint"
-            data-tabular
-          >
-            {aheadN > 0 && (
-              <span aria-label={`${aheadN} ahead`}>
-                <span aria-hidden>↑</span>
-                {aheadN}
-              </span>
-            )}
-            {behindN > 0 && (
-              <span aria-label={`${behindN} behind`}>
-                <span aria-hidden>↓</span>
-                {behindN}
-              </span>
-            )}
-          </span>
-        )}
-        {anchor.dirty ? (
-          <span className="shrink-0 rounded-fg-pill bg-accent-subtle px-fg-1-5 py-fg-0-5 text-caption text-accent-text">
-            changes
-          </span>
-        ) : (
-          <span className="shrink-0 text-caption text-state-active">clean</span>
-        )}
-      </div>
-    </section>
+    </Card>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Open-plan row — the plan-derived open-work model: progress + tier + phase,
-// expandable into its open steps (the reused step-tree dropdown), opening the
-// plan document in the markdown reader on activation.
+// Open-plan row — the plan-derived open-work model: StatusDot + title + count +
+// tier, expandable into its open steps (the reused step-tree dropdown), opening
+// the plan document in the markdown reader on activation.
 // ---------------------------------------------------------------------------
 
 interface OpenPlanRowProps {
   artifact: PipelineArtifact;
   now: number;
+  selected: boolean;
   expanded: boolean;
   onToggle: () => void;
 }
 
-function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
+function OpenPlanRow({ artifact, now, selected, expanded, onToggle }: OpenPlanRowProps) {
   const openInViewer = useViewStore((s) => s.openInViewer);
   const progress = artifact.progress;
   const fresh = freshnessLabel(artifact.dates?.modified, now);
@@ -195,10 +161,17 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
   };
 
   return (
-    <li className="space-y-fg-0-5" data-open-plan data-node-id={artifact.node_id}>
-      <div className="flex items-stretch gap-fg-0-5">
-        {/* Expand/collapse — an accessible disclosure; lazily enables the
-            interior query for THIS plan only. */}
+    <li data-open-plan data-node-id={artifact.node_id}>
+      {/* The plan row: twisty · category dot · title · count · tier · sel-bar.
+          The whole row activates (opens the plan); the leading twisty toggles
+          the step tree without opening. The selected row carries the accent-
+          subtle ground and a trailing accent selection bar (board 112:26). */}
+      <div
+        className={`flex items-center gap-fg-2 rounded-fg-md pl-fg-1-5 pr-fg-2 py-fg-2 transition-colors duration-ui-fast ease-settle ${
+          selected ? "bg-accent-subtle" : "hover:bg-paper-sunken"
+        }`}
+        data-open-plan-selected={selected ? "" : undefined}
+      >
         <button
           type="button"
           onClick={onToggle}
@@ -206,49 +179,55 @@ function OpenPlanRow({ artifact, now, expanded, onToggle }: OpenPlanRowProps) {
           aria-controls={treeId}
           aria-label={`${expanded ? "collapse" : "expand"} steps for ${artifact.title ?? artifact.stem}`}
           data-open-plan-toggle
-          className="flex shrink-0 items-center rounded-fg-xs px-fg-0-5 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
-          <Chevron size={SMALL_PX} aria-hidden />
+          <Chevron size={TWISTY_PX} aria-hidden />
         </button>
-        {/* The plan row body — activating it opens the plan document in the
-            markdown reader (review-rail-viewers viewer) AND selects it. */}
+        <StatusDot category="plan" />
         <button
           type="button"
           onClick={openPlan}
           data-open-plan-row
           aria-label={`open plan ${artifact.title ?? artifact.stem} in the reader`}
-          className="flex min-w-0 flex-1 items-center gap-fg-1-5 rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="min-w-0 flex-1 truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          title={artifact.title ?? artifact.stem}
         >
-          {progress && <ProgressRing done={progress.done} total={progress.total} />}
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-fg-1-5">
-              <span className="min-w-0 truncate text-body text-ink">
-                {artifact.title ?? artifact.stem}
-              </span>
-              {artifact.tier && (
-                <span
-                  className="shrink-0 rounded-fg-xs border border-rule px-fg-1 text-caption font-medium text-ink-muted"
-                  data-plan-tier
-                  aria-label={`tier ${artifact.tier}`}
-                >
-                  {artifact.tier}
-                </span>
-              )}
-            </span>
-            <span className="mt-px flex items-center gap-fg-1-5 text-caption text-ink-faint">
-              <span data-pipeline-phase>{artifact.phase}</span>
-              {fresh && (
-                <span data-tabular data-freshness>
-                  {fresh}
-                </span>
-              )}
-            </span>
-          </span>
+          {artifact.title ?? artifact.stem}
         </button>
+        {progress && (
+          <span
+            className="shrink-0 text-meta text-ink-muted"
+            data-tabular
+            data-plan-progress
+          >
+            {progress.done}/{progress.total}
+          </span>
+        )}
+        {artifact.tier && (
+          <span
+            className="shrink-0 text-caption text-ink-faint"
+            data-plan-tier
+            aria-label={`tier ${artifact.tier}`}
+          >
+            {artifact.tier}
+          </span>
+        )}
+        {selected && (
+          <span
+            aria-hidden
+            data-open-plan-sel-bar
+            className="h-4 w-0.5 shrink-0 rounded-fg-xs bg-accent"
+          />
+        )}
+        {fresh && (
+          <span className="sr-only" data-freshness>
+            {fresh}
+          </span>
+        )}
       </div>
       {/* The reused step-tree dropdown (lazily-loaded interior). */}
       {expanded && (
-        <div id={treeId} className="pl-fg-4">
+        <div id={treeId} className="pl-fg-6">
           <PlanStepTree view={interior} />
         </div>
       )}
@@ -278,23 +257,25 @@ function OpenPlans({ scope }: { scope: string | null }) {
 
   return (
     <section aria-label="open plans" data-open-plans>
-      <SectionHeading>In flight</SectionHeading>
+      <SectionLabel
+        className="px-fg-0 py-fg-0 normal-case tracking-normal"
+        count={plans.length > 0 ? plans.length : undefined}
+      >
+        Open plans
+      </SectionLabel>
 
       {/* Designed DEGRADED state, read from the tiers truth — never a transport
           guess (degradation-is-read-from-tiers-not-guessed-from-errors). */}
       {view.degraded ? (
         <p
-          className="flex items-start gap-fg-1-5 rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted"
+          className="mt-fg-1-5 rounded-fg-md bg-paper-sunken px-fg-3 py-fg-2 text-label text-ink-muted"
           data-open-plans-state="degraded"
         >
-          <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
-            <CircleSlash size={CHROME_PX} />
-          </span>
-          <span>pipeline status unavailable</span>
+          pipeline status unavailable
         </p>
       ) : view.loading ? (
         <p
-          className="animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
+          className="mt-fg-1-5 animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
           data-open-plans-state="loading"
           role="status"
         >
@@ -302,21 +283,22 @@ function OpenPlans({ scope }: { scope: string | null }) {
         </p>
       ) : plans.length === 0 ? (
         <p
-          className="flex items-start gap-fg-1-5 px-fg-1 py-fg-1 text-label text-ink-faint"
+          className="mt-fg-1-5 text-label text-ink-faint"
           data-open-plans-state="empty"
         >
-          <span className="mt-px shrink-0" aria-hidden>
-            <ListChecks size={CHROME_PX} />
-          </span>
-          <span>no plans in flight on this branch</span>
+          no plans in flight on this branch
         </p>
       ) : (
-        <ul className="space-y-fg-1" role="list" data-open-plans-list>
-          {plans.map((artifact) => (
+        <ul className="mt-fg-1-5 space-y-fg-0-5" role="list" data-open-plans-list>
+          {plans.map((artifact, i) => (
             <OpenPlanRow
               key={artifact.node_id}
               artifact={artifact}
               now={now}
+              // The board paints the FIRST open plan as the selected row; the
+              // selection reflects the plan currently expanded by the operator,
+              // defaulting to the leading plan (the board's resting state).
+              selected={expanded.size === 0 ? i === 0 : expanded.has(artifact.node_id)}
               expanded={expanded.has(artifact.node_id)}
               onToggle={() => toggle(artifact.node_id)}
             />
@@ -328,7 +310,7 @@ function OpenPlans({ scope }: { scope: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
-// Recent commits — "What has been committed?" (subject + short hash + age),
+// Recent commits — "What has been committed?" (mono short hash + subject),
 // cross-linking to the vault docs the commit touched.
 // ---------------------------------------------------------------------------
 
@@ -339,21 +321,18 @@ function RecentCommits({ scope }: { scope: string | null }) {
 
   return (
     <section aria-label="recent commits" data-recent-commits>
-      <SectionHeading>Committed</SectionHeading>
+      <SectionLabel className="px-fg-0 py-fg-0">Recent commits</SectionLabel>
 
       {view.degraded ? (
         <p
-          className="flex items-start gap-fg-1-5 rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted"
+          className="mt-fg-1-5 rounded-fg-md bg-paper-sunken px-fg-3 py-fg-2 text-label text-ink-muted"
           data-recent-commits-state="degraded"
         >
-          <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
-            <CircleSlash size={CHROME_PX} />
-          </span>
-          <span>recent history unavailable</span>
+          recent history unavailable
         </p>
       ) : view.errored ? (
         <p
-          className="text-label text-state-broken"
+          className="mt-fg-1-5 text-label text-state-broken"
           data-recent-commits-state="error"
           role="status"
         >
@@ -361,7 +340,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
         </p>
       ) : view.loading ? (
         <p
-          className="animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
+          className="mt-fg-1-5 animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
           data-recent-commits-state="loading"
           role="status"
         >
@@ -369,13 +348,13 @@ function RecentCommits({ scope }: { scope: string | null }) {
         </p>
       ) : view.commits.length === 0 ? (
         <p
-          className="px-fg-1 py-fg-1 text-label text-ink-faint"
+          className="mt-fg-1-5 text-label text-ink-faint"
           data-recent-commits-state="empty"
         >
           no commits yet on this branch.
         </p>
       ) : (
-        <ul className="space-y-fg-0-5" role="list" data-recent-commits-list>
+        <ul className="mt-fg-1-5 space-y-fg-0" role="list" data-recent-commits-list>
           {view.commits.slice(0, RECENT_COMMITS).map((commit) => {
             const touched = commit.node_ids.filter((id) => !id.startsWith("commit:"));
             const select = () => {
@@ -395,29 +374,24 @@ function RecentCommits({ scope }: { scope: string | null }) {
                   aria-label={`commit ${commit.short_hash}: ${commit.subject}${
                     touched.length ? `, ${touched.length} touched nodes` : ""
                   }`}
-                  className={`flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                  className={`flex w-full items-center gap-fg-2 rounded-fg-xs px-fg-1-5 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     touched.length
                       ? "hover:bg-paper-sunken"
                       : "cursor-default opacity-90"
                   }`}
+                  title={relativeTs(new Date(commit.ts).toISOString(), now)}
                 >
-                  <span className="shrink-0 text-ink-faint" aria-hidden>
-                    <GitCommit size={GATE_PX} />
-                  </span>
-                  {/* Subject is the primary, grayscale-safe carrier. */}
-                  <span className="min-w-0 flex-1 truncate text-label text-ink-muted">
-                    {commit.subject || "(no subject)"}
-                  </span>
-                  {/* Short hash is identity → mono. */}
+                  {/* Short hash is identity → mono, in the accent-text ink. */}
                   <span
-                    className="shrink-0 font-mono text-caption text-ink-faint"
+                    className="shrink-0 font-mono text-meta text-accent-text"
                     data-tabular
                     data-short-hash
                   >
                     {commit.short_hash}
                   </span>
-                  <span className="shrink-0 text-caption text-ink-faint" data-tabular>
-                    {relativeTs(new Date(commit.ts).toISOString(), now)}
+                  {/* Subject is the primary, grayscale-safe carrier. */}
+                  <span className="min-w-0 flex-1 truncate text-label text-ink-muted">
+                    {commit.subject || "(no subject)"}
                   </span>
                 </button>
               </li>
@@ -436,7 +410,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
 export function StatusTab() {
   const scope = useActiveScope();
   return (
-    <div className="space-y-fg-3 text-body" data-status-tab>
+    <div className="space-y-fg-4 text-body" data-status-tab>
       <LocationAnchor scope={scope} />
       <OpenPlans scope={scope} />
       <RecentCommits scope={scope} />

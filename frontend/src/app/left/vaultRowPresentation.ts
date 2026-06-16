@@ -25,6 +25,8 @@ import {
   Stack,
 } from "@phosphor-icons/react";
 
+import type { Category } from "../kit";
+
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
 // 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure
 // chevrons read one density step smaller so the structural chrome stays attenuated
@@ -64,28 +66,48 @@ export function docMark(docType: string): Icon {
   return DOC_MARKS[docType] ?? FileDashed;
 }
 
-// Doc-type group labels (Figma `LeftRail_*` group headers): the acronym groups
-// read in full uppercase ("ADR"), the word groups Title-Cased
-// ("Research"/"Plan"/"Exec"/"Audit"/"Reference"/"Index"). A naive CSS
-// `capitalize` renders the acronym wrong ("Adr"), so the casing is data, not a
-// style — declared once here and consumed identically by the VAULT and TREE
-// browser headers.
+// Doc-type group labels (binding Figma `LeftRail` 244:750 group headers): the
+// human plural vocabulary the board prints as uppercase SectionLabels — RESEARCH /
+// DECISIONS / PLANS / STEPS / AUDITS (and References / Index). The label text is
+// authored Title-Cased here and the kit `SectionLabel` applies the uppercase, so
+// the casing is data (an acronym is never mangled by a CSS `capitalize`) declared
+// once here and consumed identically by the VAULT and TREE browser headers.
 const DOC_GROUP_LABELS: Record<string, string> = {
   research: "Research",
-  adr: "ADR",
-  plan: "Plan",
-  exec: "Exec",
-  audit: "Audit",
-  reference: "Reference",
+  adr: "Decisions",
+  plan: "Plans",
+  exec: "Steps",
+  audit: "Audits",
+  reference: "References",
   index: "Index",
 };
 
 /** The display label for a doc-type group header. Known groups use the curated
- *  casing (acronyms uppercase); an unknown group Title-Cases its first letter. */
+ *  binding-board vocabulary; an unknown group Title-Cases its first letter. */
 export function docGroupLabel(docType: string): string {
   return (
     DOC_GROUP_LABELS[docType] ?? docType.charAt(0).toUpperCase() + docType.slice(1)
   );
+}
+
+// Doc-type → kit category token (binding board 135:2 StatusDot/Chip category set).
+// The eight canonical scene/category colors emitted on :root cover adr/audit/code/
+// exec/feature/index/plan/research — the SAME colors the graph nodes paint with, so
+// a row's leading StatusDot and its node always agree. `reference` has no bound
+// scene/category color, so it has no dot (the row falls back to its doc-type mark).
+const DOC_TYPE_CATEGORY: Record<string, Category> = {
+  research: "research",
+  adr: "adr",
+  plan: "plan",
+  exec: "exec",
+  audit: "audit",
+  index: "index",
+};
+
+/** The kit category whose bound scene color tints a doc row's leading StatusDot,
+ *  or null for a doc type with no bound category color (e.g. `reference`). */
+export function docTypeCategory(docType: string): Category | null {
+  return DOC_TYPE_CATEGORY[docType] ?? null;
 }
 
 /**

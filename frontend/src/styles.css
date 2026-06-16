@@ -517,6 +517,224 @@
 }
 
 /* ===========================================================================
+   READER TYPE ROLES & MARKDOWN SCALE (figma-frontend-rewrite W03.P10 — binding
+   Reader boards 245:738 / 269:941, MarkdownReader 100:2, Reader states 271:1121).
+
+   The editorial reader type ramp is the HEADLINE use of the bound Fraunces serif
+   face: Fraunces (--font-serif) carries Title / Dek / H2 / H3 / Quote, and Inter
+   (--font-sans) carries Eyebrow / Meta / Lead / Body. Sizes, weights, line-heights
+   and tracking are transcribed from the binding Reader type system:
+     Eyebrow Inter Medium 11/1.3 +0.6 · Title Fraunces SemiBold 34/1.12 -0.3 ·
+     Dek Fraunces Light-Italic 18/1.38 · Meta Inter 12.5/1.4 · Lead Inter 17/1.56 ·
+     H2 Fraunces SemiBold 24/1.18 · Body Inter 15.5/1.56 · Quote Fraunces Italic
+     17/1.5 · H3 Fraunces SemiBold 17/1.28.
+
+   Authored as reusable role utilities PLUS a `.vs-markdown` element scale, so the
+   reader composes the ramp without retyping a font/size per element
+   (design-system-is-centralized). Colour comes only from the token tier
+   (themes-are-oklch / warmth-lives-in-tokens) — no raw hex.
+   =========================================================================== */
+
+@layer components {
+  .reader-eyebrow {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem; /* 11 */
+    line-height: 1.3;
+    font-weight: 500;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+  }
+  .reader-title {
+    font-family: var(--font-serif);
+    font-size: 2.125rem; /* 34 */
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  .reader-dek {
+    font-family: var(--font-serif);
+    font-size: 1.125rem; /* 18 */
+    line-height: 1.38;
+    font-weight: 300;
+    font-style: italic;
+  }
+  .reader-meta {
+    font-family: var(--font-sans);
+    font-size: 0.78125rem; /* 12.5 */
+    line-height: 1.4;
+    font-weight: 400;
+  }
+  .reader-lead {
+    font-family: var(--font-sans);
+    font-size: 1.0625rem; /* 17 */
+    line-height: 1.56;
+    font-weight: 400;
+  }
+  .reader-body {
+    font-family: var(--font-sans);
+    font-size: 0.96875rem; /* 15.5 */
+    line-height: 1.56;
+    font-weight: 400;
+  }
+  .reader-h2 {
+    font-family: var(--font-serif);
+    font-size: 1.5rem; /* 24 */
+    line-height: 1.18;
+    font-weight: 600;
+  }
+  .reader-h3 {
+    font-family: var(--font-serif);
+    font-size: 1.0625rem; /* 17 */
+    line-height: 1.28;
+    font-weight: 600;
+  }
+  .reader-quote {
+    font-family: var(--font-serif);
+    font-size: 1.0625rem; /* 17 */
+    line-height: 1.5;
+    font-weight: 400;
+    font-style: italic;
+  }
+
+  /* The rendered markdown body: each element adopts its Reader role. A generous
+     editorial measure, centred when the reader is wider than the measure. */
+  .vs-markdown {
+    max-width: 46rem;
+    margin-inline: auto;
+    color: var(--color-ink);
+  }
+  .vs-markdown > :first-child {
+    margin-top: 0;
+  }
+  .vs-markdown h1 {
+    /* Reader/Title */
+    font-family: var(--font-serif);
+    font-size: 2.125rem;
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    margin-block: 0 var(--spacing-fg-4);
+  }
+  .vs-markdown h2 {
+    /* Reader/H2 */
+    font-family: var(--font-serif);
+    font-size: 1.5rem;
+    line-height: 1.18;
+    font-weight: 600;
+    margin-block: var(--spacing-fg-6) var(--spacing-fg-2);
+  }
+  .vs-markdown h3 {
+    /* Reader/H3 */
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.28;
+    font-weight: 600;
+    margin-block: var(--spacing-fg-4) var(--spacing-fg-1);
+  }
+  .vs-markdown h4,
+  .vs-markdown h5,
+  .vs-markdown h6 {
+    font-family: var(--font-sans);
+    font-size: var(--text-fg-body-strong);
+    line-height: 1.4;
+    font-weight: 600;
+    margin-block: var(--spacing-fg-4) var(--spacing-fg-1);
+  }
+  .vs-markdown p {
+    /* Reader/Body */
+    font-family: var(--font-sans);
+    font-size: 0.96875rem;
+    line-height: 1.56;
+    margin-block: var(--spacing-fg-3);
+  }
+  /* The lead paragraph (the first body paragraph) reads at the Reader/Lead step. */
+  .vs-markdown > p:first-of-type {
+    font-size: 1.0625rem;
+  }
+  .vs-markdown ul,
+  .vs-markdown ol {
+    font-family: var(--font-sans);
+    font-size: 0.96875rem;
+    line-height: 1.56;
+    margin-block: var(--spacing-fg-3);
+    padding-inline-start: var(--spacing-fg-6);
+  }
+  .vs-markdown ul {
+    list-style: disc;
+  }
+  .vs-markdown ol {
+    list-style: decimal;
+  }
+  .vs-markdown li {
+    margin-block: var(--spacing-fg-1);
+  }
+  /* GFM task lists (the plan checkbox/step structure) render flush, no bullet. */
+  .vs-markdown li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-inline-start: calc(-1 * var(--spacing-fg-6));
+  }
+  .vs-markdown li > input[type="checkbox"] {
+    margin-inline-end: var(--spacing-fg-1-5);
+  }
+  .vs-markdown blockquote {
+    /* Reader/Quote — serif italic, leading accent rule. */
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.5;
+    font-style: italic;
+    color: var(--color-ink-muted);
+    border-inline-start: 2px solid var(--color-accent);
+    padding-inline-start: var(--spacing-fg-3);
+    margin-block: var(--spacing-fg-4);
+  }
+  .vs-markdown strong {
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .vs-markdown hr {
+    border: 0;
+    border-top: 1px solid var(--color-rule);
+    margin-block: var(--spacing-fg-6);
+  }
+  .vs-markdown table {
+    font-family: var(--font-sans);
+    font-size: var(--text-fg-label);
+    border-collapse: collapse;
+    width: 100%;
+    margin-block: var(--spacing-fg-4);
+  }
+  .vs-markdown th,
+  .vs-markdown td {
+    border: 1px solid var(--color-rule);
+    padding: var(--spacing-fg-1) var(--spacing-fg-2);
+    text-align: start;
+  }
+  .vs-markdown th {
+    background: var(--color-paper-sunken);
+    font-weight: 600;
+  }
+  /* Fenced code: the SHARED Shiki highlighter renders into `.vs-code-fence`; the
+     `pre.vs-code-fence` fallback shows the raw text pre-tokenization. Both adopt
+     the sunken code surface with the canonical rule + radius and the mono step. */
+  .vs-markdown .vs-code-fence {
+    overflow: hidden;
+    margin-block: var(--spacing-fg-4);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-fg-md);
+    background: var(--color-paper-sunken);
+    font-family: var(--font-mono);
+    font-size: var(--text-fg-mono);
+    line-height: 1.5;
+  }
+  .vs-markdown .vs-code-fence pre,
+  .vs-markdown pre.vs-code-fence {
+    overflow-x: auto;
+    margin: 0;
+    padding: var(--spacing-fg-3);
+  }
+}
+
+/* ===========================================================================
    Keyframe definitions (referenced by --animate-* tokens above)
    =========================================================================== */
 

@@ -14,7 +14,6 @@
 // role-named token foundation: canonical radius (`rounded-fg-xs`) and the
 // `caption` type role for dense counts, no retired radius or px-purpose type.
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { openContextMenu } from "../../stores/view/contextMenu";
@@ -27,6 +26,10 @@ import {
 import { usePinStore } from "../../stores/view/pins";
 import { selectEdge } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
+// Centralized kit primitives (design-system-is-centralized): the section
+// eyebrows, the key/value property rows for the node metadata, the edge-count
+// badge, and the chrome chevrons all resolve to one shared definition.
+import { Badge, ChevronDown, ChevronRight, PropertyRow, SectionLabel } from "../kit";
 
 // The edge resolver self-registers at module load. The "node" kind is served by
 // the canonical graph node resolver (registered via app/menus/registerAll), since
@@ -135,24 +138,37 @@ export function Inspector() {
           }
         }}
       >
-        {/* Title: 13px medium (text-body) over an 11px muted sub-line — the
-            binding design's inspector header (node 17:618). */}
-        <div className="truncate font-medium text-ink" title={node.id}>
+        {/* Title: serif by the binding Reader/Title role over a key/value property
+            block — the binding design's inspector header (node 17:618). The
+            metadata reads as kit PropertyRows so a label/value line is the one
+            shared definition (design-system-is-centralized). */}
+        <div className="truncate font-serif text-title text-ink" title={node.id}>
           {node.title ?? node.id}
         </div>
-        <p className="text-label text-ink-muted">
-          {node.kind}
-          {node.lifecycle ? ` · ${node.lifecycle.state}` : ""}
-          {node.lifecycle?.progress
-            ? ` · ${node.lifecycle.progress.done}/${node.lifecycle.progress.total}`
-            : ""}
-          {node.dates?.modified ? ` · ${node.dates.modified.slice(0, 10)}` : ""}
-        </p>
+        <dl className="mt-fg-1">
+          <PropertyRow label="kind" value={node.kind} />
+          {node.lifecycle && (
+            <PropertyRow label="state" value={node.lifecycle.state} />
+          )}
+          {node.lifecycle?.progress && (
+            <PropertyRow
+              label="progress"
+              value={
+                <span data-tabular className="tabular-nums">
+                  {node.lifecycle.progress.done}/{node.lifecycle.progress.total}
+                </span>
+              }
+            />
+          )}
+          {node.dates?.modified && (
+            <PropertyRow label="modified" value={node.dates.modified.slice(0, 10)} />
+          )}
+        </dl>
       </div>
 
       {evidence.data && (
         <section className="text-label">
-          <div className="mb-fg-0-5 font-medium text-ink-muted">evidence</div>
+          <SectionLabel className="mb-fg-0-5">Evidence</SectionLabel>
           <ul className="space-y-fg-0-5 text-ink-muted">
             {evidence.data.documents.slice(0, 5).map((doc) => (
               <li key={doc.path} className="truncate" title={doc.path}>
@@ -185,7 +201,7 @@ export function Inspector() {
       )}
 
       <section className="text-label">
-        <div className="mb-fg-0-5 font-medium text-ink-muted">edges by tier</div>
+        <SectionLabel className="mb-fg-0-5">Edges by tier</SectionLabel>
         {[...tiers.entries()].map(([tier, edges]) => {
           const open = unfolded.has(tier);
           return (
@@ -205,8 +221,8 @@ export function Inspector() {
               >
                 {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>{tier}</span>
-                <span className="text-caption text-ink-faint" data-tabular>
-                  {edges.length}
+                <span data-tabular>
+                  <Badge>{edges.length}</Badge>
                 </span>
               </button>
               {open && (

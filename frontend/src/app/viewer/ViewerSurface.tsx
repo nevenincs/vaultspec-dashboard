@@ -15,6 +15,7 @@ import { X } from "lucide-react";
 
 import { useContentView } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
+import { IconButton } from "../kit";
 import { CodeViewer } from "./CodeViewer";
 import { MarkdownReader } from "./MarkdownReader";
 
@@ -40,14 +41,9 @@ export function ViewerSurface(): ReactElement | null {
         <span className="truncate font-mono text-label text-ink-muted">
           {target.nodeId}
         </span>
-        <button
-          type="button"
-          onClick={closeViewer}
-          className="rounded-fg-xs p-fg-0-5 text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          aria-label="close viewer"
-        >
+        <IconButton label="close viewer" onClick={closeViewer}>
           <X size={15} aria-hidden />
-        </button>
+        </IconButton>
       </div>
       <div className="min-h-0 flex-1">
         {target.surface === "code" ? (

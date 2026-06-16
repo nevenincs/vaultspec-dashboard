@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  GROUP_LANE_HEIGHT,
   LANE_HEIGHT,
   PHASE_LANES,
+  TIMELINE_LANE_GROUPS,
+  groupIdOfPhase,
+  groupIndexOf,
+  groupIndexOfId,
+  groupLaneCenterY,
+  groupLanesHeight,
   laneCenterY,
   laneDescriptor,
   laneIndex,
@@ -138,5 +145,48 @@ describe("lane geometry (S32)", () => {
   it("sizes the whole phase-lane band from the lane count and padding", () => {
     expect(lanesHeight()).toBe(PHASE_LANES.length * LANE_HEIGHT);
     expect(lanesHeight(12)).toBe(PHASE_LANES.length * LANE_HEIGHT + 12);
+  });
+});
+
+describe("two-lane grouping (figma-frontend-rewrite W03.P08.S11, AppShell 117:2)", () => {
+  it("collapses the six phases into a design lane over an execution lane", () => {
+    expect(TIMELINE_LANE_GROUPS.map((g) => g.id)).toEqual(["design", "execution"]);
+    expect(TIMELINE_LANE_GROUPS[0].label).toBe("Research · Decisions · Plans · Audits");
+    expect(TIMELINE_LANE_GROUPS[1].label).toBe("Execution · Summaries");
+    // Every phase token lands in exactly one group; no phase is dropped.
+    const grouped = TIMELINE_LANE_GROUPS.flatMap((g) => g.phases);
+    expect([...grouped].sort()).toEqual([...PHASE_LANES].sort());
+  });
+
+  it("maps each phase token to its visual lane group", () => {
+    expect(groupIdOfPhase("research")).toBe("design");
+    expect(groupIdOfPhase("adr")).toBe("design");
+    expect(groupIdOfPhase("plan")).toBe("design");
+    expect(groupIdOfPhase("review")).toBe("design");
+    expect(groupIdOfPhase("exec")).toBe("execution");
+    expect(groupIdOfPhase("codify")).toBe("execution");
+  });
+
+  it("indexes the design lane above the execution lane", () => {
+    expect(groupIndexOfId("design")).toBe(0);
+    expect(groupIndexOfId("execution")).toBe(1);
+  });
+
+  it("resolves a node's visual lane group from its phase or doc-type fallback", () => {
+    expect(groupIndexOf({ phase: "research" })).toBe(0);
+    // review -> design (audit doc), codify -> execution (rule doc).
+    expect(groupIndexOf({ doc_type: "audit" })).toBe(0);
+    expect(groupIndexOf({ phase: "exec" })).toBe(1);
+    expect(groupIndexOf({ doc_type: "rule" })).toBe(1);
+    // A node that owns no phase lane belongs to no visual lane.
+    expect(groupIndexOf({ doc_type: "commit" })).toBeNull();
+    expect(groupIndexOf({})).toBeNull();
+  });
+
+  it("stacks the two group rows from the row height and top padding", () => {
+    expect(groupLaneCenterY(0)).toBe(GROUP_LANE_HEIGHT / 2);
+    expect(groupLaneCenterY(1, 8)).toBe(GROUP_LANE_HEIGHT + GROUP_LANE_HEIGHT / 2 + 8);
+    expect(groupLanesHeight()).toBe(2 * GROUP_LANE_HEIGHT);
+    expect(groupLanesHeight(8)).toBe(2 * GROUP_LANE_HEIGHT + 8);
   });
 });

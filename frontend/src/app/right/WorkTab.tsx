@@ -27,9 +27,15 @@
 // is carried by shape + text FIRST, with token hue as redundant reinforcement
 // only, legible at the iconography ADR's 14px gate.
 
-import { ChevronDown, ChevronRight, CircleSlash, FileText } from "lucide-react";
+import { CircleSlash, FileText } from "lucide-react";
 import { ListChecks } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+
+// Centralized kit primitives (design-system-is-centralized): the tier badge and
+// the chrome chevrons resolve to one shared definition. The ProgressRing,
+// StatusPill, and StepCheckMark stay bespoke — they encode semantic STATE hue +
+// grayscale-by-shape meaning the neutral kit Badge does not model.
+import { Badge, ChevronDown, ChevronRight } from "../kit";
 
 import type { PipelineArtifact, PipelinePhase } from "../../stores/server/engine";
 import {
@@ -513,11 +519,11 @@ function PlanRow({ artifact, now, tabbable, expanded, onToggle }: PlanRowProps) 
               </span>
               {artifact.tier && (
                 <span
-                  className="shrink-0 rounded-fg-xs border border-rule px-fg-1 text-caption font-medium text-ink-muted"
+                  className="shrink-0"
                   data-plan-tier
                   aria-label={`tier ${artifact.tier}`}
                 >
-                  {artifact.tier}
+                  <Badge>{artifact.tier}</Badge>
                 </span>
               )}
             </span>
