@@ -181,6 +181,16 @@ export function lineageLayout(
   // super-nodes. Off-spine nodes are placed by the D2 policy separately.
   const spineIds = [...onSpine].sort();
 
+  // Degenerate slice: NO node is on the derivation spine — e.g. lineage at
+  // feature/constellation granularity, where the served aggregate nodes carry
+  // meta-edges, not derivation edges. Collapsing every node into one off-spine
+  // gutter column produces an unreadable vertical line that fits to a near-black
+  // sliver. Instead lay the whole visible slice out as a centered, deterministic
+  // grid, honestly showing "these nodes, no derivation lineage at this level".
+  if (spineIds.length === 0) {
+    return gridFallback(typed, aggregation);
+  }
+
   // --- Sugiyama over the spine (D1) ---------------------------------------
   // Seed layer for a dangling stub: the axis order its derivation implies, so a
   // node whose only parent is missing still lands in a sensible column (D1.2).
@@ -218,6 +228,36 @@ export function lineageLayout(
   const routes = buildRoutes(edges, routed, out, manifestIds, aggregation);
 
   return { positions: out, routes, aggregates: aggregation.aggregates };
+}
+
+/** Degenerate-slice fallback: when no node sits on the derivation spine (a
+ *  no-derivation LOD such as the feature constellation), lay the visible nodes
+ *  out as a centered, deterministic 2D grid so lineage reads as a legible field
+ *  rather than a single black gutter column. ~square (cols = ceil(sqrt(n))),
+ *  id-ordered for stability; no routes. */
+function gridFallback(
+  nodes: readonly LineageNode[],
+  agg: Aggregation,
+): LineageLayoutResult {
+  const ordered = nodes
+    .filter((n) => !agg.collapsedTo.has(n.id))
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const out = new Map<string, LineagePosition>();
+  const cols = Math.max(1, Math.ceil(Math.sqrt(ordered.length)));
+  const rows = Math.max(1, Math.ceil(ordered.length / cols));
+  const xOffset = ((cols - 1) * LINEAGE_COL_SPACING) / 2;
+  const yOffset = ((rows - 1) * LINEAGE_ROW_SPACING) / 2;
+  ordered.forEach((n, i) => {
+    out.set(n.id, {
+      x: (i % cols) * LINEAGE_COL_SPACING - xOffset,
+      y: Math.floor(i / cols) * LINEAGE_ROW_SPACING - yOffset,
+      depth: -1,
+      onSpine: false,
+      dangling: false,
+    });
+  });
+  return { positions: out, routes: new Map(), aggregates: agg.aggregates };
 }
 
 /** Row pitch derived from the densest layer (D1.4): denser columns get a tighter

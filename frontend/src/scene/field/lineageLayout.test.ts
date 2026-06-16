@@ -48,6 +48,23 @@ describe("lineageLayout", () => {
     expect(pos.get("exec")!.depth).toBe(3);
   });
 
+  it("falls back to a readable 2D grid when no node is on the spine (no-derivation LOD)", () => {
+    // e.g. lineage at feature/constellation granularity: aggregate nodes carry
+    // meta-edges, not derivation edges, so the spine is empty. Must NOT collapse
+    // to a single black gutter column — spread the nodes across BOTH axes.
+    const nodes = Array.from({ length: 9 }, (_, i) => n(`feat-${i}`));
+    const result = lineageLayout(nodes, []); // no lineage edges → empty spine
+    const xs = new Set([...result.positions.values()].map((p) => Math.round(p.x)));
+    const ys = new Set([...result.positions.values()].map((p) => Math.round(p.y)));
+    expect(result.positions.size).toBe(9);
+    // A grid spreads across multiple columns AND rows (not one x, not one y).
+    expect(xs.size).toBeGreaterThan(1);
+    expect(ys.size).toBeGreaterThan(1);
+    // Deterministic: same inputs → same positions.
+    const again = lineageLayout(nodes, []);
+    expect([...again.positions]).toEqual([...result.positions]);
+  });
+
   it("marks an incomplete chain as a dangling stub, never fabricating an edge", () => {
     // The plan derives from an adr that is NOT in the slice.
     const nodes = [n("plan"), n("exec")];
