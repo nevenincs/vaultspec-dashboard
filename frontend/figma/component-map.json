@@ -177,6 +177,13 @@
       "figmaUrl": null
     },
     {
+      "name": "LayoutSelector",
+      "source": "src/app/stage/LensSelector.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "LeftRail",
       "source": "src/app/left/LeftRail.tsx",
       "designSurface": true,
