@@ -219,6 +219,13 @@
       "figmaUrl": null
     },
     {
+      "name": "IconRail",
+      "source": "src/app/shell/IconRail.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "Inspector",
       "source": "src/app/right/Inspector.tsx",
       "designSurface": true,
@@ -243,6 +250,13 @@
       "name": "KeyboardNav",
       "source": "src/app/a11y/KeyboardNav.tsx",
       "designSurface": false,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "KeyboardShortcuts",
+      "source": "src/app/menu/KeyboardShortcuts.tsx",
+      "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
     },
@@ -438,6 +452,13 @@
     {
       "name": "Stage",
       "source": "src/app/stage/Stage.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "StageTopbar",
+      "source": "src/app/shell/StageTopbar.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null

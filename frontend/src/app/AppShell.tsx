@@ -1,23 +1,16 @@
-import {
-  ChevronLeft,
-  ChevronRight,
-  Contrast,
-  Monitor,
-  Moon,
-  Settings,
-  Sun,
-} from "lucide-react";
 import { useState } from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
-import type { ThemePreference } from "../platform/theme/themeController";
 import { useBackendSignalStream } from "../stores/server/queries";
 import { useViewStore } from "../stores/view/viewStore";
 import { LeftRail } from "./left/LeftRail";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
+import { IconButton } from "./kit";
+import { PanelLeft, PanelRight } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
+import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
 // Register every per-surface context-menu resolver once at app load.
 import "./menus/registerAll";
 import { CommandPalette } from "./palette/CommandPalette";
@@ -32,6 +25,8 @@ import { OpsPanel } from "./right/OpsPanel";
 import { RailTabs, type RailTabId } from "./right/RailTabs";
 import { SearchTab } from "./right/SearchTab";
 import { StatusTab } from "./right/StatusTab";
+import { IconRail, type PrimaryView } from "./shell/IconRail";
+import { StageTopbar } from "./shell/StageTopbar";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
 import { RangeSelect } from "./timeline/RangeSelect";
@@ -39,18 +34,37 @@ import { Timeline } from "./timeline/Timeline";
 import { TimelineControls } from "./timeline/TimelineControls";
 import { handleNodeClick } from "./timeline/eventSelection";
 
-// Four-region skeleton in the converged agentic-desktop idiom (gui-spec §2):
-// left scope rail, center stage, right activity rail, bottom timeline.
-// Layer law: each rail reads stores hooks only; no rail component fetches.
+// Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): four
+// fluid/fixed columns at full viewport height —
+//   left-icon-bar (48px) | left-pane (290px) | stage (flex) | right-pane (290px)
+// — where the two 290px panes are collapsible and reflow the grid. The stage
+// column is itself a vertical stack: a 44px breadcrumb topbar, the graph area
+// (the existing Stage, fills), and a 212px Timeline at the bottom.
+//
+// Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-state-and-
+// scene-contract): the shell is leaf chrome — it composes the centralized kit and
+// renders the existing LeftRail / Stage / Timeline / ActivityRail in their slots,
+// consuming the preserved stores hooks and SceneController contract UNCHANGED. It
+// adds no new fetch, mints no model, and reads no raw `tiers`.
+const LEFT_PANE = "290px";
+const RIGHT_PANE = "290px";
+
 export function AppShell() {
   const leftCollapsed = useViewStore((s) => s.leftRailCollapsed);
   const rightCollapsed = useViewStore((s) => s.rightRailCollapsed);
   const toggleLeft = useViewStore((s) => s.toggleLeftRail);
   const toggleRight = useViewStore((s) => s.toggleRightRail);
+  const openSettings = useSettingsDialog((s) => s.openDialog);
+  // The active primary view drives the icon rail's accent indicator. No store
+  // concept for "primary view" exists yet, so it is local shell state (the
+  // supervisor-sanctioned fallback); the four glyphs are present-and-correct
+  // navigation chrome that the deeper rail content will bind onto later.
+  const [primaryView, setPrimaryView] = useState<PrimaryView>("overview");
+
   // Theme is an engine setting now (dashboard-settings W05): the bridge reconciles
   // the server value to the framework-free controller and persists changes. Called
   // once here so the reconcile runs regardless of rail collapse state.
-  const theme = useThemeSetting();
+  useThemeSetting();
   // Apply the non-theme consumed settings (reduce_motion, default_granularity)
   // to app state once at the shell top (review HIGH-1: no dead controls).
   useSettingsEffects();
@@ -60,192 +74,117 @@ export function AppShell() {
   useBackendSignalStream();
 
   return (
-    <div className="grid h-screen grid-rows-[1fr_13rem] bg-paper text-ink">
+    <div
+      className="relative grid h-screen min-h-0 bg-paper text-ink"
+      style={{
+        gridTemplateColumns: `48px ${leftCollapsed ? "0px" : LEFT_PANE} 1fr ${
+          rightCollapsed ? "0px" : RIGHT_PANE
+        }`,
+      }}
+    >
       <CommandPalette />
       <SettingsDialog />
       <ContextMenuHost />
+      <KeyboardShortcuts />
       <DegradationDebugSwitch />
       <KeyboardNav />
-      <div
-        className="grid min-h-0"
-        style={{
-          gridTemplateColumns: `${leftCollapsed ? "2.5rem" : "16rem"} 1fr ${rightCollapsed ? "2.5rem" : "20rem"}`,
-        }}
-      >
-        {/* ── Left scope rail ────────────────────────────────────── */}
-        <aside className="flex flex-col overflow-hidden border-r border-rule">
-          {/* Rail header */}
-          <div className="flex h-9 shrink-0 items-center border-b border-rule px-fg-2">
-            <button
-              type="button"
-              onClick={toggleLeft}
-              aria-label={leftCollapsed ? "expand scope rail" : "collapse scope rail"}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
-            >
-              {leftCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-            </button>
-            {!leftCollapsed && (
-              <>
-                <span className="ml-fg-2 flex-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
-                  Scope
-                </span>
-                <ThemeToggle
-                  preference={theme.preference}
-                  setPreference={theme.setPreference}
-                />
-                <SettingsButton />
-              </>
-            )}
-          </div>
 
-          {/* Rail content — the ordered hosted-slot stack (dashboard-left-rail
-              IA): workspace → worktree → browser (vault|code + in-rail filter),
-              composed in LeftRail. The collapse toggle in the header above is
-              first in the rail's single top-to-bottom focus order; LeftRail is
-              the labelled landmark continuing it. */}
-          {!leftCollapsed && (
-            <ErrorBoundary region="left-rail">
-              <CrashZone region="left-rail" />
-              <div className="flex min-h-0 flex-1 flex-col">
-                <LeftRail />
-              </div>
-            </ErrorBoundary>
-          )}
-        </aside>
+      {/* ── Far-left icon rail (48px) ──────────────────────────────── */}
+      <IconRail
+        active={primaryView}
+        onSelect={setPrimaryView}
+        onOpenSettings={openSettings}
+      />
 
-        {/* ── Center stage ───────────────────────────────────────── */}
-        <main className="relative min-w-0">
+      {/* ── Left pane (290px) — the scope/browser rail ─────────────── */}
+      <aside className="relative flex min-h-0 flex-col overflow-hidden border-r border-rule">
+        {!leftCollapsed && (
+          <ErrorBoundary region="left-rail">
+            <CrashZone region="left-rail" />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <LeftRail />
+            </div>
+          </ErrorBoundary>
+        )}
+      </aside>
+
+      {/* ── Stage column (flex) — topbar | graph | timeline ────────── */}
+      <main className="flex min-h-0 min-w-0 flex-col">
+        <StageTopbar trail={["Vault", "Live delta sync"]} />
+
+        {/* Graph area — fills the remaining height; renders the existing Stage. */}
+        <div className="relative min-h-0 min-w-0 flex-1">
           <ErrorBoundary region="stage">
             <CrashZone region="stage" />
             <Stage />
           </ErrorBoundary>
-        </main>
+        </div>
 
-        {/* ── Right activity rail ────────────────────────────────── */}
-        <aside className="flex flex-col overflow-hidden border-l border-rule">
-          {/* Rail header */}
-          <div className="flex h-9 shrink-0 items-center border-b border-rule px-fg-2">
-            {rightCollapsed ? (
-              <button
-                type="button"
-                onClick={toggleRight}
-                aria-label="expand activity rail"
-                className="mx-auto flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
-              >
-                <ChevronLeft size={12} />
-              </button>
-            ) : (
-              <>
-                <span className="flex-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
-                  Activity
-                </span>
-                <button
-                  type="button"
-                  onClick={toggleRight}
-                  aria-label="collapse activity rail"
-                  className="flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
-                >
-                  <ChevronRight size={12} />
-                </button>
-              </>
-            )}
-          </div>
+        {/* Bottom timeline (212px). The relational phase-lane timeline
+            (dashboard-timeline ADR): the control bar docks at the region's top
+            edge, the lineage surface fills the rest. Layer law: this region wires
+            stores hooks and shared-state intent only — no fetch, no raw `tiers`. A
+            mark click flows into the ONE shared selection + a bounded stage ego
+            pulse through `handleNodeClick`. */}
+        <footer className="flex h-[212px] min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-t border-rule">
+          <ErrorBoundary region="timeline">
+            <CrashZone region="timeline" />
+            <div className="min-w-0 shrink-0">
+              <TimelineControls />
+            </div>
+            <div className="relative min-h-0 min-w-0 flex-1">
+              <Timeline
+                onNodeClick={handleNodeClick}
+                overlay={
+                  <>
+                    <RangeSelect />
+                    <Playhead />
+                  </>
+                }
+              />
+            </div>
+          </ErrorBoundary>
+        </footer>
+      </main>
 
-          {/* Rail content */}
-          {!rightCollapsed && (
-            <ErrorBoundary region="right-rail">
-              <CrashZone region="right-rail" />
-              <ActivityRail />
-            </ErrorBoundary>
-          )}
-        </aside>
+      {/* ── Right pane (290px) — the activity rail ─────────────────── */}
+      <aside className="relative flex min-h-0 flex-col overflow-hidden border-l border-rule">
+        {!rightCollapsed && (
+          <ErrorBoundary region="right-rail">
+            <CrashZone region="right-rail" />
+            <ActivityRail />
+          </ErrorBoundary>
+        )}
+      </aside>
+
+      {/* ── Floating pane toggles ──────────────────────────────────── */}
+      {/* PanelLeft sits over the left pane's header zone; PanelRight pins to the
+          far-right corner. Each reflects + flips the corresponding collapse flag. */}
+      <div className="pointer-events-none absolute left-[14px] top-3 z-20">
+        <span className="pointer-events-auto">
+          <IconButton
+            label={leftCollapsed ? "Show left panel" : "Hide left panel"}
+            active={!leftCollapsed}
+            onClick={toggleLeft}
+          >
+            <PanelLeft size={16} />
+          </IconButton>
+        </span>
+      </div>
+      <div className="pointer-events-none absolute right-2 top-2 z-20">
+        <span className="pointer-events-auto">
+          <IconButton
+            label={rightCollapsed ? "Show right panel" : "Hide right panel"}
+            active={!rightCollapsed}
+            onClick={toggleRight}
+          >
+            <PanelRight size={16} />
+          </IconButton>
+        </span>
       </div>
 
-      {/* ── Bottom timeline ────────────────────────────────────────── */}
-      {/* The relational phase-lane timeline (dashboard-timeline ADR): the control
-          bar docks at the region's top edge, the lineage surface fills the rest.
-          Layer law (dashboard-layer-ownership): this region wires stores hooks and
-          shared-state intent only — no fetch, no raw `tiers`. A mark click flows
-          into the ONE shared selection + a bounded stage ego pulse through
-          `handleNodeClick` (the S45 wiring, live below); the surface hands its
-          visible-slice arcs so the bounded 1-hop join is derived honestly. */}
-      <footer className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-rule">
-        <ErrorBoundary region="timeline">
-          <CrashZone region="timeline" />
-          <div className="min-w-0 shrink-0">
-            <TimelineControls />
-          </div>
-          <div className="relative min-h-0 min-w-0 flex-1">
-            <Timeline
-              onNodeClick={handleNodeClick}
-              overlay={
-                <>
-                  <RangeSelect />
-                  <Playhead />
-                </>
-              }
-            />
-          </div>
-        </ErrorBoundary>
-      </footer>
       <CrashInjector />
     </div>
-  );
-}
-
-// Theme preferences the toggle cycles through (ADR layer 2): system
-// auto-switch plus the three peer themes as manual overrides. The controller
-// owns <html>; this button only cycles the preference and never touches
-// data-theme directly (no dark: utility variant).
-const THEME_CYCLE: ThemePreference[] = ["system", "light", "dark", "high-contrast"];
-
-const THEME_META: Record<ThemePreference, { icon: typeof Sun; label: string }> = {
-  system: { icon: Monitor, label: "system theme (auto)" },
-  light: { icon: Sun, label: "light theme" },
-  dark: { icon: Moon, label: "dark theme" },
-  "high-contrast": { icon: Contrast, label: "high-contrast theme" },
-};
-
-/** Theme model: cycles preference through system/light/dark/high-contrast. The
- *  preference is now an engine setting (dashboard-settings W05) — the shell owns
- *  the bridge (useThemeSetting) and passes the current value + setter in. */
-function ThemeToggle({
-  preference,
-  setPreference,
-}: {
-  preference: ThemePreference;
-  setPreference: (p: ThemePreference) => void;
-}) {
-  const current = THEME_META[preference];
-  const Icon = current.icon;
-  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(preference) + 1) % THEME_CYCLE.length];
-  return (
-    <button
-      type="button"
-      aria-label={`theme: ${current.label}; click for ${THEME_META[next].label}`}
-      title={current.label}
-      className="flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
-      onClick={() => setPreference(next)}
-    >
-      <Icon size={12} />
-    </button>
-  );
-}
-
-/** The settings entry point (dashboard-settings W04.P09): a gear that opens the
- *  schema-driven settings dialog. The command palette opens the same dialog. */
-function SettingsButton() {
-  const openDialog = useSettingsDialog((s) => s.openDialog);
-  return (
-    <button
-      type="button"
-      aria-label="open settings"
-      title="Settings"
-      className="ml-fg-1 flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
-      onClick={openDialog}
-    >
-      <Settings size={12} />
-    </button>
   );
 }
 
