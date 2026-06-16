@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@figma/code-connect": "^1.4.8",
     "@playwright/test": "^1.60.0",
     "@storybook/addon-themes": "^10.4.5",
     "@storybook/react-vite": "^10.4.5",
