@@ -179,7 +179,7 @@ Rebuild the timeline, the degradation and discover overlays, the settings dialog
 - [x] `W02.P06.S37` - Rebuild the discover overlay from its binding frame over the preserved rag-backed discover query; `frontend/src/app/stage/Discover.tsx`.
 - [x] `W02.P06.S38` - Rebuild the settings dialog from its binding frame, schema-driven from the served settings registry; `frontend/src/app/settings/SettingsDialog.tsx`.
 - [x] `W02.P06.S39` - Rebuild the schema-driven settings controls from the binding Switch, Slider, and SegmentedToggle Kit primitives; `frontend/src/app/settings/controls/`.
-- [ ] `W02.P06.S40` - Rebuild the command palette from its binding frame over the preserved command registry; `frontend/src/app/palette/CommandPalette.tsx`.
+- [x] `W02.P06.S40` - Rebuild the command palette from its binding frame over the preserved command registry; `frontend/src/app/palette/CommandPalette.tsx`.
 
 ## Wave `W03` - Headline - custom node-connection canvas
 

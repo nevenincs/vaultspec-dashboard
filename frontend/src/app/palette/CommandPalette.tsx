@@ -5,9 +5,15 @@
 // committed primitives; nothing here exists only in the palette.
 //
 // Re-grounded onto the base design language (design-language ADR): it renders
-// on the modal step of the elevation tier (shadow-deep), consumes the semantic
-// token surface only (no hardcoded hex/px), shows inline shortcut hints, and
-// honours the keyboard-first / reduced-motion laws. Chrome icons are Lucide.
+// on the modal step of the elevation tier (shadow-fg-popover), consumes the
+// semantic token surface only (no hardcoded hex/px), shows inline shortcut hints,
+// and honours the keyboard-first / reduced-motion laws. Chrome icons are Lucide.
+//
+// W02.P06 (figma-parity-reconciliation): rebuilt faithfully to the binding Figma
+// CommandPalette frame (17:1320) on the canonical Figma role-named type scale and
+// radius/elevation (text-caption, rounded-fg-lg/xs, shadow-fg-popover) in place of
+// the legacy alias shims. It stays a dumb projection over the preserved command
+// registry — every row is a committed primitive routed through the dispatch seam.
 //
 // Layer ownership (dashboard-layer-ownership): app-chrome reads store state
 // through stores hooks/selectors and emits intent only — it never fetches the
@@ -382,7 +388,7 @@ export function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="command palette"
-        className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-vs-xl border border-rule bg-paper-raised shadow-deep animate-slide-in-down"
+        className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover animate-slide-in-down"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // Real focus trap: Tab / Shift+Tab cycle within the dialog so focus
@@ -460,7 +466,7 @@ export function CommandPalette() {
           )}
           {groups.map((group) => (
             <li key={group.family} role="presentation">
-              <div className="px-vs-4 pt-vs-2 pb-vs-0-5 text-2xs font-medium uppercase tracking-wide text-ink-faint">
+              <div className="px-vs-4 pt-vs-2 pb-vs-0-5 text-caption font-medium uppercase tracking-wide text-ink-faint">
                 {FAMILY_LABEL[group.family]}
               </div>
               <ul role="presentation">
@@ -478,7 +484,7 @@ export function CommandPalette() {
                         tabIndex={-1}
                         onMouseEnter={() => setCursorTo(index)}
                         onClick={() => runAt(index)}
-                        className={`flex w-full items-center justify-between border-l-2 rounded-r-vs-sm py-vs-1-5 pr-vs-4 pl-vs-3 text-left transition-colors duration-ui-fast ease-settle ${
+                        className={`flex w-full items-center justify-between border-l-2 rounded-r-fg-xs py-vs-1-5 pr-vs-4 pl-vs-3 text-left transition-colors duration-ui-fast ease-settle ${
                           selected
                             ? "border-accent bg-paper-sunken text-ink"
                             : "border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -490,7 +496,7 @@ export function CommandPalette() {
                         <span className="flex items-center gap-vs-2 text-label text-ink-faint">
                           {command.confirm && (
                             <span
-                              className="rounded-vs-sm border border-rule px-vs-1 py-vs-0-5 font-mono text-2xs"
+                              className="rounded-fg-xs border border-rule px-vs-1 py-vs-0-5 font-mono text-caption"
                               aria-hidden
                             >
                               ⏎ ⏎
