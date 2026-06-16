@@ -1440,12 +1440,15 @@ export class EngineClient {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
   }
 
-  /** The read-only git pass-through (dashboard-pipeline-wire W04): a whitelisted
-   *  read-only git verb (`status` | `numstat` | `diff`), git output forwarded
-   *  verbatim. The `diff` verb requires a `path`; the others take none. */
+  /** The read-only git pass-through (dashboard-pipeline-wire W04; historical diff
+   *  figma-parity-reconciliation S14): a whitelisted read-only git verb
+   *  (`status` | `numstat` | `diff` | `histdiff`), git output forwarded verbatim.
+   *  The `diff` verb requires a `path`; `histdiff` requires `path` plus the
+   *  `from`/`to` revs of the two-rev historical diff; `status`/`numstat` take
+   *  none. */
   async opsGit(
-    verb: "status" | "numstat" | "diff",
-    body: { path?: string } = {},
+    verb: "status" | "numstat" | "diff" | "histdiff",
+    body: { path?: string; from?: string; to?: string } = {},
   ): Promise<GitOpResponse> {
     return adaptGitOp(await this.post(`/ops/git/${encodeURIComponent(verb)}`, body));
   }

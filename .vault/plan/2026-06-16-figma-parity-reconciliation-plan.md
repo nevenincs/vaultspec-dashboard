@@ -132,7 +132,7 @@ Freeze and document the preserved stores plus SceneController contract as the re
 - [x] `W01.P02.S14` - Add the bounded read-only historical text-diff route as a two-rev git diff whitelist extension, read-and-infer with no vault writes; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [x] `W01.P02.S15` - Carry the tiers degradation block on the historical text-diff route success and error envelopes through the shared helper; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [x] `W01.P02.S16` - Mirror the enriched node-evidence shape in the mock engine to match the live wire byte-for-byte; `frontend/src/stores/server/mockEngine.ts`.
-- [ ] `W01.P02.S17` - Mirror the historical text-diff route shape in the mock engine to match the live wire byte-for-byte; `frontend/src/stores/server/mockEngine.ts`.
+- [x] `W01.P02.S17` - Mirror the historical text-diff route shape in the mock engine to match the live wire byte-for-byte; `frontend/src/stores/server/mockEngine.ts`.
 - [ ] `W01.P02.S18` - Add conformance tests feeding a captured live sample of both new shapes through the shared client adapter path; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ### Phase `W01.P03` - Code Connect linkage
