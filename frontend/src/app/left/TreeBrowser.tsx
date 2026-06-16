@@ -271,7 +271,7 @@ export function TreeBrowser({
         <button
           type="button"
           onClick={() => void tree.refetch()}
-          className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           try again
         </button>
@@ -311,7 +311,7 @@ export function TreeBrowser({
     <nav className="text-label" aria-label="tree browser" data-tree-browser>
       {availability.degraded && (
         <p
-          className="mb-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
+          className="mb-vs-1 rounded-fg-xs bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-caption text-ink-muted"
           role="status"
           aria-live="polite"
           data-tree-degraded
@@ -356,7 +356,7 @@ export function TreeBrowser({
                     onArrowRight: () => fCollapsed && toggleCollapsed(fKey),
                     onArrowLeft: () => !fCollapsed && toggleCollapsed(fKey),
                   })}
-                  className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                  className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 >
                   {fCollapsed ? (
                     <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -366,7 +366,7 @@ export function TreeBrowser({
                   <span className="min-w-0 truncate" data-tree-feature-tag>
                     #{group.feature}
                   </span>
-                  <span className="ml-auto text-2xs text-ink-faint" data-tabular>
+                  <span className="ml-auto text-caption text-ink-faint" data-tabular>
                     {group.count}
                   </span>
                 </button>
@@ -394,7 +394,7 @@ export function TreeBrowser({
                               onArrowRight: () => dCollapsed && toggleCollapsed(dKey),
                               onArrowLeft: () => !dCollapsed && toggleCollapsed(dKey),
                             })}
-                            className="flex w-full items-center gap-vs-1 rounded-vs-sm py-vs-0-5 pl-vs-3 pr-vs-1 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                            className="flex w-full items-center gap-vs-1 rounded-fg-xs py-vs-0-5 pl-vs-3 pr-vs-1 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                           >
                             {dCollapsed ? (
                               <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -406,7 +406,7 @@ export function TreeBrowser({
                             </span>
                             <span>{docGroupLabel(sub.docType)}</span>
                             <span
-                              className="ml-auto text-2xs text-ink-faint"
+                              className="ml-auto text-caption text-ink-faint"
                               data-tabular
                             >
                               {sub.entries.length}
@@ -511,7 +511,7 @@ function TreeRow({
         }}
         // Level-2 indent (Figma `pl-36px`) lines the rows up under the doc-type
         // mark; the leading cue + stem + freshness follow.
-        className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm py-vs-0-5 pl-vs-6 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex w-full items-center gap-vs-1 truncate rounded-fg-xs py-vs-0-5 pl-vs-6 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "bg-accent-subtle font-medium text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -547,7 +547,7 @@ function TreeRow({
         <span className="min-w-0 truncate">{entryStem(entry.path)}</span>
         {fresh && (
           <span
-            className={`ml-auto shrink-0 text-2xs ${
+            className={`ml-auto shrink-0 text-caption ${
               isFresh(fresh) ? "text-state-active" : "text-ink-faint"
             }`}
             data-tabular
