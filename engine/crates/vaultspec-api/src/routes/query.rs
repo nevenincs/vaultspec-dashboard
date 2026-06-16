@@ -435,8 +435,24 @@ pub async fn graph_query_route(
                     )
                     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
                 }
-                // Constellation meta-edges come from the memoized projection
-                // (W02P05-203) — same content, one aggregation per rebuild.
+                // Constellation: the feature-node aggregation scans the whole
+                // corpus (a fixed ~hundreds-of-ms cost independent of the tiny
+                // payload) and `graph_query` ALSO rebuilds meta_edges here only for
+                // this handler to discard them for the memoized set. The default
+                // constellation poll carries no filter, so serve it entirely from
+                // the per-generation memo — feature nodes AND meta_edges — skipping
+                // both re-aggregations. A FILTERED feature query still flows through
+                // `graph_query` (the filter narrows the pre-aggregation member set).
+                Granularity::Feature if filter == engine_query::filter::Filter::default() => {
+                    engine_query::graph::GraphSlice {
+                        nodes: (*cell.feature_nodes()).clone(),
+                        edges: Vec::new(),
+                        meta_edges: (*cell.meta_edges()).clone(),
+                        filter: filter.validated().map_err(|e| {
+                            super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string())
+                        })?,
+                    }
+                }
                 Granularity::Feature => {
                     let mut s =
                         graph_query(&graph, &cell.scope, filter, granularity).map_err(|e| {
@@ -921,6 +937,20 @@ pub async fn node_neighbors(
     let mut ego_value = serde_json::to_value(&ego).expect("ego serializes");
     if let Some(nodes) = ego_value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
         engine_query::salience::annotate_nodes(nodes, &scores);
+    }
+    // Serialize the ego edges through the SHARED §4 edge projection so the ego
+    // wire shape matches `/graph/query` exactly (mock-mirrors-live-wire-shape)
+    // and the per-edge dead weight (the identical-per-edge `scope`, the
+    // render-dead `provenance`, full-precision `confidence`) is stripped here too
+    // — an ego over a hub node ships tens of thousands of edges, so the raw
+    // `Edge` serialization was a multi-MB body on the same hot path the slimming
+    // already fixed for the document slice.
+    if let Some(edges) = ego_value.get_mut("edges").and_then(|e| e.as_array_mut()) {
+        *edges = ego
+            .edges
+            .iter()
+            .map(|edge| engine_query::graph::edge_view(&graph, edge))
+            .collect();
     }
     Ok(super::envelope(
         json!({"ego": ego_value, "lens": lens.as_str()}),

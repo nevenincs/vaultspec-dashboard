@@ -128,7 +128,14 @@ fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
 /// signal — carried ALONGSIDE the §4 `relation`/`tier`, never instead of them,
 /// and DELIBERATELY not threaded into the edge id (labeling never re-keys).
 /// A `null` `derivation` is serialized for edges with no pipeline relationship.
-fn edge_view(graph: &LinkageGraph, edge: &Edge) -> Value {
+///
+/// This is the SHARED §4 edge projection: both `/graph/query` (the document and
+/// feature slices) AND `/nodes/{id}/neighbors` (the ego network) serialize their
+/// edges through it, so the two front doors can never drift into two edge wire
+/// shapes (mock-mirrors-live-wire-shape) and the per-edge slimming below applies
+/// uniformly — an ego over a hub node ships tens of thousands of edges, so the
+/// dead-weight strip matters there just as much as on the document slice.
+pub fn edge_view(graph: &LinkageGraph, edge: &Edge) -> Value {
     let mut view = serde_json::to_value(edge).expect("edge serializes");
     view["derivation"] = match derivation_for_edge(graph, edge) {
         Some(label) => Value::String(label.to_string()),
@@ -301,6 +308,25 @@ fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> V
             node
         })
         .collect()
+}
+
+/// Build the UNFILTERED feature-convergence (constellation) nodes for a scope:
+/// the filter-independent aggregation — one pass over the scope's member
+/// documents, grouping by feature tag and folding each member's degree-by-tier
+/// and lifecycle. This is the dominant fixed cost of a Feature query (it scans
+/// the whole corpus regardless of how few features result), so the API
+/// `ScopeCell` memoizes it per graph generation exactly like `build_document_views`
+/// / `meta_edges`, and the default (unfiltered) constellation poll is then served
+/// without re-aggregating the corpus every request. A FILTERED feature query
+/// still flows through `graph_query`, because the filter narrows the MEMBER set
+/// pre-aggregation (it changes each feature's member_count/degree).
+pub fn build_feature_nodes(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Value> {
+    let mut matched: Vec<&Node> = graph
+        .nodes()
+        .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
+        .collect();
+    matched.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+    feature_nodes(graph, scope, &matched)
 }
 
 /// Run the scoped query. `scope` narrows edges to one corpus view (the

@@ -109,6 +109,11 @@ pub struct ScopeCell {
     /// (perf-sweep A1): the dominant per-request Document-query cost
     /// (node_view/edge_view projections) computed once per rebuild and reused.
     pub doc_views_cache: Mutex<Option<(u64, Arc<DocViews>)>>,
+    /// The UNFILTERED constellation feature-node projection, memoized per
+    /// generation. The Feature query's fixed cost is aggregating the whole corpus
+    /// into feature-convergence nodes; this serves the default (unfiltered) poll
+    /// from cache, invalidated on a generation bump like the other projections.
+    pub feature_nodes_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
     /// Memoized `.vault` document basename -> repo-relative path index per graph
     /// generation (backend-hotpath-hardening F1): the content route's per-fetch
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
@@ -168,6 +173,7 @@ impl ScopeCell {
             meta_cache: Mutex::new(None),
             salience_cache: Mutex::new(None),
             doc_views_cache: Mutex::new(None),
+            feature_nodes_cache: Mutex::new(None),
             doc_index_cache: Mutex::new(None),
             embeddings_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
@@ -221,6 +227,33 @@ impl ScopeCell {
             return cached.clone();
         }
         let fresh = Arc::new(engine_query::graph::build_document_views(
+            &self.graph_arc(),
+            &self.scope,
+        ));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The unfiltered constellation feature nodes, memoized per generation. The
+    /// Feature query re-aggregates the whole corpus into feature-convergence nodes
+    /// (a fixed cost independent of the tiny payload); memoizing it serves the
+    /// default constellation poll without re-scanning every request. A FILTERED
+    /// feature query bypasses this (the filter changes the pre-aggregation member
+    /// set) and flows through `graph_query`. Invalidated on a generation bump
+    /// exactly like `document_views`/`meta_edges`.
+    pub fn feature_nodes(&self) -> Arc<Vec<Value>> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut cache = self
+            .feature_nodes_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::graph::build_feature_nodes(
             &self.graph_arc(),
             &self.scope,
         ));
@@ -764,6 +797,29 @@ mod tests {
         let c = cell.meta_edges();
         // New generation recomputes (pointer may differ even if equal).
         assert_eq!(*a, *c, "content equal across no-op rebuild");
+    }
+
+    #[test]
+    fn feature_nodes_are_memoized_per_generation() {
+        // The constellation feature-node aggregation scans the whole corpus (group
+        // members by tag, fold each member's degree-by-tier and lifecycle), so it
+        // is memoized per graph generation exactly like meta_edges/document_views:
+        // a same-generation query is a warm-cache hit (same Arc — no
+        // re-aggregation), and a generation bump (rebuild) recomputes. This is what
+        // lets the default (unfiltered) constellation poll serve from cache instead
+        // of re-folding every member document on every request.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.feature_nodes();
+        let b = cell.feature_nodes();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: feature nodes are a warm-cache hit, not re-aggregated"
+        );
+        let _ = cell.rebuild_and_swap();
+        let c = cell.feature_nodes();
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
     }
 
     #[test]
