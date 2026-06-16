@@ -1,10 +1,16 @@
-// The filter bar (W02.P07.S30, ADR G3.f), docked at the stage's top edge —
-// part of the instrument, not global chrome. The tier dial leads; facet
-// chips (doc type, feature, relation, structural status, text match) draw
-// their legal values from the engine-enumerated vocabulary — nothing
-// hardcoded. Filtered-out is recoverable context: the hidden-count chip
-// names the cost. The date-range chip is read-only here — the timeline
-// owns it (G4.c).
+// The filter bar (figma-parity-reconciliation W02.P05.S33; binding FacetChipGroup
+// primitive, Figma node 136:27), docked at the stage's top edge — part of the
+// instrument, not global chrome. The tier dial leads; facet chips (doc type,
+// feature, relation, structural status, text match) draw their legal values from
+// the engine-enumerated vocabulary — nothing hardcoded. Filtered-out is
+// recoverable context: the hidden-count chip names the cost. The date-range chip
+// is read-only here — the timeline owns it.
+//
+// Rebuilt onto the NEW Figma role-named token foundation: the sidebar toggle and
+// text-match field on the canonical radius (`rounded-fg-xs`), the date-range and
+// cost chips on the canonical pill radius (`rounded-fg-pill`). A dumb projection
+// over the PRESERVED filter store and the `useFiltersVocabulary` query — it
+// fetches nothing of its own and reads no raw tiers block.
 
 import { PanelLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -80,7 +86,7 @@ export function FilterBar({
           aria-label={sidebarOpen ? "close filter panel" : "open filter panel"}
           onClick={onSidebarToggle}
           title="toggle filter sidebar"
-          className={`flex items-center rounded-vs-sm border p-vs-1 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+          className={`flex items-center rounded-fg-xs border p-vs-1 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             sidebarOpen
               ? "border-rule-strong bg-paper-sunken text-ink"
               : "border-rule text-ink-muted hover:border-rule-strong"
@@ -132,12 +138,12 @@ export function FilterBar({
         }}
         placeholder="text match…"
         aria-label="text match filter"
-        className="w-28 rounded-vs-sm border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
+        className="w-28 rounded-fg-xs border border-rule bg-paper-raised px-vs-1-5 py-vs-0-5 text-ink-muted focus:border-rule-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus focus:outline-none"
       />
       {(dateRange.from || dateRange.to) && (
         <span
           data-tabular
-          className="rounded-full border border-rule bg-paper px-vs-1-5 py-vs-0-5 tabular-nums text-ink-muted"
+          className="rounded-fg-pill border border-rule bg-paper px-vs-1-5 py-vs-0-5 tabular-nums text-ink-muted"
         >
           {dateRange.from?.slice(0, 10) ?? "…"} → {dateRange.to?.slice(0, 10) ?? "…"}{" "}
           <span className="text-ink-faint">(timeline)</span>
@@ -146,7 +152,7 @@ export function FilterBar({
       {costLabel && (
         <span
           data-tabular
-          className="rounded-full border border-state-stale bg-paper-raised px-vs-1-5 py-vs-0-5 tabular-nums text-state-stale"
+          className="rounded-fg-pill border border-state-stale bg-paper-raised px-vs-1-5 py-vs-0-5 tabular-nums text-state-stale"
         >
           {costLabel}
         </span>

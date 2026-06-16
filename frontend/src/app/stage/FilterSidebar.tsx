@@ -1,7 +1,13 @@
-// The filter sidebar (task #6, ADR G3.f promoted): a full collapsible
-// panel that hosts all filter groups with section headers and per-value
-// toggles — the complete instrument vs the quick-strip summary in
-// FilterBar. Same hooks, same store; no fetching, no derived data.
+// The filter sidebar (figma-parity-reconciliation W02.P05.S33; binding
+// FacetChipGroup primitive, Figma node 136:27): a full collapsible panel that
+// hosts all filter groups with section headers and per-value toggles — the
+// complete instrument vs the quick-strip summary in FilterBar. Same hooks, same
+// store; no fetching, no derived data.
+//
+// Rebuilt onto the NEW Figma role-named token foundation: the overlay panel on the
+// three-level overlay elevation (`shadow-fg-overlay`), section rows and toggles on
+// the canonical radius (`rounded-fg-xs`), badges on the pill radius
+// (`rounded-fg-pill`), and dense badges/values on the `caption` type role.
 //
 // Seam boundary: reads useFilterStore + useFiltersVocabulary only.
 // Chrome never touches the wire. The "N hidden" cost comes in from Stage
@@ -42,7 +48,7 @@ function Section({ title, badge, defaultOpen = true, children }: SectionProps) {
         <span>{title}</span>
         <span className="flex items-center gap-vs-1-5">
           {badge !== undefined && badge > 0 && (
-            <span className="rounded-full bg-paper-sunken px-vs-1-5 py-vs-0-5 text-2xs font-normal text-ink-muted">
+            <span className="rounded-fg-pill bg-paper-sunken px-vs-1-5 py-vs-0-5 text-caption font-normal text-ink-muted">
               {badge}
             </span>
           )}
@@ -93,7 +99,7 @@ function FacetList({ values, selected, onToggle, max, loading }: FacetListProps)
         const on = selected.includes(value);
         return (
           <li key={value}>
-            <label className="flex cursor-pointer items-center gap-vs-2 rounded-vs-sm px-vs-1 py-vs-0-5 text-label hover:bg-paper-sunken">
+            <label className="flex cursor-pointer items-center gap-vs-2 rounded-fg-xs px-vs-1 py-vs-0-5 text-label hover:bg-paper-sunken">
               <input
                 type="checkbox"
                 checked={on}
@@ -142,7 +148,7 @@ function TierSection() {
           return (
             <li key={tier}>
               <label
-                className={`flex flex-col gap-vs-0-5 rounded-vs-sm px-vs-1 py-vs-0-5 ${
+                className={`flex flex-col gap-vs-0-5 rounded-fg-xs px-vs-1 py-vs-0-5 ${
                   inapplicable ? "opacity-40" : "hover:bg-paper-sunken"
                 }`}
               >
@@ -160,7 +166,7 @@ function TierSection() {
                     <TierMark tier={tier} size={14} title={`${label} tier mark`} />
                     {label}
                     {inapplicable && (
-                      <span className="ml-vs-1 text-2xs text-ink-faint">
+                      <span className="ml-vs-1 text-caption text-ink-faint">
                         (time-travel)
                       </span>
                     )}
@@ -184,7 +190,7 @@ function TierSection() {
                       />
                       <span
                         data-tabular
-                        className="w-8 text-right text-2xs tabular-nums text-ink-faint"
+                        className="w-8 text-right text-caption tabular-nums text-ink-faint"
                       >
                         {Math.round((minConfidence[tier] ?? 0) * 100)}%
                       </span>
@@ -258,7 +264,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
       aria-label="filter panel"
       aria-modal={false}
       tabIndex={-1}
-      className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm focus:outline-none animate-slide-in-left"
+      className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-rule bg-paper-raised/95 shadow-fg-overlay backdrop-blur-sm focus:outline-none animate-slide-in-left"
       data-filter-sidebar
     >
       {/* Header */}
@@ -271,7 +277,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             <button
               type="button"
               onClick={reset}
-              className="text-2xs text-ink-faint hover:text-ink"
+              className="text-caption text-ink-faint hover:text-ink"
               aria-label="reset all filters"
             >
               reset all
@@ -281,7 +287,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             type="button"
             onClick={onClose}
             aria-label="close filter panel"
-            className="rounded-vs-sm p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
+            className="rounded-fg-xs p-vs-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink"
           >
             <X size={13} />
           </button>
@@ -358,7 +364,7 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
               onChange={(e) => setTextMatch(e.target.value)}
               placeholder="match node labels…"
               aria-label="text match filter"
-              className="w-full rounded-vs-sm border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
+              className="w-full rounded-fg-xs border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
             />
           </div>
         </Section>
