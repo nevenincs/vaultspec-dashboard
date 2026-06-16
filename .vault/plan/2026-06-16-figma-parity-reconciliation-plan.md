@@ -127,7 +127,7 @@ Close the non-color DTCG token pipeline (generator plus Figma mirror) for type, 
 Freeze and document the preserved stores plus SceneController contract as the rewrite API, enrich the node-evidence projection to the GUI shape, add the bounded read-only historical text-diff engine route, and mock-mirror the new wire shapes with conformance tests.
 
 - [x] `W01.P02.S11` - Freeze and document the preserved stores hooks as the rewrite-consumable contract API surface; `frontend/src/stores/`.
-- [ ] `W01.P02.S12` - Freeze and document the SceneController command and event contract as the canvas rewrite API surface; `frontend/src/scene/sceneController.ts`.
+- [x] `W01.P02.S12` - Freeze and document the SceneController command and event contract as the canvas rewrite API surface; `frontend/src/scene/sceneController.ts`.
 - [ ] `W01.P02.S13` - Enrich the node-evidence projection to the GUI shape (document path plus doc_type, corrected code-location field, commit subject) through the shared envelope; `engine/crates/engine-query/src`.
 - [ ] `W01.P02.S14` - Add the bounded read-only historical text-diff route as a two-rev git diff whitelist extension, read-and-infer with no vault writes; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `W01.P02.S15` - Carry the tiers degradation block on the historical text-diff route success and error envelopes through the shared helper; `engine/crates/vaultspec-api/src/routes/ops.rs`.
@@ -139,10 +139,10 @@ Freeze and document the preserved stores plus SceneController contract as the re
 
 Finalize the code-component to Figma-Kit-primitive cross-mapping through the Code Connect CLI so all mappable components parse clean and the linkage is publish-ready for the human's gated publish step.
 
-- [ ] `W01.P03.S19` - Finalize the component registry repointed to the live Figma file mapping code components to the Kit primitives at frame 135:2; `frontend/figma/component-map.json`.
-- [ ] `W01.P03.S20` - Author or update the Code Connect config naming the live file and the connect directory; `frontend/figma.config.json`.
-- [ ] `W01.P03.S21` - Author parse-clean figma mappings for every mappable code component against its Kit primitive; `frontend/figma/connect/`.
-- [ ] `W01.P03.S22` - Validate the full Code Connect map parses with zero errors via figma connect parse, leaving publish as the human's gated step; `frontend/figma/connect/`.
+- [x] `W01.P03.S19` - Finalize the component registry repointed to the live Figma file mapping code components to the Kit primitives at frame 135:2; `frontend/figma/component-map.json`.
+- [x] `W01.P03.S20` - Author or update the Code Connect config naming the live file and the connect directory; `frontend/figma.config.json`.
+- [x] `W01.P03.S21` - Author parse-clean figma mappings for every mappable code component against its Kit primitive; `frontend/figma/connect/`.
+- [x] `W01.P03.S22` - Validate the full Code Connect map parses with zero errors via figma connect parse, leaving publish as the human's gated step; `frontend/figma/connect/`.
 
 ## Wave `W02` - View rewrite - chrome
 
