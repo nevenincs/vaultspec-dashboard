@@ -57,6 +57,12 @@ type DocViews = (
 /// route so a `doc:` fetch is an O(1) lookup, not a per-request tree walk.
 pub(crate) type DocBasenameIndex = HashMap<String, String>;
 
+/// rag's stored dense embedding vectors, node-id -> vector, scrolled from Qdrant
+/// (rag-control-plane ADR D4). Cached on the `ScopeCell` keyed on the semantic
+/// freshness epoch; aliased so the cache field stays a simple type (mirroring
+/// `DocViews`/`DocBasenameIndex`).
+pub(crate) type EmbeddingVectors = HashMap<String, Vec<f32>>;
+
 /// One multiplexed stream event (contract §7).
 #[derive(Debug, Clone)]
 pub struct StreamEvent {
@@ -108,6 +114,15 @@ pub struct ScopeCell {
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
     /// caches.
     pub doc_index_cache: Mutex<Option<(u64, Arc<DocBasenameIndex>)>>,
+    /// Memoized rag embedding vectors keyed on the SEMANTIC freshness epoch
+    /// (rag-control-plane ADR D4): the node-id -> dense-vector map scrolled from
+    /// rag's Qdrant, cached so repeat embedding reads skip the multi-page scroll.
+    /// Keyed on the epoch — NOT the graph generation — because the vectors are
+    /// rag's index state, not the engine graph's: a watcher rebuild bumps the
+    /// generation but leaves the vectors unchanged, so keying on generation would
+    /// defeat the cache on every rebuild. A completed reindex advances the epoch
+    /// (the semantic analog of `generation`) and THAT invalidates the cache.
+    pub embeddings_cache: Mutex<Option<(u64, Arc<EmbeddingVectors>)>>,
     pub generation: AtomicU64,
     /// This cell's resident watcher handle; `/status` reports a dead watcher
     /// truthfully instead of claiming residency (DF-4 residual). Dropping the
@@ -154,6 +169,7 @@ impl ScopeCell {
             salience_cache: Mutex::new(None),
             doc_views_cache: Mutex::new(None),
             doc_index_cache: Mutex::new(None),
+            embeddings_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
@@ -266,6 +282,37 @@ impl ScopeCell {
         ));
         *cache = Some((generation, fresh.clone()));
         fresh
+    }
+
+    /// The cached rag embedding vectors IF they were scrolled at `epoch`, else
+    /// `None` (rag-control-plane ADR D4 / P03.S18). A `None` return means either
+    /// a cold cache or a reindex that advanced the semantic epoch — in both cases
+    /// the embeddings route re-scrolls Qdrant and stores the fresh map under the
+    /// new epoch via [`ScopeCell::store_embeddings`]. Keyed on the epoch alone
+    /// (see the `embeddings_cache` field doc), so the served vectors invalidate
+    /// exactly when rag's index changed, not on every graph rebuild.
+    pub fn embeddings_if_fresh(&self, epoch: u64) -> Option<Arc<EmbeddingVectors>> {
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let cache = self
+            .embeddings_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        cache
+            .as_ref()
+            .filter(|(cached_epoch, _)| *cached_epoch == epoch)
+            .map(|(_, vectors)| vectors.clone())
+    }
+
+    /// Store the freshly-scrolled rag embedding vectors under the semantic epoch
+    /// they were read at (rag-control-plane ADR D4 / P03.S18). The next read at
+    /// the SAME epoch is a warm-cache hit; the next read after a reindex (a new
+    /// epoch) misses and re-scrolls.
+    pub fn store_embeddings(&self, epoch: u64, vectors: Arc<EmbeddingVectors>) {
+        let mut cache = self
+            .embeddings_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *cache = Some((epoch, vectors));
     }
 
     /// Rebuild the scope's graph fresh and commit it (the watcher's path;
@@ -741,6 +788,59 @@ mod tests {
             a.node_count(),
             c.node_count(),
             "the recomputed basis covers the same bounded node set"
+        );
+    }
+
+    #[test]
+    fn embeddings_cache_invalidates_when_the_semantic_epoch_advances() {
+        // rag-control-plane P03.S19: the embedding vector cache is keyed on the
+        // semantic freshness epoch. An unchanged epoch serves the cached vector
+        // map (no Qdrant re-scroll); an advanced epoch (a completed reindex)
+        // invalidates it, forcing a re-read. This is the semantic analog of the
+        // generation-keyed projection caches.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+
+        // Cold cache: nothing stored at any epoch yet.
+        assert!(
+            cell.embeddings_if_fresh(1000).is_none(),
+            "cold cache misses"
+        );
+
+        // Store the vectors scrolled at epoch 1000.
+        let map_a = std::sync::Arc::new(std::collections::HashMap::from([(
+            "doc:x".to_string(),
+            vec![0.1f32, 0.2, 0.3],
+        )]));
+        cell.store_embeddings(1000, map_a.clone());
+
+        // Same epoch ⇒ warm-cache hit (the SAME Arc, no re-scroll).
+        let hit = cell.embeddings_if_fresh(1000).expect("same epoch hits");
+        assert!(
+            Arc::ptr_eq(&hit, &map_a),
+            "an unchanged epoch serves the cached vector map"
+        );
+
+        // A reindex advances the epoch ⇒ the stale slice is invalidated.
+        assert!(
+            cell.embeddings_if_fresh(2000).is_none(),
+            "an advanced semantic epoch invalidates the cache (re-scroll)"
+        );
+
+        // After the re-scroll stores the new map, the new epoch is the warm one
+        // and the old epoch no longer hits.
+        let map_b = std::sync::Arc::new(std::collections::HashMap::from([(
+            "doc:y".to_string(),
+            vec![0.9f32],
+        )]));
+        cell.store_embeddings(2000, map_b.clone());
+        assert!(Arc::ptr_eq(
+            &cell.embeddings_if_fresh(2000).unwrap(),
+            &map_b
+        ));
+        assert!(
+            cell.embeddings_if_fresh(1000).is_none(),
+            "the superseded epoch's slice is gone"
         );
     }
 

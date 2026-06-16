@@ -129,7 +129,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/stream", get(routes::stream::stream))
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
-        .route("/ops/rag/{verb}", post(routes::ops::ops_rag))
+        // The brokered rag control plane (rag-control-plane ADR D2): GET for the
+        // read verbs (service-state, jobs, watcher, projects, readiness, logs,
+        // metrics), POST for the control verbs (reindex trigger, watcher
+        // config, project-evict, quality) over rag's HTTP service, plus the
+        // process-lifecycle verbs (server start/stop/status/doctor/install) on
+        // the bounded CLI runner. One namespace, tiers-honest, rag envelope
+        // verbatim.
+        .route(
+            "/ops/rag/{verb}",
+            post(routes::ops::ops_rag).get(routes::ops::ops_rag_get),
+        )
         // Read-only git pass-through (dashboard-pipeline-wire W04): porcelain
         // status, numstat, unified diff — whitelisted, no mutating verb.
         .route("/ops/git/{verb}", post(routes::ops::ops_git))

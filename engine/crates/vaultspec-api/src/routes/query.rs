@@ -654,6 +654,8 @@ pub async fn graph_embeddings(
             json!({
                 "embeddings": [],
                 "generation": generation,
+                // No reachable rag ⇒ no freshness epoch to report (ADR D4).
+                "semantic_epoch": Value::Null,
                 "truncated": Value::Null,
                 "lens": lens.as_str(),
             }),
@@ -662,6 +664,22 @@ pub async fn graph_embeddings(
         ));
     };
     let info = info.expect("available implies info");
+    // The semantic freshness epoch (rag-control-plane ADR D4): one bounded
+    // `/jobs` read against rag's SERVICE port, reduced to the newest terminal
+    // reindex timestamp. It is the rag-side analog of the structural
+    // `generation` counter — the embedding VECTOR cache below keys on it so a
+    // completed reindex invalidates the served vectors, and the client keys its
+    // own cache on the pair (`generation`, `semantic_epoch`). An epoch read that
+    // fails (rag service flaking) degrades to `0` (treated as "unknown"): the
+    // Qdrant scroll below still serves whatever vectors exist.
+    let semantic_epoch = {
+        let control = rag_client::client::LoopbackTransport {
+            port: info.port,
+            bearer: info.service_token.clone(),
+            timeout: rag_client::control::READ_BUDGET,
+        };
+        rag_client::control::semantic_epoch(&control).unwrap_or(0)
+    };
     // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's
     // service port — discovered the same `service.json` way. The transport carries
     // the MAX_RAG_BODY byte cap (its bounded read) AND a wall-clock deadline (ADR
@@ -678,24 +696,39 @@ pub async fn graph_embeddings(
     // (rag's `r{hash}_vault_docs` scheme) — computed from the project root, the
     // same path rag indexed under.
     let collection = rag_client::vectors::vault_collection_name(&cell.root);
-    let vectors = match rag_client::vectors::read_embeddings(&transport, &collection, deadline) {
-        Ok(vectors) => vectors,
-        Err(e) => {
-            // Qdrant was reachable through discovery but the scroll itself failed
-            // (store down, timeout, shape-miss): semantic suggestions are simply
-            // unavailable right now. Degrade the semantic tier (no vectors), never
-            // a 500 — the stores layer reads availability from tiers (ADR D7).
-            let reason = rag_client::search::degradation_reason(&e);
-            return Ok(super::envelope(
-                json!({
-                    "embeddings": [],
-                    "generation": generation,
-                    "truncated": Value::Null,
-                    "lens": lens.as_str(),
-                }),
-                super::degraded_tiers(&cell, reason.as_str()),
-                None,
-            ));
+    // Warm-cache the multi-page Qdrant scroll on the semantic epoch (ADR D4 /
+    // P03.S18): unchanged epoch ⇒ serve the cached vector map (no scroll); a
+    // reindex (advanced epoch) ⇒ re-scroll and re-cache. The cached map is the
+    // FULL vault-doc vector set, independent of the per-request lens/focus node
+    // selection that happens after, so it is reusable across lens switches.
+    let vectors = match cell.embeddings_if_fresh(semantic_epoch) {
+        Some(cached) => cached,
+        None => {
+            let fresh =
+                match rag_client::vectors::read_embeddings(&transport, &collection, deadline) {
+                    Ok(vectors) => std::sync::Arc::new(vectors),
+                    Err(e) => {
+                        // Qdrant was reachable through discovery but the scroll itself
+                        // failed (store down, timeout, shape-miss): semantic suggestions
+                        // are simply unavailable right now. Degrade the semantic tier (no
+                        // vectors), never a 500 — the stores layer reads availability from
+                        // tiers (ADR D7).
+                        let reason = rag_client::search::degradation_reason(&e);
+                        return Ok(super::envelope(
+                            json!({
+                                "embeddings": [],
+                                "generation": generation,
+                                "semantic_epoch": semantic_epoch,
+                                "truncated": Value::Null,
+                                "lens": lens.as_str(),
+                            }),
+                            super::degraded_tiers(&cell, reason.as_str()),
+                            None,
+                        ));
+                    }
+                };
+            cell.store_embeddings(semantic_epoch, fresh.clone());
+            fresh
         }
     };
 
@@ -716,6 +749,13 @@ pub async fn graph_embeddings(
             // caches per generation and re-fetches on change. It is NOT folded
             // into any node or edge stable key.
             "generation": generation,
+            // The semantic-index freshness epoch the vectors were scrolled at
+            // (rag-control-plane ADR D4): the rag-side analog of `generation`. A
+            // completed reindex advances it; the client keys its embedding cache
+            // on the (generation, semantic_epoch) PAIR so it re-fetches when
+            // EITHER the structural graph or rag's index changed. Like
+            // `generation`, it enters no node or edge stable key.
+            "semantic_epoch": semantic_epoch,
             "truncated": truncated,
             "lens": lens.as_str(),
         }),

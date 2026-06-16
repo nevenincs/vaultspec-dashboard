@@ -148,24 +148,36 @@ fn parse_iso8601_ms(s: &str) -> Option<i64> {
     Some(seconds * 1000)
 }
 
-/// Pluggable transport so discovery/search logic tests without a live
-/// service; the default is the minimal loopback HTTP/1.1 transport below.
+/// Pluggable transport so discovery/search/control logic tests without a live
+/// service; the default is the minimal loopback HTTP/1.1 transport below. The
+/// control client (`control.rs`) reaches rag's GET read routes (jobs, watcher,
+/// projects, service-state, ...) through `get`, while search/embeddings POST
+/// through `post_json` — one transport, two verbs, the same bounded read.
 pub trait RagTransport {
     fn post_json(&self, path: &str, body: &str) -> Result<String>;
+    /// GET a path with no request body. The bounded read + status + de-chunk
+    /// handling is identical to `post_json`; only the request line differs.
+    fn get(&self, path: &str) -> Result<String>;
 }
 
-/// Minimal HTTP/1.1 POST over loopback TCP. Deliberately dependency-free:
-/// the service is loopback-only by design (not an auth boundary), JSON
-/// in/out, Content-Length framing — a full HTTP client is not warranted
-/// for the engine's only optional dependency.
+/// Minimal HTTP/1.1 over loopback TCP. Deliberately dependency-free: the
+/// service is loopback-only by design (not an auth boundary), JSON in/out,
+/// Content-Length framing — a full HTTP client is not warranted for the
+/// engine's only optional dependency. Both GET and POST share one bounded,
+/// timed request path so a runaway or stalled rag service can neither OOM nor
+/// hang the engine on either verb.
 pub struct LoopbackTransport {
     pub port: u16,
     pub bearer: Option<String>,
     pub timeout: Duration,
 }
 
-impl RagTransport for LoopbackTransport {
-    fn post_json(&self, path: &str, body: &str) -> Result<String> {
+impl LoopbackTransport {
+    /// Issue one bounded, timed HTTP/1.1 request. `body` is `Some` for POST
+    /// (Content-Type + Content-Length framing) and `None` for GET (no body,
+    /// no content headers). The read carries BOTH the `self.timeout` socket
+    /// inactivity bound and the `MAX_RAG_BODY` byte ceiling.
+    fn request(&self, method: &str, path: &str, body: Option<&str>) -> Result<String> {
         let mut stream = TcpStream::connect(("127.0.0.1", self.port))?;
         stream.set_read_timeout(Some(self.timeout))?;
         stream.set_write_timeout(Some(self.timeout))?;
@@ -174,11 +186,16 @@ impl RagTransport for LoopbackTransport {
             .as_deref()
             .map(|t| format!("Authorization: Bearer {t}\r\n"))
             .unwrap_or_default();
-        let request = format!(
-            "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\
-             Content-Type: application/json\r\n{auth}Content-Length: {}\r\n\r\n{body}",
-            body.len()
-        );
+        let request = match body {
+            Some(body) => format!(
+                "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\
+                 Content-Type: application/json\r\n{auth}Content-Length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+            None => format!(
+                "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n{auth}\r\n"
+            ),
+        };
         stream.write_all(request.as_bytes())?;
         // Bounded read (robustness H3): read at most MAX_RAG_BODY + 1 bytes. The
         // read timeout above bounds latency; this bounds memory so a runaway rag
@@ -215,6 +232,16 @@ impl RagTransport for LoopbackTransport {
             return Err(RagError::Http { status, body });
         }
         Ok(body)
+    }
+}
+
+impl RagTransport for LoopbackTransport {
+    fn post_json(&self, path: &str, body: &str) -> Result<String> {
+        self.request("POST", path, Some(body))
+    }
+
+    fn get(&self, path: &str) -> Result<String> {
+        self.request("GET", path, None)
     }
 }
 
@@ -318,6 +345,16 @@ pub(crate) mod test_support {
     impl RagTransport for FakeTransport {
         fn post_json(&self, path: &str, body: &str) -> Result<String> {
             self.calls.borrow_mut().push((path.into(), body.into()));
+            self.responses
+                .borrow_mut()
+                .pop()
+                .unwrap_or(Err(RagError::Protocol))
+        }
+
+        fn get(&self, path: &str) -> Result<String> {
+            // GET carries no body; record an empty body so call-order tests can
+            // assert the path while sharing the one canned-response queue.
+            self.calls.borrow_mut().push((path.into(), String::new()));
             self.responses
                 .borrow_mut()
                 .pop()

@@ -8,17 +8,18 @@
 //! are monitoring-only. The whitelist is R1 exactly: service lifecycle,
 //! reindex, watcher status/tuning.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{CanonicalKey, node_id};
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
-use crate::app::AppState;
+use crate::app::{AppState, ScopeCell};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -42,15 +43,20 @@ const CORE_WHITELIST: &[(&str, &[&str])] = &[
     ("vault-stats", &["vault", "stats"]),
 ];
 
-/// The R1 rag whitelist: lifecycle, reindex, watcher status. (Watcher
-/// reconfigure needs validated arguments; deferred with rationale in the
-/// step record rather than shipping an unvalidated argument channel.)
-const RAG_WHITELIST: &[(&str, &[&str])] = &[
+/// The rag CLI whitelist is now PROCESS LIFECYCLE ONLY (rag-control-plane ADR
+/// D1, P02.S13): you cannot HTTP a service that is not running, so start / stop
+/// / status / doctor / install stay the bounded CLI subprocess runner. Every
+/// other rag verb — the reindex TRIGGER, job polling, watcher config, project
+/// management, and the observability reads — is brokered over rag's HTTP service
+/// through the `rag_client::control` module (the HTTP-brokered verbs below),
+/// because rag's runtime truth lives on the running service and a reindex is
+/// job-based (returns a `job_id`, polled via `/jobs`), never a blocking CLI call.
+const RAG_CLI_WHITELIST: &[(&str, &[&str])] = &[
     ("server-start", &["server", "start"]),
     ("server-stop", &["server", "stop"]),
     ("server-status", &["server", "status"]),
-    ("reindex", &["index"]),
-    ("watcher-status", &["server", "watcher", "status"]),
+    ("server-doctor", &["server", "doctor"]),
+    ("server-install", &["install"]),
 ];
 
 async fn run_sibling(
@@ -437,18 +443,296 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
     ))
 }
 
-pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String>) -> ApiResult {
-    let Some((_, args)) = RAG_WHITELIST.iter().find(|(name, _)| *name == verb) else {
+// --- /ops/rag/* brokering (rag-control-plane ADR D1/D2) ----------------------
+//
+// One namespace, two transports: GET reads + POST controls go over rag's HTTP
+// service through `rag_client::control` (rag owns its runtime truth, indexing is
+// job-based); POST process-lifecycle verbs stay the bounded CLI runner. Every
+// response — success, rag-down degradation, and validation error — carries the
+// `tiers` block through the shared envelope helper, and rag's envelope passes
+// through VERBATIM under `data.envelope` (engine-read-and-infer: zero rag
+// semantics; the engine validates, bounds, and forwards).
+
+/// The optional request body for a POST `/ops/rag/{verb}` control verb. Absent
+/// for the lifecycle verbs and `quality`. Every field is validated/bounded
+/// before it reaches rag (P02.S12); the reindex/watcher `project_root`/`root`
+/// is the ENGINE-controlled active scope root unless an explicit evict target
+/// is named, so the frontend can never point rag at an arbitrary path through
+/// reindex or the watcher.
+#[derive(serde::Deserialize, Default)]
+pub struct RagControlBody {
+    #[serde(default)]
+    pub clean: Option<bool>,
+    #[serde(default, rename = "type")]
+    pub reindex_type: Option<String>,
+    #[serde(default)]
+    pub initiator_kind: Option<String>,
+    #[serde(default)]
+    pub debounce_ms: Option<u64>,
+    #[serde(default)]
+    pub cooldown_s: Option<f64>,
+    /// The evict target root (for `project-evict`). Other control verbs operate
+    /// on the active scope root and ignore this.
+    #[serde(default)]
+    pub root: Option<String>,
+}
+
+/// Watcher debounce ceiling: 10 minutes. A larger value is almost certainly a
+/// client bug (ms vs s confusion) and would make the watcher feel dead.
+const MAX_WATCH_DEBOUNCE_MS: u64 = 600_000;
+/// Watcher cooldown ceiling: 1 hour.
+const MAX_WATCH_COOLDOWN_S: f64 = 3_600.0;
+
+/// Discover rag and build a bounded control transport to its SERVICE port with
+/// `budget` as the per-verb wall-clock, or the truthful "rag unavailable"
+/// reason. Degradation is read from discovery (`degradation-is-read-from-tiers`),
+/// never guessed from a transport error: a missing/stale `service.json` is the
+/// honest "semantic tier down" fact.
+fn rag_control_transport(
+    cell: &ScopeCell,
+    budget: Duration,
+) -> Result<rag_client::client::LoopbackTransport, String> {
+    match rag_client::client::discover(&cell.root.join(".vault")) {
+        (rag_client::RagAvailability::Available, Some(info)) => {
+            Ok(rag_client::client::LoopbackTransport {
+                port: info.port,
+                bearer: info.service_token,
+                timeout: budget,
+            })
+        }
+        (rag_client::RagAvailability::Unavailable { reason }, _) => Err(reason),
+        _ => Err("rag service discovery returned no service info".to_string()),
+    }
+}
+
+/// Wrap a brokered rag control result in the shared envelope: rag's value passes
+/// through VERBATIM under `data.envelope` with the live tiers block on success;
+/// a rag transport/shape fault degrades the `semantic` tier with an empty
+/// envelope (never a hard 5xx — the control plane reads degraded state from the
+/// tiers block, not an error).
+fn brokered_envelope(cell: &ScopeCell, result: rag_client::client::Result<Value>) -> Json<Value> {
+    match result {
+        Ok(value) => super::envelope(json!({ "envelope": value }), super::query_tiers(cell), None),
+        Err(e) => {
+            let reason = rag_client::search::degradation_reason(&e);
+            super::envelope(
+                json!({ "envelope": Value::Null }),
+                super::degraded_tiers(cell, reason.as_str()),
+                None,
+            )
+        }
+    }
+}
+
+/// GET `/ops/rag/{verb}` — the brokered rag READ verbs (rag-control-plane ADR
+/// D2): service-state, jobs, watcher, projects, readiness, logs, metrics. Each
+/// is a bounded HTTP read of rag's resident service, forwarded verbatim with the
+/// tiers block. A read against a down rag degrades the semantic tier honestly;
+/// an unknown verb 403s before any round-trip.
+/// The brokered rag GET read verbs (rag-control-plane ADR D2).
+const RAG_READ_VERBS: &[&str] = &[
+    "service-state",
+    "jobs",
+    "watcher",
+    "projects",
+    "readiness",
+    "logs",
+    "metrics",
+];
+
+pub async fn ops_rag_get(
+    State(state): State<Arc<AppState>>,
+    Path(verb): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> ApiResult {
+    // An unknown read verb 403s BEFORE any discovery or round-trip — the tiers
+    // block rides the 403 through the shared error helper.
+    if !RAG_READ_VERBS.contains(&verb.as_str()) {
         return Err(super::api_error(
             &state,
             StatusCode::FORBIDDEN,
-            format!("verb `{verb}` is not whitelisted (R1)"),
+            format!("rag read verb `{verb}` is not brokered (GET /ops/rag)"),
+        ));
+    }
+    let cell = state.active_cell();
+    let project_root = cell.root.to_string_lossy().to_string();
+
+    // Per-verb wall-clock budget (ADR honest difficulty: a fast `/jobs` poll and
+    // a slow `/quality` probe need different bounds). Reads are fast.
+    let transport = match rag_control_transport(&cell, rag_client::control::READ_BUDGET) {
+        Ok(t) => t,
+        // rag down/absent: every read degrades to the tier block, never a 5xx.
+        Err(reason) => {
+            return Ok(super::envelope(
+                json!({ "envelope": Value::Null }),
+                super::degraded_tiers(&cell, reason.as_str()),
+                None,
+            ));
+        }
+    };
+
+    let job_id = params.get("job_id").map(String::as_str);
+    let limit = params.get("limit").and_then(|v| v.parse::<u32>().ok());
+    let lines = params.get("lines").and_then(|v| v.parse::<u32>().ok());
+
+    use rag_client::control;
+    let result = match verb.as_str() {
+        "service-state" => control::service_state(&transport, &project_root),
+        "jobs" => control::jobs(&transport, job_id, limit),
+        "watcher" => control::watcher_get(&transport, &project_root),
+        "projects" => control::projects(&transport),
+        "readiness" => control::readiness(&transport),
+        "logs" => control::logs(&transport, lines, job_id),
+        // Prometheus text is not JSON; forward it verbatim under a string field.
+        "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
+        _ => unreachable!("RAG_READ_VERBS membership is checked above"),
+    };
+    Ok(brokered_envelope(&cell, result))
+}
+
+/// POST `/ops/rag/{verb}` — the brokered rag CONTROL verbs over HTTP (reindex,
+/// watcher start/stop/reconfigure, project-evict, quality) and, falling through,
+/// the PROCESS-LIFECYCLE verbs on the bounded CLI runner (server start/stop/
+/// status/doctor/install). HTTP control args are validated against rag's
+/// vocabulary and bounded before forwarding (P02.S12); rag's envelope passes
+/// through verbatim with the tiers block.
+pub async fn ops_rag(
+    State(state): State<Arc<AppState>>,
+    Path(verb): Path<String>,
+    body: Option<Json<RagControlBody>>,
+) -> ApiResult {
+    let cell = state.active_cell();
+    let project_root = cell.root.to_string_lossy().to_string();
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+
+    use rag_client::control;
+
+    // HTTP-brokered control verbs (rag's runtime truth, job-based reindex). Each
+    // is validated, then forwarded over the bounded control transport.
+    let http_verb = matches!(
+        verb.as_str(),
+        "reindex"
+            | "watcher-start"
+            | "watcher-stop"
+            | "watcher-reconfigure"
+            | "project-evict"
+            | "quality"
+    );
+    if http_verb {
+        // Validate args BEFORE building the transport so a bad value is a
+        // tiers-carrying 400 that never reaches rag (mirrors the search target
+        // guard). The dash-prefix guard closes the flag-injection vector.
+        let reindex_type = match body.reindex_type.as_deref() {
+            None => "vault",
+            Some(t @ ("vault" | "code")) => t,
+            Some(other) => {
+                return Err(super::api_error(
+                    &state,
+                    StatusCode::BAD_REQUEST,
+                    format!("reindex `type` `{other}` must be `vault` or `code`"),
+                ));
+            }
+        };
+        let initiator_kind = match body.initiator_kind.as_deref() {
+            None => "service",
+            Some(k @ ("cli" | "mcp" | "service" | "watcher")) => k,
+            Some(other) => {
+                return Err(super::api_error(
+                    &state,
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "reindex `initiator_kind` `{other}` must be one of cli, mcp, service, watcher"
+                    ),
+                ));
+            }
+        };
+        if let Some(ms) = body.debounce_ms
+            && ms > MAX_WATCH_DEBOUNCE_MS
+        {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "watcher `debounce_ms` {ms} exceeds the {MAX_WATCH_DEBOUNCE_MS} ms ceiling"
+                ),
+            ));
+        }
+        if let Some(s) = body.cooldown_s
+            && !(0.0..=MAX_WATCH_COOLDOWN_S).contains(&s)
+        {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("watcher `cooldown_s` {s} must be within 0..={MAX_WATCH_COOLDOWN_S}"),
+            ));
+        }
+        // The evict target: an explicit body root (a listed project), or the
+        // active scope. A dash-prefixed value is rejected as a flag-injection
+        // guard, mirroring the diff-path/rev guards.
+        let evict_root = match body.root.as_deref() {
+            Some(r) if r.starts_with('-') || r.is_empty() => {
+                return Err(super::api_error(
+                    &state,
+                    StatusCode::BAD_REQUEST,
+                    format!("evict `root` `{r}` must be a non-empty path (no leading `-`)"),
+                ));
+            }
+            Some(r) => r.to_string(),
+            None => project_root.clone(),
+        };
+
+        let budget = match verb.as_str() {
+            "quality" => control::QUALITY_BUDGET,
+            _ => control::CONTROL_BUDGET,
+        };
+        let transport = match rag_control_transport(&cell, budget) {
+            Ok(t) => t,
+            Err(reason) => {
+                return Ok(super::envelope(
+                    json!({ "envelope": Value::Null }),
+                    super::degraded_tiers(&cell, reason.as_str()),
+                    None,
+                ));
+            }
+        };
+        let result = match verb.as_str() {
+            "reindex" => control::reindex(
+                &transport,
+                &control::ReindexArgs {
+                    project_root: &project_root,
+                    reindex_type,
+                    clean: body.clean.unwrap_or(false),
+                    initiator_kind,
+                },
+            ),
+            "watcher-start" => control::watcher_start(&transport, &project_root),
+            "watcher-stop" => control::watcher_stop(&transport, &project_root),
+            "watcher-reconfigure" => control::watcher_reconfigure(
+                &transport,
+                &project_root,
+                body.debounce_ms,
+                body.cooldown_s,
+            ),
+            "project-evict" => control::projects_evict(&transport, &evict_root),
+            "quality" => control::quality(&transport),
+            _ => unreachable!("http_verb set guards the match"),
+        };
+        return Ok(brokered_envelope(&cell, result));
+    }
+
+    // Process-lifecycle verbs: the bounded CLI subprocess runner (a dead service
+    // cannot be reached over HTTP, ADR D1).
+    let Some((_, args)) = RAG_CLI_WHITELIST.iter().find(|(name, _)| *name == verb) else {
+        return Err(super::api_error(
+            &state,
+            StatusCode::FORBIDDEN,
+            format!("verb `{verb}` is not whitelisted (rag control plane)"),
         ));
     };
     let envelope = run_sibling(&state, &rag_invocation(), args).await?;
     Ok(super::envelope(
-        json!({"envelope": envelope}),
-        super::query_tiers(&state.active_cell()),
+        json!({ "envelope": envelope }),
+        super::query_tiers(&cell),
         None,
     ))
 }
@@ -1301,5 +1585,165 @@ mod tests {
             .await
             .expect("clean sibling passes through");
         assert_eq!(value["ok"], true);
+    }
+
+    // --- P02: brokered /ops/rag/* control plane -----------------------------
+
+    #[tokio::test]
+    async fn reindex_with_a_bad_type_is_a_tiered_400_before_any_round_trip() {
+        // P02.S12/S15: arg validation rejects an unknown `type` BEFORE the
+        // transport is built, as a tiers-carrying 400 (mirrors the search target
+        // guard) — the bad value never reaches rag.
+        let (_dir, state) = sibling_state();
+        let err = ops_rag(
+            State(state),
+            Path("reindex".to_string()),
+            Some(Json(RagControlBody {
+                reindex_type: Some("bogus".into()),
+                ..Default::default()
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.0["error"].as_str().unwrap().contains("bogus"));
+        assert!(
+            err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+            "the 400 carries the tiers block"
+        );
+    }
+
+    #[tokio::test]
+    async fn reindex_with_a_bad_initiator_kind_is_a_tiered_400() {
+        let (_dir, state) = sibling_state();
+        let err = ops_rag(
+            State(state),
+            Path("reindex".to_string()),
+            Some(Json(RagControlBody {
+                initiator_kind: Some("intruder".into()),
+                ..Default::default()
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(
+            err.1.0["error"]
+                .as_str()
+                .unwrap()
+                .contains("initiator_kind")
+        );
+    }
+
+    #[tokio::test]
+    async fn watcher_reconfigure_out_of_bounds_args_are_tiered_400s() {
+        // P02.S12/S15: bound enforcement — a debounce past the ceiling and a
+        // negative cooldown are each a tiers-carrying 400 before forwarding.
+        let (_dir, state) = sibling_state();
+        let err = ops_rag(
+            State(state.clone()),
+            Path("watcher-reconfigure".to_string()),
+            Some(Json(RagControlBody {
+                debounce_ms: Some(MAX_WATCH_DEBOUNCE_MS + 1),
+                ..Default::default()
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.0["error"].as_str().unwrap().contains("debounce_ms"));
+
+        let err = ops_rag(
+            State(state),
+            Path("watcher-reconfigure".to_string()),
+            Some(Json(RagControlBody {
+                cooldown_s: Some(-1.0),
+                ..Default::default()
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.0["error"].as_str().unwrap().contains("cooldown_s"));
+    }
+
+    #[tokio::test]
+    async fn evict_with_a_dash_prefixed_root_is_a_tiered_400() {
+        // P02.S12: the flag-injection guard — a dash-prefixed evict root is
+        // rejected, mirroring the diff-path/rev guards.
+        let (_dir, state) = sibling_state();
+        let err = ops_rag(
+            State(state),
+            Path("project-evict".to_string()),
+            Some(Json(RagControlBody {
+                root: Some("--force".into()),
+                ..Default::default()
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.0["error"].as_str().unwrap().contains("root"));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_read_verb_403s_before_any_round_trip() {
+        // P02.S15: an unknown GET read verb 403s with the tiers block, never
+        // reaching discovery or rag.
+        let (_dir, state) = sibling_state();
+        let err = ops_rag_get(
+            State(state),
+            Path("not-a-verb".to_string()),
+            Query(HashMap::new()),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+        assert!(err.1.0["error"].as_str().unwrap().contains("not-a-verb"));
+        assert!(err.1.0["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[tokio::test]
+    async fn an_unknown_post_verb_403s_with_the_tiers_block() {
+        let (_dir, state) = sibling_state();
+        let err = ops_rag(State(state), Path("not-a-verb".to_string()), None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+        assert!(err.1.0["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[test]
+    fn brokered_envelope_forwards_rags_value_verbatim_with_tiers() {
+        // P02.S15: on success rag's envelope passes through VERBATIM under
+        // `data.envelope` (unreshaped), with the tiers block attached
+        // (engine-read-and-infer + every-wire-response-carries-the-tiers-block).
+        let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
+        let rag_value = json!({
+            "ok": true, "job_id": "j-9", "status": "queued", "custom": [1, 2, 3]
+        });
+        let Json(body) = brokered_envelope(&cell, Ok(rag_value.clone()));
+        assert_eq!(
+            body["data"]["envelope"], rag_value,
+            "rag's envelope is forwarded byte-for-byte, not reshaped"
+        );
+        assert!(body["tiers"]["semantic"]["available"].is_boolean());
+    }
+
+    #[test]
+    fn brokered_envelope_degrades_the_semantic_tier_on_a_rag_fault() {
+        // P02.S15: a rag transport/shape fault degrades the semantic tier with an
+        // empty envelope — never a hard 5xx (degradation-is-read-from-tiers). The
+        // declared tier still reports truthfully through the shared overlay.
+        let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
+        let err = rag_client::client::RagError::Io(std::io::Error::other("connection refused"));
+        let Json(body) = brokered_envelope(&cell, Err(err));
+        assert_eq!(body["data"]["envelope"], Value::Null, "no value on a fault");
+        assert_eq!(
+            body["tiers"]["semantic"]["available"], false,
+            "the semantic tier is reported unavailable, not an error"
+        );
     }
 }

@@ -8,6 +8,7 @@
 //! The engine builds no embeddings, ever.
 
 pub mod client;
+pub mod control;
 pub mod discover;
 pub mod search;
 pub mod vectors;

@@ -107,35 +107,35 @@ Extend the rag-client crate with a bounded HTTP control client that reaches rag'
 
 Broker rag's full job-based control surface to the frontend through one tiers-honest `/ops/rag/*` namespace, with a semantic freshness epoch so downstream semantic builds invalidate correctly.
 
-- [ ] `P01.S01` - Add a bounded rag service-port control transport with a per-verb wall-clock budget and a body cap reaching rag's bearer-gated HTTP routes, mirroring the LoopbackTransport read bound and typed RagError; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S02` - Implement the reindex trigger control verb returning rag's job_id queued envelope verbatim, never blocking on the build; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S03` - Implement the jobs read control verb forwarding rag's per-job phase progress result and resource snapshot for a bounded poll; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S04` - Implement the watcher get and start and stop and reconfigure control verbs taking validated debounce and cooldown and root args; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S05` - Implement the projects list and projects evict control verbs forwarding rag's slot and eviction envelope; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S06` - Implement the service-state and logs and metrics and quality read control verbs forwarding rag's observability envelopes verbatim; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S07` - Unit-test the control transport bounds proving a hung verb times out on its wall-clock budget and an oversized body is a typed error, mirroring the existing rag-client transport tests; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P01.S08` - Export the control module from the rag-client crate root alongside vectors and search; `engine/crates/rag-client/src/lib.rs`.
+- [x] `P01.S01` - Add a bounded rag service-port control transport with a per-verb wall-clock budget and a body cap reaching rag's bearer-gated HTTP routes, mirroring the LoopbackTransport read bound and typed RagError; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S02` - Implement the reindex trigger control verb returning rag's job_id queued envelope verbatim, never blocking on the build; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S03` - Implement the jobs read control verb forwarding rag's per-job phase progress result and resource snapshot for a bounded poll; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S04` - Implement the watcher get and start and stop and reconfigure control verbs taking validated debounce and cooldown and root args; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S05` - Implement the projects list and projects evict control verbs forwarding rag's slot and eviction envelope; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S06` - Implement the service-state and logs and metrics and quality read control verbs forwarding rag's observability envelopes verbatim; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S07` - Unit-test the control transport bounds proving a hung verb times out on its wall-clock budget and an oversized body is a typed error, mirroring the existing rag-client transport tests; `engine/crates/rag-client/src/control.rs`.
+- [x] `P01.S08` - Export the control module from the rag-client crate root alongside vectors and search; `engine/crates/rag-client/src/lib.rs`.
 
 ### Phase `P02` - engine /ops/rag/* brokering
 
 Expand the engine ops proxy so the new rag-client control module brokers rag's runtime verbs over HTTP under one /ops/rag/* namespace with validated and bounded args and verbatim tiers-wrapped envelope forwarding, while process-lifecycle verbs stay on the existing bounded CLI runner.
 
-- [ ] `P02.S09` - Add an HTTP-brokered rag verb registry to the ops route distinct from the CLI whitelist, naming each runtime verb its method and the rag-client control call it dispatches; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P02.S10` - Broker the GET read verbs service-state jobs watcher projects index-status through the rag-client control module attaching the tiers block via the shared envelope helper; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P02.S11` - Broker the POST control verbs reindex watcher-start watcher-stop watcher-reconfigure project-evict with validated and bounded args forwarding rag's envelope verbatim; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P02.S12` - Validate the reconfigure and evict and reindex argument values against rag's vocabulary before forwarding, rejecting unknown or dash-prefixed values as a tiers-carrying 400 mirroring the search target guard; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P02.S13` - Keep the process-lifecycle verbs server-start server-stop server-doctor server-install on the existing bounded CLI runner since a dead service cannot be reached over HTTP; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P02.S14` - Register the brokered rag control routes in the API router so the GET reads and POST controls reach the new handlers; `engine/crates/vaultspec-api/src/routes/mod.rs`.
-- [ ] `P02.S15` - Test arg validation rejects bad values and bound enforcement and tiers attachment on success and error and verbatim passthrough leaving rag's envelope unreshaped; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P02.S09` - Add an HTTP-brokered rag verb registry to the ops route distinct from the CLI whitelist, naming each runtime verb its method and the rag-client control call it dispatches; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P02.S10` - Broker the GET read verbs service-state jobs watcher projects index-status through the rag-client control module attaching the tiers block via the shared envelope helper; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P02.S11` - Broker the POST control verbs reindex watcher-start watcher-stop watcher-reconfigure project-evict with validated and bounded args forwarding rag's envelope verbatim; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P02.S12` - Validate the reconfigure and evict and reindex argument values against rag's vocabulary before forwarding, rejecting unknown or dash-prefixed values as a tiers-carrying 400 mirroring the search target guard; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P02.S13` - Keep the process-lifecycle verbs server-start server-stop server-doctor server-install on the existing bounded CLI runner since a dead service cannot be reached over HTTP; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P02.S14` - Register the brokered rag control routes in the API router so the GET reads and POST controls reach the new handlers; `engine/crates/vaultspec-api/src/routes/mod.rs`.
+- [x] `P02.S15` - Test arg validation rejects bad values and bound enforcement and tiers attachment on success and error and verbatim passthrough leaving rag's envelope unreshaped; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
 ### Phase `P03` - semantic freshness token
 
 Surface a stable semantic-index epoch through the engine and key the embeddings cache on it so downstream semantic builds invalidate when rag's index changes, the semantic analog of the structural generation counter.
 
-- [ ] `P03.S16` - Derive a stable semantic-index epoch in the rag-client control module from the cheapest stable rag field choosing between service-state and the newest terminal jobs entry; `engine/crates/rag-client/src/control.rs`.
-- [ ] `P03.S17` - Surface the semantic epoch through the engine on the embeddings response alongside the structural generation so the client can key on it; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `P03.S18` - Key the embeddings projection cache on the semantic epoch as well as the graph generation so a reindex invalidates the served vectors; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `P03.S19` - Test that a reindex advances the semantic epoch and the embeddings cache invalidates and re-reads while a stale epoch serves the cached slice; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `P03.S16` - Derive a stable semantic-index epoch in the rag-client control module from the cheapest stable rag field choosing between service-state and the newest terminal jobs entry; `engine/crates/rag-client/src/control.rs`.
+- [x] `P03.S17` - Surface the semantic epoch through the engine on the embeddings response alongside the structural generation so the client can key on it; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `P03.S18` - Key the embeddings projection cache on the semantic epoch as well as the graph generation so a reindex invalidates the served vectors; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `P03.S19` - Test that a reindex advances the semantic epoch and the embeddings cache invalidates and re-reads while a stale epoch serves the cached slice; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
 ### Phase `P04` - frontend stores control plane
 
