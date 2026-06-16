@@ -310,6 +310,14 @@ export class SceneController {
   // --- graph-quality: layout state (P01.S02) -----------------------------------
   private _layoutMode: "force" | "circular" = "force";
   private _layoutParams: LayoutParams = {};
+  // --- selection state retained at the seam (W03.P08.S51) -----------------------
+  // The inbound `set-selected` selection (graph/Node-items "selected"): the view
+  // store owns the one shared selection and pushes it in through the EXISTING
+  // command; the controller retains it so a consumer can read the current
+  // selection synchronously the same way it reads layout/representation state,
+  // never re-deriving it from a held render frame. Purely additive bookkeeping
+  // over the locked `set-selected` command — no new command, no new event.
+  private _selectedIds: ReadonlySet<string> = new Set();
   // --- graph-representation: representation-mode + overlay state (W03.P08) ------
   private _representationMode: RepresentationMode = "connectivity";
   private _overlays: { featureCountries: boolean; featureHulls: boolean } = {
@@ -355,6 +363,14 @@ export class SceneController {
       case "set-layout-mode":
         this._layoutMode = cmd.mode;
         break;
+      case "set-selected":
+        // Retain the inbound selection at the seam (S51): the round-tripped
+        // selection (a scene `select` event went to the view store, which pushes
+        // the shared selection back through this command) is held here so a
+        // consumer reads it synchronously via getSelectionState(). Still forwarded
+        // to the field below (the ring is the renderer's concern).
+        this._selectedIds = new Set(cmd.ids);
+        break;
       case "set-representation-mode":
         this._representationMode = cmd.mode;
         break;
@@ -371,7 +387,6 @@ export class SceneController {
       case "set-visibility":
       case "set-time":
       case "set-pinned":
-      case "set-selected":
       case "pulse":
       case "zoom-in":
       case "zoom-out":
@@ -462,6 +477,17 @@ export class SceneController {
   /** Synchronous snapshot of the current layout mode and params. */
   getLayoutState(): { mode: "force" | "circular"; params: LayoutParams } {
     return { mode: this._layoutMode, params: { ...this._layoutParams } };
+  }
+
+  // --- selection read at the seam (W03.P08.S51) ---------------------------------
+
+  /** Synchronous snapshot of the current selection (the inbound `set-selected`
+   *  the view store pushes back through the seam). A defensive copy, so a reader
+   *  cannot mutate the controller's held set. Lets a consumer root a re-layout or
+   *  a focus on the current selection without re-deriving it from a render frame
+   *  — the selection routed through the preserved channel, read here. */
+  getSelectionState(): { selectedIds: ReadonlySet<string> } {
+    return { selectedIds: new Set(this._selectedIds) };
   }
 
   // --- graph-representation: representation-mode + overlay reads (W03.P08) ------
