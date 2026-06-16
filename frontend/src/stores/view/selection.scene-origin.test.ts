@@ -52,9 +52,14 @@ describe("selection scene-origin flag (G2.b)", () => {
     const off = bindSelectionToScene(scene);
 
     // A real stage selection must NOT bounce focus back to where the user is
-    // already pointing — the suppression still holds.
+    // already pointing — the focus suppression still holds. (The SELECTED ring
+    // still follows via set-selected; only the camera focus is suppressed.)
     selectFromScene("feature:x");
-    expect(commands).toEqual([]);
+    expect(commands.filter((c) => c.kind === "focus-node")).toEqual([]);
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["feature:x"]),
+    });
 
     off();
   });
@@ -73,9 +78,16 @@ describe("focusFromWalk: keyboard walk re-centers instantly (HIGH-2)", () => {
     // strays off-screen — and must NOT also trigger the binding's animated
     // follow (a double focus-node). The walk owns the camera move.
     focusFromWalk(scene, "feature:walked");
-    expect(commands).toEqual([
+    // Exactly one focus-node (the instant re-center), no animated bounce. The
+    // SELECTED ring also follows via set-selected — the walk's focus is the
+    // single camera move asserted here.
+    expect(commands.filter((c) => c.kind === "focus-node")).toEqual([
       { kind: "focus-node", id: "feature:walked", animate: false },
     ]);
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["feature:walked"]),
+    });
     // The shared selection is updated so every region honors it.
     expect(useViewStore.getState().selectedId).toBe("feature:walked");
 
@@ -87,9 +99,11 @@ describe("focusFromWalk: keyboard walk re-centers instantly (HIGH-2)", () => {
     const off = bindSelectionToScene(scene);
 
     useViewStore.getState().select("feature:held");
-    commands.length = 0; // ignore the cross-region focus from the seed
+    commands.length = 0; // ignore the cross-region focus + ring from the seed
     focusFromWalk(scene, null);
-    expect(commands).toEqual([]);
+    // A clearing walk deselects: no focus-node, and the ring set clears.
+    expect(commands.filter((c) => c.kind === "focus-node")).toEqual([]);
+    expect(commands).toContainEqual({ kind: "set-selected", ids: new Set() });
     expect(useViewStore.getState().selectedId).toBeNull();
 
     off();

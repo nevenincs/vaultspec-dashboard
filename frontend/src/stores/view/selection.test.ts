@@ -59,10 +59,48 @@ describe("shared selection (G2.b)", () => {
     const { scene, commands } = captureScene();
     const off = bindSelectionToScene(scene);
     selectFromScene("feature:b");
-    expect(commands).toEqual([]);
+    // No camera FOCUS bounces back (the user is already pointing there)...
+    expect(commands.filter((c) => c.kind === "focus-node")).toEqual([]);
+    // ...but the SELECTED ring still follows the click (canvas mirror of the
+    // one shared selection, regardless of origin).
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["feature:b"]),
+    });
     // The very next cross-region selection focuses again.
     selectNode("feature:c");
     expect(commands).toContainEqual({ kind: "focus-node", id: "feature:c" });
+    off();
+  });
+
+  it("rings the selected node via set-selected on every selection change", () => {
+    const { scene, commands } = captureScene();
+    const off = bindSelectionToScene(scene);
+    selectNode("feature:a");
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["feature:a"]),
+    });
+    // Switching selection re-rings the new node.
+    selectNode("feature:b");
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["feature:b"]),
+    });
+    // Deselecting clears the ring set.
+    selectNode(null);
+    expect(commands).toContainEqual({ kind: "set-selected", ids: new Set() });
+    off();
+  });
+
+  it("rings every node an event selection carries", () => {
+    const { scene, commands } = captureScene();
+    const off = bindSelectionToScene(scene);
+    selectEvent("evt-1", ["doc:x", "doc:y"]);
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["doc:x", "doc:y"]),
+    });
     off();
   });
 });

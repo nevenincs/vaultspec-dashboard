@@ -1,16 +1,24 @@
 // Node sprite layer with LOD discipline (W01.P03.S10, ADR G3.a, §3.1 node
 // anatomy).
 //
-// LOD discipline is the anti-hairball rule: the zoomed-out field draws
-// silhouette + state colour only; full anatomy (progress ring, tier badges,
-// label) renders only above the near-zoom threshold and for focused nodes.
-// Shape carries type (the glyph silhouette), colour is reserved for state —
-// the two channels never compete. Scene-layer module: framework-free.
+// NODE BODY (graph/Hero 85:2, graph/Node-items 83:2 — the binding redesign):
+// the canvas node is a PLAIN FILLED CIRCLE coloured by document category and
+// sized by salience, with a label below; the selected node carries a concentric
+// accent ring; a filtered-out node fades. This SUPERSEDES the per-doc-type
+// silhouette mark ON THE CANVAS BODY (Figma is gospel). The silhouette marks
+// (`marks.ts`) survive for chrome/legend/hover-card; colour is the TYPE channel
+// on the canvas, size carries salience, the ring carries selection.
+//
+// LOD discipline is the anti-hairball rule: the zoomed-out field draws the
+// coloured circle (+ any coarse status stamp); full anatomy (progress ring,
+// tier badges, label) renders only above the near-zoom threshold and for focused
+// nodes. Scene-layer module: framework-free.
 
 import { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 
 import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
+import { categoryColor } from "./categoryColor";
 import { RECEDE_ALPHA } from "./egoHighlight";
 import { drawProgressRing } from "./progressRing";
 import { type StampDescriptor, stampFor, stampToken } from "./statusStamp";
@@ -167,6 +175,43 @@ const NODE_RADIUS = 6;
 /** The salience multiplier band: salience 0 -> 1.0x base; salience 1 -> this. */
 export const SALIENCE_RADIUS_MAX = 2.6;
 
+// --- selected-state ring geometry (graph/Node-items 83:2 "selected") ----------
+//
+// The selected node is the filled circle PLUS a thin concentric accent ring with
+// a clear gap, read from the Figma "selected" swatch (a ~22px disc, ~2.5px gap, a
+// ~1.5px ring within the 34px node box). Expressed relative to the body radius so
+// it scales with salience: ring centre at r + GAP + STROKE/2, stroked at STROKE.
+/** Clear air between the body edge and the ring (world units, scaled by camera). */
+export const SELECTED_RING_GAP = 2.5;
+/** Selected accent ring stroke width (world units). */
+export const SELECTED_RING_WIDTH = 1.5;
+
+/** Centre radius of the selected accent ring for a given body radius. */
+export function selectedRingRadius(bodyRadius: number): number {
+  return bodyRadius + SELECTED_RING_GAP + SELECTED_RING_WIDTH / 2;
+}
+
+/**
+ * The node BODY fill colour (graph/Hero, graph/Node-items): the node's category
+ * hue, read from the scene-category token seam (literal hex per theme). A ghost
+ * (retired/archived/superseded) node desaturates to the archived neutral instead
+ * — the single status treatment for the retired family — so the category hue
+ * never claims a node the corpus has retired.
+ */
+export function bodyColor(node: SceneNodeData): number {
+  const ghost = stampFor(node.status).ghost;
+  return ghost
+    ? getCssColor("--color-state-archived", 0x9a938a)
+    : categoryColor(node.kind);
+}
+
+/** The selected accent ring colour — the single muted accent (warmth rule:
+ *  "the single muted accent for selection rings"), read as literal hex per
+ *  theme through the scene token seam. */
+export function selectedRingColor(): number {
+  return getCssColor("--color-state-active", 0x3f774d);
+}
+
 /**
  * World-space radius for a node, driven by salience (graph-representation ADR
  * encoding map: salience -> size, "making the importance field visible").
@@ -211,12 +256,24 @@ export function labelPriority(node: SceneNodeData): number {
 
 interface NodeVisual {
   node: SceneNodeData;
-  sprite: Sprite;
+  /**
+   * The node BODY — a category-coloured filled circle (graph/Hero 85:2),
+   * superseding the doc-type silhouette sprite on the canvas. A `Graphics` (not
+   * a `Sprite`) so the disc is crisp at any camera scale; redrawn only when the
+   * radius/colour changes (sync), not per frame (position is a cheap transform).
+   */
+  body: Graphics;
+  /**
+   * The selected-state accent ring (graph/Node-items 83:2 "selected"): a thin
+   * concentric ring with a clear gap, drawn only while this node is selected.
+   * Null otherwise.
+   */
+  ring: Graphics | null;
   /**
    * The COARSE status stamp (node-visual-richness P03): the outline ring +
-   * slash drawn just outside the silhouette. Rendered at ALL LOD (the coarse
-   * treatment survives the far field), so it lives beside the sprite, not inside
-   * the near-only anatomy. Null when the node carries no ring/slash stamp.
+   * slash drawn just outside the body. Rendered at ALL LOD (the coarse treatment
+   * survives the far field), so it lives beside the body, not inside the
+   * near-only anatomy. Null when the node carries no ring/slash stamp.
    */
   stamp: Graphics | null;
   /** Lazily built full anatomy (ring, badges, label, fine status dot/notch) —
@@ -224,6 +281,9 @@ interface NodeVisual {
   anatomy: Container | null;
   /** The label Text within the anatomy, kept for DOI label-priority culling. */
   label: Text | null;
+  /** Last drawn body radius/colour, so sync only redraws the circle on change. */
+  drawnRadius: number;
+  drawnColor: number;
 }
 
 /**
@@ -246,51 +306,106 @@ export class NodeSpriteLayer {
   private visuals = new Map<string, NodeVisual>();
   private glyphs: GlyphTextureProvider;
   private focused = new Set<string>();
+  /** The currently selected node ids (graph/Node-items "selected"): each draws
+   *  the concentric accent ring. Driven by the `set-selected` seam command. */
+  private selected = new Set<string>();
 
   constructor(world: Container, glyphs: GlyphTextureProvider) {
     this.glyphs = glyphs;
     world.addChild(this.container);
   }
 
-  /** Reconcile sprites against the model by stable id. */
+  /** Reconcile node bodies against the model by stable id. */
   sync(model: SceneGraphModel, now: number): void {
     const seen = new Set<string>();
     for (const node of model.nodes) {
       seen.add(node.id);
       let visual = this.visuals.get(node.id);
       if (!visual) {
-        const sprite = new Sprite(this.glyphs.textureFor(node.kind));
-        sprite.anchor.set(0.5);
-        this.container.addChild(sprite);
-        visual = { node, sprite, stamp: null, anatomy: null, label: null };
+        const body = new Graphics();
+        this.container.addChild(body);
+        visual = {
+          node,
+          body,
+          ring: null,
+          stamp: null,
+          anatomy: null,
+          label: null,
+          drawnRadius: -1,
+          drawnColor: -1,
+        };
         this.visuals.set(node.id, visual);
       }
       visual.node = node;
-      // Glyph textures are supersampled; sprites draw at node size in world
-      // units regardless of texture resolution. Feature nodes scale with
-      // their convergence weight (nodeRadius).
+      // The node body is a category-coloured filled circle (graph/Hero): colour
+      // is the TYPE channel, size carries salience (nodeRadius). Redraw the disc
+      // only when the radius or colour actually changes — position is a cheap
+      // per-frame transform, geometry is not.
       const radius = nodeRadius(node);
-      visual.sprite.setSize(radius * 2, radius * 2);
+      const color = bodyColor(node);
+      if (radius !== visual.drawnRadius || color !== visual.drawnColor) {
+        visual.body.clear().circle(0, 0, radius).fill({ color });
+        visual.drawnRadius = radius;
+        visual.drawnColor = color;
+        // The selected ring rides the body radius — redraw it on a size change.
+        if (visual.ring) this.drawRing(visual);
+      }
+      visual.body.alpha = freshnessAlpha(node.dates?.modified, now);
       // The status stamp is the SINGLE status treatment (rule of one): a ghost
-      // node drops its silhouette to the retired/archived token and dims to the
-      // ghost floor (handled in refresh's alpha math); every other class keeps
-      // the state colour. Type stays on the silhouette, status on the stamp.
+      // node desaturates to the retired/archived token (handled in bodyColor)
+      // and dims to the ghost floor (refresh's alpha math); every other class
+      // keeps its category hue. Status rides the stamp, never the body colour.
       const stamp = stampFor(node.status);
-      visual.sprite.tint = stamp.ghost
-        ? getCssColor("--color-state-archived", 0x9a938a)
-        : stateColor(node.lifecycle);
-      visual.sprite.alpha = freshnessAlpha(node.dates?.modified, now);
       this.rebuildStamp(visual, stamp);
+      this.syncRing(visual);
       if (visual.anatomy) this.rebuildAnatomy(visual);
     }
     for (const [id, visual] of this.visuals) {
       if (!seen.has(id)) {
-        visual.sprite.destroy();
+        visual.body.destroy();
+        visual.ring?.destroy();
         visual.stamp?.destroy();
         visual.anatomy?.destroy({ children: true });
         this.visuals.delete(id);
       }
     }
+  }
+
+  /** Set the selected node ids (graph/Node-items "selected"): each gains the
+   *  concentric accent ring; deselected nodes drop it. Driven by the
+   *  `set-selected` seam command (dashboard-layer-ownership: data in via the
+   *  command channel only). */
+  setSelected(ids: ReadonlySet<string>): void {
+    this.selected = new Set(ids);
+    for (const visual of this.visuals.values()) this.syncRing(visual);
+  }
+
+  /** Add/remove the selected ring for one visual against the selected set. */
+  private syncRing(visual: NodeVisual): void {
+    const want = this.selected.has(visual.node.id);
+    if (want && !visual.ring) {
+      const ring = new Graphics();
+      // The ring sits ABOVE the body but BELOW the coarse stamp/anatomy in z;
+      // adding it to the container puts it on top of bodies added earlier — its
+      // own body is added first, so the ring reads as a halo around its disc.
+      this.container.addChild(ring);
+      ring.position.copyFrom(visual.body.position);
+      visual.ring = ring;
+      this.drawRing(visual);
+    } else if (!want && visual.ring) {
+      visual.ring.destroy();
+      visual.ring = null;
+    }
+  }
+
+  /** (Re)draw the selected accent ring for a visual at its body radius. */
+  private drawRing(visual: NodeVisual): void {
+    if (!visual.ring) return;
+    const r = selectedRingRadius(nodeRadius(visual.node));
+    visual.ring
+      .clear()
+      .circle(0, 0, r)
+      .stroke({ width: SELECTED_RING_WIDTH, color: selectedRingColor() });
   }
 
   /** Per-frame position pass (layout worker output / cached positions). */
@@ -300,7 +415,8 @@ export class NodeSpriteLayer {
     for (const [id, visual] of this.visuals) {
       const p = positionOf(id);
       if (!p) continue;
-      visual.sprite.position.set(p.x, p.y);
+      visual.body.position.set(p.x, p.y);
+      visual.ring?.position.set(p.x, p.y);
       visual.stamp?.position.set(p.x, p.y);
       visual.anatomy?.position.set(p.x, p.y);
     }
@@ -335,7 +451,7 @@ export class NodeSpriteLayer {
       if (level === "near") {
         if (!visual.anatomy) {
           visual.anatomy = this.buildAnatomy(visual);
-          visual.anatomy.position.copyFrom(visual.sprite.position);
+          visual.anatomy.position.copyFrom(visual.body.position);
           this.container.addChild(visual.anatomy);
         }
         visual.anatomy.visible = true;
@@ -356,8 +472,12 @@ export class NodeSpriteLayer {
       // the single status treatment for the retired family — on top of the
       // freshness + recede multipliers.
       const ghost = stampFor(visual.node.status).ghost ? GHOST_ALPHA : 1;
-      visual.sprite.alpha =
+      visual.body.alpha =
         freshnessAlpha(visual.node.dates?.modified, now) * recede * ghost;
+      // The selected ring is an always-legible accent: it follows the recede
+      // (so a non-ego selection still dims with its body) but never the ghost
+      // floor (a selected retired node still shows a clear ring).
+      if (visual.ring) visual.ring.alpha = recede;
       if (visual.stamp) visual.stamp.alpha = recede * ghost;
       if (visual.anatomy) visual.anatomy.alpha = recede;
     }
@@ -373,10 +493,18 @@ export class NodeSpriteLayer {
       const p = progress.get(id) ?? (settledVisible.has(id) ? 1 : 0);
       const base = freshnessAlpha(visual.node.dates?.modified, now);
       const ghost = stampFor(visual.node.status).ghost ? GHOST_ALPHA : 1;
-      visual.sprite.visible = p > 0;
-      visual.sprite.alpha = base * p * ghost;
-      const size = nodeRadius(visual.node) * 2 * (0.6 + 0.4 * p);
-      visual.sprite.setSize(size, size);
+      // Filtered-out / fading nodes (graph/Node-items "Hidden"): fade the body
+      // toward transparent and shrink it slightly so the removed set reads as
+      // receding, not vanishing abruptly (G3.f). Scale the disc by redrawing —
+      // a Graphics circle has no setSize, so we drive scale on the display node.
+      visual.body.visible = p > 0;
+      visual.body.alpha = base * p * ghost;
+      visual.body.scale.set(0.6 + 0.4 * p);
+      if (visual.ring) {
+        visual.ring.visible = p > 0;
+        visual.ring.alpha = p;
+        visual.ring.scale.set(0.6 + 0.4 * p);
+      }
       if (visual.stamp) {
         visual.stamp.visible = p > 0;
         visual.stamp.alpha = p * ghost;
@@ -391,7 +519,7 @@ export class NodeSpriteLayer {
   /** For hit-testing and island anchoring. */
   positionOf(id: string): { x: number; y: number } | undefined {
     const v = this.visuals.get(id);
-    return v ? { x: v.sprite.position.x, y: v.sprite.position.y } : undefined;
+    return v ? { x: v.body.position.x, y: v.body.position.y } : undefined;
   }
 
   get count(): number {
@@ -425,7 +553,7 @@ export class NodeSpriteLayer {
     if (!g) {
       g = new Graphics();
       this.container.addChild(g);
-      g.position.copyFrom(visual.sprite.position);
+      g.position.copyFrom(visual.body.position);
       visual.stamp = g;
     } else {
       g.clear();
@@ -467,7 +595,6 @@ export class NodeSpriteLayer {
   private populateAnatomy(anatomy: Container, node: SceneNodeData): Text {
     // Text colours resolved from the token layer so they read on both light
     // and dark canvas backgrounds.
-    const inkColor = getCssColor("--color-ink", 0x2b2620);
     const inkMuted = getCssColor("--color-ink-muted", 0x6a6258);
 
     // Anatomy rides the node's own radius so a large feature convergence does
@@ -513,9 +640,13 @@ export class NodeSpriteLayer {
       dot.position.set(Math.cos(angle) * dist, Math.sin(angle) * dist);
       anatomy.addChild(dot);
     }
+    // The label sits BELOW the circle in the scene ink-muted token at the small
+    // meta size (graph/Hero: "Research notes" / "Clock decision" — ink-muted,
+    // ~9.5px). Hub/high-salience labels read slightly louder via ink — but the
+    // dominant canvas treatment is the muted meta label, so the body uses it.
     const label = new Text({
       text: node.title ?? node.id,
-      style: { fontSize: 10, fill: inkColor },
+      style: { fontSize: 10, fill: inkMuted },
     });
     label.anchor.set(0.5, 0);
     label.position.set(0, ringRadius + 3);

@@ -165,6 +165,14 @@ export type SceneCommand =
   // Pins are layout-fixed and always-labelled (G5.d); the view store owns
   // pin persistence and tells the scene which nodes are fixed.
   | { kind: "set-pinned"; ids: ReadonlySet<string> }
+  // Selected node ids drive the canvas SELECTED state — the concentric accent
+  // ring around the node body (graph/Node-items 83:2 "selected"). The view store
+  // owns the one shared selection; this tells the scene which body draws the
+  // ring. The scene already EMITS `select` events; this is the inbound half so
+  // a cross-region selection (browser row, palette, keyboard walk) also rings
+  // the node on the canvas. ADDITIVE to the locked union (dashboard-node-redesign;
+  // mirrors the set-pinned additive shape) — no existing member renamed/removed.
+  | { kind: "set-selected"; ids: ReadonlySet<string> }
   // Transient cross-highlight (G2.b): lift the named nodes briefly — the
   // timeline's event-click pulse. Additive seam amendment at S36.
   | { kind: "pulse"; ids: ReadonlySet<string> }
@@ -344,6 +352,7 @@ export class SceneController {
       case "set-visibility":
       case "set-time":
       case "set-pinned":
+      case "set-selected":
       case "pulse":
       case "zoom-in":
       case "zoom-out":

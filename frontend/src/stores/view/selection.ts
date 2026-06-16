@@ -63,6 +63,22 @@ export function selectEdge(id: string): void {
  */
 export function bindSelectionToScene(scene: SceneController): () => void {
   let last: Selection = useViewStore.getState().selection;
+  /** The node ids currently ringed on the canvas (graph/Node-items "selected").
+   *  Issued on EVERY selection change — including scene-originated ones — so a
+   *  canvas click rings its node and a cross-region select rings it too. */
+  const pushSelected = (selection: Selection): void => {
+    let ids: ReadonlySet<string>;
+    if (!selection) {
+      ids = new Set();
+    } else if (selection.kind === "node") {
+      ids = new Set([selection.id]);
+    } else if (selection.kind === "event") {
+      ids = new Set(selection.nodeIds);
+    } else {
+      ids = new Set();
+    }
+    scene.command({ kind: "set-selected", ids });
+  };
   return useViewStore.subscribe((state) => {
     if (state.selection === last) {
       // A no-op selection (e.g. a stage deselect while already cleared) still
@@ -72,6 +88,9 @@ export function bindSelectionToScene(scene: SceneController): () => void {
       return;
     }
     last = state.selection;
+    // The SELECTED ring follows every selection change regardless of origin —
+    // it is the canvas mirror of the one shared selection, not a camera move.
+    pushSelected(last);
     if (sceneOriginated) {
       sceneOriginated = false;
       return;

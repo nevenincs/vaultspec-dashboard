@@ -4,15 +4,21 @@ import {
   FRESHNESS_FLOOR,
   FRESHNESS_WINDOW_MS,
   NEAR_ZOOM_THRESHOLD,
+  SELECTED_RING_GAP,
+  SELECTED_RING_WIDTH,
+  bodyColor,
   coarseStamp,
   fineStampMarkId,
   freshnessAlpha,
   lodFor,
   nodeRadius,
   progressFraction,
+  selectedRingColor,
+  selectedRingRadius,
   stateColor,
   tierBadgeText,
 } from "./nodeSprites";
+import { categoryColor } from "./categoryColor";
 import { stampFor } from "./statusStamp";
 
 describe("lodFor", () => {
@@ -88,6 +94,50 @@ describe("nodeRadius", () => {
     const base = nodeRadius({ id: "doc:x", kind: "adr" });
     expect(nodeRadius({ id: "feature:a", kind: "feature" })).toBe(base);
     expect(nodeRadius({ id: "feature:b", kind: "feature", memberCount: 0 })).toBe(base);
+  });
+});
+
+describe("bodyColor — the category-coloured node body (graph/Hero 85:2)", () => {
+  it("colours a node by its category hue (colour is the type channel)", () => {
+    expect(bodyColor({ id: "a", kind: "adr" })).toBe(categoryColor("adr"));
+    expect(bodyColor({ id: "f", kind: "feature" })).toBe(categoryColor("feature"));
+    // Distinct categories read as distinct body fills.
+    expect(bodyColor({ id: "a", kind: "adr" })).not.toBe(
+      bodyColor({ id: "p", kind: "plan" }),
+    );
+  });
+
+  it("desaturates a ghosted (retired/archived) node to the archived neutral", () => {
+    // A retired-archived node drops its category hue for the single retired-
+    // family status treatment, so the corpus's retirement is never hidden behind
+    // a live category colour.
+    const ghosted = bodyColor({
+      id: "g",
+      kind: "adr",
+      status: { class: "retired", value: "archived" },
+    });
+    expect(ghosted).not.toBe(categoryColor("adr"));
+    // Node test env: archived fallback hex.
+    expect(ghosted).toBe(0x9a938a);
+  });
+});
+
+describe("selected ring (graph/Node-items 83:2 'selected')", () => {
+  it("sits OUTSIDE the body with a clear gap, scaling with the body radius", () => {
+    const r = nodeRadius({ id: "n", kind: "adr", salience: 0.5 });
+    const ring = selectedRingRadius(r);
+    // The ring centre is beyond the body edge by the gap + half its stroke, so
+    // there is clear air between the disc and the ring.
+    expect(ring).toBeGreaterThan(r);
+    expect(ring).toBeCloseTo(r + SELECTED_RING_GAP + SELECTED_RING_WIDTH / 2, 5);
+    // A larger (higher-salience) body pushes the ring out proportionally.
+    const big = nodeRadius({ id: "m", kind: "adr", salience: 1 });
+    expect(selectedRingRadius(big)).toBeGreaterThan(ring);
+  });
+
+  it("uses the single muted accent (state-active) for the ring colour", () => {
+    // Node test env: the state-active light fallback hex.
+    expect(selectedRingColor()).toBe(0x3f774d);
   });
 });
 
