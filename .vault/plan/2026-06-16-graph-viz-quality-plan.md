@@ -122,13 +122,13 @@ Build the deterministic seeded ground-truth fixture generators every metric scor
 
 Implement the per-layout-family metric sets, each normalized to [0,1] with 1 = best.
 
-- [ ] `W01.P02.S07` - Add shared metric primitives: scale-normalized stress with closed-form optimal alpha, sampled node-pair estimation, and a fixed-k coranking corner helper; `frontend/src/scene/field/scorecard/metrics/shared.ts`.
-- [ ] `W01.P02.S08` - Implement the force/Free metric module: scale-normalized stress, neighborhood preservation, node-resolution overlap, edge-length CV, and crossings/crossing-angle via greadability; `frontend/src/scene/field/scorecard/metrics/forceMetrics.ts`.
-- [ ] `W01.P02.S09` - Implement the Sugiyama metric module for lineage and hierarchy: per-adjacent-layer crossings, dummy/bend count, edge monotonicity, total edge length, and layer-assignment correctness; `frontend/src/scene/field/scorecard/metrics/sugiyamaMetrics.ts`.
-- [ ] `W01.P02.S10` - Implement the radial/tree metric module: subtree disjointness, wedge and ring uniformity, depth-to-radius Spearman, node overlap, and near-zero crossings; `frontend/src/scene/field/scorecard/metrics/radialMetrics.ts`.
-- [ ] `W01.P02.S11` - Implement the clusters/Louvain metric module: Meidiana geometric-partition ARI and AMI versus the partition, within-cluster compactness, between-cluster silhouette, and modularity Q; `frontend/src/scene/field/scorecard/metrics/clusterMetrics.ts`.
-- [ ] `W01.P02.S12` - Implement the semantic metric module: trustworthiness, continuity, Q_NX with LCMC-chosen K, neighborhood-hit NH(k), silhouette by tag, and nearest-centroid accuracy; `frontend/src/scene/field/scorecard/metrics/semanticMetrics.ts`.
-- [ ] `W01.P02.S13` - Add greadability.js as a frontend dependency and a thin typed wrapper exposing crossings and crossing-angle in [0,1]; `frontend/src/scene/field/scorecard/metrics/greadability.ts`.
+- [x] `W01.P02.S07` - Add shared metric primitives: scale-normalized stress with closed-form optimal alpha, sampled node-pair estimation, and a fixed-k coranking corner helper; `frontend/src/scene/field/scorecard/metrics/shared.ts`.
+- [x] `W01.P02.S08` - Implement the force/Free metric module: scale-normalized stress, neighborhood preservation, node-resolution overlap, edge-length CV, and crossings/crossing-angle via greadability; `frontend/src/scene/field/scorecard/metrics/forceMetrics.ts`.
+- [x] `W01.P02.S09` - Implement the Sugiyama metric module for lineage and hierarchy: per-adjacent-layer crossings, dummy/bend count, edge monotonicity, total edge length, and layer-assignment correctness; `frontend/src/scene/field/scorecard/metrics/sugiyamaMetrics.ts`.
+- [x] `W01.P02.S10` - Implement the radial/tree metric module: subtree disjointness, wedge and ring uniformity, depth-to-radius Spearman, node overlap, and near-zero crossings; `frontend/src/scene/field/scorecard/metrics/radialMetrics.ts`.
+- [x] `W01.P02.S11` - Implement the clusters/Louvain metric module: Meidiana geometric-partition ARI and AMI versus the partition, within-cluster compactness, between-cluster silhouette, and modularity Q; `frontend/src/scene/field/scorecard/metrics/clusterMetrics.ts`.
+- [x] `W01.P02.S12` - Implement the semantic metric module: trustworthiness, continuity, Q_NX with LCMC-chosen K, neighborhood-hit NH(k), silhouette by tag, and nearest-centroid accuracy; `frontend/src/scene/field/scorecard/metrics/semanticMetrics.ts`.
+- [x] `W01.P02.S13` - Add greadability.js as a frontend dependency and a thin typed wrapper exposing crossings and crossing-angle in [0,1]; `frontend/src/scene/field/scorecard/metrics/greadability.ts`.
 
 ### Phase `W01.P03` - Gate family, scorecard output, and METRIC_VERSION
 
@@ -159,10 +159,10 @@ Close the representation seams the node-representation ADR decides so the layout
 
 Make the embedding-to-node join keyed by node_id in the adapter, amend the contract reference, and mirror it in the mock.
 
-- [ ] `W02.P05.S25` - Change the embedding-to-node join in the client adapter to key by node_id rather than positional order, treating a missing vector as an honest absence; `frontend/src/stores/server/liveAdapters.ts`.
-- [ ] `W02.P05.S26` - Amend the contract reference to state embeddings are a node_id-keyed subset of the node set, removing the DOI-order coupling note; `.vault/reference/2026-06-12-dashboard-foundation-reference.md`.
-- [ ] `W02.P05.S27` - Update the mock engine to serve /graph/embeddings as a node_id-keyed subset byte-for-byte matching the live wire shape; `frontend/src/stores/server/mockEngine.ts`.
-- [ ] `W02.P05.S28` - Add a consumer test feeding a captured live embeddings sample through adaptGraphSlice and asserting the node_id join, including a node with no vector; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `W02.P05.S25` - Change the embedding-to-node join in the client adapter to key by node_id rather than positional order, treating a missing vector as an honest absence; `frontend/src/stores/server/liveAdapters.ts`.
+- [x] `W02.P05.S26` - Amend the contract reference to state embeddings are a node_id-keyed subset of the node set, removing the DOI-order coupling note; `.vault/reference/2026-06-12-dashboard-foundation-reference.md`.
+- [x] `W02.P05.S27` - Update the mock engine to serve /graph/embeddings as a node_id-keyed subset byte-for-byte matching the live wire shape; `frontend/src/stores/server/mockEngine.ts`.
+- [x] `W02.P05.S28` - Add a consumer test feeding a captured live embeddings sample through adaptGraphSlice and asserting the node_id join, including a node with no vector; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ### Phase `W02.P06` - Derivation labeling completeness (D3)
 
