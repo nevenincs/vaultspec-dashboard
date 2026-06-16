@@ -46,7 +46,8 @@ import { FilterBar } from "./FilterBar";
 import { FilterSidebar } from "./FilterSidebar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
-// One scene per app lifetime — survives route remounts; destroyed never.
+// One scene singleton per app lifetime: the object survives route remounts, but
+// its renderer is released on unmount (F#1) and rebuilt on remount.
 const scene = createDashboardScene();
 
 /** The map's default corpus-bearing worktree (the cold-start fallback when no
