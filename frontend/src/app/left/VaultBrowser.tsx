@@ -213,7 +213,7 @@ export function VaultBrowser({
         <button
           type="button"
           onClick={() => void tree.refetch()}
-          className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           try again
         </button>
@@ -260,7 +260,7 @@ export function VaultBrowser({
           error. Read through the stores selector, never the raw tiers block. */}
       {availability.degraded && (
         <p
-          className="mb-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
+          className="mb-vs-1 rounded-fg-xs bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-caption text-ink-muted"
           role="status"
           aria-live="polite"
           data-vault-degraded
@@ -317,7 +317,7 @@ export function VaultBrowser({
                 // Group header (Figma `ResearchHeader`/`PlanHeader` …): chevron +
                 // doc-type mark + a SEMIBOLD body-ink label, with the count quietly
                 // right-aligned. The whole row is the disclosure control.
-                className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {isCollapsed ? (
                   <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -328,7 +328,7 @@ export function VaultBrowser({
                   <GroupMark size={DOC_MARK_PX} />
                 </span>
                 <span>{docGroupLabel(group)}</span>
-                <span className="ml-auto text-2xs text-ink-faint" data-tabular>
+                <span className="ml-auto text-caption text-ink-faint" data-tabular>
                   {entries.length}
                 </span>
               </button>
@@ -380,7 +380,7 @@ export function VaultBrowser({
                             }
                             navKeyDown(rowKey)(e);
                           }}
-                          className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                          className={`flex w-full items-center gap-vs-1 truncate rounded-fg-xs px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                             highlighted
                               ? "bg-accent-subtle font-medium text-ink"
                               : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -415,13 +415,13 @@ export function VaultBrowser({
                           {/* Feature tag fills the gap and truncates, as in the
                               design — quiet faint ink, never the identity. */}
                           {entry.feature_tags[0] && (
-                            <span className="min-w-0 flex-1 truncate text-2xs text-ink-faint">
+                            <span className="min-w-0 flex-1 truncate text-caption text-ink-faint">
                               #{entry.feature_tags[0]}
                             </span>
                           )}
                           {fresh && (
                             <span
-                              className={`ml-auto shrink-0 text-2xs ${
+                              className={`ml-auto shrink-0 text-caption ${
                                 isFresh(fresh) ? "text-state-active" : "text-ink-faint"
                               }`}
                               data-tabular
