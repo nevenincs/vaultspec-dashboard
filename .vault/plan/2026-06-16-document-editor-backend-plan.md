@@ -40,8 +40,8 @@ Author the blob-OID helper and the set-body, set-frontmatter, and combined edit 
 Pass the core CI gate, merge feat:, release to PyPI via release-please, and bump the dashboard pin.
 
 - [x] `W01.P03.S09` - Pass the core CI gate locally: ruff, ty, taplo, lychee, pymarkdown, pytest, vault-audit; `core-repo/Justfile`.
-- [ ] `W01.P03.S10` - Open the PR, merge with a feat: commit, and trigger the release-please PyPI publish; `core-repo/.github/workflows`.
-- [ ] `W01.P03.S11` - Bump the dashboard vaultspec-core pin to the released version and uv sync, backing out any editable dev-bridge first; `pyproject.toml`.
+- [x] `W01.P03.S10` - Open the PR, merge with a feat: commit, and trigger the release-please PyPI publish; `core-repo/.github/workflows`.
+- [x] `W01.P03.S11` - Bump the dashboard vaultspec-core pin to the released version and uv sync, backing out any editable dev-bridge first; `pyproject.toml`.
 
 ## Wave `W02` - engine /ops write channel
 
