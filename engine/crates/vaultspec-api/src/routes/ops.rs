@@ -179,13 +179,23 @@ const GIT_WHITELIST: &[(&str, &[&str])] = &[
     ("status", &["status", "--porcelain=v1", "--branch"]),
     ("numstat", &["diff", "--numstat", "--no-color"]),
     ("diff", &["diff", "--no-color"]),
+    // The bounded read-only HISTORICAL text diff (figma-parity-reconciliation
+    // S14): a two-rev `git diff <from> <to> -- <path>` over the git object DB.
+    // Pure read-and-infer — the engine implements no diff algorithm and exposes
+    // no mutating git verb. Both revs and the path are validated before they are
+    // appended (`git_args_for`); the fixed args carry no write flag.
+    ("histdiff", &["diff", "--no-color"]),
 ];
 
-/// Verbs in [`GIT_WHITELIST`] that accept a single trailing path argument. Only
-/// `diff` takes one (the file whose unified diff is requested); the others are
+/// Verbs in [`GIT_WHITELIST`] that accept a single trailing path argument:
+/// `diff` (working-tree) and `histdiff` (two-rev historical). The others are
 /// argument-free. A verb not in this set forwards its fixed args verbatim and
 /// rejects any supplied path.
-const GIT_PATH_VERBS: &[&str] = &["diff"];
+const GIT_PATH_VERBS: &[&str] = &["diff", "histdiff"];
+
+/// Verbs in [`GIT_WHITELIST`] that take a two-rev range (`<from> <to>`) before
+/// the `-- <path>` separator. Only `histdiff` does; the others take no rev.
+const GIT_REV_VERBS: &[&str] = &["histdiff"];
 
 /// Locate the git binary: the PATH `git` (every dev/CI host has it). Mirrors
 /// `rag_invocation`'s PATH-first shape. NO working-tree mutation flag is ever
@@ -222,17 +232,69 @@ fn validate_diff_path(state: &AppState, path: &str) -> Result<String, (StatusCod
     Ok(path.to_string())
 }
 
+/// Validate a single git revision token for the historical-diff verb
+/// (figma-parity-reconciliation S14): a rev names a commit/ref/tag the two-rev
+/// `git diff` reads, never a flag or an argument channel. Rejects an empty
+/// token, anything beginning with `-` (which git would read as a flag — the
+/// injection vector), and a `..`/`...` range expression (the route forms the
+/// range from two SEPARATE validated revs, so a smuggled range is rejected).
+/// The token is otherwise a bounded ref-grammar string; an unresolvable rev is
+/// caught by git itself and degraded as a sibling fault, never a 500.
+fn validate_rev(state: &AppState, rev: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let bad = rev.is_empty()
+        || rev.starts_with('-')
+        || rev.contains("..")
+        || rev.contains(char::is_whitespace);
+    if bad {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "git rev `{rev}` must be a single bounded revision \
+                 (no leading `-`, no `..` range, no whitespace)"
+            ),
+        ));
+    }
+    Ok(rev.to_string())
+}
+
 /// Build the full git argument vector for a whitelisted verb: its fixed
-/// whitelist args, plus — for a path verb — the `--` separator and the validated
-/// path so the path can never be read as a flag. A path supplied to a
-/// non-path verb is rejected (no silent ignore).
+/// whitelist args, plus — for a rev verb — the two validated revs, plus — for a
+/// path verb — the `--` separator and the validated path so the path can never
+/// be read as a flag. A path or revs supplied to a verb that does not take them
+/// is rejected (no silent ignore).
 fn git_args_for(
     state: &AppState,
     verb: &str,
     fixed: &[&str],
     path: Option<&str>,
+    revs: Option<(&str, &str)>,
 ) -> Result<Vec<String>, (StatusCode, Json<Value>)> {
     let mut args: Vec<String> = fixed.iter().map(|s| s.to_string()).collect();
+    // A two-rev historical diff appends `<from> <to>` BEFORE the `-- <path>`
+    // separator. Each rev is validated; a rev verb without revs is rejected, and
+    // a non-rev verb that is handed revs is rejected.
+    match (GIT_REV_VERBS.contains(&verb), revs) {
+        (true, Some((from, to))) => {
+            args.push(validate_rev(state, from)?);
+            args.push(validate_rev(state, to)?);
+        }
+        (true, None) => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!("git `{verb}` requires `from` and `to` revisions"),
+            ));
+        }
+        (false, Some(_)) => {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!("git `{verb}` takes no revisions"),
+            ));
+        }
+        (false, None) => {}
+    }
     match (GIT_PATH_VERBS.contains(&verb), path) {
         (true, Some(p)) => {
             let validated = validate_diff_path(state, p)?;
@@ -391,20 +453,29 @@ pub async fn ops_rag(State(state): State<Arc<AppState>>, Path(verb): Path<String
     ))
 }
 
-/// The optional request body for `/ops/git/{verb}`: the `diff` verb's path.
-/// Absent for argument-free verbs (status, numstat). The body is optional so a
-/// GET-shaped status call need not carry one.
+/// The optional request body for `/ops/git/{verb}`: the `diff`/`histdiff`
+/// verb's path, plus the two revs the `histdiff` (historical) verb diffs
+/// between. Absent for argument-free verbs (status, numstat). The body is
+/// optional so a GET-shaped status call need not carry one.
 #[derive(serde::Deserialize, Default)]
 pub struct GitOpBody {
     #[serde(default)]
     pub path: Option<String>,
+    /// The `from` revision for the two-rev historical diff (`histdiff`).
+    #[serde(default)]
+    pub from: Option<String>,
+    /// The `to` revision for the two-rev historical diff (`histdiff`).
+    #[serde(default)]
+    pub to: Option<String>,
 }
 
 /// POST `/ops/git/{verb}` — the read-only git pass-through (dashboard-pipeline-
-/// wire W04.P10.S52): forward a whitelisted, read-only git verb through the
-/// bounded runner and the shared envelope helper, returning git's output
-/// VERBATIM inside `{data: {output, verb}}` with the tiers block. A
-/// non-whitelisted verb 403s before any subprocess; a git fault degrades to a
+/// wire W04.P10.S52; historical diff figma-parity-reconciliation S14): forward a
+/// whitelisted, read-only git verb through the bounded runner and the shared
+/// envelope helper, returning git's output VERBATIM inside `{data: {output,
+/// verb}}` with the tiers block. The `histdiff` verb runs a two-rev `git diff
+/// <from> <to> -- <path>` over the object DB (both revs and the path validated).
+/// A non-whitelisted verb 403s before any subprocess; a git fault degrades to a
 /// tiers-carrying error envelope. The engine implements no diff algorithm and
 /// exposes no mutating git verb — `engine-read-and-infer`.
 pub async fn ops_git(
@@ -419,8 +490,21 @@ pub async fn ops_git(
             format!("git verb `{verb}` is not whitelisted (read-only ops/git)"),
         ));
     };
-    let path = body.and_then(|Json(b)| b.path);
-    let args = git_args_for(&state, name, fixed, path.as_deref())?;
+    let GitOpBody { path, from, to } = body.map(|Json(b)| b).unwrap_or_default();
+    // A two-rev historical diff carries both revs; either alone is a 400 before
+    // any subprocess. `git_args_for` rejects revs handed to a non-rev verb.
+    let revs = match (from.as_deref(), to.as_deref()) {
+        (Some(f), Some(t)) => Some((f, t)),
+        (None, None) => None,
+        _ => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                "a historical diff requires BOTH `from` and `to` revisions".to_string(),
+            ));
+        }
+    };
+    let args = git_args_for(&state, name, fixed, path.as_deref(), revs)?;
     let output = run_git_bounded(
         &state,
         &git_invocation(),
@@ -805,16 +889,94 @@ mod tests {
         // W04.P09: the diff verb gets `-- <path>` so a path can never be read as
         // a flag; non-path verbs reject a supplied path; diff requires one.
         let (_dir, state) = sibling_state();
-        let diff_args =
-            git_args_for(&state, "diff", &["diff", "--no-color"], Some("src/a.rs")).unwrap();
+        let diff_args = git_args_for(
+            &state,
+            "diff",
+            &["diff", "--no-color"],
+            Some("src/a.rs"),
+            None,
+        )
+        .unwrap();
         assert_eq!(diff_args, vec!["diff", "--no-color", "--", "src/a.rs"]);
         // status takes no path.
         let status_args =
-            git_args_for(&state, "status", &["status", "--porcelain=v1"], None).unwrap();
+            git_args_for(&state, "status", &["status", "--porcelain=v1"], None, None).unwrap();
         assert_eq!(status_args, vec!["status", "--porcelain=v1"]);
         // status with a path is rejected, diff with no path is rejected.
-        assert!(git_args_for(&state, "status", &["status"], Some("x")).is_err());
-        assert!(git_args_for(&state, "diff", &["diff"], None).is_err());
+        assert!(git_args_for(&state, "status", &["status"], Some("x"), None).is_err());
+        assert!(git_args_for(&state, "diff", &["diff"], None, None).is_err());
+    }
+
+    #[test]
+    fn histdiff_builds_a_two_rev_diff_with_a_dash_dash_path() {
+        // S14: histdiff forms `diff --no-color <from> <to> -- <path>` from two
+        // SEPARATE validated revs; the path still follows `--` so it can never be
+        // read as a flag, and the revs precede the separator.
+        let (_dir, state) = sibling_state();
+        let args = git_args_for(
+            &state,
+            "histdiff",
+            &["diff", "--no-color"],
+            Some(".vault/plan/x.md"),
+            Some(("HEAD~1", "HEAD")),
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "diff",
+                "--no-color",
+                "HEAD~1",
+                "HEAD",
+                "--",
+                ".vault/plan/x.md"
+            ]
+        );
+        // histdiff requires BOTH revs and a path.
+        assert!(
+            git_args_for(&state, "histdiff", &["diff"], Some("x"), None).is_err(),
+            "histdiff without revs is rejected"
+        );
+        assert!(
+            git_args_for(&state, "histdiff", &["diff"], None, Some(("a", "b"))).is_err(),
+            "histdiff without a path is rejected"
+        );
+        // A non-rev verb handed revs is rejected (no silent ignore).
+        assert!(
+            git_args_for(&state, "diff", &["diff"], Some("x"), Some(("a", "b"))).is_err(),
+            "the working-tree diff verb takes no revs"
+        );
+    }
+
+    #[test]
+    fn validate_rev_rejects_flags_ranges_and_whitespace() {
+        // S14: a rev is a single bounded revision token — never a flag, a `..`
+        // range expression, or a whitespace-bearing argument channel.
+        let (_dir, state) = sibling_state();
+        for bad in [
+            "",
+            "-x",
+            "--output=/etc/passwd",
+            "HEAD~1..HEAD",
+            "a b",
+            "x...y",
+        ] {
+            assert!(
+                validate_rev(&state, bad).is_err(),
+                "`{bad}` must be rejected"
+            );
+        }
+        // Bounded ref-grammar tokens are accepted.
+        assert_eq!(validate_rev(&state, "HEAD").unwrap(), "HEAD");
+        assert_eq!(validate_rev(&state, "HEAD~3").unwrap(), "HEAD~3");
+        assert_eq!(
+            validate_rev(&state, "0123456789abcdef0123456789abcdef01234567").unwrap(),
+            "0123456789abcdef0123456789abcdef01234567"
+        );
+        assert_eq!(
+            validate_rev(&state, "refs/heads/main").unwrap(),
+            "refs/heads/main"
+        );
     }
 
     fn git_repo_state() -> (tempfile::TempDir, Arc<AppState>) {
@@ -878,6 +1040,7 @@ mod tests {
             Path("diff".to_string()),
             Some(Json(GitOpBody {
                 path: Some(".vault/plan/2026-06-14-g-plan.md".into()),
+                ..Default::default()
             })),
         )
         .await
@@ -887,6 +1050,106 @@ mod tests {
         assert!(
             diff.contains("body changed"),
             "unified diff forwarded: {diff}"
+        );
+    }
+
+    /// Build a two-commit fixture repo (one file rewritten between commits) for
+    /// the historical-diff tests, returning the dir guard, the warmed state, and
+    /// the in-tree file path.
+    fn histdiff_repo_state() -> (tempfile::TempDir, Arc<AppState>, &'static str) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let run = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "f")
+                .env("GIT_AUTHOR_EMAIL", "f@t")
+                .env("GIT_COMMITTER_NAME", "f")
+                .env("GIT_COMMITTER_EMAIL", "f@t")
+                .output()
+                .expect("git runs");
+            assert!(out.status.success(), "git {args:?}");
+        };
+        run(&["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        let file = ".vault/plan/2026-06-14-g-plan.md";
+        std::fs::write(root.join(file), "original line\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "first"]);
+        std::fs::write(root.join(file), "rewritten line\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-m", "second"]);
+        let state = crate::app::build_state(root.to_path_buf());
+        (dir, state, file)
+    }
+
+    #[tokio::test]
+    async fn histdiff_forwards_a_two_rev_historical_diff_verbatim() {
+        // S14: the bounded historical text-diff verb runs a two-rev
+        // `git diff <from> <to> -- <path>` over the object DB, forwarding git's
+        // output VERBATIM inside the envelope.
+        let (_dir, state, file) = histdiff_repo_state();
+        let result = ops_git(
+            State(state),
+            Path("histdiff".to_string()),
+            Some(Json(GitOpBody {
+                path: Some(file.into()),
+                from: Some("HEAD~1".into()),
+                to: Some("HEAD".into()),
+            })),
+        )
+        .await
+        .expect("histdiff forwards");
+        let Json(body) = result;
+        assert_eq!(body["data"]["verb"], "histdiff");
+        let diff = body["data"]["output"].as_str().unwrap();
+        // The two-rev diff names BOTH the removed original and the added rewrite.
+        assert!(diff.contains("-original line"), "removed line: {diff}");
+        assert!(diff.contains("+rewritten line"), "added line: {diff}");
+    }
+
+    #[tokio::test]
+    async fn histdiff_carries_the_tiers_block_on_success_and_error_envelopes() {
+        // S15: the historical-diff route carries the per-tier degradation block
+        // through the shared envelope helper on BOTH the success envelope and the
+        // error envelope (a missing rev is a 400 before any subprocess) —
+        // every-wire-response-carries-the-tiers-block.
+        let (_dir, state, file) = histdiff_repo_state();
+        let result = ops_git(
+            State(state.clone()),
+            Path("histdiff".to_string()),
+            Some(Json(GitOpBody {
+                path: Some(file.into()),
+                from: Some("HEAD~1".into()),
+                to: Some("HEAD".into()),
+            })),
+        )
+        .await
+        .expect("histdiff forwards");
+        let Json(body) = result;
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "tiers block on the historical-diff success envelope"
+        );
+
+        // A histdiff with a missing rev is a 400 BEFORE any subprocess, and the
+        // error envelope still carries the tiers block (shared helper).
+        let err = ops_git(
+            State(state),
+            Path("histdiff".to_string()),
+            Some(Json(GitOpBody {
+                path: Some(file.into()),
+                from: Some("HEAD~1".into()),
+                to: None,
+            })),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST, "missing rev → 400");
+        assert!(
+            err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+            "the 400 error envelope carries the tiers block"
         );
     }
 
