@@ -200,7 +200,7 @@ Rewrite the scene foundation: the connection-field render, category circles, and
 
 Rebuild the three node states (default, selected, filtered-out), the hover-card from the binding graph HoverCard frame, and selection and hover routed through the SceneController event channel.
 
-- [ ] `W03.P08.S47` - Rebuild the default node state render faithful to the binding Node-items frame; `frontend/src/scene/field/nodeSprites.ts`.
+- [x] `W03.P08.S47` - Rebuild the default node state render faithful to the binding Node-items frame; `frontend/src/scene/field/nodeSprites.ts`.
 - [ ] `W03.P08.S48` - Rebuild the selected node state with the single-accent selection ring per the binding frame; `frontend/src/scene/field/egoHighlight.ts`.
 - [ ] `W03.P08.S49` - Rebuild the filtered-out node state treatment per the binding frame; `frontend/src/scene/field/visibility.ts`.
 - [ ] `W03.P08.S50` - Rebuild the hover-card from the binding graph HoverCard frame 84:2 over the enriched node-evidence query; `frontend/src/app/right/menus/`.
@@ -210,7 +210,7 @@ Rebuild the three node states (default, selected, filtered-out), the hover-card 
 
 Rebuild the consolidated plain-language controls (Navigate, Layout, Zoom, Tune) from the binding graph Controls frame and the connection-drawing fidelity faithful to the binding graph Hero and Node-items frames.
 
-- [ ] `W03.P09.S52` - Rebuild the graph controls shell from the binding graph Controls frame 88:2 with the Navigate, Layout, Zoom, and Tune groups; `frontend/src/app/stage/GraphControls.tsx`.
+- [x] `W03.P09.S52` - Rebuild the graph controls shell from the binding graph Controls frame 88:2 with the Navigate, Layout, Zoom, and Tune groups; `frontend/src/app/stage/GraphControls.tsx`.
 - [ ] `W03.P09.S53` - Rebuild the Layout control to the binding Network, Tree, Grouped, and Timeline modes over the preserved layout-mode catalog; `frontend/src/app/stage/LensSelector.tsx`.
 - [ ] `W03.P09.S54` - Rebuild the Tune knobs (Spacing, Connection-reach, Clustering) mapped onto the preserved d3-force driver; `frontend/src/scene/field/forceLayout.ts`.
 - [ ] `W03.P09.S55` - Rebuild the Zoom and Navigate canvas controls per the binding Controls frame over the preserved camera state; `frontend/src/app/stage/CanvasControls.render.test.tsx`.

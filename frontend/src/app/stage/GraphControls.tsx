@@ -49,6 +49,15 @@
 // turns into a scene command. The panel fetches nothing, reads no raw `tiers`
 // block, holds no node shape. Icons are Lucide structural marks (the sanctioned
 // chrome family). Tokens only — no raw hex.
+//
+// W03.P09.S52 (figma-parity-reconciliation): rebuilt over the REGENERATED Figma
+// foundation. The type usages now read the Figma role-named scale (text-label /
+// text-caption) rather than the deprecated legacy aliases (text-xs / text-2xs)
+// the W01.P01.S10 migration scheduled for removal in W04. The radius and
+// elevation classes (rounded-vs-*, shadow-float/card) resolve onto the Figma
+// xs/sm/md/lg/pill radius and three-level elevation through the foundation
+// alias layer. The binding `graph/Controls` 88:2 group structure (Navigate /
+// Layout / Zoom / Tune) is preserved; S53 supplies the canonical Layout picker.
 
 import {
   ChevronDown,
@@ -279,7 +288,7 @@ function Segmented<T extends string>({
             tabIndex={seg.value === tabStopValue ? 0 : -1}
             onKeyDown={onKeyDown}
             onClick={() => onSelect(seg.value)}
-            className={`flex items-center justify-center rounded-vs-sm px-vs-2 py-vs-1 text-xs transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
+            className={`flex items-center justify-center rounded-vs-sm px-vs-2 py-vs-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
               isActive
                 ? "bg-paper-raised font-medium text-ink shadow-card"
                 : "text-ink-muted hover:text-ink"
@@ -335,7 +344,7 @@ function Slider({
       <span className="flex h-3.5 items-center justify-between">
         <span className="text-label text-ink-muted">{label}</span>
         {!ends && (
-          <span data-tabular className="text-2xs tabular-nums text-ink-faint">
+          <span data-tabular className="text-caption tabular-nums text-ink-faint">
             {display}
           </span>
         )}
@@ -356,7 +365,7 @@ function Slider({
         className="h-1 w-full cursor-pointer accent-accent"
       />
       {ends && (
-        <span className="flex justify-between text-2xs text-ink-faint">
+        <span className="flex justify-between text-caption text-ink-faint">
           <span>{ends[0]}</span>
           <span>{ends[1]}</span>
         </span>
@@ -415,7 +424,7 @@ function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
         aria-controls={panelId}
         title={label}
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-8 items-center gap-vs-1 rounded-vs-md px-vs-2 text-xs transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex h-8 items-center gap-vs-1 rounded-vs-md px-vs-2 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           open
             ? "bg-paper-sunken text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
