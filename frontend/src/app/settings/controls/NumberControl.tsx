@@ -2,6 +2,11 @@
 // range input (drag + keyboard arrows for free) bounded by the declared min/max
 // and step, with a tabular-numeral readout of the current value plus its unit.
 // Emits the integer as a decimal string (the wire form).
+//
+// W02.P06 (figma-parity-reconciliation): bound faithfully to the binding Figma
+// Kit Slider primitive (155:96). The native range track already reads its accent
+// from the semantic accent token and the readout from the canonical text-label
+// role utility, so no legacy alias shim remained to migrate.
 
 import { decodeInt } from "../../../stores/server/settingsSelectors";
 import type { ControlProps } from "./types";

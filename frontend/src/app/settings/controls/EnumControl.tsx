@@ -3,6 +3,11 @@
 // arrow-key movement and a grayscale-safe active cue (fill + weight via the
 // raised surface + medium text), mirroring the BrowserModeToggle pattern. The
 // active member reads without relying on hue.
+//
+// W02.P06 (figma-parity-reconciliation): rebuilt faithfully to the binding Figma
+// Kit SegmentedToggle primitive (137:31) on the canonical Figma radius/elevation
+// scales (rounded-fg-xs track + segments, shadow-fg-raised active segment) in
+// place of the legacy alias shims.
 
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRef } from "react";
@@ -34,7 +39,7 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
       role="radiogroup"
       aria-label={def.label}
       id={id}
-      className="flex shrink-0 flex-wrap gap-vs-0-5 rounded-vs-sm border border-rule bg-paper-sunken p-vs-0-5"
+      className="flex shrink-0 flex-wrap gap-vs-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-vs-0-5"
     >
       {members.map((member, index) => {
         const active = member === value;
@@ -54,9 +59,9 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(member)}
             onKeyDown={onKeyDown(index)}
-            className={`rounded-vs-sm px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
+            className={`rounded-fg-xs px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
               active
-                ? "bg-paper-raised font-medium text-ink shadow-card"
+                ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
                 : "text-ink-faint hover:text-ink-muted"
             }`}
           >
