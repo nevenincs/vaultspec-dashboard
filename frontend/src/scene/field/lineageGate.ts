@@ -13,11 +13,7 @@ import { lineageLayout } from "./lineageLayout";
 import { DAG_FIXTURE_PARAMS, toPositions } from "./hierarchyGate";
 import { generateLayeredDag } from "./scorecard/generators/layered";
 import { scoreSugiyamaLayout } from "./scorecard/metrics/sugiyamaMetrics";
-import {
-  type ScorecardVector,
-  buildScorecard,
-  evaluate,
-} from "./scorecard/scorecard";
+import { type ScorecardVector, buildScorecard, evaluate } from "./scorecard/scorecard";
 import { LINEAGE_THRESHOLDS } from "./scorecard/thresholds";
 import type { SceneEdgeData } from "../sceneController";
 

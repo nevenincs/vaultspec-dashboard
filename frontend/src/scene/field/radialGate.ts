@@ -13,11 +13,7 @@ import { radialLayout } from "./radialLayout";
 import { toPositions } from "./hierarchyGate";
 import { generateLayeredTree } from "./scorecard/generators/layered";
 import { scoreRadialLayout } from "./scorecard/metrics/radialMetrics";
-import {
-  type ScorecardVector,
-  buildScorecard,
-  evaluate,
-} from "./scorecard/scorecard";
+import { type ScorecardVector, buildScorecard, evaluate } from "./scorecard/scorecard";
 import { RADIAL_THRESHOLDS } from "./scorecard/thresholds";
 
 /** The fixed seed the radial gate's layered-tree fixture is generated from. */

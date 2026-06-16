@@ -15,11 +15,7 @@ import { hierarchicalLayout } from "./hierarchicalLayout";
 import { generateLayeredDag } from "./scorecard/generators/layered";
 import { scoreSugiyamaLayout } from "./scorecard/metrics/sugiyamaMetrics";
 import type { Position } from "./scorecard/metrics/shared";
-import {
-  type ScorecardVector,
-  buildScorecard,
-  evaluate,
-} from "./scorecard/scorecard";
+import { type ScorecardVector, buildScorecard, evaluate } from "./scorecard/scorecard";
 import { HIERARCHY_THRESHOLDS } from "./scorecard/thresholds";
 
 /** The fixed seed the hierarchy gate's DAG fixture is generated from. */

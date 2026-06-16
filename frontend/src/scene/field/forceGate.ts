@@ -11,21 +11,13 @@
 // ceiling backstopping the driver's freeze, and the metric module bounds its own
 // O(N^2) terms with a fixed-seed pair sample.
 
-import {
-  FieldLayout,
-  type FrameScheduler,
-  type LayoutEdgeRef,
-} from "./forceLayout";
-import type { NodePosition } from "./positionCache";
+import { FieldLayout, type FrameScheduler, type LayoutEdgeRef } from "./forceLayout";
+import type { NodePosition } from "../positionCache";
 import { generateSbm } from "./scorecard/generators/sbm";
 import { scoreForceLayout } from "./scorecard/metrics/forceMetrics";
 import type { Position } from "./scorecard/metrics/shared";
 import { makePrng } from "./scorecard/prng";
-import {
-  type ScorecardVector,
-  buildScorecard,
-  evaluate,
-} from "./scorecard/scorecard";
+import { type ScorecardVector, buildScorecard, evaluate } from "./scorecard/scorecard";
 import { FORCE_THRESHOLDS } from "./scorecard/thresholds";
 
 /** The fixed seed the force gate's fixture and warm-start are generated from. */

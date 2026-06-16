@@ -14,6 +14,11 @@
 // mode without code change elsewhere.
 
 import { projectTo2D, semanticProjection } from "./semanticLayout";
+import { generateBlobs } from "./scorecard/generators/blobs";
+import { scoreSemanticLayout } from "./scorecard/metrics/semanticMetrics";
+import type { Position } from "./scorecard/metrics/shared";
+import { type ScorecardVector, buildScorecard, evaluate } from "./scorecard/scorecard";
+import { SEMANTIC_THRESHOLDS } from "./scorecard/thresholds";
 import type { SceneNodeData } from "../sceneController";
 
 /** The node-ceiling the bounded wire serves at document granularity (the slice
@@ -230,3 +235,69 @@ export const SEMANTIC_MODE_GATE: SemanticGateVerdict = runSemanticGate();
 // A small static guard so projectTo2D is exercised even if the gate fixture path
 // changes; keeps the projection entry point referenced from the gate module.
 export const __GATE_PROJECTION_REF = projectTo2D;
+
+// ---------------------------------------------------------------------------
+// Formalized scorecard composite (graph-viz-scorecard ADR, W01.P03.S19).
+//
+// The ADR's section 2 ("the existing gate is already a named metric") formalizes
+// the legacy single-ratio separation gate into the literature-backed semantic
+// metric set: trustworthiness, continuity, Q_NX, neighbourhood-hit, silhouette,
+// and nearest-centroid. This gate emits that composite as a `ScorecardVector`,
+// gated on the per-metric thresholds and never on an aggregate — the same
+// scorecard contract every other layout's gate honours. It runs the REAL semantic
+// projection (`semanticProjection` -> `projectTo2D`) over a fixed-seed make_blobs
+// mixture and scores the projected 2D positions against the planted high-dim
+// vectors and labels with the real `scoreSemanticLayout` metric module.
+//
+// This is ADDITIVE: the existing `runSemanticGate`, `runSemanticGateOnRealData`,
+// `SEMANTIC_MODE_GATE`, and the projection-time/separation verdicts above are kept
+// intact for their current callers (the representation dispatcher reads
+// `SEMANTIC_MODE_GATE.shipped`; `liveAdapters.test.ts` feeds the real-data gate).
+// The composite is the formalized quality vector the scorecard harness consumes.
+// ---------------------------------------------------------------------------
+
+/** The fixed seed the semantic gate's make_blobs fixture is generated from. */
+export const SEMANTIC_GATE_SCORECARD_SEED = 7;
+
+/** The make_blobs fixture parameters: four Gaussian clusters in 16-D, a moderate
+ *  cluster_std so the projection has real structure to preserve (the difficulty
+ *  knob the W01.P04 calibration sweeps). */
+const SCORECARD_FIXTURE = {
+  count: 90,
+  dims: 16,
+  clusters: 4,
+  clusterStd: 0.6,
+  seed: SEMANTIC_GATE_SCORECARD_SEED,
+  centerSpread: 10,
+} as const;
+
+/**
+ * Run the formalized semantic scorecard composite over the fixed-seed make_blobs
+ * mixture: build the fixture, project it with the REAL `semanticProjection`, score
+ * the projection against the planted vectors and labels with the real
+ * `scoreSemanticLayout`, and emit the `ScorecardVector` gated on the per-metric
+ * thresholds. Pure and byte-reproducible: the seed fixes the fixture and the
+ * projection is deterministic.
+ */
+export function runSemanticScorecardGate(): ScorecardVector {
+  const fx = generateBlobs(SCORECARD_FIXTURE);
+  const nodes: SceneNodeData[] = fx.vectors.map((v, i) => ({
+    id: `sem-${i}`,
+    kind: "adr",
+    embedding: v,
+  }));
+  const { positions } = semanticProjection(nodes);
+  const orderedPositions: Position[] = nodes.map(
+    (n) => positions.get(n.id) ?? { x: 0, y: 0 },
+  );
+  const metrics = scoreSemanticLayout(fx.vectors, orderedPositions, fx.labels);
+  // Drop the reported-only diagnostic `qnxK` (the chosen K, not a [0,1] quality)
+  // so it is not evaluated as a gating metric.
+  const { qnxK: _qnxK, ...gating } = metrics;
+  void _qnxK;
+  const results = evaluate(
+    gating as unknown as Record<string, number>,
+    SEMANTIC_THRESHOLDS,
+  );
+  return buildScorecard("semantic", results, SEMANTIC_GATE_SCORECARD_SEED);
+}
