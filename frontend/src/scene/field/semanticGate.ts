@@ -17,7 +17,12 @@ import { projectTo2D, semanticProjection } from "./semanticLayout";
 import { generateBlobs } from "./scorecard/generators/blobs";
 import { scoreSemanticLayout } from "./scorecard/metrics/semanticMetrics";
 import type { Position } from "./scorecard/metrics/shared";
-import { type ScorecardVector, buildScorecard, evaluate } from "./scorecard/scorecard";
+import {
+  type MetricResult,
+  type ScorecardVector,
+  buildScorecard,
+  evaluate,
+} from "./scorecard/scorecard";
 import { SEMANTIC_THRESHOLDS } from "./scorecard/thresholds";
 import type { SceneNodeData } from "../sceneController";
 
@@ -53,6 +58,12 @@ export const SEMANTIC_GATE_REAL_SEPARATION_MIN = 1.2;
  */
 export const SEMANTIC_GATE_DATA_PRESENCE_MIN = 0.5;
 
+/** The fixed seed the semantic gate's make_blobs fixture is generated from, and
+ *  the seed echoed in the real-data verdict's scorecard (the real path carries no
+ *  PRNG of its own — the served vectors ARE the fixture — so it echoes the
+ *  canonical gate seed for a stable, comparable vector). */
+export const SEMANTIC_GATE_SCORECARD_SEED = 7;
+
 export interface SemanticGateVerdict {
   /** True when both criteria pass: the mode ships in v1. */
   shipped: boolean;
@@ -65,22 +76,35 @@ export interface SemanticGateVerdict {
 }
 
 /**
- * The real-data gate verdict (graph-semantic-embeddings ADR D6 re-spec): the
- * separation AND a data-presence criterion measured against a captured REAL
- * served slice (run through the same `adaptGraphEmbeddings`/`sceneMapping` path
- * the app uses — the feeding is done by the consumer test per
+ * The real-data gate verdict (graph-node-representation ADR D2; graph-semantic-
+ * embeddings ADR D6 re-spec): the SHIPPING Meaning verdict, computed against a
+ * captured REAL served slice (run through the same `adaptGraphEmbeddings`/
+ * `sceneMapping` path the app uses — the feeding is done by the consumer test per
  * mock-mirrors-live-wire-shape, so this scene module stays stores-free and
- * operates on the already-mapped `SceneNodeData[]`). The synthetic
- * `buildGateSlice`/`runSemanticGate` is retained ONLY for the projection-time
- * budget; this is what proves the mode does not ship on an empty path.
+ * operates on the already-mapped `SceneNodeData[]`).
+ *
+ * D2 promotes the FORMALIZED scorecard composite (trustworthiness / continuity /
+ * `Q_NX` + neighbourhood-hit + silhouette + nearest-centroid, each above its
+ * calibrated `SEMANTIC_THRESHOLDS` floor) to the verdict: the mode ships when the
+ * composite passes (the per-metric AND, never an aggregate) AND the embedding-
+ * presence floor is met. The synthetic `buildGateSlice`/`runSemanticGate` is
+ * retained ONLY as the projection-time + reproducibility guard; this composite is
+ * the availability verdict, and it cannot report shipped on an empty path (the
+ * presence floor) nor on a path that projects without preserving meaning (the
+ * composite).
  */
 export interface SemanticRealDataVerdict {
-  /** True when BOTH the data-presence floor and the real-data separation floor
-   *  pass: the mode is real (not the unserved-embedding fallback ring). */
+  /** True when BOTH the embedding-presence floor and the formalized scorecard
+   *  composite pass: the mode is real (not the unserved-embedding fallback ring)
+   *  and the projection preserves meaning above the calibrated floors. */
   shipped: boolean;
   /** Fraction of nodes carrying a real embedding (1 - fallback fraction). */
   presence: number;
-  /** Measured cluster-separation over the real served vectors. */
+  /** The formalized scorecard composite over the REAL projected positions: the
+   *  per-metric pass/fail vector D2 promotes to the verdict (never an aggregate). */
+  scorecard: ScorecardVector;
+  /** Mean nearest-centroid-style cluster separation over the real projected
+   *  positions, retained as a reported-only diagnostic (NOT the gate). */
   separation: number;
   /** Human reason, especially when held. */
   reason: string;
@@ -187,15 +211,60 @@ export function dataPresence(totalNodes: number, fallbackCount: number): number 
 }
 
 /**
- * Run the REAL-DATA gate over a captured served slice (ADR D6 re-spec): the nodes
- * are the app's `SceneNodeData`, already carrying their real embeddings via the
- * same `adaptGraphEmbeddings`/`sceneMapping` path the app uses (the consumer test
- * feeds a captured live sample through that path, then calls this). It measures
- * BOTH the data-presence fraction and the cluster separation over the REAL
- * vectors, and ships only when BOTH clear their floors — so the gate cannot
- * report shipped on a path that delivers no embeddings (the synthetic-only blind
- * spot D6 closes). `labelOf` assigns each node a cluster label (e.g. its feature)
- * so separation is measurable; nodes without a label are ignored for separation.
+ * Score a set of REAL high-dimensional embeddings projected to 2D against the
+ * formalized semantic metric set and emit the gated `ScorecardVector` (the ONE
+ * scoring path D2 promotes to the verdict, shared by the real-data gate and the
+ * synthetic scorecard gate). `vectors[i]`/`positions[i]`/`labels[i]` are index-
+ * aligned; the reported-only `qnxK` diagnostic is dropped before evaluation so it
+ * never gates, and the remaining metrics are evaluated against the calibrated
+ * `SEMANTIC_THRESHOLDS` (per-metric AND in `buildScorecard`, never an aggregate).
+ */
+export function scoreSemanticComposite(
+  vectors: readonly number[][],
+  positions: readonly Position[],
+  labels: readonly number[],
+  seed: number,
+): ScorecardVector {
+  const metrics = scoreSemanticLayout(vectors, positions, labels);
+  // Drop the reported-only diagnostic `qnxK` (the chosen K, not a [0,1] quality)
+  // so it is not evaluated as a gating metric.
+  const { qnxK: _qnxK, ...gating } = metrics;
+  void _qnxK;
+  const results = evaluate(
+    gating as unknown as Record<string, number>,
+    SEMANTIC_THRESHOLDS,
+  );
+  return buildScorecard("semantic", results, seed);
+}
+
+/** Build the index-aligned label vector for a slice from a node->label map; an
+ *  unlabelled node defaults to a single shared bucket so the metrics still run
+ *  (separation/silhouette/centroid then read it as one cluster). */
+function labelsFor(
+  nodes: readonly SceneNodeData[],
+  labelOf: Map<string, number>,
+): number[] {
+  return nodes.map((n) => labelOf.get(n.id) ?? 0);
+}
+
+/**
+ * Run the REAL-DATA SHIPPING gate over a captured served slice (graph-node-
+ * representation ADR D2): the nodes are the app's `SceneNodeData`, already
+ * carrying their real embeddings via the same `adaptGraphEmbeddings`/
+ * `sceneMapping` path the app uses (the consumer test feeds a captured live
+ * sample through that path, then calls this).
+ *
+ * D2 makes the FORMALIZED scorecard composite the verdict: it projects the real
+ * vectors with the REAL `semanticProjection`, scores the projection against the
+ * planted vectors + labels with the real `scoreSemanticLayout`, and ships only
+ * when the composite passes its per-metric `SEMANTIC_THRESHOLDS` floors (the AND,
+ * never an aggregate) AND the embedding-presence floor is met — so the gate
+ * cannot report shipped on a path that delivers no embeddings (the empty-path
+ * blind spot) NOR on a path that projects without preserving meaning. `labelOf`
+ * assigns each node a cluster label (e.g. its feature) so the composite's
+ * label-aware metrics are measurable; the single-ratio separation is retained
+ * only as a reported diagnostic. The synthetic `buildGateSlice`/`runSemanticGate`
+ * stays the determinism + projection-time guard, not the availability verdict.
  */
 export function runSemanticGateOnRealData(
   nodes: readonly SceneNodeData[],
@@ -204,13 +273,37 @@ export function runSemanticGateOnRealData(
   const { positions, fallbackIds } = semanticProjection(nodes);
   const presence = dataPresence(nodes.length, fallbackIds.length);
   const separation = clusterSeparation(positions, labelOf);
+
+  // Score the formalized composite over the REAL projected positions: only the
+  // embedded nodes carry meaning to preserve, so the composite is computed over
+  // the present-embedding subset (the fallback-ring nodes carry no vector to rank
+  // against). Presence is the separate empty-path floor.
+  const embedded = nodes.filter((n) => !fallbackIds.includes(n.id));
+  const vectors = embedded.map((n) => n.embedding ?? []);
+  const orderedPositions: Position[] = embedded.map(
+    (n) => positions.get(n.id) ?? { x: 0, y: 0 },
+  );
+  const labels = labelsFor(embedded, labelOf);
+  const scorecard = scoreSemanticComposite(
+    vectors,
+    orderedPositions,
+    labels,
+    SEMANTIC_GATE_SCORECARD_SEED,
+  );
+
   const presenceOk = presence >= SEMANTIC_GATE_DATA_PRESENCE_MIN;
-  const sepOk = separation >= SEMANTIC_GATE_REAL_SEPARATION_MIN;
-  const shipped = presenceOk && sepOk;
+  const compositeOk = scorecard.passed;
+  const shipped = presenceOk && compositeOk;
+
+  const failing: MetricResult[] = scorecard.metrics.filter((m) => !m.pass);
   const reason = shipped
-    ? `semantic mode REAL-DATA SHIPPED: presence ${(presence * 100).toFixed(0)}% >= ${(SEMANTIC_GATE_DATA_PRESENCE_MIN * 100).toFixed(0)}%; separation ${separation.toFixed(2)} >= ${SEMANTIC_GATE_REAL_SEPARATION_MIN}`
-    : `semantic mode REAL-DATA HELD: ${!presenceOk ? `presence ${(presence * 100).toFixed(0)}% under ${(SEMANTIC_GATE_DATA_PRESENCE_MIN * 100).toFixed(0)}% (empty/fallback path)` : `separation ${separation.toFixed(2)} under ${SEMANTIC_GATE_REAL_SEPARATION_MIN}`}`;
-  return { shipped, presence, separation, reason };
+    ? `semantic mode REAL-DATA SHIPPED: presence ${(presence * 100).toFixed(0)}% >= ${(SEMANTIC_GATE_DATA_PRESENCE_MIN * 100).toFixed(0)}%; composite passed (${scorecard.metrics.length} metrics)`
+    : !presenceOk
+      ? `semantic mode REAL-DATA HELD: presence ${(presence * 100).toFixed(0)}% under ${(SEMANTIC_GATE_DATA_PRESENCE_MIN * 100).toFixed(0)}% (empty/fallback path)`
+      : `semantic mode REAL-DATA HELD: composite below floor [${failing
+          .map((m) => `${m.name} ${m.value.toFixed(2)}<${m.threshold}`)
+          .join(", ")}]`;
+  return { shipped, presence, scorecard, separation, reason };
 }
 
 /**
@@ -219,16 +312,18 @@ export function runSemanticGateOnRealData(
  * representation dispatcher reads `.shipped` to decide whether the semantic mode
  * is available or downgraded to connectivity.
  *
- * Re-spec (graph-semantic-embeddings ADR D6): the synthetic `buildGateSlice`
- * fixture is now retained ONLY for the projection-TIME budget here. The
- * data-presence + real-data separation criteria — proving the mode does not ship
- * on an EMPTY (unserved-embedding) path — run against a captured REAL served
- * slice via `runSemanticGateOnRealData`, fed through the real
- * `adaptGraphEmbeddings`/`sceneMapping` path by the consumer test
- * (`liveAdapters.test.ts`, mock-mirrors-live-wire-shape). This module-level
- * verdict keeps the synthetic projection-budget + separation measurement (the
- * dispatcher's availability decision); the real-data gate is the honesty check
- * the original synthetic-only gate was missing.
+ * Promotion (graph-node-representation ADR D2; graph-semantic-embeddings ADR D6):
+ * the synthetic `buildGateSlice` fixture is retained ONLY as the determinism +
+ * projection-TIME guard here (a reproducible perf/time floor that fences CI). The
+ * SHIPPING Meaning verdict — the embedding-presence floor AND the FORMALIZED
+ * scorecard composite (trustworthiness / continuity / `Q_NX` + neighbourhood-hit
+ * + silhouette + nearest-centroid against the calibrated `SEMANTIC_THRESHOLDS`) —
+ * runs against a captured REAL served slice via `runSemanticGateOnRealData`, fed
+ * through the real `adaptGraphEmbeddings`/`sceneMapping` path by the consumer test
+ * (`semanticGate.test.ts` / `liveAdapters.test.ts`, mock-mirrors-live-wire-shape).
+ * This module-level verdict keeps ONLY the synthetic projection-budget measurement
+ * (the determinism + time guard); it is NOT the availability verdict — availability
+ * is the real-data composite plus the `tiers` truth read in the stores layer.
  */
 export const SEMANTIC_MODE_GATE: SemanticGateVerdict = runSemanticGate();
 
@@ -254,10 +349,9 @@ export const __GATE_PROJECTION_REF = projectTo2D;
 // intact for their current callers (the representation dispatcher reads
 // `SEMANTIC_MODE_GATE.shipped`; `liveAdapters.test.ts` feeds the real-data gate).
 // The composite is the formalized quality vector the scorecard harness consumes.
+// `SEMANTIC_GATE_SCORECARD_SEED` is declared above (beside the gate constants) so
+// the real-data verdict and this synthetic scorecard gate share one seed echo.
 // ---------------------------------------------------------------------------
-
-/** The fixed seed the semantic gate's make_blobs fixture is generated from. */
-export const SEMANTIC_GATE_SCORECARD_SEED = 7;
 
 /** The make_blobs fixture parameters: four Gaussian clusters in 16-D, a moderate
  *  cluster_std so the projection has real structure to preserve (the difficulty
@@ -290,14 +384,10 @@ export function runSemanticScorecardGate(): ScorecardVector {
   const orderedPositions: Position[] = nodes.map(
     (n) => positions.get(n.id) ?? { x: 0, y: 0 },
   );
-  const metrics = scoreSemanticLayout(fx.vectors, orderedPositions, fx.labels);
-  // Drop the reported-only diagnostic `qnxK` (the chosen K, not a [0,1] quality)
-  // so it is not evaluated as a gating metric.
-  const { qnxK: _qnxK, ...gating } = metrics;
-  void _qnxK;
-  const results = evaluate(
-    gating as unknown as Record<string, number>,
-    SEMANTIC_THRESHOLDS,
+  return scoreSemanticComposite(
+    fx.vectors,
+    orderedPositions,
+    fx.labels,
+    SEMANTIC_GATE_SCORECARD_SEED,
   );
-  return buildScorecard("semantic", results, SEMANTIC_GATE_SCORECARD_SEED);
 }

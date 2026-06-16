@@ -1297,11 +1297,22 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
   const DIM = 8;
   /** A deterministic feature-clustered dense vector — the SHAPE rag's stored
    *  vectors take (a per-feature base direction + tiny per-doc jitter), so the
-   *  real-data projection separates feature meaning-clusters. */
+   *  real-data projection separates feature meaning-clusters.
+   *
+   *  W03.P08.S37: the gate now ships on the FORMALIZED scorecard composite
+   *  (trustworthiness / continuity / Q_NX + neighbourhood-hit + silhouette +
+   *  nearest-centroid) rather than a single separation ratio, so the fixture must
+   *  produce clusters whose 2D PCA projection preserves local RANK structure (a
+   *  high-separation-but-rank-torn sample legitimately fails the composite — the
+   *  honesty the composite adds). Each feature gets a distinct, near-orthogonal
+   *  base direction on its own axis with small per-doc jitter, so the clouds are
+   *  isotropic and linearly separable: the projection preserves neighbourhoods. */
   function clusterVector(featureIndex: number, docIndex: number): number[] {
     const v: number[] = [];
     for (let d = 0; d < DIM; d++) {
-      const center = Math.sin((featureIndex + 1) * (d + 1) * 0.7);
+      // Distinct base direction per feature: a strong signal on the feature's own
+      // axis, near-zero elsewhere — well-separated isotropic clouds.
+      const center = d === featureIndex % DIM ? 8 : 0;
       const jitter = Math.cos((docIndex + 1) * (d + 1) * 0.3) * 0.08;
       v.push(center + jitter);
     }
@@ -1334,12 +1345,15 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
   }
 
   it("carries generation/tiers and feeds the projection gate to SHIP on real clusters", () => {
-    const { envelope, labelOf } = liveEnvelope(5, 8);
+    // 4 features × 24 docs: each cluster comfortably exceeds the rank metrics'
+    // neighbourhood size (SEMANTIC_K = 10), so the composite's neighbourhood-hit /
+    // continuity metrics can clear their floors over a real, well-separated slice.
+    const { envelope, labelOf } = liveEnvelope(4, 24);
     // The REAL client path: unwrap the live envelope, then adapt.
     const adapted = adaptGraphEmbeddings(unwrapEnvelope(envelope));
     expect(adapted.generation).toBe(7);
     expect(adapted.tiers.semantic.available).toBe(true);
-    expect(adapted.embeddings).toHaveLength(40);
+    expect(adapted.embeddings).toHaveLength(96);
 
     // Merge the adapted vectors onto the served nodes and map through the REAL
     // sceneMapping path the app uses (engineNodeToScene maps `embedding`).
@@ -1349,10 +1363,13 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
       return engineNodeToScene(node);
     });
 
-    // The real-data gate: presence (no empty path) AND separation over the REAL
-    // projected vectors. The clustered sample ships.
+    // The real-data SHIPPING gate (W03.P08.S37): presence (no empty path) AND the
+    // FORMALIZED scorecard composite over the REAL projected vectors. The
+    // well-separated, rank-preserving clustered sample clears the composite and
+    // ships; `separation` is retained as a reported diagnostic (still > 0).
     const verdict = runSemanticGateOnRealData(sceneNodes, labelOf);
     expect(verdict.presence).toBe(1);
+    expect(verdict.scorecard.passed).toBe(true);
     expect(verdict.shipped).toBe(true);
     expect(verdict.separation).toBeGreaterThan(0);
   });

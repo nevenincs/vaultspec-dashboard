@@ -617,19 +617,34 @@ export function useSalienceSliceView(
 // honest fallback ring rather than flapping offline on a transport blip.
 
 /** The interpreted semantic-embeddings view the scene consumes: loading /
- *  unavailable / the embeddings keyed by node id. `unavailable` is a DESIGNED
- *  state (rag/Qdrant down → the semantic tier reports unavailable), never an
- *  anonymous error; the scene rings every node in the honest fallback. */
+ *  unavailable / available / the embeddings keyed by node id. `unavailable` is a
+ *  DESIGNED state (rag/Qdrant down → the semantic tier reports unavailable), never
+ *  an anonymous error; the scene rings every node in the honest fallback. */
 export interface SemanticEmbeddingsView {
   /** The embedding read is in flight with no held vectors. */
   loading: boolean;
   /**
    * Designed degradation: the semantic tier is unavailable (rag/Qdrant down).
    * Read from the served `tiers` block (success OR a tiers-bearing error
-   * envelope, fresh error winning), NEVER from a bare transport fault. When true
-   * the scene draws the fallback ring as honest absence.
+   * envelope, fresh error winning), NEVER from a bare transport fault and NEVER
+   * inferred from an empty embeddings array. When true the scene draws the
+   * fallback ring as honest absence (the designed Held state).
    */
   unavailable: boolean;
+  /**
+   * Meaning availability (graph-node-representation ADR D2): the mode is real and
+   * ready to ship ONLY when BOTH the embedding-presence floor is met AND the
+   * `tiers` search/semantic tier reports available. An empty array with the tier
+   * UP is NOT `unavailable` (held is read from tiers alone) — it is simply not yet
+   * `available` (the presence floor is unmet). This is the positive availability
+   * gate; `unavailable` is the negative (held) one, and they are distinct.
+   */
+  available: boolean;
+  /** The number of served nodes carrying a real vector (the presence count the
+   *  availability floor reads). The fraction-of-node-set floor is enforced in the
+   *  scene gate where the full node set is known; here the stores layer reads the
+   *  count the response actually carried. */
+  embeddingCount: number;
   /** The served vectors keyed by node id — the scene merges these onto its nodes
    *  for the UMAP projection. Empty while loading/unavailable. */
   embeddings: Map<string, number[]>;
@@ -641,13 +656,34 @@ export interface SemanticEmbeddingsView {
 const SEMANTIC_TIER = "semantic";
 
 /**
+ * The minimum count of served vectors for the stores-layer embedding-presence
+ * floor (graph-node-representation ADR D2). At least this many nodes must carry a
+ * real vector before Meaning is `available` — so the mode never reports ready on a
+ * path that delivered no embeddings (the unserved-embedding blind spot). This is a
+ * POSITIVE availability floor, NOT a held trigger: a response below it with the
+ * tier UP is "not yet available", never "unavailable" (held is read from `tiers`
+ * alone). The fraction-of-node-set floor (`SEMANTIC_GATE_DATA_PRESENCE_MIN`) is
+ * enforced in the scene gate where the full served node set is in hand.
+ */
+export const MEANING_EMBEDDING_PRESENCE_FLOOR = 1;
+
+/**
  * Derive the semantic-embeddings view from the embedding query's data + error +
  * pending flags, reading the `semantic` tier ONLY here in the stores layer so the
- * scene consumes interpreted truth, never the raw `tiers` block. A served block
- * (success or a tiers-bearing error envelope, fresh error winning via
- * `tiersFromQuery`) marking `semantic` unavailable degrades; a tiers-less
- * transport fault is NOT rendered as unavailable here — that is the query's error
- * state. The embeddings are keyed by node id for the scene's per-node merge.
+ * scene consumes interpreted truth, never the raw `tiers` block.
+ *
+ * Held (`unavailable`) is read from the `tiers` block ALONE (success block, or a
+ * tiers-bearing error envelope with FRESH error tiers winning via `tiersFromQuery`
+ * — degradation-is-read-from-tiers-not-guessed-from-errors): a served block
+ * marking `semantic` unavailable degrades; a tiers-less transport fault is NOT
+ * rendered as unavailable here (that is the query's error state), and an empty
+ * embeddings array is NEVER read as held.
+ *
+ * Available (Meaning ships, ADR D2) requires BOTH the embedding-presence floor
+ * (`MEANING_EMBEDDING_PRESENCE_FLOOR` served vectors) AND the `semantic` tier
+ * reporting available — so the mode reports ready only on a path that actually
+ * delivered embeddings AND whose backend tier is up. The embeddings are keyed by
+ * node id for the scene's per-node merge.
  */
 export function deriveSemanticEmbeddingsView(
   data: EmbeddingsResponse | undefined,
@@ -656,16 +692,39 @@ export function deriveSemanticEmbeddingsView(
   enabled: boolean,
 ): SemanticEmbeddingsView {
   if (!enabled) {
-    return { loading: false, unavailable: false, embeddings: new Map(), generation: 0 };
+    return {
+      loading: false,
+      unavailable: false,
+      available: false,
+      embeddingCount: 0,
+      embeddings: new Map(),
+      generation: 0,
+    };
   }
   const tiers = tiersFromQuery({ data, error });
   const semantic = tiers?.[SEMANTIC_TIER];
+  // Held is read from the tiers block ALONE: an explicit available:false marks the
+  // tier down. A tiers-less transport fault and an empty array are NOT held.
   const unavailable = semantic !== undefined && semantic.available === false;
+  // The tier is affirmatively up only when the block reports it available:true.
+  // (An absent semantic tier is neither up nor explicitly down — it cannot satisfy
+  // the positive availability gate, matching contract §2 absence-is-not-available.)
+  const tierUp = semantic !== undefined && semantic.available === true;
   const embeddings = new Map<string, number[]>();
   if (!unavailable && data) {
     for (const e of data.embeddings) embeddings.set(e.node_id, e.vector);
   }
-  return { loading, unavailable, embeddings, generation: data?.generation ?? 0 };
+  const embeddingCount = embeddings.size;
+  const presenceFloorMet = embeddingCount >= MEANING_EMBEDDING_PRESENCE_FLOOR;
+  const available = tierUp && presenceFloorMet;
+  return {
+    loading,
+    unavailable,
+    available,
+    embeddingCount,
+    embeddings,
+    generation: data?.generation ?? 0,
+  };
 }
 
 /**

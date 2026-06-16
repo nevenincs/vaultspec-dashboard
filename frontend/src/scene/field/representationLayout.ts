@@ -23,7 +23,7 @@ import { communityLayout } from "./communityLayout";
 import { hierarchicalLayout } from "./hierarchicalLayout";
 import { lineageLayout } from "./lineageLayout";
 import { radialLayout } from "./radialLayout";
-import { SEMANTIC_MODE_GATE } from "./semanticGate";
+import { SEMANTIC_GATE_DATA_PRESENCE_MIN, SEMANTIC_MODE_GATE } from "./semanticGate";
 import { semanticLayout } from "./semanticLayout";
 
 /**
@@ -168,15 +168,32 @@ export function representationLayout(
       return { positions, applied: "community" };
     }
     case "semantic": {
-      // v1-gated: the semantic UMAP mode ships only when the measured gate passes
-      // (worker projection within the layout time budget AND clusters separate
-      // legibly). Until then it is HELD and the dispatcher downgrades to
-      // connectivity — never a half-built mode presented as complete.
+      // v1-gated, TWO honesty gates (graph-node-representation ADR D2):
+      //
+      // (1) The synthetic determinism + TIME guard: the measured module-load gate
+      //     proves the worker projection lands inside the layout time budget and is
+      //     reproducible. A regressed budget HOLDS the mode (it stays the perf/time
+      //     floor, not the availability verdict).
+      // (2) The real-data EMBEDDING-PRESENCE floor: when the served slice carries
+      //     no real embeddings (rag not indexed / semantic tier held — the stores
+      //     layer reads that absence from the `tiers` block, never from the empty
+      //     array), every node falls into the fallback ring and the projection is
+      //     not a meaning cloud. The mode then degrades to the designed HELD state
+      //     (connectivity) rather than rendering an all-fallback ring as if it were
+      //     the semantic layout — honest absence, never an error.
       if (!SEMANTIC_MODE_GATE.shipped) {
         return {
           positions: null,
           applied: "connectivity",
           downgradeReason: SEMANTIC_MODE_GATE.reason,
+        };
+      }
+      const presence = embeddingPresence(nodes);
+      if (presence < SEMANTIC_GATE_DATA_PRESENCE_MIN) {
+        return {
+          positions: null,
+          applied: "connectivity",
+          downgradeReason: `semantic mode HELD: embeddings absent (${(presence * 100).toFixed(0)}% present, under ${(SEMANTIC_GATE_DATA_PRESENCE_MIN * 100).toFixed(0)}% floor) — meaning unavailable, rendering connectivity`,
         };
       }
       const positions = semanticLayout(nodes);
@@ -186,4 +203,24 @@ export function representationLayout(
     default:
       return { positions: null, applied: "connectivity" };
   }
+}
+
+/**
+ * The fraction of a served slice carrying a REAL embedding (the embedding-presence
+ * floor input for the semantic Held gate, graph-node-representation ADR D2). A node
+ * "carries an embedding" exactly when `semanticLayout` would project it rather than
+ * ring it in the fallback — i.e. `embedding` is a non-empty array (mirroring
+ * `semanticLayout`'s embedded/fallback partition). An empty slice has presence 0 (no
+ * meaning to show); an all-embedded slice has presence 1. Presence is read from the
+ * nodes the dispatcher was handed — the absence the stores layer derived from the
+ * `tiers` block (never from a transport error) reaches here as nodes with no
+ * `embedding` — so this function stays pure and framework-free.
+ */
+export function embeddingPresence(nodes: readonly SceneNodeData[]): number {
+  if (nodes.length === 0) return 0;
+  let embedded = 0;
+  for (const n of nodes) {
+    if (Array.isArray(n.embedding) && n.embedding.length > 0) embedded++;
+  }
+  return embedded / nodes.length;
 }
