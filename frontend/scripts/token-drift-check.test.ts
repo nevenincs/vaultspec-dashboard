@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 // Extensionless imports: the test runs under Vite (vitest), which resolves the .ts files;
 // the runtime scripts keep explicit .ts extensions for Node's type stripping.
-import { generateRegions } from "../style-dictionary.config";
+import { generateFoundation, generateRegions } from "../style-dictionary.config";
 import { compareDecls, parseScopedDecls } from "./token-css-diff";
 
 describe("token drift check", () => {
@@ -41,5 +41,38 @@ describe("token drift check", () => {
     const { colors } = await generateRegions();
     const reindented = colors.replace(/\n {2}/g, "\n      ");
     expect(compareDecls(parseScopedDecls(colors, ":root"), parseScopedDecls(reindented, ":root"))).toEqual([]);
+  });
+
+  it("generates the deterministic Figma-binding non-color foundation region", () => {
+    const a = generateFoundation();
+    const b = generateFoundation();
+    expect(a).toEqual(b);
+    // Figma role-named type scale (research F1 binding values).
+    expect(a).toContain("--text-fg-display: 1.25rem;");
+    expect(a).toContain("--text-fg-title: 0.9375rem;");
+    expect(a).toContain("--text-fg-meta--line-height: 0.875rem;");
+    expect(a).toContain("--font-fg-sans:");
+    expect(a).toContain("--font-fg-mono:");
+    // Figma radius scale incl. the new pill18.
+    expect(a).toContain("--radius-fg-md: 0.4375rem;");
+    expect(a).toContain("--radius-fg-pill: 1.125rem;");
+    // Three Figma elevation levels.
+    expect(a).toContain("--shadow-fg-raised:");
+    expect(a).toContain("--shadow-fg-overlay:");
+    expect(a).toContain("--shadow-fg-popover:");
+    // Spacing brought under the pipeline, values unchanged.
+    expect(a).toContain("--spacing-fg-4: 1rem;");
+  });
+
+  it("coalesces wrapped multi-line declarations (font/shadow stacks)", () => {
+    const wrapped = [
+      "  --font-fg-sans:",
+      '    Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;',
+    ].join("\n");
+    const inline =
+      '  --font-fg-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;';
+    expect(
+      compareDecls(parseScopedDecls(wrapped, ":root"), parseScopedDecls(inline, ":root")),
+    ).toEqual([]);
   });
 });

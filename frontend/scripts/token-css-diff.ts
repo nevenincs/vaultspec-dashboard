@@ -8,12 +8,37 @@
  * the file's whitespace never registers as drift — only an actual token value change does.
  */
 
-/** Parse `--name: value;` declarations, tracking the enclosing `[data-theme="x"]` scope. */
+/**
+ * Parse `--name: value;` declarations, tracking the enclosing `[data-theme="x"]` scope.
+ *
+ * Declarations are coalesced across wrapped lines (prettier wraps long values such as
+ * font-family stacks and layered shadows over several lines): a declaration is
+ * accumulated from its `--name:` opener until the terminating `;`, so the comparison
+ * stays formatting-agnostic for multi-line as well as single-line values.
+ */
 export function parseScopedDecls(region: string, defaultScope: string): Map<string, string> {
   const out = new Map<string, string>();
   let scope = defaultScope;
+  let pendingName: string | null = null;
+  let pendingValue = "";
+
+  const flush = () => {
+    if (pendingName === null) return;
+    const value = pendingValue.replace(/;[\s\S]*$/, "").replace(/\s+/g, " ").trim().toLowerCase();
+    out.set(`${scope}|${pendingName}`, value);
+    pendingName = null;
+    pendingValue = "";
+  };
+
   for (const rawLine of region.split("\n")) {
     const line = rawLine.trim();
+
+    if (pendingName !== null) {
+      pendingValue += " " + line;
+      if (line.includes(";")) flush();
+      continue;
+    }
+
     const sel = /^(\[data-theme="[^"]+"\]|:root)\s*\{/.exec(line);
     if (sel) {
       scope = sel[1];
@@ -23,12 +48,14 @@ export function parseScopedDecls(region: string, defaultScope: string): Map<stri
       scope = defaultScope;
       continue;
     }
-    const decl = /^(--[a-z0-9-]+)\s*:\s*([^;]+);/i.exec(line);
+    const decl = /^(--[a-z0-9-]+)\s*:\s*(.*)$/i.exec(line);
     if (decl) {
-      const value = decl[2].replace(/\s+/g, " ").trim().toLowerCase();
-      out.set(`${scope}|${decl[1]}`, value);
+      pendingName = decl[1];
+      pendingValue = decl[2];
+      if (decl[2].includes(";")) flush();
     }
   }
+  flush();
   return out;
 }
 

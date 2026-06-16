@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Figma-binding webfonts (figma-parity-reconciliation W01.P01.S07): Inter (UI/text)
+   and JetBrains Mono (code/identity) replace the prior system stack. Loaded with
+   display=swap so the warm-neutral fallback stack (--font-fg-sans / --font-fg-mono)
+   renders immediately and the bound faces swap in when available - the app stays
+   legible offline. The Tailwind import must remain first per CSS @import ordering. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
+
 /* ============================================================================
    DESIGN TOKEN LAYER - OKLCH generative core (W01.P01-P03, design-language ADR).
 
@@ -156,64 +163,153 @@
   --color-scene-category-code: #b05a6b;
   /* vaultspec:generated:colors:end */
 
-  /* == 5. TYPOGRAPHY (S14) - separate UI and code type scales ============== */
-  /* UI scale: compact instrument-grade, fixed (not fluid). Tabular numerals
-     are mandated on data-bearing contexts via the .tabular-nums utility and
-     the --font-* feature settings below. */
-
-  /* UI sans (system/variable) and a dedicated system monospace; no bundled
-     identity face for a web-served tool. Mono is reserved for identity/code
-     (hashes, byte spans, provenance keys, paths) - see .font-mono usage. */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono:
-    ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas,
+  /* == 5. FIGMA-BINDING FOUNDATION (figma-parity-reconciliation W01.P01) ===
+     The non-color foundation families (type, radius, elevation, spacing) are
+     GENERATED from the DTCG source in tokens/{type,radius,elevation,spacing}
+     .tokens.json by style-dictionary.config.ts, into the foundation marker
+     region below, exactly as the color tokens are. The Figma role-named scale
+     is the CANONICAL surface (--text-fg-* / --radius-fg-* / --shadow-fg-* /
+     --spacing-fg-* / --font-fg-*); do not hand-edit between the markers, run
+     `npm run tokens:build`. The per-theme SHADOW remaps stay hand-authored
+     below (README scope boundary). See tokens/README.md. */
+  /* vaultspec:generated:foundation:begin */
+  --font-fg-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-fg-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas,
     monospace;
+  --text-fg-display: 1.25rem;
+  --text-fg-display--line-height: 1.75rem;
+  --text-fg-display--weight: 600;
+  --text-fg-title: 0.9375rem;
+  --text-fg-title--line-height: 1.375rem;
+  --text-fg-title--weight: 600;
+  --text-fg-body: 0.8125rem;
+  --text-fg-body--line-height: 1.25rem;
+  --text-fg-body--weight: 400;
+  --text-fg-body-strong: 0.8125rem;
+  --text-fg-body-strong--line-height: 1.25rem;
+  --text-fg-body-strong--weight: 500;
+  --text-fg-label: 0.75rem;
+  --text-fg-label--line-height: 1rem;
+  --text-fg-label--weight: 500;
+  --text-fg-meta: 0.6875rem;
+  --text-fg-meta--line-height: 0.875rem;
+  --text-fg-meta--weight: 400;
+  --text-fg-caption: 0.625rem;
+  --text-fg-caption--line-height: 0.875rem;
+  --text-fg-caption--weight: 400;
+  --text-fg-mono: 0.6875rem;
+  --text-fg-mono--line-height: 1rem;
+  --text-fg-mono--weight: 400;
+  --radius-fg-xs: 0.25rem;
+  --radius-fg-sm: 0.3125rem;
+  --radius-fg-md: 0.4375rem;
+  --radius-fg-lg: 0.625rem;
+  --radius-fg-pill: 1.125rem;
+  --shadow-fg-raised:
+    0 1px 3px 0 rgb(43 38 32 / 0.08), 0 1px 2px -1px rgb(43 38 32 / 0.08);
+  --shadow-fg-overlay:
+    0 4px 16px -2px rgb(43 38 32 / 0.12), 0 2px 6px -2px rgb(43 38 32 / 0.06);
+  --shadow-fg-popover:
+    0 10px 32px -6px rgb(43 38 32 / 0.16), 0 4px 12px -4px rgb(43 38 32 / 0.1);
+  --spacing-fg-1: 0.25rem;
+  --spacing-fg-2: 0.5rem;
+  --spacing-fg-3: 0.75rem;
+  --spacing-fg-4: 1rem;
+  --spacing-fg-6: 1.5rem;
+  --spacing-fg-8: 2rem;
+  --spacing-fg-0-5: 0.125rem;
+  --spacing-fg-1-5: 0.375rem;
+  /* vaultspec:generated:foundation:end */
 
-  /* UI type scale (compact) */
-  --text-2xs: 0.625rem; /* 10px - dense metadata */
-  --text-2xs--line-height: 0.875rem;
-  --text-label: 0.6875rem; /* 11px - timestamps, captions, pills */
-  --text-label--line-height: 1rem;
-  --text-body: 0.8125rem; /* 13px - primary UI text */
-  --text-body--line-height: 1.25rem;
-  --text-title: 0.8125rem; /* 13px + font-medium - section labels */
-  --text-title--line-height: 1.25rem;
-  --text-heading: 0.9375rem; /* 15px - panel / rail headings */
-  --text-heading--line-height: 1.375rem;
+  /* == TAILWIND FONT/TEXT NAMESPACE BINDING (figma-parity-reconciliation S07/S10)
+     Tailwind v4 reads --font-* / --text-* to generate the font-/text-utilities.
+     Bind the Tailwind namespace to the generated Figma-binding foundation so
+     `font-sans` / `font-mono` adopt Inter + JetBrains Mono and the role-named
+     utilities resolve to the canonical --text-fg-* tokens.
 
-  /* code/buffer type scale (separate token family, ADR layer 5) */
+     COLLISION GUARD (S10): the Tailwind utility name `text-title` is load-bearing
+     for the current app, where it means the legacy 13px section label - NOT the
+     binding Figma `title` (15px). So `text-title` stays bound to the legacy 13px
+     (= the new body-strong metrics) during the alias window, and the binding 15px
+     Figma title is reached as `text-heading` (its legacy meaning) and as the
+     canonical `--text-fg-title`. The W02/W03 rewrite consumes `--text-fg-*`
+     directly and the `text-title` shim is removed in W04. */
+  --font-sans: var(--font-fg-sans);
+  --font-mono: var(--font-fg-mono);
+
+  /* Non-colliding Figma roles map straight to their utility name. */
+  --text-display: var(--text-fg-display);
+  --text-display--line-height: var(--text-fg-display--line-height);
+  --text-display--font-weight: var(--text-fg-display--weight);
+  --text-body: var(--text-fg-body);
+  --text-body--line-height: var(--text-fg-body--line-height);
+  --text-body-strong: var(--text-fg-body-strong);
+  --text-body-strong--line-height: var(--text-fg-body-strong--line-height);
+  --text-body-strong--font-weight: var(--text-fg-body-strong--weight);
+  --text-label: var(--text-fg-label);
+  --text-label--line-height: var(--text-fg-label--line-height);
+  --text-label--font-weight: var(--text-fg-label--weight);
+  --text-meta: var(--text-fg-meta);
+  --text-meta--line-height: var(--text-fg-meta--line-height);
+  --text-caption: var(--text-fg-caption);
+  --text-caption--line-height: var(--text-fg-caption--line-height);
+  --text-mono: var(--text-fg-mono);
+  --text-mono--line-height: var(--text-fg-mono--line-height);
+
+  /* == DEPRECATED ALIASES (figma-parity-reconciliation W01.P01.S08-S10) =====
+     The retired legacy scales are kept as deprecated aliases onto the new
+     Figma-binding foundation so the current app (frontend/src/app + scene,
+     both being rewritten in W02/W03) stays green WITHOUT a mass usage sweep.
+     The real usage cutover happens in the W02/W03 rewrite; W04 removes these.
+
+     S10 - type. The text-title vs text-heading collision is guarded above:
+     legacy `text-title` (13px section label) keeps 13px via the body-strong
+     metrics; legacy `text-heading` (15px panel/rail) maps to the Figma title. */
+  --text-title: var(
+    --text-fg-body-strong
+  ); /* legacy 13px section label -> body-strong */
+  --text-title--line-height: var(--text-fg-body-strong--line-height);
+  --text-title--font-weight: var(--text-fg-body-strong--weight);
+  --text-heading: var(--text-fg-title); /* legacy 15px panel heading -> Figma title */
+  --text-heading--line-height: var(--text-fg-title--line-height);
+  --text-heading--font-weight: var(--text-fg-title--weight);
+  --text-2xs: var(--text-fg-caption); /* legacy 10px dense metadata -> caption */
+  --text-2xs--line-height: var(--text-fg-caption--line-height);
+  /* legacy code scale retained verbatim (no Figma role change; ADR layer 5) */
   --text-code-sm: 0.75rem; /* 12px - dense code/hash */
   --text-code-sm--line-height: 1.125rem;
   --text-code: 0.8125rem; /* 13px - code body */
   --text-code--line-height: 1.375rem;
 
-  /* == DENSITY (S16) - 4px base grid spacing ============================== */
-  --spacing-vs-0-5: 0.125rem; /* 2px */
-  --spacing-vs-1: 0.25rem; /* 4px */
-  --spacing-vs-1-5: 0.375rem; /* 6px */
-  --spacing-vs-2: 0.5rem; /* 8px */
-  --spacing-vs-3: 0.75rem; /* 12px */
-  --spacing-vs-4: 1rem; /* 16px */
-  --spacing-vs-6: 1.5rem; /* 24px */
-  --spacing-vs-8: 2rem; /* 32px */
+  /* S08 - spacing: legacy --spacing-vs-* alias the generated --spacing-fg-* */
+  --spacing-vs-0-5: var(--spacing-fg-0-5); /* 2px */
+  --spacing-vs-1: var(--spacing-fg-1); /* 4px */
+  --spacing-vs-1-5: var(--spacing-fg-1-5); /* 6px */
+  --spacing-vs-2: var(--spacing-fg-2); /* 8px */
+  --spacing-vs-3: var(--spacing-fg-3); /* 12px */
+  --spacing-vs-4: var(--spacing-fg-4); /* 16px */
+  --spacing-vs-6: var(--spacing-fg-6); /* 24px */
+  --spacing-vs-8: var(--spacing-fg-8); /* 32px */
 
-  /* == ELEVATION (S16) - multi-level, ink-tinted to harmonise with warmth == */
-  /* background -> foreground -> panel -> dialog -> modal (ADR layer 4). */
+  /* S08 - elevation: legacy six-level --shadow-* mapped onto the three Figma
+     levels (flat=none kept literal; card/panel=raised; float=overlay;
+     dialog/deep=popover). The per-theme dark/HC remaps below override these. */
   --shadow-flat: none;
-  --shadow-card: 0 1px 3px 0 rgb(43 38 32 / 0.08), 0 1px 2px -1px rgb(43 38 32 / 0.08);
-  --shadow-panel:
-    0 2px 8px -2px rgb(43 38 32 / 0.1), 0 1px 3px -1px rgb(43 38 32 / 0.07);
-  --shadow-float:
-    0 4px 16px -2px rgb(43 38 32 / 0.12), 0 2px 6px -2px rgb(43 38 32 / 0.06);
-  --shadow-dialog:
-    0 10px 32px -6px rgb(43 38 32 / 0.16), 0 4px 12px -4px rgb(43 38 32 / 0.1);
-  --shadow-deep: 0 16px 48px -8px rgb(43 38 32 / 0.2);
+  --shadow-card: var(--shadow-fg-raised);
+  --shadow-panel: var(--shadow-fg-raised);
+  --shadow-float: var(--shadow-fg-overlay);
+  --shadow-dialog: var(--shadow-fg-popover);
+  --shadow-deep: var(--shadow-fg-popover);
 
-  /* == RADIUS (S16) - consistently rounded geometry (ADR layer 4) ========= */
-  --radius-vs-sm: 0.25rem; /* 4px  - buttons, chips */
-  --radius-vs-md: 0.375rem; /* 6px  - panels, cards */
-  --radius-vs-lg: 0.625rem; /* 10px - dialogs, popovers */
-  --radius-vs-xl: 0.875rem; /* 14px - modal surfaces */
+  /* S09 - radius: legacy --radius-vs-* mapped onto the Figma scale
+     (sm 4px -> xs4; md 6px -> md7; lg 10px -> lg10; xl 14px -> lg10 nearest;
+     the new pill18 has no legacy alias - rounded-full re-keys to it in W02/W03). */
+  --radius-vs-sm: var(--radius-fg-xs); /* legacy 4px -> Figma xs 4px */
+  --radius-vs-md: var(--radius-fg-md); /* legacy 6px -> Figma md 7px */
+  --radius-vs-lg: var(--radius-fg-lg); /* legacy 10px -> Figma lg 10px */
+  --radius-vs-xl: var(--radius-fg-lg); /* legacy 14px -> Figma lg 10px (nearest) */
 
   /* == MOTION (S15) - fast, subtle, state-communicating ================== */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);

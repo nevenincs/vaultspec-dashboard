@@ -34,6 +34,11 @@ const SEMANTIC = join(tokensDir, "semantic.tokens.json");
 const DARK = join(tokensDir, "themes", "dark.tokens.json");
 const HC = join(tokensDir, "themes", "high-contrast.tokens.json");
 
+const TYPE = join(tokensDir, "type.tokens.json");
+const RADIUS = join(tokensDir, "radius.tokens.json");
+const ELEVATION = join(tokensDir, "elevation.tokens.json");
+const SPACING = join(tokensDir, "spacing.tokens.json");
+
 export const MARKERS = {
   colors: {
     begin: "/* vaultspec:generated:colors:begin */",
@@ -42,6 +47,10 @@ export const MARKERS = {
   themes: {
     begin: "/* vaultspec:generated:themes:begin */",
     end: "/* vaultspec:generated:themes:end */",
+  },
+  foundation: {
+    begin: "/* vaultspec:generated:foundation:begin */",
+    end: "/* vaultspec:generated:foundation:end */",
   },
 };
 
@@ -129,6 +138,82 @@ export async function generateRegions(): Promise<{ colors: string; themes: strin
   return { colors, themes };
 }
 
+/* ---------------------------------------------------------------------------
+   NON-COLOR FOUNDATION (figma-parity-reconciliation W01.P01.S05).
+
+   The Figma-binding type, radius, elevation, and spacing families are authored as
+   DTCG under tokens/{type,radius,elevation,spacing}.tokens.json and generated into a
+   third managed region (vaultspec:generated:foundation:*) inside @theme static. These
+   are theme-INVARIANT scalar values (no oklch / hex / per-theme remap), so they are
+   serialized directly from the raw $value (dimension/fontWeight/fontFamily/shadow);
+   the per-theme SHADOW remaps stay hand-authored (README scope boundary).
+
+   Emitted custom-property names (the canonical Figma-bound foundation surface):
+     --font-fg-sans / --font-fg-mono
+     --text-fg-<role> / --text-fg-<role>--line-height / --text-fg-<role>--weight
+     --radius-fg-<step>
+     --shadow-fg-<level>
+     --spacing-fg-<step>
+   The legacy --text-* / --radius-vs-* / --shadow-* / --spacing-vs-* names remain
+   hand-authored as deprecated aliases onto these (S08-S10) until the W02/W03 rewrite
+   cuts usages over and W04 removes the aliases.
+   --------------------------------------------------------------------------- */
+
+type NonColorLeaf = { path: string[]; value: string | number };
+
+/** Flatten a DTCG file to leaves carrying the raw $value (non-color: scalar). */
+function flatLeaves(obj: any, prefix: string[] = [], acc: NonColorLeaf[] = []): NonColorLeaf[] {
+  for (const k of Object.keys(obj)) {
+    if (k.startsWith("$")) continue;
+    const v = obj[k];
+    if (v && typeof v === "object" && "$value" in v) {
+      acc.push({ path: [...prefix, k], value: v.$value as string | number });
+    } else if (v && typeof v === "object") {
+      flatLeaves(v, [...prefix, k], acc);
+    }
+  }
+  return acc;
+}
+
+function readJson(path: string): any {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+/** Build the foundation region body (declaration lines, no markers), at 2-space indent. */
+export function generateFoundation(): string {
+  const out: string[] = [];
+  const push = (name: string, value: string | number) => out.push(`  ${name}: ${value};`);
+
+  // -- type: families, then per-role size / line-height / weight ----------------
+  const type = readJson(TYPE).type;
+  for (const fam of Object.keys(type.family).filter((k) => !k.startsWith("$"))) {
+    push(`--font-fg-${fam}`, type.family[fam].$value);
+  }
+  for (const role of Object.keys(type.role).filter((k) => !k.startsWith("$"))) {
+    const r = type.role[role];
+    push(`--text-fg-${role}`, r.size.$value);
+    push(`--text-fg-${role}--line-height`, r["line-height"].$value);
+    push(`--text-fg-${role}--weight`, r.weight.$value);
+  }
+
+  // -- radius -------------------------------------------------------------------
+  for (const l of flatLeaves(readJson(RADIUS).radius)) {
+    push(`--radius-fg-${l.path.join("-")}`, l.value);
+  }
+
+  // -- elevation (base/light shadows; per-theme remaps stay hand-authored) -------
+  for (const l of flatLeaves(readJson(ELEVATION).elevation)) {
+    push(`--shadow-fg-${l.path.join("-")}`, l.value);
+  }
+
+  // -- spacing ------------------------------------------------------------------
+  for (const l of flatLeaves(readJson(SPACING).spacing)) {
+    push(`--spacing-fg-${l.path.join("-")}`, l.value);
+  }
+
+  return out.join("\n");
+}
+
 /** Replace the body between a region's begin/end markers in `css`. */
 function spliceRegion(css: string, begin: string, end: string, body: string): string {
   const b = css.indexOf(begin);
@@ -139,14 +224,16 @@ function spliceRegion(css: string, begin: string, end: string, body: string): st
   return css.slice(0, b + begin.length) + "\n" + body + "\n  " + css.slice(e);
 }
 
-/** Rewrite the managed color regions of styles.css from the DTCG source. */
+/** Rewrite the managed color and foundation regions of styles.css from the DTCG source. */
 export async function writeStyles(): Promise<void> {
   const { colors, themes } = await generateRegions();
+  const foundation = generateFoundation();
   let css = readFileSync(STYLES_FILE, "utf8");
   css = spliceRegion(css, MARKERS.colors.begin, MARKERS.colors.end, colors);
   css = spliceRegion(css, MARKERS.themes.begin, MARKERS.themes.end, themes);
+  css = spliceRegion(css, MARKERS.foundation.begin, MARKERS.foundation.end, foundation);
   writeFileSync(STYLES_FILE, css, "utf8");
-  console.log(`rewrote managed color regions in ${STYLES_FILE}`);
+  console.log(`rewrote managed color + foundation regions in ${STYLES_FILE}`);
   console.log(`  themed per mode: ${THEMED.size}`);
 }
 
