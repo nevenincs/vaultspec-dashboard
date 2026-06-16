@@ -2649,6 +2649,7 @@ dependencies = [
  "getrandom",
  "ingest-core",
  "ingest-git",
+ "ingest-struct",
  "rag-client",
  "serde",
  "serde_json",
