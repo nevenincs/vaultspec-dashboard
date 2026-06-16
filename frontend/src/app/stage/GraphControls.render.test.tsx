@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 //
-// Consolidated graph controls (binding Figma redesign `graph/Controls` 88:2).
-// Rendered against the real SceneController singleton (getScene) and the real
-// view store — no component-internal doubles.
+// Consolidated graph controls (binding Figma redesign `graph/Controls` 88:2,
+// `graph/Hero` 85:2). Rendered against the real SceneController singleton
+// (getScene) and the real view store — no component-internal doubles.
 //
-// What is asserted (the IA consolidation mapping):
+// What is asserted (the IA consolidation mapping + the non-occluding overlay):
 //   • Navigate emits the real camera SceneCommands (zoom-in/out, fit, reset);
 //   • Layout segmented control drives the real representation mode (Network →
 //     connectivity, Tree → lineage, Grouped → semantic) and the Timeline segment
@@ -13,6 +13,9 @@
 //   • Zoom drives the real LOD descent (granularity feature ↔ document);
 //   • Tune drives the real d3-force knobs via set-layout-params (Spacing → repel,
 //     Connection reach → linkDistance, Clustering → linkForce);
+//   • the heavy groups (Tune, Overview) are COLLAPSED by default and only render
+//     their body once their popover trigger is opened — so the canvas is never
+//     occluded; opening + closing (toggle / Escape) works;
 //   • the controls read + write only stores / the scene seam, never fetch.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -147,10 +150,56 @@ describe("GraphControls — Zoom (LOD descent)", () => {
   });
 });
 
+// The heavy Tune group is collapsed behind a popover trigger so the canvas is
+// never occluded; the body (and its sliders) only mount once the trigger opens.
+function openTune() {
+  fireEvent.click(screen.getByRole("button", { name: "Tune" }));
+}
+
+describe("GraphControls — non-occluding overlay (collapsed heavy groups)", () => {
+  it("does not render the Tune sliders until the Tune popover is opened", () => {
+    render(createElement(GraphControls));
+    // Collapsed by default: no Tune body, so the canvas behind reads clean.
+    expect(screen.queryByRole("slider", { name: "Spacing" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Tune" }).getAttribute("aria-expanded"),
+    ).toBe("false");
+    openTune();
+    expect(screen.getByRole("slider", { name: "Spacing" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Tune" }).getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("does not render the Overview minimap until the Overview popover is opened", () => {
+    render(createElement(GraphControls));
+    expect(screen.queryByRole("group", { name: "graph minimap navigator" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+    expect(screen.getByRole("group", { name: "graph minimap navigator" })).toBeTruthy();
+  });
+
+  it("closes the Tune popover on a second trigger click (toggle)", () => {
+    render(createElement(GraphControls));
+    openTune();
+    expect(screen.getByRole("slider", { name: "Spacing" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tune" }));
+    expect(screen.queryByRole("slider", { name: "Spacing" })).toBeNull();
+  });
+
+  it("closes the Tune popover on Escape", () => {
+    render(createElement(GraphControls));
+    openTune();
+    expect(screen.getByRole("slider", { name: "Spacing" })).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("slider", { name: "Spacing" })).toBeNull();
+  });
+});
+
 describe("GraphControls — Tune (d3-force knobs)", () => {
   it("Spacing drives the repel knob via set-layout-params", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     render(createElement(GraphControls));
+    openTune();
     const slider = screen.getByRole("slider", { name: "Spacing" });
     fireEvent.change(slider, { target: { value: "300" } });
     const call = spy.mock.calls.find(
@@ -163,6 +212,7 @@ describe("GraphControls — Tune (d3-force knobs)", () => {
   it("Connection reach drives the linkDistance knob", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     render(createElement(GraphControls));
+    openTune();
     const slider = screen.getByRole("slider", { name: "Connection reach" });
     fireEvent.change(slider, { target: { value: "90" } });
     const call = spy.mock.calls.find(
@@ -176,6 +226,7 @@ describe("GraphControls — Tune (d3-force knobs)", () => {
   it("Clustering drives the linkForce knob", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     render(createElement(GraphControls));
+    openTune();
     const slider = screen.getByRole("slider", { name: "Clustering" });
     fireEvent.change(slider, { target: { value: "0.8" } });
     const call = spy.mock.calls.find(

@@ -1,8 +1,14 @@
-// Consolidated graph controls (binding Figma redesign `graph/Controls` 88:2):
-// the four plain-language control groups that supersede the scattered
-// NavToolbar / RepresentationModePanel / AlgorithmPanel / LOD-toggle surfaces.
+// Consolidated graph controls (binding Figma redesign `graph/Controls` 88:2,
+// `graph/Hero` 85:2): a COMPACT, NON-OCCLUDING edge overlay. The Hero binding
+// shows the category-circle canvas CLEAN with the controls as an unobtrusive
+// bottom-edge toolbar — never a panel that covers the field. So this surface is
+// a single slim toolbar docked to the bottom edge: the light, always-reachable
+// groups (Navigate, Layout, Zoom) sit inline, and the heavier groups (Tune
+// sliders, Overview minimap) are COLLAPSED behind small affordances that pop
+// up ABOVE the bar on demand — the canvas stays visible at every stage width,
+// including the narrow ~450px 3-pane stage.
 //
-//   Navigate — a vertical icon stack: zoom in (+), zoom out (−), fit (□),
+//   Navigate — a horizontal icon row: zoom in (+), zoom out (−), fit (□),
 //              reset (◎). Camera commands only (SceneController.command).
 //   Layout   — a segmented control Network · Tree · Grouped · Timeline:
 //              Network  → representation mode "connectivity" (force topology)
@@ -24,6 +30,8 @@
 //              force / Link distance / Center grammar. The `center` knob has no
 //              plain-language home in the design and is left at its default
 //              (FLAGGED below); only knobs the driver actually has are exposed.
+//              Lives in a COLLAPSED popover so the canvas is never occluded.
+//   Overview — the minimap, also a COLLAPSED popover for the same reason.
 //
 // Layer ownership (dashboard-layer-ownership): app chrome steering the scene.
 // Camera + layout affordances emit SceneController.command() ONLY; granularity
@@ -33,11 +41,20 @@
 // block, holds no node shape. Icons are Lucide structural marks (the sanctioned
 // chrome family). Tokens only — no raw hex.
 
-import { Crosshair, Minus, Plus, Square } from "lucide-react";
+import {
+  ChevronDown,
+  Crosshair,
+  Map as MapIcon,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+  Square,
+} from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -54,23 +71,13 @@ import { getScene } from "./Stage";
 
 const ICON_PX = 15;
 
-// ---------------------------------------------------------------------------
-// Group label — the quiet faint-ink caption above every group (Figma 10px).
-// ---------------------------------------------------------------------------
-
-function GroupLabel({ children, id }: { children: string; id?: string }) {
-  return (
-    <span
-      id={id}
-      className="text-2xs font-medium uppercase tracking-wide text-ink-faint"
-    >
-      {children}
-    </span>
-  );
+// A faint vertical hairline separating inline groups in the slim toolbar.
+function Divider() {
+  return <span className="mx-vs-1 h-6 w-px self-center bg-rule" aria-hidden />;
 }
 
 // ---------------------------------------------------------------------------
-// Navigate — vertical camera icon stack (raised paper card on rule border).
+// Navigate — horizontal camera icon row (inline in the slim toolbar).
 // ---------------------------------------------------------------------------
 
 interface NavBtnProps {
@@ -97,33 +104,34 @@ function NavBtn({ label, title, icon, onClick }: NavBtnProps) {
 function NavigateGroup() {
   const scene = getScene();
   return (
-    <div className="flex flex-col gap-vs-2" data-nav-group>
-      <GroupLabel>Navigate</GroupLabel>
-      <div className="flex flex-col gap-vs-0-5 rounded-vs-lg border border-rule bg-paper-raised p-vs-1 shadow-panel">
-        <NavBtn
-          label="zoom in"
-          icon={<Plus size={ICON_PX} aria-hidden />}
-          onClick={() => scene.controller.command({ kind: "zoom-in" })}
-        />
-        <NavBtn
-          label="zoom out"
-          icon={<Minus size={ICON_PX} aria-hidden />}
-          onClick={() => scene.controller.command({ kind: "zoom-out" })}
-        />
-        <span className="my-vs-0-5 h-px w-full bg-rule" aria-hidden />
-        <NavBtn
-          label="fit to view"
-          title="fit all nodes into the viewport"
-          icon={<Square size={ICON_PX} aria-hidden />}
-          onClick={() => scene.controller.command({ kind: "fit-to-view" })}
-        />
-        <NavBtn
-          label="reset view"
-          title="reset the camera to the origin"
-          icon={<Crosshair size={ICON_PX} aria-hidden />}
-          onClick={() => scene.controller.command({ kind: "reset-view" })}
-        />
-      </div>
+    <div
+      className="flex items-center gap-vs-0-5"
+      role="group"
+      aria-label="Navigate"
+      data-nav-group
+    >
+      <NavBtn
+        label="zoom in"
+        icon={<Plus size={ICON_PX} aria-hidden />}
+        onClick={() => scene.controller.command({ kind: "zoom-in" })}
+      />
+      <NavBtn
+        label="zoom out"
+        icon={<Minus size={ICON_PX} aria-hidden />}
+        onClick={() => scene.controller.command({ kind: "zoom-out" })}
+      />
+      <NavBtn
+        label="fit to view"
+        title="fit all nodes into the viewport"
+        icon={<Square size={ICON_PX} aria-hidden />}
+        onClick={() => scene.controller.command({ kind: "fit-to-view" })}
+      />
+      <NavBtn
+        label="reset view"
+        title="reset the camera to the origin"
+        icon={<Crosshair size={ICON_PX} aria-hidden />}
+        onClick={() => scene.controller.command({ kind: "reset-view" })}
+      />
     </div>
   );
 }
@@ -197,7 +205,7 @@ function Segmented<T extends string>({
             tabIndex={isActive ? 0 : -1}
             onKeyDown={onKeyDown}
             onClick={() => onSelect(seg.value)}
-            className={`flex items-center justify-center rounded-vs-sm px-vs-3 py-vs-1 text-xs transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
+            className={`flex items-center justify-center rounded-vs-sm px-vs-2 py-vs-1 text-xs transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
               isActive
                 ? "bg-paper-raised font-medium text-ink shadow-card"
                 : "text-ink-muted hover:text-ink"
@@ -274,6 +282,86 @@ function Slider({
 }
 
 // ---------------------------------------------------------------------------
+// Popover — a small collapsible group docked to a toolbar trigger. The heavy
+// groups (Tune, Overview) live here so they are COLLAPSED by default and never
+// occlude the canvas; the trigger is a slim labelled icon button, the body pops
+// up ABOVE the bar (so it grows away from the field, not over it). Closes on
+// outside click and Escape. Reduced-motion-safe: no entrance animation.
+// ---------------------------------------------------------------------------
+
+interface PopoverGroupProps {
+  label: string;
+  icon: React.ReactNode;
+  /** data-attribute marker for tests / styling hooks. */
+  marker: string;
+  children: React.ReactNode;
+}
+
+function PopoverGroup({ label, icon, marker, children }: PopoverGroupProps) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointer(e: PointerEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onDocPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div
+      className="relative flex items-center"
+      ref={wrapRef}
+      data-popover-group={marker}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        aria-controls={panelId}
+        title={label}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex h-8 items-center gap-vs-1 rounded-vs-md px-vs-2 text-xs transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+          open
+            ? "bg-paper-sunken text-ink"
+            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+        }`}
+        data-popover-trigger
+      >
+        {icon}
+        <span>{label}</span>
+        <ChevronDown
+          size={12}
+          aria-hidden
+          className={open ? "rotate-180" : undefined}
+        />
+      </button>
+      {open && (
+        <div
+          id={panelId}
+          role="group"
+          aria-label={label}
+          className="absolute bottom-full right-0 z-30 mb-vs-2 flex flex-col gap-vs-2 rounded-vs-lg border border-rule bg-paper-raised/95 p-vs-3 shadow-float backdrop-blur-sm"
+          data-popover-panel
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Layout group: segmented mode control + the Zoom (LOD) descent.
 // ---------------------------------------------------------------------------
 
@@ -306,15 +394,11 @@ const LAYOUT_SEGMENTS = (
 ];
 
 function LayoutGroup() {
-  const granularity = useViewStore((s) => s.granularity);
-  const setGranularity = useViewStore((s) => s.setGranularity);
   const representationMode = useViewStore((s) => s.activeRepresentationMode);
   const setRepresentationMode = useViewStore((s) => s.setRepresentationMode);
   const timelineMode = useViewStore((s) => s.timelineMode);
   const timeTravelling = timelineMode.kind === "time-travel";
   const corpusTo = useTimelineStore((s) => s.window.to);
-
-  const scene = getScene();
 
   // The active segment: time-travel wins (Timeline reflects the temporal mode);
   // otherwise the representation mode. Semantic is downgraded honestly when its
@@ -337,81 +421,75 @@ function LayoutGroup() {
     setRepresentationMode(value);
   }
 
-  // Zoom (LOD descent): a two-stop slider Overview ↔ Detail. 0 = feature
-  // overview, 1 = document detail. Snaps; no intermediate state exists on the
-  // wire. Disabled in time-travel (the driver owns the scene's data).
+  return (
+    <Segmented
+      label="graph layout"
+      segments={LAYOUT_SEGMENTS(SEMANTIC_MODE_GATE.shipped)}
+      active={active}
+      onSelect={onSelect}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Zoom (LOD descent): a two-stop slider Overview ↔ Detail. 0 = feature
+// overview, 1 = document detail. Snaps; no intermediate state exists on the
+// wire. Disabled in time-travel (the driver owns the scene's data). Compact
+// inline form: flanking − / + camera zoom around the snap slider.
+// ---------------------------------------------------------------------------
+
+function ZoomGroup() {
+  const granularity = useViewStore((s) => s.granularity);
+  const setGranularity = useViewStore((s) => s.setGranularity);
+  const timelineMode = useViewStore((s) => s.timelineMode);
+  const timeTravelling = timelineMode.kind === "time-travel";
+  const scene = getScene();
+
   const zoomValue = granularity === "document" ? 1 : 0;
 
   return (
-    <div className="flex flex-col gap-vs-6" data-layout-group>
-      <div className="flex flex-col gap-vs-2">
-        <GroupLabel>Layout</GroupLabel>
-        <Segmented
-          label="graph layout"
-          segments={LAYOUT_SEGMENTS(SEMANTIC_MODE_GATE.shipped)}
-          active={active}
-          onSelect={onSelect}
+    <div
+      className={`flex w-36 items-center gap-vs-1 ${timeTravelling ? "opacity-40" : ""}`}
+      role="group"
+      aria-label="Zoom"
+    >
+      <button
+        type="button"
+        aria-label="zoom camera out"
+        title="zoom the camera out"
+        onClick={() => scene.controller.command({ kind: "zoom-out" })}
+        className="text-base leading-none text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      >
+        −
+      </button>
+      <div className="flex-1">
+        <Slider
+          label="detail level"
+          value={zoomValue}
+          min={0}
+          max={1}
+          step={1}
+          onChange={(v) => setGranularity(v >= 1 ? "document" : "feature")}
+          format={(v) => (v >= 1 ? "Detail" : "Overview")}
+          title="Overview shows the feature constellation; Detail shows the bounded document graph"
+          ends={["Overview", "Detail"]}
         />
       </div>
-
-      <div className="flex flex-col gap-vs-2">
-        <GroupLabel>Zoom</GroupLabel>
-        <div
-          className={`flex items-center gap-vs-2 ${timeTravelling ? "opacity-40" : ""}`}
-        >
-          <button
-            type="button"
-            aria-label="zoom camera out"
-            title="zoom the camera out"
-            onClick={() => scene.controller.command({ kind: "zoom-out" })}
-            className="text-base leading-none text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
-            −
-          </button>
-          <div className="flex-1">
-            <Slider
-              label="detail level"
-              value={zoomValue}
-              min={0}
-              max={1}
-              step={1}
-              onChange={(v) => setGranularity(v >= 1 ? "document" : "feature")}
-              format={(v) => (v >= 1 ? "Detail" : "Overview")}
-              title="Overview shows the feature constellation; Detail shows the bounded document graph"
-              ends={["Overview", "Detail"]}
-            />
-          </div>
-          <button
-            type="button"
-            aria-label="zoom camera in"
-            title="zoom the camera in"
-            onClick={() => scene.controller.command({ kind: "zoom-in" })}
-            className="text-base leading-none text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
-            +
-          </button>
-        </div>
-      </div>
+      <button
+        type="button"
+        aria-label="zoom camera in"
+        title="zoom the camera in"
+        onClick={() => scene.controller.command({ kind: "zoom-in" })}
+        className="text-base leading-none text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      >
+        +
+      </button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Overview group — the minimap. The MinimapWidget owns the scene-registered
-// canvas; here it is hosted inside the consolidated panel's Overview column.
-// ---------------------------------------------------------------------------
-
-function OverviewGroup() {
-  return (
-    <div className="flex flex-col gap-vs-2" data-overview-group>
-      <GroupLabel>Overview</GroupLabel>
-      <MinimapWidget embedded />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Tune group — the plain-language d3-force knobs.
+// Tune group — the plain-language d3-force knobs (collapsed popover body).
 // ---------------------------------------------------------------------------
 
 // The Figma names map onto the real driver knobs (forceLayout.ts LayoutParams):
@@ -422,7 +500,7 @@ function OverviewGroup() {
 // default — FLAGGED in the report.
 const TUNE_DEFAULTS: Required<LayoutParams> = { ...LAYOUT_DEFAULTS };
 
-function TuneGroup() {
+function TuneBody() {
   const liveState = getScene().controller.getLayoutState();
   const [params, setParams] = useState<Required<LayoutParams>>({
     ...TUNE_DEFAULTS,
@@ -445,60 +523,96 @@ function TuneGroup() {
   }
 
   return (
-    <div className="flex flex-col gap-vs-2" data-tune-group>
-      <GroupLabel>Tune</GroupLabel>
-      <div className="flex w-44 flex-col gap-vs-3 rounded-vs-lg border border-rule bg-paper-raised p-vs-3 shadow-panel">
-        <Slider
-          label="Spacing"
-          title="How far nodes push each other apart"
-          value={params.repel}
-          min={0}
-          max={400}
-          step={10}
-          onChange={(v) => apply({ repel: v })}
-          format={(v) => String(Math.round(v))}
-        />
-        <Slider
-          label="Connection reach"
-          title="The rest length of the links between connected nodes"
-          value={params.linkDistance}
-          min={10}
-          max={120}
-          step={5}
-          onChange={(v) => apply({ linkDistance: v })}
-          format={(v) => String(Math.round(v))}
-        />
-        <Slider
-          label="Clustering"
-          title="How tightly connected nodes pull together into groups"
-          value={params.linkForce}
-          min={0}
-          max={1}
-          step={0.05}
-          onChange={(v) => apply({ linkForce: v })}
-          format={(v) => v.toFixed(2)}
-        />
-      </div>
+    <div className="flex w-44 flex-col gap-vs-3">
+      <Slider
+        label="Spacing"
+        title="How far nodes push each other apart"
+        value={params.repel}
+        min={0}
+        max={400}
+        step={10}
+        onChange={(v) => apply({ repel: v })}
+        format={(v) => String(Math.round(v))}
+      />
+      <Slider
+        label="Connection reach"
+        title="The rest length of the links between connected nodes"
+        value={params.linkDistance}
+        min={10}
+        max={120}
+        step={5}
+        onChange={(v) => apply({ linkDistance: v })}
+        format={(v) => String(Math.round(v))}
+      />
+      <Slider
+        label="Clustering"
+        title="How tightly connected nodes pull together into groups"
+        value={params.linkForce}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={(v) => apply({ linkForce: v })}
+        format={(v) => v.toFixed(2)}
+      />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// The consolidated panel.
+// The consolidated panel — a slim bottom-edge toolbar. Light groups inline;
+// the heavy Tune + Overview groups collapsed behind popover triggers so the
+// category-circle canvas is ALWAYS visible. `pointer-events-auto` is on the bar
+// only, so the field reads through the space around it. The bar never spans the
+// full stage: it sizes to its content and stays anchored at the bottom edge; on
+// a narrow stage it scrolls horizontally rather than wrapping into a tall,
+// canvas-covering block.
 // ---------------------------------------------------------------------------
 
 export function GraphControls() {
   return (
     <div
-      className="pointer-events-auto absolute bottom-vs-2 left-vs-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap items-start gap-x-vs-6 gap-y-vs-3 rounded-vs-xl border border-rule bg-paper-raised/95 px-vs-4 py-vs-3 shadow-float backdrop-blur-sm"
-      role="group"
-      aria-label="graph controls"
-      data-graph-controls
+      className="pointer-events-none absolute inset-x-0 bottom-vs-2 z-20 flex justify-center px-vs-2"
+      data-graph-controls-shell
     >
-      <NavigateGroup />
-      <LayoutGroup />
-      <OverviewGroup />
-      <TuneGroup />
+      <div
+        className="pointer-events-auto flex max-w-full items-stretch rounded-vs-xl border border-rule bg-paper-raised/95 shadow-float backdrop-blur-sm"
+        role="group"
+        aria-label="graph controls"
+        data-graph-controls
+      >
+        {/* Inline light groups. This section alone scrolls horizontally on a
+            narrow stage, so the bar never grows TALL (no wrap) and never covers
+            the canvas. The popover triggers live OUTSIDE this scroll region so
+            their above-bar panels are not clipped by overflow. */}
+        <div
+          className="flex min-w-0 items-center gap-vs-1 overflow-x-auto px-vs-2 py-vs-1-5"
+          data-graph-controls-inline
+        >
+          <NavigateGroup />
+          <Divider />
+          <LayoutGroup />
+          <Divider />
+          <ZoomGroup />
+        </div>
+        {/* Heavy groups, collapsed behind popover triggers (canvas stays clear).
+            Outside the scroll region so the popover bodies can overflow upward. */}
+        <div className="flex items-center gap-vs-1 border-l border-rule px-vs-2 py-vs-1-5">
+          <PopoverGroup
+            label="Tune"
+            marker="tune"
+            icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
+          >
+            <TuneBody />
+          </PopoverGroup>
+          <PopoverGroup
+            label="Overview"
+            marker="overview"
+            icon={<MapIcon size={ICON_PX} aria-hidden />}
+          >
+            <MinimapWidget embedded />
+          </PopoverGroup>
+        </div>
+      </div>
     </div>
   );
 }
