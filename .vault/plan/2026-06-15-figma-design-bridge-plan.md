@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#figma-design-bridge'
 date: '2026-06-15'
-modified: '2026-06-15'
+modified: '2026-06-16'
 tier: L3
 related:
   - '[[2026-06-15-figma-design-bridge-adr]]'
@@ -19,6 +19,8 @@ related:
        footers do not exist.
      - NEVER use [[wiki-links]] or markdown links in the
        document body. -->
+
+<!-- RETIRED: W03, P11, P12, P13 -->
 
 # `figma-design-bridge` plan
 
@@ -124,28 +126,9 @@ Seed the Figma file: manually rebuild foundations and icons, importer-seed compo
 Author the read-only MCP parity-check script and wire registry completeness and naming parity into CI.
 
 - [x] `W02.P10.S43` - Author the read-only MCP parity-check script pulling metadata, design context, and screenshots per registry entry; `frontend/scripts/figma-parity.ts`.
-- [ ] `W02.P10.S44` - Add the screenshot-diff comparison of the Figma node against the Storybook render; `frontend/scripts/figma-parity.ts`.
+- [x] `W02.P10.S44` - Add the screenshot-diff comparison of the Figma node against the Storybook render; `frontend/scripts/figma-parity.ts`.
 - [x] `W02.P10.S45` - Wire registry completeness and naming parity into the CI gate; `justfile`.
 - [x] `W02.P10.S46` - Document the end-to-end Figma parity verification workflow; `frontend/figma/README.md`.
-
-## Wave `W03` - Editable Figma recreation
-
-Replace the seed nodes with editable, variable-bound Figma recreations of every component, writing the missing Storybook stories first so each component has a render to recreate from. Depends on W01 tokens (variables) and W02 (registry, gallery). User-directed scope expansion 2026-06-15: editable fidelity, all 50 components.
-
-### Phase `W03.P11` - Editable-recreation pipeline
-
-Build the DOM-extraction plus Figma-builder pipeline that turns a rendered story into an editable, variable-bound Figma node tree.
-
-
-### Phase `W03.P12` - Missing component stories
-
-Write Storybook stories for the 34 components that lack one, so every component has a clean render to recreate from.
-
-
-### Phase `W03.P13` - Editable recreation of all components
-
-Recreate each component as an editable, variable-bound Figma node tree from its rendered story, replacing the seed node and updating the registry binding.
-
 
 ## Description
 
@@ -221,3 +204,38 @@ The plan is complete when every Step is closed and these criteria hold:
 Figma desktop operator steps (P09.S38-S41) are verified by the user confirming
 the variables, foundations, and seeded frames exist in the Figma file before the
 node references are recorded.
+
+## Status
+
+Complete for the code-bearing waves (`W01` tokens bridge, `W02` component
+cross-connect); Wave `W03` and the trailing `W02.P10.S44` are **retired as
+superseded**.
+
+Waves `W01` and `W02` shipped and are green: the DTCG token source, the Style
+Dictionary export proven byte-equivalent to the committed CSS, the canonical flip
+and drift gate, the Tokens Studio push config/runbook, the Storybook gallery and
+chrome-inventory stories, the code-to-Figma mapping registry with its naming-parity
+validator and CI gate, and the read-only MCP parity-check script.
+
+This plan was authored on the **code-canonical** premise (code is the source of
+truth; Figma is a one-way synced mirror). That authority direction was subsequently
+**inverted** by the accepted `2026-06-16-figma-parity-reconciliation` ADR (signed
+off by the user) and codified into the active rule
+`figma-is-the-binding-source-of-truth`: "Figma is the binding source of truth …
+This supersedes the prior code-canonical token direction." `FIGMA-SYNC.md` and
+`themes-are-oklch-generated-from-a-token-tier` were amended to point at that rule.
+
+Consequently:
+
+- `W02.P10.S44` (screenshot-diff of the Figma node against the Storybook render) is
+  retired: it depends on the auth-gated Figma MCP `get_screenshot` (the
+  `figma-code-connect-via-cli` rule documents the MCP plan-gate) and a running
+  Storybook capture, and it served the code→Figma mirror-fidelity goal that the
+  binding-Figma direction no longer pursues. The read-only metadata/naming parity
+  check (`W02.P10.S43`/`S45`/`S46`) remains as the shipped parity surface.
+- Wave `W03` (editable, variable-bound Figma recreation of all components — a
+  code→Figma authoring pipeline) directly contradicts `figma-is-the-binding-source-
+  of-truth` and is retired without decomposition; the figma-parity-reconciliation
+  cycle rebuilt the **frontend from the binding Figma file** instead (its plan
+  68/68, reviewed PASS). The W03 wave is removed from this plan to reflect that it
+  will not be built.

@@ -10,6 +10,15 @@ related:
   - '[[2026-06-16-review-rail-viewers-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `review-rail-viewers` plan
 
@@ -69,13 +78,13 @@ Build the display-only code viewer over the shared highlighter with lazy grammar
 
 Recast the Changes pillar as the Overview snapshot and wire every row's cross-links to file, node, and viewer, holding the four-tab law.
 
-- [ ] `P06.S26` - Recast the Changes pillar as the Overview snapshot section composition, holding the four-tab law and optionally relabelling the tab to Overview; `frontend/src/app/right/ChangesOverview.tsx`.
-- [ ] `P06.S27` - Render the changed-source-files section with each row cross-linking to the worktree path, the code:path node, and opening the code viewer; `frontend/src/app/right/ChangesOverview.tsx`.
-- [ ] `P06.S28` - Render the changed-documents section with each row cross-linking to the doc:stem node and opening the markdown reader; `frontend/src/app/right/ChangesOverview.tsx`.
-- [ ] `P06.S29` - Feed the per-file diff body in DiffView from the new content route, replacing the engine-blocked capability-pending placeholder; `frontend/src/app/right/DiffView.tsx`.
-- [ ] `P06.S30` - Wire Work-tab plan and step rows to open the plan document in the markdown reader and focus the plan node; `frontend/src/app/right/WorkTab.tsx`.
-- [ ] `P06.S31` - Wire the left-rail vault and code rows and the Inspector evidence rows to open the viewers in addition to selecting the node; `frontend/src/app/left/browserSelection.ts`.
-- [ ] `P06.S32` - Keep recent history as a compact commits-plus-doc-events list within the overview, deferring the rich temporal view to the existing timeline; `frontend/src/app/right/ChangesOverview.tsx`.
+- [x] `P06.S26` - Recast the Changes pillar as the Overview snapshot section composition, holding the four-tab law and optionally relabelling the tab to Overview; `frontend/src/app/right/ChangesOverview.tsx`.
+- [x] `P06.S27` - Render the changed-source-files section with each row cross-linking to the worktree path, the code:path node, and opening the code viewer; `frontend/src/app/right/ChangesOverview.tsx`.
+- [x] `P06.S28` - Render the changed-documents section with each row cross-linking to the doc:stem node and opening the markdown reader; `frontend/src/app/right/ChangesOverview.tsx`.
+- [x] `P06.S29` - Feed the per-file diff body in DiffView from the new content route, replacing the engine-blocked capability-pending placeholder; `frontend/src/app/right/DiffView.tsx`.
+- [x] `P06.S30` - Wire Work-tab plan and step rows to open the plan document in the markdown reader and focus the plan node; `frontend/src/app/right/WorkTab.tsx`.
+- [x] `P06.S31` - Wire the left-rail vault and code rows and the Inspector evidence rows to open the viewers in addition to selecting the node; `frontend/src/app/left/browserSelection.ts`.
+- [x] `P06.S32` - Keep recent history as a compact commits-plus-doc-events list within the overview, deferring the rich temporal view to the existing timeline; `frontend/src/app/right/ChangesOverview.tsx`.
 
 ### Phase `P07` - verification
 
@@ -83,7 +92,7 @@ Prove the content contract, viewer rendering, theming, IA, and gates green; code
 
 - [x] `P07.S33` - Run the full frontend lint gate and the engine fmt-plus-clippy gate to exit 0 including prettier format:check and tsc; `frontend/package.json`.
 - [x] `P07.S34` - Add component tests for frontmatter rendering, wiki-link navigation, GFM task lists, and code highlighting across light, dark, and high-contrast themes; `frontend/src/app/viewer/MarkdownReader.test.tsx`.
-- [ ] `P07.S35` - Verify the four-tab law holds and every Overview row cross-links to file, node, and viewer with no inlined content; `frontend/src/app/right/ChangesOverview.test.tsx`.
+- [x] `P07.S35` - Verify the four-tab law holds and every Overview row cross-links to file, node, and viewer with no inlined content; `frontend/src/app/right/ChangesOverview.test.tsx`.
 - [x] `P07.S36` - Run vaultspec-code-review over the feature and land any required revisions to a PASS verdict; `.vault/audit/2026-06-16-review-rail-viewers-audit.md`.
 
 ## Description
@@ -134,3 +143,26 @@ The plan is complete when every Step is closed (`- [x]`) and:
 - The code viewer highlights the full required language set (py, rs, js, ts, jsx/tsx, bash, batch, powershell, c, c++, json, toml, yaml, md) with lazy grammar loading and token colors bound to the OKLCH theme tier across all three themes; it is display-only with no editing affordances.
 - The right rail holds the four-tab law (Inspect/Work/Changes/Search, no fifth tab); the Overview pillar's changed-files, changed-docs, plan-status, and history rows each cross-link to the worktree path, the graph node, and/or open the correct viewer; no content is inlined in the rail.
 - `vaultspec-core vault check all` is green for the feature's documents, and the work is reviewed via `vaultspec-code-review` with verdict PASS.
+
+## Status
+
+Complete (delivered, with Phase `P06` delivered-by-supersession).
+
+Phases `P01`–`P05` and `P07.S33`/`S34`/`S36` shipped and were reviewed PASS
+(`2026-06-16-review-rail-viewers-audit`): the bounded read-only `GET
+/nodes/{id}/content` engine route, the stores content query layer, the shared Shiki
+highlighter, the frontmatter-aware markdown reader, and the read-only code viewer.
+
+Phase `P06` (recast the Changes pillar as an Overview snapshot) and its dependent
+verification `P07.S35` were **superseded mid-execution** by a revised right-rail
+decision, as recorded in the feature audit ("Phase P06 … was superseded mid-execution
+by a revised right-rail decision and is OUT OF SCOPE … deferred to the follow-up that
+builds the revised rail"). That follow-up shipped and is complete: the
+`2026-06-16-status-overview` feature (ADR + plan `P01`–`P03`, all closed) rebuilt the
+right rail as the dumb **Status tab** over a new bounded read-only `GET /history`
+engine route, refined the rail tab IA, and consumes the same open-in-viewer intent the
+P06 cross-links would have driven (built and tested under this plan). The
+Overview-snapshot intent of P06 is therefore delivered through `status-overview`, not
+through the original P06 composition. `P06.S26`–`S32` and `P07.S35` are closed as
+delivered-by-supersession; rebuilding the original P06 composition would re-introduce
+the design this branch deliberately replaced.

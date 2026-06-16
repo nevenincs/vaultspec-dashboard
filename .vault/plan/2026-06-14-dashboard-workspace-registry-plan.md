@@ -3,27 +3,28 @@ tags:
   - '#plan'
   - '#dashboard-workspace-registry'
 date: '2026-06-14'
-modified: '2026-06-15'
+modified: '2026-06-16'
 tier: L2
 related:
   - '[[2026-06-14-dashboard-workspace-registry-adr]]'
   - '[[2026-06-14-dashboard-left-rail-research]]'
 ---
 
-
-
-
-
-
-
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `dashboard-workspace-registry` plan
 
 ### Phase `P01` - Backend registry and persistence
 
 Persist the workspace registry in the vaultspec-session orchestration crate: an ordered set of project roots (stable id from the git common dir, label, reachability), auto-registering the launch workspace, stored best-effort in user-state.sqlite3. Read-only: registering never mutates a repository.
-
-
 
 - [x] `P01.S01` - Define the WorkspaceRoot record and registry schema (stable id from git common dir, label, path, reachability); `engine/crates/vaultspec-session/src/schema.rs`.
 - [x] `P01.S02` - Implement the durable workspace-registry table with best-effort open-or-heal in the user-state store; `engine/crates/vaultspec-session/src/store.rs`.
@@ -55,7 +56,7 @@ Host the workspace switcher above the worktree switcher in the left rail: a stor
 - [x] `P04.S13` - Add a stores query hook for /workspaces and the active-workspace selector; `frontend/src/stores/server/`.
 - [x] `P04.S14` - Widen the wholesale scope reset to also clear the cached worktree set on a workspace swap; `frontend/src/stores/view/`.
 - [x] `P04.S15` - Author the WorkspacePicker rendering roots, launch-default and unreachable markers, and the add-a-project affordance; `frontend/src/app/left/WorkspacePicker.tsx`.
-- [ ] `P04.S16` - Host the workspace switcher above the worktree switcher and render it as a quiet header when only one root exists; `frontend/src/app/AppShell.tsx`.
+- [x] `P04.S16` - Host the workspace switcher above the worktree switcher and render it as a quiet header when only one root exists; `frontend/src/app/AppShell.tsx`.
 
 ### Phase `P05` - Verification
 
@@ -80,4 +81,3 @@ Verify: extend the scope-isolation tests to workspace swaps (no cross-project bl
 
 
 ## Verification
-
