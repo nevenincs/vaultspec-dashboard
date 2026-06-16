@@ -163,12 +163,12 @@ Build an expanded ops and index control surface in the app layer that renders th
 
 Drive a real reindex through the brokered control plane against the running rag service and Qdrant, confirm the freshness epoch advances and embeddings re-fetch, and close the definition of done with the full engine and frontend gate green.
 
-- [ ] `P06.S32` - Build and run the stack with the engine and the rag service on port 8766 and Qdrant on port 8765 reachable for the live drive; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P06.S33` - Drive a real reindex through the brokered reindex verb and poll the brokered jobs verb to a terminal job state; `frontend/src/stores/server/ragControl.ts`.
-- [ ] `P06.S34` - Reconfigure the watcher and read service-state and projects and logs through the brokered control plane confirming verbatim envelopes and the tiers block; `frontend/src/app/right/OpsPanel.tsx`.
-- [ ] `P06.S35` - Confirm the semantic freshness epoch advances after the reindex and the embeddings cache invalidates and the client re-fetches the vectors; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `P06.S36` - Run the full engine and frontend lint and test gate to exit zero before declaring green per the full-gate discipline; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `P06.S37` - Record the definition-of-done checklist that the frontend can trigger and observe the full rag lifecycle with honest tiers degradation; `frontend/src/app/right/OpsPanel.tsx`.
+- [x] `P06.S32` - Build and run the stack with the engine and the rag service on port 8766 and Qdrant on port 8765 reachable for the live drive; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P06.S33` - Drive a real reindex through the brokered reindex verb and poll the brokered jobs verb to a terminal job state; `frontend/src/stores/server/ragControl.ts`.
+- [x] `P06.S34` - Reconfigure the watcher and read service-state and projects and logs through the brokered control plane confirming verbatim envelopes and the tiers block; `frontend/src/app/right/OpsPanel.tsx`.
+- [x] `P06.S35` - Confirm the semantic freshness epoch advances after the reindex and the embeddings cache invalidates and the client re-fetches the vectors; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `P06.S36` - Run the full engine and frontend lint and test gate to exit zero before declaring green per the full-gate discipline; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `P06.S37` - Record the definition-of-done checklist that the frontend can trigger and observe the full rag lifecycle with honest tiers degradation; `frontend/src/app/right/OpsPanel.tsx`.
 
 ## Description
 
