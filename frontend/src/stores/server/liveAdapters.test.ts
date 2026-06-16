@@ -1111,6 +1111,10 @@ describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation 
           sha: "abc1234",
           subject: "feat: the enriched commit",
           rule: "step-id-correlation",
+          // The live `CorrelatedCommit` always serializes `confidence: f32` (the
+          // correlating edge's confidence); the captured sample carries it so the
+          // sample matches the live wire byte-for-byte (review LOW-1).
+          confidence: 0.7,
         },
       ],
     },

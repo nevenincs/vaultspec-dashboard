@@ -1304,6 +1304,11 @@ export class MockEngine {
               // The correlating rule is the attribution that makes a
               // correlated commit honest (finding 028).
               rule: "step-id-correlation",
+              // The live `CorrelatedCommit` always serializes `confidence: f32`
+              // (the correlating edge's confidence); the mock mirrors it so the
+              // commit object matches the live wire byte-for-byte
+              // (mock-mirrors-live-wire-shape; review LOW-1).
+              confidence: 0.7,
             },
           ],
           tiers,
