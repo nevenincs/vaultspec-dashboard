@@ -380,6 +380,13 @@ fn index_structural(
         let mut by_id: std::collections::BTreeMap<String, (Edge, u32, Option<String>)> =
             std::collections::BTreeMap::new();
         for resolved in resolved_mentions {
+            // Mint the inferred `code:` destination node for resolved/stale
+            // Path/Symbol mentions (code-artifact-nodes ADR D1/D5), so the
+            // bridge a resolved Path/Symbol mention already computes resolves
+            // to a real node instead of a 404 dead-end. Broken mentions mint
+            // nothing (D1: no navigable artifact for an absent target);
+            // StepId/WikiLink are out of scope (D1). Idempotent by id.
+            mint_code_artifact(graph, &resolved, scope);
             let target = resolved.target.clone();
             let edge = structural_edge_for(stem, blob_hash, &resolved, scope, observed_at);
             by_id
@@ -997,6 +1004,94 @@ pub(crate) fn structural_edge_for(
         scope: scope.clone(),
         observed_at,
     }
+}
+
+/// Mint the inferred `code:` artifact node a resolved Path/Symbol mention
+/// addresses (code-artifact-nodes ADR D1-D6), beside the structural edge that
+/// names it. Idempotent by id (`upsert_node` merges the scope facet), so
+/// re-ingestion converges and a file mentioned by ten documents is one node.
+///
+/// READ-AND-INFER + STABLE IDENTITY (D3): the id is derived ONLY from the
+/// resolver's live `resolved_target` (the real repo-relative path), never from
+/// the mention text, the byte span, the resolution state, or the rag index — so
+/// a `Resolved`→`Stale` transition mints the node at the path that exists and
+/// re-indexing re-derives the identical id, re-keying nothing. The node is the
+/// same id `bridge_node_id` already computes from the resolved target, so the
+/// bridge flips from `None` to navigable with NO change to `bridge_node_id`
+/// itself (D5/D7). Like the plan-container and rule-projection species minted in
+/// this file, the node is inferred cache: nothing is written to `.vault/`,
+/// nothing is mutated, and it is fully re-derivable from a deleted cache.
+///
+/// Scope policy (D1/D5): mint only `Resolved`/`Stale` Path/Symbol mentions —
+/// a `Broken` mention points at a target the tree cannot produce, so minting a
+/// node for it would fabricate a navigable artifact for something absent (the
+/// honest state is the broken edge with a `null` bridge). `StepId` bridging is
+/// OUT of v1 scope (its bare-id target `plan:W01.P02.S03` must be reconciled
+/// with the real `plan:{plan_stem}/…` container id — a distinct identity
+/// reconciliation owned by the plan-container feature); `WikiLink` already
+/// bridges to a real document node.
+///
+/// Symbol-node granularity (D3, recorded open-question call): the v1 symbol
+/// node is the NAME-ONLY, path-anchored `code:{resolved_path}` form — the file
+/// the symbol was resolved into — NOT a `code:{path}#{symbol}` node. This is the
+/// non-id-bearing call: it mints exactly the node `bridge_node_id` looks up
+/// (which derives `code:{resolved_target}` with `symbol: None` for a path),
+/// leaving the existing `Mentions` edge's `code:#{symbol}` endpoint untouched.
+/// The path-anchored symbol form is a future edge-id change requiring a
+/// contract-review event, deliberately not taken here.
+fn mint_code_artifact(
+    graph: &mut LinkageGraph,
+    resolved: &ingest_struct::resolve::ResolvedMention,
+    scope: &ScopeRef,
+) {
+    // Only Path/Symbol mentions address a `CanonicalKey::CodeArtifact`; WikiLink
+    // and StepId are out of scope (D1).
+    match &resolved.mention.kind {
+        MentionKind::Path(_) | MentionKind::Symbol(_) => {}
+        MentionKind::WikiLink(_) | MentionKind::StepId(_) => return,
+    }
+    // Broken mints nothing (D1); only Resolved/Stale carry a live target.
+    if !matches!(
+        resolved.state,
+        ResolutionState::Resolved | ResolutionState::Stale
+    ) {
+        return;
+    }
+    let Some(resolved_target) = resolved.target.as_deref() else {
+        return;
+    };
+    // Identity from the resolved path alone (D3): the same id the bridge
+    // computes (`CanonicalKey::CodeArtifact { path, symbol: None }`).
+    let key = CanonicalKey::CodeArtifact {
+        path: resolved_target,
+        symbol: None,
+    };
+    let id = node_id(&key);
+    graph.upsert_node(Node {
+        id,
+        kind: NodeKind::CodeArtifact,
+        key: key.key_string(),
+        // Thin node (D2): no title; inbound `Mentions` edges carry the detail.
+        title: None,
+        // `doc_type: "code"` is the ontology's species handle, mirroring
+        // `project_rules`' `doc_type: "rule"` (D2) — NOT a claim that the file
+        // is a vault document (the node kind already says `code`).
+        doc_type: Some("code".to_string()),
+        dates: None,
+        // No feature_tags (D6): the feature-constellation projection excludes
+        // code nodes, keeping the unbounded-safe default LOD untouched.
+        feature_tags: vec![],
+        // A source file has no pipeline state: no ADR status, no plan tier (D2).
+        status: None,
+        tier: None,
+        facets: vec![Facet {
+            scope: scope.clone(),
+            presence: Presence::Exists,
+            content_hash: None,
+            // No lifecycle (D2): a source file carries no pipeline lifecycle.
+            lifecycle: None,
+        }],
+    });
 }
 
 /// Canonical, deterministic serialization of a graph — the D8.2

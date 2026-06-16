@@ -831,4 +831,72 @@ mod tests {
             "the new cross-feature meta-edge appears as a tagged add: {entries:?}"
         );
     }
+
+    /// An inferred code-artifact node exactly as `engine-graph` mints it
+    /// (code-artifact-nodes ADR D2/D6): `NodeKind::CodeArtifact`, `doc_type`
+    /// `code`, a per-scope `Exists` facet, and crucially NO `feature_tags`.
+    fn code_node(path: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::CodeArtifact { path, symbol: None }),
+            kind: NodeKind::CodeArtifact,
+            key: path.into(),
+            title: None,
+            doc_type: Some("code".into()),
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn code_nodes_are_excluded_from_the_constellation_but_join_the_document_pool() {
+        // code-artifact-nodes ADR D6: a minted `code:` node carries no
+        // feature_tags, so the feature-granularity projection (which groups by
+        // feature_tags) NEVER includes it — the unbounded-safe constellation LOD
+        // is untouched. At document granularity it joins the scope-faceted pool
+        // that MAX_GRAPH_NODES already bounds.
+        let mut g = fixture();
+        g.upsert_node(code_node("src/graph.rs"));
+
+        // Feature granularity: only the two feature-convergence nodes; the code
+        // node contributes to NO convergence and appears nowhere.
+        let constellation =
+            graph_query(&g, &scope(), Filter::default(), Granularity::Feature).unwrap();
+        assert!(
+            constellation.nodes.iter().all(|n| n["kind"] == "feature"),
+            "the constellation carries only feature-convergence nodes"
+        );
+        assert!(
+            !constellation
+                .nodes
+                .iter()
+                .any(|n| n["id"] == "code:src/graph.rs"),
+            "a tagless code node never enters the feature constellation (D6)"
+        );
+
+        // Document granularity: the code node is a first-class member of the
+        // bounded pool, addressable by its stable `code:` id.
+        let document = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let code = document
+            .nodes
+            .iter()
+            .find(|n| n["id"] == "code:src/graph.rs")
+            .expect("the code node is served at document granularity");
+        assert_eq!(code["kind"], "code-artifact");
+        assert_eq!(code["doc_type"], "code");
+        // No fabricated feature tags, no lifecycle, no per-type status (D2/D6).
+        assert!(
+            code["feature_tags"]
+                .as_array()
+                .is_some_and(|t| t.is_empty()),
+            "code nodes carry no feature_tags (D6)"
+        );
+    }
 }
