@@ -5,13 +5,13 @@
 // every pixel inside it and applies all camera changes — chrome never draws into
 // the canvas and never moves the camera itself.
 //
-// Recodified W02.P11.S27 onto the base design language and iconography ADRs
-// (2026-06-14-dashboard-minimap-adr): attenuated supporting chrome on the OKLCH
-// semantic token layer with a soft low-contrast rule, subtle panel elevation,
-// rounded geometry, and the sanctioned Lucide structural-chrome marks. The
-// retired brand `shadow-card` is replaced by the panel-grade elevation the
-// sibling floating chrome (NavToolbar) uses; the node/feature/viewport colours
-// live entirely in the scene layer's token reads, not here.
+// Rebuilt figma-parity-reconciliation W02.P05.S34 onto the NEW Figma role-named
+// token foundation: attenuated supporting chrome on the semantic token layer with
+// a soft low-contrast rule, the three-level raised elevation (`shadow-fg-raised`),
+// canonical radius (`rounded-fg-md` panel, `rounded-fg-xs` controls), the
+// `caption` type role for the Map label, and the sanctioned Lucide
+// structural-chrome marks. The node/feature/viewport colours live entirely in the
+// scene layer's token reads, not here.
 //
 // Layer ownership (dashboard-layer-ownership / minimap ADR "Layer ownership"):
 // this is app-chrome hosting a scene-drawn canvas. It owns the panel shell, the
@@ -86,8 +86,8 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
     <div
       className={
         embedded
-          ? "overflow-hidden rounded-vs-md border border-rule bg-paper-raised"
-          : "pointer-events-auto absolute bottom-vs-2 right-vs-2 z-10 overflow-hidden rounded-vs-md border border-rule bg-paper-raised/90 shadow-panel backdrop-blur-sm"
+          ? "overflow-hidden rounded-fg-md border border-rule bg-paper-raised"
+          : "pointer-events-auto absolute bottom-vs-2 right-vs-2 z-10 overflow-hidden rounded-fg-md border border-rule bg-paper-raised/90 shadow-fg-raised backdrop-blur-sm"
       }
       style={{ width: collapsed ? "auto" : MINIMAP_W + 2 }}
       role="group"
@@ -98,7 +98,7 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
           UI step, plus the recenter + collapse controls in the Lucide chrome
           family. Attenuated supporting chrome: the field leads. */}
       <div className="flex items-center justify-between gap-vs-1 border-b border-rule px-vs-2 py-vs-1">
-        <span className="text-2xs font-medium uppercase tracking-wider text-ink-faint">
+        <span className="text-caption font-medium uppercase tracking-wider text-ink-faint">
           Map
         </span>
         <div className="flex items-center gap-vs-0-5">
@@ -108,7 +108,7 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
               onClick={recenter}
               aria-label="recenter the field in view"
               title="recenter the field in view"
-              className="flex h-4 w-4 items-center justify-center rounded-vs-sm text-ink-faint transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              className="flex h-4 w-4 items-center justify-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               data-minimap-recenter
             >
               <Crosshair size={ICON_PX} aria-hidden />
@@ -121,7 +121,7 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
             aria-expanded={!collapsed}
             aria-controls={CANVAS_REGION_ID}
             title={collapsed ? "expand minimap" : "collapse minimap"}
-            className="flex h-4 w-4 items-center justify-center rounded-vs-sm text-ink-faint transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="flex h-4 w-4 items-center justify-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             data-minimap-collapse
           >
             {collapsed ? (

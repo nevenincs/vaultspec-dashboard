@@ -168,7 +168,7 @@ Rebuild the right activity rail (tabs, inspector, work, search, changes) and the
 - [x] `W02.P05.S31` - Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers; `frontend/src/app/right/SearchTab.tsx`.
 - [x] `W02.P05.S32` - Rebuild the changes overview and diff view from their binding frames over the preserved diff query, including the historical text-diff route; `frontend/src/app/right/DiffView.tsx`.
 - [x] `W02.P05.S33` - Rebuild the stage filter bar and sidebar from the binding FacetChipGroup primitive over the preserved filter store; `frontend/src/app/stage/FilterBar.tsx`.
-- [ ] `W02.P05.S34` - Rebuild the stage minimap widget from its binding frame over the preserved scene viewport state; `frontend/src/app/stage/MinimapWidget.tsx`.
+- [x] `W02.P05.S34` - Rebuild the stage minimap widget from its binding frame over the preserved scene viewport state; `frontend/src/app/stage/MinimapWidget.tsx`.
 
 ### Phase `W02.P06` - Timeline, overlays, settings, and command palette
 
