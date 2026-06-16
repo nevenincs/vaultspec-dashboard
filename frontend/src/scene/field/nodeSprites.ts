@@ -1,31 +1,36 @@
-// Node sprite layer with LOD discipline (W01.P03.S10, ADR G3.a, §3.1 node
-// anatomy).
+// Node sprite layer — the binding Node-items frame (graph/Node-items 83:2,
+// graph/Hero 85:2; figma-parity-reconciliation W03.P07.S42). Scene-layer module:
+// framework-free by design — no React imports, ever.
 //
-// NODE BODY (graph/Hero 85:2, graph/Node-items 83:2 — the binding redesign):
-// the canvas node is a PLAIN FILLED CIRCLE coloured by document category and
-// sized by salience, with a label below; the selected node carries a concentric
-// accent ring; a filtered-out node fades. This SUPERSEDES the per-doc-type
-// silhouette mark ON THE CANVAS BODY (Figma is gospel). The silhouette marks
-// (`marks.ts`) survive for chrome/legend/hover-card; colour is the TYPE channel
-// on the canvas, size carries salience, the ring carries selection.
+// THE NODE (graph/Node-items 83:2 — binding): a PLAIN FILLED CIRCLE coloured by
+// document category and sized by the engine-served salience, with a clean meta-
+// size label below. Colour is the TYPE channel; size carries IMPORTANCE; the
+// concentric accent ring carries SELECTION. Exactly THREE states, and nothing
+// else on the disc:
+//   - DEFAULT      a crisp full-opacity category circle (no freshness dimming,
+//                  no status stamp — the clean instrument register).
+//   - SELECTED     the circle PLUS a thin concentric single-accent ring.
+//   - FILTERED-OUT the circle fades toward transparent and shrinks slightly
+//                  (the receding "hidden" treatment).
 //
-// LOD discipline is the anti-hairball rule: the zoomed-out field draws the
-// coloured circle; full anatomy (progress ring, tier badges, label) renders only
-// above the near-zoom threshold and for focused nodes. Scene-layer module:
-// framework-free.
+// This SUPERSEDES, ON THE CANVAS BODY, the per-doc-type silhouette mark and the
+// node-visual-richness status STAMP overlays (Figma is binding). The silhouette
+// marks (`marks.ts`) and the status DATA survive untouched for the chrome /
+// legend / hover-card / inspector — colour is the on-canvas type channel, size
+// carries salience, the ring carries selection, and the full status reads off
+// the canvas. The single surviving on-canvas status treatment is CIRCLE-LEVEL: a
+// ghost (retired/archived/superseded) node desaturates its disc to the archived
+// neutral and dims to the ghost floor, matching the Hero's "filtered-out /
+// archived" look — a property of the circle, not a stamp overlay.
 //
-// STATUS STAMPS REMOVED FROM THE CANVAS (graph/Hero 85:2, graph/Node-items 83:2
-// binding redesign): the node-visual-richness status STAMP overlays — the coarse
-// ring/slash and the fine severity-dot / tier-notch glyphs drawn around the disc —
-// no longer render on the canvas. The Hero shows clean category circles with
-// exactly three states (default / selected accent ring / filtered-out fade), no
-// stamp marks. The status DATA and its projection survive untouched (the hover-
-// card and inspector still read `node.status` via statusStamp.ts and show the
-// status pill); only the on-canvas stamp draw is gone. The single CIRCLE-LEVEL
-// retired treatment is kept (a ghost node desaturates its disc to the archived
-// neutral and dims to the ghost floor — that is a property of the circle, matching
-// the Hero's "filtered-out/archived" look, not a stamp overlay). (Codify follow-
-// up: this deliberately retires node-visual-richness's CANVAS status stamps.)
+// LOD discipline (the anti-hairball rule): the zoomed-out field draws only the
+// coloured circle; the label + full anatomy (progress ring, tier badges) unfold
+// above the near-zoom threshold and for focused nodes.
+//
+// FROZEN CONTRACT: this layer receives its node set only through the field
+// assembly's command path (set-data / set-selected / set-visibility, all on the
+// locked SceneCommand union) and emits nothing — selection/hover flow back
+// through the controller's event channel elsewhere (dashboard-layer-ownership).
 
 import { Container, Graphics, Text, Texture } from "pixi.js";
 
@@ -41,10 +46,9 @@ import { cssColorNumber as getCssColor } from "./tokenReads";
 
 export type LodLevel = "far" | "near";
 
-/** World-scale threshold above which full anatomy (ring, badges, label) unfolds.
- * Set to feature LOD (0.6) so labels are visible in the default fit-to-view,
- * matching the Obsidian mental model where the graph shows labels at overview
- * scale. Document LOD (1.6) was too strict — labels never appeared in practice. */
+/** World-scale threshold above which the label + full anatomy unfold. Set to the
+ * feature LOD (0.6) so labels show in the default fit-to-view, matching the
+ * Obsidian mental model where the graph labels at overview scale. */
 export const NEAR_ZOOM_THRESHOLD = 0.6;
 
 /** Focused nodes always carry full anatomy regardless of zoom (§3.1). */
@@ -53,9 +57,10 @@ export function lodFor(scale: number, focused: boolean): LodLevel {
 }
 
 /**
- * State colours — resolved from the CSS token layer so the palette adapts to
- * light/dark themes.  In the node test environment getCssColor returns the
- * light-mode fallbacks, so colour semantics are unchanged in tests.
+ * Lifecycle state colours — resolved from the literal-hex scene token layer so
+ * the palette tracks the active theme. These tint the near-LOD progress ring;
+ * they are NOT the node body fill (the body fill is the category hue). In the
+ * node test env getCssColor returns the light-mode fallbacks.
  */
 function readStateColors(): Record<string, number> {
   return {
@@ -73,18 +78,26 @@ export function stateColor(lifecycle?: SceneNodeData["lifecycle"]): number {
   return readStateColors()[lifecycle.state] ?? defaultColor;
 }
 
-// --- retired-status circle treatment (node-visual-richness, canvas-reduced) ---
+// --- circle-level status treatment (the one surviving canvas status signal) ---
 //
-// The canvas no longer draws status STAMP overlays (graph/Hero binding redesign).
-// The one status treatment that survives on the canvas is CIRCLE-LEVEL: a ghost
-// (retired/archived/superseded) node desaturates its disc to the archived neutral
-// (`bodyColor`) and dims to this floor — matching the Hero's filtered-out/archived
-// look. The full status (severity/tier/value) reads in the hover-card + inspector.
+// The canvas draws no status STAMP overlays (Hero redesign). The one status
+// treatment that survives on the canvas is CIRCLE-LEVEL: a ghost
+// (retired/archived/superseded) node desaturates its disc to the archived
+// neutral (`bodyColor`) and dims to this floor — the Hero's filtered-out /
+// archived look. The full status (severity/tier/value) reads off the canvas.
 
 /** Alpha floor a ghosted (retired/archived/superseded) node disc dims to. */
 export const GHOST_ALPHA = 0.4;
 
-/** Freshness halo decay: 1 at modification, cooling to a floor over 30 days. */
+// Freshness is retained as a PURE helper (consumed by callers that still want a
+// recency signal off the canvas body) but is NO LONGER applied to the default
+// node disc: the binding Node-items frame shows the default state as a crisp,
+// full-opacity category circle, so dimming it by age would muddy the clean
+// three-state model. The body alpha is driven only by the three states (default
+// 1, selected 1, filtered-out fade) plus the ghost floor and the ego recede.
+
+/** Freshness as a 0..1 scalar: 1 at modification, cooling to a floor over 30
+ *  days. Kept for off-canvas recency consumers; not applied to the disc. */
 export const FRESHNESS_WINDOW_MS = 30 * 24 * 3600 * 1000;
 export const FRESHNESS_FLOOR = 0.55;
 
@@ -123,24 +136,21 @@ export function tierBadgeText(degreeByTier?: SceneNodeData["degreeByTier"]): str
 
 // --- the sprite layer ---------------------------------------------------------
 
-/** Supplies silhouette textures per node kind (the S16 placeholder set or the
- * W02.P17 domain-mark provider plugs in behind this seam). */
+/** Supplies silhouette textures per node kind. Retained as the chrome/legend/
+ *  hover-card mark seam (`domainGlyphs.ts` implements it); the canvas BODY no
+ *  longer draws glyphs (it is a category circle), so this layer does not consume
+ *  it — the seam stays for the React MarkById path. */
 export interface GlyphTextureProvider {
   textureFor(kind: string): Texture;
-  /**
-   * Texture for any mark by its stable id (tier/state/event/status-stamp) —
-   * the badge/stamp path. Optional: the `DomainGlyphs` provider implements it
-   * (the gate-cleared domain family); a placeholder/fallback provider may omit
-   * it, in which case the fine status stamp simply does not render (the coarse
-   * ring/slash/ghost still does). Mirrors the locked-seam additive discipline.
-   */
+  /** Texture for any mark by stable id (tier/state/event/status-stamp). */
   textureForMark?(id: string): Texture;
   /** Release cached GPU textures; called by the field on teardown. */
   destroy?(): void;
 }
 
+/** Base node-disc radius (graph/Node-items: a ~12px-diameter dot at unit scale). */
 const NODE_RADIUS = 6;
-/** The salience multiplier band: salience 0 -> 1.0x base; salience 1 -> this. */
+/** Salience multiplier band: salience 0 -> 1.0x base; salience 1 -> this. */
 export const SALIENCE_RADIUS_MAX = 2.6;
 
 // --- selected-state ring geometry (graph/Node-items 83:2 "selected") ----------
@@ -162,9 +172,9 @@ export function selectedRingRadius(bodyRadius: number): number {
 /**
  * The node BODY fill colour (graph/Hero, graph/Node-items): the node's category
  * hue, read from the scene-category token seam (literal hex per theme). A ghost
- * (retired/archived/superseded) node desaturates to the archived neutral instead
- * — the single status treatment for the retired family — so the category hue
- * never claims a node the corpus has retired.
+ * (retired/archived/superseded) node desaturates to the archived neutral — the
+ * single circle-level status treatment — so the category hue never claims a node
+ * the corpus has retired.
  */
 export function bodyColor(node: SceneNodeData): number {
   const ghost = stampFor(node.status).ghost;
@@ -173,24 +183,19 @@ export function bodyColor(node: SceneNodeData): number {
     : categoryColor(node.kind);
 }
 
-/** The selected accent ring colour — the single muted accent (warmth rule:
- *  "the single muted accent for selection rings"), read as literal hex per
- *  theme through the scene token seam. */
+/** The selected accent ring colour — the single muted accent (warmth rule: "the
+ *  single muted accent for selection rings"), read as literal hex per theme. */
 export function selectedRingColor(): number {
   return getCssColor("--color-state-active", 0x3f774d);
 }
 
 /**
- * World-space radius for a node, driven by salience (graph-representation ADR
- * encoding map: salience -> size, "making the importance field visible").
- *
- * salience -> size SUPERSEDES the old member-count radius rule (node-canvas
- * amendment, graph-representation W04.P11): member-count now folds into a feature
- * node's salience upstream, so the two channels no longer compete. When salience
- * is present it drives the radius for EVERY species (the importance field is the
- * size signal). When salience is ABSENT (an origin that does not yet serve it),
- * the prior rule is the fallback: feature-convergence nodes scale by member-count
- * (the constellation centers of gravity), every other species keeps the base
+ * World-space radius for a node, driven by the engine-served salience
+ * (degree-of-interest). Salience is the importance field made visible: it drives
+ * the radius for EVERY species, monotonic in [0,1] and capped at the documented
+ * band. When salience is ABSENT (an origin that does not yet serve it), the prior
+ * rule is the honest fallback: feature-convergence nodes scale by member-count
+ * (the constellation centres of gravity); every other species keeps the base
  * radius (shape carries type, not size, §3.1).
  */
 export function nodeRadius(node: SceneNodeData): number {
@@ -198,7 +203,6 @@ export function nodeRadius(node: SceneNodeData): number {
     const s = Math.max(0, Math.min(1, node.salience));
     return NODE_RADIUS * (1 + s * (SALIENCE_RADIUS_MAX - 1));
   }
-  // Fallback (salience absent): the prior member-count rule (node-canvas D4.1).
   if (node.kind !== "feature" || !node.memberCount || node.memberCount <= 0) {
     return NODE_RADIUS;
   }
@@ -206,11 +210,10 @@ export function nodeRadius(node: SceneNodeData): number {
 }
 
 /**
- * Label priority for the DOI label cull (graph-representation ADR: salience is a
- * label-priority input). Higher = labelled sooner as the field declutters.
- * Focused/pinned/lifted nodes are always labelled (handled by the LOD pass); this
- * orders the AMBIENT field. Salience is the primary signal; member-count breaks
- * ties for feature nodes when salience is absent.
+ * Label priority for the DOI label cull: higher = labelled sooner as the field
+ * declutters. Salience is the primary signal; member-count breaks ties for
+ * feature nodes when salience is absent. Focused/pinned/lifted nodes are always
+ * labelled (handled by the LOD pass); this orders the AMBIENT field.
  */
 export function labelPriority(node: SceneNodeData): number {
   if (typeof node.salience === "number") {
@@ -222,13 +225,26 @@ export function labelPriority(node: SceneNodeData): number {
   return 0.2;
 }
 
+/**
+ * Ambient label-priority floor by zoom: at low ambient zoom only the highest-
+ * salience nodes label; the floor relaxes as the user zooms in, until at the
+ * near threshold every near node labels. Focused/pinned/lifted nodes always
+ * label regardless (handled in `refresh`).
+ */
+export function ambientLabelFloor(scale: number): number {
+  if (scale >= 1.6) return 0;
+  if (scale <= NEAR_ZOOM_THRESHOLD) return 0.6;
+  const t = (scale - NEAR_ZOOM_THRESHOLD) / (1.6 - NEAR_ZOOM_THRESHOLD);
+  return 0.6 * (1 - t);
+}
+
 interface NodeVisual {
   node: SceneNodeData;
   /**
-   * The node BODY — a category-coloured filled circle (graph/Hero 85:2),
-   * superseding the doc-type silhouette sprite on the canvas. A `Graphics` (not
-   * a `Sprite`) so the disc is crisp at any camera scale; redrawn only when the
-   * radius/colour changes (sync), not per frame (position is a cheap transform).
+   * The node BODY — a category-coloured filled circle (graph/Hero 85:2). A
+   * `Graphics` (not a `Sprite`) so the disc is crisp at any camera scale;
+   * redrawn only when the radius/colour changes, not per frame (position is a
+   * cheap transform).
    */
   body: Graphics;
   /**
@@ -237,8 +253,7 @@ interface NodeVisual {
    * Null otherwise.
    */
   ring: Graphics | null;
-  /** Lazily built full anatomy (progress ring, tier badges, label) — near LOD
-   *  only. Carries no status stamp (the canvas stamp was retired). */
+  /** Lazily built near-LOD anatomy (progress ring, tier badges, label). */
   anatomy: Container | null;
   /** The label Text within the anatomy, kept for DOI label-priority culling. */
   label: Text | null;
@@ -247,39 +262,22 @@ interface NodeVisual {
   drawnColor: number;
 }
 
-/**
- * Ambient label-priority floor by zoom (graph-representation label-priority cull):
- * at low ambient zoom only the highest-salience nodes label; the floor relaxes as
- * the user zooms in, until at the near threshold every near node labels. Focused,
- * pinned, and lifted nodes always label regardless (handled in `refresh`).
- */
-export function ambientLabelFloor(scale: number): number {
-  // scale below NEAR_ZOOM_THRESHOLD: no ambient labels (caller already gates by
-  // LOD). Between NEAR and 1.6, relax linearly from 0.6 down to 0.
-  if (scale >= 1.6) return 0;
-  if (scale <= NEAR_ZOOM_THRESHOLD) return 0.6;
-  const t = (scale - NEAR_ZOOM_THRESHOLD) / (1.6 - NEAR_ZOOM_THRESHOLD);
-  return 0.6 * (1 - t);
-}
-
 export class NodeSpriteLayer {
   private container = new Container();
   private visuals = new Map<string, NodeVisual>();
   private focused = new Set<string>();
-  /** The currently selected node ids (graph/Node-items "selected"): each draws
-   *  the concentric accent ring. Driven by the `set-selected` seam command. */
+  /** Currently selected node ids (graph/Node-items "selected"): each draws the
+   *  concentric accent ring. Driven by the `set-selected` seam command. */
   private selected = new Set<string>();
+  private lastScale = 1;
+  private highlight: ReadonlySet<string> | null = null;
 
-  // The node body is a category-coloured Graphics circle (Hero redesign), and the
-  // canvas no longer draws status-mark glyphs, so the layer needs no glyph texture
-  // provider. The `GlyphTextureProvider` seam is retained (chrome/legend/hover-card
-  // marks still use it via the React MarkById path), just not consumed here.
   constructor(world: Container) {
     world.addChild(this.container);
   }
 
   /** Reconcile node bodies against the model by stable id. */
-  sync(model: SceneGraphModel, now: number): void {
+  sync(model: SceneGraphModel, _now: number): void {
     const seen = new Set<string>();
     for (const node of model.nodes) {
       seen.add(node.id);
@@ -299,24 +297,22 @@ export class NodeSpriteLayer {
         this.visuals.set(node.id, visual);
       }
       visual.node = node;
-      // The node body is a category-coloured filled circle (graph/Hero): colour
-      // is the TYPE channel, size carries salience (nodeRadius). Redraw the disc
-      // only when the radius or colour actually changes — position is a cheap
-      // per-frame transform, geometry is not.
+      // The body is a category-coloured filled circle (graph/Hero): colour is the
+      // TYPE channel, size carries salience. Redraw the disc only when the radius
+      // or colour actually changes — position is a cheap per-frame transform.
       const radius = nodeRadius(node);
       const color = bodyColor(node);
       if (radius !== visual.drawnRadius || color !== visual.drawnColor) {
         visual.body.clear().circle(0, 0, radius).fill({ color });
         visual.drawnRadius = radius;
         visual.drawnColor = color;
-        // The selected ring rides the body radius — redraw it on a size change.
         if (visual.ring) this.drawRing(visual);
       }
-      visual.body.alpha = freshnessAlpha(node.dates?.modified, now);
-      // Status no longer draws a stamp overlay on the canvas (Hero redesign):
-      // the only surviving canvas treatment is the circle-level ghost desaturation
-      // + dim (bodyColor + the refresh alpha math). Full status reads in the
-      // hover-card / inspector. Category hue otherwise carries the disc.
+      // DEFAULT state (binding Node-items): a crisp, full-opacity category circle.
+      // The ghost (retired/archived) circle-level treatment is the one status
+      // signal that dims the disc; the ego recede + filtered-out fade are applied
+      // by `refresh`/`applyVisibility`. Freshness no longer dims the default disc.
+      visual.body.alpha = this.ghostFloor(node);
       this.syncRing(visual);
       if (visual.anatomy) this.rebuildAnatomy(visual);
     }
@@ -330,10 +326,15 @@ export class NodeSpriteLayer {
     }
   }
 
+  /** The ghost floor for a node: GHOST_ALPHA for a retired/archived/superseded
+   *  node (the one circle-level status treatment), else fully opaque. */
+  private ghostFloor(node: SceneNodeData): number {
+    return stampFor(node.status).ghost ? GHOST_ALPHA : 1;
+  }
+
   /** Set the selected node ids (graph/Node-items "selected"): each gains the
-   *  concentric accent ring; deselected nodes drop it. Driven by the
-   *  `set-selected` seam command (dashboard-layer-ownership: data in via the
-   *  command channel only). */
+   *  concentric accent ring; deselected nodes drop it. Driven by `set-selected`
+   *  (dashboard-layer-ownership: data in via the command channel only). */
   setSelected(ids: ReadonlySet<string>): void {
     this.selected = new Set(ids);
     for (const visual of this.visuals.values()) this.syncRing(visual);
@@ -344,9 +345,8 @@ export class NodeSpriteLayer {
     const want = this.selected.has(visual.node.id);
     if (want && !visual.ring) {
       const ring = new Graphics();
-      // The ring sits ABOVE the body but BELOW the anatomy in z; adding it to the
-      // container puts it on top of bodies added earlier — its own body is added
-      // first, so the ring reads as a halo around its disc.
+      // The ring sits above the body in z (added after its body); it reads as a
+      // halo around the disc.
       this.container.addChild(ring);
       ring.position.copyFrom(visual.body.position);
       visual.ring = ring;
@@ -388,20 +388,16 @@ export class NodeSpriteLayer {
   }
 
   /**
-   * Ego-highlight (G3.b): lifted ids keep full alpha and show labels at
-   * any zoom (DOI culling); the rest of the field recedes. Null clears.
+   * Ego-highlight (G3.b): lifted ids keep full alpha and show labels at any zoom
+   * (DOI culling); the rest of the field recedes. Null clears.
    */
   setHighlight(lifted: ReadonlySet<string> | null): void {
     this.highlight = lifted;
     this.refresh();
   }
 
-  private lastScale = 1;
-  private highlight: ReadonlySet<string> | null = null;
-
   /** Re-apply LOD + highlight to every visual. */
   private refresh(): void {
-    const now = Date.now();
     for (const visual of this.visuals.values()) {
       const id = visual.node.id;
       const lifted = this.highlight?.has(id) ?? false;
@@ -413,10 +409,9 @@ export class NodeSpriteLayer {
           this.container.addChild(visual.anatomy);
         }
         visual.anatomy.visible = true;
-        // DOI label-priority cull (graph-representation node-canvas amendment):
-        // focused/pinned/lifted nodes always label; the ambient field labels by
-        // `salience` priority against a zoom-relaxing floor, so the overview never
-        // becomes a hairball of text.
+        // DOI label-priority cull: focused/pinned/lifted nodes always label; the
+        // ambient field labels by salience against a zoom-relaxing floor, so the
+        // overview never becomes a hairball of text.
         if (visual.label) {
           const always = this.focused.has(id) || lifted;
           visual.label.visible =
@@ -425,37 +420,34 @@ export class NodeSpriteLayer {
       } else if (visual.anatomy) {
         visual.anatomy.visible = false;
       }
+      // Body alpha = the three-state model: default/selected crisp (1), the
+      // ego-recede dims the non-lifted field while an ego is held, and the ghost
+      // floor caps a retired node. The filtered-out fade is applied separately by
+      // `applyVisibility`.
       const recede = this.highlight && !lifted ? RECEDE_ALPHA : 1;
-      // A ghosted (retired/archived/superseded) node dims to the ghost floor —
-      // the single status treatment for the retired family — on top of the
-      // freshness + recede multipliers.
-      const ghost = stampFor(visual.node.status).ghost ? GHOST_ALPHA : 1;
-      visual.body.alpha =
-        freshnessAlpha(visual.node.dates?.modified, now) * recede * ghost;
-      // The selected ring is an always-legible accent: it follows the recede
-      // (so a non-ego selection still dims with its body) but never the ghost
-      // floor (a selected retired node still shows a clear ring).
+      visual.body.alpha = recede * this.ghostFloor(visual.node);
+      // The selected ring is an always-legible accent: it follows the recede (a
+      // non-ego selection still dims with its body) but never the ghost floor (a
+      // selected retired node still shows a clear ring).
       if (visual.ring) visual.ring.alpha = recede;
       if (visual.anatomy) visual.anatomy.alpha = recede;
     }
   }
 
-  /** Visibility fade/shrink pass from the VisibilityTracker sample (G3.f). */
+  /** Visibility fade/shrink pass from the VisibilityTracker sample (G3.f): the
+   *  FILTERED-OUT state (graph/Node-items "Hidden") fades the body toward
+   *  transparent and shrinks it slightly so the removed set reads as receding,
+   *  not vanishing abruptly. */
   applyVisibility(
     progress: ReadonlyMap<string, number>,
     settledVisible: ReadonlySet<string>,
-    now: number,
+    _now: number,
   ): void {
     for (const [id, visual] of this.visuals) {
       const p = progress.get(id) ?? (settledVisible.has(id) ? 1 : 0);
-      const base = freshnessAlpha(visual.node.dates?.modified, now);
-      const ghost = stampFor(visual.node.status).ghost ? GHOST_ALPHA : 1;
-      // Filtered-out / fading nodes (graph/Node-items "Hidden"): fade the body
-      // toward transparent and shrink it slightly so the removed set reads as
-      // receding, not vanishing abruptly (G3.f). Scale the disc by redrawing —
-      // a Graphics circle has no setSize, so we drive scale on the display node.
+      const ghost = this.ghostFloor(visual.node);
       visual.body.visible = p > 0;
-      visual.body.alpha = base * p * ghost;
+      visual.body.alpha = p * ghost;
       visual.body.scale.set(0.6 + 0.4 * p);
       if (visual.ring) {
         visual.ring.visible = p > 0;
@@ -484,7 +476,7 @@ export class NodeSpriteLayer {
     this.visuals.clear();
   }
 
-  // --- anatomy construction ---------------------------------------------------
+  // --- near-LOD anatomy construction ------------------------------------------
 
   private buildAnatomy(visual: NodeVisual): Container {
     const anatomy = new Container();
@@ -499,17 +491,17 @@ export class NodeSpriteLayer {
   }
 
   private populateAnatomy(anatomy: Container, node: SceneNodeData): Text {
-    // Text colours resolved from the token layer so they read on both light
-    // and dark canvas backgrounds.
+    // Anatomy text reads in the ink-muted scene token on both light and dark
+    // grounds.
     const inkMuted = getCssColor("--color-ink-muted", 0x6a6258);
 
-    // Anatomy rides the node's own radius so a large feature convergence does
-    // not bury its ring, badges, and label inside the silhouette.
+    // Anatomy rides the node's own radius so a large feature convergence does not
+    // bury its ring, badges, and label inside the disc.
     const ringRadius = nodeRadius(node) + 3;
     const fraction = progressFraction(node.lifecycle);
     if (fraction !== null) {
-      // The progress ring is a parametric arc-fill primitive (S36), not an
-      // icon: exact done/total arc anchored at 12 o'clock, tinted with state.
+      // The progress ring is a parametric arc-fill primitive: an exact done/total
+      // arc anchored at 12 o'clock, tinted with the lifecycle state colour.
       const ring = drawProgressRing(new Graphics(), fraction, {
         radius: ringRadius,
         width: 2,
@@ -526,14 +518,10 @@ export class NodeSpriteLayer {
       badgeText.position.set(ringRadius + 2, -ringRadius);
       anatomy.addChild(badgeText);
     }
-    // Status no longer draws a fine severity-dot / tier-notch stamp on the canvas
-    // (Hero redesign): the exact severity/tier magnitude reads in the hover-card
-    // and inspector. The near-LOD anatomy carries only the progress ring, the tier
-    // degree badges, and the label.
-    // The label sits BELOW the circle in the scene ink-muted token at the small
-    // meta size (graph/Hero: "Research notes" / "Clock decision" — ink-muted,
-    // ~9.5px). Hub/high-salience labels read slightly louder via ink — but the
-    // dominant canvas treatment is the muted meta label, so the body uses it.
+    // The label sits BELOW the circle in the ink-muted scene token at the small
+    // meta size (graph/Hero: "Research notes" / "Clock decision" — ink-muted
+    // meta). No on-canvas status stamp (Hero redesign): the near-LOD anatomy
+    // carries only the progress ring, the tier-degree badges, and the label.
     const label = new Text({
       text: node.title ?? node.id,
       style: { fontSize: 10, fill: inkMuted },
