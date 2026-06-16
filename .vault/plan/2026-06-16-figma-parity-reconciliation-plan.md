@@ -214,7 +214,7 @@ Rebuild the consolidated plain-language controls (Navigate, Layout, Zoom, Tune) 
 - [x] `W03.P09.S53` - Rebuild the Layout control to the binding Network, Tree, Grouped, and Timeline modes over the preserved layout-mode catalog; `frontend/src/app/stage/LensSelector.tsx`.
 - [x] `W03.P09.S54` - Rebuild the Tune knobs (Spacing, Connection-reach, Clustering) mapped onto the preserved d3-force driver; `frontend/src/scene/field/forceLayout.ts`.
 - [x] `W03.P09.S55` - Rebuild the Zoom and Navigate canvas controls per the binding Controls frame over the preserved camera state; `frontend/src/app/stage/CanvasControls.render.test.tsx`.
-- [ ] `W03.P09.S56` - Tune the connection-drawing fidelity to the binding Hero frame, keeping document granularity bounded by the node ceiling; `frontend/src/scene/field/backbone.ts`.
+- [x] `W03.P09.S56` - Tune the connection-drawing fidelity to the binding Hero frame, keeping document granularity bounded by the node ceiling; `frontend/src/scene/field/backbone.ts`.
 
 ## Wave `W04` - Reconcile and review
 

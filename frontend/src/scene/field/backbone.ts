@@ -10,7 +10,29 @@
 //   - the LAYOUT backbone drawn here is the high-precision SUBSET (declared +
 //     structural only), with temporal/semantic as layered context, not layout
 //     input.
-// This module produces the LAYOUT backbone: the edges the FA2 worker is fed.
+// This module produces the LAYOUT backbone: the edges the force driver is fed.
+//
+// Connection-drawing fidelity (figma-parity-reconciliation W03.P09.S56, binding
+// `graph/Hero` 85:2): the Hero binding reads as CLEAN category circles sitting on
+// a FAINT connective rule field, never a coloured hairball. The flat-grey stroke
+// treatment is rendered in `edgeMeshes.ts` (S45); the CLEANNESS of that field is
+// produced HERE — the split lays out on the precise declared+structural backbone
+// and disparity-thins the noisy tiers into a significant-subset context, so the
+// drawn field is the spare connective mesh the Hero shows rather than every raw
+// edge. The split contract (backbone = declared + structural + meta, context =
+// disparity-thinned noisy tiers) is unchanged: it is the locked anti-hairball
+// shape every non-lineage layout (community/hierarchical/radial/connectivity) and
+// the field assembly consume, so the Hero fidelity is achieved through the
+// EXISTING split, not a re-tuning of which tiers lay out.
+//
+// Bounded by default (graph-queries-are-bounded-by-default): this operates on the
+// slice the engine already bounded — the constellation LOD or the document
+// granularity capped by the engine's `MAX_DOCUMENT_NODES` node ceiling and
+// carried through the stores `truncated` block. The split only PARTITIONS that
+// bounded edge set; it never re-expands it, requests more, or serializes an
+// unbounded full-document field onto the wire. Descent into document detail stays
+// the engine's bounded responsibility; the connection field drawn here is always
+// over the already-bounded slice.
 //
 // Pure function; scene-layer module, framework-free.
 
@@ -21,7 +43,7 @@ import { disparityFilter } from "./disparityFilter";
 export const LAYOUT_BACKBONE_TIERS = new Set(["declared", "structural"]);
 
 export interface BackboneSplit {
-  /** The layout backbone: declared + structural edges (fed to the FA2 worker). */
+  /** The layout backbone: declared + structural edges (fed to the force driver). */
   backbone: SceneEdgeData[];
   /**
    * The layered context: temporal + semantic edges, disparity-thinned to their
@@ -53,7 +75,7 @@ export function splitBackbone(edges: readonly SceneEdgeData[]): BackboneSplit {
   return { backbone, context };
 }
 
-/** Just the layout-backbone edge ids (the FA2 worker's input set). */
+/** Just the layout-backbone edge ids (the force driver's input set). */
 export function backboneEdgeIds(edges: readonly SceneEdgeData[]): Set<string> {
   return new Set(splitBackbone(edges).backbone.map((e) => e.id));
 }
