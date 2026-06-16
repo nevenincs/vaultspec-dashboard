@@ -21,13 +21,17 @@
 //! ABSENCE (no vector served), which the scene draws as the fallback ring.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::Instant;
 
+use blake2::Blake2bVar;
+use blake2::digest::{Update, VariableOutput};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use engine_model::{CanonicalKey, node_id};
+
 use crate::client::{RagError, RagTransport, Result};
-use crate::discover::target_node_id;
 
 /// The default Qdrant HTTP port rag's resident store listens on (ADR Context:
 /// "Qdrant HTTP at 127.0.0.1:8765"). Used when `service.json` does not carry an
@@ -35,10 +39,37 @@ use crate::discover::target_node_id;
 /// port (8766) — embeddings come from Qdrant directly, not through rag.
 pub const DEFAULT_QDRANT_PORT: u16 = 8765;
 
-/// The rag-managed Qdrant collection holding the dense vault-document vectors.
-/// rag names its vault collection `vault`; the code-chunk collection (deferred,
-/// ADR D10′) is a separate collection this v1 read never touches.
-pub const VAULT_COLLECTION: &str = "vault";
+/// Compute the rag-managed Qdrant collection name holding a project's dense
+/// vault-document vectors. rag namespaces every project's collections by a short
+/// hash of its resolved, case-normalised root and suffixes the vault collection
+/// `_vault_docs` (the code-chunk `_codebase_docs` collection is the deferred
+/// D10′ scope this v1 read never touches). This MUST byte-match rag's own
+/// `store.root_collection_prefix`: `r{blake2b-6-hex(normcase(resolve(root)))}_` —
+/// the input is lower-cased and back-slash-normalised (Windows paths are
+/// case-insensitive and `\`-separated; `./p` and `p` collide deliberately) so the
+/// same root always lands in the same collection across processes. A mismatch
+/// here is a 404 from Qdrant → semantic tier honest-absence (no vectors).
+pub fn vault_collection_name(root: &Path) -> String {
+    // normcase(resolve(root)): the engine's scope root is already absolute; match
+    // rag's normalisation by lower-casing and using the platform separator (`\`
+    // on Windows). No symlink resolution is applied — scope roots are real dirs.
+    let resolved = root
+        .to_string_lossy()
+        .replace('/', std::path::MAIN_SEPARATOR_STR);
+    let normalised = if cfg!(windows) {
+        resolved.to_lowercase()
+    } else {
+        resolved
+    };
+    let mut hasher = Blake2bVar::new(6).expect("blake2b-6 is a valid output length");
+    hasher.update(normalised.as_bytes());
+    let mut digest = [0u8; 6];
+    hasher
+        .finalize_variable(&mut digest)
+        .expect("6-byte buffer matches the 6-byte output");
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    format!("r{hex}_vault_docs")
+}
 
 /// Qdrant scroll page size: how many points per `/points/scroll` round-trip.
 /// Bounded so a large corpus is read in capped pages rather than one unbounded
@@ -68,26 +99,36 @@ pub struct NodeEmbedding {
 struct ScrollPoint {
     #[serde(default)]
     payload: Option<ScrollPayload>,
-    /// `with_vector=true` returns the dense vector here. A named-vector
-    /// collection would return an object; the vault collection stores a single
-    /// unnamed dense vector, so this is a flat array.
-    ///
-    /// LIVE-INTEGRATION CHECKLIST (W04 review): if rag ever migrates the vault
-    /// collection to NAMED vectors, Qdrant returns `vector` as an object
-    /// (`{"name": [...]}`) rather than a flat array, and this `Option<Vec<f32>>`
-    /// will silently deserialize to `None` — every point would then be skipped as
-    /// honest absence and the semantic mode would go dark with no error. That
-    /// migration must be caught here (switch to an enum over flat/named) before it
-    /// ships, not diagnosed from an empty embedding slice.
+    /// `with_vector=true` returns the vector here. rag's live vault collection is
+    /// a NAMED-vector collection, so Qdrant returns an OBJECT keyed by vector name
+    /// (`{"dense": [...], "sparse": {...}}`) — we extract the `dense` named vector.
+    /// A flat array (an unnamed collection) is also accepted for robustness. Held
+    /// as a raw `Value` and resolved by `dense_vector` so both shapes work and a
+    /// future shape change is a localised fix, not a silent all-absence.
     #[serde(default)]
-    vector: Option<Vec<f32>>,
+    vector: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ScrollPayload {
-    /// The vault stem or repo-relative path — the SAME token `/search` carries.
+    /// The vault repo-relative path rag stores per chunk (e.g.
+    /// `adr/2026-06-16-x-adr.md`) — `target_node_id` maps it to `doc:{stem}`,
+    /// the same id the graph mints for the document node.
     #[serde(default)]
-    source: Option<String>,
+    path: Option<String>,
+}
+
+/// Extract the dense float vector from a Qdrant `with_vector` value: the `dense`
+/// named vector when the point uses named vectors (rag's live shape), or the flat
+/// array when unnamed. Returns `None` for the sparse-only or malformed shapes.
+fn dense_vector(v: Value) -> Option<Vec<f32>> {
+    match v {
+        Value::Array(_) => serde_json::from_value(v).ok(),
+        Value::Object(mut map) => map
+            .remove("dense")
+            .and_then(|d| serde_json::from_value(d).ok()),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,6 +163,7 @@ struct ScrollEnvelope {
 /// The engine reads and forwards: no vector is computed, reduced, or altered.
 pub fn read_embeddings(
     transport: &impl RagTransport,
+    collection: &str,
     deadline: Instant,
 ) -> Result<HashMap<String, Vec<f32>>> {
     let mut out: HashMap<String, Vec<f32>> = HashMap::new();
@@ -137,24 +179,33 @@ pub fn read_embeddings(
             )));
         }
         let body = scroll_body(offset.as_ref());
-        let raw = transport.post_json(
-            &format!("/collections/{VAULT_COLLECTION}/points/scroll"),
-            &body,
-        )?;
+        let raw =
+            transport.post_json(&format!("/collections/{collection}/points/scroll"), &body)?;
         let envelope: ScrollEnvelope = serde_json::from_str(&raw)?;
         let Some(result) = envelope.result else { break };
         for point in result.points {
-            let Some(vector) = point.vector else { continue };
-            let Some(source) = point.payload.and_then(|p| p.source) else {
+            let Some(vector) = point.vector.and_then(dense_vector) else {
                 continue;
             };
-            let node_id = target_node_id(&source).0;
-            // v1 scope: vault-document nodes only (ADR D10). A `code:` source is
-            // skipped; a re-scrolled stem (rag chunks a doc into several points)
-            // keeps the first vector deterministically — one vector per node.
-            if node_id.starts_with("doc:") {
-                out.entry(node_id).or_insert(vector);
-            }
+            let Some(path) = point.payload.and_then(|p| p.path) else {
+                continue;
+            };
+            // rag stores the vault-relative path (e.g. `adr/x-adr.md`); the graph
+            // mints the document node keyed by the file STEM. Map path → the doc
+            // node id (basename minus `.md`). A non-`.md` path (a stray code chunk)
+            // is skipped — v1 scope is vault-document embeddings only (ADR D10).
+            let Some(stem) = path
+                .rsplit(['/', '\\'])
+                .next()
+                .and_then(|file| file.strip_suffix(".md"))
+            else {
+                continue;
+            };
+            // rag chunks a doc into several points sharing the same path, so the
+            // first chunk's dense vector wins deterministically — one vector per
+            // document node (chunk-0 is the doc head, representative).
+            out.entry(node_id(&CanonicalKey::Document { stem }).0)
+                .or_insert(vector);
         }
         match result.next_page_offset {
             Some(next) if !next.is_null() => offset = Some(next),
@@ -168,10 +219,14 @@ pub fn read_embeddings(
 /// payload (for the `source` correlation) AND the dense vector requested. An
 /// `offset` continues a prior page; `None` starts the scroll.
 fn scroll_body(offset: Option<&Value>) -> String {
+    // Request ONLY the `path` payload key and the `dense` named vector — NOT the
+    // full payload (which carries the document `content` text) nor the sparse
+    // vector. Pulling everything blows the MAX_RAG_BODY cap on a real corpus
+    // ("rag response unreadable"); a minimal projection keeps each page small.
     let mut body = json!({
         "limit": SCROLL_BATCH,
-        "with_payload": true,
-        "with_vector": true,
+        "with_payload": ["path"],
+        "with_vector": ["dense"],
     });
     if let Some(offset) = offset {
         body["offset"] = offset.clone();
@@ -186,29 +241,62 @@ mod tests {
     use super::*;
     use crate::client::test_support::FakeTransport;
 
+    const TEST_COLLECTION: &str = "rabc123def456_vault_docs";
+
     #[test]
-    fn maps_qdrant_points_to_doc_node_ids_with_vectors() {
-        // Two vault-doc points and one code point: the code point is dropped (v1
-        // scope is vault-document embeddings only, ADR D10), the doc points map
-        // to `doc:{stem}` via target_node_id.
+    fn maps_qdrant_points_to_doc_node_ids_with_named_dense_vectors() {
+        // The LIVE shape: rag's vault collection is NAMED-vector, so each point's
+        // `vector` is an object `{dense, sparse}` keyed by path. Two vault-doc
+        // points + one code point: code is dropped (v1 doc-only, ADR D10), the doc
+        // points map to `doc:{stem}` via target_node_id, taking the `dense` vector.
         let page = r#"{"result": {"points": [
-            {"id": 1, "payload": {"source": ".vault/adr/2026-06-16-x-adr.md"},
-             "vector": [0.1, 0.2, 0.3]},
-            {"id": 2, "payload": {"source": "2026-06-16-y-plan"},
-             "vector": [0.4, 0.5, 0.6]},
-            {"id": 3, "payload": {"source": "src/lib.rs"},
-             "vector": [0.7, 0.8, 0.9]}
+            {"id": 1, "payload": {"path": "adr/2026-06-16-x-adr.md"},
+             "vector": {"dense": [0.1, 0.2, 0.3], "sparse": {"indices": [1], "values": [0.5]}}},
+            {"id": 2, "payload": {"path": "plan/2026-06-16-y-plan.md"},
+             "vector": {"dense": [0.4, 0.5, 0.6]}},
+            {"id": 3, "payload": {"path": "src/lib.rs"},
+             "vector": {"dense": [0.7, 0.8, 0.9]}}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
-        let map = read_embeddings(&transport, far_future()).unwrap();
+        let map = read_embeddings(&transport, TEST_COLLECTION, far_future()).unwrap();
         assert_eq!(map.len(), 2, "only the two vault-doc points are kept");
         assert_eq!(map.get("doc:2026-06-16-x-adr"), Some(&vec![0.1, 0.2, 0.3]));
         assert_eq!(map.get("doc:2026-06-16-y-plan"), Some(&vec![0.4, 0.5, 0.6]));
         assert!(!map.contains_key("code:src/lib.rs"), "code nodes deferred");
-        // The scroll hit the vault collection's scroll endpoint with vectors on.
+        // The scroll hit the HASHED per-project collection's scroll endpoint.
         let (path, body) = transport.calls.borrow()[0].clone();
-        assert_eq!(path, "/collections/vault/points/scroll");
-        assert!(body.contains("\"with_vector\":true"));
+        assert_eq!(
+            path,
+            format!("/collections/{TEST_COLLECTION}/points/scroll")
+        );
+        // Minimal projection: only the dense vector + the path payload key.
+        assert!(body.contains("\"with_vector\":[\"dense\"]"));
+        assert!(body.contains("\"with_payload\":[\"path\"]"));
+    }
+
+    #[test]
+    fn also_accepts_a_flat_unnamed_dense_vector() {
+        // Robustness: an unnamed collection returns `vector` as a flat array.
+        let page = r#"{"result": {"points": [
+            {"id": 1, "payload": {"path": "adr/flat-adr.md"}, "vector": [1.0, 2.0]}
+        ], "next_page_offset": null}}"#;
+        let transport = FakeTransport::returning(vec![page]);
+        let map = read_embeddings(&transport, TEST_COLLECTION, far_future()).unwrap();
+        assert_eq!(map.get("doc:flat-adr"), Some(&vec![1.0, 2.0]));
+    }
+
+    #[test]
+    fn collection_name_matches_rags_hashed_vault_docs_scheme() {
+        // The collection MUST be `r{12-hex}_vault_docs` (rag's namespacing); a
+        // wrong name is a 404 → silent all-absence. Lock the shape + determinism.
+        let name = vault_collection_name(Path::new("/some/project/root"));
+        assert!(name.starts_with('r'), "rag prefixes the hash with 'r'");
+        assert!(name.ends_with("_vault_docs"), "vault collection suffix");
+        let hex = &name[1..name.len() - "_vault_docs".len()];
+        assert_eq!(hex.len(), 12, "blake2b-6 → 12 hex chars");
+        assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+        // Deterministic: same root → same name.
+        assert_eq!(name, vault_collection_name(Path::new("/some/project/root")));
     }
 
     #[test]
@@ -216,13 +304,13 @@ mod tests {
         // First page returns a non-null next_page_offset, so a second scroll
         // fires; the second page exhausts the cursor (null), so the read stops.
         let page1 = r#"{"result": {"points": [
-            {"id": 1, "payload": {"source": "a-adr"}, "vector": [1.0]}
+            {"id": 1, "payload": {"path": "adr/a-adr.md"}, "vector": {"dense": [1.0]}}
         ], "next_page_offset": 2}}"#;
         let page2 = r#"{"result": {"points": [
-            {"id": 2, "payload": {"source": "b-plan"}, "vector": [2.0]}
+            {"id": 2, "payload": {"path": "plan/b-plan.md"}, "vector": {"dense": [2.0]}}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page1, page2]);
-        let map = read_embeddings(&transport, far_future()).unwrap();
+        let map = read_embeddings(&transport, TEST_COLLECTION, far_future()).unwrap();
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("doc:a-adr"), Some(&vec![1.0]));
         assert_eq!(map.get("doc:b-plan"), Some(&vec![2.0]));
@@ -232,28 +320,33 @@ mod tests {
     }
 
     #[test]
-    fn a_point_missing_a_vector_or_source_is_skipped_as_honest_absence() {
+    fn a_point_missing_a_vector_or_path_is_skipped_as_honest_absence() {
         let page = r#"{"result": {"points": [
-            {"id": 1, "payload": {"source": "has-vector-adr"}, "vector": [1.0]},
-            {"id": 2, "payload": {"source": "no-vector-adr"}},
-            {"id": 3, "vector": [3.0]}
+            {"id": 1, "payload": {"path": "adr/has-vector-adr.md"}, "vector": {"dense": [1.0]}},
+            {"id": 2, "payload": {"path": "adr/no-vector-adr.md"}},
+            {"id": 3, "vector": {"dense": [3.0]}},
+            {"id": 4, "payload": {"path": "adr/sparse-only-adr.md"}, "vector": {"sparse": {"indices": [1], "values": [0.5]}}}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
-        let map = read_embeddings(&transport, far_future()).unwrap();
-        assert_eq!(map.len(), 1, "only the point with BOTH a vector and source");
+        let map = read_embeddings(&transport, TEST_COLLECTION, far_future()).unwrap();
+        assert_eq!(
+            map.len(),
+            1,
+            "only the point with BOTH a dense vector and path"
+        );
         assert_eq!(map.get("doc:has-vector-adr"), Some(&vec![1.0]));
     }
 
     #[test]
-    fn duplicate_source_keeps_one_vector_deterministically() {
-        // rag chunks a document into multiple points sharing one `source`; the
-        // node carries ONE vector (the first), never a re-keyed duplicate.
+    fn duplicate_path_keeps_one_vector_deterministically() {
+        // rag chunks a document into multiple points sharing one `path`; the node
+        // carries ONE vector (the first chunk's dense), never a re-keyed duplicate.
         let page = r#"{"result": {"points": [
-            {"id": 1, "payload": {"source": "dup-adr"}, "vector": [1.0]},
-            {"id": 2, "payload": {"source": "dup-adr"}, "vector": [9.0]}
+            {"id": 1, "payload": {"path": "adr/dup-adr.md"}, "vector": {"dense": [1.0]}},
+            {"id": 2, "payload": {"path": "adr/dup-adr.md"}, "vector": {"dense": [9.0]}}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
-        let map = read_embeddings(&transport, far_future()).unwrap();
+        let map = read_embeddings(&transport, TEST_COLLECTION, far_future()).unwrap();
         assert_eq!(map.len(), 1);
         assert_eq!(map.get("doc:dup-adr"), Some(&vec![1.0]));
     }
@@ -265,11 +358,11 @@ mod tests {
         // a typed TimedOut error (the semantic tier degrades), never a silent
         // partial result the caller would mistake for honest absence.
         let page = r#"{"result": {"points": [
-            {"id": 1, "payload": {"source": "x-adr"}, "vector": [1.0]}
+            {"id": 1, "payload": {"path": "adr/x-adr.md"}, "vector": {"dense": [1.0]}}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
         let past = Instant::now() - Duration::from_secs(1);
-        let result = read_embeddings(&transport, past);
+        let result = read_embeddings(&transport, TEST_COLLECTION, past);
         match result {
             Err(RagError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
             other => panic!("expected a TimedOut Io error, got {other:?}"),

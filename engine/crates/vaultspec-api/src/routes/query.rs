@@ -667,7 +667,11 @@ pub async fn graph_embeddings(
         timeout: EMBEDDING_READ_TIMEOUT,
     };
     let deadline = std::time::Instant::now() + EMBEDDING_SCROLL_BUDGET;
-    let vectors = match rag_client::vectors::read_embeddings(&transport, deadline) {
+    // The Qdrant collection is namespaced by a hash of the scope's resolved root
+    // (rag's `r{hash}_vault_docs` scheme) — computed from the project root, the
+    // same path rag indexed under.
+    let collection = rag_client::vectors::vault_collection_name(&cell.root);
+    let vectors = match rag_client::vectors::read_embeddings(&transport, &collection, deadline) {
         Ok(vectors) => vectors,
         Err(e) => {
             // Qdrant was reachable through discovery but the scroll itself failed
