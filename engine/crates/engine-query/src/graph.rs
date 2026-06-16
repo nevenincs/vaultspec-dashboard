@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use engine_graph::diff::DiffOp;
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
-use engine_model::{Edge, Node, NodeId, NodeKind, Progress, ScopeRef};
+use engine_model::{Edge, Node, NodeId, NodeKind, Progress, RelationKind, ScopeRef};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -129,36 +129,86 @@ fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
 /// A `null` `derivation` is serialized for edges with no pipeline relationship.
 fn edge_view(graph: &LinkageGraph, edge: &Edge) -> Value {
     let mut view = serde_json::to_value(edge).expect("edge serializes");
-    let src_type = doc_type_of(graph, &edge.src);
-    let dst_type = doc_type_of(graph, &edge.dst);
-    // The exec container-path signal: a plan→exec `generated-by` edge whose
-    // exec endpoint is a step/summary record (its id encodes the plan
-    // container path, the most reliable derivation in the corpus).
-    let is_exec_container_path = matches!(
-        (src_type.as_deref(), dst_type.as_deref()),
-        (Some("plan"), Some("exec")) | (Some("exec"), Some("plan"))
-    ) && [&edge.src, &edge.dst]
-        .iter()
-        .filter_map(|id| graph.node(id))
-        .any(|n| crate::ontology::stem_is_exec_record(&n.key));
-    let label = crate::ontology::derivation_label(
-        &edge.relation,
-        src_type.as_deref(),
-        dst_type.as_deref(),
-        &edge.provenance,
-        is_exec_container_path,
-    );
-    view["derivation"] = match label {
+    view["derivation"] = match derivation_for_edge(graph, edge) {
         Some(label) => Value::String(label.to_string()),
         None => Value::Null,
     };
     view
 }
 
-/// The `doc_type` of the node an edge endpoint addresses, if it is a document
-/// node present in the graph (used by the derivation projection).
-fn doc_type_of(graph: &LinkageGraph, id: &engine_model::NodeId) -> Option<String> {
-    graph.node(id).and_then(|n| n.doc_type.clone())
+/// The shared derivation-label projection for one edge (graph-lineage-dag ADR
+/// D4/D7): the ONE seam both `/graph/query`'s `edge_view` and `/graph/lineage`'s
+/// `lineage_arc` read, so the topological slice and the diachronic timeline carry
+/// the same label vocabulary. Inspects the endpoint nodes' `kind` and `doc_type`
+/// to detect the container-path `generated-by` signal, then delegates to the
+/// closed [`crate::ontology::derivation_label`] vocabulary. Pure read-and-infer:
+/// it takes no id and returns no id, so the label NEVER enters `edge_id` (D3.3).
+pub fn derivation_for_edge(graph: &LinkageGraph, edge: &Edge) -> Option<&'static str> {
+    let src = graph.node(&edge.src);
+    let dst = graph.node(&edge.dst);
+    let src_type = src.and_then(|n| n.doc_type.clone());
+    let dst_type = dst.and_then(|n| n.doc_type.clone());
+    // The container-path `generated-by` signal (graph-lineage-dag ADR D3.1): the
+    // plan→step→exec hierarchy the corpus authors flows through TWO id-bearing
+    // shapes the detection must both recognise, reading `node.kind` not only the
+    // `doc_type` pair —
+    //   (a) the doc→doc wikilink path: a `plan`↔`exec` edge whose exec endpoint
+    //       is a step/summary record (its stem encodes the `W##/P##/S##`
+    //       container path), and
+    //   (b) the AUTHORED binding path: a `PlanContainer` (step) node bound to its
+    //       exec-record document (the `bind_steps_to_exec_records` `References`
+    //       edge). `PlanContainer` nodes carry `doc_type: None`, so the old
+    //       doc-type-pair gate never fired here — the most reliable derivation in
+    //       the corpus was being dropped to the off-spine lane.
+    // Widening DETECTION only: `derivation_label`'s closed vocabulary is
+    // untouched and the label still never enters `edge_id` (ADR D3.3).
+    let container_endpoint = |node: Option<&Node>, other: Option<&Node>| -> bool {
+        let Some(node) = node else { return false };
+        match node.kind {
+            // A PlanContainer reaching an exec-record document: the authored
+            // plan→step→exec binding (path b).
+            NodeKind::PlanContainer => other.is_some_and(|o| {
+                o.doc_type.as_deref() == Some("exec")
+                    && crate::ontology::stem_is_exec_record(&o.key)
+            }),
+            // A plan/exec document on the wikilink path (path a).
+            NodeKind::Document if node.doc_type.as_deref() == Some("exec") => {
+                crate::ontology::stem_is_exec_record(&node.key)
+            }
+            _ => false,
+        }
+    };
+    // The authored plan-internal `Contains` hierarchy (graph-lineage-dag ADR
+    // D3.2): plan→wave→phase→step, carried by `Contains` edges between the plan
+    // document and its `PlanContainer` nodes (and between containers). Labeling
+    // it `generated-by` makes the WHOLE plan→wave→phase→step→exec hierarchy ONE
+    // connected `generated-by` spine rather than dropping the scaffold off-spine
+    // — the open-question decision (S34): the hierarchy RIDES `generated-by`, no
+    // distinct sub-label, so the closed vocabulary and `DERIVATION_AXIS_ORDER`
+    // are untouched (a new sub-label would inject an axis rung the scene does not
+    // know). A `Contains` edge always has at least one `PlanContainer` endpoint.
+    let is_contains_hierarchy = matches!(edge.relation, RelationKind::Contains)
+        && [src, dst]
+            .into_iter()
+            .flatten()
+            .any(|n| matches!(n.kind, NodeKind::PlanContainer));
+    let is_exec_container_path = (matches!(
+        (src_type.as_deref(), dst_type.as_deref()),
+        (Some("plan"), Some("exec")) | (Some("exec"), Some("plan"))
+    ) && [src, dst]
+        .into_iter()
+        .flatten()
+        .any(|n| crate::ontology::stem_is_exec_record(&n.key)))
+        || container_endpoint(src, dst)
+        || container_endpoint(dst, src)
+        || is_contains_hierarchy;
+    crate::ontology::derivation_label(
+        &edge.relation,
+        src_type.as_deref(),
+        dst_type.as_deref(),
+        &edge.provenance,
+        is_exec_container_path,
+    )
 }
 
 /// Synthesize feature-convergence nodes (kind `feature`, id
@@ -785,6 +835,179 @@ mod tests {
         assert_eq!(e["relation"], "mentions", "the §4 relation is untouched");
         assert_eq!(e["derivation"], "authorizes", "plan↔adr derivation label");
         assert!(e.get("tier").is_some(), "the §4 tier is still present");
+    }
+
+    /// A `PlanContainer` step node exactly as `engine-graph::mint_plan_containers`
+    /// mints it: `NodeKind::PlanContainer`, `doc_type: None`, key
+    /// `{plan_stem}/{container_id}`.
+    fn plan_container(plan_stem: &str, container_id: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::PlanContainer {
+                plan_stem,
+                container_id,
+            }),
+            kind: NodeKind::PlanContainer,
+            key: format!("{plan_stem}/{container_id}"),
+            title: None,
+            doc_type: None,
+            dates: None,
+            feature_tags: vec!["feature-a".into()],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        }
+    }
+
+    /// An exec-record document node (stem encodes the `W##/P##/S##` container
+    /// path), `doc_type: exec`.
+    fn exec_doc(stem: &str) -> Node {
+        Node {
+            id: node_id(&CanonicalKey::Document { stem }),
+            kind: NodeKind::Document,
+            key: stem.into(),
+            title: None,
+            doc_type: Some("exec".into()),
+            dates: None,
+            feature_tags: vec!["feature-a".into()],
+            status: None,
+            tier: None,
+            facets: vec![Facet {
+                scope: scope(),
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn plan_container_to_exec_binding_resolves_generated_by_and_never_re_keys() {
+        // graph-lineage-dag ADR D3.1/D3.3 (S33/S48): the authored
+        // PlanContainer(step) -> exec-record binding edge — whose src node kind is
+        // PlanContainer (doc_type None), the shape the OLD doc-type-pair gate
+        // dropped — now resolves `generated-by` by reading `node.kind`. And the
+        // label is NOT part of the edge stable key: re-deriving the same logical
+        // binding yields the same id regardless of the served label.
+        let mut g = LinkageGraph::new();
+        let step = plan_container("2026-06-16-feature-plan", "W01/P01/S01");
+        let exec = exec_doc("2026-06-16-feature-W01-P01-S01");
+        let step_id = step.id.clone();
+        let exec_id = exec.id.clone();
+        g.upsert_node(step);
+        g.upsert_node(exec);
+
+        // The binding `References` edge minted exactly as
+        // `bind_steps_to_exec_records` mints it: identity-only provenance.
+        let provenance = Provenance::CoreGraph {
+            payload_hash: String::new(),
+            edge_id: format!("{}->{}", step_id.0, "2026-06-16-feature-W01-P01-S01"),
+        };
+        let binding = Edge {
+            id: edge_id(
+                &step_id,
+                &exec_id,
+                &RelationKind::References,
+                Tier::Declared,
+                &provenance,
+            ),
+            src: step_id.clone(),
+            dst: exec_id.clone(),
+            relation: RelationKind::References,
+            tier: Tier::Declared,
+            confidence: 1.0,
+            state: None,
+            provenance: provenance.clone(),
+            scope: scope(),
+            observed_at: 0,
+        };
+        let binding_id = binding.id.clone();
+        engine_graph::ingest(&mut g, binding, EdgeAttrs::default()).unwrap();
+
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let edge = slice
+            .edges
+            .iter()
+            .find(|e| e["id"] == binding_id.0)
+            .expect("the PlanContainer->exec binding edge is served");
+        assert_eq!(
+            edge["derivation"], "generated-by",
+            "reading node.kind resolves the authored plan->step->exec spine (D3.1)"
+        );
+        // The relation/tier truth is preserved alongside the label.
+        assert_eq!(edge["relation"], "references");
+
+        // D3.3: the served label is NOT an id input. Re-computing the edge id
+        // with the SAME endpoints/relation/tier/provenance yields the same id —
+        // the `generated-by` label never entered that computation.
+        let recomputed = edge_id(
+            &step_id,
+            &exec_id,
+            &RelationKind::References,
+            Tier::Declared,
+            &provenance,
+        );
+        assert_eq!(
+            recomputed, binding_id,
+            "the derivation label never threads into the edge stable key (D3.3)"
+        );
+    }
+
+    #[test]
+    fn contains_hierarchy_edges_resolve_generated_by() {
+        // graph-lineage-dag ADR D3.2 (S34): the plan-internal Contains hierarchy
+        // (plan -> wave -> phase -> step, PlanContainer endpoints) rides
+        // `generated-by` so the authored scaffold is a connected spine, not
+        // dropped off-spine. The open-question decision: it carries no distinct
+        // sub-label.
+        let mut g = LinkageGraph::new();
+        let wave = plan_container("2026-06-16-feature-plan", "W01");
+        let phase = plan_container("2026-06-16-feature-plan", "W01/P01");
+        let wave_id = wave.id.clone();
+        let phase_id = phase.id.clone();
+        g.upsert_node(wave);
+        g.upsert_node(phase);
+
+        let provenance = Provenance::CoreGraph {
+            payload_hash: String::new(),
+            edge_id: "W01/P01".into(),
+        };
+        let contains = Edge {
+            id: edge_id(
+                &wave_id,
+                &phase_id,
+                &RelationKind::Contains,
+                Tier::Declared,
+                &provenance,
+            ),
+            src: wave_id.clone(),
+            dst: phase_id.clone(),
+            relation: RelationKind::Contains,
+            tier: Tier::Declared,
+            confidence: 1.0,
+            state: None,
+            provenance,
+            scope: scope(),
+            observed_at: 0,
+        };
+        let contains_id = contains.id.clone();
+        engine_graph::ingest(&mut g, contains, EdgeAttrs::default()).unwrap();
+
+        let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
+        let edge = slice
+            .edges
+            .iter()
+            .find(|e| e["id"] == contains_id.0)
+            .expect("the Contains hierarchy edge is served");
+        assert_eq!(
+            edge["derivation"], "generated-by",
+            "the Contains scaffold rides generated-by (D3.2 / S34)"
+        );
+        assert_eq!(edge["relation"], "contains");
     }
 
     #[test]

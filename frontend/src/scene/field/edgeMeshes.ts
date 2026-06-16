@@ -168,6 +168,35 @@ export function writeSegment(
 }
 
 /**
+ * Write a routed polyline as a CHAIN of line-list segments (graph-lineage-dag
+ * ADR D6): a lineage edge routed through dummy-node waypoints becomes
+ * `[a, w0, w1, ..., b]`, drawn as consecutive `writeSegment`s into the SAME
+ * line-list topology — no new mesh topology. `segmentCapacity` is the fixed
+ * number of segment slots the group allocated (so per-frame writes never resize
+ * the buffer); a shorter route pads the trailing slots with degenerate
+ * zero-length segments at the endpoint (invisible). Returns nothing; writes
+ * `segmentCapacity * 4` floats starting at `offset`.
+ */
+export function writePolyline(
+  out: Float32Array,
+  offset: number,
+  points: readonly { x: number; y: number }[],
+  segmentCapacity: number,
+): void {
+  for (let s = 0; s < segmentCapacity; s++) {
+    const a = points[s];
+    const b = points[s + 1];
+    if (a && b) {
+      writeSegment(out, offset + s * 4, a.x, a.y, b.x, b.y);
+    } else {
+      // Degenerate (zero-length) segment at the last real point — invisible.
+      const last = points[points.length - 1] ?? { x: 0, y: 0 };
+      writeSegment(out, offset + s * 4, last.x, last.y, last.x, last.y);
+    }
+  }
+}
+
+/**
  * Write a fixed-count dash pattern (DASHES_PER_EDGE segments, 4 floats
  * each) into `out` at `offset`. Dashes fill the first 60% of each slot.
  */
@@ -288,6 +317,38 @@ function sameStringSet(
   return true;
 }
 
+/** True when two route maps carry the same edge ids AND the same per-edge
+ *  waypoint COUNT — the only properties that affect topology (the buffer sizing
+ *  and the `+routed` group membership). Waypoint POSITIONS update per frame, so
+ *  a positional-only change needs no rebuild. */
+function sameRouteKeys(
+  a: ReadonlyMap<string, { x: number; y: number }[]>,
+  b: ReadonlyMap<string, { x: number; y: number }[]>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, pts] of a) {
+    const other = b.get(id);
+    if (!other || other.length !== pts.length) return false;
+  }
+  return true;
+}
+
+/** The longest route (intermediate-waypoint count) over a routed-group's edges,
+ *  capped so a pathological route cannot blow the buffer. Segment count for an
+ *  edge with W waypoints is W + 1. */
+const MAX_ROUTE_SEGMENTS = 32;
+function routedSegmentCapacity(
+  edges: readonly SceneEdgeData[],
+  routes: ReadonlyMap<string, { x: number; y: number }[]>,
+): number {
+  let maxWaypoints = 0;
+  for (const e of edges) {
+    const r = routes.get(e.id);
+    if (r) maxWaypoints = Math.max(maxWaypoints, r.length);
+  }
+  return Math.min(MAX_ROUTE_SEGMENTS, maxWaypoints + 1);
+}
+
 export class EdgeMeshLayer {
   private container = new Container();
   private groups = new Map<string, MeshGroup>();
@@ -297,6 +358,11 @@ export class EdgeMeshLayer {
   private visProgress: ReadonlyMap<string, number> | null = null;
   private visSignature = "";
   private arrowsVisible = false;
+  /** Lineage routed waypoints (graph-lineage-dag ADR D6): edge id -> ordered
+   *  INTERMEDIATE waypoints (excludes endpoints). A routed edge draws as a
+   *  polyline chain through these in the existing line-list topology. Empty when
+   *  the mode is not lineage or no edge bends. */
+  private routes: ReadonlyMap<string, { x: number; y: number }[]> = new Map();
 
   constructor(world: Container) {
     // Edges draw under nodes: insert at the back of the world.
@@ -309,6 +375,31 @@ export class EdgeMeshLayer {
     this.visProgress = null;
     this.visSignature = "";
     return this.rebuild();
+  }
+
+  /**
+   * Apply lineage routed waypoints (graph-lineage-dag ADR D6): the per-edge
+   * intermediate dummy-node bends the lineage layout produced, folded into the
+   * existing line-list topology. Passing an empty map clears routing (every
+   * lineage edge draws straight again — connectivity/semantic modes). A routed
+   * edge moves into a `+routed` line-list group sized for the longest route, so
+   * the topology rebuilds when the route SET changes; the per-frame `update()`
+   * then draws the polyline chain through the waypoints. Semantic/meta
+   * triangle-list ribbons are untouched.
+   */
+  setRoutes(routes: ReadonlyMap<string, { x: number; y: number }[]>): void {
+    // Only the non-empty routes matter; a route with no intermediate waypoints
+    // is a straight edge and stays on the plain line-list path.
+    const meaningful = new Map<string, { x: number; y: number }[]>();
+    for (const [id, pts] of routes) if (pts.length > 0) meaningful.set(id, pts);
+    if (sameRouteKeys(this.routes, meaningful)) {
+      // Same routed-edge membership and lengths: positions update per frame, no
+      // topology rebuild needed.
+      this.routes = meaningful;
+      return;
+    }
+    this.routes = meaningful;
+    this.rebuild();
   }
 
   /**
@@ -404,6 +495,18 @@ export class EdgeMeshLayer {
     for (const edge of drawable) {
       try {
         let key = edgeGroupKey(edge);
+        // Lineage routed edges (D6): an edge with intermediate waypoints joins a
+        // `+routed` line-list group sized for the polyline chain. Only the solid
+        // line-list tiers route — semantic/meta ribbons and temporal dashes keep
+        // their own geometry untouched.
+        const base = key.split("+")[0];
+        const routable =
+          !base.startsWith("temporal") &&
+          !base.startsWith("semantic") &&
+          base !== "meta";
+        if (routable && (this.routes.get(edge.id)?.length ?? 0) > 0) {
+          key = `${key}+routed`;
+        }
         if (this.highlight?.has(edge.id)) key = `${key}+lift`;
         if (this.visProgress && (this.visProgress.get(edge.id) ?? 0) < 1) {
           key = `${key}+fade`;
@@ -437,6 +540,7 @@ export class EdgeMeshLayer {
     for (const group of this.groups.values()) {
       const { edges, positions } = group;
       let arrowDirty = false;
+      const isRouted = group.key.includes("+routed");
       for (let i = 0; i < edges.length; i++) {
         const edge = edges[i];
         const a = positionOf(edge.src);
@@ -444,7 +548,20 @@ export class EdgeMeshLayer {
         if (!a || !b) continue;
         const offset = i * group.vertsPerEdge * 2;
         const base = group.key.split("+")[0];
-        if (base.startsWith("temporal")) {
+        if (isRouted) {
+          // Routed lineage polyline (D6): draw the chain a -> w0 -> ... -> b as
+          // line-list segments through the layout's intermediate waypoints, into
+          // the SAME topology. The arrowhead still points along the final
+          // segment toward dst.
+          const waypoints = this.routes.get(edge.id) ?? [];
+          const chain = [a, ...waypoints, b];
+          writePolyline(positions, offset, chain, group.vertsPerEdge / 2);
+          if (group.arrowPositions) {
+            const tail = chain[chain.length - 2] ?? a;
+            writeArrow(group.arrowPositions, i * 6, tail.x, tail.y, b.x, b.y);
+            arrowDirty = true;
+          }
+        } else if (base.startsWith("temporal")) {
           writeDashedSegments(positions, offset, a.x, a.y, b.x, b.y);
         } else if (base === "meta") {
           writeQuadCorners(
@@ -494,10 +611,21 @@ export class EdgeMeshLayer {
   private buildGroup(key: string, edges: SceneEdgeData[]): MeshGroup {
     const base = key.split("+")[0];
     const lifted = key.includes("+lift");
+    const isRouted = key.includes("+routed");
     const isTemporal = base.startsWith("temporal");
     const isSemantic = base.startsWith("semantic") || base === "meta";
     const topology = isSemantic ? "triangle-list" : "line-list";
-    const vertsPerEdge = isSemantic ? 4 : isTemporal ? DASHES_PER_EDGE * 2 : 2;
+    // A routed lineage group (D6) draws a polyline chain in the line-list
+    // topology: its per-edge vertex budget is the fixed segment capacity × 2,
+    // sized for the longest route in the group so per-frame writes never resize.
+    const routedSegments = isRouted ? routedSegmentCapacity(edges, this.routes) : 1;
+    const vertsPerEdge = isSemantic
+      ? 4
+      : isTemporal
+        ? DASHES_PER_EDGE * 2
+        : isRouted
+          ? routedSegments * 2
+          : 2;
     const positions = new Float32Array(edges.length * vertsPerEdge * 2);
     const uvs = new Float32Array(positions.length);
     let indices: Uint32Array;

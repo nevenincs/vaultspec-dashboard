@@ -68,12 +68,13 @@ pub struct LineageNode {
 /// relation, the optional `derivation` framework label, the provenance tier
 /// (the arc's tier-as-treatment styling), and the calibrated confidence.
 ///
-/// `derivation` is the additive framework-relationship label specified by the
-/// node-semantics ADR (`grounds`/`authorizes`/`generated-by`/...) — NOT yet
-/// shipped on `engine_model::Edge`. Until it lands the arc carries the shipped
-/// `relation`/`tier` truth and `derivation` is `None`; the surface draws REAL
-/// lineage from day one and gains the richer label when the field arrives. The
-/// projection never hard-depends on it.
+/// `derivation` is the additive framework-relationship label
+/// (`grounds`/`authorizes`/`generated-by`/...) read from the SHARED
+/// `ontology::derivation_label` projection — the same seam `/graph/query`'s
+/// `edge_view` uses (graph-lineage-dag ADR D4/D7: one projection, two distinct
+/// surfaces). It is `None` only for an edge that carries no pipeline
+/// relationship (a bare structural mention), never as a blanket fallback. The
+/// label is additive and NEVER part of the edge stable key.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LineageArc {
     /// Stable edge id — arc identity, preserved across scrub and live update.
@@ -82,8 +83,8 @@ pub struct LineageArc {
     pub dst: String,
     /// Typed relation wire name (`mentions`/`references`/`contains`/...).
     pub relation: String,
-    /// The framework derivation label, when shipped (graceful fallback: `None`
-    /// until the node-semantics `derivation` field lands).
+    /// The framework derivation label from the shared `ontology` projection;
+    /// absent only when the edge carries no pipeline relationship.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub derivation: Option<String>,
     /// Provenance tier wire name (`declared`/`structural`/`temporal`).
@@ -199,21 +200,22 @@ fn lineage_node(graph: &LinkageGraph, node: &Node) -> Option<LineageNode> {
     })
 }
 
-/// Project one stored edge into a lineage arc.
+/// Project one stored edge into a lineage arc (graph-lineage-dag ADR D4/D7).
 ///
-/// `derivation` falls back gracefully (W01.P01.S03): the shipped `Edge` carries
-/// no `derivation` field yet, so the arc is built from the shipped
-/// `relation`/`tier` truth and `derivation` is `None`. When the node-semantics
-/// `derivation` field lands this is the single seam that reads it.
-fn lineage_arc(stored: &StoredEdge) -> LineageArc {
+/// `derivation` is read from the SHARED [`crate::graph::derivation_for_edge`]
+/// projection — the exact seam `/graph/query`'s `edge_view` uses — so the
+/// timeline carries the same framework label the topological slice does
+/// (timeline parity). The label is `None` only for an edge with no pipeline
+/// relationship, never as a blanket fallback; it is additive and never re-keys
+/// the arc.
+fn lineage_arc(graph: &LinkageGraph, stored: &StoredEdge) -> LineageArc {
     let edge = &stored.edge;
     LineageArc {
         id: edge.id.0.clone(),
         src: edge.src.0.clone(),
         dst: edge.dst.0.clone(),
         relation: edge.relation.as_str().to_string(),
-        // Graceful fallback: no `derivation` field shipped on `Edge` yet.
-        derivation: None,
+        derivation: crate::graph::derivation_for_edge(graph, edge).map(str::to_string),
         tier: edge.tier.as_str().to_string(),
         confidence: edge.confidence,
     }
@@ -279,7 +281,7 @@ pub fn lineage(
         .filter(|s| &s.edge.scope == scope)
         .filter(|s| filter.matches_edge(s))
         .filter(|s| kept.contains(s.edge.src.0.as_str()) && kept.contains(s.edge.dst.0.as_str()))
-        .map(lineage_arc)
+        .map(|s| lineage_arc(graph, s))
         .collect();
     arcs.sort_by(|a, b| a.id.cmp(&b.id));
 
@@ -427,9 +429,11 @@ mod tests {
     }
 
     #[test]
-    fn arcs_carry_relation_tier_confidence_and_a_graceful_derivation_fallback() {
-        // S03: arcs are built from the shipped relation/tier edges; `derivation`
-        // falls back to None until the node-semantics field lands.
+    fn arcs_carry_relation_tier_confidence_and_the_shared_derivation_label() {
+        // S03 + graph-lineage-dag ADR D4 (S36/S49): arcs carry the shipped
+        // relation/tier truth AND the framework derivation label read from the
+        // SHARED ontology projection — the same label `/graph/query` serves. A
+        // plan↔adr edge is `authorizes`.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("a-plan", "plan", "2026-06-10"));
         g.upsert_node(doc("b-adr", "adr", "2026-06-11"));
@@ -444,8 +448,27 @@ mod tests {
         assert_eq!(arc.tier, "structural");
         assert_eq!(arc.confidence, 0.9);
         assert_eq!(
-            arc.derivation, None,
-            "graceful fallback: no derivation field shipped yet"
+            arc.derivation.as_deref(),
+            Some("authorizes"),
+            "the timeline arc carries the shared framework label (D4 timeline parity)"
+        );
+    }
+
+    #[test]
+    fn arc_carries_no_label_when_the_edge_has_no_pipeline_relationship() {
+        // The label is `None` only for an edge with no framework relationship —
+        // never a blanket fallback. Two same-feature plan documents carry a bare
+        // structural mention the derivation vocabulary does not name.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "plan", "2026-06-10"));
+        g.upsert_node(doc("b-plan", "plan", "2026-06-11"));
+        ingest(&mut g, structural_edge("a-plan", "b-plan"));
+
+        let slice = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+        assert_eq!(slice.arcs.len(), 1);
+        assert_eq!(
+            slice.arcs[0].derivation, None,
+            "no pipeline relationship -> honest absence, not a fabricated label"
         );
     }
 

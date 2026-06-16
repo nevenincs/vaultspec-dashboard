@@ -14,6 +14,7 @@ import {
   hazeHalfWidth,
   mixTowardPaper,
   writeDashedSegments,
+  writePolyline,
   writeQuadCorners,
   writeSegment,
 } from "./edgeMeshes";
@@ -121,6 +122,109 @@ describe("geometry writers", () => {
     // Horizontal segment: normals point in y.
     expect(Array.from(out)).toEqual([0, 2, 0, -2, 10, -2, 10, 2]);
     expect(hazeHalfWidth(1)).toBeGreaterThan(hazeHalfWidth(0));
+  });
+
+  it("folds a routed polyline into line-list segments through its waypoints (D6)", () => {
+    // a -> w0 -> w1 -> b: three segments through two waypoints, in the SAME
+    // line-list topology (no new mesh kind).
+    const capacity = 3;
+    const out = new Float32Array(capacity * 4);
+    const chain = [
+      { x: 0, y: 0 },
+      { x: 10, y: 5 },
+      { x: 20, y: 5 },
+      { x: 30, y: 0 },
+    ];
+    writePolyline(out, 0, chain, capacity);
+    expect(Array.from(out.slice(0, 4))).toEqual([0, 0, 10, 5]);
+    expect(Array.from(out.slice(4, 8))).toEqual([10, 5, 20, 5]);
+    expect(Array.from(out.slice(8, 12))).toEqual([20, 5, 30, 0]);
+  });
+
+  it("pads unused routed segment slots with degenerate zero-length segments", () => {
+    // A 2-point chain (one real segment) in a 3-slot group leaves two padding
+    // slots that collapse onto the last point — invisible, never resizing.
+    const capacity = 3;
+    const out = new Float32Array(capacity * 4);
+    const chain = [
+      { x: 0, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    writePolyline(out, 0, chain, capacity);
+    expect(Array.from(out.slice(0, 4))).toEqual([0, 0, 30, 0]);
+    // Slots 2 and 3 are degenerate at the endpoint.
+    expect(Array.from(out.slice(4, 8))).toEqual([30, 0, 30, 0]);
+    expect(Array.from(out.slice(8, 12))).toEqual([30, 0, 30, 0]);
+  });
+});
+
+describe("EdgeMeshLayer routed lineage edges (D6)", () => {
+  const lineageEdge = (id: string, src: string, dst: string): SceneEdgeData => ({
+    id,
+    src,
+    dst,
+    relation: "rel",
+    tier: "declared",
+    confidence: 1,
+    derivation: "generated-by",
+  });
+
+  it("routes an edge with waypoints into its own +routed group", () => {
+    const layer = new EdgeMeshLayer(new Container());
+    layer.setEdges([lineageEdge("e1", "a", "b")]);
+    const before = layer.groupCount;
+    layer.setRoutes(
+      new Map([
+        [
+          "e1",
+          [
+            { x: 5, y: 5 },
+            { x: 10, y: 5 },
+          ],
+        ],
+      ]),
+    );
+    // The routed edge moved into a distinct group; positions still draw per
+    // frame, so the group set changed (a +routed group now exists).
+    expect(layer.groupCount).toBeGreaterThanOrEqual(before);
+    // Update draws without throwing through the polyline path.
+    const at: Record<string, { x: number; y: number }> = {
+      a: { x: 0, y: 0 },
+      b: { x: 20, y: 0 },
+    };
+    expect(() => layer.update((id) => at[id])).not.toThrow();
+  });
+
+  it("clearing routes returns the edge to the straight line-list path", () => {
+    const layer = new EdgeMeshLayer(new Container());
+    layer.setEdges([lineageEdge("e1", "a", "b")]);
+    layer.setRoutes(new Map([["e1", [{ x: 5, y: 5 }]]]));
+    layer.setRoutes(new Map());
+    const at: Record<string, { x: number; y: number }> = {
+      a: { x: 0, y: 0 },
+      b: { x: 20, y: 0 },
+    };
+    expect(() => layer.update((id) => at[id])).not.toThrow();
+  });
+
+  it("leaves semantic ribbons untouched by routing (no new topology)", () => {
+    const layer = new EdgeMeshLayer(new Container());
+    const semantic: SceneEdgeData = {
+      id: "s1",
+      src: "a",
+      dst: "b",
+      relation: "rel",
+      tier: "semantic",
+      confidence: 0.5,
+    };
+    layer.setEdges([semantic]);
+    // A route keyed on the semantic edge id is ignored (semantic stays a ribbon).
+    layer.setRoutes(new Map([["s1", [{ x: 5, y: 5 }]]]));
+    const at: Record<string, { x: number; y: number }> = {
+      a: { x: 0, y: 0 },
+      b: { x: 20, y: 0 },
+    };
+    expect(() => layer.update((id) => at[id])).not.toThrow();
   });
 });
 

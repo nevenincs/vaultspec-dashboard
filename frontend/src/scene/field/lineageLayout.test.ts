@@ -1,13 +1,26 @@
-// graph-representation W02.P05.S20: the lineage derivation-DAG layout — axis
-// ordering along the PROV chain, longest-path layering, dangling-stub honesty,
-// and holding-lane placement for nodes with no derivation edge.
+// graph-lineage-dag W03.P10/P11/P12: the lineage derivation-DAG layout rebuilt
+// as a full Sugiyama pipeline — axis ordering along the PROV chain, longest-path
+// layering with dummy nodes, median crossing reduction, deterministic
+// coordinate assignment, the off-spine precedence policy (feature-adjacency ->
+// temporal -> gutter), index-manifest suppression, routed waypoints, and
+// ceiling-gated aggregate-LOD. The golden-position determinism test (S47) fixes
+// the same-inputs -> same-positions contract across re-runs and with a back-edge.
 
 import { describe, expect, it } from "vitest";
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
-import { LINEAGE_COL_SPACING, LINEAGE_HOLDING_X, lineageLayout } from "./lineageLayout";
+import { LINEAGE_AGGREGATE_THRESHOLD, lineageLayout } from "./lineageLayout";
 
-const n = (id: string, kind = "doc"): SceneNodeData => ({ id, kind });
+type TestNode = SceneNodeData & {
+  authorityClass?: string;
+  dates?: { created?: string };
+};
+
+const n = (id: string, over?: Partial<TestNode>): TestNode => ({
+  id,
+  kind: "doc",
+  ...over,
+});
 const lineageEdge = (src: string, dst: string, derivation: string): SceneEdgeData => ({
   id: `e:${src}->${dst}`,
   src,
@@ -27,7 +40,7 @@ describe("lineageLayout", () => {
       lineageEdge("adr", "plan", "authorizes"),
       lineageEdge("plan", "exec", "generated-by"),
     ];
-    const pos = lineageLayout(nodes, edges);
+    const pos = lineageLayout(nodes, edges).positions;
     expect(pos.get("research")!.x).toBeLessThan(pos.get("adr")!.x);
     expect(pos.get("adr")!.x).toBeLessThan(pos.get("plan")!.x);
     expect(pos.get("plan")!.x).toBeLessThan(pos.get("exec")!.x);
@@ -42,7 +55,7 @@ describe("lineageLayout", () => {
       lineageEdge("adr-missing", "plan", "authorizes"),
       lineageEdge("plan", "exec", "generated-by"),
     ];
-    const pos = lineageLayout(nodes, edges);
+    const pos = lineageLayout(nodes, edges).positions;
     expect(pos.get("plan")!.dangling).toBe(true);
     // The exec's parent (plan) IS present, so it is not itself dangling.
     expect(pos.get("exec")!.dangling).toBe(false);
@@ -50,42 +63,172 @@ describe("lineageLayout", () => {
     expect(pos.has("adr-missing")).toBe(false);
   });
 
-  it("places nodes with no derivation edge in the holding lane, off the spine", () => {
-    const nodes = [n("adr"), n("code"), n("commit")];
-    const edges = [lineageEdge("research", "adr", "grounds")];
-    // research is not in the slice; adr is dangling but on-spine.
-    const pos = lineageLayout(nodes, edges);
-    expect(pos.get("adr")!.onSpine).toBe(true);
-    expect(pos.get("code")!.onSpine).toBe(false);
-    expect(pos.get("code")!.x).toBe(LINEAGE_HOLDING_X);
-    expect(pos.get("commit")!.onSpine).toBe(false);
+  it("spreads an over-stacked column by crossing reduction, not a single x line", () => {
+    // The vertical-stack defect: many exec records under one plan. Median
+    // crossing reduction + coordinate assignment must give them DISTINCT
+    // cross-axis (y) positions in the same depth column, not all-equal y.
+    const plan = n("plan");
+    const execs = Array.from({ length: 12 }, (_, i) => n(`exec-${i}`));
+    const edges = execs.map((e) => lineageEdge("plan", e.id, "generated-by"));
+    const pos = lineageLayout([plan, ...execs], edges).positions;
+    const ys = new Set(execs.map((e) => pos.get(e.id)!.y));
+    // All execs share the same depth column...
+    const depths = new Set(execs.map((e) => pos.get(e.id)!.depth));
+    expect(depths.size).toBe(1);
+    // ...but spread across distinct rows (no 170:1 single-x stack).
+    expect(ys.size).toBe(execs.length);
   });
 
-  it("is deterministic and stable across re-runs (mental-map preservation)", () => {
-    const nodes = [n("a"), n("b"), n("c")];
+  it("routes a multi-layer edge through dummy-node waypoints (D6)", () => {
+    // a -> d spans three layers (a depth 0, d depth 3 via the b/c chain); the
+    // a->d edge must carry routed intermediate waypoints, not a straight cut.
+    const nodes = [n("a"), n("b"), n("c"), n("d")];
     const edges = [
       lineageEdge("a", "b", "grounds"),
       lineageEdge("b", "c", "authorizes"),
+      lineageEdge("c", "d", "generated-by"),
+      lineageEdge("a", "d", "grounds"), // spans 3 layers -> needs 2 dummies
     ];
-    const first = lineageLayout(nodes, edges);
-    const second = lineageLayout(nodes, edges);
-    for (const id of ["a", "b", "c"]) {
-      expect(second.get(id)).toEqual(first.get(id));
-    }
+    const result = lineageLayout(nodes, edges);
+    const route = result.routes.get("e:a->d");
+    expect(route).toBeDefined();
+    // Two intermediate layers -> two waypoints between the endpoints.
+    expect(route!.length).toBe(2);
+  });
+
+  it("places off-spine feature-tagged nodes by feature-adjacency, not a dead lane (D2)", () => {
+    // A node with a feature tag and no derivation edge takes a feature-adjacency
+    // column to the right of the spine, off the spine but informatively placed.
+    const nodes = [
+      n("adr"),
+      n("orphan-a", { featureTags: ["alpha"] }),
+      n("orphan-b", { featureTags: ["beta"] }),
+    ];
+    const edges = [lineageEdge("research", "adr", "grounds")];
+    const pos = lineageLayout(nodes, edges).positions;
+    expect(pos.get("orphan-a")!.onSpine).toBe(false);
+    expect(pos.get("orphan-b")!.onSpine).toBe(false);
+    // Different features -> different columns (informative placement).
+    expect(pos.get("orphan-a")!.x).not.toBe(pos.get("orphan-b")!.x);
+  });
+
+  it("places a dated, feature-less off-spine node on the temporal axis (D2)", () => {
+    const nodes = [
+      n("adr"),
+      n("dated", { dates: { created: "2026-01-01" } }),
+      n("bare"),
+    ];
+    const edges = [lineageEdge("research", "adr", "grounds")];
+    const pos = lineageLayout(nodes, edges).positions;
+    // Both are off-spine, but the dated node takes the temporal column and the
+    // bare node falls to the gutter — distinct x positions, both off-spine.
+    expect(pos.get("dated")!.onSpine).toBe(false);
+    expect(pos.get("bare")!.onSpine).toBe(false);
+    expect(pos.get("dated")!.x).not.toBe(pos.get("bare")!.x);
+  });
+
+  it("suppresses index manifests from the spine (D5)", () => {
+    // An index node (authority_class manifest) with a derivation-shaped edge is
+    // NOT laid out on the spine; it is filtered out of the DAG. Its edge is
+    // dropped from layering so it cannot inject a fan-out hub.
+    const nodes = [
+      n("plan"),
+      n("exec"),
+      n("idx", { authorityClass: "manifest", featureTags: ["alpha"] }),
+    ];
+    const edges = [
+      lineageEdge("plan", "exec", "generated-by"),
+      lineageEdge("idx", "exec", "generated-by"), // a manifest fan-out: suppressed
+    ];
+    const pos = lineageLayout(nodes, edges).positions;
+    // The manifest is placed off-spine (via feature-adjacency), never on it.
+    expect(pos.get("idx")!.onSpine).toBe(false);
+    // The exec's only spine parent is the plan; the manifest edge did not make
+    // the exec dangling via a phantom parent.
+    expect(pos.get("exec")!.onSpine).toBe(true);
+  });
+
+  it("dedups the canonical spine edge so an exec is not double-counted (S41)", () => {
+    // An exec reaches the spine via BOTH its plan wikilink AND its container
+    // binding — two edges with the SAME (plan -> exec) generated-by shape. The
+    // layout collapses them to one parent->child layering edge; the exec lands
+    // in exactly one column at depth 1.
+    const nodes = [n("plan"), n("exec")];
+    const edges = [
+      { ...lineageEdge("plan", "exec", "generated-by"), id: "e:wikilink" },
+      { ...lineageEdge("plan", "exec", "generated-by"), id: "e:binding" },
+    ];
+    const pos = lineageLayout(nodes, edges).positions;
+    expect(pos.get("exec")!.depth).toBe(1);
+    expect(pos.get("exec")!.onSpine).toBe(true);
+  });
+
+  it("collapses the exec column to per-plan super-nodes above the ceiling (D8)", () => {
+    // Above the aggregate threshold, the exec long tail collapses to one
+    // per-plan super-node; the individual execs are represented by it.
+    const plan = n("plan");
+    const execCount = LINEAGE_AGGREGATE_THRESHOLD + 5;
+    const execs = Array.from({ length: execCount }, (_, i) =>
+      n(`exec-${String(i).padStart(4, "0")}`),
+    );
+    const edges = execs.map((e) => lineageEdge("plan", e.id, "generated-by"));
+    const result = lineageLayout([plan, ...execs], edges);
+    // The super-node exists, keyed per plan, carrying every exec member.
+    const superId = "agg:exec:plan";
+    expect(result.aggregates.has(superId)).toBe(true);
+    expect(result.aggregates.get(superId)!.memberIds.length).toBe(execCount);
+    // The super-node lands on the spine at the exec depth; individual execs are
+    // not laid out on the spine (they are collapsed).
+    expect(result.positions.get(superId)!.onSpine).toBe(true);
   });
 
   it("is cycle-safe: a derivation cycle does not loop forever", () => {
     const nodes = [n("x"), n("y")];
     const edges = [lineageEdge("x", "y", "grounds"), lineageEdge("y", "x", "grounds")];
-    const pos = lineageLayout(nodes, edges);
+    const pos = lineageLayout(nodes, edges).positions;
     expect(pos.has("x")).toBe(true);
     expect(pos.has("y")).toBe(true);
   });
 
-  it("spaces columns by the documented column spacing", () => {
-    const nodes = [n("a"), n("b")];
-    const edges = [lineageEdge("a", "b", "grounds")];
-    const pos = lineageLayout(nodes, edges);
-    expect(pos.get("b")!.x - pos.get("a")!.x).toBe(LINEAGE_COL_SPACING);
+  it("is a golden-position determinism: identical inputs yield identical positions (S47)", () => {
+    const nodes = [
+      n("research"),
+      n("adr"),
+      n("plan"),
+      n("exec-1"),
+      n("exec-2"),
+      n("exec-3"),
+      n("audit"),
+    ];
+    const edges = [
+      lineageEdge("research", "adr", "grounds"),
+      lineageEdge("adr", "plan", "authorizes"),
+      lineageEdge("plan", "exec-1", "generated-by"),
+      lineageEdge("plan", "exec-2", "generated-by"),
+      lineageEdge("plan", "exec-3", "generated-by"),
+      lineageEdge("exec-1", "audit", "reviews"),
+    ];
+    const first = lineageLayout(nodes, edges).positions;
+    const second = lineageLayout(nodes, edges).positions;
+    expect([...second.entries()]).toEqual([...first.entries()]);
+  });
+
+  it("stays deterministic with an added back-edge (S47)", () => {
+    // A back-edge (audit -> research) closes a cycle; cycle removal reverses it
+    // deterministically, so the layout is still reproducible across re-runs.
+    const nodes = [n("research"), n("adr"), n("plan"), n("audit")];
+    const baseEdges = [
+      lineageEdge("research", "adr", "grounds"),
+      lineageEdge("adr", "plan", "authorizes"),
+      lineageEdge("plan", "audit", "reviews"),
+    ];
+    const withBackEdge = [...baseEdges, lineageEdge("audit", "research", "grounds")];
+    const a = lineageLayout(nodes, withBackEdge).positions;
+    const b = lineageLayout(nodes, withBackEdge).positions;
+    expect([...b.entries()]).toEqual([...a.entries()]);
+    // Every node still receives a position (the back-edge node is not dropped).
+    for (const id of ["research", "adr", "plan", "audit"]) {
+      expect(a.has(id)).toBe(true);
+    }
   });
 });

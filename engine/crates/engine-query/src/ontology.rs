@@ -468,6 +468,21 @@ mod tests {
             false,
         );
         assert_eq!(labelled, Some("authorizes"));
+        // graph-lineage-dag ADR D3.3 / S35: the WIDENED container-path detection
+        // (now firing on the PlanContainer→exec binding and the Contains
+        // hierarchy, not only the plan↔exec doc-type pair) is a pure label
+        // input. The widened detection sets `is_exec_container_path = true`,
+        // which `derivation_label` answers with `generated-by` — taking no
+        // `EdgeId`, returning no id. The PlanContainer/Contains edges' stable
+        // keys are composed in `engine_graph` only from endpoint and child
+        // container ids; widening DETECTION changes the served label, never an
+        // id, so re-indexing never re-keys.
+        let container_label = derivation_label(&RelationKind::References, None, None, &p, true);
+        assert_eq!(
+            container_label,
+            Some("generated-by"),
+            "the widened container-path detection labels generated-by, never re-keys"
+        );
     }
 
     #[test]
