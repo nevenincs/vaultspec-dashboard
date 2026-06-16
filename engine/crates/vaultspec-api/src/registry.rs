@@ -586,17 +586,21 @@ pub fn validate_scope_token(state: &AppState, token: &str) -> Result<std::path::
     let active_root = state.active_workspace_root();
     let workspace = ingest_git::workspace::Workspace::discover(&active_root)
         .map_err(|e| format!("workspace discovery failed: {e}"))?;
-    let worktrees = ingest_git::worktrees::enumerate(&workspace)
+    // Path-only resolution (worktree-enumeration sweep): we match a worktree by
+    // its path and check for a `.vault`, so list the roots cheaply rather than
+    // inspecting (status diff + ahead/behind walk) every worktree on the cold
+    // get_or_build path / scope switch.
+    let roots = ingest_git::worktrees::list_roots(&workspace)
         .map_err(|e| format!("worktree enumeration failed: {e}"))?;
-    for wt in worktrees {
-        if normalize(&crate::routes::scope_token(&wt.path)) == wanted {
-            if !wt.path.join(".vault").is_dir() {
+    for path in roots {
+        if normalize(&crate::routes::scope_token(&path)) == wanted {
+            if !path.join(".vault").is_dir() {
                 return Err(format!(
                     "scope `{token}` is a worktree of the active workspace but carries \
                      no .vault corpus; it is not a selectable scope"
                 ));
             }
-            return Ok(wt.path);
+            return Ok(path);
         }
     }
     Err(format!(

@@ -58,6 +58,20 @@ pub fn inspect_one(workspace: &Workspace, path: &Path) -> Result<Option<Worktree
     Ok(None)
 }
 
+/// List every worktree's canonicalized checkout root (main first, then linked)
+/// WITHOUT the expensive per-worktree inspection — no status diff, no
+/// ahead/behind history walk. Callers that only need to resolve or match a
+/// worktree path (scope validation, launch-root resolution, an emptiness check)
+/// use this instead of `enumerate`, which inspects every worktree. The roots are
+/// canonicalized to match the `WorktreeInfo::path` form `enumerate` returned, so
+/// existing path comparisons are unchanged.
+pub fn list_roots(workspace: &Workspace) -> Result<Vec<PathBuf>> {
+    Ok(collect_descriptors(workspace)?
+        .into_iter()
+        .map(|(path, _)| canonical(&path))
+        .collect())
+}
+
 /// The cheap phase: list every worktree's checkout root and whether it is the
 /// main checkout. This does no status diff or history walk, so it stays serial;
 /// the expensive `inspect` work is what the parallel fan-out covers.
@@ -416,5 +430,34 @@ mod tests {
         serial.sort_by_key(|w| w.path.clone());
         parallel.sort_by_key(|w| w.path.clone());
         assert_eq!(parallel, serial, "parallel enumerate equals the serial set");
+    }
+
+    // list_roots returns the same canonicalized path set as enumerate, so the
+    // path-only callers that migrate to it match exactly as before.
+    #[test]
+    fn list_roots_matches_enumerate_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        repo_with_commit(&main);
+        for name in ["lr-a", "lr-b"] {
+            let p = dir.path().join(name);
+            git(&main, &["worktree", "add", "-b", name, p.to_str().unwrap()]);
+        }
+        let ws = Workspace::discover(&main).unwrap();
+
+        let mut from_list = list_roots(&ws).unwrap();
+        let mut from_enum: Vec<_> = enumerate(&ws)
+            .unwrap()
+            .into_iter()
+            .map(|w| w.path)
+            .collect();
+        from_list.sort();
+        from_enum.sort();
+        assert_eq!(from_list.len(), 3, "main + two linked worktrees");
+        assert_eq!(
+            from_list, from_enum,
+            "list_roots paths equal enumerate paths"
+        );
     }
 }

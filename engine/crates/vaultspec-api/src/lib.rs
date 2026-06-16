@@ -209,12 +209,14 @@ pub async fn serve(port: u16, scope: Option<String>) -> std::io::Result<()> {
     // directory inside the workspace resolves to its containing worktree.
     let workspace = ingest_git::workspace::Workspace::discover(&cwd)
         .map_err(|e| std::io::Error::other(format!("not inside a git workspace: {e}")))?;
-    let worktrees = ingest_git::worktrees::enumerate(&workspace)
+    // Path-only resolution (worktree-enumeration sweep): the launch root is
+    // matched by path, so list roots cheaply rather than inspecting every
+    // worktree at serve boot.
+    let roots = ingest_git::worktrees::list_roots(&workspace)
         .map_err(|e| std::io::Error::other(e.to_string()))?;
     let cwd_clean = cwd.to_string_lossy().replace('\\', "/");
-    let root = worktrees
-        .iter()
-        .map(|wt| wt.path.clone())
+    let root = roots
+        .into_iter()
         .find(|p| {
             let wp = p.to_string_lossy().replace('\\', "/");
             let wp = wp.strip_prefix("//?/").unwrap_or(&wp).to_string();

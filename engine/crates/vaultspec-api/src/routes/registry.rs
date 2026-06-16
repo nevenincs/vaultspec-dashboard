@@ -196,9 +196,12 @@ pub fn register_root(state: &AppState, path: &str) -> Result<String, (StatusCode
     // stable id) and confirm at least one worktree is enumerable.
     let workspace = ingest_git::workspace::Workspace::discover(&raw)
         .map_err(|_| refuse("not a git workspace"))?;
-    let worktrees = ingest_git::worktrees::enumerate(&workspace)
+    // Path-only check (worktree-enumeration sweep): only "is at least one
+    // worktree enumerable" matters here, so list roots cheaply rather than
+    // inspecting every worktree.
+    let roots = ingest_git::worktrees::list_roots(&workspace)
         .map_err(|_| refuse("worktrees are not enumerable"))?;
-    if worktrees.is_empty() {
+    if roots.is_empty() {
         return Err(refuse("no enumerable worktrees"));
     }
 

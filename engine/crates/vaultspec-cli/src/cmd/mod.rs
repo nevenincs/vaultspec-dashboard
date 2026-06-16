@@ -90,18 +90,19 @@ impl Ctx {
         // a git workspace AND name (or sit inside) one of its worktrees.
         let workspace = ingest_git::workspace::Workspace::discover(&root)
             .map_err(|_| CliError::BadScope(clean_path(&root)))?;
-        let worktrees = ingest_git::worktrees::enumerate(&workspace)?;
+        // Path-only resolution (worktree-enumeration sweep): we only match the
+        // launch dir against a worktree root, so list the roots cheaply rather
+        // than inspecting (status diff + ahead/behind walk) every worktree.
+        let roots = ingest_git::worktrees::list_roots(&workspace)?;
         let cleaned = clean_path(&root);
-        let worktree = worktrees
-            .iter()
-            .find(|wt| {
-                let wt_path = clean_path(&wt.path);
+        // The scope is the WORKTREE root, even when launched from deep inside it.
+        let root = roots
+            .into_iter()
+            .find(|wt_path| {
+                let wt_path = clean_path(wt_path);
                 cleaned == wt_path || cleaned.starts_with(&format!("{wt_path}/"))
             })
             .ok_or_else(|| CliError::BadScope(cleaned.clone()))?;
-        // The scope is the WORKTREE root, even when launched from deep
-        // inside it.
-        let root = worktree.path.clone();
         let scope = ScopeRef::Worktree {
             path: clean_path(&root),
         };

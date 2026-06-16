@@ -89,6 +89,22 @@ The list-collection (cheap) and inspection (expensive) phases are separated so
 the fan-out covers only the expensive work. No wire-shape change; this is an
 internal compute optimization behind a stable `WorktreeInfo` contract.
 
+### Follow-up: path-only callers take an even cheaper list (sweep, 2026-06-16)
+
+A second class of callers neither needs `WorktreeInfo` nor a single worktree:
+they only resolve or match a worktree *path* (and sometimes check a `.vault`
+exists or that the set is non-empty). These — `validate_scope_token` (the cold
+`get_or_build` path, run on first touch / scope switch), the CLI `Ctx::resolve`
+(per invocation), the registry register route (emptiness check), and the
+serve-boot launch-root resolver — were calling `enumerate`, paying the full
+status-diff + ahead/behind inspection across every worktree purely to read
+`wt.path`. They migrate to a third primitive, `worktrees::list_roots`, which
+returns the canonicalized worktree roots from the cheap descriptor phase with
+**no inspection at all**. `/map` and CLI `map` remain on parallel `enumerate`
+because they display `dirty`/`ahead`/`behind`. This removes the multi-second
+cold-scope stall on many-worktree workspaces from the request gate, not just from
+`/status`.
+
 ## Rationale
 
 The targeted inspect fixes `/status` at the root — the handler never needed all
