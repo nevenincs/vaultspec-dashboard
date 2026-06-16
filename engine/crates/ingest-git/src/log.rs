@@ -126,6 +126,42 @@ pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<C
     Ok(out)
 }
 
+/// Look up the subject (first message line) for each requested commit sha,
+/// returning a `sha -> subject` map for the shas that resolve. Read-only over
+/// the object DB (`engine-read-and-infer`): each sha is rev-parsed and its
+/// commit summary read, never a walk of the whole history. A sha that does not
+/// resolve (gone, shallow, malformed) is simply absent from the map — the
+/// caller falls back to an empty subject rather than failing the whole read.
+/// This is the evidence projection's commit-subject source, mirroring how the
+/// history route reads subjects via `summary()`.
+pub fn subjects_for(
+    workspace: &Workspace,
+    shas: &[String],
+) -> Result<std::collections::HashMap<String, String>> {
+    let repo = workspace.open()?;
+    let mut out = std::collections::HashMap::new();
+    for sha in shas {
+        if out.contains_key(sha) {
+            continue;
+        }
+        let Ok(id) = repo.rev_parse_single(sha.as_str()) else {
+            continue;
+        };
+        let Ok(object) = id.object() else {
+            continue;
+        };
+        let Ok(commit) = object.try_into_commit() else {
+            continue;
+        };
+        let subject = commit
+            .message()
+            .map(|m| m.summary().to_string())
+            .unwrap_or_default();
+        out.insert(sha.clone(), subject);
+    }
+    Ok(out)
+}
+
 /// Paths changed between a commit and its first parent (all paths for a
 /// root commit), each carrying its change kind. `gix`'s tree diff already
 /// classifies every change as Addition / Deletion / Modification / Rewrite;
@@ -327,6 +363,40 @@ mod tests {
             events[0].subject, "feat: the subject line",
             "the subject is the first message line, never the body"
         );
+    }
+
+    #[test]
+    fn subjects_for_resolves_each_sha_to_its_subject_and_skips_unknowns() {
+        // The evidence projection's subject source: a targeted per-sha lookup
+        // (not a full walk) returning the subject for resolvable shas and
+        // skipping unknown ones rather than failing the whole read.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "feat: first commit"]);
+        std::fs::write(root.join("a.txt"), "b\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "fix: second commit"]);
+
+        let ws = Workspace::discover(root).unwrap();
+        let walked = walk(&ws, "main", 10).unwrap();
+        let shas: Vec<String> = walked.iter().map(|c| c.sha.clone()).collect();
+        let mut query = shas.clone();
+        query.push("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef".into()); // unknown
+
+        let subjects = subjects_for(&ws, &query).unwrap();
+        assert_eq!(
+            subjects.get(&shas[0]).map(String::as_str),
+            Some("fix: second commit")
+        );
+        assert_eq!(
+            subjects.get(&shas[1]).map(String::as_str),
+            Some("feat: first commit")
+        );
+        // An unknown sha is simply absent — no failure, no empty-string poison.
+        assert!(!subjects.contains_key("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     }
 
     #[test]

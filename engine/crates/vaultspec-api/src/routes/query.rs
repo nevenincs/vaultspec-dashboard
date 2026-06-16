@@ -888,23 +888,39 @@ pub async fn node_evidence(
 ) -> ApiResult {
     let cell = state.active_cell();
     let graph = cell.graph_arc();
-    let evidence = engine_query::node::evidence(&graph, &NodeId(id.clone())).ok_or_else(|| {
-        super::api_error(
-            &state,
-            StatusCode::NOT_FOUND,
-            format!("unknown node `{id}`"),
-        )
-    })?;
+    let mut evidence =
+        engine_query::node::evidence(&graph, &NodeId(id.clone())).ok_or_else(|| {
+            super::api_error(
+                &state,
+                StatusCode::NOT_FOUND,
+                format!("unknown node `{id}`"),
+            )
+        })?;
+    // S13: enrich the correlated commits with their subjects from a read-only
+    // git lookup at the route seam (the pure graph projection has no git
+    // access; the commit subject lives in the object DB, exactly as the history
+    // route reads it). A scope with no readable workspace, or a sha that does
+    // not resolve, leaves the subject empty rather than failing the read — the
+    // evidence is still served, and the GUI tolerates an empty subject. This
+    // stays read-and-infer: only commit metadata is read, never written.
+    if !evidence.commits.is_empty()
+        && let Ok(workspace) = ingest_git::workspace::Workspace::discover(&cell.root)
+    {
+        let shas: Vec<String> = evidence.commits.iter().map(|c| c.sha.clone()).collect();
+        if let Ok(subjects) = ingest_git::log::subjects_for(&workspace, &shas) {
+            for commit in &mut evidence.commits {
+                if let Some(subject) = subjects.get(&commit.sha) {
+                    commit.subject = subject.clone();
+                }
+            }
+        }
+    }
     // Envelope-consistent with every other endpoint (`{data, tiers}`): the
     // evidence fields sit directly under `data` (matching the mock's flat
     // shape and the inspector's `evidence.data.documents/...` reads), not
-    // hand-built as a bare `{evidence, tiers}` body.
-    // NOTE (flagged cross-lane reconciliation, 2026-06-13): the item shapes
-    // still diverge from the GUI's NodeEvidence type — `documents` are bare
-    // stems vs `{path, doc_type}`, `code_locations` carry `target` not `path`,
-    // and `commits` lack the `subject` (a git lookup). Reconciling those is a
-    // contract event touching both the engine evidence struct and the GUI
-    // type; tracked separately, not papered over here.
+    // hand-built as a bare `{evidence, tiers}` body. The item shapes are now
+    // aligned to the GUI `NodeEvidence` type (S13): documents carry `{path,
+    // doc_type}`, code_locations are keyed on `path`, commits carry `subject`.
     Ok(super::envelope(
         serde_json::to_value(evidence).expect("evidence serializes"),
         rag_tiers(&cell),

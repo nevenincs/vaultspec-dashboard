@@ -128,7 +128,7 @@ Freeze and document the preserved stores plus SceneController contract as the re
 
 - [x] `W01.P02.S11` - Freeze and document the preserved stores hooks as the rewrite-consumable contract API surface; `frontend/src/stores/`.
 - [x] `W01.P02.S12` - Freeze and document the SceneController command and event contract as the canvas rewrite API surface; `frontend/src/scene/sceneController.ts`.
-- [ ] `W01.P02.S13` - Enrich the node-evidence projection to the GUI shape (document path plus doc_type, corrected code-location field, commit subject) through the shared envelope; `engine/crates/engine-query/src`.
+- [x] `W01.P02.S13` - Enrich the node-evidence projection to the GUI shape (document path plus doc_type, corrected code-location field, commit subject) through the shared envelope; `engine/crates/engine-query/src`.
 - [ ] `W01.P02.S14` - Add the bounded read-only historical text-diff route as a two-rev git diff whitelist extension, read-and-infer with no vault writes; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `W01.P02.S15` - Carry the tiers degradation block on the historical text-diff route success and error envelopes through the shared helper; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `W01.P02.S16` - Mirror the enriched node-evidence shape in the mock engine to match the live wire byte-for-byte; `frontend/src/stores/server/mockEngine.ts`.
