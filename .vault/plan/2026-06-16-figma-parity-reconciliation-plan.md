@@ -194,7 +194,7 @@ Rewrite the scene foundation: the connection-field render, category circles, and
 - [x] `W03.P07.S43` - Rewire the category color reads to literal-hex scene tokens resolvable by getComputedStyle; `frontend/src/scene/field/categoryColor.ts`.
 - [x] `W03.P07.S44` - Rewrite the circle salience sizing to the engine-served degree-of-interest salience; `frontend/src/scene/field/salienceEncoding.test.ts`.
 - [x] `W03.P07.S45` - Rewrite the flat-grey edge mesh render faithful to the binding Hero frame connection treatment; `frontend/src/scene/field/edgeMeshes.ts`.
-- [ ] `W03.P07.S46` - Rebuild the scene token reads to the regenerated literal-hex foundation tokens; `frontend/src/scene/field/tokenReads.ts`.
+- [x] `W03.P07.S46` - Rebuild the scene token reads to the regenerated literal-hex foundation tokens; `frontend/src/scene/field/tokenReads.ts`.
 
 ### Phase `W03.P08` - Node states and interactions
 
