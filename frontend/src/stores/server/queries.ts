@@ -1278,6 +1278,11 @@ export function useSettingsSchema() {
     queryKey: engineKeys.settingsSchema(),
     queryFn: () => engineClient.settingsSchema(),
     staleTime: Infinity,
+    // Bounded by default (bounded-by-default-for-every-accumulator): a
+    // staleTime:Infinity query MUST still declare a gcTime so an unobserved
+    // schema entry is reclaimed rather than lingering on the default. The
+    // schema is tiny and cheap to refetch, so a short window suffices.
+    gcTime: 60_000,
   });
 }
 
@@ -2187,6 +2192,11 @@ export function engineStreamOptions(
       initialValue: [] as StreamChunk[],
     }),
     staleTime: Infinity,
+    // Bounded by default (bounded-by-default-for-every-accumulator): the stream
+    // entry retains a 256-chunk array, so a staleTime:Infinity stream MUST
+    // declare a gcTime to reclaim that array promptly once the stream is no
+    // longer observed (tab closed / unmounted), not after the default window.
+    gcTime: 30_000,
     retry: true,
     // Capped exponential backoff (P-MED-3, LOW-2): recover a transient blip
     // fast (250ms first retry), then back off exponentially to a 30s ceiling so

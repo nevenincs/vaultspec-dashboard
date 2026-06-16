@@ -29,7 +29,7 @@ use engine_model::ScopeRef;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::app::{AppState, ScopeCell};
+use crate::app::{AppState, DocBasenameIndex, ScopeCell};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -64,7 +64,10 @@ struct ResolvedTarget {
 /// resolves the stem to its `.vault/**/<stem>.md` file by a bounded walk of the
 /// corpus, mirroring the structural index's `vault_documents` enumeration so the
 /// route and the index agree on what a stem names.
-fn resolve_node_path(root: &Path, id: &str) -> Result<ResolvedTarget, ContentError> {
+fn resolve_node_path(
+    doc_index: &DocBasenameIndex,
+    id: &str,
+) -> Result<ResolvedTarget, ContentError> {
     if let Some(rest) = id.strip_prefix("code:") {
         // A `code:<path>#<symbol>` id names a symbol within a file; content is
         // per-file, so drop the qualifier and serve the whole file.
@@ -81,8 +84,11 @@ fn resolve_node_path(root: &Path, id: &str) -> Result<ResolvedTarget, ContentErr
             return Err(ContentError::BadId(id.to_string()));
         }
         let filename = format!("{stem}.md");
-        return find_vault_doc(root, &filename)
-            .map(|rel_path| ResolvedTarget { rel_path })
+        return doc_index
+            .get(&filename)
+            .map(|rel_path| ResolvedTarget {
+                rel_path: rel_path.clone(),
+            })
             .ok_or_else(|| ContentError::NotFound(id.to_string()));
     }
     // Only document and code nodes have file bytes; a feature/commit/plan-
@@ -90,13 +96,18 @@ fn resolve_node_path(root: &Path, id: &str) -> Result<ResolvedTarget, ContentErr
     Err(ContentError::NoContent(id.to_string()))
 }
 
-/// Find a `.vault/**/<filename>` document by basename, walking the corpus the
-/// same bounded way the structural index does (`.vault`, skipping dot-dirs and
-/// the engine's `data`/`logs`). First match in sorted order wins, matching the
-/// resolver's `find_by_basename` first-match determinism.
-fn find_vault_doc(root: &Path, filename: &str) -> Option<String> {
+/// Build the `.vault` document basename -> repo-relative path index by walking
+/// the corpus once, the same bounded way the structural index does (`.vault`,
+/// skipping dot-dirs and the engine's `data`/`logs`). For a `<stem>.md` basename
+/// that appears under multiple paths the lexicographically-smallest (sorted-first)
+/// path wins, reproducing the prior per-request `find_vault_doc` `sort()+first()`
+/// determinism. This is a standalone reimplementation of that ordering, not a
+/// shared call into the resolver's own `find_by_basename` index. Cached per
+/// generation on the `ScopeCell` (`doc_basename_index`) so the walk is paid once
+/// per rebuild, not on every content fetch (backend-hotpath-hardening F1).
+pub(crate) fn build_doc_basename_index(root: &Path) -> DocBasenameIndex {
     let vault = root.join(".vault");
-    let mut matches: Vec<String> = Vec::new();
+    let mut index: DocBasenameIndex = DocBasenameIndex::new();
     let mut stack = vec![vault];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -109,15 +120,24 @@ fn find_vault_doc(root: &Path, filename: &str) -> Option<String> {
                 if !name.starts_with('.') && name != "data" && name != "logs" {
                     stack.push(path);
                 }
-            } else if name == filename
+            } else if name.ends_with(".md")
                 && let Ok(rel) = path.strip_prefix(root)
             {
-                matches.push(rel.to_string_lossy().replace('\\', "/"));
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                // Sorted-first wins (matches the old sort()+first()): keep the
+                // lexicographically smallest path for a shared basename.
+                index
+                    .entry(name)
+                    .and_modify(|existing| {
+                        if rel < *existing {
+                            *existing = rel.clone();
+                        }
+                    })
+                    .or_insert(rel);
             }
         }
     }
-    matches.sort();
-    matches.into_iter().next()
+    index
 }
 
 /// Guard a repo-relative path against traversal before any read, the same
@@ -236,7 +256,11 @@ pub async fn node_content(
         None => state.active_cell(),
     };
 
-    let target = resolve_node_path(&cell.root, &id).map_err(|e| content_error(&state, &cell, e))?;
+    // Resolve through the per-generation basename index cached on the cell
+    // (backend-hotpath-hardening F1): the `.vault` tree walk runs once per
+    // rebuild, not on every content fetch.
+    let target = resolve_node_path(&cell.doc_basename_index(), &id)
+        .map_err(|e| content_error(&state, &cell, e))?;
     let rel_path =
         guard_within_root(&target.rel_path).map_err(|e| content_error(&state, &cell, e))?;
     let lang = language_hint(&rel_path);
@@ -325,38 +349,60 @@ mod tests {
 
     #[test]
     fn resolve_code_node_strips_symbol_qualifier() {
-        let dir = tempfile::tempdir().unwrap();
-        let target = resolve_node_path(dir.path(), "code:src/main.rs#main").unwrap();
+        // `code:` ids carry their path; the doc index is unused for them.
+        let idx = std::collections::HashMap::new();
+        let target = resolve_node_path(&idx, "code:src/main.rs#main").unwrap();
         assert_eq!(target.rel_path, "src/main.rs");
-        let target = resolve_node_path(dir.path(), "code:src/main.rs").unwrap();
+        let target = resolve_node_path(&idx, "code:src/main.rs").unwrap();
         assert_eq!(target.rel_path, "src/main.rs");
     }
 
     #[test]
-    fn resolve_doc_node_walks_the_corpus_for_the_stem() {
+    fn resolve_doc_node_resolves_the_stem_through_the_index() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
         std::fs::write(root.join(".vault/adr/2026-06-16-x-adr.md"), "body\n").unwrap();
-        let target = resolve_node_path(root, "doc:2026-06-16-x-adr").unwrap();
+        let idx = build_doc_basename_index(root);
+        let target = resolve_node_path(&idx, "doc:2026-06-16-x-adr").unwrap();
         assert_eq!(target.rel_path, ".vault/adr/2026-06-16-x-adr.md");
+    }
+
+    #[test]
+    fn doc_index_tie_break_keeps_the_sorted_first_path() {
+        // A stem under two doc-type dirs (adr/ + plan/) merges to one node; the
+        // index keeps the lexicographically smallest path, matching the prior
+        // per-request sort()+first() determinism.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(root.join(".vault/plan/dup.md"), "p\n").unwrap();
+        std::fs::write(root.join(".vault/adr/dup.md"), "a\n").unwrap();
+        let idx = build_doc_basename_index(root);
+        let target = resolve_node_path(&idx, "doc:dup").unwrap();
+        assert_eq!(
+            target.rel_path, ".vault/adr/dup.md",
+            "adr/ sorts before plan/"
+        );
     }
 
     #[test]
     fn resolve_unknown_doc_stem_is_not_found() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join(".vault/adr")).unwrap();
+        let idx = build_doc_basename_index(dir.path());
         assert!(matches!(
-            resolve_node_path(dir.path(), "doc:nope"),
+            resolve_node_path(&idx, "doc:nope"),
             Err(ContentError::NotFound(_))
         ));
     }
 
     #[test]
     fn non_content_node_kinds_have_no_content() {
-        let dir = tempfile::tempdir().unwrap();
+        let idx = std::collections::HashMap::new();
         assert!(matches!(
-            resolve_node_path(dir.path(), "feature:editor-demo"),
+            resolve_node_path(&idx, "feature:editor-demo"),
             Err(ContentError::NoContent(_))
         ));
     }

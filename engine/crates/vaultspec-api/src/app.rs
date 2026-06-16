@@ -43,6 +43,12 @@ use crate::registry::ScopeRegistry;
 /// Document-granularity query via `graph_query_cached`.
 type DocViews = (HashMap<String, Value>, HashMap<String, Value>);
 
+/// Per-generation `.vault` document basename -> repo-relative path index
+/// (backend-hotpath-hardening F1): built once per rebuild by
+/// `crate::routes::content::build_doc_basename_index` and reused by the content
+/// route so a `doc:` fetch is an O(1) lookup, not a per-request tree walk.
+pub(crate) type DocBasenameIndex = HashMap<String, String>;
+
 /// One multiplexed stream event (contract §7).
 #[derive(Debug, Clone)]
 pub struct StreamEvent {
@@ -89,6 +95,11 @@ pub struct ScopeCell {
     /// (perf-sweep A1): the dominant per-request Document-query cost
     /// (node_view/edge_view projections) computed once per rebuild and reused.
     pub doc_views_cache: Mutex<Option<(u64, Arc<DocViews>)>>,
+    /// Memoized `.vault` document basename -> repo-relative path index per graph
+    /// generation (backend-hotpath-hardening F1): the content route's per-fetch
+    /// `.vault` tree walk is built once per rebuild and reused, like the sibling
+    /// caches.
+    pub doc_index_cache: Mutex<Option<(u64, Arc<DocBasenameIndex>)>>,
     pub generation: AtomicU64,
     /// This cell's resident watcher handle; `/status` reports a dead watcher
     /// truthfully instead of claiming residency (DF-4 residual). Dropping the
@@ -134,6 +145,7 @@ impl ScopeCell {
             meta_cache: Mutex::new(None),
             salience_cache: Mutex::new(None),
             doc_views_cache: Mutex::new(None),
+            doc_index_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
@@ -188,6 +200,28 @@ impl ScopeCell {
             &self.graph_arc(),
             &self.scope,
         ));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The `.vault` document basename -> repo-relative path index, memoized per
+    /// generation (backend-hotpath-hardening F1). The content route resolves a
+    /// `doc:{stem}` node through this O(1) lookup instead of walking the whole
+    /// `.vault` tree on every fetch; the walk runs once per rebuild, invalidated
+    /// on a generation bump exactly like `document_views`/`meta_edges`.
+    pub fn doc_basename_index(&self) -> Arc<DocBasenameIndex> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut cache = self
+            .doc_index_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(crate::routes::content::build_doc_basename_index(&self.root));
         *cache = Some((generation, fresh.clone()));
         fresh
     }
