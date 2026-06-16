@@ -48,38 +48,38 @@ not backwards-compat, and stays.
 
 Route content deltas through applyChanges at a low reheat and add the driver's interaction-active alphaTarget hold (D1, D2).
 
-- [ ] `W01.P01.S01` - Add INCREMENTAL_REHEAT_ALPHA (~0.15) and INTERACTION_ALPHA_TARGET (~0.1) constants and lower applyChanges reheat ceiling from WARM_START_ALPHA to INCREMENTAL_REHEAT_ALPHA per D1; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `W01.P01.S02` - Route set-data deltas through a node/edge diff to applyChanges when the surviving id intersection is non-empty and no scope or mode swap is in flight, reserving full init plus warm start for first load, scope swap, and representation-mode change per D1; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W01.P01.S03` - Route served-node-set filter changes through applyChanges and keep visibility-only filter changes on the set-visibility path so filters never re-init per D1; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W01.P01.S04` - Add driver beginInteraction and endInteraction that set and clear alphaTarget, and make setParams skip the alpha-floor kick while interaction is active per D2; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `W01.P01.S05` - Coalesce set-layout-params across a slider drag, firing beginInteraction on first onChange and endInteraction on pointerup with a trailing debounce for keyboard slider steps per D2; `frontend/src/app/stage/GraphControls.tsx`.
+- [x] `W01.P01.S01` - Add INCREMENTAL_REHEAT_ALPHA (~0.15) and INTERACTION_ALPHA_TARGET (~0.1) constants and lower applyChanges reheat ceiling from WARM_START_ALPHA to INCREMENTAL_REHEAT_ALPHA per D1; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `W01.P01.S02` - Route set-data deltas through a node/edge diff to applyChanges when the surviving id intersection is non-empty and no scope or mode swap is in flight, reserving full init plus warm start for first load, scope swap, and representation-mode change per D1; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W01.P01.S03` - Route served-node-set filter changes through applyChanges and keep visibility-only filter changes on the set-visibility path so filters never re-init per D1; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W01.P01.S04` - Add driver beginInteraction and endInteraction that set and clear alphaTarget, and make setParams skip the alpha-floor kick while interaction is active per D2; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `W01.P01.S05` - Coalesce set-layout-params across a slider drag, firing beginInteraction on first onChange and endInteraction on pointerup with a trailing debounce for keyboard slider steps per D2; `frontend/src/app/stage/GraphControls.tsx`.
 
 ### Phase `W01.P02` - drag-to-pin gesture and per-node collision
 
 Add the PointerGestures node-drag branch and the assembly-owned per-node collision radius callback (D3, D4).
 
-- [ ] `W01.P02.S06` - Add a node-drag branch to PointerGestures: record a pending node-drag on pointer-down hit-test, diverge to node-drag past the 4px DRAG_THRESHOLD when a node was hit on down, keep empty-canvas-on-down as camera pan, and keep a below-threshold node press a select per D3; `frontend/src/scene/field/camera.ts`.
-- [ ] `W01.P02.S07` - Add nodeDragTo(id,worldX,worldY) and nodeDragEnd(id,moved) to the GestureCallbacks interface per D3; `frontend/src/scene/field/camera.ts`.
-- [ ] `W01.P02.S08` - Implement the gesture callbacks in the assembly: a driver dragNode(id,x,y) that sets fx/fy and ensures beginInteraction, and route the sticky pin on drag-end through the existing set-pinned pins-store path per D3; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W01.P02.S09` - Replace fixed COLLIDE_RADIUS=18 with a radiusOf(id) callback passed into the driver at init and applyChanges, falling back to the fixed radius when the callback is absent per D4; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `W01.P02.S10` - Supply the radiusOf callback from the assembly as nodeRadius(model.nodeById(id)) plus COLLIDE_PAD, sharing the salience-driven sprite radius without importing nodeRadius into the driver per D4; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W01.P02.S06` - Add a node-drag branch to PointerGestures: record a pending node-drag on pointer-down hit-test, diverge to node-drag past the 4px DRAG_THRESHOLD when a node was hit on down, keep empty-canvas-on-down as camera pan, and keep a below-threshold node press a select per D3; `frontend/src/scene/field/camera.ts`.
+- [x] `W01.P02.S07` - Add nodeDragTo(id,worldX,worldY) and nodeDragEnd(id,moved) to the GestureCallbacks interface per D3; `frontend/src/scene/field/camera.ts`.
+- [x] `W01.P02.S08` - Implement the gesture callbacks in the assembly: a driver dragNode(id,x,y) that sets fx/fy and ensures beginInteraction, and route the sticky pin on drag-end through the existing set-pinned pins-store path per D3; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W01.P02.S09` - Replace fixed COLLIDE_RADIUS=18 with a radiusOf(id) callback passed into the driver at init and applyChanges, falling back to the fixed radius when the callback is absent per D4; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `W01.P02.S10` - Supply the radiusOf callback from the assembly as nodeRadius(model.nodeById(id)) plus COLLIDE_PAD, sharing the salience-driven sprite radius without importing nodeRadius into the driver per D4; `frontend/src/scene/field/fieldAssembly.ts`.
 
 ### Phase `W01.P03` - settle-freeze, double-init/double-fit collapse, freeze toggle
 
 Add velocity/dwell early freeze, collapse the mount-time double-init and double-fit, and expose the freeze/unfreeze toggle (D5, D6, D7).
 
-- [ ] `W01.P03.S11` - Add an early settle-freeze that stops the sim and fires onSettle when max per-node displacement stays below FREEZE_MOVE_EPSILON for FREEZE_DWELL_TICKS, with the dwell scaled as clamp(round(nodeCount/K),DWELL_MIN,DWELL_MAX), the dwell counter resetting on any node exceeding the epsilon, and the alpha-floor freeze kept as the hard backstop per D5; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `W01.P03.S12` - Make set-representation-mode a no-op when the requested mode equals the already-applied connectivity mode and the model is already laid out, so set-data is the single connectivity initializer on first load per D6; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W01.P03.S13` - Drop the instant seed-fit when an animated settle-fit will follow, retaining it only as a one-shot framing when there is no prior camera state and no settle is expected per D6; `frontend/src/scene/field/fieldAssembly.ts`.
-- [ ] `W01.P03.S14` - Add a freeze/unfreeze toggle mapped to driver stop() and a low-alpha start(), emitting a scene command only, and keep collision/separation/damping knobs unexposed and cooling fixed per D7; `frontend/src/app/stage/GraphControls.tsx`.
+- [x] `W01.P03.S11` - Add an early settle-freeze that stops the sim and fires onSettle when max per-node displacement stays below FREEZE_MOVE_EPSILON for FREEZE_DWELL_TICKS, with the dwell scaled as clamp(round(nodeCount/K),DWELL_MIN,DWELL_MAX), the dwell counter resetting on any node exceeding the epsilon, and the alpha-floor freeze kept as the hard backstop per D5; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `W01.P03.S12` - Make set-representation-mode a no-op when the requested mode equals the already-applied connectivity mode and the model is already laid out, so set-data is the single connectivity initializer on first load per D6; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W01.P03.S13` - Drop the instant seed-fit when an animated settle-fit will follow, retaining it only as a one-shot framing when there is no prior camera state and no settle is expected per D6; `frontend/src/scene/field/fieldAssembly.ts`.
+- [x] `W01.P03.S14` - Add a freeze/unfreeze toggle mapped to driver stop() and a low-alpha start(), emitting a scene command only, and keep collision/separation/damping knobs unexposed and cooling fixed per D7; `frontend/src/app/stage/GraphControls.tsx`.
 
 ### Phase `W01.P04` - live-loop verification
 
 Drive the live onPositions loop in tests, the surface the prior cycle's 20 layout tests never exercised, and re-baseline the lowered reheat constants.
 
-- [ ] `W01.P04.S15` - Add live-loop driver tests that drive the onPositions callback through real ticks and assert incremental reheat preserves survivor positions, the held alphaTarget keeps the field warm during interaction, and the velocity/dwell freeze stops the sim per D1/D2/D5; `frontend/src/scene/field/forceLayout.test.ts`.
-- [ ] `W01.P04.S16` - Add PointerGestures tests covering node-hit-on-down versus empty-canvas-on-down, the still-a-select-below-threshold case, and a drag that starts on a node then moves onto empty canvas per D3; `frontend/src/scene/field/camera.test.ts`.
-- [ ] `W01.P04.S17` - Re-baseline any existing layout test that asserts the prior warm reheat against the lowered INCREMENTAL_REHEAT_ALPHA and confirm the constants tuned against 12-, 50-, and 300-node slices in the live loop; `frontend/src/scene/field/fieldAssembly.test.ts`.
+- [x] `W01.P04.S15` - Add live-loop driver tests that drive the onPositions callback through real ticks and assert incremental reheat preserves survivor positions, the held alphaTarget keeps the field warm during interaction, and the velocity/dwell freeze stops the sim per D1/D2/D5; `frontend/src/scene/field/forceLayout.test.ts`.
+- [x] `W01.P04.S16` - Add PointerGestures tests covering node-hit-on-down versus empty-canvas-on-down, the still-a-select-below-threshold case, and a drag that starts on a node then moves onto empty canvas per D3; `frontend/src/scene/field/camera.test.ts`.
+- [x] `W01.P04.S17` - Re-baseline any existing layout test that asserts the prior warm reheat against the lowered INCREMENTAL_REHEAT_ALPHA and confirm the constants tuned against 12-, 50-, and 300-node slices in the live loop; `frontend/src/scene/field/fieldAssembly.test.ts`.
 
 ## Wave `W02` - graph-layout-catalog: radial, hierarchical, and community deterministic-seed modes
 
@@ -89,36 +89,36 @@ Scene-only extension of the representation catalog with three framework-free det
 
 Add a deterministic radial/tree mode adopting d3-hierarchy with the salience-max root policy, selected-node override, and per-component angular sectors (D1, D4, D5).
 
-- [ ] `W02.P05.S18` - Add d3-hierarchy (ISC, zero runtime deps) to the frontend dependencies per D4; `frontend/package.json`.
-- [ ] `W02.P05.S19` - Add radialLayout.ts that picks a root, derives a BFS spanning tree over the splitBackbone backbone adjacency, runs d3.hierarchy and d3.tree().size([2pi,R]), and converts polar to cartesian into a positions Map per D1/D4/D7; `frontend/src/scene/field/radialLayout.ts`.
-- [ ] `W02.P05.S20` - Implement the radial root policy: salience-max default with degree-max tie-break, selected-node override, and per-component roots laid out in separate angular sectors with salience-then-id deterministic tie-breaking per D5; `frontend/src/scene/field/radialLayout.ts`.
-- [ ] `W02.P05.S21` - Register radial as a RepresentationMode union member and a case in representationLayout returning the positions Map, dispatched as a deterministic seed per D1; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W02.P05.S18` - Add d3-hierarchy (ISC, zero runtime deps) to the frontend dependencies per D4; `frontend/package.json`.
+- [x] `W02.P05.S19` - Add radialLayout.ts that picks a root, derives a BFS spanning tree over the splitBackbone backbone adjacency, runs d3.hierarchy and d3.tree().size([2pi,R]), and converts polar to cartesian into a positions Map per D1/D4/D7; `frontend/src/scene/field/radialLayout.ts`.
+- [x] `W02.P05.S20` - Implement the radial root policy: salience-max default with degree-max tie-break, selected-node override, and per-component roots laid out in separate angular sectors with salience-then-id deterministic tie-breaking per D5; `frontend/src/scene/field/radialLayout.ts`.
+- [x] `W02.P05.S21` - Register radial as a RepresentationMode union member and a case in representationLayout returning the positions Map, dispatched as a deterministic seed per D1; `frontend/src/scene/field/representationLayout.ts`.
 
 ### Phase `W02.P06` - hierarchical (Sugiyama) layout
 
 Add a hand-rolled heuristic Sugiyama mode distinct from lineage, forbidding the exponential strategies, feeding on the layout backbone (D2, D3, D6, D7).
 
-- [ ] `W02.P06.S22` - Add hierarchicalLayout.ts reusing longest-path depth layering over the splitBackbone backbone, with deterministic back-edge cycle removal via the visiting guard, and decide and record whether the longest-path code is extracted into a shared helper or duplicated from lineageLayout per D2/D7 and the open question; `frontend/src/scene/field/hierarchicalLayout.ts`.
-- [ ] `W02.P06.S23` - Insert dummy nodes on multi-layer-spanning edges and add an iterated barycenter/median crossing-reduction sweep with a bounded iteration count and convergence cutoff per D2 and the open question; `frontend/src/scene/field/hierarchicalLayout.ts`.
-- [ ] `W02.P06.S24` - Add a simple intra-layer x-coordinate assignment using only near-linear heuristics, forbidding decrossOpt and coordSimplex/coordQuad-optimal strategies as a hard guard per D6; `frontend/src/scene/field/hierarchicalLayout.ts`.
-- [ ] `W02.P06.S25` - Register hierarchical as a distinct RepresentationMode from lineage, preserving lineage's onSpine/dangling honesty semantics, with a case in representationLayout per D1/D3; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W02.P06.S22` - Add hierarchicalLayout.ts reusing longest-path depth layering over the splitBackbone backbone, with deterministic back-edge cycle removal via the visiting guard, and decide and record whether the longest-path code is extracted into a shared helper or duplicated from lineageLayout per D2/D7 and the open question; `frontend/src/scene/field/hierarchicalLayout.ts`.
+- [x] `W02.P06.S23` - Insert dummy nodes on multi-layer-spanning edges and add an iterated barycenter/median crossing-reduction sweep with a bounded iteration count and convergence cutoff per D2 and the open question; `frontend/src/scene/field/hierarchicalLayout.ts`.
+- [x] `W02.P06.S24` - Add a simple intra-layer x-coordinate assignment using only near-linear heuristics, forbidding decrossOpt and coordSimplex/coordQuad-optimal strategies as a hard guard per D6; `frontend/src/scene/field/hierarchicalLayout.ts`.
+- [x] `W02.P06.S25` - Register hierarchical as a distinct RepresentationMode from lineage, preserving lineage's onSpine/dangling honesty semantics, with a case in representationLayout per D1/D3; `frontend/src/scene/field/representationLayout.ts`.
 
 ### Phase `W02.P07` - community (Louvain) layout
 
 Add a hand-rolled framework-free Louvain mode with deterministic two-level seed placement; graphology is not re-adopted (D8, D9).
 
-- [ ] `W02.P07.S26` - Add communityLayout.ts with a self-contained seeded Louvain (modularity-gain move loop plus community-aggregation recursion) over the splitBackbone backbone adjacency, deterministic by id-sort tie-breaking, not re-adopting graphology per D8; `frontend/src/scene/field/communityLayout.ts`.
-- [ ] `W02.P07.S27` - Add the deterministic two-level seed placement: communities on a coarse outer circle, members packed locally via the circularArrange idiom, with a recorded policy on capping/merging very small communities and the outer-radius/inner-spacing geometry per D9 and the open question; `frontend/src/scene/field/communityLayout.ts`.
-- [ ] `W02.P07.S28` - Register community as a RepresentationMode and case in representationLayout, and optionally drive the existing featureHulls overlay from community membership as an overlay never a re-layout per D9; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W02.P07.S26` - Add communityLayout.ts with a self-contained seeded Louvain (modularity-gain move loop plus community-aggregation recursion) over the splitBackbone backbone adjacency, deterministic by id-sort tie-breaking, not re-adopting graphology per D8; `frontend/src/scene/field/communityLayout.ts`.
+- [x] `W02.P07.S27` - Add the deterministic two-level seed placement: communities on a coarse outer circle, members packed locally via the circularArrange idiom, with a recorded policy on capping/merging very small communities and the outer-radius/inner-spacing geometry per D9 and the open question; `frontend/src/scene/field/communityLayout.ts`.
+- [x] `W02.P07.S28` - Register community as a RepresentationMode and case in representationLayout, and optionally drive the existing featureHulls overlay from community membership as an overlay never a re-layout per D9; `frontend/src/scene/field/representationLayout.ts`.
 
 ### Phase `W02.P08` - grouped picker chrome, dependency hygiene, determinism tests
 
 Move GraphControls to a grouped layout picker, register the three modes un-gated, remove the dead sigma dependency, and add golden-position determinism tests (D10, D11, D12).
 
-- [ ] `W02.P08.S29` - Refactor the LayoutGroup Segmented control into a grouped picker with a Spatial group (Network, Tree, Layered, Radial, Communities, and gated Grouped-by-meaning) and Timeline kept as the distinct temporal entry, reusing the available flag for any future gated entry per D11; `frontend/src/app/stage/GraphControls.tsx`.
-- [ ] `W02.P08.S30` - Confirm the three new modes ship un-gated with no SEMANTIC_MODE_GATE-style downgrade and reconcile or retire the stale RepresentationModePanel reference named in the GraphControls header comment per D10/D11; `frontend/src/app/stage/GraphControls.tsx`.
-- [ ] `W02.P08.S31` - Remove the dead sigma ^3.0.3 dependency, the abandoned render half of the retired graphology/ForceAtlas2 stack imported nowhere in src, per D12; `frontend/package.json`.
-- [ ] `W02.P08.S32` - Add golden-position determinism tests per layout over a fixed bounded fixture asserting same inputs yield same positions, mirroring the existing layout tests per D5/D9 and the open question; `frontend/src/scene/field/representationLayout.test.ts`.
+- [x] `W02.P08.S29` - Refactor the LayoutGroup Segmented control into a grouped picker with a Spatial group (Network, Tree, Layered, Radial, Communities, and gated Grouped-by-meaning) and Timeline kept as the distinct temporal entry, reusing the available flag for any future gated entry per D11; `frontend/src/app/stage/GraphControls.tsx`.
+- [x] `W02.P08.S30` - Confirm the three new modes ship un-gated with no SEMANTIC_MODE_GATE-style downgrade and reconcile or retire the stale RepresentationModePanel reference named in the GraphControls header comment per D10/D11; `frontend/src/app/stage/GraphControls.tsx`.
+- [x] `W02.P08.S31` - Remove the dead sigma ^3.0.3 dependency, the abandoned render half of the retired graphology/ForceAtlas2 stack imported nowhere in src, per D12; `frontend/package.json`.
+- [x] `W02.P08.S32` - Add golden-position determinism tests per layout over a fixed bounded fixture asserting same inputs yield same positions, mirroring the existing layout tests per D5/D9 and the open question; `frontend/src/scene/field/representationLayout.test.ts`.
 
 ## Wave `W03` - graph-lineage-dag: Sugiyama lineage rebuild plus engine derivation-labeling completion
 
@@ -128,38 +128,38 @@ Rebuild the lineage mode as a full Sugiyama DAG layout and close the engine deri
 
 Widen edge_view's container-path detection to read node.kind, label Contains hierarchy edges, and wire /graph/lineage lineage_arc to derivation_label; all additive and non-id-bearing (D3, D4, D7).
 
-- [ ] `W03.P09.S33` - Widen edge_view's is_exec_container_path predicate to also fire when the src node kind is NodeKind::PlanContainer and the dst stem is an exec record via stem_is_exec_record, not only the doc_type pair, keeping the closed derivation vocabulary pure per D3.1; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W03.P09.S34` - Label the plan-internal Contains hierarchy edges (plan-wave-phase-step) so the authored hierarchy is a connected lineage chain, deciding whether Contains rides generated-by or carries a distinct container sub-label and reconciling with DERIVATION_AXIS_ORDER per D3.2 and the open question; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W03.P09.S35` - Confirm and lock that the widened detection never threads derivation_label into edge_id, keeping the PlanContainer edge stable keys composed only from endpoint and child-container ids per D3.3; `engine/crates/engine-query/src/ontology.rs`.
-- [ ] `W03.P09.S36` - Replace the hardcoded derivation: None in lineage_arc with a call to ontology::derivation_label using the in-scope graph and endpoint nodes, and remove the stale comment per D4/D7; `engine/crates/engine-query/src/lineage.rs`.
+- [x] `W03.P09.S33` - Widen edge_view's is_exec_container_path predicate to also fire when the src node kind is NodeKind::PlanContainer and the dst stem is an exec record via stem_is_exec_record, not only the doc_type pair, keeping the closed derivation vocabulary pure per D3.1; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W03.P09.S34` - Label the plan-internal Contains hierarchy edges (plan-wave-phase-step) so the authored hierarchy is a connected lineage chain, deciding whether Contains rides generated-by or carries a distinct container sub-label and reconciling with DERIVATION_AXIS_ORDER per D3.2 and the open question; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W03.P09.S35` - Confirm and lock that the widened detection never threads derivation_label into edge_id, keeping the PlanContainer edge stable keys composed only from endpoint and child-container ids per D3.3; `engine/crates/engine-query/src/ontology.rs`.
+- [x] `W03.P09.S36` - Replace the hardcoded derivation: None in lineage_arc with a call to ontology::derivation_label using the in-scope graph and endpoint nodes, and remove the stale comment per D4/D7; `engine/crates/engine-query/src/lineage.rs`.
 
 ### Phase `W03.P10` - Sugiyama lineage layout rebuild
 
 Rebuild lineageLayout as a full deterministic Sugiyama pipeline: cycle removal, dummy-node layering, median crossing reduction, Brandes-Kopf coordinates (D1).
 
-- [ ] `W03.P10.S37` - Add deterministic DFS back-edge reversal to a DAG before layering, restoring reversed edges to true direction only for routing/draw, replacing the silent visiting-guard drop per D1.1; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W03.P10.S38` - Keep longest-path layer assignment and insert dummy nodes on every edge spanning more than one layer so every edge becomes a chain of unit-length segments per D1.2; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W03.P10.S39` - Replace the lexical id-sort with median/barycenter up-down crossing-reduction sweeps over combined real and dummy layer orders, with a fixed sweep count per D1.3/D1.5; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W03.P10.S40` - Adopt Brandes-Kopf median-alignment within-layer coordinate assignment, deriving LINEAGE_ROW_SPACING/LINEAGE_COL_SPACING from layer occupancy for a legible aspect ratio, with a simpler median-alignment fallback if Brandes-Kopf proves heavy on the bounded slice per D1.4 and the open question; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W03.P10.S41` - Pick the canonical spine edge per exec and dedup so an exec reaching the spine via both its labeled container binding and its plan wikilink is not double-counted per the open question; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P10.S37` - Add deterministic DFS back-edge reversal to a DAG before layering, restoring reversed edges to true direction only for routing/draw, replacing the silent visiting-guard drop per D1.1; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P10.S38` - Keep longest-path layer assignment and insert dummy nodes on every edge spanning more than one layer so every edge becomes a chain of unit-length segments per D1.2; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P10.S39` - Replace the lexical id-sort with median/barycenter up-down crossing-reduction sweeps over combined real and dummy layer orders, with a fixed sweep count per D1.3/D1.5; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P10.S40` - Adopt Brandes-Kopf median-alignment within-layer coordinate assignment, deriving LINEAGE_ROW_SPACING/LINEAGE_COL_SPACING from layer occupancy for a legible aspect ratio, with a simpler median-alignment fallback if Brandes-Kopf proves heavy on the bounded slice per D1.4 and the open question; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P10.S41` - Pick the canonical spine edge per exec and dedup so an exec reaching the spine via both its labeled container binding and its plan wikilink is not double-counted per the open question; `frontend/src/scene/field/lineageLayout.ts`.
 
 ### Phase `W03.P11` - off-spine policy, index suppression, routed edges, aggregate-LOD
 
 Replace the dead holding lane with feature-adjacency/temporal/gutter precedence, suppress index nodes, fold dummy-node waypoints into the line-list topology, and add ceiling-gated exec aggregate-LOD (D2, D5, D6, D8).
 
-- [ ] `W03.P11.S42` - Replace the dead single-x holding lane with the off-spine precedence feature-adjacency, then temporal-axis by created date, then a faded dedicated gutter, preserving onSpine:false per D2; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W03.P11.S43` - Filter index nodes (authority_class manifest) out of the derivation DAG before layering, lineage-mode-scoped not connectivity, drawing an included index node only via the off-spine feature-adjacency path marked as a manifest per D5; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W03.P11.S44` - Extend the lineage layout return type to carry routed waypoints and the preserved onSpine/dangling/depth fields through representationLayout, replacing the current discard per D6; `frontend/src/scene/field/representationLayout.ts`.
-- [ ] `W03.P11.S45` - Fold dummy-node polyline waypoints into the existing line-list writeSegment topology for routed lineage edges, leaving semantic/meta triangle-list ribbons untouched per D6; `frontend/src/scene/field/edgeMeshes.ts`.
-- [ ] `W03.P11.S46` - Add ceiling-gated aggregate-LOD that collapses the exec column to per-plan super-nodes consuming the aggregate hint when the slice approaches MAX_GRAPH_NODES, with id-keyed object-constancy reconciliation on expand/collapse per D8 and the open question; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P11.S42` - Replace the dead single-x holding lane with the off-spine precedence feature-adjacency, then temporal-axis by created date, then a faded dedicated gutter, preserving onSpine:false per D2; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P11.S43` - Filter index nodes (authority_class manifest) out of the derivation DAG before layering, lineage-mode-scoped not connectivity, drawing an included index node only via the off-spine feature-adjacency path marked as a manifest per D5; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W03.P11.S44` - Extend the lineage layout return type to carry routed waypoints and the preserved onSpine/dangling/depth fields through representationLayout, replacing the current discard per D6; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W03.P11.S45` - Fold dummy-node polyline waypoints into the existing line-list writeSegment topology for routed lineage edges, leaving semantic/meta triangle-list ribbons untouched per D6; `frontend/src/scene/field/edgeMeshes.ts`.
+- [x] `W03.P11.S46` - Add ceiling-gated aggregate-LOD that collapses the exec column to per-plan super-nodes consuming the aggregate hint when the slice approaches MAX_GRAPH_NODES, with id-keyed object-constancy reconciliation on expand/collapse per D8 and the open question; `frontend/src/scene/field/lineageLayout.ts`.
 
 ### Phase `W03.P12` - lineage verification
 
 Golden-position determinism with an added back-edge, the engine non-id-bearing labeling invariant, and the timeline derivation-label parity.
 
-- [ ] `W03.P12.S47` - Add a golden-position determinism test asserting same inputs yield same positions across re-runs and with an added back-edge, fixing sweep count and id tie-breaks per D1.5 and the open question; `frontend/src/scene/field/lineageLayout.test.ts`.
-- [ ] `W03.P12.S48` - Add an engine test confirming the PlanContainer-to-exec container path now resolves generated-by and that the derivation_label is not part of any edge stable key, extending the derivation_label_is_not_part_of_the_edge_stable_key coverage per D3.3; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W03.P12.S49` - Add an engine test asserting lineage_arc now serves the derivation label end-to-end for timeline parity per D4/D7; `engine/crates/engine-query/src/lineage.rs`.
+- [x] `W03.P12.S47` - Add a golden-position determinism test asserting same inputs yield same positions across re-runs and with an added back-edge, fixing sweep count and id tie-breaks per D1.5 and the open question; `frontend/src/scene/field/lineageLayout.test.ts`.
+- [x] `W03.P12.S48` - Add an engine test confirming the PlanContainer-to-exec container path now resolves generated-by and that the derivation_label is not part of any edge stable key, extending the derivation_label_is_not_part_of_the_edge_stable_key coverage per D3.3; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W03.P12.S49` - Add an engine test asserting lineage_arc now serves the derivation label end-to-end for timeline parity per D4/D7; `engine/crates/engine-query/src/lineage.rs`.
 
 ## Wave `W04` - graph-semantic-embeddings: serve rag vectors on a bounded tiers-gated endpoint so the meaning constellation becomes real
 
@@ -169,34 +169,34 @@ Make the semantic mode real by serving rag's stored embedding vectors on a dedic
 
 Read stored 1024-dim float32 dense vectors from rag's Qdrant over loopback HTTP, mapping point ids to target_node_id, behind the rag-client crate (D1, D10).
 
-- [ ] `W04.P13.S50` - Add a Qdrant scroll-with-vectors read in rag-client that POSTs to /collections/{c}/points/scroll and /points by id with with_vector=true against the storage_path port discovered the same service.json way, reading stored vectors at zero re-embed cost per D1; `engine/crates/rag-client/src/client.rs`.
-- [ ] `W04.P13.S51` - Resolve the Qdrant scroll API shape (collection names, the rag point-id to target_node_id mapping confirming the stored payload carries the stem or source, batch size, and how a missing point renders as honest absence) per the open question, scoping to vault-document node embeddings only per D10; `engine/crates/rag-client/src/client.rs`.
-- [ ] `W04.P13.S52` - Apply the MAX_RAG_BODY byte cap and a wall-clock deadline to the embedding read per the subprocess-calls-carry-cap-and-timeout HTTP-read analog, preserving the engine-builds-no-embeddings-ever invariant per D1 and the open question; `engine/crates/rag-client/src/lib.rs`.
+- [x] `W04.P13.S50` - Add a Qdrant scroll-with-vectors read in rag-client that POSTs to /collections/{c}/points/scroll and /points by id with with_vector=true against the storage_path port discovered the same service.json way, reading stored vectors at zero re-embed cost per D1; `engine/crates/rag-client/src/client.rs`.
+- [x] `W04.P13.S51` - Resolve the Qdrant scroll API shape (collection names, the rag point-id to target_node_id mapping confirming the stored payload carries the stem or source, batch size, and how a missing point renders as honest absence) per the open question, scoping to vault-document node embeddings only per D10; `engine/crates/rag-client/src/client.rs`.
+- [x] `W04.P13.S52` - Apply the MAX_RAG_BODY byte cap and a wall-clock deadline to the embedding read per the subprocess-calls-carry-cap-and-timeout HTTP-read analog, preserving the engine-builds-no-embeddings-ever invariant per D1 and the open question; `engine/crates/rag-client/src/lib.rs`.
 
 ### Phase `W04.P14` - bounded /graph/embeddings route
 
 Add a dedicated bounded tiers-gated route serving float32 vectors keyed by scope and node-id set with a generation stamp, never inline on /graph/query (D2, D3, D4, D7, D8).
 
-- [ ] `W04.P14.S53` - Add a dedicated GET /graph/embeddings route serving raw float32 JSON number[] vectors keyed by scope and the served node-id set, capped at MAX_GRAPH_NODES with the same bound_slice/truncated honesty, built through the shared envelope helper so success and rag-down error both carry tiers per D2/D3/D7; `engine/crates/vaultspec-api/src/routes/query.rs`.
-- [ ] `W04.P14.S54` - Reject the include_embeddings inline flag and the server-side PCA-to-K reduction for v1, keeping the engine read-and-infer and the hot /graph/query path untaxed per D2/D4; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W04.P14.S55` - Stamp the response with the graph generation it was read at (the same generation /graph/query echoes) so the client caches per generation, and confirm the embedding enters no node or edge stable key per D8; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W04.P14.S56` - Report the semantic tier as Unavailable with a degradation_reason in the envelope tiers when rag/Qdrant is down, returning no vectors so the stores layer reads availability from tiers truth per D7; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W04.P14.S53` - Add a dedicated GET /graph/embeddings route serving raw float32 JSON number[] vectors keyed by scope and the served node-id set, capped at MAX_GRAPH_NODES with the same bound_slice/truncated honesty, built through the shared envelope helper so success and rag-down error both carry tiers per D2/D3/D7; `engine/crates/vaultspec-api/src/routes/query.rs`.
+- [x] `W04.P14.S54` - Reject the include_embeddings inline flag and the server-side PCA-to-K reduction for v1, keeping the engine read-and-infer and the hot /graph/query path untaxed per D2/D4; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W04.P14.S55` - Stamp the response with the graph generation it was read at (the same generation /graph/query echoes) so the client caches per generation, and confirm the embedding enters no node or edge stable key per D8; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W04.P14.S56` - Report the semantic tier as Unavailable with a degradation_reason in the envelope tiers when rag/Qdrant is down, returning no vectors so the stores layer reads availability from tiers truth per D7; `engine/crates/vaultspec-api/src/routes/query.rs`.
 
 ### Phase `W04.P15` - stores lazy per-generation fetch and gate re-spec
 
 Fetch /graph/embeddings lazily on entering semantic mode, cache per generation, read availability from tiers, and re-spec the promotion gate to measure real served embeddings (D2, D6, D7, D8).
 
-- [ ] `W04.P15.S57` - Add the engine.ts client transport for GET /graph/embeddings and an adapter that carries embedding through to the node shape, consistent with /graph/query's DOI node-set selection so the embedding set matches the served node set per D2 and the open question; `frontend/src/stores/server/engine.ts`.
-- [ ] `W04.P15.S58` - Add a stores query that fetches /graph/embeddings lazily only on entering semantic mode and caches per generation, re-fetching on generation change (full re-fetch per generation for v1) per D2/D8; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P15.S59` - Mark semantic unavailable from the fresh error tiers truth (error tiers winning over a stale held-success block), never from a bare fetch rejection, so the scene draws the honest fallback ring per D7; `frontend/src/stores/server/queries.ts`.
-- [ ] `W04.P15.S60` - Re-spec SEMANTIC_MODE_GATE so its separation and a new data-presence criterion run against a captured real served slice through the same adaptGraphSlice/sceneMapping path, retaining the synthetic buildGateSlice only for the projection-time budget, with a plan-time-calibrated real-data separation floor starting at 1.2 per D6 and the open question; `frontend/src/scene/field/semanticGate.ts`.
+- [x] `W04.P15.S57` - Add the engine.ts client transport for GET /graph/embeddings and an adapter that carries embedding through to the node shape, consistent with /graph/query's DOI node-set selection so the embedding set matches the served node set per D2 and the open question; `frontend/src/stores/server/engine.ts`.
+- [x] `W04.P15.S58` - Add a stores query that fetches /graph/embeddings lazily only on entering semantic mode and caches per generation, re-fetching on generation change (full re-fetch per generation for v1) per D2/D8; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P15.S59` - Mark semantic unavailable from the fresh error tiers truth (error tiers winning over a stale held-success block), never from a bare fetch rejection, so the scene draws the honest fallback ring per D7; `frontend/src/stores/server/queries.ts`.
+- [x] `W04.P15.S60` - Re-spec SEMANTIC_MODE_GATE so its separation and a new data-presence criterion run against a captured real served slice through the same adaptGraphSlice/sceneMapping path, retaining the synthetic buildGateSlice only for the projection-time budget, with a plan-time-calibrated real-data separation floor starting at 1.2 per D6 and the open question; `frontend/src/scene/field/semanticGate.ts`.
 
 ### Phase `W04.P16` - mock parity and captured-live-sample verification
 
 Serve the /graph/embeddings shape byte-for-byte in the mock and feed a captured live sample through adaptGraphSlice/sceneMapping per the mock-mirrors-live-wire-shape discipline (D6).
 
-- [ ] `W04.P16.S61` - Serve the /graph/embeddings shape byte-for-byte in the mock engine, including the generation stamp and the tiers block, replacing the synthetic-only corpus embedding seed per the mock-mirrors-live-wire-shape discipline and D6; `frontend/src/testing/fixtures/corpus.ts`.
-- [ ] `W04.P16.S62` - Add a consumer test that feeds a captured live /graph/embeddings sample through adaptGraphSlice and sceneMapping and asserts the PCA projection separates real clusters and the gate cannot report shipped on an empty path per D6; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `W04.P16.S61` - Serve the /graph/embeddings shape byte-for-byte in the mock engine, including the generation stamp and the tiers block, replacing the synthetic-only corpus embedding seed per the mock-mirrors-live-wire-shape discipline and D6; `frontend/src/testing/fixtures/corpus.ts`.
+- [x] `W04.P16.S62` - Add a consumer test that feeds a captured live /graph/embeddings sample through adaptGraphSlice and sceneMapping and asserts the PCA projection separates real clusters and the gate cannot report shipped on an empty path per D6; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ## Wave `W05` - code-artifact-nodes: mint inferred code/symbol nodes so structural mentions bridge to navigable graph nodes
 
@@ -227,11 +227,11 @@ Wire the git diff browser to the already-shipped and tested /ops/git engine rout
 
 Flip the served constants, wire the selectors to client.opsGit, parse the git output formats, render in the chrome, and retire the engine-blocked stubs (Feature B).
 
-- [ ] `W06.P19.S70` - Flip GIT_DIFF_CAPABILITY_SERVED and CHANGED_FILES_LIST_SERVED to true and refresh the stale queries.ts git comments that wrongly claim no /ops/git route exists per Feature B; `frontend/src/stores/server/queries.ts`.
-- [ ] `W06.P19.S71` - Wire useGitFileDiff and the changed-files selectors to client.opsGit(status|numstat|diff) issuing real queries instead of returning engineBlocked with no network call per Feature B; `frontend/src/stores/server/queries.ts`.
-- [ ] `W06.P19.S72` - Parse porcelain-v1 status, numstat add/remove tallies, and unified diff hunks from the adaptGitOp output into the status-grouped changed-files and hunk-by-hunk shapes the chrome consumes per Feature B and the git-diff-browser ADR; `frontend/src/stores/server/liveAdapters.ts`.
-- [ ] `W06.P19.S73` - Render the status-grouped changed-files list and retire the capability-pending stub in ChangesOverview, keeping grayscale-safe status marks and the read-and-infer no-write discipline per the git-diff-browser ADR; `frontend/src/app/right/ChangesOverview.tsx`.
-- [ ] `W06.P19.S74` - Render the bounded hunk-by-hunk diff with twin tabular line-number gutters, +/- glyphs and labels, high-contrast green/red overriding warmth, honest truncation, and retire the engine-blocked stub in DiffView per the git-diff-browser ADR; `frontend/src/app/right/DiffView.tsx`.
+- [x] `W06.P19.S70` - Flip GIT_DIFF_CAPABILITY_SERVED and CHANGED_FILES_LIST_SERVED to true and refresh the stale queries.ts git comments that wrongly claim no /ops/git route exists per Feature B; `frontend/src/stores/server/queries.ts`.
+- [x] `W06.P19.S71` - Wire useGitFileDiff and the changed-files selectors to client.opsGit(status|numstat|diff) issuing real queries instead of returning engineBlocked with no network call per Feature B; `frontend/src/stores/server/queries.ts`.
+- [x] `W06.P19.S72` - Parse porcelain-v1 status, numstat add/remove tallies, and unified diff hunks from the adaptGitOp output into the status-grouped changed-files and hunk-by-hunk shapes the chrome consumes per Feature B and the git-diff-browser ADR; `frontend/src/stores/server/liveAdapters.ts`.
+- [x] `W06.P19.S73` - Render the status-grouped changed-files list and retire the capability-pending stub in ChangesOverview, keeping grayscale-safe status marks and the read-and-infer no-write discipline per the git-diff-browser ADR; `frontend/src/app/right/ChangesOverview.tsx`.
+- [x] `W06.P19.S74` - Render the bounded hunk-by-hunk diff with twin tabular line-number gutters, +/- glyphs and labels, high-contrast green/red overriding warmth, honest truncation, and retire the engine-blocked stub in DiffView per the git-diff-browser ADR; `frontend/src/app/right/DiffView.tsx`.
 
 ## Wave `W07` - backend cleanup: delete dead QueryCore and refresh stale deferred comments
 
@@ -241,12 +241,12 @@ Curate pass closing the missing-backend-inventory Cleanup section: delete or rep
 
 Remove the dead QueryCore scaffold and update the stale deferred/not-yet comments the inventory flagged as done (Cleanup section).
 
-- [ ] `W07.P20.S75` - Delete the dead QueryCore scaffold (status() returning engine-index-not-yet-implemented and validate_scope), referenced nowhere outside its own tests since the real /status lives in routes/stream.rs, or repurpose it as the documented shared query-core handle per the Cleanup section; `engine/crates/engine-query/src/lib.rs`.
-- [ ] `W07.P20.S76` - Refresh the stale deferred-fast-follow as-of-lineage comment now that the BLOB-TRUE as-of branch is implemented per the Cleanup section; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
-- [ ] `W07.P20.S77` - Refresh the stale deferred-S45-wiring comment now that onNodeClick is actually wired per the Cleanup section; `frontend/src/app/AppShell.tsx`.
-- [ ] `W07.P20.S78` - Refresh the stale deferred-S45-wiring comment now that onNodeClick is actually wired per the Cleanup section; `frontend/src/app/timeline/Timeline.tsx`.
-- [ ] `W07.P20.S79` - Refresh the stale placeholder-for-the-extraction-pipeline doc-comment on the Mention enum now that the enum is real and used, after verifying completeness versus the comment per the Cleanup section; `engine/crates/ingest-struct/src/lib.rs`.
-- [ ] `W07.P20.S80` - Refresh the stale provisional comment on the Timestamp i64 alias now that the temporal tier is served, unless a richer time type is actually needed per the Cleanup section; `engine/crates/engine-model/src/lib.rs`.
+- [x] `W07.P20.S75` - Delete the dead QueryCore scaffold (status() returning engine-index-not-yet-implemented and validate_scope), referenced nowhere outside its own tests since the real /status lives in routes/stream.rs, or repurpose it as the documented shared query-core handle per the Cleanup section; `engine/crates/engine-query/src/lib.rs`.
+- [x] `W07.P20.S76` - Refresh the stale deferred-fast-follow as-of-lineage comment now that the BLOB-TRUE as-of branch is implemented per the Cleanup section; `engine/crates/vaultspec-api/src/routes/temporal.rs`.
+- [x] `W07.P20.S77` - Refresh the stale deferred-S45-wiring comment now that onNodeClick is actually wired per the Cleanup section; `frontend/src/app/AppShell.tsx`.
+- [x] `W07.P20.S78` - Refresh the stale deferred-S45-wiring comment now that onNodeClick is actually wired per the Cleanup section; `frontend/src/app/timeline/Timeline.tsx`.
+- [x] `W07.P20.S79` - Refresh the stale placeholder-for-the-extraction-pipeline doc-comment on the Mention enum now that the enum is real and used, after verifying completeness versus the comment per the Cleanup section; `engine/crates/ingest-struct/src/lib.rs`.
+- [x] `W07.P20.S80` - Refresh the stale provisional comment on the Timestamp i64 alias now that the temporal tier is served, unless a richer time type is actually needed per the Cleanup section; `engine/crates/engine-model/src/lib.rs`.
 
 ## Description
 
