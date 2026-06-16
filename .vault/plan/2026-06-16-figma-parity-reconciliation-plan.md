@@ -153,7 +153,7 @@ Rewrite the frontend/src/app chrome surface-group by surface-group from the bind
 Rebuild the app shell frame and the left rail (vault, code, and tree browsers) from their binding frames as dumb projections over the preserved browser-mode and selection stores, tokens-only.
 
 - [x] `W02.P04.S23` - Rebuild the app shell layout frame from its binding frame as a dumb projection over the preserved view stores; `frontend/src/app/AppShell.tsx`.
-- [ ] `W02.P04.S24` - Rebuild the left rail container and rail filter from the binding LeftRail Kit primitive over the preserved browser-mode store; `frontend/src/app/left/LeftRail.tsx`.
+- [x] `W02.P04.S24` - Rebuild the left rail container and rail filter from the binding LeftRail Kit primitive over the preserved browser-mode store; `frontend/src/app/left/LeftRail.tsx`.
 - [ ] `W02.P04.S25` - Rebuild the vault browser from its binding frame over the preserved vault-tree query and selection store; `frontend/src/app/left/VaultBrowser.tsx`.
 - [ ] `W02.P04.S26` - Rebuild the code tree browser from the binding CodeTree Kit primitive over the preserved code-selection store; `frontend/src/app/left/CodeTree.tsx`.
 - [ ] `W02.P04.S27` - Rebuild the tree browser from the binding TreeBrowser Kit primitive over the preserved tree query with plan-progress pips; `frontend/src/app/left/TreeBrowser.tsx`.
@@ -162,7 +162,7 @@ Rebuild the app shell frame and the left rail (vault, code, and tree browsers) f
 
 Rebuild the right activity rail (tabs, inspector, work, search, changes) and the stage chrome (filters, controls, minimap, overlays) from their binding frames over the preserved stores, with degradation read from the tiers block.
 
-- [ ] `W02.P05.S28` - Rebuild the right rail tab bar to the binding Inspect Work Search Changes IA with the liveness pillars promoted to a persistent header; `frontend/src/app/right/RailTabs.tsx`.
+- [x] `W02.P05.S28` - Rebuild the right rail tab bar to the binding Inspect Work Search Changes IA with the liveness pillars promoted to a persistent header; `frontend/src/app/right/RailTabs.tsx`.
 - [ ] `W02.P05.S29` - Rebuild the inspector tab from its binding frame over the preserved selection and enriched node-evidence query; `frontend/src/app/right/Inspector.tsx`.
 - [ ] `W02.P05.S30` - Rebuild the work tab from the binding WorkTab Kit primitive over the preserved pipeline-status query; `frontend/src/app/right/WorkTab.tsx`.
 - [ ] `W02.P05.S31` - Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers; `frontend/src/app/right/SearchTab.tsx`.

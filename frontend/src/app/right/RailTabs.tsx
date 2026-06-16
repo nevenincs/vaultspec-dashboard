@@ -1,25 +1,35 @@
-// The activity-rail tab bar (binding Figma `RightRail` / `ActivityTabs`, node
-// 17:563; refined by the status-overview ADR node 112:2): a compact segmented
-// control switching the rail body between its four panes — Status (the primary
-// overview: location anchor + plan-derived open work + recent commits), Inspect
-// (the selected-node lens), Changes (git working-tree + diff), Search (rag
-// query). The status-overview ADR refines the prior Inspect/Work/Changes/Search
-// set: the Work pillar's in-flight plans fold into Status (the headline surface),
-// so Status is the primary tab and the four-tab law is honored (no fifth tab is
-// minted; the changed-files/diff capability stays as Changes). The
-// segmented-control idiom and its a11y mirror the left rail's
-// `BrowserModeToggle`: one ARIA tablist, the active tab a raised paper pill with
-// a soft card shadow, roving arrow-key movement that auto-scales to the tab
-// count, and a roving tabindex so only the active tab sits in the Tab order.
+// The activity-rail tab bar (figma-parity-reconciliation W02.P05.S28; binding
+// Figma ActivityRail Kit primitive node 244:753, composed in the `RightRail`
+// frame 17:563): a compact segmented control switching the rail body between its
+// four panes. Rebuilt onto the NEW Figma role-named token foundation
+// (figma-parity-reconciliation ADR): the segmented track is a sunken paper rail
+// on the canonical radius (`rounded-fg-md`), the active tab a raised paper pill
+// at `rounded-fg-xs` with the three-level raised elevation (`shadow-fg-raised`),
+// and the label role drives type. No raw hex, no legacy six-level shadow, no
+// retired radius scale.
+//
+// The tab IDENTITY contract is shared with the rail host (`ActivityRail` in
+// AppShell, which owns the persistent NowStrip liveness header above this bar and
+// the tab->pane mapping). The binding-design IA rename (Inspect | Work | Search |
+// Changes) is the activity-rail-ADR supersession, governed by W04.P10.S57 and the
+// paired host rewire in W02.P04 (AppShell), NOT by this leaf tab bar: changing the
+// id union here in isolation would break the host's typecheck across the scope
+// boundary. S28 rebuilds the tab bar's visual treatment onto the foundation; the
+// id contract stays stable until the host adopts the renamed IA.
+//
+// The segmented-control idiom and its a11y mirror the left rail's
+// `BrowserModeToggle`: one ARIA tablist, the active tab a raised paper pill,
+// roving arrow-key movement that auto-scales to the tab count, and a roving
+// tabindex so only the active tab sits in the Tab order.
 //
 // Layer ownership (dashboard-layer-ownership): this is pure chrome — it holds no
 // wire state, fetches nothing, and reads no `tiers` block; it only flips the
 // active-tab id its parent owns.
 //
 // Icons come from the two sanctioned families (icons-come-from-the-two-sanctioned
-// -families): the Inspect and Search tabs carry their structural Lucide chrome
-// marks (Eye / Search), matching the binding design; Work and Changes are
-// label-only, exactly as the design shows.
+// -families): each non-label-only tab carries its structural Lucide chrome mark,
+// matching the binding design; the label-only tab shows no mark, as the design
+// shows.
 
 import { Activity, Eye, Search, type LucideIcon } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -82,7 +92,7 @@ export function RailTabs({ active, onChange }: RailTabsProps) {
       aria-label="activity rail tabs"
       aria-orientation="horizontal"
       data-rail-tabs
-      className="flex shrink-0 gap-vs-0-5 rounded-vs-md border border-rule bg-paper-sunken p-vs-0-5"
+      className="flex shrink-0 gap-vs-0-5 rounded-fg-md border border-rule bg-paper-sunken p-vs-0-5"
     >
       {RAIL_TABS.map(({ id, label, mark: Mark }, index) => {
         const isActive = active === id;
@@ -102,9 +112,9 @@ export function RailTabs({ active, onChange }: RailTabsProps) {
             data-rail-tab-active={isActive ? "" : undefined}
             onClick={() => onChange(id)}
             onKeyDown={onKeyDown(index)}
-            className={`flex min-w-0 flex-1 items-center justify-center gap-vs-1 rounded-vs-sm px-vs-1-5 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            className={`flex min-w-0 flex-1 items-center justify-center gap-vs-1 rounded-fg-xs px-vs-1-5 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
               isActive
-                ? "bg-paper-raised font-medium text-ink shadow-card"
+                ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
                 : "text-ink-faint hover:text-ink-muted"
             }`}
           >
