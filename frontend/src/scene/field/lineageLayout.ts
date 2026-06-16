@@ -241,24 +241,48 @@ function occupancyColSpacing(maxOccupancy: number): number {
 }
 
 interface Aggregation {
-  /** exec node id -> its per-plan super-node id (only when collapsed). */
+  /** exec node id -> its per-plan super-node id (only when collapsed).
+   *
+   *  NON-DESTRUCTIVE (W03 review fix): this map is intentionally kept EMPTY. The
+   *  super-nodes in `aggregates` are ADVISORY metadata only — the sprite layer
+   *  (`nodeSprites.sync`) draws exactly the model's node set and has no synthetic-
+   *  node channel, so injecting an `agg:exec:{planId}` body would require either
+   *  threading a lineage-only concept through the shared `SceneGraphModel` (and
+   *  every layer that reads it — edges, hit-test, FA2 backbone, overlays, the
+   *  incremental-reheat diff, the data signature) or invasive sprite-layer
+   *  surgery. Until that synthetic-node render channel exists, collapsing members
+   *  OUT of the layout (the original behaviour) gave them NO position at all —
+   *  every collapsed exec piled at the origin on the live 642-exec corpus. So we
+   *  do NOT collapse: every exec keeps a real Sugiyama position (the crossing-
+   *  reduced coordinate pass already spreads a 600+-row column legibly), and the
+   *  super-node RENDERING is a recorded deferred enhancement. See the audit note
+   *  `.vault/audit/2026-06-16-graph-lineage-dag-audit`. */
   collapsedTo: Map<string, string>;
-  /** super-node id -> { planId, memberIds }. */
+  /** super-node id -> { planId, memberIds }. ADVISORY metadata: which execs WOULD
+   *  collapse under each plan once a synthetic-node render channel lands; never
+   *  consumed for placement today (see `collapsedTo`). */
   aggregates: Map<string, { planId: string; memberIds: string[] }>;
 }
 
 /**
- * Build the D8 aggregate-LOD plan: when the served node count crosses the
- * threshold, collapse each plan's exec records into one super-node keyed by the
- * plan, consuming the `aggregate` hint (exec is the only aggregate species, so
- * `memberCount`/kind drive the species check). Below the threshold no node is
- * collapsed. Object constancy: the super-node id is stable per plan
- * (`agg:exec:{planId}`), so expand/collapse reconciles by id.
+ * Build the D8 aggregate-LOD ADVISORY metadata: when the served node count
+ * crosses the threshold, group each plan's exec records under one per-plan
+ * super-node id (`agg:exec:{planId}`), consuming the `generated-by` derivation
+ * edge to find the plan of each exec. Below the threshold no group is formed.
+ *
+ * NON-DESTRUCTIVE (W03 review fix): the returned `collapsedTo` is EMPTY — the
+ * grouping is metadata, not a layout collapse. The original destructive collapse
+ * filtered the member execs OUT of placement, but no renderer draws the synthetic
+ * super-nodes (the sprite layer has no synthetic-node channel), so the members
+ * ended up with no position (origin pile-up on the live 642-exec corpus). Keeping
+ * `collapsedTo` empty leaves every exec positioned by the full Sugiyama pipeline;
+ * `aggregates` records the would-be grouping for a future render channel.
  */
 function buildAggregation(
   nodes: readonly LineageNode[],
   edges: readonly SceneEdgeData[],
 ): Aggregation {
+  // Intentionally always empty: non-destructive aggregation (see Aggregation doc).
   const collapsedTo = new Map<string, string>();
   const aggregates = new Map<string, { planId: string; memberIds: string[] }>();
   if (nodes.length < LINEAGE_AGGREGATE_THRESHOLD) {
@@ -283,7 +307,8 @@ function buildAggregation(
   for (const execId of execIds) {
     const planId = planOfExec.get(execId)!;
     const superId = `agg:exec:${planId}`;
-    collapsedTo.set(execId, superId);
+    // Record the would-be grouping (advisory); do NOT add to collapsedTo, so the
+    // member keeps its real Sugiyama spine position rather than being filtered out.
     const entry = aggregates.get(superId) ?? { planId, memberIds: [] };
     entry.memberIds.push(execId);
     aggregates.set(superId, entry);

@@ -130,11 +130,14 @@ describe("reduceCrossings", () => {
     ];
     const before = [...layers[1]];
     reduceCrossings(layers, routed, 4);
-    // The reorder is deterministic (same result every run); it may or may not
-    // change order, but it must be stable.
+    // The reorder is deterministic (same result every run): re-running the SAME
+    // crossing reduction on a FRESH copy of the SAME input must yield the SAME
+    // order. A genuine determinism check — not a comparison of a value to itself.
     const after = [...layers[1]];
-    reduceCrossings([[...layers[0]], before], routed, 4);
-    expect(after).toEqual(after); // stable reference
+    const rerunLayers = [[...layers[0]], before];
+    reduceCrossings(rerunLayers, routed, 4);
+    const rerun = rerunLayers[1];
+    expect(rerun).toEqual(after);
     expect(layers[1].length).toBe(2);
   });
 });

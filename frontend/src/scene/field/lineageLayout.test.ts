@@ -163,9 +163,13 @@ describe("lineageLayout", () => {
     expect(pos.get("exec")!.onSpine).toBe(true);
   });
 
-  it("collapses the exec column to per-plan super-nodes above the ceiling (D8)", () => {
-    // Above the aggregate threshold, the exec long tail collapses to one
-    // per-plan super-node; the individual execs are represented by it.
+  it("records advisory per-plan aggregates above the ceiling, NON-destructively (D8)", () => {
+    // Above the aggregate threshold the per-plan grouping is recorded as ADVISORY
+    // metadata (`aggregates`) — but NON-DESTRUCTIVELY (W03 review fix): every exec
+    // keeps a real Sugiyama position rather than being collapsed out of the layout,
+    // because no renderer draws the synthetic super-nodes yet. The destructive
+    // collapse left the members with no position at all (origin pile-up on the live
+    // 642-exec corpus).
     const plan = n("plan");
     const execCount = LINEAGE_AGGREGATE_THRESHOLD + 5;
     const execs = Array.from({ length: execCount }, (_, i) =>
@@ -173,13 +177,51 @@ describe("lineageLayout", () => {
     );
     const edges = execs.map((e) => lineageEdge("plan", e.id, "generated-by"));
     const result = lineageLayout([plan, ...execs], edges);
-    // The super-node exists, keyed per plan, carrying every exec member.
+    // The advisory super-node grouping exists, keyed per plan, carrying every
+    // exec member — metadata for a future synthetic-node render channel.
     const superId = "agg:exec:plan";
     expect(result.aggregates.has(superId)).toBe(true);
     expect(result.aggregates.get(superId)!.memberIds.length).toBe(execCount);
-    // The super-node lands on the spine at the exec depth; individual execs are
-    // not laid out on the spine (they are collapsed).
-    expect(result.positions.get(superId)!.onSpine).toBe(true);
+    // The super-node is NOT placed (advisory only, nothing draws it).
+    expect(result.positions.has(superId)).toBe(false);
+    // Every served exec has a REAL spine position (no member is filtered out).
+    for (const e of execs) {
+      const p = result.positions.get(e.id);
+      expect(p).toBeDefined();
+      expect(p!.onSpine).toBe(true);
+    }
+  });
+
+  it("places EVERY served exec above the ceiling — no origin pile-up (W03 F1)", () => {
+    // The live-corpus regression: 642 execs (> the 600 threshold) under one plan.
+    // Every served node must have a real Sugiyama position; none may stack at the
+    // uninitialized origin. The crossing-reduced coordinate pass spreads the column
+    // across distinct rows, so no two members share a position either.
+    const plan = n("plan");
+    const execCount = 642;
+    const execs = Array.from({ length: execCount }, (_, i) =>
+      n(`exec-${String(i).padStart(4, "0")}`),
+    );
+    const edges = execs.map((e) => lineageEdge("plan", e.id, "generated-by"));
+    const result = lineageLayout([plan, ...execs], edges);
+    expect(execCount).toBeGreaterThan(LINEAGE_AGGREGATE_THRESHOLD);
+
+    // No served node is missing a position, and none piles at the origin {0,0}
+    // (the uninitialized-position signature). The plan sits at column 0 (its real
+    // spine origin) but the execs are spread across the next column's rows.
+    const seenYByExec = new Set<number>();
+    let originPileUp = 0;
+    for (const e of execs) {
+      const p = result.positions.get(e.id);
+      expect(p).toBeDefined();
+      // An exec at exactly {0,0} would be the origin pile-up; the exec column is
+      // at depth 1 (x > 0), so a member there is the uninitialized signature.
+      if (p!.x === 0 && p!.y === 0) originPileUp += 1;
+      seenYByExec.add(p!.y);
+    }
+    expect(originPileUp).toBe(0);
+    // The members are spread across distinct rows, not stacked on one another.
+    expect(seenYByExec.size).toBeGreaterThan(1);
   });
 
   it("is cycle-safe: a derivation cycle does not loop forever", () => {

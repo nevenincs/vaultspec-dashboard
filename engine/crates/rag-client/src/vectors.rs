@@ -21,11 +21,12 @@
 //! ABSENCE (no vector served), which the scene draws as the fallback ring.
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::client::{RagTransport, Result};
+use crate::client::{RagError, RagTransport, Result};
 use crate::discover::target_node_id;
 
 /// The default Qdrant HTTP port rag's resident store listens on (ADR Context:
@@ -70,6 +71,14 @@ struct ScrollPoint {
     /// `with_vector=true` returns the dense vector here. A named-vector
     /// collection would return an object; the vault collection stores a single
     /// unnamed dense vector, so this is a flat array.
+    ///
+    /// LIVE-INTEGRATION CHECKLIST (W04 review): if rag ever migrates the vault
+    /// collection to NAMED vectors, Qdrant returns `vector` as an object
+    /// (`{"name": [...]}`) rather than a flat array, and this `Option<Vec<f32>>`
+    /// will silently deserialize to `None` — every point would then be skipped as
+    /// honest absence and the semantic mode would go dark with no error. That
+    /// migration must be caught here (switch to an enum over flat/named) before it
+    /// ships, not diagnosed from an empty embedding slice.
     #[serde(default)]
     vector: Option<Vec<f32>>,
 }
@@ -103,11 +112,30 @@ struct ScrollEnvelope {
 /// caller can intersect it with the SERVED node set; a node absent from the map
 /// has no stored vector (honest absence → fallback ring).
 ///
+/// `deadline` is an OVERALL wall-clock budget for the whole multi-page scroll —
+/// the true bound the per-socket inactivity timeout alone cannot give (a 64-page
+/// scroll could otherwise accrue 64 × the per-page timeout). Checked before each
+/// page round-trip; a breach returns a typed `TimedOut` error (the semantic tier
+/// degrades to no-vectors, exactly like the per-socket timeout path) rather than
+/// silently truncating the read.
+///
 /// The engine reads and forwards: no vector is computed, reduced, or altered.
-pub fn read_embeddings(transport: &impl RagTransport) -> Result<HashMap<String, Vec<f32>>> {
+pub fn read_embeddings(
+    transport: &impl RagTransport,
+    deadline: Instant,
+) -> Result<HashMap<String, Vec<f32>>> {
     let mut out: HashMap<String, Vec<f32>> = HashMap::new();
     let mut offset: Option<Value> = None;
     for _ in 0..SCROLL_MAX_PAGES {
+        // Overall wall-clock budget (W04 review): bound the WHOLE scroll, not just
+        // each socket. A stalled or slow Qdrant that creeps under the per-page
+        // inactivity timeout on every page still cannot pin the request past this.
+        if Instant::now() >= deadline {
+            return Err(RagError::Io(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "embedding scroll exceeded its overall wall-clock budget",
+            )));
+        }
         let body = scroll_body(offset.as_ref());
         let raw = transport.post_json(
             &format!("/collections/{VAULT_COLLECTION}/points/scroll"),
@@ -153,6 +181,8 @@ fn scroll_body(offset: Option<&Value>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::client::test_support::FakeTransport;
 
@@ -170,7 +200,7 @@ mod tests {
              "vector": [0.7, 0.8, 0.9]}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
-        let map = read_embeddings(&transport).unwrap();
+        let map = read_embeddings(&transport, far_future()).unwrap();
         assert_eq!(map.len(), 2, "only the two vault-doc points are kept");
         assert_eq!(map.get("doc:2026-06-16-x-adr"), Some(&vec![0.1, 0.2, 0.3]));
         assert_eq!(map.get("doc:2026-06-16-y-plan"), Some(&vec![0.4, 0.5, 0.6]));
@@ -192,7 +222,7 @@ mod tests {
             {"id": 2, "payload": {"source": "b-plan"}, "vector": [2.0]}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page1, page2]);
-        let map = read_embeddings(&transport).unwrap();
+        let map = read_embeddings(&transport, far_future()).unwrap();
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("doc:a-adr"), Some(&vec![1.0]));
         assert_eq!(map.get("doc:b-plan"), Some(&vec![2.0]));
@@ -209,7 +239,7 @@ mod tests {
             {"id": 3, "vector": [3.0]}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
-        let map = read_embeddings(&transport).unwrap();
+        let map = read_embeddings(&transport, far_future()).unwrap();
         assert_eq!(map.len(), 1, "only the point with BOTH a vector and source");
         assert_eq!(map.get("doc:has-vector-adr"), Some(&vec![1.0]));
     }
@@ -223,8 +253,33 @@ mod tests {
             {"id": 2, "payload": {"source": "dup-adr"}, "vector": [9.0]}
         ], "next_page_offset": null}}"#;
         let transport = FakeTransport::returning(vec![page]);
-        let map = read_embeddings(&transport).unwrap();
+        let map = read_embeddings(&transport, far_future()).unwrap();
         assert_eq!(map.len(), 1);
         assert_eq!(map.get("doc:dup-adr"), Some(&vec![1.0]));
+    }
+
+    #[test]
+    fn an_exhausted_wall_clock_budget_is_a_timeout_not_a_silent_partial() {
+        // The overall wall-clock budget bounds the WHOLE scroll: a deadline already
+        // in the past stops the read before the first page round-trip and surfaces
+        // a typed TimedOut error (the semantic tier degrades), never a silent
+        // partial result the caller would mistake for honest absence.
+        let page = r#"{"result": {"points": [
+            {"id": 1, "payload": {"source": "x-adr"}, "vector": [1.0]}
+        ], "next_page_offset": null}}"#;
+        let transport = FakeTransport::returning(vec![page]);
+        let past = Instant::now() - Duration::from_secs(1);
+        let result = read_embeddings(&transport, past);
+        match result {
+            Err(RagError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::TimedOut),
+            other => panic!("expected a TimedOut Io error, got {other:?}"),
+        }
+        // The budget breach short-circuits before any scroll round-trip fires.
+        assert_eq!(transport.calls.borrow().len(), 0, "no page was scrolled");
+    }
+
+    /// A deadline comfortably past the end of any test run, for the happy paths.
+    fn far_future() -> Instant {
+        Instant::now() + Duration::from_secs(3600)
     }
 }

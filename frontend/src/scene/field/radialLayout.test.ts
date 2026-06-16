@@ -91,6 +91,19 @@ describe("radialLayout", () => {
     }
   });
 
+  it("gives two isolated singletons DISTINCT positions (no origin pile-up)", () => {
+    // Two single-node components with NO edges: each is its own sector, so each
+    // must land at its sector's representative point, never the shared origin.
+    const nodes = [n("solo1", 0.5), n("solo2", 0.5)];
+    const pos = radialLayout(nodes, []);
+    const a = pos.get("solo1")!;
+    const b = pos.get("solo2")!;
+    // Neither sits at the origin, and the two are at distinct positions.
+    expect(radius(a)).toBeGreaterThan(0);
+    expect(radius(b)).toBeGreaterThan(0);
+    expect(a.x === b.x && a.y === b.y).toBe(false);
+  });
+
   it("returns an empty map for an empty slice", () => {
     expect(radialLayout([], []).size).toBe(0);
   });

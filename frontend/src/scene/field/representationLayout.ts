@@ -63,7 +63,18 @@ export const DEFAULT_REPRESENTATION_MODE: RepresentationMode = "connectivity";
  * semantic seeds carry no such detail.
  */
 export interface LineageRenderDetail {
-  /** Node id -> preserved derivation honesty flags. */
+  /** Node id -> preserved derivation honesty flags.
+   *
+   *  PARTIALLY CONSUMED (W03 review): the off-spine/gutter POSITIONS these flags
+   *  drive are already correct (the lineage layout places off-spine nodes in the
+   *  feature-adjacency/temporal/gutter lanes and dangling stubs in a sensible
+   *  column). What is NOT yet wired is the per-node VISUAL TREATMENT — fading an
+   *  off-spine node and marking a dangling stub — because that needs a new
+   *  field→sprite command channel and sprite-layer changes (an alpha-fade pass and
+   *  a dangling glyph) that are out of scope for this pass. The flags are carried
+   *  here ready for that treatment; until it lands, the honesty reads through
+   *  POSITION (lane placement) rather than through fade/marker. Deferred
+   *  enhancement, recorded so the seam is not silently unconsumed. */
   nodes: Map<string, { depth: number; onSpine: boolean; dangling: boolean }>;
   /** Derivation edge id -> ordered intermediate waypoints (src..dst, exclusive). */
   routes: Map<string, { x: number; y: number }[]>;
@@ -96,11 +107,17 @@ export interface RepresentationLayoutResult {
  * Compute the seed layout for a representation mode. Pure dispatch over the served
  * slice; the semantic mode is downgraded to connectivity when its measured
  * promotion gate has not passed (the v1-gated decision in the ADR ledger).
+ *
+ * `selectedId`, when present in the slice, is the current scene selection: the
+ * radial mode uses it to OVERRIDE its salience-root policy (graph-layout-catalog
+ * D5 focus+context), so the tree reads as "hops from what I'm looking at". Other
+ * modes ignore it (their spatializations are selection-independent).
  */
 export function representationLayout(
   mode: RepresentationMode,
   nodes: readonly SceneNodeData[],
   edges: readonly SceneEdgeData[],
+  selectedId?: string,
 ): RepresentationLayoutResult {
   switch (mode) {
     case "lineage": {
@@ -137,8 +154,9 @@ export function representationLayout(
     }
     case "radial": {
       // A deterministic tidy-tree seed over the backbone, salience-max root with
-      // per-component angular sectors (D4/D5). Ships un-gated (D10).
-      const positions = radialLayout(nodes, edges);
+      // per-component angular sectors (D4/D5). A live selection OVERRIDES the
+      // salience root for its component (focus+context). Ships un-gated (D10).
+      const positions = radialLayout(nodes, edges, selectedId);
       return { positions, applied: "radial" };
     }
     case "community": {

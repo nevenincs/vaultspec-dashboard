@@ -554,12 +554,23 @@ pub struct EmbeddingsParams {
     pub focus: Option<String>,
 }
 
-/// The wall-clock deadline on the Qdrant embedding scroll (subprocess-calls-carry
-/// -cap-and-timeout HTTP-read analog, ADR open question): the read inherits the
-/// transport's `MAX_RAG_BODY` byte cap AND this deadline, so a stalled or runaway
-/// Qdrant cannot hang or OOM the engine. A breach degrades the semantic tier
-/// (no vectors), never blocks the request.
+/// The per-socket inactivity timeout on each Qdrant scroll round-trip
+/// (subprocess-calls-carry-cap-and-timeout HTTP-read analog, ADR open question):
+/// the transport's `set_read_timeout`/`set_write_timeout`, bounding how long a
+/// single page may stall with no bytes. It is NOT an overall deadline on its own —
+/// a 64-page scroll could otherwise accrue 64 × this — so `read_embeddings` is also
+/// handed a true overall wall-clock budget (`EMBEDDING_SCROLL_BUDGET`) that bounds
+/// the whole multi-page read. Together with `MAX_RAG_BODY` (the per-page byte cap),
+/// a stalled or runaway Qdrant cannot hang or OOM the engine; a breach degrades the
+/// semantic tier (no vectors), never blocks the request.
 const EMBEDDING_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The OVERALL wall-clock budget for the entire multi-page embedding scroll (W04
+/// review): the true bound the per-socket inactivity timeout alone cannot give.
+/// Generous enough for the realistic ~1525-doc vault slice in a few round-trips,
+/// while capping the pathological many-page stall well below the worst case of
+/// `SCROLL_MAX_PAGES × EMBEDDING_READ_TIMEOUT`.
+const EMBEDDING_SCROLL_BUDGET: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// The dedicated bounded embedding route (graph-semantic-embeddings ADR D2): the
 /// stored rag dense vectors for the SERVED document node set, keyed by node id,
@@ -655,7 +666,8 @@ pub async fn graph_embeddings(
         bearer: None,
         timeout: EMBEDDING_READ_TIMEOUT,
     };
-    let vectors = match rag_client::vectors::read_embeddings(&transport) {
+    let deadline = std::time::Instant::now() + EMBEDDING_SCROLL_BUDGET;
+    let vectors = match rag_client::vectors::read_embeddings(&transport, deadline) {
         Ok(vectors) => vectors,
         Err(e) => {
             // Qdrant was reachable through discovery but the scroll itself failed

@@ -127,6 +127,11 @@ export class DashboardField implements SceneFieldRenderer {
   // --- graph-representation: representation mode + overlay state (W03) ----------
   private representationMode: RepresentationMode = "connectivity";
   private overlays = { featureCountries: true, featureHulls: true };
+  /** The current scene selection ids (set-selected). The first selected id (by
+   *  selection order) is threaded into representationLayout so the radial mode's
+   *  selected-root override (graph-layout-catalog D5) can fire — the ADR-committed
+   *  focus+context behaviour. Empty when nothing is selected. */
+  private selectedIds: string[] = [];
   /** The node-id set currently handed to the solver/seed (graph-force-stability
    *  D1). The incremental-reheat diff is computed against this: when a set-data /
    *  filter delta only adds/removes around a non-empty surviving intersection and
@@ -535,7 +540,9 @@ export class DashboardField implements SceneFieldRenderer {
         // The canvas SELECTED state (graph/Node-items "selected"): the sprite
         // layer draws the concentric accent ring on each selected body. Pure
         // visual treatment — no re-layout, no camera move (focus-node owns the
-        // camera; the two compose).
+        // camera; the two compose). The selection is also retained so a later
+        // radial-mode (re)layout can root on the focused node (D5 focus+context).
+        this.selectedIds = [...cmd.ids];
         this.sprites?.setSelected(cmd.ids);
         break;
       }
@@ -713,11 +720,17 @@ export class DashboardField implements SceneFieldRenderer {
     if (this.layout && this.model.nodeCount > 0) {
       const nodes = [...this.model.nodes];
       const edges = [...this.model.edges];
-      const result = representationLayout(mode, nodes, edges);
+      const result = representationLayout(mode, nodes, edges, this.layoutSelectedId());
       applied = result.applied;
       downgradeReason = result.downgradeReason;
       // Lineage routes the edge layer through its dummy-node waypoints (W03 D6);
       // every other mode clears them so edges fall back to straight line-list.
+      // NOTE (W03 review): result.lineageDetail.nodes carries per-node
+      // depth/onSpine/dangling honesty flags whose POSITION effect is already
+      // applied (off-spine lanes, dangling columns), but whose fade/dangling-marker
+      // VISUAL TREATMENT is a deferred enhancement — it needs a field→sprite flag
+      // channel and sprite-layer changes (see LineageRenderDetail.nodes). Only the
+      // routes are consumed here today.
       this.edges?.setRoutes(result.lineageDetail?.routes ?? new Map());
       const nodeIds = nodes.map((n) => n.id);
       if (result.positions) {
@@ -832,6 +845,16 @@ export class DashboardField implements SceneFieldRenderer {
 
   private focusedIds(): ReadonlySet<string> {
     return this.pinned;
+  }
+
+  /** The selection id threaded into representationLayout (radial selected-root
+   *  override, D5): the first selected id that is actually in the current model,
+   *  or undefined when nothing selected is present in the slice. */
+  private layoutSelectedId(): string | undefined {
+    for (const id of this.selectedIds) {
+      if (this.model.getNode(id)) return id;
+    }
+    return undefined;
   }
 
   /**
@@ -975,6 +998,7 @@ export class DashboardField implements SceneFieldRenderer {
           this.representationMode,
           [...this.model.nodes],
           allEdges,
+          this.layoutSelectedId(),
         );
         // Routed lineage waypoints to the edge layer (W03 D6); empty otherwise.
         this.edges?.setRoutes(result.lineageDetail?.routes ?? new Map());

@@ -42,6 +42,11 @@ export const RADIAL_MIN_SECTOR = Math.PI / 12;
 /** Angular padding (radians) between adjacent component sectors, so the wedges
  *  read as distinct rather than abutting into one ring. */
 export const RADIAL_SECTOR_PAD = Math.PI / 24;
+/** Base radius at which a singleton component sits within its own sector. A lone
+ *  node has no radial tree structure, so it is placed at its sector's
+ *  representative point (mid-angle, this radius) rather than the shared field
+ *  origin — otherwise every isolated singleton would pile at {0,0}. */
+export const RADIAL_SINGLETON_RADIUS = RADIAL_BASE_RADIUS * 0.5;
 
 /** A spanning-tree node: id plus the BFS-discovered children (id-sorted). */
 interface TreeNode {
@@ -175,8 +180,10 @@ export function radialLayout(
  * Place one component's BFS spanning tree into a single angular sector. The tree
  * is laid out with d3.tree().size([sectorWidth, R]) where the first axis is the
  * angle within the sector and the second is the radius; polar -> cartesian gives
- * world coordinates. A single-node component sits at the field origin (its root),
- * since a lone node has no meaningful radial structure.
+ * world coordinates. A single-node component has no radial tree structure, so it
+ * is placed at its sector's REPRESENTATIVE POINT — the sector mid-angle at a small
+ * base radius — not the shared field origin, so multiple isolated singletons each
+ * occupy their own allotted wedge instead of piling up at {0,0}.
  */
 function placeComponent(
   comp: readonly string[],
@@ -187,7 +194,14 @@ function placeComponent(
   out: Map<string, { x: number; y: number }>,
 ): void {
   if (comp.length === 1) {
-    out.set(comp[0], { x: 0, y: 0 });
+    // Sector mid-angle (matching the `- π/2` top-start convention of the tree
+    // branch below) at the singleton radius: each singleton's distinct sector
+    // yields a distinct position, never the shared origin.
+    const angle = sectorStart + sectorWidth / 2 - Math.PI / 2;
+    out.set(comp[0], {
+      x: Math.cos(angle) * RADIAL_SINGLETON_RADIUS,
+      y: Math.sin(angle) * RADIAL_SINGLETON_RADIUS,
+    });
     return;
   }
 
