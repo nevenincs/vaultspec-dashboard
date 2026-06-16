@@ -149,7 +149,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
         <button
           type="button"
           onClick={() => void rootLevel.refetch()}
-          className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
         >
           try again
         </button>
@@ -167,7 +167,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
       "";
     return (
       <p
-        className="mx-vs-1 my-vs-1 rounded-vs-sm bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-2xs text-ink-muted"
+        className="mx-vs-1 my-vs-1 rounded-fg-xs bg-accent-subtle/40 px-vs-1 py-vs-0-5 text-caption text-ink-muted"
         role="status"
         aria-live="polite"
         data-code-degraded
@@ -219,7 +219,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
 function TruncatedNote({ total }: { total: number }) {
   return (
     <p
-      className="px-vs-1 py-vs-0-5 text-2xs text-ink-faint"
+      className="px-vs-1 py-vs-0-5 text-caption text-ink-faint"
       role="status"
       data-code-truncated
     >
@@ -309,7 +309,7 @@ function DirectoryRow({
           onRowKeyDown(isDir, expanded, setExpanded)(e);
         }}
         style={indent}
-        className={`flex w-full items-center gap-vs-1 truncate rounded-vs-sm py-vs-0-5 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex w-full items-center gap-vs-1 truncate rounded-fg-xs py-vs-0-5 pr-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "bg-accent-subtle font-medium text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -418,7 +418,7 @@ function ChildLevel({
   if (level.isPending) {
     return (
       <p
-        className="animate-pulse-live px-vs-1 py-vs-0-5 text-2xs text-ink-faint"
+        className="animate-pulse-live px-vs-1 py-vs-0-5 text-caption text-ink-faint"
         style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
         role="status"
         aria-live="polite"
@@ -432,7 +432,7 @@ function ChildLevel({
   if (level.isError) {
     return (
       <p
-        className="px-vs-1 py-vs-0-5 text-2xs text-state-broken"
+        className="px-vs-1 py-vs-0-5 text-caption text-state-broken"
         style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
         role="status"
         data-code-level-error
