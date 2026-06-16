@@ -1,26 +1,34 @@
-// Edge rendering (W01.P03.S11, ADR G3.c and G7.d).
+// Edge rendering — the binding flat-grey connection field (graph/Hero 85:2,
+// graph/Node-items 83:2; figma-parity-reconciliation W03.P07.S45). Scene-layer
+// module: framework-free by design.
 //
-// EDGE STROKE COLOUR (graph/Hero 85:2, graph/Node-items 83:2 — the binding
-// redesign): every edge draws in ONE uniform thin grey, the --color-scene-rule
-// scene token (literal hex per theme), thin and low-opacity, behind the nodes —
-// matching the Hero's clean rule lines. This SUPERSEDES the prior tier-coloured
-// stroke encoding ON THE CANVAS (Figma is gospel): declared/structural/temporal/
-// semantic no longer paint distinct hues. The tier DATA survives untouched — the
-// model still carries `tier`/`state`/`confidence`, filtering and selection still
-// key off it, and the grouping below still PARTITIONS by tier so each treatment's
-// geometry (dashes / haze quads / meta ribbon) is preserved; only the resolved
-// TINT flattens to the single grey. (Codify follow-up: this deliberately retires
-// the tier-edge colour encoding per the headline-canvas redesign.)
+// THE CONNECTION FIELD (graph/Hero 85:2 — binding): the edges are a THIN
+// FLAT-GREY node-connection field sitting LOW-OPACITY BEHIND the nodes, so the
+// canvas reads as clean category circles on faint connective rule lines, never a
+// coloured web. Every edge draws in ONE uniform grey — the --color-scene-rule
+// scene token (literal hex per theme, resolved through the getComputedStyle seam,
+// never a var() chain). This SUPERSEDES the prior tier-coloured stroke encoding
+// ON THE CANVAS (Figma is binding): declared/structural/temporal/semantic no
+// longer paint distinct hues.
+//
+// The tier DATA survives untouched — the model still carries
+// `tier`/`state`/`confidence`, filtering and selection still key off it, and the
+// grouping below still PARTITIONS by tier so each treatment's geometry (dashes /
+// haze quads / meta ribbon / routed lineage chains) is preserved for the off-
+// canvas consumers; only the resolved TINT flattens to the single grey and the
+// per-treatment alpha stays close so the field reads as one uniform connection
+// mesh. (Codify follow-up: this deliberately retires the tier-edge colour
+// encoding per the headline-canvas redesign.)
 //
 // Geometry strategy proven by the W01.P01 spike: static topology built per
-// edge-set change, position buffers re-uploaded in place per frame. Solid
-// and dotted tiers draw as line-list meshes; the semantic haze draws as
-// triangle-list quads (GL lines have no width). Dotted edges use a fixed
-// dash count per edge so per-frame updates never resize buffers.
+// edge-set change, position buffers re-uploaded in place per frame. Solid and
+// dotted tiers draw as line-list meshes; the semantic haze draws as triangle-list
+// quads (GL lines have no width). Dotted edges use a fixed dash count per edge so
+// per-frame updates never resize buffers.
 //
-// Unknown tiers are a surfaced data error, not a silent re-bucket (audit
-// finding spike-tier-wrap-003): the truthfulness stance applies to our own
-// rendering pipeline too.
+// Unknown tiers are a surfaced data error, not a silent re-bucket (audit finding
+// spike-tier-wrap-003): the truthfulness stance applies to our own rendering
+// pipeline too.
 
 import { Container, Mesh, MeshGeometry, Texture } from "pixi.js";
 
@@ -642,11 +650,14 @@ export class EdgeMeshLayer {
     const geometry = new MeshGeometry({ positions, uvs, indices, topology });
     const mesh = new Mesh({ geometry, texture: Texture.WHITE });
     mesh.tint = groupColor(base);
-    // Uniform thin grey rule (graph/Hero 85:2): edges sit low-opacity behind the
-    // nodes so the field reads as clean circles on faint connective lines, not a
-    // coloured web. The semantic haze quad stays a touch fainter than the crisp
-    // line tiers; while an ego is lifted, non-lifted groups recede (G3.b).
-    const treatmentAlpha = isSemantic ? 0.3 : 0.45;
+    // Thin flat-grey connection field (graph/Hero 85:2): every group draws the
+    // same uniform low-opacity grey behind the nodes so the canvas reads as clean
+    // category circles on a faint connective mesh, not a coloured web. The crisp
+    // line tiers carry the field opacity; the soft semantic-haze quad stays a
+    // touch fainter (it is a wide soft body, not a hairline) so it does not bloom
+    // brighter than the rule lines. While an ego is lifted, non-lifted groups
+    // recede (G3.b).
+    const treatmentAlpha = isSemantic ? 0.32 : 0.42;
     const baseAlpha =
       this.highlight && !lifted ? treatmentAlpha * 0.25 : treatmentAlpha;
     mesh.alpha = baseAlpha;
