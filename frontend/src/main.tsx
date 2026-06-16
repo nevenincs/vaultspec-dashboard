@@ -54,9 +54,16 @@ if (import.meta.env.DEV) {
   const devGlobals = globalThis as typeof globalThis & {
     __platformRingBuffer?: typeof ringBuffer;
     __liveStatusStore?: typeof useLiveStatusStore;
+    __viewStore?: unknown;
   };
   devGlobals.__platformRingBuffer = ringBuffer;
   devGlobals.__liveStatusStore = useLiveStatusStore;
+  // The view store drives granularity / representation-mode / overlays — exposed
+  // so the graph visual + behaviour harness can switch to the document graph and
+  // exercise representation modes without clicking through chrome.
+  void import("./stores/view/viewStore").then((m) => {
+    devGlobals.__viewStore = m.useViewStore;
+  });
 }
 
 createRoot(rootElement).render(

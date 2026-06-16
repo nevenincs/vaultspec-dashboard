@@ -45,16 +45,6 @@ const MOVE_EPSILON = 0.4;
  *  old fixed 18 that fought both the sprite size and the link distance (40). */
 const COLLIDE_PAD = 4;
 
-/** Idle GPU throttle (perf-sweep F#4). Pixi's ticker auto-presents a frame on
- * every display refresh even when the field is static and converged — a
- * continuous GPU/compositor cost on an idle dashboard. When nothing is
- * animating, settling, or being interacted with, the present rate is capped to
- * IDLE_FPS; every activity source (commands, camera, layout, pointer, fade
- * animation) calls wakeTicker() to lift the cap for a short grace window. Worst
- * case is one idle frame of lag (~1/IDLE_FPS s), never a frozen frame. */
-const IDLE_FPS = 8;
-const TICKER_ACTIVE_GRACE_MS = 500;
-
 /** Full-field content signature of a `set-data` payload (perf-sweep F#5). A
  * constellation refetch or re-keyframe re-issues `set-data` with byte-identical
  * data whenever the corpus did not change, yet `applyModelToLayers(true)` does a
@@ -112,11 +102,10 @@ export class DashboardField implements SceneFieldRenderer {
   /** Last rendered frame, for the movement gate (D4); a reference, never copied. */
   private lastFrame: ReadonlyMap<string, NodePosition> | null = null;
   private lastSave = 0;
-  /** Idle-ticker throttle (perf-sweep F#4): activity keeps `maxFPS` uncapped
-   * until this timestamp; afterwards the tick caps the present rate to IDLE_FPS. */
-  private tickerActiveUntil = 0;
-  /** Set in onReady — lifts the idle FPS cap immediately on any activity. */
-  private wakeTicker: (() => void) | null = null;
+  /** Render-on-demand present loop (replaces the idle-FPS ticker floor). A frame
+   * is presented only when something is dirty; when nothing requests a render the
+   * RAF is not armed and the GPU goes fully idle. */
+  private renderRafId: number | null = null;
   /** Signature of the last applied `set-data` payload (perf-sweep F#5): an
    * identical re-issue skips the full layer rebuild. Invalidated (null) whenever
    * `apply-deltas` mutates the model, so a later same-as-before keyframe still
@@ -200,7 +189,6 @@ export class DashboardField implements SceneFieldRenderer {
       // Layout frames drive sprites, edges, hit-testing, anchors, and the
       // periodic warm-start save.
       const offPositions = this.layout.onPositions((positions) => {
-        this.wakeTicker?.(); // layout is producing frames — present at full rate
         // One throwing consumer must never wedge the frame loop (D8).
         try {
           // Movement gate (D4): skip the heavy per-frame work once motion drops
@@ -229,6 +217,8 @@ export class DashboardField implements SceneFieldRenderer {
               now,
             );
           }
+          // A layout tick moved the field — present this frame (render-on-demand).
+          this.requestRender();
         } catch (err) {
           this.assemblyLog.error(`position frame threw: ${(err as Error).message}`);
         }
@@ -242,6 +232,8 @@ export class DashboardField implements SceneFieldRenderer {
           this.autoFitArmed = false;
           this.fitToContent(this.layout.positions, true);
         }
+        // Present the final settled frame even if the fit was disarmed.
+        this.requestRender();
       });
 
       this.minimap = new MinimapLayer();
@@ -255,7 +247,6 @@ export class DashboardField implements SceneFieldRenderer {
       }
 
       const offCamera = this.camera.onChange((state, level) => {
-        this.wakeTicker?.(); // camera moved (pan/zoom/wheel) — present promptly
         this.lastLevel = level;
         this.sprites?.setLod(state.scale, this.focusedIds());
         this.edges?.setArrowVisibility(state.scale >= ARROW_VISIBLE_SCALE);
@@ -268,51 +259,18 @@ export class DashboardField implements SceneFieldRenderer {
         this.anchors?.update();
         this.minimap?.updateViewport(state, app.screen.width, app.screen.height);
         this.controller?.emit({ kind: "camera-change", scale: state.scale, level });
+        // Camera moved (pan/zoom/wheel/animate) — present this frame.
+        this.requestRender();
       });
-
-      // Visibility fades tick on the app ticker while animating — nodes
-      // fade/shrink, edges fade through their transition groups (017).
-      const tick = () => {
-        try {
-          const now = performance.now();
-          const nodeSample = this.nodeVisibility.sample(now);
-          const edgeSample = this.edgeVisibility.sample(now);
-          if (nodeSample.animating || edgeSample.animating || this.lastAnimating) {
-            this.sprites?.applyVisibility(
-              nodeSample.progress,
-              this.nodeVisibility.visibleIds,
-              Date.now(),
-            );
-            this.edges?.applyVisibility(edgeSample.progress);
-          }
-          this.lastAnimating = nodeSample.animating || edgeSample.animating;
-          // Idle throttle (F#4): keep the present rate uncapped while anything
-          // is animating or within the post-activity grace window; otherwise
-          // cap it so a static field stops burning 60fps of GPU presents.
-          const active =
-            nodeSample.animating ||
-            edgeSample.animating ||
-            now < this.tickerActiveUntil;
-          app.ticker.maxFPS = active ? 0 : IDLE_FPS;
-        } catch (err) {
-          this.assemblyLog.error(`ticker frame threw: ${(err as Error).message}`);
-        }
-      };
-      app.ticker.add(tick);
-      // Activity lifts the idle cap immediately (next present is prompt) and
-      // arms the grace window; the tick re-caps once the field goes quiet.
-      this.wakeTicker = () => {
-        this.tickerActiveUntil = performance.now() + TICKER_ACTIVE_GRACE_MS;
-        app.ticker.maxFPS = 0;
-      };
 
       // Pointer gestures on the canvas emit the locked seam events; hover
       // additionally drives the ego-highlight (G3.b) inside the field.
       const gestures = new PointerGestures({
         emit: (event) => {
-          this.wakeTicker?.(); // pointer activity (hover/select/context) — wake
           if (event.kind === "hover") this.applyEgoHighlight(event.id);
           this.controller?.emit(event);
+          // Hover ego-lift / pointer activity changed visible treatment — present.
+          this.requestRender();
         },
         panBy: (dx, dy) => {
           this.autoFitArmed = false;
@@ -323,29 +281,34 @@ export class DashboardField implements SceneFieldRenderer {
           const radius = HIT_RADIUS_WORLD / Math.max(0.2, this.camera!.current.scale);
           return this.hitTester.hitTest(world.x, world.y, radius);
         },
-        // Drag-to-pin (D3): the world point under the pointer drives the dragged
-        // node's fx/fy; the held alphaTarget (begun inside dragNode) lets the
-        // neighbourhood reflow around it. The drag is disarmed if a representation
-        // mode swap left no live solver — connectivity-only fence (D8).
+        // Free-drag (D3): the world point under the pointer drives the dragged
+        // node's fx/fy each move; the held alphaTarget (begun inside dragNode)
+        // lets the neighbourhood reflow around it. On drop the node is RELEASED
+        // back into the simulation (no auto-pin — see nodeDragEnd). The drag is a
+        // no-op when a representation mode swap left no live solver (connectivity-
+        // only fence, D8).
         screenToWorld: (sx, sy) => this.camera!.screenToWorld(sx, sy),
         nodeDragTo: (id, wx, wy) => {
           // Connectivity-only (D8): a deterministic mode holds the solver stopped,
           // so a node-drag has no live field to reflow — ignore it there.
           if (this.representationMode !== "connectivity") return;
-          this.wakeTicker?.();
           this.autoFitArmed = false; // the user is moving the field — don't snap-fit
           this.layout?.dragNode(id, wx, wy);
+          this.requestRender();
         },
         nodeDragEnd: (id, moved) => {
           if (this.representationMode !== "connectivity") return;
+          // Free-drag DROP — a drag MOVES a node, it does not pin it. Release the
+          // node back into the live simulation so it eases into the cooling layout
+          // (releaseNode keeps it fixed ONLY if it is already an explicitly pinned
+          // node), then let the field re-cool. Pinning is a SEPARATE, deliberate
+          // gesture (context-menu "Pin" → pins store → set-pinned); a drag never
+          // auto-pins. `moved` only distinguishes a real drag from a below-
+          // threshold press, which the gesture layer already routed as a select.
+          void moved;
+          this.layout?.releaseNode(id);
           this.layout?.endInteraction();
-          // A drag past the threshold records a STICKY pin (D3) — routed through
-          // the existing pin event / pins-store / set-pinned path, never a direct
-          // display overwrite. Emit only when the node is not already pinned so a
-          // drag of an already-pinned node does not toggle it off.
-          if (moved && !this.pinned.has(id)) {
-            this.controller?.emit({ kind: "pin", id, pinned: true });
-          }
+          this.requestRender();
         },
       });
       const canvas = app.canvas;
@@ -383,6 +346,7 @@ export class DashboardField implements SceneFieldRenderer {
       // (The canvas background itself is handled by pixiField's own observer.)
       const themeObserver = new MutationObserver(() => {
         this.applyModelToLayers(false);
+        this.requestRender();
       });
       themeObserver.observe(document.documentElement, {
         attributes: true,
@@ -393,7 +357,6 @@ export class DashboardField implements SceneFieldRenderer {
         offPositions,
         offSettle,
         offCamera,
-        () => app.ticker.remove(tick),
         () => canvas.removeEventListener("pointerdown", onDown),
         () => canvas.removeEventListener("pointermove", onMove),
         () => canvas.removeEventListener("pointerup", onUp),
@@ -405,12 +368,63 @@ export class DashboardField implements SceneFieldRenderer {
 
       // Data may have arrived before the renderer was live.
       this.applyModelToLayers(true);
+      // Present the initial frame (paints the background ground + any seeded
+      // layout) — render-on-demand has no auto first frame.
+      this.requestRender();
     });
     this.detachListeners.push(offReady);
   }
 
+  /**
+   * Render-on-demand: request a single COALESCED present on the next animation
+   * frame. Many sources (a layout tick, a camera move, a hover lift, a fade,
+   * a theme flip, a data change) can mark the field dirty within one frame; they
+   * all collapse to one render. When nothing requests a render, the RAF is not
+   * armed and the GPU presents zero frames — the idle field costs nothing.
+   */
+  private requestRender(): void {
+    if (this.renderRafId !== null) return;
+    if (typeof requestAnimationFrame !== "function") {
+      // Non-DOM host (tests): present synchronously so a single command still
+      // produces one render without a frame scheduler.
+      this.presentFrame();
+      return;
+    }
+    this.renderRafId = requestAnimationFrame(this.presentFrame);
+  }
+
+  /** Present exactly one frame: advance any in-flight visibility fade, draw the
+   *  stage once, and re-arm only while a fade is still animating. */
+  private presentFrame = (): void => {
+    this.renderRafId = null;
+    const app = this.base.application;
+    if (!app) return;
+    try {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const nodeSample = this.nodeVisibility.sample(now);
+      const edgeSample = this.edgeVisibility.sample(now);
+      const fading = nodeSample.animating || edgeSample.animating;
+      if (fading || this.lastAnimating) {
+        this.sprites?.applyVisibility(
+          nodeSample.progress,
+          this.nodeVisibility.visibleIds,
+          Date.now(),
+        );
+        this.edges?.applyVisibility(edgeSample.progress);
+      }
+      this.lastAnimating = fading;
+      app.render();
+      // A fade still in flight needs the next frame too; everything else is
+      // event-driven and re-requests as needed.
+      if (fading) this.requestRender();
+    } catch (err) {
+      this.assemblyLog.error(`present frame threw: ${(err as Error).message}`);
+    }
+  };
+
   resize(width: number, height: number): void {
     this.base.resize(width, height);
+    this.requestRender();
   }
 
   destroy(): void {
@@ -420,11 +434,15 @@ export class DashboardField implements SceneFieldRenderer {
     this.detachListeners = [];
     this.assemblyMounted = false;
     this.lastFrame = null;
-    // Reset per-mount caches so a remount rebuilds cleanly: the wake closure
-    // captured the now-destroyed app's ticker (F#4), and the set-data signature
-    // must not skip the first rebuild against the fresh, empty layers (F#5).
-    this.wakeTicker = null;
-    this.tickerActiveUntil = 0;
+    // Cancel any pending present so a destroyed assembly never renders into a
+    // torn-down app, and reset per-mount caches so a remount rebuilds cleanly:
+    // the set-data signature must not skip the first rebuild against the fresh,
+    // empty layers (F#5).
+    if (this.renderRafId !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(this.renderRafId);
+    }
+    this.renderRafId = null;
+    this.lastAnimating = false;
     this.lastSetDataSig = null;
     // Reset the incremental-reheat tracking (D1/D6): a remount must full-init the
     // fresh, empty layers rather than diff against a stale laid-out set.
@@ -450,9 +468,11 @@ export class DashboardField implements SceneFieldRenderer {
   private pulseToken = 0;
 
   command(cmd: SceneCommand): void {
-    // Any command may mutate the scene (data, focus, camera, time) — wake the
-    // ticker so the resulting frame presents promptly past the idle cap (F#4).
-    this.wakeTicker?.();
+    // Any command may mutate the scene (data, focus, camera, time, selection,
+    // overlays) — request a present so the resulting frame is drawn. Commands
+    // that also move the camera or layout will additionally request via their own
+    // change handlers; requestRender coalesces them into one frame.
+    this.requestRender();
     switch (cmd.kind) {
       case "set-data": {
         // Skip the full rebuild when the payload is byte-identical to the last
@@ -504,7 +524,9 @@ export class DashboardField implements SceneFieldRenderer {
         const now = performance.now();
         this.nodeVisibility.setVisible(cmd.visibleNodeIds, now);
         this.edgeVisibility.setVisible(cmd.visibleEdgeIds, now);
-        // Both entity classes fade through their trackers on the ticker.
+        // Both entity classes fade through their trackers; the present loop
+        // re-arms each frame until the fade completes (requestRender at the top
+        // of command() kicks the first frame).
         this.lastAnimating = true;
         break;
       }
@@ -561,6 +583,7 @@ export class DashboardField implements SceneFieldRenderer {
           if (token !== this.pulseToken) return;
           this.sprites?.setHighlight(null);
           this.edges?.setHighlight(null);
+          this.requestRender();
         }, PULSE_MS);
         break;
       }
@@ -1061,6 +1084,35 @@ export class DashboardField implements SceneFieldRenderer {
     overlays: { featureCountries: boolean; featureHulls: boolean };
   } {
     return { mode: this.representationMode, overlays: { ...this.overlays } };
+  }
+
+  /**
+   * Dev/test-only inspection snapshot for the visual + interaction + resource
+   * harness. Returns per-node SCREEN coordinates (so the harness can dispatch a
+   * pointer at the right pixel), the camera state, the live solver telemetry, and
+   * the pinned set. Not part of the seam; never consumed by app code.
+   */
+  debugSnapshot(): {
+    camera: { x: number; y: number; scale: number } | null;
+    running: boolean;
+    alpha: number;
+    pinned: string[];
+    nodes: { id: string; sx: number; sy: number; wx: number; wy: number }[];
+  } {
+    const cam = this.camera;
+    const positions = this.layout?.positions ?? new Map();
+    const nodes: { id: string; sx: number; sy: number; wx: number; wy: number }[] = [];
+    for (const [id, p] of positions) {
+      const s = cam ? cam.worldToScreen(p.x, p.y) : { x: p.x, y: p.y };
+      nodes.push({ id, sx: s.x, sy: s.y, wx: p.x, wy: p.y });
+    }
+    return {
+      camera: cam ? cam.current : null,
+      running: this.layout?.isRunning() ?? false,
+      alpha: this.layout?.alpha() ?? 0,
+      pinned: [...this.pinned],
+      nodes,
+    };
   }
 }
 

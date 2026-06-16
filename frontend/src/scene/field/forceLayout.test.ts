@@ -414,6 +414,50 @@ describe("FieldLayout live loop — held alphaTarget interaction (D2)", () => {
     // dragNode begins an interaction so the neighbourhood reflows.
     expect(sched.hasPending).toBe(true);
   });
+
+  it("releaseNode frees a dragged (unpinned) node back into the simulation", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(["a", "b"], [{ id: "e", src: "a", dst: "b" }], new Map());
+    const nodeById = (
+      layout as unknown as {
+        nodeById: Map<string, { fx?: number | null; fy?: number | null }>;
+      }
+    ).nodeById;
+    layout.dragNode("a", 100, 200);
+    const a = nodeById.get("a")!;
+    expect(a.fx).toBe(100); // held at the cursor during the drag
+    expect(a.fy).toBe(200);
+    // Dropping a NON-pinned node releases it: fx/fy clear so it rejoins the
+    // cooling layout instead of being stranded (the free-drag, no auto-pin law).
+    layout.releaseNode("a");
+    expect(a.fx).toBeNull();
+    expect(a.fy).toBeNull();
+  });
+
+  it("releaseNode keeps an explicitly PINNED node fixed at its dropped point", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(["a", "b"], [{ id: "e", src: "a", dst: "b" }], new Map());
+    const nodeById = (
+      layout as unknown as {
+        nodeById: Map<string, { fx?: number | null; fy?: number | null }>;
+      }
+    ).nodeById;
+    layout.setPinned(new Set(["a"])); // a is an explicit pin
+    layout.dragNode("a", 321, 654); // drag the pinned node somewhere
+    layout.releaseNode("a");
+    const a = nodeById.get("a")!;
+    // A pinned node stays fixed at where it was dropped (pin survives the drag).
+    expect(a.fx).toBe(321);
+    expect(a.fy).toBe(654);
+  });
+
+  it("releaseNode is a safe no-op for an unknown id", () => {
+    const layout = new FieldLayout(new ManualScheduler());
+    layout.init(["a"], [], new Map());
+    expect(() => layout.releaseNode("ghost")).not.toThrow();
+  });
 });
 
 // W04.P11.S48: degenerate-slice hardening — re-confirm the force layout stays

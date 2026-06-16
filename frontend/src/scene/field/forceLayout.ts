@@ -656,6 +656,27 @@ export class FieldLayout {
   }
 
   /**
+   * Release a free-dragged node back into the live simulation (the drag DROP).
+   * Clears the temporary fx/fy that `dragNode` fixed so the node eases into the
+   * cooling layout instead of being stranded where it was dropped — UNLESS the
+   * node is an explicitly pinned node (pinning is a separate, deliberate gesture),
+   * in which case it keeps its dropped coordinates fixed. This is what makes a
+   * drag MOVE a node WITHOUT pinning it. The caller pairs this with
+   * `endInteraction()` so the field re-cools around the dropped node.
+   */
+  releaseNode(id: string): void {
+    const node = this.nodeById.get(id);
+    if (!node) return;
+    if (this.pinned.has(id)) {
+      node.fx = node.x ?? null;
+      node.fy = node.y ?? null;
+    } else {
+      node.fx = null;
+      node.fy = null;
+    }
+  }
+
+  /**
    * Solver-level pinning: a pinned node fixes its coordinates in the simulation
    * itself (fx/fy), so the solver holds it and nothing fights. Replaces the
    * display-overwrite of the authoritative frame.

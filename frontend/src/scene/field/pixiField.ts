@@ -95,6 +95,14 @@ export class PixiField implements SceneFieldRenderer {
         }
         this.mounting = null;
         this.app = app;
+        // Render-on-demand (no idle GPU cost): stop Pixi's automatic per-frame
+        // render loop. The field assembly presents EXPLICITLY (app.render()) only
+        // when a frame is actually dirty — a layout tick, a camera move, a
+        // visibility fade, a theme flip, or a data change. A static, converged,
+        // untouched field then presents ZERO frames (the GPU goes fully idle)
+        // instead of the previous fixed idle-FPS floor. Every redraw trigger
+        // routes through the assembly's requestRender().
+        app.ticker.stop();
         app.stage.addChild(this.world);
         host.appendChild(app.canvas);
         this.watchTheme(app);
@@ -113,7 +121,11 @@ export class PixiField implements SceneFieldRenderer {
    *  always reads against the correct warm/dark ground. */
   private watchTheme(app: Application): void {
     this.themeObserver = new MutationObserver(() => {
-      if (this.app) this.app.renderer.background.color = readCanvasBg();
+      if (!this.app) return;
+      this.app.renderer.background.color = readCanvasBg();
+      // Render-on-demand: present the new ground immediately (the ticker is
+      // stopped, so nothing else repaints the cleared background otherwise).
+      this.app.render();
     });
     this.themeObserver.observe(document.documentElement, {
       attributes: true,
@@ -134,13 +146,18 @@ export class PixiField implements SceneFieldRenderer {
     return this.app;
   }
 
-  /** Propagate host resize to the renderer viewport. */
+  /** Propagate host resize to the renderer viewport. Also re-pins the backing-
+   *  store resolution to the CURRENT device pixel ratio: DPR is set once at init,
+   *  but a window dragged between a HiDPI and a standard display changes it, and a
+   *  stale resolution renders the field blurry (or needlessly oversamples). Pixi
+   *  v8 `renderer.resize(w, h, resolution)` updates both in one call. */
   resize(width: number, height: number): void {
     if (!this.app) {
       this.pendingResize = { width, height };
       return;
     }
-    this.app.renderer.resize(width, height);
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    this.app.renderer.resize(width, height, dpr);
   }
 
   /** Tear down the renderer; safe to call mid-mount and idempotent. */

@@ -52,6 +52,19 @@ export type LodLevel = "far" | "near";
  * Obsidian mental model where the graph labels at overview scale. */
 export const NEAR_ZOOM_THRESHOLD = 0.6;
 
+/**
+ * Label/badge raster density. Pixi rasterizes Text to a texture at this
+ * resolution ONCE; the camera then scales the whole world container, so a label
+ * left at the renderer's base resolution (DPR) turns to mush the moment the user
+ * zooms in past 1×. Rasterizing the labels at DPR × a zoom-crispness headroom
+ * keeps them sharp through the normal zoom-in range (the dominant "text is
+ * pixelated when you zoom in" defect) at a modest texture-size cost. */
+const LABEL_ZOOM_HEADROOM = 3;
+export function labelResolution(): number {
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  return Math.max(1, dpr) * LABEL_ZOOM_HEADROOM;
+}
+
 /** Focused nodes always carry full anatomy regardless of zoom (§3.1). */
 export function lodFor(scale: number, focused: boolean): LodLevel {
   return focused || scale >= NEAR_ZOOM_THRESHOLD ? "near" : "far";
@@ -566,6 +579,7 @@ export class NodeSpriteLayer {
     if (badges) {
       const badgeText = new Text({
         text: badges,
+        resolution: labelResolution(),
         style: { fontSize: 8, fill: inkMuted },
       });
       badgeText.position.set(ringRadius + 2, -ringRadius);
@@ -577,6 +591,7 @@ export class NodeSpriteLayer {
     // carries only the progress ring, the tier-degree badges, and the label.
     const label = new Text({
       text: node.title ?? node.id,
+      resolution: labelResolution(),
       style: { fontSize: 10, fill: inkMuted },
     });
     label.anchor.set(0.5, 0);

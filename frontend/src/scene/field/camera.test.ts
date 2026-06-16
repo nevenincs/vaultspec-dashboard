@@ -112,20 +112,21 @@ describe("PointerGestures", () => {
       ["n1", DRAG_THRESHOLD_PX + 2, 3],
       ["n1", DRAG_THRESHOLD_PX + 20, 9],
     ]);
-    // A drag PAST the threshold records a sticky pin (moved:true) and no select.
+    // A drag PAST the threshold ends with moved:true (the assembly RELEASES the
+    // node back into the simulation — a free drag, no auto-pin) and no select.
     expect(drag.ends).toEqual([["n1", true]]);
     expect(events).toEqual([]);
   });
 
   it("a below-threshold node press is STILL a select, never a drag (D3)", () => {
     // Down on a node, up within the threshold → click/select semantics unchanged;
-    // nodeDragEnd reports moved:false so no sticky pin is recorded.
+    // nodeDragEnd reports moved:false, so the assembly treats it as a plain press.
     const { events, drag, gestures } = harness((x) => (x < 50 ? "n1" : null));
     gestures.pointerDown({ x: 10, y: 0 });
     gestures.pointerMove({ x: 11, y: 1 }); // within the 4px threshold
     gestures.pointerUp({ x: 11, y: 1 });
     expect(drag.to).toEqual([]); // never crossed the threshold
-    expect(drag.ends).toEqual([["n1", false]]); // moved:false → no sticky pin
+    expect(drag.ends).toEqual([["n1", false]]); // moved:false → a plain select
     expect(events).toEqual([{ kind: "select", id: "n1" }]);
   });
 

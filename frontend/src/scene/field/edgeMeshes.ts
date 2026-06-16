@@ -657,7 +657,14 @@ export class EdgeMeshLayer {
     // touch fainter (it is a wide soft body, not a hairline) so it does not bloom
     // brighter than the rule lines. While an ego is lifted, non-lifted groups
     // recede (G3.b).
-    const treatmentAlpha = isSemantic ? 0.32 : 0.42;
+    // Connection lines must read clearly as a mesh (the binding "category circles
+    // on a connective mesh" treatment) — at the prior 0.42/0.32 the dark scene-rule
+    // grey on the near-black dark ground blended to within ~13/255 of the
+    // background and the lines effectively vanished. These higher alphas keep the
+    // mesh a quiet connective web while making every edge actually visible; the
+    // soft semantic haze stays a touch fainter than the crisp tier lines so it
+    // never blooms brighter than them.
+    const treatmentAlpha = isSemantic ? 0.55 : 0.82;
     const baseAlpha =
       this.highlight && !lifted ? treatmentAlpha * 0.25 : treatmentAlpha;
     mesh.alpha = baseAlpha;

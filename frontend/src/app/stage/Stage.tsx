@@ -229,6 +229,13 @@ export function Stage() {
     const host = hostRef.current;
     if (!host) return;
     scene.controller.mount(host);
+    // Dev-only handle for the adverse/visual/interaction test harness (mirrors
+    // main.tsx's __platformRingBuffer/__liveStatusStore dev globals). Never
+    // exposed in a production build. Lets the browser automation drive the seam
+    // and read field internals without crossing the layer boundary in app code.
+    if (import.meta.env.DEV) {
+      (globalThis as unknown as { __scene?: typeof scene }).__scene = scene;
+    }
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (rect) scene.controller.resize(rect.width, rect.height);
