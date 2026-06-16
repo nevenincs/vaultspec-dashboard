@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { FADE_DURATION_MS, VisibilityTracker } from "./visibility";
+import {
+  FADE_DURATION_MS,
+  FILTERED_OUT_SCALE,
+  VisibilityTracker,
+  filteredAlpha,
+  filteredScale,
+} from "./visibility";
 
 const ids = (...xs: string[]) => new Set(xs);
 
@@ -57,5 +63,28 @@ describe("VisibilityTracker", () => {
     v.setVisible(ids("a"), 0);
     expect(v.hiddenCount(["a", "b", "c"])).toBe(2);
     expect(v.visibleIds.has("a")).toBe(true);
+  });
+});
+
+describe("filtered-out presentation (graph/Node-items 83:2 'Hidden')", () => {
+  it("fades alpha linearly with membership-progress, clamped", () => {
+    expect(filteredAlpha(1)).toBe(1); // fully present
+    expect(filteredAlpha(0)).toBe(0); // fully filtered out
+    expect(filteredAlpha(0.5)).toBeCloseTo(0.5);
+    // Out-of-range progress clamps rather than overshooting alpha.
+    expect(filteredAlpha(-0.2)).toBe(0);
+    expect(filteredAlpha(1.5)).toBe(1);
+  });
+
+  it("shrinks the node as it recedes — pulls back, never collapses to a point", () => {
+    // Full presence keeps full size; full filter-out recedes to the shrink floor.
+    expect(filteredScale(1)).toBe(1);
+    expect(filteredScale(0)).toBe(FILTERED_OUT_SCALE);
+    // The shrink floor is a recede, not a vanish — clearly above zero.
+    expect(FILTERED_OUT_SCALE).toBeGreaterThan(0);
+    expect(FILTERED_OUT_SCALE).toBeLessThan(1);
+    // Monotonic between the endpoints.
+    expect(filteredScale(0.5)).toBeGreaterThan(filteredScale(0));
+    expect(filteredScale(0.5)).toBeLessThan(filteredScale(1));
   });
 });

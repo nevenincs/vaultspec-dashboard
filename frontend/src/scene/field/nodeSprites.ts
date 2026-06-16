@@ -38,6 +38,7 @@ import type { SceneGraphModel } from "../graphModel";
 import type { SceneNodeData } from "../sceneController";
 import { categoryColor } from "./categoryColor";
 import { RECEDE_ALPHA, selectedRingAlpha } from "./egoHighlight";
+import { filteredAlpha, filteredScale } from "../visibility";
 import { drawProgressRing } from "./progressRing";
 import { stampFor } from "./statusStamp";
 import { cssColorNumber as getCssColor } from "./tokenReads";
@@ -492,17 +493,23 @@ export class NodeSpriteLayer {
     for (const [id, visual] of this.visuals) {
       const p = progress.get(id) ?? (settledVisible.has(id) ? 1 : 0);
       const ghost = this.ghostFloor(visual.node);
+      // The FILTERED-OUT state (graph/Node-items "Hidden"): fade toward
+      // transparent AND shrink so the removed node reads as the field pulling
+      // back, not popping out. The fade/shrink curve is owned by the visibility
+      // module (one testable home); the body fade composes with the ghost floor.
+      const fade = filteredAlpha(p);
+      const scale = filteredScale(p);
       visual.body.visible = p > 0;
-      visual.body.alpha = p * ghost;
-      visual.body.scale.set(0.6 + 0.4 * p);
+      visual.body.alpha = fade * ghost;
+      visual.body.scale.set(scale);
       if (visual.ring) {
         visual.ring.visible = p > 0;
-        visual.ring.alpha = p;
-        visual.ring.scale.set(0.6 + 0.4 * p);
+        visual.ring.alpha = fade;
+        visual.ring.scale.set(scale);
       }
       if (visual.anatomy) {
         visual.anatomy.visible = visual.anatomy.visible && p > 0;
-        visual.anatomy.alpha = p;
+        visual.anatomy.alpha = fade;
       }
     }
   }

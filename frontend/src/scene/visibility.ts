@@ -25,6 +25,37 @@ export interface VisibilitySample {
   animating: boolean;
 }
 
+// --- FILTERED-OUT presentation (graph/Node-items 83:2 "Hidden") ----------------
+//
+// The binding "filtered-out" state recedes a removed node toward transparent AND
+// shrinks it slightly, so a filter reads as the field PULLING BACK rather than a
+// hard pop-out — the user sees what the filter removed mid-transition before it
+// settles away. The fade and the shrink are the two halves of that treatment.
+// These are PURE mappings from the membership-progress `p` (1 = fully present,
+// 0 = fully filtered out) onto alpha and scale; the renderer (`nodeSprites`
+// `applyVisibility`) composes them with the per-node ghost floor. Owning the
+// curve here (the visibility module, RL-5a) keeps the filtered-out look in one
+// testable home rather than as magic numbers inline in the sprite layer.
+
+/** The scale a fully filtered-out (p = 0) node shrinks to — it recedes, not
+ *  collapses, so the shrink reads as "pulling back" not "vanishing to a point". */
+export const FILTERED_OUT_SCALE = 0.6;
+
+/** Map membership-progress to the node's presentation ALPHA (1 = present,
+ *  0 = filtered out). The fade is linear in progress: a removed node fades
+ *  toward transparent across the transition. */
+export function filteredAlpha(progress: number): number {
+  return Math.max(0, Math.min(1, progress));
+}
+
+/** Map membership-progress to the node's presentation SCALE: it shrinks from full
+ *  size at p = 1 down to `FILTERED_OUT_SCALE` at p = 0, so the filtered-out node
+ *  recedes as it fades (the binding "Hidden" pull-back). */
+export function filteredScale(progress: number): number {
+  const p = Math.max(0, Math.min(1, progress));
+  return FILTERED_OUT_SCALE + (1 - FILTERED_OUT_SCALE) * p;
+}
+
 interface Transition {
   from: number;
   to: number;
