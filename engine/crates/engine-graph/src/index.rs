@@ -1032,8 +1032,8 @@ pub(crate) fn structural_edge_for(
 /// bridges to a real document node.
 ///
 /// Symbol-node granularity (D3, recorded open-question call): the v1 symbol
-/// node is the NAME-ONLY, path-anchored `code:{resolved_path}` form — the file
-/// the symbol was resolved into — NOT a `code:{path}#{symbol}` node. This is the
+/// node is the path-keyed `code:{resolved_path}` form — the file the symbol was
+/// resolved into — NOT the symbol-qualified `code:{path}#{symbol}` form. This is the
 /// non-id-bearing call: it mints exactly the node `bridge_node_id` looks up
 /// (which derives `code:{resolved_target}` with `symbol: None` for a path),
 /// leaving the existing `Mentions` edge's `code:#{symbol}` endpoint untouched.

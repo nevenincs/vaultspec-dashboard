@@ -366,12 +366,13 @@ pub struct CodeLocation {
 
 /// Map a resolved target path to the real node it bridges to — but ONLY when
 /// that node actually exists in the graph. A computed id for a target the graph
-/// never minted (v1 mints no code-artifact node) would be a dead-end
-/// click-through that 404s on `/nodes/{id}` (M-B5, finding LENSB-001), so the
-/// bridge is surfaced only when navigable; otherwise None, and the
-/// human-readable `resolved_target` still rides along. (Minting code-artifact
-/// nodes so code/symbol bridges become navigable is a separate, deferred
-/// enhancement.)
+/// never minted would be a dead-end click-through that 404s on `/nodes/{id}`
+/// (M-B5, finding LENSB-001), so the bridge is surfaced only when navigable;
+/// otherwise None, and the human-readable `resolved_target` still rides along.
+/// Code-artifact nodes for resolved/stale Path and Symbol mentions ARE now
+/// minted (`mint_code_artifact`, engine-graph index Pass 2), so those bridges
+/// resolve here; the gate on node existence remains correct (a Broken target
+/// mints no node and still yields None).
 fn bridge_node_id(graph: &LinkageGraph, resolved_target: &str) -> Option<String> {
     use engine_model::{CanonicalKey, node_id};
     let nid = if let Some(stem) = resolved_target
