@@ -81,6 +81,21 @@ describe("deriveEvidenceGroups", () => {
     expect(commits.lines[0].detail).toBe("fix the thing");
   });
 
+  it("appends the correlating confidence as a '~NN%' qualifier when the wire carries it", () => {
+    const groups = deriveEvidenceGroups(
+      evidence({
+        commits: [
+          { sha: "abc1234", subject: "feat: land it", confidence: 0.7 },
+          { sha: "def5678", subject: "no confidence" },
+        ],
+      }),
+    );
+    const commits = groups.find((g) => g.heading === "commits")!;
+    // Confidence present → appended; absent → subject alone (never fabricated).
+    expect(commits.lines[0].detail).toBe("feat: land it · ~70%");
+    expect(commits.lines[1].detail).toBe("no confidence");
+  });
+
   it("orders groups documents → code → commits", () => {
     const groups = deriveEvidenceGroups(
       evidence({

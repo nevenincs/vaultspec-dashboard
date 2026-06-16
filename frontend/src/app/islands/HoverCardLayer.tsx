@@ -1,8 +1,12 @@
-// Hover-card island host (node-visual-richness P04.S15/S16, ADR P04).
+// Hover-card island host (figma-parity-reconciliation W03.P08.S50; binding
+// graph/HoverCard 84:2). HIGH-1 reconciliation: this host now mounts the ONE
+// canonical hover card — the binding evidence-driven `menus/HoverCard` — into the
+// LIVE canvas hover path, retiring the old typed `islands/HoverCard` rung. There
+// is one hover card on canvas hover.
 //
 // The THIRD LOD rung between the far glyph (the scene stamp) and the heavyweight
 // opened-interior island: a transient, lighter DOM-island variety that blooms
-// over a node on hover-dwell. It mounts the self-contained `HoverCard`, anchored
+// over a node on hover-dwell. It mounts the binding `menus/HoverCard`, anchored
 // through the SAME seam `trackNode` mechanism the opened island uses, so it rides
 // the camera with the node it describes. The host owns the THREE separations the
 // ADR mandates:
@@ -16,55 +20,46 @@
 //   - OPEN SUPPRESSION: a node already opened as a full interior renders no hover
 //     card — the heavyweight island already shows everything the card would.
 //
-// Content is a COMPACT projection fed entirely through a stores hook
-// (`useNodeDetail`) — the card never fetches and never reads the raw `tiers`
-// block (dashboard-layer-ownership). Motion + reduced-motion live inside the
-// `HoverCard` itself (the bloom grows from the glyph anchor).
+// Content is a DUMB PROJECTION (dashboard-layer-ownership,
+// views-are-projections-of-one-model): the card is fed entirely through stores
+// hooks — identity (kind / title / category) from `useNodeDetail` and the ENRICHED
+// evidence groups (documents / code / commits) from `useNodeEvidence` — folded by
+// the pure `deriveEvidenceGroups` seam. The card never fetches and never reads the
+// raw `tiers` block. Motion + reduced-motion live in the island wrapper's bloom.
 
 import { useEffect, useState } from "react";
 
 import { nodeCategory } from "../../scene/field/categoryColor";
-import type { EngineNode, PlanInterior } from "../../stores/server/engine";
-import { nodeStatusFromWire } from "../../scene/field/statusStamp";
+import type { EngineNode, NodeEvidence } from "../../stores/server/engine";
 import type { SceneController } from "../../scene/sceneController";
-import { usePlanInterior, useNodeDetail } from "../../stores/server/queries";
+import { useNodeDetail, useNodeEvidence } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
-import { HoverCard, type StatusCardModel } from "./HoverCard";
-import { deriveTypeContent } from "./hoverCardContent";
+import { HoverCard, type HoverCardModel } from "../right/menus/HoverCard";
+import { deriveEvidenceGroups } from "../right/menus/hoverCardEvidence";
 import { islandStyle, useNodeAnchor } from "./IslandLayer";
 
 /** Dwell before the hover card blooms (ms): a glancing pass shows nothing. */
 export const HOVER_DWELL_MS = 150;
 
 /**
- * Project an engine node into the compact card view model (pure, unit-tested).
- * The status object is derived through the SAME scene util the stamp uses, so the
- * card and the canvas stamp read one truth; the rollout bar is fed only when the
- * node carries lifecycle progress (plan/feature), the SEPARATE channel.
+ * Project a node's identity plus its enriched evidence into the binding card's
+ * view model (pure, unit-tested). Identity (kind / title / category) comes from
+ * the node detail; the bounded grouped evidence is folded from the node-evidence
+ * query by the pure `deriveEvidenceGroups` seam. When evidence is absent the card
+ * renders identity only (the fold returns no groups).
  */
-export function cardModelFromNode(
+export function cardModelFromEvidence(
   node: EngineNode,
-  opts: { interior?: PlanInterior; gitDirty?: boolean } = {},
-): StatusCardModel {
-  const progress = node.lifecycle?.progress;
+  evidence: NodeEvidence | undefined,
+): HoverCardModel {
   return {
     id: node.id,
     kind: node.kind,
     title: node.title ?? node.id,
-    status: nodeStatusFromWire(node.status_value, node.status_class),
-    authorityClass: node.authority_class,
-    progress:
-      progress && progress.total > 0
-        ? { done: progress.done, total: progress.total }
-        : undefined,
-    // The scene category (the type channel) drives the accent strip + header
-    // hue; the typed content plane carries the per-type facts derived purely
-    // from the wire (node-hover-typed-card; views-are-projections-of-one-model).
+    // The scene category (the type channel) drives the accent strip + header hue;
+    // the same scene util the canvas stamp uses, so card and canvas read one truth.
     category: nodeCategory(node.kind),
-    typeContent: deriveTypeContent(node, {
-      interior: opts.interior,
-      gitDirty: opts.gitDirty,
-    }),
+    evidence: evidence ? deriveEvidenceGroups(evidence) : [],
   };
 }
 
@@ -109,18 +104,15 @@ function HoverCardIsland({ scene, id }: HoverCardIslandProps) {
   const anchor = useNodeAnchor(scene, id);
   const openNode = useViewStore((s) => s.openNode);
   const detail = useNodeDetail(id);
-  // For a plan node, lean on the SAME cached bounded plan-interior the Work
-  // step-tree already fetches (no second route, no new backend) to derive the
-  // "phases left" count; disabled for every non-plan node so the card never
-  // mints an interior fetch it cannot use (graph-queries-are-bounded-by-default).
-  const isPlan = detail.data?.node.kind === "plan";
-  const interior = usePlanInterior(isPlan ? id : null);
-  // The node off stage (no anchor) or with no detail yet: render nothing rather
-  // than a floating empty card. The dwell already guards the flash.
+  // The enriched node-evidence: documents / code / commits with resolution state
+  // (the binding card's body). The single wire seam is the stores hook; the card
+  // never fetches and never reads raw `tiers` (dashboard-layer-ownership).
+  const evidence = useNodeEvidence(id);
+  // The node off stage (no anchor) or with no identity yet: render nothing rather
+  // than a floating empty card. The dwell already guards the flash. Evidence may
+  // still be in flight — the card then shows identity only and fills in on settle.
   if (!anchor || !detail.data) return null;
-  const model = cardModelFromNode(detail.data.node, {
-    interior: interior.data?.interior,
-  });
+  const model = cardModelFromEvidence(detail.data.node, evidence.data);
   return (
     <div style={islandStyle(anchor)} data-hover-card-for={id}>
       {/* The pure-hover card is INSPECT-ONLY (pointer-events none on the wrapper)

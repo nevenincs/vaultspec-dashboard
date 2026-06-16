@@ -642,7 +642,11 @@ export interface NodeDetail {
 export interface NodeEvidence {
   documents: { path: string; doc_type: string }[];
   code_locations: { path: string; symbol?: string; line?: number; state: string }[];
-  commits: { sha: string; subject: string; rule?: string }[];
+  // The engine `CorrelatedCommit` serializes `confidence: f32` (the correlating
+  // edge's confidence) alongside `sha`/`subject`/`rule`, and the mock mirrors it
+  // byte-for-byte; the type declares it optional so a richer consumer (the binding
+  // hover-card) can surface it. Additive widening — no shape change.
+  commits: { sha: string; subject: string; rule?: string; confidence?: number }[];
   tiers: TiersBlock;
 }
 

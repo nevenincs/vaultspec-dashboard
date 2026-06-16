@@ -1,14 +1,16 @@
-// Pure-logic tests for the hover-card host (node-visual-richness P04): the
-// hover-id view slice, the dwell→suppress resolution, and the compact card
-// projection. No DOM — these exercise the host's pure seams and the store slice
-// directly, isolating the three-intent separation and the open-suppression law
-// from the timer/render machinery (covered in the .render.test.tsx).
+// Pure-logic tests for the hover-card host (figma-parity-reconciliation
+// W03.P08.S50; binding graph/HoverCard 84:2): the hover-id view slice, the
+// dwell→suppress resolution, and the binding evidence-driven card projection. No
+// DOM — these exercise the host's pure seams and the store slice directly,
+// isolating the three-intent separation, the open-suppression law, and the
+// identity+evidence fold from the timer/render machinery (covered in the
+// .render.test.tsx).
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { EngineNode } from "../../stores/server/engine";
+import type { EngineNode, NodeEvidence } from "../../stores/server/engine";
 import { useViewStore } from "../../stores/view/viewStore";
-import { cardModelFromNode, resolveHoverTarget } from "./HoverCardLayer";
+import { cardModelFromEvidence, resolveHoverTarget } from "./HoverCardLayer";
 
 afterEach(() => {
   // Reset the hover slice + opened set between cases (the store is a singleton).
@@ -60,7 +62,7 @@ describe("resolveHoverTarget — dwell gate + open suppression (P04.S15)", () =>
   });
 });
 
-describe("cardModelFromNode — compact projection (P04.S16)", () => {
+describe("cardModelFromEvidence — binding identity+evidence projection (S50)", () => {
   const adr: EngineNode = {
     id: "doc:2026-01-05-editor-demo-adr",
     kind: "adr",
@@ -71,38 +73,48 @@ describe("cardModelFromNode — compact projection (P04.S16)", () => {
     lifecycle: { state: "complete" },
   };
 
-  it("projects id, kind, title, status (via the scene util), and authority class", () => {
-    const model = cardModelFromNode(adr);
+  const tiers = {} as NodeEvidence["tiers"];
+
+  const evidence: NodeEvidence = {
+    documents: [{ path: ".vault/research/2026-foo-research.md", doc_type: "research" }],
+    code_locations: [
+      { path: "src/lib.rs", symbol: "build", line: 42, state: "resolved" },
+    ],
+    commits: [{ sha: "abcdef1234", subject: "land it" }],
+    tiers,
+  };
+
+  it("projects id, kind, title, and the scene category", () => {
+    const model = cardModelFromEvidence(adr, evidence);
     expect(model.id).toBe(adr.id);
     expect(model.kind).toBe("adr");
     expect(model.title).toBe("Editor demo adr");
-    expect(model.status).toEqual({
-      value: "accepted",
-      class: "affirmed",
-      ordinal: undefined,
-    });
-    expect(model.authorityClass).toBe("design");
+    expect(model.category).toBe("adr");
   });
 
-  it("feeds the rollout bar ONLY when the node carries lifecycle progress", () => {
-    const plan: EngineNode = {
-      id: "doc:plan-1",
-      kind: "plan",
-      title: "A plan",
-      status_value: "L2",
-      status_class: "tiered",
-      lifecycle: { state: "active", progress: { done: 3, total: 8 } },
-    };
-    expect(cardModelFromNode(plan).progress).toEqual({ done: 3, total: 8 });
-    // No progress channel → undefined (the bar does not render).
-    expect(cardModelFromNode(adr).progress).toBeUndefined();
+  it("folds the enriched evidence into the bounded grouped lines", () => {
+    const model = cardModelFromEvidence(adr, evidence);
+    const headings = model.evidence.map((g) => g.heading);
+    expect(headings).toEqual(["documents", "code", "commits"]);
+    expect(model.evidence[0].lines[0].label).toBe("2026-foo-research.md");
+    expect(model.evidence[1].lines[0].label).toBe("lib.rs#build");
+    expect(model.evidence[2].lines[0].label).toBe("abcdef1");
   });
 
-  it("falls back to the id for the title and carries no status when absent", () => {
+  it("renders identity only (no groups) when evidence is absent or empty", () => {
+    expect(cardModelFromEvidence(adr, undefined).evidence).toEqual([]);
+    expect(
+      cardModelFromEvidence(adr, {
+        documents: [],
+        code_locations: [],
+        commits: [],
+        tiers,
+      }).evidence,
+    ).toEqual([]);
+  });
+
+  it("falls back to the id for the title when absent", () => {
     const bare: EngineNode = { id: "doc:research-1", kind: "research" };
-    const model = cardModelFromNode(bare);
-    expect(model.title).toBe("doc:research-1");
-    expect(model.status).toBeUndefined();
-    expect(model.progress).toBeUndefined();
+    expect(cardModelFromEvidence(bare, undefined).title).toBe("doc:research-1");
   });
 });

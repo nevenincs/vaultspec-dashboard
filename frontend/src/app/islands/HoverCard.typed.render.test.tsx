@@ -12,12 +12,35 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { nodeCategory } from "../../scene/field/categoryColor";
 import type { EngineNode } from "../../stores/server/engine";
-import { cardModelFromNode } from "./HoverCardLayer";
-import { HoverCard } from "./HoverCard";
+import { nodeStatusFromWire } from "../../scene/field/statusStamp";
+import { deriveTypeContent } from "./hoverCardContent";
+import { HoverCard, type StatusCardModel } from "./HoverCard";
 
 function n(partial: Partial<EngineNode> & Pick<EngineNode, "id" | "kind">): EngineNode {
   return { title: partial.id, ...partial };
+}
+
+// The typed prototype card's projection (the prototype LOD rung). The live
+// canvas hover path now renders the binding evidence-driven `menus/HoverCard`
+// (see HoverCardLayer); this local projection keeps the typed prototype card's
+// per-type content plane covered, sourced PURELY from the wire.
+function cardModelFromNode(node: EngineNode): StatusCardModel {
+  const progress = node.lifecycle?.progress;
+  return {
+    id: node.id,
+    kind: node.kind,
+    title: node.title ?? node.id,
+    status: nodeStatusFromWire(node.status_value, node.status_class),
+    authorityClass: node.authority_class,
+    progress:
+      progress && progress.total > 0
+        ? { done: progress.done, total: progress.total }
+        : undefined,
+    category: nodeCategory(node.kind),
+    typeContent: deriveTypeContent(node),
+  };
 }
 
 afterEach(cleanup);

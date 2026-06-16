@@ -1,17 +1,21 @@
 // @vitest-environment happy-dom
 //
-// The hover-card host (node-visual-richness P04), exercised through the REAL
-// stores client transport (mockEngine) and a REAL SceneController seam — no
-// component-internal doubles. Asserts the P04 contract end to end: the card
-// mounts for a hovered id only AFTER the dwell, dismisses on hover-out, is
-// SUPPRESSED for an opened id (no coexistence with the interior), fires the
-// existing open intent through its affordance, and projects its content from the
-// node-detail stores hook (never fetching itself).
+// The hover-card host (figma-parity-reconciliation W03.P08.S50; binding
+// graph/HoverCard 84:2), exercised through the REAL stores client transport
+// (mockEngine) and a REAL SceneController seam — no component-internal doubles.
+// This is the LIVE canvas hover path: the host mounts the ONE canonical hover
+// card (the binding evidence-driven `menus/HoverCard`), fed by the node-detail
+// (identity) and node-evidence (the enriched documents/code/commits groups)
+// stores hooks. Asserts the contract end to end: the card mounts for a hovered id
+// only AFTER the dwell, surfaces the ENRICHED evidence groups, dismisses on
+// hover-out, is SUPPRESSED for an opened id (no coexistence with the interior),
+// and fires the existing open intent through its affordance — never fetching
+// itself, never reading the raw tiers block.
 //
 // Real timers are used (not fake): the host's dwell rides a real setTimeout and
-// the node-detail query resolves through the async mock transport, so
-// `waitFor`'s polling and the dwell both settle naturally. The dwell window is
-// short enough that a real wait is cheap.
+// the node queries resolve through the async mock transport, so `waitFor`'s
+// polling and the dwell both settle naturally. The dwell window is short enough
+// that a real wait is cheap.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
@@ -86,17 +90,26 @@ describe("HoverCardLayer — dwell, dismiss, suppression, open intent", () => {
     expect(document.querySelector("[data-hover-card-for]")).toBeNull();
   });
 
-  it("mounts the card for a hovered id after the dwell, projecting node-detail content", async () => {
+  it("mounts the binding card after the dwell, surfacing the enriched evidence groups", async () => {
     const scene = new SceneController();
     renderLayer(scene);
     await hoverAndDwell(scene, ADR_ID);
-    // The detail query resolves through the real mock transport; the card then
-    // surfaces the projected status value ("accepted").
+    // The detail + evidence queries resolve through the real mock transport; the
+    // binding card then surfaces the ENRICHED evidence groups (the mock always
+    // serves code-location and commit evidence for a node).
     await waitFor(() => {
-      const chip = document.querySelector("[data-status-chip]");
-      expect(chip).toBeTruthy();
-      expect(chip?.textContent).toContain("accepted");
+      const card = document.querySelector("[data-hover-card]");
+      expect(card).toBeTruthy();
+      // The identity header carries the node title (the detail projection).
+      expect(card?.getAttribute("aria-label")).toContain("editor-demo adr");
+      // The enriched evidence groups render (never the old status chip).
+      expect(document.querySelector('[data-evidence-group="code"]')).toBeTruthy();
+      expect(document.querySelector('[data-evidence-group="commits"]')).toBeTruthy();
+      // The commit line carries the short sha (folded from the wire evidence).
+      expect(card?.textContent).toContain("abc1234");
     });
+    // The orphan is gone: there is no status-chip card on the live hover path.
+    expect(document.querySelector("[data-status-chip]")).toBeNull();
     // The card is anchored to the hovered node.
     expect(document.querySelector(`[data-hover-card-for="${ADR_ID}"]`)).toBeTruthy();
   });

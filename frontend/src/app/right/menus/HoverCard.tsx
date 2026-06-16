@@ -15,6 +15,8 @@
 // carry meaning. The kind glyph is the shared domain-mark family so the card reads
 // as one hand with the canvas silhouettes.
 
+import { ExternalLink } from "lucide-react";
+
 import { type NodeCategory } from "../../../scene/field/categoryColor";
 import { DocTypeMark } from "../../../scene/field/markComponents";
 import { categoryTokenVar } from "../../islands/hoverCardContent";
@@ -39,6 +41,9 @@ export interface HoverCardModel {
 
 export interface HoverCardProps {
   readonly model: HoverCardModel;
+  /** Fired by the open affordance (the external-link button). When omitted the
+   *  affordance is not rendered and the card is purely inspect-only. */
+  readonly onOpen?: (id: string) => void;
 }
 
 /** Tailwind text-tint class for a code-mention resolution state — the one
@@ -56,7 +61,7 @@ function stateTintClass(state: string | undefined): string {
   }
 }
 
-export function HoverCard({ model }: HoverCardProps) {
+export function HoverCard({ model, onOpen }: HoverCardProps) {
   const accentVar = model.category ? categoryTokenVar(model.category) : undefined;
 
   return (
@@ -90,6 +95,21 @@ export function HoverCard({ model }: HoverCardProps) {
         <h3 className="min-w-0 flex-1 truncate text-title font-medium text-ink">
           {model.title}
         </h3>
+        {onOpen && (
+          <button
+            type="button"
+            onClick={() => onOpen(model.id)}
+            aria-label={`open ${model.title}`}
+            data-hover-open
+            // The card may be hosted inside an inspect-only (pointer-events:none)
+            // wrapper so the transient hover card never steals the pointer; the
+            // open affordance is the one interactive escape, so it re-enables
+            // pointer events on itself (the bloom → open intent).
+            className="pointer-events-auto flex shrink-0 items-center rounded-vs-sm p-vs-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink"
+          >
+            <ExternalLink size={14} strokeWidth={1.75} aria-hidden />
+          </button>
+        )}
       </div>
 
       {/* Evidence groups: documents / code / commits, each bounded, headed, and

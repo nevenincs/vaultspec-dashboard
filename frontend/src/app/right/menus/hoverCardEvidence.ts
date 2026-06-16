@@ -44,6 +44,15 @@ function baseName(path: string): string {
   return path.replace(/^.*\//, "");
 }
 
+/** Append a "~NN%" confidence qualifier to a commit subject when the wire carries
+ *  the correlating edge's confidence (0..1); the subject alone when it is absent
+ *  (never fabricated). */
+function confidenceSuffix(subject: string, confidence: number | undefined): string {
+  if (confidence === undefined) return subject;
+  const pct = Math.round(Math.max(0, Math.min(1, confidence)) * 100);
+  return `${subject} · ~${pct}%`;
+}
+
 /** Bound a list to the group cap, returning the kept slice and the overflow. */
 function bound<T>(items: T[]): { kept: T[]; overflow: number } {
   if (items.length <= HOVER_EVIDENCE_GROUP_CAP) {
@@ -98,7 +107,10 @@ export function deriveEvidenceGroups(evidence: NodeEvidence): EvidenceGroup[] {
       lines: kept.map((commit) => ({
         key: commit.sha,
         label: commit.sha.slice(0, 7),
-        detail: commit.subject,
+        // The correlated commit's subject, with the correlating edge's confidence
+        // appended as an honest "~NN%" qualifier when the wire carries it (the
+        // additive `confidence` value-add). Absent confidence → subject alone.
+        detail: confidenceSuffix(commit.subject, commit.confidence),
       })),
     });
   }
