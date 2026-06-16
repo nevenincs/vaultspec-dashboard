@@ -229,9 +229,9 @@
      `font-sans` / `font-mono` adopt Inter + JetBrains Mono and the role-named
      utilities resolve to the canonical --text-fg-* tokens.
 
-     The W04 metrics-taxonomy cutover retired the legacy text-title/heading/2xs
-     usages, so the Tailwind utility names now bind straight to their canonical
-     Figma roles (text-title -> --text-fg-title). */
+     Every utility name binds straight to its canonical Figma role
+     (e.g. text-title -> --text-fg-title). There are no bridge, compatibility,
+     or alias tokens: the type foundation is exactly the Figma roles. */
   --font-sans: var(--font-fg-sans);
   --font-mono: var(--font-fg-mono);
 
@@ -256,12 +256,6 @@
   --text-title: var(--text-fg-title);
   --text-title--line-height: var(--text-fg-title--line-height);
   --text-title--font-weight: var(--text-fg-title--weight);
-
-  /* Code scale retained verbatim (no Figma role; ADR layer 5). */
-  --text-code-sm: 0.75rem; /* 12px - dense code/hash */
-  --text-code-sm--line-height: 1.125rem;
-  --text-code: 0.8125rem; /* 13px - code body */
-  --text-code--line-height: 1.375rem;
 
   /* == MOTION (S15) - fast, subtle, state-communicating ================== */
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);

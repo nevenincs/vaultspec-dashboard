@@ -97,9 +97,7 @@ function DiffLineRow({ line }: { line: GitDiffLine }) {
   const glyph = lineGlyph(line.kind);
   const label = lineLabel(line.kind);
   return (
-    <div
-      className={`flex items-stretch font-mono text-code-sm ${lineClass(line.kind)}`}
-    >
+    <div className={`flex items-stretch font-mono text-mono ${lineClass(line.kind)}`}>
       <GutterNum n={line.old} />
       <GutterNum n={line.new} />
       {/* The change-type gutter glyph — non-colour identity, mirrored to the SR
