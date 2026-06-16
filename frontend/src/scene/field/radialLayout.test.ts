@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { radialLayout } from "./radialLayout";
+import { linkageCoverage } from "./scorecard/linkageCoverage";
 
 const n = (id: string, salience?: number): SceneNodeData => ({
   id,
@@ -106,5 +107,106 @@ describe("radialLayout", () => {
 
   it("returns an empty map for an empty slice", () => {
     expect(radialLayout([], []).size).toBe(0);
+  });
+
+  // W02.P07.S33/S36 (node-representation ADR D4): when no node in the slice carries
+  // salience (the feature-granularity case — the engine serves salience at document
+  // granularity only), the radial root falls back to the MAXIMUM-DEGREE node rather
+  // than degenerating to the lowest-id node.
+  it("falls back to the max-degree root when salience is absent (D4)", () => {
+    // No node carries salience (feature granularity). `hub` has degree 3, every
+    // other node degree 1, so the max-degree fallback selects `hub` as the root.
+    // Crucially `hub` is NOT the lowest id (that is `a`), so a pure id tie-break
+    // would have chosen wrong — this asserts the degree fallback, not id ordering.
+    const nodes = [n("a"), n("b"), n("c"), n("hub")];
+    const edges = [edge("hub", "a"), edge("hub", "b"), edge("hub", "c")];
+    const pos = radialLayout(nodes, edges);
+    expect(radius(pos.get("hub")!)).toBeLessThan(1e-6);
+    // The leaves sit one hop out at a positive radius.
+    expect(radius(pos.get("a")!)).toBeGreaterThan(0);
+  });
+
+  it("salience-absent root fallback is deterministic and id-tie-broken (D4)", () => {
+    // Two nodes tie on max degree (2 each); the lower id wins the final tie-break.
+    const nodes = [n("p"), n("q"), n("x"), n("y")];
+    const edges = [edge("p", "x"), edge("p", "y"), edge("q", "x"), edge("q", "y")];
+    const pos = radialLayout(nodes, edges);
+    // p and q both have degree 2; p (lower id) is the deterministic root.
+    expect(radius(pos.get("p")!)).toBeLessThan(1e-6);
+    expect(radius(pos.get("q")!)).toBeGreaterThan(0);
+  });
+
+  it("a selected node still overrides the max-degree fallback (D4)", () => {
+    const nodes = [n("a"), n("b"), n("c"), n("hub")];
+    const edges = [edge("hub", "a"), edge("hub", "b"), edge("hub", "c")];
+    // Select a leaf: it becomes the root despite `hub` having the max degree.
+    const pos = radialLayout(nodes, edges, "a");
+    expect(radius(pos.get("a")!)).toBeLessThan(1e-6);
+    expect(radius(pos.get("hub")!)).toBeGreaterThan(0);
+  });
+
+  it("keeps the salience-first policy when any node carries salience", () => {
+    // `lo` is salient (0.9) but low degree; `hub` has max degree but no salience.
+    // Because at least one node carries salience, the salience-first policy holds
+    // and `lo` wins the root over the higher-degree `hub`.
+    const nodes = [n("lo", 0.9), n("a"), n("b"), n("hub")];
+    const edges = [edge("lo", "hub"), edge("hub", "a"), edge("hub", "b")];
+    const pos = radialLayout(nodes, edges);
+    expect(radius(pos.get("lo")!)).toBeLessThan(1e-6);
+  });
+});
+
+// W02.P07.S35/S36 (node-representation ADR D6): linkage coverage makes embedding /
+// derivation linkage density observable per slice. These tests feed fixtures with
+// KNOWN coverage and assert the reported embedding% / derivation% figures.
+describe("linkageCoverage (D6)", () => {
+  const embedded = (id: string): SceneNodeData => ({
+    id,
+    kind: "doc",
+    embedding: [0.1, 0.2, 0.3],
+  });
+  const derived = (src: string, dst: string): SceneEdgeData => ({
+    ...edge(src, dst),
+    derivation: "generated-by",
+  });
+
+  it("reports half embedding presence and half derivation labelling", () => {
+    // 4 nodes, 2 carry an embedding -> 50%. 2 edges, 1 carries derivation -> 50%.
+    const nodes = [embedded("a"), embedded("b"), n("c"), n("d")];
+    const edges = [derived("a", "b"), edge("c", "d")];
+    const cov = linkageCoverage(nodes, edges);
+    expect(cov.nodeCount).toBe(4);
+    expect(cov.nodesWithEmbedding).toBe(2);
+    expect(cov.embeddingPresence).toBeCloseTo(0.5, 10);
+    expect(cov.edgeCount).toBe(2);
+    expect(cov.edgesWithDerivation).toBe(1);
+    expect(cov.derivationLabel).toBeCloseTo(0.5, 10);
+  });
+
+  it("reports full coverage when every node and edge carries linkage", () => {
+    const nodes = [embedded("a"), embedded("b"), embedded("c")];
+    const edges = [derived("a", "b"), derived("b", "c")];
+    const cov = linkageCoverage(nodes, edges);
+    expect(cov.embeddingPresence).toBe(1);
+    expect(cov.derivationLabel).toBe(1);
+  });
+
+  it("treats an absent or empty embedding and a null derivation as un-covered", () => {
+    // An empty-array embedding is NOT a real embedding; an absent derivation is null.
+    const nodes: SceneNodeData[] = [{ id: "a", kind: "doc", embedding: [] }, n("b")];
+    const edges = [edge("a", "b")];
+    const cov = linkageCoverage(nodes, edges);
+    expect(cov.nodesWithEmbedding).toBe(0);
+    expect(cov.embeddingPresence).toBe(0);
+    expect(cov.edgesWithDerivation).toBe(0);
+    expect(cov.derivationLabel).toBe(0);
+  });
+
+  it("reports vacuous full coverage on an empty slice", () => {
+    const cov = linkageCoverage([], []);
+    expect(cov.embeddingPresence).toBe(1);
+    expect(cov.derivationLabel).toBe(1);
+    expect(cov.nodeCount).toBe(0);
+    expect(cov.edgeCount).toBe(0);
   });
 });

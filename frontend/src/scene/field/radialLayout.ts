@@ -12,10 +12,16 @@
 // root, shortest-path) → d3.hierarchy over that tree → d3.tree().size([2π, R]) →
 // polar-to-cartesian → positions Map.
 //
-// Root policy (D5): the default root is the highest-salience node in the slice,
-// degree-max as the tie-break, then id for full determinism; a selected node (if
-// in the slice) OVERRIDES the policy so radial reads as "hops from what I'm
-// looking at". Disconnected components each get their own per-component root
+// Root policy (D5, node-representation ADR D4): the default root is the
+// highest-salience node in the slice, degree-max as the tie-break, then id for
+// full determinism. When NO node in the slice carries salience (salience absent
+// or zero across the whole slice — the feature-granularity case, where the engine
+// serves salience at document granularity only), the policy falls back to the
+// MAXIMUM-DEGREE node so the radial root is the most-connected hub rather than
+// degenerating to the lowest-id node; degree-max with id as the final tie-break is
+// the deterministic fallback. A selected node (if in the slice) OVERRIDES the
+// policy in either case so radial reads as "hops from what I'm looking at".
+// Disconnected components each get their own per-component root
 // (highest local salience) laid out in SEPARATE ANGULAR SECTORS of one shared
 // field — not separate concentric rings, so components stay co-visible without a
 // false ring-distance between them. Sectors are allocated proportionally to each
@@ -71,6 +77,14 @@ export function radialLayout(
   const salienceOf = new Map<string, number>();
   for (const n of nodes) salienceOf.set(n.id, n.salience ?? 0);
 
+  // D4: detect whether the slice carries any salience at all. At feature
+  // granularity the engine serves salience at document granularity only, so every
+  // node arrives salience-absent (undefined) or zero; in that case the root policy
+  // falls back to the maximum-degree node (the most-connected hub) instead of
+  // selecting an arbitrary low-id node. A single node with real salience anywhere
+  // in the slice keeps the salience-first policy.
+  const hasSalience = nodes.some((n) => (n.salience ?? 0) > 0);
+
   // D7: radial extracts its BFS tree over the layout BACKBONE adjacency (declared
   // + structural), the same anti-hairball subset the connectivity solver is fed —
   // never the noisy temporal/semantic context.
@@ -121,32 +135,45 @@ export function radialLayout(
     components.push(comp);
   }
 
-  // Per-component root (D5): salience-max, degree-max tie-break, id final
-  // tie-break; the selected node overrides for its own component.
+  // Per-component root (D5 / D4): when the slice carries salience, the root is
+  // salience-max with degree-max as the tie-break; when no node carries salience
+  // (feature granularity), the policy falls back to degree-max directly so the
+  // most-connected hub anchors the component. Id is the final deterministic
+  // tie-break in both cases. A selected node overrides for its own component.
   const rootOf = (comp: string[]): string => {
     const set = new Set(comp);
     if (selectedId && set.has(selectedId)) return selectedId;
     return comp.slice().sort((a, b) => {
-      const sa = salienceOf.get(a) ?? 0;
-      const sb = salienceOf.get(b) ?? 0;
-      if (sa !== sb) return sb - sa; // salience desc
+      if (hasSalience) {
+        const sa = salienceOf.get(a) ?? 0;
+        const sb = salienceOf.get(b) ?? 0;
+        if (sa !== sb) return sb - sa; // salience desc
+      }
       const da = degreeOf.get(a) ?? 0;
       const db = degreeOf.get(b) ?? 0;
-      if (da !== db) return db - da; // degree desc
+      if (da !== db) return db - da; // degree desc (the max-degree fallback)
       return a.localeCompare(b); // id asc
     })[0];
   };
 
-  // Order components for sector allocation deterministically by (root salience
-  // desc, root id), so the most important component anchors the first sector.
+  // Order components for sector allocation deterministically so the most important
+  // component anchors the first sector: by (root salience desc, root id) when the
+  // slice carries salience, falling back to (root degree desc, root id) when it
+  // does not (D4) so the most-connected component still anchors first.
   const componentEntries = components.map((comp) => ({
     comp,
     root: rootOf(comp),
   }));
   componentEntries.sort((x, y) => {
-    const sx = salienceOf.get(x.root) ?? 0;
-    const sy = salienceOf.get(y.root) ?? 0;
-    if (sx !== sy) return sy - sx;
+    if (hasSalience) {
+      const sx = salienceOf.get(x.root) ?? 0;
+      const sy = salienceOf.get(y.root) ?? 0;
+      if (sx !== sy) return sy - sx;
+    } else {
+      const dx = degreeOf.get(x.root) ?? 0;
+      const dy = degreeOf.get(y.root) ?? 0;
+      if (dx !== dy) return dy - dx;
+    }
     return x.root.localeCompare(y.root);
   });
 

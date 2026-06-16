@@ -7,6 +7,13 @@ import { describe, expect, it } from "vitest";
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { communityLayout, detectCommunities } from "./communityLayout";
+import { generateLfr } from "./scorecard/generators/lfr";
+import { generateSbm } from "./scorecard/generators/sbm";
+import type { GraphFixture } from "./scorecard/generators/fixture";
+import {
+  adjustedMutualInformation,
+  adjustedRandIndex,
+} from "./scorecard/metrics/clusterMetrics";
 
 const n = (id: string): SceneNodeData => ({ id, kind: "doc" });
 
@@ -134,5 +141,89 @@ describe("communityLayout (two-level deterministic placement)", () => {
 
   it("returns an empty map for an empty slice", () => {
     expect(communityLayout([], []).size).toBe(0);
+  });
+});
+
+// W02.P07.S34 (node-representation ADR D5): the Louvain partition stays CLIENT-SIDE
+// and is scored DIRECTLY from `detectCommunities` output, never read from a wire
+// `community_id` projection. These tests run the real hand-rolled `detectCommunities`
+// over the scorecard's SBM/LFR planted-partition fixtures and assert the detected
+// membership recovers the planted partition with high chance-corrected agreement
+// (ARI/AMI), proving the community detection is a real client-side computation that
+// the scorecard fences — affirming D5 (community is client-side, not wire-served).
+describe("detectCommunities client-side partition recovery (D5)", () => {
+  /** Score the detected membership against a fixture's planted partition by
+   *  chance-corrected ARI and AMI over index-aligned label arrays (the same
+   *  alignment the cluster gate uses). */
+  const recovery = (fx: GraphFixture): { ari: number; ami: number } => {
+    const detected = detectCommunities(fx.nodes, fx.edges);
+    const ids = fx.nodes.map((node) => node.id);
+    // Re-index the detected (string) community labels to dense integers, aligned
+    // to the same node order as the planted (integer) partition.
+    const labelIndex = new Map<string, number>();
+    let next = 0;
+    const pred = ids.map((id) => {
+      const c = detected.membership.get(id) ?? id;
+      if (!labelIndex.has(c)) labelIndex.set(c, next++);
+      return labelIndex.get(c)!;
+    });
+    const truth = ids.map((id) => fx.partition.get(id) ?? -1);
+    return {
+      ari: adjustedRandIndex(truth, pred),
+      ami: adjustedMutualInformation(truth, pred),
+    };
+  };
+
+  it("recovers the SBM planted partition with high chance-corrected ARI/AMI", () => {
+    // A clean SBM (strong intra-block signal, weak inter-block noise): the
+    // client-side Louvain must recover the planted blocks almost exactly.
+    const fx = generateSbm({
+      sizes: [20, 20, 20],
+      pIntra: 0.35,
+      pInter: 0.01,
+      seed: 5,
+    });
+    const { ari, ami } = recovery(fx);
+    expect(ari).toBeGreaterThan(0.8);
+    expect(ami).toBeGreaterThan(0.8);
+  });
+
+  it("recovers the LFR planted partition with high chance-corrected ARI/AMI", () => {
+    // A low-mixing LFR benchmark: the client-side Louvain must recover the planted
+    // communities with strong chance-corrected agreement.
+    const fx = generateLfr({
+      n: 80,
+      mu: 0.15,
+      degExp: 2.5,
+      minDegree: 3,
+      maxDegree: 12,
+      commExp: 1.5,
+      minCommunity: 8,
+      maxCommunity: 20,
+      seed: 6,
+    });
+    const { ari, ami } = recovery(fx);
+    expect(ari).toBeGreaterThan(0.7);
+    expect(ami).toBeGreaterThan(0.7);
+  });
+
+  it("scores the detected partition itself, not a wire projection (D5)", () => {
+    // The fixture nodes carry NO `community_id`-like field; the scoring depends
+    // wholly on what `detectCommunities` computes from the backbone. A near-perfect
+    // recovery on a strongly-separable two-block slice (dense intra, zero inter)
+    // confirms the partition is the algorithm's own client-side output. Read the
+    // membership directly off the result to show it is computed, not wire-served.
+    const fx = generateSbm({
+      sizes: [15, 15],
+      pIntra: 0.6,
+      pInter: 0.0,
+      seed: 11,
+    });
+    const detected = detectCommunities(fx.nodes, fx.edges);
+    // The detected membership is a real Map the algorithm produced over the slice.
+    expect(detected.membership.size).toBe(fx.nodes.length);
+    const { ari, ami } = recovery(fx);
+    expect(ari).toBeGreaterThan(0.95);
+    expect(ami).toBeGreaterThan(0.95);
   });
 });
