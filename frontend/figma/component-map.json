@@ -9,6 +9,20 @@
       "figmaUrl": null
     },
     {
+      "name": "Badge",
+      "source": "src/app/kit/Chip.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Breadcrumb",
+      "source": "src/app/kit/Breadcrumb.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "BrowserModeToggle",
       "source": "src/app/left/BrowserModeToggle.tsx",
       "designSurface": true,
@@ -23,6 +37,13 @@
       "figmaUrl": null
     },
     {
+      "name": "Button",
+      "source": "src/app/kit/Button.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "CanvasStateOverlay",
       "source": "src/app/stage/CanvasStateOverlay.tsx",
       "designSurface": true,
@@ -30,8 +51,29 @@
       "figmaUrl": null
     },
     {
+      "name": "Card",
+      "source": "src/app/kit/Card.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "ChangesOverview",
       "source": "src/app/right/ChangesOverview.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Chip",
+      "source": "src/app/kit/Chip.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "CodeBlock",
+      "source": "src/app/kit/CodeBlock.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
@@ -100,6 +142,20 @@
       "figmaUrl": null
     },
     {
+      "name": "Divider",
+      "source": "src/app/kit/Divider.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "DropdownButton",
+      "source": "src/app/kit/DropdownButton.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "EnumControl",
       "source": "src/app/settings/controls/EnumControl.tsx",
       "designSurface": true,
@@ -156,6 +212,13 @@
       "figmaUrl": null
     },
     {
+      "name": "IconButton",
+      "source": "src/app/kit/IconButton.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "Inspector",
       "source": "src/app/right/Inspector.tsx",
       "designSurface": true,
@@ -166,6 +229,13 @@
       "name": "IslandLayer",
       "source": "src/app/islands/IslandLayer.tsx",
       "designSurface": false,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Kbd",
+      "source": "src/app/kit/Kbd.tsx",
+      "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
     },
@@ -193,6 +263,13 @@
     {
       "name": "LensSelector",
       "source": "src/app/stage/LensSelector.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "ListRow",
+      "source": "src/app/kit/ListRow.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
@@ -261,8 +338,22 @@
       "figmaUrl": null
     },
     {
+      "name": "ProgressBar",
+      "source": "src/app/kit/ProgressBar.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "ProgressRing",
       "source": "src/app/right/WorkTab.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "PropertyRow",
+      "source": "src/app/kit/PropertyRow.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
@@ -289,8 +380,36 @@
       "figmaUrl": null
     },
     {
+      "name": "SearchField",
+      "source": "src/app/kit/SearchField.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "SearchTab",
       "source": "src/app/right/SearchTab.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "SectionLabel",
+      "source": "src/app/kit/SectionLabel.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "Segment",
+      "source": "src/app/kit/Segment.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "SegmentedToggle",
+      "source": "src/app/kit/SegmentedToggle.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
@@ -310,8 +429,22 @@
       "figmaUrl": null
     },
     {
+      "name": "Slider",
+      "source": "src/app/kit/Slider.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "Stage",
       "source": "src/app/stage/Stage.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
+      "name": "StatusDot",
+      "source": "src/app/kit/StatusDot.tsx",
       "designSurface": true,
       "figmaNodeId": null,
       "figmaUrl": null
@@ -324,11 +457,25 @@
       "figmaUrl": null
     },
     {
+      "name": "Switch",
+      "source": "src/app/kit/Switch.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "SwitchControl",
       "source": "src/app/settings/controls/SwitchControl.tsx",
       "designSurface": true,
       "figmaNodeId": "137:28",
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=137-28"
+    },
+    {
+      "name": "Tab",
+      "source": "src/app/kit/Tab.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
     },
     {
       "name": "TextControl",
@@ -366,11 +513,25 @@
       "figmaUrl": null
     },
     {
+      "name": "Tooltip",
+      "source": "src/app/kit/Tooltip.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "TreeBrowser",
       "source": "src/app/left/TreeBrowser.tsx",
       "designSurface": true,
       "figmaNodeId": "161:164",
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=161-164"
+    },
+    {
+      "name": "TreeRow",
+      "source": "src/app/kit/TreeRow.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
     },
     {
       "name": "VaultBrowser",
