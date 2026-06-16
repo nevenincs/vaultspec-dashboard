@@ -146,6 +146,26 @@ until implementation.
     owns the active-lens view state; the lens basis is precomputed once per graph
     generation and shared across lenses, so a no-focus lens switch is a warm-cache
     re-query and only the focus-folded final score is computed on demand.
+- `GET /graph/embeddings?scope&lens&focus` — the dedicated bounded semantic
+  embedding read (graph-semantic-embeddings ADR), fetched lazily only on entering
+  the semantic representation mode. Response: `{embeddings, generation, lens?,
+  truncated}` where `embeddings` is a list of `{node_id, vector}` rows — the raw
+  rag vectors as a JSON `number[]`, never reduced engine-side. **The embeddings
+  are a `node_id`-keyed SUBSET of the served node set (amendment 2026-06-16,
+  graph-node-representation ADR D1):** a row carries its own `node_id`, and the
+  client joins each vector to its graph node **by `node_id`**, never by positional
+  or DOI ordering. A node with no served vector is simply ABSENT from the
+  embeddings list — an honest absence the scene draws as the fallback ring, not a
+  positional gap to be filled. The row count is therefore independent of the node
+  set's size and ordering; the embeddings list and the `/graph/query` node list
+  need not be the same length or in the same order, and the join is correct
+  regardless. Changing this join key is a contract event
+  (provenance-stable-keys-are-identity-bearing), not a refactor. `generation`
+  echoes the `/graph/query` generation the vectors were read at (the
+  cache-per-generation key), `truncated` is present and non-null only when the
+  node ceiling capped the slice, and semantic availability is read from the §2
+  `tiers` block (rag/Qdrant down ⇒ semantic unavailable + an empty list), never
+  from a bare transport error.
 - `GET /filters?scope=` — enumerates the legal filter vocabulary actually
   present (relation types, tiers, doc types, feature tags, node kinds,
   date bounds, refs). The filter UI is data-driven; nothing hardcoded.

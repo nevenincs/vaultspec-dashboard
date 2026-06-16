@@ -1649,16 +1649,19 @@ export class MockEngine {
    */
   /**
    * The dedicated bounded embedding slice (graph-semantic-embeddings ADR D2),
-   * mirroring the live `/graph/embeddings` wire shape BYTE-FOR-BYTE: the stored
-   * vectors for the SERVED document node set (the SAME lens-ordered doc nodes
-   * /graph/query serves, so the embedding set aligns with the constellation),
-   * keyed by node id as raw float32 `number[]` (ADR D3 — no reduction), stamped
-   * with the graph `generation` (ADR D8), bounded with an honest `truncated`
-   * block, and the `tiers` block on every response. rag/Qdrant down (or a
-   * degraded semantic tier) ⇒ semantic Unavailable + NO vectors (ADR D7) — the
-   * scene rings every node in the honest fallback. The vectors come from the
-   * corpus's SEPARATE `embeddingsByNode` map, NOT a node field — exactly the
-   * separate-route path the live origin takes.
+   * mirroring the live `/graph/embeddings` wire shape BYTE-FOR-BYTE: a
+   * `node_id`-keyed SUBSET of the served document node set as `{node_id, vector}`
+   * rows, the stored rag vectors as raw float32 `number[]` (ADR D3 — no
+   * reduction), stamped with the graph `generation` (ADR D8), bounded with an
+   * honest `truncated` block, and the `tiers` block on every response. The client
+   * joins each vector to its node BY `node_id` (graph-node-representation ADR D1),
+   * never by the row order — so a served node may be ABSENT from the list (no
+   * stored vector) and the scene rings it in the honest fallback, never
+   * mis-assigned another node's vector. rag/Qdrant down (or a degraded semantic
+   * tier) ⇒ semantic Unavailable + NO vectors (ADR D7) — the scene rings every
+   * node in the honest fallback. The vectors come from the corpus's SEPARATE
+   * `embeddingsByNode` map, NOT a node field — exactly the separate-route path the
+   * live origin takes.
    */
   private embeddingsData(params: URLSearchParams): unknown {
     const lens = parseMockLens(params.get("lens"));
@@ -1677,10 +1680,12 @@ export class MockEngine {
         tiers: this.degradedTiersFor("semantic", reason),
       };
     }
-    // The SERVED document node set, ordered exactly as /graph/query orders it at
-    // document granularity (descending active-lens salience), so the embedding
-    // set's node order matches the served constellation node set (ADR D2 / open
-    // question). An absent corpus serves nothing (035).
+    // The SERVED document node set. /graph/query orders it by descending
+    // active-lens salience, but the embeddings join is keyed by `node_id`, NOT by
+    // this order (graph-node-representation ADR D1): the embeddings list is a
+    // `node_id`-keyed SUBSET and the client joins each vector to its node by id, so
+    // the order the mock emits is deliberately not load-bearing. An absent corpus
+    // serves nothing (035).
     const servedDocIds = this.noVault
       ? []
       : this.corpus.nodes
@@ -1688,10 +1693,20 @@ export class MockEngine {
           .map((n) => ({ id: n.id, salience: mockSalienceFor(n, lens) }))
           .sort((a, b) => b.salience - a.salience || a.id.localeCompare(b.id))
           .map((n) => n.id);
-    // Each served node that HAS a stored vector emits an entry, preserving the
-    // served order; a served node with no stored vector is OMITTED (honest
-    // absence → the scene's fallback ring, ADR D7). float32 `number[]` verbatim.
+    // Each served node that HAS a stored vector emits a `{node_id, vector}` row; a
+    // served node with no stored vector is OMITTED (honest absence → the scene's
+    // fallback ring, ADR D1/D7). To exercise that absence path even though the
+    // corpus seeds a vector for every doc, DETERMINISTICALLY drop one served node
+    // (the lexically-first id) from the embeddings list: the live route serves a
+    // genuine `node_id`-keyed SUBSET, so the mock must too (mock-mirrors-live-wire-
+    // shape) — the dropped node has a graph node but no served vector. float32
+    // `number[]` verbatim, keyed by id; the row order is not the join key.
+    const omittedId =
+      servedDocIds.length > 0
+        ? [...servedDocIds].sort((a, b) => a.localeCompare(b))[0]
+        : null;
     const embeddings = servedDocIds
+      .filter((id) => id !== omittedId)
       .map((id) => ({ id, vector: this.corpus.embeddingsByNode.get(id) }))
       .filter((e): e is { id: string; vector: number[] } => e.vector !== undefined)
       .map((e) => ({ node_id: e.id, vector: e.vector }));

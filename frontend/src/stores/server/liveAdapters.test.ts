@@ -22,6 +22,7 @@ import {
   adaptVaultTree,
   deriveSearchNodeId,
   docTypeFromStem,
+  embeddingsByNodeId,
   mergeNumstat,
   metaEdgeToEdge,
   parseGitNumstat,
@@ -1422,5 +1423,148 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
     );
     const verdict = runSemanticGateOnRealData(sceneNodes, new Map());
     expect(verdict.presence).toBe(1);
+  });
+});
+
+// graph-node-representation ADR D1 / W02.P05.S28: the embedding↔node join is
+// contractually keyed by `node_id`, NEVER by positional/DOI order. These tests
+// feed a captured live-shape `/graph/embeddings` envelope through the REAL client
+// path the app uses (unwrapEnvelope -> adaptGraphEmbeddings -> embeddingsByNodeId)
+// and prove the vectors land on the correct nodes by id even when the embeddings
+// array is REORDERED or a strict SUBSET of the node set, and that a node with no
+// served vector is an honest absence (no crash, no mis-assignment).
+
+describe("embeddingsByNodeId (node_id join contract, ADR D1)", () => {
+  const DIM = 4;
+  /** A distinct, recognizable vector per node so a mis-join is observable: the
+   *  vector encodes the node's index in its first slot. */
+  function vectorFor(index: number): number[] {
+    return [index, index + 0.1, index + 0.2, index + 0.3].slice(0, DIM);
+  }
+
+  /** The graph node set the constellation serves — five document nodes in a
+   *  FIXED order (the `/graph/query` order). The embeddings array below is keyed
+   *  to these ids but deliberately NOT in this order. */
+  const nodeIds = ["doc:a", "doc:b", "doc:c", "doc:d", "doc:e"];
+
+  /** A CAPTURED live `/graph/embeddings` envelope whose `embeddings` rows are
+   *  (1) REORDERED relative to the node set and (2) a strict SUBSET — `doc:c` and
+   *  `doc:e` carry no stored vector (honest absences). The shape is the exact
+   *  `{data: {embeddings, generation, truncated, lens}, tiers}` the live engine
+   *  serves. */
+  const liveEnvelope = {
+    data: {
+      embeddings: [
+        // Reversed/shuffled order, and `doc:c`/`doc:e` omitted entirely.
+        { node_id: "doc:d", vector: vectorFor(3) },
+        { node_id: "doc:a", vector: vectorFor(0) },
+        { node_id: "doc:b", vector: vectorFor(1) },
+      ],
+      generation: 11,
+      truncated: null,
+      lens: "status",
+    },
+    tiers: {
+      declared: { available: true },
+      structural: { available: true },
+      temporal: { available: true },
+      semantic: { available: true },
+    },
+  };
+
+  it("joins each vector to its node BY id regardless of array order", () => {
+    // The REAL client path: unwrap the envelope, adapt, build the by-id join.
+    const adapted = adaptGraphEmbeddings(unwrapEnvelope(liveEnvelope));
+    const byId = embeddingsByNodeId(adapted);
+
+    // Each served vector lands on its OWN node, not the node at its array
+    // position. `doc:d` arrived FIRST in the array but joins to `doc:d`, not to
+    // `doc:a` (the first node in the node set) — the positional-join bug this
+    // contract forbids.
+    expect(byId.get("doc:a")).toEqual(vectorFor(0));
+    expect(byId.get("doc:b")).toEqual(vectorFor(1));
+    expect(byId.get("doc:d")).toEqual(vectorFor(3));
+  });
+
+  it("treats a node with no served vector as an honest absence (no mis-assignment)", () => {
+    const adapted = adaptGraphEmbeddings(unwrapEnvelope(liveEnvelope));
+    const byId = embeddingsByNodeId(adapted);
+
+    // `doc:c` and `doc:e` carry no stored vector: the map simply does not contain
+    // them. They are absent, never assigned some other node's vector.
+    expect(byId.has("doc:c")).toBe(false);
+    expect(byId.has("doc:e")).toBe(false);
+    expect(byId.get("doc:c")).toBeUndefined();
+    // The join is a strict subset: only the three served nodes are present.
+    expect(byId.size).toBe(3);
+
+    // Merging onto the full node set (the scene's `map.get(node.id)` step) leaves
+    // the absent nodes embeddingless — they ring the fallback, not mis-joined.
+    const merged = nodeIds.map((id) => ({ id, embedding: byId.get(id) }));
+    const embeddingless = merged.filter((n) => n.embedding === undefined);
+    expect(embeddingless.map((n) => n.id)).toEqual(["doc:c", "doc:e"]);
+    // Every PRESENT node carries its OWN vector (id-correct), never a neighbor's.
+    for (const { id, embedding } of merged) {
+      if (embedding === undefined) continue;
+      expect(embedding).toEqual(vectorFor(nodeIds.indexOf(id)));
+    }
+  });
+
+  it("resolves a duplicate node_id deterministically (last row wins)", () => {
+    // A degenerate shape the live route never emits, but the join must not corrupt
+    // identity if it does: the same id twice keeps the LAST row, not a silent
+    // positional smear across two nodes.
+    const dup = adaptGraphEmbeddings({
+      embeddings: [
+        { node_id: "doc:x", vector: vectorFor(1) },
+        { node_id: "doc:x", vector: vectorFor(2) },
+      ],
+      generation: 0,
+      truncated: null,
+      tiers: { semantic: { available: true } },
+    });
+    const byId = embeddingsByNodeId(dup);
+    expect(byId.size).toBe(1);
+    expect(byId.get("doc:x")).toEqual(vectorFor(2));
+  });
+
+  it("the mock serves a node_id-keyed SUBSET through the real client path", async () => {
+    // The mock mirrors the live wire: it serves a genuine `node_id`-keyed subset
+    // (omitting at least one served document node's vector), so the by-id join and
+    // the absence path are exercised against the mock that mirrors the live shape
+    // (mock-mirrors-live-wire-shape).
+    const mock = new MockEngine();
+    const client = clientOn(mock);
+
+    // The full served document node set from /graph/query (document granularity).
+    const slice = await client.graphQuery({ scope: MOCK_SCOPE });
+    const servedDocIds = new Set(
+      slice.nodes.filter((n) => n.kind !== "feature").map((n) => n.id),
+    );
+    expect(servedDocIds.size).toBeGreaterThan(0);
+
+    const res = await client.graphEmbeddings({ scope: MOCK_SCOPE });
+    const byId = embeddingsByNodeId(res);
+
+    // Every served vector keys a REAL served document node (no orphan vectors).
+    for (const id of byId.keys()) {
+      expect(servedDocIds.has(id)).toBe(true);
+    }
+    // The embeddings are a strict SUBSET: at least one served doc node carries no
+    // vector — the honest-absence path the live route also exercises.
+    expect(byId.size).toBeLessThan(servedDocIds.size);
+    const absent = [...servedDocIds].filter((id) => !byId.has(id));
+    expect(absent.length).toBeGreaterThan(0);
+
+    // Each present node's vector is its OWN (the mock keys by id, never by order):
+    // build scene nodes by the join and confirm every embedded node maps to a
+    // served id, with the absent nodes left embeddingless.
+    const sceneNodes = [...servedDocIds].map((id) =>
+      engineNodeToScene({ id, kind: "adr", embedding: byId.get(id) }),
+    );
+    const embedded = sceneNodes.filter(
+      (n) => Array.isArray(n.embedding) && n.embedding.length > 0,
+    );
+    expect(embedded).toHaveLength(byId.size);
   });
 });

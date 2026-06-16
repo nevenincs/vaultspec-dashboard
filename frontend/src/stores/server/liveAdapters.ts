@@ -244,6 +244,28 @@ export function adaptGraphEmbeddings(body: unknown): EmbeddingsResponse {
   };
 }
 
+/**
+ * The CONTRACTUAL embedding↔node join (graph-node-representation ADR D1): build a
+ * `Map<node_id, vector>` from the adapted embedding slice, keyed strictly by
+ * `node_id`, NEVER by the positional/DOI order the rows happen to arrive in. The
+ * `/graph/embeddings` route serves a `node_id`-keyed SUBSET of the graph node set
+ * — a node with no served vector is simply ABSENT from the map (an honest
+ * absence: the scene rings it in the fallback, never mis-assigning some other
+ * node's vector to it). Robust to the embeddings array being reordered relative to
+ * the served node set, to being a strict subset (fewer rows than nodes), and to a
+ * duplicate `node_id` (last row wins, deterministic — a degenerate shape the live
+ * route never emits, but the join must not corrupt identity if it does). This is
+ * the single owner of the by-id join: the scene merges this map onto its nodes
+ * with `map.get(node.id)`, so the node order on either side is irrelevant.
+ */
+export function embeddingsByNodeId(
+  response: Pick<EmbeddingsResponse, "embeddings">,
+): Map<string, number[]> {
+  const byId = new Map<string, number[]>();
+  for (const e of response.embeddings) byId.set(e.node_id, e.vector);
+  return byId;
+}
+
 // --- §5 bounded temporal-lineage slice (dashboard-timeline ADR) ------------------
 //
 // Tolerant adapter for `GET /graph/lineage`. The live `{data: {nodes, arcs,
