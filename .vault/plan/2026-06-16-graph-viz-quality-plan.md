@@ -190,10 +190,10 @@ Promote the real-data semantic composite (formalized in the scorecard) to the SH
 
 Wire runSemanticGateOnRealData as the Meaning verdict, retain the synthetic fixture as a determinism and time guard, and read held state from tiers.
 
-- [ ] `W03.P08.S37` - Wire runSemanticGateOnRealData as the shipping Meaning verdict using the formalized scorecard composite, retaining the synthetic fixture only as the determinism and time guard; `frontend/src/scene/field/semanticGate.ts`.
-- [ ] `W03.P08.S38` - Gate Meaning availability on the embedding-presence floor plus the tiers search-tier truth, reading held state from the tiers block not an empty array; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P08.S39` - Render the designed Held state when embeddings are absent so the mode degrades honestly rather than as an error; `frontend/src/scene/field/representationLayout.ts`.
-- [ ] `W03.P08.S40` - Add a consumer test that the real-data verdict ships on present embeddings and holds from tiers when absent; `frontend/src/scene/field/semanticGate.test.ts`.
+- [x] `W03.P08.S37` - Wire runSemanticGateOnRealData as the shipping Meaning verdict using the formalized scorecard composite, retaining the synthetic fixture only as the determinism and time guard; `frontend/src/scene/field/semanticGate.ts`.
+- [x] `W03.P08.S38` - Gate Meaning availability on the embedding-presence floor plus the tiers search-tier truth, reading held state from the tiers block not an empty array; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P08.S39` - Render the designed Held state when embeddings are absent so the mode degrades honestly rather than as an error; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W03.P08.S40` - Add a consumer test that the real-data verdict ships on present embeddings and holds from tiers when absent; `frontend/src/scene/field/semanticGate.test.ts`.
 
 ### Phase `W03.P09` - Index the served workspace and live-verify
 
@@ -211,10 +211,10 @@ Run the scorecard over all six layouts against the real corpus and the ground-tr
 
 Run the scorecard over all six layouts against the live corpus and the seeded fixtures and capture the baseline scorecard vectors.
 
-- [ ] `W04.P10.S44` - Run the force and semantic gates over the live corpus slice and the seeded fixtures and capture baseline scorecard vectors; `frontend/src/scene/field/scorecard/runAll.ts`.
-- [ ] `W04.P10.S45` - Run the lineage and hierarchy Sugiyama gates over the planted-layer DAG fixtures and the live derivation slice and capture baselines; `frontend/src/scene/field/scorecard/runAll.ts`.
-- [ ] `W04.P10.S46` - Run the radial and cluster gates over the layered-tree and SBM/LFR fixtures and the live slice and capture baselines; `frontend/src/scene/field/scorecard/runAll.ts`.
-- [ ] `W04.P10.S47` - Add an all-six scorecard test asserting every layout's per-metric thresholds pass over the deterministic fixtures; `frontend/src/scene/field/scorecard/runAll.test.ts`.
+- [x] `W04.P10.S44` - Run the force and semantic gates over the live corpus slice and the seeded fixtures and capture baseline scorecard vectors; `frontend/src/scene/field/scorecard/runAll.ts`.
+- [x] `W04.P10.S45` - Run the lineage and hierarchy Sugiyama gates over the planted-layer DAG fixtures and the live derivation slice and capture baselines; `frontend/src/scene/field/scorecard/runAll.ts`.
+- [x] `W04.P10.S46` - Run the radial and cluster gates over the layered-tree and SBM/LFR fixtures and the live slice and capture baselines; `frontend/src/scene/field/scorecard/runAll.ts`.
+- [x] `W04.P10.S47` - Add an all-six scorecard test asserting every layout's per-metric thresholds pass over the deterministic fixtures; `frontend/src/scene/field/scorecard/runAll.test.ts`.
 
 ### Phase `W04.P11` - Robustness hardening across degenerate inputs
 
