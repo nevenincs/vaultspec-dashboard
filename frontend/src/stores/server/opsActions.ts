@@ -13,6 +13,10 @@ export const OPS_ACTION = "ops:run";
 export interface OpsPayload {
   target: "core" | "rag";
   verb: string;
+  /** Optional validated control args (rag-control-plane: reindex type/clean,
+   *  watcher debounce/cooldown, evict root). Forwarded as the POST body to the
+   *  brokered control verb; absent for argument-free verbs. */
+  body?: unknown;
 }
 
 // Register the terminal effect once (module load): run the whitelisted verb
@@ -23,7 +27,7 @@ appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
   if (!payload) throw new Error("ops:run dispatched without a payload");
   return payload.target === "core"
     ? engineClient.opsCore(payload.verb)
-    : engineClient.opsRag(payload.verb);
+    : engineClient.opsRag(payload.verb, payload.body ?? {});
 });
 
 /** Dispatch an ops intent through the seam; resolves with the ops envelope. */

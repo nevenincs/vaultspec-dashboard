@@ -517,6 +517,32 @@ export class MockEngine {
   private gitAhead: number | undefined = undefined;
   private gitBehind: number | undefined = undefined;
 
+  // --- rag control-plane state (rag-control-plane: mirrors the brokered wire) ---
+  /** Newest-first reindex job records (rag's `/jobs` shape). Seeded with one
+   *  completed build so the freshness epoch + activity list are non-empty. */
+  private ragJobs: Record<string, unknown>[] = [
+    {
+      id: "mock-job-seed",
+      phase: "done",
+      source: "vault",
+      trigger: "watcher",
+      started_at: 1000,
+      finished_at: 1000.5,
+      runtime_seconds: 0.5,
+      result: "+3 /3 -0",
+      progress: { step: "write metadata", completed: 1, total: 1 },
+    },
+  ];
+  private ragJobSeq = 0;
+  /** Watcher config, reflected by reconfigure (mirrors rag's `/watcher` shape). */
+  private ragWatcherState = {
+    watch_enabled: true,
+    debounce_ms: 2000,
+    cooldown_s: 30,
+    watching: [MOCK_SCOPE],
+    running: true,
+  };
+
   // --- session / settings state (mirrors the live store) ---
   /** The active worktree scope — the "where am I" pointer restored on load. The
    *  active scope drives `/status` and the stream's scope fallback. */
@@ -1423,12 +1449,146 @@ export class MockEngine {
     }
     const ops = /^\/ops\/(core|rag)\/([^/]+)$/.exec(path);
     if (ops) {
-      if (ops[1] === "rag" && this.degradations.has("semantic")) {
-        throw new RouteError(502, "rag service down");
+      const target = ops[1];
+      const verb = decodeURIComponent(ops[2]);
+      if (target === "rag") {
+        return this.ragControlRoute(verb, params, init, tiers);
       }
-      return { ok: true, envelope: { status: "success", verb: ops[2] }, tiers };
+      // core ops: generic success envelope (unchanged).
+      return { ok: true, envelope: { status: "success", verb }, tiers };
     }
     throw new RouteError(404, `no mock route for ${path}`);
+  }
+
+  /**
+   * The brokered rag control plane (rag-control-plane ADR D2), mirroring the LIVE
+   * wire EXACTLY (mock-mirrors-live-wire-shape): the engine forwards rag's
+   * envelope VERBATIM under `data.envelope` with the tiers block, GET for reads
+   * and POST for controls. Rag-down degrades to `{envelope: null, tiers}` (the
+   * semantic tier already reports unavailable) — NEVER a 502 (degradation-is-
+   * read-from-tiers), matching the live broker's degraded path. Process-lifecycle
+   * verbs (server-*) run via the engine's CLI runner; the mock returns a generic
+   * success for them.
+   */
+  private ragControlRoute(
+    verb: string,
+    params: URLSearchParams,
+    init: RequestInit | undefined,
+    tiers: ReturnType<MockEngine["tiersBlock"]>,
+  ): unknown {
+    const isLifecycle = verb.startsWith("server-");
+    // Rag-down: the brokered HTTP verbs degrade to an empty envelope + the
+    // semantic-unavailable tiers block (the live broker's `rag_control_transport`
+    // Err path). Lifecycle verbs run via CLI, so they are not gated on rag being
+    // up here.
+    if (this.degradations.has("semantic") && !isLifecycle) {
+      return { envelope: null, tiers };
+    }
+    const body =
+      init?.body && typeof init.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+    let envelope: unknown;
+    switch (verb) {
+      case "service-state":
+        envelope = {
+          index: {
+            cuda: true,
+            gpu_name: "Mock GPU",
+            vram_mb: 16384,
+            vault_count: this.noVault ? 0 : this.corpus.nodes.length,
+            code_count: 0,
+            target_dir: this.activeScope,
+            storage_path: "http://127.0.0.1:8765",
+          },
+        };
+        break;
+      case "jobs": {
+        const jobId = params.get("job_id");
+        const limit = params.get("limit") ? Number(params.get("limit")) : undefined;
+        let jobs = this.ragJobs;
+        if (jobId) jobs = jobs.filter((j) => String(j.id).startsWith(jobId));
+        if (limit !== undefined) jobs = jobs.slice(0, Math.max(0, limit));
+        envelope = {
+          jobs,
+          total: this.ragJobs.length,
+          returned: jobs.length,
+          summary: {
+            running: this.ragJobs.filter((j) => j.phase === "running").length,
+          },
+        };
+        break;
+      }
+      case "watcher":
+        envelope = { ...this.ragWatcherState };
+        break;
+      case "projects":
+        envelope = {
+          projects: [{ root: this.activeScope, ref_count: 0, idle_seconds: 12 }],
+          max_projects: 16,
+          idle_ttl_seconds: 1800,
+        };
+        break;
+      case "readiness":
+        envelope = { ready: true, models: { embed: "loaded", rerank: "loaded" } };
+        break;
+      case "reindex": {
+        const id = `mock-job-${++this.ragJobSeq}`;
+        this.ragJobs.unshift({
+          id,
+          phase: "running",
+          source: (body.type as string) ?? "vault",
+          trigger: "service",
+          started_at: 2000,
+          progress: { step: "embedding", completed: 0, total: 10 },
+        });
+        envelope = { ok: true, job_id: id, status: "queued" };
+        break;
+      }
+      case "watcher-reconfigure":
+        if (body.debounce_ms !== undefined)
+          this.ragWatcherState.debounce_ms = Number(body.debounce_ms);
+        if (body.cooldown_s !== undefined)
+          this.ragWatcherState.cooldown_s = Number(body.cooldown_s);
+        envelope = { restarted: true, ...this.ragWatcherState };
+        break;
+      case "watcher-start":
+        this.ragWatcherState.running = true;
+        envelope = { root: this.activeScope, started: true };
+        break;
+      case "watcher-stop":
+        this.ragWatcherState.running = false;
+        envelope = { root: this.activeScope, stopped: true };
+        break;
+      case "project-evict":
+        envelope = {
+          root: body.root ?? this.activeScope,
+          evicted: true,
+          reason: "manual",
+        };
+        break;
+      case "quality":
+        envelope = { score: 0.82, samples: 20 };
+        break;
+      default:
+        if (isLifecycle) {
+          envelope = { status: "success", verb };
+          break;
+        }
+        throw new RouteError(403, `rag verb ${verb} is not brokered`);
+    }
+    return { envelope, tiers };
+  }
+
+  /** Test affordance: flip a running mock reindex job to a terminal phase so a
+   *  jobs-poll test can drive the job to completion (the mock has no timers). */
+  completeRagJob(jobId: string, phase: "done" | "error" = "done"): void {
+    const job = this.ragJobs.find((j) => j.id === jobId);
+    if (job) {
+      job.phase = phase;
+      job.finished_at = 3000;
+      job.progress = { step: "write metadata", completed: 10, total: 10 };
+    }
   }
 
   private interiorOf(id: string) {

@@ -1952,11 +1952,19 @@ export type OpsOutcome = "ok" | "backend-down" | "failed";
 export function classifyOpsOutcome(result: {
   ok: boolean;
   error?: unknown;
+  tiers?: TiersBlock;
 }): OpsOutcome {
   if (result.error !== undefined) {
     return result.error instanceof EngineError && result.error.tiers !== undefined
       ? "backend-down"
       : "failed";
+  }
+  // A brokered rag control verb degrades to a 200 carrying a semantic-unavailable
+  // `tiers` block rather than a 502 (rag-control-plane ADR D2: degradation is
+  // read from tiers, not an error status). Read that truth here so a rag-down
+  // op still surfaces as backend-down, not a flat failure.
+  if (result.tiers && readTierAvailability(result.tiers, ["semantic"]).degraded) {
+    return "backend-down";
   }
   return result.ok ? "ok" : "failed";
 }

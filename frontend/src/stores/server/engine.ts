@@ -1444,6 +1444,19 @@ export class EngineClient {
     return this.post(`/ops/rag/${encodeURIComponent(verb)}`, body);
   }
 
+  /** The brokered rag READ verbs (rag-control-plane ADR D2): a GET against the
+   *  one `/ops/rag/{verb}` namespace (service-state, jobs, watcher, projects,
+   *  readiness, logs, metrics). rag's envelope is forwarded VERBATIM under
+   *  `data.envelope` with the tiers block, so the unwrapped result is
+   *  `{envelope, tiers}`. The control plane reads degraded state from `tiers`,
+   *  never a transport error (degradation-is-read-from-tiers). */
+  opsRagGet<T = unknown>(
+    verb: string,
+    params?: Record<string, string | number | undefined>,
+  ): Promise<{ envelope: T | null; tiers: TiersBlock }> {
+    return this.get(`/ops/rag/${encodeURIComponent(verb)}`, params);
+  }
+
   /** The read-only git pass-through (dashboard-pipeline-wire W04; historical diff
    *  figma-parity-reconciliation S14): a whitelisted read-only git verb
    *  (`status` | `numstat` | `diff` | `histdiff`), git output forwarded verbatim.

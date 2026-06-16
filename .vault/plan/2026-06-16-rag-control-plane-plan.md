@@ -141,23 +141,23 @@ Surface a stable semantic-index epoch through the engine and key the embeddings 
 
 Add one stores-layer rag-control module as the sole wire client carrying queries, typed mutations, and a backoff jobs-progress poll hook all gated on the semantic tier truth, with the mock mirroring the live wire shape.
 
-- [ ] `P04.S20` - Add the rag-control client methods on the engine client for the brokered GET reads and POST controls as the sole wire client of the ops rag namespace; `frontend/src/stores/server/ragControl.ts`.
-- [ ] `P04.S21` - Add the service-state and jobs and watcher-state and projects and index-status queries gated on the semantic tier truth read from the tiers block not a transport error; `frontend/src/stores/server/ragControl.ts`.
-- [ ] `P04.S22` - Add the typed mutations reindex and watcher start and stop and reconfigure with validated args and project evict dispatched through the platform seam; `frontend/src/stores/server/ragControl.ts`.
-- [ ] `P04.S23` - Add a jobs-progress poll hook with backoff that polls a triggered job id to terminal and stops on the semantic tier going unavailable; `frontend/src/stores/server/ragControl.ts`.
-- [ ] `P04.S24` - Mirror the brokered control wire shape in the mock engine so reindex returns a job id and jobs and watcher and projects serve the live envelope shape; `frontend/src/stores/server/engine.ts`.
-- [ ] `P04.S25` - Test the consumer methods and the jobs poll hook drive the control plane and the semantic-tier gating degrades from the tiers block; `frontend/src/stores/server/ragControl.test.ts`.
-- [ ] `P04.S26` - Test mock-vs-live fidelity by feeding a captured live brokered sample through the same client code path the app uses and asserting the shape matches; `frontend/src/stores/server/ragControl.test.ts`.
+- [x] `P04.S20` - Add the rag-control client methods on the engine client for the brokered GET reads and POST controls as the sole wire client of the ops rag namespace; `frontend/src/stores/server/ragControl.ts`.
+- [x] `P04.S21` - Add the service-state and jobs and watcher-state and projects and index-status queries gated on the semantic tier truth read from the tiers block not a transport error; `frontend/src/stores/server/ragControl.ts`.
+- [x] `P04.S22` - Add the typed mutations reindex and watcher start and stop and reconfigure with validated args and project evict dispatched through the platform seam; `frontend/src/stores/server/ragControl.ts`.
+- [x] `P04.S23` - Add a jobs-progress poll hook with backoff that polls a triggered job id to terminal and stops on the semantic tier going unavailable; `frontend/src/stores/server/ragControl.ts`.
+- [x] `P04.S24` - Mirror the brokered control wire shape in the mock engine so reindex returns a job id and jobs and watcher and projects serve the live envelope shape; `frontend/src/stores/server/engine.ts`.
+- [x] `P04.S25` - Test the consumer methods and the jobs poll hook drive the control plane and the semantic-tier gating degrades from the tiers block; `frontend/src/stores/server/ragControl.test.ts`.
+- [x] `P04.S26` - Test mock-vs-live fidelity by feeding a captured live brokered sample through the same client code path the app uses and asserting the shape matches; `frontend/src/stores/server/ragControl.test.ts`.
 
 ### Phase `P05` - frontend control UI
 
 Build an expanded ops and index control surface in the app layer that renders the control plane from centralized design-system primitives and consumes only stores hooks, never fetching rag directly.
 
-- [ ] `P05.S27` - Build the reindex trigger control with live job progress rendering the poll hook state composed from centralized design-system primitives consuming only the stores hooks; `frontend/src/app/right/OpsPanel.tsx`.
-- [ ] `P05.S28` - Build the watcher configuration control for debounce and cooldown and enable wired to the validated reconfigure mutation; `frontend/src/app/right/OpsPanel.tsx`.
-- [ ] `P05.S29` - Build the service and GPU and index health readout from the service-state and index-status queries with honest semantic-tier degradation; `frontend/src/app/right/OpsPanel.tsx`.
-- [ ] `P05.S30` - Build the projects list and evict control rendering rag's slot state and dispatching the evict mutation; `frontend/src/app/right/OpsPanel.tsx`.
-- [ ] `P05.S31` - Render-test the control surface shows reindex progress and watcher config and health and projects and degrades to the held state when the semantic tier is unavailable; `frontend/src/app/right/OpsPanel.test.tsx`.
+- [x] `P05.S27` - Build the reindex trigger control with live job progress rendering the poll hook state composed from centralized design-system primitives consuming only the stores hooks; `frontend/src/app/right/OpsPanel.tsx`.
+- [x] `P05.S28` - Build the watcher configuration control for debounce and cooldown and enable wired to the validated reconfigure mutation; `frontend/src/app/right/OpsPanel.tsx`.
+- [x] `P05.S29` - Build the service and GPU and index health readout from the service-state and index-status queries with honest semantic-tier degradation; `frontend/src/app/right/OpsPanel.tsx`.
+- [x] `P05.S30` - Build the projects list and evict control rendering rag's slot state and dispatching the evict mutation; `frontend/src/app/right/OpsPanel.tsx`.
+- [x] `P05.S31` - Render-test the control surface shows reindex progress and watcher config and health and projects and degrades to the held state when the semantic tier is unavailable; `frontend/src/app/right/OpsPanel.test.tsx`.
 
 ### Phase `P06` - live verification and DoD
 
