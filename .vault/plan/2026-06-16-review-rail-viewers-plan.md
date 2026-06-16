@@ -10,15 +10,6 @@ related:
   - '[[2026-06-16-review-rail-viewers-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `review-rail-viewers` plan
 
@@ -93,7 +84,7 @@ Prove the content contract, viewer rendering, theming, IA, and gates green; code
 - [x] `P07.S33` - Run the full frontend lint gate and the engine fmt-plus-clippy gate to exit 0 including prettier format:check and tsc; `frontend/package.json`.
 - [x] `P07.S34` - Add component tests for frontmatter rendering, wiki-link navigation, GFM task lists, and code highlighting across light, dark, and high-contrast themes; `frontend/src/app/viewer/MarkdownReader.test.tsx`.
 - [ ] `P07.S35` - Verify the four-tab law holds and every Overview row cross-links to file, node, and viewer with no inlined content; `frontend/src/app/right/ChangesOverview.test.tsx`.
-- [ ] `P07.S36` - Run vaultspec-code-review over the feature and land any required revisions to a PASS verdict; `.vault/audit/2026-06-16-review-rail-viewers-audit.md`.
+- [x] `P07.S36` - Run vaultspec-code-review over the feature and land any required revisions to a PASS verdict; `.vault/audit/2026-06-16-review-rail-viewers-audit.md`.
 
 ## Description
 
