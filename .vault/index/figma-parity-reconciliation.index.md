@@ -31,6 +31,28 @@ related:
   - '[[2026-06-16-figma-parity-reconciliation-W01-P03-S21]]'
   - '[[2026-06-16-figma-parity-reconciliation-W01-P03-S22]]'
   - '[[2026-06-16-figma-parity-reconciliation-W01-P03-summary]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P04-S23]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P04-S24]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P04-S25]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P04-S26]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P04-S27]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P04-summary]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S28]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S29]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S30]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S31]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S32]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S33]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-S34]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P05-summary]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S35]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S36]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S37]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S38]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S39]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S40]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W02-P06-summary]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S41]]'
   - '[[2026-06-16-figma-parity-reconciliation-adr]]'
   - '[[2026-06-16-figma-parity-reconciliation-plan]]'
   - '[[2026-06-16-figma-parity-reconciliation-reference]]'
@@ -74,6 +96,28 @@ Auto-generated index of all documents tagged with `#figma-parity-reconciliation`
 - `2026-06-16-figma-parity-reconciliation-W01-P03-S21` - Author parse-clean figma mappings for every mappable code component against its Kit primitive
 - `2026-06-16-figma-parity-reconciliation-W01-P03-S22` - Validate the full Code Connect map parses with zero errors via figma connect parse, leaving publish as the human's gated step
 - `2026-06-16-figma-parity-reconciliation-W01-P03-summary` - `figma-parity-reconciliation` `W01.P03` summary
+- `2026-06-16-figma-parity-reconciliation-W02-P04-S23` - Rebuild the app shell layout frame from its binding frame as a dumb projection over the preserved view stores
+- `2026-06-16-figma-parity-reconciliation-W02-P04-S24` - Rebuild the left rail container and rail filter from the binding LeftRail Kit primitive over the preserved browser-mode store
+- `2026-06-16-figma-parity-reconciliation-W02-P04-S25` - Rebuild the vault browser from its binding frame over the preserved vault-tree query and selection store
+- `2026-06-16-figma-parity-reconciliation-W02-P04-S26` - Rebuild the code tree browser from the binding CodeTree Kit primitive over the preserved code-selection store
+- `2026-06-16-figma-parity-reconciliation-W02-P04-S27` - Rebuild the tree browser from the binding TreeBrowser Kit primitive over the preserved tree query with plan-progress pips
+- `2026-06-16-figma-parity-reconciliation-W02-P04-summary` - `figma-parity-reconciliation` `W02.P04` summary
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S28` - Rebuild the right rail tab bar to the binding Inspect Work Search Changes IA with the liveness pillars promoted to a persistent header
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S29` - Rebuild the inspector tab from its binding frame over the preserved selection and enriched node-evidence query
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S30` - Rebuild the work tab from the binding WorkTab Kit primitive over the preserved pipeline-status query
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S31` - Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S32` - Rebuild the changes overview and diff view from their binding frames over the preserved diff query, including the historical text-diff route
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S33` - Rebuild the stage filter bar and sidebar from the binding FacetChipGroup primitive over the preserved filter store
+- `2026-06-16-figma-parity-reconciliation-W02-P05-S34` - Rebuild the stage minimap widget from its binding frame over the preserved scene viewport state
+- `2026-06-16-figma-parity-reconciliation-W02-P05-summary` - `figma-parity-reconciliation` `W02.P05` summary
+- `2026-06-16-figma-parity-reconciliation-W02-P06-S35` - Rebuild the timeline from the binding Timeline Kit primitive over the preserved events query and time-travel store
+- `2026-06-16-figma-parity-reconciliation-W02-P06-S36` - Rebuild the degradation overlays from their binding frames reading availability from the tiers block
+- `2026-06-16-figma-parity-reconciliation-W02-P06-S37` - Rebuild the discover overlay from its binding frame over the preserved rag-backed discover query
+- `2026-06-16-figma-parity-reconciliation-W02-P06-S38` - Rebuild the settings dialog from its binding frame, schema-driven from the served settings registry
+- `2026-06-16-figma-parity-reconciliation-W02-P06-S39` - Rebuild the schema-driven settings controls from the binding Switch, Slider, and SegmentedToggle Kit primitives
+- `2026-06-16-figma-parity-reconciliation-W02-P06-S40` - Rebuild the command palette from its binding frame over the preserved command registry
+- `2026-06-16-figma-parity-reconciliation-W02-P06-summary` - `figma-parity-reconciliation` `W02.P06` summary
+- `2026-06-16-figma-parity-reconciliation-W03-P07-S41` - Rewrite the Pixi field renderer to the binding connection-field treatment driven through the preserved SceneController
 
 ### plan
 
