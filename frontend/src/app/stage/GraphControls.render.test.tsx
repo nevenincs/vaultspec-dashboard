@@ -6,9 +6,11 @@
 //
 // What is asserted (the IA consolidation mapping + the non-occluding overlay):
 //   • Navigate emits the real camera SceneCommands (zoom-in/out, fit, reset);
-//   • Layout segmented control drives the real representation mode (Network →
-//     connectivity, Tree → lineage, Grouped → semantic) and the Timeline segment
-//     enters time-travel (the temporal seam);
+//   • the GROUPED Layout picker (graph-layout-catalog D11) drives the real
+//     representation mode — a Spatial group (Network → connectivity, Tree →
+//     lineage, Layered → hierarchical, Radial → radial, Communities → community,
+//     Grouped by meaning → semantic) and a DISTINCT Timeline entry that enters
+//     time-travel (the temporal seam);
 //   • the active segment reflects time-travel when the shared mode is time-travel;
 //   • Zoom drives the real LOD descent (granularity feature ↔ document);
 //   • Tune drives the real d3-force knobs via set-layout-params (Spacing → repel,
@@ -57,17 +59,23 @@ describe("GraphControls — Navigate (camera commands)", () => {
   });
 });
 
-describe("GraphControls — Layout segmented control", () => {
-  it("renders the four plain-language segments in order", () => {
+describe("GraphControls — grouped Layout picker (D11)", () => {
+  it("renders the six Spatial-group segments in order, Timeline kept distinct", () => {
     render(createElement(GraphControls));
-    const group = screen.getByRole("group", { name: "graph layout" });
-    const segs = Array.from(group.querySelectorAll("button[data-seg]"));
+    const spatial = screen.getByRole("group", { name: "spatial layout" });
+    const segs = Array.from(spatial.querySelectorAll("button[data-seg]"));
     expect(segs.map((s) => s.getAttribute("aria-label"))).toEqual([
       "Network",
       "Tree",
-      "Grouped",
-      "Timeline",
+      "Layered",
+      "Radial",
+      "Communities",
+      "Grouped by meaning",
     ]);
+    // Timeline lives in its OWN distinct group, never folded into the Spatial row.
+    const temporal = screen.getByRole("group", { name: "temporal view" });
+    const tSegs = Array.from(temporal.querySelectorAll("button[data-seg]"));
+    expect(tSegs.map((s) => s.getAttribute("aria-label"))).toEqual(["Timeline"]);
   });
 
   it("Network maps to the connectivity representation mode", () => {
@@ -83,9 +91,27 @@ describe("GraphControls — Layout segmented control", () => {
     expect(useViewStore.getState().activeRepresentationMode).toBe("lineage");
   });
 
-  it("Grouped maps to the semantic representation mode", () => {
+  it("Layered maps to the hierarchical representation mode (W02.P06)", () => {
     render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "Grouped" }));
+    fireEvent.click(screen.getByRole("button", { name: "Layered" }));
+    expect(useViewStore.getState().activeRepresentationMode).toBe("hierarchical");
+  });
+
+  it("Radial maps to the radial representation mode (W02.P05)", () => {
+    render(createElement(GraphControls));
+    fireEvent.click(screen.getByRole("button", { name: "Radial" }));
+    expect(useViewStore.getState().activeRepresentationMode).toBe("radial");
+  });
+
+  it("Communities maps to the community representation mode (W02.P07)", () => {
+    render(createElement(GraphControls));
+    fireEvent.click(screen.getByRole("button", { name: "Communities" }));
+    expect(useViewStore.getState().activeRepresentationMode).toBe("community");
+  });
+
+  it("Grouped by meaning maps to the semantic representation mode", () => {
+    render(createElement(GraphControls));
+    fireEvent.click(screen.getByRole("button", { name: "Grouped by meaning" }));
     expect(useViewStore.getState().activeRepresentationMode).toBe("semantic");
   });
 
@@ -98,6 +124,17 @@ describe("GraphControls — Layout segmented control", () => {
     expect(
       screen.getByRole("button", { name: "Network" }).getAttribute("aria-pressed"),
     ).toBe("false");
+  });
+
+  it("ships the three new modes UN-GATED (no available downgrade, D10)", () => {
+    render(createElement(GraphControls));
+    // The new modes carry no italic/unavailable affordance — they are live the
+    // moment they ship (no gate, no fallback copy).
+    for (const label of ["Layered", "Radial", "Communities"]) {
+      const btn = screen.getByRole("button", { name: label });
+      const title = btn.getAttribute("title") ?? "";
+      expect(title).not.toMatch(/falls back/i);
+    }
   });
 
   it("Timeline enters time-travel (the temporal seam)", () => {
@@ -114,9 +151,21 @@ describe("GraphControls — Layout segmented control", () => {
     ).toBe("true");
   });
 
-  it("marks Grouped (semantic) as available only when its gate ships", () => {
+  it("deactivates the Spatial group when time-travel owns the highlight", () => {
+    useViewStore.setState({
+      timelineMode: { kind: "time-travel", at: 1 },
+      activeRepresentationMode: "connectivity",
+    });
     render(createElement(GraphControls));
-    const grouped = screen.getByRole("button", { name: "Grouped" });
+    // No spatial segment is pressed while Timeline is active.
+    expect(
+      screen.getByRole("button", { name: "Network" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("marks Grouped by meaning (semantic) as available only when its gate ships", () => {
+    render(createElement(GraphControls));
+    const grouped = screen.getByRole("button", { name: "Grouped by meaning" });
     // The control is rendered regardless; its title states the honest fallback
     // when the semantic projection has not shipped (no dead control, no lie).
     const title = grouped.getAttribute("title") ?? "";

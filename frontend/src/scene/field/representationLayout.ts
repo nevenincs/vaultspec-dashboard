@@ -19,12 +19,37 @@
 // framework-free.
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
+import { communityLayout } from "./communityLayout";
+import { hierarchicalLayout } from "./hierarchicalLayout";
 import { lineageLayout } from "./lineageLayout";
+import { radialLayout } from "./radialLayout";
 import { SEMANTIC_MODE_GATE } from "./semanticGate";
 import { semanticLayout } from "./semanticLayout";
 
-/** The three v1 representation modes (distinct from the force/circular tuning). */
-export type RepresentationMode = "connectivity" | "lineage" | "semantic";
+/**
+ * The spatial representation modes (distinct from the force/circular tuning).
+ *
+ * connectivity — the d3-force solver owns positions (the only solver mode).
+ * lineage      — the deterministic derivation-DAG provenance spine.
+ * hierarchical — a general layered (Sugiyama) seed over the structural backbone
+ *                (graph-layout-catalog D2/D3, W02.P06) — DISTINCT from lineage.
+ * radial       — a deterministic tidy-tree seed over the backbone, salience-root
+ *                (graph-layout-catalog D4/D5, W02.P05).
+ * community    — a deterministic Louvain two-level clustered seed
+ *                (graph-layout-catalog D8/D9, W02.P07).
+ * semantic     — the UMAP projection over embeddings, v1-GATED until promotion.
+ *
+ * The three new modes (hierarchical/radial/community) ship UN-GATED (D10): they
+ * need no new wire data and are near-linear at the bounded ceiling, so there is
+ * no measurable trigger to gate on — unlike semantic.
+ */
+export type RepresentationMode =
+  | "connectivity"
+  | "lineage"
+  | "hierarchical"
+  | "radial"
+  | "community"
+  | "semantic";
 
 /** The default first-load mode (graph-representation ADR: connectivity). */
 export const DEFAULT_REPRESENTATION_MODE: RepresentationMode = "connectivity";
@@ -102,6 +127,27 @@ export function representationLayout(
           aggregates: result.aggregates,
         },
       };
+    }
+    case "hierarchical": {
+      // A general layered (Sugiyama) seed over the structural backbone (D2/D3) —
+      // distinct from lineage: it carries no spine/dangling honesty, lays every
+      // served node, and ships un-gated (D10). Held stopped over the seed.
+      const positions = hierarchicalLayout(nodes, edges);
+      return { positions, applied: "hierarchical" };
+    }
+    case "radial": {
+      // A deterministic tidy-tree seed over the backbone, salience-max root with
+      // per-component angular sectors (D4/D5). Ships un-gated (D10).
+      const positions = radialLayout(nodes, edges);
+      return { positions, applied: "radial" };
+    }
+    case "community": {
+      // A deterministic Louvain two-level clustered seed (D8/D9): hand-rolled
+      // Louvain over the backbone + circular two-level placement. Ships un-gated
+      // (D10). featureHulls may optionally read the membership as an OVERLAY, never
+      // a re-layout — that overlay drive lives in the overlay layer, not here.
+      const positions = communityLayout(nodes, edges);
+      return { positions, applied: "community" };
     }
     case "semantic": {
       // v1-gated: the semantic UMAP mode ships only when the measured gate passes

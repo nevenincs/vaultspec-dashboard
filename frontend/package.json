@@ -32,6 +32,7 @@
     "@tanstack/react-router": "^1.170.15",
     "d3-ease": "^3.0.1",
     "d3-force": "^3.0.0",
+    "d3-hierarchy": "^3.1.2",
     "d3-interpolate": "^3.0.1",
     "lucide-react": "^1.18.0",
     "pixi.js": "^8.19.0",
@@ -40,7 +41,6 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.2.0",
-    "sigma": "^3.0.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -52,6 +52,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/d3-ease": "^3.0.2",
     "@types/d3-force": "^3.0.10",
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/d3-interpolate": "^3.0.4",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
