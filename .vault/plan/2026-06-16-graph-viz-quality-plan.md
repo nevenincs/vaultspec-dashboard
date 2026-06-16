@@ -220,12 +220,12 @@ Run the scorecard over all six layouts against the live corpus and the seeded fi
 
 Harden every layout against NaN, empty, singleton, disconnected, degenerate, and ceiling-sized inputs with the designed fallbacks.
 
-- [ ] `W04.P11.S48` - Harden the force layout: re-confirm NaN guards, settle-then-freeze, and stable output on empty, singleton, and disconnected slices; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `W04.P11.S49` - Harden the lineage and hierarchy layouts: no-spine grid fallback, degenerate all-same-position inputs, and cycle removal on back-edges; `frontend/src/scene/field/lineageLayout.ts`.
-- [ ] `W04.P11.S50` - Harden the radial layout: empty-root and singleton handling and a deterministic root when degree ties on a degenerate slice; `frontend/src/scene/field/radialLayout.ts`.
-- [ ] `W04.P11.S51` - Harden the community layout: singleton-community and all-isolated-nodes handling without NaN positions; `frontend/src/scene/field/communityLayout.ts`.
-- [ ] `W04.P11.S52` - Harden the semantic layout: fallback ring on absent embeddings, singleton-vector handling, and ceiling-sized-slice bounding; `frontend/src/scene/field/semanticLayout.ts`.
-- [ ] `W04.P11.S53` - Harden the representation dispatcher: large-graph at the node ceiling and honest downgradeReason on each fallback path; `frontend/src/scene/field/representationLayout.ts`.
+- [x] `W04.P11.S48` - Harden the force layout: re-confirm NaN guards, settle-then-freeze, and stable output on empty, singleton, and disconnected slices; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `W04.P11.S49` - Harden the lineage and hierarchy layouts: no-spine grid fallback, degenerate all-same-position inputs, and cycle removal on back-edges; `frontend/src/scene/field/lineageLayout.ts`.
+- [x] `W04.P11.S50` - Harden the radial layout: empty-root and singleton handling and a deterministic root when degree ties on a degenerate slice; `frontend/src/scene/field/radialLayout.ts`.
+- [x] `W04.P11.S51` - Harden the community layout: singleton-community and all-isolated-nodes handling without NaN positions; `frontend/src/scene/field/communityLayout.ts`.
+- [x] `W04.P11.S52` - Harden the semantic layout: fallback ring on absent embeddings, singleton-vector handling, and ceiling-sized-slice bounding; `frontend/src/scene/field/semanticLayout.ts`.
+- [x] `W04.P11.S53` - Harden the representation dispatcher: large-graph at the node ceiling and honest downgradeReason on each fallback path; `frontend/src/scene/field/representationLayout.ts`.
 
 ### Phase `W04.P12` - Fuzz and property tests; fix surfaced defects
 
@@ -243,10 +243,10 @@ Land the remaining backend implementations the missing-backend inventory and the
 
 Flip the served constants, wire the selectors to ops git, and parse porcelain, numstat, and unified diff per the git-diff ADR.
 
-- [ ] `W05.P13.S57` - Flip GIT_DIFF_CAPABILITY_SERVED and CHANGED_FILES_LIST_SERVED to true and wire useGitFileDiff and the changed-files selectors to client.opsGit status, numstat, and diff; `frontend/src/stores/server/queries.ts`.
-- [ ] `W05.P13.S58` - Parse porcelain-v1 status, numstat tallies, and unified diff hunks into the typed diff shape the ChangesOverview and DiffView consume; `frontend/src/stores/server/gitDiffParse.ts`.
-- [ ] `W05.P13.S59` - Render the status-grouped changed-files list with status letters and the bounded hunk-by-hunk diff body with green/red gutter glyphs per the git-diff ADR; `frontend/src/app/right/DiffView.tsx`.
-- [ ] `W05.P13.S60` - Mirror the /ops/git status, numstat, and diff shapes in the mock and add a consumer test feeding a captured live sample through adaptGitOp; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `W05.P13.S57` - Flip GIT_DIFF_CAPABILITY_SERVED and CHANGED_FILES_LIST_SERVED to true and wire useGitFileDiff and the changed-files selectors to client.opsGit status, numstat, and diff; `frontend/src/stores/server/queries.ts`.
+- [x] `W05.P13.S58` - Parse porcelain-v1 status, numstat tallies, and unified diff hunks into the typed diff shape the ChangesOverview and DiffView consume; `frontend/src/stores/server/gitDiffParse.ts`.
+- [x] `W05.P13.S59` - Render the status-grouped changed-files list with status letters and the bounded hunk-by-hunk diff body with green/red gutter glyphs per the git-diff ADR; `frontend/src/app/right/DiffView.tsx`.
+- [x] `W05.P13.S60` - Mirror the /ops/git status, numstat, and diff shapes in the mock and add a consumer test feeding a captured live sample through adaptGitOp; `frontend/src/stores/server/liveAdapters.test.ts`.
 
 ### Phase `W05.P14` - Mint code: artifact nodes in engine-graph Pass 2
 
