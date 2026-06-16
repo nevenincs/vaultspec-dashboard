@@ -1,9 +1,18 @@
-// The inspector (W03.P10.S42, ADR G2.b / G3.c): where "node as a live
-// lens" pays off in prose form — the stage shows the shape, the inspector
-// shows the evidence. Renders the selected node's metadata, evidence
-// (documents, resolved code locations with state, correlated commits),
-// and the per-tier edge list, collapsed by default and unfolding on
-// selection (the Unfolding Edges pattern).
+// The inspector (figma-parity-reconciliation W02.P05.S29; binding RightRail
+// inspector pane, Figma node 17:618 in frame 17:563): where "node as a live lens"
+// pays off in prose form — the stage shows the shape, the inspector shows the
+// evidence. Renders the selected node's metadata, the ENRICHED node-evidence
+// projection (documents with path + doc_type, resolved code locations keyed on
+// path with state, correlated commits with subject), and the per-tier edge list,
+// collapsed by default and unfolding on selection (the Unfolding Edges pattern).
+//
+// Rebuilt as a DUMB projection (dashboard-layer-ownership / views-are-projections)
+// over the PRESERVED stores hooks: `useNodeDetail`, `useNodeEvidence` (the S13
+// enriched shape), and `useNodeNeighbors`, plus the selection view store. It
+// fetches nothing, reads no raw tiers block, mints no model, and routes only
+// selection intent back through the view store. Rebuilt onto the NEW Figma
+// role-named token foundation: canonical radius (`rounded-fg-xs`) and the
+// `caption` type role for dense counts, no retired radius or px-purpose type.
 
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -113,7 +122,7 @@ export function Inspector() {
       <div
         tabIndex={0}
         aria-label={`node ${node.title ?? node.id}`}
-        className="rounded-vs-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="rounded-fg-xs focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         onContextMenu={(e) => {
           e.preventDefault();
           openContextMenu(nodeEntity(), { x: e.clientX, y: e.clientY });
@@ -192,11 +201,11 @@ export function Inspector() {
                     return next;
                   })
                 }
-                className="flex items-center gap-vs-1 rounded-vs-sm text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="flex items-center gap-vs-1 rounded-fg-xs text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>{tier}</span>
-                <span className="text-2xs text-ink-faint" data-tabular>
+                <span className="text-caption text-ink-faint" data-tabular>
                   {edges.length}
                 </span>
               </button>

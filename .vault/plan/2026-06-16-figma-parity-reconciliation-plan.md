@@ -163,7 +163,7 @@ Rebuild the app shell frame and the left rail (vault, code, and tree browsers) f
 Rebuild the right activity rail (tabs, inspector, work, search, changes) and the stage chrome (filters, controls, minimap, overlays) from their binding frames over the preserved stores, with degradation read from the tiers block.
 
 - [x] `W02.P05.S28` - Rebuild the right rail tab bar to the binding Inspect Work Search Changes IA with the liveness pillars promoted to a persistent header; `frontend/src/app/right/RailTabs.tsx`.
-- [ ] `W02.P05.S29` - Rebuild the inspector tab from its binding frame over the preserved selection and enriched node-evidence query; `frontend/src/app/right/Inspector.tsx`.
+- [x] `W02.P05.S29` - Rebuild the inspector tab from its binding frame over the preserved selection and enriched node-evidence query; `frontend/src/app/right/Inspector.tsx`.
 - [ ] `W02.P05.S30` - Rebuild the work tab from the binding WorkTab Kit primitive over the preserved pipeline-status query; `frontend/src/app/right/WorkTab.tsx`.
 - [ ] `W02.P05.S31` - Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers; `frontend/src/app/right/SearchTab.tsx`.
 - [ ] `W02.P05.S32` - Rebuild the changes overview and diff view from their binding frames over the preserved diff query, including the historical text-diff route; `frontend/src/app/right/DiffView.tsx`.
