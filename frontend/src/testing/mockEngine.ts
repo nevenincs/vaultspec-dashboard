@@ -1266,14 +1266,35 @@ export class MockEngine {
         };
       }
       if (sub === "evidence") {
+        // The enriched node-evidence shape (figma-parity-reconciliation S16),
+        // mirroring the live `/nodes/{id}/evidence` wire BYTE-FOR-BYTE: documents
+        // carry `{ path, doc_type }`, code_locations are keyed on `path` (the
+        // corrected field name) with the optional `symbol` the live engine
+        // surfaces from a `path#symbol` resolution, and commits carry `subject`.
+        // The live engine ALSO rides the additive `resolved_target`/
+        // `bridge_node_id` value-adds alongside the GUI-consumed fields; the mock
+        // mirrors them so a consumer test exercises the same body the live origin
+        // serves (mock-mirrors-live-wire-shape).
+        const feature = node.feature_tags?.[0] ?? "core";
         return {
           documents: c.vaultTree
             .filter((e) => node.feature_tags?.some((t) => e.feature_tags.includes(t)))
             .map((e) => ({ path: e.path, doc_type: e.doc_type })),
           code_locations: [
             {
-              path: `src/${node.feature_tags?.[0] ?? "core"}/mod.rs`,
+              path: `src/${feature}/mod.rs`,
               state: "resolved",
+              resolved_target: `src/${feature}/mod.rs`,
+              bridge_node_id: `code:src/${feature}/mod.rs`,
+            },
+            {
+              // A symbol mention: the live engine surfaces the unqualified
+              // `symbol` from a `path#symbol` resolution (GUI `symbol?`).
+              path: `src/${feature}/mod.rs`,
+              symbol: "handle",
+              state: "resolved",
+              resolved_target: `src/${feature}/mod.rs#handle`,
+              bridge_node_id: `code:src/${feature}/mod.rs`,
             },
           ],
           commits: [
@@ -1938,23 +1959,31 @@ export class MockEngine {
 
   /**
    * Serve a read-only `/ops/git/{verb}` pass-through (dashboard-pipeline-wire
-   * W04), mirroring the live wire shape: git's output forwarded VERBATIM inside
-   * `{verb, output, tiers}`. The mock emits realistic porcelain status / numstat /
-   * unified-diff text for the dirty fixture file so the consumer parses the same
-   * verbatim format the live engine forwards. A non-whitelisted verb is a 403
-   * (the live read-only whitelist), and the `diff` verb requires a `path`.
+   * W04; historical diff figma-parity-reconciliation S17), mirroring the live
+   * wire shape: git's output forwarded VERBATIM inside `{verb, output, tiers}`.
+   * The mock emits realistic porcelain status / numstat / working-tree and
+   * two-rev historical unified-diff text so the consumer parses the same verbatim
+   * format the live engine forwards. A non-whitelisted verb is a 403 (the live
+   * read-only whitelist); the `diff` verb requires a `path`; the `histdiff` verb
+   * requires `from`, `to`, AND a `path` (either rev missing is a 400, exactly as
+   * the live route validates before any subprocess).
    */
   private gitOp(verb: string, init?: RequestInit): unknown {
-    const whitelist = new Set(["status", "numstat", "diff"]);
+    const whitelist = new Set(["status", "numstat", "diff", "histdiff"]);
     if (!whitelist.has(verb)) {
       throw new RouteError(
         403,
         `git verb ${verb} is not whitelisted (read-only ops/git)`,
       );
     }
-    const path = init?.body
-      ? (JSON.parse(String(init.body)) as { path?: string }).path
-      : undefined;
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          path?: string;
+          from?: string;
+          to?: string;
+        })
+      : {};
+    const path = body.path;
     // The dirty fixture file the mock's git surface reports on.
     const file = ".vault/plan/2026-01-05-editor-demo-plan.md";
     let output = "";
@@ -1974,6 +2003,26 @@ export class MockEngine {
           `@@ -1,3 +1,3 @@\n` +
           ` context line\n-old line\n+new line\n`
         : "";
+    } else if (verb === "histdiff") {
+      // The bounded two-rev historical diff: both revs AND a path are required,
+      // validated before any work, exactly as the live route does. A complete
+      // request returns a verbatim two-rev unified diff (no working-tree state
+      // gate — a historical diff between two commits is always defined).
+      if (path === undefined) {
+        throw new RouteError(400, "git histdiff requires a path argument");
+      }
+      if (body.from === undefined || body.to === undefined) {
+        throw new RouteError(
+          400,
+          "a historical diff requires BOTH `from` and `to` revisions",
+        );
+      }
+      output =
+        `diff --git a/${path} b/${path}\n` +
+        `index 1111111..3333333 100644\n` +
+        `--- a/${path}\n+++ b/${path}\n` +
+        `@@ -1,1 +1,1 @@\n` +
+        `-original line\n+rewritten line\n`;
     }
     return { verb, output, tiers: this.tiersBlock() };
   }
