@@ -17,6 +17,7 @@ futures-core = "0.3.32"
 getrandom = "0.4.2"
 ingest-core = { version = "0.1.0", path = "../ingest-core" }
 ingest-git = { version = "0.1.0", path = "../ingest-git" }
+ingest-struct = { version = "0.1.0", path = "../ingest-struct" }
 rag-client = { version = "0.1.0", path = "../rag-client" }
 vaultspec-session = { version = "0.1.0", path = "../vaultspec-session" }
 serde = { version = "1.0.228", features = ["derive"] }

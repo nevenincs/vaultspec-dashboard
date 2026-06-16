@@ -1,5 +1,6 @@
 //! Route families (contract §3–§8).
 
+pub mod content;
 pub mod file_tree;
 pub mod ops;
 pub mod query;
