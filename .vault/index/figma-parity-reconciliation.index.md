@@ -53,6 +53,24 @@ related:
   - '[[2026-06-16-figma-parity-reconciliation-W02-P06-S40]]'
   - '[[2026-06-16-figma-parity-reconciliation-W02-P06-summary]]'
   - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S41]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S42]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S43]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S44]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S45]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-S46]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P07-summary]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P08-S47]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P08-S48]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P08-S49]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P08-S50]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P08-S51]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P08-summary]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P09-S52]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P09-S53]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P09-S54]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P09-S55]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P09-S56]]'
+  - '[[2026-06-16-figma-parity-reconciliation-W03-P09-summary]]'
   - '[[2026-06-16-figma-parity-reconciliation-adr]]'
   - '[[2026-06-16-figma-parity-reconciliation-plan]]'
   - '[[2026-06-16-figma-parity-reconciliation-reference]]'
@@ -118,6 +136,24 @@ Auto-generated index of all documents tagged with `#figma-parity-reconciliation`
 - `2026-06-16-figma-parity-reconciliation-W02-P06-S40` - Rebuild the command palette from its binding frame over the preserved command registry
 - `2026-06-16-figma-parity-reconciliation-W02-P06-summary` - `figma-parity-reconciliation` `W02.P06` summary
 - `2026-06-16-figma-parity-reconciliation-W03-P07-S41` - Rewrite the Pixi field renderer to the binding connection-field treatment driven through the preserved SceneController
+- `2026-06-16-figma-parity-reconciliation-W03-P07-S42` - Rewrite the node sprites as category-colored circles faithful to the binding Node-items frame
+- `2026-06-16-figma-parity-reconciliation-W03-P07-S43` - Rewire the category color reads to literal-hex scene tokens resolvable by getComputedStyle
+- `2026-06-16-figma-parity-reconciliation-W03-P07-S44` - Rewrite the circle salience sizing to the engine-served degree-of-interest salience
+- `2026-06-16-figma-parity-reconciliation-W03-P07-S45` - Rewrite the flat-grey edge mesh render faithful to the binding Hero frame connection treatment
+- `2026-06-16-figma-parity-reconciliation-W03-P07-S46` - Rebuild the scene token reads to the regenerated literal-hex foundation tokens
+- `2026-06-16-figma-parity-reconciliation-W03-P07-summary` - `figma-parity-reconciliation` `W03.P07` summary
+- `2026-06-16-figma-parity-reconciliation-W03-P08-S47` - Rebuild the default node state render faithful to the binding Node-items frame
+- `2026-06-16-figma-parity-reconciliation-W03-P08-S48` - Rebuild the selected node state with the single-accent selection ring per the binding frame
+- `2026-06-16-figma-parity-reconciliation-W03-P08-S49` - Rebuild the filtered-out node state treatment per the binding frame
+- `2026-06-16-figma-parity-reconciliation-W03-P08-S50` - Rebuild the hover-card from the binding graph HoverCard frame 84:2 over the enriched node-evidence query
+- `2026-06-16-figma-parity-reconciliation-W03-P08-S51` - Route node selection and hover intent back through the preserved SceneController event channel
+- `2026-06-16-figma-parity-reconciliation-W03-P08-summary` - `figma-parity-reconciliation` `W03.P08` summary
+- `2026-06-16-figma-parity-reconciliation-W03-P09-S52` - Rebuild the graph controls shell from the binding graph Controls frame 88:2 with the Navigate, Layout, Zoom, and Tune groups
+- `2026-06-16-figma-parity-reconciliation-W03-P09-S53` - Rebuild the Layout control to the binding Network, Tree, Grouped, and Timeline modes over the preserved layout-mode catalog
+- `2026-06-16-figma-parity-reconciliation-W03-P09-S54` - Rebuild the Tune knobs (Spacing, Connection-reach, Clustering) mapped onto the preserved d3-force driver
+- `2026-06-16-figma-parity-reconciliation-W03-P09-S55` - Rebuild the Zoom and Navigate canvas controls per the binding Controls frame over the preserved camera state
+- `2026-06-16-figma-parity-reconciliation-W03-P09-S56` - Tune the connection-drawing fidelity to the binding Hero frame, keeping document granularity bounded by the node ceiling
+- `2026-06-16-figma-parity-reconciliation-W03-P09-summary` - `figma-parity-reconciliation` `W03.P09` summary
 
 ### plan
 
