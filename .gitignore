@@ -137,3 +137,7 @@ playwright-report/
 # dev survey server logs
 .devserve.log
 .devserve.log.err
+# dev survey server per-process logs (engine/vite/devserve)
+*.log.err
+.engine.log
+.vite.log
