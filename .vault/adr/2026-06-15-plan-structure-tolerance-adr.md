@@ -7,6 +7,7 @@ modified: '2026-06-15'
 related:
   - "[[2026-06-14-dashboard-pipeline-wire-adr]]"
   - "[[2026-06-15-dashboard-pipeline-status-audit]]"
+  - "[[2026-06-14-dashboard-activity-rail-research]]"
 ---
 
 
