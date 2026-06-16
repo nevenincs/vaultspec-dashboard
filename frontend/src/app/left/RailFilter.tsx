@@ -38,7 +38,7 @@ export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
       // placeholder says "filter …" (not "search") and carries the funnel — NOT
       // the magnifying glass — so this client-side narrowing never looks like the
       // global right-rail search pillar (the deliberate distinction the IA fixes).
-      className="flex shrink-0 items-center gap-vs-1-5 rounded-vs-md border border-rule bg-paper-raised px-vs-2 py-vs-1 focus-within:border-rule-strong"
+      className="flex shrink-0 items-center gap-vs-1-5 rounded-fg-md border border-rule bg-paper-raised px-vs-2 py-vs-1 focus-within:border-rule-strong"
       data-rail-filter
     >
       {/* The FUNNEL mark — deliberately NOT the right-rail search glass — so the
@@ -55,7 +55,7 @@ export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
         // role/spellcheck off: this is a path/stem/tag narrowing, not prose.
         spellCheck={false}
         autoComplete="off"
-        className="min-w-0 flex-1 bg-transparent font-mono text-2xs text-ink placeholder:text-ink-faint focus-visible:outline-none"
+        className="min-w-0 flex-1 bg-transparent font-mono text-caption text-ink placeholder:text-ink-faint focus-visible:outline-none"
         data-rail-filter-input
       />
       {has && (
@@ -63,7 +63,7 @@ export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
           type="button"
           onClick={() => onChange("")}
           aria-label="clear the filter"
-          className="shrink-0 rounded-vs-sm text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="shrink-0 rounded-fg-xs text-ink-faint transition-colors hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           data-rail-filter-clear
         >
           <X size={CHROME_PX} />

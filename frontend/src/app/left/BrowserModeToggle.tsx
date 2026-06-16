@@ -76,7 +76,7 @@ export function BrowserModeToggle({ mode, onModeChange }: BrowserModeToggleProps
       aria-label="browser mode"
       aria-orientation="horizontal"
       data-browser-mode-toggle
-      className="flex shrink-0 gap-vs-0-5 rounded-vs-sm border border-rule bg-paper-sunken p-vs-0-5"
+      className="flex shrink-0 gap-vs-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-vs-0-5"
     >
       {MODES.map(({ id, label, mark: Mark }, index) => {
         const active = mode === id;
@@ -95,9 +95,9 @@ export function BrowserModeToggle({ mode, onModeChange }: BrowserModeToggleProps
             data-browser-mode-active={active ? "" : undefined}
             onClick={() => onModeChange(id)}
             onKeyDown={onKeyDown(index)}
-            className={`flex flex-1 items-center justify-center gap-vs-1-5 rounded-vs-sm border px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+            className={`flex flex-1 items-center justify-center gap-vs-1-5 rounded-fg-xs border px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
               active
-                ? "border-rule bg-paper-raised font-medium text-ink shadow-card"
+                ? "border-rule bg-paper-raised font-medium text-ink shadow-fg-raised"
                 : "border-transparent text-ink-faint hover:text-ink-muted"
             }`}
           >
