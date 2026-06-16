@@ -26,6 +26,12 @@
 // raw `tiers` block, and re-mints no stable id. The mark silhouettes come from
 // the shared domain-mark family (`scene/field/markComponents`) — the same
 // presentational SVG source the inspector and legends already consume from chrome.
+//
+// W02.P06 (figma-parity-reconciliation): rebuilt faithfully to the binding Figma
+// Timeline frame (17:647 / Kit 239:713) on the canonical Figma role-named token
+// foundation — the role utilities (text-caption etc.) and the Figma radius /
+// elevation scales (rounded-fg-*, shadow-fg-*) replace the legacy alias shims.
+// The dumb-projection contract over the preserved stores hooks is unchanged.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
@@ -614,7 +620,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           return (
             <div key={lane} data-lane-rail={lane}>
               <span
-                className="absolute -translate-y-1/2 text-2xs text-ink-muted"
+                className="absolute -translate-y-1/2 text-caption text-ink-muted"
                 style={{ left: `${LANE_LABEL_X}px`, top: `${cy}px` }}
               >
                 {d.label}
@@ -635,7 +641,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       {/* Ruler endpoints as HTML so tabular numerals apply (ADR: mandated on
           dates). The visible range's edges, tabular-rendered. */}
       <div
-        className="pointer-events-none absolute inset-x-0 flex justify-between px-vs-1 text-2xs text-ink-faint"
+        className="pointer-events-none absolute inset-x-0 flex justify-between px-vs-1 text-caption text-ink-faint"
         style={{ bottom: "2px" }}
       >
         <time data-tabular dateTime={new Date(range.fromMs).toISOString()}>
@@ -691,7 +697,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 onMouseLeave={() => setHoveredNode(null)}
                 onFocus={() => setHoveredNode(node.id)}
                 onBlur={() => setHoveredNode(null)}
-                className={`pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-vs-sm text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${markTransitionClass}`}
+                className={`pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-fg-xs text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${markTransitionClass}`}
                 style={{
                   left: `${x}px`,
                   top: `${y}px`,
@@ -714,7 +720,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           surface reads as "positioning" rather than a false "no lineage". */}
       {(loading || autoFitPending) && (
         <div
-          className="pointer-events-none absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-1 text-2xs text-ink-faint"
+          className="pointer-events-none absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-1 text-caption text-ink-faint"
           role="status"
           data-timeline-loading
         >
@@ -726,7 +732,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       {/* Empty / no-history: approachable, never an error. */}
       {noHistory && (
         <div
-          className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xs text-ink-faint"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center text-caption text-ink-faint"
           role="status"
           data-timeline-empty
         >
@@ -743,7 +749,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           not a blanked surface. A live status region announces the transition. */}
       {degraded && !errored && (
         <div
-          className="pointer-events-none absolute top-vs-1 right-vs-2 flex items-center gap-vs-1 rounded-full bg-paper-raised/95 px-vs-1-5 py-vs-0-5 text-2xs text-state-stale shadow-card"
+          className="pointer-events-none absolute top-vs-1 right-vs-2 flex items-center gap-vs-1 rounded-fg-pill bg-paper-raised/95 px-vs-1-5 py-vs-0-5 text-caption text-state-stale shadow-fg-raised"
           role="status"
           aria-live="polite"
           data-timeline-degraded
@@ -756,7 +762,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       {/* Error: a contained, copy-toned message scoped to the timeline. */}
       {errored && (
         <div
-          className="absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-2 text-2xs text-ink-muted"
+          className="absolute left-vs-2 top-1/2 flex -translate-y-1/2 items-center gap-vs-2 text-caption text-ink-muted"
           role="alert"
           data-timeline-error
         >
@@ -764,7 +770,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           <button
             type="button"
             onClick={() => void lineage.refetch()}
-            className="rounded-vs-sm bg-paper-sunken px-vs-1-5 py-vs-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs bg-paper-sunken px-vs-1-5 py-vs-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             retry
           </button>
