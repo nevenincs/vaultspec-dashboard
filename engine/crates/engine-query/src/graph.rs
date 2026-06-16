@@ -358,11 +358,31 @@ fn graph_query_inner(
 
     let (nodes, edges, meta) = match granularity {
         Granularity::Document => {
+            // Self-consistent subgraph (graph-queries-are-bounded-by-default):
+            // a node filter (e.g. `feature_tags`) narrows the kept node set far
+            // below `MAX_GRAPH_NODES`, so a cross-feature edge whose other
+            // endpoint is a REAL node that was filtered out would dangle — an
+            // unbounded, self-inconsistent payload `bound_slice` never prunes
+            // (it only acts on cap truncation > MAX_GRAPH_NODES). Drop such an
+            // edge HERE, but KEEP an edge whose endpoint is an unresolved/broken
+            // target (not a graph node at all) so the broken lens still surfaces
+            // it (audit W02P05-201): a broken link is intentionally dangling.
+            let kept: std::collections::HashSet<&str> =
+                matched.iter().map(|n| n.id.0.as_str()).collect();
+            let scope_nodes: std::collections::HashSet<&str> = graph
+                .nodes()
+                .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
+                .map(|n| n.id.0.as_str())
+                .collect();
+            // An endpoint is acceptable if it survived the node filter, or it is
+            // not a real in-scope node (a broken/unresolved reference).
+            let endpoint_ok = |id: &str| kept.contains(id) || !scope_nodes.contains(id);
             let mut edges: Vec<&Edge> = graph
                 .edges()
                 .filter(|s| &s.edge.scope == scope)
                 .filter(|s| filter.matches_edge(s))
                 .map(|s| &s.edge)
+                .filter(|e| endpoint_ok(e.src.0.as_str()) && endpoint_ok(e.dst.0.as_str()))
                 .collect();
             edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
             let edge_view_list = edges
@@ -632,6 +652,35 @@ mod tests {
         let slice = graph_query(&g, &scope(), filter, Granularity::Document).unwrap();
         assert_eq!(slice.edges.len(), 1);
         assert_eq!(slice.edges[0]["state"], "broken");
+    }
+
+    #[test]
+    fn document_feature_filter_returns_a_self_consistent_subgraph() {
+        // graph-queries-are-bounded-by-default: a `feature_tags` descent narrows
+        // the node set, so no returned edge may dangle to a REAL node that was
+        // filtered out (the unbounded cross-feature payload the bound prevents).
+        // A broken/unresolved target may still dangle (broken lens), but a real
+        // in-scope node must never appear on an edge without its node.
+        let g = fixture();
+        let filter: Filter = serde_json::from_str(r#"{"feature_tags": ["feature-a"]}"#).unwrap();
+        let slice = graph_query(&g, &scope(), filter, Granularity::Document).unwrap();
+        let kept: std::collections::HashSet<&str> = slice
+            .nodes
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        let real: std::collections::HashSet<String> = g.nodes().map(|n| n.id.0.clone()).collect();
+        for e in &slice.edges {
+            for key in ["src", "dst"] {
+                let id = e[key].as_str().expect("endpoint serialized");
+                if real.contains(id) {
+                    assert!(
+                        kept.contains(id),
+                        "edge {key} {id} is a real in-scope node but absent from the kept slice"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
