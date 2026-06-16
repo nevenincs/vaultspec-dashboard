@@ -152,7 +152,7 @@ Rewrite the frontend/src/app chrome surface-group by surface-group from the bind
 
 Rebuild the app shell frame and the left rail (vault, code, and tree browsers) from their binding frames as dumb projections over the preserved browser-mode and selection stores, tokens-only.
 
-- [ ] `W02.P04.S23` - Rebuild the app shell layout frame from its binding frame as a dumb projection over the preserved view stores; `frontend/src/app/AppShell.tsx`.
+- [x] `W02.P04.S23` - Rebuild the app shell layout frame from its binding frame as a dumb projection over the preserved view stores; `frontend/src/app/AppShell.tsx`.
 - [ ] `W02.P04.S24` - Rebuild the left rail container and rail filter from the binding LeftRail Kit primitive over the preserved browser-mode store; `frontend/src/app/left/LeftRail.tsx`.
 - [ ] `W02.P04.S25` - Rebuild the vault browser from its binding frame over the preserved vault-tree query and selection store; `frontend/src/app/left/VaultBrowser.tsx`.
 - [ ] `W02.P04.S26` - Rebuild the code tree browser from the binding CodeTree Kit primitive over the preserved code-selection store; `frontend/src/app/left/CodeTree.tsx`.

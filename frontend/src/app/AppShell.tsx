@@ -80,13 +80,13 @@ export function AppShell() {
               type="button"
               onClick={toggleLeft}
               aria-label={leftCollapsed ? "expand scope rail" : "collapse scope rail"}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
             >
               {leftCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
             </button>
             {!leftCollapsed && (
               <>
-                <span className="ml-vs-2 flex-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+                <span className="ml-vs-2 flex-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
                   Scope
                 </span>
                 <ThemeToggle
@@ -130,20 +130,20 @@ export function AppShell() {
                 type="button"
                 onClick={toggleRight}
                 aria-label="expand activity rail"
-                className="mx-auto flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+                className="mx-auto flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
               >
                 <ChevronLeft size={12} />
               </button>
             ) : (
               <>
-                <span className="flex-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+                <span className="flex-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
                   Activity
                 </span>
                 <button
                   type="button"
                   onClick={toggleRight}
                   aria-label="collapse activity rail"
-                  className="flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+                  className="flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
                 >
                   <ChevronRight size={12} />
                 </button>
@@ -224,7 +224,7 @@ function ThemeToggle({
       type="button"
       aria-label={`theme: ${current.label}; click for ${THEME_META[next].label}`}
       title={current.label}
-      className="flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+      className="flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
       onClick={() => setPreference(next)}
     >
       <Icon size={12} />
@@ -241,7 +241,7 @@ function SettingsButton() {
       type="button"
       aria-label="open settings"
       title="Settings"
-      className="ml-vs-1 flex h-5 w-5 items-center justify-center rounded-vs-sm border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
+      className="ml-vs-1 flex h-5 w-5 items-center justify-center rounded-fg-xs border border-rule text-label text-ink-faint transition-colors hover:border-rule-strong hover:text-ink-muted"
       onClick={openDialog}
     >
       <Settings size={12} />
