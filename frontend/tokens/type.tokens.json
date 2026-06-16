@@ -1,0 +1,68 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "Figma-binding type scale (figma-parity-reconciliation ADR; research F1). The Figma Foundations/Type & Metrics layer is the binding source: role-named scale display/title/body/body-strong/label/meta/caption/mono replaces the prior px-purpose text-* scale. Each role carries fontSize and lineHeight (rem; the rem-px basis is 16px). fontWeight is the role's bound weight; fontFamily binds Inter for text roles and JetBrains Mono for the mono role. These emit as --text-fg-* CSS custom properties via the non-color token pipeline (style-dictionary.config.ts); the legacy --text-* names remain as deprecated aliases until the W02/W03 view rewrite cuts usages over (W04 removes them).",
+  "type": {
+    "family": {
+      "$description": "Bound font families (figma-parity-reconciliation ADR): Inter for UI/text roles, JetBrains Mono for the code/identity mono role, replacing the prior system stack.",
+      "sans": {
+        "$type": "fontFamily",
+        "$value": "Inter, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+      },
+      "mono": {
+        "$type": "fontFamily",
+        "$value": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", \"Cascadia Code\", Menlo, Consolas, monospace"
+      }
+    },
+    "role": {
+      "$description": "Figma role-named type scale. Sizes/line-heights are the binding Foundations/Type & Metrics values (research F1): display 20/28, title 15/22, label 12/16, meta 11/14, mono 11. body is the dashboard primary text 13/20; body-strong shares body's metrics at the bound medium weight; caption is the dense metadata role 10/14.",
+      "display": {
+        "$description": "Largest headline role; binding Figma display 20/28.",
+        "size": { "$type": "dimension", "$value": "1.25rem" },
+        "line-height": { "$type": "dimension", "$value": "1.75rem" },
+        "weight": { "$type": "fontWeight", "$value": 600 }
+      },
+      "title": {
+        "$description": "Panel/rail heading role; binding Figma title 15/22. Maps to the legacy text-heading (NOT the legacy 13px text-title) - see the text-title vs text-heading collision guard, research F1.",
+        "size": { "$type": "dimension", "$value": "0.9375rem" },
+        "line-height": { "$type": "dimension", "$value": "1.375rem" },
+        "weight": { "$type": "fontWeight", "$value": 600 }
+      },
+      "body": {
+        "$description": "Primary UI text role; 13/20.",
+        "size": { "$type": "dimension", "$value": "0.8125rem" },
+        "line-height": { "$type": "dimension", "$value": "1.25rem" },
+        "weight": { "$type": "fontWeight", "$value": 400 }
+      },
+      "body-strong": {
+        "$description": "Emphasis variant of body at the bound medium weight; shares body's metrics. Covers the prior 13px text-title section-label use (13px + font-medium).",
+        "size": { "$type": "dimension", "$value": "0.8125rem" },
+        "line-height": { "$type": "dimension", "$value": "1.25rem" },
+        "weight": { "$type": "fontWeight", "$value": 500 }
+      },
+      "label": {
+        "$description": "Form/control label role; binding Figma label 12/16.",
+        "size": { "$type": "dimension", "$value": "0.75rem" },
+        "line-height": { "$type": "dimension", "$value": "1rem" },
+        "weight": { "$type": "fontWeight", "$value": 500 }
+      },
+      "meta": {
+        "$description": "Timestamp/caption/pill role; binding Figma meta 11/14 (line-height 14, not the prior 16).",
+        "size": { "$type": "dimension", "$value": "0.6875rem" },
+        "line-height": { "$type": "dimension", "$value": "0.875rem" },
+        "weight": { "$type": "fontWeight", "$value": 400 }
+      },
+      "caption": {
+        "$description": "Dense metadata role; 10/14.",
+        "size": { "$type": "dimension", "$value": "0.625rem" },
+        "line-height": { "$type": "dimension", "$value": "0.875rem" },
+        "weight": { "$type": "fontWeight", "$value": 400 }
+      },
+      "mono": {
+        "$description": "Code/identity role (hashes, byte spans, provenance keys, paths); binding Figma mono 11, in JetBrains Mono.",
+        "size": { "$type": "dimension", "$value": "0.6875rem" },
+        "line-height": { "$type": "dimension", "$value": "1rem" },
+        "weight": { "$type": "fontWeight", "$value": 400 }
+      }
+    }
+  }
+}
