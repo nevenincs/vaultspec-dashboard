@@ -1,12 +1,17 @@
-// Git diff browser (right-rail surface adoption, W02.P13.S29): the active
-// worktree's working-tree state and its changes — a repository status header, a
-// changed-files list with status marks, expand/collapse disclosure rows revealing
-// a read-only diff view inline, plus recent commit + vault-activity context.
+// Git diff browser / changes overview (figma-parity-reconciliation W02.P05.S32;
+// binding DiffView frame, Figma node 17:965): the active worktree's working-tree
+// state and its changes — a repository status header, a changed-files list with
+// status marks, expand/collapse disclosure rows revealing a read-only diff view
+// inline, plus recent commit + vault-activity context. The inline diff body is
+// rendered by the source-agnostic `DiffView`, which renders a working-tree OR a
+// historical two-rev diff identically (the new bounded `histdiff` route is
+// rendered through the same diff-body projection).
 //
-// Re-skinned onto the OKLCH token layer and the two sanctioned icon families per
-// the git-diff-browser surface ADR: structural chrome from Lucide (chevrons), the
-// domain plane from Phosphor (git-branch, git-commit, file marks). The retired
-// hand-drawn / ad-hoc Unicode glyphs leave.
+// Rebuilt onto the NEW Figma role-named token foundation: the status header on the
+// canonical radius (`rounded-fg-md`) and three-level raised elevation
+// (`shadow-fg-raised`), rows and pills on `rounded-fg-xs` / `rounded-fg-pill`, and
+// dense metadata on the `caption` type role. Structural chrome from Lucide, the
+// domain plane from Phosphor.
 //
 // Data sources, all from the stores layer (chrome reads selectors, never the
 // engine, never the raw `tiers` block — dashboard-layer-ownership):
@@ -165,7 +170,7 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
   const behindN = behind ?? 0;
   return (
     <div
-      className="flex items-center gap-vs-1-5 rounded-vs-md border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label shadow-card"
+      className="flex items-center gap-vs-1-5 rounded-fg-md border border-rule bg-paper-raised px-vs-2 py-vs-1 text-label shadow-fg-raised"
       aria-label="git status"
     >
       <span className="shrink-0 text-ink-faint" aria-hidden>
@@ -198,11 +203,11 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
           in grayscale (never colour-only). The live wire serves a dirty BOOLEAN,
           not a count, so the pill states clean vs. "changes" without a number. */}
       {dirty ? (
-        <span className="shrink-0 rounded-full bg-accent-subtle px-vs-1-5 py-vs-0-5 text-2xs text-accent-text">
+        <span className="shrink-0 rounded-fg-pill bg-accent-subtle px-vs-1-5 py-vs-0-5 text-caption text-accent-text">
           changes
         </span>
       ) : (
-        <span className="shrink-0 text-2xs text-state-active">clean</span>
+        <span className="shrink-0 text-caption text-state-active">clean</span>
       )}
     </div>
   );
@@ -270,7 +275,7 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         title={file.path}
       >
         <span className="shrink-0 text-ink-faint" aria-hidden>
@@ -278,7 +283,7 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
         </span>
         {/* Status LETTER — the grayscale-safe, non-colour status mark. */}
         <span
-          className="w-3 shrink-0 select-none text-center font-mono text-2xs text-ink-faint"
+          className="w-3 shrink-0 select-none text-center font-mono text-caption text-ink-faint"
           aria-label={`${GROUP_LABEL[file.group].toLowerCase()} (${file.code.trim() || file.letter})`}
         >
           {file.letter}
@@ -290,14 +295,20 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
           {basename(file.path)}
         </span>
         {file.vault && (
-          <span className="shrink-0 text-2xs text-accent-text" aria-label="vault file">
+          <span
+            className="shrink-0 text-caption text-accent-text"
+            aria-label="vault file"
+          >
             vault
           </span>
         )}
         {/* numstat add/remove tallies — data-bearing → tabular numerals, with the
             sacred diff hues, label-reinforced so they read in grayscale. */}
         {(file.adds !== null || file.dels !== null) && (
-          <span className="flex shrink-0 items-center gap-vs-1 text-2xs" data-tabular>
+          <span
+            className="flex shrink-0 items-center gap-vs-1 text-caption"
+            data-tabular
+          >
             {file.adds !== null && (
               <span className="text-diff-add" aria-label={`${file.adds} added`}>
                 +{file.adds}
@@ -315,14 +326,14 @@ function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
         <div className="ml-vs-4 mt-vs-0-5 animate-fade-in motion-reduce:animate-none">
           {diff.loading && (
             <p
-              className="animate-pulse-live px-vs-1 text-2xs text-ink-faint motion-reduce:animate-none"
+              className="animate-pulse-live px-vs-1 text-caption text-ink-faint motion-reduce:animate-none"
               data-diff-loading
             >
               reading diff…
             </p>
           )}
           {diff.errored && (
-            <p className="px-vs-1 text-2xs text-state-broken" data-diff-error>
+            <p className="px-vs-1 text-caption text-state-broken" data-diff-error>
               diff unavailable
             </p>
           )}
@@ -341,13 +352,13 @@ function ChangedFilesList({ files, scope }: { files: ChangedFile[]; scope: strin
 
   return (
     <section aria-label="working tree changes" data-working-changes>
-      <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+      <h3 className="mb-vs-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
         Changes
       </h3>
       <ul className="space-y-vs-2" aria-label="changed files">
         {groups.map(({ group, rows }) => (
           <li key={group}>
-            <h4 className="mb-vs-0-5 flex items-center gap-vs-1 text-2xs text-ink-faint">
+            <h4 className="mb-vs-0-5 flex items-center gap-vs-1 text-caption text-ink-faint">
               <span className="uppercase tracking-wider">{GROUP_LABEL[group]}</span>
               <span data-tabular>{rows.length}</span>
             </h4>
@@ -413,7 +424,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             openContextMenu(eventEntity(), { x: r.left, y: r.bottom });
           }
         }}
-        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-vs-1 rounded-fg-xs px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         title={
           hasNodes
             ? `${ev.kind} · ${ev.node_ids.length} node${ev.node_ids.length !== 1 ? "s" : ""}${ev.truncated_node_ids ? ` (+${ev.truncated_node_ids} more)` : ""}`
@@ -428,12 +439,12 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
           {eventLabel(ev)}
         </span>
         {hasNodes && (
-          <span className="shrink-0 text-2xs text-ink-faint" data-tabular>
+          <span className="shrink-0 text-caption text-ink-faint" data-tabular>
             {ev.node_ids.length}
             {ev.truncated_node_ids ? "+" : ""}
           </span>
         )}
-        <span className="shrink-0 text-2xs text-ink-faint" data-tabular>
+        <span className="shrink-0 text-caption text-ink-faint" data-tabular>
           {relativeTs(ev.ts, now)}
         </span>
         {hasNodes && (
@@ -449,7 +460,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
               <button
                 type="button"
                 onClick={() => onSelect({ kind: "node", id })}
-                className="w-full truncate rounded-vs-sm px-vs-1 py-vs-0-5 text-left font-mono text-2xs text-ink-faint hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="w-full truncate rounded-fg-xs px-vs-1 py-vs-0-5 text-left font-mono text-caption text-ink-faint hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 title={id}
               >
                 {id.split(":").pop() ?? id}
@@ -457,7 +468,7 @@ function EventRow({ ev, now, onSelect }: EventRowProps) {
             </li>
           ))}
           {ev.truncated_node_ids && ev.truncated_node_ids > 0 && (
-            <li className="px-vs-1 text-2xs text-ink-faint" data-tabular>
+            <li className="px-vs-1 text-caption text-ink-faint" data-tabular>
               +{ev.truncated_node_ids} more (contract §5 cap)
             </li>
           )}
@@ -518,7 +529,7 @@ export function ChangesOverview() {
           the rest of the chrome unaffected (git-diff-browser ADR States). */}
       {gitView.degraded && (
         <p
-          className="flex items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          className="flex items-start gap-vs-1-5 rounded-fg-xs bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
           data-git-degraded
         >
           <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
@@ -532,7 +543,7 @@ export function ChangesOverview() {
           from degradation, with a retry affordance. */}
       {gitView.errored && (
         <div
-          className="flex items-center gap-vs-1-5 rounded-vs-sm border border-state-broken/40 px-vs-2 py-vs-1"
+          className="flex items-center gap-vs-1-5 rounded-fg-xs border border-state-broken/40 px-vs-2 py-vs-1"
           data-git-error
         >
           <span className="shrink-0 text-state-broken" aria-hidden>
@@ -544,7 +555,7 @@ export function ChangesOverview() {
           <button
             type="button"
             onClick={gitView.retry}
-            className="rounded-vs-sm text-2xs text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs text-caption text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             retry
           </button>
@@ -583,7 +594,7 @@ export function ChangesOverview() {
       {/* Recent commits */}
       {commits.length > 0 && (
         <section aria-label="recent commits">
-          <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+          <h3 className="mb-vs-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
             Commits
           </h3>
           <ul className="space-y-vs-0-5">
@@ -597,7 +608,7 @@ export function ChangesOverview() {
       {/* Doc + step activity */}
       {docActivity.length > 0 && (
         <section aria-label="vault activity">
-          <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+          <h3 className="mb-vs-1 text-caption font-semibold uppercase tracking-wider text-ink-faint">
             Activity
           </h3>
           <ul className="space-y-vs-0-5">
@@ -618,7 +629,7 @@ export function ChangesOverview() {
           <button
             type="button"
             onClick={() => void events.refetch()}
-            className="rounded-vs-sm text-2xs text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="rounded-fg-xs text-caption text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             retry
           </button>

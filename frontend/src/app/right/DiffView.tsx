@@ -1,4 +1,5 @@
-// The read-only diff view (git-diff-browser surface adoption, W02.P13.S29).
+// The read-only diff view (figma-parity-reconciliation W02.P05.S32; binding
+// DiffView frame, Figma node 17:965).
 //
 // A reviewable, scannable document (the instrument-surface grammar) — NOT a chat
 // or a modal: a hunk-by-hunk body in monospace, each hunk introduced by its
@@ -6,6 +7,17 @@
 // a change-type gutter glyph. Added lines are high-contrast green with a `+`
 // glyph and an "added" label; removed lines are high-contrast red with a `-`
 // glyph and a "removed" label; context lines are neutral ink.
+//
+// SOURCE-AGNOSTIC: this view is a pure projection of a parsed `GitFileDiff` body
+// and renders it identically whether it came from the working-tree `diff` verb OR
+// the bounded read-only HISTORICAL two-rev `histdiff` route (the new engine route
+// added in W01.P02.S14). The owning stores selector chooses the verb; the view
+// renders the resulting hunks, truncation, and binary/empty states unchanged.
+//
+// Rebuilt onto the NEW Figma role-named token foundation: canonical radius
+// (`rounded-fg-xs`) on the diff body, the `caption` type role for the hunk header
+// and truncation receipt. The sacred diff add/remove tokens are NEVER warmth- or
+// foundation-overridden — they stay the high-contrast `--color-diff-*` tokens.
 //
 // DIFF LEGIBILITY IS SACRED (design-language ADR layer 3 / git-diff-browser ADR):
 // add/remove keep their high-contrast green/red even in the warm theme — these
@@ -148,7 +160,7 @@ function HunkBlock({
             openContextMenu(changeEntity(), { x: r.left, y: r.bottom });
           }
         }}
-        className="bg-paper-sunken px-vs-2 py-vs-0-5 font-mono text-2xs text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="bg-paper-sunken px-vs-2 py-vs-0-5 font-mono text-caption text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         {hunk.header}
       </div>
@@ -199,7 +211,7 @@ export function DiffView({ diff }: DiffViewProps) {
 
   return (
     <div
-      className="overflow-x-auto rounded-vs-sm border border-rule bg-paper-raised"
+      className="overflow-x-auto rounded-fg-xs border border-rule bg-paper-raised"
       data-diff-body
     >
       {diff.hunks.map((hunk, i) => (
@@ -207,7 +219,7 @@ export function DiffView({ diff }: DiffViewProps) {
       ))}
       {diff.truncated && (
         <p
-          className="border-t border-rule px-vs-2 py-vs-0-5 text-2xs text-ink-faint"
+          className="border-t border-rule px-vs-2 py-vs-0-5 text-caption text-ink-faint"
           data-diff-truncated
           data-tabular
         >
