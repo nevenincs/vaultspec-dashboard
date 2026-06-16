@@ -20,8 +20,9 @@
 // `MarkById`), so the card icon reads as one hand with the canvas silhouettes.
 
 import { ExternalLink } from "lucide-react";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 
+import { type NodeCategory } from "../../scene/field/categoryColor";
 import { DocTypeMark, MarkById } from "../../scene/field/markComponents";
 import {
   type NodeStatus,
@@ -29,6 +30,7 @@ import {
   stampFor,
   stampToken,
 } from "../../scene/field/statusStamp";
+import { categoryTokenVar, type TypeCardContent } from "./hoverCardContent";
 
 /** The card's view model — a projection a stores selector would supply. */
 export interface StatusCardModel {
@@ -42,6 +44,13 @@ export interface StatusCardModel {
   readonly authorityClass?: string;
   /** Rollout progress (plan/feature) — the SEPARATE channel, a bar not a stamp. */
   readonly progress?: { done: number; total: number };
+  /** The scene category the node belongs to — drives the accent strip + header
+   *  hue (themes-are-oklch-generated-from-a-token-tier; the token is a per-theme
+   *  `var()` on :root). When absent, the card falls back to the status tint. */
+  readonly category?: NodeCategory;
+  /** The type-specific content block. When absent (or `generic`), the card
+   *  renders only the shared header/chip/rollout. */
+  readonly typeContent?: TypeCardContent;
 }
 
 export interface HoverCardProps {
@@ -81,6 +90,11 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
   const tintVar = stampToken(cls);
   const fraction = rolloutFraction(model.progress);
   const magnitude = magnitudeLabel(model.status);
+  // The per-category accent (a `var()` on :root, per theme): drives the left
+  // strip and the header glyph hue when a category is known; the status tint is
+  // the fallback so the existing cardless prototype still reads.
+  const categoryVar = model.category ? categoryTokenVar(model.category) : undefined;
+  const accentVar = categoryVar ?? tintVar;
 
   // Resolve the motion path once on mount: the explicit prop overrides, else the
   // OS media query. A ref + state lets the bloom class be applied after the
@@ -116,16 +130,26 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       role="dialog"
       aria-label={`${model.kind} ${model.title}`}
       data-hover-card
+      data-category={model.category}
       data-reduced-motion={reduce ? "" : undefined}
       data-motion={reduce ? "crossfade" : "bloom"}
-      className="flex w-64 flex-col gap-vs-1-5 rounded-vs-md border border-rule bg-paper-raised p-vs-2 text-ink shadow-float"
+      className="relative flex w-64 flex-col gap-vs-1-5 overflow-hidden rounded-vs-md border border-rule bg-paper-raised p-vs-2 pl-vs-3 text-ink shadow-float"
       style={motionStyle}
     >
-      {/* Header: kind glyph + title + open affordance. */}
+      {/* Category-accent strip: a single-token vertical rule that names the
+          node's category by hue. Warmth lives in this one token, never a
+          gradient or texture (warmth-lives-in-tokens-not-decoration). */}
+      <span
+        data-category-strip
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-vs-0-5"
+        style={{ backgroundColor: `var(${accentVar})` }}
+      />
+      {/* Header: category dot + kind glyph + title + open affordance. */}
       <div className="flex items-center gap-vs-1-5">
         <span
           className="flex shrink-0 items-center"
-          style={{ color: `var(${tintVar})` }}
+          style={{ color: `var(${accentVar})` }}
           aria-hidden
         >
           <DocTypeMark kind={model.kind} size={16} />
@@ -164,6 +188,9 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
           </span>
         </div>
       )}
+
+      {/* Type-specific content: the conditional info plane (Figma 110:2). */}
+      {model.typeContent && <TypeContentBlock content={model.typeContent} />}
 
       {/* Rollout bar: the SEPARATE progress channel (plan/feature), accent fill. */}
       {fraction !== null && model.progress && (
@@ -222,4 +249,113 @@ function StatusGlyph({ status }: { status: NodeStatus }) {
     return <MarkById id={`status-tier-${stamp.tierNotch}`} size={12} aria-hidden />;
   }
   return null;
+}
+
+/** One info line of the type-content plane: a muted, tabular-friendly row. */
+function InfoLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-2xs text-ink-muted" data-type-line>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * The type-specific content plane (Figma 110:2). Each document type renders the
+ * facts its register carries — sourced PURELY from the wire projection
+ * (hoverCardContent.deriveTypeContent); a datum genuinely absent from the wire is
+ * simply not rendered, never fabricated. The block stays inside the instrument
+ * register: copy + the muted ink token carry meaning, no new color.
+ */
+function TypeContentBlock({ content }: { content: TypeCardContent }) {
+  switch (content.kind) {
+    case "plan": {
+      const parts: string[] = [];
+      if (content.tier) parts.push(content.tier);
+      if (content.steps && content.steps.total > 0) {
+        parts.push(`${content.steps.done}/${content.steps.total} steps`);
+      }
+      if (content.phasesLeft !== undefined) {
+        parts.push(`${content.phasesLeft} phases left`);
+      }
+      if (parts.length === 0) return null;
+      return (
+        <div data-type-content="plan" className="flex flex-col gap-vs-0-5">
+          <InfoLine>{parts.join(" · ")}</InfoLine>
+        </div>
+      );
+    }
+    case "adr": {
+      if (content.references === undefined) return null;
+      return (
+        <div data-type-content="adr">
+          <InfoLine>
+            {content.references} reference{content.references === 1 ? "" : "s"}
+          </InfoLine>
+        </div>
+      );
+    }
+    case "exec": {
+      if (!content.inPlan) return null;
+      return (
+        <div data-type-content="exec">
+          <InfoLine>in plan — {content.inPlan}</InfoLine>
+        </div>
+      );
+    }
+    case "research": {
+      const parts: string[] = [];
+      if (content.findings !== undefined) {
+        parts.push(`${content.findings} finding${content.findings === 1 ? "" : "s"}`);
+      }
+      if (content.when) parts.push(content.when);
+      if (parts.length === 0) return null;
+      return (
+        <div data-type-content="research">
+          <InfoLine>{parts.join(" · ")}</InfoLine>
+        </div>
+      );
+    }
+    case "audit": {
+      const parts: string[] = [];
+      if (content.severity) parts.push(content.severity);
+      if (content.findings !== undefined) {
+        parts.push(`${content.findings} finding${content.findings === 1 ? "" : "s"}`);
+      }
+      if (parts.length === 0) return null;
+      return (
+        <div data-type-content="audit">
+          <InfoLine>{parts.join(" · ")}</InfoLine>
+        </div>
+      );
+    }
+    case "topic": {
+      if (content.documents === undefined) return null;
+      return (
+        <div data-type-content="topic">
+          <InfoLine>
+            {content.documents} document{content.documents === 1 ? "" : "s"}
+          </InfoLine>
+        </div>
+      );
+    }
+    case "code": {
+      return (
+        <div data-type-content="code" className="flex flex-col gap-vs-0-5">
+          <p className="break-all font-mono text-2xs text-ink-muted" data-code-path>
+            {content.path}
+          </p>
+          {(content.language || content.gitDirty) && (
+            <InfoLine>
+              {[content.language, content.gitDirty ? "uncommitted changes" : undefined]
+                .filter(Boolean)
+                .join(" · ")}
+            </InfoLine>
+          )}
+        </div>
+      );
+    }
+    case "generic":
+      return null;
+  }
 }

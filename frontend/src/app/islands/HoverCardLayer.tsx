@@ -23,12 +23,14 @@
 
 import { useEffect, useState } from "react";
 
-import type { EngineNode } from "../../stores/server/engine";
+import { nodeCategory } from "../../scene/field/categoryColor";
+import type { EngineNode, PlanInterior } from "../../stores/server/engine";
 import { nodeStatusFromWire } from "../../scene/field/statusStamp";
 import type { SceneController } from "../../scene/sceneController";
-import { useNodeDetail } from "../../stores/server/queries";
+import { usePlanInterior, useNodeDetail } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
 import { HoverCard, type StatusCardModel } from "./HoverCard";
+import { deriveTypeContent } from "./hoverCardContent";
 import { islandStyle, useNodeAnchor } from "./IslandLayer";
 
 /** Dwell before the hover card blooms (ms): a glancing pass shows nothing. */
@@ -40,7 +42,10 @@ export const HOVER_DWELL_MS = 150;
  * card and the canvas stamp read one truth; the rollout bar is fed only when the
  * node carries lifecycle progress (plan/feature), the SEPARATE channel.
  */
-export function cardModelFromNode(node: EngineNode): StatusCardModel {
+export function cardModelFromNode(
+  node: EngineNode,
+  opts: { interior?: PlanInterior; gitDirty?: boolean } = {},
+): StatusCardModel {
   const progress = node.lifecycle?.progress;
   return {
     id: node.id,
@@ -52,6 +57,14 @@ export function cardModelFromNode(node: EngineNode): StatusCardModel {
       progress && progress.total > 0
         ? { done: progress.done, total: progress.total }
         : undefined,
+    // The scene category (the type channel) drives the accent strip + header
+    // hue; the typed content plane carries the per-type facts derived purely
+    // from the wire (node-hover-typed-card; views-are-projections-of-one-model).
+    category: nodeCategory(node.kind),
+    typeContent: deriveTypeContent(node, {
+      interior: opts.interior,
+      gitDirty: opts.gitDirty,
+    }),
   };
 }
 
@@ -96,10 +109,18 @@ function HoverCardIsland({ scene, id }: HoverCardIslandProps) {
   const anchor = useNodeAnchor(scene, id);
   const openNode = useViewStore((s) => s.openNode);
   const detail = useNodeDetail(id);
+  // For a plan node, lean on the SAME cached bounded plan-interior the Work
+  // step-tree already fetches (no second route, no new backend) to derive the
+  // "phases left" count; disabled for every non-plan node so the card never
+  // mints an interior fetch it cannot use (graph-queries-are-bounded-by-default).
+  const isPlan = detail.data?.node.kind === "plan";
+  const interior = usePlanInterior(isPlan ? id : null);
   // The node off stage (no anchor) or with no detail yet: render nothing rather
   // than a floating empty card. The dwell already guards the flash.
   if (!anchor || !detail.data) return null;
-  const model = cardModelFromNode(detail.data.node);
+  const model = cardModelFromNode(detail.data.node, {
+    interior: interior.data?.interior,
+  });
   return (
     <div style={islandStyle(anchor)} data-hover-card-for={id}>
       {/* The pure-hover card is INSPECT-ONLY (pointer-events none on the wrapper)

@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#node-visual-richness'
 date: '2026-06-14'
-modified: '2026-06-15'
+modified: '2026-06-16'
 tier: L2
 related:
   - '[[2026-06-14-node-visual-richness-adr]]'
@@ -50,6 +50,7 @@ Add the transient rich mini-document card as a third LOD rung that blooms from t
 - [x] `P04.S16` - render the compact card projection from a stores node-detail hook; `frontend/src/stores/server/queries.ts`.
 - [x] `P04.S17` - implement grow-from-glyph bloom with hover-dwell and a reduced-motion crossfade; `frontend/src/app/islands/HoverCard.tsx`.
 - [x] `P04.S18` - add card render and interaction tests for bloom, dwell, reduced-motion, and the three intents; `frontend/src/app/islands/HoverCard.render.test.tsx`.
+- [x] `P04.S21` - Extend the hover-bloom card with per-document-type content + category-accent strip (Figma 110:2), derived purely from the wire projection; `frontend/src/app/islands/HoverCardLayer.tsx`.
 
 ### Phase `P05` - integration, gate, and visual inspection
 
