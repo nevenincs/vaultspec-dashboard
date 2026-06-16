@@ -239,8 +239,8 @@ Run the full lint gate, perform the human-gated Code Connect publish, and verify
 - [x] `W04.P11.S64` - Run the full frontend lint gate to exit 0 including prettier format check and tsc; `frontend/`.
 - [x] `W04.P11.S65` - Run the full engine lint gate to exit 0 including cargo fmt check and clippy for the new diff route and evidence projection; `engine/`.
 - [x] `W04.P11.S66` - Perform the human-gated Code Connect publish against the validated Kit-primitive map; `frontend/figma/connect/`.
-- [ ] `W04.P11.S67` - Verify end-to-end chrome parity of the rewritten app surfaces against the binding Figma frames; `frontend/src/app/`.
-- [ ] `W04.P11.S68` - Verify end-to-end canvas parity of the rewritten scene against the binding graph Hero, Node-items, HoverCard, and Controls frames; `frontend/src/scene/`.
+- [x] `W04.P11.S67` - Verify end-to-end chrome parity of the rewritten app surfaces against the binding Figma frames; `frontend/src/app/`.
+- [x] `W04.P11.S68` - Verify end-to-end canvas parity of the rewritten scene against the binding graph Hero, Node-items, HoverCard, and Controls frames; `frontend/src/scene/`.
 
 ## Description
 

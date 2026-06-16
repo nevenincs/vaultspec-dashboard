@@ -72,6 +72,7 @@ related:
   - '[[2026-06-16-figma-parity-reconciliation-W03-P09-S56]]'
   - '[[2026-06-16-figma-parity-reconciliation-W03-P09-summary]]'
   - '[[2026-06-16-figma-parity-reconciliation-adr]]'
+  - '[[2026-06-16-figma-parity-reconciliation-audit]]'
   - '[[2026-06-16-figma-parity-reconciliation-plan]]'
   - '[[2026-06-16-figma-parity-reconciliation-reference]]'
   - '[[2026-06-16-figma-parity-reconciliation-research]]'
@@ -86,6 +87,10 @@ Auto-generated index of all documents tagged with `#figma-parity-reconciliation`
 ### adr
 
 - `2026-06-16-figma-parity-reconciliation-adr` - `figma-parity-reconciliation` adr: `Figma-binding frontend rewrite and reconciliation` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-16-figma-parity-reconciliation-audit` - `figma-parity-reconciliation` audit: `Figma parity reconciliation: W04 Phase-5 verification`
 
 ### exec
 

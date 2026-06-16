@@ -139,6 +139,13 @@ layering, not sequence detail (the plan owns sequence):
   canvas-mark treatment, and the tier-edge color encoding to the binding designs, and flips
   the `themes-are-oklch` source-of-truth direction; the data behind the superseded visuals
   is retained.
+  - *Amendment note (2026-06-16, Phase-5 review).* The right-rail tab IA ultimately
+    landed as `Status | Inspect | Search | Changes` per the separately-accepted
+    `2026-06-16-status-overview-adr` (refining the activity-rail decision this ADR
+    superseded), not the `Inspect | Work | Search | Changes` set named above: the Work /
+    in-flight-plan model is folded into the Status-overview surface rather than carried as
+    its own tab. The persistent liveness header is retained. No Work data is orphaned; the
+    divergence is purely between this plan's wording and the later ADR the code follows.
 
 ## Rationale
 
