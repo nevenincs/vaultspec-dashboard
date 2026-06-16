@@ -21,6 +21,7 @@
 //! `LinkageGraph`s; `engine-query`/`engine-graph` read fns stay pure over one.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -40,8 +41,15 @@ use crate::registry::ScopeRegistry;
 /// Per-generation enriched document views (perf-sweep A1): the node-id → enriched
 /// node view map and the edge-id → enriched edge view map, built once per graph
 /// generation by `engine_query::graph::build_document_views` and reused by every
-/// Document-granularity query via `graph_query_cached`.
-type DocViews = (HashMap<String, Value>, HashMap<String, Value>);
+/// Document-granularity query via `graph_query_cached`. The third member is the
+/// in-scope node-id set, computed in the same pass and reused by the Document
+/// arm's broken-link endpoint check so it no longer re-scans every node per
+/// request (backend-hotpath-hardening F4 / graph-query-scope-memo).
+type DocViews = (
+    HashMap<String, Value>,
+    HashMap<String, Value>,
+    HashSet<String>,
+);
 
 /// Per-generation `.vault` document basename -> repo-relative path index
 /// (backend-hotpath-hardening F1): built once per rebuild by

@@ -424,10 +424,16 @@ pub async fn graph_query_route(
                 // per request; only the heavy per-item projection is memoized.
                 Granularity::Document => {
                     let views = cell.document_views();
-                    graph_query_cached(&graph, &cell.scope, filter, granularity, &views.0, &views.1)
-                        .map_err(|e| {
-                            super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string())
-                        })?
+                    graph_query_cached(
+                        &graph,
+                        &cell.scope,
+                        filter,
+                        granularity,
+                        &views.0,
+                        &views.1,
+                        &views.2,
+                    )
+                    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
                 }
                 // Constellation meta-edges come from the memoized projection
                 // (W02P05-203) — same content, one aggregation per rebuild.
@@ -605,6 +611,7 @@ pub async fn graph_embeddings(
         engine_query::graph::Granularity::Document,
         &views.0,
         &views.1,
+        &views.2,
     )
     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let tiers = rag_tiers(&cell);

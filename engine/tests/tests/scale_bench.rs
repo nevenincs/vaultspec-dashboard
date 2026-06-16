@@ -169,6 +169,7 @@ fn graph_query_scale_and_concurrency() {
                         Granularity::Document,
                         &views.0,
                         &views.1,
+                        &views.2,
                     )
                     .unwrap();
                     let _ = serde_json::to_vec(&slice).unwrap();

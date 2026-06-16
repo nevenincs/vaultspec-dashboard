@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use engine_graph::diff::DiffOp;
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
@@ -306,13 +307,14 @@ pub fn graph_query_cached(
     granularity: Granularity,
     node_views: &HashMap<String, Value>,
     edge_views: &HashMap<String, Value>,
+    scope_node_ids: &HashSet<String>,
 ) -> Result<GraphSlice, FilterError> {
     graph_query_inner(
         graph,
         scope,
         filter,
         granularity,
-        Some((node_views, edge_views)),
+        Some((node_views, edge_views, scope_node_ids)),
     )
 }
 
@@ -322,17 +324,29 @@ pub fn graph_query_cached(
 pub fn build_document_views(
     graph: &LinkageGraph,
     scope: &ScopeRef,
-) -> (HashMap<String, Value>, HashMap<String, Value>) {
-    let node_views = graph
-        .nodes()
-        .map(|n| (n.id.0.clone(), node_view(graph, scope, n)))
-        .collect();
+) -> (
+    HashMap<String, Value>,
+    HashMap<String, Value>,
+    HashSet<String>,
+) {
+    // One pass over the nodes builds the enriched node views AND the in-scope
+    // node-id set (backend-hotpath-hardening F4): the latter is what the Document
+    // arm's broken-link endpoint check needs, so caching it here removes that
+    // second full node scan from every request at zero extra build cost.
+    let mut node_views = HashMap::new();
+    let mut scope_node_ids = HashSet::new();
+    for n in graph.nodes() {
+        node_views.insert(n.id.0.clone(), node_view(graph, scope, n));
+        if n.facets.iter().any(|f| &f.scope == scope) {
+            scope_node_ids.insert(n.id.0.clone());
+        }
+    }
     let edge_views = graph
         .edges()
         .filter(|s| &s.edge.scope == scope)
         .map(|s| (s.edge.id.0.clone(), edge_view(graph, &s.edge)))
         .collect();
-    (node_views, edge_views)
+    (node_views, edge_views, scope_node_ids)
 }
 
 #[allow(clippy::type_complexity)]
@@ -341,7 +355,11 @@ fn graph_query_inner(
     scope: &ScopeRef,
     filter: Filter,
     granularity: Granularity,
-    views: Option<(&HashMap<String, Value>, &HashMap<String, Value>)>,
+    views: Option<(
+        &HashMap<String, Value>,
+        &HashMap<String, Value>,
+        &HashSet<String>,
+    )>,
 ) -> Result<GraphSlice, FilterError> {
     let filter = filter.validated()?;
 
@@ -367,13 +385,22 @@ fn graph_query_inner(
             // edge HERE, but KEEP an edge whose endpoint is an unresolved/broken
             // target (not a graph node at all) so the broken lens still surfaces
             // it (audit W02P05-201): a broken link is intentionally dangling.
-            let kept: std::collections::HashSet<&str> =
-                matched.iter().map(|n| n.id.0.as_str()).collect();
-            let scope_nodes: std::collections::HashSet<&str> = graph
-                .nodes()
-                .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
-                .map(|n| n.id.0.as_str())
-                .collect();
+            let kept: HashSet<&str> = matched.iter().map(|n| n.id.0.as_str()).collect();
+            // Reuse the per-generation cached in-scope node-id set when present
+            // (F4); otherwise build it (the uncached path). Owned-String set so
+            // both paths share one type for the endpoint check.
+            let built_scope_nodes: HashSet<String>;
+            let scope_nodes: &HashSet<String> = match views {
+                Some((_, _, sn)) => sn,
+                None => {
+                    built_scope_nodes = graph
+                        .nodes()
+                        .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
+                        .map(|n| n.id.0.clone())
+                        .collect();
+                    &built_scope_nodes
+                }
+            };
             // An endpoint is acceptable if it survived the node filter, or it is
             // not a real in-scope node (a broken/unresolved reference).
             let endpoint_ok = |id: &str| kept.contains(id) || !scope_nodes.contains(id);
@@ -389,7 +416,7 @@ fn graph_query_inner(
                 .iter()
                 .map(|&e| {
                     views
-                        .and_then(|(_, ev)| ev.get(&e.id.0).cloned())
+                        .and_then(|(_, ev, _)| ev.get(&e.id.0).cloned())
                         .unwrap_or_else(|| edge_view(graph, e))
                 })
                 .collect();
@@ -397,7 +424,7 @@ fn graph_query_inner(
                 .iter()
                 .map(|&n| {
                     views
-                        .and_then(|(nv, _)| nv.get(&n.id.0).cloned())
+                        .and_then(|(nv, _, _)| nv.get(&n.id.0).cloned())
                         .unwrap_or_else(|| node_view(graph, scope, n))
                 })
                 .collect();
@@ -613,7 +640,7 @@ mod tests {
         // graph_query_cached must produce exactly the same slice as recomputing
         // them in graph_query — both filtered and unfiltered.
         let g = fixture();
-        let (nv, ev) = build_document_views(&g, &scope());
+        let (nv, ev, sn) = build_document_views(&g, &scope());
         for filter in [
             Filter::default(),
             serde_json::from_str(r#"{"structural_state": ["resolved"]}"#).unwrap(),
@@ -621,7 +648,8 @@ mod tests {
             let uncached =
                 graph_query(&g, &scope(), filter.clone(), Granularity::Document).unwrap();
             let cached =
-                graph_query_cached(&g, &scope(), filter, Granularity::Document, &nv, &ev).unwrap();
+                graph_query_cached(&g, &scope(), filter, Granularity::Document, &nv, &ev, &sn)
+                    .unwrap();
             assert_eq!(
                 serde_json::to_value(&uncached).unwrap(),
                 serde_json::to_value(&cached).unwrap(),
