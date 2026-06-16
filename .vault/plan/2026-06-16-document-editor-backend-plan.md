@@ -10,15 +10,6 @@ related:
   - '[[2026-06-16-document-editor-backend-research]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `document-editor-backend` plan
 
@@ -73,24 +64,24 @@ Add the stores-layer save/create/frontmatter mutations and a bounded editor view
 
 Add the body dispatch seam, engine-client write methods, and the save/create/frontmatter mutations with invalidations.
 
-- [ ] `W03.P05.S16` - Add a body field to the OpsPayload dispatch seam for write verbs; `frontend/src/stores/server/opsActions.ts`.
-- [ ] `W03.P05.S17` - Add the engine-client write methods and response adapters for the write verbs; `frontend/src/stores/server/engine.ts`.
-- [ ] `W03.P05.S18` - Add useSaveBody, useCreateDoc, useSetFrontmatter mutations with blob-hash echo and content/graph/tree invalidation; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P05.S16` - Add a body field to the OpsPayload dispatch seam for write verbs; `frontend/src/stores/server/opsActions.ts`.
+- [x] `W03.P05.S17` - Add the engine-client write methods and response adapters for the write verbs; `frontend/src/stores/server/engine.ts`.
+- [x] `W03.P05.S18` - Add useSaveBody, useCreateDoc, useSetFrontmatter mutations with blob-hash echo and content/graph/tree invalidation; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `W03.P06` - editor state and read-side derivations
 
 Add the bounded editor view-state slice and the client-side read-side field derivations.
 
-- [ ] `W03.P06.S19` - Add the bounded editor slice (status enum, single draft, baseBlobHash, no undo) cleared on scope swap; `frontend/src/stores/view/viewStore.ts`.
-- [ ] `W03.P06.S20` - Derive the read-side fields (doc-type, read-time, resolved-vs-broken links) client-side from existing data; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P06.S19` - Add the bounded editor slice (status enum, single draft, baseBlobHash, no undo) cleared on scope swap; `frontend/src/stores/view/viewStore.ts`.
+- [x] `W03.P06.S20` - Derive the read-side fields (doc-type, read-time, resolved-vs-broken links) client-side from existing data; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `W03.P07` - mock fidelity
 
 Bring the mock /ops/core write verbs to live shape with conflict and typed rejections, prove fidelity with a captured-sample adapter test, and cover with vitest.
 
-- [ ] `W03.P07.S21` - Make the mock ops/core write verbs mutate the in-memory corpus, re-hash, and emit 409 conflict and typed rejections; `frontend/src/testing/mockEngine.ts`.
-- [ ] `W03.P07.S22` - Add the captured-live-sample adapter test proving the mock write shape equals the live shape; `frontend/src/stores/server/liveAdapters.test.ts`.
-- [ ] `W03.P07.S23` - Add vitest coverage for the mutations and the editor state slice; `frontend/src/stores/server/queries.test.ts`.
+- [x] `W03.P07.S21` - Make the mock ops/core write verbs mutate the in-memory corpus, re-hash, and emit 409 conflict and typed rejections; `frontend/src/testing/mockEngine.ts`.
+- [x] `W03.P07.S22` - Add the captured-live-sample adapter test proving the mock write shape equals the live shape; `frontend/src/stores/server/liveAdapters.test.ts`.
+- [x] `W03.P07.S23` - Add vitest coverage for the mutations and the editor state slice; `frontend/src/stores/server/queries.test.ts`.
 
 ## Wave `W04` - review, harden, manual synthetic-corpus test
 
@@ -100,16 +91,16 @@ Run the full lint and test gates green, code-review and harden the whole feature
 
 Run the full lint and test gates green and code-review and harden the feature.
 
-- [ ] `W04.P08.S24` - Run the full gates green: cargo test, vitest, pytest, just dev lint all and lint frontend exit 0, vault check all; `Justfile`.
-- [ ] `W04.P08.S25` - Code-review the whole feature and land any required hardening revisions; `.vault/audit/2026-06-16-document-editor-backend-audit.md`.
+- [x] `W04.P08.S24` - Run the full gates green: cargo test, vitest, pytest, just dev lint all and lint frontend exit 0, vault check all; `Justfile`.
+- [x] `W04.P08.S25` - Code-review the whole feature and land any required hardening revisions; `.vault/audit/2026-06-16-document-editor-backend-audit.md`.
 
 ### Phase `W04.P09` - manual synthetic-corpus test and audit
 
 Manually exercise the editor loop against a scratch synthetic corpus and record the audit.
 
-- [ ] `W04.P09.S26` - Build a synthetic scratch corpus by copying .vault and .vaultspec to scratch (never live contents); `scratch/synthetic-corpus`.
-- [ ] `W04.P09.S27` - Manually exercise save, create, frontmatter, lint, autofix, conflict, refuse-on-error, and truncation against the scratch corpus; `scratch/synthetic-corpus`.
-- [ ] `W04.P09.S28` - Record the manual-test results and review verdict in the feature audit; `.vault/audit/2026-06-16-document-editor-backend-audit.md`.
+- [x] `W04.P09.S26` - Build a synthetic scratch corpus by copying .vault and .vaultspec to scratch (never live contents); `scratch/synthetic-corpus`.
+- [x] `W04.P09.S27` - Manually exercise save, create, frontmatter, lint, autofix, conflict, refuse-on-error, and truncation against the scratch corpus; `scratch/synthetic-corpus`.
+- [x] `W04.P09.S28` - Record the manual-test results and review verdict in the feature audit; `.vault/audit/2026-06-16-document-editor-backend-audit.md`.
 
 ## Description
 
