@@ -1,8 +1,11 @@
-// The work tab content surface (dashboard-pipeline-status ADR): the right rail's
-// in-flight pipeline pillar — "what work is in flight" — sitting second between
-// the live `now` instrument and the material `changes` evidence. This replaces
-// the activity-rail FRAME: the frame's degraded/empty states are reframed here
-// over the real in-flight ADR/plan projection.
+// The work tab content surface (figma-parity-reconciliation W02.P05.S30; binding
+// WorkTab Kit primitive, Figma node 137:40): the right rail's in-flight pipeline
+// pillar — "what work is in flight" — the live ADR/plan projection with the
+// progress ring, status pill, pipeline arc, and the lazily-loaded plan step tree.
+// Rebuilt onto the NEW Figma role-named token foundation
+// (figma-parity-reconciliation ADR): the `caption` type role for dense counts and
+// metadata, canonical radius (`rounded-fg-xs`, `rounded-fg-pill`) for the rows,
+// pills, and status badges. No legacy radius or px-purpose type scale.
 //
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
 // DUMB app-chrome view. It consumes the stores pipeline-status selectors
@@ -130,7 +133,7 @@ export function ProgressRing({ done, total }: ProgressRingProps) {
         )}
       </svg>
       {/* The fraction is the primary, grayscale-safe carrier — tabular numerals. */}
-      <span className="text-2xs text-ink-muted" data-tabular data-progress-text>
+      <span className="text-caption text-ink-muted" data-tabular data-progress-text>
         {done}/{total}
       </span>
     </span>
@@ -158,7 +161,7 @@ function StatusPill({ status }: StatusPillProps) {
   const ink = STATUS_INK[status] ?? "border-rule text-ink-muted";
   return (
     <span
-      className={`shrink-0 rounded-full border px-vs-1-5 py-px text-2xs font-medium ${ink}`}
+      className={`shrink-0 rounded-fg-pill border px-vs-1-5 py-px text-caption font-medium ${ink}`}
       data-status-pill
       data-status={status}
       aria-label={`status ${status}`}
@@ -226,7 +229,7 @@ interface PipelineArcProps {
 function PipelineArc({ occupied }: PipelineArcProps) {
   return (
     <ol
-      className="flex items-center gap-vs-0-5 px-vs-1 py-vs-1 text-2xs text-ink-faint"
+      className="flex items-center gap-vs-0-5 px-vs-1 py-vs-1 text-caption text-ink-faint"
       aria-label="pipeline phases"
       data-pipeline-arc
     >
@@ -244,7 +247,7 @@ function PipelineArc({ occupied }: PipelineArcProps) {
             >
               <span
                 aria-hidden
-                className={`inline-block size-vs-1 rounded-full ${
+                className={`inline-block size-vs-1 rounded-fg-pill ${
                   on ? "bg-accent" : "bg-rule"
                 }`}
               />
@@ -266,7 +269,7 @@ function PipelineArc({ occupied }: PipelineArcProps) {
 
 function RollupFraction({ rollup }: { rollup: InteriorRollup }) {
   return (
-    <span className="shrink-0 text-2xs text-ink-faint" data-tabular data-rollup>
+    <span className="shrink-0 text-caption text-ink-faint" data-tabular data-rollup>
       {rollup.done}/{rollup.total}
     </span>
   );
@@ -290,12 +293,12 @@ function StepRow({ step }: StepRowProps) {
         tabIndex={-1}
         onClick={() => target && selectNode(target)}
         aria-label={`step ${step.id}${target ? ", open exec record" : ", no exec record"}`}
-        className={`flex w-full items-center gap-vs-1-5 rounded-vs-sm px-vs-1 py-vs-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex w-full items-center gap-vs-1-5 rounded-fg-xs px-vs-1 py-vs-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           target ? "hover:bg-paper-sunken" : "cursor-default opacity-80"
         }`}
       >
         <StepCheckMark done={step.done} />
-        <span className="shrink-0 font-mono text-2xs text-ink-faint" data-tabular>
+        <span className="shrink-0 font-mono text-caption text-ink-faint" data-tabular>
           {step.id}
         </span>
         <span className="min-w-0 truncate text-ink-muted">{heading}</span>
@@ -307,7 +310,7 @@ function StepRow({ step }: StepRowProps) {
 function PhaseGroup({ phase }: { phase: InteriorPhaseView }) {
   return (
     <li className="space-y-vs-0-5">
-      <p className="flex items-center gap-vs-1-5 px-vs-1 text-2xs text-ink-faint">
+      <p className="flex items-center gap-vs-1-5 px-vs-1 text-caption text-ink-faint">
         <span className="font-mono">{phase.id}</span>
         {phase.heading && <span className="min-w-0 truncate">{phase.heading}</span>}
         <RollupFraction rollup={phase.rollup} />
@@ -324,7 +327,7 @@ function PhaseGroup({ phase }: { phase: InteriorPhaseView }) {
 function WaveGroup({ wave }: { wave: InteriorWaveView }) {
   return (
     <li className="space-y-vs-0-5">
-      <p className="flex items-center gap-vs-1-5 px-vs-1 text-2xs font-medium text-ink-muted">
+      <p className="flex items-center gap-vs-1-5 px-vs-1 text-caption font-medium text-ink-muted">
         <span className="font-mono">{wave.id}</span>
         {wave.heading && <span className="min-w-0 truncate">{wave.heading}</span>}
         <RollupFraction rollup={wave.rollup} />
@@ -402,7 +405,7 @@ export function PlanStepTree({ view }: { view: PlanInteriorView }) {
           a designed "narrowed — refine" state, never a silent partial tree. */}
       {view.truncated && (
         <p
-          className="flex items-start gap-vs-1-5 rounded-vs-sm border border-state-stale/40 bg-paper-sunken px-vs-2 py-vs-1 text-2xs text-ink-muted"
+          className="flex items-start gap-vs-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-vs-2 py-vs-1 text-caption text-ink-muted"
           data-step-tree-truncated
           role="status"
         >
@@ -487,7 +490,7 @@ function PlanRow({ artifact, now, tabbable, expanded, onToggle }: PlanRowProps) 
           aria-controls={treeId}
           aria-label={`${expanded ? "collapse" : "expand"} steps for ${artifact.title ?? artifact.stem}`}
           data-work-row="plan-toggle"
-          className="flex shrink-0 items-center rounded-vs-sm px-vs-0-5 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex shrink-0 items-center rounded-fg-xs px-vs-0-5 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <Chevron size={SMALL_PX} aria-hidden />
         </button>
@@ -500,7 +503,7 @@ function PlanRow({ artifact, now, tabbable, expanded, onToggle }: PlanRowProps) 
           onKeyDown={onRowKeyDown}
           data-work-row="plan"
           data-node-id={artifact.node_id}
-          className="flex min-w-0 flex-1 items-center gap-vs-1-5 rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="flex min-w-0 flex-1 items-center gap-vs-1-5 rounded-fg-xs border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           {progress && <ProgressRing done={progress.done} total={progress.total} />}
           <span className="min-w-0 flex-1">
@@ -510,7 +513,7 @@ function PlanRow({ artifact, now, tabbable, expanded, onToggle }: PlanRowProps) 
               </span>
               {artifact.tier && (
                 <span
-                  className="shrink-0 rounded-vs-sm border border-rule px-vs-1 text-2xs font-medium text-ink-muted"
+                  className="shrink-0 rounded-fg-xs border border-rule px-vs-1 text-caption font-medium text-ink-muted"
                   data-plan-tier
                   aria-label={`tier ${artifact.tier}`}
                 >
@@ -518,7 +521,7 @@ function PlanRow({ artifact, now, tabbable, expanded, onToggle }: PlanRowProps) 
                 </span>
               )}
             </span>
-            <span className="mt-px flex items-center gap-vs-1-5 text-2xs text-ink-faint">
+            <span className="mt-px flex items-center gap-vs-1-5 text-caption text-ink-faint">
               <span data-pipeline-phase>{artifact.phase}</span>
               {fresh && (
                 <span data-tabular data-freshness>
@@ -559,7 +562,7 @@ function AdrRow({ artifact, now, tabbable }: AdrRowProps) {
         data-work-row="adr"
         data-node-id={artifact.node_id}
         aria-label={`ADR ${artifact.title ?? artifact.stem}${artifact.status ? `, status ${artifact.status}` : ""}`}
-        className="flex w-full items-center gap-vs-1-5 rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-vs-1-5 rounded-fg-xs border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         <span className="shrink-0 text-ink-faint" aria-hidden>
           <FileText size={GATE_PX} />
@@ -576,7 +579,7 @@ function AdrRow({ artifact, now, tabbable }: AdrRowProps) {
             ) : (
               !ADR_STATUS_SERVED && (
                 <span
-                  className="shrink-0 rounded-full border border-rule px-vs-1-5 py-px text-2xs text-ink-faint"
+                  className="shrink-0 rounded-fg-pill border border-rule px-vs-1-5 py-px text-caption text-ink-faint"
                   data-status-placeholder
                 >
                   status pending
@@ -584,7 +587,7 @@ function AdrRow({ artifact, now, tabbable }: AdrRowProps) {
               )
             )}
           </span>
-          <span className="mt-px flex items-center gap-vs-1-5 text-2xs text-ink-faint">
+          <span className="mt-px flex items-center gap-vs-1-5 text-caption text-ink-faint">
             {feature && <span data-feature>{feature}</span>}
             {fresh && (
               <span data-tabular data-freshness>
