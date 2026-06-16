@@ -20,6 +20,7 @@ import { StreamLostError } from "../../platform/policy/failurePolicy";
 import type { SalienceLens } from "../view/salienceLens";
 import { DEFAULT_SALIENCE_LENS, useSalienceLensStore } from "../view/salienceLens";
 import type {
+  ChangedFile,
   ContentResponse,
   ContentTruncated,
   DiscoverResponse,
@@ -48,7 +49,13 @@ import {
   tiersFromQuery,
   useEngineStatus,
 } from "./engine";
-import { isRagRunning } from "./liveAdapters";
+import {
+  isRagRunning,
+  mergeNumstat,
+  parseGitNumstat,
+  parseGitStatus,
+  parseUnifiedDiff,
+} from "./liveAdapters";
 import { useViewStore } from "../view/viewStore";
 
 // --- stable serialization for key parts -----------------------------------------
@@ -186,6 +193,15 @@ export const engineKeys = {
   // it to render controls. Never invalidated by a value write (only the schema
   // CHANGING would, which requires a redeploy).
   settingsSchema: () => [...engineKeys.all, "settings-schema"] as const,
+  // The read-only `/ops/git` reads (git-diff-browser ADR / Feature B). Keyed by
+  // scope: the changed-files list (porcelain status + numstat) is one entry per
+  // scope; the per-file diff folds the file path so each open file is its own
+  // cache entry. Gated on the git rollup's presence in the status snapshot, so a
+  // `git` SSE chunk refreshing `/status` re-gates them; bounded at the call site
+  // (gcTime, single entry per observer).
+  gitChanges: (scope: string) => [...engineKeys.all, "git-changes", scope] as const,
+  gitDiff: (scope: string, path: string) =>
+    [...engineKeys.all, "git-diff", scope, path] as const,
 };
 
 // --- read hooks --------------------------------------------------------------------
@@ -1136,17 +1152,19 @@ export function usePutSettings() {
 // tier. When the engine responds but carries no `git` object, that is the designed
 // "no repository state" degraded state; a tiers-less transport fault is the error.
 //
-// ENGINE-BLOCKED CAPABILITIES (NOT served by the live wire, signaled by constants,
-// never faked as tiers): the per-file CHANGED-FILES LIST (live `dirty` is a single
-// boolean) and the per-file DIFF BODY (the live ops whitelist is only
-// `/ops/core/*` and `/ops/rag/*`; there is no `/ops/git/*` route, and
-// engine-read-and-infer forbids inventing one here). Both surface as honest
-// engine-blocked states; the richer shapes are a documented forward proposal.
+// RICHER CAPABILITIES (now SERVED by the read-only `/ops/git/{verb}` pass-through —
+// the engine forwards porcelain `status`, `numstat`, and unified `diff` for a path
+// VERBATIM, with NO diff algorithm and NO mutating verb, by construction
+// `engine-read-and-infer`): the per-file CHANGED-FILES LIST (from porcelain status
+// + numstat) and the per-file DIFF BODY (from unified diff). The selectors below
+// fetch them through the stores layer's `client.opsGit` seam and parse git's
+// verbatim text (`parseGitStatus` / `parseGitNumstat` / `parseUnifiedDiff`) into the
+// status-grouped list and hunk-by-hunk shapes the chrome renders.
 
-/** The per-file changed-files list is not served by the live engine. */
-export const CHANGED_FILES_LIST_SERVED = false;
-/** The read-only diff body is not served by the live engine. */
-export const GIT_DIFF_CAPABILITY_SERVED = false;
+/** The per-file changed-files list IS served (porcelain status + numstat). */
+export const CHANGED_FILES_LIST_SERVED = true;
+/** The read-only per-file diff body IS served (unified diff for a path). */
+export const GIT_DIFF_CAPABILITY_SERVED = true;
 
 export interface GitStatusView {
   /** The status snapshot is in flight with no held git data. */
@@ -1159,8 +1177,8 @@ export interface GitStatusView {
   git?: NonNullable<EngineStatus["git"]>;
   /**
    * The working tree is dirty (live `dirty: boolean`). True iff git is available
-   * AND dirty. The PER-FILE list is engine-blocked — consumers render the dirty
-   * truth as a single honest "changes present, per-file detail pending" state.
+   * AND dirty. The per-file changed list is served separately by `useChangedFiles`
+   * (porcelain status + numstat); this boolean is the header's clean/dirty pill.
    */
   dirty: boolean;
 }
@@ -1762,35 +1780,102 @@ export function classifyOpsOutcome(result: {
   return result.ok ? "ok" : "failed";
 }
 
+// The `git` working-tree reads degrade off the PRESENCE of the git rollup in the
+// status snapshot (git is NOT a canonical tier — see `deriveGitStatusView`). When
+// the engine reports no git payload, the changed-files and diff selectors render
+// their designed degraded state rather than firing a doomed `/ops/git` query.
+
+/**
+ * The interpreted changed-files view the `ChangesOverview` list renders. Parsed
+ * from the porcelain `status` + `numstat` reads and grouped by git status. A
+ * tiers-bearing `/ops/git` error envelope (or a transport fault) marks `errored`;
+ * the surface distinguishes that from the clean (empty) and loading states.
+ */
+export interface ChangedFilesView {
+  /** A changed-files read is in flight with no held entries. */
+  loading: boolean;
+  /** A genuine `/ops/git` failure (the engine answered with an error or faulted). */
+  errored: boolean;
+  /** One entry per changed file, status-grouped + numstat-reconciled. */
+  files: ChangedFile[];
+}
+
+/**
+ * Stores selector for the worktree's changed-files list: fetches porcelain
+ * `status` and `numstat` through the `client.opsGit` seam (the stores layer is the
+ * sole wire client — dashboard-layer-ownership), parses git's verbatim text, and
+ * reconciles the numstat tallies onto the status entries. Disabled when scope is
+ * null OR git is unavailable in the status snapshot (no doomed query when the
+ * engine reports no repository state). A `git` SSE chunk refreshing `/status`
+ * re-gates this query through the `useGitStatus` dependency.
+ */
+export function useChangedFiles(scope: string | null): ChangedFilesView {
+  const git = useGitStatus();
+  const enabled = scope !== null && CHANGED_FILES_LIST_SERVED && git.git !== undefined;
+  const query = useQuery({
+    queryKey: engineKeys.gitChanges(scope ?? ""),
+    queryFn: async () => {
+      const [status, numstat] = await Promise.all([
+        engineClient.opsGit("status"),
+        engineClient.opsGit("numstat"),
+      ]);
+      return mergeNumstat(
+        parseGitStatus(status.output),
+        parseGitNumstat(numstat.output),
+      );
+    },
+    enabled,
+  });
+  return {
+    loading: enabled && query.isPending,
+    errored: query.isError,
+    files: query.data ?? [],
+  };
+}
+
 /**
  * The interpreted state of a file's read-only diff (git-diff-browser ADR).
  *
- * IMPORTANT: the live engine serves NO read-only diff — there is no `/ops/git/*`
- * route in the ops whitelist, and engine-read-and-infer forbids inventing one in
- * this UI-adoption cycle. So this hook NEVER issues a network query; it reports a
- * single honest ENGINE-BLOCKED state, and the `DiffView` chrome renders the
- * "diff unavailable — engine capability pending" message. The richer structured
- * `GitFileDiff` shape is a documented forward proposal, not a live call.
+ * The read-only diff IS served by the `/ops/git/diff` pass-through: this selector
+ * fetches a file's unified diff through the `client.opsGit` seam and parses it into
+ * the structured `GitFileDiff` the `DiffView` renders. `loading` is the in-flight
+ * state; `errored` a genuine `/ops/git` failure; `diff` the parsed body when served.
  */
 export interface GitFileDiffView {
-  /** The read-only diff capability is not served by the engine (always true today). */
-  engineBlocked: boolean;
-  /** The structured diff body when a future engine serves one; undefined today. */
+  /** A diff read is in flight with no held body. */
+  loading: boolean;
+  /** A genuine `/ops/git/diff` failure (the engine answered with an error). */
+  errored: boolean;
+  /** The structured diff body when served; undefined while loading/errored. */
   diff?: GitFileDiff;
 }
 
 /**
- * Stores selector for a changed file's read-only diff. Returns the engine-blocked
- * capability state with no network call, because the live wire serves no diff
- * endpoint. When the proposed read-only diff pass-through lands as a contract
- * amendment, this selector grows the real query behind the same shape; the
- * `DiffView` consumer is unchanged.
+ * Stores selector for a changed file's read-only diff. Fetches the unified diff
+ * for the path through `client.opsGit("diff", { path })` and parses it into the
+ * hunk-by-hunk `GitFileDiff` shape. Disabled until a file path is selected (and a
+ * scope is resolved): a closed diff view fires no query. The optional `status`
+ * letter is threaded onto the parsed diff for the in-body status mark.
  */
 export function useGitFileDiff(
-  _scope: string | null,
-  _path: string | null,
+  scope: string | null,
+  path: string | null,
+  status?: string,
 ): GitFileDiffView {
-  return { engineBlocked: !GIT_DIFF_CAPABILITY_SERVED };
+  const enabled = scope !== null && path !== null && GIT_DIFF_CAPABILITY_SERVED;
+  const query = useQuery({
+    queryKey: engineKeys.gitDiff(scope ?? "", path ?? ""),
+    queryFn: async () => {
+      const op = await engineClient.opsGit("diff", { path: path! });
+      return parseUnifiedDiff(op.output, path!, status);
+    },
+    enabled,
+  });
+  return {
+    loading: enabled && query.isPending,
+    errored: query.isError,
+    diff: query.data,
+  };
 }
 
 // --- SSE consumption (§7) -------------------------------------------------------------

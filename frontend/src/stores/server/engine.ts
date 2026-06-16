@@ -814,11 +814,11 @@ export interface EngineStatus {
   degradations: string[];
   tiers: TiersBlock;
   // The live `/status` git rollup (git-diff-browser ADR / mock-mirrors-live-wire-
-  // shape): `dirty` is a BOOLEAN ("is the working tree dirty?") — the live engine
-  // serves NO per-file changed list, so the changed-files LIST is engine-blocked
-  // and rendered as a designed degraded state. `ahead`/`behind` are OPTIONAL:
-  // absent means "no upstream configured" (NOT zero), so divergence is only
-  // shown when an upstream exists. `branch` is derived from the live `head_ref`.
+  // shape): `dirty` is a BOOLEAN ("is the working tree dirty?"); the per-file
+  // changed list + diff body are served separately by the read-only `/ops/git`
+  // pass-through (porcelain status / numstat / unified diff). `ahead`/`behind` are
+  // OPTIONAL: absent means "no upstream configured" (NOT zero), so divergence is
+  // only shown when an upstream exists. `branch` is derived from the live `head_ref`.
   git?: { branch: string; ahead?: number; behind?: number; dirty: boolean };
   core?: { reachable: boolean; vault_health?: string };
   rag?: { service: string; watcher?: string; index?: string; jobs?: number };
@@ -872,7 +872,7 @@ export interface GitDiffHunk {
 
 /**
  * The structured read-only diff for one changed file — the `DiffView` prop
- * contract and a proposed future wire shape. NOT served by the live engine.
+ * contract, parsed from git's verbatim `diff` output by `parseUnifiedDiff`.
  */
 export interface GitFileDiff {
   path: string;
@@ -881,8 +881,45 @@ export interface GitFileDiff {
   hunks: GitDiffHunk[];
   /** True when there is no textual diff (binary blob or a pure rename). */
   binary?: boolean;
-  /** Honest truncation, when a future engine capped an oversized body. */
+  /** Honest truncation, when the engine capped an oversized body. */
   truncated?: { total_hunks: number; returned_hunks: number; reason: string };
+}
+
+// --- changed-files list (parsed from porcelain status + numstat) ----------------------
+//
+// The status-grouped changed-files list the `ChangesOverview` renders, parsed by
+// `parseGitStatus` / `parseGitNumstat` from the verbatim porcelain-v1 + numstat
+// output the `/ops/git` pass-through forwards. The flat porcelain `XY path` and
+// numstat `adds\tdels\tpath` lines are reconciled into one entry per changed file.
+
+/** The status groups the changed-files list buckets entries into, ordered as the
+ *  surface renders them. `staged` carries an index-side change (porcelain X), the
+ *  rest a worktree-side change (porcelain Y). */
+export type GitChangeGroup =
+  | "staged"
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked";
+
+/** One changed file in the working tree, reconciled from porcelain status and
+ *  numstat. `code` is the raw two-char porcelain `XY` (the non-color identity);
+ *  `adds`/`dels` are the numstat tallies (null for a binary file). */
+export interface ChangedFile {
+  path: string;
+  /** The porcelain two-character `XY` status code (e.g. ` M`, `A `, `??`). */
+  code: string;
+  /** The single status letter shown as the grayscale-safe mark (M/A/D/R/?). */
+  letter: string;
+  /** Which status group the entry buckets into. */
+  group: GitChangeGroup;
+  /** numstat additions; null for a binary file or an entry with no numstat row. */
+  adds: number | null;
+  /** numstat deletions; null for a binary file or an entry with no numstat row. */
+  dels: number | null;
+  /** True when the entry is under the `.vault/` corpus. */
+  vault: boolean;
 }
 
 // --- in-flight pipeline projection (dashboard-pipeline-wire W02) -----------------------

@@ -21,7 +21,11 @@ import {
   adaptVaultTree,
   deriveSearchNodeId,
   docTypeFromStem,
+  mergeNumstat,
   metaEdgeToEdge,
+  parseGitNumstat,
+  parseGitStatus,
+  parseUnifiedDiff,
   unwrapEnvelope,
 } from "./liveAdapters";
 import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
@@ -890,6 +894,71 @@ describe("adaptGitOp + /ops/git consumer fidelity (W05.P12.S64)", () => {
     // without a path is a 400 — same as the live route.
     await expect(client.opsGit("commit" as "status")).rejects.toThrow();
     await expect(client.opsGit("diff")).rejects.toThrow();
+  });
+});
+
+describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
+  it("parses porcelain-v1 status into status-grouped changed-file entries", () => {
+    // A porcelain-v1 sample exercising each XY status: branch header (skipped),
+    // a worktree modify, a staged add, a worktree delete, a rename, untracked.
+    const output =
+      "## main...origin/main [ahead 1]\n" +
+      " M src/a.ts\n" +
+      "A  src/new.ts\n" +
+      " D src/gone.ts\n" +
+      "R  src/old.ts -> src/renamed.ts\n" +
+      "?? .vault/scratch.md\n";
+    const files = parseGitStatus(output);
+    expect(files.map((f) => [f.path, f.group, f.letter])).toEqual([
+      ["src/a.ts", "modified", "M"],
+      ["src/new.ts", "staged", "A"],
+      ["src/gone.ts", "deleted", "D"],
+      ["src/renamed.ts", "renamed", "R"], // rename tracks the NEW path
+      [".vault/scratch.md", "untracked", "?"],
+    ]);
+    // The vault corpus entry carries the vault flag; the others do not.
+    expect(files.find((f) => f.path === ".vault/scratch.md")!.vault).toBe(true);
+    expect(files.find((f) => f.path === "src/a.ts")!.vault).toBe(false);
+  });
+
+  it("parses numstat tallies and reconciles them onto status entries (binary → null)", () => {
+    const numstat = "3\t1\tsrc/a.ts\n-\t-\timg/logo.png\n";
+    const tallies = parseGitNumstat(numstat);
+    expect(tallies.get("src/a.ts")).toEqual({ adds: 3, dels: 1 });
+    expect(tallies.get("img/logo.png")).toEqual({ adds: null, dels: null });
+    const merged = mergeNumstat(parseGitStatus("## main\n M src/a.ts\n"), tallies);
+    expect(merged[0]).toMatchObject({ path: "src/a.ts", adds: 3, dels: 1 });
+  });
+
+  it("parses a unified diff into hunks with twin line numbers and per-line kinds", () => {
+    const diff =
+      "diff --git a/x.md b/x.md\n" +
+      "index 1111111..2222222 100644\n" +
+      "--- a/x.md\n+++ b/x.md\n" +
+      "@@ -1,3 +1,3 @@\n" +
+      " context line\n-old line\n+new line\n";
+    const parsed = parseUnifiedDiff(diff, "x.md", "M");
+    expect(parsed.path).toBe("x.md");
+    expect(parsed.status).toBe("M");
+    expect(parsed.binary).toBe(false);
+    expect(parsed.hunks).toHaveLength(1);
+    expect(parsed.hunks[0].header).toBe("@@ -1,3 +1,3 @@");
+    // Twin gutters advance correctly: context on both sides at line 1, the
+    // removed line on the old side (2), the added line on the new side (2).
+    expect(parsed.hunks[0].lines).toEqual([
+      { kind: "context", old: 1, new: 1, text: "context line" },
+      { kind: "remove", old: 2, new: null, text: "old line" },
+      { kind: "add", old: null, new: 2, text: "new line" },
+    ]);
+  });
+
+  it("reports a binary file as binary with no hunks", () => {
+    const diff =
+      "diff --git a/logo.png b/logo.png\n" +
+      "Binary files a/logo.png and b/logo.png differ\n";
+    const parsed = parseUnifiedDiff(diff, "logo.png");
+    expect(parsed.binary).toBe(true);
+    expect(parsed.hunks).toHaveLength(0);
   });
 });
 

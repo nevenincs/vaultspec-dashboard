@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
 //
-// Git diff browser surface adoption (W02.P13.S29, revised after review): the
-// ChangesOverview's HONEST state machine against the CURRENT live engine —
-// clean working tree, the dirty working-tree state rendered as an engine-blocked
-// panel (the live wire serves a dirty BOOLEAN, NOT a per-file list), the diff's
-// engine-blocked "capability pending" detail, upstream-divergence labels shown
-// only when an upstream is configured, and the keyboard disclosure — all through
-// the REAL stores client transport (mockEngine), no component doubles. The git
-// state is read through the stores seam (never the raw tiers block); git is NOT
-// a tier, so availability tracks the presence of the git payload.
+// Git diff browser surface (graph-viz-framework W06.P19): the ChangesOverview's
+// state machine against the live engine's read-only `/ops/git` pass-through —
+// clean working tree, the dirty working-tree state rendered as a status-grouped
+// per-file changed-files list (parsed from porcelain status + numstat), the
+// per-file diff revealed on disclosure (parsed from the unified-diff body),
+// upstream-divergence labels shown only when an upstream is configured, and the
+// keyboard disclosure — all through the REAL stores client transport (mockEngine),
+// no component doubles. The git state is read through the stores seam (never the
+// raw tiers block); git is NOT a tier, so availability tracks the presence of the
+// git payload.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -61,11 +62,11 @@ describe("ChangesOverview git diff browser surface (S29, honest-against-live)", 
       const clean = document.querySelector("[data-git-clean]");
       expect(clean?.textContent).toMatch(/working tree clean/i);
     });
-    // There is NO fabricated changed-files list / working-changes panel.
+    // A clean tree renders NO per-file changed list.
     expect(document.querySelector("[data-working-changes]")).toBeNull();
   });
 
-  it("renders the dirty working tree as an HONEST engine-blocked panel (no fabricated per-file list)", async () => {
+  it("renders the dirty working tree as a status-grouped per-file changed-files list (parsed from /ops/git)", async () => {
     const mock = new MockEngine();
     mock.setGitDirty(true);
     engineClient.useTransport(mock.fetchImpl);
@@ -73,25 +74,30 @@ describe("ChangesOverview git diff browser surface (S29, honest-against-live)", 
     // The header pill states 'changes' (not a fabricated count), label-reinforced.
     const header = await screen.findByLabelText("git status");
     expect(header.textContent).toMatch(/changes/i);
-    // The working-changes panel states the per-file detail is not yet served.
-    const panel = await waitFor(() => {
-      const el = document.querySelector("[data-working-changes]");
-      expect(el?.textContent).toMatch(/per-file detail not yet served/i);
-      return el!;
-    });
-    // It is a labelled section, not a list of fabricated rows.
-    expect(panel.getAttribute("aria-label")).toBe("working tree changes");
-    expect(screen.queryByRole("list", { name: "changed files" })).toBeNull();
+    // The changed-files list is the real per-file list parsed from the porcelain
+    // status (` M .vault/plan/...md`) the live engine forwards verbatim.
+    const list = await screen.findByRole("list", { name: "changed files" });
+    expect(list).toBeTruthy();
+    // The dirty fixture file renders by basename under the Modified group.
+    expect(list.textContent).toMatch(/Modified/);
+    expect(list.textContent).toMatch(/2026-01-05-editor-demo-plan\.md/);
+    // The status LETTER mark reads in grayscale (never colour-only).
+    expect(list.querySelector('[aria-label^="modified"]')).toBeTruthy();
+    // numstat tallies (3 added, 1 removed) render with the diff hues + labels.
+    expect(list.querySelector('[aria-label="3 added"]')).toBeTruthy();
+    expect(list.querySelector('[aria-label="1 removed"]')).toBeTruthy();
+    // The vault corpus file carries a vault marker.
+    expect(list.querySelector('[aria-label="vault file"]')).toBeTruthy();
   });
 
-  it("expands the engine-blocked panel to the diff's honest 'capability pending' detail", async () => {
+  it("expands a changed-file row to the real parsed diff (hunk body, +/- glyphs and labels)", async () => {
     const mock = new MockEngine();
     mock.setGitDirty(true);
     engineClient.useTransport(mock.fetchImpl);
     renderChanges();
     const toggle = await waitFor(() => {
       const el = document.querySelector(
-        "[data-working-changes] button",
+        "[data-working-changes] li button",
       ) as HTMLButtonElement | null;
       expect(el).toBeTruthy();
       return el!;
@@ -99,16 +105,20 @@ describe("ChangesOverview git diff browser surface (S29, honest-against-live)", 
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    // The DiffView renders the engine-blocked state — NO network call to a
-    // non-existent /ops/git/* endpoint, NO fake tier.
-    const detail = await waitFor(() => {
-      const el = document.querySelector("[data-diff-unavailable]");
-      expect(el?.textContent).toMatch(/engine capability pending/i);
+    // The DiffView renders the REAL parsed diff body — the unified diff the
+    // /ops/git/diff pass-through forwards, NOT an engine-blocked placeholder.
+    const body = await waitFor(() => {
+      const el = document.querySelector("[data-diff-body]");
+      expect(el).toBeTruthy();
       return el!;
     });
-    expect(detail).toBeTruthy();
-    // It is NOT an error state.
-    expect(document.querySelector("[data-diff-error]")).toBeNull();
+    // The mock's diff carries a context, a removed, and an added line — the
+    // sacred add/remove treatment with +/- glyphs and programmatic labels.
+    expect(body.textContent).toMatch(/new line/);
+    expect(body.textContent).toMatch(/old line/);
+    expect(body.querySelector(".sr-only")?.textContent).toBeTruthy();
+    // No engine-blocked placeholder survives anywhere on the surface.
+    expect(document.querySelector("[data-diff-unavailable]")).toBeNull();
   });
 
   it("shows divergence labels only when an upstream is configured (absent ahead/behind = no upstream, not zero)", async () => {

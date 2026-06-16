@@ -497,11 +497,10 @@ export class MockEngine {
   private fileTreeLevelCap: number | null = null;
   // Git working-tree state served on /status (git-diff-browser surface). The mock
   // mirrors the LIVE wire shape exactly (mock-mirrors-live-wire-shape): `dirty` is
-  // a BOOLEAN ("is the tree dirty?") — the live engine serves NO per-file list —
-  // and `ahead`/`behind` are Option<u32>, ABSENT (undefined) by default to model
-  // "no upstream configured". There is NO read-only diff endpoint: the live ops
-  // whitelist is `/ops/core/*` and `/ops/rag/*` only, so no `/ops/git/*` route is
-  // served and the diff capability is engine-blocked in the chrome.
+  // a BOOLEAN ("is the tree dirty?") and `ahead`/`behind` are Option<u32>, ABSENT
+  // (undefined) by default to model "no upstream configured". The per-file changed
+  // list + diff body come from the separate read-only `/ops/git/{verb}` pass-through
+  // (porcelain status / numstat / unified diff), served by `gitOp` below.
   private gitDirty = false;
   private gitAhead: number | undefined = undefined;
   private gitBehind: number | undefined = undefined;

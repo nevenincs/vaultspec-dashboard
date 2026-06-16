@@ -19,8 +19,6 @@
 // layer owns; it fetches nothing and writes NOTHING — there is no line-staging or
 // any write affordance, by design (engine-read-and-infer).
 
-import { FileDashed } from "@phosphor-icons/react";
-
 import type { GitDiffHunk, GitDiffLine, GitFileDiff } from "../../stores/server/engine";
 import { openContextMenu } from "../../stores/view/contextMenu";
 
@@ -168,45 +166,21 @@ function HunkBlock({
 
 export interface DiffViewProps {
   /**
-   * The read-only diff capability is not served by the live engine (the live ops
-   * whitelist is `/ops/core/*` and `/ops/rag/*` only — there is no `/ops/git/*`).
-   * When true (the case today) the surface renders the honest "engine capability
-   * pending" state and makes NO network call. Default true.
+   * The structured diff to render — parsed by `useGitFileDiff` from the read-only
+   * `/ops/git/diff` pass-through (unified diff for a path). The owning stores
+   * selector handles loading/error; this view is a pure projection of the body.
    */
-  engineBlocked?: boolean;
-  /**
-   * A structured diff to render — supplied only when a FUTURE engine serves the
-   * proposed read-only diff. Not produced by any live query today; present so the
-   * render chrome is complete and testable.
-   */
-  diff?: GitFileDiff;
+  diff: GitFileDiff;
 }
 
 /**
- * The diff body for a selected changed file.
- *
- * Today this renders ONE honest state: "diff unavailable — engine capability
- * pending", because the live engine serves no read-only diff (engine-blocked, by
- * the read-and-infer boundary). The structured render path below (hunks with the
- * sacred add/remove treatment, binary / empty / truncation) is retained for when
- * the proposed read-only diff capability lands as a contract amendment; it is the
- * `DiffView` prop contract, never reached against the current wire.
+ * The diff body for a selected changed file: a hunk-by-hunk render of the parsed
+ * read-only diff with the sacred add/remove treatment, twin (old/new) line-number
+ * gutters, `+`/`-` glyphs + labels (colour is never the sole signal), and honest
+ * binary / empty / truncation states. A pure projection over read-only git data
+ * the stores layer owns — it fetches nothing and writes NOTHING (read-and-infer).
  */
-export function DiffView({ engineBlocked = true, diff }: DiffViewProps) {
-  if (engineBlocked || !diff) {
-    return (
-      <p
-        className="flex items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
-        data-diff-unavailable
-      >
-        <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
-          <FileDashed size={14} />
-        </span>
-        <span>diff unavailable — engine capability pending</span>
-      </p>
-    );
-  }
-
+export function DiffView({ diff }: DiffViewProps) {
   if (diff.binary) {
     return (
       <p className="px-vs-2 py-vs-1 text-label text-ink-faint" data-diff-binary>

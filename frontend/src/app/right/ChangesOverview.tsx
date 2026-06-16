@@ -8,12 +8,15 @@
 // domain plane from Phosphor (git-branch, git-commit, file marks). The retired
 // hand-drawn / ad-hoc Unicode glyphs leave.
 //
-// Data sources, both from the stores layer (chrome reads selectors, never the
+// Data sources, all from the stores layer (chrome reads selectors, never the
 // engine, never the raw `tiers` block — dashboard-layer-ownership):
 //   • useGitStatus()    → the derived git working-tree view (branch / ahead /
 //                          behind / dirty), with loading / degraded / errored
 //                          interpreted in the stores layer.
-//   • useGitFileDiff()  → the read-only structured diff for a selected file.
+//   • useChangedFiles() → the status-grouped per-file changed list, parsed from
+//                          the read-only `/ops/git` porcelain status + numstat.
+//   • useGitFileDiff()  → the read-only structured diff for a selected file,
+//                          parsed from the read-only `/ops/git/diff` pass-through.
 //   • useEngineEvents() → commits + doc-created / doc-modified / step-checked.
 //
 // DIFF LEGIBILITY IS SACRED and COLOUR IS NEVER THE SOLE SIGNAL: the diff body
@@ -36,8 +39,17 @@ import {
 } from "@phosphor-icons/react";
 import { useState } from "react";
 
-import type { EngineEvent } from "../../stores/server/engine";
-import { useEngineEvents, useGitStatus } from "../../stores/server/queries";
+import type {
+  ChangedFile,
+  EngineEvent,
+  GitChangeGroup,
+} from "../../stores/server/engine";
+import {
+  useChangedFiles,
+  useEngineEvents,
+  useGitFileDiff,
+  useGitStatus,
+} from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import type { Selection } from "../../stores/view/viewStore";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -140,7 +152,8 @@ interface GitStatusProps {
   branch: string;
   ahead?: number;
   behind?: number;
-  /** Live `dirty: boolean` — clean vs. dirty (NO per-file count; engine-blocked). */
+  /** Live `dirty: boolean` — the header's clean/dirty pill (the per-file count
+   *  comes from the separate changed-files list, not this boolean). */
   dirty: boolean;
 }
 
@@ -200,50 +213,152 @@ function GitStatusHeader({ branch, ahead, behind, dirty }: GitStatusProps) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Working-tree changes — the HONEST engine-blocked panel
+// Working-tree changes — the status-grouped per-file changed-files list
 // ---------------------------------------------------------------------------
 //
-// The live engine serves only a dirty BOOLEAN, not a per-file changed list, so
-// there is NO fabricated per-file list here. When the tree is dirty this panel
-// states that plainly and offers a single disclosure that reveals the DiffView's
-// honest engine-blocked detail — keeping the diff chrome (and its a11y) wired and
-// exercised end-to-end against the engine-blocked path, without inventing data
-// the wire does not serve. The per-file changed list and the read-only diff body
-// are documented forward proposals (a future contract amendment), not live data.
+// The read-only `/ops/git` pass-through serves a real per-file changed list
+// (porcelain status + numstat) and a per-file diff body (unified diff). The list
+// is grouped by git status; each row is a disclosure revealing that file's diff
+// inline via `DiffView`. Status is never colour-only: each row carries a status
+// LETTER mark. The surface NEVER writes git (no stage/discard/commit) — it only
+// observes (engine-read-and-infer).
 
-function WorkingTreeChanges() {
+// The render order + human label of each status group (git-diff-browser ADR:
+// staged, modified, added, deleted, renamed, untracked).
+const GROUP_ORDER: GitChangeGroup[] = [
+  "staged",
+  "modified",
+  "added",
+  "deleted",
+  "renamed",
+  "untracked",
+];
+const GROUP_LABEL: Record<GitChangeGroup, string> = {
+  staged: "Staged",
+  modified: "Modified",
+  added: "Added",
+  deleted: "Deleted",
+  renamed: "Renamed",
+  untracked: "Untracked",
+};
+
+/** Phosphor file mark for a changed-file row: added → file-plus, deleted/renamed
+ *  → dashed, otherwise the generic file (modified/staged/untracked). */
+function fileMark(group: GitChangeGroup): Icon {
+  if (group === "added") return FilePlus;
+  if (group === "deleted" || group === "renamed") return FileDashed;
+  return FileMark;
+}
+
+/** One changed-file disclosure row: the status letter, file mark, basename (full
+ *  path on hover + to assistive tech), numstat tallies, and a chevron revealing
+ *  the file's diff inline. */
+function ChangedFileRow({ file, scope }: { file: ChangedFile; scope: string }) {
   const [open, setOpen] = useState(false);
   const Chevron = open ? ChevronDown : ChevronRight;
+  const Mark = fileMark(file.group);
+  // The diff query fires ONLY when the row is open (a closed row issues none).
+  const diff = useGitFileDiff(
+    open ? scope : null,
+    open ? file.path : null,
+    file.letter,
+  );
+
+  return (
+    <li>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-vs-1 rounded-vs-sm px-vs-1 py-vs-0-5 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        title={file.path}
+      >
+        <span className="shrink-0 text-ink-faint" aria-hidden>
+          <Chevron size={CHROME_PX} />
+        </span>
+        {/* Status LETTER — the grayscale-safe, non-colour status mark. */}
+        <span
+          className="w-3 shrink-0 select-none text-center font-mono text-2xs text-ink-faint"
+          aria-label={`${GROUP_LABEL[file.group].toLowerCase()} (${file.code.trim() || file.letter})`}
+        >
+          {file.letter}
+        </span>
+        <span className="shrink-0 text-ink-faint" aria-hidden>
+          <Mark size={DOMAIN_PX} />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-ink-muted">
+          {basename(file.path)}
+        </span>
+        {file.vault && (
+          <span className="shrink-0 text-2xs text-accent-text" aria-label="vault file">
+            vault
+          </span>
+        )}
+        {/* numstat add/remove tallies — data-bearing → tabular numerals, with the
+            sacred diff hues, label-reinforced so they read in grayscale. */}
+        {(file.adds !== null || file.dels !== null) && (
+          <span className="flex shrink-0 items-center gap-vs-1 text-2xs" data-tabular>
+            {file.adds !== null && (
+              <span className="text-diff-add" aria-label={`${file.adds} added`}>
+                +{file.adds}
+              </span>
+            )}
+            {file.dels !== null && (
+              <span className="text-diff-remove" aria-label={`${file.dels} removed`}>
+                -{file.dels}
+              </span>
+            )}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="ml-vs-4 mt-vs-0-5 animate-fade-in motion-reduce:animate-none">
+          {diff.loading && (
+            <p
+              className="animate-pulse-live px-vs-1 text-2xs text-ink-faint motion-reduce:animate-none"
+              data-diff-loading
+            >
+              reading diff…
+            </p>
+          )}
+          {diff.errored && (
+            <p className="px-vs-1 text-2xs text-state-broken" data-diff-error>
+              diff unavailable
+            </p>
+          )}
+          {diff.diff && <DiffView diff={diff.diff} />}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ChangedFilesList({ files, scope }: { files: ChangedFile[]; scope: string }) {
+  const groups = GROUP_ORDER.map((group) => ({
+    group,
+    rows: files.filter((f) => f.group === group),
+  })).filter((g) => g.rows.length > 0);
 
   return (
     <section aria-label="working tree changes" data-working-changes>
       <h3 className="mb-vs-1 text-2xs font-semibold uppercase tracking-wider text-ink-faint">
         Changes
       </h3>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start gap-vs-1-5 rounded-vs-sm bg-paper-sunken px-vs-2 py-vs-1 text-left text-label text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-      >
-        <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
-          <Chevron size={CHROME_PX} />
-        </span>
-        <span className="mt-px shrink-0 text-ink-faint" aria-hidden>
-          <FileDashed size={DOMAIN_PX} />
-        </span>
-        <span className="min-w-0 flex-1">
-          working tree has changes — per-file detail not yet served by the engine
-        </span>
-      </button>
-      {open && (
-        <div className="ml-vs-4 mt-vs-0-5 animate-fade-in motion-reduce:animate-none">
-          {/* The diff capability is engine-blocked (no /ops/git/* route lives);
-              DiffView renders the honest "capability pending" state — the
-              engine-blocked path exercised end-to-end. */}
-          <DiffView engineBlocked />
-        </div>
-      )}
+      <ul className="space-y-vs-2" aria-label="changed files">
+        {groups.map(({ group, rows }) => (
+          <li key={group}>
+            <h4 className="mb-vs-0-5 flex items-center gap-vs-1 text-2xs text-ink-faint">
+              <span className="uppercase tracking-wider">{GROUP_LABEL[group]}</span>
+              <span data-tabular>{rows.length}</span>
+            </h4>
+            <ul className="space-y-vs-0-5">
+              {rows.map((file) => (
+                <ChangedFileRow key={file.path} file={file} scope={scope} />
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -360,6 +475,7 @@ export function ChangesOverview() {
   const scope = useActiveScope();
   const events = useEngineEvents(scope);
   const gitView = useGitStatus();
+  const changed = useChangedFiles(scope);
   const selectEntity = useViewStore((s) => s.selectEntity);
 
   if (!scope) {
@@ -435,13 +551,30 @@ export function ChangesOverview() {
         </div>
       )}
 
-      {/* Working-tree changes — the honest engine-blocked panel when the tree is
-          dirty (live `dirty: boolean`; no fabricated per-file list). */}
-      {gitView.git && gitView.dirty && <WorkingTreeChanges />}
+      {/* Working-tree changes — the status-grouped per-file changed-files list,
+          parsed from the read-only `/ops/git` porcelain status + numstat. */}
+      {changed.loading && (
+        <p
+          className="animate-pulse-live text-label text-ink-faint motion-reduce:animate-none"
+          data-changes-loading
+        >
+          reading changed files…
+        </p>
+      )}
+      {changed.errored && (
+        <p className="px-vs-1 py-vs-1 text-label text-state-broken" data-changes-error>
+          changed files unavailable
+        </p>
+      )}
+      {changed.files.length > 0 && (
+        <ChangedFilesList files={changed.files} scope={scope} />
+      )}
 
       {/* Empty / clean working tree: an approachable state in the warm copy tone
-          (the header above still shows branch + divergence). */}
-      {gitView.git && !gitView.dirty && (
+          (the header above still shows branch + divergence). The list is the
+          authority on emptiness — git's `dirty` boolean and the parsed file
+          count agree, but a clean tree never renders a per-file list. */}
+      {gitView.git && !changed.loading && changed.files.length === 0 && (
         <p className="px-vs-1 py-vs-1 text-label text-ink-faint" data-git-clean>
           working tree clean — no changes to review.
         </p>
