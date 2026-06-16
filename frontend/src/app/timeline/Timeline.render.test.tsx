@@ -265,20 +265,19 @@ describe("accessibility contract (S62-S65)", () => {
     expect(mark.getAttribute("data-doc-type")).toBe("research");
   });
 
-  it("announces each arc's relation + endpoint from its endpoint mark (S64)", async () => {
+  it("announces each relation + endpoint from its endpoint mark (S64)", async () => {
     renderTimeline();
-    // The arcs are aria-hidden decorative paint — reachable through their
-    // endpoints. A mark with incident arcs names the relation and the joined
-    // endpoint (e.g. "... to <name>" / "... from <name>") so the relation is
-    // announced without the arc being its own tab-stop.
+    // The board draws NO visible arcs (dots-on-stems only), but a mark with
+    // incident lineage still NAMES the relation and the joined endpoint in its
+    // accessible label (e.g. "... to <name>" / "... from <name>") so the relation
+    // stays reachable through the endpoints without any arc paint.
     const marks = await screen.findAllByRole("button", { name: /lineage degree/i });
     const withIncident = marks.find((m) =>
       /\b(to|from)\b/i.test(m.getAttribute("aria-label") ?? ""),
     );
     expect(withIncident).toBeTruthy();
-    // The arcs group carries aria-hidden (the announcement lives on the marks).
-    const arcsGroup = document.querySelector("[data-timeline-arcs]");
-    expect(arcsGroup?.getAttribute("aria-hidden")).toBe("true");
+    // No relation arc paint exists anywhere — the board is marks-only.
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
   });
 
   it("derives the joined-node count from distinct 1-hop neighbours (S63, pure)", () => {
@@ -400,30 +399,21 @@ describe("on-demand relations overlay (marks-only default, arcs on focus)", () =
     expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
   });
 
-  it("draws ONLY the focused node's incident arcs when a mark is hovered", async () => {
+  it("draws NO arcs on hover — the board is marks-only (no relation overlay)", async () => {
     renderTimeline();
     const mark = await findMarkWithIncident();
     // At rest: no arcs.
     expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
-    // Hover the mark → its 1-hop incident arcs appear (the on-demand overlay).
+    // Hovering a mark does NOT draw relation arcs — the binding board (239:714)
+    // shows dated dots-on-stems only, never a connecting relation field.
     fireEvent.mouseEnter(mark);
-    await waitFor(() => {
-      const arcs = Array.from(document.querySelectorAll("[data-timeline-arc]"));
-      expect(arcs.length).toBeGreaterThan(0);
-      // Every drawn arc is incident to the focused node: it carries a tier and
-      // its title (the relation label) — decorative paint reachable via endpoints.
-      for (const arc of arcs) {
-        expect(arc.getAttribute("data-arc-tier")).toBeTruthy();
-      }
-    });
-    // Leaving the mark returns to the marks-only default.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
     fireEvent.mouseLeave(mark);
-    await waitFor(() => {
-      expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
-    });
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
   });
 
-  it("draws the selected node's incident arcs when nothing is hovered", async () => {
+  it("a mark click sets the ONE shared selection and still draws NO arcs", async () => {
     // Wire the marks to the real selection handler so a click sets the ONE shared
     // selection (exactly the AppShell composition). Mount through the real client
     // transport — no component-internal doubles.
@@ -435,21 +425,17 @@ describe("on-demand relations overlay (marks-only default, arcs on focus)", () =
       </QueryClientProvider>,
     );
     const mark = await findMarkWithIncident();
-    // At rest: marks only, no arcs.
     expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
     // Click the mark with incident lineage → the shared selection holds it.
     fireEvent.click(mark);
     expect(useViewStore.getState().selection).toMatchObject({ kind: "node" });
-    // Clear any hover (the click may have set one via focus): the SELECTION alone
-    // must keep the arcs drawn — a selection is an on-demand relations focus too.
+    // Selection drives the stage cross-highlight, NOT a timeline arc overlay: the
+    // board is marks-only, so no arc paint appears even with a selection.
     act(() => {
       useTimelineStore.getState().setHoveredNode(null);
     });
-    await waitFor(() => {
-      expect(document.querySelectorAll("[data-timeline-arc]").length).toBeGreaterThan(
-        0,
-      );
-    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(document.querySelectorAll("[data-timeline-arc]").length).toBe(0);
   });
 });
 

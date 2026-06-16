@@ -42,7 +42,6 @@ import { create } from "zustand";
 import { type Category, categoryColorVar } from "../kit";
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
 import { useFiltersVocabulary, useTimelineLineage } from "../../stores/server/queries";
-import { useViewStore } from "../../stores/view/viewStore";
 import { useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { useActiveScope } from "../stage/Stage";
@@ -50,14 +49,7 @@ import { useActiveScope } from "../stage/Stage";
 // (the contributed-menus model; the resolver module is owned by the
 // dashboard-context-menus surface and consumed by the generic menu host).
 import "./menus/eventMarkMenu";
-import {
-  type ArcInput,
-  type ArcPoint,
-  type ArcState,
-  type ResolvedArc,
-  arcEndpointLabel,
-  incidentResolvedArcs,
-} from "./arcs";
+import { type ArcInput, type ArcState, arcEndpointLabel } from "./arcs";
 import { prefersReducedMotion } from "./RangeSelect";
 import {
   GROUP_LANE_HEIGHT,
@@ -67,7 +59,6 @@ import {
   TIMELINE_LANE_GROUPS,
   groupIndexOf,
   groupLaneCenterY,
-  groupLanesHeight,
   laneOf as laneOfNode,
 } from "./phaseLanes";
 import {
@@ -230,11 +221,8 @@ const GROUP_LABEL_W = 184;
 /** The x of the lane-group label text in the rail gutter. */
 const LANE_LABEL_X = 11;
 const TOP_PAD = 8;
-const RULER_HEIGHT = 16;
 /** Virtualization margin (px) so a mark partly off-screen stays drawn. */
 const VIRTUAL_MARGIN_PX = 120;
-/** The dim alpha a receded (out-of-ego) mark/arc takes — never hidden (S40). */
-const RECEDE_ALPHA = 0.22;
 
 // Lollipop mark geometry (binding board 239:714): each dated document is a colored
 // DOT on a thin STEM connecting to a single central axis — design marks rise ABOVE
@@ -355,7 +343,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const pxPerMs = useTimelineStore((s) => s.pxPerMs);
   const scrollOffset = useTimelineStore((s) => s.scrollOffset);
   const laneVisibility = useTimelineStore((s) => s.laneVisibility);
-  const hoveredNodeId = useTimelineStore((s) => s.hoveredNodeId);
   const setHoveredNode = useTimelineStore((s) => s.setHoveredNode);
   const setPxPerMs = useTimelineStore((s) => s.setPxPerMs);
   const setScrollOffset = useTimelineStore((s) => s.setScrollOffset);
@@ -438,9 +425,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     to: new Date(range.toMs).toISOString(),
   });
 
-  const phaseBandH = groupLanesHeight(TOP_PAD);
-  const height = phaseBandH + RULER_HEIGHT;
-
   // A visual lane group is drawn when ANY of its phase tokens is visible. The
   // design lane stays on; the execution lane is toggled by the control bar's
   // "Steps & summaries" switch (which flips its exec + codify phase keys together).
@@ -475,15 +459,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     return capItems(placed, MAX_TIMELINE_MARKS);
   }, [nodes, range, laneVisibility, pxPerMs]);
 
-  // Endpoint lookup: only the marks that survived virtualization + lane-visibility
-  // are positioned, so an arc resolves ONLY when both endpoints are on screen and
-  // their lanes are visible (the rule is satisfied structurally by the lookup).
-  const positionOf = useMemo(() => {
-    const map = new Map<string, ArcPoint>();
-    for (const m of visibleMarks.items) map.set(m.node.id, { x: m.x, y: m.y });
-    return (id: string): ArcPoint | undefined => map.get(id);
-  }, [visibleMarks]);
-
   // Coerce the wire arcs to the arc-model input (structural state from relation).
   const arcInputs = useMemo<ArcInput[]>(
     () =>
@@ -499,32 +474,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       })),
     [arcs],
   );
-
-  // --- on-demand relations overlay (the focused node's 1-hop arcs) ----------------
-  //
-  // The ALWAYS-ON surface is dated marks only — NO arcs by default. Relations are an
-  // on-demand overlay: arcs appear ONLY for the FOCUSED node (the hovered mark, or
-  // the selected document when nothing is hovered) and are ONLY that node's 1-hop
-  // incident set, resolved raw. A single node's incident set is intrinsically small,
-  // so there is no whole-corpus arc field to bundle or thin — the always-on hairball
-  // is structurally absent.
-  const selection = useViewStore((s) => s.selection);
-  const selectedNodeId = selection?.kind === "node" ? selection.id : null;
-  const focusedNodeId = hoveredNodeId ?? selectedNodeId;
-
-  const renderedArcs: ResolvedArc[] = useMemo(
-    () => incidentResolvedArcs(arcInputs, positionOf, focusedNodeId),
-    [arcInputs, positionOf, focusedNodeId],
-  );
-
-  // Ego-highlight (S40): the focused node (hovered or selected) + its 1-hop
-  // neighbors + incident arcs keep full treatment; the rest RECEDE to a dim alpha
-  // — never hide. Without a focus the marks all stay at full opacity (the default).
-  const ego = useMemo(
-    () => egoNodeIds(arcInputs, focusedNodeId),
-    [arcInputs, focusedNodeId],
-  );
-  const hasFocus = focusedNodeId != null;
 
   // A short human name for a node id, for the arc endpoint announcements (S64):
   // its title when carried, else its doc-type, else the raw id stem.
@@ -590,71 +539,22 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         />
 
         {/* Lollipop stems — a thin line from the axis to each visible mark's dot,
-            drawn UNDER the marks. A receded (out-of-ego) stem dims, never hides. */}
+            drawn UNDER the marks (binding board 239:714). No arcs connect the dots:
+            the board draws dated marks on stems only, never a relation field. */}
         <g data-timeline-stems aria-hidden="true">
-          {visibleMarks.items.map(({ node, x, y }) => {
-            const inEgo = !hasFocus || ego.has(node.id);
-            return (
-              <line
-                key={node.id}
-                x1={x}
-                x2={x}
-                y1={AXIS_Y}
-                y2={y}
-                strokeWidth={1}
-                className="stroke-rule"
-                opacity={inEgo ? 0.7 : RECEDE_ALPHA}
-              />
-            );
-          })}
+          {visibleMarks.items.map(({ node, x, y }) => (
+            <line
+              key={node.id}
+              x1={x}
+              x2={x}
+              y1={AXIS_Y}
+              y2={y}
+              strokeWidth={1}
+              className="stroke-rule"
+              opacity={0.7}
+            />
+          ))}
         </g>
-
-        {/* Derivation arcs (S36/S37): the ON-DEMAND relations overlay, drawn UNDER
-            the marks and ONLY for the focused node (hovered or selected) — its 1-hop
-            incident set, never an always-on field. Each arc's tier-as-treatment
-            descriptor styles the path; the focused ego keeps full treatment while
-            non-ego endpoints recede (never hide). The arcs are decorative paint
-            (`aria-hidden`): they are REACHABLE through their endpoints (S64), whose
-            mark labels announce each incident relation + the joined endpoint, so the
-            relation is announced without arcs becoming extra tab-stops. */}
-        <g data-timeline-arcs aria-hidden="true">
-          {renderedArcs.map((arc) => {
-            const inEgo = !hasFocus || ego.has(arc.src) || ego.has(arc.dst);
-            const t = arc.treatment;
-            const opacity = inEgo ? t.opacity : t.opacity * RECEDE_ALPHA;
-            return (
-              <path
-                key={arc.id}
-                d={arc.path}
-                fill="none"
-                stroke={`var(${t.stroke})`}
-                strokeWidth={t.widthPx}
-                strokeDasharray={t.dash || undefined}
-                strokeLinecap="round"
-                opacity={opacity}
-                className={
-                  reducedMotion
-                    ? undefined
-                    : "transition-opacity duration-ui-fast ease-settle"
-                }
-                data-timeline-arc
-                data-arc-tier={t.tier}
-                data-arc-recede={inEgo ? undefined : "true"}
-              >
-                <title>{arc.label}</title>
-              </path>
-            );
-          })}
-        </g>
-
-        {/* Ruler baseline — a soft token rule, attenuated so the marks lead. */}
-        <line
-          x1={0}
-          x2={width}
-          y1={height - RULER_HEIGHT}
-          y2={height - RULER_HEIGHT}
-          className="stroke-rule-strong"
-        />
       </svg>
 
       {/* Lane-group rail labels (binding AppShell 117:2): each visible lane shows
@@ -705,12 +605,8 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           aria-label="lineage marks"
         >
           {visibleMarks.items.map(({ node, x, y }) => {
-            const inEgo = !hasFocus || ego.has(node.id);
-            // Marks render at FULL opacity always — the always-on legible default.
-            // The only opacity treatment is the ego-highlight: when a node is
-            // focused (hovered/selected) the non-ego marks recede to a dim alpha
-            // (never hide); without a focus every mark is full.
-            const markOpacity = inEgo ? 1 : RECEDE_ALPHA;
+            // Every dot renders at full opacity — the board shows no ego dimming.
+            const markOpacity = 1;
             const created = node.dates?.created;
             // S63: the mark announces its kind, date, joined-node count, and
             // lineage degree. The joined-node count is the distinct 1-hop
@@ -746,7 +642,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 }}
                 data-timeline-mark
                 data-doc-type={node.doc_type}
-                data-mark-recede={inEgo ? undefined : "true"}
               >
                 <span
                   className="rounded-full ring-2 ring-paper-raised"
