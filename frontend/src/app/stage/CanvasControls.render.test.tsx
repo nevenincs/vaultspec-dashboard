@@ -32,7 +32,7 @@ import {
   within,
 } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
@@ -41,6 +41,8 @@ import { useViewStore } from "../../stores/view/viewStore";
 import { MockEngine, MOCK_SCOPE } from "../../testing/mockEngine";
 import { Discover } from "./Discover";
 import { FilterBar } from "./FilterBar";
+import { GraphControls } from "./GraphControls";
+import { getScene } from "./Stage";
 import { TierDial } from "./TierDial";
 import { WorkingSet } from "./WorkingSet";
 
@@ -162,10 +164,12 @@ describe("FilterBar surface + a11y (S26)", () => {
     expect(chip.hasAttribute("data-tabular")).toBe(true);
     // The bounded-indicator pill carries the stale/warning tone from the token
     // tier (Figma 17:1426: solid state-stale border + ink), so "filtered-out is
-    // recoverable context" reads as a quiet caution, never an error.
+    // recoverable context" reads as a quiet caution, never an error. The pill
+    // radius is the canonical Figma pill token after the W02.P05.S33 foundation
+    // rebuild (rounded-fg-pill), not the retired rounded-full utility.
     expect(chip.className).toContain("border-state-stale");
     expect(chip.className).toContain("text-state-stale");
-    expect(chip.className).toContain("rounded-full");
+    expect(chip.className).toContain("rounded-fg-pill");
   });
 
   it("hides the cost chip when nothing is filtered out (honest zero, no fabricated count)", () => {
@@ -249,5 +253,73 @@ describe("Discover surface: sanctioned mark + quarantined states (S26)", () => {
     // Escape collapses back to the trigger affordance.
     expect(screen.queryByRole("dialog", { name: "semantic discovery" })).toBeNull();
     expect(screen.getByRole("button", { name: /discover related/ })).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Binding Zoom + Navigate canvas controls (figma-parity-reconciliation
+// W03.P09.S55, binding `graph/Controls` 88:2). The Navigate icon row and the
+// Zoom (LOD) descent are rebuilt over the PRESERVED camera state — the
+// SceneController command channel and the view-store granularity. This block
+// asserts the canvas-camera CONTRACT specifically (the round-trip over preserved
+// state): the controls WRITE real camera SceneCommands and the LOD descent
+// reads/writes the preserved granularity, all as a dumb projection — they fetch
+// nothing and mint no camera model of their own. The controls live in
+// `GraphControls`; here they are exercised through the real SceneController
+// singleton (`getScene`) and the real view store, with no component-internal
+// doubles.
+// ---------------------------------------------------------------------------
+
+describe("Zoom + Navigate canvas controls over preserved camera state (S55)", () => {
+  beforeEach(() => {
+    useViewStore.setState({
+      activeRepresentationMode: "connectivity",
+      granularity: "feature",
+      timelineMode: { kind: "live" },
+    });
+  });
+
+  it("Navigate emits the four camera SceneCommands on the preserved channel", () => {
+    const spy = vi.spyOn(getScene().controller, "command");
+    render(createElement(GraphControls));
+    fireEvent.click(screen.getByRole("button", { name: "zoom in" }));
+    fireEvent.click(screen.getByRole("button", { name: "zoom out" }));
+    fireEvent.click(screen.getByRole("button", { name: "fit to view" }));
+    fireEvent.click(screen.getByRole("button", { name: "reset view" }));
+    const kinds = spy.mock.calls.map((c) => (c[0] as { kind: string }).kind);
+    expect(kinds).toEqual(
+      expect.arrayContaining(["zoom-in", "zoom-out", "fit-to-view", "reset-view"]),
+    );
+  });
+
+  it("the Zoom flanking − / + issue real incremental camera-zoom commands", () => {
+    const spy = vi.spyOn(getScene().controller, "command");
+    render(createElement(GraphControls));
+    fireEvent.click(screen.getByRole("button", { name: "zoom camera in" }));
+    fireEvent.click(screen.getByRole("button", { name: "zoom camera out" }));
+    const kinds = spy.mock.calls.map((c) => (c[0] as { kind: string }).kind);
+    expect(kinds).toEqual(expect.arrayContaining(["zoom-in", "zoom-out"]));
+  });
+
+  it("the Zoom descent reads AND writes the preserved granularity (LOD), not a private model", () => {
+    render(createElement(GraphControls));
+    const slider = screen.getByRole("slider", { name: "detail level" });
+    // Reads the preserved state: feature overview snaps the slider to 0.
+    expect((slider as HTMLInputElement).value).toBe("0");
+    // Writes the preserved state: detail descends to the document LOD.
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(useViewStore.getState().granularity).toBe("document");
+    // And back up to the feature overview.
+    fireEvent.change(slider, { target: { value: "0" } });
+    expect(useViewStore.getState().granularity).toBe("feature");
+  });
+
+  it("reflects a preserved document-granularity state as the Detail stop on mount", () => {
+    act(() => useViewStore.getState().setGranularity("document"));
+    render(createElement(GraphControls));
+    // The control is a projection of the preserved state: an already-document
+    // granularity renders the slider at the Detail stop, never a stale Overview.
+    const slider = screen.getByRole("slider", { name: "detail level" });
+    expect((slider as HTMLInputElement).value).toBe("1");
   });
 });
