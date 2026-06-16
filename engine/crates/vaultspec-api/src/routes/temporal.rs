@@ -206,8 +206,8 @@ pub struct LineageParams {
     /// the historical graph is resolved via `asof_graph_resolved` and the bounded
     /// lineage projection runs over THAT graph, so the timeline's lineage is
     /// time-accurate (the graph as it existed at instant T via the git object DB),
-    /// not just client-side creation-date gating (dashboard-timeline ADR
-    /// deferred fast-follow: the as-of lineage form).
+    /// not just client-side creation-date gating (dashboard-timeline ADR: the
+    /// as-of lineage form, implemented below).
     #[serde(default)]
     pub t: Option<String>,
 }
@@ -255,7 +255,7 @@ pub async fn graph_lineage(
             format!("lineage range: from ({from}) must be <= to ({to})"),
         ));
     }
-    // BLOB-TRUE as-of branch (dashboard-timeline ADR deferred fast-follow). When
+    // BLOB-TRUE as-of branch (dashboard-timeline ADR as-of lineage form). When
     // the client supplies `t`, the lineage must reflect the graph AS IT EXISTED
     // at instant T — resolved from the git object DB — not the live graph
     // creation-date-gated by range. Resolve the historical graph the SAME way

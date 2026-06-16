@@ -139,8 +139,8 @@ pub enum Provenance {
     },
 }
 
-/// Milliseconds since the Unix epoch. Placeholder representation; may grow
-/// into a richer time type when the temporal tier is implemented.
+/// Milliseconds since the Unix epoch — the shipped epoch-ms representation the
+/// served temporal tier (events and as-of time-travel) carries on the wire.
 pub type Timestamp = i64;
 
 /// The atom of the engine: one edge schema across all four tiers; tier and

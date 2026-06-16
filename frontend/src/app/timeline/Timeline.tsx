@@ -308,7 +308,7 @@ export interface TimelineSurfaceProps {
   /**
    * Select intent for a lineage mark — emitted up to the shared selection. The
    * surface owns the arc set, so it hands the visible-slice arcs alongside the
-   * node; the wired handler (`eventSelection.handleNodeClick`, S45) derives the
+   * node; the wired handler (`eventSelection.handleNodeClick`) derives the
    * BOUNDED 1-hop ego join from them for the stage pulse, without the chrome
    * needing to know the lineage shape (dashboard-layer-ownership). The arcs
    * argument is optional so a bare `(node) => void` consumer still type-checks.

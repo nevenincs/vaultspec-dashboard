@@ -15,8 +15,9 @@ pub mod resolve;
 pub const CONFIDENCE_RESOLVED: f32 = 0.9;
 pub const CONFIDENCE_STALE: f32 = 0.5;
 
-/// A structural mention extracted from a document body — placeholder for the
-/// extraction pipeline.
+/// A structural mention extracted from a document body — the closed vocabulary
+/// the extraction pipeline emits (paths, canonical step ids, wiki-links, and
+/// code symbols).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mention {
     /// A repo-relative file path mentioned in prose.

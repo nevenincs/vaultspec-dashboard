@@ -167,7 +167,7 @@ export function AppShell() {
           Layer law (dashboard-layer-ownership): this region wires stores hooks and
           shared-state intent only — no fetch, no raw `tiers`. A mark click flows
           into the ONE shared selection + a bounded stage ego pulse through
-          `handleNodeClick` (the deferred S45 wiring); the surface hands its
+          `handleNodeClick` (the S45 wiring, live below); the surface hands its
           visible-slice arcs so the bounded 1-hop join is derived honestly. */}
       <footer className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-rule">
         <ErrorBoundary region="timeline">
