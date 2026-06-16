@@ -1,0 +1,12 @@
+{
+  "codeConnect": {
+    "parser": "react",
+    "label": "React",
+    "include": ["figma/connect/**/*.figma.tsx", "src/app/**/*.tsx"],
+    "exclude": ["node_modules/**", "dist/**", "spike/**", "e2e/**"],
+    "documentUrlSubstitutions": {
+      "<MIRROR>": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w",
+      "<GRAPH>": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w"
+    }
+  }
+}
