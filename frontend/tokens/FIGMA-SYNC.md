@@ -1,9 +1,19 @@
-# Pushing the token tier into Figma (one-way, code -> Figma)
+# Token sync between Figma (binding) and code
 
-Figma is a **mirror**, never the source of truth (figma-design-bridge ADR). Tokens are
-authored as DTCG under `tokens/`; this push projects them into Figma Variables. Figma
-cannot store OKLCH, so the export resolves every value to sRGB hex (verified to match the
-authored scene hex). Re-run after any token change; never edit colors in Figma.
+**Direction (amended 2026-06-16, `figma-parity-reconciliation` ADR).** Figma is now the
+**binding source of truth** for the design foundation (see the
+`figma-is-the-binding-source-of-truth` rule). The DTCG tokens under `tokens/` are authored
+to **match** the binding Figma file across every family — color **and** the non-color
+families now closed in the pipeline: **type** (display/title/body/body-strong/label/meta/
+caption/mono), **spacing**, **radius** (xs/sm/md/lg/pill), and **elevation**
+(raised/overlay/popover). Style Dictionary generates `styles.css` from those tokens, and
+scene-read tokens are emitted as literal hex (the `themes-are-oklch` scene seam, unchanged).
+
+The `tokens:figma` push below is retained as a **verification mirror**: it projects the
+code tokens back into Figma Variables so the two can be diffed and confirmed in agreement.
+It is no longer the originating source projection — when Figma and code disagree, **Figma
+wins** and the tokens are corrected to match. Figma cannot store OKLCH, so the export
+resolves every value to sRGB hex (verified to match the authored scene hex).
 
 ## What gets pushed
 

@@ -1,17 +1,15 @@
 ---
 tags:
-  - '#adr'
-  - '#dashboard-activity-rail'
+  - "#adr"
+  - "#dashboard-activity-rail"
 date: '2026-06-14'
-modified: '2026-06-15'
 related:
   - "[[2026-06-14-dashboard-activity-rail-research]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"
+superseded_by: '2026-06-16-figma-parity-reconciliation-adr'
+modified: '2026-06-16'
 ---
-
-
-
-# `dashboard-activity-rail` adr: `right activity rail information architecture` | (**status:** `accepted`)
+# `dashboard-activity-rail` adr: `right activity rail information architecture` | (**status:** `superseded`)
 
 ## Problem Statement
 

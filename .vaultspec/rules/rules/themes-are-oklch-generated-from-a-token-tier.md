@@ -9,7 +9,12 @@ name: themes-are-oklch-generated-from-a-token-tier
 Theme colors are derived from primitive OKLCH ramps aliased by a semantic token tier and
 emitted on `:root` for both the DOM chrome and the canvas scene; a theme is a
 `[data-theme]` remap of the semantic tier, never per-component color or borrowed hex, and
-the high-contrast theme is just another semantic-tier remap.
+the high-contrast theme is just another semantic-tier remap. The OKLCH ramp → semantic-tier
+→ literal-hex-scene-seam **mechanism** is unchanged; what changed (2026-06-16) is the
+**source-of-truth direction**: the token values are now authored to match the binding Figma
+file, not the reverse. Figma is binding (see `figma-is-the-binding-source-of-truth`); this
+rule governs the *generation mechanism*, not the authority — code no longer originates the
+palette, it mirrors Figma through this same OKLCH tier.
 
 ## Why
 
@@ -39,6 +44,15 @@ every surface consumed the tokens this way and every review confirmed it.
   `var(--color-x)`; the chrome drifts off the tier and the scene reader resolves nothing
   because the browser will not flatten the `var()` chain for the custom property — the
   HIGH-1 defect.
+
+## Status
+
+Active, with an amended source-of-truth direction. The OKLCH generation mechanism and the
+literal-hex scene seam are unchanged and load-bearing. The 2026-06-16
+`2026-06-16-figma-parity-reconciliation-adr` flipped the authority: Figma is the binding
+source and the token tier is authored to match it, superseding the prior code-canonical,
+one-way-code-to-Figma framing (and the `FIGMA-SYNC.md` mirror note). See
+`figma-is-the-binding-source-of-truth`.
 
 ## Source
 

@@ -224,13 +224,13 @@ Close the governance and verification loop: supersede or amend the affected ADRs
 
 Supersede or amend the activity-rail tab IA ADR, the node-visual-richness canvas-mark rule, the tier-edge color encoding, and the themes-are-oklch source-of-truth direction through the codify path and vault adr supersede, and codify the two new binding rules.
 
-- [ ] `W04.P10.S57` - Supersede the dashboard-activity-rail ADR to the binding Inspect Work Search Changes tab IA via vault adr supersede; `.vault/adr/`.
-- [ ] `W04.P10.S58` - Amend the node-visual-richness canvas-mark rule to the binding category-circle treatment, retaining the underlying data; `.vaultspec/rules/rules/`.
-- [ ] `W04.P10.S59` - Amend the tier-edge color-encoding rule to the binding flat-grey edge treatment on the canvas; `.vaultspec/rules/rules/`.
-- [ ] `W04.P10.S60` - Flip the themes-are-oklch-generated-from-a-token-tier rule source-of-truth direction to Figma-binding; `.vaultspec/rules/rules/themes-are-oklch-generated-from-a-token-tier.md`.
-- [ ] `W04.P10.S61` - Update the token sync doc to record Figma as the binding source authoring the non-color families; `frontend/tokens/FIGMA-SYNC.md`.
-- [ ] `W04.P10.S62` - Codify the figma-is-the-binding-source-of-truth rule from the ADR candidate; `.vaultspec/rules/rules/figma-is-the-binding-source-of-truth.md`.
-- [ ] `W04.P10.S63` - Codify the view-rewrite-preserves-the-state-and-scene-contract rule from the ADR candidate; `.vaultspec/rules/rules/view-rewrite-preserves-the-state-and-scene-contract.md`.
+- [x] `W04.P10.S57` - Supersede the dashboard-activity-rail ADR to the binding Inspect Work Search Changes tab IA via vault adr supersede; `.vault/adr/`.
+- [x] `W04.P10.S58` - Amend the node-visual-richness canvas-mark rule to the binding category-circle treatment, retaining the underlying data; `.vaultspec/rules/rules/`.
+- [x] `W04.P10.S59` - Amend the tier-edge color-encoding rule to the binding flat-grey edge treatment on the canvas; `.vaultspec/rules/rules/`.
+- [x] `W04.P10.S60` - Flip the themes-are-oklch-generated-from-a-token-tier rule source-of-truth direction to Figma-binding; `.vaultspec/rules/rules/themes-are-oklch-generated-from-a-token-tier.md`.
+- [x] `W04.P10.S61` - Update the token sync doc to record Figma as the binding source authoring the non-color families; `frontend/tokens/FIGMA-SYNC.md`.
+- [x] `W04.P10.S62` - Codify the figma-is-the-binding-source-of-truth rule from the ADR candidate; `.vaultspec/rules/rules/figma-is-the-binding-source-of-truth.md`.
+- [x] `W04.P10.S63` - Codify the view-rewrite-preserves-the-state-and-scene-contract rule from the ADR candidate; `.vaultspec/rules/rules/view-rewrite-preserves-the-state-and-scene-contract.md`.
 
 ### Phase `W04.P11` - Full-gate review and parity verification
 

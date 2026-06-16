@@ -1,13 +1,14 @@
 ---
 tags:
-  - '#adr'
-  - '#figma-parity-reconciliation'
+  - "#adr"
+  - "#figma-parity-reconciliation"
 date: '2026-06-16'
-modified: '2026-06-16'
 related:
   - "[[2026-06-16-figma-parity-reconciliation-research]]"
+supersedes:
+  - '2026-06-14-dashboard-activity-rail-adr'
+modified: '2026-06-16'
 ---
-
 <!-- FRONTMATTER RULES:
      tags: one directory tag (hardcoded #adr) and one feature tag.
      Replace figma-parity-reconciliation with a kebab-case feature tag, e.g. #foo-bar.

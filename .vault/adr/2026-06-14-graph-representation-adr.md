@@ -14,6 +14,14 @@ related:
 
 # `graph-representation` adr: `graph representation: visualization principles and large-corpus algorithms` | (**status:** `accepted`)
 
+> **Amendment (2026-06-16, `2026-06-16-figma-parity-reconciliation-adr`).** The
+> *tier-edge color encoding* on the headline canvas — coloring edges by relationship tier —
+> is superseded by the binding Figma treatment: flat grey edges (the connection field reads
+> as neutral topology, with emphasis carried by selection/hover, not per-edge hue). The
+> representation principles (Degree-of-Interest, semantic-zoom LOD, backbone-runs-layout,
+> bounded top-DOI wire) and the edge-tier **data** are **retained**; only the canvas color
+> encoding of edges changed. This ADR's principle and data decisions remain authoritative.
+
 ## Problem Statement
 
 The dashboard renders a knowledge vault as a node graph, and the easiest version of that —

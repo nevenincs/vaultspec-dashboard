@@ -16,6 +16,15 @@ related:
 
 # `node-visual-richness` adr: `status-stamped glyph and hover-bloom card` | (**status:** `accepted`)
 
+> **Amendment (2026-06-16, `2026-06-16-figma-parity-reconciliation-adr`).** The
+> *canvas-mark treatment* decided here — the per-node grayscale status stamp and the
+> silhouette/glyph field mark — is superseded on the headline canvas by the binding Figma
+> treatment: category-colored circles sized by salience, with no on-field status stamp
+> (status moves to the hover/focus card). The underlying data and engine projection are
+> **retained**: the per-type status projection, the `status_class`/`status_value` shape,
+> and the hover-bloom mini-document card all stand and are consumed by the rewritten view.
+> Only the on-field visual encoding changed; this ADR's data decisions remain authoritative.
+
 ## Problem Statement
 
 The graph is the product, and the product's value is that a node is a *document of
