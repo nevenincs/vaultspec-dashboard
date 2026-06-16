@@ -1075,6 +1075,155 @@ describe("status + tier facets carried identically by mock and live (W05.P12.S65
   });
 });
 
+describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation S18)", () => {
+  // A sample CAPTURED from the live `/nodes/{id}/evidence` wire under the S13
+  // enrichment: the `{data, tiers}` envelope carrying the GUI `NodeEvidence`
+  // shape — documents as `{ path, doc_type }`, code_locations keyed on `path`
+  // (with the optional `symbol` and the additive `resolved_target`/
+  // `bridge_node_id` value-adds), and commits carrying the `subject`. Feeding it
+  // through the SAME client path the app uses (unwrapEnvelope) and then driving
+  // the mock through the EngineClient is the mock-mirrors-live-wire-shape
+  // verification for the enriched evidence shape.
+  const liveEvidence = {
+    data: {
+      documents: [
+        { path: ".vault/adr/2026-06-14-x-adr.md", doc_type: "adr" },
+        { path: ".vault/plan/2026-06-14-x-plan.md", doc_type: "plan" },
+      ],
+      code_locations: [
+        {
+          path: "src/x/mod.rs",
+          state: "resolved",
+          resolved_target: "src/x/mod.rs",
+          bridge_node_id: "code:src/x/mod.rs",
+        },
+        {
+          path: "src/x/mod.rs",
+          symbol: "handle",
+          state: "resolved",
+          resolved_target: "src/x/mod.rs#handle",
+          bridge_node_id: "code:src/x/mod.rs",
+        },
+      ],
+      commits: [
+        {
+          sha: "abc1234",
+          subject: "feat: the enriched commit",
+          rule: "step-id-correlation",
+        },
+      ],
+    },
+    tiers: TIERS,
+  };
+
+  it("unwraps the live enriched evidence envelope onto the GUI NodeEvidence shape", () => {
+    const ev = unwrapEnvelope(liveEvidence) as {
+      documents: { path: string; doc_type: string }[];
+      code_locations: { path: string; symbol?: string; state: string }[];
+      commits: { sha: string; subject: string; rule?: string }[];
+      tiers: typeof TIERS;
+    };
+    // Documents carry path + doc_type (not bare stems).
+    expect(ev.documents[0]).toEqual({
+      path: ".vault/adr/2026-06-14-x-adr.md",
+      doc_type: "adr",
+    });
+    // Code locations are keyed on `path` (the corrected field name), and the
+    // symbol mention surfaces its unqualified symbol.
+    expect(ev.code_locations[0].path).toBe("src/x/mod.rs");
+    expect(ev.code_locations[1].symbol).toBe("handle");
+    // Commits carry the subject (the previously-missing git lookup datum).
+    expect(ev.commits[0].subject).toBe("feat: the enriched commit");
+    expect(ev.tiers.semantic.available).toBe(false);
+  });
+
+  it("the mock serves the same enriched evidence shape through the client path", async () => {
+    const mock = new MockEngine();
+    const client = clientOn(mock);
+    // A node with a feature tag so the mock evidence projection populates.
+    const node = mock.corpus.nodes.find((n) => (n.feature_tags?.length ?? 0) > 0);
+    expect(node).toBeDefined();
+    const ev = (await client.nodeEvidence(node!.id)) as unknown as {
+      documents: { path: string; doc_type: string }[];
+      code_locations: { path: string; symbol?: string; state: string }[];
+      commits: { sha: string; subject: string; rule?: string }[];
+    };
+    // Documents: every item carries a vault path and a doc_type, never a bare stem.
+    expect(ev.documents.length).toBeGreaterThan(0);
+    for (const d of ev.documents) {
+      expect(typeof d.path).toBe("string");
+      expect(d.path.startsWith(".vault/")).toBe(true);
+      expect(typeof d.doc_type).toBe("string");
+    }
+    // Code locations are keyed on `path` (never the legacy `target`), and the
+    // mock exercises the optional `symbol` field the GUI consumes.
+    expect(ev.code_locations.length).toBeGreaterThan(0);
+    for (const loc of ev.code_locations) {
+      expect(typeof loc.path).toBe("string");
+      expect((loc as Record<string, unknown>).target).toBeUndefined();
+    }
+    expect(ev.code_locations.some((loc) => loc.symbol === "handle")).toBe(true);
+    // Commits carry the subject.
+    expect(ev.commits.length).toBeGreaterThan(0);
+    for (const c of ev.commits) {
+      expect(typeof c.subject).toBe("string");
+      expect(c.subject.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("historical text-diff consumer fidelity (figma-parity-reconciliation S18)", () => {
+  // A sample CAPTURED from the live `/ops/git/histdiff` wire: a two-rev unified
+  // diff forwarded VERBATIM inside `{data: {verb, output}, tiers}`. Fed through
+  // the SAME client path the app uses (unwrapEnvelope + adaptGitOp), then the
+  // mock is driven through the EngineClient and the two shapes are asserted to
+  // match — the mock-mirrors-live-wire-shape verification for the historical
+  // diff route.
+  const liveHistDiff = {
+    data: {
+      verb: "histdiff",
+      output:
+        "diff --git a/.vault/plan/x.md b/.vault/plan/x.md\n" +
+        "index 1111111..3333333 100644\n" +
+        "--- a/.vault/plan/x.md\n+++ b/.vault/plan/x.md\n" +
+        "@@ -1,1 +1,1 @@\n" +
+        "-original line\n+rewritten line\n",
+    },
+    tiers: TIERS,
+  };
+
+  it("unwraps + adapts the live historical-diff envelope verbatim", () => {
+    const diff = adaptGitOp(unwrapEnvelope(liveHistDiff));
+    expect(diff.verb).toBe("histdiff");
+    // The two-rev unified diff is forwarded verbatim; both edits are present.
+    expect(diff.output).toContain("@@ -1,1 +1,1 @@");
+    expect(diff.output).toContain("-original line");
+    expect(diff.output).toContain("+rewritten line");
+    expect(diff.tiers.semantic.available).toBe(false);
+  });
+
+  it("the mock serves the same historical-diff shape through the client path", async () => {
+    const mock = new MockEngine();
+    const client = clientOn(mock);
+    const diff = await client.opsGit("histdiff", {
+      path: ".vault/plan/x.md",
+      from: "HEAD~1",
+      to: "HEAD",
+    });
+    expect(diff.verb).toBe("histdiff");
+    expect(diff.output).toContain("@@ ");
+    expect(diff.output).toContain("-original line");
+    expect(diff.output).toContain("+rewritten line");
+
+    // The same validation the live route enforces: a histdiff missing a rev is a
+    // 400, and a non-whitelisted verb is a 403 — before any work, exactly as live.
+    await expect(
+      client.opsGit("histdiff", { path: ".vault/plan/x.md", from: "HEAD~1" }),
+    ).rejects.toThrow();
+    await expect(client.opsGit("commit" as "histdiff")).rejects.toThrow();
+  });
+});
+
 describe("adaptHistory (status-overview /history)", () => {
   it("adapts a live-shaped /history body, defaulting short_hash and dropping bad rows", () => {
     // A captured live-shape body: snake_case commit rows + tiers block, exactly
