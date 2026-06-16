@@ -134,6 +134,29 @@ fn edge_view(graph: &LinkageGraph, edge: &Edge) -> Value {
         Some(label) => Value::String(label.to_string()),
         None => Value::Null,
     };
+    // Slim the graph-wire edge (perf: the document slice was ~21 MB of edges,
+    // ~579 B/edge, dominating a 22 MB body). Two fields are dead weight the client
+    // never reads and that bloat every one of tens of thousands of edges:
+    //   - `scope`: identical to the query scope on EVERY edge (the whole slice is
+    //     one scope) — pure per-edge redundancy; the mock never emits it, so
+    //     dropping it also converges mock↔live (mock-mirrors-live-wire-shape).
+    //   - `provenance`: the full provenance object is graph-render dead weight —
+    //     the renderer draws a tier-coloured src→dst line and never reads it; the
+    //     stable edge id already encodes provenance identity engine-side
+    //     (provenance-stable-keys-are-identity-bearing), so the wire need not
+    //     re-ship it. Edge detail is fetched on demand, not bulk-shipped per edge.
+    // Confidence is rounded to 3 dp: the f32→JSON cast emitted full f64 precision
+    // (e.g. 0.8999999761581421, 18 B) for a value the client only buckets.
+    if let Some(obj) = view.as_object_mut() {
+        obj.remove("scope");
+        obj.remove("provenance");
+        if let Some(c) = obj.get("confidence").and_then(Value::as_f64) {
+            obj.insert(
+                "confidence".to_string(),
+                Value::from((c * 1000.0).round() / 1000.0),
+            );
+        }
+    }
     view
 }
 

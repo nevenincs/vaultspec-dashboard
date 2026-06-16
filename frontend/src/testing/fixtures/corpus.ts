@@ -339,7 +339,6 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
         relation: "declares",
         tier: "declared",
         confidence: 1,
-        provenance: "frontmatter",
         observed_at: iso(created),
         derivation: null,
       });
@@ -357,7 +356,6 @@ export function buildFixtureCorpus(seed = 7): FixtureCorpus {
           relation,
           tier: "declared",
           confidence: 1,
-          provenance: "wiki-link",
           observed_at: iso(created),
           // Pipeline-derivation label ALONGSIDE the declared tier
           // (graph-node-semantics): drives the representation lineage layout.
