@@ -114,7 +114,7 @@ Close the non-color DTCG token pipeline (generator plus Figma mirror) for type, 
 - [x] `W01.P01.S01` - Author the DTCG type-scale source with the Figma role names display, title, body, body-strong, label, meta, caption, and mono; `frontend/tokens/type.tokens.json`.
 - [x] `W01.P01.S02` - Author the DTCG radius source with the Figma scale xs4, sm5, md7, lg10, and pill18; `frontend/tokens/radius.tokens.json`.
 - [x] `W01.P01.S03` - Author the DTCG elevation source with the Figma three-level scale raised, overlay, and popover; `frontend/tokens/elevation.tokens.json`.
-- [ ] `W01.P01.S04` - Author the DTCG spacing source mirroring the existing 4-base scale to bring spacing under the generated pipeline; `frontend/tokens/spacing.tokens.json`.
+- [x] `W01.P01.S04` - Author the DTCG spacing source mirroring the existing 4-base scale to bring spacing under the generated pipeline; `frontend/tokens/spacing.tokens.json`.
 - [ ] `W01.P01.S05` - Extend the Style Dictionary resolver and build to emit the four non-color families into the generated stylesheet regions; `frontend/tokens/resolver.json`.
 - [ ] `W01.P01.S06` - Extend the Figma token mirror to carry the type, spacing, radius, and elevation families alongside color; `frontend/tokens/figma/tokens.json`.
 - [ ] `W01.P01.S07` - Adopt Inter and JetBrains Mono as the bound font families, replacing the system stack; `frontend/src/styles.css`.
