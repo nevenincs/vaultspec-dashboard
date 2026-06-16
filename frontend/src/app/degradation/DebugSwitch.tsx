@@ -3,6 +3,13 @@
 // store and, when the mock engine is active, drives its degrade() so the
 // SERVED data degrades too — the matrix is exercised end-to-end, not just
 // painted.
+//
+// W02.P06 (figma-parity-reconciliation): the dev overlay's chrome is rebuilt
+// onto the semantic OKLCH token tier and the canonical Figma role/radius/
+// elevation utilities (themes-are-oklch / warmth-in-tokens) — the prior raw
+// rose/white Tailwind palette is replaced by the paper/ink/state and accent
+// tokens, so the switch reads correctly under every theme. Behaviour and the
+// dev-only gating are unchanged.
 
 import { useState } from "react";
 
@@ -41,21 +48,27 @@ export function DegradationDebugSwitch() {
   if (!import.meta.env.DEV) return null;
 
   return (
-    <div className="pointer-events-auto fixed bottom-2 left-2 z-50 text-[10px]">
+    <div className="pointer-events-auto fixed bottom-2 left-2 z-50 text-caption">
       {open ? (
-        <div className="rounded border border-rose-200 bg-white/95 p-2 shadow-md">
-          <div className="flex items-center justify-between gap-3">
-            <span className="font-medium text-rose-800">degradation debug</span>
-            <button type="button" onClick={() => setOpen(false)}>
+        <div className="rounded-fg-md border border-rule bg-paper-raised/95 p-vs-2 text-ink shadow-fg-overlay backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-vs-3">
+            <span className="text-label font-medium text-state-stale">
+              degradation debug
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-ink-faint transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            >
               ×
             </button>
           </div>
-          <ul className="mt-1 space-y-0.5">
+          <ul className="mt-vs-1 space-y-vs-0-5">
             {CONDITIONS.map(({ key, label }) => {
               const on = Boolean(overrides?.[key]);
               return (
                 <li key={key}>
-                  <label className="flex items-center gap-1">
+                  <label className="flex items-center gap-vs-1 text-ink-muted">
                     <input
                       type="checkbox"
                       checked={on}
@@ -63,6 +76,7 @@ export function DegradationDebugSwitch() {
                         setOverride(key, e.target.checked ? true : null);
                         void driveMock(key, e.target.checked);
                       }}
+                      className="accent-[var(--color-accent)]"
                     />
                     {label}
                   </label>
@@ -72,7 +86,7 @@ export function DegradationDebugSwitch() {
           </ul>
           <button
             type="button"
-            className="mt-1 text-ink-faint underline hover:text-ink-muted"
+            className="mt-vs-1 text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() => {
               clearOverrides();
               void driveMock("ragDown", false);
@@ -87,7 +101,7 @@ export function DegradationDebugSwitch() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded border border-rose-200 bg-white/80 px-1.5 py-0.5 text-rose-400"
+          className="rounded-fg-xs border border-rule bg-paper-raised/80 px-vs-1-5 py-vs-0-5 text-state-stale transition-colors hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           title="degradation debug switch (dev only, G8.a)"
         >
           ⚒ degrade
