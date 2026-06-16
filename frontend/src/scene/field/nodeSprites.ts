@@ -189,6 +189,39 @@ export function selectedRingColor(): number {
   return getCssColor("--color-state-active", 0x3f774d);
 }
 
+// --- DEFAULT-state body rim (graph/Node-items 83:2 "default") ------------------
+//
+// The binding default disc reads as a solid category fill that sits crisply on
+// the connection-field ground: a filled circle with a faint, slightly darker
+// hairline at its edge that gives the disc weight and separates it from the flat-
+// grey edges and from a same-category neighbour. The rim is an IN-FAMILY shade of
+// the body's OWN hue — a darkened variant, never a second accent and never a
+// borrowed neutral (warmth-lives-in-tokens-not-decoration: warmth in one hue, no
+// decoration). It is a property of the DEFAULT circle, present in every state so
+// the disc keeps its edge under selection and the ego-recede.
+
+/** Default-state body-rim hairline width (world units, scaled by the camera). */
+export const BODY_RIM_WIDTH = 0.75;
+/** How far the rim darkens the body hue toward black (0 = no change, 1 = black).
+ *  A gentle 22% keeps the rim clearly in-family with the fill. */
+export const BODY_RIM_DARKEN = 0.22;
+
+/** Darken a 24-bit RGB colour toward black by `amount` in [0,1], per channel.
+ *  Pure and theme-agnostic: the rim tracks whatever hex the body resolved to. */
+export function darkenColor(color: number, amount: number): number {
+  const k = 1 - Math.max(0, Math.min(1, amount));
+  const r = Math.round(((color >> 16) & 0xff) * k);
+  const g = Math.round(((color >> 8) & 0xff) * k);
+  const b = Math.round((color & 0xff) * k);
+  return (r << 16) | (g << 8) | b;
+}
+
+/** The default-state rim colour for a body fill: an in-family darkened shade of
+ *  the body's own hue (never a second accent). */
+export function bodyRimColor(fill: number): number {
+  return darkenColor(fill, BODY_RIM_DARKEN);
+}
+
 /**
  * World-space radius for a node, driven by the engine-served salience
  * (degree-of-interest). Salience is the importance field made visible: it drives
@@ -303,7 +336,16 @@ export class NodeSpriteLayer {
       const radius = nodeRadius(node);
       const color = bodyColor(node);
       if (radius !== visual.drawnRadius || color !== visual.drawnColor) {
-        visual.body.clear().circle(0, 0, radius).fill({ color });
+        // The DEFAULT disc (graph/Node-items "default"): a solid category fill
+        // with a faint in-family hairline rim that gives the circle weight on the
+        // connection-field ground and separates it from a same-category neighbour.
+        // The rim rides the body's own hue (darkened), so it tracks the theme and
+        // the ghost desaturation without a second accent.
+        visual.body
+          .clear()
+          .circle(0, 0, radius)
+          .fill({ color })
+          .stroke({ width: BODY_RIM_WIDTH, color: bodyRimColor(color), alignment: 1 });
         visual.drawnRadius = radius;
         visual.drawnColor = color;
         if (visual.ring) this.drawRing(visual);

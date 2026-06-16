@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BODY_RIM_DARKEN,
   FRESHNESS_FLOOR,
   FRESHNESS_WINDOW_MS,
   NEAR_ZOOM_THRESHOLD,
   SELECTED_RING_GAP,
   SELECTED_RING_WIDTH,
   bodyColor,
+  bodyRimColor,
+  darkenColor,
   freshnessAlpha,
   lodFor,
   nodeRadius,
@@ -116,6 +119,29 @@ describe("bodyColor — the category-coloured node body (graph/Hero 85:2)", () =
     expect(ghosted).not.toBe(categoryColor("adr"));
     // Node test env: archived fallback hex.
     expect(ghosted).toBe(0x9a938a);
+  });
+});
+
+describe("default-state body rim (graph/Node-items 83:2 'default')", () => {
+  it("darkens a colour toward black per channel, clamped", () => {
+    // Half-darken a mid grey: every channel halves.
+    expect(darkenColor(0x808080, 0.5)).toBe(0x404040);
+    // 0 leaves the colour untouched; 1 takes it to black.
+    expect(darkenColor(0xabcdef, 0)).toBe(0xabcdef);
+    expect(darkenColor(0xabcdef, 1)).toBe(0x000000);
+    // Out-of-range amounts clamp rather than overshoot.
+    expect(darkenColor(0xffffff, 2)).toBe(0x000000);
+  });
+
+  it("rims the body with an in-family darkened shade of its OWN hue", () => {
+    const fill = categoryColor("adr");
+    const rim = bodyRimColor(fill);
+    // The rim is darker than the fill (it reads as a hairline edge), and it is
+    // the SAME hue darkened — not a second accent, not a borrowed neutral.
+    expect(rim).toBe(darkenColor(fill, BODY_RIM_DARKEN));
+    expect(rim).not.toBe(fill);
+    // Strictly darker on the dominant channel (a darken never brightens).
+    expect((rim >> 16) & 0xff).toBeLessThanOrEqual((fill >> 16) & 0xff);
   });
 });
 
