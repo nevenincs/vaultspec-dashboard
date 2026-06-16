@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
@@ -30,7 +30,12 @@ import { RangeSelect } from "./timeline/RangeSelect";
 import { Timeline } from "./timeline/Timeline";
 import { TimelineControls } from "./timeline/TimelineControls";
 import { handleNodeClick } from "./timeline/eventSelection";
-import { ViewerSurface } from "./viewer/ViewerSurface";
+// The reader/code-viewer stack (react-markdown + Shiki) is heavy and only needed
+// once a document is opened, so it is code-split out of the initial shell graph
+// and loaded on demand (the graph view is the default surface).
+const ViewerSurface = lazy(() =>
+  import("./viewer/ViewerSurface").then((m) => ({ default: m.ViewerSurface })),
+);
 
 // Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): four
 // fluid/fixed columns at full viewport height —
@@ -127,7 +132,9 @@ export function AppShell() {
           {viewerOpen && (
             <div className="absolute inset-0 z-10">
               <ErrorBoundary region="viewer">
-                <ViewerSurface />
+                <Suspense fallback={null}>
+                  <ViewerSurface />
+                </Suspense>
               </ErrorBoundary>
             </div>
           )}
