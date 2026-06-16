@@ -27,14 +27,14 @@ pub fn run(ctx: &Ctx) -> Result<Value, CliError> {
     // Rag availability (truthful absent/down states, D5.2).
     let rag_reason = ctx.rag_reason();
 
-    // Git status of the active worktree (contract §6, audit G5).
+    // Git status of the active worktree (contract §6, audit G5). Inspect only
+    // the active worktree (status-worktree-latency), not every worktree.
     let git = ingest_git::workspace::Workspace::discover(&ctx.root)
         .ok()
-        .and_then(|ws| ingest_git::worktrees::enumerate(&ws).ok())
-        .and_then(|wts| {
-            let cleaned = super::clean_path(&ctx.root);
-            wts.into_iter()
-                .find(|wt| super::clean_path(&wt.path) == cleaned)
+        .and_then(|ws| {
+            ingest_git::worktrees::inspect_one(&ws, &ctx.root)
+                .ok()
+                .flatten()
         })
         .map(|wt| json!({"head_ref": wt.head_ref, "dirty": wt.dirty}))
         .unwrap_or(json!(null));

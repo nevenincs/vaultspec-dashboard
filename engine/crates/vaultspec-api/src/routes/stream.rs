@@ -33,15 +33,12 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
     };
     let core = ingest_core::runner::CoreRunner::detect();
     // Git status of the served worktree (contract §6) — front-door parity
-    // with the CLI status verb (D6.1, addendum S04).
-    let served = super::scope_token(&cell.root);
+    // with the CLI status verb (D6.1, addendum S04). Inspect only the served
+    // worktree (status-worktree-latency): `/status` never needed every
+    // worktree, so the targeted path keeps latency flat in worktree count.
     let git = ingest_git::workspace::Workspace::discover(&cell.root)
         .ok()
-        .and_then(|ws| ingest_git::worktrees::enumerate(&ws).ok())
-        .and_then(|wts| {
-            wts.into_iter()
-                .find(|wt| super::scope_token(&wt.path) == served)
-        })
+        .and_then(|ws| ingest_git::worktrees::inspect_one(&ws, &cell.root).ok().flatten())
         .map(|wt| json!({"head_ref": wt.head_ref, "dirty": wt.dirty, "ahead": wt.ahead, "behind": wt.behind}))
         .unwrap_or(json!(null));
     let data = json!({

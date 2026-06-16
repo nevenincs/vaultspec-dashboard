@@ -5,7 +5,9 @@
 //! to resolve against (all four linkage tiers, D2.2). Each worktree is
 //! (checkout path, HEAD ref, dirty state, ahead/behind).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use rayon::prelude::*;
 
 use crate::workspace::{GitError, Result, Workspace};
 
@@ -29,12 +31,41 @@ pub struct WorktreeInfo {
 
 /// Enumerate every worktree of the workspace: the main checkout plus all
 /// linked worktrees.
+///
+/// The expensive per-worktree inspection (an index-vs-worktree status diff plus
+/// two history walks for ahead/behind) runs across the worktrees in a bounded
+/// concurrent fan-out rather than serially, so the wall-clock no longer scales
+/// linearly with worktree count. The returned order is stable (main checkout
+/// first, then linked worktrees in repository order) and identical to the prior
+/// serial implementation.
 pub fn enumerate(workspace: &Workspace) -> Result<Vec<WorktreeInfo>> {
+    inspect_all(collect_descriptors(workspace)?)
+}
+
+/// Inspect a single worktree of the workspace: the one whose checkout root
+/// matches `path` (compared canonically). Returns `None` if `path` is not a
+/// worktree of this workspace. This is the targeted path for callers that need
+/// only one worktree's status (`/status`, the CLI `status` verb): it pays the
+/// expensive inspection exactly once instead of inspecting every worktree and
+/// discarding all but the match.
+pub fn inspect_one(workspace: &Workspace, path: &Path) -> Result<Option<WorktreeInfo>> {
+    let target = canonical(path);
+    for (workdir, is_main) in collect_descriptors(workspace)? {
+        if canonical(&workdir) == target {
+            return Ok(Some(inspect_path(&workdir, is_main)?));
+        }
+    }
+    Ok(None)
+}
+
+/// The cheap phase: list every worktree's checkout root and whether it is the
+/// main checkout. This does no status diff or history walk, so it stays serial;
+/// the expensive `inspect` work is what the parallel fan-out covers.
+fn collect_descriptors(workspace: &Workspace) -> Result<Vec<(PathBuf, bool)>> {
     let repo = workspace.open()?;
     let mut out = Vec::new();
-
     if let Some(workdir) = repo.workdir() {
-        out.push(inspect(&repo, workdir.to_path_buf(), true)?);
+        out.push((workdir.to_path_buf(), true));
     }
     for proxy in repo
         .worktrees()
@@ -49,10 +80,56 @@ pub fn enumerate(workspace: &Workspace) -> Result<Vec<WorktreeInfo>> {
         let Some(workdir) = wt_repo.workdir() else {
             continue;
         };
-        let workdir = workdir.to_path_buf();
-        out.push(inspect(&wt_repo, workdir, false)?);
+        out.push((workdir.to_path_buf(), false));
     }
     Ok(out)
+}
+
+/// Run `inspect` across the collected descriptors with a bounded concurrent
+/// fan-out, preserving descriptor order. A single descriptor (or a unit cap)
+/// stays serial to avoid the pool-build cost.
+fn inspect_all(descriptors: Vec<(PathBuf, bool)>) -> Result<Vec<WorktreeInfo>> {
+    if descriptors.len() <= 1 {
+        return descriptors
+            .into_iter()
+            .map(|(p, is_main)| inspect_path(&p, is_main))
+            .collect();
+    }
+    let threads = worktree_inspect_concurrency().min(descriptors.len());
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .map_err(|e| GitError::Other(e.to_string()))?;
+    pool.install(|| {
+        descriptors
+            .into_par_iter()
+            .map(|(p, is_main)| inspect_path(&p, is_main))
+            .collect::<Result<Vec<_>>>()
+    })
+}
+
+/// The bound on how many worktrees are inspected concurrently. Each inspection
+/// can itself spawn up to the B5b status-thread limit, so the combined fan-out
+/// is `worktree_inspect_concurrency() * git_status_thread_limit()` threads —
+/// kept independent of worktree count and of core count. Default 4, overridable
+/// via `VAULTSPEC_WORKTREE_INSPECT_THREADS` (0 or unset uses the default).
+fn worktree_inspect_concurrency() -> usize {
+    std::env::var("VAULTSPEC_WORKTREE_INSPECT_THREADS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(4)
+}
+
+/// Open the worktree at `path` and inspect it. Each parallel unit owns its own
+/// repository handle (gix repos are not shared across the fan-out).
+fn inspect_path(path: &Path, is_main: bool) -> Result<WorktreeInfo> {
+    let repo = gix::open(path).map_err(|e| GitError::Other(e.to_string()))?;
+    inspect(&repo, path.to_path_buf(), is_main)
+}
+
+fn canonical(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
 /// The thread bound for gix's index-vs-worktree status diff (B5b). gix treats
@@ -250,5 +327,94 @@ mod tests {
         let linked = wts.iter().find(|w| !w.is_main).expect("linked worktree");
         assert_eq!(linked.head_ref.as_deref(), Some("refs/heads/feature-x"));
         assert!(linked.dirty, "untracked file makes the worktree dirty");
+    }
+
+    // S03: inspect_one returns exactly the matching worktree, and the result is
+    // identical to that worktree's entry from the full enumeration (parity).
+    #[test]
+    fn inspect_one_returns_the_matching_worktree() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        repo_with_commit(&main);
+        let feature = dir.path().join("feature-x");
+        git(
+            &main,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature-x",
+                feature.to_str().unwrap(),
+            ],
+        );
+        std::fs::write(feature.join("scratch.txt"), "wip\n").unwrap();
+
+        let ws = Workspace::discover(&main).unwrap();
+        let all = enumerate(&ws).unwrap();
+
+        // The linked worktree resolved on its own matches its enumerate entry.
+        let one = inspect_one(&ws, &feature)
+            .unwrap()
+            .expect("feature worktree resolves");
+        let from_all = all
+            .iter()
+            .find(|w| !w.is_main)
+            .expect("linked worktree in enumerate");
+        assert_eq!(&one, from_all, "inspect_one parity with enumerate");
+        assert_eq!(one.head_ref.as_deref(), Some("refs/heads/feature-x"));
+        assert!(one.dirty, "untracked file makes the worktree dirty");
+
+        // The main checkout resolves too.
+        let main_one = inspect_one(&ws, &main)
+            .unwrap()
+            .expect("main worktree resolves");
+        assert!(main_one.is_main);
+    }
+
+    // S03: inspect_one returns None for a path that is not a worktree.
+    #[test]
+    fn inspect_one_returns_none_for_non_worktree_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        repo_with_commit(&main);
+
+        let ws = Workspace::discover(&main).unwrap();
+        let stranger = dir.path().join("not-a-worktree");
+        std::fs::create_dir_all(&stranger).unwrap();
+        assert!(
+            inspect_one(&ws, &stranger).unwrap().is_none(),
+            "a non-worktree path resolves to None, not an error"
+        );
+    }
+
+    // S03: parallel enumerate yields the same set as a serial inspection across
+    // several worktrees (order-independent parity).
+    #[test]
+    fn parallel_enumerate_matches_serial_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        repo_with_commit(&main);
+        for name in ["wt-a", "wt-b", "wt-c"] {
+            let p = dir.path().join(name);
+            git(&main, &["worktree", "add", "-b", name, p.to_str().unwrap()]);
+        }
+
+        let ws = Workspace::discover(&main).unwrap();
+
+        // Reference set built by inspecting each descriptor serially.
+        let mut serial: Vec<WorktreeInfo> = collect_descriptors(&ws)
+            .unwrap()
+            .into_iter()
+            .map(|(p, is_main)| inspect_path(&p, is_main).unwrap())
+            .collect();
+        let mut parallel = enumerate(&ws).unwrap();
+        assert_eq!(parallel.len(), 4, "main + three linked worktrees");
+
+        serial.sort_by_key(|w| w.path.clone());
+        parallel.sort_by_key(|w| w.path.clone());
+        assert_eq!(parallel, serial, "parallel enumerate equals the serial set");
     }
 }
