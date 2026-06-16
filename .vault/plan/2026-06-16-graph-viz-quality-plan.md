@@ -134,13 +134,13 @@ Implement the per-layout-family metric sets, each normalized to [0,1] with 1 = b
 
 Wrap each layout in a *Gate.ts emitting a scorecard vector with per-metric thresholds and a versioned metric contract.
 
-- [ ] `W01.P03.S14` - Define the scorecard vector type, the per-metric threshold/margin/pass-fail record, the seed echo, and the METRIC_VERSION contract constant; `frontend/src/scene/field/scorecard/scorecard.ts`.
-- [ ] `W01.P03.S15` - Add the forceGate wrapping the real force layout module, generating a fixed-seed fixture, scoring, and emitting the scorecard vector with bounded accumulators; `frontend/src/scene/field/forceGate.ts`.
-- [ ] `W01.P03.S16` - Add the lineageGate and hierarchyGate wrapping the real Sugiyama layout modules and scoring against the planted-layer fixtures; `frontend/src/scene/field/lineageGate.ts`.
-- [ ] `W01.P03.S17` - Add the radialGate wrapping the real radial layout module and scoring tidy-tree invariants against the layered-tree fixture; `frontend/src/scene/field/radialGate.ts`.
-- [ ] `W01.P03.S18` - Add the clusterGate wrapping the real community layout and scoring detectCommunities output against the SBM and LFR planted partitions; `frontend/src/scene/field/clusterGate.ts`.
-- [ ] `W01.P03.S19` - Refactor semanticGate to emit the formalized scorecard vector composite while keeping the injectable clock and bounded ceiling; `frontend/src/scene/field/semanticGate.ts`.
-- [ ] `W01.P03.S20` - Assert each gate gates on individual per-metric thresholds and never on a reported aggregate, with a regression test pinning METRIC_VERSION; `frontend/src/scene/field/scorecard/scorecard.test.ts`.
+- [x] `W01.P03.S14` - Define the scorecard vector type, the per-metric threshold/margin/pass-fail record, the seed echo, and the METRIC_VERSION contract constant; `frontend/src/scene/field/scorecard/scorecard.ts`.
+- [x] `W01.P03.S15` - Add the forceGate wrapping the real force layout module, generating a fixed-seed fixture, scoring, and emitting the scorecard vector with bounded accumulators; `frontend/src/scene/field/forceGate.ts`.
+- [x] `W01.P03.S16` - Add the lineageGate and hierarchyGate wrapping the real Sugiyama layout modules and scoring against the planted-layer fixtures; `frontend/src/scene/field/lineageGate.ts`.
+- [x] `W01.P03.S17` - Add the radialGate wrapping the real radial layout module and scoring tidy-tree invariants against the layered-tree fixture; `frontend/src/scene/field/radialGate.ts`.
+- [x] `W01.P03.S18` - Add the clusterGate wrapping the real community layout and scoring detectCommunities output against the SBM and LFR planted partitions; `frontend/src/scene/field/clusterGate.ts`.
+- [x] `W01.P03.S19` - Refactor semanticGate to emit the formalized scorecard vector composite while keeping the injectable clock and bounded ceiling; `frontend/src/scene/field/semanticGate.ts`.
+- [x] `W01.P03.S20` - Assert each gate gates on individual per-metric thresholds and never on a reported aggregate, with a regression test pinning METRIC_VERSION; `frontend/src/scene/field/scorecard/scorecard.test.ts`.
 
 ### Phase `W01.P04` - Calibration script and perturbation self-test
 
@@ -252,10 +252,10 @@ Flip the served constants, wire the selectors to ops git, and parse porcelain, n
 
 Mint code: nodes for resolved and stale Path and Symbol mentions per the code-artifact-nodes ADR and invert the bridge dead-end repro.
 
-- [ ] `W05.P14.S61` - Mint code: nodes via idempotent upsert_node for resolved and stale Path and Symbol mentions in the engine-graph Pass 2 serial edge-ingest, beside the addressing edge; `engine/crates/engine-graph/src/index.rs`.
-- [ ] `W05.P14.S62` - Confirm code nodes carry doc_type code, a per-scope Exists facet, no lifecycle or tier, and are excluded from the feature constellation under MAX_GRAPH_NODES; `engine/crates/engine-query/src/graph.rs`.
-- [ ] `W05.P14.S63` - Invert the bridge_dead_end_repro so a resolved Path/Symbol bridge resolves a real code: id and add a broken-target repro asserting the still-null bridge; `engine/crates/engine-query/tests/bridge_dead_end_repro.rs`.
-- [ ] `W05.P14.S64` - Measure cold-index cost via scale_bench confirming the added upserts leave the linear cold-index profile intact at corpus scale; `engine/crates/engine-graph/benches/scale_bench.rs`.
+- [x] `W05.P14.S61` - Mint code: nodes via idempotent upsert_node for resolved and stale Path and Symbol mentions in the engine-graph Pass 2 serial edge-ingest, beside the addressing edge; `engine/crates/engine-graph/src/index.rs`.
+- [x] `W05.P14.S62` - Confirm code nodes carry doc_type code, a per-scope Exists facet, no lifecycle or tier, and are excluded from the feature constellation under MAX_GRAPH_NODES; `engine/crates/engine-query/src/graph.rs`.
+- [x] `W05.P14.S63` - Invert the bridge_dead_end_repro so a resolved Path/Symbol bridge resolves a real code: id and add a broken-target repro asserting the still-null bridge; `engine/crates/engine-query/tests/bridge_dead_end_repro.rs`.
+- [x] `W05.P14.S64` - Measure cold-index cost via scale_bench confirming the added upserts leave the linear cold-index profile intact at corpus scale; `engine/crates/engine-graph/benches/scale_bench.rs`.
 
 ### Phase `W05.P15` - Doc-debt cleanup and residual inventory
 
