@@ -42,6 +42,13 @@ pub struct PathChange {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitEvent {
     pub sha: String,
+    /// The commit's subject — the first line of the commit message, trimmed
+    /// (status-overview ADR: the "what has been committed?" datum). gix's
+    /// `message().summary()` already isolates the summary line; carrying it
+    /// here closes the previously-deferred subject gap the event sourcer
+    /// flagged (`commits lack the subject (a git lookup)`). Read-only over the
+    /// object DB; never a write.
+    pub subject: String,
     /// Commit time in **milliseconds** since the Unix epoch — the
     /// engine-wide `engine_model::Timestamp` unit. gix reports seconds;
     /// the conversion happens here, at the seam, so no downstream surface
@@ -94,12 +101,21 @@ pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<C
             .map_err(|e| GitError::Other(e.to_string()))?
             .seconds
             * 1000;
+        // The commit subject: gix's `summary()` isolates the first line of the
+        // message (the conventional subject), already trimmed of surrounding
+        // whitespace. An empty/whitespace-only message yields an empty subject
+        // rather than a failure — the commit is still a real event.
+        let subject = commit
+            .message()
+            .map(|m| m.summary().to_string())
+            .unwrap_or_default();
         let changes = touched_changes(&repo, &commit)?;
         // `touched_paths` stays the flat path list (back-compat): the `path`
         // of every change, in the same order.
         let touched_paths = changes.iter().map(|c| c.path.clone()).collect();
         out.push(CommitEvent {
             sha: commit.id.to_string(),
+            subject,
             ts,
             kind: "commit",
             git_ref: ref_name.to_string(),
@@ -188,6 +204,12 @@ mod tests {
         // Root commit reports its full tree.
         assert_eq!(events[2].touched_paths, vec!["README.md"]);
 
+        // Each commit carries its subject (the first message line),
+        // newest-first (status-overview ADR: the "what has been committed?"
+        // datum). The root commit's subject is the fixture's initial message.
+        assert_eq!(events[0].subject, "touch both");
+        assert_eq!(events[1].subject, "add lib");
+
         // `changes` mirrors `touched_paths` in the same order, carrying the
         // per-path kind: commit 3 modified both; commit 2 added src/lib.rs;
         // the root commit added README.md.
@@ -274,6 +296,36 @@ mod tests {
                 path: "a.txt".into(),
                 kind: ChangeKind::Added
             }]
+        );
+    }
+
+    #[test]
+    fn subject_is_the_first_message_line_only() {
+        // status-overview ADR: the commit subject is the first line of the
+        // message (the summary), not the body. A multi-line commit message
+        // must surface only its subject line, trimmed.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git(root, &["add", "."]);
+        git(
+            root,
+            &[
+                "commit",
+                "-m",
+                "feat: the subject line",
+                "-m",
+                "A body paragraph that must not leak into the subject.",
+            ],
+        );
+
+        let ws = Workspace::discover(root).unwrap();
+        let events = walk(&ws, "main", 10).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].subject, "feat: the subject line",
+            "the subject is the first message line, never the body"
         );
     }
 

@@ -116,6 +116,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(routes::query::node_plan_interior),
         )
         .route("/events", get(routes::temporal::events))
+        // Bounded, read-only recent-commit history with subjects (status-overview
+        // ADR): the last N commits as {hash, short_hash, subject, ts, node_ids},
+        // newest-first, capped at MAX_HISTORY_LIMIT, tiers-bearing.
+        .route("/history", get(routes::history::history))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
         .route("/search", post(routes::ops::search))
@@ -525,6 +529,150 @@ mod tests {
             "epoch-ms resolves to the latest commit's sha"
         );
         assert_eq!(body["data"]["interpretation"], "timestamp");
+    }
+
+    #[tokio::test]
+    async fn history_serves_bounded_subject_bearing_commits_newest_first() {
+        // status-overview ADR: GET /history?scope=&limit=N returns the last N
+        // commits as {hash, short_hash, subject, ts, node_ids}, newest-first,
+        // enveloped with the tiers block, bounded by a hard ceiling. The
+        // subject is the one new datum — the commit message's first line — that
+        // /events never carried.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+
+        // Commit 1: a vault doc -> correlates to a doc node id.
+        std::fs::write(
+            root.join(".vault/plan/2026-06-16-hist-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#hist'\n---\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "feat: add the hist plan"]);
+
+        // Commit 2: a plain edit -> the newest commit.
+        std::fs::write(root.join("README.md"), "readme\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "docs: add a readme"]);
+
+        let head_sha = {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        let state = app::build_state(root.to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let (status, body) = get_with_token(
+            router.clone(),
+            &format!("/history?scope={}", urlencode(&scope)),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "history ok: {body}");
+
+        // Every response carries the tiers block (shared envelope).
+        assert!(body["tiers"].is_object(), "tiers block present: {body}");
+
+        let commits = body["data"]["commits"].as_array().expect("commits array");
+        assert_eq!(commits.len(), 2, "both commits served");
+
+        // Newest-first: the README commit is first, with its subject line.
+        assert_eq!(commits[0]["hash"], head_sha, "newest commit first");
+        assert_eq!(
+            commits[0]["short_hash"],
+            head_sha.chars().take(8).collect::<String>()
+        );
+        assert_eq!(commits[0]["subject"], "docs: add a readme");
+        assert!(
+            commits[0]["ts"].as_i64().unwrap() > 1_000_000_000_000,
+            "ms ts"
+        );
+
+        // The older vault-touching commit carries its subject AND correlates to
+        // the document node (the commit→doc cross-link the rail uses).
+        assert_eq!(commits[1]["subject"], "feat: add the hist plan");
+        let node_ids: Vec<String> = commits[1]["node_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(
+            node_ids.iter().any(|id| id.starts_with("commit:")),
+            "the commit's own node id is present: {node_ids:?}"
+        );
+        assert!(
+            node_ids.contains(&"doc:2026-06-16-hist-plan".to_string()),
+            "the touched vault doc is correlated: {node_ids:?}"
+        );
+
+        // No truncation when the request is within the ceiling.
+        assert!(body["data"]["truncated"].is_null(), "no truncation: {body}");
+    }
+
+    #[tokio::test]
+    async fn history_clamps_an_over_ceiling_limit_and_reports_it() {
+        // bounded-by-default / graph-queries-are-bounded-by-default: a request
+        // above MAX_HISTORY_LIMIT is clamped to the ceiling and the clamp is
+        // stated in the truncated block, never an unbounded walk.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "one"]);
+
+        let state = app::build_state(root.to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        let over = routes::history::MAX_HISTORY_LIMIT + 50;
+        let (status, body) = get_with_token(
+            router,
+            &format!("/history?scope={}&limit={over}", urlencode(&scope)),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "history ok: {body}");
+        assert_eq!(
+            body["data"]["truncated"]["requested"].as_u64().unwrap() as usize,
+            over,
+            "the over-ceiling request is reported"
+        );
+        // Only one commit exists, so the returned count reflects the real walk,
+        // not the ceiling — but the clamp is still honestly reported.
+        assert_eq!(body["data"]["commits"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn history_unknown_scope_is_a_tiered_400() {
+        // A bad scope 400s honestly with the tiers block (shared envelope),
+        // distinguishable from a backend-down degradation.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "one"]);
+
+        let state = app::build_state(root.to_path_buf());
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) =
+            get_with_token(router, "/history?scope=/no/such/worktree", Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "bad scope 400: {body}");
+        assert!(body["tiers"].is_object(), "error carries tiers: {body}");
     }
 
     #[tokio::test]

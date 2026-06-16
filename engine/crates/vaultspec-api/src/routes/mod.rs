@@ -2,6 +2,7 @@
 
 pub mod content;
 pub mod file_tree;
+pub mod history;
 pub mod ops;
 pub mod query;
 pub mod registry;

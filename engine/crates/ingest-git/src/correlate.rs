@@ -145,6 +145,9 @@ mod tests {
         CommitContext {
             event: CommitEvent {
                 sha: sha.into(),
+                // The correlation rules read only `touched_paths`; the subject
+                // is immaterial here, so derive it from the test message.
+                subject: message.lines().next().unwrap_or_default().to_string(),
                 ts,
                 kind: "commit",
                 git_ref: "main".into(),
