@@ -49,10 +49,10 @@ Add the sole stores-layer client of the content route: a bounded content query, 
 
 Stand up the one shared Shiki highlighter (fine-grained core, JS regex engine, lazy grammar/theme imports) themed from the OKLCH token tier.
 
-- [ ] `P03.S12` - Add shiki/core, the JS regex engine, and the lang/theme packages to the frontend dependencies (runtime, never rag/torch); `frontend/package.json`.
-- [ ] `P03.S13` - Build a useHighlighter hook owning a singleton createHighlighterCore with per-language and per-theme dynamic import lazy registration; `frontend/src/app/viewer/useHighlighter.ts`.
-- [ ] `P03.S14` - Bind Shiki token colors to the OKLCH semantic token tier so light, dark, and high-contrast are three theme maps with no per-surface color; `frontend/src/app/viewer/highlighterTheme.ts`.
-- [ ] `P03.S15` - Map the required language set and the long tail to grammar loaders and a language_hint resolver shared by both viewers; `frontend/src/app/viewer/languages.ts`.
+- [x] `P03.S12` - Add shiki/core, the JS regex engine, and the lang/theme packages to the frontend dependencies (runtime, never rag/torch); `frontend/package.json`.
+- [x] `P03.S13` - Build a useHighlighter hook owning a singleton createHighlighterCore with per-language and per-theme dynamic import lazy registration; `frontend/src/app/viewer/useHighlighter.ts`.
+- [x] `P03.S14` - Bind Shiki token colors to the OKLCH semantic token tier so light, dark, and high-contrast are three theme maps with no per-surface color; `frontend/src/app/viewer/highlighterTheme.ts`.
+- [x] `P03.S15` - Map the required language set and the long tail to grammar loaders and a language_hint resolver shared by both viewers; `frontend/src/app/viewer/languages.ts`.
 
 ### Phase `P04` - frontmatter-aware markdown reader
 
