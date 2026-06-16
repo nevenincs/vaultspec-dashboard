@@ -55,7 +55,7 @@ import {
   useEngineStatus,
 } from "./engine";
 import { dispatchOps } from "./opsActions";
-import { parseDocument } from "../../app/viewer/FrontmatterHeader";
+import { parseDocument } from "./parseDocument";
 import {
   isRagRunning,
   mergeNumstat,

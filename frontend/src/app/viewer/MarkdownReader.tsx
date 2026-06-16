@@ -21,9 +21,10 @@ import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { parseDocument } from "../../stores/server/parseDocument";
 import type { ContentView } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
-import { FrontmatterHeader, parseDocument } from "./FrontmatterHeader";
+import { FrontmatterHeader } from "./FrontmatterHeader";
 import { remarkWikiLink, wikiLinkNodeId } from "./remarkWikiLink";
 import { useHighlightedHast } from "./useHighlighter";
 
