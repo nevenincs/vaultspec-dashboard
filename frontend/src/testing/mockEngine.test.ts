@@ -283,6 +283,43 @@ describe("MockEngine routes", () => {
     expect(events.events!.some((e) => e.kind.startsWith("doc-"))).toBe(true);
   });
 
+  it("serves /history newest-first with subjects + commit node ids (status-overview)", async () => {
+    // mock-mirrors-live-wire-shape: feed the mock /history through the SAME
+    // client path the app uses (`adaptHistory`) and assert it carries the live
+    // wire shape — subject-bearing commits, newest-first, each cross-linking its
+    // own commit node id — so the adapter is exercised against reality, not a
+    // convenient internal shape.
+    const mock = new MockEngine();
+    const res = await client(mock).history({ scope: "wt-main" });
+
+    expect(res.commits.length).toBeGreaterThan(0);
+    // Every commit carries the full wire shape (no field synthesized away).
+    for (const commit of res.commits) {
+      expect(typeof commit.hash).toBe("string");
+      expect(commit.short_hash).toBe(commit.hash.slice(0, 8));
+      expect(typeof commit.subject).toBe("string");
+      expect(commit.subject.length).toBeGreaterThan(0);
+      expect(Number.isFinite(commit.ts)).toBe(true);
+      // The commit cross-links its own commit node id (the rail's graph link).
+      expect(commit.node_ids.some((id) => id.startsWith("commit:"))).toBe(true);
+    }
+    // Newest-first: timestamps are non-increasing down the list.
+    for (let i = 1; i < res.commits.length; i++) {
+      expect(res.commits[i].ts).toBeLessThanOrEqual(res.commits[i - 1].ts);
+    }
+    // Within the ceiling → no truncation reported (the honest bounded shape).
+    expect(res.truncated).toBeNull();
+  });
+
+  it("clamps an over-ceiling /history limit and reports it (bounded)", async () => {
+    // graph-queries-are-bounded-by-default: a request above the ceiling is
+    // clamped and the clamp is stated honestly, mirroring the live route.
+    const mock = new MockEngine();
+    const res = await client(mock).history({ scope: "wt-main", limit: 5000 });
+    expect(res.truncated).not.toBeNull();
+    expect(res.truncated!.requested).toBe(5000);
+  });
+
   it("streams SSE frames with seq carried on graph deltas", async () => {
     const mock = new MockEngine();
     const sinceSeq = mock.lastSeq - 2;

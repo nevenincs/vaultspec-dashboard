@@ -1,11 +1,16 @@
 // The activity-rail tab bar (binding Figma `RightRail` / `ActivityTabs`, node
-// 17:563): a compact segmented control switching the rail body between its four
-// panes — Inspect (the selected-node lens), Work (in-flight pipeline), Search
-// (rag query), Changes (git + vault activity). The segmented-control idiom and
-// its a11y mirror the left rail's `BrowserModeToggle`: one ARIA tablist, the
-// active tab a raised paper pill with a soft card shadow, roving arrow-key
-// movement that auto-scales to the tab count, and a roving tabindex so only the
-// active tab sits in the Tab order.
+// 17:563; refined by the status-overview ADR node 112:2): a compact segmented
+// control switching the rail body between its four panes — Status (the primary
+// overview: location anchor + plan-derived open work + recent commits), Inspect
+// (the selected-node lens), Changes (git working-tree + diff), Search (rag
+// query). The status-overview ADR refines the prior Inspect/Work/Changes/Search
+// set: the Work pillar's in-flight plans fold into Status (the headline surface),
+// so Status is the primary tab and the four-tab law is honored (no fifth tab is
+// minted; the changed-files/diff capability stays as Changes). The
+// segmented-control idiom and its a11y mirror the left rail's
+// `BrowserModeToggle`: one ARIA tablist, the active tab a raised paper pill with
+// a soft card shadow, roving arrow-key movement that auto-scales to the tab
+// count, and a roving tabindex so only the active tab sits in the Tab order.
 //
 // Layer ownership (dashboard-layer-ownership): this is pure chrome — it holds no
 // wire state, fetches nothing, and reads no `tiers` block; it only flips the
@@ -16,7 +21,7 @@
 // marks (Eye / Search), matching the binding design; Work and Changes are
 // label-only, exactly as the design shows.
 
-import { Eye, Search, type LucideIcon } from "lucide-react";
+import { Activity, Eye, Search, type LucideIcon } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef } from "react";
 
@@ -24,14 +29,15 @@ import { useCallback, useRef } from "react";
 // glyphs stay attenuated against the label (design-language ADR layer 4).
 const MARK_PX = 12;
 
-export type RailTabId = "inspect" | "work" | "search" | "changes";
+export type RailTabId = "status" | "inspect" | "search" | "changes";
 
-// Inspect · Work · Search · Changes, left to right — the binding Figma order
-// (node 17:563 `ActivityTabs`). Inspect and Search carry a leading Lucide mark;
-// Work and Changes are label-only, matching the design.
+// Status · Inspect · Search · Changes, left to right — the status-overview ADR
+// makes Status the primary (leading) tab; Inspect and Search are unchanged, and
+// Changes keeps the working-tree/diff capability. Status and Inspect/Search carry
+// a leading Lucide structural mark; Changes is label-only, matching the design.
 export const RAIL_TABS: { id: RailTabId; label: string; mark?: LucideIcon }[] = [
+  { id: "status", label: "Status", mark: Activity },
   { id: "inspect", label: "Inspect", mark: Eye },
-  { id: "work", label: "Work" },
   { id: "search", label: "Search", mark: Search },
   { id: "changes", label: "Changes" },
 ];

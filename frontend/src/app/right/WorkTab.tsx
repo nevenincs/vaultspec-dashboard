@@ -85,7 +85,7 @@ function ringGeometry(done: number, total: number) {
   return { radius, circumference, dash, center: GATE_PX / 2 };
 }
 
-function ProgressRing({ done, total }: ProgressRingProps) {
+export function ProgressRing({ done, total }: ProgressRingProps) {
   const { radius, circumference, dash, center } = ringGeometry(done, total);
   const complete = total > 0 && done >= total;
   const label = `${done} of ${total} steps complete`;
@@ -338,8 +338,10 @@ function WaveGroup({ wave }: { wave: InteriorWaveView }) {
   );
 }
 
-/** The lazily-loaded interior tree for an expanded plan (W03.P06.S29/S31). */
-function PlanStepTree({ view }: { view: PlanInteriorView }) {
+/** The lazily-loaded interior tree for an expanded plan (W03.P06.S29/S31).
+ *  Exported so the Status overview (status-overview ADR) reuses the SAME
+ *  step-tree dropdown rather than inventing a new disclosure. */
+export function PlanStepTree({ view }: { view: PlanInteriorView }) {
   if (view.loading) {
     // The purposeful liveness cue tied to real pending work, the repo's
     // text-pulse idiom (SearchTab); goes static under prefers-reduced-motion.

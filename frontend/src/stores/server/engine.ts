@@ -17,6 +17,7 @@ import {
   adaptFilters,
   adaptGitOp,
   adaptGraphSlice,
+  adaptHistory,
   adaptLineageSlice,
   adaptMap,
   adaptPipeline,
@@ -640,6 +641,43 @@ export interface EventsResponse {
   tiers: TiersBlock;
 }
 
+// --- §5 recent commit history (status-overview ADR) --------------------------------
+//
+// `GET /history?scope=&limit=N` is the ONE engine gap the status-overview rail
+// fills: the last N commits as `{hash, short_hash, subject, ts, node_ids}`,
+// newest-first, bounded by a hard ceiling, enveloped with the tiers block on
+// success and error. The commit SUBJECT (the message's first line) is the new
+// datum `/events` never carried. Wire shapes stay snake_case exactly as the live
+// `vaultspec-api` `history` route serves them; `ts` is engine-wide milliseconds.
+
+/** One recent commit (GET /history): its full hash, short (8-char) hash, subject
+ *  line, commit time (ms epoch), and the bounded node ids it correlates to
+ *  (`commit:<sha>` + touched docs + capped code ids) so the rail can cross-link a
+ *  commit into the graph. */
+export interface HistoryCommit {
+  hash: string;
+  short_hash: string;
+  subject: string;
+  /** Commit time in milliseconds since the Unix epoch (engine-wide Timestamp). */
+  ts: number;
+  /** Bounded per the event sourcer's cap: commit id + docs + capped code ids. */
+  node_ids: string[];
+}
+
+/** Honest truncation when the request exceeded the served ceiling and was
+ *  clamped (graph-queries-are-bounded-by-default); null/absent otherwise. */
+export interface HistoryTruncated {
+  requested: number;
+  returned: number;
+  reason: string;
+}
+
+export interface HistoryResponse {
+  commits: HistoryCommit[];
+  truncated: HistoryTruncated | null;
+  tiers: TiersBlock;
+}
+
 // --- §5 bounded temporal-lineage projection (dashboard-timeline ADR) ----------------
 //
 // The diachronic lineage the phase-lane timeline draws: for a scope and an
@@ -1240,6 +1278,15 @@ export class EngineClient {
     bucket?: string;
   }): Promise<EventsResponse> {
     return this.get("/events", params);
+  }
+
+  /** The bounded, read-only recent-commit history (status-overview ADR): the
+   *  last N commits with subjects for a scope, newest-first. `limit` is optional
+   *  (the engine defaults to ~20 and clamps a large value to a hard ceiling). The
+   *  tolerant adapter reconciles the wire shape; the rail reads degraded state
+   *  from the `tiers` block. */
+  async history(params: { scope: string; limit?: number }): Promise<HistoryResponse> {
+    return adaptHistory(await this.get("/history", params));
   }
 
   /** The bounded temporal-lineage projection (dashboard-timeline ADR, contract

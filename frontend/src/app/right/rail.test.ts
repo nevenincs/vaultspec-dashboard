@@ -16,32 +16,33 @@ const status = (over: Partial<EngineStatus>): EngineStatus => ({
   ...over,
 });
 
-describe("rail tab strip IA (binding Figma RightRail, node 17:563)", () => {
-  it("is exactly Inspect, Work, Search, Changes in that order", () => {
-    // The binding Figma `ActivityTabs` order: Inspect | Work | Search | Changes.
-    // The liveness pillars are no longer a tab — they are a PERSISTENT header
-    // above the tab bar — so the first pane is the selected-node lens (Inspect).
+describe("rail tab strip IA (Figma RightRail 17:563, refined by status-overview 112:2)", () => {
+  it("is exactly Status, Inspect, Search, Changes in that order", () => {
+    // The status-overview ADR makes Status the primary (leading) tab and folds
+    // the Work pillar's in-flight plans into it; Inspect and Search are
+    // unchanged, Changes keeps the working-tree/diff capability. The liveness
+    // pillars remain a PERSISTENT header above the tab bar, never a tab.
     expect(RAIL_TABS.map((t) => t.label)).toEqual([
+      "Status",
       "Inspect",
-      "Work",
       "Search",
       "Changes",
     ]);
     expect(RAIL_TABS.map((t) => t.id)).toEqual([
+      "status",
       "inspect",
-      "work",
       "search",
       "changes",
     ]);
   });
 
-  it("carries the binding design's leading chrome marks on Inspect and Search only", () => {
-    // The design shows a leading Lucide mark on Inspect (Eye) and Search; Work
-    // and Changes are label-only.
+  it("carries leading chrome marks on Status, Inspect and Search; Changes is label-only", () => {
+    // The design shows a leading Lucide mark on Status (Activity), Inspect (Eye),
+    // and Search; Changes is label-only.
     const byId = Object.fromEntries(RAIL_TABS.map((t) => [t.id, t]));
+    expect(byId.status!.mark).toBeTruthy();
     expect(byId.inspect!.mark).toBeTruthy();
     expect(byId.search!.mark).toBeTruthy();
-    expect(byId.work!.mark).toBeUndefined();
     expect(byId.changes!.mark).toBeUndefined();
   });
 });

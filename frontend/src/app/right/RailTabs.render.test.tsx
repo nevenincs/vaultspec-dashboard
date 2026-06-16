@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 //
 // The activity-rail segmented tab bar (binding Figma `RightRail` / `ActivityTabs`,
-// node 17:563): a roving-keys ARIA tablist with Inspect | Work | Search | Changes,
-// the active tab a raised pill. These assertions exercise the a11y contract — the
-// roving tabindex, arrow-key movement that activates, and the active styling cue —
-// not just that it renders.
+// node 17:563; refined by the status-overview ADR node 112:2): a roving-keys ARIA
+// tablist with Status | Inspect | Search | Changes, the active tab a raised pill.
+// These assertions exercise the a11y contract — the roving tabindex, arrow-key
+// movement that activates, and the active styling cue — not just that it renders.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement, useState } from "react";
@@ -12,22 +12,22 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { RailTabs, type RailTabId } from "./RailTabs";
 
-function Harness({ initial = "inspect" as RailTabId }) {
+function Harness({ initial = "status" as RailTabId }) {
   const [tab, setTab] = useState<RailTabId>(initial);
   return createElement(RailTabs, { active: tab, onChange: setTab });
 }
 
 afterEach(() => cleanup());
 
-describe("RailTabs segmented control (Figma node 17:563)", () => {
-  it("renders the four binding tabs in order with a single tablist", () => {
+describe("RailTabs segmented control (Figma node 17:563 / 112:2)", () => {
+  it("renders the four refined tabs in order with a single tablist", () => {
     render(createElement(Harness));
     const tablist = screen.getByRole("tablist", { name: "activity rail tabs" });
     expect(tablist).toBeTruthy();
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.getAttribute("data-rail-tab"))).toEqual([
+      "status",
       "inspect",
-      "work",
       "search",
       "changes",
     ]);
@@ -36,7 +36,7 @@ describe("RailTabs segmented control (Figma node 17:563)", () => {
   it("puts only the active tab in the Tab order (roving tabindex)", () => {
     render(createElement(Harness));
     const tabs = screen.getAllByRole("tab");
-    // Inspect is active by default → tabIndex 0; the rest are -1.
+    // Status is active by default → tabIndex 0; the rest are -1.
     expect(tabs[0]!.getAttribute("tabindex")).toBe("0");
     expect(tabs.slice(1).every((t) => t.getAttribute("tabindex") === "-1")).toBe(true);
     expect(tabs[0]!.getAttribute("aria-selected")).toBe("true");
@@ -55,7 +55,7 @@ describe("RailTabs segmented control (Figma node 17:563)", () => {
     const tabs = screen.getAllByRole("tab");
     tabs[0]!.focus();
     fireEvent.keyDown(tabs[0]!, { key: "ArrowRight" });
-    // Work becomes selected and focused.
+    // Inspect becomes selected and focused.
     expect(tabs[1]!.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(tabs[1]);
   });

@@ -112,13 +112,13 @@ Add the bounded, read-only, enveloped GET /history?scope=&limit=N route serving 
 
 Add the bounded history query (gcTime cap, tiers-derived degradation) and mirror the wire shape in the mock with a fidelity test.
 
-- [ ] `P02.S02` - Add bounded useHistory query + deriveHistoryView (tiers-gated), engine client + adapter, mock /history route + fidelity test; `frontend/src/stores/server/queries.ts`.
+- [x] `P02.S02` - Add bounded useHistory query + deriveHistoryView (tiers-gated), engine client + adapter, mock /history route + fidelity test; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `P03` - Status tab UI + rail IA
 
 Build the dumb Status tab (location anchor, open plans with step-tree expand + open-in-viewer, recent commits) and refine the rail tab set.
 
-- [ ] `P03.S03` - Build StatusTab (location anchor + open plans w/ step-tree expand + open-in-viewer + recent commits), wire into rail IA; `frontend/src/app/right/StatusTab.tsx`.
+- [x] `P03.S03` - Build StatusTab (location anchor + open plans w/ step-tree expand + open-in-viewer + recent commits), wire into rail IA; `frontend/src/app/right/StatusTab.tsx`.
 
 ### Phase `P04` - Tests + review
 

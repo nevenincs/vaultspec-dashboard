@@ -23,6 +23,9 @@ import type {
   FiltersVocabulary,
   GitOpResponse,
   GraphSlice,
+  HistoryCommit,
+  HistoryResponse,
+  HistoryTruncated,
   InteriorPhase,
   InteriorStep,
   InteriorWave,
@@ -619,6 +622,67 @@ export function adaptContent(body: unknown): ContentResponse {
     language_hint: typeof body.language_hint === "string" ? body.language_hint : null,
     text,
     truncated: adaptContentTruncated(body.truncated),
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- §5 recent commit history (status-overview ADR) --------------------------------
+//
+// The bounded recent-commit list with subjects, consumed through the stores
+// history query (the sole wire client of `/history`). TOLERANT (the same one-code-
+// path discipline as `adaptContent`): a sparse or older shape never throws — an
+// absent body yields an empty commit list with an empty tiers block, and a
+// malformed commit entry is dropped rather than crashing the rail. The rail reads
+// degraded state from the `tiers` block, never from a thrown adapter.
+
+/** Default the history truncation block: forwarded only when the engine clamped
+ *  an over-ceiling request (a real object with the three fields); else null. */
+function adaptHistoryTruncated(value: unknown): HistoryTruncated | null {
+  if (
+    isRec(value) &&
+    typeof value.requested === "number" &&
+    typeof value.returned === "number" &&
+    typeof value.reason === "string"
+  ) {
+    return {
+      requested: value.requested,
+      returned: value.returned,
+      reason: value.reason,
+    };
+  }
+  return null;
+}
+
+/** One commit row → the internal shape, or null when the entry is malformed
+ *  (missing its hash) so a single bad row never crashes the list. */
+function adaptHistoryCommit(value: unknown): HistoryCommit | null {
+  if (!isRec(value) || typeof value.hash !== "string") return null;
+  const hash = value.hash;
+  return {
+    hash,
+    short_hash:
+      typeof value.short_hash === "string" ? value.short_hash : hash.slice(0, 8),
+    subject: typeof value.subject === "string" ? value.subject : "",
+    ts: typeof value.ts === "number" ? value.ts : 0,
+    node_ids: Array.isArray(value.node_ids)
+      ? value.node_ids.filter((id): id is string => typeof id === "string")
+      : [],
+  };
+}
+
+/** Live `/history` → the internal history response. TOLERANT: an absent body
+ *  yields an empty commit list with an empty tiers block (the rail renders its
+ *  degraded/empty state from the tiers truth), and malformed rows are dropped. */
+export function adaptHistory(body: unknown): HistoryResponse {
+  if (!isRec(body)) {
+    return { commits: [], truncated: null, tiers: {} };
+  }
+  const commits = Array.isArray(body.commits)
+    ? body.commits.map(adaptHistoryCommit).filter((c): c is HistoryCommit => c !== null)
+    : [];
+  return {
+    commits,
+    truncated: adaptHistoryTruncated(body.truncated),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

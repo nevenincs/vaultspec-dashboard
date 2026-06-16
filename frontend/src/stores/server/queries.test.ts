@@ -7,6 +7,7 @@ import { EngineClient, EngineError } from "./engine";
 import type {
   DiscoverResponse,
   EngineStatus,
+  HistoryResponse,
   LineageSlice,
   PipelineArtifact,
   PlanInterior,
@@ -19,6 +20,7 @@ import {
   deriveDiscoverView,
   deriveGitStatusView,
   deriveGraphSliceAvailability,
+  deriveHistoryView,
   derivePipelineStatusView,
   derivePlanInteriorView,
   deriveVaultTreeAvailability,
@@ -400,6 +402,89 @@ describe("deriveGitStatusView", () => {
 
   it("reports loading while the snapshot is in flight with no data or error", () => {
     const view = deriveGitStatusView(undefined, undefined, true);
+    expect(view.loading).toBe(true);
+    expect(view.degraded).toBe(false);
+    expect(view.errored).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveHistoryView (Status overview recent-commit degradation, contract §2 /
+// status-overview ADR): degradation is read from the served `tiers` block (the
+// `structural` tier the commit read resolves through), never guessed from a bare
+// transport error — and a FRESH error envelope's tiers win over a stale block.
+// ---------------------------------------------------------------------------
+
+function historyWith(
+  tiers: TiersBlock | undefined,
+  commits: HistoryResponse["commits"] = [],
+): HistoryResponse {
+  return { commits, truncated: null, tiers: tiers ?? {} };
+}
+
+describe("deriveHistoryView", () => {
+  it("reports available with the commit list when structural is served", () => {
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, [
+        {
+          hash: "abc123",
+          short_hash: "abc123",
+          subject: "feat: x",
+          ts: 1,
+          node_ids: [],
+        },
+      ]),
+      undefined,
+      false,
+    );
+    expect(view).toMatchObject({ loading: false, degraded: false, errored: false });
+    expect(view.available).toBe(true);
+    expect(view.commits).toHaveLength(1);
+  });
+
+  it("treats an absent structural tier as designed degradation (absence != available)", () => {
+    const view = deriveHistoryView(historyWith({}, []), undefined, false);
+    expect(view.degraded).toBe(true);
+    expect(view.errored).toBe(false);
+    expect(view.commits).toHaveLength(0);
+  });
+
+  it("surfaces a tiers-bearing error envelope (backend answered) as degradation", () => {
+    const err = new EngineError("/history", 400, {
+      tiers: { structural: { available: false, reason: "no readable history" } },
+    });
+    const view = deriveHistoryView(undefined, err, false);
+    expect(view.degraded).toBe(true);
+    expect(view.errored).toBe(false);
+    expect(view.reasons.structural).toBe("no readable history");
+  });
+
+  it("surfaces a tiers-less transport fault as the errored branch, not degradation", () => {
+    const err = new EngineError("/history", 500);
+    const view = deriveHistoryView(undefined, err, false);
+    expect(view.errored).toBe(true);
+    expect(view.degraded).toBe(false);
+  });
+
+  it("lets a FRESH error envelope's tiers override a stale held-success block", () => {
+    // A held success block reports structural available, but the latest request
+    // failed with a structural-down envelope — the fresh error must win.
+    const err = new EngineError("/history", 400, {
+      tiers: { structural: { available: false } },
+    });
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, [
+        { hash: "abc", short_hash: "abc", subject: "x", ts: 1, node_ids: [] },
+      ]),
+      err,
+      false,
+    );
+    expect(view.degraded).toBe(true);
+    expect(view.commits).toHaveLength(0);
+  });
+
+  it("reports loading while in flight with no data or error", () => {
+    const view = deriveHistoryView(undefined, undefined, true);
     expect(view.loading).toBe(true);
     expect(view.degraded).toBe(false);
     expect(view.errored).toBe(false);

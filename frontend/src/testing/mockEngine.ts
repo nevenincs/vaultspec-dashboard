@@ -140,6 +140,11 @@ function mockValidateSetting(key: string, value: string, scoped: boolean): strin
 
 export const MOCK_SCOPE = "wt-main";
 
+/** The `/history` default + ceiling, mirroring the live `history.rs` constants
+ *  (status-overview ADR) so the mock clamps and defaults identically. */
+const MOCK_DEFAULT_HISTORY_LIMIT = 20;
+const MOCK_MAX_HISTORY_LIMIT = 200;
+
 /** The workspace key the session/settings store rows hang under — one workspace,
  *  one key, matching the live route's `workspace_key` (the launch root token). */
 export const MOCK_WORKSPACE = "/repo";
@@ -1274,6 +1279,11 @@ export class MockEngine {
       }
       return { events: within, tiers };
     }
+    if (path === "/history") {
+      requireScope(params);
+      const limit = params.get("limit") ? Number(params.get("limit")) : undefined;
+      return this.historyData(limit);
+    }
     if (path === "/graph/lineage") {
       // The bounded temporal-lineage projection (dashboard-timeline ADR),
       // mirroring the live `/graph/lineage` wire shape EXACTLY: dated document
@@ -1523,6 +1533,51 @@ export class MockEngine {
       truncated: null,
       tiers: this.tiersBlock(),
     };
+  }
+
+  /**
+   * Build the `/history` data block (status-overview ADR), mirroring the live
+   * `vaultspec-api` `history.rs` wire shape EXACTLY: the last N commits as
+   * `{hash, short_hash, subject, ts, node_ids}` under the `{data: {commits,
+   * truncated}, tiers}` envelope, newest-first, bounded by the same hard ceiling.
+   * The commit list derives from the corpus's `commit` events; each commit's
+   * SUBJECT is the matching `commit:<sha>` node's title (the mock's stand-in for
+   * the live commit message's first line), and `node_ids` carries the commit id +
+   * its correlated docs/features — byte-for-byte the live shape so `adaptHistory`
+   * is exercised against reality (mock-mirrors-live-wire-shape). A worktree with
+   * no listable corpus (`setNoVault`) still serves git history (the `/ops/git`
+   * §8 carve-out), so commits remain available there.
+   */
+  private historyData(limit?: number): unknown {
+    const c = this.corpus;
+    const requested = limit ?? MOCK_DEFAULT_HISTORY_LIMIT;
+    const capped = Math.min(requested, MOCK_MAX_HISTORY_LIMIT);
+    // Newest-first, mirroring the live walk order (the corpus events are sorted
+    // ascending by ts, so reverse the commit subset).
+    const commitEvents = c.events.filter((e) => e.kind === "commit").reverse();
+    const commits = commitEvents.slice(0, capped).map((e) => {
+      // The commit's own node id is `commit:<sha>`; the sha is the event ref.
+      const sha = e.ref;
+      const commitNode = c.nodes.find((n) => n.id === `commit:${sha}`);
+      return {
+        hash: sha,
+        short_hash: sha.slice(0, 8),
+        // The mock's stand-in for the commit message's first line — the commit
+        // node's title — byte-for-byte the field name the live route serves.
+        subject: commitNode?.title ?? `commit ${sha.slice(0, 8)}`,
+        ts: Date.parse(e.ts),
+        node_ids: e.node_ids,
+      };
+    });
+    const truncated =
+      requested > MOCK_MAX_HISTORY_LIMIT
+        ? {
+            requested,
+            returned: commits.length,
+            reason: "history limit ceiling: the request exceeds the served cap",
+          }
+        : null;
+    return { commits, truncated, tiers: this.tiersBlock() };
   }
 
   /**

@@ -28,7 +28,10 @@ import type {
   GitFileDiff,
   GraphFilter,
   GraphSlice,
+  HistoryCommit,
+  HistoryResponse,
   InteriorStep,
+  MapResponse,
   PipelineArtifact,
   PlanInterior,
   SessionUpdate,
@@ -124,6 +127,13 @@ export const engineKeys = {
   discover: (id: string) => [...engineKeys.all, "discover", id] as const,
   events: (scope: string, range: { from?: string; to?: string }, bucket?: string) =>
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
+  // The bounded recent-commit history (status-overview ADR): keyed by (scope,
+  // limit) — the contract's cacheability unit for a per-scope read, folding the
+  // bounded limit so two limits never collide. Bounded at the call site (gcTime +
+  // the single-entry-per-observer shape, per bounded-by-default-for-every-
+  // accumulator): the rail never accumulates every scope's history for the session.
+  history: (scope: string, limit: number) =>
+    [...engineKeys.all, "history", scope, limit] as const,
   search: (query: string, target?: string) =>
     [...engineKeys.all, "search", target ?? "vault", query] as const,
   stream: (channels: readonly string[], since?: number, scope?: string) =>
@@ -732,6 +742,113 @@ export function useContentView(
   return deriveContentView(query.data, query.error ?? null, loading);
 }
 
+// --- bounded recent commit history (status-overview ADR) ---------------------------
+//
+// The recent-commit list with subjects, consumed by the Status overview rail
+// through these stores hooks so the rail (chrome) never fetches the engine or
+// reads the raw `tiers` block (dashboard-layer-ownership: stores is the sole wire
+// client of `/history`). The history query is BOUNDED at creation per
+// bounded-by-default-for-every-accumulator: a fixed default limit folded into the
+// key, an explicit `gcTime` that evicts an unobserved entry promptly, and the
+// single-entry-per-(scope,limit) shape — the rail never accumulates every scope's
+// commit list for the whole session. Degradation is read from the served `tiers`
+// block, never guessed from a transport error
+// (degradation-is-read-from-tiers-not-guessed-from-errors).
+
+/** The rail's default recent-commit count (the ADR's ~20): a short snapshot, not
+ *  the whole log. The engine clamps a larger value to its hard ceiling. */
+export const DEFAULT_HISTORY_LIMIT = 20;
+
+/** How long an unobserved history entry survives before garbage collection
+ *  (bounded-by-default-for-every-accumulator). 60s matches the content query's
+ *  prompt eviction — generous for tab back-and-forth while keeping a long session
+ *  from retaining every scope's commit list. */
+const HISTORY_GC_TIME = 60_000;
+
+/**
+ * The read-only recent-commit history fetch for one scope (status-overview ADR),
+ * the SOLE wire client of `/history`. Keyed by (scope, limit); disabled when no
+ * scope is resolved yet. Bounded: an explicit `gcTime` evicts the entry soon
+ * after the tab is left, so a long session does not retain every scope's list.
+ */
+export function useNodeHistory(scope: string | null, limit = DEFAULT_HISTORY_LIMIT) {
+  return useQuery({
+    queryKey: engineKeys.history(scope ?? "", limit),
+    queryFn: () => engineClient.history({ scope: scope!, limit }),
+    enabled: scope !== null,
+    gcTime: HISTORY_GC_TIME,
+  });
+}
+
+/**
+ * The interpreted history view the Status overview rail renders: `loading` while
+ * in flight, `degraded` read from the served `tiers` block (the `structural` tier
+ * the commit read resolves through), `errored` for a tiers-less transport fault
+ * (distinct from degraded), and the commit list when served. The rail consumes
+ * this, never `history.data.tiers`.
+ */
+export interface HistoryView extends TierAvailability {
+  /** The history query is in flight with no held commits. */
+  loading: boolean;
+  /** A genuine transport failure (no tiers-bearing envelope) — distinct from degraded. */
+  errored: boolean;
+  /** The recent commits, newest-first; empty while loading/degraded/errored. */
+  commits: HistoryCommit[];
+  /** True iff the engine answered with history (vs loading/degraded/errored). */
+  available: boolean;
+}
+
+// The commit read is resolved by the engine's STRUCTURAL read of the worktree's
+// git object DB, so the `structural` tier gates history availability (contract §2,
+// status-overview ADR: a scope with no readable git history degrades structural).
+const HISTORY_TIERS = ["structural"] as const;
+
+/**
+ * Derive the history view from a history query's data + error + pending flags,
+ * reading the served `tiers` block ONLY here in the stores layer so the rail
+ * consumes interpreted truth, never the raw block. Degradation is read from the
+ * `tiers` block (success data, OR a FRESH error envelope's tiers winning over a
+ * stale held-success block via `tiersFromQuery` —
+ * degradation-is-read-from-tiers-not-guessed-from-errors). A served block that
+ * marks `structural` unavailable — or omits it — is designed degradation
+ * (contract §2: absence ≠ available); a tiers-less transport fault is the errored
+ * branch, NOT degradation. While degraded the (possibly stale) list is not shown.
+ */
+export function deriveHistoryView(
+  data: HistoryResponse | undefined,
+  error: unknown,
+  loading: boolean,
+): HistoryView {
+  const tiers = tiersFromQuery({ data, error });
+  const availability = readTierAvailability(tiers, HISTORY_TIERS);
+  const errored =
+    error instanceof EngineError ? error.tiers === undefined : error != null;
+  const available =
+    !loading && !errored && !availability.degraded && data !== undefined;
+  return {
+    ...availability,
+    loading,
+    errored,
+    commits: availability.degraded || errored ? [] : (data?.commits ?? []),
+    available,
+  };
+}
+
+/**
+ * Stores hook: the interpreted recent-history view for a scope, read through the
+ * history query so the Status overview rail consumes interpreted state (loading /
+ * degraded / errored / commits) instead of fetching itself or reading the raw
+ * `tiers` block.
+ */
+export function useHistoryView(
+  scope: string | null,
+  limit = DEFAULT_HISTORY_LIMIT,
+): HistoryView {
+  const query = useNodeHistory(scope, limit);
+  const loading = scope !== null && query.isPending;
+  return deriveHistoryView(query.data, query.error ?? null, loading);
+}
+
 /**
  * Bulk ego-network fetch for the stage's working set (layer-ownership, F-H1):
  * one neighbors query per id, fanned out through `useQueries`, so the app/scene
@@ -1098,6 +1215,81 @@ export function useGitStatus(): GitStatusHookView {
   const status = useEngineStatus();
   const view = deriveGitStatusView(status.data, status.error, status.isPending);
   return { ...view, retry: () => void status.refetch() };
+}
+
+// --- location anchor (status-overview ADR: "Where are we?") -------------------------
+//
+// The "Where are we?" anchor composes EXISTING wire reads — the active scope (the
+// absolute worktree path, canonical token, forward slashes), the worktree it
+// belongs to from `/map` (branch + is_main), and the git rollup from `/status`
+// (branch + dirty/ahead/behind) — into ONE interpreted view so the Status tab
+// (dumb chrome) reads a single selector and never iterates `map.data.repositories`
+// or reads the raw `tiers` block (dashboard-layer-ownership). No new wire read.
+
+/** The interpreted location anchor the Status overview header renders. */
+export interface LocationAnchorView {
+  /** The absolute worktree path being browsed (canonical token, forward slashes). */
+  path: string | null;
+  /** The current git branch (preferring the `/map` worktree, then the git rollup). */
+  branch: string | null;
+  /** True when the active scope is the repository's main/default worktree. */
+  isMain: boolean;
+  /** Working-tree dirty truth from the git rollup (false when unknown/clean). */
+  dirty: boolean;
+  /** Commits ahead of upstream; undefined = no upstream configured (not zero). */
+  ahead?: number;
+  /** Commits behind upstream; undefined = no upstream configured (not zero). */
+  behind?: number;
+}
+
+/**
+ * Derive the location anchor from the active scope, the workspace map, and the git
+ * status view. Pure projection over already-fetched reads: it matches the active
+ * scope to its `/map` worktree (for branch + is_main) and falls back to the git
+ * rollup's branch when the map has not resolved the worktree yet. The dirty /
+ * ahead / behind chips come from the git rollup. Reads no raw `tiers` block.
+ */
+export function deriveLocationAnchor(
+  scope: string | null,
+  map: MapResponse | undefined,
+  git: GitStatusView,
+): LocationAnchorView {
+  let branch: string | null = git.git?.branch ?? null;
+  let isMain = false;
+  if (scope && map) {
+    for (const repo of map.repositories) {
+      // The live engine's scope token IS the worktree path; match on either the
+      // path or the stable id so the anchor resolves on the live origin and the
+      // mock (whose worktree id and path differ) alike.
+      const wt = repo.worktrees.find((w) => w.path === scope || w.id === scope);
+      if (wt) {
+        branch = wt.branch || branch;
+        isMain = wt.is_default === true;
+        break;
+      }
+    }
+  }
+  return {
+    path: scope,
+    branch,
+    isMain,
+    dirty: git.dirty,
+    ahead: git.git?.ahead,
+    behind: git.git?.behind,
+  };
+}
+
+/**
+ * Stores hook: the interpreted location anchor for the Status overview header,
+ * composing the active scope, `/map`, and `/status` git rollup so the rail (dumb
+ * chrome) reads one selector. The active scope is passed in by the caller (it
+ * already holds it via `useActiveScope`), keeping this hook a pure composition of
+ * the two stores reads.
+ */
+export function useLocationAnchor(scope: string | null): LocationAnchorView {
+  const map = useWorkspaceMap();
+  const git = useGitStatus();
+  return deriveLocationAnchor(scope, map.data, git);
 }
 
 // --- rag service status (dashboard-rag-manager ADR) ----------------------------------

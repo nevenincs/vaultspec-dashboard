@@ -11,6 +11,7 @@ import {
   adaptFilters,
   adaptGitOp,
   adaptGraphSlice,
+  adaptHistory,
   adaptLineageSlice,
   adaptMap,
   adaptPipeline,
@@ -996,5 +997,63 @@ describe("status + tier facets carried identically by mock and live (W05.P12.S65
     const planNode = slice.nodes.find((n) => n.doc_type === "plan");
     expect(adrNode?.status).toBeDefined();
     expect(planNode?.tier).toBeDefined();
+  });
+});
+
+describe("adaptHistory (status-overview /history)", () => {
+  it("adapts a live-shaped /history body, defaulting short_hash and dropping bad rows", () => {
+    // A captured live-shape body: snake_case commit rows + tiers block, exactly
+    // as `vaultspec-api` history.rs serves under the {data, tiers} envelope.
+    const live = {
+      commits: [
+        {
+          hash: "0123456789abcdef0123456789abcdef01234567",
+          short_hash: "01234567",
+          subject: "feat: the latest commit",
+          ts: 1_700_000_002_000,
+          node_ids: ["commit:0123456789abcdef0123456789abcdef01234567", "doc:x-plan"],
+        },
+        // A row missing short_hash: the adapter derives it from the hash.
+        {
+          hash: "abcdef0123456789abcdef0123456789abcdef01",
+          subject: "fix: an older commit",
+          ts: 1_700_000_001_000,
+          node_ids: ["commit:abcdef0123456789abcdef0123456789abcdef01"],
+        },
+        // A malformed row (no hash): dropped, never crashing the list.
+        { subject: "no hash here", ts: 1 },
+      ],
+      truncated: null,
+      tiers: TIERS,
+    };
+    const res = adaptHistory(live);
+    expect(res.commits).toHaveLength(2);
+    expect(res.commits[0].subject).toBe("feat: the latest commit");
+    // The sparse row's short_hash is derived from the full hash.
+    expect(res.commits[1].short_hash).toBe("abcdef01");
+    expect(res.commits[1].node_ids).toEqual([
+      "commit:abcdef0123456789abcdef0123456789abcdef01",
+    ]);
+    expect(res.tiers).toBe(TIERS);
+  });
+
+  it("tolerates an absent body with an empty list + empty tiers (degraded read)", () => {
+    const res = adaptHistory(undefined);
+    expect(res.commits).toEqual([]);
+    expect(res.truncated).toBeNull();
+    expect(res.tiers).toEqual({});
+  });
+
+  it("forwards the truncated clamp block when the engine reports it", () => {
+    const res = adaptHistory({
+      commits: [],
+      truncated: { requested: 5000, returned: 200, reason: "history limit ceiling" },
+      tiers: TIERS,
+    });
+    expect(res.truncated).toEqual({
+      requested: 5000,
+      returned: 200,
+      reason: "history limit ceiling",
+    });
   });
 });

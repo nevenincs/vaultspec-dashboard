@@ -31,7 +31,7 @@ import { NowStrip } from "./right/NowStrip";
 import { OpsPanel } from "./right/OpsPanel";
 import { RailTabs, type RailTabId } from "./right/RailTabs";
 import { SearchTab } from "./right/SearchTab";
-import { WorkTab } from "./right/WorkTab";
+import { StatusTab } from "./right/StatusTab";
 import { Stage } from "./stage/Stage";
 import { Playhead } from "./timeline/Playhead";
 import { RangeSelect } from "./timeline/RangeSelect";
@@ -249,14 +249,16 @@ function SettingsButton() {
   );
 }
 
-// The activity-rail composition (binding Figma `RightRail`, node 17:563): the
-// NowStrip status pillars are a PERSISTENT header above the tab bar — git / core
-// / rag liveness stays visible regardless of which pane is open — then the
-// segmented tab bar (Inspect | Work | Search | Changes) and the active pane. The
-// Inspect pane is the selected-node lens (Inspector) plus the modest ops surface;
-// Work / Search / Changes own their pillars.
+// The activity-rail composition (binding Figma `RightRail`, node 17:563; the
+// Status overview node 112:2): the NowStrip status pillars are a PERSISTENT
+// header above the tab bar — git / core / rag liveness stays visible regardless
+// of which pane is open — then the segmented tab bar (Status | Inspect | Search |
+// Changes) and the active pane. Status is the primary tab (the status-overview
+// ADR): the location anchor + plan-derived open work + recent commits. Inspect is
+// the selected-node lens (Inspector) plus the modest ops surface; Search and
+// Changes own their pillars.
 function ActivityRail() {
-  const [tab, setTab] = useState<RailTabId>("inspect");
+  const [tab, setTab] = useState<RailTabId>("status");
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-vs-2 overflow-y-auto p-vs-2">
       {/* Persistent liveness header — the three status pillars, always visible. */}
@@ -274,13 +276,13 @@ function ActivityRail() {
         aria-labelledby={`rail-tab-${tab}`}
         tabIndex={0}
       >
+        {tab === "status" && <StatusTab />}
         {tab === "inspect" && (
           <div className="space-y-vs-3">
             <Inspector />
             <OpsPanel />
           </div>
         )}
-        {tab === "work" && <WorkTab />}
         {tab === "search" && <SearchTab />}
         {tab === "changes" && <ChangesOverview />}
       </div>

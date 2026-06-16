@@ -240,11 +240,25 @@
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=36-2"
     },
     {
+      "name": "PlanStepTree",
+      "source": "src/app/right/WorkTab.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "Playhead",
       "source": "src/app/timeline/Playhead.tsx",
       "designSurface": true,
       "figmaNodeId": "25:102",
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=25-102"
+    },
+    {
+      "name": "ProgressRing",
+      "source": "src/app/right/WorkTab.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
     },
     {
       "name": "RailFilter",
@@ -294,6 +308,13 @@
       "designSurface": true,
       "figmaNodeId": "22:2",
       "figmaUrl": "https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb?node-id=22-2"
+    },
+    {
+      "name": "StatusTab",
+      "source": "src/app/right/StatusTab.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
     },
     {
       "name": "SwitchControl",
