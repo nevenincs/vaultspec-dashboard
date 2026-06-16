@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
-use engine_model::ScopeRef;
+use engine_model::{NodeKind, ScopeRef};
 use engine_query::filter::Filter;
 use engine_query::graph::{Granularity, graph_query};
 
@@ -65,6 +65,9 @@ fn graph_query_scale_and_concurrency() {
 
     let dir = tempfile::tempdir().unwrap();
     generate_corpus(dir.path(), docs, features);
+    // The distinct `src/module_*.rs` files the corpus mints (mirrors
+    // `generate_corpus`) — the count of code-artifact nodes expected after index.
+    let modules = (docs / 20).max(1);
     let store = engine_store::Store::open_at(&dir.path().join("scale.sqlite3")).unwrap();
     let scope = ScopeRef::Worktree {
         path: dir.path().to_string_lossy().replace('\\', "/"),
@@ -74,6 +77,25 @@ fn graph_query_scale_and_concurrency() {
     let (graph, stats) =
         engine_graph::index::index_worktree(dir.path(), &scope, &store, 0).unwrap();
     let index_ms = t.elapsed().as_millis();
+
+    // Cold-index code-node profile (code-artifact-nodes ADR D5/D6, W05.P14.S64):
+    // the corpus generates `modules` distinct `src/module_*.rs` files, each a
+    // RESOLVED Path mention deduplicated across its mentioning docs. Minting is a
+    // cheap idempotent `upsert_node` per resolved Path/Symbol mention in the
+    // existing serial Pass 2 — bounded by the (already-resolved) mention count,
+    // so it adds NO super-linear term and leaves the linear cold-index profile
+    // intact. The printed `index={}ms` against the rising `code_nodes` count is
+    // the evidence (no wall-clock ceiling — benches are `#[ignore]`d, not gated).
+    let code_nodes = graph
+        .nodes()
+        .filter(|n| n.kind == NodeKind::CodeArtifact)
+        .count();
+    assert_eq!(
+        code_nodes, modules,
+        "the {modules} distinct resolved module paths each mint exactly one \
+         deduplicated code node (idempotent upsert by id)"
+    );
+
     let graph = Arc::new(graph);
 
     // Document granularity: one full slice — query build, then serialize.
@@ -161,12 +183,13 @@ fn graph_query_scale_and_concurrency() {
     );
 
     println!(
-        "SCALE docs={} nodes={} edges={} index={}ms \
+        "SCALE docs={} nodes={} code_nodes={} edges={} index={}ms \
          | DOC query={}us ser={}us bytes={} \
          | FEAT nodes={} meta_edges={} query={}us bytes={} \
          | CONCURRENT doc {}x{}={}ms feat={}ms ({} queries each)",
         stats.documents,
         graph.node_count(),
+        code_nodes,
         graph.edge_count(),
         index_ms,
         doc_query_us,
