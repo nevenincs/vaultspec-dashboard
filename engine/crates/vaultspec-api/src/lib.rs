@@ -58,6 +58,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/stream",
     "/search",
     "/ops/core/{verb}",
+    "/ops/core/{verb}/write",
     "/ops/rag/{verb}",
     "/ops/git/{verb}",
     "/session",
@@ -129,6 +130,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/stream", get(routes::stream::stream))
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
+        // The core WRITE channel (W02): forward a whitelisted
+        // `vaultspec-core vault {set-body,set-frontmatter,edit}` verb through the
+        // bounded stdin-writing sibling runner so the editor can save documents.
+        // Read-and-infer: the engine validates, bounds, streams the body to the
+        // OWNING sibling's stdin, and forwards its envelope verbatim — a
+        // conflict/refusal (`status:"failed"`) and a success both ride one 200.
+        .route("/ops/core/{verb}/write", post(routes::ops::ops_core_write))
         // The brokered rag control plane (rag-control-plane ADR D2): GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher

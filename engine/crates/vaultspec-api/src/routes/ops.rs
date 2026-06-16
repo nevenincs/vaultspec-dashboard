@@ -17,7 +17,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{CanonicalKey, node_id};
 use serde_json::{Value, json};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::app::{AppState, ScopeCell};
 
@@ -41,6 +41,20 @@ const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 const CORE_WHITELIST: &[(&str, &[&str])] = &[
     ("vault-check", &["vault", "check", "all"]),
     ("vault-stats", &["vault", "stats"]),
+];
+
+/// The core WRITE whitelist (W02): the small set of save verbs the dashboard
+/// editor forwards through the sibling proxy. Each entry maps a verb name to its
+/// FIXED core args; the route appends the validated `REF`, the typed flags, and
+/// `--json`. The engine stays READ-AND-INFER: it only forwards a body to the
+/// sibling that OWNS the write (`vaultspec-core vault …`) — it persists nothing,
+/// mutates no ref, grows no sibling semantics. The owning sibling enforces the
+/// conflict/validation policy; the engine is a transparent forwarder
+/// (`engine-read-and-infer`). A verb not in this set 403s before any subprocess.
+const CORE_WRITE_WHITELIST: &[(&str, &[&str])] = &[
+    ("set-body", &["vault", "set-body"]),
+    ("set-frontmatter", &["vault", "set-frontmatter"]),
+    ("edit", &["vault", "edit"]),
 ];
 
 /// The rag CLI whitelist is now PROCESS LIFECYCLE ONLY (rag-control-plane ADR
@@ -168,6 +182,148 @@ async fn run_sibling_bounded(
     }
     // Envelopes pass VERBATIM; non-JSON output is wrapped, never reshaped.
     Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({"raw": raw, "exit": status.code()})))
+}
+
+/// The bounded sibling runner for a WRITE verb (W02): like
+/// [`run_sibling_bounded`] in its spawn-bounds-kill lifecycle (8 MiB stdout cap
+/// AND 120s wall-clock timeout, `subprocess-calls-carry-cap-and-timeout`) but
+/// with two differences the write channel requires:
+///
+/// 1. STDIN is PIPED, not nulled: the new document `body` is written to the
+///    child's stdin and the handle is CLOSED (dropped), so the sibling's
+///    `--body-stdin` read sees EOF. When `body` is `None` (a frontmatter-only
+///    save) nothing is written and stdin is closed immediately.
+///
+/// 2. A `status:"failed"` envelope that the sibling emits while exiting 1 — a
+///    blob-hash CONFLICT or a validation REFUSAL — is a VALID business response
+///    to forward VERBATIM, not a gateway error. So on process completion the
+///    stdout is parsed: if it parses to a JSON OBJECT carrying a `status` field,
+///    it is returned `Ok` REGARDLESS of the exit code. Only an empty/unparseable
+///    stdout, a spawn failure, a timeout, or a capped runaway is an `Err`
+///    (502/504), exactly like the read runner — those are genuine engine/sibling
+///    faults the client must see degraded, never a forged success.
+///
+/// `timeout`/`cap` are parameters so tests can inject short bounds; the route
+/// pins the 120s / 8 MiB production constants.
+async fn run_sibling_write_bounded(
+    state: &AppState,
+    program: &[String],
+    args: &[&str],
+    body: Option<&str>,
+    timeout: Duration,
+    cap: u64,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let cwd = state.active_cell().root.clone();
+    let mut child = tokio::process::Command::new(&program[0])
+        .args(&program[1..])
+        .args(args)
+        .arg("--json")
+        .current_dir(&cwd)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                format!("spawning {}: {e}", program[0]),
+            )
+        })?;
+
+    // Write the new body to the child's stdin and CLOSE it (drop the handle) so
+    // the sibling's `--body-stdin` read terminates at EOF. A `None` body (a
+    // frontmatter-only save) writes nothing and still closes stdin. A broken
+    // pipe here (the sibling exited before reading) is not fatal on its own — the
+    // exit-status / envelope inspection below decides the outcome.
+    {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        if let Some(text) = body {
+            let _ = stdin.write_all(text.as_bytes()).await;
+        }
+        // Explicit drop closes the pipe (EOF for the child); also flush first so
+        // the bytes are not lost on some platforms.
+        let _ = stdin.flush().await;
+        drop(stdin);
+    }
+
+    let stdout = child.stdout.take().expect("piped stdout");
+    let collect = async {
+        let mut buf = Vec::new();
+        let read = stdout.take(cap).read_to_end(&mut buf).await;
+        (read, buf)
+    };
+
+    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err(super::api_error(
+                state,
+                StatusCode::GATEWAY_TIMEOUT,
+                format!("{} timed out after {}s", program[0], timeout.as_secs()),
+            ));
+        }
+    };
+    read_result.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("reading {} output: {e}", program[0]),
+        )
+    })?;
+
+    if buf.len() as u64 >= cap {
+        let _ = child.kill().await;
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{} produced over {} bytes of output (capped)",
+                program[0], cap
+            ),
+        ));
+    }
+
+    let status = child.wait().await.map_err(|e| {
+        super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!("awaiting {} exit: {e}", program[0]),
+        )
+    })?;
+    let raw = String::from_utf8_lossy(&buf);
+
+    // KEY DIFFERENCE from the read runner: a `status`-bearing envelope is a VALID
+    // business response — `status:"updated"`/`"unchanged"` (exit 0) OR
+    // `status:"failed"` (a conflict/refusal that exits 1). Both forward VERBATIM.
+    // We branch on the ENVELOPE, not the exit code, so a refusal that exits 1 is
+    // not mistaken for an engine fault.
+    if let Ok(parsed) = serde_json::from_str::<Value>(&raw)
+        && parsed.get("status").is_some_and(|s| s.is_string())
+    {
+        return Ok(parsed);
+    }
+
+    // No parseable `status` envelope on stdout: this is a genuine fault, not a
+    // business refusal. A non-zero exit (a real crash) and an empty/garbage
+    // stdout both degrade to a 502 — never a forged success.
+    if !status.success() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{} exited {:?} with no parseable envelope",
+                program[0],
+                status.code()
+            ),
+        ));
+    }
+    Err(super::api_error(
+        state,
+        StatusCode::BAD_GATEWAY,
+        format!("{} produced no parseable write envelope", program[0]),
+    ))
 }
 
 /// The READ-ONLY git whitelist (dashboard-pipeline-wire W04.P09.S48), mirroring
@@ -438,6 +594,208 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
     let envelope = run_sibling(&state, &runner.invocation, args).await?;
     Ok(super::envelope(
         json!({"envelope": envelope}),
+        super::query_tiers(&state.active_cell()),
+        None,
+    ))
+}
+
+/// The typed request body for `POST /ops/core/{verb}/write` (W02): the document
+/// `ref` (a stem or in-tree relative path), the optional new markdown `body`
+/// (streamed to the sibling's stdin via `--body-stdin` when present), the
+/// optional `expected_blob_hash` for optimistic-concurrency conflict detection,
+/// and the optional frontmatter fields (`date`, `tags`, `related`). Every field
+/// is validated/bounded BEFORE the subprocess spawns (the injection-guard
+/// surface, mirroring the git proxy's `validate_*` discipline).
+#[derive(serde::Deserialize, Default)]
+pub struct CoreWriteBody {
+    #[serde(rename = "ref")]
+    pub doc_ref: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub expected_blob_hash: Option<String>,
+    #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub related: Option<Vec<String>>,
+}
+
+/// Validate the document `ref` (W02): the write target is a doc stem or a
+/// bounded, in-tree relative PATH — never an arbitrary CLI argument channel.
+/// Rejects an empty token, anything beginning with `-` (which the CLI would read
+/// as a flag — the injection vector this guard closes), an absolute path
+/// (POSIX `/`, Windows `\` or `C:\`), and any `..` parent-dir traversal segment.
+/// Mirrors `validate_diff_path` exactly so the read and write proxies share one
+/// path-safety discipline.
+fn validate_doc_ref(state: &AppState, doc_ref: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let bad = doc_ref.is_empty()
+        || doc_ref.starts_with('-')
+        || doc_ref.starts_with('/')
+        || doc_ref.starts_with('\\')
+        || doc_ref.chars().nth(1) == Some(':')
+        || doc_ref.split(['/', '\\']).any(|seg| seg == "..");
+    if bad {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "write `ref` `{doc_ref}` must be a doc stem or a bounded, in-tree \
+                 relative path (no leading `-`, no absolute path, no `..` traversal)"
+            ),
+        ));
+    }
+    Ok(doc_ref.to_string())
+}
+
+/// Validate an optional `expected_blob_hash` (W02): if present it MUST be a
+/// 40-char lowercase hex git blob OID — never a flag or an argument channel. An
+/// absent hash is fine (an unconditional save); a malformed one is a 400 before
+/// any subprocess.
+fn validate_blob_hash(state: &AppState, hash: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let ok = hash.len() == 40
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+    if !ok {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!("`expected_blob_hash` `{hash}` must be a 40-char lowercase hex git blob OID"),
+        ));
+    }
+    Ok(hash.to_string())
+}
+
+/// Validate a single frontmatter list entry (`tags`/`related`) (W02): non-empty
+/// and not flag-shaped (no leading `-`), so it can never be read by the sibling
+/// CLI as an option. The named `field` is woven into the error message.
+fn validate_list_entry(
+    state: &AppState,
+    field: &str,
+    entry: &str,
+) -> Result<String, (StatusCode, Json<Value>)> {
+    if entry.is_empty() || entry.starts_with('-') {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{field}` entry `{entry}` must be non-empty and not flag-shaped (no leading `-`)"
+            ),
+        ));
+    }
+    Ok(entry.to_string())
+}
+
+/// POST `/ops/core/{verb}/write` — the core WRITE channel (W02): forward a
+/// whitelisted `vaultspec-core vault {set-body,set-frontmatter,edit}` verb
+/// through the bounded stdin-writing sibling runner so the dashboard editor can
+/// save documents. The engine stays READ-AND-INFER — it validates and bounds the
+/// request, streams the body to the OWNING sibling's stdin, and forwards the
+/// sibling's envelope VERBATIM under `data.envelope`. It persists nothing,
+/// mutates no ref, grows no write semantics: the conflict/validation policy lives
+/// entirely in the sibling (`engine-read-and-infer`).
+///
+/// A success (`status:"updated"`/`"unchanged"`) and a business refusal/conflict
+/// (`status:"failed"` with `data.conflict`/`data.refused`/`data.checks`) BOTH
+/// ride the SAME HTTP 200 forwarded envelope — the client branches on
+/// `envelope.status`, never on the HTTP code. No HTTP 409 or engine-side
+/// `error_kind` is invented for a business refusal; the refusal travels inside
+/// the forwarded envelope. Only a genuine engine/sibling fault (spawn failure,
+/// timeout, capped runaway, or an unparseable crash) degrades through `api_error`
+/// to a tiers-carrying 5xx. A non-whitelisted verb 403s before any subprocess.
+pub async fn ops_core_write(
+    State(state): State<Arc<AppState>>,
+    Path(verb): Path<String>,
+    Json(body): Json<CoreWriteBody>,
+) -> ApiResult {
+    let Some((_, fixed)) = CORE_WRITE_WHITELIST.iter().find(|(name, _)| *name == verb) else {
+        return Err(super::api_error(
+            &state,
+            StatusCode::FORBIDDEN,
+            format!("write verb `{verb}` is not whitelisted (W02)"),
+        ));
+    };
+
+    // Validate every field BEFORE spawning (the injection-guard surface): the
+    // ref, the optional blob hash, and each frontmatter list entry. A bad value
+    // is a tiers-carrying 400 that never reaches the sibling.
+    let doc_ref = validate_doc_ref(&state, &body.doc_ref)?;
+    let expected = match body.expected_blob_hash.as_deref() {
+        Some(h) => Some(validate_blob_hash(&state, h)?),
+        None => None,
+    };
+    let date = match body.date.as_deref() {
+        // A date is a bounded value the sibling parses; only the flag-injection
+        // guard applies at the boundary (the sibling rejects a malformed date).
+        Some(d) if d.is_empty() || d.starts_with('-') => {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!("`date` `{d}` must be non-empty and not flag-shaped (no leading `-`)"),
+            ));
+        }
+        Some(d) => Some(d.to_string()),
+        None => None,
+    };
+    let mut tags: Vec<String> = Vec::new();
+    if let Some(list) = &body.tags {
+        for entry in list {
+            tags.push(validate_list_entry(&state, "tags", entry)?);
+        }
+    }
+    let mut related: Vec<String> = Vec::new();
+    if let Some(list) = &body.related {
+        for entry in list {
+            related.push(validate_list_entry(&state, "related", entry)?);
+        }
+    }
+
+    // Assemble the sibling argv: the whitelist fixed args + REF + the typed flags
+    // + `--body-stdin` (only when a body is present) + `--json` (appended by the
+    // runner). The argv is value-only — every token is either a fixed whitelist
+    // arg or a validated input; no client string is ever read as a flag.
+    let mut args: Vec<String> = fixed.iter().map(|s| s.to_string()).collect();
+    args.push(doc_ref);
+    if let Some(h) = &expected {
+        args.push("--expected-blob-hash".into());
+        args.push(h.clone());
+    }
+    if let Some(d) = &date {
+        args.push("--date".into());
+        args.push(d.clone());
+    }
+    for t in &tags {
+        args.push("--tags".into());
+        args.push(t.clone());
+    }
+    for r in &related {
+        args.push("--related".into());
+        args.push(r.clone());
+    }
+    if body.body.is_some() {
+        args.push("--body-stdin".into());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let envelope = run_sibling_write_bounded(
+        &state,
+        &runner.invocation,
+        &arg_refs,
+        body.body.as_deref(),
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+
+    // Forward VERBATIM: identical to `ops_core`'s success shape, so a refusal
+    // (`status:"failed"`) and a success (`status:"updated"`) BOTH ride this 200
+    // envelope. The client branches on `envelope.status` +
+    // `data.conflict`/`data.refused`/`data.checks`.
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
         super::query_tiers(&state.active_cell()),
         None,
     ))
@@ -1745,5 +2103,315 @@ mod tests {
             body["tiers"]["semantic"]["available"], false,
             "the semantic tier is reported unavailable, not an error"
         );
+    }
+
+    // --- W02: core WRITE channel (/ops/core/{verb}/write) -------------------
+
+    #[tokio::test]
+    async fn a_non_whitelisted_write_verb_403s_before_the_subprocess() {
+        // W02: a write verb outside CORE_WRITE_WHITELIST 403s with the tiers
+        // block, never reaching the subprocess. Mirrors `ops_core`'s guard.
+        let (_dir, state) = sibling_state();
+        for verb in ["delete", "archive", "set-body-evil", "vault-check"] {
+            let err = ops_core_write(
+                State(state.clone()),
+                Path(verb.to_string()),
+                Json(CoreWriteBody {
+                    doc_ref: "adr/2026-06-16-x-adr".into(),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(err.0, StatusCode::FORBIDDEN, "`{verb}` must be denied");
+            assert!(
+                err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+                "the 403 carries the tiers block"
+            );
+            assert!(err.1.0["error"].as_str().unwrap().contains(verb));
+        }
+    }
+
+    #[tokio::test]
+    async fn write_field_validation_rejects_dangerous_inputs_with_a_tiered_400() {
+        // W02: per-field validation BEFORE the subprocess — a `-`-prefixed ref
+        // (flag injection), a `..` traversal, an absolute path, and a malformed
+        // blob hash are each a tiers-carrying 400.
+        let (_dir, state) = sibling_state();
+        let cases: &[CoreWriteBody] = &[
+            CoreWriteBody {
+                doc_ref: "--output=/etc/passwd".into(),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "../../secret".into(),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "/etc/passwd".into(),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "".into(),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "adr/x-adr".into(),
+                expected_blob_hash: Some("not-a-real-oid".into()),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "adr/x-adr".into(),
+                expected_blob_hash: Some("C245AABBCCDDEEFF00112233445566778899AABB".into()),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "adr/x-adr".into(),
+                tags: Some(vec!["--force".into()]),
+                ..Default::default()
+            },
+            CoreWriteBody {
+                doc_ref: "adr/x-adr".into(),
+                related: Some(vec!["".into()]),
+                ..Default::default()
+            },
+        ];
+        for case in cases {
+            let body = CoreWriteBody {
+                doc_ref: case.doc_ref.clone(),
+                body: case.body.clone(),
+                expected_blob_hash: case.expected_blob_hash.clone(),
+                date: case.date.clone(),
+                tags: case.tags.clone(),
+                related: case.related.clone(),
+            };
+            let bad_ref = body.doc_ref.clone();
+            let err = ops_core_write(
+                State(state.clone()),
+                Path("set-body".to_string()),
+                Json(body),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(
+                err.0,
+                StatusCode::BAD_REQUEST,
+                "case `{bad_ref}` must be a 400"
+            );
+            assert!(
+                err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+                "the 400 carries the tiers block"
+            );
+        }
+        // A 40-char lowercase hex OID and a clean stem pass validation (the
+        // subprocess is exercised by the round-trip test below).
+        assert!(
+            validate_blob_hash(&state, "c245aabbccddeeff00112233445566778899aabb").is_ok(),
+            "a valid lowercase 40-hex OID is accepted"
+        );
+        assert!(validate_doc_ref(&state, "adr/2026-06-16-x-adr").is_ok());
+        assert!(validate_doc_ref(&state, "2026-06-16-x-adr").is_ok());
+    }
+
+    /// A stub sibling that reads its whole stdin and echoes it back inside a
+    /// `status:"updated"` envelope under `data.stdin`, exiting 0. Used to prove
+    /// the body round-trips to the child's stdin. The trailing `--json` the
+    /// runner appends is ignored.
+    fn stdin_echo_updated() -> Vec<String> {
+        if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                // Read all of stdin, JSON-escape it via ConvertTo-Json, and emit
+                // a status:"updated" envelope carrying it under data.stdin.
+                "& { $i = [Console]::In.ReadToEnd(); $e = $i | ConvertTo-Json; \
+                 [Console]::Out.Write('{\"schema\":\"x\",\"status\":\"updated\",\"data\":{\"stdin\":' + $e + '}}') }".into(),
+            ]
+        } else {
+            // jq-free: read stdin, base64 it would need a decoder; instead use a
+            // small python one-liner if present, else a portable printf with the
+            // raw text known to be JSON-safe in our test. We pass plain text and
+            // rely on python for robust JSON escaping.
+            shell(
+                "body=$(cat); printf '{\"schema\":\"x\",\"status\":\"updated\",\"data\":{\"stdin\":\"%s\"}}' \"$body\"",
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn the_body_is_forwarded_to_the_childs_stdin() {
+        // W02: the new document body is written to the child's stdin and the
+        // sibling reads it. The stub echoes stdin back under data.stdin; the
+        // route forwards the envelope verbatim under data.envelope.
+        let (_dir, state) = sibling_state();
+        let marker = "ROUND_TRIP_BODY_MARKER";
+        let value = run_sibling_write_bounded(
+            &state,
+            &stdin_echo_updated(),
+            &[],
+            Some(marker),
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .expect("stdin-echo sibling produces a status envelope");
+        assert_eq!(value["status"], "updated");
+        let echoed = value["data"]["stdin"].as_str().unwrap_or_default();
+        assert!(
+            echoed.contains(marker),
+            "the body round-tripped through the child's stdin: {echoed}"
+        );
+    }
+
+    /// A stub sibling that exits 1 emitting a `status:"failed"` CONFLICT
+    /// envelope — the load-bearing case: a business refusal that exits non-zero
+    /// must forward VERBATIM as a 200, NOT a 502.
+    fn conflict_failed_exit1() -> Vec<String> {
+        let payload = r#"{"schema":"vaultspec.vault.set-body.v1","status":"failed","data":{"message":"Blob-hash conflict","conflict":true,"expected":"aaa","actual":"bbb","path":"adr/x-adr.md"}}"#;
+        if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ [Console]::Out.Write('{}'); exit 1 }}",
+                    payload.replace('\'', "''")
+                ),
+            ]
+        } else {
+            shell(&format!("printf '%s' '{payload}'; exit 1"))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_conflict_envelope_exiting_1_is_forwarded_verbatim_not_a_502() {
+        // W02 (the load-bearing test): a `status:"failed"` conflict that exits 1
+        // is a VALID business response forwarded VERBATIM under data.envelope on a
+        // 200, never a 502. The client branches on envelope.status + data.conflict.
+        let (_dir, state) = sibling_state();
+        let value = run_sibling_write_bounded(
+            &state,
+            &conflict_failed_exit1(),
+            &[],
+            None,
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .expect("a status:failed conflict envelope is Ok (forwarded), not an Err");
+        assert_eq!(value["status"], "failed");
+        assert_eq!(value["data"]["conflict"], true);
+        assert_eq!(value["data"]["expected"], "aaa");
+    }
+
+    #[tokio::test]
+    async fn a_crash_with_no_parseable_envelope_is_a_502_with_tiers() {
+        // W02: a sibling that exits non-zero with NO parseable status envelope is
+        // a genuine fault — a 502 degraded envelope carrying the tiers block,
+        // never a forged success. This is the boundary the conflict case must not
+        // cross.
+        let (_dir, state) = sibling_state();
+        let err = run_sibling_write_bounded(
+            &state,
+            &shell("echo not-an-envelope 1>&2; exit 9"),
+            &[],
+            None,
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_GATEWAY, "crash → 502");
+        assert!(
+            err.1.0["tiers"]["semantic"]["available"].is_boolean(),
+            "the 502 carries the tiers block"
+        );
+    }
+
+    /// A stub sibling that emits a `status:"updated"` success envelope, exit 0.
+    fn success_updated() -> Vec<String> {
+        let payload = r#"{"schema":"vaultspec.vault.set-body.v1","status":"updated","data":{"path":"adr/x-adr.md","blob_hash":"c245aabbccddeeff00112233445566778899aabb","checks":[]}}"#;
+        if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!(
+                    "& {{ [Console]::Out.Write('{}') }}",
+                    payload.replace('\'', "''")
+                ),
+            ]
+        } else {
+            shell(&format!("printf '%s' '{payload}'"))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_success_write_carries_the_tiers_block_under_a_forwarded_envelope() {
+        // W02: a success (`status:"updated"`) rides the same 200 forwarded
+        // envelope as a refusal, with the tiers block attached. We drive the
+        // runner directly (the route's verb whitelist + validation are covered
+        // above) and assert the verbatim-forward shape the route emits.
+        let (_dir, state) = sibling_state();
+        let value = run_sibling_write_bounded(
+            &state,
+            &success_updated(),
+            &[],
+            Some("# new body\n"),
+            SIBLING_TIMEOUT,
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .expect("success envelope is forwarded");
+        // The route wraps this verbatim under data.envelope with tiers.
+        let Json(body) = super::super::envelope(
+            json!({ "envelope": value }),
+            super::super::query_tiers(&state.active_cell()),
+            None,
+        );
+        assert_eq!(body["data"]["envelope"]["status"], "updated");
+        assert_eq!(
+            body["data"]["envelope"]["data"]["blob_hash"],
+            "c245aabbccddeeff00112233445566778899aabb"
+        );
+        assert!(
+            body["tiers"]["semantic"]["available"].is_boolean(),
+            "tiers block on the success envelope"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_hung_write_sibling_is_killed_on_timeout() {
+        // W02 + subprocess-calls-carry-cap-and-timeout: the write runner keeps the
+        // wall-clock timeout — a hung sibling is killed and degrades to a 504, not
+        // left to pin the worker.
+        let (_dir, state) = sibling_state();
+        let prog = if cfg!(windows) {
+            vec![
+                "powershell".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                "& { Start-Sleep -Seconds 5 }".into(),
+            ]
+        } else {
+            shell("sleep 5")
+        };
+        let err = run_sibling_write_bounded(
+            &state,
+            &prog,
+            &[],
+            None,
+            Duration::from_millis(200),
+            SIBLING_STDOUT_CAP,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            err.0,
+            StatusCode::GATEWAY_TIMEOUT,
+            "hung write sibling → 504"
+        );
+        assert!(err.1.0["error"].as_str().unwrap().contains("timed out"));
     }
 }
