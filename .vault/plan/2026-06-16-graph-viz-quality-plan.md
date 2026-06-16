@@ -146,10 +146,10 @@ Wrap each layout in a *Gate.ts emitting a scorecard vector with per-metric thres
 
 Discover committed thresholds via a one-shot multi-seed calibration sweep and validate every metric with a perturb-known-good monotonic-decay self-test.
 
-- [ ] `W01.P04.S21` - Write the one-shot multi-seed calibration script sweeping difficulty (SBM p/q, LFR mu, blob cluster_std) and emitting current-good-minus-margin thresholds; `frontend/src/scene/field/scorecard/calibrate.ts`.
-- [ ] `W01.P04.S22` - Commit the calibrated threshold constants and METRIC_VERSION as the gate baseline, never auto-recalibrated by the gate; `frontend/src/scene/field/scorecard/thresholds.ts`.
-- [ ] `W01.P04.S23` - Add the perturb-known-good self-test jittering a correct layout and asserting every metric degrades monotonically before it is trusted to gate; `frontend/src/scene/field/scorecard/perturbation.test.ts`.
-- [ ] `W01.P04.S24` - Add a calibration-script smoke test confirming the sweep is deterministic and the committed thresholds reproduce; `frontend/src/scene/field/scorecard/calibrate.test.ts`.
+- [x] `W01.P04.S21` - Write the one-shot multi-seed calibration script sweeping difficulty (SBM p/q, LFR mu, blob cluster_std) and emitting current-good-minus-margin thresholds; `frontend/src/scene/field/scorecard/calibrate.ts`.
+- [x] `W01.P04.S22` - Commit the calibrated threshold constants and METRIC_VERSION as the gate baseline, never auto-recalibrated by the gate; `frontend/src/scene/field/scorecard/thresholds.ts`.
+- [x] `W01.P04.S23` - Add the perturb-known-good self-test jittering a correct layout and asserting every metric degrades monotonically before it is trusted to gate; `frontend/src/scene/field/scorecard/perturbation.test.ts`.
+- [x] `W01.P04.S24` - Add a calibration-script smoke test confirming the sweep is deterministic and the committed thresholds reproduce; `frontend/src/scene/field/scorecard/calibrate.test.ts`.
 
 ## Wave `W02` - Node-representation wire completeness
 
@@ -177,10 +177,10 @@ Call derivation_label in the lineage arc and widen the container predicate with 
 
 Add the radial-root max-degree fallback, affirm and score the client-side community partition, and surface linkage coverage to the scorecard.
 
-- [ ] `W02.P07.S33` - Add the radial-root max-degree fallback selecting the maximum-degree node when salience is absent, with an explicit selected node still overriding; `frontend/src/scene/field/radialLayout.ts`.
-- [ ] `W02.P07.S34` - Affirm the Louvain partition stays client-side by scoring detectCommunities output directly in the cluster gate, with a test over the planted partition; `frontend/src/scene/field/communityLayout.test.ts`.
-- [ ] `W02.P07.S35` - Compute a linkage-coverage figure (embedding presence percent, derivation-label percent) per slice and surface it to the scorecard; `frontend/src/scene/field/scorecard/linkageCoverage.ts`.
-- [ ] `W02.P07.S36` - Add a test asserting the radial root falls back to max-degree on a feature-granularity slice and linkage coverage reports the expected figures; `frontend/src/scene/field/radialLayout.test.ts`.
+- [x] `W02.P07.S33` - Add the radial-root max-degree fallback selecting the maximum-degree node when salience is absent, with an explicit selected node still overriding; `frontend/src/scene/field/radialLayout.ts`.
+- [x] `W02.P07.S34` - Affirm the Louvain partition stays client-side by scoring detectCommunities output directly in the cluster gate, with a test over the planted partition; `frontend/src/scene/field/communityLayout.test.ts`.
+- [x] `W02.P07.S35` - Compute a linkage-coverage figure (embedding presence percent, derivation-label percent) per slice and surface it to the scorecard; `frontend/src/scene/field/scorecard/linkageCoverage.ts`.
+- [x] `W02.P07.S36` - Add a test asserting the radial root falls back to max-degree on a feature-granularity slice and linkage coverage reports the expected figures; `frontend/src/scene/field/radialLayout.test.ts`.
 
 ## Wave `W03` - Meaning activation on a measured gate
 
@@ -261,9 +261,9 @@ Mint code: nodes for resolved and stale Path and Symbol mentions per the code-ar
 
 Clean the QueryCore, Timestamp, and structural-mention doc-debt and close any residual missing-backend-inventory items.
 
-- [ ] `W05.P15.S65` - Delete or repurpose the dead QueryCore foundation scaffold and its placeholder status and validate_scope; `engine/crates/engine-query/src/lib.rs`.
-- [ ] `W05.P15.S66` - Refresh the stale Timestamp placeholder comment now that the temporal tier is served, or introduce a richer time type only if needed; `engine/crates/engine-model/src/lib.rs`.
-- [ ] `W05.P15.S67` - Update the structural-mention extraction doc-comment to match the shipped Mention enum and refresh the residual stale deferred comments; `engine/crates/ingest-struct/src/lib.rs`.
+- [x] `W05.P15.S65` - Delete or repurpose the dead QueryCore foundation scaffold and its placeholder status and validate_scope; `engine/crates/engine-query/src/lib.rs`.
+- [x] `W05.P15.S66` - Refresh the stale Timestamp placeholder comment now that the temporal tier is served, or introduce a richer time type only if needed; `engine/crates/engine-model/src/lib.rs`.
+- [x] `W05.P15.S67` - Update the structural-mention extraction doc-comment to match the shipped Mention enum and refresh the residual stale deferred comments; `engine/crates/ingest-struct/src/lib.rs`.
 
 ## Wave `W06` - Production verification and Definition of Done
 
