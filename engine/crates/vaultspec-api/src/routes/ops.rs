@@ -513,6 +513,12 @@ pub async fn ops_git(
         SIBLING_STDOUT_CAP,
     )
     .await?;
+    // S15: the success envelope carries the per-tier degradation block through
+    // the shared `envelope` helper, and every error path above degrades through
+    // `api_error` (which always attaches the tiers block) — so the historical
+    // diff route, like every other front door, carries tiers on success AND
+    // error (every-wire-response-carries-the-tiers-block). No body is ever
+    // hand-built; the histdiff verb shares this single envelope construction.
     Ok(super::envelope(
         json!({"verb": name, "output": output}),
         super::query_tiers(&state.active_cell()),
