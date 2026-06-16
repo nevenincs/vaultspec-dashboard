@@ -13,6 +13,8 @@
 
 import { CANONICAL_TIERS } from "./engine";
 import type {
+  ContentResponse,
+  ContentTruncated,
   EngineEdge,
   EngineStatus,
   FileTreeEntry,
@@ -561,6 +563,62 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
     path: typeof body.path === "string" ? body.path : "",
     truncated: adaptFileTreeTruncated(body.truncated),
     next_cursor: typeof body.next_cursor === "string" ? body.next_cursor : undefined,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- §4 read-only content fetch (review-rail-viewers ADR) ------------------------
+//
+// Tolerant adapter for `GET /nodes/{id}/content`. The live `{data, tiers}`
+// envelope is already unwrapped by `unwrapEnvelope` before this runs; a body
+// already in the internal shape (the mock) passes through unchanged — the
+// one-code-path property. Every missing field defaults to a safe empty so a
+// sparse or older shape NEVER throws and the viewer reads degraded state from the
+// `tiers` block (defaulted to an empty block when absent), never from a thrown
+// adapter. The `blob_hash` is the content-addressing key the bounded cache uses.
+
+/** Default the content truncation block: forwarded only when the engine capped
+ *  the body (a real object with the three fields); null/absent stays null. */
+function adaptContentTruncated(value: unknown): ContentTruncated | null {
+  if (
+    isRec(value) &&
+    typeof value.total_bytes === "number" &&
+    typeof value.returned_bytes === "number" &&
+    typeof value.reason === "string"
+  ) {
+    return {
+      total_bytes: value.total_bytes,
+      returned_bytes: value.returned_bytes,
+      reason: value.reason,
+    };
+  }
+  return null;
+}
+
+/** Live `/nodes/{id}/content` → the internal content response. TOLERANT: an
+ *  absent body yields an empty text with an empty tiers block (the viewer renders
+ *  its degraded/empty state from the tiers truth), and `language_hint`/`truncated`
+ *  default to null. */
+export function adaptContent(body: unknown): ContentResponse {
+  if (!isRec(body)) {
+    return {
+      path: "",
+      blob_hash: "",
+      byte_len: 0,
+      language_hint: null,
+      text: "",
+      truncated: null,
+      tiers: {},
+    };
+  }
+  const text = typeof body.text === "string" ? body.text : "";
+  return {
+    path: typeof body.path === "string" ? body.path : "",
+    blob_hash: typeof body.blob_hash === "string" ? body.blob_hash : "",
+    byte_len: typeof body.byte_len === "number" ? body.byte_len : text.length,
+    language_hint: typeof body.language_hint === "string" ? body.language_hint : null,
+    text,
+    truncated: adaptContentTruncated(body.truncated),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

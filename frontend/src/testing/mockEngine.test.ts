@@ -303,4 +303,70 @@ describe("MockEngine routes", () => {
     const mock = new MockEngine();
     await expect(client(mock).vaultTree("")).rejects.toMatchObject({ status: 400 });
   });
+
+  it("serves /nodes/{id}/content in the live shape, exercising adaptContent (review-rail-viewers P02.S09)", async () => {
+    // mock-mirrors-live-wire-shape: the mock must emit the EXACT live
+    // `/nodes/{id}/content` wire shape — {path, blob_hash, byte_len,
+    // language_hint, text, truncated} under {data, tiers} — so adaptContent is
+    // exercised against reality. Prove it by reading the RAW mock body and
+    // confirming the live field set, then by feeding it through the client path.
+    const mock = new MockEngine();
+    const docNode = mock.corpus.nodes.find((n) => n.id.startsWith("doc:"))!;
+
+    const raw = (await mock
+      .fetchImpl(`/api/nodes/${encodeURIComponent(docNode.id)}/content?scope=wt-main`)
+      .then((r) => r.json())) as Record<string, unknown>;
+    // The mock body carries the EXACT live content field set flat-with-tiers (the
+    // already-unwrapped internal shape `unwrapEnvelope` passes through), so the
+    // adapter is exercised against the real field names: path, blob_hash,
+    // byte_len, language_hint, text, truncated, tiers.
+    expect(typeof raw.path).toBe("string");
+    expect(typeof raw.blob_hash).toBe("string");
+    expect(typeof raw.byte_len).toBe("number");
+    expect(raw.language_hint).toBe("markdown");
+    expect(typeof raw.text).toBe("string");
+    expect(raw.truncated).toBeNull();
+    expect(raw.tiers).toBeDefined();
+
+    // The same body flows through the client's adaptContent into the internal
+    // ContentResponse the viewers consume — fields preserved, tiers attached.
+    const doc = await client(mock).content(docNode.id, "wt-main");
+    expect(doc.path.endsWith(".md")).toBe(true);
+    expect(doc.language_hint).toBe("markdown");
+    expect(doc.blob_hash.length).toBeGreaterThan(0);
+    expect(doc.byte_len).toBe(doc.text.length);
+    expect(doc.truncated).toBeNull();
+    expect(doc.tiers.structural.available).toBe(true);
+
+    // A code: id resolves to the path directly with a rust grammar hint. The
+    // path is taken from the corpus's code tree so it mirrors a real listing.
+    const codePath = mock.corpus.codeTree.find((p) => p.endsWith(".rs"))!;
+    const code = await client(mock).content(`code:${codePath}`, "wt-main");
+    expect(code.path).toBe(codePath);
+    expect(code.language_hint).toBe("rust");
+    expect(code.text.length).toBeGreaterThan(0);
+  });
+
+  it("content degrades the structural tier on an unreadable worktree (review-rail-viewers P02.S09)", async () => {
+    // A scope with no listable working tree (setNoVault) degrades the structural
+    // tier honestly — the viewer reads degraded state from the tiers block, never
+    // from a thrown transport error.
+    const mock = new MockEngine();
+    mock.setNoVault(true);
+    const docNode = mock.corpus.nodes.find((n) => n.id.startsWith("doc:"))!;
+    const res = await client(mock).content(docNode.id, "wt-main");
+    expect(res.tiers.structural.available).toBe(false);
+    expect(res.text).toBe("");
+  });
+
+  it("content 404s an unknown doc stem and 400s a non-content node (review-rail-viewers P02.S09)", async () => {
+    const mock = new MockEngine();
+    await expect(client(mock).content("doc:nope", "wt-main")).rejects.toMatchObject({
+      status: 404,
+    });
+    const featureNode = mock.corpus.nodes.find((n) => n.kind === "feature")!;
+    await expect(client(mock).content(featureNode.id, "wt-main")).rejects.toMatchObject(
+      { status: 400 },
+    );
+  });
 });

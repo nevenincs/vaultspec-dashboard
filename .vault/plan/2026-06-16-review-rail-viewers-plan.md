@@ -39,11 +39,11 @@ Add the bounded, read-only GET /nodes/{id}/content engine route through the shar
 
 Add the sole stores-layer client of the content route: a bounded content query, a tolerant adapter, mock fidelity, and a tiers-derived degraded selector.
 
-- [ ] `P02.S07` - Add a bounded content query keyed by {scope, nodeId} with explicit gcTime and a cache cap, as the sole wire client of /nodes/{id}/content; `frontend/src/stores/server/queries.ts`.
-- [ ] `P02.S08` - Add a tolerant content adapter normalizing the wire shape, blob_hash content-addressing the cache entry; `frontend/src/stores/server/liveAdapters.ts`.
-- [ ] `P02.S09` - Mirror the live /nodes/{id}/content shape exactly in the mock engine and feed a captured live sample through the adapter in a fidelity test; `frontend/src/stores/server/mockEngine.ts`.
-- [ ] `P02.S10` - Expose a content selector that derives degraded/offline state from the tiers block, never from a transport error; `frontend/src/stores/server/selectors.ts`.
-- [ ] `P02.S11` - Add a view-store open-in-viewer intent carrying the target node id and the active viewer surface; `frontend/src/stores/view/viewStore.ts`.
+- [x] `P02.S07` - Add a bounded content query keyed by {scope, nodeId} with explicit gcTime and a cache cap, as the sole wire client of /nodes/{id}/content; `frontend/src/stores/server/queries.ts`.
+- [x] `P02.S08` - Add a tolerant content adapter normalizing the wire shape, blob_hash content-addressing the cache entry; `frontend/src/stores/server/liveAdapters.ts`.
+- [x] `P02.S09` - Mirror the live /nodes/{id}/content shape exactly in the mock engine and feed a captured live sample through the adapter in a fidelity test; `frontend/src/stores/server/mockEngine.ts`.
+- [x] `P02.S10` - Expose a content selector that derives degraded/offline state from the tiers block, never from a transport error; `frontend/src/stores/server/selectors.ts`.
+- [x] `P02.S11` - Add a view-store open-in-viewer intent carrying the target node id and the active viewer surface; `frontend/src/stores/view/viewStore.ts`.
 
 ### Phase `P03` - shared Shiki highlighter
 

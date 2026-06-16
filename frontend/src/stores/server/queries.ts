@@ -20,6 +20,8 @@ import { StreamLostError } from "../../platform/policy/failurePolicy";
 import type { SalienceLens } from "../view/salienceLens";
 import { DEFAULT_SALIENCE_LENS, useSalienceLensStore } from "../view/salienceLens";
 import type {
+  ContentResponse,
+  ContentTruncated,
   DiscoverResponse,
   EngineEdge,
   EngineStatus,
@@ -106,6 +108,16 @@ export const engineKeys = {
       focus ?? "none",
     ] as const,
   node: (id: string) => [...engineKeys.all, "node", id] as const,
+  // The read-only content fetch (review-rail-viewers ADR): keyed by (scope,
+  // nodeId) — the contract's cacheability unit for a per-scope read. The
+  // `blob_hash` in the response makes the entry content-addressable, but the KEY
+  // stays (scope, nodeId) so reopening the same doc/file is a cache hit; a changed
+  // blob is a fresh fetch the watcher invalidation drives. Bounded at the call
+  // site (gcTime + a per-observer cap, per bounded-by-default-for-every-
+  // accumulator): the viewer must not retain every opened file's bytes for the
+  // whole session.
+  content: (scope: string, nodeId: string) =>
+    [...engineKeys.all, "content", scope, nodeId] as const,
   neighbors: (id: string, depth: number) =>
     [...engineKeys.all, "neighbors", id, depth] as const,
   evidence: (id: string) => [...engineKeys.all, "evidence", id] as const,
@@ -598,6 +610,126 @@ export function useNodeNeighbors(id: string | null, depth = 1) {
     queryFn: () => engineClient.nodeNeighbors(id!, { depth }),
     enabled: id !== null,
   });
+}
+
+// --- read-only content fetch (review-rail-viewers ADR) ---------------------------
+//
+// The viewer backend's wire seam, consumed through these stores hooks so the
+// markdown reader and the code viewer (chrome) never fetch the engine or read the
+// raw `tiers` block (dashboard-layer-ownership: stores is the sole wire client of
+// `/nodes/{id}/content`). The content query is BOUNDED at creation per
+// bounded-by-default-for-every-accumulator: an explicit `gcTime` evicts an
+// unobserved entry promptly, and `maxPages`-style cache pressure is bounded by the
+// per-observer single-entry shape (one open viewer holds one content entry) plus
+// the prompt gcTime — the viewer never accumulates every opened file's bytes for
+// the session. Disabled until a node is actually open (`nodeId === null` =
+// nothing to read), following the `useNodeDetail` enabled-on-id pattern.
+
+/** How long an unobserved content entry survives in cache before garbage
+ *  collection (bounded-by-default-for-every-accumulator). 60s is generous for the
+ *  back-and-forth of reading a few documents while keeping a long review session
+ *  from retaining the bytes of every file ever opened — the prompt eviction is the
+ *  bound, since each content entry can be up to MAX_CONTENT_BYTES. */
+const CONTENT_GC_TIME = 60_000;
+
+/**
+ * The read-only content fetch for one document/file node (review-rail-viewers
+ * ADR), the SOLE wire client of `/nodes/{id}/content`. Keyed by (scope, nodeId);
+ * disabled when either is null (no node open / no worktree resolved yet). Bounded:
+ * an explicit `gcTime` evicts the (potentially MAX_CONTENT_BYTES) entry soon after
+ * the viewer closes, so a long session does not retain every opened file's bytes.
+ */
+export function useNodeContent(nodeId: string | null, scope: string | null) {
+  return useQuery({
+    queryKey: engineKeys.content(scope ?? "", nodeId ?? ""),
+    queryFn: () => engineClient.content(nodeId!, scope ?? undefined),
+    enabled: nodeId !== null && scope !== null,
+    gcTime: CONTENT_GC_TIME,
+  });
+}
+
+/**
+ * The interpreted content view the markdown reader and the code viewer render. A
+ * single shape both viewers consume: `loading` while in flight, `degraded` read
+ * from the served `tiers` block (the `structural` tier the content read resolves
+ * through), `errored` for a tiers-less transport fault (distinct from degraded),
+ * `truncated` carrying the honest byte-cap block, and the content fields when
+ * served. The viewers consume this, never `content.data.tiers`.
+ */
+export interface ContentView extends TierAvailability {
+  /** The content query is in flight with no held content. */
+  loading: boolean;
+  /** A genuine transport failure (no tiers-bearing envelope) — distinct from degraded. */
+  errored: boolean;
+  /** The served repo-relative path, when available. */
+  path?: string;
+  /** The git-style blob oid of the served bytes, when available. */
+  blobHash?: string;
+  /** The extension-derived highlighter grammar hint; null when none applies. */
+  languageHint: string | null;
+  /** The (possibly truncated) UTF-8 text; empty while loading/degraded/errored. */
+  text: string;
+  /** The honest byte-cap block when the body was truncated; null otherwise. */
+  truncated: ContentTruncated | null;
+  /** True iff the engine answered with content (vs loading/degraded/errored). */
+  available: boolean;
+}
+
+// The content read is resolved by the engine's STRUCTURAL read of the worktree
+// substrate, so the `structural` tier gates content availability (contract §2).
+const CONTENT_TIERS = ["structural"] as const;
+
+/**
+ * Derive the content view from a content query's data + error + pending flags,
+ * reading the served `tiers` block ONLY here in the stores layer so the viewers
+ * consume interpreted truth, never the raw block. Degradation is read from the
+ * `tiers` block (success data, OR a FRESH error envelope's tiers winning over a
+ * stale held-success block via `tiersFromQuery` —
+ * degradation-is-read-from-tiers-not-guessed-from-errors). A served block that
+ * marks `structural` unavailable — or omits it — is designed degradation
+ * (contract §2: absence ≠ available); a tiers-less transport fault is the errored
+ * branch, NOT degradation. While degraded the (possibly stale) text is not shown
+ * as current; the viewer renders the degraded notice.
+ */
+export function deriveContentView(
+  data: ContentResponse | undefined,
+  error: unknown,
+  loading: boolean,
+): ContentView {
+  const tiers = tiersFromQuery({ data, error });
+  const availability = readTierAvailability(tiers, CONTENT_TIERS);
+  // A tiers-less transport fault (no envelope) is the errored branch; a
+  // tiers-bearing error or a degraded served block is designed degradation.
+  const errored =
+    error instanceof EngineError ? error.tiers === undefined : error != null;
+  const available =
+    !loading && !errored && !availability.degraded && data !== undefined;
+  return {
+    ...availability,
+    loading,
+    errored,
+    path: data?.path,
+    blobHash: data?.blob_hash,
+    languageHint: data?.language_hint ?? null,
+    text: availability.degraded || errored ? "" : (data?.text ?? ""),
+    truncated: data?.truncated ?? null,
+    available,
+  };
+}
+
+/**
+ * Stores hook: the content view for one open document/file node, read through the
+ * content query so the markdown reader and the code viewer consume interpreted
+ * state (loading / degraded / errored / truncated / content) instead of fetching
+ * themselves or reading the raw `tiers` block.
+ */
+export function useContentView(
+  nodeId: string | null,
+  scope: string | null,
+): ContentView {
+  const query = useNodeContent(nodeId, scope);
+  const loading = nodeId !== null && scope !== null && query.isPending;
+  return deriveContentView(query.data, query.error ?? null, loading);
 }
 
 /**

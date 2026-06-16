@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { DEFAULT_SALIENCE_LENS, type SalienceLens } from "../view/salienceLens";
 import {
+  adaptContent,
   adaptFileTree,
   adaptFilters,
   adaptGitOp,
@@ -325,6 +326,48 @@ export interface FileTreeResponse {
   truncated: FileTreeTruncated | null;
   /** Cursor for the next page when the level paginates; absent on the last page. */
   next_cursor?: string;
+  tiers: TiersBlock;
+}
+
+// --- §4 read-only content fetch (review-rail-viewers ADR) ------------------------
+//
+// `GET /nodes/{id}/content?scope=` is the ONE viewer backend: it serves the bytes
+// of one document (`doc:<stem>`) or source file (`code:<path>`) so the markdown
+// reader and the code viewer can DISPLAY content. The listing routes
+// (`/vault-tree`, `/file-tree`) stay metadata-only — content lives only here. The
+// body is byte-capped with an honest `truncated` block (bounded-by-default), and
+// the `tiers` block rides success and error so the viewer derives degraded state
+// from tiers, never from a transport error. Wire shapes stay snake_case as the
+// live `vaultspec-api` route serves them under the `{data, tiers}` envelope.
+
+/** The honest content byte-cap marker (graph-queries-are-bounded-by-default,
+ *  generalized): present and non-null ONLY when the served body was capped at
+ *  `MAX_CONTENT_BYTES`. The viewer renders it as a "truncated — open the file
+ *  directly for the full body" state over the served prefix, never a silent
+ *  partial. */
+export interface ContentTruncated {
+  total_bytes: number;
+  returned_bytes: number;
+  reason: string;
+}
+
+/** The bytes of one document or source file (GET /nodes/{id}/content data).
+ *  `language_hint` is the engine's extension-derived grammar hint (the viewer
+ *  maps it to a Shiki grammar, degrading to plain text on an unknown hint);
+ *  `blob_hash` is the git-style blob oid that content-addresses the cache entry. */
+export interface ContentResponse {
+  /** Repo-relative POSIX path of the served file. */
+  path: string;
+  /** Git-style blob oid of the bytes — content-addresses the cache entry. */
+  blob_hash: string;
+  /** Full byte length of the file (before any truncation). */
+  byte_len: number;
+  /** Extension-derived highlighter grammar hint; null when none applies. */
+  language_hint: string | null;
+  /** The (possibly truncated) UTF-8 text. */
+  text: string;
+  /** Non-null only when the body was capped at the byte ceiling. */
+  truncated: ContentTruncated | null;
   tiers: TiersBlock;
 }
 
@@ -1150,6 +1193,19 @@ export class EngineClient {
 
   node(id: string): Promise<NodeDetail> {
     return this.get(`/nodes/${encodeURIComponent(id)}`);
+  }
+
+  /** The read-only, bounded content fetch (review-rail-viewers ADR): the bytes of
+   *  the document or source file the node id names, keyed on the stable id
+   *  (`doc:<stem>` / `code:<path>`). The id is `encodeURIComponent`-encoded so a
+   *  `code:<path>` id's slashes stay one path segment. `scope` is optional (absent
+   *  = the active scope, the nodes-family convention). The tolerant adapter
+   *  reconciles the wire shape; the viewers read the `tiers` block for degraded
+   *  state. */
+  async content(id: string, scope?: string): Promise<ContentResponse> {
+    return adaptContent(
+      await this.get(`/nodes/${encodeURIComponent(id)}/content`, { scope }),
+    );
   }
 
   nodeNeighbors(

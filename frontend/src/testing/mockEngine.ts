@@ -270,6 +270,102 @@ function toWireMetaEdge(edge: EngineEdge): WireMetaEdge {
   };
 }
 
+// --- read-only content fetch (review-rail-viewers ADR) ---------------------------
+//
+// Helpers for the mock `/nodes/{id}/content` route. The mock mirrors the live
+// `vaultspec-api` `content.rs` wire shape EXACTLY (mock-mirrors-live-wire-shape):
+// the same `language_hint` extension mapping and the same payload field set. The
+// body bytes are synthesized deterministically — the contract under test is the
+// wire SHAPE the adapter and viewers consume, not the exact bytes the live engine
+// would read off disk.
+
+/** The extension→grammar-hint mapping, byte-for-byte the engine's `language_hint`
+ *  in `content.rs`: the same set, same hints, null for an unknown/absent ext. */
+function languageHintFor(path: string): string | null {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1 || dot === path.length - 1) return null;
+  const ext = path.slice(dot + 1).toLowerCase();
+  const map: Record<string, string> = {
+    rs: "rust",
+    py: "python",
+    pyi: "python",
+    js: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    ts: "typescript",
+    mts: "typescript",
+    cts: "typescript",
+    jsx: "jsx",
+    tsx: "tsx",
+    sh: "bash",
+    bash: "bash",
+    bat: "batch",
+    cmd: "batch",
+    ps1: "powershell",
+    psm1: "powershell",
+    psd1: "powershell",
+    c: "c",
+    h: "c",
+    cc: "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
+    json: "json",
+    toml: "toml",
+    yaml: "yaml",
+    yml: "yaml",
+    md: "markdown",
+    markdown: "markdown",
+    css: "css",
+    html: "html",
+    htm: "html",
+  };
+  return map[ext] ?? null;
+}
+
+/** A deterministic git-style-looking blob hash for synthesized content (a 40-hex
+ *  digest shape, NOT a real SHA-1 — the mock proves the wire shape, and the
+ *  client treats `blob_hash` as an opaque content-addressing key). */
+function mockBlobHash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  const hex = (h >>> 0).toString(16).padStart(8, "0");
+  return hex.repeat(5).slice(0, 40);
+}
+
+/** Synthesize a deterministic body for a path: a vault `.md` doc gets a
+ *  frontmatter-bearing markdown body (so the reader's frontmatter/GFM paths are
+ *  exercised), any other file gets a short source-shaped body keyed on its path. */
+function synthContent(path: string): string {
+  const stem = path.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
+  if (path.endsWith(".md")) {
+    return [
+      "---",
+      "tags:",
+      "  - '#mock'",
+      "date: '2026-06-16'",
+      "---",
+      "",
+      `# ${stem}`,
+      "",
+      "Mock document body for the markdown reader.",
+      "",
+      "- [x] a done step",
+      "- [ ] a pending step",
+      "",
+      "```rust",
+      "fn demo() {}",
+      "```",
+      "",
+    ].join("\n");
+  }
+  return `// ${path}\n// synthesized mock content\nfn demo() {}\n`;
+}
+
 // --- temporal-lineage projection (dashboard-timeline ADR) ------------------------
 //
 // The mock serves the EXACT live `/graph/lineage` wire shape (mock-mirrors-live-
@@ -1090,10 +1186,19 @@ export class MockEngine {
       };
     }
     const nodeMatch =
-      /^\/nodes\/([^/]+)(\/(neighbors|evidence|discover|plan-interior))?$/.exec(path);
+      /^\/nodes\/([^/]+)(\/(content|neighbors|evidence|discover|plan-interior))?$/.exec(
+        path,
+      );
     if (nodeMatch) {
       const id = decodeURIComponent(nodeMatch[1]);
       const sub = nodeMatch[3];
+      // content (review-rail-viewers ADR): the bytes of one doc/file node, keyed
+      // on the stable id, byte-for-byte the live `/nodes/{id}/content` wire shape
+      // — {path, blob_hash, byte_len, language_hint, text, truncated} + tiers.
+      // The viewer reads degraded state from the tiers block, not from a throw.
+      if (sub === "content") {
+        return this.contentData(id);
+      }
       // plan-interior (dashboard-pipeline-wire W03): a truthful 404 for an
       // unknown node OR a non-plan node, mirroring the live route's None path.
       if (sub === "plan-interior") {
@@ -1347,6 +1452,75 @@ export class MockEngine {
       path: rel,
       truncated,
       ...(nextCursor !== undefined ? { next_cursor: nextCursor } : {}),
+      tiers: this.tiersBlock(),
+    };
+  }
+
+  /**
+   * Build the `/nodes/{id}/content` data block (review-rail-viewers ADR),
+   * byte-for-byte the live `vaultspec-api` `content.rs` wire shape:
+   * `{path, blob_hash, byte_len, language_hint, text, truncated}` under the
+   * `{data, tiers}` envelope. A `doc:` id resolves its stem to the matching
+   * `.vault` markdown path from the corpus vault tree; a `code:` id carries its
+   * repo-relative path directly
+   * (stripping any `#symbol` qualifier, as the engine does). The body is
+   * synthesized deterministically — the contract under test is the wire SHAPE the
+   * adapter and viewers consume, not the exact bytes. A worktree with no listable
+   * source (`setNoVault`) degrades the `structural` tier honestly (the viewer
+   * renders its degraded state from tiers), mirroring the live degrade path; a
+   * malformed/non-content id 400s, an unknown doc stem 404s — the same splits the
+   * live route makes.
+   */
+  private contentData(id: string): unknown {
+    if (this.noVault) {
+      return {
+        path: "",
+        blob_hash: "",
+        byte_len: 0,
+        language_hint: null,
+        text: "",
+        truncated: null,
+        tiers: this.degradedTiersFor("structural", "worktree not listable"),
+      };
+    }
+    let path: string;
+    if (id.startsWith("code:")) {
+      const rest = id.slice("code:".length).split("#")[0];
+      if (rest.length === 0) {
+        throw new RouteError(400, `node id ${id} is not a content-bearing id`);
+      }
+      // The path need not exist in codeTree (an unindexed file is still
+      // readable); the live engine reads any in-root path. Serve it.
+      path = rest;
+    } else if (id.startsWith("doc:")) {
+      const stem = id.slice("doc:".length);
+      if (stem.length === 0) {
+        throw new RouteError(400, `node id ${id} is not a content-bearing id`);
+      }
+      const entry = this.corpus.vaultTree.find(
+        (e) => e.path.replace(/^.*\//, "").replace(/\.md$/, "") === stem,
+      );
+      if (!entry) {
+        throw new RouteError(404, `no readable content for ${id} in this scope`);
+      }
+      path = entry.path;
+    } else {
+      throw new RouteError(
+        400,
+        `node ${id} has no file content (only documents and code files do)`,
+      );
+    }
+    const text = synthContent(path);
+    return {
+      path,
+      blob_hash: mockBlobHash(text),
+      byte_len: text.length,
+      language_hint: languageHintFor(path),
+      text,
+      // The mock never exceeds the cap (synthesized bodies are small), so the
+      // honesty block is always null here; the live byte-cap is exercised by the
+      // engine's own test, and the adapter tolerates either.
+      truncated: null,
       tiers: this.tiersBlock(),
     };
   }
