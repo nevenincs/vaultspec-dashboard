@@ -345,7 +345,31 @@ export class FieldLayout {
       .strength(-this.params.repel)
       .theta(CHARGE_THETA)
       .distanceMax(CHARGE_DISTANCE_MAX);
-    this.linkForce.distance(this.params.linkDistance).strength(this.params.linkForce);
+    // Radius-aware link rest length: the spring pulls linked nodes to
+    // `linkDistance` of CLEAR GAP between their bodies, not 40 units centre-to-
+    // centre. Without this, salience/member-count-scaled bodies (feature
+    // convergence discs reach ~33px radius, nodeSprites.nodeRadius) collapse into
+    // an overlapping hairball — 1120 springs at a flat 40-unit rest length pull
+    // 33px-radius discs to 40-unit centres, far inside their own bodies, and the
+    // soft single-iteration collide cannot recover it. Summing the endpoint radii
+    // is the standard d3 treatment for variable-size nodes and is what lets the
+    // thin grey connection rule read in the gaps between discs (Obsidian parity).
+    const r = this.radiusOf;
+    const rest = this.params.linkDistance;
+    // When the assembly supplies a per-node radius (the live product path), the
+    // rest length is the CLEAR GAP plus both bodies, so sized discs never collapse
+    // inside one another. When it does not (unit tests / the layout-quality
+    // scorecard run on uniform synthetic nodes), keep the exact flat rest length
+    // so the calibrated quality baseline is unchanged — the radius term is a no-op
+    // there and only the real, variable-size graph gets the Obsidian-parity spacing.
+    this.linkForce
+      .distance(
+        r
+          ? (l: SimLink) =>
+              rest + r((l.source as SimNode).id) + r((l.target as SimNode).id)
+          : rest,
+      )
+      .strength(this.params.linkForce);
     this.xForce.strength(this.params.center);
     this.yForce.strength(this.params.center);
   }
@@ -722,6 +746,16 @@ export class FieldLayout {
   /** Latest position frame (for the field assembly and the warm-start cache). */
   get positions(): ReadonlyMap<string, NodePosition> {
     return this.latest;
+  }
+
+  /** Whether the settle loop is currently ticking (dev/test telemetry). */
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  /** Current simulation alpha (dev/test telemetry). */
+  alpha(): number {
+    return this.sim.alpha();
   }
 
   onPositions(listener: PositionsListener): () => void {

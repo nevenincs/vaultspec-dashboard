@@ -76,6 +76,12 @@ export class PixiField implements SceneFieldRenderer {
         background: readCanvasBg(),
         resizeTo: host,
         antialias: true,
+        // Render at the device pixel ratio so circles and connection lines are
+        // crisp on HiDPI displays (without this Pixi v8 defaults to resolution 1
+        // and the field renders soft/blurry). autoDensity keeps the CSS size at
+        // the host's logical pixels while the backing store scales by DPR.
+        resolution: typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
+        autoDensity: true,
         preference: "webgl",
       })
       .then(() => {
