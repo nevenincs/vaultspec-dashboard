@@ -63,19 +63,41 @@ export interface LayoutEdgeRef {
  * force; the cooling schedule (alpha decay, velocity decay) is intentionally
  * NOT here, because fixing it is what guarantees the layout always settles.
  * All fields optional so callers can send partial updates.
+ *
+ * Binding Tune-control contract (figma-parity-reconciliation W03.P09.S54,
+ * `graph/Controls` 88:2): the plain-language Tune sliders map ONE-TO-ONE onto
+ * these driver knobs, so the binding control exposes only knobs the driver
+ * actually has (no dead controls):
+ *   - "Spacing"          -> `repel`        (node repulsion; higher = more space)
+ *   - "Connection reach" -> `linkDistance` (spring rest length between linked nodes)
+ *   - "Clustering"       -> `linkForce`    (spring stiffness; higher = tighter groups)
+ * `center` (per-node gravity) has NO plain-language slot in the binding design and
+ * is held at its default by the Tune control — it stays a driver knob for internal
+ * use but is intentionally not surfaced (a UI gap recorded in F4, not a dead
+ * control). The mapping lives here so the driver is the single source of truth for
+ * the binding Tune control's contract.
  */
 export interface LayoutParams {
-  /** Repel force: node repulsion. Stored positive, applied as negative charge. */
+  /** Binding "Spacing": node repulsion. Stored positive, applied as negative charge. */
   repel?: number;
-  /** Link force: spring stiffness pulling linked nodes together. */
+  /** Binding "Clustering": spring stiffness pulling linked nodes together. */
   linkForce?: number;
-  /** Link distance: spring rest length between linked nodes. */
+  /** Binding "Connection reach": spring rest length between linked nodes. */
   linkDistance?: number;
-  /** Center force: per-node gravity toward the origin (forceX/forceY strength). */
+  /** Center force: per-node gravity toward the origin (forceX/forceY strength).
+   *  Not surfaced by the binding Tune control; held at its default. */
   center?: number;
 }
 
-/** Obsidian-parity starting values (research parameter table, ~12–300 nodes). */
+/**
+ * Obsidian-parity starting values (research parameter table, ~12–300 nodes), and
+ * the binding Tune control's slider start positions (Spacing/Connection-reach/
+ * Clustering). DELIBERATELY UNCHANGED in W03.P09.S54: these defaults seed the
+ * scene-layer layout-quality calibration (the scorecard property/perturbation
+ * gates run the driver at these values), so the binding Tune control is mapped
+ * onto the driver WITHOUT re-tuning the defaults — the knob mapping is the
+ * deliverable, not a new default field.
+ */
 export const LAYOUT_DEFAULTS: Required<LayoutParams> = {
   repel: 120,
   linkForce: 0.4,
