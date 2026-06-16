@@ -39,7 +39,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 
-import { DocTypeMark } from "../../scene/field/markComponents";
+import { type Category, categoryColorVar } from "../kit";
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
 import { useFiltersVocabulary, useTimelineLineage } from "../../stores/server/queries";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -60,6 +60,7 @@ import {
 } from "./arcs";
 import { prefersReducedMotion } from "./RangeSelect";
 import {
+  GROUP_LANE_HEIGHT,
   PHASE_LANES,
   type PhaseLane,
   type TimelineLaneGroup,
@@ -229,12 +230,36 @@ const GROUP_LABEL_W = 184;
 /** The x of the lane-group label text in the rail gutter. */
 const LANE_LABEL_X = 11;
 const TOP_PAD = 8;
-const MARK_PX = 13;
 const RULER_HEIGHT = 16;
 /** Virtualization margin (px) so a mark partly off-screen stays drawn. */
 const VIRTUAL_MARGIN_PX = 120;
 /** The dim alpha a receded (out-of-ego) mark/arc takes — never hidden (S40). */
 const RECEDE_ALPHA = 0.22;
+
+// Lollipop mark geometry (binding board 239:714): each dated document is a colored
+// DOT on a thin STEM connecting to a single central axis — design marks rise ABOVE
+// the axis, execution marks fall BELOW it. The dot fills with the doc type's bound
+// category color (the same hue its graph node paints), so dot and node agree.
+const DOT_PX = 9;
+/** The central horizontal axis y — midway between the two lane-group centres. */
+const AXIS_Y = groupLaneCenterY(0, TOP_PAD) + GROUP_LANE_HEIGHT / 2;
+
+const DOC_TYPE_DOT_CATEGORY: Record<string, Category> = {
+  research: "research",
+  adr: "adr",
+  plan: "plan",
+  exec: "exec",
+  audit: "audit",
+  index: "index",
+  code: "code",
+};
+
+/** The dot fill for a doc type — its bound category color, or quiet faint ink for a
+ *  type with no bound category color (reference / rule / codify). */
+function markDotColor(docType: string): string {
+  const category = DOC_TYPE_DOT_CATEGORY[docType];
+  return category ? categoryColorVar(category) : "var(--color-ink-faint)";
+}
 
 /** The instant a node's mark is positioned at (blob-true creation), or null. */
 export function nodeInstant(node: LineageNode): number | null {
@@ -553,22 +578,36 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         aria-label="lineage timeline"
         aria-busy={loading || undefined}
       >
-        {/* Lane rails — the soft low-contrast rule per visible lane group, drawn
-            from the label gutter to the right edge (binding AppShell 117:2: two
-            event lanes, structure felt not seen). The label text lives in the HTML
-            overlay below. */}
-        {TIMELINE_LANE_GROUPS.map((group, i) =>
-          groupVisible(group) ? (
-            <line
-              key={group.id}
-              x1={GROUP_LABEL_W}
-              x2={width}
-              y1={groupLaneCenterY(i, TOP_PAD)}
-              y2={groupLaneCenterY(i, TOP_PAD)}
-              className="stroke-rule"
-            />
-          ) : null,
-        )}
+        {/* Central axis (binding board 239:714): ONE soft horizontal rule spanning
+            from the label gutter to the right edge; design marks rise ABOVE it,
+            execution marks fall BELOW it, each on a thin stem. */}
+        <line
+          x1={GROUP_LABEL_W}
+          x2={width}
+          y1={AXIS_Y}
+          y2={AXIS_Y}
+          className="stroke-rule-strong"
+        />
+
+        {/* Lollipop stems — a thin line from the axis to each visible mark's dot,
+            drawn UNDER the marks. A receded (out-of-ego) stem dims, never hides. */}
+        <g data-timeline-stems aria-hidden="true">
+          {visibleMarks.items.map(({ node, x, y }) => {
+            const inEgo = !hasFocus || ego.has(node.id);
+            return (
+              <line
+                key={node.id}
+                x1={x}
+                x2={x}
+                y1={AXIS_Y}
+                y2={y}
+                strokeWidth={1}
+                className="stroke-rule"
+                opacity={inEgo ? 0.7 : RECEDE_ALPHA}
+              />
+            );
+          })}
+        </g>
 
         {/* Derivation arcs (S36/S37): the ON-DEMAND relations overlay, drawn UNDER
             the marks and ONLY for the focused node (hovered or selected) — its 1-hop
@@ -709,7 +748,14 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
                 data-doc-type={node.doc_type}
                 data-mark-recede={inEgo ? undefined : "true"}
               >
-                <DocTypeMark kind={node.doc_type} size={MARK_PX} />
+                <span
+                  className="rounded-full ring-2 ring-paper-raised"
+                  style={{
+                    width: DOT_PX,
+                    height: DOT_PX,
+                    backgroundColor: markDotColor(node.doc_type),
+                  }}
+                />
               </button>
             );
           })}

@@ -13,12 +13,11 @@
 // enumeration, never hardcoded" is proven against the real wire, not asserted.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
-import { useFilterStore } from "../../stores/view/filters";
 import { useViewStore } from "../../stores/view/viewStore";
 import { MockEngine, MOCK_SCOPE } from "../../testing/mockEngine";
 import { Minimap, brushOnRibbon, corpusSpan, ribbonXToCorpus } from "./Minimap";
@@ -136,11 +135,10 @@ function renderControls() {
   );
 }
 
-describe("TimelineControls component (S46-S55)", () => {
+describe("TimelineControls component (binding board 239:714)", () => {
   beforeEach(() => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     useViewStore.getState().setScope(MOCK_SCOPE);
-    useFilterStore.getState().reset();
     useTimelineStore.getState().setPxPerMs(DEFAULT_PX_PER_MS);
     useTimelineStore.getState().setScrollOffset(0);
   });
@@ -150,17 +148,26 @@ describe("TimelineControls component (S46-S55)", () => {
     queryClient.clear();
     useViewStore.getState().setScope(null);
     useViewStore.getState().setTimelineMode({ kind: "live" });
-    useFilterStore.getState().reset();
     engineClient.useTransport((input, init) => fetch(input, init));
     vi.restoreAllMocks();
   });
 
-  it("toggles the execution lane via the Steps & summaries switch and writes the store (S46/S65)", () => {
+  it("renders the board header: the Timeline label, the date-range pills, and the control cluster", () => {
     renderControls();
-    // The binding board (AppShell 117:2) collapses the lanes to two and exposes ONE
-    // control — the "Steps & summaries" switch — which toggles the execution lane.
-    // It carries the switch role + aria-checked (consistent with the TierDial), and
-    // flips the execution group's exec + codify phase keys together.
+    // The binding header (board 239:714) is a plain "Timeline" label, a from->to
+    // visible-range pill pair, the Steps & summaries switch, and the zoom cluster.
+    expect(screen.getByText("Timeline")).toBeTruthy();
+    expect(screen.getByLabelText("visible date range")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Steps & summaries" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "zoom in" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "jump to now" })).toBeTruthy();
+  });
+
+  it("toggles the execution lane via the Steps & summaries switch and writes the store", () => {
+    renderControls();
+    // The binding board collapses the lanes to two and exposes ONE control — the
+    // "Steps & summaries" switch — which toggles the execution lane, flipping the
+    // execution group's exec + codify phase keys together.
     const sw = screen.getByRole("switch", { name: "Steps & summaries" });
     expect(sw.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(sw);
@@ -175,42 +182,7 @@ describe("TimelineControls component (S46-S55)", () => {
     expect(useTimelineStore.getState().laneVisibility.research).toBe(true);
   });
 
-  it("sources relation chips from the engine enumeration as switches and toggling writes the store (S47/S65)", async () => {
-    renderControls();
-    // The mock corpus emits these relations on its edges; the chip vocabulary is
-    // the engine /filters enumeration, NOT a hardcoded list. S65: the chip is a
-    // switch (role + aria-checked), labelled "<facet> <value>".
-    const group = await screen.findByLabelText("relation filter");
-    const implementsChip = await within(group).findByRole("switch", {
-      name: "relation implements",
-    });
-    expect(implementsChip.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(implementsChip);
-    expect(useFilterStore.getState().relations).toContain("implements");
-  });
-
-  it("sources feature chips from the engine enumeration as switches and writes featureTags (S49/S65)", async () => {
-    renderControls();
-    const group = await screen.findByLabelText("feature filter");
-    const featureChip = await within(group).findByRole("switch", {
-      name: "feature editor-demo",
-    });
-    fireEvent.click(featureChip);
-    expect(useFilterStore.getState().featureTags).toContain("editor-demo");
-  });
-
-  it("reuses the tier dial and marks semantic inapplicable in time-travel (S48)", () => {
-    useViewStore.getState().setTimelineMode({ kind: "time-travel", at: Date.now() });
-    renderControls();
-    // The dial is present (reused, not reinvented).
-    expect(screen.getByLabelText("tier dial")).toBeTruthy();
-    const semantic = screen.getByRole("switch", { name: "semantic tier" });
-    // In time-travel the semantic tier is a designed inapplicable state.
-    expect(semantic.getAttribute("data-state")).toBe("inapplicable");
-    expect((semantic as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("zoom in / out rescale pxPerMs within the band (S50)", () => {
+  it("zoom in / out rescale pxPerMs within the band", () => {
     renderControls();
     const before = useTimelineStore.getState().pxPerMs;
     fireEvent.click(screen.getByRole("button", { name: "zoom in" }));
@@ -221,65 +193,28 @@ describe("TimelineControls component (S46-S55)", () => {
     expect(useTimelineStore.getState().pxPerMs).toBeLessThan(afterIn);
   });
 
-  it("fit-all fits the corpus span from the engine date bounds (S51)", async () => {
+  it("fit-all fits the corpus span from the engine date bounds", async () => {
     renderControls();
-    // Wait for the vocabulary (and thus date bounds) to land.
-    await screen.findByRole("switch", { name: "feature editor-demo" });
     const beforeScale = useTimelineStore.getState().pxPerMs;
-    fireEvent.click(screen.getByRole("button", { name: "fit all" }));
-    // Fitting the multi-feature corpus week changes the scale and docks a
-    // non-trivial offset (the corpus does not start at t=0).
-    expect(useTimelineStore.getState().pxPerMs).not.toBe(beforeScale);
-    expect(useTimelineStore.getState().scrollOffset).toBeGreaterThan(0);
-  });
-
-  it("fit-feature is disabled until a feature filter is active (S52)", async () => {
-    renderControls();
-    expect(
-      (screen.getByRole("button", { name: "fit feature" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    const group = await screen.findByLabelText("feature filter");
-    fireEvent.click(
-      await within(group).findByRole("switch", { name: "feature editor-demo" }),
-    );
-    expect(
-      (screen.getByRole("button", { name: "fit feature" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-  });
-
-  it("jump-to-date centres the chosen date and is disabled when empty (S53)", () => {
-    renderControls();
-    expect(
-      (screen.getByRole("button", { name: "go to date" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    const input = screen.getByLabelText("jump to date");
-    fireEvent.change(input, { target: { value: "2026-03-15" } });
-    fireEvent.click(screen.getByRole("button", { name: "go to date" }));
-    const t = Date.parse("2026-03-15");
-    const expected = jumpToDateOffset(t, useTimelineStore.getState().pxPerMs, VIEWPORT);
-    expect(useTimelineStore.getState().scrollOffset).toBeCloseTo(expected, 0);
-  });
-
-  it("renders the minimap scrubber as a slider (S54)", () => {
-    renderControls();
-    expect(
-      screen.getByRole("slider", { name: "timeline overview scrubber" }),
-    ).toBeTruthy();
-  });
-
-  it("renders the range chip with play and clear when a range is committed (S55)", () => {
-    useFilterStore.getState().setDateRange({
-      from: "2026-01-05T00:00:00Z",
-      to: "2026-01-09T00:00:00Z",
+    // Fit-all reads the engine-enumerated date bounds (loaded async via /filters);
+    // retry the click until the bounds have landed and the scale + offset move.
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: "fit all" }));
+      expect(useTimelineStore.getState().pxPerMs).not.toBe(beforeScale);
+      expect(useTimelineStore.getState().scrollOffset).toBeGreaterThan(0);
     });
+  });
+
+  it("jump-to-now docks the strip at the corpus end and returns the playhead to live", async () => {
+    useViewStore.getState().setTimelineMode({ kind: "time-travel", at: 1 });
     renderControls();
-    expect(screen.getByLabelText("play the selected range")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("clear date range"));
-    // Clearing returns toward LIVE: the single date-range writer empties.
-    expect(useFilterStore.getState().dateRange).toEqual({});
+    // Jump-to-now reads the engine date bounds (async); retry until the bounds land
+    // and the click docks a non-trivial offset + restores live mode.
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: "jump to now" }));
+      expect(useTimelineStore.getState().scrollOffset).toBeGreaterThan(0);
+    });
+    expect(useViewStore.getState().timelineMode.kind).toBe("live");
   });
 });
 
