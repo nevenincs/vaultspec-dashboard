@@ -1,8 +1,11 @@
-// The search tab (W03.P11.S44; re-skinned W02.P08.S24 onto the OKLCH token layer
-// and the sanctioned icon families per the search surface ADR): a rag-backed
-// query over the vault and code corpora whose results click through into the
-// graph stage and the right-rail inspector. The engine's node-id annotation
-// (contract §8) is what makes results click through to the stage.
+// The search tab (figma-parity-reconciliation W02.P05.S31; binding SearchField
+// Kit primitive, Figma node 136:30): a rag-backed query over the vault and code
+// corpora whose results click through into the graph stage and the right-rail
+// inspector. The engine's node-id annotation (contract §8) is what makes results
+// click through to the stage. Rebuilt onto the NEW Figma role-named token
+// foundation: canonical radius (`rounded-fg-xs`, `rounded-fg-pill`) for the
+// search field, target chips, and result rows, and the `caption` type role for
+// the dense receipts. No legacy radius or px-purpose type scale.
 //
 // The panel is a DUMB view (dashboard-layer-ownership / views-are-projections):
 // it holds only ephemeral input state (the query text and target), consumes the
@@ -160,7 +163,7 @@ function ResultRow({ result, fallback, tabbable, isCode, onActivate }: ResultRow
             });
           }
         }}
-        className={`w-full rounded-vs-sm border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`w-full rounded-fg-xs border border-rule px-vs-2 py-vs-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           clickable
             ? "hover:border-rule-strong hover:bg-paper-sunken"
             : "cursor-default opacity-70"
@@ -177,7 +180,7 @@ function ResultRow({ result, fallback, tabbable, isCode, onActivate }: ResultRow
           <span className="flex shrink-0 items-center gap-vs-1-5 text-ink-faint">
             {fallback && (
               // Fallback marker — not colour-only; a labelled tag the SR reads.
-              <span className="rounded-vs-sm bg-paper-sunken px-vs-1 text-2xs text-ink-muted">
+              <span className="rounded-fg-xs bg-paper-sunken px-vs-1 text-caption text-ink-muted">
                 text match
               </span>
             )}
@@ -262,7 +265,7 @@ export function SearchTab() {
           onKeyDown={onFieldKeyDown}
           placeholder="search vault and code…"
           aria-label="search query"
-          className="w-full rounded-vs-sm border border-rule bg-paper-raised py-vs-1 pl-vs-6 pr-vs-6 text-ink placeholder:text-ink-faint focus-visible:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className="w-full rounded-fg-xs border border-rule bg-paper-raised py-vs-1 pl-vs-6 pr-vs-6 text-ink placeholder:text-ink-faint focus-visible:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         />
         {query && (
           <button
@@ -272,7 +275,7 @@ export function SearchTab() {
               fieldRef.current?.focus();
             }}
             aria-label="clear search"
-            className="absolute inset-y-0 right-vs-1 flex items-center rounded-vs-sm px-vs-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="absolute inset-y-0 right-vs-1 flex items-center rounded-fg-xs px-vs-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <X size={CHROME_PX} />
           </button>
@@ -292,7 +295,7 @@ export function SearchTab() {
               role="radio"
               aria-checked={on}
               onClick={() => setTarget(t)}
-              className={`rounded-full border px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`rounded-fg-pill border px-vs-2 py-vs-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 on
                   ? "border-accent bg-accent-subtle font-medium text-ink"
                   : "border-rule text-ink-muted hover:border-rule-strong hover:text-ink"
@@ -338,7 +341,7 @@ export function SearchTab() {
           fallback, so the notice states that plainly. */}
       {search.semanticOffline && (
         <p
-          className="flex items-start gap-vs-1-5 rounded-vs-sm border border-state-stale/40 bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
+          className="flex items-start gap-vs-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-vs-2 py-vs-1 text-label text-ink-muted"
           data-semantic-offline
         >
           <span className="mt-px shrink-0 text-state-stale" aria-hidden>
@@ -356,14 +359,14 @@ export function SearchTab() {
           from the degraded state per the tiers contract. */}
       {search.error && (
         <div
-          className="space-y-vs-1 rounded-vs-sm border border-state-broken/40 px-vs-2 py-vs-1"
+          className="space-y-vs-1 rounded-fg-xs border border-state-broken/40 px-vs-2 py-vs-1"
           data-search-error
         >
           <p className="text-label text-state-broken">search request failed</p>
           <button
             type="button"
             onClick={search.retry}
-            className="rounded-vs-sm text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             try again
           </button>
@@ -380,7 +383,11 @@ export function SearchTab() {
       {/* Results: the list, with a quiet result-count receipt. */}
       {showResults && (
         <>
-          <p className="px-vs-1 text-2xs text-ink-faint" data-search-count data-tabular>
+          <p
+            className="px-vs-1 text-caption text-ink-faint"
+            data-search-count
+            data-tabular
+          >
             {search.results.length} result{search.results.length === 1 ? "" : "s"}
           </p>
           <ul className="space-y-vs-1" role="list" aria-label="search results">

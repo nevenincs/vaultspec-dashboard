@@ -165,7 +165,7 @@ Rebuild the right activity rail (tabs, inspector, work, search, changes) and the
 - [x] `W02.P05.S28` - Rebuild the right rail tab bar to the binding Inspect Work Search Changes IA with the liveness pillars promoted to a persistent header; `frontend/src/app/right/RailTabs.tsx`.
 - [x] `W02.P05.S29` - Rebuild the inspector tab from its binding frame over the preserved selection and enriched node-evidence query; `frontend/src/app/right/Inspector.tsx`.
 - [x] `W02.P05.S30` - Rebuild the work tab from the binding WorkTab Kit primitive over the preserved pipeline-status query; `frontend/src/app/right/WorkTab.tsx`.
-- [ ] `W02.P05.S31` - Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers; `frontend/src/app/right/SearchTab.tsx`.
+- [x] `W02.P05.S31` - Rebuild the search tab from the binding SearchField Kit primitive over the preserved discover query, reading semantic-offline from tiers; `frontend/src/app/right/SearchTab.tsx`.
 - [ ] `W02.P05.S32` - Rebuild the changes overview and diff view from their binding frames over the preserved diff query, including the historical text-diff route; `frontend/src/app/right/DiffView.tsx`.
 - [ ] `W02.P05.S33` - Rebuild the stage filter bar and sidebar from the binding FacetChipGroup primitive over the preserved filter store; `frontend/src/app/stage/FilterBar.tsx`.
 - [ ] `W02.P05.S34` - Rebuild the stage minimap widget from its binding frame over the preserved scene viewport state; `frontend/src/app/stage/MinimapWidget.tsx`.
