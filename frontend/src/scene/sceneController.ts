@@ -201,6 +201,14 @@ export type SceneCommand =
   // Layout algorithm controls (AlgorithmPanel seam contract).
   | { kind: "set-layout-params"; params: LayoutParams }
   | { kind: "set-layout-mode"; mode: "force" | "circular" }
+  // --- node-graph-rework addendum (ADR D3) -----------------------------------
+  // Configurable canvas/sim containment: free (unbounded) | circle (default) |
+  // rect, with an optional size (radius for circle, half-extent for rect; omitted
+  // or 0 = auto-fit non-overlapping). The view store owns the setting and the
+  // GraphControls expose it; the field enforces the bound where positions are
+  // produced, because cosmos has no radial bound. ADR-flagged additive redline per
+  // the W01.P01.S04 lock discipline - additive to the locked union, nothing renamed.
+  | { kind: "set-bounds"; shape: "free" | "circle" | "rect"; size?: number }
   // --- graph-force-stability addenda (W01) -----------------------------------
   // Held-warmth interaction seam (graph-force-stability D2): the chrome brackets
   // a slider-tune drag with begin/end-interaction so the driver holds an
@@ -319,6 +327,11 @@ export class SceneController {
   // --- graph-quality: layout state (P01.S02) -----------------------------------
   private _layoutMode: "force" | "circular" = "force";
   private _layoutParams: LayoutParams = {};
+  // --- node-graph-rework: canvas/sim containment (ADR D3) -----------------------
+  private _bounds: { shape: "free" | "circle" | "rect"; size: number } = {
+    shape: "circle",
+    size: 0,
+  };
   // --- selection state retained at the seam (W03.P08.S51) -----------------------
   // The inbound `set-selected` selection (graph/Node-items "selected"): the view
   // store owns the one shared selection and pushes it in through the EXISTING
@@ -371,6 +384,9 @@ export class SceneController {
         break;
       case "set-layout-mode":
         this._layoutMode = cmd.mode;
+        break;
+      case "set-bounds":
+        this._bounds = { shape: cmd.shape, size: cmd.size ?? 0 };
         break;
       case "set-selected":
         // Retain the inbound selection at the seam (S51): the round-tripped
@@ -486,6 +502,12 @@ export class SceneController {
   /** Synchronous snapshot of the current layout mode and params. */
   getLayoutState(): { mode: "force" | "circular"; params: LayoutParams } {
     return { mode: this._layoutMode, params: { ...this._layoutParams } };
+  }
+
+  /** Synchronous snapshot of the active canvas/sim containment (node-graph-rework
+   *  ADR D3). The GraphControls bound control reads its initial truth from here. */
+  getBoundsState(): { shape: "free" | "circle" | "rect"; size: number } {
+    return { ...this._bounds };
   }
 
   // --- selection read at the seam (W03.P08.S51) ---------------------------------
