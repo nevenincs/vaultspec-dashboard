@@ -50,6 +50,7 @@ import { useActiveScope } from "../stage/Stage";
 // dashboard-context-menus surface and consumed by the generic menu host).
 import "./menus/eventMarkMenu";
 import { type ArcInput, type ArcState, arcEndpointLabel } from "./arcs";
+import { Minimap } from "./Minimap";
 import { prefersReducedMotion } from "./RangeSelect";
 import {
   GROUP_LANE_HEIGHT,
@@ -615,18 +616,14 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
         })}
       </div>
 
-      {/* Ruler endpoints as HTML so tabular numerals apply (ADR: mandated on
-          dates). The visible range's edges, tabular-rendered. */}
+      {/* Bottom scrubber ribbon (board 239:714): the full-width overview Minimap
+          docked at the timeline's bottom edge — the corpus span with the visible
+          window as a brush, click/drag to scrub. */}
       <div
-        className="pointer-events-none absolute inset-x-0 flex justify-between px-fg-1 text-caption text-ink-faint"
-        style={{ bottom: "2px" }}
+        className="pointer-events-auto absolute inset-x-0 bottom-0"
+        data-timeline-scrubber
       >
-        <time data-tabular dateTime={new Date(range.fromMs).toISOString()}>
-          {new Date(range.fromMs).toISOString().slice(0, 10)}
-        </time>
-        <time data-tabular dateTime={new Date(range.toMs).toISOString()}>
-          {new Date(range.toMs).toISOString().slice(0, 10)}
-        </time>
+        <Minimap viewportWidth={width} ribbonWidth={width} />
       </div>
 
       {/* Dated document marks (S34): a focusable HTML overlay so the Phosphor
