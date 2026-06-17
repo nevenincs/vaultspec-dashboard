@@ -134,19 +134,19 @@ Master grid layout and the far-left icon rail.
 
 Workspace header, Vault/Tree/Code toggle, filter field, grouped document list with category status dots.
 
-- [ ] `W02.P04.S07` - Rebuild the LeftRail (workspace header, Vault/Tree/Code toggle, filter field, grouped document list); `frontend/src/app/left/`.
+- [x] `W02.P04.S07` - Rebuild the LeftRail (workspace header, Vault/Tree/Code toggle, filter field, grouped document list); `frontend/src/app/left/`.
 
 ### Phase `W02.P05` - ActivityRail (244:753)
 
 Status/Changes/Search tabs, context card, open-plans tree, recent commits.
 
-- [ ] `W02.P05.S08` - Rebuild the ActivityRail (Status/Changes/Search tabs, context card, open-plans tree, recent commits); `frontend/src/app/right/`.
+- [x] `W02.P05.S08` - Rebuild the ActivityRail (Status/Changes/Search tabs, context card, open-plans tree, recent commits); `frontend/src/app/right/`.
 
 ### Phase `W02.P06` - DocHeader (283:1170)
 
 Document header surface.
 
-- [ ] `W02.P06.S09` - Rebuild the DocHeader surface; `frontend/src/app/right/`.
+- [x] `W02.P06.S09` - Rebuild the DocHeader surface; `frontend/src/app/right/`.
 
 ## Wave `W03` - Stage, timeline, overlays, readers
 
@@ -156,27 +156,27 @@ Rebuild the stage chrome, the dual-lane timeline, the command palette / settings
 
 Search+filter+layout toolbar, category legend, zoom cluster, minimap card.
 
-- [ ] `W03.P07.S10` - Rebuild the stage chrome (toolbar, category legend, zoom cluster, minimap card, NavControls); `frontend/src/app/stage/`.
+- [x] `W03.P07.S10` - Rebuild the stage chrome (toolbar, category legend, zoom cluster, minimap card, NavControls); `frontend/src/app/stage/`.
 
 ### Phase `W03.P08` - Timeline (dual-lane + scrubber)
 
 Timeline label, date-range pills, steps&summaries switch, two event lanes, accent scrubber.
 
-- [ ] `W03.P08.S11` - Rebuild the dual-lane Timeline with date-range pills, steps&summaries switch, and accent scrubber; `frontend/src/app/timeline/`.
+- [x] `W03.P08.S11` - Rebuild the dual-lane Timeline with date-range pills, steps&summaries switch, and accent scrubber; `frontend/src/app/timeline/`.
 
 ### Phase `W03.P09` - Overlays (palette 94:2, settings 96:2, context-menu 98:2, shortcuts 104:39)
 
 Command palette, settings dialog, context menu, keyboard-shortcuts surfaces.
 
-- [ ] `W03.P09.S12` - Rebuild the CommandPalette and SettingsDialog; `frontend/src/app/palette/`.
-- [ ] `W03.P09.S13` - Rebuild the ContextMenu and KeyboardShortcuts surfaces; `frontend/src/app/menu/`.
+- [x] `W03.P09.S12` - Rebuild the CommandPalette and SettingsDialog; `frontend/src/app/palette/`.
+- [x] `W03.P09.S13` - Rebuild the ContextMenu and KeyboardShortcuts surfaces; `frontend/src/app/menu/`.
 
 ### Phase `W03.P10` - Readers and viewers (100:2/269:941, 101:2/248:738, DiffView 97:2)
 
 Markdown reader (view/edit), code viewer, diff view, reader states.
 
-- [ ] `W03.P10.S14` - Rebuild the Markdown reader (view and edit modes) and reader states; `frontend/src/app/viewer/`.
-- [ ] `W03.P10.S15` - Rebuild the CodeViewer and DiffView; `frontend/src/app/viewer/`.
+- [x] `W03.P10.S14` - Rebuild the Markdown reader (view and edit modes) and reader states; `frontend/src/app/viewer/`.
+- [x] `W03.P10.S15` - Rebuild the CodeViewer and DiffView; `frontend/src/app/viewer/`.
 
 ## Wave `W04` - Graph scene visual parity
 
