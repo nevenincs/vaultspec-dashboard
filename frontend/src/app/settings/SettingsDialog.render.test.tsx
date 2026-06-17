@@ -1,39 +1,38 @@
 // @vitest-environment happy-dom
 //
 // The schema-driven settings dialog (dashboard-settings W04.P08), rendered
-// against the REAL stores client transport (mockEngine) through the shared
-// QueryClientProvider — no component doubles. Asserts the dialog's own contract:
-// it renders the engine-declared groups and a control per declared setting,
-// reflects the effective value, persists a change through the wire (write-through
-// + invalidate), and exposes the per-scope override target for a scope-eligible
-// setting.
+// against the REAL engine settings store (the app client is bound to the live
+// transport in liveSetup) through the shared QueryClientProvider — no component
+// doubles. Asserts the dialog's own contract: it renders the engine-declared
+// groups and a control per declared setting, reflects the effective value,
+// persists a change through the wire (write-through + invalidate), and exposes
+// the per-scope override target for a scope-eligible setting.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
-import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
+import { liveScope } from "../../testing/liveClient";
 import { SettingsDialog } from "./SettingsDialog";
 import { useSettingsDialog } from "./useSettingsDialog";
 
 function renderDialog() {
   return render(
-    createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(SettingsDialog),
-    ),
+    createElement(QueryClientProvider, { client: queryClient }, createElement(SettingsDialog)),
   );
 }
 
-describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
+describe("SettingsDialog (schema-driven, live engine)", () => {
+  let scope: string;
+  beforeAll(async () => {
+    scope = await liveScope();
+  });
   beforeEach(() => {
-    useViewStore.getState().setScope(MOCK_SCOPE);
-    engineClient.useTransport(new MockEngine().fetchImpl);
+    useViewStore.getState().setScope(scope);
     useSettingsDialog.getState().openDialog();
   });
 
@@ -42,7 +41,6 @@ describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
     queryClient.clear();
     useSettingsDialog.getState().closeDialog();
     useViewStore.getState().setScope(null);
-    engineClient.useTransport((input, init) => fetch(input, init));
   });
 
   it("renders the engine-declared groups and a control per setting", async () => {
@@ -65,11 +63,13 @@ describe("SettingsDialog (schema-driven, honest-against-mock)", () => {
     expect(screen.getByRole("radio", { name: "dark" })).toBeTruthy();
   });
 
-  it("reflects the default effective value and persists a change through the wire", async () => {
+  it("reflects the effective value and persists a change through the wire", async () => {
+    // Seed the authoritative value (the engine store is shared + persistent, so
+    // assert against an explicit value, not an assumed-unset default).
+    await engineClient.putSettings({ key: "theme", value: "system" });
     renderDialog();
-    // Theme defaults to "system" (no persisted value yet).
     const systemRadio = await screen.findByRole("radio", { name: "system" });
-    expect(systemRadio.getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(systemRadio.getAttribute("aria-checked")).toBe("true"));
     // Choose "dark" — write-through + invalidate re-reads the persisted value.
     fireEvent.click(screen.getByRole("radio", { name: "dark" }));
     await waitFor(() => {
