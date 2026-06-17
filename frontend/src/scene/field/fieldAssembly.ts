@@ -28,6 +28,7 @@ import { FieldLayout } from "./forceLayout";
 import { MinimapLayer } from "./minimapLayer";
 import { NodeSpriteLayer, nodeRadius } from "./nodeSprites";
 import { PixiField } from "./pixiField";
+import { CosmosField } from "./cosmosField";
 import { splitBackbone } from "./backbone";
 import type { RepresentationMode } from "./representationLayout";
 import { representationLayout } from "./representationLayout";
@@ -1177,12 +1178,18 @@ export class DashboardField implements SceneFieldRenderer {
   }
 }
 
-/** Build the app's scene: one controller, one assembled field behind it. */
+/** Build the app's scene: one controller, one cosmos.gl field behind it.
+ *
+ * graph-cosmos-migration: the field is now the cosmos.gl-backed CosmosField — a
+ * live, continuous, GPU force simulation — replacing the custom d3-force + Pixi
+ * DashboardField (kept in this module only until its last consumers are retired).
+ * The SceneController seam is unchanged, so every chrome surface still drives the
+ * scene through the same command/event channel. */
 export function createDashboardScene(): {
   controller: SceneController;
-  field: DashboardField;
+  field: CosmosField;
 } {
-  const field = new DashboardField();
+  const field = new CosmosField();
   const controller = new Controller(field);
   field.controller = controller;
   return { controller, field };

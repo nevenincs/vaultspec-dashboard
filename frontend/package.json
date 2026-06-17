@@ -24,6 +24,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@cosmos.gl/graph": "^2.6.4",
     "@phosphor-icons/react": "^2.1.10",
     "@shikijs/langs": "^4.2.0",
     "@shikijs/themes": "^4.2.0",
