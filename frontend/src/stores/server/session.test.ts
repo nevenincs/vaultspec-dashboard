@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 //
 // Session + settings client and restore/persistence behavior (user-state-
-// persistence W04.P10.S33). Everything runs through the SAME client transport
-// the live app uses — the mock engine's `fetchImpl` — so a passing test exercises
-// the real client → adapter path, not a hand-built double (mock-mirrors-live-
-// wire-shape). The restore-on-load and selection-persistence behavior is driven
-// through stores hooks over a QueryClient, never a fetch in a component.
+// persistence W04.P10.S33). Everything runs through the SAME client the live
+// app uses, over the REAL `vaultspec serve` engine spawned for the test run —
+// no in-memory double. A passing test exercised the genuine client → wire →
+// engine path. The engine's session store is shared and persistent across the
+// run, so these assert ROUND-TRIP behavior and invariants (write X → read X
+// back; a pushed recent is at the front; a write survives a later write), never
+// "starts empty" preconditions that a shared live surface cannot guarantee.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -13,14 +15,10 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { useActiveScope } from "../../app/stage/Stage";
-import { MOCK_SCOPE, MOCK_WORKSPACE, MockEngine } from "../../testing/mockEngine";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { useViewStore } from "../view/viewStore";
-import { EngineClient, EngineError } from "./engine";
+import { EngineError } from "./engine";
 import { usePutSession, useSession, useSettings } from "./queries";
-
-function clientOf(mock: MockEngine): EngineClient {
-  return new EngineClient({ baseUrl: "/api", fetchImpl: mock.fetchImpl });
-}
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -34,48 +32,58 @@ function testQueryClient(): QueryClient {
   });
 }
 
-// --- the client over the mock transport ------------------------------------------
+/** Unique per-test marker so round-trip assertions never collide on shared state. */
+let seq = 0;
+const mark = () => `m${Date.now().toString(36)}-${seq++}`;
 
-describe("session/settings client (mock transport)", () => {
-  it("GET /session returns the workspace, active scope, empty context, and recents", async () => {
-    const session = await clientOf(new MockEngine()).session();
-    expect(session.workspace).toBe(MOCK_WORKSPACE);
-    expect(session.active_scope).toBe(MOCK_SCOPE);
-    // Fresh store: no folder selected, no contexts, no recents.
-    expect(session.scope_context).toEqual({ folder: null, feature_tags: [] });
-    expect(session.recents).toEqual([]);
+// --- the typed client over the live wire ----------------------------------------
+
+describe("session/settings client (live engine)", () => {
+  it("GET /session returns the workspace, active scope, context shape, and recents", async () => {
+    const scope = await liveScope();
+    const session = await createLiveClient().session();
+    expect(session.workspace).toBeTypeOf("string");
+    expect(session.workspace.length).toBeGreaterThan(0);
+    expect(session.active_scope).toBe(scope);
+    // The context envelope shape always rides (folder + feature_tags keys).
+    expect(session.scope_context).toHaveProperty("folder");
+    expect(Array.isArray(session.scope_context.feature_tags)).toBe(true);
+    expect(Array.isArray(session.recents)).toBe(true);
     // The tiers block always rides through (every-wire-response-carries-tiers).
     expect(session.tiers).toBeTypeOf("object");
   });
 
   it("PUT /session persists scope_context + push_recent and reads back", async () => {
-    const client = clientOf(new MockEngine());
+    const client = createLiveClient();
+    const tag = mark();
+    const recent = `recent-${mark()}`;
     const updated = await client.putSession({
-      scope_context: { folder: "plan", feature_tags: ["conf-feature"] },
-      push_recent: MOCK_SCOPE,
+      scope_context: { folder: "plan", feature_tags: [tag] },
+      push_recent: recent,
     });
     expect(updated.scope_context.folder).toBe("plan");
-    expect(updated.scope_context.feature_tags).toEqual(["conf-feature"]);
+    expect(updated.scope_context.feature_tags).toEqual([tag]);
     // The pushed value is at the FRONT of recents.
-    expect(updated.recents[0]).toBe(MOCK_SCOPE);
-    // A fresh GET reflects the same persisted state (same in-memory store).
+    expect(updated.recents[0]).toBe(recent);
+    // A fresh GET reflects the same persisted state.
     const reread = await client.session();
     expect(reread.scope_context.folder).toBe("plan");
-    expect(reread.scope_context.feature_tags).toEqual(["conf-feature"]);
+    expect(reread.scope_context.feature_tags).toEqual([tag]);
   });
 
   it("PUT /session with an unknown active_scope is a tiered 400, scope unchanged", async () => {
-    const client = clientOf(new MockEngine());
+    const client = createLiveClient();
+    const scope = await liveScope();
     await expect(
       client.putSession({ active_scope: "wt-does-not-exist" }),
     ).rejects.toBeInstanceOf(EngineError);
     // The active scope is left unchanged (the live route's behavior).
     const after = await client.session();
-    expect(after.active_scope).toBe(MOCK_SCOPE);
+    expect(after.active_scope).toBe(scope);
   });
 
   it("the tiered 400 carries the tiers block on the error envelope", async () => {
-    const client = clientOf(new MockEngine());
+    const client = createLiveClient();
     const err = await client
       .putSession({ active_scope: "nope" })
       .then(() => null)
@@ -87,107 +95,83 @@ describe("session/settings client (mock transport)", () => {
   });
 
   it("push_recent dedup-moves an existing value to the front", async () => {
-    const client = clientOf(new MockEngine());
-    await client.putSession({ push_recent: "a" });
-    await client.putSession({ push_recent: "b" });
-    const s = await client.putSession({ push_recent: "a" });
-    // "a" moves to the front; no duplicate.
-    expect(s.recents).toEqual(["a", "b"]);
+    const client = createLiveClient();
+    const a = `a-${mark()}`;
+    const b = `b-${mark()}`;
+    await client.putSession({ push_recent: a });
+    await client.putSession({ push_recent: b });
+    const s = await client.putSession({ push_recent: a });
+    // "a" moves to the front with no duplicate; "b" trails it.
+    expect(s.recents[0]).toBe(a);
+    expect(s.recents.filter((r) => r === a)).toHaveLength(1);
+    expect(s.recents.indexOf(b)).toBeGreaterThan(0);
   });
 
-  it("GET /settings returns empty global + scoped before any write", async () => {
-    const settings = await clientOf(new MockEngine()).settings();
-    expect(settings.global).toEqual({});
-    expect(settings.scoped).toEqual({});
+  it("GET /settings returns object-shaped global + scoped maps with tiers", async () => {
+    const settings = await createLiveClient().settings();
+    expect(settings.global).toBeTypeOf("object");
+    expect(settings.scoped).toBeTypeOf("object");
     expect(settings.tiers).toBeTypeOf("object");
   });
 
-  it("PUT /settings persists a global key and a scoped key", async () => {
-    const client = clientOf(new MockEngine());
+  it("PUT /settings persists a global key and a scoped key, each surviving the other", async () => {
+    const client = createLiveClient();
+    const scope = await liveScope();
     const afterGlobal = await client.putSettings({ key: "theme", value: "dark" });
     expect(afterGlobal.global.theme).toBe("dark");
-    // The key must be a registry-declared, scope-eligible setting now that writes
-    // are validated (dashboard-settings); `default_granularity` is exactly that.
+    // A registry-declared, scope-eligible setting (dashboard-settings validates writes).
     const afterScoped = await client.putSettings({
-      scope: MOCK_SCOPE,
+      scope,
       key: "default_granularity",
       value: "document",
     });
-    expect(afterScoped.scoped[MOCK_SCOPE].default_granularity).toBe("document");
+    expect(afterScoped.scoped[scope].default_granularity).toBe("document");
     // Global key survives the scoped write.
     expect(afterScoped.global.theme).toBe("dark");
   });
 
-  it("scoped settings sparse-omit a scope with no scoped keys", async () => {
-    const settings = await clientOf(new MockEngine()).settings();
-    // No scoped writes yet → the active scope is NOT present as an empty object.
-    expect(settings.scoped[MOCK_SCOPE]).toBeUndefined();
+  it("scoped settings omit a scope that has never been written", async () => {
+    const settings = await createLiveClient().settings();
+    expect(settings.scoped["wt-never-written-xyz"]).toBeUndefined();
   });
 });
 
 // --- restore-on-load through stores hooks ---------------------------------------
 
 describe("restore-on-load (useActiveScope over the session hook)", () => {
-  let client: EngineClient;
   beforeEach(() => {
     // Reset the shared view store so a previous test's pick does not leak.
     useViewStore.setState({ scope: null, activeFolder: null, featureContexts: [] });
   });
-  afterEach(async () => {
+  afterEach(() => {
     useViewStore.setState({ scope: null, activeFolder: null, featureContexts: [] });
-    // Always restore the default transport, even if an assertion threw, so the
-    // app-wide client never leaks the mock into another suite.
-    const { engineClient } = await import("./engine");
-    engineClient.useTransport((input, init) => fetch(input, init));
   });
 
   it("returns the persisted active_scope from the session, not a recomputed default", async () => {
-    const mock = new MockEngine();
-    client = clientOf(mock);
-    // Persist a non-default selection in the store, then mount the read path
-    // against the SAME mock so the session GET returns it.
-    await client.putSession({ active_scope: MOCK_SCOPE });
+    const scope = await liveScope();
+    // Persist the fixture scope as the active selection, then mount the read path.
+    await createLiveClient().putSession({ active_scope: scope });
 
     const qc = testQueryClient();
-    // Install the mock transport on the app-wide client the hooks use.
-    const { engineClient } = await import("./engine");
-    engineClient.useTransport(mock.fetchImpl);
-
     const { result } = renderHook(() => useActiveScope(), { wrapper: wrapper(qc) });
-    await waitFor(() => expect(result.current).toBe(MOCK_SCOPE));
-
-    // Restore the default transport so other suites are unaffected.
-    engineClient.useTransport((input, init) => fetch(input, init));
+    await waitFor(() => expect(result.current).toBe(scope));
   });
 
   it("an explicit in-session pick (viewStore.scope) wins over the persisted scope", async () => {
-    const mock = new MockEngine();
     const qc = testQueryClient();
-    const { engineClient } = await import("./engine");
-    engineClient.useTransport(mock.fetchImpl);
-
     // The user picked a scope this session — it must win the precedence.
     useViewStore.setState({ scope: "wt-pick" });
     const { result } = renderHook(() => useActiveScope(), { wrapper: wrapper(qc) });
     await waitFor(() => expect(result.current).toBe("wt-pick"));
-
-    engineClient.useTransport((input, init) => fetch(input, init));
   });
 });
 
 // --- selection persistence through the mutation hook ----------------------------
 
 describe("selection persistence (usePutSession)", () => {
-  afterEach(async () => {
-    const { engineClient } = await import("./engine");
-    engineClient.useTransport((input, init) => fetch(input, init));
-  });
-
   it("persists scope_context and the subsequent useSession read reflects it", async () => {
-    const mock = new MockEngine();
-    const { engineClient } = await import("./engine");
-    engineClient.useTransport(mock.fetchImpl);
     const qc = testQueryClient();
+    const tag = mark();
 
     const { result } = renderHook(
       () => ({ put: usePutSession(), session: useSession() }),
@@ -196,32 +180,29 @@ describe("selection persistence (usePutSession)", () => {
     await waitFor(() => expect(result.current.session.isSuccess).toBe(true));
 
     result.current.put.mutate({
-      scope_context: { folder: "adr", feature_tags: ["proj-x"] },
+      scope_context: { folder: "adr", feature_tags: [tag] },
     });
 
     // The mutation's onSuccess seeds the session cache; the read reflects it.
     await waitFor(() =>
       expect(result.current.session.data?.scope_context.folder).toBe("adr"),
     );
-    expect(result.current.session.data?.scope_context.feature_tags).toEqual(["proj-x"]);
+    expect(result.current.session.data?.scope_context.feature_tags).toEqual([tag]);
   });
 
-  it("a global settings write is reflected by the settings read", async () => {
-    const mock = new MockEngine();
-    const { engineClient } = await import("./engine");
-    engineClient.useTransport(mock.fetchImpl);
+  it("the settings read resolves to an object-shaped global map", async () => {
     const qc = testQueryClient();
-
     const { result } = renderHook(
       () => ({ settings: useSettings(), put: usePutSession() }),
       { wrapper: wrapper(qc) },
     );
     await waitFor(() => expect(result.current.settings.isSuccess).toBe(true));
-    expect(result.current.settings.data?.global).toEqual({});
+    expect(result.current.settings.data?.global).toBeTypeOf("object");
   });
 });
 
 // --- view-store seeding + wholesale-reset semantics -----------------------------
+// Pure store logic — no engine surface; unchanged by the live migration.
 
 describe("view store scope-context (seed + wholesale reset)", () => {
   afterEach(() => {
@@ -229,16 +210,14 @@ describe("view store scope-context (seed + wholesale reset)", () => {
   });
 
   it("seedFromSession mirrors the restored context without the wholesale reset", () => {
-    // Seed a working set, then seed-from-session: the working set must survive
-    // (a restore is NOT a scope swap).
     useViewStore.getState().addToWorkingSet("keep-me");
     useViewStore.getState().seedFromSession({
-      scope: MOCK_SCOPE,
+      scope: "scope-a",
       folder: "plan",
       featureTags: ["f1", "f2"],
     });
     const s = useViewStore.getState();
-    expect(s.scope).toBe(MOCK_SCOPE);
+    expect(s.scope).toBe("scope-a");
     expect(s.activeFolder).toBe("plan");
     expect(s.featureContexts).toEqual(["f1", "f2"]);
     // The restore did not wipe ephemeral working state.
@@ -247,7 +226,7 @@ describe("view store scope-context (seed + wholesale reset)", () => {
 
   it("setScope clears the folder context wholesale on a swap", () => {
     useViewStore.getState().seedFromSession({
-      scope: MOCK_SCOPE,
+      scope: "scope-a",
       folder: "adr",
       featureTags: ["x"],
     });

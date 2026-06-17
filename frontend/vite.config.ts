@@ -84,10 +84,18 @@ export default defineConfig(({ command }) => ({
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}", "spike/**/*.test.ts", "scripts/**/*.test.ts"],
+    // happy-dom enforces the Same-Origin Policy on fetch; the DOM-bearing tests
+    // call the live engine on a loopback port (a different origin), so SOP is
+    // disabled for the test environment. Only affects happy-dom-env files.
+    environmentOptions: {
+      happyDOM: { settings: { fetch: { disableSameOriginPolicy: true } } },
+    },
     // Test-integrity: the suite runs ONLINE against the real `vaultspec serve`
     // binary — never an in-memory double. This setup spawns the engine over a
     // deterministic fixture vault once and publishes ENGINE_BASE_URL/ENGINE_TOKEN.
     globalSetup: ["./src/testing/liveEngine.globalSetup.ts"],
+    // Bind the app-wide engine client to the live transport in every worker.
+    setupFiles: ["./src/testing/liveSetup.ts"],
     // The engine cold-indexes the fixture on boot; give startup-bound suites room.
     testTimeout: 15_000,
     hookTimeout: 35_000,
