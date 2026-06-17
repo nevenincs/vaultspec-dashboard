@@ -329,7 +329,7 @@ export class SceneController {
   private _layoutParams: LayoutParams = {};
   // --- node-graph-rework: canvas/sim containment (ADR D3) -----------------------
   private _bounds: { shape: "free" | "circle" | "rect"; size: number } = {
-    shape: "circle",
+    shape: "free",
     size: 0,
   };
   // --- selection state retained at the seam (W03.P08.S51) -----------------------

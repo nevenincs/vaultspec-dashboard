@@ -230,8 +230,10 @@ export class CosmosField implements SceneFieldRenderer {
    *  applyChanges path (no-bounce: survivors keep their positions). */
   private prevNodeIds = new Set<string>();
   private prevEdgeIds = new Set<string>();
-  /** Index of the node currently being dragged (Tier-4 drag), or undefined. */
-  private dragIndex: number | undefined;
+  /** Stable id of the node currently being dragged (Tier-4 drag), or undefined.
+   *  Keyed by id (not the cosmos index) so a live set-data re-key mid-drag cannot
+   *  redirect the gesture to a different node (review MED-3). */
+  private dragId: string | undefined;
   /** Set by createDashboardScene; seam events (select/hover) flow back through it. */
   controller: SceneController | null = null;
 
@@ -298,28 +300,27 @@ export class CosmosField implements SceneFieldRenderer {
       // -> layout coords (origin-centred, so subtract SPACE_CENTRE).
       onDragStart: (e) => {
         const idx = (e.subject as { index?: number } | undefined)?.index;
-        if (idx === undefined) return;
-        this.dragIndex = idx;
+        const id = idx === undefined ? undefined : this.indexToId[idx];
+        if (id === undefined) return;
+        this.dragId = id; // capture the stable id once (survives a re-key)
         this.layout?.beginInteraction();
       },
       onDrag: (e) => {
-        if (this.dragIndex === undefined || !this.graph || !this.layout) return;
-        const id = this.indexToId[this.dragIndex];
+        if (this.dragId === undefined || !this.graph || !this.layout) return;
         const src = e.sourceEvent as MouseEvent | undefined;
         const rect = this.container?.getBoundingClientRect();
-        if (id === undefined || !src || !rect) return;
+        if (!src || !rect) return;
         const [sx, sy] = this.graph.screenToSpacePosition([
           src.clientX - rect.left,
           src.clientY - rect.top,
         ]);
-        this.layout.dragNode(id, sx - SPACE_CENTRE, sy - SPACE_CENTRE);
+        this.layout.dragNode(this.dragId, sx - SPACE_CENTRE, sy - SPACE_CENTRE);
       },
       onDragEnd: () => {
-        if (this.dragIndex === undefined) return;
-        const id = this.indexToId[this.dragIndex];
-        if (id !== undefined) this.layout?.releaseNode(id);
+        if (this.dragId === undefined) return;
+        this.layout?.releaseNode(this.dragId);
         this.layout?.endInteraction();
-        this.dragIndex = undefined;
+        this.dragId = undefined;
       },
     });
 

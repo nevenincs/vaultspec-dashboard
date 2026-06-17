@@ -1,7 +1,6 @@
 import { create } from "zustand";
 
-import type { EngineEdge, SalienceLens } from "../server/engine";
-import { DEFAULT_SALIENCE_LENS } from "../server/engine";
+import type { EngineEdge } from "../server/engine";
 import type { RepresentationMode } from "../../scene/field/representationLayout";
 import { DEFAULT_REPRESENTATION_MODE } from "../../scene/field/representationLayout";
 import { useLiveStatusStore } from "../server/liveStatus";
@@ -199,16 +198,6 @@ export interface ViewState {
    */
   focusedFeature: string | null;
   /**
-   * The active SALIENCE lens (graph-node-salience ADR): the viewer-intent
-   * parameterization that selects which per-lens importance field the engine
-   * computes and, via DOI, which node set is served. Owned here as view state
-   * (the stores layer is the sole wire client); switching is a re-query. Distinct
-   * from the named-filter-set lenses (`view/lenses.ts`) and the tier dial.
-   * Default `status` ("what is in-flight"). Does NOT reset on scope swap — a
-   * lens is an intent that travels with the viewer, not the corpus.
-   */
-  activeLens: SalienceLens;
-  /**
    * The active REPRESENTATION mode (graph-representation ADR): connectivity
    * (default) | lineage | semantic. Owned here as view state and emitted to the
    * scene as a `set-representation-mode` command; the scene re-lays-out. DISTINCT
@@ -332,8 +321,6 @@ export interface ViewState {
    *  bounded document view of its member documents. `tag` is the bare feature
    *  tag (the `feature:` node-id prefix already stripped). */
   descendIntoFeature: (tag: string) => void;
-  /** Switch the active salience lens (status/design). A re-query, not a reset. */
-  setActiveLens: (lens: SalienceLens) => void;
   /** Switch the active representation mode (connectivity/lineage/semantic). */
   setRepresentationMode: (mode: RepresentationMode) => void;
   /** Set overlay visibility (feature countries, feature hulls). */
@@ -389,13 +376,13 @@ export const useViewStore = create<ViewState>((set) => ({
   // the granularity toggle / feature descent, but it is no longer the default.
   granularity: "document",
   focusedFeature: null,
-  activeLens: DEFAULT_SALIENCE_LENS,
   activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
   overlays: { featureCountries: true, featureHulls: true },
-  // Default containment: a centred circle, auto-sized non-overlapping (ADR D3).
-  // A viewer preference: like the representation mode, it is NOT reset on a scope
-  // or workspace swap, so it is absent from the reset blocks below.
-  boundShape: "circle",
+  // Default containment: FREE + soft gravity centering - the knowledge-graph norm
+  // (ADR 2026-06-17 norm addendum); circle/rect are soft compactness presets. A
+  // viewer preference: NOT reset on a scope/workspace swap (absent from the reset
+  // blocks below). Matches cosmosField DEFAULT_BOUNDS + the seam default (all free).
+  boundShape: "free",
   boundSize: 0,
 
   setScope: (scope) => {
@@ -607,7 +594,6 @@ export const useViewStore = create<ViewState>((set) => ({
   // move, so the slice query narrows to the feature's members
   // (filter.feature_tags=[tag]) instead of re-serving the whole document corpus.
   descendIntoFeature: (tag) => set({ focusedFeature: tag, granularity: "document" }),
-  setActiveLens: (activeLens) => set({ activeLens }),
   setRepresentationMode: (activeRepresentationMode) =>
     set({ activeRepresentationMode }),
   setOverlays: (overlays) => set({ overlays }),
