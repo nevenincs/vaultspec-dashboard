@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use engine_graph::diff::DiffOp;
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
 use engine_model::{Edge, Node, NodeId, NodeKind, Progress, RelationKind, ScopeRef};
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -423,20 +424,31 @@ pub fn build_document_views(
     HashMap<String, Value>,
     HashSet<String>,
 ) {
-    // One pass over the nodes builds the enriched node views AND the in-scope
-    // node-id set (backend-hotpath-hardening F4): the latter is what the Document
-    // arm's broken-link endpoint check needs, so caching it here removes that
-    // second full node scan from every request at zero extra build cost.
-    let mut node_views = HashMap::new();
-    let mut scope_node_ids = HashSet::new();
-    for n in graph.nodes() {
-        node_views.insert(n.id.0.clone(), node_view(graph, scope, n));
-        if n.facets.iter().any(|f| &f.scope == scope) {
-            scope_node_ids.insert(n.id.0.clone());
-        }
-    }
-    let edge_views = graph
-        .edges()
+    // The enriched node views AND the in-scope node-id set (backend-hotpath-
+    // hardening F4); the latter is what the Document arm's broken-link endpoint
+    // check needs, cached here to remove a second full node scan per request.
+    //
+    // `node_view` / `edge_view` are PURE read-only projections (degree-by-tier
+    // adjacency walk + ontology + status + serde serialize) — the dominant cost of
+    // the once-per-generation COLD build (~6s for a 3000-node / 36k-edge scope,
+    // what a first Detail drill-in waits on). The graph is an immutable Arc
+    // snapshot here, so deriving them across the rayon pool is data-safe and cuts
+    // that wall-clock ~N-cores× with IDENTICAL output: the views are unordered
+    // maps and the id set is order-independent, so the wire result (sorted
+    // downstream by salience) is byte-for-byte unchanged.
+    let nodes: Vec<&Node> = graph.nodes().collect();
+    let node_views: HashMap<String, Value> = nodes
+        .par_iter()
+        .map(|n| (n.id.0.clone(), node_view(graph, scope, n)))
+        .collect();
+    let scope_node_ids: HashSet<String> = nodes
+        .par_iter()
+        .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
+        .map(|n| n.id.0.clone())
+        .collect();
+    let edges: Vec<&engine_graph::StoredEdge> = graph.edges().collect();
+    let edge_views: HashMap<String, Value> = edges
+        .par_iter()
         .filter(|s| &s.edge.scope == scope)
         .map(|s| (s.edge.id.0.clone(), edge_view(graph, &s.edge)))
         .collect();
