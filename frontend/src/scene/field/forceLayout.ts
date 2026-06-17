@@ -176,6 +176,30 @@ export const FREEZE_MOVE_EPSILON = 0.5;
 export const FREEZE_DWELL_MIN = 10;
 export const FREEZE_DWELL_MAX = 45;
 export const FREEZE_DWELL_K = 40;
+/**
+ * Fraction of nodes allowed to still exceed FREEZE_MOVE_EPSILON while the field
+ * is considered calm enough to freeze (D5). A handful of nodes can oscillate
+ * indefinitely under collision between packed neighbours; requiring EVERY node
+ * sub-epsilon meant a large field never early-froze. 3% (floored) tolerates ~2
+ * stragglers on a 68-node field and 0 on a tiny one, so small graphs still need
+ * full calm while large ones freeze once the body has stopped. The alpha floor
+ * remains the hard backstop for the stragglers' residual motion.
+ */
+export const FREEZE_OUTLIER_FRACTION = 0.03;
+
+/**
+ * Alpha-ceiling early freeze (D5). Below this alpha the force magnitudes are a
+ * few percent of a cold start, so residual per-tick motion is visually
+ * negligible — the layout is essentially settled. A LARGE field never fully
+ * velocity-calms (its body keeps drifting sub-perceptibly all the way to the
+ * alpha floor, ~300 ticks / ~5s of on-load jitter — the dominant flicker), so
+ * this caps settle time for every field size at the point the motion stops
+ * mattering. Small fields velocity-calm ABOVE this alpha and freeze earlier, so
+ * this never makes a small graph wait — it only stops a large one from grinding
+ * the long sub-perceptible tail. The alpha floor (ALPHA_MIN) remains the ultimate
+ * backstop.
+ */
+export const FREEZE_ALPHA_CEILING = 0.03;
 
 /** Node-count-scaled dwell: clamp(round(n / K), MIN, MAX) (D5). */
 export function freezeDwellTicks(nodeCount: number): number {
@@ -504,10 +528,28 @@ export class FieldLayout {
       this.emitSettle();
       return;
     }
-    // Early settle-freeze (D5): stop the SIM once motion has genuinely stopped.
-    // While interacting, the held alphaTarget keeps the field warm and the
-    // velocity-freeze is suppressed (a held drag must not false-freeze).
-    if (!this.interacting && this.maxDisplacement(prev) < FREEZE_MOVE_EPSILON) {
+    // Alpha-ceiling early freeze (D5): once the field is cool enough that residual
+    // motion is visually negligible, stop — this bounds the on-load settle time
+    // for a large field that never fully velocity-calms (its body would otherwise
+    // drift sub-perceptibly all the way to the floor, the long jittery tail). A
+    // held interaction suppresses it (a drag keeps the field warm by design).
+    if (!this.interacting && this.sim.alpha() < FREEZE_ALPHA_CEILING) {
+      this.running = false;
+      this.sim.stop();
+      this.emitSettle();
+      return;
+    }
+    // Early settle-freeze (D5): stop the SIM once the field is CALM ENOUGH — not
+    // when literally every node is sub-epsilon. The old "max displacement < eps"
+    // gate meant a SINGLE perpetually-jiggling node (collision oscillation between
+    // two packed neighbours is common at scale) reset the dwell forever, so a
+    // larger graph never early-froze and ground all the way to the alpha floor —
+    // ~5s+ of visible jitter on load (the dominant on-load flicker). Calm-enough
+    // tolerates a tiny fraction of outliers still settling, so the field freezes
+    // crisply once the BODY of nodes has stopped, exactly like Obsidian. While
+    // interacting, the held alphaTarget suppresses the freeze (a held drag must
+    // not false-freeze).
+    if (!this.interacting && this.fieldIsCalm(prev)) {
       this.dwell += 1;
       if (this.dwell >= freezeDwellTicks(this.nodes.length)) {
         this.running = false;
@@ -516,25 +558,35 @@ export class FieldLayout {
         return;
       }
     } else {
-      // Any node exceeding the epsilon resets the dwell — one wandering island
-      // keeps the whole field warm until it too settles (R6).
       this.dwell = 0;
     }
     this.scheduleNext();
   };
 
-  /** Max per-node displacement between the prior frame and the current one (D5). */
-  private maxDisplacement(prev: ReadonlyMap<string, NodePosition>): number {
-    let max = 0;
+  /**
+   * Whether the field has settled enough to freeze (D5): the number of nodes that
+   * moved more than FREEZE_MOVE_EPSILON this tick is within a small outlier
+   * tolerance (a fixed fraction of the node count, floored to allow a couple of
+   * stragglers on a large field). A freshly added node (absent from `prev`) counts
+   * as moving. This converges every graph size in roughly the same wall-clock,
+   * instead of letting one oscillating pair hold the whole field warm.
+   */
+  private fieldIsCalm(prev: ReadonlyMap<string, NodePosition>): boolean {
+    const tolerance = Math.floor(this.nodes.length * FREEZE_OUTLIER_FRACTION);
+    let moving = 0;
     for (const node of this.nodes) {
       const q = prev.get(node.id);
-      if (!q) return Infinity; // a newly added node — treat as moving
+      if (!q) {
+        if (++moving > tolerance) return false;
+        continue;
+      }
       const dx = (node.x ?? 0) - q.x;
       const dy = (node.y ?? 0) - q.y;
-      const d = Math.hypot(dx, dy);
-      if (d > max) max = d;
+      if (Math.hypot(dx, dy) > FREEZE_MOVE_EPSILON) {
+        if (++moving > tolerance) return false;
+      }
     }
-    return max;
+    return true;
   }
 
   /** Read node coords into the snapshot, repairing any non-finite value (D4). */
