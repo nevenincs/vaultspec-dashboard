@@ -84,5 +84,12 @@ export default defineConfig(({ command }) => ({
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}", "spike/**/*.test.ts", "scripts/**/*.test.ts"],
+    // Test-integrity: the suite runs ONLINE against the real `vaultspec serve`
+    // binary — never an in-memory double. This setup spawns the engine over a
+    // deterministic fixture vault once and publishes ENGINE_BASE_URL/ENGINE_TOKEN.
+    globalSetup: ["./src/testing/liveEngine.globalSetup.ts"],
+    // The engine cold-indexes the fixture on boot; give startup-bound suites room.
+    testTimeout: 15_000,
+    hookTimeout: 35_000,
   },
 }));
