@@ -96,6 +96,11 @@ export default defineConfig(({ command }) => ({
     globalSetup: ["./src/testing/liveEngine.globalSetup.ts"],
     // Bind the app-wide engine client to the live transport in every worker.
     setupFiles: ["./src/testing/liveSetup.ts"],
+    // All test files share ONE spawned engine with mutable state (settings,
+    // session, the editor write seam). Running files sequentially makes write
+    // round-trips deterministic — a parallel file can't overwrite the global a
+    // sibling just wrote and is about to read back.
+    fileParallelism: false,
     // The engine cold-indexes the fixture on boot; give startup-bound suites room.
     testTimeout: 15_000,
     hookTimeout: 35_000,
