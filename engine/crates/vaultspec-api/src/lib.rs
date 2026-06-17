@@ -1017,6 +1017,111 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn graph_diff_echoes_both_resolved_shas_and_interpretations() {
+        // GET /graph/diff resolves BOTH endpoints FRESH per token and echoes
+        // each endpoint's resolved sha + interpretation (ADD-901), matching
+        // /graph/asof. The historical builds route through the cell's by-sha
+        // as-of cache, so the echo MUST come from the fresh per-request resolve
+        // (not the sha-keyed cache, which carries no token reading) — this test
+        // guards that contract for the diff handler. Two committed snapshots give
+        // a real from != to diff (not the same-commit fast path); the second
+        // commit ADDS a document so the snapshots genuinely differ.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        std::fs::write(
+            root.join(".vault/adr/2026-06-12-diffy-adr.md"),
+            "---\ntags:\n  - '#adr'\n  - '#diffy'\ndate: '2026-06-12'\n---\n\n# `diffy` adr\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "first"]);
+        let from_sha = {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        // Second commit ADDS a plan document — a structural change between the
+        // two snapshots.
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-13-diffy-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#diffy'\ndate: '2026-06-13'\n---\n\n# `diffy` plan\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "second"]);
+        let to_sha = {
+            let out = std::process::Command::new("git")
+                .current_dir(root)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_ne!(from_sha, to_sha, "the two commits differ");
+
+        let state = app::build_state(root.to_path_buf());
+        let token = state.bearer.clone();
+        let scope = state.workspace_root.to_string_lossy().replace('\\', "/");
+        let router = build_router(state);
+
+        // Real diff (from != to): both shas + interpretations echoed, deltas an
+        // array, and the as-of tiers block rides the success envelope.
+        let (status, body) = get_with_token(
+            router.clone(),
+            &format!(
+                "/graph/diff?scope={}&from=HEAD~1&to=HEAD&granularity=document",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "diff success: {body}");
+        assert!(body["data"]["deltas"].is_array(), "deltas ride the payload");
+        assert_eq!(
+            body["data"]["from_resolved_sha"], from_sha,
+            "from echoes the first commit's resolved sha"
+        );
+        assert_eq!(
+            body["data"]["to_resolved_sha"], to_sha,
+            "to echoes HEAD's resolved sha"
+        );
+        assert_eq!(body["data"]["from_interpretation"], "revision");
+        assert_eq!(body["data"]["to_interpretation"], "revision");
+        assert_eq!(
+            body["tiers"]["semantic"]["available"], false,
+            "semantic is present-only, excluded from the historical diff"
+        );
+
+        // Same-commit fast path (from == to): the delta log is empty by
+        // definition, yet BOTH resolved shas are still echoed (ADD-901) — a
+        // client that diffs HEAD against itself still learns the resolution.
+        let (status, body) = get_with_token(
+            router,
+            &format!(
+                "/graph/diff?scope={}&from=HEAD&to=HEAD&granularity=document",
+                urlencode(&scope)
+            ),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "same-commit diff success: {body}");
+        assert_eq!(
+            body["data"]["deltas"].as_array().unwrap().len(),
+            0,
+            "an identical from/to yields an empty delta log"
+        );
+        assert_eq!(body["data"]["from_resolved_sha"], to_sha);
+        assert_eq!(body["data"]["to_resolved_sha"], to_sha);
+    }
+
+    #[tokio::test]
     async fn graph_lineage_asof_unresolvable_token_400s_with_the_tiers_block() {
         // The as-of lineage ERROR path: an unresolvable `t` token is a client
         // error shaped through the shared revision_error helper, so the error
