@@ -21,8 +21,16 @@
 // controller's event channel (dashboard-layer-ownership). This module never
 // fetches and never reaches into the stores layer.
 
-import { Application, Container, MeshPipe, extensions } from "pixi.js";
+import {
+  Application,
+  Container,
+  MeshPipe,
+  WebGLRenderer,
+  autoDetectRenderer,
+  extensions,
+} from "pixi.js";
 
+import { logger } from "../../platform/logger/logger";
 import type { SceneFieldRenderer } from "../sceneController";
 import { cssColorNumber } from "./tokenReads";
 
@@ -38,6 +46,8 @@ import { cssColorNumber } from "./tokenReads";
 // own init and uses the same `extensions` registry the renderer reads, so the
 // pipe exists no matter how the dependency is bundled.
 extensions.add(MeshPipe);
+
+const log = logger.child("scene.pixi-field");
 
 /**
  * The warm paper ground the clean connection field reads against (graph/Hero):
@@ -81,52 +91,101 @@ export class PixiField implements SceneFieldRenderer {
     this.destroyed = false;
     const myGen = ++this.gen;
     const app = new Application();
-    this.mounting = app
-      .init({
-        // The warm paper ground the clean connection field reads against
-        // (graph/Hero): literal-hex --color-canvas-bg per theme, never a var()
-        // chain (themes-are-oklch: scene tokens are literal hex).
-        background: readCanvasBg(),
-        resizeTo: host,
-        antialias: true,
-        // Render at the device pixel ratio so circles and connection lines are
-        // crisp on HiDPI displays (without this Pixi v8 defaults to resolution 1
-        // and the field renders soft/blurry). autoDensity keeps the CSS size at
-        // the host's logical pixels while the backing store scales by DPR.
-        resolution: typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
-        autoDensity: true,
-        preference: "webgl",
-      })
-      .then(() => {
-        // A destroy() or a newer mount() superseded this init during the async
-        // window: discard this Application so the cycle neither leaks it nor
-        // wedges the field with a blank canvas (F#1).
-        if (myGen !== this.gen || this.destroyed) {
-          app.destroy(true, { children: true });
-          if (myGen === this.gen) this.mounting = null;
-          return;
-        }
-        this.mounting = null;
-        this.app = app;
-        // Render-on-demand (no idle GPU cost): stop Pixi's automatic per-frame
-        // render loop. The field assembly presents EXPLICITLY (app.render()) only
-        // when a frame is actually dirty — a layout tick, a camera move, a
-        // visibility fade, a theme flip, or a data change. A static, converged,
-        // untouched field then presents ZERO frames (the GPU goes fully idle)
-        // instead of the previous fixed idle-FPS floor. Every redraw trigger
-        // routes through the assembly's requestRender().
-        app.ticker.stop();
-        app.stage.addChild(this.world);
-        host.appendChild(app.canvas);
-        this.watchTheme(app);
-        if (this.pendingResize) {
-          this.resize(this.pendingResize.width, this.pendingResize.height);
-          this.pendingResize = null;
-        }
-        for (const listener of this.readyListeners) {
-          listener(app);
-        }
-      });
+    this.mounting = this.initForcedWebGL(app, host).then(() => {
+      // A destroy() or a newer mount() superseded this init during the async
+      // window: discard this Application so the cycle neither leaks it nor
+      // wedges the field with a blank canvas (F#1).
+      if (myGen !== this.gen || this.destroyed) {
+        this.safeDestroyApp(app);
+        if (myGen === this.gen) this.mounting = null;
+        return;
+      }
+      this.mounting = null;
+      this.app = app;
+      // Render-on-demand (no idle GPU cost): stop Pixi's automatic per-frame
+      // render loop. The field assembly presents EXPLICITLY (app.render()) only
+      // when a frame is actually dirty — a layout tick, a camera move, a
+      // visibility fade, a theme flip, or a data change. A static, converged,
+      // untouched field then presents ZERO frames (the GPU goes fully idle)
+      // instead of the previous fixed idle-FPS floor. Every redraw trigger
+      // routes through the assembly's requestRender().
+      // No ticker exists on a hand-wired Application (we constructed the renderer
+      // directly), and the field renders on demand regardless — guard for safety.
+      app.ticker?.stop();
+      app.stage.addChild(this.world);
+      host.appendChild(app.canvas);
+      this.watchTheme(app);
+      if (this.pendingResize) {
+        this.resize(this.pendingResize.width, this.pendingResize.height);
+        this.pendingResize = null;
+      }
+      for (const listener of this.readyListeners) {
+        listener(app);
+      }
+    });
+  }
+
+  /**
+   * Construct the field's renderer, FORCING WebGL. Pixi's autoDetectRenderer falls
+   * back to a mesh-less CanvasRenderer whenever WebGL reports a "major performance
+   * caveat" or a context without a stencil buffer (software GL, some GPUs / VMs /
+   * RDP, hardware-accel off). The connection edges are PixiJS Meshes and the canvas
+   * renderer has NO mesh pipe, so that fallback throws on EVERY frame containing an
+   * edge — the "drag flickers then the canvas crashes" failure. A directly
+   * constructed WebGLRenderer succeeds and carries the mesh pipe even in those
+   * environments (verified live: software WebGL with no stencil still initializes a
+   * WebGLRenderer with renderPipes.mesh present), so build it explicitly and only
+   * autodetect as a last resort if WebGL genuinely cannot initialize at all. The
+   * Application is wired by hand (no app.init) so its render/canvas/screen accessors
+   * delegate to this renderer; the assembly's ResizeObserver drives resize and the
+   * field renders on demand, so neither the resize plugin nor the ticker is needed.
+   */
+  private async initForcedWebGL(app: Application, host: HTMLElement): Promise<void> {
+    const shared = {
+      background: readCanvasBg(),
+      antialias: true,
+      resolution: typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
+      autoDensity: true,
+      width: Math.max(1, host.clientWidth || host.offsetWidth || 800),
+      height: Math.max(1, host.clientHeight || host.offsetHeight || 600),
+    };
+    try {
+      const webgl = new WebGLRenderer();
+      await webgl.init(shared);
+      app.renderer = webgl;
+    } catch (err) {
+      // Genuinely no WebGL at all: last-resort autodetect (may be the mesh-less
+      // canvas — logged so a degraded edge layer is diagnosable, never silent).
+      log.error(
+        `WebGL renderer init failed, falling back to autodetect: ${(err as Error).message}`,
+      );
+      app.renderer = await autoDetectRenderer(shared);
+    }
+    app.stage = new Container();
+  }
+
+  /**
+   * Tear down a hand-wired Application. Because the renderer is constructed directly
+   * (no app.init), Application.destroy's resize-plugin teardown is uninitialized and
+   * throws — so destroy the canvas, stage, and renderer pieces directly.
+   */
+  private safeDestroyApp(app: Application): void {
+    try {
+      const canvas = app.renderer ? app.canvas : null;
+      canvas?.parentNode?.removeChild(canvas);
+    } catch {
+      /* already detached */
+    }
+    try {
+      app.stage?.destroy({ children: true });
+    } catch {
+      /* no stage */
+    }
+    try {
+      app.renderer?.destroy();
+    } catch {
+      /* no renderer */
+    }
   }
 
   /** Keep the field ground synced to the active theme — a data-theme flip on
@@ -181,7 +240,7 @@ export class PixiField implements SceneFieldRenderer {
     this.themeObserver?.disconnect();
     this.themeObserver = null;
     if (this.app) {
-      this.app.destroy(true, { children: true });
+      this.safeDestroyApp(this.app);
       this.app = null;
       this.world = new Container();
     }
