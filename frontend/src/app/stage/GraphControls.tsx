@@ -450,7 +450,7 @@ function TuneBody() {
         onInteractEnd={endInteraction}
       />
       <LabelledSlider
-        label="Connection reach"
+        label="Link length"
         title="The rest length of the links between connected nodes"
         value={params.linkDistance}
         min={10}
@@ -473,6 +473,14 @@ function TuneBody() {
         onInteractStart={beginInteraction}
         onInteractEnd={endInteraction}
       />
+      {/* Reset to defaults (board Graph settings 88:2). */}
+      <button
+        type="button"
+        onClick={() => apply(TUNE_DEFAULTS)}
+        className="self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      >
+        Reset to defaults
+      </button>
     </div>
   );
 }

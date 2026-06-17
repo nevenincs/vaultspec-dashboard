@@ -252,11 +252,11 @@ describe("GraphControls — Tune (d3-force knobs)", () => {
     expect((call![0] as { params: { repel: number } }).params.repel).toBe(300);
   });
 
-  it("Connection reach drives the linkDistance knob", () => {
+  it("Link length drives the linkDistance knob", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     render(createElement(GraphControls));
     openTune();
-    const slider = screen.getByRole("slider", { name: "Connection reach" });
+    const slider = screen.getByRole("slider", { name: "Link length" });
     fireEvent.change(slider, { target: { value: "90" } });
     const call = spy.mock.calls.find(
       (c) => (c[0] as { kind: string }).kind === "set-layout-params",
