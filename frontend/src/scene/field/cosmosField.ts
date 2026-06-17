@@ -25,8 +25,10 @@ import type {
   SceneNodeData,
 } from "../sceneController";
 import { categoryColor } from "./categoryColor";
+import { FieldLayout, type LayoutEdgeRef } from "./forceLayout";
 import { nodeRadius } from "./nodeSprites";
 import { cssColorNumber } from "./tokenReads";
+import type { NodePosition } from "../positionCache";
 
 /** cosmos world-space size: sizes the position texture and the screen-mapping
  *  origin. With the sim OFF and rescale OFF this no longer BOUNDS positions (the
@@ -46,7 +48,30 @@ export interface FieldBounds {
   size: number;
 }
 
-const DEFAULT_BOUNDS: FieldBounds = { shape: "circle", size: 0 };
+// Default to a FREE canvas centred by soft gravity - the knowledge-graph norm
+// (Obsidian/Logseq/Foam/Roam/force-graph): no hard bound, overlap-tolerant. The
+// circle/rect options remain as a SOFT compactness preset, not a hard clamp.
+const DEFAULT_BOUNDS: FieldBounds = { shape: "free", size: 0 };
+
+/** Soft center-gravity strength (forceX/forceY) per bound shape - the norm's way
+ *  of "centering" and shaping compactness, NOT a hard clip. free = loose sprawl,
+ *  circle = tight round blob (Obsidian's "center force"), rect = medium. */
+const CENTER_STRENGTH: Record<BoundShape, number> = {
+  free: 0.025,
+  circle: 0.08,
+  rect: 0.05,
+};
+
+/** Resolve the soft center-gravity strength from a bound shape + optional size.
+ *  size 0 = the shape preset; size>0 makes the size slider a live compactness knob
+ *  (smaller = tighter / stronger gravity), so it is never a dead control. */
+function centerStrength(shape: BoundShape, size: number): number {
+  if (size > 0) {
+    const s = Math.max(300, Math.min(4000, size));
+    return 0.13 - (0.11 * (s - 300)) / (4000 - 300); // tight 0.13 .. loose 0.02
+  }
+  return CENTER_STRENGTH[shape];
+}
 
 /** Auto disc radius that keeps a sunflower-packed disc of `count` nodes of max
  *  diameter `d` non-overlapping: spacing ~= R*sqrt(pi/count) >= d, so
@@ -179,9 +204,6 @@ export class CosmosField implements SceneFieldRenderer {
   private indexToId: string[] = [];
   /** Active containment (node-graph-rework ADR D3); default circle, auto-sized. */
   private bounds: FieldBounds = { ...DEFAULT_BOUNDS };
-  /** Largest node diameter in the current slice, for auto-sizing the bound on a
-   *  later set-bounds without re-reading the node data. */
-  private currentMaxDiameter = 0;
   /** Stable per-id phyllotaxis SLOT (Tier-2 retention): a surviving node keeps its
    *  slot - and therefore its position - across a refetch/add/remove, so the field
    *  never bounces. Freed slots are reused; capacity only grows so the radius (and
@@ -200,6 +222,14 @@ export class CosmosField implements SceneFieldRenderer {
   /** Edges dropped because an endpoint is not in the current slice (Tier-3 honest
    *  hidden-edge accounting): surfaced via debugSnapshot, never silently zeroed. */
   private droppedEdges = 0;
+  /** Tier-4 live layout: the CPU d3-force driver (collide OFF, overlap-tolerant
+   *  norm) that OWNS node positions. It works in origin-centred coords; cosmos
+   *  renders them offset to SPACE_CENTRE. Settles then freezes (render-on-demand). */
+  private layout: FieldLayout | null = null;
+  /** Previous node/edge id sets, to diff a delta for the object-constancy
+   *  applyChanges path (no-bounce: survivors keep their positions). */
+  private prevNodeIds = new Set<string>();
+  private prevEdgeIds = new Set<string>();
   /** Set by createDashboardScene; seam events (select/hover) flow back through it. */
   controller: SceneController | null = null;
 
@@ -260,6 +290,34 @@ export class CosmosField implements SceneFieldRenderer {
         this.controller?.emit({ kind: "hover", id: null });
       },
     });
+
+    // Tier-4: the CPU d3-force layout drives positions (collide OFF for the
+    // overlap-tolerant norm). Its per-tick frame pushes positions to cosmos
+    // (render-on-demand: it only ticks while settling/reheating, idle otherwise);
+    // its settle fires the fit-once camera.
+    this.layout = new FieldLayout(undefined, false);
+    this.layout.onPositions((positions) => this.pushPositions(positions));
+    this.layout.onSettle(() => {
+      if (this.fitPending && this.graph) {
+        this.graph.fitView(400);
+        this.fitPending = false;
+      }
+    });
+  }
+
+  /** Push the layout's latest (origin-centred) positions to cosmos, offset to the
+   *  space centre, and render. The only per-tick GPU work; links follow by index. */
+  private pushPositions(positions: ReadonlyMap<string, NodePosition>): void {
+    if (!this.graph) return;
+    const n = this.indexToId.length;
+    const flat = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const p = positions.get(this.indexToId[i]);
+      flat[i * 2] = (p ? p.x : 0) + SPACE_CENTRE;
+      flat[i * 2 + 1] = (p ? p.y : 0) + SPACE_CENTRE;
+    }
+    this.graph.setPointPositions(flat, true);
+    this.graph.render();
   }
 
   command(cmd: SceneCommand): void {
@@ -289,9 +347,24 @@ export class CosmosField implements SceneFieldRenderer {
       case "reset-view":
         this.graph.fitView(400);
         break;
-      // visibility, pins, representation mode, time, overlays, deltas, and the
-      // live force controls (set-layout-params / set-frozen / interaction) land in
-      // later tiers.
+      // --- Tier-4 live force controls (drive the d3-force layout) ----------
+      case "set-layout-params":
+        this.layout?.setParams(cmd.params);
+        break;
+      case "set-frozen":
+        if (cmd.frozen) this.layout?.stop();
+        else this.layout?.unfreeze();
+        break;
+      case "begin-interaction":
+        this.layout?.beginInteraction();
+        break;
+      case "end-interaction":
+        this.layout?.endInteraction();
+        break;
+      case "set-pinned":
+        this.layout?.setPinned(cmd.ids);
+        break;
+      // visibility, representation mode, time, overlays, deltas land next.
     }
   }
 
@@ -310,29 +383,14 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph.setConfig({ focusedPointIndex: focused });
   }
 
-  /** Re-place the current nodes under a new containment (node-graph-rework ADR
-   *  D3) and re-frame. Static Tier-1 behaviour; Tier 4 applies the bound as a
-   *  force in the live tick instead. */
+  /** Apply the configurable bound as SOFT center gravity (the knowledge-graph
+   *  norm), not a hard clamp (a hard clip fights the force layout): free = loose,
+   *  circle = tight round blob, rect = medium; an explicit size tightens/loosens
+   *  it. The layout reheats and re-settles into the new compactness, keeping every
+   *  node's identity (no re-seed). */
   private setBounds(shape: BoundShape, size?: number): void {
-    if (!this.graph) return;
     this.bounds = { shape, size: size ?? 0 };
-    const count = this.indexToId.length;
-    if (count === 0) return;
-    const positions = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) {
-      const slot = this.slotById.get(this.indexToId[i])!;
-      slotPosition(
-        positions,
-        i,
-        slot,
-        this.bounds,
-        this.capacity,
-        this.currentMaxDiameter,
-      );
-    }
-    this.graph.setPointPositions(positions, true);
-    this.graph.render();
-    this.graph.fitView(400); // a bound change is a deliberate re-frame
+    this.layout?.setParams({ center: centerStrength(shape, this.bounds.size) });
   }
 
   private setData(
@@ -385,7 +443,6 @@ export class CosmosField implements SceneFieldRenderer {
         this.slotById.set(node.id, slot);
       }
     });
-    this.currentMaxDiameter = maxDiameter;
     // Capacity only grows, so the radius - and thus every kept slot's position -
     // stays stable across deltas: the no-bounce guarantee.
     this.capacity = Math.max(this.capacity, this.nextSlot);
@@ -427,8 +484,10 @@ export class CosmosField implements SceneFieldRenderer {
     }
     this.droppedEdges = dropped;
 
-    // dontRescale=true: positions are verbatim world coords (belt-and-suspenders
-    // with rescalePositions:false). No graph.start() — cosmos only renders.
+    // Initial cosmos render: the static disc is the instant first paint AND the
+    // warm seed for the force layout (so there is no cold-start yank). Colours,
+    // sizes and links are set ONCE here; per-tick pushPositions only updates
+    // positions and links follow by index. No graph.start() - cosmos only renders.
     this.graph.setPointPositions(positions, true);
     this.graph.setPointColors(colors);
     this.graph.setPointSizes(sizes);
@@ -436,12 +495,49 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph.setLinkColors(new Float32Array(linkColors));
     this.graph.setLinkWidths(new Float32Array(linkWidths));
     this.graph.render();
-    // Fit only on first data / after a bound change (Tier-2 fit-once): retention
-    // keeps the bbox stable across refetches, so re-fitting would only jitter.
-    if (this.fitPending) {
-      this.graph.fitView(400);
-      this.fitPending = false;
+    if (this.fitPending) this.graph.fitView(400); // frame the seed; onSettle re-fits
+
+    // Tier-4: drive the live d3-force layout (the norm: CPU d3, overlap-tolerant,
+    // settle-then-freeze). First data warm-seeds from the disc and runs a gentle
+    // settle; a delta uses object-constancy applyChanges (survivors keep position,
+    // only new nodes settle in - no bounce).
+    const layoutEdges: LayoutEdgeRef[] = [];
+    const newEdgeIds = new Set<string>();
+    for (const e of edges) {
+      if (this.idToIndex.has(e.src) && this.idToIndex.has(e.dst)) {
+        layoutEdges.push({ id: e.id, src: e.src, dst: e.dst });
+        newEdgeIds.add(e.id);
+      }
     }
+    const newNodeIds = new Set<string>(this.indexToId);
+    if (this.layout) {
+      if (this.prevNodeIds.size === 0) {
+        const warm = new Map<string, NodePosition>();
+        for (let i = 0; i < count; i++) {
+          warm.set(this.indexToId[i], {
+            x: positions[i * 2] - SPACE_CENTRE,
+            y: positions[i * 2 + 1] - SPACE_CENTRE,
+          });
+        }
+        this.layout.setParams({
+          center: centerStrength(this.bounds.shape, this.bounds.size),
+        });
+        this.layout.init(this.indexToId, layoutEdges, warm, null);
+        this.layout.start();
+      } else {
+        const addNodeIds = this.indexToId.filter((id) => !this.prevNodeIds.has(id));
+        const removeNodeIds = [...this.prevNodeIds].filter((id) => !newNodeIds.has(id));
+        const addEdges = layoutEdges.filter((e) => !this.prevEdgeIds.has(e.id));
+        const removeEdgeIds = [...this.prevEdgeIds].filter((id) => !newEdgeIds.has(id));
+        this.layout.applyChanges(
+          { addNodeIds, removeNodeIds, addEdges, removeEdgeIds },
+          undefined,
+          null,
+        );
+      }
+    }
+    this.prevNodeIds = newNodeIds;
+    this.prevEdgeIds = newEdgeIds;
   }
 
   resize(): void {
@@ -461,6 +557,10 @@ export class CosmosField implements SceneFieldRenderer {
     this.capacity = 1;
     this.lastSignature = "";
     this.fitPending = true;
+    this.layout?.destroy();
+    this.layout = null;
+    this.prevNodeIds.clear();
+    this.prevEdgeIds.clear();
   }
 
   /** Warm-start persistence lands in a later tier; no-op for now. */

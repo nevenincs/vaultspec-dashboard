@@ -363,16 +363,21 @@ export class FieldLayout {
    *  freezes — see `releaseAddReheatPins`. Never includes a real (user) pin. */
   private addReheatPinned = new Set<string>();
 
-  constructor(scheduler: FrameScheduler = defaultScheduler()) {
+  constructor(scheduler: FrameScheduler = defaultScheduler(), collideEnabled = true) {
     this.scheduler = scheduler;
     // Created stopped: only our manual loop ticks the simulation, so the layout
     // is fully deterministic and never double-driven by d3's internal timer.
-    this.sim = forceSimulation<SimNode, SimLink>([])
+    const sim = forceSimulation<SimNode, SimLink>([])
       .force("charge", this.chargeForce)
       .force("link", this.linkForce)
       .force("x", this.xForce)
-      .force("y", this.yForce)
-      .force("collide", this.collideForce)
+      .force("y", this.yForce);
+    // Collide (non-overlap) is the heavy force and is OPT-OUT for the overlap-
+    // tolerant norm: the cosmos consumer omits it (~16ms vs ~30ms/tick at 3k); the
+    // Pixi consumer keeps it. Omitting the force entirely (not radius 0) avoids the
+    // per-tick quadtree cost.
+    if (collideEnabled) sim.force("collide", this.collideForce);
+    this.sim = sim
       .alphaMin(ALPHA_MIN)
       .alphaDecay(ALPHA_DECAY)
       .velocityDecay(VELOCITY_DECAY)
