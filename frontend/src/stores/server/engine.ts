@@ -4,15 +4,15 @@
 // search, ops. Capabilities are binding, endpoint shapes illustrative
 // (contract status line); wire types stay snake_case as served.
 //
-// The same client runs against the W02.P05 mock engine and the live serve
-// origin (W03.P12.S49 swaps the base URL behind the env flag) — passing
-// unchanged against both IS the contract-shape verification.
+// The client runs only against the live `vaultspec serve` origin; tests drive
+// the SAME client against a real spawned engine (testing/liveClient), so a
+// passing test IS the contract-shape verification — there is no mock double.
 
 import { useQuery } from "@tanstack/react-query";
 
-import { DEFAULT_SALIENCE_LENS, type SalienceLens } from "../view/salienceLens";
 import {
   adaptContent,
+  adaptDashboardState,
   adaptFileTree,
   adaptFilters,
   adaptGitOp,
@@ -527,12 +527,11 @@ export type DerivationRelation =
  * parameterization the engine biases its importance computation toward.
  * `status` (the default, "what is in-flight") leads with betweenness + hub
  * score + high recency; `design` ("why is the system this way") leads with
- * authority PageRank + coreness. The canonical definition (and its active-lens
- * view store) lives in `view/salienceLens.ts`; re-exported here so the §4 wire
- * surface and its representation-layer consumers share one type and one default.
+ * authority PageRank + coreness. This is a wire/dashboard-state concept, not a
+ * standalone view store authority.
  */
-export { DEFAULT_SALIENCE_LENS };
-export type { SalienceLens };
+export type SalienceLens = "status" | "design";
+export const DEFAULT_SALIENCE_LENS: SalienceLens = "status";
 
 /** The engine-owned filter object, echoed back normalized (§4). */
 export interface GraphFilter {
@@ -543,8 +542,73 @@ export interface GraphFilter {
   kinds?: string[];
   doc_types?: string[];
   feature_tags?: string[];
+  statuses?: string[];
+  plan_tiers?: string[];
   date_range?: { from?: string; to?: string };
   text?: string;
+}
+
+export type DashboardDateRange = { from?: string; to?: string };
+
+export interface DashboardSelection {
+  selected_ids: string[];
+  hovered_id: string | null;
+}
+
+export type DashboardFilters = GraphFilter;
+
+export type DashboardTimelineMode =
+  | { kind: "live" }
+  | { kind: "time-travel"; at: number };
+
+export type GraphGranularity = "document" | "feature";
+
+export type RepresentationMode =
+  | "connectivity"
+  | "lineage"
+  | "hierarchical"
+  | "radial"
+  | "community"
+  | "semantic";
+
+export interface DashboardPanelState {
+  left_collapsed: boolean;
+  right_collapsed: boolean;
+  right_tab: "status" | "changes" | "search";
+}
+
+export interface DashboardGraphBounds {
+  shape: "free" | "circle" | "rect";
+  size: number;
+}
+
+export interface DashboardState extends DashboardSelection {
+  scope: string;
+  filters: DashboardFilters;
+  date_range: DashboardDateRange;
+  timeline_mode: DashboardTimelineMode;
+  graph_granularity: GraphGranularity;
+  salience_lens: SalienceLens;
+  salience_focus: string | null;
+  representation_mode: RepresentationMode;
+  panel_state: DashboardPanelState;
+  graph_bounds: DashboardGraphBounds;
+  tiers: TiersBlock;
+}
+
+export interface DashboardStatePatch {
+  scope?: string;
+  selected_ids?: string[];
+  hovered_id?: string | null;
+  filters?: DashboardFilters;
+  date_range?: DashboardDateRange;
+  timeline_mode?: DashboardTimelineMode;
+  graph_granularity?: GraphGranularity;
+  salience_lens?: SalienceLens;
+  salience_focus?: string | null;
+  representation_mode?: RepresentationMode;
+  panel_state?: DashboardPanelState;
+  graph_bounds?: DashboardGraphBounds;
 }
 
 export interface GraphSlice {
@@ -1346,9 +1410,9 @@ export class EngineClient {
   }
 
   /**
-   * Swap the transport at runtime — the app bootstrap installs the mock
-   * engine here when `VITE_MOCK_ENGINE=1` (S19), and S49 swaps the live
-   * origin back behind the same flag.
+   * Swap the transport at runtime. The app always talks to the live engine; the
+   * test harness uses this to point the app-wide client at the spawned
+   * `vaultspec serve` over its loopback origin (testing/liveSetup).
    */
   useTransport(fetchImpl: FetchLike): void {
     this.fetchImpl = fetchImpl;
@@ -1438,6 +1502,14 @@ export class EngineClient {
 
   async filters(scope: string): Promise<FiltersVocabulary> {
     return adaptFilters(await this.get("/filters", { scope }));
+  }
+
+  async dashboardState(scope: string): Promise<DashboardState> {
+    return adaptDashboardState(await this.get("/dashboard-state", { scope }));
+  }
+
+  async patchDashboardState(body: DashboardStatePatch): Promise<DashboardState> {
+    return adaptDashboardState(await this.patch("/dashboard-state", body));
   }
 
   /** The in-flight pipeline projection (dashboard-pipeline-wire W02): active
@@ -1707,9 +1779,19 @@ export class EngineClient {
     if (!response.ok) throw await engineErrorFrom(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
+
+  private async patch<T>(path: string, body: unknown): Promise<T> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw await engineErrorFrom(path, response);
+    return unwrapEnvelope(await response.json()) as T;
+  }
 }
 
-/** The app-wide default client (mock vs live origin resolved in S49). */
+/** The app-wide default client, bound to the live engine origin. */
 export const engineClient = new EngineClient();
 
 export async function fetchEngineStatus(): Promise<EngineStatus> {
