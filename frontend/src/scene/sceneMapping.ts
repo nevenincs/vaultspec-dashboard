@@ -10,6 +10,9 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
   return {
     id: node.id,
     kind: node.kind,
+    // The vault doc type drives the category-colour fill; `kind` is the generic
+    // species, so the colour resolver prefers `docType` (see categoryColor).
+    docType: node.doc_type,
     title: node.title,
     // Feature membership -> the feature overlays (countries, hulls).
     featureTags: node.feature_tags,

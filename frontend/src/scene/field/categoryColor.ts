@@ -37,7 +37,14 @@ export type NodeCategory =
  *   - reference -> research (both are grounding / source documents)
  *   - summary   -> index    (both are roll-up / index artefacts)
  *   - rule      -> adr      (a rule is a codified decision)
- * An unknown kind falls back to `code` (the generic artefact swatch) so even the
+ *
+ * It ALSO accepts the wire node SPECIES (`kind`) for nodes that carry no doc
+ * type, so a caller can pass `docType ?? kind` and still land on a category:
+ *   - plan-container -> plan (a plan's structural wave/phase/step rows)
+ *   - code-artifact  -> code (a source-code node)
+ *   - document       -> code (defensive: a document node should carry a doc type,
+ *                             so this only fires if doc_type was missing)
+ * An unknown value falls back to `code` (the generic artefact swatch) so even the
  * fallback is an in-family category hue, never the bare ink-muted neutral.
  */
 export function nodeCategory(kind: string): NodeCategory {
@@ -57,6 +64,12 @@ export function nodeCategory(kind: string): NodeCategory {
       return "index";
     case "rule":
       return "adr";
+    // Wire node-species fallbacks (nodes with no doc_type): map onto the nearest
+    // category so every species still paints its legend colour.
+    case "plan-container":
+      return "plan";
+    case "code-artifact":
+      return "code";
     default:
       return "code";
   }

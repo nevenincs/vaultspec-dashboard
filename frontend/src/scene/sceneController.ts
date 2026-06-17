@@ -33,6 +33,15 @@ export interface SceneNodeData {
   id: string;
   /** Node species/doc type — drives the silhouette glyph (gui-spec §3.1). */
   kind: string;
+  /**
+   * Vault document type (`adr`/`plan`/`exec`/`audit`/`index`/`research`/…) when
+   * the node is a document. The wire `kind` is the generic node SPECIES
+   * (`document`/`plan-container`/`code-artifact`/`feature`), NOT the category —
+   * so the node-fill category colour is resolved from `docType` first, falling
+   * back to `kind` for species that carry no doc type (feature/plan-container/
+   * code-artifact). Absent on non-document nodes.
+   */
+  docType?: string;
   /** Display title — drives the DOI-culled label (contract §4 node field). */
   title?: string;
   /**

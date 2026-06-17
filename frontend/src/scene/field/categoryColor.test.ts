@@ -26,6 +26,17 @@ describe("nodeCategory — kind -> one of the eight Figma categories (83:2)", ()
     expect(nodeCategory("rule")).toBe("adr");
   });
 
+  it("maps the wire node SPECIES (no doc_type) onto its category", () => {
+    // The wire `kind` is the species, not the doc type: callers pass
+    // `docType ?? kind`, so a species value must still land on a category.
+    // plan-container (a plan's wave/phase/step rows) -> plan; code-artifact ->
+    // code. This is the regression guard for the bug where ~all `document` and
+    // `plan-container` nodes collapsed onto the single `code` swatch because the
+    // colour was resolved from `kind` instead of `doc_type`.
+    expect(nodeCategory("plan-container")).toBe("plan");
+    expect(nodeCategory("code-artifact")).toBe("code");
+  });
+
   it("falls back an unknown kind to a category hue (code), never an uncoloured node", () => {
     expect(nodeCategory("totally-unknown")).toBe("code");
     expect(nodeCategory("")).toBe("code");
