@@ -85,6 +85,7 @@ function git(scratch: string, args: string[]): void {
 
 let engine: ChildProcess | undefined;
 let scratch: string | undefined;
+let degradedScratch: string | undefined;
 
 export default async function setup(): Promise<() => void> {
   // Adopt an externally-provided live engine (a CI job, a local `vaultspec
@@ -115,6 +116,16 @@ export default async function setup(): Promise<() => void> {
   git(scratch, ["init", "-q", "-b", "main"]);
   git(scratch, ["add", "-A"]);
   git(scratch, ["commit", "-qm", "fixture corpus"]);
+
+  // 3b. A degraded sibling worktree: it keeps `.vault/` (so the structural +
+  //     temporal tiers still read the corpus and the graph loads) but DROPS
+  //     `.vaultspec/`, so the declared tier (vaultspec-core) is genuinely down —
+  //     a REAL degraded scope for the degradation-state tests, never a stub.
+  degradedScratch = `${scratch}-degraded`;
+  git(scratch, ["worktree", "add", "-q", "-b", "degraded-scope", degradedScratch]);
+  rmSync(join(degradedScratch, ".vaultspec"), { recursive: true, force: true });
+  git(degradedScratch, ["add", "-A"]);
+  git(degradedScratch, ["commit", "-qm", "degraded scope: vault without a vaultspec workspace"]);
 
   // 3. Spawn the real engine on a free loopback port, scoped to the scratch dir.
   const port = await freePort();
@@ -172,6 +183,7 @@ export default async function setup(): Promise<() => void> {
         engine.kill("SIGKILL");
       }
     }
+    if (degradedScratch) rmSync(degradedScratch, { recursive: true, force: true });
     if (scratch) rmSync(scratch, { recursive: true, force: true });
   };
 }

@@ -49,13 +49,32 @@ export function liveFetch(path: string, init?: RequestInit): Promise<Response> {
 }
 
 let cachedScope: string | undefined;
+let cachedDegraded: string | undefined;
 
-/** The fixture's vault-bearing worktree scope id, resolved once via /map. */
+/** The HEALTHY fixture scope: the default vault-bearing worktree (full vault +
+ *  vaultspec workspace, all tiers up). Resolved once via /map and deterministic
+ *  on the default flag so a sibling degraded worktree never shadows it. */
 export async function liveScope(): Promise<string> {
   if (cachedScope) return cachedScope;
   const map = await createLiveClient().map();
-  const wt = map.repositories.flatMap((r) => r.worktrees).find((w) => w.has_vault);
-  if (!wt) throw new Error("live fixture has no vault-bearing worktree");
-  cachedScope = wt.id;
+  const vaulted = map.repositories.flatMap((r) => r.worktrees).filter((w) => w.has_vault);
+  const healthy = vaulted.find((w) => w.is_default) ?? vaulted[0];
+  if (!healthy) throw new Error("live fixture has no vault-bearing worktree");
+  cachedScope = healthy.id;
   return cachedScope;
+}
+
+/** The DEGRADED fixture scope: a vault-bearing worktree with NO vaultspec
+ *  workspace, so the declared tier (vaultspec-core) is genuinely down while the
+ *  structural/temporal tiers still serve the graph. Use for degradation-state
+ *  tests against a REAL degraded engine — never a stubbed tiers block. */
+export async function liveDegradedScope(): Promise<string> {
+  if (cachedDegraded) return cachedDegraded;
+  const map = await createLiveClient().map();
+  const degraded = map.repositories
+    .flatMap((r) => r.worktrees)
+    .find((w) => w.has_vault && !w.is_default);
+  if (!degraded) throw new Error("live fixture has no degraded (non-default vault) worktree");
+  cachedDegraded = degraded.id;
+  return cachedDegraded;
 }

@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createLiveClient, liveFetch } from "../../testing/liveClient";
+import { createLiveClient, liveDegradedScope, liveFetch } from "../../testing/liveClient";
 import { CANONICAL_TIERS, EngineError, type TiersBlock } from "./engine";
 
 /** Read a tiers block off a thrown value, whatever channel carries it. */
@@ -75,5 +75,19 @@ describe("error envelopes carry the tiers block (§2)", () => {
       expect(status.tiers).toHaveProperty(tier);
       expect(typeof status.tiers[tier].available).toBe("boolean");
     }
+  });
+
+  it("a degraded scope (vault without a vaultspec workspace) loads the graph with the declared tier really down", async () => {
+    // The degraded fixture worktree keeps `.vault/` but has no `.vaultspec/`, so
+    // the declared tier (vaultspec-core) is GENUINELY down while structural reads
+    // the corpus — a real degraded condition, no stubbed tiers block.
+    const scope = await liveDegradedScope();
+    const slice = await createLiveClient().graphQuery({ scope, granularity: "feature" });
+    // The graph still loads — degradation is NOT an error.
+    expect(Array.isArray(slice.nodes)).toBe(true);
+    // The declared tier is truthfully unavailable; structural stays up. The GUI
+    // renders this as a designed degraded state, read from these flags.
+    expect(slice.tiers.declared?.available).toBe(false);
+    expect(slice.tiers.structural?.available).toBe(true);
   });
 });
