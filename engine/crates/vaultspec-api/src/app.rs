@@ -114,6 +114,11 @@ pub struct ScopeCell {
     /// into feature-convergence nodes; this serves the default (unfiltered) poll
     /// from cache, invalidated on a generation bump like the other projections.
     pub feature_nodes_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
+    /// The stem-sorted `/vault-tree` document rows, memoized per generation. The
+    /// left-rail Tree view re-projected + re-sorted every `doc:` node on each
+    /// request; this serves the sorted listing from cache (the handler still
+    /// paginates per request), invalidated on a generation bump.
+    pub vault_tree_rows_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
     /// Memoized `.vault` document basename -> repo-relative path index per graph
     /// generation (backend-hotpath-hardening F1): the content route's per-fetch
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
@@ -174,6 +179,7 @@ impl ScopeCell {
             salience_cache: Mutex::new(None),
             doc_views_cache: Mutex::new(None),
             feature_nodes_cache: Mutex::new(None),
+            vault_tree_rows_cache: Mutex::new(None),
             doc_index_cache: Mutex::new(None),
             embeddings_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
@@ -254,6 +260,30 @@ impl ScopeCell {
             return cached.clone();
         }
         let fresh = Arc::new(engine_query::graph::build_feature_nodes(
+            &self.graph_arc(),
+            &self.scope,
+        ));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The stem-sorted `/vault-tree` rows, memoized per generation. The Tree view
+    /// re-projected + re-sorted every `doc:` node on every poll; this serves the
+    /// sorted listing from cache (the handler paginates the slice per request).
+    /// Invalidated on a generation bump exactly like `document_views`.
+    pub fn vault_tree_rows(&self) -> Arc<Vec<Value>> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        // Poison recovery (robustness H2): see `graph_arc`.
+        let mut cache = self
+            .vault_tree_rows_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::graph::build_vault_tree_rows(
             &self.graph_arc(),
             &self.scope,
         ));
@@ -819,6 +849,26 @@ mod tests {
         );
         let _ = cell.rebuild_and_swap();
         let c = cell.feature_nodes();
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    #[test]
+    fn vault_tree_rows_are_memoized_per_generation() {
+        // The Tree view's `/vault-tree` listing re-projected + re-sorted every doc
+        // node on each poll; the rows are filter-independent and generation-stable,
+        // so they are memoized like feature_nodes/document_views: same generation =
+        // warm-cache hit (same Arc), a rebuild recomputes.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.vault_tree_rows();
+        let b = cell.vault_tree_rows();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: vault-tree rows are a warm-cache hit, not re-projected"
+        );
+        let _ = cell.rebuild_and_swap();
+        let c = cell.vault_tree_rows();
         assert_eq!(*a, *c, "content equal across a no-op rebuild");
     }
 

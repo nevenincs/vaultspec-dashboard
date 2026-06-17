@@ -329,6 +329,47 @@ pub fn build_feature_nodes(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Value>
     feature_nodes(graph, scope, &matched)
 }
 
+/// Build the stem-sorted `/vault-tree` document rows for a scope: one list-shape
+/// row per `doc:` node (stem, node id, feature tags, the §4 list fields, and the
+/// scope's plan checkbox progress). This is a filter-independent projection that
+/// only changes when the graph is rebuilt, so the API `ScopeCell` memoizes it per
+/// generation (the left-rail Tree view polled `/vault-tree` and re-projected +
+/// re-sorted all doc nodes on EVERY request). Sorted by borrowed stem — no
+/// per-comparison String allocation — and paginated by the caller per request.
+pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Value> {
+    let mut rows: Vec<Value> = graph
+        .nodes()
+        .filter(|n| n.id.0.starts_with("doc:"))
+        .map(|n| {
+            // Plan lifecycle progress for THIS scope, read from the SAME
+            // `lifecycle_in_scope` facet the node-graph projection consumes — a
+            // read-and-infer projection, present only on plan rows that carry
+            // checkbox progress and truthfully absent everywhere else.
+            let progress = lifecycle_in_scope(n, scope)
+                .and_then(|l| l.progress)
+                .map(|p| json!({ "done": p.done, "total": p.total }));
+            json!({
+                "stem": n.key,
+                "node_id": n.id.0,
+                "feature_tags": n.feature_tags,
+                "title": n.title,
+                "doc_type": n.doc_type,
+                "dates": n.dates,
+                "status": n.status,
+                "tier": n.tier,
+                "progress": progress,
+            })
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        a["stem"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["stem"].as_str().unwrap_or_default())
+    });
+    rows
+}
+
 /// Run the scoped query. `scope` narrows edges to one corpus view (the
 /// stateless per-request scope, contract §3); nodes pass if any facet
 /// matches the scope.
