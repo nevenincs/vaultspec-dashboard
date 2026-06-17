@@ -28,6 +28,7 @@ import type { EffectiveSetting } from "../../stores/server/settingsSelectors";
 import { resolveSettings } from "../../stores/server/settingsSelectors";
 import { useViewStore } from "../../stores/view/viewStore";
 import { Dialog } from "../chrome/Dialog";
+import { Button, SectionLabel } from "../kit";
 import { SettingControl } from "./controls/registry";
 import { useSettingsDialog } from "./useSettingsDialog";
 
@@ -64,9 +65,9 @@ export function SettingsDialog() {
         )}
         {groups.map((group) => (
           <section key={group.name} className="flex flex-col gap-fg-2">
-            <h3 className="border-b border-rule pb-fg-1 text-caption font-semibold uppercase tracking-[0.6px] text-ink-faint">
-              {group.name}
-            </h3>
+            {/* Board 96:2: a plain eyebrow section label (kit SectionLabel) — no
+                underline rule. */}
+            <SectionLabel>{group.name}</SectionLabel>
             <div className="flex flex-col gap-fg-2">
               {group.settings.map((eff) => (
                 <SettingRow key={eff.def.key} eff={eff} activeScope={activeScope} />
@@ -74,6 +75,17 @@ export function SettingsDialog() {
             </div>
           </section>
         ))}
+
+        {/* Footer (board 96:2): Cancel + Done. Settings auto-persist on change,
+            so both dismiss the dialog; Done is the primary affordance. */}
+        <div className="flex items-center justify-end gap-fg-2 border-t border-rule pt-fg-3">
+          <Button variant="secondary" onClick={close}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={close}>
+            Done
+          </Button>
+        </div>
       </div>
     </Dialog>
   );
