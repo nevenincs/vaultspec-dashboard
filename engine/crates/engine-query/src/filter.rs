@@ -22,6 +22,17 @@ pub enum FilterError {
     ConfidenceRange { tier: String, found: f32 },
 }
 
+/// A blob-true creation-date window (`from`/`to` inclusive, ISO `yyyy-mm-dd`).
+/// Either bound is optional (open on that side). Compared LEXICALLY — ISO dates
+/// are well-ordered as strings, the same discipline the lineage range uses
+/// (`lineage::created_in_range`) — so no date parsing is needed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct DateRange {
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
 /// The wire filter (contract §4). All facets optional; absent = no
 /// constraint. `deny_unknown_fields` keeps the grammar engine-owned:
 /// a client inventing a facet fails loud instead of being ignored.
@@ -55,6 +66,14 @@ pub struct Filter {
     pub plan_tiers: Vec<String>,
     /// Case-insensitive text match over node key/title.
     pub text: Option<String>,
+    /// Blob-true creation-date window: a node passes if its `created` date falls
+    /// within `[from, to]` (inclusive, open bounds allowed). The filter
+    /// vocabulary advertises the corpus `date_bounds`, and the client
+    /// `GraphFilter` already emits `date_range`, so the grammar must accept it
+    /// (it 400'd before). A node with no `created` date is excluded when the
+    /// window is set — it has no position to test, the same exclusion the lineage
+    /// range applies.
+    pub date_range: Option<DateRange>,
 }
 
 const TIER_NAMES: &[&str] = &["declared", "structural", "temporal", "semantic"];
@@ -216,6 +235,26 @@ impl Filter {
                     .as_deref()
                     .is_some_and(|t| t.to_lowercase().contains(&needle));
             if !hit {
+                return false;
+            }
+        }
+        // Date-range facet: a node passes if its blob-true `created` date is in
+        // the window (inclusive, open bounds allowed); a node with no created
+        // date is excluded when the window is set. Lexical ISO compare, mirroring
+        // `lineage::created_in_range`.
+        if let Some(range) = &self.date_range {
+            let created = node.dates.as_ref().and_then(|d| d.created.as_deref());
+            let Some(created) = created else {
+                return false;
+            };
+            if let Some(from) = range.from.as_deref()
+                && created < from
+            {
+                return false;
+            }
+            if let Some(to) = range.to.as_deref()
+                && created > to
+            {
                 return false;
             }
         }
@@ -602,6 +641,57 @@ mod tests {
             !normalized.matches_node(&node(None)),
             "a doc_type-less node is excluded by a non-empty doc_types facet"
         );
+    }
+
+    #[test]
+    fn date_range_facet_narrows_by_created_and_is_an_accepted_grammar_field() {
+        // The client GraphFilter emits `date_range`; the grammar must accept it
+        // (it 400'd before). A node passes if its blob-true `created` date is in
+        // the inclusive window; open bounds are allowed; an undated node is
+        // excluded when the window is set (mirrors lineage::created_in_range).
+        use engine_model::{CanonicalKey, Dates, NodeKind, Presence, ScopeRef, node_id};
+        let node = |created: Option<&str>| Node {
+            id: node_id(&CanonicalKey::Document { stem: "x" }),
+            kind: NodeKind::Document,
+            key: "x".into(),
+            title: None,
+            doc_type: Some("adr".into()),
+            dates: created.map(|c| Dates {
+                created: Some(c.to_string()),
+                modified: None,
+            }),
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![engine_model::Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        };
+        // `date_range` is an accepted field (no deny_unknown_fields rejection).
+        let f: Filter = serde_json::from_str(
+            r#"{"date_range": {"from": "2026-06-01", "to": "2026-06-15"}}"#,
+        )
+        .unwrap();
+        let f = f.validated().unwrap();
+        assert!(f.matches_node(&node(Some("2026-06-10"))), "in range");
+        assert!(f.matches_node(&node(Some("2026-06-01"))), "from is inclusive");
+        assert!(f.matches_node(&node(Some("2026-06-15"))), "to is inclusive");
+        assert!(!f.matches_node(&node(Some("2026-05-31"))), "before from");
+        assert!(!f.matches_node(&node(Some("2026-06-16"))), "after to");
+        assert!(
+            !f.matches_node(&node(None)),
+            "an undated node is excluded by a set window"
+        );
+        // Open upper bound.
+        let open: Filter =
+            serde_json::from_str(r#"{"date_range": {"from": "2026-06-10"}}"#).unwrap();
+        assert!(open.matches_node(&node(Some("2026-12-31"))));
+        assert!(!open.matches_node(&node(Some("2026-06-09"))));
     }
 
     #[test]
