@@ -19,10 +19,11 @@
 import { FileWarning } from "lucide-react";
 
 import type { EngineNode, NodeDetail } from "../../stores/server/engine";
-import { useNodeDetail, useNodeNeighbors } from "../../stores/server/queries";
+import { useGraphSlice, useNodeDetail, useSession } from "../../stores/server/queries";
 import { DocTypeMark, StateMark } from "../../scene/field/markComponents";
 import type { StateKey } from "../../scene/field/marks";
 import { selectNode } from "../../stores/view/selection";
+import { useViewStore } from "../../stores/view/viewStore";
 
 // --- canonical layout helpers (pure, unit-tested) -------------------------------
 
@@ -80,8 +81,15 @@ export function stateMarkKey(state: string | undefined): StateKey | null {
 // --- the interior component --------------------------------------------------------
 
 export function NodeInterior({ id }: { id: string }) {
+  const isFeature = id.startsWith("feature:");
   const detail = useNodeDetail(id);
   const kind = detail.data?.node.kind;
+  // A feature is a SYNTHESIZED constellation aggregate — the `/nodes/{id}` family
+  // 404s it (its detail/neighbors queries are gated off, so `detail` would hang on
+  // "unfolding…" forever). Its interior unfolds from the feature-filtered DOCUMENT
+  // slice instead — the addressable, bounded, mirror-live path — so route there
+  // before the detail gate.
+  if (isFeature) return <FeatureLifecycle id={id} />;
   if (detail.isPending) {
     return <p className="mt-fg-1 text-label text-ink-faint">unfolding…</p>;
   }
@@ -100,18 +108,29 @@ export function NodeInterior({ id }: { id: string }) {
       </p>
     );
   }
-  if (kind === "feature") return <FeatureLifecycle id={id} />;
   if (kind === "plan") return <PlanInterior detail={detail.data} />;
   return <NodeSummary node={detail.data.node} />;
 }
 
-/** Feature → its document lifecycle along the canonical axis. */
+/**
+ * Feature → its document lifecycle along the canonical axis. Sourced from the
+ * feature-filtered DOCUMENT slice (bounded to that feature's members,
+ * graph-queries-are-bounded-by-default) rather than `/nodes/{id}/neighbors`,
+ * which 404s a synthesized feature aggregate on the live engine. The active scope
+ * is resolved the way the chrome resolves it (the in-session pick, else the
+ * persisted session) — read from the stores layer directly, never fetched here
+ * (dashboard-layer-ownership).
+ */
 function FeatureLifecycle({ id }: { id: string }) {
-  const neighbors = useNodeNeighbors(id);
-  if (!neighbors.data) {
+  const tag = id.slice("feature:".length);
+  const picked = useViewStore((s) => s.scope);
+  const session = useSession();
+  const scope = picked ?? session.data?.active_scope ?? null;
+  const slice = useGraphSlice(scope, { feature_tags: [tag] }, undefined, "document");
+  if (!slice.data) {
     return <p className="mt-fg-1 text-label text-ink-faint">unfolding lifecycle…</p>;
   }
-  const docs = arrangeLifecycleAxis(neighbors.data.nodes);
+  const docs = arrangeLifecycleAxis(slice.data.nodes);
   return (
     <ol className="mt-fg-1 flex items-center gap-fg-1" data-lifecycle-axis>
       {docs.map((doc, i) => (

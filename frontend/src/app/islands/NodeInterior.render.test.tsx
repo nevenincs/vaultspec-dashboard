@@ -14,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
-import { MockEngine } from "../../testing/mockEngine";
+import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
+import { useViewStore } from "../../stores/view/viewStore";
 import { NodeInterior } from "./NodeInterior";
 
 function renderInterior(id: string) {
@@ -30,11 +31,16 @@ function renderInterior(id: string) {
 describe("NodeInterior recodification (instrument grammar + contained failure)", () => {
   beforeEach(() => {
     engineClient.useTransport(new MockEngine().fetchImpl);
+    // A feature interior unfolds from the feature-filtered DOCUMENT slice, which
+    // is scope-bound — set the active scope the way the worktree picker would, so
+    // the slice query resolves against the mock corpus.
+    useViewStore.getState().setScope(MOCK_SCOPE);
   });
 
   afterEach(() => {
     cleanup();
     queryClient.clear();
+    useViewStore.getState().setScope(null);
     engineClient.useTransport((input, init) => fetch(input, init));
   });
 

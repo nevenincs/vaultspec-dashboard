@@ -1249,8 +1249,23 @@ export class MockEngine {
       // Document granularity: attach the single active-lens salience float to each
       // document node and order by descending salience, so a truncation keeps the
       // top-DOI nodes for the active lens — byte-for-byte the live wire SHAPE.
+      // The `filter.feature_tags` bound is applied here to mirror the live engine,
+      // where descending to document granularity with a feature filter returns
+      // ONLY that feature's members (graph-queries-are-bounded-by-default). Without
+      // this the mock served every doc for any feature filter — a mock-vs-live
+      // divergence that broke the feature-interior consumer (which descends by tag).
+      const featureTags = (filter as { feature_tags?: string[] } | undefined)
+        ?.feature_tags;
+      const featureFilter =
+        Array.isArray(featureTags) && featureTags.length > 0
+          ? new Set(featureTags)
+          : null;
       const docNodes = c.nodes
         .filter((n) => n.kind !== "feature")
+        .filter(
+          (n) =>
+            !featureFilter || (n.feature_tags ?? []).some((t) => featureFilter.has(t)),
+        )
         .map((n) => ({ ...n, salience: mockSalienceFor(n, lens) }))
         .sort(
           (a, b) => (b.salience ?? 0) - (a.salience ?? 0) || a.id.localeCompare(b.id),
