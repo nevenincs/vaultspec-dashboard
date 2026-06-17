@@ -172,7 +172,9 @@ function OpenPlanRow({
   // Lazily fetch the interior ONLY while expanded (graph-queries-are-bounded).
   const interior = usePlanInteriorView(expanded ? artifact.node_id : null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
-  const title = artifact.title ?? artifact.stem;
+  // The engine title is the plan's H1, which carries markdown backticks
+  // (e.g. "`figma-frontend-rewrite` plan"); strip them so the row reads cleanly.
+  const title = (artifact.title ?? artifact.stem).replace(/`/g, "");
 
   // A plan node is a `doc:<stem>` id → the markdown reader surface.
   const openPlan = () => {
