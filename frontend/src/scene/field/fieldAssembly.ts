@@ -39,6 +39,16 @@ export const PULSE_MS = 1200;
 /** Per-node movement (world units) below which a frame is skipped (D4 gate). */
 const MOVE_EPSILON = 0.4;
 
+/** Node count above which the whole per-frame VISUAL update is throttled during
+ *  an active settle — the document graph runs to thousands of nodes, where
+ *  re-uploading every edge buffer + re-rendering each tick dominates the frame
+ *  budget and is the entire settle crawl. Below it, every frame paints fully. */
+const LARGE_FIELD_THRESHOLD = 800;
+/** On a large field, paint the moving field once every N settle ticks (the sim
+ *  still ticks every frame; only the visual repaint is throttled). A final exact
+ *  paint always runs on settle, so the resting frame is never throttled. */
+const VISUAL_FRAME_EVERY = 3;
+
 /** Pad added to the salience-driven sprite radius for the per-node collision
  *  radius (graph-force-stability D4). Small constant so collision tracks the
  *  visual body (nodeRadius range 6→15.6px) plus breathing room, instead of the
@@ -92,6 +102,11 @@ export class DashboardField implements SceneFieldRenderer {
   /** Canvas registered before onReady fires — applied once the layer exists. */
   private pendingMinimapCanvas: HTMLCanvasElement | null = null;
   private hitTester = new SpatialHitTester();
+  /** The hit-test index is rebuilt lazily (not per settle frame): set true on
+   *  every position frame, consumed by ensureHitTest() at pointer time. */
+  private hitTestDirty = false;
+  /** Throttle counter for the ancillary per-frame work on a large field. */
+  private heavyFrame = 0;
   private detachListeners: (() => void)[] = [];
   /** Guard: mount() is idempotent — only the first call assembles the scene (S06). */
   private assemblyMounted = false;
@@ -196,10 +211,25 @@ export class DashboardField implements SceneFieldRenderer {
           // (no tick -> no frame). No camera fit here — the camera is fit ONCE
           // on settle, then it belongs to the user (D5).
           if (!this.frameMoved(positions)) return;
+          // Visual-update throttle for a LARGE field (graph-scale). The d3 sim
+          // ticks EVERY frame (its own loop drives it, so settle timing is
+          // unchanged), but on a thousands-of-nodes / tens-of-thousands-of-edges
+          // document graph the per-tick VISUAL work — re-uploading every edge
+          // position buffer, re-syncing every sprite, then the Pixi present — is
+          // ~100ms and was the entire settle crawl (~21s). Painting the moving
+          // field every Nth tick instead keeps the motion legible while cutting
+          // that wall-clock ~Nx; the EXACT resting frame always paints on settle.
+          const big = this.model.nodeCount > LARGE_FIELD_THRESHOLD;
+          if (big && this.heavyFrame++ % VISUAL_FRAME_EVERY !== 0) return;
           this.lastFrame = positions;
           this.sprites?.updatePositions((id) => positions.get(id));
           this.edges?.update((id) => positions.get(id));
-          this.hitTester.rebuild(positions.entries());
+          // Hit-test rebuild is DEFERRED, not run per frame: a large field
+          // re-hashing its whole spatial index every painted tick is pure waste —
+          // no pointer interaction happens mid-settle. Mark it dirty here;
+          // `ensureHitTest()` rebuilds lazily on the next pointer gesture (and
+          // onSettle), so the cost is paid once when actually needed.
+          this.hitTestDirty = true;
           this.minimap?.updatePositions(positions, this.model.nodes);
           this.overlayLayer?.render(
             [...this.model.nodes],
@@ -232,6 +262,19 @@ export class DashboardField implements SceneFieldRenderer {
           this.autoFitArmed = false;
           this.fitToContent(this.layout.positions, true);
         }
+        // Settle is the exact resting frame: run the ancillary visuals once more
+        // (they were throttled mid-settle on a large field) and mark the hit-test
+        // dirty so the next gesture rebuilds against the final positions.
+        const settled = this.layout?.positions;
+        if (settled) {
+          this.minimap?.updatePositions(settled, this.model.nodes);
+          this.overlayLayer?.render(
+            [...this.model.nodes],
+            (id) => settled.get(id),
+            this.lastLevel,
+          );
+        }
+        this.hitTestDirty = true;
         // Present the final settled frame even if the fit was disarmed.
         this.requestRender();
       });
@@ -277,6 +320,7 @@ export class DashboardField implements SceneFieldRenderer {
           this.camera?.panBy(dx, dy);
         },
         hitTestScreen: (sx, sy) => {
+          this.ensureHitTest();
           const world = this.camera!.screenToWorld(sx, sy);
           const radius = HIT_RADIUS_WORLD / Math.max(0.2, this.camera!.current.scale);
           return this.hitTester.hitTest(world.x, world.y, radius);
@@ -443,6 +487,8 @@ export class DashboardField implements SceneFieldRenderer {
     }
     this.renderRafId = null;
     this.lastAnimating = false;
+    this.hitTestDirty = false;
+    this.heavyFrame = 0;
     this.lastSetDataSig = null;
     // Reset the incremental-reheat tracking (D1/D6): a remount must full-init the
     // fresh, empty layers rather than diff against a stale laid-out set.
@@ -810,6 +856,17 @@ export class DashboardField implements SceneFieldRenderer {
   /** Whether the next settle should fit the camera (disarmed once the user
    *  takes the camera, or after the one-shot fit fires). */
   private autoFitArmed = true;
+
+  /** Rebuild the spatial hit-test index from the latest frame if it went stale
+   *  (deferred from the per-frame loop). Called at pointer time so a large field
+   *  pays the rehash once, when a gesture actually needs it, not every settle
+   *  tick. A no-op when already current. */
+  private ensureHitTest(): void {
+    if (!this.hitTestDirty) return;
+    const frame = this.lastFrame ?? this.layout?.positions;
+    if (frame) this.hitTester.rebuild(frame.entries());
+    this.hitTestDirty = false;
+  }
 
   /** True when this frame moved enough to be worth re-rendering (D4 gate). */
   private frameMoved(positions: ReadonlyMap<string, NodePosition>): boolean {
