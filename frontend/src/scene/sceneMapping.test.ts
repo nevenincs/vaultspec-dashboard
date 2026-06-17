@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
-import { buildFixtureCorpus } from "../testing/fixtures/corpus";
 import {
   engineEdgeToScene,
   engineNodeToScene,
@@ -9,42 +8,72 @@ import {
   sliceToScene,
 } from "./sceneMapping";
 
-describe("sceneMapping", () => {
-  const corpus = buildFixtureCorpus();
+// The scene mappers are PURE wire→seam transforms (snake_case → camelCase,
+// meta-payload folding). They are tested with explicit wire-shaped vectors —
+// inputs to a pure function, exactly as the graphDeltaToScene block below — not
+// a mock engine and not a captured corpus.
 
-  it("maps wire nodes to seam nodes (snake_case → camelCase)", () => {
-    const wire = corpus.nodes.find((n) => n.kind === "feature")!;
-    const scene = engineNodeToScene(wire);
-    expect(scene.id).toBe(wire.id);
-    expect(scene.title).toBe(wire.title);
-    expect(scene.degreeByTier).toEqual(wire.degree_by_tier);
-    expect(scene.lifecycle).toEqual(wire.lifecycle);
+const featureNode: EngineNode = {
+  id: "feature:alpha",
+  kind: "feature",
+  title: "alpha",
+  member_count: 3,
+  degree_by_tier: { declared: 2, structural: 1 },
+  lifecycle: { research: 1, adr: 1, plan: 1 },
+};
+
+const docNode: EngineNode = { id: "doc:2026-01-02-alpha-adr", kind: "document", doc_type: "adr" };
+
+const metaEdge: EngineEdge = {
+  id: "meta:alpha--beta",
+  src: "feature:alpha",
+  dst: "feature:beta",
+  relation: "relates",
+  tier: "declared",
+  confidence: 1,
+  meta: { count: 4, breakdown_by_tier: { declared: 3, structural: 1 } },
+};
+
+const plainEdge: EngineEdge = {
+  id: "e1",
+  src: "doc:a",
+  dst: "doc:b",
+  relation: "references",
+  tier: "structural",
+  confidence: 1,
+  state: "resolved",
+};
+
+describe("sceneMapping (pure wire→seam transforms)", () => {
+  it("maps wire feature nodes to seam nodes (snake_case → camelCase)", () => {
+    const scene = engineNodeToScene(featureNode);
+    expect(scene.id).toBe(featureNode.id);
+    expect(scene.title).toBe(featureNode.title);
+    expect(scene.degreeByTier).toEqual(featureNode.degree_by_tier);
+    expect(scene.lifecycle).toEqual(featureNode.lifecycle);
     // Feature-convergence sizing input carries across the seam (S02 / D4.1).
-    expect(scene.memberCount).toBe(wire.member_count);
+    expect(scene.memberCount).toBe(featureNode.member_count);
   });
 
-  it("leaves memberCount absent for non-feature (document) nodes", () => {
-    const doc = corpus.nodes.find((n) => n.kind !== "feature")!;
-    expect(engineNodeToScene(doc).memberCount).toBeUndefined();
+  it("leaves memberCount absent for document nodes", () => {
+    expect(engineNodeToScene(docNode).memberCount).toBeUndefined();
   });
 
   it("maps meta-edges with their aggregation payload", () => {
-    const wire = corpus.metaEdges[0];
-    const scene = engineEdgeToScene(wire);
+    const scene = engineEdgeToScene(metaEdge);
     expect(scene.meta).toEqual({
-      count: wire.meta!.count,
-      breakdownByTier: wire.meta!.breakdown_by_tier,
+      count: metaEdge.meta!.count,
+      breakdownByTier: metaEdge.meta!.breakdown_by_tier,
     });
   });
 
   it("maps plain edges without inventing a meta payload", () => {
-    const wire = corpus.edges[0];
-    expect(engineEdgeToScene(wire).meta).toBeUndefined();
+    expect(engineEdgeToScene(plainEdge).meta).toBeUndefined();
   });
 
-  it("maps a full slice", () => {
-    const mapped = sliceToScene({ nodes: corpus.nodes, edges: corpus.metaEdges });
-    expect(mapped.nodes.length).toBe(corpus.nodes.length);
+  it("maps a full slice (every meta-edge carries its payload)", () => {
+    const mapped = sliceToScene({ nodes: [featureNode, docNode], edges: [metaEdge] });
+    expect(mapped.nodes.length).toBe(2);
     expect(mapped.edges.every((e) => e.meta !== undefined)).toBe(true);
   });
 });
