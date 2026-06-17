@@ -111,6 +111,18 @@ export const ALPHA_MIN = 0.001;
 export const ALPHA_DECAY = 0.0228; // ~300 ticks to settle
 export const VELOCITY_DECAY = 0.4;
 
+/**
+ * Velocity decay (friction) held DURING an interaction — stronger than the settle
+ * default so a drag does not overshoot. A dense hub's neighbours chase the dragged
+ * node through their link springs; at the d3-default 0.4 friction they OVERSHOOT a
+ * fast drag and oscillate (a runtime audit measured a degree-88 hub's neighbours
+ * moving 50–147 world-units/tick — the "violently jittering" the field showed).
+ * Higher friction during the drag damps that overshoot to a smooth follow. This is
+ * an INTERACTION-only adjustment restored to VELOCITY_DECAY on endInteraction, so
+ * the settle and the calibrated scorecard baseline (which never drag) are untouched.
+ */
+export const INTERACTION_VELOCITY_DECAY = 0.7;
+
 const COLD_START_ALPHA = 1;
 const WARM_START_ALPHA = 0.5;
 const PARAM_REHEAT_ALPHA = 0.3;
@@ -711,6 +723,10 @@ export class FieldLayout {
     this.dwell = 0;
     this.sim.alphaTarget(INTERACTION_ALPHA_TARGET);
     this.sim.alpha(Math.max(this.sim.alpha(), INTERACTION_ALPHA_TARGET));
+    // Hold stronger friction for the duration of the interaction so a dragged
+    // hub's neighbours follow smoothly instead of overshooting/oscillating; the
+    // settle default is restored on endInteraction.
+    this.sim.velocityDecay(INTERACTION_VELOCITY_DECAY);
     if (!this.running) {
       this.running = true;
       this.scheduleNext();
@@ -725,6 +741,8 @@ export class FieldLayout {
     if (!this.interacting) return;
     this.interacting = false;
     this.sim.alphaTarget(0);
+    // Restore the settle friction (the interaction's stronger damping is lifted).
+    this.sim.velocityDecay(VELOCITY_DECAY);
     this.dwell = 0;
     // Keep the loop running so the re-cool actually happens; if it had stopped
     // (it should not have, the target held it), restart from the current alpha.
