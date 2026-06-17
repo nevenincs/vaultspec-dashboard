@@ -59,6 +59,23 @@ pub fn read_from_ref(repo_dir: &Path, reference: &str, rel_path: &str) -> Result
         .find_commit(commit_id.detach())
         .map_err(|e| StructError::Git(e.to_string()))?;
     let tree = commit.tree().map_err(|e| StructError::Git(e.to_string()))?;
+    read_path_in_tree(&tree, reference, rel_path)
+}
+
+/// Read one document's blob from an ALREADY-RESOLVED commit tree. A caller that
+/// reads MANY documents at the SAME ref — the as-of historical re-index walks
+/// every `.vault` doc at one commit (~3135 on a large corpus) — opens the repo
+/// and resolves the commit tree ONCE and reuses it here per doc, instead of the
+/// per-call `gix::open` + `rev-parse` + tree-resolve that `read_from_ref` does
+/// (3135 fresh repo opens + ref re-resolutions to the SAME sha was the dominant
+/// `/graph/asof` cost — tens of seconds). `reference` is carried only for the
+/// `NotAtRef` error label; the blob is read from `tree`, so the result is
+/// byte-identical to `read_from_ref` at that ref.
+pub fn read_path_in_tree(
+    tree: &gix::Tree<'_>,
+    reference: &str,
+    rel_path: &str,
+) -> Result<DocumentBody> {
     let entry = tree
         .lookup_entry_by_path(rel_path)
         .map_err(|e| StructError::Git(e.to_string()))?

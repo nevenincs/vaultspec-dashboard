@@ -148,19 +148,19 @@ pub fn asof_graph_resolved(
     inventory.sort();
     vault_docs.sort();
 
-    // Resolve the sha, then RELEASE the gix repo handle before the declared-tier
-    // ingestion below shells `vaultspec-core vault graph --ref <sha>` against the
-    // SAME `.git` — releasing our reader handle before spawning a subprocess that
-    // reopens the object DB is sound hygiene on Windows. Blob reads below use
-    // `repo_dir` (their own short-lived handles), not `repo`.
+    // Reuse the OPEN repo + already-resolved commit tree for the per-doc blob
+    // reads below. The dominant /graph/asof cost was a FRESH `gix::open` +
+    // ref-resolution + tree-resolve PER DOC (`read_from_ref` × ~3135, every one
+    // re-resolving the SAME sha) — tens of seconds. Sharing this tree across the
+    // loop makes each read a direct tree lookup. The gix handle is still RELEASED
+    // before the declared-tier `vaultspec-core vault graph --ref <sha>` subprocess
+    // reopens the same `.git` object DB (sound hygiene on Windows) — but AFTER the
+    // loop, not before it.
     let resolved_sha = commit_id.to_string();
-    drop(tree);
-    drop(commit);
-    drop(repo);
 
     let mut graph = LinkageGraph::new();
     for doc_path in &vault_docs {
-        let body = ingest_struct::reader::read_from_ref(repo_dir, &resolved_sha, doc_path)?;
+        let body = ingest_struct::reader::read_path_in_tree(&tree, &resolved_sha, doc_path)?;
         let stem = doc_path
             .rsplit('/')
             .next()
@@ -259,6 +259,13 @@ pub fn asof_graph_resolved(
             )?;
         }
     }
+
+    // Release the shared gix handle NOW — before the declared-tier subprocess
+    // reopens the same `.git` object DB (Windows hygiene). The per-doc loop above
+    // is done, so the shared tree/commit/repo are no longer needed.
+    drop(tree);
+    drop(commit);
+    drop(repo);
 
     // Declared tier AT the resolved commit (core 0.1.31 `vault graph --ref`):
     // the as-of snapshot now carries core's authored cross-references as they
