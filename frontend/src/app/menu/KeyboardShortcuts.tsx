@@ -91,7 +91,7 @@ export function KeyboardShortcuts() {
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
         {SHORTCUT_GROUPS.map((group) => (
           <section key={group.name} className="flex flex-col gap-fg-1">
-            <SectionLabel className="border-b border-rule">{group.name}</SectionLabel>
+            <SectionLabel>{group.name}</SectionLabel>
             <ul className="flex flex-col">
               {group.shortcuts.map((shortcut) => (
                 <li key={shortcut.label}>
