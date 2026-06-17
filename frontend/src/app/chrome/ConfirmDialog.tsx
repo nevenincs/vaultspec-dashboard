@@ -13,6 +13,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { Button } from "../kit";
 import { Dialog } from "./Dialog";
 
 export interface ConfirmDialogProps {
@@ -63,23 +64,15 @@ export function ConfirmDialog({
         {/* Body copy: the consequence, in muted ink (figma 17:1284). */}
         <p className="px-fg-4 py-fg-4 text-body text-ink-muted">{message}</p>
 
-        {/* Footer: a top-ruled button row, right-aligned (figma 17:1285). */}
+        {/* Footer: a top-ruled button row, right-aligned (figma 17:1285) — the
+            centralized kit Button (secondary cancel + primary confirm). */}
         <div className="flex shrink-0 items-center justify-end gap-fg-2 border-t border-rule px-fg-4 py-fg-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-fg-xs border border-rule px-fg-3 py-fg-1-5 text-body font-medium text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
+          <Button variant="secondary" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
-            ref={confirmRef}
-            type="button"
-            onClick={onConfirm}
-            className="rounded-fg-xs bg-accent-subtle px-fg-3 py-fg-1-5 text-body font-medium text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
+          </Button>
+          <Button ref={confirmRef} variant="primary" onClick={onConfirm}>
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </Dialog>

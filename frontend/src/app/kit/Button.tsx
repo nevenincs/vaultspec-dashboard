@@ -12,7 +12,7 @@
 //   danger    — the sacred remove/diff-red, reserved for destructive verbs.
 // Hover/disabled are CSS-driven; geometry/padding/radius/type read tokens only.
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -38,14 +38,13 @@ const VARIANT: Record<ButtonVariant, string> = {
     "border border-rule bg-paper-raised text-diff-remove hover:bg-paper-sunken hover:border-rule-strong",
 };
 
-export function Button({
-  variant = "secondary",
-  type = "button",
-  children,
-  ...rest
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = "secondary", type = "button", children, ...rest },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type={type}
       className={`${BASE} ${VARIANT[variant]}`}
       data-kit="button"
@@ -55,4 +54,4 @@ export function Button({
       {children}
     </button>
   );
-}
+});
