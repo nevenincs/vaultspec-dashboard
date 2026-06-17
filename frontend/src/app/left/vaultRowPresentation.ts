@@ -183,6 +183,48 @@ export function planStatusLabel(status: PlanStatus): string {
   }
 }
 
+// --- human display title (Figma rows show readable titles, not date-stems) -------
+//
+// The binding `LeftRail` rows (244:750) read as human titles ("Live delta sync",
+// "Graph scale"), but the `/vault-tree` wire carries only the path/stem — no title
+// field — so the readable title is DERIVED from the stem: drop the leading
+// `yyyy-mm-dd-` date prefix and a trailing doc-type token (adr/plan/research/…),
+// then de-kebab to sentence case. Canonical structural tokens (W##/P##/S##) keep
+// their uppercase form. Pure + deterministic; this is presentation only and never
+// the selection-join identity (that stays the real stem/path).
+
+const DOC_TYPE_SUFFIXES = new Set([
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
+  "index",
+  "rule",
+  "summary",
+]);
+
+/** A readable row title derived from the document stem (see note above). */
+export function docDisplayTitle(path: string): string {
+  let stem = pathStemLocal(path).replace(/^\d{4}-\d{2}-\d{2}-/, "");
+  const parts = stem.split("-");
+  if (parts.length > 1 && DOC_TYPE_SUFFIXES.has(parts[parts.length - 1]!)) {
+    parts.pop();
+  }
+  stem = parts.join(" ").trim();
+  if (stem.length === 0) return pathStemLocal(path);
+  // Sentence-case the first character; keep canonical W##/P##/S## tokens uppercase.
+  return stem.charAt(0).toUpperCase() + stem.slice(1);
+}
+
+/** Local stem helper (filename without directory or extension) — kept here so the
+ *  presentation module has no import cycle with the selection module. */
+function pathStemLocal(path: string): string {
+  const base = path.split("/").pop() ?? path;
+  return base.replace(/\.md$/i, "");
+}
+
 // --- freshness label (Figma right-aligned recency) -------------------------------
 
 /** Compact freshness label: <1h "now", then h/d/w buckets; cooled = "". */

@@ -33,6 +33,7 @@ import "./menus/vaultDocMenu";
 // tree browser paints with, so the two projections of `/vault-tree` never drift.
 import {
   DOC_MARK_PX,
+  docDisplayTitle,
   docMark,
   docMarkName as sharedDocMarkName,
   docGroupLabel,
@@ -385,7 +386,7 @@ export function VaultBrowser({
                               </span>
                             )
                           }
-                          title={entryStem(entry.path)}
+                          title={docDisplayTitle(entry.path)}
                           tag={
                             entry.feature_tags[0]
                               ? `#${entry.feature_tags[0]}`
