@@ -825,10 +825,13 @@ export class DashboardField implements SceneFieldRenderer {
         // away from the mental map mid-transition.
         const backbone = splitBackbone(edges).backbone;
         const edgeRefs = backbone.map((e) => ({ id: e.id, src: e.src, dst: e.dst }));
-        this.layout.init(nodeIds, edgeRefs, this.layout.positions, this.radiusOf);
-        this.layout.start();
+        // Mode switch back to connectivity: compute OFFLINE to convergence and show
+        // the settled layout (no animated re-spread). Arm the fit first so the
+        // synchronous onSettle frames it once.
         this.lastFrame = null;
         this.autoFitArmed = true;
+        this.layout.init(nodeIds, edgeRefs, this.layout.positions, this.radiusOf);
+        this.layout.settleOffline();
       }
       this.laidOutIds = new Set(nodeIds);
       this.appliedMode = applied;
@@ -1120,14 +1123,15 @@ export class DashboardField implements SceneFieldRenderer {
           warm.set(node.id, node.seedPosition);
         }
       }
-      this.layout.init(nodeIds, backboneRefs, warm, this.radiusOf);
-      this.layout.start();
-      // Connectivity re-init: the solver runs and WILL fire a settle, so the
-      // animated settle-fit frames the cooled layout. Drop the instant seed-fit
-      // (D6: no double-fit) — it would snap to the seed spread then animate to the
-      // cooled framing, the post-load double-snap. Just arm the settle fit.
+      // Compute the connectivity layout OFFLINE to convergence and show the SETTLED
+      // result — the chaotic cold-start spread is never animated (force-graph
+      // research: dianaow / Jan Žák). Arm the fit BEFORE settling so the synchronous
+      // onSettle frames the cooled layout exactly once; the assembly coalesces the
+      // seed and settled emits into one rAF, so no seed spread ever paints.
       this.lastFrame = null;
       this.autoFitArmed = true;
+      this.layout.init(nodeIds, backboneRefs, warm, this.radiusOf);
+      this.layout.settleOffline();
       this.laidOutIds = new Set(nodeIds);
       this.appliedMode = "connectivity";
       this.laidOutScope = this.cacheKey.scope;

@@ -482,6 +482,39 @@ export class FieldLayout {
   }
 
   /**
+   * Compute the layout to convergence SYNCHRONOUSLY and emit the settled positions
+   * once — the canonical d3 pattern (dianaow / Jan Žák force-graph research): the
+   * chaotic initial spread is computed OFFLINE, never animated, so the field
+   * appears ALREADY SETTLED with no cold-start flicker. This is the routing target
+   * for a first-load / reseed connectivity layout; interaction (drag, slider tune,
+   * incremental add) still ticks live via start(). Bounded by maxIters so a
+   * pathological graph can never block the main thread unboundedly — the bound is
+   * generous (d3 reaches alphaMin in ~300 ticks at the fixed decay). The single
+   * emitPositions lands the settled frame; because the assembly coalesces renders
+   * to one rAF, the intermediate seed frame from init() is overwritten before it
+   * ever paints, so there is no seed→settled flash.
+   */
+  settleOffline(maxIters = 400): void {
+    this.stop();
+    this.dwell = 0;
+    this.sim.alpha(this.startAlpha).alphaTarget(0);
+    let iters = 0;
+    while (this.sim.alpha() >= ALPHA_MIN && iters < maxIters) {
+      try {
+        this.sim.tick();
+      } catch (err) {
+        log.error(`offline settle tick threw: ${(err as Error).message}`);
+        break;
+      }
+      iters += 1;
+    }
+    this.releaseAddReheatPins();
+    this.snapshot();
+    this.emitPositions();
+    this.emitSettle();
+  }
+
+  /**
    * Resume a frozen field at a low alpha (graph-force-stability D7, the freeze
    * toggle's unfreeze). A gentle reheat from the current positions so the field
    * settles again without a cold re-settle. The cooling schedule stays fixed.

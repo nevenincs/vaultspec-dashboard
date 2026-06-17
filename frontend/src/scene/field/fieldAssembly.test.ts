@@ -143,6 +143,7 @@ interface FakeLayout {
   init: ReturnType<typeof vi.fn>;
   applyChanges: ReturnType<typeof vi.fn>;
   start: ReturnType<typeof vi.fn>;
+  settleOffline: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   beginInteraction: ReturnType<typeof vi.fn>;
   endInteraction: ReturnType<typeof vi.fn>;
@@ -154,6 +155,7 @@ function fakeLayout(): FakeLayout {
     init: vi.fn(),
     applyChanges: vi.fn(),
     start: vi.fn(),
+    settleOffline: vi.fn(),
     stop: vi.fn(),
     beginInteraction: vi.fn(),
     endInteraction: vi.fn(),
