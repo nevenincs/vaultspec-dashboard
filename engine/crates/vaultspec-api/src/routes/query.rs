@@ -369,21 +369,25 @@ pub async fn graph_query_route(
     let (mut slice, tiers, resolution) = match &body.as_of {
         // Blob-true historical view (D7.3) with its fidelity-stating block.
         Some(reference) => {
-            let scope = engine_model::ScopeRef::Ref {
-                name: reference.clone(),
-            };
-            let resolved =
-                engine_graph::asof::asof_graph_resolved(&cell.root, reference, &scope, 0)
+            // Route the historical build through the scope's by-sha as-of cache
+            // (consistent with /graph/asof + /graph/diff): a repeat query for a
+            // recently-visited/indexed commit reuses the cached graph instead of
+            // re-indexing. Resolution stays FRESH per token so the echo carries
+            // this request's own interpretation (ADD-901). Build AND query with
+            // the served-worktree scope (`cell.scope`) -- the canonical
+            // /graph/asof scoping, NOT the ref label (§5/2026-06-13 hardening),
+            // so this as-of path matches /graph/asof and can share its cache.
+            let (resolved_sha, interpretation) =
+                engine_graph::asof::resolve_ref_interpreted(&cell.root, reference)
                     .map_err(|e| super::revision_error(&state, reference, &e))?;
-            let slice = graph_query(&resolved.graph, &scope, filter, granularity)
+            let resolved = cell
+                .asof_graph(&resolved_sha)
+                .map_err(|e| super::revision_error(&state, reference, &e))?;
+            let slice = graph_query(&resolved.graph, &cell.scope, filter, granularity)
                 .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             let tiers = serde_json::to_value(engine_query::envelope::asof_tiers_block())
                 .expect("tiers serialize");
-            (
-                slice,
-                tiers,
-                Some((resolved.resolved_sha, resolved.interpretation)),
-            )
+            (slice, tiers, Some((resolved_sha, interpretation)))
         }
         None => {
             let graph = cell.graph_arc();
