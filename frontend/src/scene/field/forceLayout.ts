@@ -346,6 +346,10 @@ export class FieldLayout {
   private interacting = false;
   /** Consecutive sub-epsilon ticks for the early settle-freeze (D5). */
   private dwell = 0;
+  /** Survivors temporarily fixed (fx/fy) for the duration of an add-reheat so only
+   *  the newly added nodes settle (object constancy). Released the instant the field
+   *  freezes — see `releaseAddReheatPins`. Never includes a real (user) pin. */
+  private addReheatPinned = new Set<string>();
 
   constructor(scheduler: FrameScheduler = defaultScheduler()) {
     this.scheduler = scheduler;
@@ -499,6 +503,9 @@ export class FieldLayout {
       this.frameId = null;
     }
     this.sim.stop();
+    // An external halt (freeze toggle, re-init, mode swap) ends any in-flight
+    // add-reheat: release the survivor holds so they are never left fixed.
+    this.releaseAddReheatPins();
   }
 
   private scheduleNext(): void {
@@ -525,6 +532,7 @@ export class FieldLayout {
     // Hard backstop: the alpha-floor freeze (D5 keeps this as the floor).
     if (this.sim.alpha() < ALPHA_MIN) {
       this.running = false;
+      this.releaseAddReheatPins();
       this.emitSettle();
       return;
     }
@@ -554,6 +562,7 @@ export class FieldLayout {
       if (this.dwell >= freezeDwellTicks(this.nodes.length)) {
         this.running = false;
         this.sim.stop();
+        this.releaseAddReheatPins();
         this.emitSettle();
         return;
       }
@@ -776,11 +785,30 @@ export class FieldLayout {
       this.radiusOf = radiusOf;
       this.applyCollideRadius();
     }
-    const removeNodes = new Set(change.removeNodeIds ?? []);
+    // Object constancy — the dominant stability fix (measured, not assumed). A
+    // content delta that changes NO topology (a refetch / live keyframe that
+    // restated the SAME nodes+edges, or only updated a scalar like salience /
+    // status / degree) must NOT perturb the settled field. Reheating a
+    // converged-and-frozen field to even the LOW incremental alpha re-flows EVERY
+    // node — measured at 150+ world-units per 100ms for ~1.2s on an UNCHANGED
+    // 68-node slice — which is the "flickering bounce on every refresh" the field
+    // exhibited. Nothing structural changed, so there is nothing to settle: leave
+    // the frozen positions exactly where they are. A real add/remove below still
+    // reheats locally.
+    const addIds = change.addNodeIds ?? [];
+    const removeIds = change.removeNodeIds ?? [];
+    if (
+      addIds.length === 0 &&
+      removeIds.length === 0 &&
+      (change.addEdges?.length ?? 0) === 0 &&
+      (change.removeEdgeIds?.length ?? 0) === 0
+    ) {
+      return;
+    }
+    const removeNodes = new Set(removeIds);
     if (removeNodes.size > 0) {
       this.nodes = this.nodes.filter((n) => !removeNodes.has(n.id));
     }
-    const addIds = change.addNodeIds ?? [];
     if (addIds.length > 0) {
       const seeds = seedPositions(addIds, change.addEdges ?? [], this.latest, rand);
       for (const id of addIds) {
@@ -810,10 +838,49 @@ export class FieldLayout {
       .filter((l) => present.has(l.source) && present.has(l.target));
     this.sim.nodes(this.nodes);
     this.linkForce.links(links);
-    // D1: a content delta reheats to the LOW incremental alpha, not warm-start —
-    // survivors stay put, the new nodes nudge into place, the field re-cools fast.
+    // A pure REMOVE (no adds) needs no settle: the remaining layout is still
+    // converged, so just re-emit the trimmed frame without reheating (no bounce).
+    if (addIds.length === 0) {
+      this.snapshot();
+      this.emitPositions();
+      return;
+    }
+    // Object constancy on ADD: hold every existing survivor FIXED (fx/fy) for the
+    // duration of this low-alpha reheat so only the NEW nodes settle into the gaps —
+    // the established map does not re-flow around the newcomers (the Obsidian
+    // "expand a node" feel). Without this, reheating a non-equilibrium frozen field
+    // moves every survivor 200+ world-units (measured). The temporary holds are
+    // released the instant the field freezes (releaseAddReheatPins) — never a real pin.
+    const added = new Set(addIds);
+    this.addReheatPinned.clear();
+    for (const node of this.nodes) {
+      if (added.has(node.id) || this.pinned.has(node.id)) continue;
+      if (node.fx != null || node.fy != null) continue;
+      node.fx = node.x ?? 0;
+      node.fy = node.y ?? 0;
+      this.addReheatPinned.add(node.id);
+    }
+    // D1: the new nodes reheat to the LOW incremental alpha, not warm-start.
     this.startAlpha = INCREMENTAL_REHEAT_ALPHA;
     this.start();
+  }
+
+  /**
+   * Release the survivors temporarily fixed for an add-reheat (object constancy):
+   * clears the fx/fy `applyChanges` set on them, never touching a real user pin.
+   * Called the instant the field freezes so the holds last exactly one settle.
+   */
+  private releaseAddReheatPins(): void {
+    if (this.addReheatPinned.size === 0) return;
+    for (const id of this.addReheatPinned) {
+      if (this.pinned.has(id)) continue;
+      const node = this.nodeById.get(id);
+      if (node) {
+        node.fx = null;
+        node.fy = null;
+      }
+    }
+    this.addReheatPinned.clear();
   }
 
   /** Latest position frame (for the field assembly and the warm-start cache). */

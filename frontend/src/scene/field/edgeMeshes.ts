@@ -361,6 +361,11 @@ export class EdgeMeshLayer {
   private container = new Container();
   private groups = new Map<string, MeshGroup>();
   private lastEdges: SceneEdgeData[] = [];
+  /** Structure signature (id + mesh group key, in order) of the last BUILT edge
+   *  set. A `setEdges` whose signature matches this skips the destroy+recreate
+   *  rebuild entirely — see `setEdges`. Null means "force a rebuild" (an unknown
+   *  tier was present, which `rebuild` surfaces as a rejection). */
+  private edgeStructureSig: string | null = "";
   private highlight: ReadonlySet<string> | null = null;
   /** Latest visibility sample: id → presentation progress (0..1]. */
   private visProgress: ReadonlyMap<string, number> | null = null;
@@ -377,11 +382,55 @@ export class EdgeMeshLayer {
     world.addChildAt(this.container, 0);
   }
 
-  /** Rebuild mesh topology for a new edge set (edge-set changes only). */
+  /**
+   * The structure signature for an edge set: `id:groupKey` per edge, in order.
+   * This is exactly what determines mesh PARTITIONING (which mesh each edge
+   * batches into) and therefore whether a rebuild would produce different GPU
+   * meshes. Positions are NOT in the signature — they re-upload per frame in
+   * `update()`. Returns null if any edge carries an unknown tier, forcing a full
+   * rebuild so `rebuild()` surfaces the rejection rather than silently skipping it.
+   */
+  private structureSignature(edges: readonly SceneEdgeData[]): string | null {
+    let sig = `${edges.length}|`;
+    for (const e of edges) {
+      let key: string;
+      try {
+        key = edgeGroupKey(e);
+      } catch {
+        return null;
+      }
+      sig += `${e.id}:${key};`;
+    }
+    return sig;
+  }
+
+  /**
+   * Apply a new edge set. SKIPS the destroy+recreate rebuild when the edge
+   * STRUCTURE is unchanged (same ids + same mesh group keys, same order, no fade
+   * in flight). A refetch / live keyframe that restated the same edges — the
+   * common "refresh" case — must NOT destroy and rebuild every GPU mesh: that
+   * flashes the connection field on every poll, and under a mesh-less canvas
+   * renderer fallback it leaves a destroyed/rebuilt mesh in the render group's
+   * dirty list and throws in `validateRenderables` every frame. Positions still
+   * re-upload per frame in `update()`, so a pure position change needs no rebuild
+   * either. Edge-set changes, highlight, routing, and fades still rebuild.
+   */
   setEdges(edges: readonly SceneEdgeData[]): EdgeSetResult {
+    const hadFade = this.visProgress != null;
+    const sig = this.structureSignature(edges);
     this.lastEdges = [...edges];
     this.visProgress = null;
     this.visSignature = "";
+    if (
+      !hadFade &&
+      sig !== null &&
+      sig === this.edgeStructureSig &&
+      this.groups.size > 0
+    ) {
+      // Structure identical and meshes already built — nothing to rebuild.
+      return { rejected: [] };
+    }
+    this.edgeStructureSig = sig;
     return this.rebuild();
   }
 
