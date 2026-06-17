@@ -280,7 +280,17 @@ pub async fn graph_lineage(
     // semantics, writes nothing.
     if let Some(t) = params.t.as_deref() {
         let scope = cell.scope.clone();
-        let resolved = engine_graph::asof::asof_graph_resolved(&cell.root, t, &scope, 0)
+        // Route through the scope's by-sha as-of cache (the same path /graph/asof
+        // and /graph/diff use): a revisit to a recently-seen commit reuses the
+        // cached graph (or the declared-tier reuse) instead of re-running the
+        // ~35s re-index. Resolution stays FRESH per token so the echo carries
+        // this request's own interpretation (ADD-901; the sha-keyed cache carries
+        // no token reading).
+        let (resolved_sha, interpretation) =
+            engine_graph::asof::resolve_ref_interpreted(&cell.root, t)
+                .map_err(|e| super::revision_error(&state, t, &e))?;
+        let resolved = cell
+            .asof_graph(&resolved_sha)
             .map_err(|e| super::revision_error(&state, t, &e))?;
         let slice = engine_query::lineage::lineage(
             &resolved.graph,
@@ -301,8 +311,8 @@ pub async fn graph_lineage(
                 // `graph_asof` does: the client learns which commit T resolved to
                 // and how the engine read the token (a revision/timestamp reading
                 // can collide on an all-digit value).
-                "resolved_sha": resolved.resolved_sha,
-                "interpretation": resolved.interpretation,
+                "resolved_sha": resolved_sha,
+                "interpretation": interpretation,
                 "nodes": slice.nodes,
                 "arcs": slice.arcs,
                 "truncated": slice.truncated,
@@ -412,11 +422,24 @@ pub async fn graph_diff(
         ));
     }
     // Echo each endpoint's resolved sha + interpretation (ADD-901), additive
-    // to the existing delta log.
-    let from_resolved =
-        engine_graph::asof::asof_graph_resolved(&cell.root, &params.from, &scope, 0)
+    // to the existing delta log. Route the historical build through the scope's
+    // by-sha as-of cache (the same path /graph/asof uses): a diff between two
+    // recently-visited or recently-indexed commits reuses the cached graph (or
+    // the declared-tier reuse) instead of re-running the ~35s re-index for BOTH
+    // endpoints from scratch — the dominant cost of a scrub. Resolution stays
+    // FRESH per token so each endpoint echoes its own interpretation while
+    // sharing the sha-keyed graph (ADD-901; the cache carries no token reading).
+    let (from_sha, from_interpretation) =
+        engine_graph::asof::resolve_ref_interpreted(&cell.root, &params.from)
             .map_err(|e| super::revision_error(&state, &params.from, &e))?;
-    let to_resolved = engine_graph::asof::asof_graph_resolved(&cell.root, &params.to, &scope, 0)
+    let (to_sha, to_interpretation) =
+        engine_graph::asof::resolve_ref_interpreted(&cell.root, &params.to)
+            .map_err(|e| super::revision_error(&state, &params.to, &e))?;
+    let from_resolved = cell
+        .asof_graph(&from_sha)
+        .map_err(|e| super::revision_error(&state, &params.from, &e))?;
+    let to_resolved = cell
+        .asof_graph(&to_sha)
         .map_err(|e| super::revision_error(&state, &params.to, &e))?;
     let from_graph = &from_resolved.graph;
     let to_graph = &to_resolved.graph;
@@ -450,10 +473,10 @@ pub async fn graph_diff(
             "clock": "result-local",
             // Additive (ADD-901): the resolved commit + token reading for each
             // endpoint, so a scrub log states which commits it ran between.
-            "from_resolved_sha": from_resolved.resolved_sha,
-            "to_resolved_sha": to_resolved.resolved_sha,
-            "from_interpretation": from_resolved.interpretation,
-            "to_interpretation": to_resolved.interpretation,
+            "from_resolved_sha": from_sha,
+            "to_resolved_sha": to_sha,
+            "from_interpretation": from_interpretation,
+            "to_interpretation": to_interpretation,
             // The active lens echoed (graph-node-salience ADR wire amendment).
             "lens": lens.as_str(),
         }),
