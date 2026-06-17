@@ -321,12 +321,12 @@ export function ContextMenuHost() {
                     }
                   }}
                   onClick={() => activate(action)}
-                  className={`flex w-full items-center gap-fg-2 px-fg-3 py-fg-1-5 text-left transition-colors duration-ui-fast ${
+                  className={`flex w-full items-center gap-fg-2 border-l-2 px-fg-3 py-fg-1-5 text-left transition-colors duration-ui-fast ${
                     disabled
-                      ? "cursor-default text-ink-faint"
+                      ? "cursor-default border-l-transparent text-ink-faint"
                       : selected
-                        ? "bg-paper-sunken text-ink"
-                        : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+                        ? "border-l-accent bg-accent-subtle text-ink"
+                        : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
                   }`}
                 >
                   {Mark ? (
