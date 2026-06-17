@@ -38,6 +38,11 @@ pub struct Filter {
     pub structural_state: Vec<String>,
     /// Node kind wire names.
     pub kinds: Vec<String>,
+    /// Vault doc-type wire names (`research`/`adr`/`plan`/`exec`/`audit`/...).
+    /// The filter vocabulary already enumerates these as a filterable facet, so
+    /// the grammar must accept them: a node passes if its `doc_type` is in this
+    /// set. Open, data-driven vocabulary (like `feature_tags`) — not enum-checked.
+    pub doc_types: Vec<String>,
     /// Feature tags.
     pub feature_tags: Vec<String>,
     /// ADR statuses (dashboard-pipeline-wire W01.P03.S12): one of
@@ -99,6 +104,8 @@ impl Filter {
         self.structural_state.dedup();
         self.kinds.sort();
         self.kinds.dedup();
+        self.doc_types.sort();
+        self.doc_types.dedup();
         self.feature_tags.sort();
         self.feature_tags.dedup();
         self.statuses.sort();
@@ -164,6 +171,19 @@ impl Filter {
                 .feature_tags
                 .iter()
                 .any(|t| self.feature_tags.contains(t))
+        {
+            return false;
+        }
+        // Doc-type facet: a non-empty facet narrows to nodes whose vault doc-type
+        // is in the requested set; a node with no doc_type (a feature/code node)
+        // does not match, the same exclusion the kinds/status facets apply. This
+        // is what powers the left-rail category chips as a SERVER-side narrowing
+        // (the vocabulary already advertises these doc-types as filterable).
+        if !self.doc_types.is_empty()
+            && !node
+                .doc_type
+                .as_deref()
+                .is_some_and(|t| self.doc_types.iter().any(|f| f == t))
         {
             return false;
         }
@@ -540,6 +560,47 @@ mod tests {
         assert_eq!(
             bad_tier.validated(),
             Err(FilterError::UnknownPlanTier("L9".into()))
+        );
+    }
+
+    #[test]
+    fn doc_type_facet_narrows_and_is_an_accepted_grammar_field() {
+        // The filter vocabulary advertises `doc_types` as filterable, so the
+        // grammar must ACCEPT them (it 400'd before): a non-empty facet narrows
+        // to nodes whose doc_type is in the set; a doc_type-less node (a feature/
+        // code node) is excluded, the same exclusion kinds/statuses apply.
+        use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
+        let node = |doc_type: Option<&str>| Node {
+            id: node_id(&CanonicalKey::Document { stem: "x" }),
+            kind: NodeKind::Document,
+            key: "x".into(),
+            title: None,
+            doc_type: doc_type.map(str::to_string),
+            dates: None,
+            feature_tags: vec![],
+            status: None,
+            tier: None,
+            facets: vec![engine_model::Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        };
+        // `doc_types` is an accepted field (no deny_unknown_fields rejection) and
+        // normalizes (sort + dedup) like the other data-driven facets.
+        let by_doc_type: Filter =
+            serde_json::from_str(r#"{"doc_types": ["plan", "adr", "adr"]}"#).unwrap();
+        let normalized = by_doc_type.validated().unwrap();
+        assert_eq!(normalized.doc_types, vec!["adr", "plan"], "sorted, deduped");
+        assert!(normalized.matches_node(&node(Some("adr"))));
+        assert!(normalized.matches_node(&node(Some("plan"))));
+        assert!(!normalized.matches_node(&node(Some("research"))));
+        assert!(
+            !normalized.matches_node(&node(None)),
+            "a doc_type-less node is excluded by a non-empty doc_types facet"
         );
     }
 
