@@ -133,6 +133,44 @@ function contentSignature(
   return `${nodes.length}:${edges.length}:${(h >>> 0).toString(16)}`;
 }
 
+// --- Tier-3 edge encoding (node-graph-rework ADR D4) -------------------------
+// Edges encode meaning through colour (tier), width + opacity (confidence) and
+// dimming (state). A low base opacity keeps the dense mesh a subtle haze so nodes
+// stay readable; a hovered/selected node's incident edges read clearly via the low
+// link greyout. This deliberately re-introduces tier colour on the canvas (the
+// binding Figma redesign had retired it to flat grey) per the ADR D4 accepted
+// divergence, because the user requires edges to carry semantic meaning.
+const EDGE_ALPHA_MIN = 0.1;
+const EDGE_ALPHA_MAX = 0.5;
+const EDGE_WIDTH_MIN = 0.6;
+const EDGE_WIDTH_MAX = 2.2;
+
+interface EdgeAppearance {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+  width: number;
+}
+
+/** Per-link colour/width/opacity for an edge: tier -> hue, confidence -> width +
+ *  opacity, broken/stale state -> dimming. `tierColors` is keyed by tier name with
+ *  a `rule` fallback for an unknown tier (dimmed, never silently re-bucketed). */
+function edgeAppearance(
+  edge: SceneEdgeData,
+  tierColors: Record<string, [number, number, number, number]>,
+): EdgeAppearance {
+  const base = tierColors[edge.tier] ?? tierColors.rule;
+  const conf =
+    typeof edge.confidence === "number" ? Math.max(0, Math.min(1, edge.confidence)) : 1;
+  let a = EDGE_ALPHA_MIN + (EDGE_ALPHA_MAX - EDGE_ALPHA_MIN) * conf;
+  if (!tierColors[edge.tier]) a *= 0.6; // unknown tier: dim, surfaced via fallback
+  if (edge.state === "broken") a *= 0.55;
+  else if (edge.state === "stale") a *= 0.78;
+  const width = EDGE_WIDTH_MIN + (EDGE_WIDTH_MAX - EDGE_WIDTH_MIN) * conf;
+  return { r: base[0], g: base[1], b: base[2], a, width };
+}
+
 export class CosmosField implements SceneFieldRenderer {
   private graph: Graph | null = null;
   private container: HTMLDivElement | null = null;
@@ -159,6 +197,9 @@ export class CosmosField implements SceneFieldRenderer {
    *  change, not on every refetch (retention keeps the bbox stable, so re-fitting
    *  would only jitter the camera). */
   private fitPending = true;
+  /** Edges dropped because an endpoint is not in the current slice (Tier-3 honest
+   *  hidden-edge accounting): surfaced via debugSnapshot, never silently zeroed. */
+  private droppedEdges = 0;
   /** Set by createDashboardScene; seam events (select/hover) flow back through it. */
   controller: SceneController | null = null;
 
@@ -192,12 +233,21 @@ export class CosmosField implements SceneFieldRenderer {
       pointSizeScale: 2,
       renderHoveredPointRing: true,
       hoveredPointRingColor: hexString("--color-accent", 0x8a7d5a),
-      // ---- edges: flat-grey connection mesh + focus ring ------------------
-      // (per-link tier/confidence encoding lands in Tier 3.)
-      linkColor: hexString("--color-scene-rule", 0xd8d2ca),
+      // ---- edges: tier-encoded connection mesh (node-graph-rework ADR D4) --
+      // Per-link colour (tier), width/opacity (confidence) and state dimming are
+      // set in setData; these are the base config. A LOW base opacity keeps the
+      // dense (~36k-edge) mesh a subtle haze so nodes stay readable; the low
+      // greyout makes a hovered/selected node's incident edges read clearly against
+      // the rest; the widened visibility-distance range stops edges vanishing on
+      // zoom (the [50,150]px default fades most edges out at our scales).
+      linkColor: hexString("--color-scene-rule", 0xd8d2ca), // fallback pre per-link
       linkWidth: 1,
+      linkWidthScale: 1,
       linkArrows: false,
       renderLinks: true,
+      linkGreyoutOpacity: 0.04,
+      linkVisibilityDistanceRange: [5, 6000],
+      hoveredLinkColor: hexString("--color-accent", 0x8a7d5a),
       focusedPointRingColor: hexString("--color-accent", 0x8a7d5a),
       onClick: (index) => {
         const id = index === undefined ? null : (this.indexToId[index] ?? null);
@@ -348,12 +398,34 @@ export class CosmosField implements SceneFieldRenderer {
       slotPosition(positions, i, slot, this.bounds, this.capacity, maxDiameter);
     }
 
+    // Tier-3 edge encoding: build the link list plus per-link colour (tier),
+    // width and opacity (confidence) + state dimming. Tier colours are read live so
+    // they track the active theme. Cross-boundary edges (an endpoint absent from
+    // this slice) are dropped and COUNTED, never silently lost.
+    const tierColors: Record<string, [number, number, number, number]> = {
+      declared: rgba(cssColorNumber("--color-tier-declared", 0x312d27)),
+      structural: rgba(cssColorNumber("--color-tier-structural", 0x3f774d)),
+      temporal: rgba(cssColorNumber("--color-tier-temporal", 0x5c5040)),
+      semantic: rgba(cssColorNumber("--color-tier-semantic", 0x8b85b7)),
+      rule: rgba(cssColorNumber("--color-scene-rule", 0xd8d2ca)),
+    };
     const linkList: number[] = [];
+    const linkColors: number[] = [];
+    const linkWidths: number[] = [];
+    let dropped = 0;
     for (const e of edges) {
       const s = this.idToIndex.get(e.src);
       const t = this.idToIndex.get(e.dst);
-      if (s !== undefined && t !== undefined) linkList.push(s, t);
+      if (s === undefined || t === undefined) {
+        dropped++;
+        continue;
+      }
+      linkList.push(s, t);
+      const ap = edgeAppearance(e, tierColors);
+      linkColors.push(ap.r, ap.g, ap.b, ap.a);
+      linkWidths.push(ap.width);
     }
+    this.droppedEdges = dropped;
 
     // dontRescale=true: positions are verbatim world coords (belt-and-suspenders
     // with rescalePositions:false). No graph.start() — cosmos only renders.
@@ -361,6 +433,8 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph.setPointColors(colors);
     this.graph.setPointSizes(sizes);
     this.graph.setLinks(new Float32Array(linkList));
+    this.graph.setLinkColors(new Float32Array(linkColors));
+    this.graph.setLinkWidths(new Float32Array(linkWidths));
     this.graph.render();
     // Fit only on first data / after a bound change (Tier-2 fit-once): retention
     // keeps the bbox stable across refetches, so re-fitting would only jitter.
@@ -400,6 +474,7 @@ export class CosmosField implements SceneFieldRenderer {
   debugSnapshot(): {
     pointCount: number;
     bounds: FieldBounds;
+    droppedEdges: number;
     points: { id: string; x: number; y: number }[];
   } {
     const flat = this.graph?.getPointPositions() ?? [];
@@ -411,6 +486,11 @@ export class CosmosField implements SceneFieldRenderer {
         y: flat[i * 2 + 1],
       });
     }
-    return { pointCount: points.length, bounds: { ...this.bounds }, points };
+    return {
+      pointCount: points.length,
+      bounds: { ...this.bounds },
+      droppedEdges: this.droppedEdges,
+      points,
+    };
   }
 }
