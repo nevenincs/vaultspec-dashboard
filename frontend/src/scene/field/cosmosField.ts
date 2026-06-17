@@ -230,6 +230,8 @@ export class CosmosField implements SceneFieldRenderer {
    *  applyChanges path (no-bounce: survivors keep their positions). */
   private prevNodeIds = new Set<string>();
   private prevEdgeIds = new Set<string>();
+  /** Index of the node currently being dragged (Tier-4 drag), or undefined. */
+  private dragIndex: number | undefined;
   /** Set by createDashboardScene; seam events (select/hover) flow back through it. */
   controller: SceneController | null = null;
 
@@ -288,6 +290,36 @@ export class CosmosField implements SceneFieldRenderer {
       },
       onPointMouseOut: () => {
         this.controller?.emit({ kind: "hover", id: null });
+      },
+      // Tier-4 drag: cosmos reports the gesture; the d3-force layout OWNS the
+      // position - dragNode pins fx/fy + reheats so neighbours couple through the
+      // links, and releaseNode lets the node float back on drop (no auto-pin - the
+      // graph-stability lesson). Pointer -> space via screenToSpacePosition, then
+      // -> layout coords (origin-centred, so subtract SPACE_CENTRE).
+      onDragStart: (e) => {
+        const idx = (e.subject as { index?: number } | undefined)?.index;
+        if (idx === undefined) return;
+        this.dragIndex = idx;
+        this.layout?.beginInteraction();
+      },
+      onDrag: (e) => {
+        if (this.dragIndex === undefined || !this.graph || !this.layout) return;
+        const id = this.indexToId[this.dragIndex];
+        const src = e.sourceEvent as MouseEvent | undefined;
+        const rect = this.container?.getBoundingClientRect();
+        if (id === undefined || !src || !rect) return;
+        const [sx, sy] = this.graph.screenToSpacePosition([
+          src.clientX - rect.left,
+          src.clientY - rect.top,
+        ]);
+        this.layout.dragNode(id, sx - SPACE_CENTRE, sy - SPACE_CENTRE);
+      },
+      onDragEnd: () => {
+        if (this.dragIndex === undefined) return;
+        const id = this.indexToId[this.dragIndex];
+        if (id !== undefined) this.layout?.releaseNode(id);
+        this.layout?.endInteraction();
+        this.dragIndex = undefined;
       },
     });
 
