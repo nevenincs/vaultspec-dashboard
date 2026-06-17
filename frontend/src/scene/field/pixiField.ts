@@ -21,10 +21,23 @@
 // controller's event channel (dashboard-layer-ownership). This module never
 // fetches and never reaches into the stores layer.
 
-import { Application, Container } from "pixi.js";
+import { Application, Container, MeshPipe, extensions } from "pixi.js";
 
 import type { SceneFieldRenderer } from "../sceneController";
 import { cssColorNumber } from "./tokenReads";
+
+// Guarantee the mesh render pipe is registered before any Application is created.
+// The edge layer (`edgeMeshes.ts`) renders pixi `Mesh`/`MeshGeometry`, but pixi
+// v8 registers the mesh pipe ONLY via a side-effect-only init module
+// (`pixi.js/lib/scene/mesh/init` → `extensions.add(MeshPipe)`) that the bundler
+// can tree-shake out (in this build every standard pipe registered EXCEPT mesh).
+// With `renderPipes["mesh"]` undefined, `app.render()` throws
+// "Cannot read properties of undefined (reading 'updateRenderable')" on the first
+// frame that contains an edge — and since one throw aborts the whole frame, the
+// entire graph stays blank. Re-adding `MeshPipe` here is idempotent with pixi's
+// own init and uses the same `extensions` registry the renderer reads, so the
+// pipe exists no matter how the dependency is bundled.
+extensions.add(MeshPipe);
 
 /**
  * The warm paper ground the clean connection field reads against (graph/Hero):
