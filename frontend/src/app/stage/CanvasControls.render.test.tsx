@@ -292,34 +292,8 @@ describe("Zoom + Navigate canvas controls over preserved camera state (S55)", ()
     );
   });
 
-  it("the Zoom flanking − / + issue real incremental camera-zoom commands", () => {
-    const spy = vi.spyOn(getScene().controller, "command");
-    render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "zoom camera in" }));
-    fireEvent.click(screen.getByRole("button", { name: "zoom camera out" }));
-    const kinds = spy.mock.calls.map((c) => (c[0] as { kind: string }).kind);
-    expect(kinds).toEqual(expect.arrayContaining(["zoom-in", "zoom-out"]));
-  });
-
-  it("the Zoom descent reads AND writes the preserved granularity (LOD), not a private model", () => {
-    render(createElement(GraphControls));
-    const slider = screen.getByRole("slider", { name: "detail level" });
-    // Reads the preserved state: feature overview snaps the slider to 0.
-    expect((slider as HTMLInputElement).value).toBe("0");
-    // Writes the preserved state: detail descends to the document LOD.
-    fireEvent.change(slider, { target: { value: "1" } });
-    expect(useViewStore.getState().granularity).toBe("document");
-    // And back up to the feature overview.
-    fireEvent.change(slider, { target: { value: "0" } });
-    expect(useViewStore.getState().granularity).toBe("feature");
-  });
-
-  it("reflects a preserved document-granularity state as the Detail stop on mount", () => {
-    act(() => useViewStore.getState().setGranularity("document"));
-    render(createElement(GraphControls));
-    // The control is a projection of the preserved state: an already-document
-    // granularity renders the slider at the Detail stop, never a stale Overview.
-    const slider = screen.getByRole("slider", { name: "detail level" });
-    expect((slider as HTMLInputElement).value).toBe("1");
-  });
+  // The board's bottom-left cluster is NavControls-only (260:893): the flanking
+  // camera-zoom buttons and the LOD detail slider were retired from the canvas
+  // (camera zoom in/out live in the Navigate group, asserted above; granularity
+  // is no longer a canvas control).
 });
