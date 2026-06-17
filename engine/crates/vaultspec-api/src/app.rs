@@ -119,6 +119,10 @@ pub struct ScopeCell {
     /// request; this serves the sorted listing from cache (the handler still
     /// paginates per request), invalidated on a generation bump.
     pub vault_tree_rows_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
+    /// The HEAD commit-correlated temporal event rows, memoized per generation. The
+    /// /events activity feed walks up to 5000 commits and correlates each to graph
+    /// nodes — immutable for a given HEAD, but it ran on every request (~2.2s).
+    pub event_rows_cache: Mutex<Option<(u64, Arc<Vec<engine_store::EventRow>>)>>,
     /// Memoized `.vault` document basename -> repo-relative path index per graph
     /// generation (backend-hotpath-hardening F1): the content route's per-fetch
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
@@ -180,6 +184,7 @@ impl ScopeCell {
             doc_views_cache: Mutex::new(None),
             feature_nodes_cache: Mutex::new(None),
             vault_tree_rows_cache: Mutex::new(None),
+            event_rows_cache: Mutex::new(None),
             doc_index_cache: Mutex::new(None),
             embeddings_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
@@ -218,6 +223,37 @@ impl ScopeCell {
         let _ = self.salience_basis();
         let _ = self.meta_edges();
         let _ = self.feature_nodes();
+        // The activity feed's HEAD commit walk + correlation (~2.2s) is part of
+        // the default view (timeline / activity rail), so warm it too.
+        let _ = self.commit_event_rows();
+    }
+
+    /// The HEAD commit-correlated temporal event rows, memoized per generation.
+    /// The `/events` activity feed walks up to 5000 git commits and correlates
+    /// each to graph nodes; the walk is immutable for a given HEAD (a new commit
+    /// bumps the generation through a rebuild) but it ran on EVERY request
+    /// (~2.2s on a 3135-doc corpus). Memoized here so repeat polls are warm and
+    /// the handler just clones + filters/buckets the cached rows; warmed off the
+    /// request path by `warm_projections`. A git failure is returned UNCACHED so
+    /// a transient error does not poison the cache for the generation.
+    pub fn commit_event_rows(&self) -> Result<Arc<Vec<engine_store::EventRow>>, String> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self
+            .event_rows_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return Ok(cached.clone());
+        }
+        let workspace =
+            ingest_git::workspace::Workspace::discover(&self.root).map_err(|e| e.to_string())?;
+        let rows =
+            engine_query::events::commit_rows(&workspace, "HEAD", 5000, Some(&self.graph_arc()))?;
+        let fresh = Arc::new(rows);
+        *cache = Some((generation, fresh.clone()));
+        Ok(fresh)
     }
 
     pub fn meta_edges(&self) -> Arc<Vec<MetaEdge>> {

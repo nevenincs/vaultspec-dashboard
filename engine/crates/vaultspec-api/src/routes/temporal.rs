@@ -56,16 +56,16 @@ pub async fn events(
             format!("events range: from ({from}) must be <= to ({to})"),
         ));
     }
-    // Event sourcing shared with the CLI verb via the query core (G7). Scoped
-    // to the resolved cell's worktree (W02.P05.S17).
-    let workspace = ingest_git::workspace::Workspace::discover(&cell.root)
-        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
-    // Node correlation bounded to graph-known nodes + the code-id cap
-    // (addendum S05) — commit pulses address nodes the stage can light.
-    let graph = cell.graph_arc();
-    let mut rows: Vec<EventRow> =
-        engine_query::events::commit_rows(&workspace, "HEAD", 5000, Some(&graph))
-            .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e))?;
+    // Event sourcing shared with the CLI verb via the query core (G7). The HEAD
+    // commit walk + node correlation (bounded to graph-known nodes + the code-id
+    // cap, addendum S05) is immutable per generation and was ~2.2s on EVERY
+    // request, so it is memoized on the cell (commit_event_rows, warmed off the
+    // request path). The handler clones the cached rows and filters/buckets per
+    // request — the per-request work that genuinely varies with from/to/kinds.
+    let mut rows: Vec<EventRow> = (*cell
+        .commit_event_rows()
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e))?)
+    .clone();
     if let Some(kinds) = &params.kinds {
         let wanted: Vec<&str> = kinds.split(',').collect();
         rows.retain(|r| wanted.contains(&r.kind.as_str()));
