@@ -80,10 +80,12 @@ export class CosmosField implements SceneFieldRenderer {
       // spring with a link distance well above the node sizes clusters connected
       // nodes without stacking them; friction < 1 cools to a stable rest and a
       // drag reheats it. (These are the knobs the Tune sliders will drive.)
-      simulationRepulsion: 2.0,
+      simulationRepulsion: 8.0,
       simulationGravity: 0,
-      simulationLinkSpring: 0.4,
-      simulationLinkDistance: 50,
+      // Kept SPREAD (weak link spring) so the field stays legible while the basics
+      // are wired; the link-strength-vs-spread balance is the deferred sim tuning.
+      simulationLinkSpring: 0.2,
+      simulationLinkDistance: 120,
       simulationFriction: 0.85,
       simulationDecay: 2000,
       // ---- interaction (live) ---------------------------------------------
@@ -96,6 +98,12 @@ export class CosmosField implements SceneFieldRenderer {
       pointSizeScale: 1,
       renderHoveredPointRing: true,
       hoveredPointRingColor: hexString("--color-accent", 0x8a7d5a),
+      // ---- edges: the binding flat-grey connection mesh, plus the focus ring -
+      linkColor: hexString("--color-scene-rule", 0xd8d2ca),
+      linkWidth: 1,
+      linkArrows: false,
+      renderLinks: true,
+      focusedPointRingColor: hexString("--color-accent", 0x8a7d5a),
       onClick: (index) => {
         const id = index === undefined ? null : (this.indexToId[index] ?? null);
         this.controller?.emit({ kind: "select", id });
@@ -110,9 +118,46 @@ export class CosmosField implements SceneFieldRenderer {
   }
 
   command(cmd: SceneCommand): void {
-    // BRICK 1 consumes only set-data; the rest (visibility, pins, mode, time,
-    // overlays, camera) land in later bricks as each is wired and verified.
-    if (cmd.kind === "set-data") this.setData(cmd.nodes, cmd.edges);
+    if (!this.graph) return;
+    switch (cmd.kind) {
+      case "set-data":
+        this.setData(cmd.nodes, cmd.edges);
+        break;
+      case "set-selected":
+        this.setSelected(cmd.ids);
+        break;
+      case "focus-node": {
+        const i = this.idToIndex.get(cmd.id);
+        if (i !== undefined) this.graph.zoomToPointByIndex(i);
+        break;
+      }
+      case "zoom-in":
+        this.graph.setZoomLevel(this.graph.getZoomLevel() * 1.25, 250);
+        break;
+      case "zoom-out":
+        this.graph.setZoomLevel(this.graph.getZoomLevel() / 1.25, 250);
+        break;
+      case "fit-to-view":
+      case "reset-view":
+        this.graph.fitView(400);
+        break;
+      // visibility, pins, representation mode, time, overlays, deltas land next.
+    }
+  }
+
+  /** The shared selection (set-selected): ring the first selected node present in
+   *  the current slice. cosmos's focused-point ring is the on-canvas selection. */
+  private setSelected(ids: ReadonlySet<string>): void {
+    if (!this.graph) return;
+    let focused: number | undefined;
+    for (const id of ids) {
+      const i = this.idToIndex.get(id);
+      if (i !== undefined) {
+        focused = i;
+        break;
+      }
+    }
+    this.graph.setConfig({ focusedPointIndex: focused });
   }
 
   private setData(
@@ -131,7 +176,7 @@ export class CosmosField implements SceneFieldRenderer {
     nodes.forEach((node, i) => {
       this.idToIndex.set(node.id, i);
       this.indexToId[i] = node.id;
-      sizes[i] = nodeRadius(node) * 2; // cosmos point size is a diameter
+      sizes[i] = Math.max(6, nodeRadius(node)); // cosmos point size (px)
       // Category fill from the vault DOC TYPE first (adr/plan/exec/…), falling
       // back to the generic node species (`kind`) for nodes with no doc type
       // (feature / plan-container / code-artifact). The wire `kind` alone is the
