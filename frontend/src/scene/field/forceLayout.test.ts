@@ -8,7 +8,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { FrameScheduler, LayoutEdgeRef } from "./forceLayout";
 import {
+  ALPHA_MIN,
   FieldLayout,
+  FREEZE_ALPHA_CEILING,
   FREEZE_DWELL_MAX,
   FREEZE_DWELL_MIN,
   INCREMENTAL_REHEAT_ALPHA,
@@ -122,6 +124,36 @@ describe("FieldLayout (d3-force driver)", () => {
     // The loop stopped on its own (no pending frame, far fewer than the cap).
     expect(sched.hasPending).toBe(false);
     expect(ran).toBeLessThan(2000);
+  });
+
+  it("a LARGE field settles via the alpha ceiling, not the long sub-perceptible tail", () => {
+    // Regression: a 60-node field's body keeps drifting >FREEZE_MOVE_EPSILON until
+    // the alpha floor, so it never velocity-calmed and ground ~300 ticks of visible
+    // on-load jitter. The alpha-ceiling early freeze must stop it cool-but-early —
+    // it settles, freezes ABOVE the alpha floor, and stops the loop.
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const settles = vi.fn();
+    layout.onSettle(settles);
+    const ids = Array.from({ length: 60 }, (_, i) => `n${i}`);
+    // A connected ring so every node carries a link force (a realistic field).
+    const edges = ids.map((id, i) => edge(`e${i}`, id, ids[(i + 1) % ids.length]));
+    const warm = new Map(
+      ids.map((id, i) => [id, { x: Math.cos(i) * 400, y: Math.sin(i * 1.3) * 400 }]),
+    );
+    layout.init(ids, edges, warm);
+    layout.start();
+    const ran = sched.runFrames(5000);
+    expect(settles).toHaveBeenCalledTimes(1);
+    expect(sched.hasPending).toBe(false);
+    // Froze ABOVE the hard alpha floor (the ceiling caught it first), and bounded.
+    expect(layout.alpha()).toBeGreaterThan(ALPHA_MIN);
+    expect(layout.alpha()).toBeLessThanOrEqual(FREEZE_ALPHA_CEILING);
+    expect(ran).toBeLessThan(5000);
+    // No NaN escaped the snapshot under the large-field collision churn.
+    for (const [, p] of layout.positions) {
+      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
+    }
   });
 
   it("stop() halts the settle loop", () => {
