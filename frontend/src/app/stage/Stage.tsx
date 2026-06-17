@@ -22,6 +22,7 @@ import {
   useSession,
   useWorkspaceMap,
 } from "../../stores/server/queries";
+import type { GraphFilter } from "../../stores/server/engine";
 import { computeVisibility, useFilterStore } from "../../stores/view/filters";
 import { useLensStore } from "../../stores/view/lenses";
 import { openContextMenu } from "../../stores/view/contextMenu";
@@ -183,7 +184,17 @@ export function Stage() {
   // mode then re-lays-out with id-keyed object constancy — the composition rule
   // (graph-representation ADR). Owned by the view store; the chrome never fetches.
   const activeLens = useViewStore((s) => s.activeLens);
-  const slice = useGraphSlice(scope, undefined, undefined, granularity, activeLens);
+  // A constellation descent focuses one feature: the document query is then
+  // BOUNDED to that feature's member documents (filter.feature_tags=[tag]), the
+  // designed bounded descent (graph-queries-are-bounded-by-default) — so opening
+  // a feature shows its members, not a quiet 404, and never re-serves the whole
+  // document corpus. Null at the overview → no filter (the unchanged path).
+  const focusedFeature = useViewStore((s) => s.focusedFeature);
+  const featureFilter = useMemo<GraphFilter | undefined>(
+    () => (focusedFeature ? { feature_tags: [focusedFeature] } : undefined),
+    [focusedFeature],
+  );
+  const slice = useGraphSlice(scope, featureFilter, undefined, granularity, activeLens);
   // The active representation mode + overlay visibility (graph-representation
   // ADR): view state the chrome owns and emits to the scene. A mode switch
   // re-lays-out the CURRENT set (no re-query); the lens re-query is the slice key
@@ -263,8 +274,16 @@ export function Stage() {
       if (event.kind === "hover") setHoveredId(event.id);
       if (event.kind === "select") selectFromScene(event.id);
       if (event.kind === "open") {
-        selectFromScene(event.id);
-        openNode(event.id);
+        if (event.id.startsWith("feature:")) {
+          // Opening a feature-convergence node DESCENDS into it: the constellation
+          // flips to the bounded document view of that feature's members (a
+          // synthesized aggregate has no doc island of its own — opening one used
+          // to go quiet). The bare tag drops the `feature:` node-id prefix.
+          useViewStore.getState().descendIntoFeature(event.id.slice("feature:".length));
+        } else {
+          selectFromScene(event.id);
+          openNode(event.id);
+        }
       }
       if (event.kind === "expand") addToWorkingSet(event.id);
       if (event.kind === "context-menu") {

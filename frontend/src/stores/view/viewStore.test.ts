@@ -17,6 +17,39 @@ describe("view store", () => {
     expect(useViewStore.getState().selectedId).toBeNull();
   });
 
+  it("descends into a feature: focuses it AND flips to the bounded document view", () => {
+    const store = useViewStore.getState();
+    store.setGranularity("feature"); // start at the constellation overview
+    expect(useViewStore.getState().focusedFeature).toBeNull();
+    store.descendIntoFeature("dashboard-optimization");
+    expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
+    // Descent is what bounds the document query (filter.feature_tags=[tag]).
+    expect(useViewStore.getState().granularity).toBe("document");
+  });
+
+  it("a manual granularity toggle clears the feature descent (returns to overview)", () => {
+    const store = useViewStore.getState();
+    store.descendIntoFeature("dashboard-optimization");
+    expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
+    // Toggling back to the constellation clears the focus...
+    store.setGranularity("feature");
+    expect(useViewStore.getState().focusedFeature).toBeNull();
+    // ...and a manual switch to the full document graph is also unfocused.
+    store.descendIntoFeature("x");
+    store.setGranularity("document");
+    expect(useViewStore.getState().focusedFeature).toBeNull();
+  });
+
+  it("clears the feature descent on a scope swap (no cross-corpus focus bleed)", () => {
+    const store = useViewStore.getState();
+    store.descendIntoFeature("dashboard-optimization");
+    expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
+    store.setScope("Y:/code/some-other-worktree");
+    expect(useViewStore.getState().focusedFeature).toBeNull();
+    // and back to the unfocused overview
+    expect(useViewStore.getState().granularity).toBe("feature");
+  });
+
   it("keeps the working set explicit and deduplicated", () => {
     const store = useViewStore.getState();
     store.clearWorkingSet();

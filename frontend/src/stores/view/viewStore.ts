@@ -189,6 +189,16 @@ export interface ViewState {
    */
   granularity: "document" | "feature";
   /**
+   * The feature a constellation descent is focused on, or null at the overview.
+   * Opening a feature-convergence node DESCENDS into that feature: granularity
+   * flips to "document" and the graph query is bounded to the feature's member
+   * documents (`filter.feature_tags=[focusedFeature]`) — the designed bounded
+   * descent (graph-queries-are-bounded-by-default), which also keeps the
+   * document slice small instead of serving the whole corpus. Cleared by any
+   * manual granularity toggle (a fresh view choice) and by every scope swap.
+   */
+  focusedFeature: string | null;
+  /**
    * The active SALIENCE lens (graph-node-salience ADR): the viewer-intent
    * parameterization that selects which per-lens importance field the engine
    * computes and, via DOI, which node set is served. Owned here as view state
@@ -306,8 +316,13 @@ export interface ViewState {
   setTimelineMode: (mode: TimelineMode) => void;
   toggleLeftRail: () => void;
   toggleRightRail: () => void;
-  /** Switch between the feature-constellation overview and the full document graph. */
+  /** Switch between the feature-constellation overview and the full document
+   *  graph. A manual switch clears any feature descent (a fresh view choice). */
   setGranularity: (granularity: "document" | "feature") => void;
+  /** Descend into a feature from the constellation: focus it and flip to the
+   *  bounded document view of its member documents. `tag` is the bare feature
+   *  tag (the `feature:` node-id prefix already stripped). */
+  descendIntoFeature: (tag: string) => void;
   /** Switch the active salience lens (status/design). A re-query, not a reset. */
   setActiveLens: (lens: SalienceLens) => void;
   /** Switch the active representation mode (connectivity/lineage/semantic). */
@@ -358,6 +373,7 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailCollapsed: false,
   rightRailCollapsed: false,
   granularity: "feature",
+  focusedFeature: null,
   activeLens: DEFAULT_SALIENCE_LENS,
   activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
   overlays: { featureCountries: true, featureHulls: true },
@@ -416,6 +432,9 @@ export const useViewStore = create<ViewState>((set) => ({
       // Reset to constellation overview on scope swap: loading 200 document
       // nodes into an unfamiliar corpus is unexpected (granularity doc comment).
       granularity: "feature",
+      // A descent is scoped to the previous corpus's feature — clear it on a
+      // swap so the new scope opens at the unfocused constellation overview.
+      focusedFeature: null,
     });
   },
   swapWorkspace: (workspace, scope) => {
@@ -461,6 +480,9 @@ export const useViewStore = create<ViewState>((set) => ({
       // Reset to the constellation overview so the new project does not open at
       // 200 document nodes (same rationale as the worktree swap).
       granularity: "feature",
+      // A descent is scoped to the previous corpus's feature — clear it on a
+      // swap so the new scope opens at the unfocused constellation overview.
+      focusedFeature: null,
     });
   },
   seedFromSession: ({ scope, folder, featureTags }) =>
@@ -557,7 +579,14 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => ({ leftRailCollapsed: !state.leftRailCollapsed })),
   toggleRightRail: () =>
     set((state) => ({ rightRailCollapsed: !state.rightRailCollapsed })),
-  setGranularity: (granularity) => set({ granularity }),
+  // A manual granularity switch is a fresh, unfocused view choice, so it clears
+  // any feature descent (toggling back to "feature" returns to the constellation;
+  // toggling to "document" shows the full graph, not one feature's members).
+  setGranularity: (granularity) => set({ granularity, focusedFeature: null }),
+  // Descend into a feature: focus it AND flip to the bounded document view in one
+  // move, so the slice query narrows to the feature's members
+  // (filter.feature_tags=[tag]) instead of re-serving the whole document corpus.
+  descendIntoFeature: (tag) => set({ focusedFeature: tag, granularity: "document" }),
   setActiveLens: (activeLens) => set({ activeLens }),
   setRepresentationMode: (activeRepresentationMode) =>
     set({ activeRepresentationMode }),
