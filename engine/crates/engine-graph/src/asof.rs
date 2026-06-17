@@ -112,6 +112,22 @@ pub fn resolve_ref(repo_dir: &Path, reference: &str) -> Result<String> {
     Ok(resolve_commit(&repo, reference)?.0.to_string())
 }
 
+/// Like [`resolve_ref`] but ALSO returns how the token was read (ADD-901). Cheap —
+/// no tree traversal, no blob reads, no core subprocess. The serve layer resolves
+/// `(sha, interpretation)` per request from THIS request's token, then fetches the
+/// historical graph from a by-sha cache: that keeps the `interpretation` echo
+/// correct per token FORM even when two tokens (an all-digit sha-prefix and an
+/// epoch-ms timestamp) resolve to the same commit — they share the cached graph
+/// but each echoes its own reading.
+pub fn resolve_ref_interpreted(
+    repo_dir: &Path,
+    reference: &str,
+) -> Result<(String, Interpretation)> {
+    let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
+    let (id, interpretation) = resolve_commit(&repo, reference)?;
+    Ok((id.to_string(), interpretation))
+}
+
 /// Rebuild the as-of graph AND return the resolution facts the response must
 /// echo (ADD-901): the resolved 40-char sha and the chosen `interpretation`
 /// (revision vs ms-timestamp). The contract requires the response to echo both

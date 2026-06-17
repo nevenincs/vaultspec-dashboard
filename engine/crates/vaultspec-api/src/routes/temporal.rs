@@ -122,7 +122,19 @@ pub async fn graph_asof(
     // sends `t` (a ref, sha, or epoch-ms) and must learn, without re-deriving,
     // both which commit the engine landed on and how it read the token (the
     // revision/timestamp readings can collide on an all-digit value).
-    let resolved = engine_graph::asof::asof_graph_resolved(&cell.root, &params.t, &scope, 0)
+    // Resolve (sha, interpretation) CHEAPLY from THIS request's token (no graph
+    // build), then fetch the historical graph from the cell's by-sha LRU: a
+    // time-travel REVISIT (scrubbing returns to a commit) is served from cache,
+    // skipping the ~35s per-request re-index (core `vault graph --ref` subprocess +
+    // structural rebuild). First visit to a never-seen sha still pays the re-index
+    // (inherent). The interpretation is echoed from the FRESH resolve, not the
+    // cache, so two token forms that resolve to one commit each echo their own
+    // reading (ADD-901) while sharing the cached graph.
+    let (resolved_sha, interpretation) =
+        engine_graph::asof::resolve_ref_interpreted(&cell.root, &params.t)
+            .map_err(|e| super::revision_error(&state, &params.t, &e))?;
+    let resolved = cell
+        .asof_graph(&resolved_sha)
         .map_err(|e| super::revision_error(&state, &params.t, &e))?;
     let mut slice = engine_query::graph::graph_query(
         &resolved.graph,
@@ -166,8 +178,8 @@ pub async fn graph_asof(
             "t": params.t,
             // Additive (ADD-901): the raw `t` echo above is preserved; these
             // name the commit `t` resolved to and how the token was read.
-            "resolved_sha": resolved.resolved_sha,
-            "interpretation": resolved.interpretation,
+            "resolved_sha": resolved_sha,
+            "interpretation": interpretation,
             "nodes": slice.nodes,
             "edges": slice.edges,
             // Feature granularity carries the constellation meta-edges so a

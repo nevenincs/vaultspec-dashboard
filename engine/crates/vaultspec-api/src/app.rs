@@ -123,6 +123,13 @@ pub struct ScopeCell {
     /// /events activity feed walks up to 5000 commits and correlates each to graph
     /// nodes — immutable for a given HEAD, but it ran on every request (~2.2s).
     pub event_rows_cache: Mutex<Option<(u64, Arc<Vec<engine_store::EventRow>>)>>,
+    /// Bounded LRU of resolved historical (as-of) graphs, keyed by 40-char commit
+    /// sha. `/graph/asof` re-indexes the vault at a commit per request (~35s: the
+    /// `vault graph --ref` core subprocess + a structural rebuild over every doc);
+    /// time-travel scrubbing REVISITS commits, so a sha cache makes a revisit
+    /// instant. Bounded (the graphs are multi-MB) per
+    /// bounded-by-default-for-every-accumulator.
+    pub asof_cache: Mutex<VecDeque<(String, Arc<engine_graph::asof::AsofGraph>)>>,
     /// Memoized `.vault` document basename -> repo-relative path index per graph
     /// generation (backend-hotpath-hardening F1): the content route's per-fetch
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
@@ -165,6 +172,12 @@ pub struct ScopeCell {
 
 pub const RING_CAP: usize = 4096;
 
+/// How many resolved historical (as-of) graphs to retain per cell. Each is a
+/// full multi-MB `LinkageGraph`, so the window is small — enough that the
+/// scrub-back-and-forth time-travel pattern hits, without unbounded retention
+/// (bounded-by-default-for-every-accumulator).
+const ASOF_CACHE_CAP: usize = 4;
+
 impl ScopeCell {
     /// Build a fresh cell for a served worktree root, with an empty graph and
     /// a zeroed clock. The caller indexes it (via [`ScopeCell::rebuild_and_swap`])
@@ -185,6 +198,7 @@ impl ScopeCell {
             feature_nodes_cache: Mutex::new(None),
             vault_tree_rows_cache: Mutex::new(None),
             event_rows_cache: Mutex::new(None),
+            asof_cache: Mutex::new(VecDeque::new()),
             doc_index_cache: Mutex::new(None),
             embeddings_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
@@ -254,6 +268,57 @@ impl ScopeCell {
         let fresh = Arc::new(rows);
         *cache = Some((generation, fresh.clone()));
         Ok(fresh)
+    }
+
+    /// The resolved historical (as-of) graph for a time-travel token, served from
+    /// a bounded by-sha LRU. `/graph/asof` re-indexes the vault at the resolved
+    /// commit per request — the `vault graph --ref` core subprocess plus a
+    /// structural rebuild over every doc (~35s on a large corpus) — so a revisit
+    /// (time-travel scrubbing returns to commits) is the common case worth caching.
+    /// The cheap sha resolve (`resolve_ref`: no tree walk, no subprocess) is the
+    /// cache key; a hit skips the re-index entirely. A miss re-indexes OFF the lock
+    /// (the multi-second build must never hold the cache mutex). First visit to a
+    /// never-seen sha still pays the re-index (core must re-parse the historical
+    /// vault — inherent). NOTE the cached graph carries the `interpretation` of the
+    /// token that first resolved this sha; the time-travel client sends epoch-ms
+    /// timestamps consistently, so that label is stable in practice.
+    /// Fetch the historical graph for an ALREADY-RESOLVED commit `sha` (the caller
+    /// resolves `(sha, interpretation)` cheaply via
+    /// [`engine_graph::asof::resolve_ref_interpreted`] and echoes the per-request
+    /// interpretation itself — the cache is keyed on the sha and carries no token
+    /// reading, so two token forms resolving to one commit share the graph yet each
+    /// echo their own interpretation). On a hit the ~35s re-index is skipped; on a
+    /// miss it runs OFF the lock (the multi-second build must never hold the mutex).
+    pub fn asof_graph(
+        &self,
+        sha: &str,
+    ) -> std::result::Result<Arc<engine_graph::asof::AsofGraph>, engine_graph::IndexError> {
+        {
+            let mut cache = self.asof_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(pos) = cache.iter().position(|(s, _)| s == sha) {
+                // LRU: move the hit to the front so the most-recently-used survives.
+                let hit = cache.remove(pos).expect("position just found");
+                cache.push_front(hit.clone());
+                return Ok(hit.1);
+            }
+        }
+        // Re-index OFF the lock (the ~35s build must not hold the cache mutex). The
+        // sha is itself a valid revision token, so the build resolves it cheaply.
+        let resolved = Arc::new(engine_graph::asof::asof_graph_resolved(
+            &self.root,
+            sha,
+            &self.scope,
+            0,
+        )?);
+        let mut cache = self.asof_cache.lock().unwrap_or_else(|e| e.into_inner());
+        // A concurrent request may have built the same sha while we did; de-dup.
+        if !cache.iter().any(|(s, _)| s == sha) {
+            cache.push_front((sha.to_string(), resolved.clone()));
+            while cache.len() > ASOF_CACHE_CAP {
+                cache.pop_back();
+            }
+        }
+        Ok(resolved)
     }
 
     pub fn meta_edges(&self) -> Arc<Vec<MetaEdge>> {
