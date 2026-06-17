@@ -328,7 +328,7 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
 /// so a rebuild at an unchanged HEAD is a cache hit that skips the ~16s core
 /// subprocess entirely. Lives in the re-derivable `.vault/data/engine-data/`
 /// zone — fully deletable, rebuildable on the next miss.
-const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
+pub(crate) const DECLARED_GRAPH_KIND: &str = "declared-graph-v2";
 
 /// How many declared-graph snapshot generations to retain. Each generation is a
 /// full-graph JSON payload (megabytes) minted on every HEAD change; the cache is
@@ -349,7 +349,7 @@ const TEMPORAL_EVENT_RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1000;
 /// scope token, so two scopes at the same commit never alias each other's
 /// cached JSON (defensive — the JSON is scope-independent, but the qualified
 /// key documents the `(scope, HEAD sha)` ADR contract).
-fn declared_cache_key(scope_token: &str, head_sha: &str) -> String {
+pub(crate) fn declared_cache_key(scope_token: &str, head_sha: &str) -> String {
     engine_model::content_hash(format!("{scope_token}:{head_sha}").as_bytes())
 }
 

@@ -138,6 +138,23 @@ pub fn asof_graph_resolved(
     scope: &ScopeRef,
     observed_at: Timestamp,
 ) -> Result<AsofGraph> {
+    asof_graph_resolved_cached(repo_dir, reference, scope, observed_at, None)
+}
+
+/// Like [`asof_graph_resolved`] but accepts a pre-fetched declared-tier JSON (the
+/// cacheable `vault graph --ref` payload the serve layer keys by sha in its
+/// declared-graph cache). When `Some`, the declared tier is ingested from that
+/// JSON instead of re-running the ~16s core subprocess — so an as-of build for a
+/// recently-indexed sha (the common time-travel target, retained in the declared
+/// cache) skips the subprocess. `None` runs the subprocess as before (the CLI and
+/// `/graph/diff` paths, and any sha not in the cache).
+pub fn asof_graph_resolved_cached(
+    repo_dir: &Path,
+    reference: &str,
+    scope: &ScopeRef,
+    observed_at: Timestamp,
+    declared_json: Option<&str>,
+) -> Result<AsofGraph> {
     let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
     let (commit_id, interpretation) = resolve_commit(&repo, reference)?;
     let commit = repo
@@ -289,13 +306,24 @@ pub fn asof_graph_resolved(
     // blobs above — closing the historical declared-tier gap. Best-effort: an
     // old core, a non-vaultspec dir, or an unresolvable ref leaves the
     // historical declared tier simply absent, never a panic.
-    let _ = crate::index::ingest_core_graph(
-        &mut graph,
-        repo_dir,
-        scope,
-        observed_at,
-        Some(&resolved_sha),
-    );
+    match declared_json {
+        // Cached declared JSON (keyed by this sha in the serve layer): ingest it
+        // directly — no core subprocess. The blob-true structural tier above is
+        // already built; this just folds in the authored declared edges.
+        Some(json) => {
+            let _ = crate::index::ingest_declared_from_json(&mut graph, json, scope, observed_at);
+        }
+        // No cache: run the read-and-infer `vault graph --ref <sha>` subprocess.
+        None => {
+            let _ = crate::index::ingest_core_graph(
+                &mut graph,
+                repo_dir,
+                scope,
+                observed_at,
+                Some(&resolved_sha),
+            );
+        }
+    }
 
     Ok(AsofGraph {
         graph,

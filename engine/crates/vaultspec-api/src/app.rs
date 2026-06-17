@@ -323,13 +323,29 @@ impl ScopeCell {
                 return Ok(hit.1);
             }
         }
+        // Reuse the serve-layer declared-graph cache (the live rebuild persists
+        // core's `vault graph` JSON by sha): an as-of build for a recently-indexed
+        // sha — the common time-travel target, retained in that bounded cache —
+        // then ingests the cached declared tier instead of re-running the ~16s
+        // core subprocess. An older/uncached sha returns None and falls back to
+        // the subprocess. Read off the store under its own short lock.
+        let declared = {
+            let key =
+                crate::registry::declared_cache_key(&crate::routes::scope_token(&self.root), sha);
+            let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+            store
+                .get_artifact(crate::registry::DECLARED_GRAPH_KIND, &key)
+                .ok()
+                .flatten()
+        };
         // Re-index OFF the lock (the ~35s build must not hold the cache mutex). The
         // sha is itself a valid revision token, so the build resolves it cheaply.
-        let resolved = Arc::new(engine_graph::asof::asof_graph_resolved(
+        let resolved = Arc::new(engine_graph::asof::asof_graph_resolved_cached(
             &self.root,
             sha,
             &self.scope,
             0,
+            declared.as_deref(),
         )?);
         let mut cache = self.asof_cache.lock().unwrap_or_else(|e| e.into_inner());
         // A concurrent request may have built the same sha while we did; de-dup.
