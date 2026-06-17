@@ -163,6 +163,13 @@
       "figmaUrl": null
     },
     {
+      "name": "DocRow",
+      "source": "src/app/kit/DocRow.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null
+    },
+    {
       "name": "DropdownButton",
       "source": "src/app/kit/DropdownButton.tsx",
       "designSurface": true,

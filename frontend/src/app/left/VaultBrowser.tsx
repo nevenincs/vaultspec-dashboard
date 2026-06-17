@@ -13,7 +13,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 
-import { Chip, SectionLabel, StatusDot } from "../kit";
+import { DocRow, SectionLabel, StatusDot } from "../kit";
 import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import { useVaultTree, useVaultTreeAvailability } from "../../stores/server/queries";
@@ -359,58 +359,40 @@ export function VaultBrowser({
                           }
                           navKeyDown(rowKey)(e);
                         }}
-                        className={`flex w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 py-fg-0-5 pe-fg-1 ps-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                          highlighted
-                            ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
-                            : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
-                        }`}
+                        className="block w-full rounded-fg-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                       >
-                        {/* Leading category cue (binding `LeftRail` 244:750 row):
-                              the kit StatusDot tinted by the doc type's bound scene/
-                              category color, so the dot and its graph node agree.
-                              PLAN rows instead carry the grayscale-safe status pip
-                              (✓/◐/○); a doc type with no bound color (reference)
-                              falls back to its doc-type mark so the row is never
-                              blank. Selection is the kit ListRow treatment — a 2px
-                              left accent bar + accent-subtle tint on the row. */}
-                        {StatusMark && status ? (
-                          <span
-                            className={`flex shrink-0 items-center ${planStatusToneClass(status)}`}
-                            aria-label={`plan ${planStatusLabel(status)}`}
-                            data-plan-status={status}
-                          >
-                            <StatusMark size={STATUS_MARK_PX} />
-                          </span>
-                        ) : rowCategory ? (
-                          <span className="flex shrink-0 items-center">
-                            <StatusDot category={rowCategory} />
-                          </span>
-                        ) : (
-                          <span
-                            className="flex shrink-0 items-center text-ink-faint"
-                            aria-hidden
-                          >
-                            <FallbackMark size={DOC_MARK_PX} />
-                          </span>
-                        )}
-                        <span className="min-w-0 shrink truncate">
-                          {entryStem(entry.path)}
-                        </span>
-                        {/* Feature tag as the kit Chip (feature-toned), matching
-                              the binding row's #feature-tag chip. */}
-                        {entry.feature_tags[0] && (
-                          <Chip category="feature">#{entry.feature_tags[0]}</Chip>
-                        )}
-                        {fresh && (
-                          <span
-                            className={`ml-auto shrink-0 text-caption ${
-                              isFresh(fresh) ? "text-state-active" : "text-ink-faint"
-                            }`}
-                            data-tabular
-                          >
-                            {fresh}
-                          </span>
-                        )}
+                        {/* The centralized kit DocRow (board 244:750 / 135:2): a
+                            leading category StatusDot (or, on plan rows, the
+                            grayscale status pip; reference falls back to its
+                            doc-type mark), the title, the plain "#feature" tag, and
+                            the age — the selection accent treatment is the kit's. */}
+                        <DocRow
+                          selected={highlighted}
+                          leading={
+                            StatusMark && status ? (
+                              <span
+                                className={planStatusToneClass(status)}
+                                aria-label={`plan ${planStatusLabel(status)}`}
+                                data-plan-status={status}
+                              >
+                                <StatusMark size={STATUS_MARK_PX} />
+                              </span>
+                            ) : rowCategory ? (
+                              <StatusDot category={rowCategory} />
+                            ) : (
+                              <span className="text-ink-faint">
+                                <FallbackMark size={DOC_MARK_PX} />
+                              </span>
+                            )
+                          }
+                          title={entryStem(entry.path)}
+                          tag={
+                            entry.feature_tags[0]
+                              ? `#${entry.feature_tags[0]}`
+                              : undefined
+                          }
+                          age={fresh || undefined}
+                        />
                       </button>
                     </li>
                   );

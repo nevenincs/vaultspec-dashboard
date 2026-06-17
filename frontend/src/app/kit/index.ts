@@ -37,6 +37,8 @@ export { Card } from "./Card";
 export type { CardProps, CardElevation } from "./Card";
 export { ListRow } from "./ListRow";
 export type { ListRowProps } from "./ListRow";
+export { DocRow } from "./DocRow";
+export type { DocRowProps } from "./DocRow";
 export { SectionLabel } from "./SectionLabel";
 export type { SectionLabelProps } from "./SectionLabel";
 export { Divider } from "./Divider";
