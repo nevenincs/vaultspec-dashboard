@@ -73,23 +73,27 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph = new Graph(container, {
       backgroundColor: hexString("--color-canvas-bg", 0xfdfaf6),
       spaceSize: SPACE_SIZE,
-      // ---- forces, enabled ONE BRICK AT A TIME ----------------------------
-      // BRICK 2: repulsion ON — the only spreading force. Verified live to push
-      // the field apart (nearest-neighbour gaps grew 110→132+, still no
-      // intersection), move genuinely (real motion that cools, not a fake pause),
-      // and never NaN/explode (bounded by spaceSize). Links and gravity stay OFF
-      // until the next bricks so each force's stability is isolated.
-      simulationRepulsion: 1.0,
+      // ---- force balance (cosmos GPU sim — the LIVE layout) ---------------
+      // NO gravity: it pulls every node to the centre and collapses a dense graph
+      // into a clump that repulsion cannot hold open (measured: bbox ~285 WITH
+      // gravity vs ~1300 without). Repulsion spreads the field; a MODERATE link
+      // spring with a link distance well above the node sizes clusters connected
+      // nodes without stacking them; friction < 1 cools to a stable rest and a
+      // drag reheats it. (These are the knobs the Tune sliders will drive.)
+      simulationRepulsion: 2.0,
       simulationGravity: 0,
-      simulationLinkSpring: 0,
-      simulationLinkDistance: 0,
+      simulationLinkSpring: 0.4,
+      simulationLinkDistance: 50,
       simulationFriction: 0.85,
-      simulationDecay: 1000,
+      simulationDecay: 2000,
       // ---- interaction (live) ---------------------------------------------
       enableDrag: true,
       fitViewOnInit: true,
       fitViewPadding: 0.3,
-      scalePointsOnZoom: true,
+      // Fixed pixel point sizes (don't shrink to nothing when the field is zoomed
+      // out to fit) so nodes stay clearly visible and easy to grab.
+      scalePointsOnZoom: false,
+      pointSizeScale: 1,
       renderHoveredPointRing: true,
       hoveredPointRingColor: hexString("--color-accent", 0x8a7d5a),
       onClick: (index) => {
