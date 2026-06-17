@@ -93,9 +93,7 @@ export function FilterBar({
           >
             <PanelLeft size={14} aria-hidden />
           </IconButton>
-          {activeFilterCount > 0 && (
-            <Badge tone="accent">{activeFilterCount}</Badge>
-          )}
+          {activeFilterCount > 0 && <Badge tone="accent">{activeFilterCount}</Badge>}
         </div>
       )}
       <SearchField
@@ -104,7 +102,7 @@ export function FilterBar({
           setLocalText(value);
           debouncedSetTextMatch(value);
         }}
-        placeholder="Search the graph…"
+        placeholder="Search documents…"
         ariaLabel="text match filter"
         onClear={() => {
           setLocalText("");
