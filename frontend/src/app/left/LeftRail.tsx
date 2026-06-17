@@ -44,29 +44,23 @@ export function LeftRail() {
     <nav
       aria-label="scope rail"
       data-left-rail
-      className="flex min-h-0 flex-1 flex-col p-fg-2 text-ink-muted"
+      // Binding rail spacing (board 244:750): px 12, pt 14, and a uniform 14px gap
+      // between the stacked slots — NO separators (the board has none).
+      className="flex min-h-0 flex-1 flex-col gap-[14px] px-[12px] pt-[14px] text-ink-muted"
     >
-      {/* 1. Workspace switcher (coarsest scope): which PROJECT. A quiet header
-             when one root, a picker when several (the control owns that). */}
+      {/* 1. Project title (board header): the active workspace name. */}
       <div className="shrink-0" data-rail-slot="workspace">
         <WorkspacePicker />
       </div>
 
-      {/* soft 1px rule — felt-not-seen depth (base-language layer 3). */}
-      <hr className="my-fg-2 shrink-0 border-rule" />
-
-      {/* 2. Worktree switcher: which WORKTREE, scoped to the active workspace.
-             Carries the read-only git status badge (status, never control). */}
+      {/* 2. The single worktree dropdown (board "main"). */}
       <div className="shrink-0" data-rail-slot="worktree">
         <WorktreePicker />
       </div>
 
-      <hr className="my-fg-2 shrink-0 border-rule" />
-
-      {/* 3. Browser region (the file-thinking surface): vault | code modes behind
-             a toggle, with the in-rail filter. Fills the remaining height so the
-             browser dominates the rail (ADR "the browser still dominates"). */}
-      <div className="flex min-h-0 flex-1 flex-col" data-rail-slot="browser">
+      {/* 3. Browser region: Vault/Tree/Code toggle, the filter, and the document
+             list. Fills the remaining height so the browser dominates the rail. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-[14px]" data-rail-slot="browser">
         <BrowserRegion />
       </div>
     </nav>

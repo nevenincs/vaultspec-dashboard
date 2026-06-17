@@ -66,20 +66,17 @@ export function DocRow({
         </span>
       )}
       <span
-        className={`min-w-0 truncate text-meta ${
+        className={`min-w-0 truncate text-[12.5px] ${
           selected ? "font-medium text-ink" : "text-ink"
         }`}
       >
         {title}
       </span>
       {tag != null && (
-        <span className="shrink-0 truncate text-caption text-ink-faint">{tag}</span>
+        <span className="shrink-0 truncate text-[11px] text-ink-faint">{tag}</span>
       )}
       {age != null && (
-        <span
-          data-tabular
-          className="shrink-0 text-caption tabular-nums text-ink-faint"
-        >
+        <span data-tabular className="shrink-0 text-[11px] tabular-nums text-ink-faint">
           {age}
         </span>
       )}

@@ -35,7 +35,7 @@ export function BrowserRegion() {
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col gap-fg-1"
+      className="flex min-h-0 flex-1 flex-col gap-[14px]"
       aria-label="file browser"
       data-browser-region
     >

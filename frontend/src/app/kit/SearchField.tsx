@@ -42,7 +42,7 @@ export function SearchField({
   const hasValue = value.length > 0;
   return (
     <div
-      className="flex shrink-0 items-center gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1 transition-colors duration-ui-fast focus-within:border-rule-strong"
+      className="flex h-[34px] shrink-0 items-center gap-fg-2 rounded-fg-md border border-rule bg-paper-sunken px-[10px] transition-colors duration-ui-fast focus-within:border-rule-strong"
       data-kit="search-field"
     >
       <span className="shrink-0 text-ink-faint" aria-hidden>
@@ -58,7 +58,7 @@ export function SearchField({
         spellCheck={false}
         autoComplete="off"
         onChange={(e) => onChange(e.target.value)}
-        className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint focus-visible:outline-none disabled:opacity-50"
+        className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-ink-faint focus-visible:outline-none disabled:opacity-50"
         data-kit-search-input
       />
       {onClear && hasValue && (

@@ -14,20 +14,13 @@
 // back through `setScope` plus the durable session write — chrome over the one
 // projection.
 
-import {
-  ChevronDown,
-  ChevronUp,
-  Dot,
-  MoveDown,
-  MoveUp,
-  TriangleAlert,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useId, useRef, useState } from "react";
 
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
-import { EngineError, useEngineStatus } from "../../stores/server/engine";
+import { EngineError } from "../../stores/server/engine";
 import {
   usePutSession,
   useWorkspaceMap,
@@ -69,7 +62,6 @@ export function orderWorktrees(worktrees: readonly MapWorktree[]): MapWorktree[]
 // caret reads one density step smaller so the structural chrome stays attenuated
 // relative to the worktree identity, matching the sidebar's CHEVRON_PX.
 const CARET_PX = 12;
-const SYNC_PX = 11;
 const WARN_PX = 12;
 
 export interface WorktreePickerProps {
@@ -98,7 +90,6 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   // Git sync indicator — ahead/behind/dirty from the live status hook
   // (TanStack deduplicates this query with NowStrip and ChangesOverview). This
   // is a glanceable affordance on the active worktree, never ambient decoration.
-  const git = useEngineStatus().data?.git;
 
   // Keyboard-initiated actions never animate (ADR / base-language layer 6): when
   // the disclosure is toggled from the keyboard, mark the next list render
@@ -279,58 +270,17 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
             ? `worktree scope: ${headlineBranch}${pending ? ", switching" : ""}`
             : "choose a worktree scope"
         }
-        className="flex w-full items-center gap-fg-1 rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 shadow-fg-raised transition-colors duration-ui-fast hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-fg-1-5 rounded-fg-md bg-paper-sunken px-[10px] py-[6px] transition-colors duration-ui-fast hover:bg-paper-sunken/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
+        {/* The board dropdown shows JUST the worktree name (no ahead/behind/dirty
+            badges) on the paper-sunken ground, with a trailing chevron. */}
         <span
-          className={`min-w-0 flex-1 truncate text-left font-medium ${
+          className={`min-w-0 flex-1 truncate text-left text-[12.5px] font-medium ${
             pending ? "text-ink-muted" : "text-ink"
           }`}
         >
           {headlineBranch ?? "pick a worktree…"}
         </span>
-        {/* Honest pending cue on the trigger while a switch is in flight. */}
-        {pending && (
-          <span className="shrink-0 text-caption text-ink-faint" role="status">
-            switching…
-          </span>
-        )}
-        {/* Git sync badge: ahead/behind commits + a dirty mark — a glanceable cue
-            on REAL git state, shown only when there is something to report. Live
-            shape: ahead/behind are Option (shown only when an upstream exists,
-            absent ≠ zero); `dirty` is a BOOLEAN (no per-file count), so the dirty
-            mark is a single muted-accent dot, not a number. */}
-        {!pending &&
-          git &&
-          ((git.ahead ?? 0) > 0 || (git.behind ?? 0) > 0 || git.dirty) && (
-            <span
-              className="flex shrink-0 items-center gap-fg-0-5 text-caption text-ink-faint"
-              title={[
-                (git.ahead ?? 0) > 0 ? `${git.ahead} ahead` : "",
-                (git.behind ?? 0) > 0 ? `${git.behind} behind` : "",
-                git.dirty ? "changes present" : "",
-              ]
-                .filter(Boolean)
-                .join(", ")}
-            >
-              {git.ahead !== undefined && git.ahead > 0 && (
-                <span className="flex items-center" aria-hidden>
-                  <MoveUp size={SYNC_PX} />
-                  <span data-tabular>{git.ahead}</span>
-                </span>
-              )}
-              {git.behind !== undefined && git.behind > 0 && (
-                <span className="flex items-center" aria-hidden>
-                  <MoveDown size={SYNC_PX} />
-                  <span data-tabular>{git.behind}</span>
-                </span>
-              )}
-              {git.dirty && (
-                <span className="flex items-center text-accent" aria-hidden>
-                  <Dot size={SYNC_PX} />
-                </span>
-              )}
-            </span>
-          )}
         <span className="shrink-0 text-ink-faint" aria-hidden>
           {expanded ? <ChevronUp size={CARET_PX} /> : <ChevronDown size={CARET_PX} />}
         </span>

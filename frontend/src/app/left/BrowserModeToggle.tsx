@@ -18,24 +18,15 @@
 // source tree) so the mode reads without relying on hue; the kit `SegmentedToggle`
 // owns the roving-keys radiogroup a11y model and the raised-paper active cue.
 
-import { Books, TreeStructure, TreeView } from "@phosphor-icons/react";
-
 import { Segment, SegmentedToggle } from "../kit";
 import type { BrowserMode } from "../../stores/view/browserMode";
 
-// 14px is the iconography ADR's grayscale-by-shape gate size; the three domain
-// marks are distinct by SHAPE (a stack of books / a top-down hierarchy / a
-// sideways branching tree) so the mode reads without relying on hue.
-const MARK_PX = 14;
-
-// vault · tree · code, left to right, matching the binding design's segmented
-// control. `TreeView` (a top-down org hierarchy) is the tree mode's mark — the
-// vault corpus RE-nested — distinct in shape from `TreeStructure` (the sideways
-// source tree) the code mode carries.
-const MODES: { id: BrowserMode; label: string; mark: typeof Books }[] = [
-  { id: "vault", label: "Vault", mark: Books },
-  { id: "tree", label: "Tree", mark: TreeView },
-  { id: "code", label: "Code", mark: TreeStructure },
+// vault · tree · code, left to right — the binding board's segmented control. The
+// board segments are LABEL-ONLY (no leading icon).
+const MODES: { id: BrowserMode; label: string }[] = [
+  { id: "vault", label: "Vault" },
+  { id: "tree", label: "Tree" },
+  { id: "code", label: "Code" },
 ];
 
 export interface BrowserModeToggleProps {
@@ -52,17 +43,10 @@ export function BrowserModeToggle({ mode, onModeChange }: BrowserModeToggleProps
         ariaLabel="browser mode"
         fullWidth
       >
-        {MODES.map(({ id, label, mark: Mark }) => (
+        {MODES.map(({ id, label }) => (
+          // The binding board (244:750) segments are LABEL-ONLY — no leading icon.
           <Segment key={id} value={id}>
-            {/* Grayscale-safe active cue: the kit Segment carries the raised-paper
-                fill + medium weight; the leading domain mark adds shape so the
-                active mode reads without relying on hue. */}
-            <span className="flex items-center gap-fg-1-5" data-browser-mode={id}>
-              <span className="shrink-0" aria-hidden>
-                <Mark size={MARK_PX} weight={mode === id ? "fill" : "regular"} />
-              </span>
-              <span>{label}</span>
-            </span>
+            <span data-browser-mode={id}>{label}</span>
           </Segment>
         ))}
       </SegmentedToggle>

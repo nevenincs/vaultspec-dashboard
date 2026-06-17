@@ -45,7 +45,7 @@ export function WorkspacePicker() {
   return (
     <div className="flex items-center px-fg-1" data-workspace-picker>
       <span
-        className="min-w-0 flex-1 truncate text-body font-medium text-ink"
+        className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink"
         title={current?.path}
         data-workspace-title
       >

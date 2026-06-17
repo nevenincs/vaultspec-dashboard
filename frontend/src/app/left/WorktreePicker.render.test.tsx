@@ -251,23 +251,21 @@ describe("WorktreePicker surface states + a11y (S30)", () => {
     });
   });
 
-  it("renders the git sync badge with tabular ahead/behind counts on real git state", async () => {
+  it("shows JUST the worktree name on the trigger — no ahead/behind/dirty badges (board 244:750)", async () => {
     const mock = new MockEngine();
     const transport = withPatchedBody(mock.fetchImpl, "/status", (body) => ({
       ...body,
-      // Live git shape: dirty BOOLEAN, ahead/behind present (upstream configured).
+      // Even with upstream drift present on the wire, the board dropdown shows only
+      // the worktree name — no git sync badge.
       git: { branch: "main", ahead: 3, behind: 2, dirty: true },
     }));
     engineClient.useTransport(transport);
     renderPicker();
     const trigger = await screen.findByRole("button", { name: /worktree scope/i });
-    await waitFor(() => {
-      expect(trigger.textContent).toContain("3");
-      expect(trigger.textContent).toContain("2");
-    });
-    // The counts are marked tabular for aligned figures (ADR typography law).
-    const tabular = trigger.querySelectorAll("[data-tabular]");
-    expect(tabular.length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => expect(trigger.textContent).toMatch(/main/));
+    // No ahead/behind counts leak onto the trigger.
+    expect(trigger.textContent).not.toContain("3");
+    expect(trigger.textContent).not.toContain("2");
   });
 
   it("collapses with Escape, returning focus to the trigger", async () => {
