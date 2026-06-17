@@ -73,15 +73,17 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph = new Graph(container, {
       backgroundColor: hexString("--color-canvas-bg", 0xfdfaf6),
       spaceSize: SPACE_SIZE,
-      // ---- BRICK 1: ALL FORCES OFF ----------------------------------------
-      // The field is a static, non-overlapping placement so the render +
-      // interaction layer is verified with zero force in play. Each force is
-      // switched on, one at a time, in a later brick.
-      simulationRepulsion: 0,
+      // ---- forces, enabled ONE BRICK AT A TIME ----------------------------
+      // BRICK 2: repulsion ON — the only spreading force. Verified live to push
+      // the field apart (nearest-neighbour gaps grew 110→132+, still no
+      // intersection), move genuinely (real motion that cools, not a fake pause),
+      // and never NaN/explode (bounded by spaceSize). Links and gravity stay OFF
+      // until the next bricks so each force's stability is isolated.
+      simulationRepulsion: 1.0,
       simulationGravity: 0,
       simulationLinkSpring: 0,
       simulationLinkDistance: 0,
-      simulationFriction: 1,
+      simulationFriction: 0.85,
       simulationDecay: 1000,
       // ---- interaction (live) ---------------------------------------------
       enableDrag: true,
@@ -126,7 +128,12 @@ export class CosmosField implements SceneFieldRenderer {
       this.idToIndex.set(node.id, i);
       this.indexToId[i] = node.id;
       sizes[i] = nodeRadius(node) * 2; // cosmos point size is a diameter
-      const [r, g, b, a] = rgba(categoryColor(node.kind));
+      // Category fill from the vault DOC TYPE first (adr/plan/exec/…), falling
+      // back to the generic node species (`kind`) for nodes with no doc type
+      // (feature / plan-container / code-artifact). The wire `kind` alone is the
+      // species, not the category, so colouring by it collapsed ~all document
+      // and plan-container nodes onto the single `code` swatch.
+      const [r, g, b, a] = rgba(categoryColor(node.docType ?? node.kind));
       colors[i * 4] = r;
       colors[i * 4 + 1] = g;
       colors[i * 4 + 2] = b;
@@ -149,9 +156,14 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph.setPointColors(colors);
     this.graph.setPointSizes(sizes);
     this.graph.setLinks(new Float32Array(linkList));
-    // BRICK 1: render the static placement; the force simulation is NOT started.
+    // Commit the freshly-set point/link buffers with a draw BEFORE starting the
+    // simulation — cosmos needs the points uploaded before start() takes them over
+    // (otherwise start() runs against an empty buffer and the field renders blank).
     this.graph.render();
-    this.graph.fitView();
+    // BRICK 2: start the LIVE force simulation. cosmos runs it on the GPU — the
+    // field spreads and cools to a stable rest, and reheats on drag. (This is a
+    // real continuous sim, not the paused snapshot the old field faked.)
+    this.graph.start();
   }
 
   resize(): void {
