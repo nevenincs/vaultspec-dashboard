@@ -2,14 +2,22 @@
 // transport error path must preserve the per-tier degradation block the engine
 // attaches to its error envelope (contract §2; the
 // every-wire-response-carries-the-tiers-block rule). A backend-DOWN condition
-// (e.g. a rag-down 502 on /search or /discover) must reach the client as
-// degradation truth the GUI can render — never a tiers-less bare error, which
-// would make the GUI lie about availability.
+// must reach the client as degradation truth the GUI can render — never a
+// tiers-less bare error, which would make the GUI lie about availability.
+//
+// Verified against the REAL `vaultspec serve` engine: no failure injection, no
+// mock. The engine genuinely produces error envelopes (unknown scope → 4xx) and
+// success envelopes that both carry the tiers block; the client must surface
+// that block intact on BOTH paths. The rag-502 simulation the old mock forced is
+// covered by the engine's own Rust conformance suite — it cannot be injected
+// against a healthy live surface, and guessing degradation from a bare transport
+// error is exactly what `degradation-is-read-from-tiers-not-guessed-from-errors`
+// forbids.
 
 import { describe, expect, it } from "vitest";
 
-import { MockEngine } from "../../testing/mockEngine";
-import { EngineClient, type TiersBlock } from "./engine";
+import { createLiveClient, liveFetch } from "../../testing/liveClient";
+import { CANONICAL_TIERS, EngineError, type TiersBlock } from "./engine";
 
 /** Read a tiers block off a thrown value, whatever channel carries it. */
 function tiersOf(error: unknown): TiersBlock | undefined {
@@ -26,54 +34,46 @@ function tiersOf(error: unknown): TiersBlock | undefined {
 }
 
 describe("error envelopes carry the tiers block (§2)", () => {
-  it("preserves the per-tier block when /search 502s because rag is down", async () => {
-    const mock = new MockEngine();
-    mock.degrade("semantic", "rag service down");
-    const client = new EngineClient({ baseUrl: "/api", fetchImpl: mock.fetchImpl });
+  it("preserves the per-tier block on the EngineError thrown for an unknown scope", async () => {
+    const client = createLiveClient();
+    const thrown = await client
+      .graphQuery({ scope: "NONEXISTENT_SCOPE_XYZ", granularity: "feature" })
+      .then(
+        () => {
+          throw new Error("graphQuery resolved; expected the unknown scope to reject");
+        },
+        (err: unknown) => err,
+      );
 
-    // Confirm the wire premise: the 502 error envelope DOES carry tiers, so a
-    // dropped block would indict the client, not the mock.
-    const wire = await mock.fetchImpl("/api/search", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: "auth" }),
-    });
-    const wireBody = (await wire.clone().json()) as { ok: boolean; tiers: TiersBlock };
-    expect(wire.status).toBe(502);
-    expect(wireBody.tiers.semantic.available).toBe(false);
-
-    const thrown = await client.search({ query: "auth" }).then(
-      () => {
-        throw new Error("search resolved; expected the down backend to surface");
-      },
-      (err: unknown) => err,
-    );
-
+    expect(thrown).toBeInstanceOf(EngineError);
     const tiers = tiersOf(thrown);
-    expect(
-      tiers,
-      "client dropped the tiers block from the 502 error envelope",
-    ).toBeDefined();
-    expect(tiers?.semantic.available).toBe(false);
+    expect(tiers, "client dropped the tiers block from the error envelope").toBeDefined();
+    // The block carries every canonical tier even on the failure path.
+    for (const tier of CANONICAL_TIERS) {
+      expect(tiers).toHaveProperty(tier);
+    }
   });
 
-  it("preserves the per-tier block when /discover 502s because rag is down", async () => {
-    const mock = new MockEngine();
-    mock.degrade("semantic", "rag service down");
-    const client = new EngineClient({ baseUrl: "/api", fetchImpl: mock.fetchImpl });
+  it("the raw error envelope on the wire carries tiers — the client's source of truth", async () => {
+    // Confirm the wire premise directly: a dropped block would indict the
+    // client, not the engine.
+    const res = await liveFetch("/graph/query?scope=NONEXISTENT_SCOPE_XYZ");
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    const body = (await res.json()) as { tiers?: Record<string, { available: boolean }> };
+    expect(body.tiers).toBeDefined();
+    for (const tier of CANONICAL_TIERS) {
+      expect(body.tiers).toHaveProperty(tier);
+    }
+  });
 
-    const node = mock.corpus.nodes.find((n) => n.kind !== "feature")!;
-    const thrown = await client.discover(node.id).then(
-      () => {
-        throw new Error("discover resolved; expected the down backend to surface");
-      },
-      (err: unknown) => err,
-    );
-
-    expect(
-      tiersOf(thrown),
-      "client dropped the tiers block from the /discover 502 envelope",
-    ).toBeDefined();
-    expect(tiersOf(thrown)?.semantic.available).toBe(false);
+  it("a success envelope reports per-tier availability read from the tiers block", async () => {
+    // Degradation is READ from the tiers block, never guessed: every canonical
+    // tier reports a boolean availability the GUI renders as a designed state.
+    const status = await createLiveClient().status();
+    expect(status.tiers).toBeTypeOf("object");
+    for (const tier of CANONICAL_TIERS) {
+      expect(status.tiers).toHaveProperty(tier);
+      expect(typeof status.tiers[tier].available).toBe("boolean");
+    }
   });
 });
