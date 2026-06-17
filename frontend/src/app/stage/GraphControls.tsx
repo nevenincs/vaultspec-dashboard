@@ -491,7 +491,7 @@ function TuneBody() {
 export function GraphControls() {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-fg-2 z-20 flex justify-center px-fg-2"
+      className="pointer-events-none absolute bottom-fg-2 left-fg-2 z-20 flex"
       data-graph-controls-shell
     >
       <Card
