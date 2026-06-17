@@ -200,6 +200,26 @@ impl ScopeCell {
 
     /// Meta-edges, memoized per generation (W02P05-203): the constellation
     /// hot path pays one aggregation per rebuild, not per request.
+    /// Eagerly build the per-generation memoized projections OFF the request
+    /// path. Called from the watcher rebuild (which already runs on a blocking
+    /// thread) right after the graph swap, so the costly salience basis
+    /// (PPR/Brandes/k-core over the whole scope — measured ~7 s cold on a
+    /// 3135-doc corpus) and the default-view projections are built HERE, once per
+    /// generation, instead of landing on the first user event after a vault edit.
+    /// Without this, a node-expand or a graph poll that happens to be the first
+    /// salience request after a rebuild paid the multi-second cold build itself —
+    /// the "tens of seconds, not milliseconds" stall. The lazy getters stay the
+    /// correctness floor (a request before warming completes still builds on
+    /// demand); this just moves the common case off the interactive path. Warms
+    /// the basis + the default constellation projections (meta_edges,
+    /// feature_nodes); the heavier document_views / vault_tree_rows stay lazy
+    /// since they serve explicit drill-in navigation, not the default view.
+    pub fn warm_projections(&self) {
+        let _ = self.salience_basis();
+        let _ = self.meta_edges();
+        let _ = self.feature_nodes();
+    }
+
     pub fn meta_edges(&self) -> Arc<Vec<MetaEdge>> {
         let generation = self.generation.load(Ordering::SeqCst);
         // Poison recovery (robustness H2): see `graph_arc`.
@@ -850,6 +870,22 @@ mod tests {
         let _ = cell.rebuild_and_swap();
         let c = cell.feature_nodes();
         assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    #[test]
+    fn warm_projections_primes_the_per_generation_caches() {
+        // The watcher calls warm_projections off the request path after a rebuild
+        // so the first user event finds the salience basis + default-view
+        // projections warm, not paying the multi-second cold build. Smoke-test
+        // that it runs and leaves the getters as warm-cache hits (same Arc) within
+        // the generation — i.e. it wired the right projections and they cache.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        cell.warm_projections();
+        assert!(Arc::ptr_eq(&cell.salience_basis(), &cell.salience_basis()));
+        assert!(Arc::ptr_eq(&cell.meta_edges(), &cell.meta_edges()));
+        assert!(Arc::ptr_eq(&cell.feature_nodes(), &cell.feature_nodes()));
     }
 
     #[test]

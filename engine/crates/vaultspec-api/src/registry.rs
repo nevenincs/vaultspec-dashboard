@@ -300,7 +300,20 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
                 // structural tier; the declared fold rides a separate task so a
                 // new commit re-folds declared at the new HEAD (perf ADR D1).
                 let rebuild_cell = cell.clone();
-                match tokio::task::spawn_blocking(move || rebuild_cell.rebuild_and_swap()).await {
+                match tokio::task::spawn_blocking(move || {
+                    let emitted = rebuild_cell.rebuild_and_swap()?;
+                    // Warm the per-generation projections on THIS blocking thread,
+                    // off the request path: the salience basis (PPR/Brandes/k-core,
+                    // ~7 s cold) and the default constellation projections are then
+                    // a warm-cache hit for the first user event after the rebuild
+                    // instead of paying the cold build on a node-expand or a graph
+                    // poll (the "tens of seconds" stall). A rebuild that fails
+                    // returns before warming; the lazy getters remain the floor.
+                    rebuild_cell.warm_projections();
+                    Ok::<usize, String>(emitted)
+                })
+                .await
+                {
                     Ok(Ok(_)) => spawn_declared_fold(&cell),
                     Ok(Err(e)) => eprintln!("vaultspec serve: rebuild failed: {e}"),
                     Err(e) => eprintln!("vaultspec serve: rebuild task panicked: {e}"),
