@@ -249,6 +249,24 @@ function markDotColor(docType: string): string {
   return category ? categoryColorVar(category) : "var(--color-ink-faint)";
 }
 
+/** First-of-month instants within [fromMs, toMs] — the month gridline ticks the
+ *  board paints across the top of the chart (Apr / May / Jun). Pure. */
+export function monthTicks(fromMs: number, toMs: number): number[] {
+  const ticks: number[] = [];
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return ticks;
+  }
+  const d = new Date(fromMs);
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  if (d.getTime() < fromMs) d.setUTCMonth(d.getUTCMonth() + 1);
+  for (let guard = 0; d.getTime() <= toMs && guard < 120; guard++) {
+    ticks.push(d.getTime());
+    d.setUTCMonth(d.getUTCMonth() + 1);
+  }
+  return ticks;
+}
+
 /** The instant a node's mark is positioned at (blob-true creation), or null. */
 export function nodeInstant(node: LineageNode): number | null {
   const created = node.dates?.created;
@@ -574,6 +592,24 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
               style={{ left: `${LANE_LABEL_X}px`, top: `${cy}px` }}
             >
               {group.label}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Month axis (board 239:714): the month name at each first-of-month tick
+          across the top of the chart, in faint ink. Decorative gridline labels. */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        {monthTicks(range.fromMs, range.toMs).map((t) => {
+          const x = timeToStripViewportX(t, range.fromMs, pxPerMs, 0);
+          if (x < GROUP_LABEL_W || x > width) return null;
+          return (
+            <span
+              key={t}
+              className="absolute top-1 whitespace-nowrap text-caption text-ink-faint"
+              style={{ left: `${x}px` }}
+            >
+              {new Date(t).toLocaleDateString("en-US", { month: "short" })}
             </span>
           );
         })}
