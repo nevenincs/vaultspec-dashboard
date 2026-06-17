@@ -25,11 +25,27 @@ import {
   derivePlanInteriorView,
   deriveVaultTreeAvailability,
   engineKeys,
+  isAddressableNode,
   parseSseFrames,
   sseChunks,
   stableKey,
   streamReducer,
 } from "./queries";
+
+describe("isAddressableNode (feature-node 404 guard)", () => {
+  it("excludes synthesized feature aggregates and null, includes real graph nodes", () => {
+    // The default constellation view selects/hovers/expands FEATURE nodes, whose
+    // ids the engine 404s on /nodes/{id}, /evidence, /neighbors (they are not
+    // stored graph nodes). The node-detail hooks gate on this so the default view
+    // never fires those doomed requests (no 404 storm, no false `degraded`).
+    expect(isAddressableNode("feature:dashboard-optimization")).toBe(false);
+    expect(isAddressableNode("feature:dashboard-rag-manager")).toBe(false);
+    expect(isAddressableNode(null)).toBe(false);
+    // Real, resolvable graph nodes stay addressable.
+    expect(isAddressableNode("doc:2026-06-16-graph-viz-quality-research")).toBe(true);
+    expect(isAddressableNode("doc:anything")).toBe(true);
+  });
+});
 
 describe("stableKey", () => {
   it("is order-insensitive for object keys and drops undefined", () => {

@@ -804,11 +804,27 @@ export function useGraphSliceAvailability(
   );
 }
 
+/**
+ * Whether an id addresses a REAL graph node the `/nodes/{id}` family can resolve.
+ * Constellation FEATURE nodes are SYNTHESIZED aggregates (id `feature:<tag>`), not
+ * stored graph nodes, so the engine 404s `/nodes/feature:…`, `…/evidence`, and
+ * `…/neighbors`. The feature node's data (member_count, degree, the features it
+ * links to via meta_edges) already rides the graph slice, so the chrome must NOT
+ * fire a doc-detail fetch for one: gating these queries here stops the 404 storm
+ * on the DEFAULT constellation view — and the false `degraded` policy trips those
+ * 404s caused — without changing what the consumers render (they already coped
+ * with absent detail). Every non-feature id (doc:, and any other real node kind)
+ * stays addressable.
+ */
+export function isAddressableNode(id: string | null): id is string {
+  return id !== null && !id.startsWith("feature:");
+}
+
 export function useNodeDetail(id: string | null) {
   return useQuery({
     queryKey: engineKeys.node(id ?? ""),
     queryFn: () => engineClient.node(id!),
-    enabled: id !== null,
+    enabled: isAddressableNode(id),
   });
 }
 
@@ -816,7 +832,7 @@ export function useNodeNeighbors(id: string | null, depth = 1) {
   return useQuery({
     queryKey: engineKeys.neighbors(id ?? "", depth),
     queryFn: () => engineClient.nodeNeighbors(id!, { depth }),
-    enabled: id !== null,
+    enabled: isAddressableNode(id),
   });
 }
 
@@ -1071,6 +1087,10 @@ export function useNodeNeighborsBulk(ids: readonly string[], depth = 1) {
     queries: bounded.map((id) => ({
       queryKey: engineKeys.neighbors(id, depth),
       queryFn: () => engineClient.nodeNeighbors(id, { depth }),
+      // Skip synthesized feature aggregates — the engine has no ego network for a
+      // `feature:<tag>` id (it 404s); expanding one is a no-op, not a degraded
+      // request. Real nodes (doc:, …) expand as before.
+      enabled: isAddressableNode(id),
     })),
   });
 }
@@ -1079,7 +1099,7 @@ export function useNodeEvidence(id: string | null) {
   return useQuery({
     queryKey: engineKeys.evidence(id ?? ""),
     queryFn: () => engineClient.nodeEvidence(id!),
-    enabled: id !== null,
+    enabled: isAddressableNode(id),
   });
 }
 
