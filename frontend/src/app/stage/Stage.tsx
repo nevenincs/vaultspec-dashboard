@@ -202,7 +202,11 @@ export function Stage() {
   // realized by these two being independent reactive inputs.
   const activeRepresentationMode = useViewStore((s) => s.activeRepresentationMode);
   const overlays = useViewStore((s) => s.overlays);
-  const availability = useGraphSliceAvailability(scope, granularity);
+  // Pass the SAME active lens the main slice uses so availability shares that
+  // query's cache entry instead of firing a second (lens-default) document fetch
+  // just to read the lens-independent tiers — a duplicate multi-MB request when a
+  // non-default lens is active.
+  const availability = useGraphSliceAvailability(scope, granularity, activeLens);
   const surfaces = useSurfaceStates();
   const openNode = useViewStore((s) => s.openNode);
   const setHoveredId = useViewStore((s) => s.setHoveredId);

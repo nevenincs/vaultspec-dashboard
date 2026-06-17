@@ -796,8 +796,17 @@ export function deriveGraphSliceAvailability(
 export function useGraphSliceAvailability(
   scope: string | null,
   granularity?: "document" | "feature",
+  lens?: SalienceLens,
 ): GraphSliceAvailability {
-  const slice = useGraphSlice(scope, undefined, undefined, granularity);
+  // The per-tier availability is LENS-INDEPENDENT, but the slice query key
+  // includes the lens — so a caller that renders the slice under a non-default
+  // lens (the Stage) MUST pass that same lens here, or this hook keys on the
+  // default-lens slice and fires a SECOND, redundant document fetch (the
+  // multi-megabyte payload, twice) just to read tiers. Passing the active lens
+  // makes this share the main slice's cache entry: the tiers ride the fetch the
+  // Stage already issued, no duplicate request. Callers with no lens context
+  // (e.g. the TierDial) keep the default-lens key, unchanged.
+  const slice = useGraphSlice(scope, undefined, undefined, granularity, lens);
   return deriveGraphSliceAvailability(
     tiersFromQuery(slice),
     scope !== null && slice.isPending,
