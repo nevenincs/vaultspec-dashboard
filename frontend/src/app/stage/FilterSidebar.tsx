@@ -206,6 +206,31 @@ function TierSection() {
 }
 
 // ---------------------------------------------------------------------------
+// EDITED window (board 217:633 date-range radios)
+// ---------------------------------------------------------------------------
+
+type EditedWindow = "any" | "7d" | "30d" | "year";
+
+const EDITED_WINDOWS: { key: EditedWindow; label: string }[] = [
+  { key: "any", label: "Any time" },
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "year", label: "This year" },
+];
+
+const DAY_MS = 24 * 3600 * 1000;
+
+/** The shared date-range filter value for an EDITED window selection. */
+function editedWindowRange(key: EditedWindow): { from?: string; to?: string } {
+  if (key === "any") return {};
+  const now = Date.now();
+  if (key === "7d") return { from: new Date(now - 7 * DAY_MS).toISOString() };
+  if (key === "30d") return { from: new Date(now - 30 * DAY_MS).toISOString() };
+  const year = new Date(now).getFullYear();
+  return { from: new Date(Date.UTC(year, 0, 1)).toISOString() };
+}
+
+// ---------------------------------------------------------------------------
 // Main sidebar
 // ---------------------------------------------------------------------------
 
@@ -234,7 +259,16 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
   const textMatch = useFilterStore((s) => s.textMatch);
   const toggleFacet = useFilterStore((s) => s.toggleFacet);
   const setTextMatch = useFilterStore((s) => s.setTextMatch);
+  const setDateRange = useFilterStore((s) => s.setDateRange);
   const reset = useFilterStore((s) => s.reset);
+
+  // EDITED window (board 217:633: Any time / Last 7 days / Last 30 days / This
+  // year). A view-local selection that writes the shared date-range filter.
+  const [editedWindow, setEditedWindow] = useState<EditedWindow>("any");
+  const applyEdited = (key: EditedWindow) => {
+    setEditedWindow(key);
+    setDateRange(editedWindowRange(key));
+  };
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -267,20 +301,18 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
       className="pointer-events-auto absolute bottom-0 left-0 top-9 z-20 flex w-60 flex-col overflow-hidden border-r border-rule bg-paper-raised/95 shadow-fg-overlay backdrop-blur-sm focus:outline-none animate-slide-in-left"
       data-filter-sidebar
     >
-      {/* Header */}
+      {/* Header (board 217:633): "Filter documents" + "Clear all". */}
       <div className="flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5">
-        <span className="text-label font-semibold uppercase tracking-wider text-ink-muted">
-          Filters
-        </span>
+        <span className="text-body font-medium text-ink">Filter documents</span>
         <div className="flex items-center gap-fg-2">
           {anyActive && (
             <button
               type="button"
               onClick={reset}
-              className="text-caption text-ink-faint hover:text-ink"
-              aria-label="reset all filters"
+              className="text-caption text-accent-text underline-offset-2 hover:underline"
+              aria-label="clear all filters"
             >
-              reset all
+              Clear all
             </button>
           )}
           <button
@@ -312,9 +344,9 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           />
         </Section>
 
-        {/* Doc Types */}
+        {/* Kind (board 217:633: the doc-type checkboxes). */}
         <Section
-          title="Doc Type"
+          title="Kind"
           badge={docTypes.length || undefined}
           defaultOpen={docTypes.length > 0}
         >
@@ -326,9 +358,9 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
           />
         </Section>
 
-        {/* Features */}
+        {/* Topic (board 217:633: the feature-tag checkboxes). */}
         <Section
-          title="Feature"
+          title="Topic"
           badge={featureTags.length || undefined}
           defaultOpen={false}
         >
@@ -367,6 +399,34 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
               className="w-full rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
             />
           </div>
+        </Section>
+
+        {/* Edited (board 217:633): a date-range radio group writing the shared
+            dateRange filter. */}
+        <Section title="Edited" defaultOpen>
+          <ul
+            className="space-y-fg-0-5 px-fg-3"
+            role="radiogroup"
+            aria-label="edited window"
+          >
+            {EDITED_WINDOWS.map(({ key, label }) => {
+              const on = editedWindow === key;
+              return (
+                <li key={key}>
+                  <label className="flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken">
+                    <input
+                      type="radio"
+                      name="edited-window"
+                      checked={on}
+                      onChange={() => applyEdited(key)}
+                      className="accent-accent"
+                    />
+                    <span className={on ? "text-ink" : "text-ink-muted"}>{label}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
         </Section>
       </div>
 
