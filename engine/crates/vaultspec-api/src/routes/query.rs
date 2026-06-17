@@ -350,6 +350,61 @@ mod bound_tests {
             "consistent meta-edge survived"
         );
     }
+
+    fn ego_of(prefix: &str, n: usize, edges: Vec<(usize, usize)>) -> Value {
+        json!({
+            "nodes": node_ids(prefix, n),
+            "edges": edges
+                .into_iter()
+                .map(|(s, d)| json!({
+                    "src": format!("{prefix}:{s:06}"),
+                    "dst": format!("{prefix}:{d:06}"),
+                }))
+                .collect::<Vec<_>>(),
+        })
+    }
+
+    #[test]
+    fn ego_under_ceiling_is_untouched() {
+        let mut e = ego_of("doc", 100, vec![(0, 1)]);
+        assert_eq!(bound_ego(&mut e, MAX_GRAPH_NODES), Value::Null);
+        assert_eq!(e["nodes"].as_array().unwrap().len(), 100);
+        assert_eq!(
+            e["edges"].as_array().unwrap().len(),
+            1,
+            "a small ego is served whole with no truncated block"
+        );
+    }
+
+    #[test]
+    fn ego_over_ceiling_truncates_and_drops_dangling_edges() {
+        // graph-queries-are-bounded-by-default (the ego analogue of bound_slice):
+        // a hub ego over the ceiling is capped, and an edge to a truncated node is
+        // dropped so the bounded ego stays self-consistent.
+        let mut e = ego_of(
+            "doc",
+            MAX_GRAPH_NODES + 10,
+            vec![
+                (0, 1),                   // both endpoints kept (low ids survive)
+                (0, MAX_GRAPH_NODES + 5), // dst is truncated away
+            ],
+        );
+        let truncated = bound_ego(&mut e, MAX_GRAPH_NODES);
+        assert_eq!(e["nodes"].as_array().unwrap().len(), MAX_GRAPH_NODES);
+        assert_eq!(
+            truncated["total_nodes"],
+            MAX_GRAPH_NODES + 10,
+            "the original total is reported honestly"
+        );
+        assert_eq!(truncated["returned_nodes"], MAX_GRAPH_NODES);
+        let edges = e["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1, "the edge to a truncated node was dropped");
+        assert_eq!(
+            edges[0]["dst"],
+            format!("doc:{:06}", 1),
+            "the self-consistent edge survived"
+        );
+    }
 }
 
 pub async fn graph_query_route(
@@ -913,6 +968,11 @@ pub async fn node_neighbors(
     let mut ego_value = serde_json::to_value(&ego).expect("ego serializes");
     if let Some(nodes) = ego_value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
         engine_query::salience::annotate_nodes(nodes, &scores);
+        // Order by DOI so the ego node ceiling (below) keeps the TOP-salience
+        // neighbours for the active lens — mirroring the document slice's
+        // lens-dependent truncation. The ego center is the DOI focus, so it
+        // ranks highest and always survives the cap.
+        engine_query::salience::order_by_salience(nodes, &scores);
     }
     // Serialize the ego edges through the SHARED §4 edge projection so the ego
     // wire shape matches `/graph/query` exactly (mock-mirrors-live-wire-shape)
@@ -928,11 +988,60 @@ pub async fn node_neighbors(
             .map(|edge| engine_query::graph::edge_view(&graph, edge))
             .collect();
     }
+    // Bound the ego payload (graph-queries-are-bounded-by-default): an ego is
+    // depth-bounded (<= MAX_NEIGHBOR_DEPTH) but NOT count-bounded, so a max-depth
+    // ego over a hub node approaches the whole graph (measured: depth=3 over the
+    // top-degree node = ~1700 nodes / ~17k edges) — a near-full-graph payload no
+    // other graph read serializes uncapped. Apply the SAME node ceiling +
+    // self-consistent edge drop + honest `truncated` block the document slice
+    // carries via `bound_slice`; the nodes are pre-ordered by DOI so the kept
+    // page is the top-salience neighbourhood.
+    let truncated = bound_ego(&mut ego_value, MAX_GRAPH_NODES);
     Ok(super::envelope(
-        json!({"ego": ego_value, "lens": lens.as_str()}),
+        json!({"ego": ego_value, "lens": lens.as_str(), "truncated": truncated}),
         tiers,
         None,
     ))
+}
+
+/// Bound an ego payload (a `Value` with `nodes`/`edges` arrays) to a node
+/// ceiling, keeping the returned neighbourhood self-consistent (edges to dropped
+/// nodes removed) and returning an honest `truncated` block when truncation
+/// happened. The ego analogue of [`bound_slice`]
+/// (graph-queries-are-bounded-by-default): without it a max-depth ego over a hub
+/// node serializes a near-full-graph payload. Nodes are assumed pre-ordered (by
+/// DOI), so the kept page is the top-ranked neighbourhood.
+fn bound_ego(ego: &mut Value, cap: usize) -> Value {
+    let total = ego
+        .get("nodes")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    if total <= cap {
+        return Value::Null;
+    }
+    if let Some(nodes) = ego.get_mut("nodes").and_then(Value::as_array_mut) {
+        nodes.truncate(cap);
+    }
+    let kept: std::collections::HashSet<String> = ego
+        .get("nodes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|n| n.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    if let Some(edges) = ego.get_mut("edges").and_then(Value::as_array_mut) {
+        let endpoint_ok = |e: &Value, key: &str| {
+            e.get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|s| kept.contains(s))
+        };
+        edges.retain(|e| endpoint_ok(e, "src") && endpoint_ok(e, "dst"));
+    }
+    json!({
+        "total_nodes": total,
+        "returned_nodes": cap,
+        "reason": "ego node ceiling: reduce depth to narrow the neighbourhood",
+    })
 }
 
 pub async fn node_evidence(
