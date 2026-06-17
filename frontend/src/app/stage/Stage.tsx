@@ -290,6 +290,19 @@ export function Stage() {
           openContextMenu({ kind: "canvas", id: "canvas" }, anchor);
         }
       }
+      if (event.kind === "representation-mode-changed") {
+        // The scene may DOWNGRADE a held mode (e.g. semantic → connectivity when
+        // the semantic tier is unavailable) and echoes the APPLIED mode here.
+        // Reflect it back into the shared store so the chrome's mode control shows
+        // what is ACTUALLY rendered, never a stale requested mode. Read/write
+        // through getState() (not an effect dep) so the listener never
+        // re-subscribes, and guard on a real change so the echo of an
+        // un-downgraded apply (applied === requested) is a no-op that cannot form
+        // a feedback loop.
+        if (event.applied !== useViewStore.getState().activeRepresentationMode) {
+          useViewStore.getState().setRepresentationMode(event.applied);
+        }
+      }
     });
     const offBind = bindSelectionToScene(scene.controller);
     const offPins = bindPinsToScene(scene.controller);

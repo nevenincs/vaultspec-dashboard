@@ -93,6 +93,34 @@ describe("shared selection (G2.b)", () => {
     off();
   });
 
+  it("propagates a canvas click to the shared selection AND the canvas ring synchronously (ms-level)", () => {
+    const { scene, commands } = captureScene();
+    const off = bindSelectionToScene(scene);
+    // The full stage click path — scene event → selectFromScene → Zustand write →
+    // store subscriber → set-selected back onto the canvas — is SYNCHRONOUS: no
+    // await, no microtask, no timer. A click therefore registers everywhere within
+    // one turn (sub-millisecond), never the "tens of seconds" the slow BACKEND
+    // query path used to impose. This guards that the EVENT plane stays free of any
+    // accidental async hop (a fetch, a debounce, a setTimeout) creeping into it.
+    const before = commands.length;
+    const t0 = performance.now();
+    selectFromScene("doc:clicked");
+    const elapsedMs = performance.now() - t0;
+    // The shared store reflects the click in the SAME synchronous turn...
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "node",
+      id: "doc:clicked",
+    });
+    // ...and the canvas ring command was already issued in that same turn.
+    expect(commands.slice(before)).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["doc:clicked"]),
+    });
+    // Synchronous by construction: the whole round-trip is well under a frame.
+    expect(elapsedMs).toBeLessThan(5);
+    off();
+  });
+
   it("rings every node an event selection carries", () => {
     const { scene, commands } = captureScene();
     const off = bindSelectionToScene(scene);
