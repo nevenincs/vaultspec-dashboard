@@ -96,7 +96,22 @@ export default async function setup(): Promise<() => void> {
   scratch = mkdtempSync(join(tmpdir(), "vaultspec-livetest-"));
   cpSync(join(FIXTURE_DIR, ".vault"), join(scratch, ".vault"), { recursive: true });
 
-  // 2. Real git history — the engine's structural + temporal ingest source.
+  // 2. Initialise it as a real vaultspec workspace so the engine's `declared`
+  //    tier (vaultspec-core) comes up — content reads, vault-tree, and the
+  //    editor write seam all route through it. The workspace scaffolding is
+  //    generated fresh (not committed) so nothing machine-specific ships in the
+  //    fixture; vaultspec-core is on PATH (the engine spawns it the same way).
+  const install = spawnSync("vaultspec-core", ["install", "--target", scratch], {
+    stdio: "pipe",
+    shell: true,
+  });
+  if (install.status !== 0) {
+    throw new Error(
+      `vaultspec-core install failed (${install.status}): ${install.stderr?.toString() ?? ""}`,
+    );
+  }
+
+  // 3. Real git history — the engine's structural + temporal ingest source.
   git(scratch, ["init", "-q", "-b", "main"]);
   git(scratch, ["add", "-A"]);
   git(scratch, ["commit", "-qm", "fixture corpus"]);
