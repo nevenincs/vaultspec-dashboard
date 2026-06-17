@@ -80,22 +80,28 @@ export class CosmosField implements SceneFieldRenderer {
       // spring with a link distance well above the node sizes clusters connected
       // nodes without stacking them; friction < 1 cools to a stable rest and a
       // drag reheats it. (These are the knobs the Tune sliders will drive.)
-      simulationRepulsion: 8.0,
+      // Repulsion ONLY for now: it provably yields a spread, NON-overlapping field
+      // (Brick 2 measured min node spacing 117). The link *force* is OFF (links are
+      // still RENDERED as the grey mesh) because on this graph's high-degree hubs the
+      // spring crowds every neighbour onto one shell faster than repulsion separates
+      // them — clumping the field into overlapping blobs. Link-driven clustering and
+      // the live drag dynamics are the deferred simulation tuning.
+      simulationRepulsion: 2.0,
       simulationGravity: 0,
-      // Kept SPREAD (weak link spring) so the field stays legible while the basics
-      // are wired; the link-strength-vs-spread balance is the deferred sim tuning.
-      simulationLinkSpring: 0.2,
+      simulationLinkSpring: 0,
       simulationLinkDistance: 120,
       simulationFriction: 0.85,
       simulationDecay: 2000,
       // ---- interaction (live) ---------------------------------------------
       enableDrag: true,
       fitViewOnInit: true,
-      fitViewPadding: 0.3,
-      // Fixed pixel point sizes (don't shrink to nothing when the field is zoomed
-      // out to fit) so nodes stay clearly visible and easy to grab.
-      scalePointsOnZoom: false,
-      pointSizeScale: 1,
+      fitViewPadding: 0.25,
+      // Node sizes are WORLD-relative (scale with the layout/zoom). This is what
+      // keeps nodes non-overlapping: a fixed PIXEL size piles big dots on top of
+      // each other when the spread field is zoomed out to fit a small canvas, even
+      // though the node centres are well separated in world space.
+      scalePointsOnZoom: true,
+      pointSizeScale: 2,
       renderHoveredPointRing: true,
       hoveredPointRingColor: hexString("--color-accent", 0x8a7d5a),
       // ---- edges: the binding flat-grey connection mesh, plus the focus ring -
@@ -176,7 +182,7 @@ export class CosmosField implements SceneFieldRenderer {
     nodes.forEach((node, i) => {
       this.idToIndex.set(node.id, i);
       this.indexToId[i] = node.id;
-      sizes[i] = Math.max(6, nodeRadius(node)); // cosmos point size (px)
+      sizes[i] = nodeRadius(node) * 2; // world-relative size; scales with zoom
       // Category fill from the vault DOC TYPE first (adr/plan/exec/…), falling
       // back to the generic node species (`kind`) for nodes with no doc type
       // (feature / plan-container / code-artifact). The wire `kind` alone is the
