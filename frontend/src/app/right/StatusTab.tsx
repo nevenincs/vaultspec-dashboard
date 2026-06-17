@@ -48,7 +48,15 @@ import { freshnessLabel } from "../left/VaultBrowser";
 import { relativeTs } from "./ChangesOverview";
 import { PlanStepTree } from "./WorkTab";
 // Centralized kit primitives (design-system-is-centralized).
-import { Card, ChevronDown, ChevronRight, SectionLabel, StatusDot } from "../kit";
+import {
+  Badge,
+  Card,
+  ChevronDown,
+  ChevronRight,
+  ProgressBar,
+  SectionLabel,
+  StatusDot,
+} from "../kit";
 
 // Disclosure chevron sizing — the board paints a 10px twisty on the plan row.
 const TWISTY_PX = 10;
@@ -156,11 +164,15 @@ function OpenPlanRow({
 }: OpenPlanRowProps) {
   const openInViewer = useViewStore((s) => s.openInViewer);
   const progress = artifact.progress;
+  const total = progress?.total ?? 0;
+  const done = progress?.done ?? 0;
+  const pct = total > 0 ? Math.round((done / total) * 100) : null;
   const fresh = freshnessLabel(artifact.dates?.modified, now);
   const treeId = `status-tree-${artifact.node_id}`;
   // Lazily fetch the interior ONLY while expanded (graph-queries-are-bounded).
   const interior = usePlanInteriorView(expanded ? artifact.node_id : null);
   const Chevron = expanded ? ChevronDown : ChevronRight;
+  const title = artifact.title ?? artifact.stem;
 
   // A plan node is a `doc:<stem>` id → the markdown reader surface.
   const openPlan = () => {
@@ -170,72 +182,86 @@ function OpenPlanRow({
 
   return (
     <li data-open-plan data-node-id={artifact.node_id}>
-      {/* The plan row: twisty · category dot · title · count · tier · sel-bar.
-          The whole row activates (opens the plan); the leading twisty toggles
-          the step tree without opening. The selected row carries the accent-
-          subtle ground and a trailing accent selection bar (board 112:26). */}
+      {/* A proper two-line in-flight plan row: a TITLE line (twisty · dot · title ·
+          tier badge) over a PROGRESS line (a real completion bar + done/total + %
+          + freshness). The whole row opens the plan; the twisty toggles the step
+          tree; the selected row carries the accent-subtle ground + accent sel-bar. */}
       <div
-        className={`flex items-center gap-fg-2 rounded-fg-md pl-fg-1-5 pr-fg-2 py-fg-2 transition-colors duration-ui-fast ease-settle ${
+        className={`flex flex-col gap-fg-1-5 rounded-fg-md px-fg-2 py-fg-2 transition-colors duration-ui-fast ease-settle ${
           selected ? "bg-accent-subtle" : "hover:bg-paper-sunken"
         }`}
         data-open-plan-selected={selected ? "" : undefined}
       >
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          aria-controls={treeId}
-          aria-label={`${expanded ? "collapse" : "expand"} steps for ${artifact.title ?? artifact.stem}`}
-          data-open-plan-toggle
-          className="flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        >
-          <Chevron size={TWISTY_PX} aria-hidden />
-        </button>
-        <StatusDot category="plan" />
-        <button
-          type="button"
-          onClick={openPlan}
-          data-open-plan-row
-          aria-label={`open plan ${artifact.title ?? artifact.stem} in the reader`}
-          className="min-w-0 flex-1 truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          title={artifact.title ?? artifact.stem}
-        >
-          {artifact.title ?? artifact.stem}
-        </button>
-        {progress && (
-          <span
-            className="shrink-0 text-meta text-ink-muted"
-            data-tabular
-            data-plan-progress
+        {/* Title line. */}
+        <div className="flex items-center gap-fg-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-controls={treeId}
+            aria-label={`${expanded ? "collapse" : "expand"} steps for ${title}`}
+            data-open-plan-toggle
+            className="flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
-            {progress.done}/{progress.total}
-          </span>
-        )}
-        {artifact.tier && (
-          <span
-            className="shrink-0 text-caption text-ink-faint"
-            data-plan-tier
-            aria-label={`tier ${artifact.tier}`}
+            <Chevron size={TWISTY_PX} aria-hidden />
+          </button>
+          <StatusDot category="plan" />
+          <button
+            type="button"
+            onClick={openPlan}
+            data-open-plan-row
+            aria-label={`open plan ${title} in the reader`}
+            className="min-w-0 flex-1 truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            title={title}
           >
-            {artifact.tier}
-          </span>
-        )}
-        {selected && (
-          <span
-            aria-hidden
-            data-open-plan-sel-bar
-            className="h-4 w-[2.5px] shrink-0 rounded-[1.5px] bg-accent"
-          />
-        )}
-        {fresh && (
-          <span className="sr-only" data-freshness>
-            {fresh}
-          </span>
+            {title}
+          </button>
+          {artifact.tier && (
+            <span data-plan-tier aria-label={`tier ${artifact.tier}`}>
+              <Badge>{artifact.tier}</Badge>
+            </span>
+          )}
+          {selected && (
+            <span
+              aria-hidden
+              data-open-plan-sel-bar
+              className="h-4 w-[2.5px] shrink-0 rounded-[1.5px] bg-accent"
+            />
+          )}
+        </div>
+
+        {/* Progress line — the real completion bar, indented under the title. */}
+        {total > 0 && (
+          <div className="flex items-center gap-fg-2 pl-fg-6">
+            <ProgressBar
+              value={done}
+              max={total}
+              label={`${title} completion`}
+              className="flex-1"
+            />
+            <span
+              className="shrink-0 text-meta tabular-nums text-ink-muted"
+              data-tabular
+              data-plan-progress
+            >
+              {done}/{total}
+            </span>
+            {pct !== null && (
+              <span className="shrink-0 text-meta tabular-nums text-ink-faint">
+                {pct}%
+              </span>
+            )}
+            {fresh && (
+              <span className="shrink-0 text-meta text-ink-faint" data-freshness>
+                · {fresh}
+              </span>
+            )}
+          </div>
         )}
       </div>
       {/* The reused step-tree dropdown (lazily-loaded interior). */}
       {expanded && (
-        <div id={treeId} className="pl-fg-6">
+        <div id={treeId} className="mt-fg-1 pl-fg-6">
           <PlanStepTree view={interior} />
         </div>
       )}
@@ -360,7 +386,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
           no commits yet on this branch.
         </p>
       ) : (
-        <ul className="mt-fg-1-5 space-y-fg-0" role="list" data-recent-commits-list>
+        <ul className="mt-fg-1-5 space-y-fg-0-5" role="list" data-recent-commits-list>
           {view.commits.slice(0, RECENT_COMMITS).map((commit) => {
             const touched = commit.node_ids.filter((id) => !id.startsWith("commit:"));
             const select = () => {
@@ -373,6 +399,10 @@ function RecentCommits({ scope }: { scope: string | null }) {
             };
             return (
               <li key={commit.hash} data-recent-commit data-hash={commit.hash}>
+                {/* Message-first two-line commit row: the SUBJECT is the primary
+                    carrier (the actual commit message, readable, no longer hidden
+                    behind a hash), over a meta line — short hash · relative time ·
+                    touched-file count. */}
                 <button
                   type="button"
                   onClick={select}
@@ -380,24 +410,36 @@ function RecentCommits({ scope }: { scope: string | null }) {
                   aria-label={`commit ${commit.short_hash}: ${commit.subject}${
                     touched.length ? `, ${touched.length} touched nodes` : ""
                   }`}
-                  className={`flex w-full items-center gap-fg-2 rounded-fg-xs px-fg-1-5 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                  className={`flex w-full flex-col gap-fg-0-5 rounded-fg-md px-fg-2 py-fg-1-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     touched.length
                       ? "hover:bg-paper-sunken"
                       : "cursor-default opacity-90"
                   }`}
-                  title={relativeTs(new Date(commit.ts).toISOString(), now)}
                 >
-                  {/* Short hash is identity → mono, in the accent-text ink. */}
-                  <span
-                    className="shrink-0 font-mono text-meta text-accent-text"
-                    data-tabular
-                    data-short-hash
-                  >
-                    {commit.short_hash}
-                  </span>
-                  {/* Subject is the primary, grayscale-safe carrier. */}
-                  <span className="min-w-0 flex-1 truncate text-label text-ink-muted">
+                  <span className="w-full truncate text-label text-ink">
                     {commit.subject || "(no subject)"}
+                  </span>
+                  <span className="flex items-center gap-fg-1-5 text-meta text-ink-faint">
+                    {/* Short hash is identity → mono, in the accent-text ink. */}
+                    <span
+                      className="shrink-0 font-mono text-accent-text"
+                      data-tabular
+                      data-short-hash
+                    >
+                      {commit.short_hash}
+                    </span>
+                    <span aria-hidden>·</span>
+                    <span data-tabular>
+                      {relativeTs(new Date(commit.ts).toISOString(), now)}
+                    </span>
+                    {touched.length > 0 && (
+                      <>
+                        <span aria-hidden>·</span>
+                        <span data-tabular>
+                          {touched.length} file{touched.length === 1 ? "" : "s"}
+                        </span>
+                      </>
+                    )}
                   </span>
                 </button>
               </li>
