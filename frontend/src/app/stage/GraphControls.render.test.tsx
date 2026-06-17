@@ -185,7 +185,7 @@ describe("LayoutSelector — grouped Layout picker (D11), in the toolbar", () =>
 // The heavy Tune group is collapsed behind a popover trigger so the canvas is
 // never occluded; the body (and its sliders) only mount once the trigger opens.
 function openTune() {
-  fireEvent.click(screen.getByRole("button", { name: "Tune" }));
+  fireEvent.click(screen.getByRole("button", { name: "Graph settings" }));
 }
 
 describe("GraphControls — non-occluding overlay (collapsed heavy groups)", () => {
@@ -194,12 +194,16 @@ describe("GraphControls — non-occluding overlay (collapsed heavy groups)", () 
     // Collapsed by default: no Tune body, so the canvas behind reads clean.
     expect(screen.queryByRole("slider", { name: "Spacing" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Tune" }).getAttribute("aria-expanded"),
+      screen
+        .getByRole("button", { name: "Graph settings" })
+        .getAttribute("aria-expanded"),
     ).toBe("false");
     openTune();
     expect(screen.getByRole("slider", { name: "Spacing" })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Tune" }).getAttribute("aria-expanded"),
+      screen
+        .getByRole("button", { name: "Graph settings" })
+        .getAttribute("aria-expanded"),
     ).toBe("true");
   });
 
@@ -207,7 +211,7 @@ describe("GraphControls — non-occluding overlay (collapsed heavy groups)", () 
     render(createElement(GraphControls));
     openTune();
     expect(screen.getByRole("slider", { name: "Spacing" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Tune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Graph settings" }));
     expect(screen.queryByRole("slider", { name: "Spacing" })).toBeNull();
   });
 

@@ -45,16 +45,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { Pause, Play, SlidersHorizontal } from "lucide-react";
 
-import {
-  Card,
-  Crosshair,
-  DropdownButton,
-  IconButton,
-  Maximize,
-  Minus,
-  Plus,
-  Slider,
-} from "../kit";
+import { Card, Crosshair, IconButton, Maximize, Minus, Plus, Slider } from "../kit";
 import type { LayoutParams } from "../../scene/field/forceLayout";
 import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -277,13 +268,17 @@ function SettingsPopover({ label, icon, marker, children }: SettingsPopoverProps
       data-popover-group={marker}
     >
       <span data-popover-trigger>
-        <DropdownButton
+        {/* All-icon cluster (board 260:893): the settings trigger is an icon-only
+            gear, never a text label. */}
+        <IconButton
           label={label}
-          ariaLabel={label}
-          icon={icon}
-          open={open}
+          active={open}
+          aria-expanded={open}
+          aria-controls={panelId}
           onClick={() => setOpen((v) => !v)}
-        />
+        >
+          {icon}
+        </IconButton>
       </span>
       {open && (
         <Card
@@ -465,7 +460,7 @@ export function GraphControls() {
         {/* The graph-settings (Tune) knobs collapsed behind a gear so the canvas
             stays clear (board Graph settings popover 88:2). */}
         <SettingsPopover
-          label="Tune"
+          label="Graph settings"
           marker="tune"
           icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
         >
