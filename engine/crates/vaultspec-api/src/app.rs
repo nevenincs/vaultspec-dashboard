@@ -145,6 +145,18 @@ pub struct ScopeCell {
     /// (the semantic analog of `generation`) and THAT invalidates the cache.
     pub embeddings_cache: Mutex<Option<(u64, Arc<EmbeddingVectors>)>>,
     pub generation: AtomicU64,
+    /// Whether the (heavy, lazy) document views have been requested at least once
+    /// this session (adaptive warming). `warm_projections` warms the DEFAULT view
+    /// after every rebuild but DELIBERATELY leaves `document_views` lazy (it serves
+    /// the opt-in document drill-in, not the default — warming it eagerly on every
+    /// edit would burn the multi-second derive for a view the user may never open).
+    /// Once a client HAS drilled into the document view, though, the cold rebuild
+    /// of that projection lands on the user's next Detail open as a multi-second
+    /// stall. This flag records that intent so warm_projections warms the document
+    /// views ONLY for sessions that actually use them — keeping Detail warm across
+    /// edits for its users with ZERO cost for everyone else. Latches true on first
+    /// use; never reset (a session that opened Detail keeps it warm).
+    pub doc_views_used: AtomicBool,
     /// This cell's resident watcher handle; `/status` reports a dead watcher
     /// truthfully instead of claiming residency (DF-4 residual). Dropping the
     /// handle (on eviction) tears the OS watch down.
@@ -202,6 +214,7 @@ impl ScopeCell {
             doc_index_cache: Mutex::new(None),
             embeddings_cache: Mutex::new(None),
             generation: AtomicU64::new(0),
+            doc_views_used: AtomicBool::new(false),
             watcher: Mutex::new(None),
             declared_status: RwLock::new(None),
             declared_fold_active: AtomicBool::new(false),
@@ -240,6 +253,14 @@ impl ScopeCell {
         // The activity feed's HEAD commit walk + correlation (~2.2s) is part of
         // the default view (timeline / activity rail), so warm it too.
         let _ = self.commit_event_rows();
+        // Adaptive: the heavy document views stay lazy for sessions that never
+        // drill in (no waste), but once a client HAS opened the document view, the
+        // post-rebuild cold rebuild would otherwise land as a multi-second stall on
+        // their next Detail open. Warm it here off the request path for those
+        // sessions only, so Detail stays warm across edits for the users who use it.
+        if self.doc_views_used.load(Ordering::Relaxed) {
+            let _ = self.document_views();
+        }
     }
 
     /// The HEAD commit-correlated temporal event rows, memoized per generation.
@@ -342,6 +363,9 @@ impl ScopeCell {
     /// concurrent Document queries skip the dominant per-request cost. Invalidated
     /// on a generation bump, exactly like `meta_edges`/`salience_basis`.
     pub fn document_views(&self) -> Arc<DocViews> {
+        // Record drill-in intent so `warm_projections` keeps this heavy view warm
+        // across rebuilds for this session (adaptive warming — see the field doc).
+        self.doc_views_used.store(true, Ordering::Relaxed);
         let generation = self.generation.load(Ordering::SeqCst);
         // Poison recovery (robustness H2): see `graph_arc`.
         let mut cache = self
@@ -1037,6 +1061,45 @@ mod tests {
         assert!(Arc::ptr_eq(&cell.salience_basis(), &cell.salience_basis()));
         assert!(Arc::ptr_eq(&cell.meta_edges(), &cell.meta_edges()));
         assert!(Arc::ptr_eq(&cell.feature_nodes(), &cell.feature_nodes()));
+    }
+
+    #[test]
+    fn warm_projections_warms_document_views_only_after_a_drill_in() {
+        // Adaptive warming: the heavy document views stay lazy for a session that
+        // never drills in (no wasted multi-second derive on every rebuild), but
+        // once the session HAS opened the document view, warm_projections keeps it
+        // warm across rebuilds so the next Detail open is a warm-cache hit.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+
+        // Never drilled in → warm leaves the document views cold (no waste).
+        cell.warm_projections();
+        assert!(
+            cell.doc_views_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none(),
+            "document views must stay lazy until the session drills in",
+        );
+
+        // The session drills in once (marks intent), then the graph rebuilds.
+        let _ = cell.document_views();
+        cell.rebuild_and_swap().unwrap();
+        let generation = cell.generation.load(Ordering::SeqCst);
+
+        // Now warm_projections eagerly warms the document views for the NEW
+        // generation, off the request path — the next Detail open is warm.
+        cell.warm_projections();
+        let cached = cell
+            .doc_views_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        assert!(
+            matches!(cached, Some((g, _)) if g == generation),
+            "after a drill-in, warm_projections must warm the document views for the current generation",
+        );
     }
 
     #[test]
