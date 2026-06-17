@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, IconButton, PanelLeft, SearchField } from "../kit";
 import { useFilterStore } from "../../stores/view/filters";
 import { debounce } from "../../platform/timing";
+import { LayoutSelector } from "./LensSelector";
 
 /** The "N hidden" cost chip text; null hides the chip. */
 export function hiddenCountLabel(
@@ -114,6 +115,9 @@ export function FilterBar({
           {nodeCounts.visible} of {nodeCounts.total}
         </span>
       )}
+      {/* The Layout picker lives in the TOP toolbar (binding Hero 213:505 / Layout
+          picker 216:633) — not the bottom-left cluster, which is NavControls only. */}
+      <LayoutSelector />
       {(dateRange.from || dateRange.to) && (
         <span
           data-tabular

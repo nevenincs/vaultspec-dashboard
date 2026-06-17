@@ -58,7 +58,6 @@ import {
 import type { LayoutParams } from "../../scene/field/forceLayout";
 import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { useViewStore } from "../../stores/view/viewStore";
-import { LayoutSelector } from "./LensSelector";
 import { getScene } from "./Stage";
 
 const ICON_PX = 15;
@@ -511,8 +510,6 @@ export function GraphControls() {
           data-graph-controls-inline
         >
           <NavigateGroup />
-          <Divider />
-          <LayoutSelector />
           <Divider />
           <ZoomGroup />
         </div>
