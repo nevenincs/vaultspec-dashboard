@@ -15,20 +15,41 @@
 // removes the scratch dir.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
-const ENGINE_BIN = join(
-  REPO_ROOT,
-  "engine",
-  "target",
-  "release",
-  process.platform === "win32" ? "vaultspec.exe" : "vaultspec",
-);
+const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
+
+/** Pick the freshest built engine binary: debug is current on a dev machine
+ *  (the release copy is held open by the dev server), release is current in CI.
+ *  Choosing by mtime means the suite always runs against the latest build. */
+function resolveEngineBin(): string {
+  const candidates = ["release", "debug"].map((p) =>
+    join(REPO_ROOT, "engine", "target", p, BIN_NAME),
+  );
+  const built = candidates
+    .map((path) => {
+      try {
+        return { path, mtime: statSync(path).mtimeMs };
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((c): c is { path: string; mtime: number } => c !== undefined)
+    .sort((a, b) => b.mtime - a.mtime);
+  if (built.length === 0) {
+    throw new Error(
+      `no vaultspec engine binary found under engine/target/{release,debug}/ — run \`cargo build\` first`,
+    );
+  }
+  return built[0].path;
+}
+
+const ENGINE_BIN = resolveEngineBin();
 
 // Fixed commit identity + dates: the fixture's git history is the engine's
 // temporal source, so reproducible dates make asof/diff windows deterministic.
