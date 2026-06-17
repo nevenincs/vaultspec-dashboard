@@ -427,14 +427,16 @@ pub async fn graph_query_route(
                         })?,
                     }
                 }
-                Granularity::Feature => {
-                    let mut s =
-                        graph_query(&graph, &cell.scope, filter, granularity).map_err(|e| {
-                            super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string())
-                        })?;
-                    s.meta_edges = (*cell.meta_edges()).clone();
-                    s
-                }
+                // A FILTERED feature query flows through `graph_query`, which
+                // narrows the feature node set AND prunes meta_edges to that set
+                // (self-consistency, graph-queries-are-bounded-by-default). Use
+                // its result directly: overwriting with the full memoized
+                // meta_edges would reintroduce the dangling edges the projection
+                // just pruned (endpoints pointing at filtered-out features).
+                Granularity::Feature => graph_query(&graph, &cell.scope, filter, granularity)
+                    .map_err(|e| {
+                        super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string())
+                    })?,
             };
             (slice, rag_tiers(&cell), None)
         }

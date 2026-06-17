@@ -539,11 +539,26 @@ fn graph_query_inner(
         // Constellation granularity (contract §4, ADR D4.1): synthesized
         // feature-convergence nodes plus engine-aggregated meta-edges —
         // the GUI never flattens doc-level edges client-side.
-        Granularity::Feature => (
-            feature_nodes(graph, scope, &matched),
-            Vec::new(),
-            meta_edges(graph),
-        ),
+        Granularity::Feature => {
+            // Self-consistent constellation (graph-queries-are-bounded-by-default,
+            // the feature analogue of the Document branch's endpoint pruning): a
+            // node filter narrows the synthesized feature set, so a meta-edge
+            // whose endpoint is a feature that was filtered OUT would dangle. The
+            // GUI folds meta_edges -> edges, so a dangling meta-edge renders an
+            // edge to an absent node. Keep only meta-edges with BOTH endpoints in
+            // the kept feature set. Unfiltered, every feature is kept, so this is
+            // a no-op for the default constellation poll.
+            let nodes = feature_nodes(graph, scope, &matched);
+            let kept: HashSet<&str> = nodes
+                .iter()
+                .filter_map(|n| n.get("id").and_then(Value::as_str))
+                .collect();
+            let meta = meta_edges(graph)
+                .into_iter()
+                .filter(|m| kept.contains(m.src.as_str()) && kept.contains(m.dst.as_str()))
+                .collect();
+            (nodes, Vec::new(), meta)
+        }
     };
 
     Ok(GraphSlice {
@@ -827,6 +842,29 @@ mod tests {
         // Meta-edges address feature NODE ids, not bare tags (S02).
         assert_eq!(slice.meta_edges[0].src, "feature:feature-a");
         assert_eq!(slice.meta_edges[0].dst, "feature:feature-b");
+    }
+
+    #[test]
+    fn filtered_feature_granularity_prunes_dangling_meta_edges() {
+        // graph-queries-are-bounded-by-default (the feature analogue of the
+        // Document branch's endpoint pruning): a `feature_tags` filter narrows the
+        // synthesized feature set to feature-a, so the lone cross-feature
+        // meta-edge (feature-a -> feature-b) would dangle once feature-b is
+        // filtered out. The constellation must stay self-consistent — the dangling
+        // meta-edge is pruned, not shipped — because the GUI folds
+        // meta_edges -> edges, and a dangling one renders an edge to an absent
+        // node. (Unfiltered, both features are kept and the meta-edge survives:
+        // feature_granularity_returns_meta_edges_not_doc_edges covers that.)
+        let g = fixture();
+        let filter: Filter = serde_json::from_str(r#"{"feature_tags": ["feature-a"]}"#).unwrap();
+        let slice = graph_query(&g, &scope(), filter, Granularity::Feature).unwrap();
+        assert_eq!(slice.nodes.len(), 1, "only feature-a survives the filter");
+        assert_eq!(slice.nodes[0]["id"], "feature:feature-a");
+        assert!(
+            slice.meta_edges.is_empty(),
+            "a meta-edge to a filtered-out feature must not dangle: {:?}",
+            slice.meta_edges
+        );
     }
 
     #[test]
