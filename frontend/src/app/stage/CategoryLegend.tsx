@@ -33,7 +33,7 @@ const LEGEND: { token: CategoryToken; label: string }[] = [
 export function CategoryLegend() {
   return (
     <div
-      className="pointer-events-auto absolute left-fg-2 top-12 z-10 flex max-w-[60%] flex-wrap items-center gap-fg-1"
+      className="pointer-events-auto absolute left-fg-2 top-16 z-10 flex max-w-[60%] flex-wrap items-center gap-fg-1"
       role="list"
       aria-label="category legend"
       data-category-legend

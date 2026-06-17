@@ -42,7 +42,6 @@ import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { CategoryLegend } from "./CategoryLegend";
 import { GraphControls } from "./GraphControls";
 import { MinimapWidget } from "./MinimapWidget";
-import { LensSelector } from "./LensSelector";
 import { Discover } from "./Discover";
 import { useGraphWalkKeyboard } from "./graphWalk";
 import { FilterBar } from "./FilterBar";
@@ -579,14 +578,6 @@ export function Stage() {
           corner directly rather than hiding inside a controls popover. The scene
           owns every pixel inside its canvas through the unchanged seam. */}
       <MinimapWidget />
-      {/* Salience lens (graph-node-salience): the viewer-intent re-query. FLAGGED:
-          the binding Figma `graph/Controls` consolidation has no slot for the lens
-          (a distinct concern from layout/zoom), so it stays docked on its own
-          rather than being silently dropped — it remains a real, consumed
-          capability. */}
-      <div className="pointer-events-auto absolute left-1/2 top-fg-2 z-10 flex -translate-x-1/2 items-center gap-fg-2">
-        <LensSelector />
-      </div>
       <WorkingSet />
       <Discover />
       <TimeTravelChip />
