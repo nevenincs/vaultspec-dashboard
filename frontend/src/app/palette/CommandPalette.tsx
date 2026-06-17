@@ -24,6 +24,7 @@
 import { CornerDownLeft, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { Kbd } from "../kit";
 import type { ActionDescriptor } from "../../platform/actions/action";
 import { useConfirmable } from "../../platform/dispatch/useAction";
 import { useFiltersVocabulary } from "../../stores/server/queries";
@@ -484,10 +485,10 @@ export function CommandPalette() {
                         tabIndex={-1}
                         onMouseEnter={() => setCursorTo(index)}
                         onClick={() => runAt(index)}
-                        className={`flex w-full items-center justify-between border-l-2 rounded-r-fg-xs py-fg-1-5 pr-fg-4 pl-fg-3 text-left transition-colors duration-ui-fast ease-settle ${
+                        className={`flex h-[30px] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle ${
                           selected
-                            ? "border-accent bg-paper-sunken text-ink"
-                            : "border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
+                            ? "bg-accent-subtle text-ink"
+                            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
                         }`}
                       >
                         <span className={armed ? "text-state-stale" : undefined}>
@@ -539,6 +540,20 @@ export function CommandPalette() {
             {opsMessage}
           </div>
         )}
+
+        {/* Footer hints (board 94:2): navigate / open / close with Kbd chips. */}
+        <div className="flex items-center gap-fg-3 border-t border-rule px-fg-4 py-fg-2 text-caption text-ink-faint">
+          <span className="flex items-center gap-fg-1">
+            navigate <Kbd>↑</Kbd>
+            <Kbd>↓</Kbd>
+          </span>
+          <span className="flex items-center gap-fg-1">
+            open <Kbd>↵</Kbd>
+          </span>
+          <span className="flex items-center gap-fg-1">
+            close <Kbd>esc</Kbd>
+          </span>
+        </div>
 
         {/* Polite live region: result count, selection, and arm prompt. */}
         <div id={liveRegionId} aria-live="polite" className="sr-only">

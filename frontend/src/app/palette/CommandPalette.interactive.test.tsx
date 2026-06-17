@@ -181,8 +181,9 @@ describe("CommandPalette a11y + keyboard contract (W02.P07.S23)", () => {
     expect(screen.getByText("core ops")).toBeTruthy();
     expect(screen.getByText("rag ops")).toBeTruthy();
     // The navigate family heading appears once the scope vocabulary resolves.
+    // Scope to the listbox so the footer's "navigate" hint chip is not matched.
     await screen.findAllByText(/^go to /);
-    expect(screen.getByText("navigate")).toBeTruthy();
+    expect(within(screen.getByRole("listbox")).getByText("navigate")).toBeTruthy();
   });
 
   it("Tab wraps within the dialog (the trap actually cycles)", async () => {
