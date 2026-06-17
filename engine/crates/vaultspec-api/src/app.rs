@@ -730,7 +730,7 @@ pub async fn ensure_tiers_envelope(
     let message = if original.trim().is_empty() {
         status.canonical_reason().unwrap_or("error").to_string()
     } else {
-        original.into_owned()
+        sanitize_boundary_message(&original)
     };
     let envelope = serde_json::json!({
         "error": message,
@@ -743,6 +743,29 @@ pub async fn ensure_tiers_envelope(
         axum::http::HeaderValue::from_static("application/json"),
     );
     Response::from_parts(parts, axum::body::Body::from(rebuilt))
+}
+
+/// Sanitize a framework-boundary error message before it reaches a wire client.
+/// Axum's `Json` extractor rejection leaks serde framing AND the source position:
+///   "Failed to deserialize the JSON body into the target type: <reason> at line N column M"
+/// The `<reason>` is the actionable part a client needs (the offending field, what
+/// is wrong, and the set of valid fields) and is kept; the "into the target type"
+/// framing and the " at line N column M" parser position are noise that also leak
+/// internal structure, so they are stripped. This keeps boundary rejections
+/// CONSISTENT with the engine's own clean validation errors ("invalid value for
+/// `theme`: must be one of …") instead of shipping two error dialects on the wire.
+/// A message that does not match the axum framing passes through unchanged.
+fn sanitize_boundary_message(raw: &str) -> String {
+    let reason = raw
+        .strip_prefix("Failed to deserialize the JSON body into the target type: ")
+        .or_else(|| raw.strip_prefix("Failed to deserialize the JSON body: "))
+        .unwrap_or(raw);
+    // Drop a trailing " at line N column M" parser position, if present.
+    let reason = match reason.rfind(" at line ") {
+        Some(i) => &reason[..i],
+        None => reason,
+    };
+    reason.trim().to_string()
 }
 
 /// Constant-time byte comparison (audit low rider): the bearer check must
@@ -824,6 +847,33 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_boundary_message_strips_serde_framing_and_position() {
+        // Keeps the actionable reason (offending field + valid set), drops the
+        // "into the target type" framing and the " at line N column M" position.
+        assert_eq!(
+            sanitize_boundary_message(
+                "Failed to deserialize the JSON body into the target type: \
+                 filter.doc_types: unknown field `doc_types`, expected one of \
+                 `tiers`, `kinds` at line 1 column 100"
+            ),
+            "filter.doc_types: unknown field `doc_types`, expected one of `tiers`, `kinds`"
+        );
+        assert_eq!(
+            sanitize_boundary_message(
+                "Failed to deserialize the JSON body into the target type: \
+                 missing field `key` at line 1 column 17"
+            ),
+            "missing field `key`"
+        );
+        // A non-axum message (e.g. the engine's own clean validation error or a
+        // bare reason) passes through untouched.
+        assert_eq!(
+            sanitize_boundary_message("invalid value for `theme`: must be one of: light, dark"),
+            "invalid value for `theme`: must be one of: light, dark"
+        );
+    }
 
     fn fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
         let dir = tempfile::tempdir().unwrap();
