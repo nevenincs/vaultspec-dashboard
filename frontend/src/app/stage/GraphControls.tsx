@@ -1,37 +1,26 @@
-// Consolidated graph controls (binding Figma stage chrome: the zoom cluster +
-// settings popover, `graph/Settings popover` 88:2, `graph/Hero` 213:505,
-// NavControls 260:893). A COMPACT, NON-OCCLUDING edge overlay: the Hero binding
-// shows the category-circle canvas CLEAN with the controls as an unobtrusive
-// bottom-edge toolbar — never a panel that covers the field. So this surface is a
-// single slim toolbar docked to the bottom edge: the light, always-reachable
-// groups (Navigate, Layout, Zoom) sit inline, and the heavier Tune (force) knobs
-// are COLLAPSED behind a settings affordance that pops up ABOVE the bar on demand.
-// The minimap is a DOCKED card bottom-right (rendered by Stage), not a popover
-// here — matching the binding stage layout.
+// Consolidated graph controls (binding Figma stage chrome: NavControls 260:893,
+// `graph/Settings popover` 88:2, `graph/Hero` 213:505). A COMPACT, NON-OCCLUDING
+// edge overlay: the Hero binding shows the category-circle canvas CLEAN with the
+// controls as an unobtrusive cluster — never a panel that covers the field. This
+// surface is the bottom-LEFT all-icon cluster; the Layout picker lives in the top
+// toolbar (FilterBar → LensSelector) and the minimap is a docked card bottom-right
+// (rendered by Stage), matching the binding stage layout.
 //
-//   Navigate — a horizontal icon row of kit IconButtons: zoom in (+), zoom out
-//              (−), fit (Maximize), reset (Crosshair). Camera commands only
-//              (SceneController.command).
-//   Layout   — the binding plain-language Network / Tree / Grouped / Timeline
-//              picker, delegated to `LayoutSelector` (in `LensSelector.tsx`) so the
-//              canonical layout control has ONE home.
-//   Zoom     — a two-stop kit Slider Overview ↔ Detail driving the LOD descent
-//              (granularity feature ↔ document). FLAGGED: rendered as a slider per
-//              Figma but snaps to two stops, because the scene seam exposes no
-//              absolute-zoom command (only incremental zoom-in/out, owned by
-//              another builder); the flanking − / + issue real camera zoom.
-//   Tune     — three plain-language kit Sliders mapping to the real d3-force knobs
-//              (forceLayout.ts): Spacing → repel, Connection reach → linkDistance,
-//              Clustering → linkForce. Lives in a COLLAPSED settings popover (a kit
-//              Card) so the canvas is never occluded.
+//   Navigate — a VERTICAL icon stack of kit IconButtons (board NavControls 260:893):
+//              zoom in (+), zoom out (−), a divider, fit (Maximize), recenter
+//              (Crosshair). Camera commands only (SceneController.command). No text
+//              labels — the cluster is all-icon.
+//   Settings — an icon-only gear (kit IconButton) opening the "Graph settings"
+//              popover (board 88:2, a kit Card) on demand, so the canvas is never
+//              occluded. Inside it: the Freeze-layout toggle and the d3-force knobs
+//              (forceLayout.ts) as kit Sliders — Spacing → repel, Link length →
+//              linkDistance, Clustering → linkForce — plus Reset to defaults.
 //
-// figma-frontend-rewrite W03.P07.S10 / W04.P11.S17: the hand-built `NavBtn`/`Slider`
-// primitives and the bespoke popover shell are RETIRED in favour of the centralized
-// kit — Navigate + the freeze toggle + the flanking camera zoom are kit
-// `IconButton`s, the Tune + Zoom-descent controls are kit `Slider`s, the settings
-// trigger is a kit `DropdownButton`, and the popover body is a kit `Card`. Every
-// control on screen now resolves to a real, shared kit definition
-// (design-system-is-centralized).
+// figma-frontend-rewrite W03.P07 / W04.P11: the hand-built primitives and the
+// bespoke popover shell are RETIRED in favour of the centralized kit — every
+// control resolves to a real, shared kit definition (design-system-is-centralized).
+// The LOD detail slider was retired from the canvas (not on the board); granularity
+// defaults and is driven by camera zoom.
 //
 // Layer ownership (dashboard-layer-ownership): app chrome steering the scene.
 // Camera + layout affordances emit SceneController.command() ONLY; granularity is a
