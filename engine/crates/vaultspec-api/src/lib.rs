@@ -207,6 +207,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             state.clone(),
             app::ensure_tiers_envelope,
         ))
+        // OUTERMOST: response compression. The graph/query document slice is a
+        // multi-megabyte JSON body (thousands of nodes + tens of thousands of
+        // edges) that previously shipped UNCOMPRESSED — a 12 MB transfer on this
+        // workspace, larger on a big corpus, the dominant graph-load cost. gzip
+        // compresses that JSON ~6-8x on the wire (the browser auto-decompresses).
+        // Placed outside `ensure_tiers_envelope` so the tiers middleware still
+        // inspects/rewrites the UNCOMPRESSED body before it is compressed.
+        // tower-http's DefaultPredicate skips small bodies and `text/event-stream`,
+        // so the SSE `/stream` + `/status` channels are NOT buffered/compressed.
+        .layer(tower_http::compression::CompressionLayer::new())
         .with_state(state)
 }
 
