@@ -164,11 +164,18 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
 
   return (
     <div className="flex h-full flex-col">
+      {/* Board 101:2 header: the mono path, a neutral language badge (capitalized),
+          and a "read-only" affordance label. */}
       <header className="flex items-center gap-fg-2 border-b border-rule bg-paper px-fg-3 py-fg-1">
-        <span className="truncate font-mono text-label text-ink-muted">
+        <span className="min-w-0 flex-1 truncate font-mono text-label text-ink-muted">
           {content.path}
         </span>
-        {content.languageHint && <Badge tone="accent">{content.languageHint}</Badge>}
+        {content.languageHint && (
+          <Badge>
+            <span className="capitalize">{content.languageHint}</span>
+          </Badge>
+        )}
+        <span className="shrink-0 text-caption text-ink-faint">read-only</span>
       </header>
       {content.truncated && (
         <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
