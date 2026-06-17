@@ -45,11 +45,12 @@ export interface BrowserModeToggleProps {
 
 export function BrowserModeToggle({ mode, onModeChange }: BrowserModeToggleProps) {
   return (
-    <div data-browser-mode-toggle>
+    <div data-browser-mode-toggle className="w-full">
       <SegmentedToggle
         value={mode}
         onChange={(v) => onModeChange(v as BrowserMode)}
         ariaLabel="browser mode"
+        fullWidth
       >
         {MODES.map(({ id, label, mark: Mark }) => (
           <Segment key={id} value={id}>

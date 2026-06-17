@@ -26,6 +26,7 @@ export function Segment({ value, children, disabled }: SegmentProps) {
     registerSegment,
     moveFocus,
     disabled: groupDisabled,
+    fullWidth,
   } = useSegmentedContext();
   const ref = useRef<HTMLButtonElement | null>(null);
   const active = selected === value;
@@ -58,7 +59,9 @@ export function Segment({ value, children, disabled }: SegmentProps) {
       tabIndex={active ? 0 : -1}
       onClick={() => selectSegment(value)}
       onKeyDown={onKeyDown}
-      className={`rounded-fg-xs px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
+      className={`rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
+        fullWidth ? "flex flex-1 items-center justify-center" : ""
+      } ${
         active
           ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
           : "text-ink-faint hover:text-ink-muted"

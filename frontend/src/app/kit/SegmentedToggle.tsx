@@ -23,6 +23,8 @@ interface SegmentedContextValue {
   moveFocus: (from: string, dir: 1 | -1) => void;
   /** Whether the whole group is disabled. */
   disabled: boolean;
+  /** When true, the track fills its container and segments share width equally. */
+  fullWidth: boolean;
 }
 
 const SegmentedContext = createContext<SegmentedContextValue | null>(null);
@@ -47,6 +49,9 @@ export interface SegmentedToggleProps {
   children: ReactNode;
   disabled?: boolean;
   id?: string;
+  /** Stretch the track to its container width with equal-width segments (the
+   *  binding LeftRail Vault/Tree/Code toggle, 244:750). */
+  fullWidth?: boolean;
 }
 
 export function SegmentedToggle({
@@ -56,6 +61,7 @@ export function SegmentedToggle({
   children,
   disabled = false,
   id,
+  fullWidth = false,
 }: SegmentedToggleProps) {
   const segments = useRef(new Map<string, HTMLButtonElement>());
   const order = useRef<string[]>([]);
@@ -91,6 +97,7 @@ export function SegmentedToggle({
     registerSegment,
     moveFocus,
     disabled,
+    fullWidth,
   };
 
   return (
@@ -99,7 +106,11 @@ export function SegmentedToggle({
         role="radiogroup"
         aria-label={ariaLabel}
         id={id}
-        className="inline-flex shrink-0 flex-wrap items-center gap-fg-0-5 rounded-fg-sm border border-rule bg-paper-sunken p-fg-0-5"
+        className={`items-center gap-fg-0-5 rounded-fg-sm bg-paper-sunken p-fg-0-5 ${
+          fullWidth
+            ? "flex w-full"
+            : "inline-flex shrink-0 flex-wrap border border-rule"
+        }`}
         data-kit="segmented-toggle"
       >
         {children}

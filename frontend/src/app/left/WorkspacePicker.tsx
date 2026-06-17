@@ -362,10 +362,10 @@ export function WorkspacePicker({
             ? `project: ${headlineLabel}${pending ? ", switching" : ""}`
             : "choose a project"
         }
-        className="flex w-full items-center gap-fg-1 rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 shadow-fg-raised transition-colors duration-ui-fast hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
       >
         <span
-          className={`min-w-0 flex-1 truncate text-left font-medium ${
+          className={`min-w-0 flex-1 truncate text-left text-body font-medium ${
             pending ? "text-ink-muted" : "text-ink"
           }`}
         >
