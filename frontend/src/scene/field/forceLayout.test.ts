@@ -624,3 +624,83 @@ describe("FieldLayout live loop — velocity/dwell freeze (D5)", () => {
     expect(alphaAtSettle).toBeGreaterThan(0.001);
   });
 });
+
+// Adversarial hardening: the driver must be unbreakable on hostile inputs — NaN /
+// Infinity seeds, duplicate ids, interaction churn, and rapid re-init must never
+// emit a non-finite coordinate, throw, or wedge the loop. ("resilient to
+// adversarial use", the campaign bar.)
+describe("FieldLayout adversarial hardening", () => {
+  const allFinite = (m: ReadonlyMap<string, { x: number; y: number }>) => {
+    for (const [, p] of m)
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+    return true;
+  };
+
+  it("repairs NaN / Infinity warm-start seeds in the very first (seed) frame", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    const frames: ReadonlyMap<string, { x: number; y: number }>[] = [];
+    layout.onPositions((p) => frames.push(new Map(p)));
+    layout.init(
+      ["a", "b", "c"],
+      [edge("e1", "a", "b")],
+      new Map([
+        ["a", { x: NaN, y: 10 }],
+        ["b", { x: Infinity, y: -Infinity }],
+        ["c", { x: 5, y: 7 }],
+      ]),
+    );
+    // The seed frame already went through the non-finite guard.
+    expect(allFinite(frames[0])).toBe(true);
+    layout.start();
+    sched.runFrames(2000);
+    expect(allFinite(layout.positions)).toBe(true);
+  });
+
+  it("tolerates duplicate node ids in init without throwing or going non-finite", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    expect(() =>
+      layout.init(["a", "a", "b", "b", "a"], [edge("e1", "a", "b")], new Map()),
+    ).not.toThrow();
+    layout.start();
+    expect(() => sched.runFrames(2000)).not.toThrow();
+    expect(allFinite(layout.positions)).toBe(true);
+  });
+
+  it("survives rapid interaction churn (begin/drag/release/end/pin) without wedging", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    layout.init(
+      ["a", "b", "c"],
+      [edge("e1", "a", "b"), edge("e2", "b", "c")],
+      new Map(),
+    );
+    layout.start();
+    for (let i = 0; i < 20; i++) {
+      layout.beginInteraction();
+      layout.dragNode("a", i * 3, -i * 2);
+      layout.dragNode("ghost", 1, 1); // unknown id — must be a safe no-op
+      layout.releaseNode("a");
+      layout.endInteraction();
+      layout.setPinned(new Set(i % 2 ? ["b"] : []));
+      sched.runFrames(3);
+    }
+    expect(() => sched.runFrames(3000)).not.toThrow();
+    expect(allFinite(layout.positions)).toBe(true);
+  });
+
+  it("survives rapid re-init churn (init→init→init) with no leaked pending loop", () => {
+    const sched = new ManualScheduler();
+    const layout = new FieldLayout(sched);
+    for (let i = 0; i < 15; i++) {
+      const ids = Array.from({ length: 5 + i }, (_, k) => `n${k}`);
+      layout.init(ids, [edge(`e${i}`, "n0", "n1")], new Map());
+      layout.start();
+      sched.runFrames(2);
+    }
+    layout.stop();
+    expect(sched.hasPending).toBe(false);
+    expect(allFinite(layout.positions)).toBe(true);
+  });
+});
