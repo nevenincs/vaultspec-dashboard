@@ -234,7 +234,11 @@ fn build_registry() -> Vec<SettingDef> {
             value_type: SettingType::Enum {
                 members: vec!["feature".to_string(), "document".to_string()],
             },
-            default: "feature".to_string(),
+            // The DOCUMENT graph is the headline view: real documents coloured by
+            // type. The feature constellation collapses every node to one type
+            // (`feature`) and one colour, so it is no longer the default (it stays
+            // reachable via the granularity toggle / feature descent).
+            default: "document".to_string(),
             scope_eligible: true,
             control: ControlKind::Segmented,
             label: "Default granularity".to_string(),

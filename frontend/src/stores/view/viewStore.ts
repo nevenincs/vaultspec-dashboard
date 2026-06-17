@@ -372,7 +372,11 @@ export const useViewStore = create<ViewState>((set) => ({
   timelineMode: { kind: "live" },
   leftRailCollapsed: false,
   rightRailCollapsed: false,
-  granularity: "feature",
+  // Default to the DOCUMENT graph: real documents coloured by type are the
+  // headline view. The feature constellation collapsed every node to one type
+  // (`feature`) and therefore one colour — the constellation stays reachable via
+  // the granularity toggle / feature descent, but it is no longer the default.
+  granularity: "document",
   focusedFeature: null,
   activeLens: DEFAULT_SALIENCE_LENS,
   activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
@@ -429,11 +433,11 @@ export const useViewStore = create<ViewState>((set) => ({
       editorStatus: "idle",
       pinnedDiscoveries: [],
       timelineMode: { kind: "live" },
-      // Reset to constellation overview on scope swap: loading 200 document
-      // nodes into an unfamiliar corpus is unexpected (granularity doc comment).
-      granularity: "feature",
+      // Open the new scope at the DOCUMENT graph (the headline coloured view),
+      // not the single-type feature constellation.
+      granularity: "document",
       // A descent is scoped to the previous corpus's feature — clear it on a
-      // swap so the new scope opens at the unfocused constellation overview.
+      // swap so the new scope opens at the unfocused document graph.
       focusedFeature: null,
     });
   },
@@ -477,11 +481,11 @@ export const useViewStore = create<ViewState>((set) => ({
       editorStatus: "idle",
       pinnedDiscoveries: [],
       timelineMode: { kind: "live" },
-      // Reset to the constellation overview so the new project does not open at
-      // 200 document nodes (same rationale as the worktree swap).
-      granularity: "feature",
+      // Open the new project at the DOCUMENT graph (same rationale as the
+      // worktree swap): the coloured headline view, not the feature constellation.
+      granularity: "document",
       // A descent is scoped to the previous corpus's feature — clear it on a
-      // swap so the new scope opens at the unfocused constellation overview.
+      // swap so the new scope opens at the unfocused document graph.
       focusedFeature: null,
     });
   },

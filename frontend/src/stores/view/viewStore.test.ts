@@ -46,8 +46,8 @@ describe("view store", () => {
     expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
     store.setScope("Y:/code/some-other-worktree");
     expect(useViewStore.getState().focusedFeature).toBeNull();
-    // and back to the unfocused overview
-    expect(useViewStore.getState().granularity).toBe("feature");
+    // and back to the unfocused DOCUMENT graph (the default headline view)
+    expect(useViewStore.getState().granularity).toBe("document");
   });
 
   it("keeps the working set explicit and deduplicated", () => {
@@ -118,14 +118,14 @@ describe("view store", () => {
     expect(tierFilter.declared && tierFilter.semantic).toBe(true);
   });
 
-  it("defaults to feature granularity and resets it on scope swap", () => {
-    // Switch to document granularity.
-    useViewStore.getState().setGranularity("document");
-    expect(useViewStore.getState().granularity).toBe("document");
-    // A scope swap must revert to the constellation default so a new corpus
-    // doesn't immediately load its full document graph (~200 nodes).
-    useViewStore.getState().setScope("worktree-c");
+  it("defaults to the document graph and resets to it on scope swap", () => {
+    // Toggle to the feature constellation...
+    useViewStore.getState().setGranularity("feature");
     expect(useViewStore.getState().granularity).toBe("feature");
+    // ...a scope swap reverts to the DOCUMENT default (the coloured headline
+    // view), never leaving a new corpus on the single-type constellation.
+    useViewStore.getState().setScope("worktree-c");
+    expect(useViewStore.getState().granularity).toBe("document");
   });
 
   it("resets the live-connection slice on a wholesale scope swap (live-state D1)", () => {
