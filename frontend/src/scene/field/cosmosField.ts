@@ -67,51 +67,70 @@ function hexString(varName: string, fallback: number): string {
 }
 
 /**
- * Place `count` points as a centred phyllotaxis (sunflower) layout inside the
- * given bound, non-overlapping BY CONSTRUCTION. Returns a flat [x,y,...] array in
- * world space centred on SPACE_CENTRE. This is the Tier-1 STATIC placement (no
- * forces); Tier 4 replaces it with the live d3-force driver.
+ * World position for a stable phyllotaxis SLOT inside the bound, written into
+ * `out` at point index `i`, non-overlapping BY CONSTRUCTION. Keying placement on a
+ * per-id slot (not the array index) is the Tier-2 no-bounce retention: a surviving
+ * node keeps its slot - and, because the capacity and radius are stable, its
+ * position - across a refetch/add/remove. circle (default) and free are sunflower
+ * spirals (circle caps the radius to fill a disc; free grows unbounded); rect is a
+ * centred grid.
  */
-function placeStatic(
-  count: number,
+function slotPosition(
+  out: Float32Array,
+  i: number,
+  slot: number,
   bounds: FieldBounds,
+  capacity: number,
   maxDiameter: number,
-): Float32Array {
-  const out = new Float32Array(count * 2);
-  if (count === 0) return out;
+): void {
   const d = maxDiameter > 0 ? maxDiameter : FALLBACK_DIAMETER;
+  const cap = Math.max(1, capacity);
   if (bounds.shape === "rect") {
-    // Square box: a centred grid with cell >= node diameter (auto) keeps it clear.
-    const half = bounds.size > 0 ? bounds.size : autoDiscRadius(count, d) * 0.886;
-    const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+    const half = bounds.size > 0 ? bounds.size : autoDiscRadius(cap, d) * 0.886;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(cap)));
     const step = (half * 2) / cols;
-    for (let i = 0; i < count; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      out[i * 2] = SPACE_CENTRE - half + (col + 0.5) * step;
-      out[i * 2 + 1] = SPACE_CENTRE - half + (row + 0.5) * step;
-    }
-    return out;
+    out[i * 2] = SPACE_CENTRE - half + ((slot % cols) + 0.5) * step;
+    out[i * 2 + 1] = SPACE_CENTRE - half + (Math.floor(slot / cols) + 0.5) * step;
+    return;
   }
-  // circle (default) or free: a sunflower spiral. circle caps the radius to fill a
-  // disc; free uses a fixed spacing >= node diameter and grows unbounded.
   if (bounds.shape === "free") {
-    for (let i = 0; i < count; i++) {
-      const r = d * Math.sqrt(i);
-      const a = i * GOLDEN_ANGLE;
-      out[i * 2] = SPACE_CENTRE + Math.cos(a) * r;
-      out[i * 2 + 1] = SPACE_CENTRE + Math.sin(a) * r;
-    }
-    return out;
-  }
-  const R = bounds.size > 0 ? bounds.size : autoDiscRadius(count, d);
-  for (let i = 0; i < count; i++) {
-    const r = R * Math.sqrt((i + 0.5) / count);
-    const a = i * GOLDEN_ANGLE;
+    const r = d * Math.sqrt(slot);
+    const a = slot * GOLDEN_ANGLE;
     out[i * 2] = SPACE_CENTRE + Math.cos(a) * r;
     out[i * 2 + 1] = SPACE_CENTRE + Math.sin(a) * r;
+    return;
   }
-  return out;
+  const R = bounds.size > 0 ? bounds.size : autoDiscRadius(cap, d);
+  const r = R * Math.sqrt((slot + 0.5) / cap);
+  const a = slot * GOLDEN_ANGLE;
+  out[i * 2] = SPACE_CENTRE + Math.cos(a) * r;
+  out[i * 2 + 1] = SPACE_CENTRE + Math.sin(a) * r;
+}
+
+/**
+ * Cheap content signature for the Tier-2 dedup guard: node count, edge count, and
+ * an FNV-1a hash over node ids + edge endpoints. An identical refetch hashes
+ * identically and is skipped wholesale, so it cannot re-upload, re-place, or bounce.
+ */
+function contentSignature(
+  nodes: readonly SceneNodeData[],
+  edges: readonly SceneEdgeData[],
+): string {
+  let h = 0x811c9dc5;
+  const mix = (s: string): void => {
+    for (let k = 0; k < s.length; k++) {
+      h ^= s.charCodeAt(k);
+      h = Math.imul(h, 0x01000193);
+    }
+    h ^= 0x2c;
+    h = Math.imul(h, 0x01000193);
+  };
+  for (const n of nodes) mix(n.id);
+  for (const e of edges) {
+    mix(e.src);
+    mix(e.dst);
+  }
+  return `${nodes.length}:${edges.length}:${(h >>> 0).toString(16)}`;
 }
 
 export class CosmosField implements SceneFieldRenderer {
@@ -125,6 +144,21 @@ export class CosmosField implements SceneFieldRenderer {
   /** Largest node diameter in the current slice, for auto-sizing the bound on a
    *  later set-bounds without re-reading the node data. */
   private currentMaxDiameter = 0;
+  /** Stable per-id phyllotaxis SLOT (Tier-2 retention): a surviving node keeps its
+   *  slot - and therefore its position - across a refetch/add/remove, so the field
+   *  never bounces. Freed slots are reused; capacity only grows so the radius (and
+   *  every kept slot's position) stays stable. */
+  private slotById = new Map<string, number>();
+  private freeSlots: number[] = [];
+  private nextSlot = 0;
+  private capacity = 1;
+  /** Content signature of the last set-data (Tier-2 dedup): an identical refetch is
+   *  skipped wholesale - no re-upload, no re-place, no re-fit, no bounce. */
+  private lastSignature = "";
+  /** Fit-once guard (Tier-2): frame the field on first data and after a bound
+   *  change, not on every refetch (retention keeps the bbox stable, so re-fitting
+   *  would only jitter the camera). */
+  private fitPending = true;
   /** Set by createDashboardScene; seam events (select/hover) flow back through it. */
   controller: SceneController | null = null;
 
@@ -234,10 +268,21 @@ export class CosmosField implements SceneFieldRenderer {
     this.bounds = { shape, size: size ?? 0 };
     const count = this.indexToId.length;
     if (count === 0) return;
-    const positions = placeStatic(count, this.bounds, this.currentMaxDiameter);
+    const positions = new Float32Array(count * 2);
+    for (let i = 0; i < count; i++) {
+      const slot = this.slotById.get(this.indexToId[i])!;
+      slotPosition(
+        positions,
+        i,
+        slot,
+        this.bounds,
+        this.capacity,
+        this.currentMaxDiameter,
+      );
+    }
     this.graph.setPointPositions(positions, true);
     this.graph.render();
-    this.graph.fitView(400);
+    this.graph.fitView(400); // a bound change is a deliberate re-frame
   }
 
   private setData(
@@ -245,12 +290,30 @@ export class CosmosField implements SceneFieldRenderer {
     edges: readonly SceneEdgeData[],
   ): void {
     if (!this.graph) return;
+
+    // Tier-2 dedup: an identical refetch (same node ids + edge endpoints) is a
+    // wholesale no-op - no re-upload, no re-place, no re-fit, so it cannot bounce.
+    const signature = contentSignature(nodes, edges);
+    if (signature === this.lastSignature) return;
+    this.lastSignature = signature;
+
     this.idToIndex.clear();
     this.indexToId = new Array(nodes.length);
     const count = nodes.length;
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 4);
     let maxDiameter = 0;
+
+    // Tier-2 retention: free the slots of nodes that left, so survivors keep their
+    // slot (and position) and only genuinely-new ids get fresh (reused-or-appended)
+    // slots below - the field never re-shuffles on a delta.
+    const presentIds = new Set<string>(nodes.map((n) => n.id));
+    for (const [id, slot] of this.slotById) {
+      if (!presentIds.has(id)) {
+        this.freeSlots.push(slot);
+        this.slotById.delete(id);
+      }
+    }
 
     nodes.forEach((node, i) => {
       this.idToIndex.set(node.id, i);
@@ -267,12 +330,23 @@ export class CosmosField implements SceneFieldRenderer {
       colors[i * 4 + 1] = g;
       colors[i * 4 + 2] = b;
       colors[i * 4 + 3] = a;
+      if (!this.slotById.has(node.id)) {
+        const slot = this.freeSlots.length ? this.freeSlots.pop()! : this.nextSlot++;
+        this.slotById.set(node.id, slot);
+      }
     });
     this.currentMaxDiameter = maxDiameter;
+    // Capacity only grows, so the radius - and thus every kept slot's position -
+    // stays stable across deltas: the no-bounce guarantee.
+    this.capacity = Math.max(this.capacity, this.nextSlot);
 
-    // Static placement inside the active bound (default circle), non-overlapping by
-    // construction. cosmos's own sim is OFF, so these positions render verbatim.
-    const positions = placeStatic(count, this.bounds, maxDiameter);
+    // Place each point by its stable slot inside the active bound (default circle),
+    // non-overlapping by construction. cosmos's sim is OFF, so positions are verbatim.
+    const positions = new Float32Array(count * 2);
+    for (let i = 0; i < count; i++) {
+      const slot = this.slotById.get(this.indexToId[i])!;
+      slotPosition(positions, i, slot, this.bounds, this.capacity, maxDiameter);
+    }
 
     const linkList: number[] = [];
     for (const e of edges) {
@@ -288,7 +362,12 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph.setPointSizes(sizes);
     this.graph.setLinks(new Float32Array(linkList));
     this.graph.render();
-    this.graph.fitView(400);
+    // Fit only on first data / after a bound change (Tier-2 fit-once): retention
+    // keeps the bbox stable across refetches, so re-fitting would only jitter.
+    if (this.fitPending) {
+      this.graph.fitView(400);
+      this.fitPending = false;
+    }
   }
 
   resize(): void {
@@ -302,6 +381,12 @@ export class CosmosField implements SceneFieldRenderer {
     this.container = null;
     this.idToIndex.clear();
     this.indexToId = [];
+    this.slotById.clear();
+    this.freeSlots = [];
+    this.nextSlot = 0;
+    this.capacity = 1;
+    this.lastSignature = "";
+    this.fitPending = true;
   }
 
   /** Warm-start persistence lands in a later tier; no-op for now. */
