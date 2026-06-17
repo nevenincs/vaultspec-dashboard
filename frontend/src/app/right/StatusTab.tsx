@@ -224,7 +224,7 @@ function OpenPlanRow({
           <span
             aria-hidden
             data-open-plan-sel-bar
-            className="h-4 w-0.5 shrink-0 rounded-fg-xs bg-accent"
+            className="h-4 w-[2.5px] shrink-0 rounded-[1.5px] bg-accent"
           />
         )}
         {fresh && (
@@ -265,10 +265,8 @@ function OpenPlans({ scope }: { scope: string | null }) {
 
   return (
     <section aria-label="open plans" data-open-plans>
-      <SectionLabel
-        className="px-fg-0 py-fg-0 normal-case tracking-normal"
-        count={plans.length > 0 ? plans.length : undefined}
-      >
+      {/* Board 238:601: "OPEN PLANS — N" uppercase eyebrow (kit SectionLabel). */}
+      <SectionLabel count={plans.length > 0 ? plans.length : undefined}>
         Open plans
       </SectionLabel>
 
