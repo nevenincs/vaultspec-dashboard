@@ -34,7 +34,9 @@ function renderSearch() {
 }
 
 function type(value: string) {
-  const field = screen.getByRole("searchbox", { name: "search query" });
+  // The query input is the centralized kit SearchField (a text input, not a
+  // native search box) carrying the "search query" accessible name.
+  const field = screen.getByRole("textbox", { name: "search query" });
   fireEvent.change(field, { target: { value } });
   return field as HTMLInputElement;
 }
@@ -276,16 +278,12 @@ describe("SearchTab surface states + a11y + selection (S24)", () => {
     expect(screen.getByRole("button", { name: /held-result/i })).toBeTruthy();
   });
 
-  it("clears the query through the clear affordance and Escape", () => {
+  it("clears the query through the kit SearchField clear affordance", () => {
     engineClient.useTransport(new MockEngine().fetchImpl);
     renderSearch();
     const field = type("auth");
     expect(field.value).toBe("auth");
     fireEvent.click(screen.getByRole("button", { name: "clear search" }));
-    expect(field.value).toBe("");
-    // Escape on a populated field clears it.
-    fireEvent.change(field, { target: { value: "sync" } });
-    fireEvent.keyDown(field, { key: "Escape" });
     expect(field.value).toBe("");
   });
 });

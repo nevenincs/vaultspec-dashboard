@@ -23,7 +23,7 @@
 // results, no-results, degraded (semantic search offline, a designed state via
 // the tiers seam — never an error), and a genuine transport error with retry.
 
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   Code,
   FileText,
@@ -31,7 +31,7 @@ import {
   GitCommit,
   type Icon,
 } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import type { SearchResult } from "../../stores/server/engine";
 import { useSearchController } from "../../stores/server/searchController";
@@ -40,7 +40,7 @@ import { selectNode } from "../../stores/view/selection";
 import { useActiveScope } from "../stage/Stage";
 // Centralized kit Badge (design-system-is-centralized) for the text-match
 // fallback marker — the shared pill definition, not a per-surface chip.
-import { Badge } from "../kit";
+import { Badge, SearchField } from "../kit";
 
 // Self-register the search-result resolver at module load so the context-menu
 // host can resolve a result's menu the moment a row publishes its entity.
@@ -216,15 +216,6 @@ export function SearchTab() {
   const trimmed = query.trim();
   const hasQuery = trimmed.length > 0;
 
-  const fieldRef = useRef<HTMLInputElement>(null);
-  // Escape clears the query, or returns focus to the field if already empty.
-  const onFieldKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") {
-      if (query) setQuery("");
-      else fieldRef.current?.blur();
-    }
-  };
-
   // The settled phase for the polite live region: the count on results, the
   // offline notice on degradation, and the no-results message — so a screen
   // reader operator learns the outcome without polling. The interpreted `state`
@@ -249,40 +240,15 @@ export function SearchTab() {
 
   return (
     <div className="space-y-fg-2 text-body" data-search-tab>
-      {/* Query input — Lucide search adornment + a clear affordance once the
-          field is non-empty; native search type, accessible label, accent focus
-          ring from the 12-step role model. */}
-      <div className="relative">
-        <span
-          className="pointer-events-none absolute inset-y-0 left-fg-2 flex items-center text-ink-faint"
-          aria-hidden
-        >
-          <Search size={CHROME_PX} />
-        </span>
-        <input
-          ref={fieldRef}
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onFieldKeyDown}
-          placeholder="search vault and code…"
-          aria-label="search query"
-          className="w-full rounded-fg-xs border border-rule bg-paper-raised py-fg-1 pl-fg-6 pr-fg-6 text-ink placeholder:text-ink-faint focus-visible:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={() => {
-              setQuery("");
-              fieldRef.current?.focus();
-            }}
-            aria-label="clear search"
-            className="absolute inset-y-0 right-fg-1 flex items-center rounded-fg-xs px-fg-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
-            <X size={CHROME_PX} />
-          </button>
-        )}
-      </div>
+      {/* Query input — the centralized kit SearchField (board 244:752, paper-sunken
+          field) with its leading search glyph and clear affordance. */}
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        placeholder="Search documents and code…"
+        ariaLabel="search query"
+        onClear={() => setQuery("")}
+      />
 
       {/* Target selector — stays a radiogroup; an active chip is marked by the
           accent AND aria-checked, never colour alone (grayscale-safe). Keyboard-
@@ -390,6 +356,9 @@ export function SearchTab() {
             data-search-count
             data-tabular
           >
+            {/* Board 244:752: "Ranked by meaning · N results" (or by text match
+                when the semantic tier is offline). */}
+            {search.semanticOffline ? "Ranked by text match" : "Ranked by meaning"} ·{" "}
             {search.results.length} result{search.results.length === 1 ? "" : "s"}
           </p>
           <ul className="space-y-fg-1" role="list" aria-label="search results">

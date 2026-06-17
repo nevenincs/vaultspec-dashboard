@@ -17,15 +17,17 @@ import type { CategoryToken } from "../kit";
 /** The eight canonical scene categories, in a stable reading order, with their
  *  human display label. These are the SAME tokens the graph node fills use, so the
  *  legend is a faithful key to the canvas encoding. */
+// Board 213:505 legend vocabulary, in reading order: Topic · Research · Decision ·
+// Plan · Step · Review. The graph is the VAULT corpus — `code` is a separate corpus
+// (not a vault category) and `index` documents are excluded from the graph API
+// (they only link features), so neither appears in the legend.
 const LEGEND: { token: CategoryToken; label: string }[] = [
+  { token: "feature", label: "Topic" },
   { token: "research", label: "Research" },
-  { token: "adr", label: "Decisions" },
-  { token: "plan", label: "Plans" },
-  { token: "exec", label: "Steps" },
-  { token: "audit", label: "Audits" },
-  { token: "feature", label: "Features" },
-  { token: "code", label: "Code" },
-  { token: "index", label: "Index" },
+  { token: "adr", label: "Decision" },
+  { token: "plan", label: "Plan" },
+  { token: "exec", label: "Step" },
+  { token: "audit", label: "Review" },
 ];
 
 export function CategoryLegend() {
