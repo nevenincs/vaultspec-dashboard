@@ -23,7 +23,13 @@ function ragCardEl(): HTMLElement {
 }
 
 function renderStrip() {
-  render(createElement(QueryClientProvider, { client: queryClient }, createElement(NowStrip)));
+  render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(NowStrip),
+    ),
+  );
 }
 
 describe("NowStrip rag rollup (live engine)", () => {

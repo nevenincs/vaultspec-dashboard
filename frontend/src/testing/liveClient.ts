@@ -33,7 +33,9 @@ export const liveTransport: FetchLike = (input, init) => {
   if (TOKEN && !headers.has("authorization")) {
     headers.set("Authorization", `Bearer ${TOKEN}`);
   }
-  const url = input.startsWith("http") ? input : `${BASE_URL}${input.replace(/^\/api/, "")}`;
+  const url = input.startsWith("http")
+    ? input
+    : `${BASE_URL}${input.replace(/^\/api/, "")}`;
   return fetch(url, { ...init, headers });
 };
 
@@ -57,7 +59,9 @@ let cachedDegraded: string | undefined;
 export async function liveScope(): Promise<string> {
   if (cachedScope) return cachedScope;
   const map = await createLiveClient().map();
-  const vaulted = map.repositories.flatMap((r) => r.worktrees).filter((w) => w.has_vault);
+  const vaulted = map.repositories
+    .flatMap((r) => r.worktrees)
+    .filter((w) => w.has_vault);
   const healthy = vaulted.find((w) => w.is_default) ?? vaulted[0];
   if (!healthy) throw new Error("live fixture has no vault-bearing worktree");
   cachedScope = healthy.id;
@@ -74,7 +78,8 @@ export async function liveDegradedScope(): Promise<string> {
   const degraded = map.repositories
     .flatMap((r) => r.worktrees)
     .find((w) => w.has_vault && !w.is_default);
-  if (!degraded) throw new Error("live fixture has no degraded (non-default vault) worktree");
+  if (!degraded)
+    throw new Error("live fixture has no degraded (non-default vault) worktree");
   cachedDegraded = degraded.id;
   return cachedDegraded;
 }

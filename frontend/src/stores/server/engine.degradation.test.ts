@@ -16,7 +16,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createLiveClient, liveDegradedScope, liveFetch } from "../../testing/liveClient";
+import {
+  createLiveClient,
+  liveDegradedScope,
+  liveFetch,
+} from "../../testing/liveClient";
 import { CANONICAL_TIERS, EngineError, type TiersBlock } from "./engine";
 
 /** Read a tiers block off a thrown value, whatever channel carries it. */
@@ -47,7 +51,10 @@ describe("error envelopes carry the tiers block (§2)", () => {
 
     expect(thrown).toBeInstanceOf(EngineError);
     const tiers = tiersOf(thrown);
-    expect(tiers, "client dropped the tiers block from the error envelope").toBeDefined();
+    expect(
+      tiers,
+      "client dropped the tiers block from the error envelope",
+    ).toBeDefined();
     // The block carries every canonical tier even on the failure path.
     for (const tier of CANONICAL_TIERS) {
       expect(tiers).toHaveProperty(tier);
@@ -59,7 +66,9 @@ describe("error envelopes carry the tiers block (§2)", () => {
     // client, not the engine.
     const res = await liveFetch("/graph/query?scope=NONEXISTENT_SCOPE_XYZ");
     expect(res.status).toBeGreaterThanOrEqual(400);
-    const body = (await res.json()) as { tiers?: Record<string, { available: boolean }> };
+    const body = (await res.json()) as {
+      tiers?: Record<string, { available: boolean }>;
+    };
     expect(body.tiers).toBeDefined();
     for (const tier of CANONICAL_TIERS) {
       expect(body.tiers).toHaveProperty(tier);
@@ -82,7 +91,10 @@ describe("error envelopes carry the tiers block (§2)", () => {
     // the declared tier (vaultspec-core) is GENUINELY down while structural reads
     // the corpus — a real degraded condition, no stubbed tiers block.
     const scope = await liveDegradedScope();
-    const slice = await createLiveClient().graphQuery({ scope, granularity: "feature" });
+    const slice = await createLiveClient().graphQuery({
+      scope,
+      granularity: "feature",
+    });
     // The graph still loads — degradation is NOT an error.
     expect(Array.isArray(slice.nodes)).toBe(true);
     // The declared tier is truthfully unavailable; structural stays up. The GUI

@@ -82,8 +82,9 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
   it("collapses with Escape, returning focus to the trigger", async () => {
     renderPicker({ defaultExpanded: true });
     const trigger = await screen.findByRole("button", { name: /worktree scope/i });
-    const firstRow = (await screen.findByRole("list", { name: /worktree scopes/i }))
-      .querySelector("button") as HTMLButtonElement;
+    const firstRow = (
+      await screen.findByRole("list", { name: /worktree scopes/i })
+    ).querySelector("button") as HTMLButtonElement;
     firstRow.focus();
     fireEvent.keyDown(firstRow, { key: "Escape" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");

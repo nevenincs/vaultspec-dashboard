@@ -22,7 +22,10 @@ beforeAll(async () => {
 
 /** POST /graph/query against the live engine, then unwrap + adapt exactly as the
  *  EngineClient.graphQuery path does. */
-async function queryLive(body: { granularity?: string; lens?: string }): Promise<GraphSlice> {
+async function queryLive(body: {
+  granularity?: string;
+  lens?: string;
+}): Promise<GraphSlice> {
   const res = await liveFetch("/graph/query", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -62,7 +65,9 @@ describe("graph-representation consumed wire fields survive the live client path
     expect(lineageEdge).toBeDefined();
     // derivation rides ALONGSIDE the tier (never instead of it): the edge keeps a
     // real provenance tier and carries a valid pipeline-relationship label.
-    expect(["declared", "structural", "temporal", "semantic"]).toContain(lineageEdge!.tier);
+    expect(["declared", "structural", "temporal", "semantic"]).toContain(
+      lineageEdge!.tier,
+    );
     expect([
       "grounds",
       "authorizes",

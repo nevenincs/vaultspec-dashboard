@@ -77,9 +77,14 @@ function freePort(): Promise<number> {
 }
 
 function git(scratch: string, args: string[]): void {
-  const r = spawnSync("git", args, { cwd: scratch, env: { ...process.env, ...GIT_ENV } });
+  const r = spawnSync("git", args, {
+    cwd: scratch,
+    env: { ...process.env, ...GIT_ENV },
+  });
   if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed: ${r.stderr?.toString() ?? r.status}`);
+    throw new Error(
+      `git ${args.join(" ")} failed: ${r.stderr?.toString() ?? r.status}`,
+    );
   }
 }
 
@@ -125,7 +130,11 @@ export default async function setup(): Promise<() => void> {
   git(scratch, ["worktree", "add", "-q", "-b", "degraded-scope", degradedScratch]);
   rmSync(join(degradedScratch, ".vaultspec"), { recursive: true, force: true });
   git(degradedScratch, ["add", "-A"]);
-  git(degradedScratch, ["commit", "-qm", "degraded scope: vault without a vaultspec workspace"]);
+  git(degradedScratch, [
+    "commit",
+    "-qm",
+    "degraded scope: vault without a vaultspec workspace",
+  ]);
 
   // 3. Spawn the real engine on a free loopback port, scoped to the scratch dir.
   const port = await freePort();
@@ -145,12 +154,15 @@ export default async function setup(): Promise<() => void> {
   let ready = false;
   while (Date.now() < deadline) {
     if (engine.exitCode !== null) {
-      throw new Error(`engine exited (${engine.exitCode}) during startup:\n${serveLog}`);
+      throw new Error(
+        `engine exited (${engine.exitCode}) during startup:\n${serveLog}`,
+      );
     }
     if (!token) {
       try {
-        token = (JSON.parse(readFileSync(tokenPath, "utf8")) as { service_token?: string })
-          .service_token!;
+        token = (
+          JSON.parse(readFileSync(tokenPath, "utf8")) as { service_token?: string }
+        ).service_token!;
       } catch {
         /* not written yet */
       }

@@ -19,10 +19,14 @@ const featureNode: EngineNode = {
   title: "alpha",
   member_count: 3,
   degree_by_tier: { declared: 2, structural: 1 },
-  lifecycle: { research: 1, adr: 1, plan: 1 },
+  lifecycle: { state: "active", progress: { done: 1, total: 3 } },
 };
 
-const docNode: EngineNode = { id: "doc:2026-01-02-alpha-adr", kind: "document", doc_type: "adr" };
+const docNode: EngineNode = {
+  id: "doc:2026-01-02-alpha-adr",
+  kind: "document",
+  doc_type: "adr",
+};
 
 const metaEdge: EngineEdge = {
   id: "meta:alpha--beta",

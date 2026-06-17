@@ -128,8 +128,12 @@ describe("rag control plane (real engine broker)", () => {
       }),
       { wrapper },
     );
-    await waitFor(() => expect(result.current.svc.data).toBeDefined(), { timeout: 6000 });
-    await waitFor(() => expect(result.current.watcher.data).toBeDefined(), { timeout: 6000 });
+    await waitFor(() => expect(result.current.svc.data).toBeDefined(), {
+      timeout: 6000,
+    });
+    await waitFor(() => expect(result.current.watcher.data).toBeDefined(), {
+      timeout: 6000,
+    });
     await waitFor(() => expect(result.current.projects.data).toBeDefined(), {
       timeout: 6000,
     });

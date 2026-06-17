@@ -43,7 +43,10 @@ describe("settings schema (live engine GET /settings/schema)", () => {
 
     const granularity = byKey.get("default_granularity");
     expect(granularity).toBeDefined();
-    expect(granularity!.value_type).toEqual({ type: "enum", members: ["feature", "document"] });
+    expect(granularity!.value_type).toEqual({
+      type: "enum",
+      members: ["feature", "document"],
+    });
     expect(granularity!.scope_eligible).toBe(true);
 
     const reduceMotion = byKey.get("reduce_motion");
@@ -87,7 +90,11 @@ describe("settings schema (live engine GET /settings/schema)", () => {
   });
 
   it("tolerates a sparse / malformed body without throwing (tolerant adapter)", () => {
-    expect(adaptSettingsSchema(undefined)).toEqual({ settings: [], groups: [], tiers: {} });
+    expect(adaptSettingsSchema(undefined)).toEqual({
+      settings: [],
+      groups: [],
+      tiers: {},
+    });
     expect(adaptSettingsSchema({})).toEqual({ settings: [], groups: [], tiers: {} });
     const degraded = adaptSettingsSchema({
       settings: [
@@ -155,7 +162,11 @@ describe("settings effective-value resolution", () => {
 
   it("prefers the global value over the default", () => {
     const themeDef = schema.settings.find((s) => s.key === "theme")!;
-    const settings: SettingsState = { global: { theme: "dark" }, scoped: {}, tiers: {} };
+    const settings: SettingsState = {
+      global: { theme: "dark" },
+      scoped: {},
+      tiers: {},
+    };
     const eff = resolveEffective(themeDef, settings, scope);
     expect(eff.value).toBe("dark");
     expect(eff.provenance).toBe("global");
@@ -189,7 +200,9 @@ describe("settings effective-value resolution", () => {
   it("groups and orders settings per the engine-declared schema", () => {
     const groups = resolveSettings(schema, undefined, scope);
     // Appearance precedes Graph; theme + reduce_motion lead the Appearance group.
-    expect(groups.map((g) => g.name)).toEqual(expect.arrayContaining(["Appearance", "Graph"]));
+    expect(groups.map((g) => g.name)).toEqual(
+      expect.arrayContaining(["Appearance", "Graph"]),
+    );
     const appearance = groups.find((g) => g.name === "Appearance")!;
     expect(appearance.settings.map((s) => s.def.key).slice(0, 2)).toEqual([
       "theme",

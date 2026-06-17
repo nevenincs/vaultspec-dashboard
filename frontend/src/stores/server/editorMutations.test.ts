@@ -17,7 +17,12 @@
 import { describe, expect, it } from "vitest";
 
 import { useViewStore } from "../view/viewStore";
-import { deriveDocType, deriveLinkResolution, deriveReadTime, stemFromNodeId } from "./queries";
+import {
+  deriveDocType,
+  deriveLinkResolution,
+  deriveReadTime,
+  stemFromNodeId,
+} from "./queries";
 
 // A document the fixture vault ships (feature `alpha`).
 const DOC_STEM = "2026-01-01-alpha-research";

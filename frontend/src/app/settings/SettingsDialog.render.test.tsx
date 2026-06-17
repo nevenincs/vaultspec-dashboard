@@ -22,7 +22,11 @@ import { useSettingsDialog } from "./useSettingsDialog";
 
 function renderDialog() {
   return render(
-    createElement(QueryClientProvider, { client: queryClient }, createElement(SettingsDialog)),
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(SettingsDialog),
+    ),
   );
 }
 
