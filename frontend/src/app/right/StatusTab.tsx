@@ -55,7 +55,6 @@ import {
   ChevronRight,
   ProgressBar,
   SectionLabel,
-  StatusDot,
 } from "../kit";
 
 // Disclosure chevron sizing — the board paints a 10px twisty on the plan row.
@@ -142,9 +141,9 @@ function LocationAnchor({ scope }: { scope: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
-// Open-plan row — the plan-derived open-work model: StatusDot + title + count +
-// tier, expandable into its open steps (the reused step-tree dropdown), opening
-// the plan document in the markdown reader on activation.
+// Open-plan row — the plan-derived open-work model: a title line (twisty + title +
+// tier) over a progress line (completion bar + count), expandable into its open
+// steps (the reused step-tree dropdown), opening the plan in the reader on click.
 // ---------------------------------------------------------------------------
 
 interface OpenPlanRowProps {
@@ -207,7 +206,6 @@ function OpenPlanRow({
           >
             <Chevron size={TWISTY_PX} aria-hidden />
           </button>
-          <StatusDot category="plan" />
           <button
             type="button"
             onClick={openPlan}
