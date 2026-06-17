@@ -190,11 +190,32 @@ export function Stage() {
   // a feature shows its members, not a quiet 404, and never re-serves the whole
   // document corpus. Null at the overview → no filter (the unchanged path).
   const focusedFeature = useViewStore((s) => s.focusedFeature);
-  const featureFilter = useMemo<GraphFilter | undefined>(
-    () => (focusedFeature ? { feature_tags: [focusedFeature] } : undefined),
-    [focusedFeature],
+  // The COARSE, payload-bounding facets (doc-type + creation-date window) go to
+  // the WIRE so the engine narrows the document slice server-side
+  // (graph-queries-are-bounded-by-default: descend scoped) instead of shipping
+  // the whole document corpus to be filtered client-side. The FINE, interactive
+  // facets (tiers/confidence/relations/states/text) stay client-side for the
+  // instant visibility fades (computeVisibility below) — a refetch+relayout per
+  // toggle would lose that. Subscribe ONLY to these two choice fields (shallow)
+  // so an unrelated filter write does not re-key the slice query.
+  const coarse = useFilterStore(
+    useShallow((s) => ({ docTypes: s.docTypes, dateRange: s.dateRange })),
   );
-  const slice = useGraphSlice(scope, featureFilter, undefined, granularity, activeLens);
+  const wireFilter = useMemo<GraphFilter | undefined>(() => {
+    const f: GraphFilter = {};
+    if (focusedFeature) f.feature_tags = [focusedFeature];
+    // doc_types applies ONLY at document granularity: feature-convergence nodes
+    // carry no doc_type, so sending it at feature granularity would exclude every
+    // node. The date window narrows dated document nodes the same way.
+    if (granularity === "document") {
+      if (coarse.docTypes.length > 0) f.doc_types = [...coarse.docTypes];
+      if (coarse.dateRange.from || coarse.dateRange.to) {
+        f.date_range = { ...coarse.dateRange };
+      }
+    }
+    return Object.keys(f).length > 0 ? f : undefined;
+  }, [focusedFeature, granularity, coarse]);
+  const slice = useGraphSlice(scope, wireFilter, undefined, granularity, activeLens);
   // The active representation mode + overlay visibility (graph-representation
   // ADR): view state the chrome owns and emits to the scene. A mode switch
   // re-lays-out the CURRENT set (no re-query); the lens re-query is the slice key
