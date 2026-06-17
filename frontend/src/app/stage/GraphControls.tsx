@@ -34,7 +34,17 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { Pause, Play, SlidersHorizontal } from "lucide-react";
 
-import { Card, Crosshair, IconButton, Maximize, Minus, Plus, Slider } from "../kit";
+import {
+  Card,
+  Crosshair,
+  IconButton,
+  Maximize,
+  Minus,
+  Plus,
+  Segment,
+  SegmentedToggle,
+  Slider,
+} from "../kit";
 import type { LayoutParams } from "../../scene/field/forceLayout";
 import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -420,6 +430,62 @@ function TuneBody() {
 }
 
 // ---------------------------------------------------------------------------
+// BoundBody — the canvas/sim CONTAINMENT control (node-graph-rework ADR D3): the
+// bound shape (Free | Circle | Rect) and its size. The shape is the user's
+// explicit request — the default is a centred circle, with free and rect options
+// and a settable size (0 = auto-fit non-overlapping). A stores write
+// (viewStore.setBound) PLUS the scene command (set-bounds), mirroring the Freeze
+// toggle's local-state-plus-command shape; the field enforces the bound where it
+// produces positions (cosmos has no radial bound).
+// ---------------------------------------------------------------------------
+
+function BoundBody() {
+  const scene = getScene();
+  const boundShape = useViewStore((s) => s.boundShape);
+  const boundSize = useViewStore((s) => s.boundSize);
+  const setBound = useViewStore((s) => s.setBound);
+
+  function apply(shape: "free" | "circle" | "rect", size: number) {
+    setBound(shape, size);
+    scene.controller.command({
+      kind: "set-bounds",
+      shape,
+      size: size > 0 ? size : undefined,
+    });
+  }
+
+  return (
+    <div className="flex w-48 flex-col gap-fg-2">
+      <div className="flex flex-col gap-fg-1">
+        <span className="text-label text-ink-muted">Canvas bound</span>
+        <SegmentedToggle
+          ariaLabel="Canvas bound shape"
+          value={boundShape}
+          onChange={(v) => apply(v as "free" | "circle" | "rect", boundSize)}
+          fullWidth
+        >
+          <Segment value="free">Free</Segment>
+          <Segment value="circle">Circle</Segment>
+          <Segment value="rect">Rect</Segment>
+        </SegmentedToggle>
+      </div>
+      {boundShape !== "free" && (
+        <LabelledSlider
+          label="Bound size"
+          title="Radius (circle) or half-width (rect) in world units; 0 = auto-fit"
+          value={boundSize}
+          min={0}
+          max={4000}
+          step={100}
+          onChange={(v) => apply(boundShape, v)}
+          format={(v) => (v === 0 ? "auto" : String(Math.round(v)))}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The consolidated panel — a slim bottom-edge toolbar. Light groups inline; the
 // heavy Tune group collapsed behind a settings popover trigger so the
 // category-circle canvas is ALWAYS visible. `pointer-events-auto` is on the bar
@@ -453,6 +519,8 @@ export function GraphControls() {
           marker="tune"
           icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
         >
+          <BoundBody />
+          <span className="h-px w-full bg-rule" aria-hidden />
           <TuneBody />
         </SettingsPopover>
       </Card>

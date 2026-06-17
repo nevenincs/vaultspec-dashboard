@@ -223,6 +223,15 @@ export interface ViewState {
    * `set-overlays`.
    */
   overlays: { featureCountries: boolean; featureHulls: boolean };
+  /**
+   * The canvas/sim CONTAINMENT (node-graph-rework ADR D3): the bound shape the
+   * field enforces on node positions - "circle" (default) | "free" | "rect" - and
+   * its size (radius for circle, half-extent for rect; 0 = auto-fit non-overlapping).
+   * A viewer preference like the representation mode and overlays: owned here,
+   * emitted to the scene as a `set-bounds` command, and NOT reset on scope swap.
+   */
+  boundShape: "free" | "circle" | "rect";
+  boundSize: number;
 
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
   setScope: (scope: string | null) => void;
@@ -329,6 +338,8 @@ export interface ViewState {
   setRepresentationMode: (mode: RepresentationMode) => void;
   /** Set overlay visibility (feature countries, feature hulls). */
   setOverlays: (overlays: { featureCountries: boolean; featureHulls: boolean }) => void;
+  /** Set the canvas/sim containment shape + size (node-graph-rework ADR D3). */
+  setBound: (shape: "free" | "circle" | "rect", size: number) => void;
 }
 
 /** Cap the working set (P-MED-4): each entry materializes its own ego-network
@@ -381,6 +392,11 @@ export const useViewStore = create<ViewState>((set) => ({
   activeLens: DEFAULT_SALIENCE_LENS,
   activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
   overlays: { featureCountries: true, featureHulls: true },
+  // Default containment: a centred circle, auto-sized non-overlapping (ADR D3).
+  // A viewer preference: like the representation mode, it is NOT reset on a scope
+  // or workspace swap, so it is absent from the reset blocks below.
+  boundShape: "circle",
+  boundSize: 0,
 
   setScope: (scope) => {
     // WHOLESALE swap (ADR §2.1; finding scope-swap-partial-reset-022):
@@ -595,4 +611,5 @@ export const useViewStore = create<ViewState>((set) => ({
   setRepresentationMode: (activeRepresentationMode) =>
     set({ activeRepresentationMode }),
   setOverlays: (overlays) => set({ overlays }),
+  setBound: (boundShape, boundSize) => set({ boundShape, boundSize }),
 }));
