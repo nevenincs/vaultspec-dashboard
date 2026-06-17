@@ -62,11 +62,6 @@ import { getScene } from "./Stage";
 
 const ICON_PX = 15;
 
-// A faint vertical hairline separating inline groups in the slim toolbar.
-function Divider() {
-  return <span className="mx-fg-1 h-6 w-px self-center bg-rule" aria-hidden />;
-}
-
 // ---------------------------------------------------------------------------
 // Freeze toggle (graph-force-stability D7): Obsidian's pause. Emits a single
 // `set-frozen` scene command and reflects the local frozen state. Meaningful only
@@ -121,9 +116,11 @@ function FreezeToggle() {
 
 function NavigateGroup() {
   const scene = getScene();
+  // Board NavControls (260:893): a VERTICAL cluster — zoom in / zoom out, a
+  // divider, then fit / recenter. Camera commands only.
   return (
     <div
-      className="flex items-center gap-fg-0-5"
+      className="flex flex-col items-center gap-fg-0-5"
       role="group"
       aria-label="Navigate"
       data-nav-group
@@ -140,6 +137,7 @@ function NavigateGroup() {
       >
         <Minus size={ICON_PX} aria-hidden />
       </IconButton>
+      <span className="my-fg-0-5 h-px w-5 bg-rule" aria-hidden />
       <IconButton
         label="fit to view"
         title="fit all nodes into the viewport"
@@ -154,7 +152,6 @@ function NavigateGroup() {
       >
         <Crosshair size={ICON_PX} aria-hidden />
       </IconButton>
-      <FreezeToggle />
     </div>
   );
 }
@@ -306,59 +303,6 @@ function SettingsPopover({ label, icon, marker, children }: SettingsPopoverProps
 }
 
 // ---------------------------------------------------------------------------
-// Zoom (LOD descent): a two-stop kit Slider Overview ↔ Detail. 0 = feature
-// overview, 1 = document detail. Snaps; no intermediate state exists on the wire.
-// Disabled in time-travel (the driver owns the scene's data). Compact inline form:
-// flanking − / + (kit IconButtons) camera zoom around the snap slider.
-// ---------------------------------------------------------------------------
-
-function ZoomGroup() {
-  const granularity = useViewStore((s) => s.granularity);
-  const setGranularity = useViewStore((s) => s.setGranularity);
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const timeTravelling = timelineMode.kind === "time-travel";
-  const scene = getScene();
-
-  const zoomValue = granularity === "document" ? 1 : 0;
-
-  return (
-    <div
-      className={`flex items-center gap-fg-1 ${timeTravelling ? "opacity-40" : ""}`}
-      role="group"
-      aria-label="Zoom"
-    >
-      <IconButton
-        label="zoom camera out"
-        title="zoom the camera out"
-        onClick={() => scene.controller.command({ kind: "zoom-out" })}
-      >
-        <Minus size={ICON_PX} aria-hidden />
-      </IconButton>
-      <div className="w-40">
-        <LabelledSlider
-          label="detail level"
-          value={zoomValue}
-          min={0}
-          max={1}
-          step={1}
-          onChange={(v) => setGranularity(v >= 1 ? "document" : "feature")}
-          format={(v) => (v >= 1 ? "Detail" : "Overview")}
-          title="Overview shows the feature constellation; Detail shows the bounded document graph"
-          ends={["Overview", "Detail"]}
-        />
-      </div>
-      <IconButton
-        label="zoom camera in"
-        title="zoom the camera in"
-        onClick={() => scene.controller.command({ kind: "zoom-in" })}
-      >
-        <Plus size={ICON_PX} aria-hidden />
-      </IconButton>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Tune group — the plain-language d3-force knobs (collapsed settings-popover body).
 // ---------------------------------------------------------------------------
 
@@ -437,6 +381,12 @@ function TuneBody() {
 
   return (
     <div className="flex w-48 flex-col gap-fg-3">
+      {/* Freeze the force layout (graph-force-stability) — lives in the settings
+          popover now that the bottom cluster is NavControls-only. */}
+      <div className="flex items-center justify-between">
+        <span className="text-label text-ink-muted">Freeze layout</span>
+        <FreezeToggle />
+      </div>
       <LabelledSlider
         label="Spacing"
         title="How far nodes push each other apart"
@@ -504,35 +454,23 @@ export function GraphControls() {
       <Card
         elevation="overlay"
         padded={false}
-        className="pointer-events-auto flex max-w-full items-stretch bg-paper-raised/95 backdrop-blur-sm"
+        className="pointer-events-auto flex flex-col items-center gap-fg-1 bg-paper-raised/95 px-fg-1 py-fg-2 backdrop-blur-sm"
         role="group"
         aria-label="graph controls"
         data-graph-controls
       >
-        {/* Inline light groups. This section alone scrolls horizontally on a
-            narrow stage, so the bar never grows TALL (no wrap) and never covers
-            the canvas. The settings trigger lives OUTSIDE this scroll region so
-            its above-bar panel is not clipped by overflow. */}
-        <div
-          className="flex min-w-0 items-center gap-fg-1 overflow-x-auto px-fg-2 py-fg-1-5"
-          data-graph-controls-inline
+        {/* Board NavControls (260:893): the vertical zoom/fit cluster. */}
+        <NavigateGroup />
+        <span className="h-px w-5 bg-rule" aria-hidden />
+        {/* The graph-settings (Tune) knobs collapsed behind a gear so the canvas
+            stays clear (board Graph settings popover 88:2). */}
+        <SettingsPopover
+          label="Tune"
+          marker="tune"
+          icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
         >
-          <NavigateGroup />
-          <Divider />
-          <ZoomGroup />
-        </div>
-        {/* Heavy Tune group, collapsed behind a settings popover trigger (canvas
-            stays clear). Outside the scroll region so the popover body can
-            overflow upward. */}
-        <div className="flex items-center gap-fg-1 border-l border-rule px-fg-2 py-fg-1-5">
-          <SettingsPopover
-            label="Tune"
-            marker="tune"
-            icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
-          >
-            <TuneBody />
-          </SettingsPopover>
-        </div>
+          <TuneBody />
+        </SettingsPopover>
       </Card>
     </div>
   );

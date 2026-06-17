@@ -178,27 +178,9 @@ describe("LayoutSelector — grouped Layout picker (D11), in the toolbar", () =>
   });
 });
 
-describe("GraphControls — Zoom (LOD descent)", () => {
-  it("the detail-level slider drives the real granularity", () => {
-    render(createElement(GraphControls));
-    const slider = screen.getByRole("slider", { name: "detail level" });
-    // Default feature overview = 0.
-    expect((slider as HTMLInputElement).value).toBe("0");
-    fireEvent.change(slider, { target: { value: "1" } });
-    expect(useViewStore.getState().granularity).toBe("document");
-    fireEvent.change(slider, { target: { value: "0" } });
-    expect(useViewStore.getState().granularity).toBe("feature");
-  });
-
-  it("the flanking − / + issue real camera zoom commands", () => {
-    const spy = vi.spyOn(getScene().controller, "command");
-    render(createElement(GraphControls));
-    fireEvent.click(screen.getByRole("button", { name: "zoom camera in" }));
-    fireEvent.click(screen.getByRole("button", { name: "zoom camera out" }));
-    const kinds = spy.mock.calls.map((c) => (c[0] as { kind: string }).kind);
-    expect(kinds).toEqual(expect.arrayContaining(["zoom-in", "zoom-out"]));
-  });
-});
+// The board's bottom-left cluster is NavControls-only (260:893): the LOD detail
+// slider + flanking camera-zoom were retired from the canvas (the camera zoom
+// in/out live in the Navigate group, asserted above).
 
 // The heavy Tune group is collapsed behind a popover trigger so the canvas is
 // never occluded; the body (and its sliders) only mount once the trigger opens.
