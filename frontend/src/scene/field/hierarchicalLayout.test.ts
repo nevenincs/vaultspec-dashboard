@@ -9,6 +9,7 @@ import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import {
   FORBIDDEN_LAYOUT_STRATEGIES,
   HIER_LAYER_SPACING,
+  HIER_NODE_SPACING,
   hierarchicalLayout,
 } from "./hierarchicalLayout";
 
@@ -28,6 +29,26 @@ const edge = (
 });
 
 describe("hierarchicalLayout", () => {
+  it("bounds the cross extent on a dense subgraph so no node lands off-screen", () => {
+    // On a DENSE, deep subgraph (the live feature constellation — ~1100 backbone
+    // edges over ~68 nodes) the longest-path layering threads long dummy CHAINS
+    // through layers inflated to hundreds of slots, pushing real nodes to extreme
+    // cross coordinates (x observed ~26,500 live) that fly off the fittable
+    // canvas. A deep chain plus many long spanning edges reproduces that shape.
+    const N = 24;
+    const nodes = Array.from({ length: N }, (_, i) => n(`n${i}`));
+    const edges: SceneEdgeData[] = [];
+    for (let i = 0; i < N - 1; i += 1) edges.push(edge(`n${i}`, `n${i + 1}`)); // deep chain
+    for (let i = 4; i < N; i += 1) edges.push(edge("n0", `n${i}`)); // long spanning edges
+    for (let i = 2; i < N; i += 3) edges.push(edge("n1", `n${i}`));
+    const pos = hierarchicalLayout(nodes, edges);
+    const xs = [...pos.values()].map((p) => p.x);
+    const extent = Math.max(...xs) - Math.min(...xs);
+    // The invariant the bounded rescale guarantees: the cross extent never
+    // exceeds the node-count's worth of slots, so the layout always fits a canvas.
+    expect(extent).toBeLessThanOrEqual(N * HIER_NODE_SPACING);
+  });
+
   it("layers a chain by longest-path depth (roots at top, descending y)", () => {
     // a -> b -> c -> d: four layers, increasing y down the hierarchy.
     const nodes = [n("a"), n("b"), n("c"), n("d")];

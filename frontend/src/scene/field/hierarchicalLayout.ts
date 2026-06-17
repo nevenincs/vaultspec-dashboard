@@ -110,5 +110,28 @@ export function hierarchicalLayout(
     });
   }
 
+  // Bound the cross extent (mental-map / on-screen guarantee). Hierarchical is a
+  // DAG layout; on a DENSE subgraph — e.g. the feature constellation, ~1100
+  // backbone edges over ~68 nodes — the longest-path layering threads long dummy
+  // CHAINS that inflate a layer to hundreds of slots and push REAL nodes to
+  // extreme cross coordinates (x in the tens of thousands, observed ~26500 live),
+  // which fly off-screen and blow up the camera fit. Normal sparse, DAG-shaped
+  // inputs stay far under this bound, so the rescale is a NO-OP for them (the
+  // layout-quality scorecard's synthetic cases included); only the pathological
+  // dense case is scaled to a bounded width, preserving layer order and the
+  // relative cross-position of every node.
+  const xs = [...out.values()].map((p) => p.x);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const extent = maxX - minX;
+  const bound = nodeIds.length * HIER_NODE_SPACING;
+  if (extent > bound) {
+    const scale = bound / extent;
+    const mid = (minX + maxX) / 2;
+    for (const [id, p] of out) {
+      out.set(id, { x: (p.x - mid) * scale, y: p.y });
+    }
+  }
+
   return out;
 }
