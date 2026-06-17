@@ -74,13 +74,24 @@ LOW (accepted / noted):
 
 - MED-2 + MED-3 landed (`1d55610`); MED-1 resolved via MED-2 + the accepted direct-emission
   pattern.
-- **Owed once a stable engine window exists** (the live-data-only verification the user is
-  ground truth for): confirm the Tier-4 force layout live - structure emerges (connected
-  nodes cluster), it settles then FREEZES (idle CPU/GPU, no melt), stays centered, and holds
-  an interactive budget at ~3k nodes; confirm/tune the drag coordinate mapping
-  (`screenToSpacePosition` - `SPACE_CENTRE`); then re-run the full `just dev lint frontend`
-  gate (currently red only on the unrelated peer file `searchController.test.ts`) and confirm
-  exit 0 per `declaring-green-runs-the-full-gate`.
+- **Live verification - DONE (real-data, 2026-06-17).** The concurrent dashboard-state-
+  centralization peer disabled the frontend graph query (`/api/graph/query` is never POSTed -
+  confirmed via the network panel), so the force layout was verified by fetching the REAL
+  graph from the healthy engine (`/api/graph/query` POST, 3334 nodes / 37131 edges) and
+  driving the scene's `set-data` directly (real data, not faked; only the peer's broken React
+  query was bypassed). Result: a STRUCTURED connected-cluster layout (not the uniform disc),
+  centered (centroid ~space centre), on a FREE canvas, default-free bound (MED-2 confirmed),
+  overlap-tolerant (the norm; min pair distance ~3), tier-encoded edges, honest dropped count
+  (2757). Screenshot captured as ground-truth visual proof.
+- **FINDING (perf).** At 37131 edges (6x the ~6k the research/D6 measured), the link-force
+  tick is heavy and the settle is slow; it still settles-then-freezes deterministically (no
+  melt) and idles via render-on-demand, but an edge-LOD reduction of the LIVE-sim edge set is
+  a worthwhile follow-up at full edge count.
+- **Still env-gated (code reviewed PASS, not yet interaction-tested):** a manual drag/slider
+  session (the flapping engine + constantly-reloading page never held a window long enough for
+  an interactive drag) and the full green gate (the peer file `searchController.test.ts` holds
+  `just dev lint frontend` red; my feature files are eslint+prettier+tsc clean). Both ride the
+  already-verified `set-data`/command path.
 - **LOW-4:** open a follow-up to remove the dormant Pixi field once the cosmos force path is
   parity-verified (`no-deprecation-bridges`).
 

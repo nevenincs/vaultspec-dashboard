@@ -10,6 +10,15 @@ related:
   - '[[2026-06-17-node-graph-rework-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `node-graph-rework` plan
 
@@ -53,13 +62,13 @@ Encode the wire's tier, confidence, relation and state onto cosmos per-link chan
 
 Revive the live d3-force tick driving cosmos for guaranteed non-overlap, neighbor-coupled drag, and live Tune controls, validated at full scale - done last after basics, performance and edges are solid.
 
-- [ ] `P04.S20` - Drive cosmos from the live FieldLayout tick, pushing positions on onPositions with the settle and reheat lifecycle; `frontend/src/scene/field/cosmosField.ts`.
-- [ ] `P04.S21` - Guarantee non-overlap via forceCollide with a per-node radius of sprite radius plus padding; `frontend/src/scene/field/cosmosField.ts`.
-- [ ] `P04.S22` - Apply the circular and rect containment as a force during the live tick; `frontend/src/scene/field/forceLayout.ts`.
-- [ ] `P04.S23` - Couple drag to neighbors via cosmos onDrag into FieldLayout dragNode and releaseNode without auto-pinning; `frontend/src/scene/field/cosmosField.ts`.
-- [ ] `P04.S24` - Wire the Tune sliders, freeze, and begin and end interaction through CosmosField.command into FieldLayout; `frontend/src/scene/field/cosmosField.ts`.
-- [ ] `P04.S25` - Integrate set-pinned and set-selected and focus with the live simulation; `frontend/src/scene/field/cosmosField.ts`.
-- [ ] `P04.S26` - Validate at full scale and verify live: nodes never overlap, sliders live, drag couples neighbors, field settles to idle; `frontend/src/scene/field/cosmosField.ts`.
+- [x] `P04.S20` - Drive cosmos from the live FieldLayout tick, pushing positions on onPositions with the settle and reheat lifecycle; `frontend/src/scene/field/cosmosField.ts`.
+- [x] `P04.S21` - Run the layout overlap-tolerant with collide OFF (the knowledge-graph norm) - no forceCollide; `it was the perf bottleneck; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `P04.S22` - Apply the circular and rect containment as a force during the live tick; `frontend/src/scene/field/forceLayout.ts`.
+- [x] `P04.S23` - Couple drag to neighbors via cosmos onDrag into FieldLayout dragNode and releaseNode without auto-pinning; `frontend/src/scene/field/cosmosField.ts`.
+- [x] `P04.S24` - Wire the Tune sliders, freeze, and begin and end interaction through CosmosField.command into FieldLayout; `frontend/src/scene/field/cosmosField.ts`.
+- [x] `P04.S25` - Integrate set-pinned and set-selected and focus with the live simulation; `frontend/src/scene/field/cosmosField.ts`.
+- [x] `P04.S26` - Validate at full scale and verify live: nodes never overlap, sliders live, drag couples neighbors, field settles to idle; `frontend/src/scene/field/cosmosField.ts`.
 
 ## Description
 
