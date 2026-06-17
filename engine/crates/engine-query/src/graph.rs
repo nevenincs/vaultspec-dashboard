@@ -2,13 +2,11 @@
 //! a filtered slice of the in-memory graph with the validated filter
 //! echoed back normalized.
 
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use engine_graph::diff::DiffOp;
 use engine_graph::{LinkageGraph, MetaEdge, degree_by_tier, lifecycle_in_scope, meta_edges};
-use engine_model::{Edge, Node, NodeId, NodeKind, Progress, RelationKind, ScopeRef};
+use engine_model::{Edge, EdgeId, Node, NodeId, NodeKind, Progress, RelationKind, ScopeRef};
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -43,6 +41,112 @@ pub struct GraphSlice {
     pub meta_edges: Vec<MetaEdge>,
     /// The validated, normalized filter, echoed back (D7.2).
     pub filter: Filter,
+}
+
+/// Per-generation document-query cache: enriched wire projections plus sorted
+/// candidate indexes for the common filter facets. The route owns the cache
+/// lifetime; this type is pure over one immutable graph generation.
+#[derive(Debug, Clone)]
+pub struct DocumentViews {
+    pub node_views: HashMap<String, Value>,
+    pub edge_views: HashMap<String, Value>,
+    pub scope_node_ids: HashSet<String>,
+    scope_node_ids_sorted: Vec<String>,
+    scope_edge_ids_sorted: Vec<String>,
+    nodes_by_kind: HashMap<String, Vec<String>>,
+    nodes_by_doc_type: HashMap<String, Vec<String>>,
+    nodes_by_feature_tag: HashMap<String, Vec<String>>,
+    nodes_by_status: HashMap<String, Vec<String>>,
+    nodes_by_plan_tier: HashMap<String, Vec<String>>,
+    edges_by_relation: HashMap<String, Vec<String>>,
+    edges_by_tier: HashMap<String, Vec<String>>,
+}
+
+fn push_index(index: &mut HashMap<String, Vec<String>>, key: impl Into<String>, id: &str) {
+    index.entry(key.into()).or_default().push(id.to_string());
+}
+
+fn normalize_index(index: &mut HashMap<String, Vec<String>>) {
+    for ids in index.values_mut() {
+        ids.sort();
+        ids.dedup();
+    }
+}
+
+fn wire_name<T: Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn union_index_values(index: &HashMap<String, Vec<String>>, values: &[String]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for value in values {
+        if let Some(bucket) = index.get(value) {
+            ids.extend(bucket.iter().cloned());
+        }
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn intersect_sorted(left: &[String], right: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < left.len() && j < right.len() {
+        match left[i].cmp(&right[j]) {
+            std::cmp::Ordering::Less => i += 1,
+            std::cmp::Ordering::Greater => j += 1,
+            std::cmp::Ordering::Equal => {
+                out.push(left[i].clone());
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    out
+}
+
+fn intersect_candidate(
+    current: Option<Vec<String>>,
+    index: &HashMap<String, Vec<String>>,
+    values: &[String],
+) -> Option<Vec<String>> {
+    if values.is_empty() {
+        return current;
+    }
+    let next = union_index_values(index, values);
+    Some(match current {
+        Some(existing) => intersect_sorted(&existing, &next),
+        None => next,
+    })
+}
+
+impl DocumentViews {
+    fn candidate_node_ids(&self, filter: &Filter) -> Vec<String> {
+        let mut ids = None;
+        ids = intersect_candidate(ids, &self.nodes_by_kind, &filter.kinds);
+        ids = intersect_candidate(ids, &self.nodes_by_doc_type, &filter.doc_types);
+        ids = intersect_candidate(ids, &self.nodes_by_feature_tag, &filter.feature_tags);
+        ids = intersect_candidate(ids, &self.nodes_by_status, &filter.statuses);
+        ids = intersect_candidate(ids, &self.nodes_by_plan_tier, &filter.plan_tiers);
+        ids.unwrap_or_else(|| self.scope_node_ids_sorted.clone())
+    }
+
+    fn candidate_edge_ids(&self, filter: &Filter) -> Vec<String> {
+        let mut ids = None;
+        ids = intersect_candidate(ids, &self.edges_by_relation, &filter.relations);
+        let active_tiers: Vec<String> = filter
+            .tiers
+            .iter()
+            .filter_map(|(tier, enabled)| enabled.then_some(tier.clone()))
+            .collect();
+        ids = intersect_candidate(ids, &self.edges_by_tier, &active_tiers);
+        ids.unwrap_or_else(|| self.scope_edge_ids_sorted.clone())
+    }
 }
 
 /// Hard ceiling on nodes serialized at either granularity (perf ADR D2 /
@@ -400,30 +504,15 @@ pub fn graph_query_cached(
     scope: &ScopeRef,
     filter: Filter,
     granularity: Granularity,
-    node_views: &HashMap<String, Value>,
-    edge_views: &HashMap<String, Value>,
-    scope_node_ids: &HashSet<String>,
+    views: &DocumentViews,
 ) -> Result<GraphSlice, FilterError> {
-    graph_query_inner(
-        graph,
-        scope,
-        filter,
-        granularity,
-        Some((node_views, edge_views, scope_node_ids)),
-    )
+    graph_query_inner(graph, scope, filter, granularity, Some(views))
 }
 
 /// Build every node's and (scope-local) edge's enriched view once — the unit the
 /// API layer caches per graph generation for [`graph_query_cached`]. Pure over an
 /// immutable graph generation, so the result is safe to memoize keyed on it.
-pub fn build_document_views(
-    graph: &LinkageGraph,
-    scope: &ScopeRef,
-) -> (
-    HashMap<String, Value>,
-    HashMap<String, Value>,
-    HashSet<String>,
-) {
+pub fn build_document_views(graph: &LinkageGraph, scope: &ScopeRef) -> DocumentViews {
     // The enriched node views AND the in-scope node-id set (backend-hotpath-
     // hardening F4); the latter is what the Document arm's broken-link endpoint
     // check needs, cached here to remove a second full node scan per request.
@@ -446,26 +535,86 @@ pub fn build_document_views(
         .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
         .map(|n| n.id.0.clone())
         .collect();
+    let mut scope_node_ids_sorted: Vec<String> = scope_node_ids.iter().cloned().collect();
+    scope_node_ids_sorted.sort();
+
+    let mut nodes_by_kind = HashMap::new();
+    let mut nodes_by_doc_type = HashMap::new();
+    let mut nodes_by_feature_tag = HashMap::new();
+    let mut nodes_by_status = HashMap::new();
+    let mut nodes_by_plan_tier = HashMap::new();
+    for node in nodes
+        .iter()
+        .copied()
+        .filter(|n| scope_node_ids.contains(n.id.0.as_str()))
+    {
+        push_index(&mut nodes_by_kind, wire_name(&node.kind), &node.id.0);
+        if let Some(doc_type) = &node.doc_type {
+            push_index(&mut nodes_by_doc_type, doc_type, &node.id.0);
+        }
+        for tag in &node.feature_tags {
+            push_index(&mut nodes_by_feature_tag, tag, &node.id.0);
+        }
+        if let Some(status) = &node.status {
+            push_index(&mut nodes_by_status, status, &node.id.0);
+        }
+        if let Some(tier) = &node.tier {
+            push_index(&mut nodes_by_plan_tier, tier, &node.id.0);
+        }
+    }
+    normalize_index(&mut nodes_by_kind);
+    normalize_index(&mut nodes_by_doc_type);
+    normalize_index(&mut nodes_by_feature_tag);
+    normalize_index(&mut nodes_by_status);
+    normalize_index(&mut nodes_by_plan_tier);
+
     let edges: Vec<&engine_graph::StoredEdge> = graph.edges().collect();
     let edge_views: HashMap<String, Value> = edges
         .par_iter()
         .filter(|s| &s.edge.scope == scope)
         .map(|s| (s.edge.id.0.clone(), edge_view(graph, &s.edge)))
         .collect();
-    (node_views, edge_views, scope_node_ids)
+    let mut scope_edge_ids_sorted: Vec<String> = edge_views.keys().cloned().collect();
+    scope_edge_ids_sorted.sort();
+    let mut edges_by_relation = HashMap::new();
+    let mut edges_by_tier = HashMap::new();
+    for stored in edges.iter().copied().filter(|s| &s.edge.scope == scope) {
+        push_index(
+            &mut edges_by_relation,
+            stored.edge.relation.as_str(),
+            &stored.edge.id.0,
+        );
+        push_index(
+            &mut edges_by_tier,
+            wire_name(&stored.edge.tier),
+            &stored.edge.id.0,
+        );
+    }
+    normalize_index(&mut edges_by_relation);
+    normalize_index(&mut edges_by_tier);
+
+    DocumentViews {
+        node_views,
+        edge_views,
+        scope_node_ids,
+        scope_node_ids_sorted,
+        scope_edge_ids_sorted,
+        nodes_by_kind,
+        nodes_by_doc_type,
+        nodes_by_feature_tag,
+        nodes_by_status,
+        nodes_by_plan_tier,
+        edges_by_relation,
+        edges_by_tier,
+    }
 }
 
-#[allow(clippy::type_complexity)]
 fn graph_query_inner(
     graph: &LinkageGraph,
     scope: &ScopeRef,
     filter: Filter,
     granularity: Granularity,
-    views: Option<(
-        &HashMap<String, Value>,
-        &HashMap<String, Value>,
-        &HashSet<String>,
-    )>,
+    views: Option<&DocumentViews>,
 ) -> Result<GraphSlice, FilterError> {
     let filter = filter.validated()?;
 
@@ -473,11 +622,22 @@ fn graph_query_inner(
     // each node and re-serialize it into a Value, so cloning the whole match set
     // up front was a redundant deep Node clone per node (id/key/title strings +
     // facets Vec) on every request. Sorting borrowed refs is cheap.
-    let mut matched: Vec<&Node> = graph
-        .nodes()
-        .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
-        .filter(|n| filter.matches_node(n))
-        .collect();
+    let candidate_node_ids;
+    let mut matched: Vec<&Node> = match views {
+        Some(index) => {
+            candidate_node_ids = index.candidate_node_ids(&filter);
+            candidate_node_ids
+                .iter()
+                .filter_map(|id| graph.node(&NodeId(id.clone())))
+                .filter(|n| filter.matches_node(n))
+                .collect()
+        }
+        None => graph
+            .nodes()
+            .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
+            .filter(|n| filter.matches_node(n))
+            .collect(),
+    };
     matched.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
     let (nodes, edges, meta) = match granularity {
@@ -491,13 +651,27 @@ fn graph_query_inner(
             // edge HERE, but KEEP an edge whose endpoint is an unresolved/broken
             // target (not a graph node at all) so the broken lens still surfaces
             // it (audit W02P05-201): a broken link is intentionally dangling.
-            let kept: HashSet<&str> = matched.iter().map(|n| n.id.0.as_str()).collect();
+            //
+            // FILE-BROWSER SCOPE: this is the `.vault/` document browser's graph, so
+            // it must contain ONLY authored `.vault/` DOCUMENTS - one node per
+            // document. The plan-container (wave/phase/step) explosion, code-artifact
+            // (source files), and rule (`.vaultspec/` FIRMWARE) nodes are not `.vault/`
+            // content and are excluded from the document slice. The rich LinkageGraph
+            // still carries them for lineage / code-link / plan-status views; this
+            // slice is documents only. Edges to the excluded nodes drop out via the
+            // `endpoint_ok` check below (their endpoints are no longer in `kept`).
+            let doc_nodes: Vec<&Node> = matched
+                .iter()
+                .copied()
+                .filter(|n| n.kind == NodeKind::Document)
+                .collect();
+            let kept: HashSet<&str> = doc_nodes.iter().map(|n| n.id.0.as_str()).collect();
             // Reuse the per-generation cached in-scope node-id set when present
             // (F4); otherwise build it (the uncached path). Owned-String set so
             // both paths share one type for the endpoint check.
             let built_scope_nodes: HashSet<String>;
             let scope_nodes: &HashSet<String> = match views {
-                Some((_, _, sn)) => sn,
+                Some(index) => &index.scope_node_ids,
                 None => {
                     built_scope_nodes = graph
                         .nodes()
@@ -510,27 +684,40 @@ fn graph_query_inner(
             // An endpoint is acceptable if it survived the node filter, or it is
             // not a real in-scope node (a broken/unresolved reference).
             let endpoint_ok = |id: &str| kept.contains(id) || !scope_nodes.contains(id);
-            let mut edges: Vec<&Edge> = graph
-                .edges()
-                .filter(|s| &s.edge.scope == scope)
-                .filter(|s| filter.matches_edge(s))
-                .map(|s| &s.edge)
-                .filter(|e| endpoint_ok(e.src.0.as_str()) && endpoint_ok(e.dst.0.as_str()))
-                .collect();
+            let candidate_edge_ids;
+            let mut edges: Vec<&Edge> = match views {
+                Some(index) => {
+                    candidate_edge_ids = index.candidate_edge_ids(&filter);
+                    candidate_edge_ids
+                        .iter()
+                        .filter_map(|id| graph.edge(&EdgeId(id.clone())))
+                        .filter(|s| filter.matches_edge(s))
+                        .map(|s| &s.edge)
+                        .filter(|e| endpoint_ok(e.src.0.as_str()) && endpoint_ok(e.dst.0.as_str()))
+                        .collect()
+                }
+                None => graph
+                    .edges()
+                    .filter(|s| &s.edge.scope == scope)
+                    .filter(|s| filter.matches_edge(s))
+                    .map(|s| &s.edge)
+                    .filter(|e| endpoint_ok(e.src.0.as_str()) && endpoint_ok(e.dst.0.as_str()))
+                    .collect(),
+            };
             edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
             let edge_view_list = edges
                 .iter()
                 .map(|&e| {
                     views
-                        .and_then(|(_, ev, _)| ev.get(&e.id.0).cloned())
+                        .and_then(|index| index.edge_views.get(&e.id.0).cloned())
                         .unwrap_or_else(|| edge_view(graph, e))
                 })
                 .collect();
-            let node_view_list = matched
+            let node_view_list = doc_nodes
                 .iter()
                 .map(|&n| {
                     views
-                        .and_then(|(nv, _, _)| nv.get(&n.id.0).cloned())
+                        .and_then(|index| index.node_views.get(&n.id.0).cloned())
                         .unwrap_or_else(|| node_view(graph, scope, n))
                 })
                 .collect();
@@ -761,16 +948,16 @@ mod tests {
         // graph_query_cached must produce exactly the same slice as recomputing
         // them in graph_query — both filtered and unfiltered.
         let g = fixture();
-        let (nv, ev, sn) = build_document_views(&g, &scope());
+        let views = build_document_views(&g, &scope());
         for filter in [
             Filter::default(),
+            serde_json::from_str(r#"{"feature_tags": ["feature-a"]}"#).unwrap(),
             serde_json::from_str(r#"{"structural_state": ["resolved"]}"#).unwrap(),
         ] {
             let uncached =
                 graph_query(&g, &scope(), filter.clone(), Granularity::Document).unwrap();
             let cached =
-                graph_query_cached(&g, &scope(), filter, Granularity::Document, &nv, &ev, &sn)
-                    .unwrap();
+                graph_query_cached(&g, &scope(), filter, Granularity::Document, &views).unwrap();
             assert_eq!(
                 serde_json::to_value(&uncached).unwrap(),
                 serde_json::to_value(&cached).unwrap(),
