@@ -17,12 +17,9 @@ import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
-import { TierMark } from "../../scene/field/markComponents";
 import { useFiltersVocabulary } from "../../stores/server/queries";
 import { useFilterStore } from "../../stores/view/filters";
-import { useViewStore } from "../../stores/view/viewStore";
 import { hiddenCountLabel } from "./FilterBar";
-import { TIER_ORDER, isTierInapplicable } from "./TierDial";
 
 // ---------------------------------------------------------------------------
 // Section scaffold
@@ -127,85 +124,6 @@ function FacetList({ values, selected, onToggle, max, loading }: FacetListProps)
 }
 
 // ---------------------------------------------------------------------------
-// Tier section (reuses the dial's data; inline layout for sidebar width)
-// ---------------------------------------------------------------------------
-
-function TierSection() {
-  const tiers = useFilterStore((s) => s.tiers);
-  const minConfidence = useFilterStore((s) => s.minConfidence);
-  const setTier = useFilterStore((s) => s.setTier);
-  const setMinConfidence = useFilterStore((s) => s.setMinConfidence);
-  const timelineMode = useViewStore((s) => s.timelineMode);
-
-  const activeCount = Object.values(tiers).filter(Boolean).length;
-
-  return (
-    <Section title="Tiers" badge={activeCount < 4 ? activeCount : undefined}>
-      <ul className="space-y-fg-1 px-fg-3" role="list">
-        {TIER_ORDER.map(({ tier, label }) => {
-          const inapplicable = isTierInapplicable(tier, timelineMode);
-          const on = tiers[tier] && !inapplicable;
-          return (
-            <li key={tier}>
-              <label
-                className={`flex flex-col gap-fg-0-5 rounded-fg-xs px-fg-1 py-fg-0-5 ${
-                  inapplicable ? "opacity-40" : "hover:bg-paper-sunken"
-                }`}
-              >
-                <span className="flex cursor-pointer items-center gap-fg-2">
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={inapplicable}
-                    onChange={() => setTier(tier, !tiers[tier])}
-                    className="accent-accent"
-                  />
-                  <span
-                    className={`flex items-center gap-fg-1 text-label ${on ? "text-ink" : "text-ink-faint"}`}
-                  >
-                    <TierMark tier={tier} size={14} title={`${label} tier mark`} />
-                    {label}
-                    {inapplicable && (
-                      <span className="ml-fg-1 text-caption text-ink-faint">
-                        (time-travel)
-                      </span>
-                    )}
-                  </span>
-                </span>
-                {(tier === "temporal" || tier === "semantic") &&
-                  !inapplicable &&
-                  on && (
-                    <span className="flex items-center gap-fg-2 pl-fg-4">
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={minConfidence[tier] ?? 0}
-                        aria-label={`${label} confidence floor`}
-                        aria-valuetext={`${Math.round((minConfidence[tier] ?? 0) * 100)} percent`}
-                        title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
-                        onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
-                        className="h-1 w-full accent-accent"
-                      />
-                      <span
-                        data-tabular
-                        className="w-8 text-right text-caption tabular-nums text-ink-faint"
-                      >
-                        {Math.round((minConfidence[tier] ?? 0) * 100)}%
-                      </span>
-                    </span>
-                  )}
-              </label>
-            </li>
-          );
-        })}
-      </ul>
-    </Section>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // EDITED window (board 217:633 date-range radios)
 // ---------------------------------------------------------------------------
 
@@ -258,7 +176,6 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
   const structuralStates = useFilterStore((s) => s.structuralStates);
   const textMatch = useFilterStore((s) => s.textMatch);
   const toggleFacet = useFilterStore((s) => s.toggleFacet);
-  const setTextMatch = useFilterStore((s) => s.setTextMatch);
   const setDateRange = useFilterStore((s) => s.setDateRange);
   const reset = useFilterStore((s) => s.reset);
 
@@ -326,24 +243,10 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
         </div>
       </div>
 
-      {/* Scrollable filter groups */}
+      {/* Scrollable filter groups — board 217:633 is exactly Kind / Topic /
+          Edited (the tier, link-status, relation, and text facets are not on the
+          board's filter panel). */}
       <div className="flex-1 overflow-y-auto">
-        {/* Tier section */}
-        <TierSection />
-
-        {/* Status (resolved / stale / broken) */}
-        <Section
-          title="Link Status"
-          badge={structuralStates.length || undefined}
-          defaultOpen={structuralStates.length > 0}
-        >
-          <FacetList
-            values={["resolved", "stale", "broken"]}
-            selected={structuralStates}
-            onToggle={(v) => toggleFacet("structuralStates", v)}
-          />
-        </Section>
-
         {/* Kind (board 217:633: the doc-type checkboxes). */}
         <Section
           title="Kind"
@@ -371,34 +274,6 @@ export function FilterSidebar({ open, onClose, scope, hidden }: FilterSidebarPro
             max={12}
             loading={vocabLoading}
           />
-        </Section>
-
-        {/* Relations */}
-        <Section
-          title="Relation"
-          badge={relations.length || undefined}
-          defaultOpen={false}
-        >
-          <FacetList
-            values={vocabulary.data?.relations ?? []}
-            selected={relations}
-            onToggle={(v) => toggleFacet("relations", v)}
-            loading={vocabLoading}
-          />
-        </Section>
-
-        {/* Text match */}
-        <Section title="Text" defaultOpen>
-          <div className="px-3 pb-1">
-            <input
-              type="search"
-              value={textMatch}
-              onChange={(e) => setTextMatch(e.target.value)}
-              placeholder="match node labels…"
-              aria-label="text match filter"
-              className="w-full rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1 text-label text-ink-muted focus:border-rule-strong focus:outline-none"
-            />
-          </div>
         </Section>
 
         {/* Edited (board 217:633): a date-range radio group writing the shared
