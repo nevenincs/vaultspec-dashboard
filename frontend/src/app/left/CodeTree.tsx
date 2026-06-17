@@ -192,7 +192,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
 
   return (
     <nav className="text-label" aria-label="code browser" data-code-browser>
-      <ul className="space-y-fg-0-5">
+      <ul>
         {entries.map((entry) => (
           <DirectoryRow
             key={entry.path}
@@ -309,7 +309,7 @@ function DirectoryRow({
           onRowKeyDown(isDir, expanded, setExpanded)(e);
         }}
         style={indent}
-        className={`flex w-full items-center gap-fg-1 truncate rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex h-[30px] w-full items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "bg-accent-subtle font-medium text-ink"
             : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
@@ -446,7 +446,7 @@ function ChildLevel({
   if (entries.length === 0) return null;
 
   return (
-    <ul className="space-y-fg-0-5">
+    <ul>
       {entries.map((entry) => (
         <DirectoryRow
           key={entry.path}

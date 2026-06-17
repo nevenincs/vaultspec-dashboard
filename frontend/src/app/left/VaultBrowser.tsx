@@ -300,12 +300,14 @@ export function VaultBrowser({
           const rowCategory = docTypeCategory(group);
           const FallbackMark = docMark(group);
           return (
-            <section key={group} className="mt-fg-2 first:mt-0">
+            <section key={group} className="mt-[14px] first:mt-0">
               {/* Flat group header (binding `LeftRail` 244:750 vault state): a
                   quiet kit SectionLabel eyebrow — NO disclosure twisty, NO count.
                   The board paints flat, always-expanded sections. */}
               <SectionLabel className="px-fg-1">{docGroupLabel(group)}</SectionLabel>
-              <ul className="mt-fg-0-5 space-y-fg-0-5">
+              {/* Rows are CONTIGUOUS (board 244:750): 30px DocRows stacked with no
+                  inter-row gap — the standardized row rhythm. */}
+              <ul className="mt-[3px]">
                 {entries.map((entry) => {
                   const fresh = freshnessLabel(entry.dates.modified, now);
                   const highlighted = entry.path === highlight;

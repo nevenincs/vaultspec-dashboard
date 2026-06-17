@@ -343,7 +343,7 @@ export function TreeBrowser({
           </p>
         )
       ) : (
-        <div className="space-y-fg-0-5">
+        <div>
           {groups.map((group) => {
             const fKey = `f:${group.feature}`;
             const fCollapsed = collapsed.has(fKey);
@@ -364,7 +364,7 @@ export function TreeBrowser({
                     onArrowRight: () => fCollapsed && toggleCollapsed(fKey),
                     onArrowLeft: () => !fCollapsed && toggleCollapsed(fKey),
                   })}
-                  className="flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                  className="flex h-[30px] w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 text-meta font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 >
                   {fCollapsed ? (
                     <ChevronRight size={CHEVRON_PX} aria-hidden />
@@ -380,7 +380,7 @@ export function TreeBrowser({
                 </button>
 
                 {!fCollapsed && (
-                  <div id={fSectionId} className="mt-fg-0-5 space-y-fg-0-5">
+                  <div id={fSectionId}>
                     {group.docTypes.map((sub) => {
                       const dKey = `d:${group.feature}/${sub.docType}`;
                       const dCollapsed = collapsed.has(dKey);
@@ -402,7 +402,7 @@ export function TreeBrowser({
                               onArrowRight: () => dCollapsed && toggleCollapsed(dKey),
                               onArrowLeft: () => !dCollapsed && toggleCollapsed(dKey),
                             })}
-                            className="flex w-full items-center rounded-fg-xs pl-fg-3 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                            className="flex h-[30px] w-full items-center rounded-fg-xs pl-fg-3 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                           >
                             <span className="shrink-0 text-ink-faint" aria-hidden>
                               {dCollapsed ? (
@@ -420,7 +420,7 @@ export function TreeBrowser({
                           </button>
 
                           {!dCollapsed && (
-                            <ul id={dSectionId} className="space-y-fg-0-5">
+                            <ul id={dSectionId}>
                               {sub.entries.map((entry) => (
                                 <TreeRow
                                   key={entry.path}
@@ -534,7 +534,7 @@ function TreeRow({
         // Level-2 indent (binding row at `pl-36px`) lines the rows up under the
         // doc-type group; the kit ListRow accent treatment (2px left bar + tint)
         // marks selection, the leading category cue + stem + freshness follow.
-        className={`flex w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 py-fg-0-5 pe-fg-1 ps-fg-6 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex h-[30px] w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 pe-fg-1 ps-fg-6 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
             : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"

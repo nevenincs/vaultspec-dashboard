@@ -50,7 +50,7 @@ export function TreeRow({
       data-tree-state={state}
       data-selected={selected ? "" : undefined}
       style={{ paddingInlineStart: `${depth * INDENT_REM}rem` }}
-      className={`flex w-full min-w-0 items-center gap-fg-1 rounded-fg-xs py-fg-0-5 pe-fg-1 text-body transition-colors duration-ui-fast ease-settle ${
+      className={`flex h-[30px] w-full min-w-0 items-center gap-fg-1 rounded-fg-xs pe-fg-1 text-meta transition-colors duration-ui-fast ease-settle ${
         selected
           ? "bg-accent-subtle text-accent-text"
           : "text-ink hover:bg-paper-sunken"
