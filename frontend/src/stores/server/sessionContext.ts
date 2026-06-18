@@ -218,10 +218,14 @@ export function useDurableWorkspaceLayout(scope: string | null): {
   settled: boolean;
 } {
   const session = useSession();
-  const isActiveScope = session.data?.active_scope === scope;
+  // The session ALWAYS serves the ACTIVE scope's context, and the dock workspace
+  // shows the active scope, so return its layout blob once the session has loaded
+  // and a scope is set. (An earlier strict `session.active_scope === scope` gate
+  // blocked restore during the load window, where the view-store `scope` had not
+  // yet settled to the session's active scope — the live-verified restore miss.)
   return {
-    blob: isActiveScope ? (session.data?.scope_context.workspace_layout ?? null) : null,
-    settled: session.isSuccess && isActiveScope,
+    blob: scope ? (session.data?.scope_context.workspace_layout ?? null) : null,
+    settled: session.isSuccess && !!scope,
   };
 }
 
