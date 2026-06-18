@@ -9,63 +9,112 @@
 
 import {
   experimental_streamedQuery as streamedQuery,
+  keepPreviousData,
+  type QueryClient,
   queryOptions,
+  type UseQueryResult,
   useMutation,
   useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
-import type { SalienceLens } from "../view/salienceLens";
-import { DEFAULT_SALIENCE_LENS, useSalienceLensStore } from "../view/salienceLens";
+import { debounce } from "../../platform/timing";
 import type {
   ChangedFile,
   ContentResponse,
   ContentTruncated,
+  DashboardDateRange,
+  DashboardFilters,
+  DashboardGraphBounds,
+  DashboardPanelState,
+  DashboardState,
+  DashboardTimelineMode,
   DiscoverResponse,
   EmbeddingsResponse,
   EngineEdge,
   EngineNode,
   EngineStatus,
+  FiltersVocabulary,
+  FileTreeEntry,
+  FileTreeResponse,
   GitFileDiff,
   GraphFilter,
+  GraphGranularity,
   GraphSlice,
   HistoryCommit,
   HistoryResponse,
   InteriorStep,
+  LineageArc,
+  LineageNode,
+  LineageSlice,
   MapResponse,
+  NodeDetail,
   OpsResult,
   OpsWriteResult,
   PipelineArtifact,
   PlanInterior,
+  SessionState,
   SessionUpdate,
+  SettingsSchema,
+  SettingsState,
   SettingUpdate,
   TierAvailability,
   TiersBlock,
+  VaultTreeResponse,
   WorkspaceRoot,
+  WorkspacesState,
 } from "./engine";
 import {
   CANONICAL_TIERS,
+  DEFAULT_SALIENCE_LENS,
   EngineError,
   adaptOpsWrite,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
-  useEngineStatus,
 } from "./engine";
+import type { SalienceLens } from "./engine";
 import { dispatchOps } from "./opsActions";
-import { parseDocument } from "./parseDocument";
+import { parseDocument, type Frontmatter } from "./parseDocument";
 import {
+  dashboardGraphQueryVariables,
+  dashboardSelectionId,
+  type DashboardGraphQueryVariables,
+} from "./dashboardState";
+import { isFreshDashboardGraphDefaultsState } from "./dashboardDefaults";
+import {
+  dashboardPlayheadForTimelineMode,
+  type DashboardPlayhead,
+} from "./dashboardTimeline";
+import { queryClient as defaultQueryClient } from "./queryClient";
+import {
+  codeNodeIdFromPath,
+  docNodeIdFromStem,
   isRagRunning,
   mergeNumstat,
   parseGitNumstat,
   parseGitStatus,
   parseUnifiedDiff,
+  stemFromPath,
 } from "./liveAdapters";
+import {
+  CONSUMED_SETTING_KEYS,
+  resolveGraphSettingsDefaults,
+  resolveReduceMotionSetting,
+  resolveEffectiveSetting,
+  resolveSettings,
+  settingEnumMembers,
+  type GraphSettingsDefaults,
+  type SettingsGroup,
+} from "./settingsSelectors";
 import { useViewStore } from "../view/viewStore";
 
 // --- stable serialization for key parts -----------------------------------------
+
+export const DEFAULT_DASHBOARD_SALIENCE_LENS = DEFAULT_SALIENCE_LENS;
 
 /** Stable JSON for cache keys: object keys sorted, undefined dropped. */
 export function stableKey(value: unknown): string {
@@ -102,6 +151,8 @@ export const engineKeys = {
   fileTree: (scope: string, path?: string, cursor?: string) =>
     [...engineKeys.all, "file-tree", scope, path ?? "", cursor ?? ""] as const,
   filters: (scope: string) => [...engineKeys.all, "filters", scope] as const,
+  dashboardState: (scope: string, backendSessionIdentity: string) =>
+    [...engineKeys.all, "dashboard-state", scope, backendSessionIdentity] as const,
   graph: (
     scope: string,
     filter?: GraphFilter,
@@ -139,7 +190,7 @@ export const engineKeys = {
       lens ?? DEFAULT_SALIENCE_LENS,
       focus ?? "none",
     ] as const,
-  node: (id: string) => [...engineKeys.all, "node", id] as const,
+  node: (scope: string, id: string) => [...engineKeys.all, "node", scope, id] as const,
   // The read-only content fetch (review-rail-viewers ADR): keyed by (scope,
   // nodeId) — the contract's cacheability unit for a per-scope read. The
   // `blob_hash` in the response makes the entry content-addressable, but the KEY
@@ -150,10 +201,12 @@ export const engineKeys = {
   // whole session.
   content: (scope: string, nodeId: string) =>
     [...engineKeys.all, "content", scope, nodeId] as const,
-  neighbors: (id: string, depth: number) =>
-    [...engineKeys.all, "neighbors", id, depth] as const,
-  evidence: (id: string) => [...engineKeys.all, "evidence", id] as const,
-  discover: (id: string) => [...engineKeys.all, "discover", id] as const,
+  neighbors: (scope: string, id: string, depth: number) =>
+    [...engineKeys.all, "neighbors", scope, id, depth] as const,
+  evidence: (scope: string, id: string) =>
+    [...engineKeys.all, "evidence", scope, id] as const,
+  discover: (scope: string, id: string) =>
+    [...engineKeys.all, "discover", scope, id] as const,
   events: (scope: string, range: { from?: string; to?: string }, bucket?: string) =>
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
   // The bounded recent-commit history (status-overview ADR): keyed by (scope,
@@ -163,8 +216,11 @@ export const engineKeys = {
   // accumulator): the rail never accumulates every scope's history for the session.
   history: (scope: string, limit: number) =>
     [...engineKeys.all, "history", scope, limit] as const,
-  search: (query: string, target?: string) =>
-    [...engineKeys.all, "search", target ?? "vault", query] as const,
+  // Search is scoped to a worktree corpus just like graph/tree reads. Fold the
+  // scope into the key so the same query text on two worktrees cannot share
+  // semantic results.
+  search: (scope: string, query: string, target?: string) =>
+    [...engineKeys.all, "search", scope, target ?? "vault", query] as const,
   stream: (channels: readonly string[], since?: number, scope?: string) =>
     [
       ...engineKeys.all,
@@ -176,8 +232,8 @@ export const engineKeys = {
       // share a cache entry. Absent scope = the active-scope fallback ("active").
       scope ?? "active",
     ] as const,
-  diff: (scope: string, from: string | number, to: string | number) =>
-    [...engineKeys.all, "diff", scope, String(from), String(to)] as const,
+  diff: (scope: string, from: string | number, to: string | number, filter?: string) =>
+    [...engineKeys.all, "diff", scope, String(from), String(to), filter ?? ""] as const,
   // The bounded temporal-lineage projection (dashboard-timeline W02.P04.S22):
   // keyed by (scope, range, filter) — the contract's cacheability unit (range +
   // the engine-owned filter), so two date ranges or two filters never collide on
@@ -203,8 +259,9 @@ export const engineKeys = {
   pipeline: (scope: string, asOf?: string | number) =>
     [...engineKeys.all, "pipeline", scope, asOf ?? "live"] as const,
   // The bounded plan-container interior (dashboard-pipeline-status W01.P02.S07):
-  // keyed by the plan node id alone — lazily fetched only when a plan row expands.
-  planInterior: (id: string) => [...engineKeys.all, "plan-interior", id] as const,
+  // keyed by (scope, plan node id) — lazily fetched only when a plan row expands.
+  planInterior: (scope: string, id: string) =>
+    [...engineKeys.all, "plan-interior", scope, id] as const,
   // The session/settings surface is workspace-singular (not scope-keyed): one
   // active session and one settings document per workspace, so a single stable
   // key each. Mutations invalidate exactly these.
@@ -224,12 +281,125 @@ export const engineKeys = {
   gitChanges: (scope: string) => [...engineKeys.all, "git-changes", scope] as const,
   gitDiff: (scope: string, path: string) =>
     [...engineKeys.all, "git-diff", scope, path] as const,
+  gitHistoricalDiff: (scope: string, path: string, from: string, to: string) =>
+    [...engineKeys.all, "git-histdiff", scope, path, from, to] as const,
 };
+
+export const SCOPED_ENGINE_QUERY_SUBTREES = [
+  "vault-tree",
+  "file-tree",
+  "filters",
+  "dashboard-state",
+  "graph",
+  "graph-embeddings",
+  "node",
+  "content",
+  "neighbors",
+  "evidence",
+  "discover",
+  "events",
+  "history",
+  "stream",
+  "diff",
+  "lineage",
+  "pipeline",
+  "plan-interior",
+  "search",
+  "git-changes",
+  "git-diff",
+  "git-histdiff",
+  "ops-rag",
+] as const;
+
+export const GRAPH_GENERATION_QUERY_SUBTREES = [
+  "vault-tree",
+  "filters",
+  "dashboard-state",
+  "graph",
+  "graph-embeddings",
+  "node",
+  "neighbors",
+  "evidence",
+  "discover",
+  "events",
+  "diff",
+  "lineage",
+  "stream",
+  "history",
+  "pipeline",
+  "plan-interior",
+  "search",
+] as const;
+
+function scopedEngineSubtreeKey(
+  subtree: (typeof SCOPED_ENGINE_QUERY_SUBTREES)[number],
+) {
+  return [...engineKeys.all, subtree] as const;
+}
+
+function removeScopedEngineQueries(queryClient: QueryClient): void {
+  for (const subtree of SCOPED_ENGINE_QUERY_SUBTREES) {
+    queryClient.removeQueries({ queryKey: scopedEngineSubtreeKey(subtree) });
+  }
+}
+
+function invalidateScopedEngineQueries(queryClient: QueryClient): void {
+  for (const subtree of SCOPED_ENGINE_QUERY_SUBTREES) {
+    queryClient.invalidateQueries({ queryKey: scopedEngineSubtreeKey(subtree) });
+  }
+}
+
+export function refreshAfterAcceptedScopeSwitch(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: engineKeys.map() });
+  void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  invalidateScopedEngineQueries(queryClient);
+}
+
+export function refreshAfterAcceptedWorkspaceSwitch(queryClient: QueryClient): void {
+  queryClient.removeQueries({ queryKey: engineKeys.map() });
+  removeScopedEngineQueries(queryClient);
+  void queryClient.invalidateQueries({ queryKey: engineKeys.map() });
+  void queryClient.invalidateQueries({ queryKey: engineKeys.workspaces() });
+  void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  invalidateScopedEngineQueries(queryClient);
+}
 
 // --- read hooks --------------------------------------------------------------------
 
-export function useWorkspaceMap() {
+/** The right rail's recovery snapshot; /stream deltas refine it later.
+ *  Polls every 8 s while errored so status consumers self-heal after engine-up
+ *  transitions without requiring a page reload (mirrors useWorkspaceMap). */
+export function useEngineStatus() {
   return useQuery({
+    queryKey: engineKeys.status(),
+    queryFn: () => engineClient.status(),
+    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
+  });
+}
+
+/** Stores-owned invalidation seam for the engine status recovery snapshot. */
+export function useInvalidateEngineStatus(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  }, [queryClient]);
+}
+
+function withManualRetry<T extends { refetch: () => unknown }>(
+  query: T,
+): T & { retry: () => void } {
+  return {
+    ...query,
+    retry: () => {
+      void query.refetch();
+    },
+  };
+}
+
+const noopRetry = () => undefined;
+
+export function useWorkspaceMap() {
+  const query = useQuery({
     queryKey: engineKeys.map(),
     queryFn: () => engineClient.map(),
     // Poll every 8 s while in error state (engine not yet running / token
@@ -237,6 +407,55 @@ export function useWorkspaceMap() {
     // requiring a page reload (task-7 live-engine resilience).
     refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
   });
+  return withManualRetry(query);
+}
+
+/** The map's default corpus-bearing worktree for cold-start active-scope fallback. */
+export function mapDefaultScope(
+  map: ReturnType<typeof useWorkspaceMap>,
+): string | null {
+  for (const repo of map.data?.repositories ?? []) {
+    const preferred =
+      repo.worktrees.find((w) => w.is_default && w.has_vault) ??
+      repo.worktrees.find((w) => w.has_vault);
+    if (preferred) return preferred.id;
+  }
+  return null;
+}
+
+export function deriveActiveScope(
+  picked: string | null,
+  persisted: string | null | undefined,
+  fallback: string | null,
+): string | null {
+  if (picked) return picked;
+  if (persisted) return persisted;
+  return fallback;
+}
+
+/**
+ * The active scope, restored on load (user-state-persistence W04.P09.S29).
+ *
+ * Pure READ hook — precedence, highest first:
+ *  1. the user's explicit in-session pick (`viewStore.scope`);
+ *  2. the persisted session `active_scope`;
+ *  3. the workspace map's default corpus-bearing worktree.
+ *
+ * The one-shot cold-start persistence remains mounted from Stage; this hook is
+ * stores-layer composition for UI consumers and has no side effects.
+ */
+export function useActiveScope(): string | null {
+  const picked = useViewStore((s) => s.scope);
+  const map = useWorkspaceMap();
+  const session = useSession();
+
+  const persisted = session.data?.active_scope || null;
+  const fallback = mapDefaultScope(map);
+
+  return useMemo(
+    () => deriveActiveScope(picked, persisted, fallback),
+    [picked, persisted, fallback],
+  );
 }
 
 /**
@@ -255,6 +474,7 @@ export function useWorkspaceMap() {
 export type WorkspaceMapAvailability = TierAvailability;
 
 const WORKSPACE_MAP_TIERS = ["structural"] as const;
+export type WorkspaceMapSurfaceState = "loading" | "error" | "ready";
 
 export function deriveWorkspaceMapAvailability(
   tiers: TiersBlock | undefined,
@@ -262,11 +482,52 @@ export function deriveWorkspaceMapAvailability(
   return readTierAvailability(tiers, WORKSPACE_MAP_TIERS);
 }
 
+export function tierAvailabilityReason(
+  availability: Pick<TierAvailability, "degradedTiers" | "reasons">,
+): string {
+  return (
+    availability.degradedTiers
+      .map((tier) => availability.reasons[tier])
+      .find(Boolean) ?? ""
+  );
+}
+
+export function deriveWorkspaceMapSurfaceState(
+  query: Pick<UseQueryResult<MapResponse>, "isPending" | "isError">,
+  availability: WorkspaceMapAvailability,
+): WorkspaceMapSurfaceState {
+  if (query.isPending) return "loading";
+  if (query.isError && !availability.degraded) return "error";
+  return "ready";
+}
+
 /** Stores hook: the workspace map's degradation, read through the wire client so
  *  the worktree switcher consumes derived truth instead of the raw `tiers`
  *  block. Mirrors `useVaultTreeAvailability`. */
 export function useWorkspaceMapAvailability(): WorkspaceMapAvailability {
   return deriveWorkspaceMapAvailability(tiersFromQuery(useWorkspaceMap()));
+}
+
+export interface WorkspaceMapSurfaceView {
+  map: UseQueryResult<MapResponse> & { retry: () => void };
+  availability: WorkspaceMapAvailability;
+  state: WorkspaceMapSurfaceState;
+}
+
+/**
+ * Stores selector for the worktree switcher surface: one subscription owns both
+ * the map payload and the loading/error/degraded classification. Chrome renders
+ * the returned state; it does not decide whether a failure is a tiers-reported
+ * degradation or a bare transport error.
+ */
+export function useWorkspaceMapSurface(): WorkspaceMapSurfaceView {
+  const map = useWorkspaceMap();
+  const availability = deriveWorkspaceMapAvailability(tiersFromQuery(map));
+  return {
+    map,
+    availability,
+    state: deriveWorkspaceMapSurfaceState(map, availability),
+  };
 }
 
 // --- workspace registry (dashboard-workspace-registry ADR) -----------------------
@@ -316,6 +577,45 @@ export function useWorkspacesAvailability(): WorkspacesAvailability {
   return deriveWorkspacesAvailability(tiersFromQuery(useWorkspaces()));
 }
 
+export type WorkspaceTitleState = "loading" | "ready";
+
+export interface WorkspaceTitleView {
+  state: WorkspaceTitleState;
+  label: string;
+  path: string | undefined;
+  current: WorkspaceRoot | null;
+}
+
+export function deriveWorkspaceTitleView(
+  data: WorkspacesState | undefined,
+  loading: boolean,
+): WorkspaceTitleView {
+  if (loading) {
+    return { state: "loading", label: "Project", path: undefined, current: null };
+  }
+  const current =
+    data?.workspaces.find((root) => root.id === data.active_workspace) ??
+    data?.workspaces[0] ??
+    null;
+  return {
+    state: "ready",
+    label: current?.label ?? "Project",
+    path: current?.path,
+    current,
+  };
+}
+
+/**
+ * Stores selector for the left-rail project title. The title surface reads the
+ * workspace registry once and receives the active-or-first workspace label as an
+ * interpreted view, rather than composing `useWorkspaces` + root selectors in
+ * chrome.
+ */
+export function useWorkspaceTitleView(): WorkspaceTitleView {
+  const workspaces = useWorkspaces();
+  return deriveWorkspaceTitleView(workspaces.data, workspaces.isPending);
+}
+
 /** Stores selector: the active workspace's id (from the registry's
  *  `active_workspace`), or null when none is selected yet. The picker reads this
  *  to mark the current root — it never reads the raw response. */
@@ -335,15 +635,15 @@ export function useWorkspaceRoots(): WorkspaceRoot[] {
  * worktree switcher invokes `setScope`. The control owns NO reset logic; this
  * hook owns the whole transition:
  *
- * 1. `swapWorkspace` (the view store) runs the full 022 cross-store reset
- *    WIDENED to re-key the pin/lens stores to the NEW workspace.
- * 2. The cached worktree SET is cleared: the `/map`, `/vault-tree`, and
- *    `/workspaces` React-Query caches are removed so the next reads are keyed to
- *    the new workspace (the prior project's worktree set must not survive — the
- *    "widen to also clear the cached worktree set" requirement).
- * 3. The active-workspace selection is durably persisted via `usePutSession`
+ * 1. The active-workspace selection is durably persisted via `usePutSession`
  *    (the config surface). A rejected switch (unknown workspace → tiered 400)
- *    rejects the mutation; the caller surfaces it as a non-silent status line.
+ *    rejects the mutation before local workspace state or query caches move.
+ * 2. `swapWorkspace` (the view store) runs from the accepted session response:
+ *    the full 022 cross-store reset WIDENED to re-key the pin/lens stores to the
+ *    accepted workspace and scope.
+ * 3. The cached worktree SET plus every scoped read subtree are cleared/refetched:
+ *    no prior project's node, graph, timeline, pipeline, browser, or git read
+ *    survives the accepted project-level reset.
  *
  * Returns a `swap(workspace, scope)` callback plus the mutation handle so the
  * control can render pending / error honestly.
@@ -352,61 +652,211 @@ export function useSwapWorkspace() {
   const queryClient = useQueryClient();
   const putSession = usePutSession();
   const swap = (workspace: string, scope: string | null) => {
-    // (1) the widened view-store reset, applied synchronously so the UI moves
-    // immediately (optimistic, like setScope).
-    useViewStore.getState().swapWorkspace(workspace, scope);
-    // (2) clear the cached worktree set + scoped reads so nothing from the prior
-    // project survives in the query cache. removeQueries drops the entries
-    // entirely (vs invalidate, which would refetch the STALE-keyed read first).
-    queryClient.removeQueries({ queryKey: engineKeys.map() });
-    queryClient.removeQueries({ queryKey: [...engineKeys.all, "vault-tree"] });
-    // The prior project's lazily-fetched code-tree levels must not survive the
-    // swap either (dashboard-code-tree per-scope cache): drop the whole subtree.
-    queryClient.removeQueries({ queryKey: [...engineKeys.all, "file-tree"] });
-    queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph"] });
-    // The lazily-fetched semantic embeddings are per-scope too (graph-semantic-
-    // embeddings ADR): drop the prior project's vectors so the swap never serves
-    // a stale meaning constellation.
-    queryClient.removeQueries({ queryKey: [...engineKeys.all, "graph-embeddings"] });
-    // (3) durably persist the active-workspace selection AND the new active
-    // scope (the new project's default worktree) in one config write. Persisting
-    // the workspace alone left the served/persisted active_scope dangling on the
-    // prior project's worktree, so the browser kept showing the old corpus after
-    // a switch (live verification finding H4). Sending the scope keeps the server
-    // session consistent with the optimistic local swap above.
-    return putSession
-      .mutateAsync(
-        scope
-          ? { active_workspace: workspace, active_scope: scope }
-          : { active_workspace: workspace },
-      )
-      .then((res) => {
-        // The PUT builds/warms the new scope server-side. The optimistic scope
-        // change above already fired the scoped reads (map / vault-tree /
-        // file-tree / graph) against a still-COLD scope, which validate_scope
-        // 400s until the build completes — so without a refetch here the rail
-        // stays empty after a switch until a manual reload (live verification
-        // finding H6). Re-fetch now that the scope is warm so the switch lands
-        // its corpus in-session.
-        queryClient.invalidateQueries({ queryKey: engineKeys.map() });
-        queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "vault-tree"] });
-        queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "file-tree"] });
-        queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
-        queryClient.invalidateQueries({
-          queryKey: [...engineKeys.all, "graph-embeddings"],
-        });
-        return res;
+    const intent = { workspace, scope };
+    requestedWorkspaceSwitch = intent;
+    const run = activeWorkspaceSwitchTail
+      .catch(() => undefined)
+      .then(async () => {
+        const supersededBeforeWrite = supersededWorkspaceSwitch(intent);
+        if (supersededBeforeWrite) throw supersededBeforeWrite;
+        // Durably persist the active-workspace selection AND the new active
+        // scope (the new project's default worktree) in one config write. Persisting
+        // the workspace alone left the served/persisted active_scope dangling on the
+        // prior project's worktree, so the browser kept showing the old corpus after
+        // a switch (live verification finding H4). Local state moves only from the
+        // accepted session response.
+        try {
+          const res = await putSession.mutateAsync(
+            scope
+              ? { active_workspace: workspace, active_scope: scope }
+              : { active_workspace: workspace },
+          );
+          const supersededAfterWrite = supersededWorkspaceSwitch(intent);
+          if (supersededAfterWrite) throw supersededAfterWrite;
+          applyAcceptedWorkspaceSwitch(res, intent, queryClient);
+          clearWorkspaceSwitchIntent(intent);
+          return res;
+        } catch (error) {
+          const superseded = supersededWorkspaceSwitch(intent);
+          if (superseded) throw superseded;
+          clearWorkspaceSwitchIntent(intent);
+          throw error;
+        }
       });
+    activeWorkspaceSwitchTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   };
   return { swap, mutation: putSession };
 }
 
+type WorkspaceSwitchIntent = {
+  workspace: string;
+  scope: string | null;
+};
+
+export class SupersededWorkspaceSwitchError extends Error {
+  readonly requestedWorkspace: string;
+  readonly requestedScope: string | null;
+  readonly supersededByWorkspace: string;
+  readonly supersededByScope: string | null;
+
+  constructor(requested: WorkspaceSwitchIntent, supersededBy: WorkspaceSwitchIntent) {
+    super(
+      `workspace switch to ${requested.workspace}/${requested.scope ?? ""} was superseded by ${supersededBy.workspace}/${supersededBy.scope ?? ""}`,
+    );
+    this.name = "SupersededWorkspaceSwitchError";
+    this.requestedWorkspace = requested.workspace;
+    this.requestedScope = requested.scope;
+    this.supersededByWorkspace = supersededBy.workspace;
+    this.supersededByScope = supersededBy.scope;
+  }
+}
+
+export function isSupersededWorkspaceSwitch(
+  error: unknown,
+): error is SupersededWorkspaceSwitchError {
+  return error instanceof SupersededWorkspaceSwitchError;
+}
+
+let requestedWorkspaceSwitch: WorkspaceSwitchIntent | null = null;
+let activeWorkspaceSwitchTail: Promise<void> = Promise.resolve();
+
+function sameWorkspaceSwitchIntent(
+  left: WorkspaceSwitchIntent | null,
+  right: WorkspaceSwitchIntent,
+): boolean {
+  return (
+    left !== null && left.workspace === right.workspace && left.scope === right.scope
+  );
+}
+
+function supersededWorkspaceSwitch(
+  intent: WorkspaceSwitchIntent,
+): SupersededWorkspaceSwitchError | null {
+  return requestedWorkspaceSwitch !== null &&
+    !sameWorkspaceSwitchIntent(requestedWorkspaceSwitch, intent)
+    ? new SupersededWorkspaceSwitchError(intent, requestedWorkspaceSwitch)
+    : null;
+}
+
+function clearWorkspaceSwitchIntent(intent: WorkspaceSwitchIntent): void {
+  if (sameWorkspaceSwitchIntent(requestedWorkspaceSwitch, intent)) {
+    requestedWorkspaceSwitch = null;
+  }
+}
+
+function applyAcceptedWorkspaceSwitch(
+  session: SessionState,
+  intent: WorkspaceSwitchIntent,
+  queryClient: QueryClient,
+): void {
+  useViewStore
+    .getState()
+    .swapWorkspace(
+      session.active_workspace ?? intent.workspace,
+      session.active_scope || intent.scope,
+    );
+  // The PUT builds/warms the new scope server-side. Clear stale project reads
+  // only after acceptance, then refetch now that the scope is warm so the
+  // switch lands its corpus in-session (live verification finding H6).
+  refreshAfterAcceptedWorkspaceSwitch(queryClient);
+}
+
+function seedSessionCache(queryClient: QueryClient, session: SessionState): void {
+  queryClient.setQueryData(engineKeys.session(), session);
+  void queryClient.invalidateQueries({ queryKey: engineKeys.session() });
+  void queryClient.invalidateQueries({ queryKey: engineKeys.workspaces() });
+}
+
+export class SupersededScopeSwitchError extends Error {
+  readonly requestedScope: string;
+  readonly supersededBy: string;
+
+  constructor(requestedScope: string, supersededBy: string) {
+    super(`scope switch to ${requestedScope} was superseded by ${supersededBy}`);
+    this.name = "SupersededScopeSwitchError";
+    this.requestedScope = requestedScope;
+    this.supersededBy = supersededBy;
+  }
+}
+
+export function isSupersededScopeSwitch(
+  error: unknown,
+): error is SupersededScopeSwitchError {
+  return error instanceof SupersededScopeSwitchError;
+}
+
+let requestedActiveScope: string | null = null;
+let activeScopeSwitchTail: Promise<void> = Promise.resolve();
+
+function supersededScopeSwitch(scope: string): SupersededScopeSwitchError | null {
+  return requestedActiveScope !== null && requestedActiveScope !== scope
+    ? new SupersededScopeSwitchError(scope, requestedActiveScope)
+    : null;
+}
+
+function applyAcceptedActiveScopeSwitch(
+  session: SessionState,
+  queryClient: QueryClient,
+): void {
+  seedSessionCache(queryClient, session);
+  useViewStore.getState().setScope(session.active_scope);
+  refreshAfterAcceptedScopeSwitch(queryClient);
+}
+
+/**
+ * Stores-layer worktree scope switch: durable session persistence first, then the
+ * local wholesale reset from the accepted active scope. Calls are serialized and
+ * superseded requests are ignored at this seam, so a rapid A -> B click cannot
+ * let A's later response re-apply stale graph/git/search scope after B became the
+ * user's latest intent. Pure resolvers can call the imperative form; React
+ * surfaces use `useSwitchActiveScope` to bind their provider client.
+ */
+export async function switchActiveScope(
+  scope: string,
+  queryClient: QueryClient = defaultQueryClient,
+): Promise<SessionState> {
+  requestedActiveScope = scope;
+  const run = activeScopeSwitchTail
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        const session = await engineClient.putSession({ active_scope: scope });
+        const superseded = supersededScopeSwitch(scope);
+        if (superseded) throw superseded;
+        applyAcceptedActiveScopeSwitch(session, queryClient);
+        return session;
+      } catch (error) {
+        const superseded = supersededScopeSwitch(scope);
+        if (superseded) throw superseded;
+        throw error;
+      }
+    });
+  activeScopeSwitchTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+export function useSwitchActiveScope(): (scope: string) => Promise<SessionState> {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (scope: string) => switchActiveScope(scope, queryClient),
+    [queryClient],
+  );
+}
+
 export function useVaultTree(scope: string | null) {
-  return useQuery({
+  const query = useQuery({
     queryKey: engineKeys.vaultTree(scope ?? ""),
     queryFn: () => engineClient.vaultTree(scope!),
     enabled: scope !== null,
   });
+  return withManualRetry(query);
 }
 
 /**
@@ -421,11 +871,21 @@ export function useVaultTree(scope: string | null) {
  * the sidebar consumes this, never `tree.data.tiers`.
  */
 export type VaultTreeAvailability = TierAvailability;
+export type VaultTreeSurfaceState = "loading" | "error" | "ready";
 
 export function deriveVaultTreeAvailability(
   tiers: TiersBlock | undefined,
 ): VaultTreeAvailability {
   return readTierAvailability(tiers, CANONICAL_TIERS);
+}
+
+export function deriveVaultTreeSurfaceState(
+  query: Pick<UseQueryResult<VaultTreeResponse>, "isPending" | "isError">,
+  availability: VaultTreeAvailability,
+): VaultTreeSurfaceState {
+  if (query.isPending) return "loading";
+  if (query.isError && !availability.degraded) return "error";
+  return "ready";
 }
 
 /** Stores hook: the vault-tree degradation, read through the wire client so the
@@ -434,6 +894,27 @@ export function deriveVaultTreeAvailability(
  *  `tiersFromQuery` (degradation-is-read-from-tiers-not-guessed-from-errors). */
 export function useVaultTreeAvailability(scope: string | null): VaultTreeAvailability {
   return deriveVaultTreeAvailability(tiersFromQuery(useVaultTree(scope)));
+}
+
+export interface VaultTreeSurfaceView {
+  tree: UseQueryResult<VaultTreeResponse> & { retry: () => void };
+  availability: VaultTreeAvailability;
+  state: VaultTreeSurfaceState;
+}
+
+/**
+ * Stores selector for the vault browser root surface. Degradation remains a
+ * non-terminal banner for this surface, but the loading/error classification is
+ * still stores-owned so the browser chrome does not branch on raw query flags.
+ */
+export function useVaultTreeSurface(scope: string | null): VaultTreeSurfaceView {
+  const tree = useVaultTree(scope);
+  const availability = deriveVaultTreeAvailability(tiersFromQuery(tree));
+  return {
+    tree,
+    availability,
+    state: deriveVaultTreeSurfaceState(tree, availability),
+  };
 }
 
 // --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
@@ -450,11 +931,12 @@ export function useVaultTreeAvailability(scope: string | null): VaultTreeAvailab
 // expanded), mirroring `useNodeNeighbors`'s lazy-on-id pattern.
 
 export function useFileTree(scope: string | null, path?: string, enabled = true) {
-  return useQuery({
+  const query = useQuery({
     queryKey: engineKeys.fileTree(scope ?? "", path),
     queryFn: () => engineClient.fileTree({ scope: scope!, path }),
     enabled: scope !== null && enabled,
   });
+  return withManualRetry(query);
 }
 
 /**
@@ -473,11 +955,66 @@ export function useFileTree(scope: string | null, path?: string, enabled = true)
 export type FileTreeAvailability = TierAvailability;
 
 const FILE_TREE_TIERS = ["structural"] as const;
+export type FileTreeRootSurfaceState = "loading" | "error" | "degraded" | "ready";
 
 export function deriveFileTreeAvailability(
   tiers: TiersBlock | undefined,
 ): FileTreeAvailability {
   return readTierAvailability(tiers, FILE_TREE_TIERS);
+}
+
+export function deriveFileTreeRootSurfaceState(
+  query: Pick<UseQueryResult<FileTreeResponse>, "isPending" | "isError">,
+  availability: FileTreeAvailability,
+): FileTreeRootSurfaceState {
+  if (query.isPending) return "loading";
+  if (query.isError && !availability.degraded) return "error";
+  if (availability.degraded) return "degraded";
+  return "ready";
+}
+
+export type FileTreeLevelState = "loading" | "error" | "empty" | "ready";
+
+export interface FileTreeLevelView {
+  state: FileTreeLevelState;
+  entries: FileTreeEntry[];
+  truncated: FileTreeResponse["truncated"];
+  retry: () => void;
+}
+
+export function deriveFileTreeLevelView(
+  data: FileTreeResponse | undefined,
+  loading: boolean,
+  errored: boolean,
+  retry: () => void = noopRetry,
+): FileTreeLevelView {
+  if (loading) {
+    return { state: "loading", entries: [], truncated: null, retry };
+  }
+  if (errored) {
+    return { state: "error", entries: [], truncated: null, retry };
+  }
+  const entries = data?.entries ?? [];
+  return {
+    state: entries.length === 0 ? "empty" : "ready",
+    entries,
+    truncated: data?.truncated ?? null,
+    retry,
+  };
+}
+
+/** Stores selector for one file-tree directory level. */
+export function useFileTreeLevel(
+  scope: string | null,
+  path?: string,
+  enabled = true,
+): FileTreeLevelView {
+  const level = useFileTree(scope, path, enabled);
+  return useMemo(
+    () =>
+      deriveFileTreeLevelView(level.data, level.isPending, level.isError, level.retry),
+    [level.data, level.isError, level.isPending, level.retry],
+  );
 }
 
 /** Stores hook: the file-tree degradation for the worktree ROOT level, read
@@ -488,12 +1025,701 @@ export function useFileTreeAvailability(scope: string | null): FileTreeAvailabil
   return deriveFileTreeAvailability(tiersFromQuery(useFileTree(scope)));
 }
 
+export interface FileTreeRootSurfaceView {
+  rootLevel: FileTreeLevelView;
+  availability: FileTreeAvailability;
+  state: FileTreeRootSurfaceState;
+}
+
+/**
+ * Stores selector for the code browser root surface. Unlike the vault browser,
+ * file-tree structural degradation is terminal for code mode: a remote/bare
+ * scope has no worktree directory hierarchy to render.
+ */
+export function useFileTreeRootSurface(scope: string | null): FileTreeRootSurfaceView {
+  const rootQuery = useFileTree(scope);
+  const availability = deriveFileTreeAvailability(tiersFromQuery(rootQuery));
+  return {
+    rootLevel: deriveFileTreeLevelView(
+      rootQuery.data,
+      rootQuery.isPending,
+      rootQuery.isError,
+      rootQuery.retry,
+    ),
+    availability,
+    state: deriveFileTreeRootSurfaceState(rootQuery, availability),
+  };
+}
+
 export function useFiltersVocabulary(scope: string | null) {
   return useQuery({
     queryKey: engineKeys.filters(scope ?? ""),
     queryFn: () => engineClient.filters(scope!),
     enabled: scope !== null,
   });
+}
+
+export interface FiltersVocabularyView {
+  vocabulary: FiltersVocabulary | undefined;
+  /** The enabled vocabulary query is in flight. */
+  loading: boolean;
+  /** Facet controls should show loading instead of "none in corpus". */
+  facetsLoading: boolean;
+  docTypes: string[];
+  featureTags: string[];
+  dateBounds: FiltersVocabulary["date_bounds"];
+}
+
+export function deriveFiltersVocabularyView(
+  vocabulary: FiltersVocabulary | undefined,
+  loading: boolean,
+  awaitingScope: boolean,
+): FiltersVocabularyView {
+  return {
+    vocabulary,
+    loading,
+    facetsLoading: awaitingScope || loading,
+    docTypes: vocabulary?.doc_types ?? [],
+    featureTags: vocabulary?.feature_tags ?? [],
+    dateBounds: vocabulary?.date_bounds,
+  };
+}
+
+/**
+ * Stores selector for filter-vocabulary UI consumers. It prepares the data-driven
+ * facet lists and loading semantics once so palette/sidebar chrome does not
+ * branch on raw query flags or repeat optional field fallbacks.
+ */
+export function useFiltersVocabularyView(scope: string | null): FiltersVocabularyView {
+  const query = useFiltersVocabulary(scope);
+  const loading = scope !== null && query.isPending;
+  const awaitingScope = scope === null;
+  return useMemo(
+    () => deriveFiltersVocabularyView(query.data, loading, awaitingScope),
+    [query.data, loading, awaitingScope],
+  );
+}
+
+export function dashboardStateSessionIdentity(
+  session:
+    | Pick<SessionState, "workspace" | "active_workspace" | "active_scope">
+    | null
+    | undefined,
+): string {
+  if (!session) return "session:pending";
+  return stableKey({
+    workspace: session.workspace,
+    active_workspace: session.active_workspace,
+    active_scope: session.active_scope,
+  });
+}
+
+/**
+ * The canonical frontend reader for shared dashboard state. Scope identifies the
+ * dashboard snapshot; the backend session identity joins the key so a session
+ * swap cannot serve another session's cached intent.
+ */
+export function useDashboardState(scope: string | null) {
+  const session = useSession();
+  const sessionIdentity = dashboardStateSessionIdentity(session.data);
+  return useQuery<DashboardState>({
+    queryKey: engineKeys.dashboardState(scope ?? "", sessionIdentity),
+    queryFn: () => engineClient.dashboardState(scope!),
+    enabled: scope !== null && session.isSuccess,
+  });
+}
+
+export interface DashboardDateRangeView {
+  fromMs: number;
+  toMs: number;
+  source: "dashboard" | "fallback";
+}
+
+function parseDashboardDateTick(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function deriveDashboardDateRangeView(
+  dateRange: DashboardDateRange | undefined,
+  fallback: Pick<DashboardDateRangeView, "fromMs" | "toMs">,
+): DashboardDateRangeView {
+  const fromMs = parseDashboardDateTick(dateRange?.from);
+  const toMs = parseDashboardDateTick(dateRange?.to);
+  if (fromMs !== null && toMs !== null) {
+    return { fromMs, toMs, source: "dashboard" };
+  }
+  return { ...fallback, source: "fallback" };
+}
+
+/**
+ * Stores selector for dashboard-owned date-range display. Timeline chrome passes
+ * its visible-window fallback, but the canonical dashboard-state date range wins
+ * when present so every date-range consumer renders the same intent.
+ */
+export function useDashboardDateRangeView(
+  scope: string | null,
+  fallback: Pick<DashboardDateRangeView, "fromMs" | "toMs">,
+): DashboardDateRangeView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardDateRangeView(dashboardState.data?.date_range, fallback),
+    [dashboardState.data?.date_range, fallback],
+  );
+}
+
+export interface DashboardRangeSelectView {
+  dateRange: DashboardDateRange;
+}
+
+export function deriveDashboardRangeSelectView(
+  state: Pick<DashboardState, "date_range"> | undefined,
+): DashboardRangeSelectView {
+  return {
+    dateRange: state?.date_range ? { ...state.date_range } : {},
+  };
+}
+
+/**
+ * Stores selector for the timeline range selector. The component remains the
+ * single writer for date-range intent, but committed band rendering reads one
+ * stores-owned projection of canonical dashboard state.
+ */
+export function useDashboardRangeSelectView(
+  scope: string | null,
+): DashboardRangeSelectView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardRangeSelectView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardGraphDefaultsInitializationView {
+  loaded: boolean;
+  fresh: boolean;
+}
+
+export function deriveDashboardGraphDefaultsInitializationView(
+  state: Pick<DashboardState, "filters" | "graph_granularity"> | undefined,
+): DashboardGraphDefaultsInitializationView {
+  return {
+    loaded: state !== undefined,
+    fresh: state ? isFreshDashboardGraphDefaultsState(state) : false,
+  };
+}
+
+/**
+ * Stores selector for settings graph-default initialization. Settings effects
+ * orchestrate the one-time write, but dashboard-state readiness/freshness is
+ * interpreted here so the app effect does not read raw dashboard payloads.
+ */
+export function useDashboardGraphDefaultsInitializationView(
+  scope: string | null,
+): DashboardGraphDefaultsInitializationView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardGraphDefaultsInitializationView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardFilterSummaryView {
+  activeFilterCount: number;
+  dateRangeLabel: string | null;
+}
+
+function dashboardDateRangeLabel(
+  dateRange: DashboardDateRange | undefined,
+): string | null {
+  if (!dateRange?.from && !dateRange?.to) return null;
+  return `${dateRange.from?.slice(0, 10) ?? "…"} → ${
+    dateRange.to?.slice(0, 10) ?? "…"
+  }`;
+}
+
+export function deriveDashboardFilterSummaryView(
+  state: Pick<DashboardState, "filters" | "date_range"> | undefined,
+): DashboardFilterSummaryView {
+  const filters = state?.filters ?? {};
+  return {
+    activeFilterCount:
+      (filters.doc_types?.length ?? 0) +
+      (filters.feature_tags?.length ?? 0) +
+      (filters.relations?.length ?? 0) +
+      (filters.structural_state?.length ?? 0) +
+      ((filters.text?.length ?? 0) > 0 ? 1 : 0),
+    dateRangeLabel: dashboardDateRangeLabel(state?.date_range),
+  };
+}
+
+/**
+ * Stores selector for the stage filter toolbar summary. FilterBar is display
+ * chrome; it renders the count/date labels without reinterpreting the dashboard
+ * wire shape beside the canonical graph/date selectors.
+ */
+export function useDashboardFilterSummaryView(
+  scope: string | null,
+): DashboardFilterSummaryView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardFilterSummaryView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export type DashboardEditedWindow = "any" | "7d" | "30d" | "year";
+
+const DAY_MS = 24 * 3600 * 1000;
+
+export function dashboardEditedWindowRange(
+  key: DashboardEditedWindow,
+  now = Date.now(),
+): DashboardDateRange {
+  if (key === "any") return {};
+  if (key === "7d") return { from: new Date(now - 7 * DAY_MS).toISOString() };
+  if (key === "30d") return { from: new Date(now - 30 * DAY_MS).toISOString() };
+  const year = new Date(now).getFullYear();
+  return { from: new Date(Date.UTC(year, 0, 1)).toISOString() };
+}
+
+export function dashboardEditedWindowFromRange(
+  range: DashboardDateRange,
+  now = Date.now(),
+): DashboardEditedWindow {
+  if (!range.from && !range.to) return "any";
+  if (range.to) return "any";
+  const fromDay = range.from?.slice(0, 10);
+  const dayFor = (offsetMs: number) =>
+    new Date(now - offsetMs).toISOString().slice(0, 10);
+  if (fromDay === dayFor(7 * DAY_MS)) return "7d";
+  if (fromDay === dayFor(30 * DAY_MS)) return "30d";
+  const yearStart = new Date(Date.UTC(new Date(now).getFullYear(), 0, 1))
+    .toISOString()
+    .slice(0, 10);
+  return fromDay === yearStart ? "year" : "any";
+}
+
+function hasActiveDashboardDateRange(range: DashboardDateRange): boolean {
+  return Boolean(range.from || range.to);
+}
+
+export interface DashboardFilterSidebarView {
+  filters: DashboardFilters;
+  dateRange: DashboardDateRange;
+  docTypes: string[];
+  featureTags: string[];
+  editedWindow: DashboardEditedWindow;
+  dateActive: boolean;
+  anyActive: boolean;
+}
+
+export function deriveDashboardFilterSidebarView(
+  state: Pick<DashboardState, "filters" | "date_range"> | undefined,
+  now = Date.now(),
+): DashboardFilterSidebarView {
+  const filters = state?.filters ?? {};
+  const dateRange = state?.date_range ?? {};
+  const dateActive = hasActiveDashboardDateRange(dateRange);
+  return {
+    filters,
+    dateRange,
+    docTypes: filters.doc_types ?? [],
+    featureTags: filters.feature_tags ?? [],
+    editedWindow: dashboardEditedWindowFromRange(dateRange, now),
+    dateActive,
+    anyActive:
+      (filters.doc_types?.length ?? 0) > 0 ||
+      (filters.feature_tags?.length ?? 0) > 0 ||
+      (filters.relations?.length ?? 0) > 0 ||
+      (filters.structural_state?.length ?? 0) > 0 ||
+      (filters.text?.length ?? 0) > 0 ||
+      dateActive,
+  };
+}
+
+/**
+ * Stores selector for the full filter sidebar. The sidebar is app chrome: it
+ * renders selected facets, active badges, and edited-window radios from one
+ * interpreted dashboard-state view instead of reading raw filter/date payloads.
+ */
+export function useDashboardFilterSidebarView(
+  scope: string | null,
+): DashboardFilterSidebarView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardFilterSidebarView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardTimelineModeView {
+  mode: DashboardTimelineMode;
+  timeTravel: boolean;
+  opsDisabled: boolean;
+  asOf?: number;
+}
+
+const LIVE_DASHBOARD_TIMELINE_MODE: DashboardTimelineMode = { kind: "live" };
+
+export function deriveDashboardTimelineModeView(
+  mode: DashboardTimelineMode | undefined,
+): DashboardTimelineModeView {
+  const resolved = mode ?? LIVE_DASHBOARD_TIMELINE_MODE;
+  if (resolved.kind === "time-travel") {
+    return {
+      mode: resolved,
+      timeTravel: true,
+      opsDisabled: true,
+      asOf: resolved.at,
+    };
+  }
+  return {
+    mode: resolved,
+    timeTravel: false,
+    opsDisabled: false,
+    asOf: undefined,
+  };
+}
+
+/**
+ * Stores selector for the dashboard timeline mode. App chrome consumes this
+ * interpreted view so time-travel cues, historical `asOf` reads, and operation
+ * disablement all come from one stores-owned reading of `timeline_mode`.
+ */
+export function useDashboardTimelineModeView(
+  scope: string | null,
+): DashboardTimelineModeView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardTimelineModeView(dashboardState.data?.timeline_mode),
+    [dashboardState.data?.timeline_mode],
+  );
+}
+
+export interface DashboardPlayheadView {
+  loaded: boolean;
+  playhead: DashboardPlayhead;
+}
+
+export function deriveDashboardPlayheadView(
+  state: Pick<DashboardState, "timeline_mode"> | undefined,
+): DashboardPlayheadView {
+  return {
+    loaded: state !== undefined,
+    playhead: dashboardPlayheadForTimelineMode(state?.timeline_mode),
+  };
+}
+
+/**
+ * Stores selector for the timeline playhead's canonical dashboard-state mirror.
+ * The timeline viewport is client-state in the shared TanStack cache, while
+ * timeline-mode -> playhead interpretation is shared with the dashboard write seam.
+ */
+export function useDashboardPlayheadView(scope: string | null): DashboardPlayheadView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardPlayheadView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardStageSceneView {
+  selectedIds: string[];
+  selectedNodeId: string | null;
+  graphQuery: DashboardGraphQueryVariables | null;
+  granularity: GraphGranularity;
+  activeRepresentationMode: DashboardState["representation_mode"];
+  graphBounds: DashboardGraphBounds | undefined;
+  timeline: DashboardTimelineModeView;
+  liveTimeline: boolean;
+}
+
+export function deriveDashboardStageSceneView(
+  state: DashboardState | undefined,
+): DashboardStageSceneView {
+  const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
+  return {
+    selectedIds: state?.selected_ids ? [...state.selected_ids] : [],
+    selectedNodeId: dashboardSelectionId(state),
+    graphQuery: state ? dashboardGraphQueryVariables(state) : null,
+    granularity: state?.graph_granularity ?? "feature",
+    activeRepresentationMode: state?.representation_mode ?? "connectivity",
+    graphBounds: state?.graph_bounds ? { ...state.graph_bounds } : undefined,
+    timeline,
+    liveTimeline: !timeline.timeTravel,
+  };
+}
+
+/**
+ * Stores selector for the Stage scene-owner read model. Stage still owns scene
+ * commands, but dashboard-state interpretation stays centralized with the other
+ * visual UI selectors.
+ */
+export function useDashboardStageSceneView(
+  scope: string | null,
+): DashboardStageSceneView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardStageSceneView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardGraphControlsView {
+  graphBounds: DashboardGraphBounds;
+  timeline: DashboardTimelineModeView;
+  representationMode: DashboardState["representation_mode"];
+  freezeAvailable: boolean;
+}
+
+const FALLBACK_DASHBOARD_GRAPH_BOUNDS: DashboardGraphBounds = {
+  shape: "free",
+  size: 0,
+};
+
+export function deriveDashboardGraphControlsView(
+  state:
+    | Pick<DashboardState, "graph_bounds" | "representation_mode" | "timeline_mode">
+    | undefined,
+): DashboardGraphControlsView {
+  const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
+  const representationMode = state?.representation_mode ?? "connectivity";
+  return {
+    graphBounds: state?.graph_bounds
+      ? { ...state.graph_bounds }
+      : { ...FALLBACK_DASHBOARD_GRAPH_BOUNDS },
+    timeline,
+    representationMode,
+    freezeAvailable: representationMode === "connectivity" && !timeline.timeTravel,
+  };
+}
+
+/**
+ * Stores selector for graph-control chrome: containment bounds plus the freeze
+ * toggle's live/connectivity applicability. Scene commands stay in the app, but
+ * dashboard-state interpretation stays here.
+ */
+export function useDashboardGraphControlsView(
+  scope: string | null,
+): DashboardGraphControlsView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardGraphControlsView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardLayoutSelectorView {
+  dateRange: DashboardDateRange;
+  representationMode: DashboardState["representation_mode"];
+  spatialActive: DashboardState["representation_mode"] | null;
+  timeline: DashboardTimelineModeView;
+}
+
+export interface DashboardLensSelectorView {
+  lens: SalienceLens;
+}
+
+export function deriveDashboardLayoutSelectorView(
+  state:
+    | Pick<DashboardState, "date_range" | "representation_mode" | "timeline_mode">
+    | undefined,
+): DashboardLayoutSelectorView {
+  const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
+  const representationMode = state?.representation_mode ?? "connectivity";
+  return {
+    dateRange: state?.date_range ? { ...state.date_range } : {},
+    representationMode,
+    spatialActive: timeline.timeTravel ? null : representationMode,
+    timeline,
+  };
+}
+
+export function deriveDashboardLensSelectorView(
+  state: Pick<DashboardState, "salience_lens"> | undefined,
+): DashboardLensSelectorView {
+  return {
+    lens: state?.salience_lens ?? DEFAULT_DASHBOARD_SALIENCE_LENS,
+  };
+}
+
+/**
+ * Stores selector for the stage layout picker. The component owns interaction
+ * writes, while live/time-travel active-state and representation fallbacks stay
+ * in the dashboard-state projection layer.
+ */
+export function useDashboardLayoutSelectorView(
+  scope: string | null,
+): DashboardLayoutSelectorView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardLayoutSelectorView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+/**
+ * Stores selector for the stage salience-lens picker. The selector reads the
+ * canonical dashboard lens with the same fallback used by graph queries.
+ */
+export function useDashboardLensSelectorView(
+  scope: string | null,
+): DashboardLensSelectorView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardLensSelectorView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export interface DashboardShellChromeView {
+  panelState: DashboardPanelState;
+  timeline: DashboardTimelineModeView;
+}
+
+const FALLBACK_DASHBOARD_PANEL_STATE: DashboardPanelState = {
+  left_collapsed: false,
+  right_collapsed: false,
+  right_tab: "status",
+};
+
+export function deriveDashboardShellChromeView(
+  state: Pick<DashboardState, "panel_state" | "timeline_mode"> | undefined,
+): DashboardShellChromeView {
+  return {
+    panelState: state?.panel_state ?? FALLBACK_DASHBOARD_PANEL_STATE,
+    timeline: deriveDashboardTimelineModeView(state?.timeline_mode),
+  };
+}
+
+/**
+ * Stores selector for AppShell chrome. The shell consumes a single interpreted
+ * panel/time-travel view instead of reading raw dashboard-state fields for rail
+ * collapse, right-tab, and context-menu operation gating.
+ */
+export function useDashboardShellChromeView(
+  scope: string | null,
+): DashboardShellChromeView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardShellChromeView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+type DashboardTierName = (typeof CANONICAL_TIERS)[number];
+
+type DashboardTierMap = Record<DashboardTierName, boolean>;
+
+export interface DashboardTierDialView {
+  filters: DashboardFilters;
+  tiers: DashboardTierMap;
+  minConfidence: NonNullable<DashboardFilters["min_confidence"]>;
+  timeline: DashboardTimelineModeView;
+  availability: GraphSliceAvailability;
+  semanticDegraded: boolean;
+}
+
+interface DashboardGraphSliceVariables {
+  scope: string;
+  filter: GraphFilter;
+  asOf?: string | number;
+  granularity: GraphGranularity;
+  lens: SalienceLens;
+  focus: string | null;
+}
+
+function cloneDashboardDateRangeForQuery(
+  range: DashboardDateRange | undefined,
+): DashboardDateRange {
+  return range ? { ...range } : {};
+}
+
+function cloneDashboardFiltersForQuery(filters: DashboardFilters): DashboardFilters {
+  return {
+    ...filters,
+    tiers: filters.tiers ? { ...filters.tiers } : undefined,
+    min_confidence: filters.min_confidence ? { ...filters.min_confidence } : undefined,
+    relations: filters.relations ? [...filters.relations] : undefined,
+    structural_state: filters.structural_state
+      ? [...filters.structural_state]
+      : undefined,
+    kinds: filters.kinds ? [...filters.kinds] : undefined,
+    doc_types: filters.doc_types ? [...filters.doc_types] : undefined,
+    feature_tags: filters.feature_tags ? [...filters.feature_tags] : undefined,
+    date_range: filters.date_range
+      ? cloneDashboardDateRangeForQuery(filters.date_range)
+      : undefined,
+  };
+}
+
+function dashboardGraphSliceVariables(
+  state: DashboardState,
+): DashboardGraphSliceVariables {
+  const filter = cloneDashboardFiltersForQuery(state.filters);
+  if (state.date_range.from || state.date_range.to) {
+    filter.date_range = cloneDashboardDateRangeForQuery(state.date_range);
+  } else {
+    delete filter.date_range;
+  }
+  return {
+    scope: state.scope,
+    filter,
+    asOf:
+      state.timeline_mode.kind === "time-travel" ? state.timeline_mode.at : undefined,
+    granularity: state.graph_granularity,
+    lens: state.salience_lens,
+    focus: state.salience_focus,
+  };
+}
+
+export function deriveDashboardTierDialView(
+  state: Pick<DashboardState, "filters" | "timeline_mode"> | undefined,
+  availability: GraphSliceAvailability,
+): DashboardTierDialView {
+  const filters = cloneDashboardFiltersForQuery(state?.filters ?? {});
+  return {
+    filters,
+    tiers: {
+      declared: filters.tiers?.declared ?? true,
+      structural: filters.tiers?.structural ?? true,
+      temporal: filters.tiers?.temporal ?? true,
+      semantic: filters.tiers?.semantic ?? true,
+    },
+    minConfidence: filters.min_confidence ?? {},
+    timeline: deriveDashboardTimelineModeView(state?.timeline_mode),
+    availability,
+    semanticDegraded: availability.degradedTiers.includes("semantic"),
+  };
+}
+
+/**
+ * Stores selector for the stage tier dial. The dial consumes one interpreted view
+ * for tier toggles, confidence floors, time-travel applicability, and semantic
+ * degradation instead of reading raw dashboard filters or graph-query variables.
+ */
+export function useDashboardTierDialView(scope: string | null): DashboardTierDialView {
+  const dashboardState = useDashboardState(scope);
+  const graphQuery = useMemo(
+    () =>
+      dashboardState.data ? dashboardGraphSliceVariables(dashboardState.data) : null,
+    [dashboardState.data],
+  );
+  const slice = useGraphSlice(
+    graphQuery?.scope ?? null,
+    graphQuery?.filter,
+    graphQuery?.asOf,
+    graphQuery?.granularity,
+    graphQuery?.lens,
+    graphQuery?.focus,
+  );
+  const availability = useGraphSliceAvailability(slice, graphQuery !== null);
+  return useMemo(
+    () => deriveDashboardTierDialView(dashboardState.data, availability),
+    [availability, dashboardState.data],
+  );
 }
 
 export function useGraphSlice(
@@ -520,12 +1746,9 @@ export function useGraphSlice(
 }
 
 /**
- * The active-lens graph slice (graph-node-salience W04.P09): reads the active
- * salience lens + focus from the stores view layer (`useSalienceLensStore`) and
- * parameterizes the graph query by them, so a lens switch or focus change is a
- * re-query keyed on (lens, focus). This is the seam the scene consumes for the
- * salience-ranked node set; the chrome lens selector drives `setLens`/`setFocus`
- * on the store and never fetches the engine itself (dashboard-layer-ownership).
+ * The active-lens graph slice (graph-node-salience): reads lens + focus from
+ * canonical dashboard state and parameterizes the graph query by them, so a lens
+ * switch or focus change is a re-query keyed on (lens, focus).
  */
 export function useSalienceGraphSlice(
   scope: string | null,
@@ -533,9 +1756,16 @@ export function useSalienceGraphSlice(
   asOf?: string | number,
   granularity?: "document" | "feature",
 ) {
-  const lens = useSalienceLensStore((s) => s.lens);
-  const focus = useSalienceLensStore((s) => s.focus);
-  return useGraphSlice(scope, filter, asOf, granularity, lens, focus);
+  const dashboardState = useDashboardState(scope);
+  const state = dashboardState.data;
+  return useGraphSlice(
+    state ? scope : null,
+    filter,
+    asOf,
+    granularity,
+    state?.salience_lens,
+    state?.salience_focus ?? null,
+  );
 }
 
 /**
@@ -578,14 +1808,15 @@ export function deriveSalienceSliceView(
   error: unknown,
   loading: boolean,
 ): SalienceSliceView {
+  const servedData = loading ? undefined : data;
   const { degradedTiers, reasons } = readTierAvailability(
-    tiersFromQuery({ data, error }),
+    tiersFromQuery({ data: servedData, error }),
     CANONICAL_TIERS,
   );
   // Partial: the engine's explicit flag, OR a degraded tier in the served block.
   // Never inferred from a bare transport error (no tiers => not partial here).
-  const partial = data?.salience_partial === true || degradedTiers.length > 0;
-  return { lens: data?.lens ?? lens, loading, partial, degradedTiers, reasons };
+  const partial = servedData?.salience_partial === true || degradedTiers.length > 0;
+  return { lens: servedData?.lens ?? lens, loading, partial, degradedTiers, reasons };
 }
 
 /**
@@ -601,12 +1832,18 @@ export function useSalienceSliceView(
   asOf?: string | number,
   granularity?: "document" | "feature",
 ): SalienceSliceView {
-  const lens = useSalienceLensStore((s) => s.lens);
+  const dashboardState = useDashboardState(scope);
+  const lens = dashboardState.data?.salience_lens ?? DEFAULT_SALIENCE_LENS;
   const slice = useSalienceGraphSlice(scope, filter, asOf, granularity);
   // isFetching covers a focus-change/lens-switch re-query while held data is
   // shown; isPending is the initial fetch. Either is a loading state for the
   // scene on a focus change.
-  const loading = scope !== null && (slice.isPending || slice.isFetching);
+  const loading =
+    scope !== null &&
+    (dashboardState.isPending ||
+      dashboardState.isFetching ||
+      slice.isPending ||
+      slice.isFetching);
   return deriveSalienceSliceView(lens, slice.data, slice.error, loading);
 }
 
@@ -779,6 +2016,11 @@ export interface GraphSliceAvailability extends TierAvailability {
   loading: boolean;
 }
 
+type GraphSliceAvailabilitySource = Pick<
+  UseQueryResult<GraphSlice>,
+  "data" | "error" | "isPending"
+>;
+
 export function deriveGraphSliceAvailability(
   tiers: TiersBlock | undefined,
   loading: boolean,
@@ -794,22 +2036,16 @@ export function deriveGraphSliceAvailability(
  * it renders so the descent reflects the slice it is steering.
  */
 export function useGraphSliceAvailability(
-  scope: string | null,
-  granularity?: "document" | "feature",
-  lens?: SalienceLens,
+  slice: GraphSliceAvailabilitySource | null,
+  active = true,
 ): GraphSliceAvailability {
-  // The per-tier availability is LENS-INDEPENDENT, but the slice query key
-  // includes the lens — so a caller that renders the slice under a non-default
-  // lens (the Stage) MUST pass that same lens here, or this hook keys on the
-  // default-lens slice and fires a SECOND, redundant document fetch (the
-  // multi-megabyte payload, twice) just to read tiers. Passing the active lens
-  // makes this share the main slice's cache entry: the tiers ride the fetch the
-  // Stage already issued, no duplicate request. Callers with no lens context
-  // (e.g. the TierDial) keep the default-lens key, unchanged.
-  const slice = useGraphSlice(scope, undefined, undefined, granularity, lens);
+  // Availability is a projection over the already-held canonical graph slice.
+  // It must not issue an unfiltered /graph/query just to read the tiers block:
+  // that second request can drift from the Stage's filter/lens/date identity and
+  // duplicates the graph payload.
   return deriveGraphSliceAvailability(
-    tiersFromQuery(slice),
-    scope !== null && slice.isPending,
+    slice ? tiersFromQuery(slice) : undefined,
+    active && Boolean(slice?.isPending),
   );
 }
 
@@ -829,20 +2065,155 @@ export function isAddressableNode(id: string | null): id is string {
   return id !== null && !id.startsWith("feature:");
 }
 
-export function useNodeDetail(id: string | null) {
+export function useNodeDetail(id: string | null, scope: string | null) {
   return useQuery({
-    queryKey: engineKeys.node(id ?? ""),
-    queryFn: () => engineClient.node(id!),
-    enabled: isAddressableNode(id),
+    queryKey: engineKeys.node(scope ?? "", id ?? ""),
+    queryFn: () => engineClient.node(id!, scope!),
+    enabled: scope !== null && isAddressableNode(id),
   });
 }
 
-export function useNodeNeighbors(id: string | null, depth = 1) {
+export type NodeDetailSurfaceState = "idle" | "loading" | "unavailable" | "ready";
+
+export interface NodeDetailView {
+  state: NodeDetailSurfaceState;
+  detail: NodeDetail | null;
+  node: EngineNode | null;
+}
+
+export function deriveNodeDetailView(
+  data: NodeDetail | undefined,
+  loading: boolean,
+  errored: boolean,
+  enabled: boolean,
+): NodeDetailView {
+  if (!enabled) return { state: "idle", detail: null, node: null };
+  if (loading) return { state: "loading", detail: null, node: null };
+  if (errored || !data?.node) {
+    return { state: "unavailable", detail: null, node: null };
+  }
+  return { state: "ready", detail: data, node: data.node };
+}
+
+/**
+ * Stores selector for node-detail consumers. The inspector and node interiors
+ * render a designed state from this view instead of branching on raw query flags
+ * or re-guarding the possibly-missing `node` payload themselves.
+ */
+export function useNodeDetailView(
+  id: string | null,
+  scope: string | null,
+): NodeDetailView {
+  const enabled = scope !== null && isAddressableNode(id);
+  const query = useNodeDetail(id, scope);
+  return deriveNodeDetailView(
+    query.data,
+    enabled && query.isPending,
+    query.isError,
+    enabled,
+  );
+}
+
+/** The lifecycle axis: every opened feature has the same internal grammar. */
+export const FEATURE_LIFECYCLE_AXIS = [
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+] as const;
+
+export function featureLifecycleRank(kind: string): number {
+  const i = (FEATURE_LIFECYCLE_AXIS as readonly string[]).indexOf(kind);
+  return i === -1 ? FEATURE_LIFECYCLE_AXIS.length : i;
+}
+
+/** Order a feature's documents along the lifecycle axis, stable by title. */
+export function arrangeFeatureLifecycleAxis(
+  nodes: readonly EngineNode[],
+): EngineNode[] {
+  return nodes
+    .filter((n) => featureLifecycleRank(n.kind) < FEATURE_LIFECYCLE_AXIS.length)
+    .sort(
+      (a, b) =>
+        featureLifecycleRank(a.kind) - featureLifecycleRank(b.kind) ||
+        (a.title ?? a.id).localeCompare(b.title ?? b.id),
+    );
+}
+
+export type FeatureLifecycleState = "loading" | "ready";
+
+export interface FeatureLifecycleView {
+  state: FeatureLifecycleState;
+  docs: EngineNode[];
+}
+
+export function deriveFeatureLifecycleView(
+  nodes: readonly EngineNode[] | undefined,
+): FeatureLifecycleView {
+  if (!nodes) return { state: "loading", docs: [] };
+  return { state: "ready", docs: arrangeFeatureLifecycleAxis(nodes) };
+}
+
+/**
+ * Stores selector for a synthesized feature island's bounded document lifecycle.
+ * Feature nodes are not addressable by `/nodes/{id}`, so the island consumes this
+ * feature-filtered document slice instead of minting graph-query identity locally.
+ */
+export function useFeatureLifecycleView(
+  id: string,
+  scope: string | null,
+): FeatureLifecycleView {
+  const tag = id.startsWith("feature:") ? id.slice("feature:".length) : null;
+  const slice = useGraphSlice(
+    tag === null ? null : scope,
+    tag === null ? undefined : { feature_tags: [tag] },
+    undefined,
+    "document",
+  );
+  return deriveFeatureLifecycleView(slice.data?.nodes);
+}
+
+export function useNodeNeighbors(id: string | null, scope: string | null, depth = 1) {
   return useQuery({
-    queryKey: engineKeys.neighbors(id ?? "", depth),
-    queryFn: () => engineClient.nodeNeighbors(id!, { depth }),
-    enabled: isAddressableNode(id),
+    queryKey: engineKeys.neighbors(scope ?? "", id ?? "", depth),
+    queryFn: () => engineClient.nodeNeighbors(id!, { scope: scope!, depth }),
+    enabled: scope !== null && isAddressableNode(id),
   });
+}
+
+export const INSPECTOR_EDGE_TIER_ORDER = [
+  "declared",
+  "structural",
+  "temporal",
+  "semantic",
+] as const;
+
+export interface InspectorNeighborTierView {
+  tiers: Map<EngineEdge["tier"], EngineEdge[]>;
+  tierKeys: EngineEdge["tier"][];
+}
+
+export function deriveInspectorNeighborTierView(
+  edges: readonly EngineEdge[] | undefined,
+): InspectorNeighborTierView {
+  const tiers = new Map<EngineEdge["tier"], EngineEdge[]>();
+  for (const tier of INSPECTOR_EDGE_TIER_ORDER) {
+    const members = (edges ?? []).filter((edge) => edge.tier === tier && !edge.meta);
+    if (members.length > 0) tiers.set(tier, members);
+  }
+  return { tiers, tierKeys: [...tiers.keys()] };
+}
+
+export function useInspectorNeighborTierView(
+  id: string | null,
+  scope: string | null,
+): InspectorNeighborTierView {
+  const neighbors = useNodeNeighbors(id, scope);
+  return useMemo(
+    () => deriveInspectorNeighborTierView(neighbors.data?.edges),
+    [neighbors.data?.edges],
+  );
 }
 
 // --- read-only content fetch (review-rail-viewers ADR) ---------------------------
@@ -965,6 +2336,312 @@ export function useContentView(
   return deriveContentView(query.data, query.error ?? null, loading);
 }
 
+export type ViewerStateTone = "faint" | "muted" | "broken";
+
+export interface CodeViewerView {
+  /** The designed surface state the code viewer renders. */
+  state: "loading" | "errored" | "degraded" | "empty" | "ready";
+  /** Placeholder copy for non-ready states. */
+  stateMessage: string | null;
+  /** Placeholder tone for non-ready states. */
+  stateTone: ViewerStateTone;
+  /** Text passed to the tokenizer; blank outside the ready state. */
+  text: string;
+  /** Raw, 1:1 source lines for the virtualized line list. */
+  rawLines: string[];
+  /** Served repo-relative path for the header. */
+  path?: string;
+  /** Highlighter grammar hint for the tokenizer and language badge. */
+  languageHint: string | null;
+  /** Honest byte-cap marker shown only with ready content. */
+  truncated: ContentTruncated | null;
+}
+
+/**
+ * Derive the code viewer's render model from the tiers-interpreted content view.
+ * The app renders virtualization/highlighting chrome; stores owns state
+ * classification, degradation copy, and which bytes are safe to tokenize.
+ */
+export function deriveCodeViewerView(content: ContentView): CodeViewerView {
+  const base = {
+    text: "",
+    rawLines: [] as string[],
+    path: content.path,
+    languageHint: null,
+    truncated: null,
+  };
+  if (content.loading) {
+    return {
+      ...base,
+      state: "loading",
+      stateMessage: "Loading file...",
+      stateTone: "faint",
+    };
+  }
+  if (content.errored) {
+    return {
+      ...base,
+      state: "errored",
+      stateMessage: "The file could not be loaded.",
+      stateTone: "broken",
+    };
+  }
+  if (content.degraded) {
+    const reason = content.reasons.structural;
+    return {
+      ...base,
+      state: "degraded",
+      stateMessage: `File unavailable${reason ? `: ${reason}` : ""}.`,
+      stateTone: "muted",
+    };
+  }
+  if (!content.available || content.text.length === 0) {
+    return {
+      ...base,
+      state: "empty",
+      stateMessage: "This file is empty.",
+      stateTone: "faint",
+    };
+  }
+
+  const text = content.text;
+  return {
+    state: "ready",
+    stateMessage: null,
+    stateTone: "faint",
+    text,
+    rawLines: text.replace(/\n$/, "").split("\n"),
+    path: content.path,
+    languageHint: content.languageHint,
+    truncated: content.truncated,
+  };
+}
+
+type MarkdownHeaderCategory = "adr" | "audit" | "exec" | "index" | "plan" | "research";
+
+export interface MarkdownHeaderView {
+  /** The document title rendered by the viewer header. */
+  title: string;
+  /** The path trail leading to the document, derived from the served path. */
+  trail?: Array<{ label: string }>;
+  /** The design-system category token for the document type, when one is bound. */
+  category?: MarkdownHeaderCategory;
+  /** The raw document type label shown in the chip. */
+  categoryLabel?: string;
+  /** Frontmatter metadata rows shown by the viewer header. */
+  meta?: Array<{ label: string; value: string }>;
+}
+
+const MARKDOWN_HEADER_DOC_TYPE_CATEGORY: Record<string, MarkdownHeaderCategory> = {
+  research: "research",
+  adr: "adr",
+  plan: "plan",
+  exec: "exec",
+  audit: "audit",
+  index: "index",
+};
+
+function markdownHeaderDocType(path: string | undefined, stem: string): string | null {
+  if (path) {
+    const match = /(?:^|\/)\.vault\/([^/]+)\//.exec(path);
+    if (match) return match[1] ?? null;
+  }
+  const suffix = /-(research|adr|plan|exec|audit|reference|index)$/.exec(stem);
+  return suffix ? (suffix[1] ?? null) : null;
+}
+
+function markdownHeaderTitle(stem: string): string {
+  return stem.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/-/g, " ") || stem;
+}
+
+/**
+ * Derive the binding document-header view for an open markdown document from the
+ * already-served content view. Pure: no fetch, no app chrome dependency, and no
+ * direct renderer callback. The caller adds close/navigation intent.
+ */
+export function deriveMarkdownHeaderView(
+  nodeId: string,
+  content: ContentView,
+): MarkdownHeaderView {
+  const stem = nodeId.replace(/^doc:/, "");
+  const docType = markdownHeaderDocType(content.path, stem);
+  const category =
+    docType === null ? undefined : MARKDOWN_HEADER_DOC_TYPE_CATEGORY[docType];
+  const { frontmatter } = parseDocument(content.text);
+
+  const trail = content.path
+    ? content.path
+        .split("/")
+        .slice(0, -1)
+        .filter(Boolean)
+        .map((label) => ({ label }))
+    : undefined;
+
+  const meta: MarkdownHeaderView["meta"] = [];
+  if (typeof frontmatter?.date === "string") {
+    meta.push({ label: "created", value: frontmatter.date });
+  }
+  if (typeof frontmatter?.modified === "string") {
+    meta.push({ label: "modified", value: frontmatter.modified });
+  }
+
+  return {
+    title: markdownHeaderTitle(stem),
+    trail,
+    category,
+    categoryLabel: docType ?? undefined,
+    meta: meta.length > 0 ? meta : undefined,
+  };
+}
+
+export interface MarkdownReaderView {
+  /** The designed reader state the app renders. */
+  state: "loading" | "errored" | "degraded" | "empty" | "ready";
+  /** Placeholder copy for non-ready states. */
+  stateMessage: string | null;
+  /** Placeholder tone for non-ready states. */
+  stateTone: ViewerStateTone;
+  /** Structured frontmatter chrome, null when the document has no visible metadata. */
+  frontmatter: FrontmatterHeaderView | null;
+  /** Reader meta status from frontmatter, if present. */
+  status: string | null;
+  /** Markdown body with the leading frontmatter fence removed. */
+  body: string;
+  /** Honest byte-cap marker shown only with ready content. */
+  truncated: ContentTruncated | null;
+}
+
+export type FrontmatterTagCategory =
+  | "adr"
+  | "audit"
+  | "code"
+  | "exec"
+  | "feature"
+  | "index"
+  | "plan"
+  | "research";
+
+export interface FrontmatterTagView {
+  /** Display text including the leading hash. */
+  label: string;
+  /** Design-system category token when the tag names one. */
+  category?: FrontmatterTagCategory;
+}
+
+export interface FrontmatterDateView {
+  label: "created" | "modified";
+  value: string;
+}
+
+export interface FrontmatterRelatedView {
+  stem: string;
+  nodeId: string;
+}
+
+export interface FrontmatterHeaderView {
+  tags: FrontmatterTagView[];
+  dates: FrontmatterDateView[];
+  related: FrontmatterRelatedView[];
+}
+
+const FRONTMATTER_TAG_CATEGORIES = new Set<FrontmatterTagCategory>([
+  "adr",
+  "audit",
+  "code",
+  "exec",
+  "feature",
+  "index",
+  "plan",
+  "research",
+]);
+
+function frontmatterTagView(tag: string): FrontmatterTagView {
+  const label = `#${tag}`;
+  if (FRONTMATTER_TAG_CATEGORIES.has(tag as FrontmatterTagCategory)) {
+    return { label, category: tag as FrontmatterTagCategory };
+  }
+  return { label };
+}
+
+export function deriveFrontmatterHeaderView(
+  frontmatter: Frontmatter | null,
+): FrontmatterHeaderView | null {
+  if (!frontmatter) return null;
+  const tags = frontmatter.tags.map(frontmatterTagView);
+  const dates: FrontmatterDateView[] = [];
+  if (frontmatter.date !== undefined) {
+    dates.push({ label: "created", value: frontmatter.date });
+  }
+  if (frontmatter.modified !== undefined) {
+    dates.push({ label: "modified", value: frontmatter.modified });
+  }
+  const related = frontmatter.related.map((stem) => ({
+    stem,
+    nodeId: `doc:${stem}`,
+  }));
+  if (tags.length === 0 && dates.length === 0 && related.length === 0) {
+    return null;
+  }
+  return { tags, dates, related };
+}
+
+/**
+ * Derive the markdown reader's document model from the already-served content
+ * view. The reader renders this projection, while navigation click intent stays
+ * in app chrome.
+ */
+export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderView {
+  const base = {
+    frontmatter: null,
+    status: null,
+    body: "",
+    truncated: null,
+  };
+  if (content.loading) {
+    return {
+      ...base,
+      state: "loading",
+      stateMessage: "Loading document…",
+      stateTone: "faint",
+    };
+  }
+  if (content.errored) {
+    return {
+      ...base,
+      state: "errored",
+      stateMessage: "The document could not be loaded.",
+      stateTone: "broken",
+    };
+  }
+  if (content.degraded) {
+    const reason = content.reasons.structural;
+    return {
+      ...base,
+      state: "degraded",
+      stateMessage: `Document unavailable${reason ? `: ${reason}` : ""}.`,
+      stateTone: "muted",
+    };
+  }
+  if (!content.available || content.text.length === 0) {
+    return {
+      ...base,
+      state: "empty",
+      stateMessage: "This document is empty.",
+      stateTone: "faint",
+    };
+  }
+  const parsed = parseDocument(content.text);
+  return {
+    state: "ready",
+    stateMessage: null,
+    stateTone: "faint",
+    frontmatter: deriveFrontmatterHeaderView(parsed.frontmatter),
+    status: parsed.frontmatter?.status ?? null,
+    body: parsed.body,
+    truncated: content.truncated,
+  };
+}
+
 // --- bounded recent commit history (status-overview ADR) ---------------------------
 //
 // The recent-commit list with subjects, consumed by the Status overview rail
@@ -981,6 +2658,9 @@ export function useContentView(
 /** The rail's default recent-commit count (the ADR's ~20): a short snapshot, not
  *  the whole log. The engine clamps a larger value to its hard ceiling. */
 export const DEFAULT_HISTORY_LIMIT = 20;
+
+/** The Status overview renders a short commit snapshot, not every fetched row. */
+export const STATUS_RECENT_COMMIT_ROWS = 12;
 
 /** How long an unobserved history entry survives before garbage collection
  *  (bounded-by-default-for-every-accumulator). 60s matches the content query's
@@ -1017,14 +2697,37 @@ export interface HistoryView extends TierAvailability {
   errored: boolean;
   /** The recent commits, newest-first; empty while loading/degraded/errored. */
   commits: HistoryCommit[];
+  /** Render-ready recent commit rows with selectable graph targets pre-derived. */
+  recentCommitRows: RecentCommitRow[];
   /** True iff the engine answered with history (vs loading/degraded/errored). */
   available: boolean;
+}
+
+export interface RecentCommitRow {
+  commit: HistoryCommit;
+  /** Commit node id, used for event selection metadata. */
+  eventId: string;
+  /** Graph nodes the row can select; excludes the commit node itself. */
+  touchedNodeIds: string[];
+  /** Whether activating the row has a graph selection target. */
+  selectable: boolean;
+  /** Compact age label for the status rail; derived with the row projection. */
+  ageLabel: string;
 }
 
 // The commit read is resolved by the engine's STRUCTURAL read of the worktree's
 // git object DB, so the `structural` tier gates history availability (contract §2,
 // status-overview ADR: a scope with no readable git history degrades structural).
 const HISTORY_TIERS = ["structural"] as const;
+
+function recentCommitAgeLabel(ts: number, now: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return "";
+  const ageMs = now - ts;
+  if (ageMs < 60_000) return "just now";
+  if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m`;
+  if (ageMs < 86_400_000) return `${Math.floor(ageMs / 3_600_000)}h`;
+  return `${Math.floor(ageMs / 86_400_000)}d`;
+}
 
 /**
  * Derive the history view from a history query's data + error + pending flags,
@@ -1041,6 +2744,7 @@ export function deriveHistoryView(
   data: HistoryResponse | undefined,
   error: unknown,
   loading: boolean,
+  now = Date.now(),
 ): HistoryView {
   const tiers = tiersFromQuery({ data, error });
   const availability = readTierAvailability(tiers, HISTORY_TIERS);
@@ -1048,11 +2752,26 @@ export function deriveHistoryView(
     error instanceof EngineError ? error.tiers === undefined : error != null;
   const available =
     !loading && !errored && !availability.degraded && data !== undefined;
+  const commits =
+    loading || availability.degraded || errored ? [] : (data?.commits ?? []);
+  const recentCommitRows = commits
+    .slice(0, STATUS_RECENT_COMMIT_ROWS)
+    .map((commit): RecentCommitRow => {
+      const touchedNodeIds = commit.node_ids.filter((id) => !id.startsWith("commit:"));
+      return {
+        commit,
+        eventId: `commit:${commit.hash}`,
+        touchedNodeIds,
+        selectable: touchedNodeIds.length > 0,
+        ageLabel: recentCommitAgeLabel(commit.ts, now),
+      };
+    });
   return {
     ...availability,
     loading,
     errored,
-    commits: availability.degraded || errored ? [] : (data?.commits ?? []),
+    commits,
+    recentCommitRows,
     available,
   };
 }
@@ -1087,28 +2806,32 @@ export function useHistoryView(
  * the latent cliff. */
 const MAX_BULK_NEIGHBOR_IDS = 96;
 
-export function useNodeNeighborsBulk(ids: readonly string[], depth = 1) {
+export function useNodeNeighborsBulk(
+  ids: readonly string[],
+  scope: string | null,
+  depth = 1,
+) {
   // Bound the fan-out; the most-recently-added ids (working-set tail) win when
   // the set exceeds the cap, since those are the user's latest expansions.
   const bounded =
     ids.length > MAX_BULK_NEIGHBOR_IDS ? ids.slice(-MAX_BULK_NEIGHBOR_IDS) : ids;
   return useQueries({
     queries: bounded.map((id) => ({
-      queryKey: engineKeys.neighbors(id, depth),
-      queryFn: () => engineClient.nodeNeighbors(id, { depth }),
+      queryKey: engineKeys.neighbors(scope ?? "", id, depth),
+      queryFn: () => engineClient.nodeNeighbors(id, { scope: scope!, depth }),
       // Skip synthesized feature aggregates — the engine has no ego network for a
       // `feature:<tag>` id (it 404s); expanding one is a no-op, not a degraded
       // request. Real nodes (doc:, …) expand as before.
-      enabled: isAddressableNode(id),
+      enabled: scope !== null && isAddressableNode(id),
     })),
   });
 }
 
-export function useNodeEvidence(id: string | null) {
+export function useNodeEvidence(id: string | null, scope: string | null) {
   return useQuery({
-    queryKey: engineKeys.evidence(id ?? ""),
-    queryFn: () => engineClient.nodeEvidence(id!),
-    enabled: isAddressableNode(id),
+    queryKey: engineKeys.evidence(scope ?? "", id ?? ""),
+    queryFn: () => engineClient.nodeEvidence(id!, scope!),
+    enabled: scope !== null && isAddressableNode(id),
   });
 }
 
@@ -1180,11 +2903,11 @@ export function deriveDiscoverView(
  * of fetching itself. `nodeId === null` means the panel is closed: the query is
  * disabled and the view is the inert closed state.
  */
-export function useDiscover(nodeId: string | null): DiscoverView {
-  const enabled = nodeId !== null;
+export function useDiscover(nodeId: string | null, scope: string | null): DiscoverView {
+  const enabled = scope !== null && nodeId !== null;
   const query = useQuery({
-    queryKey: engineKeys.discover(nodeId ?? ""),
-    queryFn: () => engineClient.discover(nodeId!),
+    queryKey: engineKeys.discover(scope ?? "", nodeId ?? ""),
+    queryFn: () => engineClient.discover(nodeId!, scope!),
     enabled,
     retry: false,
   });
@@ -1225,7 +2948,7 @@ export function useTimelineLineage(
   filter?: string,
   asOf?: string | number,
 ) {
-  return useQuery({
+  const query = useQuery({
     queryKey: engineKeys.lineage(scope ?? "", range, filter, asOf),
     queryFn: () =>
       engineClient.lineage({
@@ -1239,7 +2962,64 @@ export function useTimelineLineage(
         t: asOf == null ? undefined : String(asOf),
       }),
     enabled: scope !== null,
+    // Flicker-free refresh on a BESPOKE backend signal: the timeline holds its
+    // dataset in memory and windows it client-side, so this query refetches ONLY
+    // when its identity changes — a graph generation bump (the SSE delta clock
+    // invalidates the `lineage` subtree) or a filter/as-of switch, never on
+    // navigation. `placeholderData` keeps the PREVIOUS dataset rendered across
+    // that refetch so the surface never blanks/reloads (the user-visible flicker
+    // the range-keyed fetch used to cause). Continuous, never destroyed.
+    placeholderData: keepPreviousData,
   });
+  return withManualRetry(query);
+}
+
+export interface TimelineLineageView {
+  loading: boolean;
+  errored: boolean;
+  nodes: LineageNode[];
+  arcs: LineageArc[];
+  retry: () => void;
+}
+
+export function deriveTimelineLineageView(
+  data: LineageSlice | undefined,
+  loading: boolean,
+  errored: boolean,
+  retry: () => void = noopRetry,
+): TimelineLineageView {
+  const slice = loading || errored ? undefined : data;
+  return {
+    loading,
+    errored,
+    nodes: slice?.nodes ?? [],
+    arcs: slice?.arcs ?? [],
+    retry,
+  };
+}
+
+/**
+ * Stores selector for the timeline's bounded lineage read. The timeline surface
+ * consumes interpreted loading/error state and stable node/arc arrays instead of
+ * branching on raw query flags and optional payload fields.
+ */
+export function useTimelineLineageView(
+  scope: string | null,
+  range: { from?: string; to?: string } = {},
+  filter?: string,
+  asOf?: string | number,
+): TimelineLineageView {
+  const lineage = useTimelineLineage(scope, range, filter, asOf);
+  return useMemo(
+    () =>
+      deriveTimelineLineageView(
+        lineage.data,
+        lineage.isLoading,
+        lineage.isError,
+        lineage.retry,
+      ),
+    [lineage.data, lineage.isError, lineage.isLoading, lineage.retry],
+  );
 }
 
 /**
@@ -1247,7 +3027,8 @@ export function useTimelineLineage(
  * add/remove/change operations on nodes and edges between `from` and `to`
  * (millisecond timestamps or ISO strings). Disabled when scope is null or
  * the window is empty (from === to). Cache keys fold both endpoints so two
- * windows never collide (mirrors engineKeys.graph folding as-of).
+ * windows never collide, and fold the optional filter because it changes the
+ * served delta set (mirrors engineKeys.graph folding filter/as-of).
  */
 export function useGraphDiff(
   scope: string | null,
@@ -1256,17 +3037,42 @@ export function useGraphDiff(
   filter?: string,
 ) {
   return useQuery({
-    queryKey: engineKeys.diff(scope ?? "", from, to),
+    queryKey: engineKeys.diff(scope ?? "", from, to, filter),
     queryFn: () => engineClient.graphDiff({ scope: scope!, from, to, filter }),
     enabled: scope !== null && String(from) !== String(to),
   });
 }
 
-export function useEngineSearch(query: string, target: "vault" | "code" = "vault") {
+export function useEngineSearch(
+  scope: string | null,
+  query: string,
+  target: "vault" | "code" = "vault",
+) {
   return useQuery({
-    queryKey: engineKeys.search(query, target),
-    queryFn: () => engineClient.search({ query, target }),
-    enabled: query.length > 0,
+    queryKey: engineKeys.search(scope ?? "", query, target),
+    queryFn: async ({ signal }) => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(
+        () => controller.abort(),
+        SEARCH_QUERY_TIMEOUT_MS,
+      );
+      const abort = () => controller.abort();
+      signal.addEventListener("abort", abort, { once: true });
+      try {
+        return await engineClient.search(
+          { scope: scope!, query, target },
+          controller.signal,
+        );
+      } finally {
+        window.clearTimeout(timeout);
+        signal.removeEventListener("abort", abort);
+      }
+    },
+    enabled: scope !== null && query.length > 0,
+    // Search is user-driven and has an explicit retry affordance. Do not let the
+    // shared transient retry policy prolong a bounded search timeout into a
+    // second spinner cycle.
+    retry: false,
     // Evict superseded search results promptly (B7, resource-hardening): a long
     // search session issues many distinct query strings, each a fresh cache
     // entry holding a SearchResponse. A short gcTime drops a result soon after
@@ -1275,6 +3081,8 @@ export function useEngineSearch(query: string, target: "vault" | "code" = "vault
     gcTime: 30_000,
   });
 }
+
+const SEARCH_QUERY_TIMEOUT_MS = 5_000;
 
 // --- session / settings (user-state-persistence W04.P08.S26) -------------------------
 //
@@ -1291,6 +3099,11 @@ export function useSession() {
     queryKey: engineKeys.session(),
     queryFn: () => engineClient.session(),
   });
+}
+
+/** True when a session mutation was rejected by the engine as a bad request. */
+export function isSessionMutationRejected(error: unknown): boolean {
+  return error instanceof EngineError && error.status === 400;
 }
 
 /** Read user settings (global + per-scope scoped keys). */
@@ -1321,6 +3134,99 @@ export function useSettingsSchema() {
   });
 }
 
+export interface SettingsDialogView {
+  schemaLoading: boolean;
+  groups: SettingsGroup[];
+}
+
+export interface ThemeSettingView {
+  serverTheme: string | undefined;
+  themeMembers: readonly string[];
+}
+
+export interface SettingsEffectsView {
+  reduceMotion: boolean;
+  graphDefaults: GraphSettingsDefaults | null;
+}
+
+export function deriveSettingsDialogView(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+  activeScope: string | null,
+  schemaLoading: boolean,
+): SettingsDialogView {
+  return {
+    schemaLoading,
+    groups: resolveSettings(schema, settings, activeScope),
+  };
+}
+
+export function deriveThemeSettingView(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+): ThemeSettingView {
+  const themeSetting = resolveEffectiveSetting(
+    schema,
+    settings,
+    null,
+    CONSUMED_SETTING_KEYS.theme,
+  );
+  return {
+    serverTheme: themeSetting?.value,
+    themeMembers: settingEnumMembers(themeSetting?.def),
+  };
+}
+
+export function deriveSettingsEffectsView(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+  activeScope: string | null,
+): SettingsEffectsView {
+  return {
+    reduceMotion: resolveReduceMotionSetting(schema, settings),
+    graphDefaults: resolveGraphSettingsDefaults(schema, settings, activeScope),
+  };
+}
+
+/**
+ * Stores selector for the schema-driven settings dialog. It composes the schema
+ * registry and persisted values into resolved groups so app chrome never
+ * re-implements effective-value precedence or query loading semantics.
+ */
+export function useSettingsDialogView(activeScope: string | null): SettingsDialogView {
+  const schema = useSettingsSchema();
+  const settings = useSettings();
+  return deriveSettingsDialogView(
+    schema.data,
+    settings.data,
+    activeScope,
+    schema.isLoading,
+  );
+}
+
+/**
+ * Stores selector for the platform theme bridge. Theme application stays in the
+ * app/platform bridge, but effective-value resolution stays in this layer.
+ */
+export function useThemeSettingView(): ThemeSettingView {
+  const schema = useSettingsSchema();
+  const settings = useSettings();
+  return deriveThemeSettingView(schema.data, settings.data);
+}
+
+/**
+ * Stores selector for settings side effects. The app bridge applies document
+ * attributes and one-time dashboard defaults, but settings interpretation stays
+ * centralized here.
+ */
+export function useSettingsEffectsView(
+  activeScope: string | null,
+): SettingsEffectsView {
+  const schema = useSettingsSchema();
+  const settings = useSettings();
+  return deriveSettingsEffectsView(schema.data, settings.data, activeScope);
+}
+
 /**
  * Persist a partial session update (active scope, scope context, or a recent).
  * On success the server returns the full updated session, which seeds the cache
@@ -1333,13 +3239,11 @@ export function usePutSession() {
   return useMutation({
     mutationFn: (body: SessionUpdate) => engineClient.putSession(body),
     onSuccess: (session) => {
-      queryClient.setQueryData(engineKeys.session(), session);
-      void queryClient.invalidateQueries({ queryKey: engineKeys.session() });
       // A session mutation may carry a registry mutation (select/add/forget a
       // workspace, dashboard-workspace-registry ADR), so refresh the registry
       // enumeration too — the picker re-reads the authoritative roots + active
       // marker without a separate mutation hook.
-      void queryClient.invalidateQueries({ queryKey: engineKeys.workspaces() });
+      seedSessionCache(queryClient, session);
     },
   });
 }
@@ -1386,6 +3290,7 @@ export function stemFromNodeId(nodeId: string): string {
 async function runWriteOp(
   verb: string,
   body: {
+    scope?: string;
     ref: string;
     body?: string;
     expected_blob_hash?: string;
@@ -1412,16 +3317,56 @@ export interface SaveBodyArgs {
   baseBlobHash: string;
 }
 
+function invalidateQueryPrefix(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+): void {
+  void queryClient.invalidateQueries({ queryKey, exact: false });
+}
+
+function invalidateScopedStreams(queryClient: QueryClient, scope: string): void {
+  void queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        key[0] === engineKeys.all[0] &&
+        key[1] === "stream" &&
+        key[key.length - 1] === scope
+      );
+    },
+  });
+}
+
+function invalidateScopedQuerySubtree(
+  queryClient: QueryClient,
+  subtree: (typeof GRAPH_GENERATION_QUERY_SUBTREES)[number],
+  scope: string,
+): void {
+  if (subtree === "stream") {
+    invalidateScopedStreams(queryClient, scope);
+    return;
+  }
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, subtree, scope]);
+}
+
+function invalidateGraphGenerationSubtrees(
+  queryClient: QueryClient,
+  scope: string,
+): void {
+  for (const subtree of GRAPH_GENERATION_QUERY_SUBTREES) {
+    invalidateScopedQuerySubtree(queryClient, subtree, scope);
+  }
+}
+
 /**
- * Invalidate the reads a successful write/create makes stale: the open doc's
- * content entry (so the next read returns the new `blob_hash` + bytes), the whole
- * `graph` subtree (a body/frontmatter change can shift edges/derivations), and the
- * scope's `vault-tree` (frontmatter dates/tags feed the tree row). Centralized so
- * the three mutations stay consistent. A create additionally refreshes `filters`
- * (a new doc can introduce a new feature/doc-type facet).
+ * Invalidate every read surface a successful vault mutation can stale. A write or
+ * create changes the document bytes, the current graph generation, the vault/code
+ * tree projections, git dirty/change reads, and any graph-derived node/search
+ * projections. Centralizing the sweep keeps save/frontmatter/create enrolled in
+ * the same stack-managed refresh boundary.
  */
-function invalidateAfterWrite(
-  queryClient: ReturnType<typeof useQueryClient>,
+export function invalidateAfterVaultMutation(
+  queryClient: QueryClient,
   scope: string | null,
   nodeId?: string,
 ): void {
@@ -1430,10 +3375,46 @@ function invalidateAfterWrite(
       queryKey: engineKeys.content(scope, nodeId),
     });
   }
-  void queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
+
+  void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  void queryClient.invalidateQueries({ queryKey: engineKeys.map() });
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "search"]);
+
   if (scope !== null) {
-    void queryClient.invalidateQueries({ queryKey: engineKeys.vaultTree(scope) });
+    invalidateGraphGenerationSubtrees(queryClient, scope);
+    void queryClient.invalidateQueries({ queryKey: engineKeys.gitChanges(scope) });
+    invalidateQueryPrefix(queryClient, [...engineKeys.all, "file-tree", scope]);
+    invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-diff", scope]);
   }
+}
+
+/**
+ * Invalidate graph-generation projections after an external watcher rebuild or
+ * graph stream recovery. This is narrower than a local vault mutation because it
+ * does not imply a local git/status write, but the graph-derived readers must all
+ * re-read from the new generation rather than keeping stale node/tree/facet
+ * projections.
+ */
+export function invalidateGraphGenerationReads(
+  queryClient: QueryClient,
+  scope: string,
+): void {
+  invalidateGraphGenerationSubtrees(queryClient, scope);
+}
+
+/**
+ * Backend `git` signal recovery invalidation. `/status` carries the dirty/ahead
+ * rollup, while `/ops/git/status|numstat|diff` and `/history` are separate scoped
+ * projections. A git stream frame means the rollup, per-scope git reads, and
+ * commit history may be stale, so refresh them from the same stores-owned
+ * recovery seam.
+ */
+export function invalidateGitRecoveryReads(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-changes"]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-diff"]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-histdiff"]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "history"]);
 }
 
 /**
@@ -1441,22 +3422,24 @@ function invalidateAfterWrite(
  * `OpsWriteResult` — a `conflict` (the optimistic blob-hash base went stale) or a
  * `refused` (a validation rejection) is a typed result the caller drives editor
  * state from, NOT a thrown error; only a transport fault rejects. On a `saved`
- * outcome the content / graph / vault-tree reads are invalidated so the next read
- * returns the new blob. The new `blob_hash` is echoed in the result for the caller
- * to adopt as the next optimistic-concurrency base.
+ * outcome the vault-mutation read surfaces are invalidated so the next read
+ * returns the new blob, graph generation, tree rows, git dirty/change state, and
+ * graph-derived projections. The new `blob_hash` is echoed in the result for the
+ * caller to adopt as the next optimistic-concurrency base.
  */
 export function useSaveBody() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: SaveBodyArgs) =>
       runWriteOp("set-body", {
+        scope: args.scope ?? undefined,
         ref: stemFromNodeId(args.nodeId),
         body: args.text,
         expected_blob_hash: args.baseBlobHash,
       }),
     onSuccess: ({ result }, args) => {
       if (result.kind === "saved") {
-        invalidateAfterWrite(queryClient, args.scope, args.nodeId);
+        invalidateAfterVaultMutation(queryClient, args.scope, args.nodeId);
       }
     },
   });
@@ -1478,13 +3461,14 @@ export interface SetFrontmatterArgs {
  * Same typed-result discipline as `useSaveBody` — a `conflict`/`refused` resolves
  * (never throws); a frontmatter validation refusal arrives as a `refused` carrying
  * the `checks` + `errors` so the editor explains the rejection without parsing
- * prose. Invalidates content / graph / vault-tree on a successful save.
+ * prose. Invalidates the shared vault-mutation read surfaces on a successful save.
  */
 export function useSetFrontmatter() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: SetFrontmatterArgs) =>
       runWriteOp("set-frontmatter", {
+        scope: args.scope ?? undefined,
         ref: stemFromNodeId(args.nodeId),
         expected_blob_hash: args.baseBlobHash,
         date: args.date,
@@ -1493,7 +3477,7 @@ export function useSetFrontmatter() {
       }),
     onSuccess: ({ result }, args) => {
       if (result.kind === "saved") {
-        invalidateAfterWrite(queryClient, args.scope, args.nodeId);
+        invalidateAfterVaultMutation(queryClient, args.scope, args.nodeId);
       }
     },
   });
@@ -1515,8 +3499,9 @@ export interface CreateDocArgs {
  * `result` is the typed `OpsWriteResult` (`created` on success, carrying the new
  * doc's `path` + `stem`; `refused` on a validation rejection) and `nodeId` is the
  * synthesized `doc:<stem>` id (null when the create was refused). On a `created`
- * outcome the scope's `vault-tree`, the whole `graph` subtree, and the scope's
- * `filters` vocabulary are invalidated (a new doc can introduce a new facet).
+ * outcome the same vault-mutation read surfaces are invalidated as a save (a new
+ * doc can introduce tree rows, graph nodes, filter facets, search hits, and git
+ * change entries).
  */
 export function useCreateDoc() {
   const queryClient = useQueryClient();
@@ -1533,6 +3518,7 @@ export function useCreateDoc() {
         verb: "create",
         mode: "create",
         body: {
+          scope: args.scope ?? undefined,
           doc_type: args.docType,
           feature: args.feature,
           title: args.title,
@@ -1544,14 +3530,8 @@ export function useCreateDoc() {
       return { result, tiers: ops.tiers, nodeId };
     },
     onSuccess: ({ result }, args) => {
-      if (result.kind === "created" && args.scope !== null) {
-        void queryClient.invalidateQueries({
-          queryKey: engineKeys.vaultTree(args.scope),
-        });
-        void queryClient.invalidateQueries({ queryKey: [...engineKeys.all, "graph"] });
-        void queryClient.invalidateQueries({
-          queryKey: engineKeys.filters(args.scope),
-        });
+      if (result.kind === "created") {
+        invalidateAfterVaultMutation(queryClient, args.scope);
       }
     },
   });
@@ -1695,7 +3675,12 @@ export function useLinkResolution(
   scope: string | null,
 ): LinkResolution[] {
   const content = useContentView(nodeId, scope);
-  const slice = useGraphSlice(scope, undefined, undefined, "document");
+  const slice = useGraphSlice(
+    nodeId === null ? null : scope,
+    undefined,
+    undefined,
+    "document",
+  );
   return deriveLinkResolution(nodeId, content.text, slice.data?.edges);
 }
 
@@ -1792,6 +3777,49 @@ export function useGitStatus(): GitStatusHookView {
   const status = useEngineStatus();
   const view = deriveGitStatusView(status.data, status.error, status.isPending);
   return { ...view, retry: () => void status.refetch() };
+}
+
+// --- vaultspec-core status (status rollup) ------------------------------------------
+//
+// The core rollup is app chrome; it consumes interpreted status through this stores
+// selector and never inspects `status.core` directly (dashboard-layer-ownership).
+// The `/status` snapshot carries `core: { reachable, vault_health? }` when the
+// engine can report core health. Missing/unreachable core is a designed down state;
+// a tiers-less transport fault is the errored branch.
+
+export interface CoreStatusView {
+  /** The status snapshot is in flight with no held core data. */
+  loading: boolean;
+  /** A genuine transport failure (no tiers-bearing envelope). */
+  errored: boolean;
+  /** Whether vaultspec-core is reachable according to the served status rollup. */
+  reachable: boolean;
+  /** The forwarded core vault health word, when present. */
+  vaultHealth?: string;
+}
+
+export function deriveCoreStatusView(
+  data: EngineStatus | undefined,
+  error: unknown,
+  pending: boolean,
+): CoreStatusView {
+  if (data?.core) {
+    return {
+      loading: false,
+      errored: false,
+      reachable: data.core.reachable,
+      vaultHealth: data.core.vault_health,
+    };
+  }
+  if (error) {
+    return { loading: false, errored: true, reachable: false };
+  }
+  return { loading: pending, errored: false, reachable: false };
+}
+
+export function useCoreStatus(): CoreStatusView {
+  const status = useEngineStatus();
+  return deriveCoreStatusView(status.data, status.error, status.isPending);
 }
 
 // --- location anchor (status-overview ADR: "Where are we?") -------------------------
@@ -2000,6 +4028,34 @@ export function useRagStatus(): RagStatusView {
   return deriveRagStatusView(status.data, status.error, status.isPending);
 }
 
+export interface StatusRollupView {
+  engineUnreachable: boolean;
+  degradations: string[];
+  git: GitStatusHookView;
+  core: CoreStatusView;
+  rag: RagStatusView;
+}
+
+/**
+ * Stores selector for the NowStrip status rollup. The chrome reads one
+ * interpreted view instead of mixing raw `/status` query state with derived
+ * git/core/rag selectors, so engine-unreachable and degraded-backend copy are
+ * decided in the stores layer with the rest of the status truth.
+ */
+export function useStatusRollup(): StatusRollupView {
+  const status = useEngineStatus();
+  return {
+    engineUnreachable: status.isError,
+    degradations: status.data?.degradations ?? [],
+    git: {
+      ...deriveGitStatusView(status.data, status.error, status.isPending),
+      retry: () => void status.refetch(),
+    },
+    core: deriveCoreStatusView(status.data, status.error, status.isPending),
+    rag: deriveRagStatusView(status.data, status.error, status.isPending),
+  };
+}
+
 // --- work pillar availability (dashboard-activity-rail ADR) ---------------------------
 //
 // The right-rail `work` tab is the in-flight pipeline pillar: the active ADRs and
@@ -2122,11 +4178,11 @@ export function usePipelineStatus(scope: string | null, asOf?: string | number) 
  * row is expanded (`planId === null` means collapsed), following the `useNodeNeighbors`
  * enabled-on-id pattern so the interior is fetched lazily, never for every row.
  */
-export function usePlanInterior(planId: string | null) {
+export function usePlanInterior(planId: string | null, scope: string | null) {
   return useQuery({
-    queryKey: engineKeys.planInterior(planId ?? ""),
-    queryFn: () => engineClient.planInterior(planId!),
-    enabled: planId !== null,
+    queryKey: engineKeys.planInterior(scope ?? "", planId ?? ""),
+    queryFn: () => engineClient.planInterior(planId!, scope!),
+    enabled: scope !== null && planId !== null,
   });
 }
 
@@ -2142,6 +4198,18 @@ export interface PipelineStatusView extends TierAvailability {
   loading: boolean;
   /** The in-flight artifacts (active plans + in-flight ADRs); empty while degraded. */
   artifacts: PipelineArtifact[];
+  /** Plan artifacts, split once in the stores layer for right-rail work surfaces. */
+  plans: PipelineArtifact[];
+  /** ADR artifacts, split once in the stores layer for right-rail work surfaces. */
+  adrs: PipelineArtifact[];
+  /** Plan node ids for expansion-store enrollment. */
+  planIds: string[];
+  /** Occupied pipeline phases for the compact pipeline arc. */
+  occupiedPhases: ReadonlySet<string>;
+  /** Count of renderable in-flight artifacts. */
+  count: number;
+  /** Polite live-region text for the pipeline surface state. */
+  liveMessage: string;
 }
 
 // The pipeline projection is resolved by the engine's STRUCTURAL read of the vault
@@ -2165,12 +4233,30 @@ export function derivePipelineStatusView(
   loading: boolean,
 ): PipelineStatusView {
   const availability = readTierAvailability(tiers, PIPELINE_STATUS_TIERS);
+  const trustedArtifacts = availability.degraded ? [] : artifacts;
+  const plans = trustedArtifacts.filter((artifact) => artifact.doc_type === "plan");
+  const adrs = trustedArtifacts.filter((artifact) => artifact.doc_type === "adr");
+  const count = trustedArtifacts.length;
   return {
     loading,
     ...availability,
     // While degraded the projection cannot be trusted, so do not render a stale list as
     // current in-flight work; the surface shows the degraded notice instead.
-    artifacts: availability.degraded ? [] : artifacts,
+    artifacts: trustedArtifacts,
+    plans,
+    adrs,
+    planIds: plans.map((plan) => plan.node_id),
+    occupiedPhases: new Set(
+      trustedArtifacts.map((artifact) => artifact.phase as string),
+    ),
+    count,
+    liveMessage: availability.degraded
+      ? "pipeline status unavailable"
+      : loading
+        ? "loading in-flight work"
+        : count === 0
+          ? "no in-flight work"
+          : `${count} in-flight item${count === 1 ? "" : "s"}`,
   };
 }
 
@@ -2306,8 +4392,11 @@ export function derivePlanInteriorView(
  * the view is the inert empty state. The Work step tree renders rolled-up completion and
  * honest truncation directly from this, never the raw interior response.
  */
-export function usePlanInteriorView(planId: string | null): PlanInteriorView {
-  const query = usePlanInterior(planId);
+export function usePlanInteriorView(
+  planId: string | null,
+  scope: string | null,
+): PlanInteriorView {
+  const query = usePlanInterior(planId, scope);
   return derivePlanInteriorView(
     query.data?.interior,
     planId !== null && query.isPending,
@@ -2327,12 +4416,10 @@ export type OpsOutcome = "ok" | "backend-down" | "failed";
  * transport fault, which is a plain failure. A resolved-but-not-ok envelope is
  * also a plain failure. The chrome renders the returned kind, not the block.
  */
-export function classifyOpsOutcome(result: {
-  ok: boolean;
-  error?: unknown;
-  tiers?: TiersBlock;
-}): OpsOutcome {
-  if (result.error !== undefined) {
+export function classifyOpsOutcome(
+  result: Pick<OpsResult, "ok" | "tiers"> | { error: unknown },
+): OpsOutcome {
+  if ("error" in result) {
     return result.error instanceof EngineError && result.error.tiers !== undefined
       ? "backend-down"
       : "failed";
@@ -2341,10 +4428,43 @@ export function classifyOpsOutcome(result: {
   // `tiers` block rather than a 502 (rag-control-plane ADR D2: degradation is
   // read from tiers, not an error status). Read that truth here so a rag-down
   // op still surfaces as backend-down, not a flat failure.
-  if (result.tiers && readTierAvailability(result.tiers, ["semantic"]).degraded) {
+  if (readTierAvailability(result.tiers, ["semantic"]).degraded) {
     return "backend-down";
   }
   return result.ok ? "ok" : "failed";
+}
+
+export interface OpsReceipt {
+  verb: string;
+  tone: "ok" | "failed" | "down";
+  text: string;
+}
+
+function opsReceiptForOutcome(
+  verb: string,
+  outcome: OpsOutcome,
+  failureText = "failed",
+): OpsReceipt {
+  if (outcome === "ok") return { verb, tone: "ok", text: "ok" };
+  if (outcome === "backend-down") {
+    return { verb, tone: "down", text: "rag is down — start it first" };
+  }
+  return { verb, tone: "failed", text: failureText };
+}
+
+export function opsReceiptFromResult(
+  verb: string,
+  result: Pick<OpsResult, "ok" | "tiers">,
+): OpsReceipt {
+  return opsReceiptForOutcome(verb, classifyOpsOutcome(result));
+}
+
+export function opsReceiptFromError(verb: string, error: unknown): OpsReceipt {
+  return opsReceiptForOutcome(
+    verb,
+    classifyOpsOutcome({ error }),
+    error instanceof Error ? error.message : "failed",
+  );
 }
 
 // The `git` working-tree reads degrade off the PRESENCE of the git rollup in the
@@ -2365,6 +4485,172 @@ export interface ChangedFilesView {
   errored: boolean;
   /** One entry per changed file, status-grouped + numstat-reconciled. */
   files: ChangedFile[];
+  /** Non-vault changed files, for source/diff surfaces. */
+  codeFiles: ChangedFile[];
+  /** Vault document changes, for document-reader surfaces. */
+  documents: ChangedFile[];
+  /** Summary counts/totals for the Changes tab header. */
+  summary: {
+    files: number;
+    documents: number;
+    additions: number;
+    deletions: number;
+    total: number;
+  };
+}
+
+export type ChangedDocumentCategory =
+  | "adr"
+  | "audit"
+  | "exec"
+  | "index"
+  | "plan"
+  | "research";
+
+export interface ChangedSourceFileRow {
+  path: string;
+  basename: string;
+  nodeId: string;
+  group: ChangedFile["group"];
+  adds: number | null;
+  dels: number | null;
+}
+
+export interface ChangedDocumentRow {
+  path: string;
+  title: string;
+  nodeId: string;
+  category?: ChangedDocumentCategory;
+}
+
+const CHANGED_DOCUMENT_CATEGORY: Record<string, ChangedDocumentCategory> = {
+  research: "research",
+  adr: "adr",
+  plan: "plan",
+  exec: "exec",
+  audit: "audit",
+  index: "index",
+};
+
+function fileBasename(path: string): string {
+  return path.split(/[/\\]/).pop() ?? path;
+}
+
+function changedDocumentType(path: string): string | null {
+  const match = /(?:^|\/)\.vault\/([^/]+)\//.exec(path);
+  return match ? (match[1] ?? null) : null;
+}
+
+function changedDocumentTitle(path: string): string {
+  let stem = stemFromPath(path).replace(/^\d{4}-\d{2}-\d{2}-/, "");
+  const parts = stem.split("-");
+  const suffix = parts[parts.length - 1];
+  if (
+    suffix !== undefined &&
+    [
+      "research",
+      "adr",
+      "plan",
+      "exec",
+      "audit",
+      "reference",
+      "index",
+      "rule",
+      "summary",
+    ].includes(suffix)
+  ) {
+    parts.pop();
+  }
+  stem = parts.join(" ").trim();
+  if (stem.length === 0) return stemFromPath(path);
+  return stem.charAt(0).toUpperCase() + stem.slice(1);
+}
+
+function changedFileRow(file: ChangedFile): ChangedSourceFileRow {
+  return {
+    path: file.path,
+    basename: fileBasename(file.path),
+    nodeId: codeNodeIdFromPath(file.path),
+    group: file.group,
+    adds: file.adds,
+    dels: file.dels,
+  };
+}
+
+function changedDocumentRow(file: ChangedFile): ChangedDocumentRow {
+  const docType = changedDocumentType(file.path);
+  const category = docType === null ? undefined : CHANGED_DOCUMENT_CATEGORY[docType];
+  return {
+    path: file.path,
+    title: changedDocumentTitle(file.path),
+    nodeId: docNodeIdFromStem(stemFromPath(file.path)),
+    ...(category ? { category } : {}),
+  };
+}
+
+export function deriveChangedFilesView(
+  files: ChangedFile[] | undefined,
+  loading: boolean,
+  errored: boolean,
+  available = true,
+): ChangedFilesView {
+  const entries = available ? (files ?? []) : [];
+  const codeFiles = entries.filter((file) => !file.vault);
+  const documents = entries.filter((file) => file.vault);
+  return {
+    loading: available && loading,
+    errored: available && errored,
+    files: entries,
+    codeFiles,
+    documents,
+    summary: {
+      files: codeFiles.length,
+      documents: documents.length,
+      additions: entries.reduce((n, file) => n + (file.adds ?? 0), 0),
+      deletions: entries.reduce((n, file) => n + (file.dels ?? 0), 0),
+      total: entries.length,
+    },
+  };
+}
+
+const EMPTY_CHANGED_FILES_SUMMARY: ChangedFilesView["summary"] = {
+  files: 0,
+  documents: 0,
+  additions: 0,
+  deletions: 0,
+  total: 0,
+};
+
+export interface ChangesOverviewView {
+  loading: boolean;
+  degraded: boolean;
+  errored: boolean;
+  clean: boolean;
+  hasChanges: boolean;
+  files: ChangedSourceFileRow[];
+  documents: ChangedDocumentRow[];
+  summary: ChangedFilesView["summary"];
+  retry: () => void;
+}
+
+export function deriveChangesOverviewView(
+  git: GitStatusHookView,
+  changed: ChangedFilesView,
+): ChangesOverviewView {
+  const gitAvailable = git.git !== undefined;
+  const summary = gitAvailable ? changed.summary : EMPTY_CHANGED_FILES_SUMMARY;
+  const hasChanges = gitAvailable && summary.total > 0;
+  return {
+    loading: (git.loading || changed.loading) && !hasChanges,
+    degraded: git.degraded && !hasChanges,
+    errored: (git.errored || changed.errored) && !hasChanges,
+    clean: gitAvailable && !git.loading && !changed.loading && !hasChanges,
+    hasChanges,
+    files: gitAvailable ? changed.codeFiles.map(changedFileRow) : [],
+    documents: gitAvailable ? changed.documents.map(changedDocumentRow) : [],
+    summary,
+    retry: git.retry,
+  };
 }
 
 /**
@@ -2376,15 +4662,17 @@ export interface ChangedFilesView {
  * engine reports no repository state). A `git` SSE chunk refreshing `/status`
  * re-gates this query through the `useGitStatus` dependency.
  */
-export function useChangedFiles(scope: string | null): ChangedFilesView {
-  const git = useGitStatus();
+function useChangedFilesForGit(
+  scope: string | null,
+  git: Pick<GitStatusHookView, "git">,
+): ChangedFilesView {
   const enabled = scope !== null && CHANGED_FILES_LIST_SERVED && git.git !== undefined;
   const query = useQuery({
     queryKey: engineKeys.gitChanges(scope ?? ""),
     queryFn: async () => {
       const [status, numstat] = await Promise.all([
-        engineClient.opsGit("status"),
-        engineClient.opsGit("numstat"),
+        engineClient.opsGit("status", { scope: scope! }),
+        engineClient.opsGit("numstat", { scope: scope! }),
       ]);
       return mergeNumstat(
         parseGitStatus(status.output),
@@ -2393,11 +4681,23 @@ export function useChangedFiles(scope: string | null): ChangedFilesView {
     },
     enabled,
   });
-  return {
-    loading: enabled && query.isPending,
-    errored: query.isError,
-    files: query.data ?? [],
-  };
+  return deriveChangedFilesView(
+    query.data,
+    enabled && query.isPending,
+    query.isError,
+    enabled,
+  );
+}
+
+export function useChangedFiles(scope: string | null): ChangedFilesView {
+  const git = useGitStatus();
+  return useChangedFilesForGit(scope, git);
+}
+
+export function useChangesOverview(scope: string | null): ChangesOverviewView {
+  const git = useGitStatus();
+  const changed = useChangedFilesForGit(scope, git);
+  return deriveChangesOverviewView(git, changed);
 }
 
 /**
@@ -2417,32 +4717,106 @@ export interface GitFileDiffView {
   diff?: GitFileDiff;
 }
 
+export function deriveGitFileDiffView(
+  diff: GitFileDiff | undefined,
+  loading: boolean,
+  errored: boolean,
+  available = true,
+): GitFileDiffView {
+  return {
+    loading: available && loading,
+    errored: available && errored,
+    diff: available ? diff : undefined,
+  };
+}
+
 /**
  * Stores selector for a changed file's read-only diff. Fetches the unified diff
- * for the path through `client.opsGit("diff", { path })` and parses it into the
- * hunk-by-hunk `GitFileDiff` shape. Disabled until a file path is selected (and a
- * scope is resolved): a closed diff view fires no query. The optional `status`
- * letter is threaded onto the parsed diff for the in-body status mark.
+ * for the path through `client.opsGit("diff", { scope, path })` and parses it
+ * into the hunk-by-hunk `GitFileDiff` shape. Disabled until a file path is
+ * selected, a scope is resolved, AND the status snapshot carries git state: a
+ * closed diff view or no-repository degraded state fires no doomed query. The
+ * optional `status` letter is threaded onto the parsed diff for the in-body
+ * status mark.
  */
 export function useGitFileDiff(
   scope: string | null,
   path: string | null,
   status?: string,
 ): GitFileDiffView {
-  const enabled = scope !== null && path !== null && GIT_DIFF_CAPABILITY_SERVED;
+  const git = useGitStatus();
+  const enabled =
+    scope !== null &&
+    path !== null &&
+    GIT_DIFF_CAPABILITY_SERVED &&
+    git.git !== undefined;
   const query = useQuery({
     queryKey: engineKeys.gitDiff(scope ?? "", path ?? ""),
     queryFn: async () => {
-      const op = await engineClient.opsGit("diff", { path: path! });
+      const op = await engineClient.opsGit("diff", {
+        scope: scope!,
+        path: path!,
+      });
       return parseUnifiedDiff(op.output, path!, status);
     },
     enabled,
   });
-  return {
-    loading: enabled && query.isPending,
-    errored: query.isError,
-    diff: query.data,
-  };
+  return deriveGitFileDiffView(
+    query.data,
+    enabled && query.isPending,
+    query.isError,
+    enabled,
+  );
+}
+
+/**
+ * Stores selector for a bounded historical text diff. This is the same parsed
+ * `GitFileDiff` body that `DiffView` renders for working-tree diffs, but keyed by
+ * both revisions so time-travel / history consumers cannot collapse distinct
+ * two-rev reads into the live working-tree diff cache entry.
+ */
+export function useGitHistoricalFileDiff(
+  scope: string | null,
+  path: string | null,
+  from: string | null,
+  to: string | null,
+  status?: string,
+): GitFileDiffView {
+  const git = useGitStatus();
+  const enabled =
+    scope !== null &&
+    path !== null &&
+    path.length > 0 &&
+    from !== null &&
+    from.length > 0 &&
+    to !== null &&
+    to.length > 0 &&
+    GIT_DIFF_CAPABILITY_SERVED &&
+    git.git !== undefined;
+  const query = useQuery({
+    queryKey: engineKeys.gitHistoricalDiff(
+      scope ?? "",
+      path ?? "",
+      from ?? "",
+      to ?? "",
+    ),
+    queryFn: async () => {
+      const op = await engineClient.opsGit("histdiff", {
+        scope: scope!,
+        path: path!,
+        from: from!,
+        to: to!,
+      });
+      return parseUnifiedDiff(op.output, path!, status);
+    },
+    enabled,
+  });
+  return deriveGitFileDiffView(
+    query.data,
+    enabled && query.isPending,
+    query.isError,
+    enabled,
+  );
 }
 
 // --- SSE consumption (§7) -------------------------------------------------------------
@@ -2619,4 +4993,59 @@ export const BACKEND_SIGNAL_CHANNELS = ["backends", "git"] as const;
  */
 export function useBackendSignalStream() {
   return useEngineStream(BACKEND_SIGNAL_CHANNELS);
+}
+
+/**
+ * Stable signature of the latest retained backend/git signal values. This is
+ * value-based, not length-based, because the stream accumulator is ring-capped:
+ * once the retained array reaches STREAM_RETENTION its length stops changing even
+ * though backend/git values keep changing.
+ */
+export function latestBackendSignalSignature(
+  chunks: readonly StreamChunk[] | undefined,
+): string | undefined {
+  if (!chunks) return undefined;
+  let backends: string | undefined;
+  let git: string | undefined;
+  for (
+    let i = chunks.length - 1;
+    i >= 0 && (backends === undefined || git === undefined);
+    i--
+  ) {
+    const chunk = chunks[i];
+    if (chunk.channel === "backends" && backends === undefined) {
+      backends = stableKey(chunk.data);
+    } else if (chunk.channel === "git" && git === undefined) {
+      git = stableKey(chunk.data);
+    }
+  }
+  if (backends === undefined && git === undefined) return undefined;
+  return `backends:${backends ?? ""}|git:${git ?? ""}`;
+}
+
+/**
+ * Stores-owned status recovery invalidation. Backend/git SSE frames are deltas;
+ * `/status` is the recovery snapshot. Consumers call this hook instead of
+ * manipulating the status query cache directly from app chrome.
+ */
+export function useStatusRecoveryRefresh(): void {
+  const queryClient = useQueryClient();
+  const stream = useBackendSignalStream();
+  const previous = useRef<string | undefined>(undefined);
+  const invalidateStatus = useMemo(
+    () =>
+      debounce(() => {
+        invalidateGitRecoveryReads(queryClient);
+      }, 150),
+    [queryClient],
+  );
+
+  useEffect(() => () => invalidateStatus.cancel(), [invalidateStatus]);
+  useEffect(() => {
+    const signature = latestBackendSignalSignature(stream.data);
+    if (signature === undefined) return;
+    const prior = previous.current;
+    previous.current = signature;
+    if (prior !== signature) invalidateStatus();
+  }, [stream.data, invalidateStatus]);
 }

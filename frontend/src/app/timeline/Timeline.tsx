@@ -35,24 +35,38 @@
 // board (figma-is-the-binding-source-of-truth). The lane TOKENS and per-phase
 // visibility keys are unchanged data identity; the grouping is purely visual.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
 import {
   DEFAULT_PX_PER_MS,
   fitTimelineViewportForScope,
+  setTimelineScrollOffset,
+  setTimelineViewport,
   setTimelineViewportWidth,
+  timelineCorpusFitKey,
+  useTimelineAutoFittedCorpusKey,
   useTimelineAutoFittedScope,
   useTimelineLaneVisibility,
   useTimelineScrollState,
 } from "../../stores/view/timeline";
-import { useDashboardStateMutations } from "../../stores/server/dashboardState";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import {
   useActiveScope,
+  useDashboardDateRangeView,
   useFiltersVocabularyView,
   useTimelineLineageView,
 } from "../../stores/server/queries";
+import { setHoveredNodeId } from "../../stores/view/selection";
 import { useElementHeight, useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
 import { categoryColorVar, type Category, type CategoryToken } from "../kit/category";
@@ -80,9 +94,11 @@ import {
 import {
   TIMELINE_ORIGIN_MS,
   clampPxPerMs,
+  panScrollOffset,
   timeToStripX,
   timeToX,
   visibleRange,
+  zoomAt,
 } from "./scrollStrip";
 import { lineageToTemporalScene, type TemporalSceneResult } from "./temporalScene";
 
@@ -136,9 +152,21 @@ export { PHASE_LANES, type PhaseLane };
 const GROUP_LABEL_W = 124;
 const GRAPH_RIGHT_PAD = 12;
 /** The x of the lane-group label text in the rail gutter. */
-const LANE_LABEL_X = 11;
+const LANE_LABEL_X = 12;
 /** Virtualization margin (px) so a mark partly off-screen stays drawn. */
 const VIRTUAL_MARGIN_PX = 120;
+const WHEEL_ZOOM_FACTOR = 1.0018;
+const KEY_PAN_FRACTION = 0.18;
+const KEY_ZOOM_FACTOR = 1.2;
+
+function isTimelineGestureTarget(target: EventTarget | null): boolean {
+  const element = target instanceof HTMLElement ? target : null;
+  return Boolean(
+    element?.closest(
+      "button,a,input,textarea,select,[role='slider'],[data-playhead-grip],[data-range-band],[data-timeline-dot]",
+    ),
+  );
+}
 
 // Lollipop mark geometry (binding board 239:714): each dated document is a colored
 // DOT on a thin STEM connecting to a single central axis — design marks rise ABOVE
@@ -283,6 +311,56 @@ function compactDayLabel(iso: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return iso.slice(0, 10);
   return new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export interface TimelineTimeWindow {
+  fromMs: number;
+  toMs: number;
+}
+
+export interface TimelineBoundedWindow extends TimelineTimeWindow {
+  empty: boolean;
+}
+
+function orderedTimelineWindow(window: TimelineTimeWindow): TimelineTimeWindow {
+  return window.fromMs <= window.toMs
+    ? window
+    : { fromMs: window.toMs, toMs: window.fromMs };
+}
+
+function finiteCorpusWindow(
+  bounds: { from?: string; to?: string } | undefined,
+): TimelineTimeWindow | null {
+  const fromMs = bounds?.from ? Date.parse(bounds.from) : NaN;
+  const toMs = bounds?.to ? Date.parse(bounds.to) : NaN;
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+    return null;
+  }
+  return { fromMs, toMs };
+}
+
+export function intersectTimelineWindows(
+  a: TimelineTimeWindow,
+  b: TimelineTimeWindow,
+): TimelineBoundedWindow {
+  const left = orderedTimelineWindow(a);
+  const right = orderedTimelineWindow(b);
+  const fromMs = Math.max(left.fromMs, right.fromMs);
+  const toMs = Math.min(left.toMs, right.toMs);
+  return fromMs <= toMs
+    ? { fromMs, toMs, empty: false }
+    : { fromMs, toMs: fromMs, empty: true };
+}
+
+export function timelineQueryWindow(
+  viewportRange: TimelineTimeWindow,
+  cropWindow: TimelineTimeWindow,
+  corpusBounds: { from?: string; to?: string } | undefined,
+): TimelineBoundedWindow {
+  const cropped = intersectTimelineWindows(viewportRange, cropWindow);
+  if (cropped.empty) return cropped;
+  const corpus = finiteCorpusWindow(corpusBounds);
+  return corpus ? intersectTimelineWindows(cropped, corpus) : cropped;
 }
 
 export function temporalFieldLegendItems(
@@ -497,26 +575,43 @@ function TemporalFieldLegend({
   visibleWindow: { fromMs: number; toMs: number };
 }) {
   const items = temporalFieldLegendItems(sceneData, visibleWindow);
+  const slots: Record<string, { labelX: number; valueX: number; width: number }> = {
+    range: { labelX: 0, valueX: 30, width: 103 },
+    docs: { labelX: 114, valueX: 140, width: 74 },
+    days: { labelX: 174, valueX: 200, width: 42 },
+    busiest: { labelX: 214, valueX: 272, width: 150 },
+  };
   return (
     <div
-      className="pointer-events-none flex shrink-0 flex-wrap items-start gap-x-[10px] gap-y-0 whitespace-nowrap text-caption leading-[12px] text-ink-muted"
+      className="pointer-events-none relative h-[12px] w-full shrink-0 whitespace-nowrap text-[10px] leading-[12px] text-ink-muted"
       role="list"
       aria-label="timeline field legend"
       data-timeline-field-legend
     >
-      {items.map((item) => (
-        <span
-          key={item.key}
-          className="inline-flex items-center gap-[2px]"
-          role="listitem"
-          data-timeline-legend-role={item.key}
-        >
-          <span className="text-ink-faint">{item.label}</span>
-          <span data-tabular className="font-semibold text-ink">
-            {item.value}
+      {items.map((item) => {
+        const slot = slots[item.key];
+        if (!slot) return null;
+        return (
+          <span
+            key={item.key}
+            className="absolute top-0 block h-[12px]"
+            style={{ left: `${slot.labelX}px`, width: `${slot.width}px` }}
+            role="listitem"
+            data-timeline-legend-role={item.key}
+          >
+            <span className="absolute top-0 text-ink-muted" style={{ left: 0 }}>
+              {item.label}
+            </span>
+            <span
+              data-tabular
+              className="absolute top-0 font-semibold text-ink"
+              style={{ left: `${slot.valueX - slot.labelX}px` }}
+            >
+              {item.value}
+            </span>
           </span>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -635,7 +730,7 @@ function TimelineMonthAxis({
       {labels.map((item) => (
         <span
           key={item.key}
-          className="absolute top-[2px] whitespace-nowrap text-caption font-normal text-ink-faint"
+          className="absolute top-[2px] whitespace-nowrap text-caption font-normal text-ink-muted"
           style={{ left: `${item.x}px` }}
         >
           {item.label}
@@ -800,10 +895,12 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const scope = useActiveScope();
   const { pxPerMs, scrollOffset } = useTimelineScrollState();
   const laneVisibility = useTimelineLaneVisibility();
-  const dashboardMutations = useDashboardStateMutations(scope);
   const hostRef = useRef<HTMLDivElement>(null);
-  const setDashboardHoverRef = useRef(dashboardMutations.setHover);
-  setDashboardHoverRef.current = dashboardMutations.setHover;
+  const panRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startScrollOffset: number;
+  } | null>(null);
   const width = useElementWidth(hostRef) ?? 800;
   // The chart area (the lineage canvas above the navigator band) drives the
   // dot-pack geometry: the axis sits at its vertical center and each lane's stack
@@ -817,13 +914,9 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     setTimelineViewportWidth(width);
   }, [width]);
 
-  const setHoverIntent = useCallback(
-    (hoveredId: string | null) => {
-      if (!scope) return;
-      void setDashboardHoverRef.current(hoveredId).catch(() => undefined);
-    },
-    [scope],
-  );
+  const setHoverIntent = useCallback((hoveredId: string | null) => {
+    setHoveredNodeId(hoveredId);
+  }, []);
 
   // Auto-fit the corpus into view on first load and on scope change, so the
   // timeline SHOWS its data by default. The scroll-strip origin is the epoch, so
@@ -832,13 +925,144 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   // nothing regardless of data" defect. The engine-enumerated corpus date bounds
   // (`/filters`, independent of the range-bounded lineage fetch, so no empty-
   // range deadlock) give the span to fit. Runs ONCE per scope: after the initial
-  // fit the user's scroll/zoom is respected; a new scope re-fits its own corpus.
+  // fit the user's scroll/zoom is respected until the source corpus bounds change;
+  // a new scope or new bounds re-fits its own corpus.
   const vocabulary = useFiltersVocabularyView(scope);
   const corpusBounds = vocabulary.dateBounds;
+  const zoomAround = useCallback(
+    (cursorX: number, factor: number) => {
+      const next = zoomAt(pxPerMs, scrollOffset, cursorX, factor);
+      setTimelineViewport(next.pxPerMs, next.scrollOffset);
+    },
+    [pxPerMs, scrollOffset],
+  );
+  const panBy = useCallback(
+    (deltaPx: number) => {
+      setTimelineScrollOffset(panScrollOffset(scrollOffset, deltaPx));
+    },
+    [scrollOffset],
+  );
+  const jumpToCorpusEdge = useCallback(
+    (edge: "start" | "end") => {
+      const raw =
+        edge === "start"
+          ? corpusBounds?.from
+            ? Date.parse(corpusBounds.from)
+            : NaN
+          : corpusBounds?.to
+            ? Date.parse(corpusBounds.to)
+            : Date.now();
+      const tMs = Number.isFinite(raw) ? raw : Date.now();
+      const next =
+        edge === "start"
+          ? timeToStripX(tMs, TIMELINE_ORIGIN_MS, pxPerMs) - 24
+          : timeToStripX(tMs, TIMELINE_ORIGIN_MS, pxPerMs) - width + 24;
+      setTimelineScrollOffset(Math.max(0, next));
+    },
+    [corpusBounds?.from, corpusBounds?.to, pxPerMs, width],
+  );
+  const onTimelineWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const cursorX = event.clientX - rect.left;
+        zoomAround(cursorX, Math.pow(WHEEL_ZOOM_FACTOR, -event.deltaY));
+        return;
+      }
+      const dominantDelta =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      panBy(dominantDelta);
+    },
+    [panBy, zoomAround],
+  );
+  const onTimelinePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (
+        event.button !== 0 ||
+        event.shiftKey ||
+        isTimelineGestureTarget(event.target)
+      ) {
+        return;
+      }
+      panRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startScrollOffset: scrollOffset,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.focus();
+      event.preventDefault();
+    },
+    [scrollOffset],
+  );
+  const onTimelinePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const pan = panRef.current;
+      if (!pan || pan.pointerId !== event.pointerId) return;
+      setTimelineScrollOffset(
+        panScrollOffset(pan.startScrollOffset, pan.startX - event.clientX),
+      );
+    },
+    [],
+  );
+  const onTimelinePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const pan = panRef.current;
+      if (!pan || pan.pointerId !== event.pointerId) return;
+      panRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+    [],
+  );
+  const onTimelineKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (isTimelineGestureTarget(event.target)) return;
+      const panStep = width * KEY_PAN_FRACTION;
+      switch (event.key) {
+        case "ArrowLeft":
+          event.preventDefault();
+          panBy(-panStep);
+          break;
+        case "ArrowRight":
+          event.preventDefault();
+          panBy(panStep);
+          break;
+        case "Home":
+          event.preventDefault();
+          jumpToCorpusEdge("start");
+          break;
+        case "End":
+          event.preventDefault();
+          jumpToCorpusEdge("end");
+          break;
+        case "+":
+        case "=":
+          event.preventDefault();
+          zoomAround(width / 2, KEY_ZOOM_FACTOR);
+          break;
+        case "-":
+        case "_":
+          event.preventDefault();
+          zoomAround(width / 2, 1 / KEY_ZOOM_FACTOR);
+          break;
+        default:
+          break;
+      }
+    },
+    [jumpToCorpusEdge, panBy, width, zoomAround],
+  );
   const fittedScope = useTimelineAutoFittedScope();
+  const fittedCorpusKey = useTimelineAutoFittedCorpusKey();
+  const corpusFitKey = timelineCorpusFitKey(scope, corpusBounds);
+  const corpusFitSatisfied =
+    fittedCorpusKey === corpusFitKey ||
+    (fittedCorpusKey === null && fittedScope === scope);
   useEffect(() => {
     if (scope == null || width <= 0) return;
-    if (fittedScope === scope) return;
+    if (!corpusFitKey || corpusFitSatisfied) return;
     const fromMs = corpusBounds?.from ? Date.parse(corpusBounds.from) : NaN;
     if (!Number.isFinite(fromMs)) return; // wait for the bounds (or no dated corpus)
     const toRaw = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
@@ -847,16 +1071,22 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     const usable = Math.max(1, width - inset * 2);
     const px = clampPxPerMs(usable / Math.max(1, toMs - fromMs));
     const offset = Math.max(0, timeToStripX(fromMs, TIMELINE_ORIGIN_MS, px) - inset);
-    fitTimelineViewportForScope(scope, px, offset);
-  }, [scope, corpusBounds?.from, corpusBounds?.to, width, fittedScope]);
+    fitTimelineViewportForScope(scope, px, offset, corpusFitKey);
+  }, [
+    scope,
+    corpusBounds?.from,
+    corpusBounds?.to,
+    width,
+    corpusFitKey,
+    corpusFitSatisfied,
+  ]);
   // While the corpus auto-fit is still pending (the vocabulary bounds are loading,
   // or they are known but not yet applied for this scope), the default scroll
   // viewport has NOT been positioned onto the data. Suppress the "no lineage" empty
   // state during that interval so the surface never flashes a false "no data" before
   // the fit lands — show the loading scaffold instead. Once bounds are absent (a
   // genuinely undated corpus) or the fit has applied, the real empty state shows.
-  const autoFitPending =
-    vocabulary.loading || (!!corpusBounds?.from && fittedScope !== scope);
+  const autoFitPending = vocabulary.loading || (!!corpusFitKey && !corpusFitSatisfied);
 
   // Degradation truth, pre-derived from the stores layer (ADR "States"): never
   // read from a transport error, never the raw `tiers` block. The RECONNECTING
@@ -868,7 +1098,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
 
   // The visible time range for the current scroll position (virtualized + margin)
   // bounds the read at any corpus age (graph-queries-are-bounded-by-default).
-  const range = useMemo(
+  const viewportRange = useMemo(
     () => visibleRange(scrollOffset, width, pxPerMs, VIRTUAL_MARGIN_PX),
     [scrollOffset, width, pxPerMs],
   );
@@ -876,16 +1106,38 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     () => visibleRange(scrollOffset, width, pxPerMs, 0),
     [scrollOffset, width, pxPerMs],
   );
+  const dashboardWindow = useDashboardDateRangeView(scope, visibleWindow);
+  const cropWindow = useMemo(() => {
+    if (dashboardWindow.source === "dashboard") {
+      return orderedTimelineWindow(dashboardWindow);
+    }
+    const corpus = finiteCorpusWindow(corpusBounds);
+    return corpus ?? visibleWindow;
+  }, [
+    corpusBounds,
+    dashboardWindow.fromMs,
+    dashboardWindow.source,
+    dashboardWindow.toMs,
+    visibleWindow,
+  ]);
+  const range = useMemo(
+    () => timelineQueryWindow(viewportRange, cropWindow, corpusBounds),
+    [corpusBounds, cropWindow, viewportRange],
+  );
 
-  // The sole wire read: the bounded lineage slice for the scope + visible range.
-  // The playhead drives the stage time-travel ONLY; the timeline marks render the
-  // live in-range corpus and do NOT refetch per playhead instant. (The hook keeps
-  // its optional `asOf` param as a harmless capability; the UI just never drives
-  // it — no debounced per-playhead refetch storm.)
-  const lineage = useTimelineLineageView(scope, {
-    from: new Date(range.fromMs).toISOString(),
-    to: new Date(range.toMs).toISOString(),
-  });
+  // The sole wire read: the FULL bounded lineage set for the scope, fetched ONCE
+  // and held in memory. The viewport window and the start/end crop are NOT part of
+  // the query identity, so navigation (scroll/zoom) and setting the date range are
+  // CONTINUOUS in-memory windowing operations over this dataset (see `range` →
+  // `lineageToTemporalScene` and the dot virtualization), never a refetch — the
+  // internal state is never destroyed and reloaded as the window changes. The
+  // dataset reloads ONLY on a bespoke backend signal: a graph generation bump
+  // (the SSE delta clock invalidates the `lineage` subtree), and `placeholderData`
+  // keeps the prior set rendered across that refresh so the surface never blanks.
+  // (The playhead drives stage time-travel ONLY; the marks render the live corpus
+  // and never refetch per playhead instant — the hook keeps its `asOf` param as a
+  // harmless capability the timeline never drives.)
+  const lineage = useTimelineLineageView(scope);
 
   // A visual lane group is drawn when ANY of its phase tokens is visible. The
   // design lane stays on; the execution lane is toggled by the control bar's
@@ -896,7 +1148,10 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const { loading, errored, nodes, arcs } = lineage;
   const overviewInstants = useMemo(
     () =>
-      nodes.map(nodeInstant).filter((instant): instant is number => instant !== null),
+      nodes.flatMap((node) => {
+        const tMs = nodeInstant(node);
+        return tMs === null ? [] : [{ tMs, category: dotCategory(node) }];
+      }),
     [nodes],
   );
 
@@ -942,14 +1197,26 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   return (
     <div
       ref={hostRef}
-      className="relative flex h-full flex-col bg-accent-subtle pt-[2px] select-none"
+      className="relative flex h-full flex-col bg-paper pt-[2px] select-none"
       data-timeline
     >
       <TimelineMonthAxis visibleWindow={visibleWindow} width={width} />
       {/* The lineage chart fills the region above the navigator band; its measured
           height drives the dot-pack geometry. The playhead + range overlay are
           scoped to THIS area (not the navigator) so they never cover the scrubber. */}
-      <div ref={chartRef} className="relative min-h-0 flex-1 bg-paper">
+      <div
+        ref={chartRef}
+        className="relative min-h-0 flex-1 cursor-grab bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus active:cursor-grabbing"
+        role="region"
+        tabIndex={0}
+        aria-label="timeline viewport"
+        onWheel={onTimelineWheel}
+        onPointerDown={onTimelinePointerDown}
+        onPointerMove={onTimelinePointerMove}
+        onPointerUp={onTimelinePointerUp}
+        onPointerCancel={onTimelinePointerUp}
+        onKeyDown={onTimelineKeyDown}
+      >
         {!loading && !errored && hasMarks && (
           <TemporalGraphCanvas
             sceneData={temporalScene}
@@ -981,19 +1248,19 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
             execution stays a single line. Decorative; focusable controls are the
             dated marks. */}
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          {TIMELINE_LANE_GROUPS.map((group, i) => {
+          {TIMELINE_LANE_GROUPS.map((group) => {
             if (!groupVisible(group)) return null;
-            // Centre each label in its lane half, relative to the dynamic axis.
-            const cy =
-              i === 0
-                ? geom.axisY * 0.5
-                : geom.axisY + (chartHeight - geom.axisY) * 0.5;
+            // Binding AppShell 117:2 fixes the lane rail copy to the 100px chart
+            // grammar: design labels at y=78/90 and execution at y=142 in the
+            // 212px surface. Relative to the chart's y=66 band, those are top
+            // offsets 12 and 76, independent of the axis midpoint.
+            const top = group.id === "design" ? 12 : 76;
             return (
               <span
                 key={group.id}
                 data-lane-rail={group.id}
-                className="absolute flex -translate-y-1/2 flex-col whitespace-nowrap text-caption font-normal leading-[12px] text-ink-muted"
-                style={{ left: `${LANE_LABEL_X}px`, top: `${cy}px` }}
+                className="absolute flex flex-col whitespace-nowrap text-[9px] font-normal leading-[12px] text-ink-muted"
+                style={{ left: `${LANE_LABEL_X}px`, top: `${top}px` }}
               >
                 {laneGroupLabelLines(group).map((line) => (
                   <span key={line}>{line}</span>
@@ -1077,7 +1344,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
             !loading && !errored && hasMarks ? (
               <TemporalFieldLegend
                 sceneData={temporalScene}
-                visibleWindow={visibleWindow}
+                visibleWindow={cropWindow}
               />
             ) : null
           }
