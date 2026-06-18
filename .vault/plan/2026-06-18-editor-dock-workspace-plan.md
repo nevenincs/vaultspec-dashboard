@@ -142,10 +142,10 @@ Build the DockviewReact host with graph/markdown/code panels and the graph-right
 
 Mount the existing editor backend as a view/edit toggle with a PROPERTIES card, save through the core verbs, and live-verify the engine to core 0.1.32 round-trip while keeping code read-only.
 
-- [ ] `P05.S17` - Add the view and edit mode toggle to the markdown panel; `frontend/src/app/viewer/MarkdownReader.tsx`.
-- [ ] `P05.S18` - Build the raw-markdown editing surface bound to draftText with dirty tracking; `frontend/src/app/viewer/MarkdownEditor.tsx`.
-- [ ] `P05.S19` - Build the PROPERTIES card for tags, date, and related bound to the frontmatter write; `frontend/src/app/viewer/PropertiesCard.tsx`.
-- [ ] `P05.S20` - Wire save through the editor seam mapping the typed write result onto the status enum with conflict and refusal handling; `frontend/src/stores/server/editorMutations.ts`.
+- [x] `P05.S17` - Add the view and edit mode toggle to the markdown panel; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `P05.S18` - Build the raw-markdown editing surface bound to draftText with dirty tracking; `frontend/src/app/viewer/MarkdownEditor.tsx`.
+- [x] `P05.S19` - Build the PROPERTIES card for tags, date, and related bound to the frontmatter write; `frontend/src/app/viewer/PropertiesCard.tsx`.
+- [x] `P05.S20` - Wire save through the editor seam mapping the typed write result onto the status enum with conflict and refusal handling; `frontend/src/stores/server/editorMutations.ts`.
 - [ ] `P05.S21` - Live-verify the engine to core 0.1.32 write round-trip for save, conflict, and refusal against a fixture vault; `frontend/src/stores/server/editorMutations.test.ts`.
 - [ ] `P05.S22` - Restore the real write-seam tests trimmed during the mock-tautology removal; `frontend/src/stores/server/editorMutations.test.ts`.
 

@@ -21,7 +21,7 @@ import { closeDocTab } from "../../stores/view/tabs";
 import type { ViewerSurface } from "../../stores/view/viewStore";
 import { DocHeader } from "../right/DocHeader";
 import { CodeViewer } from "../viewer/CodeViewer";
-import { MarkdownReader } from "../viewer/MarkdownReader";
+import { MarkdownDocView } from "../viewer/MarkdownDocView";
 
 export interface DocPanelParams {
   /** The stable node id (`doc:<stem>` / `code:<path>`); also the panel id. */
@@ -55,7 +55,7 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
         <DocHeader {...headerProps} onClose={() => closeDocTab(nodeId)} />
       )}
       <div className="min-h-0 flex-1">
-        <MarkdownReader content={content} scope={scope} />
+        <MarkdownDocView nodeId={nodeId} content={content} scope={scope} />
       </div>
     </section>
   );
