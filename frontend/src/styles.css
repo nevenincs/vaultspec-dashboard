@@ -601,12 +601,13 @@
   /* The rendered markdown body: each element adopts its Reader role. A generous
      editorial measure, centred when the reader is wider than the measure. */
   .vs-markdown {
-    max-width: 46rem;
-    margin-inline: auto;
     color: var(--color-ink);
   }
   .vs-markdown > :first-child {
     margin-top: 0;
+  }
+  .vs-markdown > :last-child {
+    margin-bottom: 0;
   }
   .vs-markdown h1 {
     /* Reader/Title */
@@ -618,20 +619,27 @@
     margin-block: 0 var(--spacing-fg-4);
   }
   .vs-markdown h2 {
-    /* Reader/H2 */
+    /* Reader/H2 — airy editorial lead-in: generous space ABOVE a section heading
+       (more padding after the preceding paragraph) for an article-like rhythm. */
     font-family: var(--font-serif);
     font-size: 1.5rem;
     line-height: 1.18;
     font-weight: 600;
-    margin-block: var(--spacing-fg-6) var(--spacing-fg-2);
+    margin-block: 3.25rem var(--spacing-fg-2);
   }
   .vs-markdown h3 {
-    /* Reader/H3 */
+    /* Reader/H3 — airy lead-in when it follows a paragraph or block. */
     font-family: var(--font-serif);
     font-size: 1.0625rem;
     line-height: 1.28;
     font-weight: 600;
-    margin-block: var(--spacing-fg-4) var(--spacing-fg-1);
+    margin-block: 2.25rem var(--spacing-fg-1);
+  }
+  /* A subsection heading directly under its parent heading stays TIGHT (no airy
+     lead-in) — the air belongs after body/blocks, not between stacked headings. */
+  .vs-markdown h2 + h3,
+  .vs-markdown h3 + h4 {
+    margin-top: var(--spacing-fg-4);
   }
   .vs-markdown h4,
   .vs-markdown h5,
@@ -640,14 +648,14 @@
     font-size: var(--text-fg-body-strong);
     line-height: 1.4;
     font-weight: 600;
-    margin-block: var(--spacing-fg-4) var(--spacing-fg-1);
+    margin-block: 1.75rem var(--spacing-fg-1);
   }
   .vs-markdown p {
     /* Reader/Body */
     font-family: var(--font-sans);
     font-size: 0.96875rem;
     line-height: 1.56;
-    margin-block: var(--spacing-fg-3);
+    margin-block: var(--spacing-fg-4);
   }
   /* The lead paragraph (the first body paragraph) reads at the Reader/Lead step. */
   .vs-markdown > p:first-of-type {
@@ -655,39 +663,79 @@
   }
   .vs-markdown ul,
   .vs-markdown ol {
+    /* Reader list: custom accent marker, muted body, bold ink lead-in (board
+       265:894). list-style is dropped for a hand-placed accent bullet/number so
+       the marker color is the accent, not the ink default. */
     font-family: var(--font-sans);
     font-size: 0.96875rem;
     line-height: 1.56;
-    margin-block: var(--spacing-fg-3);
-    padding-inline-start: var(--spacing-fg-6);
-  }
-  .vs-markdown ul {
-    list-style: disc;
-  }
-  .vs-markdown ol {
-    list-style: decimal;
+    margin-block: var(--spacing-fg-4);
+    padding-inline-start: 0;
+    list-style: none;
   }
   .vs-markdown li {
-    margin-block: var(--spacing-fg-1);
+    position: relative;
+    margin-block: 0.4375rem;
+    padding-inline-start: 1.5rem;
+    color: var(--color-ink-muted);
   }
-  /* GFM task lists (the plan checkbox/step structure) render flush, no bullet. */
+  .vs-markdown ul > li::before {
+    content: "•";
+    position: absolute;
+    inset-inline-start: 0.3125rem;
+    color: var(--color-accent);
+  }
+  .vs-markdown ol {
+    counter-reset: vs-ol;
+  }
+  .vs-markdown ol > li {
+    counter-increment: vs-ol;
+  }
+  .vs-markdown ol > li::before {
+    content: counter(vs-ol) ".";
+    position: absolute;
+    inset-inline-start: 0;
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .vs-markdown li strong {
+    color: var(--color-ink);
+  }
+  /* GFM task lists (the plan checkbox/step structure) render flush, no marker. */
   .vs-markdown li:has(> input[type="checkbox"]) {
-    list-style: none;
-    margin-inline-start: calc(-1 * var(--spacing-fg-6));
+    padding-inline-start: 0;
+    color: var(--color-ink);
+  }
+  .vs-markdown li:has(> input[type="checkbox"])::before {
+    content: none;
   }
   .vs-markdown li > input[type="checkbox"] {
     margin-inline-end: var(--spacing-fg-1-5);
   }
   .vs-markdown blockquote {
-    /* Reader/Quote — serif italic, leading accent rule. */
+    /* Reader/Quote — serif italic, leading accent bar (board 265:888: 3px accent
+       bar, rounded, 16px gap to the text). */
     font-family: var(--font-serif);
     font-size: 1.0625rem;
     line-height: 1.5;
     font-style: italic;
     color: var(--color-ink-muted);
-    border-inline-start: 2px solid var(--color-accent);
-    padding-inline-start: var(--spacing-fg-3);
-    margin-block: var(--spacing-fg-4);
+    border-inline-start: 3px solid var(--color-accent);
+    border-radius: 2px;
+    padding-inline-start: var(--spacing-fg-4);
+    margin-block: 1.375rem 3.25rem;
+  }
+  /* The quote text lives in an inner <p>, which would otherwise pick up the
+     `.vs-markdown p` body rule (Inter sans) and lose the blockquote's serif
+     italic Reader/Quote face. Inherit the blockquote face and drop the inner
+     margins so the blockquote spacing is governed by the blockquote itself. */
+  .vs-markdown blockquote p {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    font-style: inherit;
+    color: inherit;
+    margin-block: 0;
   }
   .vs-markdown strong {
     font-weight: 600;
@@ -698,42 +746,118 @@
     border-top: 1px solid var(--color-rule);
     margin-block: var(--spacing-fg-6);
   }
+  /* Reader table (board 266:886): rounded outline, sunken header row, horizontal
+     row separators only (no vertical cell rules), first column semibold ink, body
+     cells muted. */
   .vs-markdown table {
     font-family: var(--font-sans);
-    font-size: var(--text-fg-label);
-    border-collapse: collapse;
+    font-size: 0.8125rem;
+    border-collapse: separate;
+    border-spacing: 0;
     width: 100%;
-    margin-block: var(--spacing-fg-4);
+    margin-block: 3.25rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-fg-md);
+    overflow: hidden;
   }
   .vs-markdown th,
   .vs-markdown td {
-    border: 1px solid var(--color-rule);
-    padding: var(--spacing-fg-1) var(--spacing-fg-2);
+    padding: 0.625rem 1rem;
     text-align: start;
   }
-  .vs-markdown th {
+  .vs-markdown thead th {
     background: var(--color-paper-sunken);
+    color: var(--color-ink-muted);
     font-weight: 600;
+  }
+  .vs-markdown tbody td {
+    border-top: 1px solid var(--color-rule);
+    color: var(--color-ink-muted);
+  }
+  .vs-markdown tr > :first-child {
+    width: 10rem;
+    font-weight: 600;
+    color: var(--color-ink);
   }
   /* Fenced code: the SHARED Shiki highlighter renders into `.vs-code-fence`; the
      `pre.vs-code-fence` fallback shows the raw text pre-tokenization. Both adopt
      the sunken code surface with the canonical rule + radius and the mono step. */
+  /* Reader code block (CodeBlock board 256:836): a header bar (lang label + a
+     Read-only flag and a Copy affordance) on the lighter paper surface, a 1px
+     rule, then the tokenized body on the sunken surface. */
   .vs-markdown .vs-code-fence {
     overflow: hidden;
-    margin-block: var(--spacing-fg-4);
+    margin-block: 2.75rem 1.25rem;
     border: 1px solid var(--color-rule);
-    border-radius: var(--radius-fg-md);
+    border-radius: 10px;
     background: var(--color-paper-sunken);
-    font-family: var(--font-mono);
     font-size: var(--text-fg-mono);
-    line-height: 1.5;
+    line-height: 1.66;
   }
-  .vs-markdown .vs-code-fence pre,
-  .vs-markdown pre.vs-code-fence {
+  .vs-markdown .vs-code-fence__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-fg-2);
+    padding: 0.625rem 0.75rem 0.625rem 1rem;
+    background: var(--color-paper);
+    border-bottom: 1px solid var(--color-rule);
+  }
+  .vs-markdown .vs-code-fence__lang {
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    color: var(--color-ink);
+  }
+  .vs-markdown .vs-code-fence__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-family: var(--font-sans);
+  }
+  .vs-markdown .vs-code-fence__readonly {
+    font-size: 0.71875rem;
+    color: var(--color-ink-faint);
+  }
+  .vs-markdown .vs-code-fence__copy {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-ink-muted);
+    padding: 0.5rem 0.875rem;
+    border-radius: 5px;
+  }
+  .vs-markdown .vs-code-fence__body {
     overflow-x: auto;
-    margin: 0;
-    padding: var(--spacing-fg-3);
+    font-family: var(--font-mono);
+    padding: 0.875rem 1rem;
   }
+  .vs-markdown .vs-code-fence__body pre {
+    /* Shiki emits its own <pre> with default padding + a theme background; the
+       wrapper already supplies the sunken surface and padding, so neutralize the
+       inner pre to avoid double padding (which inflates the block height). */
+    margin: 0;
+    padding: 0;
+    background: transparent;
+  }
+}
+
+/* Title-font invariant (design-system hard rule: a title NEVER changes font).
+   Inline code inside a body paragraph adopts the mono face via a Tailwind utility
+   (`font-mono`, etc., MarkdownReader's `code` override). That utility lives in the
+   `utilities` layer, which outranks the `.vs-markdown` heading rules in
+   `@layer components` — so inside a heading the code span would drop the title out
+   of its serif face and into the boxed mono pill. This UNLAYERED guard outranks
+   every layer regardless of specificity: any inline code/pre inside a heading
+   inherits the heading's face, size, weight, and colour and sheds the pill chrome,
+   so a heading renders as one uniform title line. */
+.vs-markdown :is(h1, h2, h3, h4, h5, h6) :is(code, pre) {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 
 /* ===========================================================================
