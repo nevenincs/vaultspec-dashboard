@@ -28,21 +28,6 @@ import { resetTimelineViewState } from "./timeline";
 export type ViewerSurface = "markdown" | "code";
 
 /**
- * The open-in-viewer intent (review-rail-viewers ADR): the target node id plus
- * the viewer surface it opens in. Owned here as view state (the stores layer is
- * the sole wire client; the viewers are dumb chrome that read the content query
- * fed by this id). DISTINCT from `selection` (the graph focus/pin) and
- * `openedIds` (the in-place stage islands): a cross-link row can select the node
- * AND open it in the viewer, two separate intents. Null when no viewer is open.
- */
-export interface ViewerTarget {
-  /** The stable node id whose content the viewer displays (`doc:` / `code:`). */
-  nodeId: string;
-  /** Which viewer surface renders it. */
-  surface: ViewerSurface;
-}
-
-/**
  * One open document tab in the dock workspace (editor-dock-workspace). The panel
  * id in dockview IS the `nodeId`, so the geometry dockview owns and this slice
  * reconcile by id. `provisional` marks the VS Code preview tab: a single-click
@@ -149,14 +134,6 @@ export interface ViewState {
   /** Nodes opened in place — rendered as DOM islands above the field (G6.a). */
   openedIds: string[];
   /**
-   * The open-in-viewer target (review-rail-viewers ADR): the node id + surface a
-   * cross-link row opened in the markdown reader / code viewer, or null when no
-   * viewer is open. The viewer surface host reads this and the content query keyed
-   * on `nodeId` renders the document/file. Scoped to the corpus — cleared on a
-   * scope/workspace swap so a stale viewer does not survive a corpus change.
-   */
-  viewerTarget: ViewerTarget | null;
-  /**
    * The open document tabs in the dock workspace (editor-dock-workspace). An
    * ordered, BOUNDED list — capped at `MAX_OPEN_DOCS` with LRU eviction of the
    * oldest non-active permanent tab (mirroring `OPENED_IDS_CAP`) — because each
@@ -245,16 +222,6 @@ export interface ViewState {
   selectEntity: (selection: Selection) => void;
   openNode: (id: string) => void;
   closeNode: (id: string) => void;
-  /**
-   * Open a node's content in a viewer surface (review-rail-viewers ADR). A
-   * cross-link row in the rail, the left rail, or the inspector calls this with
-   * the target node id and the surface its kind routes to (`doc:` → markdown,
-   * `code:` → code); the viewer host renders it from the content query keyed on
-   * the id. Distinct from `select`/`openNode` — a row may do both.
-   */
-  openInViewer: (nodeId: string, surface: ViewerSurface) => void;
-  /** Close the viewer surface (clears the open-in-viewer target). */
-  closeViewer: () => void;
   /**
    * Open a document tab (editor-dock-workspace). `permanent: false` (default, a
    * single-click/preview) opens or replaces the single provisional tab IN PLACE;
@@ -420,7 +387,6 @@ function corpusLocalViewState(scope: string | null) {
     selection: null,
     workingSet: [],
     openedIds: [],
-    viewerTarget: null,
     openDocs: [],
     activeDocId: null,
     editorTarget: null,
@@ -439,7 +405,6 @@ export const useViewStore = create<ViewState>((set) => ({
   selection: null,
   workingSet: [],
   openedIds: [],
-  viewerTarget: null,
   openDocs: [],
   activeDocId: null,
   editorTarget: null,
@@ -508,8 +473,6 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => ({
       openedIds: state.openedIds.filter((entry) => entry !== id),
     })),
-  openInViewer: (nodeId, surface) => set({ viewerTarget: { nodeId, surface } }),
-  closeViewer: () => set({ viewerTarget: null }),
   openDoc: (nodeId, surface, permanent = false) =>
     set((state) => {
       const existing = state.openDocs.find((d) => d.nodeId === nodeId);

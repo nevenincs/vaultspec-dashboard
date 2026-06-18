@@ -124,7 +124,7 @@ Replace the single viewerTarget with a bounded open-document slice carrying prov
 
 - [x] `P03.S07` - Add the bounded open-document slice with openDocs, activeDocId, and provisionalDocId plus a cap and LRU eviction; `frontend/src/stores/view/viewStore.ts`.
 - [x] `P03.S08` - Implement provisional open replace-in-place and permanent promotion on double-click, edit, or drag as named seam operations; `frontend/src/stores/view/tabs.ts`.
-- [ ] `P03.S09` - Retire the single viewerTarget path and migrate its readers to the tab slice; `frontend/src/stores/view/viewer.ts`.
+- [x] `P03.S09` - Retire the single viewerTarget path and migrate its readers to the tab slice; `frontend/src/stores/view/viewer.ts`.
 - [x] `P03.S10` - Add unit tests for the bounded slice covering cap, LRU, provisional replace, promotion, and scope-swap reset; `frontend/src/stores/view/tabs.test.ts`.
 
 ### Phase `P04` - Dock workspace host and open intents
