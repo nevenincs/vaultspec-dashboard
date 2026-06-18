@@ -19,14 +19,17 @@ import { useEffect, useRef } from "react";
 
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
 import { useDashboardShellChromeView } from "../../stores/server/queries";
-import { useDockWorkspaceTabsView } from "../../stores/view/tabs";
-import { useViewStore, type OpenDoc } from "../../stores/view/viewStore";
+import {
+  restoreDocTabsIfEmpty,
+  useDockWorkspaceTabsView,
+} from "../../stores/view/tabs";
+import type { OpenDoc } from "../../stores/view/viewStore";
 
 const PERSIST_DEBOUNCE_MS = 800;
 const PERSIST_VERSION = 1;
 
 /** Serialize the open-tab set + active tab into the opaque persisted blob. */
-function serializeWorkspaceTabs(
+export function serializeWorkspaceTabs(
   openDocs: readonly OpenDoc[],
   activeDocId: string | null,
 ): string {
@@ -43,7 +46,7 @@ function serializeWorkspaceTabs(
 
 /** Parse the persisted blob back into a tab set; null on absent/invalid input
  *  (degrade to the default empty workspace, never throw). */
-function parseWorkspaceTabs(
+export function parseWorkspaceTabs(
   blob: string | null,
 ): { openDocs: OpenDoc[]; activeDocId: string | null } | null {
   if (!blob) return null;
@@ -87,12 +90,7 @@ export function useWorkspacePersistence(scope: string | null): void {
     restoredScopeRef.current = scope;
     const restored = parseWorkspaceTabs(persistedBlob);
     if (!restored) return;
-    const current = useViewStore.getState();
-    if (current.openDocs.length > 0) return;
-    useViewStore.setState({
-      openDocs: restored.openDocs,
-      activeDocId: restored.activeDocId,
-    });
+    restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
   }, [scope, persistedBlob]);
 
   // Persist the tab set + active tab, coalesced. Skipped until this scope has been
