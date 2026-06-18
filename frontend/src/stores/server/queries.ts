@@ -313,6 +313,15 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
 
 export const GRAPH_GENERATION_QUERY_SUBTREES = [
   "vault-tree",
+  // A watcher/SSE re-ingest (an external edit, a rename, or another client's
+  // write) bumps the generation WITHOUT a local mutation, so the open reader/
+  // editor's served bytes and the file-tree projection would otherwise go stale
+  // (document-edit-hardening W03.P04.S10: the re-ingest signal must reach the open
+  // editor). Invalidating these on a generation bump makes the open document and
+  // the tree re-read the fresh content - the backend->frontend half of the
+  // bidirectional coupling, for changes the frontend did not originate.
+  "content",
+  "file-tree",
   "filters",
   "dashboard-state",
   "graph",
