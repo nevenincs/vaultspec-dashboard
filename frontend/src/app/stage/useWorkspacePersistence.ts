@@ -28,6 +28,7 @@ import {
 } from "../../stores/server/sessionContext";
 import {
   parseWorkspaceTabs,
+  restoreDocTabsIfEmpty,
   serializeWorkspaceTabs,
   useDockWorkspaceTabsView,
 } from "../../stores/view/tabs";
@@ -54,9 +55,12 @@ export function useWorkspacePersistence(scope: string | null): void {
   // (SQLite-backed), read through the stores session seam (the app layer never
   // touches `useSession`/`usePutSession` raw — dashboard-layer-ownership). The
   // seam returns the blob only for the active scope, with a settled signal.
-  // Restore happens in `seedFromSession` (atomic with the scope seed); this hook
-  // only needs the SETTLED signal to gate the persist.
-  const { settled: stateSettled } = useDurableWorkspaceLayout(scope);
+  // `seedFromSession` restores the tabs atomically with the scope seed; this hook
+  // also runs a belt-and-suspenders RE-ATTEMPTING restore below (re-seeds if the
+  // tabs are cleared by a scope settle after the seed), reading the durable blob
+  // through the seam.
+  const { blob: persistedBlob, settled: stateSettled } =
+    useDurableWorkspaceLayout(scope);
   // Hold the persist callback in a ref so it is NOT a persist-effect dependency:
   // it changes identity every render, so depending on it would re-run the
   // debounced persist effect every render — and under the app's live-streaming
@@ -68,9 +72,22 @@ export function useWorkspacePersistence(scope: string | null): void {
   persistLayoutRef.current = persistLayout;
   const tabs = useDockWorkspaceTabsView();
 
-  // RESTORE is not done here: it happens ATOMICALLY in `seedFromSession` (the
-  // one-shot session seed in the stores layer), so the tab restore cannot race the
-  // scope settle. This hook only PERSISTS the open-tab set + active tab, coalesced.
+  // RE-ATTEMPTING RESTORE (belt-and-suspenders to the atomic `seedFromSession`
+  // seed): whenever the durable blob carries tabs but the slice is empty, re-seed.
+  // `restoreDocTabsIfEmpty` only seeds when empty, so this is a no-op once tabs are
+  // open; depending on `tabs.openDocs.length` re-fires it if a load-time scope
+  // settle clears the seeded tabs (the one-shot seed alone would miss that). Safe
+  // because the persist below never writes empty, so re-seeding cannot loop.
+  useEffect(() => {
+    if (!scope) return;
+    if (!stateSettled) return;
+    const restored = parseWorkspaceTabs(persistedBlob);
+    if (restored && restored.openDocs.length > 0) {
+      restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
+    }
+  }, [scope, stateSettled, persistedBlob, tabs.openDocs.length]);
+
+  // This hook also PERSISTS the open-tab set + active tab, coalesced.
   //
   // Guard (GUARANTEED no-clobber): the reactive persist NEVER writes an EMPTY
   // layout. That makes restore bulletproof — a transient empty store (the load
