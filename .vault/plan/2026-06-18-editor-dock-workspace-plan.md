@@ -147,7 +147,7 @@ Mount the existing editor backend as a view/edit toggle with a PROPERTIES card, 
 - [x] `P05.S19` - Build the PROPERTIES card for tags, date, and related bound to the frontmatter write; `frontend/src/app/viewer/PropertiesCard.tsx`.
 - [x] `P05.S20` - Wire save through the editor seam mapping the typed write result onto the status enum with conflict and refusal handling; `frontend/src/stores/server/editorMutations.ts`.
 - [ ] `P05.S21` - Live-verify the engine to core 0.1.32 write round-trip for save, conflict, and refusal against a fixture vault; `frontend/src/stores/server/editorMutations.test.ts`.
-- [ ] `P05.S22` - Restore the real write-seam tests trimmed during the mock-tautology removal; `frontend/src/stores/server/editorMutations.test.ts`.
+- [x] `P05.S22` - Restore the real write-seam tests trimmed during the mock-tautology removal; `frontend/src/stores/server/editorMutations.test.ts`.
 
 ### Phase `P06` - Workspace layout persistence
 
