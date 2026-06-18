@@ -35,7 +35,7 @@ Author a conformant document-rename verb in vaultspec-core (cross-repo) and brok
 Author and release a conformant vault document-rename verb in the core repository via its gh-issue, worktree, PR, and release flow.
 
 - [ ] `W02.P02.S04` - File a gh issue and bootstrap a worktree in the vaultspec-core repo for a conformant vault document-rename verb; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `W02.P02.S05` - Author vault rename: validate target stem, atomic rename, rewrite incoming related references, refresh modified, run checks and refuse on ERROR, emit json envelope with old and new path id and blob, accept expected-blob-hash and dry-run; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W02.P02.S05` - Author vault rename: validate target stem, atomic rename, rewrite incoming related references, refresh modified, run checks and refuse on ERROR, emit json envelope with old and new path id and blob, accept expected-blob-hash and dry-run; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 - [ ] `W02.P02.S06` - Land the rename verb via PR with green CI, release the wheel, and bump the dashboard core pin; `pyproject.toml`.
 
 ### Phase `W02.P03` - Engine rename broker
