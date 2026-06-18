@@ -25,10 +25,6 @@ const DASHBOARD_STATE_SCOPE_CAP: usize = 16;
 const MAX_SELECTED_IDS: usize = 256;
 const MAX_NODE_ID_LEN: usize = 512;
 const MAX_PANEL_TAB_LEN: usize = 32;
-/// Cap the opaque dock workspace-layout blob (editor-dock-workspace): the
-/// serialized open-tab set is small (a bounded list of node ids), so 64 KiB is
-/// generous headroom while keeping the per-scope retained snapshot bounded.
-const MAX_WORKSPACE_LAYOUT_LEN: usize = 64 * 1024;
 const MAX_BOUND_SIZE: f64 = 1_000_000.0;
 
 /// A bounded per-process LRU of dashboard-state snapshots. The cap is declared
@@ -162,14 +158,6 @@ pub struct PanelState {
     pub left_collapsed: bool,
     pub right_collapsed: bool,
     pub right_tab: String,
-    /// The serialized dock workspace layout (editor-dock-workspace): an opaque
-    /// JSON string carrying the dockview `SerializedDockview` plus the open-tab
-    /// metadata, persisted per scope so the workspace restores on reload. The
-    /// engine treats it as an opaque blob (read-and-infer; it owns no GUI
-    /// semantics) — the stores layer serializes and parses it. `None` until the
-    /// client first persists a layout.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_layout: Option<String>,
 }
 
 impl Default for PanelState {
@@ -178,7 +166,6 @@ impl Default for PanelState {
             left_collapsed: false,
             right_collapsed: false,
             right_tab: "status".to_string(),
-            workspace_layout: None,
         }
     }
 }
@@ -501,21 +488,6 @@ fn validate_panel_state(
             StatusCode::BAD_REQUEST,
             "panel_state.right_tab must be one of status, changes, search".to_string(),
         ));
-    }
-    // Bound the opaque workspace-layout blob at the field (bounded-by-default):
-    // it is retained per scope in the in-memory slot, so cap it here rather than
-    // relying on the incidental request-body limit.
-    if let Some(layout) = &panel_state.workspace_layout {
-        if layout.len() > MAX_WORKSPACE_LAYOUT_LEN {
-            return Err(super::api_error(
-                state,
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "panel_state.workspace_layout is {} bytes; maximum is {MAX_WORKSPACE_LAYOUT_LEN}",
-                    layout.len()
-                ),
-            ));
-        }
     }
     Ok(())
 }

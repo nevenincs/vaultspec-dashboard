@@ -592,12 +592,6 @@ export interface DashboardPanelState {
   left_collapsed: boolean;
   right_collapsed: boolean;
   right_tab: DashboardPanelTab;
-  /** The serialized dock workspace layout (editor-dock-workspace): an opaque
-   *  JSON string carrying the dockview `SerializedDockview` plus the open-tab
-   *  metadata, persisted per scope so the workspace restores on reload. The
-   *  engine treats it as an opaque blob; the stores layer serializes/parses it.
-   *  Optional/absent until the workspace first persists a layout. */
-  workspace_layout?: string;
 }
 
 export interface DashboardGraphBounds {
@@ -1287,6 +1281,12 @@ export interface SearchResponse {
 export interface ScopeContextWire {
   folder: string | null;
   feature_tags: string[];
+  /** The serialized dock workspace layout (editor-dock-workspace): an opaque JSON
+   *  string carrying the open-document tab set + active tab for this scope.
+   *  Persisted in the DURABLE per-scope session blob (SQLite-backed), so the
+   *  workspace restores across reloads AND engine restarts. Absent until the
+   *  workspace first persists a layout. */
+  workspace_layout?: string;
 }
 
 /** The current session: the "where am I and what am I looking at" the dashboard
@@ -1312,6 +1312,15 @@ export interface ScopeContextUpdate {
   feature_tags?: string[];
 }
 
+/** The dock workspace-layout part of a PUT /session body (editor-dock-workspace).
+ *  `scope` selects the scope (absent = active); `layout` is the opaque serialized
+ *  layout blob, or null to clear it. Applied as a MERGE into the scope's session
+ *  context, so it preserves the folder + feature-tag context (and vice versa). */
+export interface WorkspaceLayoutUpdate {
+  scope?: string;
+  layout?: string | null;
+}
+
 /** A partial session update (PUT /session): any absent field leaves that part of
  *  the session untouched. An unknown `active_scope` is a tiered 400 and leaves the
  *  active scope unchanged. The registry-mutation fields (dashboard-workspace-
@@ -1322,6 +1331,9 @@ export interface ScopeContextUpdate {
 export interface SessionUpdate {
   active_scope?: string;
   scope_context?: ScopeContextUpdate;
+  /** Persist the dock workspace layout for a scope (editor-dock-workspace),
+   *  merged into the durable per-scope session context. */
+  set_workspace_layout?: WorkspaceLayoutUpdate;
   push_recent?: string;
   active_workspace?: string;
   add_workspace?: string;

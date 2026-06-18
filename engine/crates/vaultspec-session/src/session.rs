@@ -38,6 +38,15 @@ pub struct ScopeContext {
     /// The feature-tag contexts associated with the active folder.
     #[serde(default)]
     pub feature_tags: Vec<String>,
+    /// The serialized dock workspace layout (editor-dock-workspace): an opaque
+    /// JSON string carrying the open-document tab set + active tab for this scope.
+    /// Persisted here (the durable per-scope session blob, SQLite-backed) so the
+    /// workspace restores across reloads AND engine restarts, unlike the in-memory
+    /// dashboard-state. The engine treats it as an opaque blob (read-and-infer; it
+    /// owns no GUI semantics); the stores layer serializes/parses it. `None` until
+    /// the workspace first persists a layout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_layout: Option<String>,
 }
 
 impl Store {
@@ -331,12 +340,14 @@ mod tests {
         let ctx = ScopeContext {
             active_folder: Some("plan".to_string()),
             feature_tags: vec!["editor-demo".into(), "grid-layout".into()],
+            workspace_layout: Some("{\"v\":1,\"tabs\":[]}".to_string()),
         };
         store.set_scope_context("wsA", "main", &ctx, 1).unwrap();
         // A different scope keeps its own context.
         let other = ScopeContext {
             active_folder: Some("adr".to_string()),
             feature_tags: vec!["other".into()],
+            workspace_layout: None,
         };
         store
             .set_scope_context("wsA", "feature-x", &other, 2)

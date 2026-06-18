@@ -22,6 +22,7 @@ fn reopen_restores_active_scope_folder_contexts_and_settings() {
     let ctx = ScopeContext {
         active_folder: Some("plan".to_string()),
         feature_tags: vec!["editor-demo".into(), "grid-layout".into()],
+        workspace_layout: Some("{\"v\":1,\"tabs\":[]}".to_string()),
     };
 
     // First session: write active scope, a per-scope context, and settings.

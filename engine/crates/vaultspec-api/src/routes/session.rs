@@ -29,9 +29,14 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use vaultspec_session::ScopeContext;
 
 use crate::app::AppState;
+
+/// Cap the opaque dock workspace-layout blob (editor-dock-workspace,
+/// bounded-by-default): the serialized open-tab set is a small bounded list of
+/// node ids, so 64 KiB is generous headroom while keeping the per-scope durable
+/// session blob bounded.
+const MAX_WORKSPACE_LAYOUT_LEN: usize = 64 * 1024;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -80,6 +85,7 @@ fn session_data(state: &AppState) -> Value {
         "scope_context": {
             "folder": scope_context.active_folder,
             "feature_tags": scope_context.feature_tags,
+            "workspace_layout": scope_context.workspace_layout,
         },
         "recents": recents,
     })
@@ -112,6 +118,13 @@ pub struct SessionUpdate {
     pub active_scope: Option<String>,
     #[serde(default)]
     pub scope_context: Option<ScopeContextUpdate>,
+    /// Persist the dock workspace layout for a scope (editor-dock-workspace).
+    /// MERGED into the scope's session context so it never clobbers the
+    /// folder/feature-tag context (and the folder-context update never clobbers
+    /// it). Durable: written to the SQLite-backed per-scope session blob, so the
+    /// workspace restores across reloads AND engine restarts.
+    #[serde(default)]
+    pub set_workspace_layout: Option<WorkspaceLayoutUpdate>,
     #[serde(default)]
     pub push_recent: Option<String>,
     /// Select the active WORKSPACE (dashboard-workspace-registry ADR): the
@@ -146,6 +159,19 @@ pub struct ScopeContextUpdate {
     pub folder: Option<String>,
     #[serde(default)]
     pub feature_tags: Vec<String>,
+}
+
+/// A dock workspace-layout update (editor-dock-workspace). `scope` names which
+/// scope the layout belongs to (default: the active scope); `layout` is the
+/// opaque serialized layout blob, or `null` to clear it. Applied as a MERGE into
+/// the scope's session context, so it preserves the folder + feature-tag context
+/// (and the folder-context update preserves the layout).
+#[derive(Deserialize, Default)]
+pub struct WorkspaceLayoutUpdate {
+    #[serde(default)]
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub layout: Option<String>,
 }
 
 pub async fn put_session(
@@ -192,6 +218,26 @@ pub async fn put_session(
         let _ = us.set_active_workspace(ws, now);
     }
 
+    // Bound the opaque workspace-layout blob at ingress (bounded-by-default),
+    // before any lock is taken — an over-length blob is a tiered 400 and persists
+    // nothing.
+    if let Some(layout) = update
+        .set_workspace_layout
+        .as_ref()
+        .and_then(|u| u.layout.as_ref())
+    {
+        if layout.len() > MAX_WORKSPACE_LAYOUT_LEN {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "set_workspace_layout.layout is {} bytes; maximum is {MAX_WORKSPACE_LAYOUT_LEN}",
+                    layout.len()
+                ),
+            ));
+        }
+    }
+
     // active_scope: validate + warm through the registry FIRST (this is the one
     // step that can fail with a client error), then retarget the active scope
     // and persist it. Done before taking the user-state lock so the registry
@@ -222,10 +268,24 @@ pub async fn put_session(
                 .clone()
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| active_scope_token(&state));
-            let context = ScopeContext {
-                active_folder: ctx.folder.clone(),
-                feature_tags: ctx.feature_tags.clone(),
-            };
+            // MERGE: the folder-context flow sets folder + feature_tags wholesale,
+            // but PRESERVES the dock workspace_layout the workspace flow owns, so
+            // the two per-scope writers never clobber each other's field.
+            let mut context = us.scope_context(&workspace, &target).unwrap_or_default();
+            context.active_folder = ctx.folder.clone();
+            context.feature_tags = ctx.feature_tags.clone();
+            let _ = us.set_scope_context(&workspace, &target, &context, now);
+        }
+        if let Some(layout) = update.set_workspace_layout.as_ref() {
+            let target = layout
+                .scope
+                .clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| active_scope_token(&state));
+            // MERGE: set the workspace layout, PRESERVING the folder + feature-tag
+            // context so the dock-workspace persist never clears the folder context.
+            let mut context = us.scope_context(&workspace, &target).unwrap_or_default();
+            context.workspace_layout = layout.layout.clone();
             let _ = us.set_scope_context(&workspace, &target, &context, now);
         }
         if let Some(value) = update.push_recent.as_deref() {
