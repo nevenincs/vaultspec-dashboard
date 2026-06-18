@@ -49,6 +49,12 @@ pub struct CommitEvent {
     /// flagged (`commits lack the subject (a git lookup)`). Read-only over the
     /// object DB; never a write.
     pub subject: String,
+    /// The commit message **body** — everything after the subject line,
+    /// trimmed; empty for a single-line commit. gix's `message().body`
+    /// already isolates the body from the summary; carrying it here lets the
+    /// status rail's commit dropdown show the full message without a second
+    /// git lookup. Read-only over the object DB; never a write.
+    pub body: String,
     /// Commit time in **milliseconds** since the Unix epoch — the
     /// engine-wide `engine_model::Timestamp` unit. gix reports seconds;
     /// the conversion happens here, at the seam, so no downstream surface
@@ -105,10 +111,20 @@ pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<C
         // message (the conventional subject), already trimmed of surrounding
         // whitespace. An empty/whitespace-only message yields an empty subject
         // rather than a failure — the commit is still a real event.
-        let subject = commit
-            .message()
+        let message = commit.message();
+        let subject = message
+            .as_ref()
             .map(|m| m.summary().to_string())
             .unwrap_or_default();
+        // The message body (everything after the subject), trimmed; absent for
+        // single-line commits. Carried so the rail can show the full message.
+        let body = message
+            .as_ref()
+            .ok()
+            .and_then(|m| m.body.map(|b| b.to_string()))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let changes = touched_changes(&repo, &commit)?;
         // `touched_paths` stays the flat path list (back-compat): the `path`
         // of every change, in the same order.
@@ -116,6 +132,7 @@ pub fn walk(workspace: &Workspace, ref_name: &str, limit: usize) -> Result<Vec<C
         out.push(CommitEvent {
             sha: commit.id.to_string(),
             subject,
+            body,
             ts,
             kind: "commit",
             git_ref: ref_name.to_string(),

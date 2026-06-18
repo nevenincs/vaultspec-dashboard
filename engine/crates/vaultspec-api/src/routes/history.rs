@@ -1,11 +1,13 @@
 //! Read-only, bounded recent-history route (status-overview ADR).
 //!
 //! `GET /history?scope=&limit=N` serves the served worktree's last N commits as
-//! `{ commits: [ { hash, short_hash, subject, ts, node_ids } ], truncated? }`,
-//! newest-first. It is the ONE engine gap the status-overview rail needs: the
-//! commit *subject* line is not otherwise on the wire (`/events` carries commit
-//! events but no subject — the engine self-flagged the gap as a deferred git
-//! lookup). This route closes it as a bounded, read-only, enveloped addition.
+//! `{ commits: [ { hash, short_hash, subject, body, ts, node_ids } ],
+//! truncated? }`, newest-first. It is the ONE engine gap the status-overview
+//! rail needs: the commit *subject* and *body* are not otherwise on the wire
+//! (`/events` carries commit events but no message — the engine self-flagged the
+//! gap as a deferred git lookup). This route closes it as a bounded, read-only,
+//! enveloped addition; the `body` (bounded by [`MAX_COMMIT_BODY_BYTES`]) backs
+//! the rail's expandable commit-message dropdown.
 //!
 //! The route is assembled from settled primitives: scope validation
 //! (`validate_scope`), the read-only commit walk (`ingest_git::log::walk`, now
@@ -45,6 +47,13 @@ pub const MAX_HISTORY_LIMIT: usize = 200;
 /// rail shows a short recent-commit list, not the whole log.
 pub const DEFAULT_HISTORY_LIMIT: usize = 20;
 
+/// Hard per-commit body ceiling (bytes) on the wire
+/// (`bounded-by-default-for-every-accumulator`): a commit message body is
+/// served for the rail's expandable dropdown, but a pathological multi-kilobyte
+/// body must never balloon the response. Bodies longer than this are truncated
+/// at a char boundary with an honest ellipsis; the full message stays in git.
+pub const MAX_COMMIT_BODY_BYTES: usize = 4096;
+
 #[derive(Deserialize, Default)]
 pub struct HistoryParams {
     /// The worktree scope (required, the read-route convention): validated
@@ -59,9 +68,9 @@ pub struct HistoryParams {
 }
 
 /// `GET /history?scope=&limit=N` — the last N commits as
-/// `{ commits: [ { hash, short_hash, subject, ts, node_ids } ], truncated? }`,
-/// newest-first, bounded, read-only, through the shared envelope with the tiers
-/// block on success and error.
+/// `{ commits: [ { hash, short_hash, subject, body, ts, node_ids } ],
+/// truncated? }`, newest-first, bounded, read-only, through the shared envelope
+/// with the tiers block on success and error.
 pub async fn history(
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryParams>,
@@ -103,6 +112,7 @@ pub async fn history(
                 "hash": c.sha,
                 "short_hash": short_hash(&c.sha),
                 "subject": c.subject,
+                "body": cap_body(&c.body),
                 "ts": c.ts,
                 "node_ids": node_ids,
             })
@@ -132,6 +142,21 @@ pub async fn history(
         super::query_tiers(&cell),
         None,
     ))
+}
+
+/// Bound the commit body on the wire to [`MAX_COMMIT_BODY_BYTES`]: a body within
+/// the ceiling passes through unchanged; a longer one is cut at a char boundary
+/// at or below the byte ceiling and marked with an ellipsis so the rail shows a
+/// bounded, honest preview. Empty bodies stay empty.
+fn cap_body(body: &str) -> String {
+    if body.len() <= MAX_COMMIT_BODY_BYTES {
+        return body.to_string();
+    }
+    let mut end = MAX_COMMIT_BODY_BYTES;
+    while end > 0 && !body.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &body[..end])
 }
 
 /// Short (8-char) hash, mirroring the client's commit-label shortening so the

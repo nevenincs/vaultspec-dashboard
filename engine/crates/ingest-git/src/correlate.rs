@@ -148,6 +148,15 @@ mod tests {
                 // The correlation rules read only `touched_paths`; the subject
                 // is immaterial here, so derive it from the test message.
                 subject: message.lines().next().unwrap_or_default().to_string(),
+                // The correlation rules read only `touched_paths`; the body is
+                // immaterial here, so carry the message tail to satisfy the field.
+                body: message
+                    .lines()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim()
+                    .to_string(),
                 ts,
                 kind: "commit",
                 git_ref: "main".into(),
