@@ -66,6 +66,10 @@ export function useWorkspacePersistence(scope: string | null): void {
   const persistLayout = usePersistWorkspaceLayout();
   const persistLayoutRef = useRef(persistLayout);
   persistLayoutRef.current = persistLayout;
+  // Track the current durable blob for the persist effect (which does not depend
+  // on it) so it can guard against clobbering a saved layout before restore.
+  const persistedBlobRef = useRef(persistedBlob);
+  persistedBlobRef.current = persistedBlob;
   const tabs = useDockWorkspaceTabsView();
 
   // Restore: re-attempt whenever the SETTLED blob value changes, keyed on the blob
@@ -100,6 +104,19 @@ export function useWorkspacePersistence(scope: string | null): void {
     if (!scope) return;
     if (initializedScopeRef.current !== scope) return;
     const next = serializeWorkspaceTabs(tabs.openDocs, tabs.activeDocId);
+    // Never let a transient load-time empty clobber a durably-saved non-empty
+    // layout before the restore has seeded it: skip an EMPTY persist while the
+    // durable blob still carries tabs the restore has not yet processed.
+    // `lastRestoredBlobRef` equals the durable blob only once restore has handled
+    // it; after that an empty store is a genuine user "closed all", which persists.
+    const durableBlob = persistedBlobRef.current;
+    if (
+      (parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0 &&
+      (parseWorkspaceTabs(durableBlob)?.openDocs.length ?? 0) > 0 &&
+      lastRestoredBlobRef.current !== durableBlob
+    ) {
+      return;
+    }
     if (isSamePersistedWorkspaceLayout(lastPersistedRef.current, scope, next)) {
       return;
     }
