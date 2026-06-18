@@ -2,12 +2,14 @@
 
 pub mod content;
 pub mod file_tree;
+pub mod github;
 pub mod history;
 pub mod ops;
 pub mod query;
 pub mod registry;
 pub mod session;
 pub mod spa;
+pub mod state;
 pub mod stream;
 pub mod temporal;
 

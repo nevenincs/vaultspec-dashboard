@@ -41,6 +41,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/vault-tree",
     "/file-tree",
     "/pipeline",
+    "/dashboard-state",
     "/graph/query",
     "/graph/embeddings",
     "/graph/asof",
@@ -94,6 +95,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // In-flight pipeline projection (dashboard-pipeline-wire W02): active
         // plans + in-flight ADRs in scope, through the shared envelope.
         .route("/pipeline", get(routes::query::pipeline))
+        // Bounded, transient dashboard intent session state (dashboard-state-
+        // centralization W01): read/patch through the shared envelope, never
+        // persisted into vault content or graph semantics.
+        .route(
+            "/dashboard-state",
+            get(routes::state::get_dashboard_state).patch(routes::state::patch_dashboard_state),
+        )
         .route("/graph/query", post(routes::query::graph_query_route))
         // The dedicated bounded embedding route (graph-semantic-embeddings ADR
         // D2): rag's stored dense vectors for the served document node set,
@@ -127,6 +135,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // ADR): the last N commits as {hash, short_hash, subject, ts, node_ids},
         // newest-first, capped at MAX_HISTORY_LIMIT, tiers-bearing.
         .route("/history", get(routes::history::history))
+        // Read-only GitHub work items for the status rail (right-rail redesign):
+        // open / recently-merged pull requests and open issues, brokered through
+        // the bounded `gh` CLI, reshaped to a bounded wire shape, enveloped with
+        // the tiers block. Read-and-infer: list-only, never a forge mutation;
+        // gh-unavailable degrades to `{items:[], available:false}` honestly.
+        .route("/prs", get(routes::github::prs))
+        .route("/issues", get(routes::github::issues))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
         .route("/search", post(routes::ops::search))
@@ -597,7 +612,25 @@ mod tests {
         git(root, &["add", "."]);
         git(root, &["commit", "-m", "feat: add the hist plan"]);
 
-        // Commit 2: a plain edit -> the newest commit.
+        // Commit 2: a vault doc that will be removed before the graph is
+        // served; history must not advertise stale doc ids to the dashboard
+        // selection surface.
+        let stale_doc = root.join(".vault/plan/2026-06-16-removed-plan.md");
+        std::fs::write(
+            &stale_doc,
+            "---\ntags:\n  - '#plan'\n  - '#hist'\n---\n\nremoved\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "feat: add removed plan"]);
+
+        // Commit 3: remove the vault doc so the current graph no longer owns
+        // its node id.
+        std::fs::remove_file(&stale_doc).unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "docs: remove old plan"]);
+
+        // Commit 4: a plain edit -> the newest commit.
         std::fs::write(root.join("README.md"), "readme\n").unwrap();
         git(root, &["add", "."]);
         git(root, &["commit", "-m", "docs: add a readme"]);
@@ -628,7 +661,7 @@ mod tests {
         assert!(body["tiers"].is_object(), "tiers block present: {body}");
 
         let commits = body["data"]["commits"].as_array().expect("commits array");
-        assert_eq!(commits.len(), 2, "both commits served");
+        assert_eq!(commits.len(), 4, "all commits served");
 
         // Newest-first: the README commit is first, with its subject line.
         assert_eq!(commits[0]["hash"], head_sha, "newest commit first");
@@ -644,8 +677,11 @@ mod tests {
 
         // The older vault-touching commit carries its subject AND correlates to
         // the document node (the commit→doc cross-link the rail uses).
-        assert_eq!(commits[1]["subject"], "feat: add the hist plan");
-        let node_ids: Vec<String> = commits[1]["node_ids"]
+        let hist_commit = commits
+            .iter()
+            .find(|commit| commit["subject"] == "feat: add the hist plan")
+            .expect("hist plan commit present");
+        let node_ids: Vec<String> = hist_commit["node_ids"]
             .as_array()
             .unwrap()
             .iter()
@@ -659,6 +695,18 @@ mod tests {
             node_ids.contains(&"doc:2026-06-16-hist-plan".to_string()),
             "the touched vault doc is correlated: {node_ids:?}"
         );
+        for commit in commits {
+            let commit_node_ids: Vec<String> = commit["node_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+            assert!(
+                !commit_node_ids.contains(&"doc:2026-06-16-removed-plan".to_string()),
+                "history only advertises current graph-known doc ids: {commit_node_ids:?}"
+            );
+        }
 
         // No truncation when the request is within the ceiling.
         assert!(body["data"]["truncated"].is_null(), "no truncation: {body}");
@@ -1617,6 +1665,31 @@ mod tests {
         ] {
             assert!(CONTRACT_ROUTES.contains(&family), "missing {family}");
         }
+    }
+
+    #[tokio::test]
+    async fn search_rejects_unknown_scope_in_the_request_body() {
+        let (_dir, state) = fixture_state();
+        let token = state.bearer.clone();
+        let router = build_router(state);
+
+        let (status, body) = post_json_with_token(
+            router,
+            "/search",
+            json!({
+                "scope": "/no/such/worktree",
+                "query": "graph state",
+                "type": "vault"
+            }),
+            Some(&token),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "bad search scope: {body}");
+        assert!(
+            body.get("tiers").is_some(),
+            "search scope validation error must carry tiers: {body}"
+        );
     }
 
     #[tokio::test]
