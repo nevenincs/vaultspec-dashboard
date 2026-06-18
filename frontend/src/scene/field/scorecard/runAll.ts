@@ -1,4 +1,4 @@
-// All-six scorecard run-all entry and text formatter (graph-viz-scorecard ADR,
+// Scorecard run-all entry and text formatter (graph-viz-scorecard ADR,
 // W04.P10.S44/S45/S46).
 //
 // A single entry point that runs EVERY layout's gate over its deterministic
@@ -7,8 +7,8 @@
 // per-metric pass/fail table as text. This combined run is the baseline capture
 // for W04.P10 and the basis of the W06 quality report.
 //
-// SCOPE OF THIS PHASE (W04.P10): the plan splits the run across three Steps (force
-// + semantic, lineage + hierarchy, radial + cluster) over BOTH the live corpus
+// SCOPE OF THIS PHASE (W04.P10): the plan splits the run across deterministic
+// representation families (semantic, lineage + hierarchy, radial + cluster) over BOTH the live corpus
 // slice and the seeded fixtures. The LIVE-corpus part requires a running engine
 // (serve + rag + Qdrant) and so is deferred to W06, where the live stack is stood
 // up and verified. For THIS phase the run scores over the deterministic FIXTURES
@@ -22,7 +22,6 @@
 // mulberry32 PRNG, manual frame scheduler), so this aggregator adds no unbounded
 // accumulator and no nondeterminism — it iterates a fixed, finite gate list once.
 
-import { runForceGate } from "../forceGate";
 import { runHierarchyGate } from "../hierarchyGate";
 import { runLineageGate } from "../lineageGate";
 import { runRadialGate } from "../radialGate";
@@ -46,14 +45,12 @@ interface GateEntry {
 }
 
 /**
- * The canonical run-all gate list, in report order: force, semantic, lineage,
+ * The canonical run-all gate list, in report order: semantic, lineage,
  * hierarchy, radial, then the two cluster fixtures (SBM and LFR). This mirrors the
- * plan's three-Step grouping (S44 force + semantic, S45 lineage + hierarchy, S46
- * radial + cluster) collapsed into one ordered list. Six layout FAMILIES across
- * seven gate runs (cluster is scored over two planted-partition fixtures).
+ * remaining deterministic layout gates. Cosmos live simulation is tuned directly
+ * in the renderer and no longer runs through this deterministic seed scorecard.
  */
 export const RUN_ALL_GATES: readonly GateEntry[] = [
-  { layout: "force", run: runForceGate },
   { layout: "semantic", run: runSemanticScorecardGate },
   { layout: "lineage", run: runLineageGate },
   { layout: "hierarchy", run: runHierarchyGate },
@@ -76,7 +73,7 @@ export function runAllGates(): ScorecardVector[] {
 /**
  * The same run-all collapsed to a record keyed by layout, for callers that want to
  * look a layout up by name rather than iterate. The keys are the gate `layout`
- * values (`force`, `semantic`, `lineage`, `hierarchy`, `radial`, `cluster-sbm`,
+ * values (`semantic`, `lineage`, `hierarchy`, `radial`, `cluster-sbm`,
  * `cluster-lfr`); insertion order follows `RUN_ALL_GATES`.
  */
 export function runAllGatesKeyed(): Record<string, ScorecardVector> {

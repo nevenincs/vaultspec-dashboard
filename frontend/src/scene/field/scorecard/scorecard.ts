@@ -56,7 +56,7 @@ export interface MetricResult {
  * for at-a-glance reading and never feeds `passed`.
  */
 export interface ScorecardVector {
-  /** The layout family/mode this vector scores (e.g. "force", "lineage"). */
+  /** The layout family/mode this vector scores (e.g. "semantic", "lineage"). */
   layout: string;
   /** The per-metric pass/fail results. */
   metrics: MetricResult[];

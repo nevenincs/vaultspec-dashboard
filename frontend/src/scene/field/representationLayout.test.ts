@@ -43,6 +43,7 @@ const FIXTURE_EDGES: SceneEdgeData[] = [
 ];
 
 const SEED_MODES: RepresentationMode[] = [
+  "temporal",
   "hierarchical",
   "radial",
   "community",
@@ -78,6 +79,7 @@ describe("representationLayout — new catalog modes register and dispatch (D1/D
 describe("representationLayout — degenerate + ceiling hardening (S53)", () => {
   const SEED_AND_SOLVER: RepresentationMode[] = [
     "connectivity",
+    "temporal",
     "hierarchical",
     "radial",
     "community",
@@ -134,6 +136,21 @@ describe("representationLayout — degenerate + ceiling hardening (S53)", () => 
     expect(result.downgradeReason).toBeDefined();
     expect(result.downgradeReason).toMatch(/HELD|held/);
     expect(result.downgradeReason).toMatch(/embedding|meaning/i);
+  });
+
+  it("temporal uses seedPosition and stays static", () => {
+    const nodes: SceneNodeData[] = [
+      { id: "a", kind: "doc", seedPosition: { x: 10, y: 20 } },
+      { id: "b", kind: "doc", seedPosition: { x: 30, y: 40 } },
+    ];
+    const result = representationLayout("temporal", nodes, []);
+    expect(result.applied).toBe("temporal");
+    expect(result.positions).toEqual(
+      new Map([
+        ["a", { x: 10, y: 20 }],
+        ["b", { x: 30, y: 40 }],
+      ]),
+    );
   });
 
   it("applies semantic with finite positions when the slice carries embeddings", () => {

@@ -164,4 +164,10 @@ describe("graphDeltaToScene", () => {
     const result = graphDeltaToScene({ op: "add", node, t: 10, seq: 5 });
     expect(result!.node!.memberCount).toBe(12);
   });
+
+  it("snake_case node_size renames to camelCase nodeSize across the seam", () => {
+    const node: EngineNode = { id: "doc:x", kind: "document", node_size: 9.6 };
+    const result = graphDeltaToScene({ op: "add", node, t: 20, seq: 6 });
+    expect(result!.node!.nodeSize).toBe(9.6);
+  });
 });

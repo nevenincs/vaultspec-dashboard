@@ -11,6 +11,7 @@
 
 import type { Container } from "pixi.js";
 
+import { prefersReducedMotion } from "../../platform/reducedMotion";
 import type { SceneEvent } from "../sceneController";
 
 // --- pure camera math (unit-tested) ------------------------------------------
@@ -271,18 +272,7 @@ const ANIM_DAMPING = 0.85;
 const ANIM_PX_STOP = 0.5;
 const ANIM_SCALE_STOP = 0.001;
 
-/**
- * The base motion law's reduced-motion floor, read at the scene layer. Default
- * reads `prefers-reduced-motion`; framework-free, guarded for non-DOM hosts
- * (the layout worker, tests). Injectable on the Camera so tests can drive both
- * branches without stubbing globals.
- */
-export function prefersReducedMotion(): boolean {
-  return (
-    typeof matchMedia === "function" &&
-    matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
+export { prefersReducedMotion };
 
 /** Options for a programmatic camera move (additive; all optional). */
 export interface AnimateOptions {

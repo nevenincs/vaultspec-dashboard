@@ -24,7 +24,6 @@ import {
   buildScorecard,
   evaluate,
 } from "./scorecard";
-import { runForceGate } from "../forceGate";
 import { runHierarchyGate } from "../hierarchyGate";
 import { runLineageGate } from "../lineageGate";
 import { runRadialGate } from "../radialGate";
@@ -49,7 +48,6 @@ function assertPassedIsConjunction(v: ScorecardVector): void {
 }
 
 const GATES: { name: string; run: () => ScorecardVector }[] = [
-  { name: "force", run: runForceGate },
   { name: "lineage", run: runLineageGate },
   { name: "hierarchy", run: runHierarchyGate },
   { name: "radial", run: runRadialGate },
@@ -166,11 +164,11 @@ describe("real gates emit per-metric-gated vectors deterministically", () => {
 });
 
 describe("a degraded layout flips the real gate's passed false", () => {
-  it("re-evaluating the force gate's real metrics against a near-1 threshold fails", () => {
-    // Take the REAL force gate's measured metric values and re-gate them against an
+  it("re-evaluating real gate metrics against a near-1 threshold fails", () => {
+    // Take a REAL gate's measured metric values and re-gate them against an
     // impossibly high threshold on one metric: the same values that passed now fail,
     // proving the gate gates per-metric and not on an aggregate of the same values.
-    const real = runForceGate();
+    const real = GATES[0].run();
     const values: Record<string, number> = {};
     for (const m of real.metrics) values[m.name] = m.value;
     // Force ONE metric's threshold above its value; leave the rest passing.
@@ -178,7 +176,11 @@ describe("a degraded layout flips the real gate's passed false", () => {
     const thresholds: Record<string, number> = {};
     for (const m of real.metrics) thresholds[m.name] = 0; // all pass
     thresholds[target] = 1.0001; // impossible -> this one fails
-    const regated = buildScorecard("force", evaluate(values, thresholds), real.seed);
+    const regated = buildScorecard(
+      real.layout,
+      evaluate(values, thresholds),
+      real.seed,
+    );
     expect(regated.passed).toBe(false);
     expect(regated.metrics.find((m) => m.name === target)!.pass).toBe(false);
     // The mean is unchanged and high; only the per-metric gate caught it.

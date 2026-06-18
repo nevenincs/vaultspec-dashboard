@@ -11,16 +11,24 @@
 // same surface. Surface changes from here on are ADR-flagged redlines, not
 // drive-by edits.
 //
-// 2026-06-13 (graph-quality): additive extensions under the graph-quality
-// plan (P01.S02/S04, P02.S06) — camera commands, layout-params command,
-// layout-mode command, camera-change + layout-changed events, and minimap
-// canvas registration. All are additive to the locked union; no existing
-// members renamed or removed.
+// 2026-06-17: the live graph seam is Cosmos-native. The retired d3 force tuning
+// commands have been replaced by one explicit Cosmos config command.
 
-import type { LayoutParams } from "./field/forceLayout";
+import {
+  COSMOS_SIMULATION_DEFAULTS,
+  type CosmosSimulationConfig,
+} from "./field/cosmosConfig";
 import type { RepresentationMode } from "./field/representationLayout";
 import type { StatusClass } from "./field/statusStamp";
 import type { SemanticLevel } from "./field/camera";
+
+export interface EdgeRenderParams {
+  lineWidthScale: number;
+}
+
+export const EDGE_RENDER_DEFAULTS: EdgeRenderParams = {
+  lineWidthScale: 1,
+};
 
 /**
  * Graph data for one node — visual-anatomy inputs only (RL-1).
@@ -84,6 +92,13 @@ export interface SceneNodeData {
    * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
    */
   salience?: number;
+  /**
+   * Backend-projected world-space node body radius. Additive contract field for
+   * the graph renderer; current sprite sizing can continue to derive from
+   * salience/memberCount until the render path is switched deliberately.
+   */
+  nodeSize?: number;
+  temporal?: { bucket: string };
   /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
    * the rag embedding the CPU worker projects with UMAP for the semantic layout
@@ -198,28 +213,27 @@ export type SceneCommand =
   | { kind: "zoom-out" }
   | { kind: "fit-to-view" }
   | { kind: "reset-view" }
-  // Layout algorithm controls (AlgorithmPanel seam contract).
-  | { kind: "set-layout-params"; params: LayoutParams }
+  // Cosmos simulation controls: direct @cosmos.gl/graph config names and units.
+  | { kind: "set-cosmos-config"; config: Partial<CosmosSimulationConfig> }
+  | { kind: "set-simulation-active"; active: boolean }
+  | { kind: "set-edge-render-params"; params: Partial<EdgeRenderParams> }
   | { kind: "set-layout-mode"; mode: "force" | "circular" }
   // --- node-graph-rework addendum (ADR D3) -----------------------------------
-  // Configurable canvas/sim containment: free (unbounded) | circle (default) |
+  // Configurable canvas/sim containment: free (default, unbounded) | circle |
   // rect, with an optional size (radius for circle, half-extent for rect; omitted
-  // or 0 = auto-fit non-overlapping). The view store owns the setting and the
-  // GraphControls expose it; the field enforces the bound where positions are
-  // produced, because cosmos has no radial bound. ADR-flagged additive redline per
-  // the W01.P01.S04 lock discipline - additive to the locked union, nothing renamed.
+  // or 0 = auto-fit non-overlapping). Rect remains a compatibility command value;
+  // the default and chrome path are free unless the user explicitly chooses a
+  // compact circle. ADR-flagged additive redline per the W01.P01.S04 lock
+  // discipline - additive to the locked union, nothing renamed.
   | { kind: "set-bounds"; shape: "free" | "circle" | "rect"; size?: number }
-  // --- graph-force-stability addenda (W01) -----------------------------------
-  // Held-warmth interaction seam (graph-force-stability D2): the chrome brackets
-  // a slider-tune drag with begin/end-interaction so the driver holds an
-  // alphaTarget floor and the set-layout-params during the drag reflow
-  // continuously instead of kicking the field on every onChange. Additive to the
-  // locked union; no existing member changed.
+  // --- live Cosmos interaction addenda ---------------------------------------
+  // Chrome brackets slider/drag interaction so the field can temporarily switch
+  // to the configured interaction decay and alpha.
   | { kind: "begin-interaction" }
   | { kind: "end-interaction" }
-  // Freeze toggle (graph-force-stability D7): Obsidian's pause. `frozen:true`
-  // stops the solver where it is; `frozen:false` resumes it at a low alpha. The
-  // cooling schedule stays fixed and unexposed; this is the ONE new control knob.
+  // Freeze toggle: `frozen:true` pauses Cosmos where it is; `frozen:false`
+  // resumes without injecting new alpha. The graph lab can tune the lower-level
+  // Cosmos config through set-cosmos-config.
   | { kind: "set-frozen"; frozen: boolean }
   // --- graph-representation addenda (W03.P08) -------------------------------
   // Representation-mode switch (graph-representation ADR): connectivity (FA2,
@@ -253,8 +267,8 @@ export type SceneEvent =
   // --- graph-quality addenda (2026-06-13, P01.S04 / P02.S06) -----------------
   /** Emitted on every camera.onChange — toolbar zoom display + LOD level. */
   | { kind: "camera-change"; scale: number; level: SemanticLevel }
-  /** Emitted after set-layout-params or set-layout-mode is applied. */
-  | { kind: "layout-changed"; mode: "force" | "circular"; params: LayoutParams }
+  /** Emitted after set-cosmos-config is applied. */
+  | { kind: "cosmos-config-changed"; config: CosmosSimulationConfig }
   // --- context menu (2026-06-15, dashboard-context-menus W04.P10) -------------
   /**
    * Emitted on right-click over the field: `id` is the node under the pointer or
@@ -326,19 +340,20 @@ export class SceneController {
 
   // --- graph-quality: layout state (P01.S02) -----------------------------------
   private _layoutMode: "force" | "circular" = "force";
-  private _layoutParams: LayoutParams = {};
+  private _cosmosConfig: CosmosSimulationConfig = { ...COSMOS_SIMULATION_DEFAULTS };
+  private _edgeRenderParams: EdgeRenderParams = { ...EDGE_RENDER_DEFAULTS };
   // --- node-graph-rework: canvas/sim containment (ADR D3) -----------------------
   private _bounds: { shape: "free" | "circle" | "rect"; size: number } = {
     shape: "free",
     size: 0,
   };
   // --- selection state retained at the seam (W03.P08.S51) -----------------------
-  // The inbound `set-selected` selection (graph/Node-items "selected"): the view
-  // store owns the one shared selection and pushes it in through the EXISTING
+  // The inbound `set-selected` selection (graph/Node-items "selected"):
+  // dashboard-state owns node selection and pushes it in through the EXISTING
   // command; the controller retains it so a consumer can read the current
   // selection synchronously the same way it reads layout/representation state,
   // never re-deriving it from a held render frame. Purely additive bookkeeping
-  // over the locked `set-selected` command — no new command, no new event.
+  // over the locked `set-selected` command - no new command, no new event.
   private _selectedIds: ReadonlySet<string> = new Set();
   // --- graph-representation: representation-mode + overlay state (W03.P08) ------
   private _representationMode: RepresentationMode = "connectivity";
@@ -379,8 +394,14 @@ export class SceneController {
         this.nodes = cmd.nodes;
         this.edges = cmd.edges;
         break;
-      case "set-layout-params":
-        this._layoutParams = { ...this._layoutParams, ...cmd.params };
+      case "set-cosmos-config":
+        this._cosmosConfig = { ...this._cosmosConfig, ...cmd.config };
+        this.emit({ kind: "cosmos-config-changed", config: { ...this._cosmosConfig } });
+        break;
+      case "set-simulation-active":
+        break;
+      case "set-edge-render-params":
+        this._edgeRenderParams = { ...this._edgeRenderParams, ...cmd.params };
         break;
       case "set-layout-mode":
         this._layoutMode = cmd.mode;
@@ -390,8 +411,8 @@ export class SceneController {
         break;
       case "set-selected":
         // Retain the inbound selection at the seam (S51): the round-tripped
-        // selection (a scene `select` event went to the view store, which pushes
-        // the shared selection back through this command) is held here so a
+        // selection (a scene `select` event patched dashboard-state, which pushes
+        // the canonical selection back through this command) is held here so a
         // consumer reads it synchronously via getSelectionState(). Still forwarded
         // to the field below (the ring is the renderer's concern).
         this._selectedIds = new Set(cmd.ids);
@@ -499,9 +520,19 @@ export class SceneController {
 
   // --- graph-quality: layout state read (P01.S02) --------------------------------
 
-  /** Synchronous snapshot of the current layout mode and params. */
-  getLayoutState(): { mode: "force" | "circular"; params: LayoutParams } {
-    return { mode: this._layoutMode, params: { ...this._layoutParams } };
+  /** Synchronous snapshot of the current layout mode. */
+  getLayoutState(): { mode: "force" | "circular" } {
+    return { mode: this._layoutMode };
+  }
+
+  /** Synchronous snapshot of runtime Cosmos simulation parameters. */
+  getCosmosConfigState(): CosmosSimulationConfig {
+    return { ...this._cosmosConfig };
+  }
+
+  /** Synchronous snapshot of renderer edge treatment controls. */
+  getEdgeRenderState(): EdgeRenderParams {
+    return { ...this._edgeRenderParams };
   }
 
   /** Synchronous snapshot of the active canvas/sim containment (node-graph-rework
@@ -513,10 +544,10 @@ export class SceneController {
   // --- selection read at the seam (W03.P08.S51) ---------------------------------
 
   /** Synchronous snapshot of the current selection (the inbound `set-selected`
-   *  the view store pushes back through the seam). A defensive copy, so a reader
+   *  dashboard-state pushes back through the seam). A defensive copy, so a reader
    *  cannot mutate the controller's held set. Lets a consumer root a re-layout or
    *  a focus on the current selection without re-deriving it from a render frame
-   *  — the selection routed through the preserved channel, read here. */
+   *  - the selection routed through the preserved channel, read here. */
   getSelectionState(): { selectedIds: ReadonlySet<string> } {
     return { selectedIds: new Set(this._selectedIds) };
   }

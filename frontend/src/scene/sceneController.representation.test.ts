@@ -109,9 +109,47 @@ describe("set-representation-mode / set-overlays seam commands", () => {
     controller.command({ kind: "set-representation-mode", mode: "connectivity" });
     expect(controller.nodeCount).toBe(before);
   });
+
+  it("tracks temporal as a graph representation without changing topology state", () => {
+    const controller = new SceneController(null);
+    controller.command({ kind: "set-layout-mode", mode: "circular" });
+    controller.command({
+      kind: "set-data",
+      nodes: [
+        {
+          id: "doc:a",
+          kind: "document",
+          seedPosition: { x: 10, y: 20 },
+          temporal: { bucket: "2026-06-17" },
+        },
+        {
+          id: "doc:b",
+          kind: "document",
+          seedPosition: { x: 24, y: 30 },
+          temporal: { bucket: "2026-06-17" },
+        },
+      ],
+      edges: [
+        {
+          id: "edge:a-b",
+          src: "doc:a",
+          dst: "doc:b",
+          relation: "references",
+          tier: "declared",
+          confidence: 1,
+        },
+      ],
+    });
+
+    controller.command({ kind: "set-representation-mode", mode: "temporal" });
+
+    expect(controller.getRepresentationState().mode).toBe("temporal");
+    expect(controller.getLayoutState().mode).toBe("circular");
+    expect(controller.nodeCount).toBe(2);
+  });
 });
 
-describe("connectivity-only scope fence (d3-force rewrite)", () => {
+describe("connectivity-only scope fence (Cosmos live layout)", () => {
   const nodes: SceneNodeData[] = [
     { id: "r", kind: "research" },
     { id: "a", kind: "adr" },
@@ -129,7 +167,7 @@ describe("connectivity-only scope fence (d3-force rewrite)", () => {
     },
   ];
 
-  it("connectivity yields no static seed — the d3-force solver owns positions", () => {
+  it("connectivity yields no static seed — Cosmos owns positions", () => {
     // This is the contract that keeps the rewrite scoped: connectivity defers to
     // the live force solver, never a precomputed seed map.
     expect(representationLayout("connectivity", nodes, edges).positions).toBeNull();

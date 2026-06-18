@@ -1,4 +1,4 @@
-// The committed QUALITY REPORT regenerates deterministically, scores all six layout
+// The committed QUALITY REPORT regenerates deterministically, scores all layout
 // families, and every layout PASSes under the calibrated thresholds + METRIC_VERSION
 // (graph-viz-scorecard ADR, graph-viz-quality plan W06.P17.S72).
 //
@@ -6,8 +6,8 @@
 // artifact. It proves:
 //   - the report regenerates DETERMINISTICALLY (two calls are byte-identical, and the
 //     materialized `QUALITY_REPORT` equals a fresh `generateQualityReport()`);
-//   - it reports ALL SIX layout families (force, semantic, lineage, hierarchy, radial,
-//     clusters over SBM and LFR — seven gate runs);
+//   - it reports the deterministic layout families (semantic, lineage, hierarchy,
+//     radial, clusters over SBM and LFR);
 //   - EVERY layout is PASS under the current calibrated thresholds + METRIC_VERSION
 //     (a real finding if any were not — the report is read, never masked);
 //   - METRIC_VERSION is pinned (a metric-definition change is a deliberate contract
@@ -34,10 +34,9 @@ import { QUALITY_REPORT, generateQualityReport } from "./qualityReport";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_PATH = join(HERE, "__fixtures__", "quality-report.txt");
 
-// The six layout FAMILIES, scored across seven gate runs (clusters over two planted
-// partitions, SBM and LFR). Pinned here so the report cannot silently drop a family.
+// The deterministic layout families. Pinned here so the report cannot silently drop
+// a family.
 const EXPECTED_LAYOUTS = [
-  "force",
   "semantic",
   "lineage",
   "hierarchy",
@@ -63,7 +62,7 @@ describe("quality report: deterministic regeneration", () => {
   });
 });
 
-describe("quality report: all six layout families scored", () => {
+describe("quality report: all layout families scored", () => {
   it("names every expected layout family in the report", () => {
     const report = generateQualityReport();
     for (const layout of EXPECTED_LAYOUTS) {

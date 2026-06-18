@@ -62,13 +62,13 @@ describe("SceneController", () => {
       kind: "set-data",
       nodes: [
         { id: "doc:a", kind: "plan" },
-        { id: "code:src/main.rs", kind: "code" },
+        { id: "doc:b", kind: "adr" },
       ],
       edges: [
         {
           id: "e-broken",
           src: "doc:a",
-          dst: "code:src/main.rs",
+          dst: "doc:b",
           relation: "mentions",
           tier: "structural",
           confidence: 0.5,
@@ -121,7 +121,7 @@ describe("SceneController", () => {
     scene.emit({ kind: "select", id: "doc:a" });
     expect(events).toEqual(["doc:a"]);
 
-    // The view store pushes the shared selection BACK through the EXISTING
+    // Dashboard-state pushes the shared selection BACK through the EXISTING
     // set-selected command; the controller retains it AND forwards it to the field.
     scene.command({ kind: "set-selected", ids: new Set(["doc:a"]) });
     expect(scene.getSelectionState().selectedIds).toEqual(new Set(["doc:a"]));

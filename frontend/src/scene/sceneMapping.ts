@@ -24,6 +24,7 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     // Per-lens salience (graph-node-salience) -> size + label priority; the
     // embedding feeds the semantic UMAP worker (graph-representation §4).
     salience: node.salience,
+    nodeSize: node.node_size,
     embedding: node.embedding,
     // Authority register (graph-node-semantics) -> the lineage layout suppresses
     // `manifest` (generated index) nodes from the derivation spine (W03 D5).

@@ -1,6 +1,6 @@
-// All-six scorecard regression fence (graph-viz-scorecard ADR, W04.P10.S47).
+// Scorecard regression fence (graph-viz-scorecard ADR, W04.P10.S47).
 //
-// The consolidated CI fence proving ALL SIX layout families (force, semantic,
+// The consolidated CI fence proving deterministic layout families (semantic,
 // lineage, hierarchy, radial, clusters over SBM and LFR) meet quality: it runs the
 // run-all entry over the deterministic seeded fixtures and asserts EVERY emitted
 // `ScorecardVector` passes — i.e. every per-metric value clears its calibrated
@@ -11,7 +11,7 @@
 //
 // This is the W04.P10 baseline capture made executable: the gates already pass
 // their own thresholds in `scorecard.test.ts`; this suite proves the run-all
-// AGGREGATOR collects them faithfully, stays deterministic, and that all six pass
+// AGGREGATOR collects them faithfully, stays deterministic, and all gates pass
 // together as one fence. If a layout FAILS here, that is a real quality finding for
 // the W04.P11 hardening phase — do NOT loosen the committed thresholds to force a
 // pass.
@@ -28,7 +28,6 @@ import {
 } from "./runAll";
 
 const EXPECTED_LAYOUTS = [
-  "force",
   "semantic",
   "lineage",
   "hierarchy",
@@ -70,7 +69,7 @@ describe("runAllGates: every layout's vector is emitted", () => {
   });
 });
 
-describe("ALL SIX layouts pass their per-metric thresholds over the fixtures", () => {
+describe("all scorecard layouts pass their per-metric thresholds over the fixtures", () => {
   it("every ScorecardVector.passed is true (per-metric, never aggregate)", () => {
     const vectors = runAllGates();
     // Name every failing metric across every layout so a real quality regression
@@ -124,7 +123,7 @@ describe("formatScorecard: renders the per-layout per-metric table", () => {
         expect(text).toContain(m.name);
       }
     }
-    // All six pass -> the summary reads ALL PASS with the right tally.
+    // Every emitted layout passes -> the summary reads ALL PASS with the right tally.
     expect(text).toContain(
       `SUMMARY: ${vectors.length}/${vectors.length} layouts passed`,
     );

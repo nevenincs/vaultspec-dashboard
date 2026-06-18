@@ -14,7 +14,7 @@
 //   (2) every emitted seed position is finite and within the world envelope,
 //   (3) no laid node is dropped (the mode places every served node, OR returns a
 //       null seed map — connectivity, and a held/downgraded semantic — which the
-//       field then owns via the force driver; a null map is the honest "I own no
+//       Cosmos field then owns; a null map is the honest "I own no
 //       seed" answer, not a glitch),
 //   (4) a downgraded mode reports an honest `downgradeReason`.
 //
@@ -240,7 +240,7 @@ describe("fuzz: every adversarial shape survives every representation mode", () 
 
         const r = result!;
         // A null seed map is a valid, honest answer: connectivity owns its positions
-        // in the force driver, and a held/downgraded semantic mode hands off to
+        // in Cosmos, and a held/downgraded semantic mode hands off to
         // connectivity. When a mode downgrades it MUST say why.
         if (r.applied !== mode) {
           expect(
@@ -251,7 +251,7 @@ describe("fuzz: every adversarial shape survives every representation mode", () 
 
         if (r.positions === null) {
           // Only connectivity, or a downgraded-to-connectivity semantic mode, may
-          // return a null seed (the force driver then owns placement).
+          // return a null seed (Cosmos then owns placement).
           expect(
             r.applied,
             `${mode} on "${shape.name}" returned null positions but applied ${r.applied}`,

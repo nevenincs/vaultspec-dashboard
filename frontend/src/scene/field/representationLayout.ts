@@ -29,7 +29,7 @@ import { semanticLayout } from "./semanticLayout";
 /**
  * The spatial representation modes (distinct from the force/circular tuning).
  *
- * connectivity — the d3-force solver owns positions (the only solver mode).
+ * connectivity — Cosmos owns live positions (no deterministic seed).
  * lineage      — the deterministic derivation-DAG provenance spine.
  * hierarchical — a general layered (Sugiyama) seed over the structural backbone
  *                (graph-layout-catalog D2/D3, W02.P06) — DISTINCT from lineage.
@@ -45,6 +45,7 @@ import { semanticLayout } from "./semanticLayout";
  */
 export type RepresentationMode =
   | "connectivity"
+  | "temporal"
   | "lineage"
   | "hierarchical"
   | "radial"
@@ -120,6 +121,22 @@ export function representationLayout(
   selectedId?: string,
 ): RepresentationLayoutResult {
   switch (mode) {
+    case "temporal": {
+      const positions = new Map<string, { x: number; y: number }>();
+      for (const node of nodes) {
+        if (
+          node.seedPosition &&
+          Number.isFinite(node.seedPosition.x) &&
+          Number.isFinite(node.seedPosition.y)
+        ) {
+          positions.set(node.id, {
+            x: node.seedPosition.x,
+            y: node.seedPosition.y,
+          });
+        }
+      }
+      return { positions, applied: "temporal" };
+    }
     case "lineage": {
       const result = lineageLayout(nodes, edges);
       const positions = new Map<string, { x: number; y: number }>();

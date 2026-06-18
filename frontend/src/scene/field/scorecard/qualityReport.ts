@@ -2,7 +2,7 @@
 // (graph-viz-scorecard ADR, graph-viz-quality plan W06.P17.S71).
 //
 // This module renders the standing scorecard harness into ONE stable text report
-// that scores each of the six layout families (force, semantic, lineage, hierarchy,
+// that scores each deterministic layout family (semantic, lineage, hierarchy,
 // radial, clusters over SBM and LFR) against its per-metric calibrated thresholds.
 // It is the campaign's Definition-of-Done evidence: a single human-readable document
 // that says, under a named METRIC_VERSION, which layouts pass every per-metric floor
