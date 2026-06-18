@@ -131,12 +131,12 @@ Replace the single viewerTarget with a bounded open-document slice carrying prov
 
 Build the DockviewReact host with graph/markdown/code panels and the graph-right/documents-left default split, and route every open action through provisional/permanent intents.
 
-- [ ] `P04.S11` - Build the DockviewReact workspace host with the components map and onReady api wiring; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `P04.S12` - Implement the graph-right documents-left default split with group creation on first open and collapse on last close; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `P04.S13` - Wire the markdown and code panel components to their per-id useContentView query and the existing reader and viewer; `frontend/src/app/stage/DocPanel.tsx`.
-- [ ] `P04.S14` - Reconcile dockview geometry with the tab slice by panel id for add, remove, and activate; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `P04.S15` - Route left-rail, overview, inspector, and palette open actions through provisional single-click and permanent double-click intents; `frontend/src/app/left/browserSelection.ts`.
-- [ ] `P04.S16` - Replace the AppShell viewer overlay mount with the dock workspace host; `frontend/src/app/AppShell.tsx`.
+- [x] `P04.S11` - Build the DockviewReact workspace host with the components map and onReady api wiring; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P04.S12` - Implement the graph-right documents-left default split with group creation on first open and collapse on last close; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P04.S13` - Wire the markdown and code panel components to their per-id useContentView query and the existing reader and viewer; `frontend/src/app/stage/DocPanel.tsx`.
+- [x] `P04.S14` - Reconcile dockview geometry with the tab slice by panel id for add, remove, and activate; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P04.S15` - Route left-rail, overview, inspector, and palette open actions through provisional single-click and permanent double-click intents; `frontend/src/app/left/browserSelection.ts`.
+- [x] `P04.S16` - Replace the AppShell viewer overlay mount with the dock workspace host; `frontend/src/app/AppShell.tsx`.
 
 ### Phase `P05` - Markdown read and edit mounting with live write verification
 

@@ -32,18 +32,19 @@
 // hex, no loose font-size — every color and size resolves to a bound token.
 
 import type { HTMLAttributes } from "react";
-import { useState } from "react";
 
 import type { PipelineArtifact } from "../../stores/server/engine";
 import {
+  useActiveScope,
+  useDashboardTimelineModeView,
   useHistoryView,
   useLocationAnchor,
   usePipelineStatusView,
   usePlanInteriorView,
 } from "../../stores/server/queries";
-import { selectNode } from "../../stores/view/selection";
-import { useViewStore } from "../../stores/view/viewStore";
-import { useActiveScope } from "../stage/Stage";
+import { usePipelineExpansion } from "../../stores/view/pipelineExpansion";
+import { selectEventNodes } from "../../stores/view/selection";
+import { openDocTab } from "../../stores/view/tabs";
 import { freshnessLabel } from "../left/VaultBrowser";
 import { relativeTs } from "./ChangesOverview";
 import { PlanStepTree } from "./WorkTab";
@@ -59,10 +60,6 @@ import {
 
 // Disclosure chevron sizing — the board paints a 10px twisty on the plan row.
 const TWISTY_PX = 10;
-
-// How many recent commits the rail renders (the stores query is bounded; this
-// trims the rendered list to the board's short snapshot).
-const RECENT_COMMITS = 12;
 
 // ---------------------------------------------------------------------------
 // Location anchor — "Where are we?" (path · worktree chip · branch chip).
@@ -161,7 +158,7 @@ function OpenPlanRow({
   expanded,
   onToggle,
 }: OpenPlanRowProps) {
-  const openInViewer = useViewStore((s) => s.openInViewer);
+  const scope = useActiveScope();
   const progress = artifact.progress;
   const total = progress?.total ?? 0;
   const done = progress?.done ?? 0;
@@ -169,7 +166,7 @@ function OpenPlanRow({
   const fresh = freshnessLabel(artifact.dates?.modified, now);
   const treeId = `status-tree-${artifact.node_id}`;
   // Lazily fetch the interior ONLY while expanded (graph-queries-are-bounded).
-  const interior = usePlanInteriorView(expanded ? artifact.node_id : null);
+  const interior = usePlanInteriorView(expanded ? artifact.node_id : null, scope);
   const Chevron = expanded ? ChevronDown : ChevronRight;
   // The engine title is the plan's H1, which carries markdown backticks
   // (e.g. "`figma-frontend-rewrite` plan"); strip them so the row reads cleanly.
@@ -177,8 +174,7 @@ function OpenPlanRow({
 
   // A plan node is a `doc:<stem>` id → the markdown reader surface.
   const openPlan = () => {
-    selectNode(artifact.node_id);
-    openInViewer(artifact.node_id, "markdown");
+    void openDocTab(artifact.node_id, "markdown", scope).catch(() => undefined);
   };
 
   return (
@@ -274,25 +270,17 @@ function OpenPlanRow({
 // ---------------------------------------------------------------------------
 
 function OpenPlans({ scope }: { scope: string | null }) {
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const asOf = timelineMode.kind === "time-travel" ? timelineMode.at : undefined;
+  const timeline = useDashboardTimelineModeView(scope);
+  const asOf = timeline.asOf;
   const view = usePipelineStatusView(scope, asOf);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
   const now = Date.now();
-  const plans = view.artifacts.filter((a) => a.doc_type === "plan");
+  const { expanded, toggle } = usePipelineExpansion(scope, asOf, view.planIds);
 
   return (
     <section aria-label="open plans" data-open-plans>
       {/* Board 238:601: "OPEN PLANS — N" uppercase eyebrow (kit SectionLabel). */}
-      <SectionLabel count={plans.length > 0 ? plans.length : undefined}>
+      <SectionLabel count={view.plans.length > 0 ? view.plans.length : undefined}>
         Open plans
       </SectionLabel>
 
@@ -313,7 +301,7 @@ function OpenPlans({ scope }: { scope: string | null }) {
         >
           reading in-flight work…
         </p>
-      ) : plans.length === 0 ? (
+      ) : view.plans.length === 0 ? (
         <p
           className="mt-fg-1-5 text-label text-ink-faint"
           data-open-plans-state="empty"
@@ -322,7 +310,7 @@ function OpenPlans({ scope }: { scope: string | null }) {
         </p>
       ) : (
         <ul className="mt-fg-1-5 space-y-fg-0-5" role="list" data-open-plans-list>
-          {plans.map((artifact, i) => (
+          {view.plans.map((artifact, i) => (
             <OpenPlanRow
               key={artifact.node_id}
               artifact={artifact}
@@ -348,7 +336,6 @@ function OpenPlans({ scope }: { scope: string | null }) {
 
 function RecentCommits({ scope }: { scope: string | null }) {
   const view = useHistoryView(scope);
-  const selectEntity = useViewStore((s) => s.selectEntity);
   const now = Date.now();
 
   return (
@@ -378,7 +365,7 @@ function RecentCommits({ scope }: { scope: string | null }) {
         >
           reading recent commits…
         </p>
-      ) : view.commits.length === 0 ? (
+      ) : view.recentCommitRows.length === 0 ? (
         <p
           className="mt-fg-1-5 text-label text-ink-faint"
           data-recent-commits-state="empty"
@@ -387,15 +374,13 @@ function RecentCommits({ scope }: { scope: string | null }) {
         </p>
       ) : (
         <ul className="mt-fg-1-5 space-y-fg-0-5" role="list" data-recent-commits-list>
-          {view.commits.slice(0, RECENT_COMMITS).map((commit) => {
-            const touched = commit.node_ids.filter((id) => !id.startsWith("commit:"));
+          {view.recentCommitRows.map((row) => {
+            const { commit, touchedNodeIds } = row;
             const select = () => {
-              if (touched.length === 0) return;
-              selectEntity({
-                kind: "event",
-                id: `commit:${commit.hash}`,
-                nodeIds: touched,
-              });
+              if (!row.selectable) return;
+              void selectEventNodes(row.eventId, touchedNodeIds, scope).catch(
+                () => undefined,
+              );
             };
             return (
               <li key={commit.hash} data-recent-commit data-hash={commit.hash}>
@@ -406,12 +391,14 @@ function RecentCommits({ scope }: { scope: string | null }) {
                 <button
                   type="button"
                   onClick={select}
-                  disabled={touched.length === 0}
+                  disabled={!row.selectable}
                   aria-label={`commit ${commit.short_hash}: ${commit.subject}${
-                    touched.length ? `, ${touched.length} touched nodes` : ""
+                    touchedNodeIds.length
+                      ? `, ${touchedNodeIds.length} touched nodes`
+                      : ""
                   }`}
                   className={`flex w-full flex-col gap-fg-0-5 rounded-fg-md px-fg-2 py-fg-1-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                    touched.length
+                    row.selectable
                       ? "hover:bg-paper-sunken"
                       : "cursor-default opacity-90"
                   }`}
@@ -432,11 +419,12 @@ function RecentCommits({ scope }: { scope: string | null }) {
                     <span data-tabular>
                       {relativeTs(new Date(commit.ts).toISOString(), now)}
                     </span>
-                    {touched.length > 0 && (
+                    {touchedNodeIds.length > 0 && (
                       <>
                         <span aria-hidden>·</span>
                         <span data-tabular>
-                          {touched.length} file{touched.length === 1 ? "" : "s"}
+                          {touchedNodeIds.length} file
+                          {touchedNodeIds.length === 1 ? "" : "s"}
                         </span>
                       </>
                     )}

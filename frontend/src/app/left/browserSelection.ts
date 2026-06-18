@@ -5,39 +5,33 @@
 // one shared selection, joined on the contract's stable id derivation
 // (document node ids derive from the vault stem).
 
-import { usePutSession } from "../../stores/server/queries";
 import type { FileTreeEntry, VaultTreeEntry } from "../../stores/server/engine";
-import { selectNode } from "../../stores/view/selection";
-import { useViewStore } from "../../stores/view/viewStore";
+import {
+  codeNodeIdFromPath,
+  docNodeIdFromStem,
+  stemFromPath,
+} from "../../stores/server/liveAdapters";
+import { useDashboardSelectedNodeId } from "../../stores/view/selection";
+import { openDocTab, previewDocTab } from "../../stores/view/tabs";
 
-/** The single stem derivation every surface shares (finding 024). */
+export {
+  useScopeContextSelection,
+  useSelectFolderContext,
+} from "../../stores/server/sessionContext";
+
+/** Vault path → its canonical stem, through the stores-owned identity grammar. */
 export function pathStem(path: string): string {
-  return path.replace(/^.*\//, "").replace(/\.md$/, "");
+  return stemFromPath(path);
 }
 
 /** Vault path → the contract's document node id (kind + canonical stem). */
 export function pathToNodeId(path: string): string {
-  return `doc:${pathStem(path)}`;
+  return docNodeIdFromStem(pathStem(path));
 }
 
 /** Document node id → the vault path's stem (for row matching). */
 export function nodeIdToStem(id: string): string | null {
   return id.startsWith("doc:") ? id.slice(4) : null;
-}
-
-/** Browser row click → the shared selection (stage focuses via S23). */
-export function handleEntryClick(entry: VaultTreeEntry): void {
-  selectNode(pathToNodeId(entry.path));
-}
-
-/** Browser row OPEN (double-click / activate) → select the node AND open its
- *  body in the markdown reader. The two-intent model (select vs open,
- *  review-rail-viewers ADR): a single click focuses the node on the stage; an
- *  explicit open additionally surfaces the reader. */
-export function handleEntryOpen(entry: VaultTreeEntry): void {
-  const id = pathToNodeId(entry.path);
-  selectNode(id);
-  useViewStore.getState().openInViewer(id, "markdown");
 }
 
 /**
@@ -57,8 +51,9 @@ export function highlightedPathFor(
 /** Hook: the highlighted browser path for the shared selection. */
 export function useHighlightedPath(
   entries: readonly VaultTreeEntry[] | undefined,
+  scope: string | null = null,
 ): string | null {
-  const selectedId = useViewStore((s) => s.selectedId);
+  const selectedId = useDashboardSelectedNodeId(scope);
   return highlightedPathFor(entries, selectedId);
 }
 
@@ -78,7 +73,7 @@ export function useHighlightedPath(
  *  path). The same `code:<path>` derivation the listing endpoint applies, so the
  *  derivation lives in ONE place conceptually; the entry carries the id directly. */
 export function codePathToNodeId(path: string): string {
-  return `code:${path}`;
+  return codeNodeIdFromPath(path);
 }
 
 /** Code-artifact node id → the repo-relative path (for row matching). */
@@ -86,19 +81,36 @@ export function nodeIdToCodePath(id: string): string | null {
   return id.startsWith("code:") ? id.slice(5) : null;
 }
 
-/** Code-tree row click → the shared selection (the stage focuses the `code:`
- *  node). Uses the entry's carried `node_id` (the shared-rule derivation),
- *  falling back to deriving it from the path so a sparse entry still joins. */
-export function handleCodeEntryClick(entry: FileTreeEntry): void {
-  selectNode(entry.node_id || codePathToNodeId(entry.path));
-}
-
-/** Code-tree row OPEN (double-click / activate) → select the `code:` node AND
- *  open its source in the code viewer (the two-intent model, for the code tree). */
-export function handleCodeEntryOpen(entry: FileTreeEntry): void {
-  const id = entry.node_id || codePathToNodeId(entry.path);
-  selectNode(id);
-  useViewStore.getState().openInViewer(id, "code");
+export function useDashboardBrowserSelection(scope: string | null): {
+  handleEntryClick: (entry: VaultTreeEntry) => void;
+  handleEntryOpen: (entry: VaultTreeEntry) => void;
+  handleCodeEntryClick: (entry: FileTreeEntry) => void;
+  handleCodeEntryOpen: (entry: FileTreeEntry) => void;
+} {
+  return {
+    // VS Code semantics (editor-dock-workspace): a single click PREVIEWS the
+    // document in the single provisional tab (which the next preview replaces in
+    // place); an open (double-click / Enter) makes it a PERMANENT tab. Both also
+    // focus the node on the graph (the tab seam selects).
+    handleEntryClick: (entry) => {
+      void previewDocTab(pathToNodeId(entry.path), "markdown", scope).catch(
+        () => undefined,
+      );
+    },
+    handleEntryOpen: (entry) => {
+      void openDocTab(pathToNodeId(entry.path), "markdown", scope).catch(
+        () => undefined,
+      );
+    },
+    handleCodeEntryClick: (entry) => {
+      const id = entry.node_id || codePathToNodeId(entry.path);
+      void previewDocTab(id, "code", scope).catch(() => undefined);
+    },
+    handleCodeEntryOpen: (entry) => {
+      const id = entry.node_id || codePathToNodeId(entry.path);
+      void openDocTab(id, "code", scope).catch(() => undefined);
+    },
+  };
 }
 
 /**
@@ -122,8 +134,9 @@ export function highlightedCodePathFor(
  *  visible (already-fetched) level entries. */
 export function useHighlightedCodePath(
   entries: readonly FileTreeEntry[] | undefined,
+  scope: string | null = null,
 ): string | null {
-  const selectedId = useViewStore((s) => s.selectedId);
+  const selectedId = useDashboardSelectedNodeId(scope);
   return highlightedCodePathFor(entries, selectedId);
 }
 
@@ -158,34 +171,4 @@ export function featureContextsFor(
     }
   }
   return ordered;
-}
-
-/** The current folder + feature-tag contexts, read from the view store (the
- *  projection mirrored from the restored session). A pure read — no fetch. */
-export function useScopeContextSelection(): {
-  folder: string | null;
-  featureContexts: string[];
-} {
-  const folder = useViewStore((s) => s.activeFolder);
-  const featureContexts = useViewStore((s) => s.featureContexts);
-  return { folder, featureContexts };
-}
-
-/**
- * Select the current folder + its feature-tag contexts: mirror the choice into
- * the view store for synchronous reads AND persist it durably through the session
- * API (`PUT /session scope_context`), scoped to the active worktree. The durable
- * home is the session, never localStorage. Returns the mutation so callers can
- * surface a rejected persist.
- */
-export function useSelectFolderContext() {
-  const setScopeContext = useViewStore((s) => s.setScopeContext);
-  const putSession = usePutSession();
-  const select = (folder: string | null, featureTags: string[]) => {
-    setScopeContext({ folder, featureTags });
-    putSession.mutate({
-      scope_context: { folder, feature_tags: featureTags },
-    });
-  };
-  return { select, putSession };
 }

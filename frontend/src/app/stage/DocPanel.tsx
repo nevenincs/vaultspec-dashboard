@@ -51,7 +51,9 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
 
   return (
     <section className="flex h-full flex-col bg-paper" aria-label="document viewer">
-      {headerProps && <DocHeader {...headerProps} onClose={() => closeDocTab(nodeId)} />}
+      {headerProps && (
+        <DocHeader {...headerProps} onClose={() => closeDocTab(nodeId)} />
+      )}
       <div className="min-h-0 flex-1">
         <MarkdownReader content={content} scope={scope} />
       </div>

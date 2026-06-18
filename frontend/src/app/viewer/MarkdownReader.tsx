@@ -21,9 +21,12 @@ import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { parseDocument } from "../../stores/server/parseDocument";
-import type { ContentView } from "../../stores/server/queries";
-import { useViewStore } from "../../stores/view/viewStore";
+import {
+  deriveMarkdownReaderView,
+  type ContentView,
+  type MarkdownReaderView,
+} from "../../stores/server/queries";
+import { openDocTab } from "../../stores/view/tabs";
 import { FrontmatterHeader } from "./FrontmatterHeader";
 import { remarkWikiLink, wikiLinkNodeId } from "./remarkWikiLink";
 import { useHighlightedHast } from "./useHighlighter";
@@ -65,40 +68,9 @@ function CodeFence({
   );
 }
 
-/** The react-markdown component overrides: route wiki-links to in-app navigation,
- *  delegate fenced code to the shared highlighter, and open external links safely. */
+/** The base react-markdown component overrides: delegate fenced code to the shared
+ *  highlighter. Link routing is scoped per render in `MarkdownBody`. */
 const COMPONENTS: Components = {
-  a({ href, children, ...props }) {
-    const nodeId = href ? wikiLinkNodeId(href) : null;
-    if (nodeId) {
-      // A rewritten wiki-link: route to in-app navigation (select + open in the
-      // reader), the same intent the trees use — never a page navigation.
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            useViewStore.getState().select(nodeId);
-            useViewStore.getState().openInViewer(nodeId, "markdown");
-          }}
-          className="text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-        >
-          {children}
-        </button>
-      );
-    }
-    // A normal link opens in a new tab (the reader is display-only).
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="text-accent-text underline-offset-2 hover:underline"
-        {...props}
-      >
-        {children}
-      </a>
-    );
-  },
   code({ className, children }) {
     const text = String(children ?? "");
     const fenceMatch = /language-([\w+-]+)/.exec(className ?? "");
@@ -120,19 +92,57 @@ const COMPONENTS: Components = {
 
 const REMARK_PLUGINS = [remarkGfm, remarkWikiLink];
 
-/** The rendered markdown body (frontmatter header + GFM body). Memoizes the
- *  parse so re-renders that do not change the text do not re-split frontmatter. */
-function MarkdownBody({ text }: { text: string }): ReactElement {
-  const { frontmatter, body } = useMemo(() => parseDocument(text), [text]);
+/** The rendered markdown body (frontmatter header + GFM body). Consumes the
+ *  stores-derived reader projection; link routing is scoped per render. */
+function MarkdownBody({
+  view,
+  scope,
+}: {
+  view: MarkdownReaderView;
+  scope: string | null;
+}): ReactElement {
+  const components = useMemo<Components>(
+    () => ({
+      ...COMPONENTS,
+      a({ href, children, ...props }) {
+        const nodeId = href ? wikiLinkNodeId(href) : null;
+        if (nodeId) {
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                void openDocTab(nodeId, "markdown", scope).catch(() => undefined);
+              }}
+              className="text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            >
+              {children}
+            </button>
+          );
+        }
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-accent-text underline-offset-2 hover:underline"
+            {...props}
+          >
+            {children}
+          </a>
+        );
+      },
+    }),
+    [scope],
+  );
   return (
     <article className="vs-markdown">
-      <FrontmatterHeader frontmatter={frontmatter} />
+      <FrontmatterHeader view={view.frontmatter} scope={scope} />
       <Markdown
         remarkPlugins={REMARK_PLUGINS}
         urlTransform={urlTransform}
-        components={COMPONENTS}
+        components={components}
       >
-        {body}
+        {view.body}
       </Markdown>
     </article>
   );
@@ -145,7 +155,15 @@ function MarkdownBody({ text }: { text: string }): ReactElement {
  * fetches nothing and reads no raw `tiers` block). A truncated body renders with a
  * quiet honest notice; the full body opens in the file directly.
  */
-export function MarkdownReader({ content }: { content: ContentView }): ReactElement {
+export function MarkdownReader({
+  content,
+  scope = null,
+}: {
+  content: ContentView;
+  scope?: string | null;
+}): ReactElement {
+  const markdownView = useMemo(() => deriveMarkdownReaderView(content), [content.text]);
+
   if (content.loading) {
     return <ReaderState>Loading document…</ReaderState>;
   }
@@ -173,7 +191,7 @@ export function MarkdownReader({ content }: { content: ContentView }): ReactElem
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto px-fg-6 py-fg-4">
-        <MarkdownBody text={content.text} />
+        <MarkdownBody view={markdownView} scope={scope} />
       </div>
     </div>
   );

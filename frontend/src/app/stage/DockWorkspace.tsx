@@ -13,11 +13,7 @@
 // stores + SceneController contracts; no fetch, no raw tiers.
 
 import { useCallback, useEffect, useRef } from "react";
-import {
-  DockviewReact,
-  type DockviewApi,
-  type DockviewReadyEvent,
-} from "dockview";
+import { DockviewReact, type DockviewApi, type DockviewReadyEvent } from "dockview";
 
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
 import { DocPanel } from "./DocPanel";

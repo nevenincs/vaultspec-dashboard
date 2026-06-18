@@ -19,43 +19,17 @@
 
 import type { ReactElement } from "react";
 
-import { type Frontmatter } from "../../stores/server/parseDocument";
-import { useViewStore } from "../../stores/view/viewStore";
+import type { FrontmatterHeaderView } from "../../stores/server/queries";
+import { openDocTab } from "../../stores/view/tabs";
 import { Badge, Chip, Divider } from "../kit";
-import type { Category, CategoryToken } from "../kit";
 
-// `parseDocument` and its `Frontmatter`/`ParsedDocument` types now live in the
-// stores layer (the model); this header is one view of that model. The reader
-// imports the parser from the stores module directly (dashboard-layer-ownership:
-// a view never owns the parsing the stores layer also consumes).
-
-/** The frontmatter tags that name a known kit category (directory + feature
- *  tags), so a chip's bound dot colour agrees with that category's graph node. */
-const CATEGORY_TAGS: readonly CategoryToken[] = [
-  "adr",
-  "audit",
-  "code",
-  "exec",
-  "feature",
-  "index",
-  "plan",
-  "research",
-];
-
-/** Resolve a frontmatter tag to a kit category when it names one (so it renders
- *  as a colour-bound Chip); otherwise null (it renders as a neutral Badge). */
-function tagCategory(tag: string): Category | null {
-  return (CATEGORY_TAGS as readonly string[]).includes(tag)
-    ? (tag as CategoryToken)
-    : null;
-}
+// `FrontmatterHeaderView` lives in the stores layer; this header renders it and
+// owns click intent only.
 
 /** Open a related document in the markdown reader (and focus its node) — the same
  *  navigation intent the trees and the in-body wiki-links use. */
-function openRelated(stem: string): void {
-  const id = `doc:${stem}`;
-  useViewStore.getState().select(id);
-  useViewStore.getState().openInViewer(id, "markdown");
+function openRelated(nodeId: string, scope: string | null): void {
+  void openDocTab(nodeId, "markdown", scope).catch(() => undefined);
 }
 
 /**
@@ -65,69 +39,55 @@ function openRelated(stem: string): void {
  * frontmatter (general markdown).
  */
 export function FrontmatterHeader({
-  frontmatter,
+  view,
+  scope,
 }: {
-  frontmatter: Frontmatter | null;
+  view: FrontmatterHeaderView | null;
+  scope: string | null;
 }): ReactElement | null {
-  if (!frontmatter) return null;
-  const { tags, date, modified, related } = frontmatter;
-  const hasContent =
-    tags.length > 0 ||
-    related.length > 0 ||
-    date !== undefined ||
-    modified !== undefined;
-  if (!hasContent) return null;
+  if (!view) return null;
 
   return (
     <header className="mb-fg-6 space-y-fg-3">
-      {tags.length > 0 && (
+      {view.tags.length > 0 && (
         <ul className="flex flex-wrap gap-fg-1-5" aria-label="tags">
-          {tags.map((tag) => {
-            const category = tagCategory(tag);
+          {view.tags.map((tag) => {
             return (
-              <li key={tag}>
-                {category ? (
-                  <Chip category={category}>#{tag}</Chip>
+              <li key={tag.label}>
+                {tag.category ? (
+                  <Chip category={tag.category}>{tag.label}</Chip>
                 ) : (
-                  <Badge>#{tag}</Badge>
+                  <Badge>{tag.label}</Badge>
                 )}
               </li>
             );
           })}
         </ul>
       )}
-      {(date !== undefined || modified !== undefined) && (
+      {view.dates.length > 0 && (
         <dl className="reader-meta flex flex-wrap gap-fg-3 text-ink-muted">
-          {date !== undefined && (
-            <div className="flex gap-fg-1">
-              <dt className="text-ink-faint">created</dt>
+          {view.dates.map((date) => (
+            <div key={date.label} className="flex gap-fg-1">
+              <dt className="text-ink-faint">{date.label}</dt>
               <dd className="font-medium text-ink" data-tabular>
-                {date}
+                {date.value}
               </dd>
             </div>
-          )}
-          {modified !== undefined && (
-            <div className="flex gap-fg-1">
-              <dt className="text-ink-faint">modified</dt>
-              <dd className="font-medium text-ink" data-tabular>
-                {modified}
-              </dd>
-            </div>
-          )}
+          ))}
         </dl>
       )}
-      {related.length > 0 && (
+      {view.related.length > 0 && (
         <div className="space-y-fg-1">
           <span className="reader-eyebrow text-ink-faint">related</span>
           <ul className="flex flex-wrap gap-fg-2">
-            {related.map((stem) => (
-              <li key={stem}>
+            {view.related.map((related) => (
+              <li key={related.nodeId}>
                 <button
                   type="button"
-                  onClick={() => openRelated(stem)}
+                  onClick={() => openRelated(related.nodeId, scope)}
                   className="reader-meta text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 >
-                  {stem}
+                  {related.stem}
                 </button>
               </li>
             ))}
