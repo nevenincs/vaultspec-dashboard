@@ -116,7 +116,7 @@ Mount the Pixi canvas once in a stable app-lifetime container and track a dockvi
 - [x] `P02.S03` - Extract the Pixi canvas into a stable app-lifetime container decoupled from its current Stage DOM parent; `frontend/src/app/stage/Stage.tsx`.
 - [x] `P02.S04` - Add a rect-tracking controller using getBoundingClientRect, ResizeObserver, and panel dimension events to position the fixed canvas overlay; `frontend/src/app/stage/canvasPin.ts`.
 - [x] `P02.S05` - Build the graph dockview panel that renders only a transparent rect-reporting placeholder; `frontend/src/app/stage/GraphPanel.tsx`.
-- [ ] `P02.S06` - Verify the WebGL context and SceneController survive a dock, move, and float without re-parenting the canvas; `frontend/src/app/stage/canvasPin.test.ts`.
+- [x] `P02.S06` - Verify the WebGL context and SceneController survive a dock, move, and float without re-parenting the canvas; `frontend/src/app/stage/canvasPin.test.ts`.
 
 ### Phase `P03` - Bounded tab model in the stores layer
 
