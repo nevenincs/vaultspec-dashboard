@@ -54,8 +54,9 @@ export function useWorkspacePersistence(scope: string | null): void {
   // (SQLite-backed), read through the stores session seam (the app layer never
   // touches `useSession`/`usePutSession` raw — dashboard-layer-ownership). The
   // seam returns the blob only for the active scope, with a settled signal.
-  const { blob: persistedBlob, settled: stateSettled } =
-    useDurableWorkspaceLayout(scope);
+  // Restore happens in `seedFromSession` (atomic with the scope seed); this hook
+  // only needs the SETTLED signal to gate the persist.
+  const { settled: stateSettled } = useDurableWorkspaceLayout(scope);
   // Hold the persist callback in a ref so it is NOT a persist-effect dependency:
   // it changes identity every render, so depending on it would re-run the
   // debounced persist effect every render — and under the app's live-streaming
@@ -65,33 +66,27 @@ export function useWorkspacePersistence(scope: string | null): void {
   const persistLayout = usePersistWorkspaceLayout();
   const persistLayoutRef = useRef(persistLayout);
   persistLayoutRef.current = persistLayout;
-  // Track the current durable blob for the persist effect (which does not depend
-  // on it) so it can guard against clobbering a saved layout before the seed lands.
-  const persistedBlobRef = useRef(persistedBlob);
-  persistedBlobRef.current = persistedBlob;
   const tabs = useDockWorkspaceTabsView();
 
   // RESTORE is not done here: it happens ATOMICALLY in `seedFromSession` (the
   // one-shot session seed in the stores layer), so the tab restore cannot race the
   // scope settle. This hook only PERSISTS the open-tab set + active tab, coalesced.
   //
-  // Guard (GUARANTEED no-clobber): a transient EMPTY store must never overwrite a
-  // durably-saved NON-EMPTY layout. The reactive persist only ever updates the
-  // durable layout with a NON-EMPTY tab set; it never writes empty over a saved
-  // layout. This makes restore bulletproof against the load-time window where the
-  // store is briefly empty before the session seed lands (and across the scope/
-  // session settle), at the cost that a user "close all" leaves the last non-empty
-  // layout saved (the workspace remembers your last open documents) — an explicit
-  // clear-on-close path can persist empty in the future if that is wanted.
+  // Guard (GUARANTEED no-clobber): the reactive persist NEVER writes an EMPTY
+  // layout. That makes restore bulletproof — a transient empty store (the load
+  // window before the session seed lands, or a scope/session settle) can never
+  // overwrite the durable layout, with no reliance on the durable-blob read having
+  // resolved yet (it returns null until the session query settles for the active
+  // scope, which was the hole the earlier guard fell through). The durable layout
+  // only ever updates with a NON-EMPTY tab set; a user "close all" leaves the last
+  // non-empty set saved (the workspace remembers your last open documents) — an
+  // explicit clear-on-close path can persist empty in the future if wanted.
   const lastPersistedRef = useRef<LastPersistedWorkspaceLayout | null>(null);
   useEffect(() => {
     if (!scope) return;
     if (!stateSettled) return;
     const next = serializeWorkspaceTabs(tabs.openDocs, tabs.activeDocId);
-    const nextEmpty = (parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0;
-    const durableHasTabs =
-      (parseWorkspaceTabs(persistedBlobRef.current)?.openDocs.length ?? 0) > 0;
-    if (nextEmpty && durableHasTabs) return;
+    if ((parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0) return;
     if (isSamePersistedWorkspaceLayout(lastPersistedRef.current, scope, next)) {
       return;
     }
