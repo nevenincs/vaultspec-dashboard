@@ -166,7 +166,7 @@ Wire the workspace into the shell, run the full lint gate and vitest green, and 
 - [ ] `P07.S28` - Run the full lint gate for frontend and the engine change to exit zero; `frontend/`.
 - [ ] `P07.S29` - Run the vitest suite green and fix regressions from the viewerTarget retirement; `frontend/`.
 - [x] `P07.S30` - Verify behaviour against the mandate for provisional and permanent tabs, dock survival, persist and restore, edit and save, and code read-only in the live app; `frontend/`.
-- [ ] `P07.S31` - Confirm no regression to the open figma-frontend-rewrite surfaces and reconcile the shared AppShell touch; `frontend/src/app/AppShell.tsx`.
+- [x] `P07.S31` - Confirm no regression to the open figma-frontend-rewrite surfaces and reconcile the shared AppShell touch; `frontend/src/app/AppShell.tsx`.
 
 ## Description
 
