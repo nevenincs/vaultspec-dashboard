@@ -8,7 +8,7 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, OnceLock};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -173,16 +173,27 @@ impl CoreRunner {
         self
     }
 
+    /// Resolve the core invocation, PREFERRING the project-pinned (uv-managed)
+    /// environment over an arbitrary `PATH` binary, and VERIFYING the chosen
+    /// invocation actually ships the document write verbs.
+    ///
+    /// This closes the document-edit-hardening F1 defect: the prior `detect()`
+    /// preferred a bare `vaultspec-core` on `PATH`, which is commonly a stale
+    /// global (e.g. a `uv tool` install) that lacks the `vault set-body` /
+    /// `set-frontmatter` / `edit` verbs. Reads kept working against the old verbs,
+    /// so the staleness was invisible until a write failed with a cryptic non-zero
+    /// exit. The engine must broker the version the project pins, not whatever
+    /// binary happens to be first on `PATH`.
+    ///
+    /// The resolution is memoized (the capability probe spawns a subprocess once),
+    /// so per-call cost stays a clone. When no candidate is capable the uv-run
+    /// invocation is returned so the failure surfaces through the normal typed
+    /// error path (the write boundary degrades with an advisory) rather than
+    /// silently selecting a stale binary.
     pub fn detect() -> Self {
-        if which("vaultspec-core") {
-            CoreRunner::new(vec!["vaultspec-core".into()])
-        } else {
-            CoreRunner::new(
-                ["uv", "run", "--no-sync", "vaultspec-core"]
-                    .map(String::from)
-                    .to_vec(),
-            )
-        }
+        static RESOLVED: OnceLock<Vec<String>> = OnceLock::new();
+        let invocation = RESOLVED.get_or_init(resolve_core_invocation).clone();
+        CoreRunner::new(invocation)
     }
 
     /// Run a core verb with `--json` inside `cwd` (the scope's checkout —
@@ -278,6 +289,58 @@ impl CoreRunner {
             });
         }
         Envelope::parse_pinned(&String::from_utf8_lossy(&stdout), supported)
+    }
+}
+
+/// The document write verb whose presence distinguishes a project-pinned core
+/// that can serve the editor from a stale global that cannot. Probing one verb is
+/// sufficient: the edit verbs (`set-body` / `set-frontmatter` / `edit`) shipped
+/// together, so `set-body` is a faithful capability sentinel.
+const CAPABILITY_SENTINEL_VERB: &str = "set-body";
+
+/// Probe whether an invocation's core ships the document write verbs by asking it
+/// to describe the sentinel verb (`vault set-body --help`). A core that ships the
+/// verb exits 0; a stale core answers "No such command" with a non-zero exit. The
+/// probe is bounded by `--help` returning immediately (it cannot hang) and writes
+/// no state. An invocation that cannot even spawn is not capable.
+fn provides_write_verb(invocation: &[String]) -> bool {
+    let Some((program, leading)) = invocation.split_first() else {
+        return false;
+    };
+    Command::new(program)
+        .args(leading)
+        .args(["vault", CAPABILITY_SENTINEL_VERB, "--help"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
+}
+
+/// Resolve the core invocation once: prefer the project-pinned uv-managed core,
+/// then a bare `PATH` core, accepting the FIRST that actually ships the write
+/// verbs. The ordering is the fix for F1 — the uv-managed env carries the version
+/// the project pins, while a bare `PATH` core may be a stale global. When neither
+/// candidate is capable, return the uv-run invocation (when `uv` is available) so
+/// the capability failure surfaces through the normal typed error path rather than
+/// silently binding a stale binary.
+fn resolve_core_invocation() -> Vec<String> {
+    let uv_run: Vec<String> = ["uv", "run", "--no-sync", "vaultspec-core"]
+        .map(String::from)
+        .to_vec();
+    let bare: Vec<String> = vec!["vaultspec-core".to_string()];
+
+    if which("uv") && provides_write_verb(&uv_run) {
+        return uv_run;
+    }
+    if which("vaultspec-core") && provides_write_verb(&bare) {
+        return bare;
+    }
+    if which("uv") {
+        uv_run
+    } else {
+        bare
     }
 }
 
@@ -440,5 +503,31 @@ mod tests {
             elapsed < Duration::from_secs(10),
             "returned at the deadline (~0.4s), not after the 30s sleep; took {elapsed:?}"
         );
+    }
+
+    /// W01.P01: the capability probe reads the sentinel verb's exit status, so a
+    /// stale core (non-zero "No such command") is rejected and only a capable core
+    /// is accepted. Exercised through the OS shell so the exit-status branch is
+    /// deterministic without a real vaultspec-core; the non-spawnable and empty
+    /// cases are cross-platform.
+    #[test]
+    fn provides_write_verb_reads_exit_status() {
+        if cfg!(unix) {
+            // `sh -c "exit 0" vault set-body --help` runs "exit 0" (extra args are
+            // positional and ignored) -> exit 0 -> capable.
+            assert!(
+                provides_write_verb(&["sh".into(), "-c".into(), "exit 0".into()]),
+                "a zero exit means the verb is present -> capable"
+            );
+            assert!(
+                !provides_write_verb(&["sh".into(), "-c".into(), "exit 7".into()]),
+                "a non-zero exit (No such command) -> not capable"
+            );
+        }
+        // A core that cannot even spawn, or an empty invocation, is never capable.
+        assert!(!provides_write_verb(&[
+            "definitely-not-a-real-program-xyzzy".into()
+        ]));
+        assert!(!provides_write_verb(&[]));
     }
 }
