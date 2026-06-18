@@ -1,36 +1,133 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { assertBounded, syntheticGraphDeltas } from "../../testing/adverse";
-import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
-import { EngineClient, EngineError } from "./engine";
+import { liveScope, liveTransport } from "../../testing/liveClient";
+import { EngineError, engineClient } from "./engine";
 import type {
+  ChangedFile,
   DiscoverResponse,
   EngineStatus,
+  EngineEdge,
+  DashboardState,
+  FiltersVocabulary,
+  GitFileDiff,
+  GraphFilter,
+  GraphSlice,
   HistoryResponse,
   LineageSlice,
+  NodeDetail,
   PipelineArtifact,
   PlanInterior,
+  SettingsSchema,
+  SettingsState,
   TiersBlock,
+  WorkspacesState,
 } from "./engine";
 import { adaptLineageSlice, adaptStatus, unwrapEnvelope } from "./liveAdapters";
-import type { StreamChunk } from "./queries";
+import type { ContentView, StreamChunk } from "./queries";
 import {
+  SCOPED_ENGINE_QUERY_SUBTREES,
+  GRAPH_GENERATION_QUERY_SUBTREES,
   STREAM_RETENTION,
+  deriveChangedFilesView,
+  deriveCodeViewerView,
+  deriveChangesOverviewView,
+  deriveCoreStatusView,
+  deriveDashboardDateRangeView,
+  deriveDashboardFilterSidebarView,
+  deriveDashboardFilterSummaryView,
+  deriveDashboardGraphControlsView,
+  deriveDashboardGraphDefaultsInitializationView,
+  deriveDashboardLayoutSelectorView,
+  deriveDashboardLensSelectorView,
+  deriveDashboardPlayheadView,
+  deriveDashboardRangeSelectView,
+  deriveDashboardShellChromeView,
+  deriveDashboardStageSceneView,
+  deriveDashboardTierDialView,
+  deriveDashboardTimelineModeView,
   deriveDiscoverView,
+  deriveFileTreeLevelView,
+  deriveFileTreeRootSurfaceState,
+  deriveFiltersVocabularyView,
+  deriveFrontmatterHeaderView,
   deriveGitStatusView,
   deriveGraphSliceAvailability,
   deriveHistoryView,
+  deriveInspectorNeighborTierView,
+  deriveMarkdownHeaderView,
+  deriveMarkdownReaderView,
+  deriveNodeDetailView,
   derivePipelineStatusView,
   derivePlanInteriorView,
+  deriveSalienceSliceView,
+  deriveSettingsDialogView,
+  deriveSettingsEffectsView,
+  deriveThemeSettingView,
+  deriveTimelineLineageView,
   deriveVaultTreeAvailability,
+  deriveVaultTreeSurfaceState,
+  deriveWorkspaceTitleView,
+  deriveWorkspaceMapAvailability,
+  deriveWorkspaceMapSurfaceState,
   engineKeys,
+  dashboardEditedWindowRange,
+  invalidateAfterVaultMutation,
+  invalidateGraphGenerationReads,
+  invalidateGitRecoveryReads,
   isAddressableNode,
+  latestBackendSignalSignature,
   parseSseFrames,
+  refreshAfterAcceptedScopeSwitch,
+  refreshAfterAcceptedWorkspaceSwitch,
   sseChunks,
   stableKey,
   streamReducer,
+  tierAvailabilityReason,
+  useGraphSlice,
+  useGraphSliceAvailability,
+  useGitFileDiff,
+  useGitHistoricalFileDiff,
+  useLinkResolution,
 } from "./queries";
+
+function wrapper(client: QueryClient) {
+  return ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client }, children);
+}
+
+function testQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
+  });
+}
+
+function seedQuery(client: QueryClient, queryKey: readonly unknown[]): void {
+  client.setQueryData(queryKey, { seeded: true });
+}
+
+function isInvalidated(client: QueryClient, queryKey: readonly unknown[]): boolean {
+  return (
+    client.getQueryCache().find({ queryKey, exact: true })?.state.isInvalidated ?? false
+  );
+}
+
+function hasQuery(client: QueryClient, queryKey: readonly unknown[]): boolean {
+  return client.getQueryCache().find({ queryKey, exact: true }) !== undefined;
+}
+
+afterEach(() => {
+  engineClient.useTransport(liveTransport);
+});
 
 describe("isAddressableNode (feature-node 404 guard)", () => {
   it("excludes synthesized feature aggregates and null, includes real graph nodes", () => {
@@ -47,11 +144,1129 @@ describe("isAddressableNode (feature-node 404 guard)", () => {
   });
 });
 
+describe("deriveNodeDetailView (node-detail surface state)", () => {
+  const detail: NodeDetail = {
+    node: { id: "doc:ready", kind: "plan", title: "Ready" },
+    tiers: {
+      declared: { available: true },
+      structural: { available: true },
+      temporal: { available: true },
+      semantic: { available: true },
+    },
+  };
+
+  it("returns idle when the node detail read is disabled", () => {
+    expect(deriveNodeDetailView(undefined, false, false, false)).toEqual({
+      state: "idle",
+      detail: null,
+      node: null,
+    });
+  });
+
+  it("returns loading while an enabled read is pending", () => {
+    expect(deriveNodeDetailView(undefined, true, false, true)).toEqual({
+      state: "loading",
+      detail: null,
+      node: null,
+    });
+  });
+
+  it("returns unavailable for transport errors or malformed node payloads", () => {
+    expect(deriveNodeDetailView(undefined, false, true, true)).toEqual({
+      state: "unavailable",
+      detail: null,
+      node: null,
+    });
+    expect(
+      deriveNodeDetailView({ tiers: detail.tiers } as NodeDetail, false, false, true),
+    ).toEqual({
+      state: "unavailable",
+      detail: null,
+      node: null,
+    });
+  });
+
+  it("returns ready with the resolved node detail", () => {
+    expect(deriveNodeDetailView(detail, false, false, true)).toEqual({
+      state: "ready",
+      detail,
+      node: detail.node,
+    });
+  });
+});
+
+describe("deriveInspectorNeighborTierView (right-rail inspector edges)", () => {
+  const edge = (
+    id: string,
+    tier: EngineEdge["tier"],
+    meta?: EngineEdge["meta"],
+  ): EngineEdge => ({
+    id,
+    src: "doc:a",
+    dst: `doc:${id}`,
+    relation: "relates",
+    tier,
+    confidence: 0.8,
+    ...(meta ? { meta } : {}),
+  });
+
+  it("groups neighbor edges by canonical tier order and excludes meta-edges", () => {
+    const view = deriveInspectorNeighborTierView([
+      edge("semantic-1", "semantic"),
+      edge("declared-1", "declared"),
+      edge("structural-meta", "structural", {
+        count: 2,
+        breakdown_by_tier: { structural: 2 },
+      }),
+      edge("temporal-1", "temporal"),
+    ]);
+
+    expect(view.tierKeys).toEqual(["declared", "temporal", "semantic"]);
+    expect([...view.tiers.keys()]).toEqual(view.tierKeys);
+    expect(view.tiers.get("declared")?.map((item) => item.id)).toEqual(["declared-1"]);
+    expect(view.tiers.get("semantic")?.map((item) => item.id)).toEqual(["semantic-1"]);
+    expect(view.tiers.has("structural")).toBe(false);
+  });
+
+  it("returns an empty stable surface when no neighbor slice has served", () => {
+    const view = deriveInspectorNeighborTierView(undefined);
+
+    expect(view.tierKeys).toEqual([]);
+    expect([...view.tiers.entries()]).toEqual([]);
+  });
+});
+
 describe("stableKey", () => {
   it("is order-insensitive for object keys and drops undefined", () => {
     expect(stableKey({ b: 1, a: 2 })).toBe(stableKey({ a: 2, b: 1 }));
     expect(stableKey({ a: 1, gone: undefined })).toBe(stableKey({ a: 1 }));
     expect(stableKey(undefined)).toBe("");
+  });
+});
+
+describe("deriveWorkspaceTitleView (left-rail project title)", () => {
+  const registry: WorkspacesState = {
+    active_workspace: "workspace:b",
+    workspaces: [
+      {
+        id: "workspace:a",
+        label: "Alpha",
+        path: "/repo/a",
+        is_launch: true,
+        reachable: true,
+        unreachable_reason: null,
+      },
+      {
+        id: "workspace:b",
+        label: "Beta",
+        path: "/repo/b",
+        is_launch: false,
+        reachable: true,
+        unreachable_reason: null,
+      },
+    ],
+    tiers: {
+      structural: { available: true },
+    },
+  };
+
+  it("returns the active workspace title when the registry is loaded", () => {
+    expect(deriveWorkspaceTitleView(registry, false)).toMatchObject({
+      state: "ready",
+      label: "Beta",
+      path: "/repo/b",
+      current: registry.workspaces[1],
+    });
+  });
+
+  it("falls back to the first root when the active workspace is absent", () => {
+    expect(
+      deriveWorkspaceTitleView({ ...registry, active_workspace: "missing" }, false),
+    ).toMatchObject({
+      state: "ready",
+      label: "Alpha",
+      path: "/repo/a",
+      current: registry.workspaces[0],
+    });
+  });
+
+  it("returns the neutral project label while loading or empty", () => {
+    expect(deriveWorkspaceTitleView(undefined, true)).toEqual({
+      state: "loading",
+      label: "Project",
+      path: undefined,
+      current: null,
+    });
+    expect(deriveWorkspaceTitleView({ ...registry, workspaces: [] }, false)).toEqual({
+      state: "ready",
+      label: "Project",
+      path: undefined,
+      current: null,
+    });
+  });
+});
+
+describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
+  const vocabulary: FiltersVocabulary = {
+    relations: ["links"],
+    tiers: ["declared"],
+    doc_types: ["adr", "plan"],
+    feature_tags: ["state", "search"],
+    kinds: ["document"],
+    date_bounds: { from: "2026-06-01", to: "2026-06-30" },
+  };
+
+  it("prepares facet lists and corpus bounds from the loaded vocabulary", () => {
+    expect(deriveFiltersVocabularyView(vocabulary, false, false)).toEqual({
+      vocabulary,
+      loading: false,
+      facetsLoading: false,
+      docTypes: ["adr", "plan"],
+      featureTags: ["state", "search"],
+      dateBounds: { from: "2026-06-01", to: "2026-06-30" },
+    });
+  });
+
+  it("keeps empty lists while the enabled query is loading", () => {
+    expect(deriveFiltersVocabularyView(undefined, true, false)).toEqual({
+      vocabulary: undefined,
+      loading: true,
+      facetsLoading: true,
+      docTypes: [],
+      featureTags: [],
+      dateBounds: undefined,
+    });
+  });
+
+  it("lets facet controls treat missing scope as loading rather than empty corpus", () => {
+    expect(deriveFiltersVocabularyView(undefined, false, true)).toMatchObject({
+      loading: false,
+      facetsLoading: true,
+      docTypes: [],
+      featureTags: [],
+    });
+  });
+});
+
+describe("deriveDashboardDateRangeView (dashboard date display)", () => {
+  const fallback = {
+    fromMs: Date.parse("2026-06-01T00:00:00.000Z"),
+    toMs: Date.parse("2026-06-30T00:00:00.000Z"),
+  };
+
+  it("uses the canonical dashboard date range when both ends are present", () => {
+    expect(
+      deriveDashboardDateRangeView({ from: "2026-06-10", to: "2026-06-18" }, fallback),
+    ).toEqual({
+      fromMs: Date.parse("2026-06-10"),
+      toMs: Date.parse("2026-06-18"),
+      source: "dashboard",
+    });
+  });
+
+  it("falls back to the visible window when dashboard date intent is incomplete", () => {
+    expect(deriveDashboardDateRangeView({ from: "2026-06-10" }, fallback)).toEqual({
+      ...fallback,
+      source: "fallback",
+    });
+    expect(deriveDashboardDateRangeView(undefined, fallback)).toEqual({
+      ...fallback,
+      source: "fallback",
+    });
+  });
+});
+
+describe("deriveDashboardFilterSummaryView (stage filter toolbar)", () => {
+  it("counts active dashboard filter intent for the toolbar badge", () => {
+    expect(
+      deriveDashboardFilterSummaryView({
+        filters: {
+          doc_types: ["adr", "plan"],
+          feature_tags: ["state"],
+          relations: ["references"],
+          structural_state: ["broken"],
+          text: "centralize",
+        },
+        date_range: {},
+      }),
+    ).toEqual({
+      activeFilterCount: 6,
+      dateRangeLabel: null,
+    });
+  });
+
+  it("formats the timeline date chip without adding it to the facet badge count", () => {
+    expect(
+      deriveDashboardFilterSummaryView({
+        filters: {},
+        date_range: { from: "2026-06-01T00:00:00.000Z", to: "2026-06-18" },
+      }),
+    ).toEqual({
+      activeFilterCount: 0,
+      dateRangeLabel: "2026-06-01 → 2026-06-18",
+    });
+  });
+
+  it("keeps the empty summary stable before dashboard state loads", () => {
+    expect(deriveDashboardFilterSummaryView(undefined)).toEqual({
+      activeFilterCount: 0,
+      dateRangeLabel: null,
+    });
+  });
+});
+
+describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
+  const now = Date.parse("2026-06-18T12:00:00.000Z");
+
+  it("projects canonical dashboard filters into selected facets and active badges", () => {
+    const view = deriveDashboardFilterSidebarView(
+      {
+        filters: {
+          doc_types: ["adr"],
+          feature_tags: ["state", "filters"],
+          text: "centralize",
+        },
+        date_range: dashboardEditedWindowRange("7d", now),
+      },
+      now,
+    );
+
+    expect(view.docTypes).toEqual(["adr"]);
+    expect(view.featureTags).toEqual(["state", "filters"]);
+    expect(view.editedWindow).toBe("7d");
+    expect(view.dateActive).toBe(true);
+    expect(view.anyActive).toBe(true);
+  });
+
+  it("treats top-level dashboard date range as active filter intent", () => {
+    expect(deriveDashboardFilterSidebarView(undefined, now)).toMatchObject({
+      docTypes: [],
+      featureTags: [],
+      editedWindow: "any",
+      dateActive: false,
+      anyActive: false,
+    });
+    expect(
+      deriveDashboardFilterSidebarView(
+        { filters: {}, date_range: { from: "2026-06-01", to: "2026-06-30" } },
+        now,
+      ),
+    ).toMatchObject({
+      editedWindow: "any",
+      dateActive: true,
+      anyActive: true,
+    });
+  });
+});
+
+describe("deriveDashboardTierDialView (stage tier dial)", () => {
+  it("projects canonical tier filters, confidence floors, time-travel, and semantic degradation", () => {
+    const availability = deriveGraphSliceAvailability(
+      {
+        declared: { available: true },
+        structural: { available: true },
+        temporal: { available: true },
+        semantic: { available: false, reason: "rag offline" },
+      },
+      false,
+    );
+
+    const view = deriveDashboardTierDialView(
+      {
+        filters: {
+          tiers: { declared: true, structural: false, semantic: true },
+          min_confidence: { semantic: 0.65 },
+        },
+        timeline_mode: { kind: "time-travel", at: 42 },
+      },
+      availability,
+    );
+
+    expect(view.tiers).toEqual({
+      declared: true,
+      structural: false,
+      temporal: true,
+      semantic: true,
+    });
+    expect(view.minConfidence).toEqual({ semantic: 0.65 });
+    expect(view.timeline.timeTravel).toBe(true);
+    expect(view.semanticDegraded).toBe(true);
+    expect(view.availability.reasons.semantic).toBe("rag offline");
+  });
+
+  it("falls back to all tiers on before dashboard state loads", () => {
+    const view = deriveDashboardTierDialView(
+      undefined,
+      deriveGraphSliceAvailability(undefined, true),
+    );
+
+    expect(view.tiers).toEqual({
+      declared: true,
+      structural: true,
+      temporal: true,
+      semantic: true,
+    });
+    expect(view.minConfidence).toEqual({});
+    expect(view.timeline.timeTravel).toBe(false);
+    expect(view.availability.loading).toBe(true);
+  });
+});
+
+describe("deriveDashboardTimelineModeView (timeline-mode consumers)", () => {
+  it("treats missing and live timeline mode as live operation state", () => {
+    expect(deriveDashboardTimelineModeView(undefined)).toEqual({
+      mode: { kind: "live" },
+      timeTravel: false,
+      opsDisabled: false,
+      asOf: undefined,
+    });
+    expect(deriveDashboardTimelineModeView({ kind: "live" })).toEqual({
+      mode: { kind: "live" },
+      timeTravel: false,
+      opsDisabled: false,
+      asOf: undefined,
+    });
+  });
+
+  it("derives historical asOf and operation disablement from one mode reading", () => {
+    expect(deriveDashboardTimelineModeView({ kind: "time-travel", at: 42 })).toEqual({
+      mode: { kind: "time-travel", at: 42 },
+      timeTravel: true,
+      opsDisabled: true,
+      asOf: 42,
+    });
+  });
+});
+
+describe("deriveCodeViewerView (viewer code chrome)", () => {
+  const content = (patch: Partial<ContentView>): ContentView => ({
+    loading: false,
+    errored: false,
+    degraded: false,
+    degradedTiers: [],
+    reasons: {},
+    path: "src/auth/mod.rs",
+    blobHash: "abc",
+    languageHint: "rust",
+    text: "line one\nline two\n",
+    truncated: null,
+    available: true,
+    ...patch,
+  });
+
+  it("projects ready code content into tokenizer text, raw lines, and header fields", () => {
+    expect(deriveCodeViewerView(content({}))).toEqual({
+      state: "ready",
+      stateMessage: null,
+      stateTone: "faint",
+      text: "line one\nline two\n",
+      rawLines: ["line one", "line two"],
+      path: "src/auth/mod.rs",
+      languageHint: "rust",
+      truncated: null,
+    });
+  });
+
+  it("projects designed loading, error, degraded, and empty states", () => {
+    expect(
+      deriveCodeViewerView(content({ loading: true, available: false, text: "" })),
+    ).toMatchObject({
+      state: "loading",
+      stateMessage: "Loading file...",
+      stateTone: "faint",
+      text: "",
+      rawLines: [],
+    });
+    expect(
+      deriveCodeViewerView(content({ errored: true, available: false, text: "" })),
+    ).toMatchObject({
+      state: "errored",
+      stateMessage: "The file could not be loaded.",
+      stateTone: "broken",
+    });
+    expect(
+      deriveCodeViewerView(
+        content({
+          degraded: true,
+          reasons: { structural: "worktree not listable" },
+          available: false,
+          text: "",
+        }),
+      ),
+    ).toMatchObject({
+      state: "degraded",
+      stateMessage: "File unavailable: worktree not listable.",
+      stateTone: "muted",
+    });
+    expect(deriveCodeViewerView(content({ available: false, text: "" }))).toMatchObject(
+      {
+        state: "empty",
+        stateMessage: "This file is empty.",
+        stateTone: "faint",
+      },
+    );
+  });
+
+  it("carries the honest truncation block only with ready content", () => {
+    const truncated = {
+      total_bytes: 2_000_000,
+      returned_bytes: 1_048_576,
+      reason: "content byte ceiling",
+    };
+
+    expect(deriveCodeViewerView(content({ truncated })).truncated).toEqual(truncated);
+    expect(
+      deriveCodeViewerView(
+        content({ loading: true, available: false, text: "", truncated }),
+      ).truncated,
+    ).toBeNull();
+  });
+});
+
+describe("deriveMarkdownHeaderView (viewer document chrome)", () => {
+  const content = (patch: Partial<ContentView>): ContentView => ({
+    loading: false,
+    errored: false,
+    degraded: false,
+    degradedTiers: [],
+    reasons: {},
+    path: ".vault/plan/2026-06-18-centralize-state-plan.md",
+    blobHash: "abc",
+    languageHint: "markdown",
+    text: "---\ndate: 2026-06-17\nmodified: 2026-06-18\n---\n# Title\n",
+    truncated: null,
+    available: true,
+    ...patch,
+  });
+
+  it("projects header title, path trail, doc type chip, and metadata from content", () => {
+    expect(
+      deriveMarkdownHeaderView("doc:2026-06-18-centralize-state-plan", content({})),
+    ).toEqual({
+      title: "centralize state plan",
+      trail: [{ label: ".vault" }, { label: "plan" }],
+      category: "plan",
+      categoryLabel: "plan",
+      meta: [
+        { label: "created", value: "2026-06-17" },
+        { label: "modified", value: "2026-06-18" },
+      ],
+    });
+  });
+
+  it("falls back to the canonical stem suffix when the served path is absent", () => {
+    expect(
+      deriveMarkdownHeaderView(
+        "doc:2026-06-18-boundary-audit",
+        content({ path: undefined, text: "" }),
+      ),
+    ).toEqual({
+      title: "boundary audit",
+      category: "audit",
+      categoryLabel: "audit",
+      meta: undefined,
+      trail: undefined,
+    });
+  });
+});
+
+describe("deriveMarkdownReaderView (viewer markdown body)", () => {
+  const content = (patch: Partial<ContentView>): ContentView => ({
+    loading: false,
+    errored: false,
+    degraded: false,
+    degradedTiers: [],
+    reasons: {},
+    path: ".vault/adr/2026-06-18-reader-adr.md",
+    blobHash: "abc",
+    languageHint: "markdown",
+    text: "",
+    truncated: null,
+    available: true,
+    ...patch,
+  });
+
+  it("splits structured frontmatter from the rendered markdown body", () => {
+    const view = deriveMarkdownReaderView(
+      content({
+        text: [
+          "---",
+          "tags:",
+          "  - '#adr'",
+          "date: '2026-06-17'",
+          "status: accepted",
+          "related:",
+          "  - '[[2026-06-18-reader-plan]]'",
+          "---",
+          "",
+          "# Body heading",
+        ].join("\n"),
+      }),
+    );
+
+    expect(view).toMatchObject({
+      state: "ready",
+      stateMessage: null,
+      stateTone: "faint",
+      truncated: null,
+    });
+    expect(view.frontmatter).toEqual({
+      tags: [{ label: "#adr", category: "adr" }],
+      dates: [{ label: "created", value: "2026-06-17" }],
+      related: [
+        {
+          stem: "2026-06-18-reader-plan",
+          nodeId: "doc:2026-06-18-reader-plan",
+        },
+      ],
+    });
+    expect(view.body).toBe("\n# Body heading");
+    expect(view.status).toBe("accepted");
+  });
+
+  it("leaves general markdown untouched when no frontmatter fence is present", () => {
+    expect(deriveMarkdownReaderView(content({ text: "# Plain markdown" }))).toEqual({
+      state: "ready",
+      stateMessage: null,
+      stateTone: "faint",
+      frontmatter: null,
+      status: null,
+      body: "# Plain markdown",
+      truncated: null,
+    });
+  });
+
+  it("projects loading, error, degraded, empty, and truncated states", () => {
+    expect(
+      deriveMarkdownReaderView(content({ loading: true, available: false })),
+    ).toMatchObject({
+      state: "loading",
+      stateMessage: "Loading document…",
+      stateTone: "faint",
+      body: "",
+    });
+    expect(
+      deriveMarkdownReaderView(
+        content({ errored: true, available: false, text: "ignored" }),
+      ),
+    ).toMatchObject({
+      state: "errored",
+      stateMessage: "The document could not be loaded.",
+      stateTone: "broken",
+      body: "",
+    });
+    expect(
+      deriveMarkdownReaderView(
+        content({
+          degraded: true,
+          available: false,
+          reasons: { structural: "worktree not listable" },
+          text: "ignored",
+        }),
+      ),
+    ).toMatchObject({
+      state: "degraded",
+      stateMessage: "Document unavailable: worktree not listable.",
+      stateTone: "muted",
+      body: "",
+    });
+    expect(
+      deriveMarkdownReaderView(content({ available: false, text: "" })),
+    ).toMatchObject({
+      state: "empty",
+      stateMessage: "This document is empty.",
+      stateTone: "faint",
+      body: "",
+    });
+
+    const truncated = {
+      total_bytes: 2_000_000,
+      returned_bytes: 1_048_576,
+      reason: "content byte ceiling",
+    };
+    expect(
+      deriveMarkdownReaderView(content({ text: "# Body", truncated })).truncated,
+    ).toEqual(truncated);
+  });
+});
+
+describe("deriveFrontmatterHeaderView (reader frontmatter chrome)", () => {
+  it("projects tags, dates, and related links into render rows", () => {
+    expect(
+      deriveFrontmatterHeaderView({
+        tags: ["adr", "review-rail"],
+        date: "2026-06-17",
+        modified: "2026-06-18",
+        related: ["2026-06-18-reader-plan"],
+      }),
+    ).toEqual({
+      tags: [{ label: "#adr", category: "adr" }, { label: "#review-rail" }],
+      dates: [
+        { label: "created", value: "2026-06-17" },
+        { label: "modified", value: "2026-06-18" },
+      ],
+      related: [
+        {
+          stem: "2026-06-18-reader-plan",
+          nodeId: "doc:2026-06-18-reader-plan",
+        },
+      ],
+    });
+  });
+
+  it("collapses absent or empty frontmatter to no header chrome", () => {
+    expect(deriveFrontmatterHeaderView(null)).toBeNull();
+    expect(deriveFrontmatterHeaderView({ tags: [], related: [] })).toBeNull();
+  });
+});
+
+describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
+  it("projects graph bounds and live Network freeze availability from dashboard-state", () => {
+    expect(
+      deriveDashboardGraphControlsView({
+        graph_bounds: { shape: "rect", size: 1800 },
+        representation_mode: "connectivity",
+        timeline_mode: { kind: "live" },
+      }),
+    ).toEqual({
+      graphBounds: { shape: "rect", size: 1800 },
+      timeline: {
+        mode: { kind: "live" },
+        timeTravel: false,
+        opsDisabled: false,
+        asOf: undefined,
+      },
+      representationMode: "connectivity",
+      freezeAvailable: true,
+    });
+  });
+
+  it("falls back to free bounds and disables freeze outside live Network", () => {
+    expect(deriveDashboardGraphControlsView(undefined)).toMatchObject({
+      graphBounds: { shape: "free", size: 0 },
+      representationMode: "connectivity",
+      freezeAvailable: true,
+    });
+
+    expect(
+      deriveDashboardGraphControlsView({
+        graph_bounds: { shape: "circle", size: 1200 },
+        representation_mode: "lineage",
+        timeline_mode: { kind: "live" },
+      }).freezeAvailable,
+    ).toBe(false);
+
+    expect(
+      deriveDashboardGraphControlsView({
+        graph_bounds: { shape: "circle", size: 1200 },
+        representation_mode: "connectivity",
+        timeline_mode: { kind: "time-travel", at: 42 },
+      }).freezeAvailable,
+    ).toBe(false);
+  });
+});
+
+describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
+  const state: DashboardState = {
+    scope: "scope-a",
+    selected_ids: ["node:a", "node:b"],
+    hovered_id: null,
+    filters: { doc_types: ["adr"], tiers: { semantic: false } },
+    date_range: { from: "2026-06-01", to: "2026-06-18" },
+    timeline_mode: { kind: "time-travel", at: 42 },
+    graph_granularity: "document",
+    salience_lens: "design",
+    salience_focus: "node:a",
+    representation_mode: "lineage",
+    panel_state: {
+      left_collapsed: false,
+      right_collapsed: false,
+      right_tab: "status",
+    },
+    graph_bounds: { shape: "rect", size: 1200 },
+    tiers: {},
+  };
+
+  it("projects the scene read model from the canonical dashboard state", () => {
+    expect(deriveDashboardStageSceneView(state)).toEqual({
+      selectedIds: ["node:a", "node:b"],
+      selectedNodeId: "node:a",
+      graphQuery: {
+        scope: "scope-a",
+        filter: {
+          doc_types: ["adr"],
+          tiers: { semantic: false },
+          date_range: { from: "2026-06-01", to: "2026-06-18" },
+        },
+        asOf: 42,
+        granularity: "document",
+        lens: "design",
+        focus: "node:a",
+      },
+      granularity: "document",
+      activeRepresentationMode: "lineage",
+      graphBounds: { shape: "rect", size: 1200 },
+      timeline: {
+        mode: { kind: "time-travel", at: 42 },
+        timeTravel: true,
+        opsDisabled: true,
+        asOf: 42,
+      },
+      liveTimeline: false,
+    });
+  });
+
+  it("falls back without issuing a graph query before dashboard state loads", () => {
+    expect(deriveDashboardStageSceneView(undefined)).toEqual({
+      selectedIds: [],
+      selectedNodeId: null,
+      graphQuery: null,
+      granularity: "feature",
+      activeRepresentationMode: "connectivity",
+      graphBounds: undefined,
+      timeline: {
+        mode: { kind: "live" },
+        timeTravel: false,
+        opsDisabled: false,
+        asOf: undefined,
+      },
+      liveTimeline: true,
+    });
+  });
+});
+
+describe("deriveDashboardLayoutSelectorView (stage layout picker)", () => {
+  it("projects live representation mode as the active spatial segment", () => {
+    expect(
+      deriveDashboardLayoutSelectorView({
+        date_range: { from: "2026-06-01", to: "2026-06-18" },
+        representation_mode: "radial",
+        timeline_mode: { kind: "live" },
+      }),
+    ).toEqual({
+      dateRange: { from: "2026-06-01", to: "2026-06-18" },
+      representationMode: "radial",
+      spatialActive: "radial",
+      timeline: {
+        mode: { kind: "live" },
+        timeTravel: false,
+        opsDisabled: false,
+        asOf: undefined,
+      },
+    });
+  });
+
+  it("lets time-travel own the active segment without losing held layout", () => {
+    expect(
+      deriveDashboardLayoutSelectorView({
+        date_range: {},
+        representation_mode: "connectivity",
+        timeline_mode: { kind: "time-travel", at: 42 },
+      }),
+    ).toEqual({
+      dateRange: {},
+      representationMode: "connectivity",
+      spatialActive: null,
+      timeline: {
+        mode: { kind: "time-travel", at: 42 },
+        timeTravel: true,
+        opsDisabled: true,
+        asOf: 42,
+      },
+    });
+  });
+
+  it("falls back before dashboard state loads", () => {
+    expect(deriveDashboardLayoutSelectorView(undefined)).toMatchObject({
+      dateRange: {},
+      representationMode: "connectivity",
+      spatialActive: "connectivity",
+      timeline: {
+        mode: { kind: "live" },
+        timeTravel: false,
+        opsDisabled: false,
+        asOf: undefined,
+      },
+    });
+  });
+});
+
+describe("deriveDashboardLensSelectorView (stage lens picker)", () => {
+  it("projects the active salience lens with the dashboard default fallback", () => {
+    expect(deriveDashboardLensSelectorView({ salience_lens: "design" })).toEqual({
+      lens: "design",
+    });
+    expect(deriveDashboardLensSelectorView(undefined)).toEqual({
+      lens: "status",
+    });
+  });
+});
+
+describe("deriveDashboardRangeSelectView (timeline range selector)", () => {
+  it("clones the committed dashboard date range for the range band", () => {
+    const source = { date_range: { from: "2026-06-01", to: "2026-06-18" } };
+    const view = deriveDashboardRangeSelectView(source);
+
+    expect(view).toEqual({
+      dateRange: { from: "2026-06-01", to: "2026-06-18" },
+    });
+    expect(view.dateRange).not.toBe(source.date_range);
+  });
+
+  it("falls back to an empty committed range before dashboard state loads", () => {
+    expect(deriveDashboardRangeSelectView(undefined)).toEqual({
+      dateRange: {},
+    });
+  });
+});
+
+describe("deriveDashboardGraphDefaultsInitializationView (settings effects)", () => {
+  it("marks a loaded fresh dashboard-state scope as eligible for graph defaults", () => {
+    expect(
+      deriveDashboardGraphDefaultsInitializationView({
+        graph_granularity: "feature",
+        filters: {},
+      }),
+    ).toEqual({ loaded: true, fresh: true });
+  });
+
+  it("rejects unloaded or user-owned dashboard graph/filter intent", () => {
+    expect(deriveDashboardGraphDefaultsInitializationView(undefined)).toEqual({
+      loaded: false,
+      fresh: false,
+    });
+    expect(
+      deriveDashboardGraphDefaultsInitializationView({
+        graph_granularity: "document",
+        filters: {},
+      }),
+    ).toEqual({ loaded: true, fresh: false });
+    expect(
+      deriveDashboardGraphDefaultsInitializationView({
+        graph_granularity: "feature",
+        filters: { text: "user-owned" },
+      }),
+    ).toEqual({ loaded: true, fresh: false });
+  });
+});
+
+describe("deriveDashboardPlayheadView (timeline playhead)", () => {
+  it("projects live and historical dashboard timeline modes to playhead state", () => {
+    expect(deriveDashboardPlayheadView({ timeline_mode: { kind: "live" } })).toEqual({
+      loaded: true,
+      playhead: "live",
+    });
+    expect(
+      deriveDashboardPlayheadView({ timeline_mode: { kind: "time-travel", at: 42 } }),
+    ).toEqual({
+      loaded: true,
+      playhead: 42,
+    });
+  });
+
+  it("marks an unloaded dashboard read without forcing a local playhead reset", () => {
+    expect(deriveDashboardPlayheadView(undefined)).toEqual({
+      loaded: false,
+      playhead: "live",
+    });
+  });
+});
+
+describe("deriveDashboardShellChromeView (AppShell chrome)", () => {
+  it("falls back to expanded panels and live mode before dashboard state loads", () => {
+    expect(deriveDashboardShellChromeView(undefined)).toEqual({
+      panelState: {
+        left_collapsed: false,
+        right_collapsed: false,
+        right_tab: "status",
+      },
+      timeline: {
+        mode: { kind: "live" },
+        timeTravel: false,
+        opsDisabled: false,
+        asOf: undefined,
+      },
+    });
+  });
+
+  it("projects panel collapse/tab state and interpreted time-travel mode", () => {
+    expect(
+      deriveDashboardShellChromeView({
+        panel_state: {
+          left_collapsed: true,
+          right_collapsed: true,
+          right_tab: "changes",
+        },
+        timeline_mode: { kind: "time-travel", at: 123 },
+      }),
+    ).toEqual({
+      panelState: {
+        left_collapsed: true,
+        right_collapsed: true,
+        right_tab: "changes",
+      },
+      timeline: {
+        mode: { kind: "time-travel", at: 123 },
+        timeTravel: true,
+        opsDisabled: true,
+        asOf: 123,
+      },
+    });
+  });
+});
+
+describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
+  const schema: SettingsSchema = {
+    groups: ["Appearance"],
+    settings: [
+      {
+        key: "theme",
+        value_type: { type: "enum", members: ["system", "dark"] },
+        default: "system",
+        scope_eligible: false,
+        control: "segmented",
+        label: "Theme",
+        description: "Dashboard color mode",
+        group: "Appearance",
+        order: 1,
+      },
+    ],
+    tiers: { structural: { available: true } },
+  };
+  const settings: SettingsState = {
+    global: { theme: "dark" },
+    scoped: {},
+    tiers: { structural: { available: true } },
+  };
+
+  it("resolves effective schema groups and loading state in the stores layer", () => {
+    const view = deriveSettingsDialogView(schema, settings, null, false);
+
+    expect(view.schemaLoading).toBe(false);
+    expect(view.groups).toHaveLength(1);
+    expect(view.groups[0]).toMatchObject({ name: "Appearance" });
+    expect(view.groups[0]!.settings[0]).toMatchObject({
+      value: "dark",
+      provenance: "global",
+    });
+  });
+
+  it("keeps the dialog empty while the schema is not served yet", () => {
+    expect(deriveSettingsDialogView(undefined, undefined, null, true)).toEqual({
+      schemaLoading: true,
+      groups: [],
+    });
+  });
+});
+
+describe("deriveThemeSettingView (platform theme bridge)", () => {
+  const schema: SettingsSchema = {
+    groups: ["Appearance"],
+    settings: [
+      {
+        key: "theme",
+        value_type: { type: "enum", members: ["system", "light", "dark"] },
+        default: "system",
+        scope_eligible: false,
+        control: "segmented",
+        label: "Theme",
+        description: "Dashboard color mode",
+        group: "Appearance",
+        order: 1,
+      },
+    ],
+    tiers: {},
+  };
+
+  it("resolves the authoritative theme and allowed members in the stores layer", () => {
+    expect(
+      deriveThemeSettingView(schema, {
+        global: { theme: "dark" },
+        scoped: {},
+        tiers: {},
+      }),
+    ).toEqual({
+      serverTheme: "dark",
+      themeMembers: ["system", "light", "dark"],
+    });
+  });
+});
+
+describe("deriveSettingsEffectsView (settings side effects)", () => {
+  const schema: SettingsSchema = {
+    groups: ["Appearance", "Graph"],
+    settings: [
+      {
+        key: "reduce_motion",
+        value_type: { type: "bool" },
+        default: "false",
+        scope_eligible: false,
+        control: "switch",
+        label: "Reduce motion",
+        description: "Reduce animated transitions",
+        group: "Appearance",
+        order: 1,
+      },
+      {
+        key: "default_granularity",
+        value_type: { type: "enum", members: ["feature", "document"] },
+        default: "document",
+        scope_eligible: true,
+        control: "segmented",
+        label: "Default granularity",
+        description: "The graph detail level on load",
+        group: "Graph",
+        order: 1,
+      },
+      {
+        key: "confidence_floor",
+        value_type: { type: "integer", min: 0, max: 100 },
+        default: "0",
+        scope_eligible: false,
+        control: "slider",
+        label: "Confidence floor",
+        description: "Minimum inferred edge confidence",
+        group: "Graph",
+        order: 2,
+      },
+      {
+        key: "label_filter",
+        value_type: { type: "string", max_len: 120 },
+        default: "",
+        scope_eligible: false,
+        control: "text",
+        label: "Label filter",
+        description: "Initial graph text filter",
+        group: "Graph",
+        order: 3,
+      },
+    ],
+    tiers: {},
+  };
+
+  it("resolves document effects and graph defaults in the stores layer", () => {
+    expect(
+      deriveSettingsEffectsView(
+        schema,
+        {
+          global: {
+            reduce_motion: "true",
+            confidence_floor: "60",
+            label_filter: "adr",
+          },
+          scoped: { "scope-a": { default_granularity: "feature" } },
+          tiers: {},
+        },
+        "scope-a",
+      ),
+    ).toEqual({
+      reduceMotion: true,
+      graphDefaults: {
+        defaultGranularity: "feature",
+        confidenceFloor: 60,
+        labelFilter: "adr",
+      },
+    });
   });
 });
 
@@ -100,6 +1315,141 @@ describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () =
     const a = deriveVaultTreeAvailability(undefined);
     expect(a.degraded).toBe(false);
     expect(a.degradedTiers).toEqual([]);
+  });
+
+  it("selects the first available degraded-tier reason in stores", () => {
+    expect(
+      tierAvailabilityReason({
+        degradedTiers: ["temporal", "semantic"],
+        reasons: { semantic: "rag offline" },
+      }),
+    ).toBe("rag offline");
+    expect(
+      tierAvailabilityReason({
+        degradedTiers: ["structural"],
+        reasons: {},
+      }),
+    ).toBe("");
+  });
+});
+
+describe("left-rail root surface states", () => {
+  const noDegradation = { degraded: false, degradedTiers: [], reasons: {} };
+  const structuralDown = deriveWorkspaceMapAvailability({
+    structural: { available: false, reason: "worktree missing" },
+  });
+
+  it("keeps workspace-map loading/error classification in stores", () => {
+    expect(
+      deriveWorkspaceMapSurfaceState(
+        { isPending: true, isError: false },
+        noDegradation,
+      ),
+    ).toBe("loading");
+    expect(
+      deriveWorkspaceMapSurfaceState(
+        { isPending: false, isError: true },
+        noDegradation,
+      ),
+    ).toBe("error");
+    expect(
+      deriveWorkspaceMapSurfaceState(
+        { isPending: false, isError: true },
+        structuralDown,
+      ),
+    ).toBe("ready");
+  });
+
+  it("keeps vault-tree transport failure distinct from tiered degradation", () => {
+    expect(
+      deriveVaultTreeSurfaceState({ isPending: true, isError: false }, noDegradation),
+    ).toBe("loading");
+    expect(
+      deriveVaultTreeSurfaceState({ isPending: false, isError: true }, noDegradation),
+    ).toBe("error");
+    expect(
+      deriveVaultTreeSurfaceState({ isPending: false, isError: true }, structuralDown),
+    ).toBe("ready");
+  });
+
+  it("treats file-tree structural degradation as the terminal code-mode state", () => {
+    expect(
+      deriveFileTreeRootSurfaceState(
+        { isPending: true, isError: false },
+        noDegradation,
+      ),
+    ).toBe("loading");
+    expect(
+      deriveFileTreeRootSurfaceState(
+        { isPending: false, isError: true },
+        noDegradation,
+      ),
+    ).toBe("error");
+    expect(
+      deriveFileTreeRootSurfaceState(
+        { isPending: false, isError: true },
+        structuralDown,
+      ),
+    ).toBe("degraded");
+    expect(
+      deriveFileTreeRootSurfaceState(
+        { isPending: false, isError: false },
+        structuralDown,
+      ),
+    ).toBe("degraded");
+  });
+
+  it("projects one file-tree directory level into stable chrome inputs", () => {
+    const retry = () => undefined;
+    expect(deriveFileTreeLevelView(undefined, true, false, retry)).toEqual({
+      state: "loading",
+      entries: [],
+      truncated: null,
+      retry,
+    });
+    expect(deriveFileTreeLevelView(undefined, false, true, retry)).toEqual({
+      state: "error",
+      entries: [],
+      truncated: null,
+      retry,
+    });
+    expect(
+      deriveFileTreeLevelView(
+        { path: "", entries: [], truncated: null, tiers: {} },
+        false,
+        false,
+        retry,
+      ),
+    ).toEqual({
+      state: "empty",
+      entries: [],
+      truncated: null,
+      retry,
+    });
+    const entry = {
+      path: "src/main.ts",
+      kind: "file" as const,
+      has_children: false,
+      node_id: "code:src/main.ts",
+    };
+    const truncated = {
+      total_children: 20,
+      returned_children: 10,
+      reason: "child ceiling",
+    };
+    expect(
+      deriveFileTreeLevelView(
+        { path: "src", entries: [entry], truncated, tiers: {} },
+        false,
+        false,
+        retry,
+      ),
+    ).toEqual({
+      state: "ready",
+      entries: [entry],
+      truncated,
+      retry,
+    });
   });
 });
 
@@ -150,6 +1500,219 @@ describe("deriveGraphSliceAvailability (nav-controls descent, contract §2)", ()
     expect(a.degraded).toBe(false);
     expect(a.degradedTiers).toEqual([]);
     expect(a.loading).toBe(true);
+  });
+
+  it("does not issue duplicate graph requests when availability reads filter and lens changes", async () => {
+    const scope = await liveScope();
+    const graphRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/graph/query")) {
+        graphRequests.push(input);
+      }
+      return liveTransport(input, init);
+    });
+
+    function useGraphWithAvailability(params: {
+      filter?: GraphFilter;
+      lens: "status" | "design";
+    }) {
+      const slice = useGraphSlice(
+        scope,
+        params.filter,
+        undefined,
+        "document",
+        params.lens,
+        null,
+      );
+      const availability = useGraphSliceAvailability(slice, true);
+      return { slice, availability };
+    }
+
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(useGraphWithAvailability, {
+      wrapper: wrapper(client),
+      initialProps: { lens: "status" },
+    });
+
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+    expect(result.current.availability.loading).toBe(false);
+    expect(graphRequests).toHaveLength(1);
+
+    rerender({ lens: "status", filter: { doc_types: ["plan"] } });
+    await waitFor(() => expect(graphRequests).toHaveLength(2));
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+
+    rerender({ lens: "design", filter: { doc_types: ["plan"] } });
+    await waitFor(() => expect(graphRequests).toHaveLength(3));
+    await waitFor(() => expect(result.current.slice.isSuccess).toBe(true));
+  });
+});
+
+describe("useLinkResolution closed-editor boundary", () => {
+  it("does not subscribe to the graph when no document is open", async () => {
+    const scope = await liveScope();
+    const graphRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/graph/query")) graphRequests.push(input);
+      return liveTransport(input, init);
+    });
+
+    const client = testQueryClient();
+    const { result, unmount } = renderHook(() => useLinkResolution(null, scope), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(graphRequests).toEqual([]);
+    unmount();
+  });
+});
+
+describe("useGitFileDiff git availability boundary", () => {
+  const cachedDiff: GitFileDiff = {
+    path: "src/app.ts",
+    status: "M",
+    hunks: [{ header: "@@ -1 +1 @@", lines: [] }],
+  };
+
+  it("does not issue a diff read when status carries no git payload", async () => {
+    const client = testQueryClient();
+    const status: EngineStatus = {
+      ok: true,
+      nodes: 0,
+      edges: 0,
+      degradations: [],
+      tiers: {
+        structural: { available: true },
+      },
+    };
+    client.setQueryData(engineKeys.status(), status);
+    const diffRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/ops/git/diff")) diffRequests.push(input);
+      return liveTransport(input, init);
+    });
+
+    const { result, unmount } = renderHook(
+      () => useGitFileDiff("scope-without-git", "src/app.ts", "M"),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toEqual({
+      loading: false,
+      errored: false,
+      diff: undefined,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(diffRequests).toEqual([]);
+    unmount();
+  });
+
+  it("does not expose cached working-tree diff data when git becomes unavailable", () => {
+    const client = testQueryClient();
+    const status: EngineStatus = {
+      ok: true,
+      nodes: 0,
+      edges: 0,
+      degradations: [],
+      tiers: {
+        structural: { available: true },
+      },
+    };
+    client.setQueryData(engineKeys.status(), status);
+    client.setQueryData(engineKeys.gitDiff("scope-without-git", "src/app.ts"), {
+      ...cachedDiff,
+    });
+
+    const { result, unmount } = renderHook(
+      () => useGitFileDiff("scope-without-git", "src/app.ts", "M"),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toEqual({
+      loading: false,
+      errored: false,
+      diff: undefined,
+    });
+    unmount();
+  });
+
+  it("does not issue a historical diff read when status carries no git payload", async () => {
+    const client = testQueryClient();
+    const status: EngineStatus = {
+      ok: true,
+      nodes: 0,
+      edges: 0,
+      degradations: [],
+      tiers: {
+        structural: { available: true },
+      },
+    };
+    client.setQueryData(engineKeys.status(), status);
+    const diffRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/ops/git/histdiff")) diffRequests.push(input);
+      return liveTransport(input, init);
+    });
+
+    const { result, unmount } = renderHook(
+      () =>
+        useGitHistoricalFileDiff(
+          "scope-without-git",
+          "src/app.ts",
+          "HEAD~1",
+          "HEAD",
+          "M",
+        ),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toEqual({
+      loading: false,
+      errored: false,
+      diff: undefined,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(diffRequests).toEqual([]);
+    unmount();
+  });
+
+  it("does not expose cached historical diff data when git becomes unavailable", () => {
+    const client = testQueryClient();
+    const status: EngineStatus = {
+      ok: true,
+      nodes: 0,
+      edges: 0,
+      degradations: [],
+      tiers: {
+        structural: { available: true },
+      },
+    };
+    client.setQueryData(engineKeys.status(), status);
+    client.setQueryData(
+      engineKeys.gitHistoricalDiff("scope-without-git", "src/app.ts", "HEAD~1", "HEAD"),
+      { ...cachedDiff },
+    );
+
+    const { result, unmount } = renderHook(
+      () =>
+        useGitHistoricalFileDiff(
+          "scope-without-git",
+          "src/app.ts",
+          "HEAD~1",
+          "HEAD",
+          "M",
+        ),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toEqual({
+      loading: false,
+      errored: false,
+      diff: undefined,
+    });
+    unmount();
   });
 });
 
@@ -254,6 +1817,517 @@ describe("engineKeys", () => {
     // With focus appended as the key tail, the lens sits at length-2.
     expect(designLens[designLens.length - 2]).toBe("design");
   });
+
+  it("keys graph diffs by scope, window, and filter", () => {
+    const all = engineKeys.diff("wt-1", 1_000, 2_000);
+    const filtered = engineKeys.diff(
+      "wt-1",
+      1_000,
+      2_000,
+      JSON.stringify({ tiers: { semantic: false } }),
+    );
+    const sameNumericWindow = engineKeys.diff("wt-1", "1000", "2000");
+    expect(all).not.toEqual(filtered);
+    expect(all).toEqual(sameNumericWindow);
+  });
+
+  it("keys search by scope so same text cannot cross worktrees", () => {
+    expect(engineKeys.search("wt-1", "alpha", "vault")).not.toEqual(
+      engineKeys.search("wt-2", "alpha", "vault"),
+    );
+    expect(engineKeys.search("wt-1", "alpha", "vault")).not.toEqual(
+      engineKeys.search("wt-1", "alpha", "code"),
+    );
+  });
+
+  it("keys node-family reads by scope and node parameters", () => {
+    expect(engineKeys.node("wt-1", "doc:plan")).not.toEqual(
+      engineKeys.node("wt-2", "doc:plan"),
+    );
+    expect(engineKeys.neighbors("wt-1", "doc:plan", 1)).not.toEqual(
+      engineKeys.neighbors("wt-1", "doc:plan", 2),
+    );
+    expect(engineKeys.evidence("wt-1", "doc:plan")).not.toEqual(
+      engineKeys.evidence("wt-2", "doc:plan"),
+    );
+    expect(engineKeys.discover("wt-1", "doc:plan")).not.toEqual(
+      engineKeys.discover("wt-2", "doc:plan"),
+    );
+    expect(engineKeys.planInterior("wt-1", "doc:plan")).not.toEqual(
+      engineKeys.planInterior("wt-2", "doc:plan"),
+    );
+  });
+
+  it("keys historical git diffs by scope, path, and both revisions", () => {
+    const base = engineKeys.gitHistoricalDiff(
+      "wt-1",
+      ".vault/plan.md",
+      "HEAD~1",
+      "HEAD",
+    );
+
+    expect(base).not.toEqual(
+      engineKeys.gitHistoricalDiff("wt-2", ".vault/plan.md", "HEAD~1", "HEAD"),
+    );
+    expect(base).not.toEqual(
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/adr.md", "HEAD~1", "HEAD"),
+    );
+    expect(base).not.toEqual(
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~2", "HEAD"),
+    );
+    expect(base).not.toEqual(
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "main"),
+    );
+  });
+
+  it("enrolls every scoped query family in the workspace-swap scoped-cache boundary", () => {
+    const scopedKeys = [
+      engineKeys.vaultTree("wt-1"),
+      engineKeys.fileTree("wt-1", ".vault", undefined),
+      engineKeys.filters("wt-1"),
+      engineKeys.dashboardState("wt-1", "session-a"),
+      engineKeys.graph("wt-1", undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings("wt-1", "status", null),
+      engineKeys.node("wt-1", "doc:plan"),
+      engineKeys.content("wt-1", "doc:plan"),
+      engineKeys.neighbors("wt-1", "doc:plan", 1),
+      engineKeys.evidence("wt-1", "doc:plan"),
+      engineKeys.discover("wt-1", "doc:plan"),
+      engineKeys.events("wt-1", {}),
+      engineKeys.history("wt-1", 20),
+      engineKeys.stream(["graph"], 42, "wt-1"),
+      engineKeys.diff("wt-1", 1_000, 2_000),
+      engineKeys.lineage("wt-1", {}),
+      engineKeys.pipeline("wt-1"),
+      engineKeys.planInterior("wt-1", "doc:plan"),
+      engineKeys.search("wt-1", "alpha", "vault"),
+      engineKeys.gitChanges("wt-1"),
+      engineKeys.gitDiff("wt-1", ".vault/plan.md"),
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
+      ["engine", "ops-rag", "service-state", "wt-1"] as const,
+    ];
+    const scopedFamilies = new Set(scopedKeys.map((key) => String(key[1])));
+    expect(new Set(SCOPED_ENGINE_QUERY_SUBTREES)).toEqual(scopedFamilies);
+  });
+
+  it("enrolls every graph-generation read family in the generation-refresh boundary", () => {
+    const graphGenerationKeys = [
+      engineKeys.vaultTree("wt-1"),
+      engineKeys.content("wt-1", "doc:plan"),
+      engineKeys.fileTree("wt-1", ".vault", undefined),
+      engineKeys.filters("wt-1"),
+      engineKeys.dashboardState("wt-1", "session-a"),
+      engineKeys.graph("wt-1", undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings("wt-1", "status", null),
+      engineKeys.node("wt-1", "doc:plan"),
+      engineKeys.neighbors("wt-1", "doc:plan", 1),
+      engineKeys.evidence("wt-1", "doc:plan"),
+      engineKeys.discover("wt-1", "doc:plan"),
+      engineKeys.events("wt-1", {}),
+      engineKeys.diff("wt-1", 1_000, 2_000),
+      engineKeys.lineage("wt-1", {}),
+      engineKeys.stream(["graph"], 42, "wt-1"),
+      engineKeys.history("wt-1", 20),
+      engineKeys.pipeline("wt-1"),
+      engineKeys.planInterior("wt-1", "doc:plan"),
+      engineKeys.search("wt-1", "alpha", "vault"),
+    ];
+    const graphGenerationFamilies = new Set(
+      graphGenerationKeys.map((key) => String(key[1])),
+    );
+
+    expect(new Set(GRAPH_GENERATION_QUERY_SUBTREES)).toEqual(graphGenerationFamilies);
+  });
+
+  it("refreshes every scoped read family after an accepted active-scope switch", () => {
+    const client = testQueryClient();
+    const scopedKeys = [
+      engineKeys.vaultTree("wt-1"),
+      engineKeys.fileTree("wt-1", ".vault", undefined),
+      engineKeys.filters("wt-1"),
+      engineKeys.dashboardState("wt-1", "session-a"),
+      engineKeys.graph("wt-1", undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings("wt-1", "status", null),
+      engineKeys.node("wt-1", "doc:plan"),
+      engineKeys.content("wt-1", "doc:plan"),
+      engineKeys.neighbors("wt-1", "doc:plan", 1),
+      engineKeys.evidence("wt-1", "doc:plan"),
+      engineKeys.discover("wt-1", "doc:plan"),
+      engineKeys.events("wt-1", {}),
+      engineKeys.history("wt-1", 20),
+      engineKeys.stream(["graph"], 42, "wt-1"),
+      engineKeys.diff("wt-1", 1_000, 2_000),
+      engineKeys.lineage("wt-1", {}),
+      engineKeys.pipeline("wt-1"),
+      engineKeys.planInterior("wt-1", "doc:plan"),
+      engineKeys.search("wt-1", "alpha", "vault"),
+      engineKeys.gitChanges("wt-1"),
+      engineKeys.gitDiff("wt-1", ".vault/plan.md"),
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
+      ["engine", "ops-rag", "service-state", "wt-1"] as const,
+    ];
+    const globalKeys = [engineKeys.map(), engineKeys.status()];
+    const sessionKeys = [engineKeys.session(), engineKeys.workspaces()];
+
+    for (const key of [...scopedKeys, ...globalKeys, ...sessionKeys]) {
+      seedQuery(client, key);
+    }
+
+    refreshAfterAcceptedScopeSwitch(client);
+
+    for (const key of [...scopedKeys, ...globalKeys]) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of sessionKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  it("removes stale scoped reads after an accepted workspace switch", () => {
+    const client = testQueryClient();
+    const scopedKeys = [
+      engineKeys.vaultTree("wt-1"),
+      engineKeys.fileTree("wt-1", ".vault", undefined),
+      engineKeys.filters("wt-1"),
+      engineKeys.dashboardState("wt-1", "session-a"),
+      engineKeys.graph("wt-1", undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings("wt-1", "status", null),
+      engineKeys.node("wt-1", "doc:plan"),
+      engineKeys.content("wt-1", "doc:plan"),
+      engineKeys.neighbors("wt-1", "doc:plan", 1),
+      engineKeys.evidence("wt-1", "doc:plan"),
+      engineKeys.discover("wt-1", "doc:plan"),
+      engineKeys.events("wt-1", {}),
+      engineKeys.history("wt-1", 20),
+      engineKeys.stream(["graph"], 42, "wt-1"),
+      engineKeys.diff("wt-1", 1_000, 2_000),
+      engineKeys.lineage("wt-1", {}),
+      engineKeys.pipeline("wt-1"),
+      engineKeys.planInterior("wt-1", "doc:plan"),
+      engineKeys.search("wt-1", "alpha", "vault"),
+      engineKeys.gitChanges("wt-1"),
+      engineKeys.gitDiff("wt-1", ".vault/plan.md"),
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
+      ["engine", "ops-rag", "service-state", "wt-1"] as const,
+    ];
+    const removedGlobalKeys = [engineKeys.map()];
+    const refreshedGlobalKeys = [engineKeys.workspaces(), engineKeys.status()];
+
+    for (const key of [...scopedKeys, ...removedGlobalKeys, ...refreshedGlobalKeys]) {
+      seedQuery(client, key);
+    }
+
+    refreshAfterAcceptedWorkspaceSwitch(client);
+
+    for (const key of [...scopedKeys, ...removedGlobalKeys]) {
+      expect(hasQuery(client, key), JSON.stringify(key)).toBe(false);
+    }
+    for (const key of refreshedGlobalKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+  });
+
+  it("invalidates every central read surface after a vault mutation", () => {
+    const client = testQueryClient();
+    const scope = "wt-1";
+    const otherScope = "wt-2";
+    const nodeId = "doc:plan";
+    const affectedKeys = [
+      engineKeys.status(),
+      engineKeys.map(),
+      engineKeys.content(scope, nodeId),
+      engineKeys.vaultTree(scope),
+      engineKeys.filters(scope),
+      engineKeys.dashboardState(scope, "session-a"),
+      engineKeys.graph(scope, undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings(scope, "status", null),
+      engineKeys.fileTree(scope, ".vault", undefined),
+      engineKeys.gitChanges(scope),
+      engineKeys.gitDiff(scope, ".vault/plan.md"),
+      engineKeys.node(scope, nodeId),
+      engineKeys.neighbors(scope, nodeId, 1),
+      engineKeys.evidence(scope, nodeId),
+      engineKeys.discover(scope, nodeId),
+      engineKeys.events(scope, { from: "2026-01-01", to: "2026-01-31" }),
+      engineKeys.diff(scope, 1_000, 2_000),
+      engineKeys.lineage(scope, {}),
+      engineKeys.stream(["backends"], undefined, scope),
+      engineKeys.history(scope, 20),
+      engineKeys.pipeline(scope),
+      engineKeys.planInterior(scope, nodeId),
+      engineKeys.search(scope, "alpha", "vault"),
+    ];
+    const unaffectedKeys = [
+      engineKeys.content(otherScope, nodeId),
+      engineKeys.vaultTree(otherScope),
+      engineKeys.dashboardState(otherScope, "session-a"),
+      engineKeys.graph(otherScope, undefined, undefined, "document", "status", null),
+      engineKeys.gitChanges(otherScope),
+      engineKeys.events(otherScope, { from: "2026-01-01", to: "2026-01-31" }),
+      engineKeys.diff(otherScope, 1_000, 2_000),
+      engineKeys.lineage(otherScope, {}),
+      engineKeys.stream(["backends"], undefined, otherScope),
+      engineKeys.history(otherScope, 20),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateAfterVaultMutation(client, scope, nodeId);
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  it("invalidates status, history, and per-file git projections after a git recovery signal", () => {
+    const client = testQueryClient();
+    const affectedKeys = [
+      engineKeys.status(),
+      engineKeys.gitChanges("wt-1"),
+      engineKeys.gitChanges("wt-2"),
+      engineKeys.gitDiff("wt-1", ".vault/plan.md"),
+      engineKeys.gitDiff("wt-2", "src/app.ts"),
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
+      engineKeys.gitHistoricalDiff("wt-2", "src/app.ts", "abc", "def"),
+      engineKeys.history("wt-1", 20),
+      engineKeys.history("wt-2", 50),
+    ];
+    const unaffectedKeys = [
+      engineKeys.map(),
+      engineKeys.vaultTree("wt-1"),
+      engineKeys.graph("wt-1", undefined, undefined, "document", "status", null),
+      engineKeys.search("wt-1", "alpha", "vault"),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateGitRecoveryReads(client);
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  it("invalidates graph-generation projections after a graph stream recovery", () => {
+    const client = testQueryClient();
+    const scope = "wt-1";
+    const otherScope = "wt-2";
+    const nodeId = "doc:plan";
+    const affectedKeys = [
+      engineKeys.vaultTree(scope),
+      engineKeys.content(scope, nodeId),
+      engineKeys.fileTree(scope, ".vault", undefined),
+      engineKeys.filters(scope),
+      engineKeys.dashboardState(scope, "session-a"),
+      engineKeys.graph(scope, undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings(scope, "status", null),
+      engineKeys.node(scope, nodeId),
+      engineKeys.neighbors(scope, nodeId, 1),
+      engineKeys.evidence(scope, nodeId),
+      engineKeys.discover(scope, nodeId),
+      engineKeys.events(scope, { from: "2026-01-01", to: "2026-01-31" }),
+      engineKeys.diff(scope, 1_000, 2_000),
+      engineKeys.lineage(scope, {}),
+      engineKeys.stream(["graph"], 42, scope),
+      engineKeys.history(scope, 20),
+      engineKeys.pipeline(scope),
+      engineKeys.planInterior(scope, nodeId),
+      engineKeys.search(scope, "alpha", "vault"),
+    ];
+    const unaffectedKeys = [
+      engineKeys.status(),
+      engineKeys.map(),
+      engineKeys.gitChanges(scope),
+      engineKeys.gitDiff(scope, ".vault/plan.md"),
+      engineKeys.vaultTree(otherScope),
+      engineKeys.filters(otherScope),
+      engineKeys.dashboardState(otherScope, "session-a"),
+      engineKeys.graph(otherScope, undefined, undefined, "document", "status", null),
+      engineKeys.graphEmbeddings(otherScope, "status", null),
+      engineKeys.stream(["graph"], 42, otherScope),
+      engineKeys.search(otherScope, "alpha", "vault"),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateGraphGenerationReads(client, scope);
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+});
+
+describe("backend-signal status refresh identity", () => {
+  it("uses the latest backend/git values rather than accumulator length", () => {
+    const saturated = Array.from({ length: STREAM_RETENTION }, (_, i) => ({
+      channel: i % 2 === 0 ? "backends" : "git",
+      data: i % 2 === 0 ? { rag: "running" } : { dirty: false },
+    }));
+    const sameLengthDifferentValue = [
+      ...saturated.slice(1),
+      { channel: "git", data: { dirty: true } },
+    ];
+
+    expect(latestBackendSignalSignature(saturated)).not.toEqual(
+      latestBackendSignalSignature(sameLengthDifferentValue),
+    );
+  });
+});
+
+describe("the lens-keyed graph query cache", () => {
+  it("keys the graph query on the active lens so a lens switch is a re-query", () => {
+    const statusKey = engineKeys.graph("s", undefined, undefined, "document", "status");
+    const designKey = engineKeys.graph("s", undefined, undefined, "document", "design");
+    expect(statusKey).not.toEqual(designKey);
+    expect(statusKey).toContain("status");
+    expect(designKey).toContain("design");
+  });
+
+  it("keys the graph query on the focus node so a focus change is a re-query", () => {
+    const noFocus = engineKeys.graph(
+      "s",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      null,
+    );
+    const focused = engineKeys.graph(
+      "s",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      "doc:x",
+    );
+    expect(noFocus).not.toEqual(focused);
+    expect(focused).toContain("doc:x");
+  });
+
+  it("the omitted lens/focus keys to the status, no-focus default", () => {
+    const omitted = engineKeys.graph("s");
+    const explicit = engineKeys.graph(
+      "s",
+      undefined,
+      undefined,
+      "document",
+      "status",
+      null,
+    );
+    expect(omitted).toEqual(explicit);
+  });
+});
+
+describe("the salience slice view (loading + degradation from tiers)", () => {
+  const okTiers = {
+    declared: { available: true },
+    structural: { available: true },
+    temporal: { available: true },
+    semantic: { available: true },
+  };
+
+  it("reports loading on a focus-change re-query without flagging partial", () => {
+    const view = deriveSalienceSliceView("status", undefined, null, true);
+    expect(view.loading).toBe(true);
+    expect(view.partial).toBe(false);
+    expect(view.degradedTiers).toEqual([]);
+  });
+
+  it("does not expose held salience metadata while a new slice is loading", () => {
+    const held = {
+      nodes: [],
+      edges: [],
+      tiers: {
+        ...okTiers,
+        semantic: { available: false, reason: "stale rag state" },
+      },
+      lens: "design",
+      salience_partial: true,
+    } as unknown as GraphSlice;
+
+    const view = deriveSalienceSliceView("status", held, null, true);
+
+    expect(view).toMatchObject({
+      lens: "status",
+      loading: true,
+      partial: false,
+      degradedTiers: [],
+      reasons: {},
+    });
+  });
+
+  it("honors the engine's explicit salience_partial flag", () => {
+    const data = {
+      nodes: [],
+      edges: [],
+      tiers: okTiers,
+      lens: "status",
+      salience_partial: true,
+    } as unknown as GraphSlice;
+    const view = deriveSalienceSliceView("status", data, null, false);
+    expect(view.partial).toBe(true);
+    expect(view.lens).toBe("status");
+  });
+
+  it("derives partial from a degraded tier in the served block", () => {
+    const data = {
+      nodes: [],
+      edges: [],
+      tiers: {
+        ...okTiers,
+        declared: { available: false, reason: "core graph unavailable" },
+      },
+      lens: "design",
+      salience_partial: false,
+    } as unknown as GraphSlice;
+    const view = deriveSalienceSliceView("design", data, null, false);
+    expect(view.partial).toBe(true);
+    expect(view.degradedTiers).toContain("declared");
+    expect(view.reasons.declared).toBe("core graph unavailable");
+  });
+
+  it("lets FRESH error tiers win over a stale held-success block", () => {
+    const held = {
+      nodes: [],
+      edges: [],
+      tiers: okTiers,
+      lens: "status",
+      salience_partial: false,
+    } as unknown as GraphSlice;
+    const error = new EngineError("/graph/query", 502, {
+      tiers: {
+        ...okTiers,
+        semantic: { available: false, reason: "rag down" },
+      },
+    });
+    const view = deriveSalienceSliceView("status", held, error, false);
+    expect(view.degradedTiers).toContain("semantic");
+    expect(view.reasons.semantic).toBe("rag down");
+  });
+
+  it("does NOT flag partial from a bare transport error (no tiers)", () => {
+    const view = deriveSalienceSliceView(
+      "status",
+      undefined,
+      new Error("network down"),
+      false,
+    );
+    expect(view.partial).toBe(false);
+    expect(view.degradedTiers).toEqual([]);
+  });
 });
 
 describe("parseSseFrames", () => {
@@ -274,39 +2348,7 @@ describe("parseSseFrames", () => {
   });
 });
 
-describe("sseChunks over the mock engine stream", () => {
-  it("yields replayed graph deltas in sequence order from since=", async () => {
-    const mock = new MockEngine();
-    const client = new EngineClient({ baseUrl: "/api", fetchImpl: mock.fetchImpl });
-    const since = mock.lastSeq - 3;
-    const response = await client.openStream(["graph"], since);
-    const seqs: number[] = [];
-    for await (const chunk of sseChunks(response)) {
-      seqs.push((chunk.data as { seq: number }).seq);
-      if (seqs.length === 3) break;
-    }
-    expect(seqs).toEqual([since + 1, since + 2, since + 3]);
-  });
-
-  it("delivers live pushes on subscribed channels only", async () => {
-    const mock = new MockEngine();
-    const client = new EngineClient({ baseUrl: "/api", fetchImpl: mock.fetchImpl });
-    const response = await client.openStream(["backends"]);
-    const received: unknown[] = [];
-    const consume = (async () => {
-      for await (const chunk of sseChunks(response)) {
-        received.push(chunk);
-        break;
-      }
-    })();
-    // Give the stream a tick to subscribe, then push.
-    await new Promise((r) => setTimeout(r, 0));
-    mock.push("git", { head: "ignored" });
-    mock.push("backends", { rag: "stopped" });
-    await consume;
-    expect(received).toEqual([{ channel: "backends", data: { rag: "stopped" } }]);
-  });
-
+describe("sseChunks stream failure handling", () => {
   it("throws StreamLostError on a non-ok stream response (ADR D2)", async () => {
     const badResponse = new Response("nope", { status: 503 });
     await expect(async () => {
@@ -424,6 +2466,279 @@ describe("deriveGitStatusView", () => {
   });
 });
 
+describe("deriveChangedFilesView", () => {
+  it("splits vault documents from source files and computes the summary once", () => {
+    const files: ChangedFile[] = [
+      {
+        path: "src/app.ts",
+        code: " M",
+        letter: "M",
+        group: "modified",
+        vault: false,
+        adds: 4,
+        dels: 1,
+      },
+      {
+        path: ".vault/plan/2026-06-18-plan.md",
+        code: "A ",
+        letter: "A",
+        group: "added",
+        vault: true,
+        adds: 8,
+        dels: 0,
+      },
+      {
+        path: "assets/logo.png",
+        code: " M",
+        letter: "M",
+        group: "modified",
+        vault: false,
+        adds: null,
+        dels: null,
+      },
+    ];
+
+    const view = deriveChangedFilesView(files, false, false);
+
+    expect(view.codeFiles.map((file) => file.path)).toEqual([
+      "src/app.ts",
+      "assets/logo.png",
+    ]);
+    expect(view.documents.map((file) => file.path)).toEqual([
+      ".vault/plan/2026-06-18-plan.md",
+    ]);
+    expect(view.summary).toEqual({
+      files: 2,
+      documents: 1,
+      additions: 12,
+      deletions: 1,
+      total: 3,
+    });
+  });
+
+  it("drops held rows while git is unavailable", () => {
+    const view = deriveChangedFilesView(
+      [
+        {
+          path: "src/stale.ts",
+          code: " M",
+          letter: "M",
+          group: "modified",
+          vault: false,
+          adds: 4,
+          dels: 1,
+        },
+      ],
+      true,
+      true,
+      false,
+    );
+
+    expect(view).toMatchObject({
+      loading: false,
+      errored: false,
+      files: [],
+      codeFiles: [],
+      documents: [],
+      summary: {
+        files: 0,
+        documents: 0,
+        additions: 0,
+        deletions: 0,
+        total: 0,
+      },
+    });
+  });
+});
+
+describe("deriveChangesOverviewView", () => {
+  const retry = () => undefined;
+  const availableGit = {
+    loading: false,
+    errored: false,
+    degraded: false,
+    dirty: true,
+    git: { branch: "main", dirty: true },
+    retry,
+  };
+
+  it("combines git availability and changed-file rows into one render surface", () => {
+    const changed = deriveChangedFilesView(
+      [
+        {
+          path: "src/app.ts",
+          code: " M",
+          letter: "M",
+          group: "modified",
+          vault: false,
+          adds: 4,
+          dels: 1,
+        },
+        {
+          path: ".vault/adr/2026-06-18-x.md",
+          code: "A ",
+          letter: "A",
+          group: "added",
+          vault: true,
+          adds: 2,
+          dels: 0,
+        },
+      ],
+      false,
+      false,
+    );
+    const view = deriveChangesOverviewView(availableGit, changed);
+
+    expect(view.hasChanges).toBe(true);
+    expect(view.loading).toBe(false);
+    expect(view.clean).toBe(false);
+    expect(view.files.map((file) => file.path)).toEqual(["src/app.ts"]);
+    expect(view.files[0]).toMatchObject({
+      path: "src/app.ts",
+      basename: "app.ts",
+      nodeId: "code:src/app.ts",
+      group: "modified",
+      adds: 4,
+      dels: 1,
+    });
+    expect(view.documents.map((file) => file.path)).toEqual([
+      ".vault/adr/2026-06-18-x.md",
+    ]);
+    expect(view.documents[0]).toEqual({
+      path: ".vault/adr/2026-06-18-x.md",
+      title: "X",
+      nodeId: "doc:2026-06-18-x",
+      category: "adr",
+    });
+    expect(view.summary.total).toBe(2);
+    expect(view.retry).toBe(retry);
+  });
+
+  it("prioritizes designed empty/loading/degraded/error states only when no rows exist", () => {
+    const empty = deriveChangedFilesView([], false, false);
+
+    expect(
+      deriveChangesOverviewView({ ...availableGit, loading: true }, empty),
+    ).toMatchObject({ loading: true, clean: false, hasChanges: false });
+    expect(
+      deriveChangesOverviewView(
+        { ...availableGit, git: undefined, degraded: true, dirty: false },
+        empty,
+      ),
+    ).toMatchObject({ degraded: true, clean: false, hasChanges: false });
+    expect(
+      deriveChangesOverviewView(
+        { ...availableGit, git: undefined, errored: true, dirty: false },
+        empty,
+      ),
+    ).toMatchObject({ errored: true, clean: false, hasChanges: false });
+  });
+
+  it("does not let stale changed rows mask unavailable git", () => {
+    const stale = deriveChangedFilesView(
+      [
+        {
+          path: "src/stale.ts",
+          code: " M",
+          letter: "M",
+          group: "modified",
+          vault: false,
+          adds: 4,
+          dels: 1,
+        },
+      ],
+      false,
+      false,
+    );
+
+    const view = deriveChangesOverviewView(
+      { ...availableGit, git: undefined, degraded: true, dirty: false },
+      stale,
+    );
+
+    expect(view).toMatchObject({
+      degraded: true,
+      hasChanges: false,
+      files: [],
+      documents: [],
+      summary: {
+        files: 0,
+        documents: 0,
+        additions: 0,
+        deletions: 0,
+        total: 0,
+      },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveCoreStatusView — vaultspec-core status rollup interpretation.
+// App chrome consumes this view rather than interpreting status.core directly.
+// ---------------------------------------------------------------------------
+
+describe("deriveCoreStatusView", () => {
+  it("reports reachable core with forwarded vault health", () => {
+    const view = deriveCoreStatusView(
+      {
+        ok: true,
+        nodes: 0,
+        edges: 0,
+        degradations: [],
+        tiers: {},
+        core: { reachable: true, vault_health: "green" },
+      },
+      undefined,
+      false,
+    );
+
+    expect(view).toMatchObject({
+      loading: false,
+      errored: false,
+      reachable: true,
+      vaultHealth: "green",
+    });
+  });
+
+  it("reports missing or unreachable core as a designed down state", () => {
+    expect(
+      deriveCoreStatusView(
+        {
+          ok: true,
+          nodes: 0,
+          edges: 0,
+          degradations: [],
+          tiers: {},
+          core: { reachable: false },
+        },
+        undefined,
+        false,
+      ),
+    ).toMatchObject({ errored: false, reachable: false });
+
+    expect(
+      deriveCoreStatusView(
+        { ok: true, nodes: 0, edges: 0, degradations: [], tiers: {} },
+        undefined,
+        false,
+      ),
+    ).toMatchObject({ errored: false, reachable: false });
+  });
+
+  it("keeps tiers-less transport faults distinct from designed down core", () => {
+    const view = deriveCoreStatusView(
+      undefined,
+      new EngineError("/status", 500),
+      false,
+    );
+    expect(view).toMatchObject({
+      loading: false,
+      errored: true,
+      reachable: false,
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // deriveHistoryView (Status overview recent-commit degradation, contract §2 /
 // status-overview ADR): degradation is read from the served `tiers` block (the
@@ -435,27 +2750,137 @@ function historyWith(
   tiers: TiersBlock | undefined,
   commits: HistoryResponse["commits"] = [],
 ): HistoryResponse {
-  return { commits, truncated: null, tiers: tiers ?? {} };
+  return { commits, truncated: null, next_cursor: null, tiers: tiers ?? {} };
 }
 
 describe("deriveHistoryView", () => {
   it("reports available with the commit list when structural is served", () => {
+    const now = 1_000_000_000_000;
     const view = deriveHistoryView(
       historyWith({ structural: { available: true } }, [
         {
           hash: "abc123",
           short_hash: "abc123",
           subject: "feat: x",
+          body: "",
+          ts: now - 5 * 60_000,
+          node_ids: ["commit:abc123", "doc:x", "code:src/x.ts"],
+        },
+      ]),
+      undefined,
+      false,
+      now,
+    );
+    expect(view).toMatchObject({ loading: false, degraded: false, errored: false });
+    expect(view.available).toBe(true);
+    expect(view.commits).toHaveLength(1);
+    expect(view.recentCommitRows).toEqual([
+      {
+        commit: view.commits[0],
+        eventId: "commit:abc123",
+        touchedNodeIds: ["doc:x", "code:src/x.ts"],
+        selectable: true,
+        ageLabel: "5m",
+      },
+    ]);
+  });
+
+  it("derives recent commit age labels inside the stores row projection", () => {
+    const now = 1_000_000_000_000;
+    const commits = [
+      {
+        hash: "just-now",
+        short_hash: "just-now",
+        subject: "fresh",
+        body: "",
+        ts: now - 30_000,
+        node_ids: ["doc:fresh"],
+      },
+      {
+        hash: "hours",
+        short_hash: "hours",
+        subject: "hourly",
+        body: "",
+        ts: now - 3 * 3_600_000,
+        node_ids: ["doc:hourly"],
+      },
+      {
+        hash: "days",
+        short_hash: "days",
+        subject: "daily",
+        body: "",
+        ts: now - 2 * 86_400_000,
+        node_ids: ["doc:daily"],
+      },
+      {
+        hash: "missing-time",
+        short_hash: "missing",
+        subject: "missing",
+        body: "",
+        ts: 0,
+        node_ids: ["doc:missing"],
+      },
+    ];
+
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, commits),
+      undefined,
+      false,
+      now,
+    );
+
+    expect(view.recentCommitRows.map((row) => row.ageLabel)).toEqual([
+      "just now",
+      "3h",
+      "2d",
+      "",
+    ]);
+  });
+
+  it("limits status commit rows and excludes the commit node from selectable targets", () => {
+    const commits = Array.from({ length: 14 }, (_, i) => ({
+      hash: `hash-${i}`,
+      short_hash: `h${i}`,
+      subject: `commit ${i}`,
+      body: "",
+      ts: i,
+      node_ids: [`commit:hash-${i}`, `doc:touched-${i}`],
+    }));
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, commits),
+      undefined,
+      false,
+      1_000_000,
+    );
+
+    expect(view.commits).toHaveLength(14);
+    expect(view.recentCommitRows).toHaveLength(12);
+    expect(view.recentCommitRows.map((row) => row.eventId)).toEqual(
+      commits.slice(0, 12).map((commit) => `commit:${commit.hash}`),
+    );
+    expect(view.recentCommitRows[0].touchedNodeIds).toEqual(["doc:touched-0"]);
+  });
+
+  it("does not expose held commits while the history query is loading", () => {
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, [
+        {
+          hash: "abc",
+          short_hash: "abc",
+          subject: "held",
+          body: "",
           ts: 1,
           node_ids: [],
         },
       ]),
       undefined,
-      false,
+      true,
     );
-    expect(view).toMatchObject({ loading: false, degraded: false, errored: false });
-    expect(view.available).toBe(true);
-    expect(view.commits).toHaveLength(1);
+
+    expect(view.loading).toBe(true);
+    expect(view.available).toBe(false);
+    expect(view.commits).toEqual([]);
+    expect(view.recentCommitRows).toEqual([]);
   });
 
   it("treats an absent structural tier as designed degradation (absence != available)", () => {
@@ -463,6 +2888,7 @@ describe("deriveHistoryView", () => {
     expect(view.degraded).toBe(true);
     expect(view.errored).toBe(false);
     expect(view.commits).toHaveLength(0);
+    expect(view.recentCommitRows).toHaveLength(0);
   });
 
   it("surfaces a tiers-bearing error envelope (backend answered) as degradation", () => {
@@ -490,7 +2916,7 @@ describe("deriveHistoryView", () => {
     });
     const view = deriveHistoryView(
       historyWith({ structural: { available: true } }, [
-        { hash: "abc", short_hash: "abc", subject: "x", ts: 1, node_ids: [] },
+        { hash: "abc", short_hash: "abc", subject: "x", body: "", ts: 1, node_ids: [] },
       ]),
       err,
       false,
@@ -508,7 +2934,7 @@ describe("deriveHistoryView", () => {
 });
 
 // ---------------------------------------------------------------------------
-// LIVE-SAMPLE PARITY (mock-mirrors-live-wire-shape): a RAW live-shaped /status
+// LIVE-SAMPLE PARITY: a RAW live-shaped /status
 // sample (`{git:{head_ref, dirty:bool, ahead:Option, behind:Option}}`) fed
 // through `adaptStatus` → `deriveGitStatusView` must yield a correct surface.
 // ---------------------------------------------------------------------------
@@ -599,6 +3025,16 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     expect(view.degraded).toBe(false);
     expect(view.degradedTiers).toEqual([]);
     expect(view.artifacts).toHaveLength(2);
+    expect(view.plans.map((artifact) => artifact.node_id)).toEqual([
+      "doc:2026-06-14-x-plan",
+    ]);
+    expect(view.adrs.map((artifact) => artifact.node_id)).toEqual([
+      "doc:2026-06-14-x-adr",
+    ]);
+    expect(view.planIds).toEqual(["doc:2026-06-14-x-plan"]);
+    expect([...view.occupiedPhases]).toEqual(["execute", "adr"]);
+    expect(view.count).toBe(2);
+    expect(view.liveMessage).toBe("2 in-flight items");
   });
 
   it("reports degraded when the structural tier is explicitly unavailable", () => {
@@ -608,6 +3044,11 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     expect(view.reasons.structural).toBe("vault index rebuilding");
     // While degraded the projection is not trusted: no stale list is rendered.
     expect(view.artifacts).toEqual([]);
+    expect(view.plans).toEqual([]);
+    expect(view.adrs).toEqual([]);
+    expect(view.planIds).toEqual([]);
+    expect(view.count).toBe(0);
+    expect(view.liveMessage).toBe("pipeline status unavailable");
   });
 
   it("reports degraded when the structural tier is ABSENT from the served block (absence != available)", () => {
@@ -642,6 +3083,7 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
   it("carries the real pending flag through as loading", () => {
     const view = derivePipelineStatusView(structuralUp, [], true);
     expect(view.loading).toBe(true);
+    expect(view.liveMessage).toBe("loading in-flight work");
   });
 });
 
@@ -707,23 +3149,78 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
   });
 });
 
+describe("deriveTimelineLineageView (timeline lineage read model)", () => {
+  const slice: LineageSlice = {
+    nodes: [
+      {
+        id: "doc:research",
+        doc_type: "research",
+        phase: "research",
+        dates: { created: "2026-06-18" },
+        degree: 1,
+      },
+    ],
+    arcs: [
+      {
+        id: "edge:1",
+        src: "doc:research",
+        dst: "doc:adr",
+        relation: "references",
+        tier: "structural",
+        confidence: 1,
+      },
+    ],
+    tiers: {},
+    truncated: null,
+  };
+
+  it("projects raw lineage query state into stable timeline inputs", () => {
+    const retry = () => undefined;
+    expect(deriveTimelineLineageView(slice, false, false, retry)).toEqual({
+      loading: false,
+      errored: false,
+      nodes: slice.nodes,
+      arcs: slice.arcs,
+      retry,
+    });
+  });
+
+  it("falls back to empty node and arc arrays before lineage data arrives", () => {
+    expect(deriveTimelineLineageView(undefined, true, false)).toMatchObject({
+      loading: true,
+      errored: false,
+      nodes: [],
+      arcs: [],
+    });
+  });
+
+  it("does not expose held lineage while a new lineage read is loading", () => {
+    expect(deriveTimelineLineageView(slice, true, false)).toMatchObject({
+      loading: true,
+      errored: false,
+      nodes: [],
+      arcs: [],
+    });
+  });
+
+  it("does not expose held lineage after a lineage read errors", () => {
+    expect(deriveTimelineLineageView(slice, false, true)).toMatchObject({
+      loading: false,
+      errored: true,
+      nodes: [],
+      arcs: [],
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // adaptLineageSlice + /graph/lineage consumer fidelity (dashboard-timeline
-// W02.P04.S24) — the mock-mirrors-live-wire-shape PROOF in executable form.
+// W02.P04.S24).
 //
 // A sample CAPTURED from the live `/graph/lineage` wire shape (the engine
 // `graph_lineage` route's `{data: {nodes, arcs, truncated}, tiers}` envelope) is
-// fed through the SAME client path the app uses (unwrapEnvelope + adaptLineageSlice),
-// then the MockEngine is driven through that same EngineClient and the two shapes
-// are asserted to match. A divergence is a test-fidelity defect to fix in the mock,
-// never papered over by adapting only the live side (mock-mirrors-live-wire-shape).
+// fed through the SAME unwrap + adapter path the app uses.
 // ---------------------------------------------------------------------------
-
-function clientOn(mock: MockEngine): EngineClient {
-  const client = new EngineClient({ baseUrl: "" });
-  client.useTransport(mock.fetchImpl);
-  return client;
-}
 
 describe("adaptLineageSlice + /graph/lineage consumer fidelity (W02.P04.S24)", () => {
   // A live `/graph/lineage` envelope: two dated, lane-owning document nodes in
@@ -792,110 +3289,5 @@ describe("adaptLineageSlice + /graph/lineage consumer fidelity (W02.P04.S24)", (
     expect(slice.arcs[0].derivation).toBeUndefined(); // graceful fallback
     expect(slice.tiers.semantic.available).toBe(false);
     expect(slice.truncated).toBeNull();
-  });
-
-  it("the mock serves the SAME lineage shape through the client path", async () => {
-    const mock = new MockEngine();
-    const result = await clientOn(mock).lineage({ scope: MOCK_SCOPE });
-
-    // Non-empty: the corpus carries dated, lane-owning documents.
-    expect(result.nodes.length).toBeGreaterThan(0);
-    expect(result.arcs.length).toBeGreaterThan(0);
-
-    // Every node carries the exact live field shape, with the live types.
-    const lanePhases = ["research", "adr", "plan", "exec", "review", "codify"];
-    for (const n of result.nodes) {
-      expect(n.id).toMatch(/^doc:/);
-      expect(typeof n.doc_type).toBe("string");
-      expect(lanePhases).toContain(n.phase);
-      expect(typeof n.degree).toBe("number");
-      // `created` is an ISO string; `modified`, when present, is an epoch-ms
-      // NUMBER (the engine `Timestamp`) — NOT a string. This is the precise
-      // mock-vs-live divergence point the fidelity test guards.
-      if (n.dates.created !== undefined) expect(typeof n.dates.created).toBe("string");
-      if (n.dates.modified !== undefined)
-        expect(typeof n.dates.modified).toBe("number");
-      // Only lane-owning doc-types are projected (commits/code/features excluded).
-      expect([
-        "research",
-        "adr",
-        "plan",
-        "exec",
-        "audit",
-        "reference",
-        "rule",
-      ]).toContain(n.doc_type);
-    }
-
-    // Self-consistency: every arc's src AND dst is a returned node (no dangling
-    // arc), exactly the engine's invariant — and the arc carries NO derivation.
-    const ids = new Set(result.nodes.map((n) => n.id));
-    for (const a of result.arcs) {
-      expect(ids.has(a.src)).toBe(true);
-      expect(ids.has(a.dst)).toBe(true);
-      expect(typeof a.confidence).toBe("number");
-      expect(["declared", "structural", "temporal", "semantic"]).toContain(a.tier);
-      expect(a.derivation).toBeUndefined(); // derivation-fallback, like live
-    }
-
-    // Bounded + honest: a small corpus is not truncated.
-    expect(result.truncated).toBeNull();
-    // The envelope tiers ride through with semantic present-only (range lineage).
-    expect(result.tiers.semantic.available).toBe(false);
-  });
-
-  it("honors the [from, to] range: an out-of-range document is excluded", async () => {
-    const mock = new MockEngine();
-    const client = clientOn(mock);
-    // The corpus is dated from 2026-01-05 onward; a window before it is empty.
-    const before = await client.lineage({
-      scope: MOCK_SCOPE,
-      from: "2025-01-01",
-      to: "2025-12-31",
-    });
-    expect(before.nodes).toHaveLength(0);
-    expect(before.arcs).toHaveLength(0);
-    // A window covering the first feature's research date returns at least it.
-    const within = await client.lineage({
-      scope: MOCK_SCOPE,
-      from: "2026-01-01",
-      to: "2026-01-06",
-    });
-    expect(within.nodes.length).toBeGreaterThan(0);
-    // Every returned node's created date is within the requested bounds.
-    for (const n of within.nodes) {
-      const day = (n.dates.created ?? "").slice(0, 10);
-      expect(day >= "2026-01-01" && day <= "2026-01-06").toBe(true);
-    }
-  });
-
-  it("serves a BLOB-TRUE as-of subset for a past `t` (dashboard-timeline fast-follow)", async () => {
-    const mock = new MockEngine();
-    const client = clientOn(mock);
-    // The full live-graph slice (no `t`) over the whole corpus.
-    const live = await client.lineage({ scope: MOCK_SCOPE });
-    // As of an early instant (just after the first feature's research+adr days,
-    // 2026-01-05/06): only nodes that existed at T survive — strictly fewer than
-    // the full corpus, mirroring the engine's `asof_graph_resolved` resolution.
-    const tEarly = String(Date.parse("2026-01-06T23:59:59Z"));
-    const asof = await client.lineage({ scope: MOCK_SCOPE, t: tEarly });
-    expect(asof.nodes.length).toBeGreaterThan(0);
-    expect(asof.nodes.length).toBeLessThan(live.nodes.length);
-    // Every surviving node was created at/before T (blob-true existence at T).
-    for (const n of asof.nodes) {
-      expect(Date.parse(n.dates.created ?? "")).toBeLessThanOrEqual(Number(tEarly));
-    }
-    // Self-consistency holds under the as-of cut: every arc's endpoints survived.
-    const ids = new Set(asof.nodes.map((n) => n.id));
-    for (const a of asof.arcs) {
-      expect(ids.has(a.src)).toBe(true);
-      expect(ids.has(a.dst)).toBe(true);
-    }
-  });
-
-  it("a missing scope is a tiered 400, like the live route", async () => {
-    const mock = new MockEngine();
-    // `lineage` requires a scope; the route 400s an unknown/non-vault scope.
-    await expect(clientOn(mock).lineage({ scope: "wt-unknown" })).rejects.toThrow();
   });
 });

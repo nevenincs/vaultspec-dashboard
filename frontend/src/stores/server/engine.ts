@@ -17,10 +17,12 @@ import {
   adaptGraphEmbeddings,
   adaptGraphSlice,
   adaptHistory,
+  adaptIssues,
   adaptLineageSlice,
   adaptMap,
   adaptPipeline,
   adaptPlanInterior,
+  adaptPrs,
   adaptSearch,
   adaptSession,
   adaptSettings,
@@ -777,6 +779,10 @@ export interface HistoryCommit {
   hash: string;
   short_hash: string;
   subject: string;
+  /** The commit message body (everything after the subject), bounded by the
+   *  engine's MAX_COMMIT_BODY_BYTES; empty for a single-line commit. Backs the
+   *  rail's expandable commit-message dropdown. */
+  body: string;
   /** Commit time in milliseconds since the Unix epoch (engine-wide Timestamp). */
   ts: number;
   /** Bounded per the event sourcer's cap: commit id + docs + capped code ids. */
@@ -794,6 +800,70 @@ export interface HistoryTruncated {
 export interface HistoryResponse {
   commits: HistoryCommit[];
   truncated: HistoryTruncated | null;
+  /** Opaque pagination cursor for "Show more"; null/absent when the bounded
+   *  recent-commit window is exhausted (rides the envelope's `next_cursor`). */
+  next_cursor: string | null;
+  tiers: TiersBlock;
+}
+
+// --- GitHub work items (GET /prs, GET /issues; status-rail redesign) -----------------
+//
+// Read-only git-forge metadata the engine brokers through the bounded `gh` CLI
+// (engine-read-and-infer). PR/issue availability is a capability-local fact
+// carried in `available`/`reason` (NOT one of the four canonical tiers), so the
+// rail renders a designed "GitHub unavailable" state without the four-tier
+// contract changing. The `tiers` block stays the canonical degradation truth.
+
+/** A bounded check-rollup summary for a PR (counts, not every check). */
+export interface PrChecks {
+  total: number;
+  passed: number;
+  failing: number;
+  pending: number;
+}
+
+/** One pull request (GET /prs): number, title, author login, state, draft flag,
+ *  url, ISO timestamps, optional merged time, optional check summary, and the
+ *  lowercased review decision (`approved` / `changes_requested` / …). */
+export interface PullRequest {
+  number: number;
+  title: string;
+  author: string;
+  state: string;
+  is_draft: boolean;
+  url: string;
+  created_at: string | null;
+  updated_at: string | null;
+  merged_at: string | null;
+  review_decision: string;
+  checks: PrChecks | null;
+}
+
+/** One issue (GET /issues): number, title, author login, state, url, ISO
+ *  timestamps, and its label names. */
+export interface Issue {
+  number: number;
+  title: string;
+  author: string;
+  state: string;
+  url: string;
+  created_at: string | null;
+  updated_at: string | null;
+  labels: string[];
+}
+
+export interface PRsResponse {
+  prs: PullRequest[];
+  /** Capability-local availability (gh reachable + authed), distinct from tiers. */
+  available: boolean;
+  reason: string | null;
+  tiers: TiersBlock;
+}
+
+export interface IssuesResponse {
+  issues: Issue[];
+  available: boolean;
+  reason: string | null;
   tiers: TiersBlock;
 }
 
@@ -1613,8 +1683,35 @@ export class EngineClient {
    *  (the engine defaults to ~20 and clamps a large value to a hard ceiling). The
    *  tolerant adapter reconciles the wire shape; the rail reads degraded state
    *  from the `tiers` block. */
-  async history(params: { scope: string; limit?: number }): Promise<HistoryResponse> {
+  async history(params: {
+    scope: string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<HistoryResponse> {
     return adaptHistory(await this.get("/history", params));
+  }
+
+  /** Open or recently-merged pull requests for a scope (status-rail redesign),
+   *  brokered engine-side through the bounded `gh` CLI. `state` is `open`
+   *  (default) or `merged`; the tolerant adapter reconciles the wire shape and
+   *  carries the capability-local `available`/`reason` the rail degrades on. */
+  async prs(params: {
+    scope: string;
+    state?: "open" | "merged";
+    limit?: number;
+  }): Promise<PRsResponse> {
+    return adaptPrs(await this.get("/prs", params));
+  }
+
+  /** Open (or closed) issues for a scope (status-rail redesign), brokered
+   *  engine-side through the bounded `gh` CLI; tolerant adapter, capability-local
+   *  `available`/`reason`. */
+  async issues(params: {
+    scope: string;
+    state?: "open" | "closed";
+    limit?: number;
+  }): Promise<IssuesResponse> {
+    return adaptIssues(await this.get("/issues", params));
   }
 
   /** The bounded temporal-lineage projection (dashboard-timeline ADR, contract
@@ -1741,13 +1838,16 @@ export class EngineClient {
   }
 
   // §8
-  async search(body: {
-    scope?: string;
-    query: string;
-    target?: "vault" | "code";
-    filters?: Record<string, string>;
-  }): Promise<SearchResponse> {
-    return adaptSearch(await this.post("/search", body)) as SearchResponse;
+  async search(
+    body: {
+      scope?: string;
+      query: string;
+      target?: "vault" | "code";
+      filters?: Record<string, string>;
+    },
+    signal?: AbortSignal,
+  ): Promise<SearchResponse> {
+    return adaptSearch(await this.post("/search", body, signal)) as SearchResponse;
   }
 
   // --- session / settings (W04.P08.S25) ------------------------------------
@@ -1802,11 +1902,12 @@ export class EngineClient {
     return unwrapEnvelope(await response.json()) as T;
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  private async post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
     if (!response.ok) throw await engineErrorFrom(path, response);
     return unwrapEnvelope(await response.json()) as T;

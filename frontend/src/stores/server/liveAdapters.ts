@@ -11,11 +11,24 @@
 // are NOT absorbed here; they are flagged in the S49 record and to the
 // engine owners (loose-scoping stance).
 
-import { CANONICAL_TIERS } from "./engine";
+import {
+  CANONICAL_TIERS,
+  DASHBOARD_BOUND_SHAPES,
+  DASHBOARD_PANEL_TABS,
+  DEFAULT_SALIENCE_LENS,
+  GRAPH_GRANULARITIES,
+  REPRESENTATION_MODES,
+} from "./engine";
 import type {
   ChangedFile,
   ContentResponse,
   ContentTruncated,
+  DashboardDateRange,
+  DashboardFilters,
+  DashboardGraphBounds,
+  DashboardPanelState,
+  DashboardState,
+  DashboardTimelineMode,
   EmbeddingsResponse,
   EngineEdge,
   EngineStatus,
@@ -35,6 +48,8 @@ import type {
   InteriorPhase,
   InteriorStep,
   InteriorWave,
+  Issue,
+  IssuesResponse,
   LineageArc,
   LineageNode,
   LineagePhase,
@@ -46,6 +61,9 @@ import type {
   PipelineResponse,
   PlanInterior,
   PlanInteriorResponse,
+  PrChecks,
+  PRsResponse,
+  PullRequest,
   ScopeContextWire,
   SessionState,
   SettingControlKind,
@@ -164,6 +182,160 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
     ...(rest as object),
     edges: [...edges, ...folded],
   } as GraphSlice;
+}
+
+// --- §3 dashboard state (dashboard-state-centralization W02) --------------------
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function maybeString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function isStringMember<T extends string>(
+  value: unknown,
+  members: readonly T[],
+): value is T {
+  return typeof value === "string" && (members as readonly string[]).includes(value);
+}
+
+function adaptDashboardDateRange(value: unknown): DashboardDateRange {
+  if (!isRec(value)) return {};
+  const range: DashboardDateRange = {};
+  if (typeof value.from === "string") range.from = value.from;
+  if (typeof value.to === "string") range.to = value.to;
+  return range;
+}
+
+function adaptDashboardFilters(value: unknown): DashboardFilters {
+  if (!isRec(value)) return {};
+  const filters: DashboardFilters = {};
+  if (isRec(value.tiers)) {
+    const tiers: DashboardFilters["tiers"] = {};
+    for (const tier of CANONICAL_TIERS) {
+      if (typeof value.tiers[tier] === "boolean") tiers[tier] = value.tiers[tier];
+    }
+    if (Object.keys(tiers).length > 0) filters.tiers = tiers;
+  }
+  if (isRec(value.min_confidence)) {
+    const floors: DashboardFilters["min_confidence"] = {};
+    for (const tier of ["temporal", "semantic"] as const) {
+      const floor = value.min_confidence[tier];
+      if (typeof floor === "number" && Number.isFinite(floor)) floors[tier] = floor;
+    }
+    if (Object.keys(floors).length > 0) filters.min_confidence = floors;
+  }
+  const relations = stringArray(value.relations);
+  const structuralState = stringArray(value.structural_state).filter(
+    (state): state is "resolved" | "stale" | "broken" =>
+      state === "resolved" || state === "stale" || state === "broken",
+  );
+  const kinds = stringArray(value.kinds);
+  const docTypes = stringArray(value.doc_types);
+  const featureTags = stringArray(value.feature_tags);
+  const statuses = stringArray(value.statuses);
+  const planTiers = stringArray(value.plan_tiers);
+  if (relations.length > 0) filters.relations = relations;
+  if (structuralState.length > 0) filters.structural_state = structuralState;
+  if (kinds.length > 0) filters.kinds = kinds;
+  if (docTypes.length > 0) filters.doc_types = docTypes;
+  if (featureTags.length > 0) filters.feature_tags = featureTags;
+  if (statuses.length > 0) filters.statuses = statuses;
+  if (planTiers.length > 0) filters.plan_tiers = planTiers;
+  if (typeof value.text === "string") filters.text = value.text;
+  return filters;
+}
+
+function adaptDashboardTimelineMode(value: unknown): DashboardTimelineMode {
+  if (!isRec(value)) return { kind: "live" };
+  if (value.kind === "time-travel" && typeof value.at === "number") {
+    return { kind: "time-travel", at: value.at };
+  }
+  return { kind: "live" };
+}
+
+function adaptDashboardPanelState(value: unknown): DashboardPanelState {
+  if (!isRec(value)) {
+    return { left_collapsed: false, right_collapsed: false, right_tab: "status" };
+  }
+  const rightTab = isStringMember(value.right_tab, DASHBOARD_PANEL_TABS)
+    ? value.right_tab
+    : "status";
+  return {
+    left_collapsed: value.left_collapsed === true,
+    right_collapsed: value.right_collapsed === true,
+    right_tab: rightTab,
+  };
+}
+
+function adaptDashboardGraphBounds(value: unknown): DashboardGraphBounds {
+  if (!isRec(value)) return { shape: "free", size: 0 };
+  const shape = isStringMember(value.shape, DASHBOARD_BOUND_SHAPES)
+    ? value.shape
+    : "free";
+  return {
+    shape,
+    size:
+      typeof value.size === "number" && Number.isFinite(value.size) ? value.size : 0,
+  };
+}
+
+/**
+ * Live `/dashboard-state` -> the canonical stores-layer state. The route is
+ * identity-bearing, so string IDs are preserved exactly and malformed IDs are
+ * dropped/cleared rather than coerced into new identities.
+ */
+export function adaptDashboardState(body: unknown): DashboardState {
+  if (!isRec(body)) {
+    return {
+      scope: "",
+      selected_ids: [],
+      hovered_id: null,
+      filters: {},
+      date_range: {},
+      timeline_mode: { kind: "live" },
+      graph_granularity: "feature",
+      salience_lens: DEFAULT_SALIENCE_LENS,
+      salience_focus: null,
+      representation_mode: "connectivity",
+      panel_state: {
+        left_collapsed: false,
+        right_collapsed: false,
+        right_tab: "status",
+      },
+      graph_bounds: { shape: "free", size: 0 },
+      tiers: {},
+    };
+  }
+  const granularity = isStringMember(body.graph_granularity, GRAPH_GRANULARITIES)
+    ? body.graph_granularity
+    : "feature";
+  const lens = body.salience_lens === "design" ? "design" : DEFAULT_SALIENCE_LENS;
+  const representationMode = isStringMember(
+    body.representation_mode,
+    REPRESENTATION_MODES,
+  )
+    ? body.representation_mode
+    : "connectivity";
+  return {
+    scope: typeof body.scope === "string" ? body.scope : "",
+    selected_ids: stringArray(body.selected_ids),
+    hovered_id: maybeString(body.hovered_id),
+    filters: adaptDashboardFilters(body.filters),
+    date_range: adaptDashboardDateRange(body.date_range),
+    timeline_mode: adaptDashboardTimelineMode(body.timeline_mode),
+    graph_granularity: granularity,
+    salience_lens: lens,
+    salience_focus: maybeString(body.salience_focus),
+    representation_mode: representationMode,
+    panel_state: adaptDashboardPanelState(body.panel_state),
+    graph_bounds: adaptDashboardGraphBounds(body.graph_bounds),
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
 }
 
 // --- §4 bounded embedding slice (graph-semantic-embeddings ADR) ------------------
@@ -409,6 +581,7 @@ export function adaptMap(body: unknown): MapResponse {
           has_vault: Boolean(w.has_vault),
           is_default: Boolean(w.is_main),
           degraded: Array.isArray(w.degraded) ? (w.degraded as string[]) : undefined,
+          dirty: typeof w.dirty === "boolean" ? w.dirty : undefined,
           // ahead/behind are null when no upstream is configured — map to
           // undefined so callers can distinguish "unknown" from "0 ahead".
           ahead: w.ahead != null ? Number(w.ahead) : undefined,
@@ -445,9 +618,9 @@ export function isRagRunning(word: string | undefined): boolean {
  * renders the HONEST degraded state (contract §2) rather than a lie.
  *
  * git block: live wire sends `{head_ref, dirty, ahead?, behind?}`.
- *   `dirty` may be a boolean (live) or a string[] (internal/mock) — both mapped
- *   tolerantly; a boolean `true` produces a one-element sentinel so
- *   `gitCard` correctly shows the dirty indicator without overclaiming the count.
+ *   `dirty` may be a boolean (live) or a string[] (legacy/internal) — both map
+ *   to the single clean/dirty boolean; per-file changed paths come from
+ *   `/ops/git/status`, never this rollup.
  *
  * core block: extracted from `backends.core`; `vault_health` forwarded when
  *   present so `coreCard` can report "vault green" vs "vault unknown".
@@ -770,6 +943,7 @@ function adaptHistoryCommit(value: unknown): HistoryCommit | null {
     short_hash:
       typeof value.short_hash === "string" ? value.short_hash : hash.slice(0, 8),
     subject: typeof value.subject === "string" ? value.subject : "",
+    body: typeof value.body === "string" ? value.body : "",
     ts: typeof value.ts === "number" ? value.ts : 0,
     node_ids: Array.isArray(value.node_ids)
       ? value.node_ids.filter((id): id is string => typeof id === "string")
@@ -782,7 +956,7 @@ function adaptHistoryCommit(value: unknown): HistoryCommit | null {
  *  degraded/empty state from the tiers truth), and malformed rows are dropped. */
 export function adaptHistory(body: unknown): HistoryResponse {
   if (!isRec(body)) {
-    return { commits: [], truncated: null, tiers: {} };
+    return { commits: [], truncated: null, next_cursor: null, tiers: {} };
   }
   const commits = Array.isArray(body.commits)
     ? body.commits.map(adaptHistoryCommit).filter((c): c is HistoryCommit => c !== null)
@@ -790,6 +964,102 @@ export function adaptHistory(body: unknown): HistoryResponse {
   return {
     commits,
     truncated: adaptHistoryTruncated(body.truncated),
+    next_cursor: typeof body.next_cursor === "string" ? body.next_cursor : null,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+// --- GitHub work items (GET /prs, GET /issues) -------------------------------------
+//
+// TOLERANT, mirroring adaptHistory: a non-record or missing-field body yields an
+// empty, unavailable result with an empty tiers block, and malformed rows are
+// dropped, so one bad row never crashes the rail. `available`/`reason` carry the
+// capability-local degradation the engine reports explicitly (never guessed).
+
+function adaptPrChecks(value: unknown): PrChecks | null {
+  if (!isRec(value)) return null;
+  const n = (k: string): number =>
+    typeof value[k] === "number" ? (value[k] as number) : 0;
+  return {
+    total: n("total"),
+    passed: n("passed"),
+    failing: n("failing"),
+    pending: n("pending"),
+  };
+}
+
+function adaptPullRequest(value: unknown): PullRequest | null {
+  if (!isRec(value) || typeof value.number !== "number") return null;
+  const s = (k: string): string =>
+    typeof value[k] === "string" ? (value[k] as string) : "";
+  const ns = (k: string): string | null =>
+    typeof value[k] === "string" ? (value[k] as string) : null;
+  return {
+    number: value.number,
+    title: s("title"),
+    author: s("author"),
+    state: s("state"),
+    is_draft: value.is_draft === true,
+    url: s("url"),
+    created_at: ns("created_at"),
+    updated_at: ns("updated_at"),
+    merged_at: ns("merged_at"),
+    review_decision: s("review_decision"),
+    checks: adaptPrChecks(value.checks),
+  };
+}
+
+function adaptIssue(value: unknown): Issue | null {
+  if (!isRec(value) || typeof value.number !== "number") return null;
+  const s = (k: string): string =>
+    typeof value[k] === "string" ? (value[k] as string) : "";
+  const ns = (k: string): string | null =>
+    typeof value[k] === "string" ? (value[k] as string) : null;
+  return {
+    number: value.number,
+    title: s("title"),
+    author: s("author"),
+    state: s("state"),
+    url: s("url"),
+    created_at: ns("created_at"),
+    updated_at: ns("updated_at"),
+    labels: Array.isArray(value.labels)
+      ? value.labels.filter((l): l is string => typeof l === "string")
+      : [],
+  };
+}
+
+/** Live `/prs` → the internal PRs response. Tolerant; capability availability is
+ *  read from the engine's explicit `available`/`reason`, defaulting to
+ *  unavailable when absent so the rail degrades safely. */
+export function adaptPrs(body: unknown): PRsResponse {
+  if (!isRec(body)) {
+    return { prs: [], available: false, reason: null, tiers: {} };
+  }
+  const prs = Array.isArray(body.prs)
+    ? body.prs.map(adaptPullRequest).filter((p): p is PullRequest => p !== null)
+    : [];
+  return {
+    prs,
+    available: body.available === true,
+    reason: typeof body.reason === "string" ? body.reason : null,
+    tiers: (body.tiers ?? {}) as TiersBlock,
+  };
+}
+
+/** Live `/issues` → the internal issues response. Tolerant, same contract as
+ *  {@link adaptPrs}. */
+export function adaptIssues(body: unknown): IssuesResponse {
+  if (!isRec(body)) {
+    return { issues: [], available: false, reason: null, tiers: {} };
+  }
+  const issues = Array.isArray(body.issues)
+    ? body.issues.map(adaptIssue).filter((i): i is Issue => i !== null)
+    : [];
+  return {
+    issues,
+    available: body.available === true,
+    reason: typeof body.reason === "string" ? body.reason : null,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -812,6 +1082,21 @@ export function docNodeIdFromStem(stem: string): string {
   return `doc:${stem}`;
 }
 
+/** A repo-relative code path → its contract code-artifact node id (`code:{path}`). */
+export function codeNodeIdFromPath(path: string): string {
+  return `code:${path}`;
+}
+
+/** A feature tag → its synthesized constellation node id (`feature:{tag}`). */
+export function featureNodeIdFromTag(tag: string): string {
+  return `feature:${tag}`;
+}
+
+/** Recover the feature tag from a synthesized feature node id, or null. */
+export function featureTagFromNodeId(id: string | null): string | null {
+  return id !== null && id.startsWith("feature:") ? id.slice("feature:".length) : null;
+}
+
 /**
  * Click-through node id for a search hit. The engine's `node_id` annotation
  * always wins (contract §8 — the engine's sole value-add over the rag
@@ -831,7 +1116,7 @@ export function deriveSearchNodeId(item: Record<string, unknown>): string | null
   // `source: "code"`) is a code hit whose id lives in the `code:` namespace.
   const isCode =
     item.source === "code" || (path !== undefined && !path.endsWith(".md"));
-  if (isCode) return path ? `code:${path}` : null;
+  if (isCode) return path ? codeNodeIdFromPath(path) : null;
   const docStem = stem ?? (path ? stemFromPath(path) : null);
   return docStem ? docNodeIdFromStem(docStem) : null;
 }

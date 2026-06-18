@@ -47,6 +47,8 @@ import type {
   HistoryCommit,
   HistoryResponse,
   InteriorStep,
+  Issue,
+  IssuesResponse,
   LineageArc,
   LineageNode,
   LineageSlice,
@@ -56,6 +58,8 @@ import type {
   OpsWriteResult,
   PipelineArtifact,
   PlanInterior,
+  PRsResponse,
+  PullRequest,
   SessionState,
   SessionUpdate,
   SettingsSchema,
@@ -93,6 +97,7 @@ import { queryClient as defaultQueryClient } from "./queryClient";
 import {
   codeNodeIdFromPath,
   docNodeIdFromStem,
+  featureTagFromNodeId,
   isRagRunning,
   mergeNumstat,
   parseGitNumstat,
@@ -216,6 +221,14 @@ export const engineKeys = {
   // accumulator): the rail never accumulates every scope's history for the session.
   history: (scope: string, limit: number) =>
     [...engineKeys.all, "history", scope, limit] as const,
+  // GitHub work items (status-rail redesign): keyed by (scope, state) so open and
+  // merged PRs — and open vs closed issues — never collide. Bounded the same way
+  // (gcTime + single-entry-per-observer): the rail never accumulates every scope's
+  // forge data for the session.
+  prs: (scope: string, state: string) =>
+    [...engineKeys.all, "prs", scope, state] as const,
+  issues: (scope: string, state: string) =>
+    [...engineKeys.all, "issues", scope, state] as const,
   // Search is scoped to a worktree corpus just like graph/tree reads. Fold the
   // scope into the key so the same query text on two worktrees cannot share
   // semantic results.
@@ -2071,7 +2084,7 @@ export function useGraphSliceAvailability(
  * stays addressable.
  */
 export function isAddressableNode(id: string | null): id is string {
-  return id !== null && !id.startsWith("feature:");
+  return id !== null && featureTagFromNodeId(id) === null;
 }
 
 export function useNodeDetail(id: string | null, scope: string | null) {
@@ -2173,7 +2186,7 @@ export function useFeatureLifecycleView(
   id: string,
   scope: string | null,
 ): FeatureLifecycleView {
-  const tag = id.startsWith("feature:") ? id.slice("feature:".length) : null;
+  const tag = featureTagFromNodeId(id);
   const slice = useGraphSlice(
     tag === null ? null : scope,
     tag === null ? undefined : { feature_tags: [tag] },
@@ -2586,7 +2599,7 @@ export function deriveFrontmatterHeaderView(
   }
   const related = frontmatter.related.map((stem) => ({
     stem,
-    nodeId: `doc:${stem}`,
+    nodeId: docNodeIdFromStem(stem),
   }));
   if (tags.length === 0 && dates.length === 0 && related.length === 0) {
     return null;
@@ -2798,6 +2811,104 @@ export function useHistoryView(
   const query = useNodeHistory(scope, limit);
   const loading = scope !== null && query.isPending;
   return deriveHistoryView(query.data, query.error ?? null, loading);
+}
+
+// --- GitHub work items: open PRs, recent (merged) PRs, open issues -------------------
+//
+// Layer ownership (dashboard-layer-ownership / views-are-projections): these are
+// the SOLE wire client for the new rail sections. The DUMB PR/issue views consume
+// these interpreted hooks — they never fetch, never read the raw `tiers` block.
+// Availability is the engine's capability-local `available`/`reason` (gh reachable
+// + authed), interpreted here so the surface renders a designed degraded state
+// rather than guessing from a transport error.
+
+export interface PRsView {
+  loading: boolean;
+  errored: boolean;
+  /** The engine answered and `gh` is reachable + authed (data.available). */
+  available: boolean;
+  /** The capability-local reason when unavailable (gh missing/offline/unauthed). */
+  reason: string | null;
+  prs: PullRequest[];
+}
+
+export interface IssuesView {
+  loading: boolean;
+  errored: boolean;
+  available: boolean;
+  reason: string | null;
+  issues: Issue[];
+}
+
+export function derivePRsView(
+  data: PRsResponse | undefined,
+  error: unknown,
+  loading: boolean,
+): PRsView {
+  const errored = error != null;
+  const available = !loading && !errored && data?.available === true;
+  return {
+    loading,
+    errored,
+    available,
+    reason: data?.reason ?? null,
+    prs: available ? (data?.prs ?? []) : [],
+  };
+}
+
+export function deriveIssuesView(
+  data: IssuesResponse | undefined,
+  error: unknown,
+  loading: boolean,
+): IssuesView {
+  const errored = error != null;
+  const available = !loading && !errored && data?.available === true;
+  return {
+    loading,
+    errored,
+    available,
+    reason: data?.reason ?? null,
+    issues: available ? (data?.issues ?? []) : [],
+  };
+}
+
+function useNodePrs(scope: string | null, state: "open" | "merged") {
+  return useQuery({
+    queryKey: engineKeys.prs(scope ?? "", state),
+    queryFn: () => engineClient.prs({ scope: scope!, state }),
+    enabled: scope !== null,
+    gcTime: HISTORY_GC_TIME,
+  });
+}
+
+function useNodeIssues(scope: string | null, state: "open" | "closed") {
+  return useQuery({
+    queryKey: engineKeys.issues(scope ?? "", state),
+    queryFn: () => engineClient.issues({ scope: scope!, state }),
+    enabled: scope !== null,
+    gcTime: HISTORY_GC_TIME,
+  });
+}
+
+/** Interpreted pull-request view for the rail's OPEN PRS / RECENT PRS sections.
+ *  `state` selects open (default) or recently-merged PRs. */
+export function usePRsView(
+  scope: string | null,
+  state: "open" | "merged" = "open",
+): PRsView {
+  const query = useNodePrs(scope, state);
+  const loading = scope !== null && query.isPending;
+  return derivePRsView(query.data, query.error ?? null, loading);
+}
+
+/** Interpreted issue view for the rail's OPEN ISSUES section. */
+export function useIssuesView(
+  scope: string | null,
+  state: "open" | "closed" = "open",
+): IssuesView {
+  const query = useNodeIssues(scope, state);
+  const loading = scope !== null && query.isPending;
+  return deriveIssuesView(query.data, query.error ?? null, loading);
 }
 
 /**
@@ -3535,7 +3646,7 @@ export function useCreateDoc() {
         },
       });
       const result = adaptOpsWrite(ops);
-      const nodeId = result.kind === "created" ? `doc:${result.stem}` : null;
+      const nodeId = result.kind === "created" ? docNodeIdFromStem(result.stem) : null;
       return { result, tiers: ops.tiers, nodeId };
     },
     onSuccess: ({ result }, args) => {
@@ -3662,7 +3773,7 @@ export function deriveLinkResolution(
     }
   }
   return related.map((stem) => {
-    const targetId = `doc:${stem}`;
+    const targetId = docNodeIdFromStem(stem);
     const state = outbound.get(targetId);
     return {
       stem,
