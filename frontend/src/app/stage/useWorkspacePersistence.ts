@@ -75,13 +75,14 @@ export function useWorkspacePersistence(scope: string | null): void {
   // one-shot session seed in the stores layer), so the tab restore cannot race the
   // scope settle. This hook only PERSISTS the open-tab set + active tab, coalesced.
   //
-  // Guard: a load-time empty store must never clobber a durably-saved non-empty
-  // layout before the seed restores it. We persist an EMPTY layout only once this
-  // hook has actually SEEN tabs this session (`sawTabsRef`) — i.e. a genuine user
-  // "closed all", not the pre-seed empty. (If the durable blob is itself empty
-  // there is nothing to protect, so the first empty persists harmlessly.)
-  const sawTabsRef = useRef(false);
-  if (tabs.openDocs.length > 0) sawTabsRef.current = true;
+  // Guard (GUARANTEED no-clobber): a transient EMPTY store must never overwrite a
+  // durably-saved NON-EMPTY layout. The reactive persist only ever updates the
+  // durable layout with a NON-EMPTY tab set; it never writes empty over a saved
+  // layout. This makes restore bulletproof against the load-time window where the
+  // store is briefly empty before the session seed lands (and across the scope/
+  // session settle), at the cost that a user "close all" leaves the last non-empty
+  // layout saved (the workspace remembers your last open documents) — an explicit
+  // clear-on-close path can persist empty in the future if that is wanted.
   const lastPersistedRef = useRef<LastPersistedWorkspaceLayout | null>(null);
   useEffect(() => {
     if (!scope) return;
@@ -90,7 +91,7 @@ export function useWorkspacePersistence(scope: string | null): void {
     const nextEmpty = (parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0;
     const durableHasTabs =
       (parseWorkspaceTabs(persistedBlobRef.current)?.openDocs.length ?? 0) > 0;
-    if (nextEmpty && durableHasTabs && !sawTabsRef.current) return;
+    if (nextEmpty && durableHasTabs) return;
     if (isSamePersistedWorkspaceLayout(lastPersistedRef.current, scope, next)) {
       return;
     }
