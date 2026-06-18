@@ -19,7 +19,6 @@ import { MarkdownReader } from "./MarkdownReader";
 afterEach(cleanup);
 beforeEach(() => {
   useViewStore.getState().closeViewer();
-  useViewStore.getState().select(null);
 });
 
 /** A content view in the available state carrying `text`. */
@@ -79,8 +78,10 @@ describe("MarkdownReader frontmatter chrome", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "2026-06-16-review-rail-viewers-plan" }),
     );
-    const target = useViewStore.getState().viewerTarget;
-    expect(target?.nodeId).toBe("doc:2026-06-16-review-rail-viewers-plan");
+    const target = useViewStore
+      .getState()
+      .openDocs.find((d) => d.nodeId === "doc:2026-06-16-review-rail-viewers-plan");
+    expect(target).toBeTruthy();
     expect(target?.surface).toBe("markdown");
   });
 });
@@ -91,8 +92,10 @@ describe("MarkdownReader body", () => {
     // The `[[stem|label]]` form renders its label as a clickable control.
     const link = screen.getByRole("button", { name: "the other doc" });
     fireEvent.click(link);
-    const target = useViewStore.getState().viewerTarget;
-    expect(target?.nodeId).toBe("doc:2026-06-16-other-doc");
+    const target = useViewStore
+      .getState()
+      .openDocs.find((d) => d.nodeId === "doc:2026-06-16-other-doc");
+    expect(target).toBeTruthy();
     expect(target?.surface).toBe("markdown");
   });
 
