@@ -289,7 +289,7 @@ fn the_lineage_arc_surface_carries_the_same_generated_by_label_as_graph_query() 
     // lineage slice) must carry the SAME `generated-by` label the graph-query
     // surface serves — timeline parity, one projection two surfaces.
     let (g, _) = spine_graph();
-    let slice = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+    let slice = lineage(&g, &scope(), None, None, Filter::default(), true).unwrap();
 
     // Only the two DOCUMENT endpoints (plan, exec) take a lineage lane — the
     // PlanContainer scaffold is not a dated document — so exactly the exec->plan

@@ -74,30 +74,29 @@ pub async fn history(
     let requested = params.limit.unwrap_or(DEFAULT_HISTORY_LIMIT);
     let limit = requested.min(MAX_HISTORY_LIMIT);
 
-    let workspace = match ingest_git::workspace::Workspace::discover(&cell.root) {
-        Ok(ws) => ws,
-        // A scope with no readable git workspace (a ref-only or detached
-        // substrate) degrades the STRUCTURAL tier honestly rather than 500ing
-        // or returning a healthy-looking empty list (status-overview ADR).
-        Err(e) => return Err(history_degraded(&cell, &e.to_string())),
-    };
-
-    // Walk the served worktree's HEAD history, newest-first, capped at the
-    // bounded limit. `walk` is read-only over the object DB and now carries the
-    // commit subject. An unborn HEAD (a fresh worktree before its first commit)
-    // is an empty history, not a failure — `walk` already handles it.
-    let commits = match ingest_git::log::walk(&workspace, "HEAD", limit) {
+    // The HEAD commit walk is a LIVE git read, so it is memoized per generation on
+    // the cell (cache-until-invalidated): `/history` no longer walks the object DB
+    // on every poll — the recent commits (capped at the ceiling) are walked once
+    // per rebuild and the handler correlates + slices in-memory. A scope with no
+    // readable git workspace (a ref-only or detached substrate), or a walk
+    // failure, returns UNCACHED Err and degrades the STRUCTURAL tier honestly
+    // rather than 500ing or returning a healthy-looking empty list (status-overview
+    // ADR). An unborn HEAD is an empty history, not a failure (`walk` handles it).
+    let recent = match cell.recent_commits() {
         Ok(commits) => commits,
-        Err(e) => return Err(history_degraded(&cell, &e.to_string())),
+        Err(e) => return Err(history_degraded(&cell, &e)),
     };
 
-    // Correlate each commit to the graph-known nodes it touched, bounding the
-    // per-commit node-id list the same way the event sourcer does (the commit
-    // id plus its touched documents/code, the code ids capped) so a single
-    // commit's correlation cannot balloon the wire body.
+    // Slice the cached recent commits (newest-first, walked at the ceiling) to the
+    // bounded request limit, then correlate each to the graph-known nodes it
+    // touched — the correlation runs in-memory over the cached graph, bounding the
+    // per-commit node-id list the same way the event sourcer does (the commit id
+    // plus its touched documents/code, the code ids capped) so a single commit's
+    // correlation cannot balloon the wire body.
     let graph = cell.graph_arc();
-    let rows: Vec<Value> = commits
+    let rows: Vec<Value> = recent
         .iter()
+        .take(limit)
         .map(|c| {
             let node_ids = correlate_node_ids(c, &graph);
             json!({
@@ -155,9 +154,13 @@ fn correlate_node_ids(
     let (docs, code): (Vec<String>, Vec<String>) = correlated
         .into_iter()
         .partition(|id| !id.starts_with("code:"));
+    let docs: Vec<String> = docs
+        .into_iter()
+        .filter(|id| graph_has_node(graph, id))
+        .collect();
     let mut code: Vec<String> = code
         .into_iter()
-        .filter(|id| graph.node(&engine_model::NodeId(id.clone())).is_some())
+        .filter(|id| graph_has_node(graph, id))
         .collect();
     code.truncate(engine_query::events::CODE_NODE_IDS_CAP);
     let mut node_ids = Vec::with_capacity(1 + docs.len() + code.len());
@@ -165,6 +168,10 @@ fn correlate_node_ids(
     node_ids.extend(docs);
     node_ids.extend(code);
     node_ids
+}
+
+fn graph_has_node(graph: &engine_graph::LinkageGraph, id: &str) -> bool {
+    graph.node(&engine_model::NodeId(id.to_string())).is_some()
 }
 
 /// Degrade the STRUCTURAL tier honestly when the worktree's git history is

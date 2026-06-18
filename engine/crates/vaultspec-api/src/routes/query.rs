@@ -1,12 +1,13 @@
 //! Landscape and graph query endpoints (contract §3–§4, W03.P11.S49).
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use engine_model::{NodeId, Tier};
-use engine_query::filter::{Filter, vocabulary};
+use engine_query::filter::Filter;
 use engine_query::graph::{
     Granularity, MAX_GRAPH_NODES, bound_slice, graph_query, graph_query_cached,
 };
@@ -46,6 +47,22 @@ fn rag_tiers(cell: &ScopeCell) -> Value {
 #[derive(Deserialize)]
 pub struct ScopeParam {
     pub scope: String,
+}
+
+#[derive(Deserialize, Default)]
+pub struct OptionalScopeParam {
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+fn node_scope_cell(
+    state: &AppState,
+    scope: Option<&str>,
+) -> Result<StdArc<ScopeCell>, (StatusCode, Json<Value>)> {
+    match scope {
+        Some(scope) => validate_scope(state, scope),
+        None => Ok(state.active_cell()),
+    }
 }
 
 // --- GET /map ----------------------------------------------------------------
@@ -438,8 +455,22 @@ pub async fn graph_query_route(
             let resolved = cell
                 .asof_graph(&resolved_sha)
                 .map_err(|e| super::revision_error(&state, reference, &e))?;
-            let slice = graph_query(&resolved.graph, &cell.scope, filter, granularity)
-                .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+            let slice = match granularity {
+                Granularity::Document => {
+                    let views = resolved.document_views(&cell.scope);
+                    graph_query_cached(
+                        &resolved.asof.graph,
+                        &cell.scope,
+                        filter,
+                        granularity,
+                        &views,
+                    )
+                }
+                Granularity::Feature => {
+                    graph_query(&resolved.asof.graph, &cell.scope, filter, granularity)
+                }
+            }
+            .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
             let tiers = serde_json::to_value(engine_query::envelope::asof_tiers_block())
                 .expect("tiers serialize");
             (slice, tiers, Some((resolved_sha, interpretation)))
@@ -453,16 +484,9 @@ pub async fn graph_query_route(
                 // per request; only the heavy per-item projection is memoized.
                 Granularity::Document => {
                     let views = cell.document_views();
-                    graph_query_cached(
-                        &graph,
-                        &cell.scope,
-                        filter,
-                        granularity,
-                        &views.0,
-                        &views.1,
-                        &views.2,
-                    )
-                    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?
+                    graph_query_cached(&graph, &cell.scope, filter, granularity, &views).map_err(
+                        |e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()),
+                    )?
                 }
                 // Constellation: the feature-node aggregation scans the whole
                 // corpus (a fixed ~hundreds-of-ms cost independent of the tiny
@@ -537,6 +561,7 @@ pub async fn graph_query_route(
             salience_partial,
         );
         engine_query::salience::annotate_nodes(&mut slice.nodes, &scores);
+        engine_query::graph::annotate_node_sizes(&mut slice.nodes);
         engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
     }
     // Bound the payload at BOTH granularities (perf ADR D2): the feature
@@ -656,9 +681,7 @@ pub async fn graph_embeddings(
         &cell.scope,
         engine_query::filter::Filter::default(),
         engine_query::graph::Granularity::Document,
-        &views.0,
-        &views.1,
-        &views.2,
+        &views,
     )
     .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
     let tiers = rag_tiers(&cell);
@@ -705,6 +728,11 @@ pub async fn graph_embeddings(
                 "semantic_epoch": Value::Null,
                 "truncated": Value::Null,
                 "lens": lens.as_str(),
+                "semantic_timing": {
+                    "semantic_epoch_ms": Value::Null,
+                    "vector_cache_hit": false,
+                    "vector_scroll_ms": Value::Null,
+                },
             }),
             super::degraded_tiers(&cell, reason.as_str()),
             None,
@@ -719,6 +747,7 @@ pub async fn graph_embeddings(
     // own cache on the pair (`generation`, `semantic_epoch`). An epoch read that
     // fails (rag service flaking) degrades to `0` (treated as "unknown"): the
     // Qdrant scroll below still serves whatever vectors exist.
+    let semantic_epoch_started = Instant::now();
     let semantic_epoch = {
         let control = rag_client::client::LoopbackTransport {
             port: info.port,
@@ -727,6 +756,7 @@ pub async fn graph_embeddings(
         };
         rag_client::control::semantic_epoch(&control).unwrap_or(0)
     };
+    let semantic_epoch_ms = semantic_epoch_started.elapsed().as_millis() as u64;
     // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's
     // service port — discovered the same `service.json` way. The transport carries
     // the MAX_RAG_BODY byte cap (its bounded read) AND a wall-clock deadline (ADR
@@ -748,13 +778,20 @@ pub async fn graph_embeddings(
     // reindex (advanced epoch) ⇒ re-scroll and re-cache. The cached map is the
     // FULL vault-doc vector set, independent of the per-request lens/focus node
     // selection that happens after, so it is reusable across lens switches.
+    let mut vector_cache_hit = false;
+    let mut vector_scroll_ms = 0_u64;
     let vectors = match cell.embeddings_if_fresh(semantic_epoch) {
-        Some(cached) => cached,
+        Some(cached) => {
+            vector_cache_hit = true;
+            cached
+        }
         None => {
+            let scroll_started = Instant::now();
             let fresh =
                 match rag_client::vectors::read_embeddings(&transport, &collection, deadline) {
                     Ok(vectors) => std::sync::Arc::new(vectors),
                     Err(e) => {
+                        let failed_scroll_ms = scroll_started.elapsed().as_millis() as u64;
                         // Qdrant was reachable through discovery but the scroll itself
                         // failed (store down, timeout, shape-miss): semantic suggestions
                         // are simply unavailable right now. Degrade the semantic tier (no
@@ -768,12 +805,18 @@ pub async fn graph_embeddings(
                                 "semantic_epoch": semantic_epoch,
                                 "truncated": Value::Null,
                                 "lens": lens.as_str(),
+                                "semantic_timing": {
+                                    "semantic_epoch_ms": semantic_epoch_ms,
+                                    "vector_cache_hit": false,
+                                    "vector_scroll_ms": failed_scroll_ms,
+                                },
                             }),
                             super::degraded_tiers(&cell, reason.as_str()),
                             None,
                         ));
                     }
                 };
+            vector_scroll_ms = scroll_started.elapsed().as_millis() as u64;
             cell.store_embeddings(semantic_epoch, fresh.clone());
             fresh
         }
@@ -805,6 +848,11 @@ pub async fn graph_embeddings(
             "semantic_epoch": semantic_epoch,
             "truncated": truncated,
             "lens": lens.as_str(),
+            "semantic_timing": {
+                "semantic_epoch_ms": semantic_epoch_ms,
+                "vector_cache_hit": vector_cache_hit,
+                "vector_scroll_ms": vector_scroll_ms,
+            },
         }),
         tiers,
         None,
@@ -825,10 +873,13 @@ pub async fn pipeline(
     Query(params): Query<ScopeParam>,
 ) -> ApiResult {
     let cell = validate_scope(&state, &params.scope)?;
-    let graph = cell.graph_arc();
-    let artifacts = engine_query::pipeline::in_flight(&graph, &cell.scope);
+    // The in-flight projection is generation-stable, so it is memoized per
+    // generation on the cell (cache-until-invalidated): a repeat Work-surface poll
+    // is a warm read, not a re-scan of every `doc:` node. Invalidated on a
+    // watcher rebuild.
+    let artifacts = cell.pipeline_artifacts();
     Ok(super::envelope(
-        json!({"artifacts": artifacts}),
+        json!({"artifacts": *artifacts}),
         rag_tiers(&cell),
         None,
     ))
@@ -841,9 +892,14 @@ pub async fn filters(
     Query(params): Query<ScopeParam>,
 ) -> ApiResult {
     let cell = validate_scope(&state, &params.scope)?;
-    let vocab = vocabulary(&cell.graph_arc());
+    // The vocabulary is generation-stable (it is a full-graph scan that only
+    // changes on a rebuild), so it is memoized per generation on the cell
+    // (cache-until-invalidated): a repeat `/filters` poll is a warm read, not a
+    // re-scan. The timeline's corpus auto-fit reads it on load. Invalidated on a
+    // watcher rebuild.
+    let vocab = cell.filters_vocabulary();
     Ok(super::envelope(
-        json!({"vocabulary": vocab}),
+        json!({"vocabulary": *vocab}),
         rag_tiers(&cell),
         None,
     ))
@@ -851,10 +907,14 @@ pub async fn filters(
 
 // --- /nodes/{id} family --------------------------------------------------------------
 
-pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> ApiResult {
-    // The /nodes/* family carries no scope param: it serves from the active
-    // scope's live graph (W02.P05.S16).
-    let cell = state.active_cell();
+pub async fn node_detail(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<OptionalScopeParam>,
+) -> ApiResult {
+    // The /nodes/* family accepts an explicit scope for stateless frontend reads.
+    // Omitting it keeps the active-scope fallback for legacy callers.
+    let cell = node_scope_cell(&state, params.scope.as_deref())?;
     let graph = cell.graph_arc();
     let detail = engine_query::node::node_detail(&graph, &NodeId(id.clone())).ok_or_else(|| {
         super::api_error(
@@ -877,8 +937,9 @@ pub async fn node_detail(State(state): State<Arc<AppState>>, Path(id): Path<Stri
 pub async fn node_plan_interior(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(params): Query<OptionalScopeParam>,
 ) -> ApiResult {
-    let cell = state.active_cell();
+    let cell = node_scope_cell(&state, params.scope.as_deref())?;
     let graph = cell.graph_arc();
     let interior =
         engine_query::node::plan_interior(&graph, &NodeId(id.clone())).ok_or_else(|| {
@@ -899,6 +960,8 @@ pub async fn node_plan_interior(
 
 #[derive(Deserialize)]
 pub struct NeighborParams {
+    #[serde(default)]
+    pub scope: Option<String>,
     #[serde(default)]
     pub depth: Option<usize>,
     #[serde(default)]
@@ -939,7 +1002,7 @@ pub async fn node_neighbors(
         })
         .collect::<Result<_, _>>()?;
     let lens = parse_lens(&state, params.lens.as_deref())?;
-    let cell = state.active_cell();
+    let cell = node_scope_cell(&state, params.scope.as_deref())?;
     let graph = cell.graph_arc();
     let depth = params.depth.unwrap_or(1).min(MAX_NEIGHBOR_DEPTH);
     let ego = engine_query::node::neighbors(&graph, &NodeId(id.clone()), depth, &tiers)
@@ -968,6 +1031,7 @@ pub async fn node_neighbors(
     let mut ego_value = serde_json::to_value(&ego).expect("ego serializes");
     if let Some(nodes) = ego_value.get_mut("nodes").and_then(|n| n.as_array_mut()) {
         engine_query::salience::annotate_nodes(nodes, &scores);
+        engine_query::graph::annotate_node_sizes(nodes);
         // Order by DOI so the ego node ceiling (below) keeps the TOP-salience
         // neighbours for the active lens — mirroring the document slice's
         // lens-dependent truncation. The ego center is the DOI focus, so it
@@ -1047,8 +1111,9 @@ fn bound_ego(ego: &mut Value, cap: usize) -> Value {
 pub async fn node_evidence(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(params): Query<OptionalScopeParam>,
 ) -> ApiResult {
-    let cell = state.active_cell();
+    let cell = node_scope_cell(&state, params.scope.as_deref())?;
     let graph = cell.graph_arc();
     let mut evidence =
         engine_query::node::evidence(&graph, &NodeId(id.clone())).ok_or_else(|| {
@@ -1082,7 +1147,7 @@ pub async fn node_evidence(
     // shape and the inspector's `evidence.data.documents/...` reads), not
     // hand-built as a bare `{evidence, tiers}` body. The item shapes are now
     // aligned to the GUI `NodeEvidence` type (S13): documents carry `{path,
-    // doc_type}`, code_locations are keyed on `path`, commits carry `subject`.
+    // doc_type}` and commits carry `subject`.
     Ok(super::envelope(
         serde_json::to_value(evidence).expect("evidence serializes"),
         rag_tiers(&cell),
@@ -1094,6 +1159,8 @@ pub async fn node_evidence(
 pub struct DiscoverBody {
     #[serde(default)]
     pub query: Option<String>,
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 pub async fn node_discover(
@@ -1105,9 +1172,9 @@ pub async fn node_discover(
     // with /nodes, /neighbors, /evidence, and never proxies a doomed query
     // (hardening, 2026-06-13 adversarial finding: discover used to 400 via
     // rag for an unknown id while its sibling verbs 404).
-    // The /nodes/* family serves from the active scope's live graph + store
-    // (W02.P05.S16).
-    let cell = state.active_cell();
+    // The /nodes/* family accepts an explicit scope for stateless frontend reads.
+    // Omitting it keeps the active-scope fallback for legacy callers.
+    let cell = node_scope_cell(&state, body.scope.as_deref())?;
     let node = NodeId(id.clone());
     let graph = cell.graph_arc();
     if graph.node(&node).is_none() {

@@ -1,25 +1,30 @@
 //! The bounded temporal-lineage projection (dashboard-timeline ADR, W01.P01):
 //! for a `scope`, a `[from, to]` date range, and an optional filter, return the
-//! dated document nodes in range together with the edges among them — the
-//! diachronic lineage the phase-lane timeline draws.
+//! dated document nodes in range — the diachronic lineage the phase-lane
+//! timeline draws — with the edges among them returned ONLY on the opt-in
+//! relation overlay (`include_arcs`).
 //!
 //! This is a new temporal PROJECTION over the one model
 //! (`views-are-projections-of-one-model`), not a new model: it reads the dated
-//! document nodes and the typed edges the ingest already holds, derives each
-//! node's pipeline lane from its doc-type, and pairs the nodes with the edges
-//! among them. It writes nothing and mints no semantics
+//! document nodes and (on demand) the typed edges the ingest already holds,
+//! derives each node's pipeline lane from its doc-type, and pairs the nodes with
+//! the edges among them. It writes nothing and mints no semantics
 //! (`engine-read-and-infer`).
 //!
-//! Every read is bounded (`graph-queries-are-bounded-by-default`): the slice is
-//! capped at [`MAX_DOCUMENT_NODES`] with an honest [`LineageTruncated`] block,
-//! and only edges whose BOTH endpoints survive the cap are returned
-//! (self-consistent — no dangling arc). The semantic tier is present-only in
-//! history (ADR; mirrors `envelope::asof_tiers_block`): the lineage serves the
-//! declared, structural, and temporal tiers and reports semantic excluded.
+//! Cache-until-invalidated (`derived-projections-memoize-on-the-graph-
+//! generation`): the expensive part — the range-INDEPENDENT full node set (the
+//! per-node degree walk) — is split out into [`lineage_nodes`] so a route can
+//! memoize it per graph generation; a timeline scroll/zoom is then a cheap
+//! [`bound_range`] slice over the cache, never a re-scan. The DEFAULT timeline
+//! read is nodes-only: arcs are the on-demand overlay, so a scroll iterates NO
+//! edges (`graph-queries-are-bounded-by-default`).
 //!
-//! The route + shared envelope is the NEXT phase (W01.P02); this module is the
-//! pure, route-ready projection — its signature already takes
-//! `scope + from + to + filter`.
+//! Every read is bounded: the slice is capped at [`MAX_DOCUMENT_NODES`] with an
+//! honest [`LineageTruncated`] block, and only edges whose BOTH endpoints survive
+//! the cap are returned (self-consistent — no dangling arc). The semantic tier is
+//! present-only in history (ADR; mirrors `envelope::asof_tiers_block`): the
+//! lineage serves the declared, structural, and temporal tiers and reports
+//! semantic excluded.
 
 use std::collections::HashSet;
 
@@ -158,13 +163,15 @@ pub struct LineageSlice {
     pub truncated: Option<LineageTruncated>,
 }
 
-/// True when a node's blob-true `created` date falls within `[from, to]`
-/// inclusive. ISO `yyyy-mm-dd` strings compare lexically, so the bounds are
-/// well-ordered without date parsing (the same lexical-compare discipline the
-/// filter's `DateBounds` uses). A node with no `created` date is excluded — it
-/// has no position on the timeline. An absent bound is open on that side.
-fn created_in_range(node: &Node, from: Option<&str>, to: Option<&str>) -> bool {
-    let Some(created) = node.dates.as_ref().and_then(|d| d.created.as_deref()) else {
+/// True when a collected lineage node's blob-true `created` date falls within
+/// `[from, to]` inclusive. ISO `yyyy-mm-dd` strings compare lexically, so the
+/// bounds are well-ordered without date parsing (the same lexical-compare
+/// discipline the filter's `DateBounds` uses). A node with no `created` date is
+/// always excluded — it has no position on the timeline — even under open
+/// bounds. An absent bound is open on that side. Reads only the already-derived
+/// `LineageNode`, so the per-request range slice never re-touches the graph.
+fn node_in_range(node: &LineageNode, from: Option<&str>, to: Option<&str>) -> bool {
+    let Some(created) = node.dates.created.as_deref() else {
         return false;
     };
     if let Some(from) = from
@@ -221,40 +228,61 @@ fn lineage_arc(graph: &LinkageGraph, stored: &StoredEdge) -> LineageArc {
     }
 }
 
-/// Run the bounded temporal-lineage projection (W01.P01.S02-S04). For `scope`,
-/// the `[from, to]` ISO date range (either bound optional/open), and the
-/// validated `filter`, return the dated document nodes in range plus the
-/// self-consistent edges among them, capped at [`MAX_DOCUMENT_NODES`] with an
-/// honest truncation block.
-///
-/// `scope` narrows nodes to one corpus view (a node passes if any facet matches
-/// the scope) and narrows edges to that scope, exactly as the graph query does.
-/// The filter is validated and applied to both nodes and edges. This is the
-/// route-ready signature: the W01.P02 route validates the scope, parses the
-/// range, and wraps the result in the shared envelope.
-pub fn lineage(
+/// Collect ALL dated, in-scope, filter-passing, lane-owning lineage nodes — the
+/// FULL set with NO date-range bound and NO node ceiling, id-sorted. This is the
+/// expensive, range-INDEPENDENT part of the projection (the per-node
+/// `degree_by_tier` adjacency walk): a timeline scroll/zoom changes only the
+/// range, never this set, so a route memoizes it per graph generation
+/// (`derived-projections-memoize-on-the-graph-generation`) and the cheap
+/// per-request range slice ([`bound_range`]) runs over the cache rather than
+/// re-scanning every node. `filter` must already be validated by the caller.
+fn collect_lineage_nodes(
     graph: &LinkageGraph,
     scope: &ScopeRef,
-    from: Option<&str>,
-    to: Option<&str>,
-    filter: Filter,
-) -> Result<LineageSlice, FilterError> {
-    let filter = filter.validated()?;
-
-    // Collect the dated, in-scope, in-range, filter-passing document nodes that
-    // own a pipeline lane, sorted by stable id so the bound's kept page is
-    // deterministic (mirrors the graph query's id-sort-then-bound).
+    filter: &Filter,
+) -> Vec<LineageNode> {
     let mut nodes: Vec<LineageNode> = graph
         .nodes()
         .filter(|n| n.facets.iter().any(|f| &f.scope == scope))
         .filter(|n| filter.matches_node(n))
-        .filter(|n| created_in_range(n, from, to))
         .filter_map(|n| lineage_node(graph, n))
         .collect();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    nodes
+}
 
-    // Bound under the document node ceiling (S04): keep the first ceiling nodes
-    // (id-sorted, so deterministic) and report the honest original total.
+/// The FULL range-independent lineage node set — validated, id-sorted, NOT
+/// range-bounded and NOT ceiling-capped: the cacheable projection the timeline
+/// route memoizes per graph generation. The default timeline path serves a
+/// scroll/zoom as a cheap [`bound_range`] over this cache and never re-scans the
+/// graph nor touches the edges; only a filtered or arcs-requested read flows
+/// through the full [`lineage`] projection. Validating here (not in
+/// `bound_range`) keeps the per-request slice free of revalidation.
+pub fn lineage_nodes(
+    graph: &LinkageGraph,
+    scope: &ScopeRef,
+    filter: Filter,
+) -> Result<Vec<LineageNode>, FilterError> {
+    let filter = filter.validated()?;
+    Ok(collect_lineage_nodes(graph, scope, &filter))
+}
+
+/// Cheaply slice the FULL id-sorted lineage node set ([`lineage_nodes`]) to the
+/// `[from, to]` range and bound it under [`MAX_DOCUMENT_NODES`] with an honest
+/// truncation block. Pure range comparison + clone + truncate — NO graph scan,
+/// NO edge work: this is exactly the per-request work a timeline scroll/zoom
+/// does over the cached projection. The input is id-sorted, so the kept page is
+/// deterministic (a dense day's dot stacking stays stable across scrubs).
+pub fn bound_range(
+    all: &[LineageNode],
+    from: Option<&str>,
+    to: Option<&str>,
+) -> (Vec<LineageNode>, Option<LineageTruncated>) {
+    let mut nodes: Vec<LineageNode> = all
+        .iter()
+        .filter(|n| node_in_range(n, from, to))
+        .cloned()
+        .collect();
     let total_nodes = nodes.len();
     let truncated = if total_nodes > MAX_DOCUMENT_NODES {
         nodes.truncate(MAX_DOCUMENT_NODES);
@@ -270,12 +298,22 @@ pub fn lineage(
     } else {
         None
     };
+    (nodes, truncated)
+}
 
-    // Self-consistency (S03/S06): only edges whose BOTH endpoints are in the
-    // KEPT (post-cap) node set ship — no dangling arc to a dropped or
-    // out-of-range node. Built from the kept node ids so it stays correct under
-    // truncation.
-    let kept: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+/// The self-consistent arcs among a KEPT node set: only edges whose BOTH
+/// endpoints survive in `kept` ship — no dangling arc to a dropped or
+/// out-of-range node (S03/S06) — filter-applied and id-sorted. This is the
+/// OPT-IN edge work the default nodes-only timeline path skips entirely: the
+/// always-on surface draws dated marks only, so a scroll iterates no edges; the
+/// relation overlay (or debug inspection) is the only caller that asks for arcs.
+/// `filter` must already be validated.
+fn collect_lineage_arcs(
+    graph: &LinkageGraph,
+    scope: &ScopeRef,
+    filter: &Filter,
+    kept: &HashSet<&str>,
+) -> Vec<LineageArc> {
     let mut arcs: Vec<LineageArc> = graph
         .edges()
         .filter(|s| &s.edge.scope == scope)
@@ -284,7 +322,49 @@ pub fn lineage(
         .map(|s| lineage_arc(graph, s))
         .collect();
     arcs.sort_by(|a, b| a.id.cmp(&b.id));
+    arcs
+}
 
+/// Run the bounded temporal-lineage projection (W01.P01.S02-S04). For `scope`,
+/// the `[from, to]` ISO date range (either bound optional/open), the validated
+/// `filter`, and `include_arcs`, return the dated document nodes in range plus —
+/// ONLY when `include_arcs` — the self-consistent edges among them, capped at
+/// [`MAX_DOCUMENT_NODES`] with an honest truncation block.
+///
+/// `include_arcs` is the relation-overlay opt-in (dashboard-timeline ADR: the
+/// always-on surface is dated marks ONLY; relations are an on-demand overlay).
+/// The DEFAULT timeline path passes `false` and the edge scan is skipped
+/// entirely — a scroll/zoom iterates no edges (`graph-queries-are-bounded-by-
+/// default`). Pass `true` only for the on-demand relation overlay or debug
+/// inspection.
+///
+/// `scope` narrows nodes to one corpus view (a node passes if any facet matches
+/// the scope) and narrows edges to that scope, exactly as the graph query does.
+/// The filter is validated and applied to both nodes and edges. This is the
+/// route-ready signature: the route validates the scope, parses the range, and
+/// wraps the result in the shared envelope. The default (unfiltered, nodes-only)
+/// path is served from the route's per-generation cache via
+/// [`lineage_nodes`] + [`bound_range`]; this function is the filtered /
+/// arcs-requested / historical (as-of) path.
+pub fn lineage(
+    graph: &LinkageGraph,
+    scope: &ScopeRef,
+    from: Option<&str>,
+    to: Option<&str>,
+    filter: Filter,
+    include_arcs: bool,
+) -> Result<LineageSlice, FilterError> {
+    let filter = filter.validated()?;
+    let all = collect_lineage_nodes(graph, scope, &filter);
+    let (nodes, truncated) = bound_range(&all, from, to);
+    let arcs = if include_arcs {
+        // Self-consistency (S03/S06): the kept (post-cap) node ids drive the arc
+        // retain, so no arc dangles to a dropped or out-of-range node.
+        let kept: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+        collect_lineage_arcs(graph, scope, &filter, &kept)
+    } else {
+        Vec::new()
+    };
     Ok(LineageSlice {
         nodes,
         arcs,
@@ -379,6 +459,7 @@ mod tests {
             Some("2026-06-01"),
             Some("2026-06-15"),
             Filter::default(),
+            false,
         )
         .unwrap();
 
@@ -412,7 +493,7 @@ mod tests {
         g.upsert_node(undated);
 
         // Both bounds open: every dated, lane-owning node in scope.
-        let all = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+        let all = lineage(&g, &scope(), None, None, Filter::default(), false).unwrap();
         let ids: Vec<&str> = all.nodes.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ids, vec!["doc:a-adr"], "the undated node is excluded");
 
@@ -423,6 +504,7 @@ mod tests {
             Some("2026-06-12"),
             Some("2026-06-12"),
             Filter::default(),
+            false,
         )
         .unwrap();
         assert_eq!(exact.nodes.len(), 1, "bounds are inclusive");
@@ -439,7 +521,7 @@ mod tests {
         g.upsert_node(doc("b-adr", "adr", "2026-06-11"));
         ingest(&mut g, structural_edge("a-plan", "b-adr"));
 
-        let slice = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+        let slice = lineage(&g, &scope(), None, None, Filter::default(), true).unwrap();
         assert_eq!(slice.arcs.len(), 1);
         let arc = &slice.arcs[0];
         assert_eq!(arc.src, "doc:a-plan");
@@ -464,7 +546,7 @@ mod tests {
         g.upsert_node(doc("b-plan", "plan", "2026-06-11"));
         ingest(&mut g, structural_edge("a-plan", "b-plan"));
 
-        let slice = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+        let slice = lineage(&g, &scope(), None, None, Filter::default(), true).unwrap();
         assert_eq!(slice.arcs.len(), 1);
         assert_eq!(
             slice.arcs[0].derivation, None,
@@ -478,7 +560,7 @@ mod tests {
         // semantic excluded (present-only in history), consistent with the
         // as-of tiers block.
         let g = LinkageGraph::new();
-        let slice = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+        let slice = lineage(&g, &scope(), None, None, Filter::default(), false).unwrap();
         assert!(slice.tiers.declared.available);
         assert!(slice.tiers.structural.available);
         assert!(slice.tiers.temporal.available);
@@ -500,7 +582,7 @@ mod tests {
             g.upsert_node(doc(&format!("plan-{i:06}"), "plan", "2026-06-10"));
         }
 
-        let slice = lineage(&g, &scope(), None, None, Filter::default()).unwrap();
+        let slice = lineage(&g, &scope(), None, None, Filter::default(), false).unwrap();
         assert_eq!(
             slice.nodes.len(),
             MAX_DOCUMENT_NODES,
@@ -517,7 +599,7 @@ mod tests {
         // A slice under the ceiling carries no truncation block.
         let mut small = LinkageGraph::new();
         small.upsert_node(doc("a-plan", "plan", "2026-06-10"));
-        let small_slice = lineage(&small, &scope(), None, None, Filter::default()).unwrap();
+        let small_slice = lineage(&small, &scope(), None, None, Filter::default(), false).unwrap();
         assert!(
             small_slice.truncated.is_none(),
             "a small slice is not truncated"
@@ -543,6 +625,7 @@ mod tests {
             Some("2026-06-01"),
             Some("2026-06-30"),
             Filter::default(),
+            true,
         )
         .unwrap();
 
@@ -568,5 +651,160 @@ mod tests {
                 .iter()
                 .all(|a| kept.contains(a.src.as_str()) && kept.contains(a.dst.as_str()))
         );
+    }
+
+    #[test]
+    fn same_date_nodes_are_returned_in_a_stable_id_order() {
+        // Timeline fidelity: the frontmatter `created` date that positions a mark is
+        // DAY-precision, so MANY documents share one timestamp. The timeline's
+        // deterministic dot layout (its per-day stacking is keyed on stable id)
+        // relies on the engine returning same-date nodes in a STABLE, id-sorted
+        // order — never the nondeterministic graph-iteration (insertion) order. This
+        // pins that guarantee: the date-source (`created`) drives placement and the
+        // tie-break for a shared date is the stable id.
+        let mut g = LinkageGraph::new();
+        // Insert OUT of id order, all created on the same day.
+        g.upsert_node(doc("c-plan", "plan", "2026-06-10"));
+        g.upsert_node(doc("a-research", "research", "2026-06-10"));
+        g.upsert_node(doc("b-adr", "adr", "2026-06-10"));
+
+        let slice = lineage(&g, &scope(), None, None, Filter::default(), false).unwrap();
+        let ids: Vec<&str> = slice.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["doc:a-research", "doc:b-adr", "doc:c-plan"],
+            "same-date nodes are id-sorted, not insertion-ordered"
+        );
+        // Every kept node carries the SAME blob-true `created` date that drove the
+        // placement — the date-source the timeline positions by is on the wire.
+        assert!(
+            slice
+                .nodes
+                .iter()
+                .all(|n| n.dates.created.as_deref() == Some("2026-06-10")),
+            "the placement date-source (created) rides each node"
+        );
+
+        // The order is INDEPENDENT of insertion order: rebuilt with a different
+        // insertion order, the id-sorted slice is byte-identical.
+        let mut g2 = LinkageGraph::new();
+        g2.upsert_node(doc("b-adr", "adr", "2026-06-10"));
+        g2.upsert_node(doc("c-plan", "plan", "2026-06-10"));
+        g2.upsert_node(doc("a-research", "research", "2026-06-10"));
+        let slice2 = lineage(&g2, &scope(), None, None, Filter::default(), false).unwrap();
+        let ids2: Vec<&str> = slice2.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(
+            ids, ids2,
+            "the same-date order is independent of insertion order (deterministic)"
+        );
+    }
+
+    #[test]
+    fn default_path_is_nodes_only_arcs_are_opt_in() {
+        // The hot-path contract (dashboard-timeline ADR / backend hardening): the
+        // DEFAULT timeline read draws dated marks ONLY — `include_arcs=false`
+        // returns the nodes with an EMPTY arc set even when edges exist among the
+        // kept nodes, so a scroll/zoom never iterates the graph's edges. The same
+        // read with `include_arcs=true` (the on-demand relation overlay) returns
+        // the self-consistent arcs.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "plan", "2026-06-10"));
+        g.upsert_node(doc("b-adr", "adr", "2026-06-11"));
+        ingest(&mut g, structural_edge("a-plan", "b-adr"));
+
+        let nodes_only = lineage(&g, &scope(), None, None, Filter::default(), false).unwrap();
+        assert_eq!(nodes_only.nodes.len(), 2, "the dated marks are served");
+        assert!(
+            nodes_only.arcs.is_empty(),
+            "the default nodes-only path skips the edge scan — no arcs"
+        );
+
+        let with_arcs = lineage(&g, &scope(), None, None, Filter::default(), true).unwrap();
+        assert_eq!(
+            with_arcs.arcs.len(),
+            1,
+            "the opt-in overlay serves the self-consistent arcs"
+        );
+    }
+
+    #[test]
+    fn lineage_nodes_is_the_full_set_and_bound_range_slices_it() {
+        // The cache contract: `lineage_nodes` is the FULL range-independent set a
+        // route memoizes per generation; `bound_range` is the cheap per-request
+        // slice over it. The composition must equal the all-in-one `lineage`
+        // nodes-only result for any range — proving a scroll served from the cache
+        // is byte-identical to a fresh projection (warm read == cold read).
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-research", "research", "2026-06-10"));
+        g.upsert_node(doc("b-adr", "adr", "2026-06-12"));
+        g.upsert_node(doc("c-plan", "plan", "2026-06-20"));
+        // An undated node owns no timeline position and must be absent from the
+        // cached full set's slices regardless of range.
+        let mut undated = doc("d-rule", "rule", "ignored");
+        undated.dates = Some(Dates {
+            created: None,
+            modified: None,
+        });
+        g.upsert_node(undated);
+
+        // The full set carries every dated lane-owning node, id-sorted, unbounded
+        // by range — the undated node is still collected here (it is dropped at
+        // the range slice, where "no position" is enforced).
+        let full = lineage_nodes(&g, &scope(), Filter::default()).unwrap();
+        let full_ids: Vec<&str> = full.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(
+            full_ids,
+            vec!["doc:a-research", "doc:b-adr", "doc:c-plan", "doc:d-rule"],
+            "the cached full set is id-sorted and range-independent"
+        );
+
+        // For several ranges, the cache slice equals the fresh nodes-only lineage.
+        for (from, to) in [
+            (None, None),
+            (Some("2026-06-01"), Some("2026-06-15")),
+            (Some("2026-06-13"), None),
+            (None, Some("2026-06-11")),
+        ] {
+            let (sliced, _) = bound_range(&full, from, to);
+            let fresh = lineage(&g, &scope(), from, to, Filter::default(), false).unwrap();
+            assert_eq!(
+                sliced, fresh.nodes,
+                "the cache slice matches a fresh projection for range {from:?}..{to:?}"
+            );
+            // The undated node never appears in any range slice.
+            assert!(
+                !sliced.iter().any(|n| n.id == "doc:d-rule"),
+                "the undated node has no timeline position in any range"
+            );
+        }
+    }
+
+    #[test]
+    fn bound_range_caps_the_slice_with_an_honest_truncated_block() {
+        // `bound_range` enforces the SAME document node ceiling the all-in-one
+        // projection did, so serving from the cache stays bounded
+        // (graph-queries-are-bounded-by-default): an over-ceiling full set slices
+        // to the cap with an honest total, and a small set is untruncated.
+        let mut g = LinkageGraph::new();
+        let over = MAX_DOCUMENT_NODES + 250;
+        for i in 0..over {
+            g.upsert_node(doc(&format!("plan-{i:06}"), "plan", "2026-06-10"));
+        }
+        let full = lineage_nodes(&g, &scope(), Filter::default()).unwrap();
+        let (sliced, truncated) = bound_range(&full, None, None);
+        assert_eq!(
+            sliced.len(),
+            MAX_DOCUMENT_NODES,
+            "the slice is hard-bounded"
+        );
+        let trunc = truncated.expect("over-ceiling slice truncates");
+        assert_eq!(trunc.total_nodes, over);
+        assert_eq!(trunc.returned_nodes, MAX_DOCUMENT_NODES);
+
+        let mut small = LinkageGraph::new();
+        small.upsert_node(doc("a-plan", "plan", "2026-06-10"));
+        let small_full = lineage_nodes(&small, &scope(), Filter::default()).unwrap();
+        let (_, small_trunc) = bound_range(&small_full, None, None);
+        assert!(small_trunc.is_none(), "a small slice is not truncated");
     }
 }

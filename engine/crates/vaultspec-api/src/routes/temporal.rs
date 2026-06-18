@@ -137,7 +137,7 @@ pub async fn graph_asof(
         .asof_graph(&resolved_sha)
         .map_err(|e| super::revision_error(&state, &params.t, &e))?;
     let mut slice = engine_query::graph::graph_query(
-        &resolved.graph,
+        &resolved.asof.graph,
         &scope,
         engine_query::filter::Filter::default(),
         granularity,
@@ -151,11 +151,13 @@ pub async fn graph_asof(
     // granularity only — feature-convergence nodes are not salience-ranked.
     if granularity == engine_query::graph::Granularity::Document {
         let members: Vec<&engine_model::Node> = resolved
+            .asof
             .graph
             .nodes()
             .filter(|n| n.facets.iter().any(|f| f.scope == scope))
             .collect();
-        let basis = engine_query::salience::LensBasis::compute(&resolved.graph, &scope, &members);
+        let basis =
+            engine_query::salience::LensBasis::compute(&resolved.asof.graph, &scope, &members);
         // Historical structural resolution degrades to stale at T (the as-of
         // tiers block says so), so the salience is computed partial for honesty.
         let focus = params
@@ -164,13 +166,14 @@ pub async fn graph_asof(
             .map(|f| engine_model::NodeId(f.clone()));
         let scores = engine_query::salience::compute_salience(
             &basis,
-            &resolved.graph,
+            &resolved.asof.graph,
             lens,
             focus.as_ref(),
             crate::app::now_ms(),
             true,
         );
         engine_query::salience::annotate_nodes(&mut slice.nodes, &scores);
+        engine_query::graph::annotate_node_sizes(&mut slice.nodes);
         engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
     }
     Ok(super::envelope(
@@ -222,6 +225,15 @@ pub struct LineageParams {
     /// as-of lineage form, implemented below).
     #[serde(default)]
     pub t: Option<String>,
+    /// The relation-overlay opt-in (dashboard-timeline ADR: the always-on surface
+    /// is dated marks ONLY; relations are an on-demand overlay). ABSENT/false =
+    /// the DEFAULT nodes-only timeline read — served from the per-generation
+    /// lineage-node cache as a cheap range slice, with NO edge scan, so a
+    /// scroll/zoom never iterates the graph's edges. true = also return the
+    /// self-consistent arcs among the kept nodes (the on-demand overlay / debug
+    /// inspection), which flows through the full projection.
+    #[serde(default)]
+    pub include_arcs: Option<bool>,
 }
 
 /// `GET /graph/lineage?scope&from&to&filter=` — the bounded temporal-lineage
@@ -278,6 +290,9 @@ pub async fn graph_lineage(
     // commit T landed on without re-deriving (ADD-901, consistency with
     // `graph_asof`). Read-and-infer: this reads history and projects, mints no
     // semantics, writes nothing.
+    // The relation-overlay opt-in: default false (dated marks only). The default
+    // present read is nodes-only and served from the per-generation cache below.
+    let include_arcs = params.include_arcs.unwrap_or(false);
     if let Some(t) = params.t.as_deref() {
         let scope = cell.scope.clone();
         // Route through the scope's by-sha as-of cache (the same path /graph/asof
@@ -293,11 +308,12 @@ pub async fn graph_lineage(
             .asof_graph(&resolved_sha)
             .map_err(|e| super::revision_error(&state, t, &e))?;
         let slice = engine_query::lineage::lineage(
-            &resolved.graph,
+            &resolved.asof.graph,
             &scope,
             params.from.as_deref(),
             params.to.as_deref(),
             filter,
+            include_arcs,
         )
         .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
         // Historical tiers: semantic present-only/excluded and structural
@@ -323,20 +339,45 @@ pub async fn graph_lineage(
         ));
     }
 
-    // Present-range lineage over THIS scope's live graph (mirrors the
-    // graph_query present branch + the events handler). The projection bounds
-    // the slice under its document node ceiling and returns only edges among
-    // kept nodes; a bad filter facet (unknown tier/relation/state) surfaces as a
-    // client error through the shared envelope.
-    let graph = cell.graph_arc();
-    let slice = engine_query::lineage::lineage(
-        &graph,
-        &cell.scope,
-        params.from.as_deref(),
-        params.to.as_deref(),
-        filter,
-    )
-    .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+    // Present-range lineage over THIS scope's live graph. The timeline is a
+    // SERVER-BACKED PROJECTION CACHE, not a hot interactive recompute
+    // (cache-until-invalidated): the DEFAULT read (no filter, nodes-only) is
+    // served from the per-generation lineage-node cache as a cheap range slice —
+    // a scroll/zoom re-slices the warm node set and iterates NO edges and touches
+    // NO disk. Only a FILTERED or arcs-requested read flows through the full
+    // projection (the filter changes the member set; arcs need the edge scan).
+    // The slice stays bounded under the document node ceiling either way; a bad
+    // filter facet surfaces as a client error through the shared envelope.
+    let generation = cell.generation.load(std::sync::atomic::Ordering::SeqCst);
+    let (nodes, arcs, truncated) = if !include_arcs
+        && filter == engine_query::filter::Filter::default()
+    {
+        // Warm path: range-slice the cached full node set. No graph scan.
+        let all = cell.lineage_nodes();
+        let (nodes, truncated) =
+            engine_query::lineage::bound_range(&all, params.from.as_deref(), params.to.as_deref());
+        (
+            serde_json::to_value(&nodes).expect("lineage nodes serialize"),
+            Value::Array(Vec::new()),
+            serde_json::to_value(&truncated).expect("truncated serializes"),
+        )
+    } else {
+        let graph = cell.graph_arc();
+        let slice = engine_query::lineage::lineage(
+            &graph,
+            &cell.scope,
+            params.from.as_deref(),
+            params.to.as_deref(),
+            filter,
+            include_arcs,
+        )
+        .map_err(|e| super::api_error(&state, StatusCode::BAD_REQUEST, e.to_string()))?;
+        (
+            serde_json::to_value(&slice.nodes).expect("lineage nodes serialize"),
+            serde_json::to_value(&slice.arcs).expect("lineage arcs serialize"),
+            serde_json::to_value(&slice.truncated).expect("truncated serializes"),
+        )
+    };
     // The semantic tier is present-only in the range lineage (ADR; mirrors the
     // as-of view): the success envelope marks semantic unavailable with that
     // reason while overlaying the cell's REAL declared-tier status, so a degraded
@@ -348,9 +389,14 @@ pub async fn graph_lineage(
             // branch's null echoes).
             "resolved_sha": Value::Null,
             "interpretation": Value::Null,
-            "nodes": slice.nodes,
-            "arcs": slice.arcs,
-            "truncated": slice.truncated,
+            "nodes": nodes,
+            "arcs": arcs,
+            "truncated": truncated,
+            // The graph generation the projection was read at: the client's cache
+            // identity for the timeline. A scroll/zoom at the SAME generation is a
+            // warm read; a watcher rebuild bumps it and the client re-fetches. It
+            // enters no node/edge stable key (mirrors `/graph/embeddings`).
+            "generation": generation,
         }),
         super::degraded_tiers(
             &cell,
@@ -441,8 +487,8 @@ pub async fn graph_diff(
     let to_resolved = cell
         .asof_graph(&to_sha)
         .map_err(|e| super::revision_error(&state, &params.to, &e))?;
-    let from_graph = &from_resolved.graph;
-    let to_graph = &to_resolved.graph;
+    let from_graph = &from_resolved.asof.graph;
+    let to_graph = &to_resolved.asof.graph;
 
     // Historical diffs number RESULT-LOCALLY (audit N2): a scrub must
     // never burn live-clock positions or manufacture stream gaps. Only

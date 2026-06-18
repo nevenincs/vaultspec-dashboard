@@ -20,9 +20,7 @@
 //! token. The inference crates are untouched: the registry just holds N
 //! `LinkageGraph`s; `engine-query`/`engine-graph` read fns stay pure over one.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -33,23 +31,11 @@ use axum::middleware::Next;
 use axum::response::Response;
 use engine_graph::{LinkageGraph, MetaEdge};
 use engine_model::ScopeRef;
+use engine_query::graph::DocumentViews;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
 use crate::registry::ScopeRegistry;
-
-/// Per-generation enriched document views (perf-sweep A1): the node-id → enriched
-/// node view map and the edge-id → enriched edge view map, built once per graph
-/// generation by `engine_query::graph::build_document_views` and reused by every
-/// Document-granularity query via `graph_query_cached`. The third member is the
-/// in-scope node-id set, computed in the same pass and reused by the Document
-/// arm's broken-link endpoint check so it no longer re-scans every node per
-/// request (backend-hotpath-hardening F4 / graph-query-scope-memo).
-type DocViews = (
-    HashMap<String, Value>,
-    HashMap<String, Value>,
-    HashSet<String>,
-);
 
 /// Per-generation `.vault` document basename -> repo-relative path index
 /// (backend-hotpath-hardening F1): built once per rebuild by
@@ -62,6 +48,39 @@ pub(crate) type DocBasenameIndex = HashMap<String, String>;
 /// freshness epoch; aliased so the cache field stays a simple type (mirroring
 /// `DocViews`/`DocBasenameIndex`).
 pub(crate) type EmbeddingVectors = HashMap<String, Vec<f32>>;
+
+/// A cached historical graph plus its lazy per-graph document projection index.
+/// The graph cache is keyed by commit sha; these views are therefore also
+/// sha-stable and reusable across time-travel query revisits.
+pub struct CachedAsofGraph {
+    pub asof: Arc<engine_graph::asof::AsofGraph>,
+    doc_views_cache: Mutex<Option<Arc<DocumentViews>>>,
+}
+
+impl CachedAsofGraph {
+    fn new(asof: engine_graph::asof::AsofGraph) -> Self {
+        Self {
+            asof: Arc::new(asof),
+            doc_views_cache: Mutex::new(None),
+        }
+    }
+
+    pub fn document_views(&self, scope: &ScopeRef) -> Arc<DocumentViews> {
+        let mut cache = self
+            .doc_views_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(cached) = cache.as_ref() {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::graph::build_document_views(
+            &self.asof.graph,
+            scope,
+        ));
+        *cache = Some(fresh.clone());
+        fresh
+    }
+}
 
 /// One multiplexed stream event (contract §7).
 #[derive(Debug, Clone)]
@@ -108,7 +127,7 @@ pub struct ScopeCell {
     /// Memoized enriched document node/edge views per graph generation
     /// (perf-sweep A1): the dominant per-request Document-query cost
     /// (node_view/edge_view projections) computed once per rebuild and reused.
-    pub doc_views_cache: Mutex<Option<(u64, Arc<DocViews>)>>,
+    pub doc_views_cache: Mutex<Option<(u64, Arc<DocumentViews>)>>,
     /// The UNFILTERED constellation feature-node projection, memoized per
     /// generation. The Feature query's fixed cost is aggregating the whole corpus
     /// into feature-convergence nodes; this serves the default (unfiltered) poll
@@ -123,13 +142,41 @@ pub struct ScopeCell {
     /// /events activity feed walks up to 5000 commits and correlates each to graph
     /// nodes — immutable for a given HEAD, but it ran on every request (~2.2s).
     pub event_rows_cache: Mutex<Option<(u64, Arc<Vec<engine_store::EventRow>>)>>,
+    /// The FULL range-independent timeline lineage node set, memoized per
+    /// generation (backend timeline-cache hardening). `/graph/lineage` previously
+    /// re-scanned every node (the per-node degree walk) AND every edge on EVERY
+    /// request, so a timeline scroll/zoom — which only changes the date range —
+    /// behaved like a hot interactive recompute. The range-independent node set is
+    /// memoized here; the handler serves a scroll as a cheap `bound_range` slice
+    /// over this cache and the default path never iterates the edges. Invalidated
+    /// on a generation bump exactly like the other projections.
+    pub lineage_nodes_cache: Mutex<Option<(u64, Arc<Vec<engine_query::lineage::LineageNode>>)>>,
+    /// The filter vocabulary (relations, kinds, doc-types, statuses, tiers, date
+    /// bounds, refs), memoized per generation. `/filters` re-scanned the whole
+    /// graph on every poll to rebuild the same generation-stable vocabulary; the
+    /// timeline's corpus auto-fit reads it on load, so it is part of the default
+    /// view. Invalidated on a generation bump.
+    pub filters_vocab_cache: Mutex<Option<(u64, Arc<engine_query::filter::Vocabulary>)>>,
+    /// The in-flight pipeline artifacts (the Work surface), memoized per
+    /// generation. `/pipeline` re-scanned every `doc:` node on every poll to
+    /// project the active plans/ADRs — a generation-stable projection. Invalidated
+    /// on a generation bump.
+    pub pipeline_cache: Mutex<Option<(u64, Arc<Vec<engine_query::pipeline::PipelineArtifact>>)>>,
+    /// The recent HEAD commit walk (subjects + touched paths), memoized per
+    /// generation. `/history` ran a live `git log` walk against the object DB on
+    /// EVERY poll; the walk is HEAD-stable (a new commit bumps the generation
+    /// through a rebuild, exactly as `event_rows_cache` relies on), so it is
+    /// memoized here and the handler correlates the cached commits to graph nodes
+    /// per request in-memory — no per-request disk/git walk. Capped at
+    /// `MAX_HISTORY_LIMIT` (the most any request can ask for); the handler slices.
+    pub recent_commits_cache: Mutex<Option<(u64, Arc<Vec<ingest_git::log::CommitEvent>>)>>,
     /// Bounded LRU of resolved historical (as-of) graphs, keyed by 40-char commit
     /// sha. `/graph/asof` re-indexes the vault at a commit per request (~35s: the
     /// `vault graph --ref` core subprocess + a structural rebuild over every doc);
     /// time-travel scrubbing REVISITS commits, so a sha cache makes a revisit
     /// instant. Bounded (the graphs are multi-MB) per
     /// bounded-by-default-for-every-accumulator.
-    pub asof_cache: Mutex<VecDeque<(String, Arc<engine_graph::asof::AsofGraph>)>>,
+    pub asof_cache: Mutex<VecDeque<(String, Arc<CachedAsofGraph>)>>,
     /// Memoized `.vault` document basename -> repo-relative path index per graph
     /// generation (backend-hotpath-hardening F1): the content route's per-fetch
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
@@ -144,6 +191,10 @@ pub struct ScopeCell {
     /// defeat the cache on every rebuild. A completed reindex advances the epoch
     /// (the semantic analog of `generation`) and THAT invalidates the cache.
     pub embeddings_cache: Mutex<Option<(u64, Arc<EmbeddingVectors>)>>,
+    /// Serializes graph commits without using the resume ring as the long-held
+    /// compute mutex. Diff/projection work may be expensive, but ring readers and
+    /// `since=` resume are only blocked while payloads are appended.
+    pub commit_lock: Mutex<()>,
     pub generation: AtomicU64,
     /// Whether the (heavy, lazy) document views have been requested at least once
     /// this session (adaptive warming). `warm_projections` warms the DEFAULT view
@@ -210,9 +261,14 @@ impl ScopeCell {
             feature_nodes_cache: Mutex::new(None),
             vault_tree_rows_cache: Mutex::new(None),
             event_rows_cache: Mutex::new(None),
+            lineage_nodes_cache: Mutex::new(None),
+            filters_vocab_cache: Mutex::new(None),
+            pipeline_cache: Mutex::new(None),
+            recent_commits_cache: Mutex::new(None),
             asof_cache: Mutex::new(VecDeque::new()),
             doc_index_cache: Mutex::new(None),
             embeddings_cache: Mutex::new(None),
+            commit_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             doc_views_used: AtomicBool::new(false),
             watcher: Mutex::new(None),
@@ -253,6 +309,15 @@ impl ScopeCell {
         // The activity feed's HEAD commit walk + correlation (~2.2s) is part of
         // the default view (timeline / activity rail), so warm it too.
         let _ = self.commit_event_rows();
+        // The default-view projections that previously recomputed per request:
+        // the timeline lineage node set, the filter vocabulary (corpus auto-fit),
+        // the Work-surface pipeline artifacts, and the recent commit walk (history
+        // rail). Warming them here lands the first post-rebuild read warm instead
+        // of paying the scan/walk on the interactive path.
+        let _ = self.lineage_nodes();
+        let _ = self.filters_vocabulary();
+        let _ = self.pipeline_artifacts();
+        let _ = self.recent_commits();
         // Adaptive: the heavy document views stay lazy for sessions that never
         // drill in (no waste), but once a client HAS opened the document view, the
         // post-rebuild cold rebuild would otherwise land as a multi-second stall on
@@ -291,6 +356,125 @@ impl ScopeCell {
         Ok(fresh)
     }
 
+    /// The FULL range-independent timeline lineage node set, memoized per
+    /// generation (backend timeline-cache hardening). The default `/graph/lineage`
+    /// path (no filter, nodes-only) serves a scroll/zoom as a cheap
+    /// `engine_query::lineage::bound_range` slice over THIS cache instead of
+    /// re-scanning every node (the per-node degree walk) per request; the edges
+    /// are never iterated on the default path. A FILTERED or arcs-requested read
+    /// bypasses this and flows through `engine_query::lineage::lineage` (the filter
+    /// changes the member set, and arcs need the edge scan). Invalidated on a
+    /// generation bump exactly like `feature_nodes`/`vault_tree_rows`. The default
+    /// (unfiltered) filter never fails validation, so this returns the node set
+    /// directly rather than a `Result`.
+    pub fn lineage_nodes(&self) -> Arc<Vec<engine_query::lineage::LineageNode>> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self
+            .lineage_nodes_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        // The default timeline view is unfiltered; `Filter::default()` is always
+        // valid, so `lineage_nodes` cannot error here.
+        let fresh = Arc::new(
+            engine_query::lineage::lineage_nodes(
+                &self.graph_arc(),
+                &self.scope,
+                engine_query::filter::Filter::default(),
+            )
+            .expect("the default (empty) filter is always valid"),
+        );
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The filter vocabulary, memoized per generation. `/filters` re-scanned the
+    /// whole graph on every poll to rebuild the same generation-stable vocabulary
+    /// (relations, kinds, doc-types, statuses, tiers, corpus date bounds, refs);
+    /// the timeline's corpus auto-fit reads it on load. Invalidated on a
+    /// generation bump exactly like the other projections.
+    pub fn filters_vocabulary(&self) -> Arc<engine_query::filter::Vocabulary> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self
+            .filters_vocab_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::filter::vocabulary(&self.graph_arc()));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The in-flight pipeline artifacts (the Work surface), memoized per
+    /// generation. `/pipeline` re-scanned every `doc:` node on every poll to
+    /// project the active plans/ADRs — a generation-stable projection over this
+    /// scope's graph. Invalidated on a generation bump.
+    pub fn pipeline_artifacts(&self) -> Arc<Vec<engine_query::pipeline::PipelineArtifact>> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        let mut cache = self
+            .pipeline_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_generation, cached)) = cache.as_ref()
+            && *cached_generation == generation
+        {
+            return cached.clone();
+        }
+        let fresh = Arc::new(engine_query::pipeline::in_flight(
+            &self.graph_arc(),
+            &self.scope,
+        ));
+        *cache = Some((generation, fresh.clone()));
+        fresh
+    }
+
+    /// The recent HEAD commit walk (subjects + touched paths), memoized per
+    /// generation. `/history` ran a live `git log` walk against the object DB on
+    /// EVERY poll; the walk is HEAD-stable (a new commit bumps the generation
+    /// through a rebuild, the same assumption `commit_event_rows` already relies
+    /// on), so it is memoized here at the `MAX_HISTORY_LIMIT` ceiling and the
+    /// handler correlates the cached commits to graph nodes in-memory and slices
+    /// to the requested `limit` — no per-request git walk. A git failure is
+    /// returned UNCACHED so a transient error does not poison the cache for the
+    /// generation (mirrors `commit_event_rows`).
+    pub fn recent_commits(&self) -> Result<Arc<Vec<ingest_git::log::CommitEvent>>, String> {
+        let generation = self.generation.load(Ordering::SeqCst);
+        {
+            let cache = self
+                .recent_commits_cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some((cached_generation, cached)) = cache.as_ref()
+                && *cached_generation == generation
+            {
+                return Ok(cached.clone());
+            }
+        }
+        let workspace =
+            ingest_git::workspace::Workspace::discover(&self.root).map_err(|e| e.to_string())?;
+        let commits = ingest_git::log::walk(
+            &workspace,
+            "HEAD",
+            crate::routes::history::MAX_HISTORY_LIMIT,
+        )
+        .map_err(|e| e.to_string())?;
+        let fresh = Arc::new(commits);
+        let mut cache = self
+            .recent_commits_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *cache = Some((generation, fresh.clone()));
+        Ok(fresh)
+    }
+
     /// The resolved historical (as-of) graph for a time-travel token, served from
     /// a bounded by-sha LRU. `/graph/asof` re-indexes the vault at the resolved
     /// commit per request — the `vault graph --ref` core subprocess plus a
@@ -313,7 +497,7 @@ impl ScopeCell {
     pub fn asof_graph(
         &self,
         sha: &str,
-    ) -> std::result::Result<Arc<engine_graph::asof::AsofGraph>, engine_graph::IndexError> {
+    ) -> std::result::Result<Arc<CachedAsofGraph>, engine_graph::IndexError> {
         {
             let mut cache = self.asof_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(pos) = cache.iter().position(|(s, _)| s == sha) {
@@ -340,13 +524,15 @@ impl ScopeCell {
         };
         // Re-index OFF the lock (the ~35s build must not hold the cache mutex). The
         // sha is itself a valid revision token, so the build resolves it cheaply.
-        let resolved = Arc::new(engine_graph::asof::asof_graph_resolved_cached(
-            &self.root,
-            sha,
-            &self.scope,
-            0,
-            declared.as_deref(),
-        )?);
+        let resolved = Arc::new(CachedAsofGraph::new(
+            engine_graph::asof::asof_graph_resolved_cached(
+                &self.root,
+                sha,
+                &self.scope,
+                0,
+                declared.as_deref(),
+            )?,
+        ));
         let mut cache = self.asof_cache.lock().unwrap_or_else(|e| e.into_inner());
         // A concurrent request may have built the same sha while we did; de-dup.
         if !cache.iter().any(|(s, _)| s == sha) {
@@ -378,7 +564,7 @@ impl ScopeCell {
     /// once per rebuild; `graph_query_cached` then reuses them so repeat and
     /// concurrent Document queries skip the dominant per-request cost. Invalidated
     /// on a generation bump, exactly like `meta_edges`/`salience_basis`.
-    pub fn document_views(&self) -> Arc<DocViews> {
+    pub fn document_views(&self) -> Arc<DocumentViews> {
         // Record drill-in intent so `warm_projections` keeps this heavy view warm
         // across rebuilds for this session (adaptive warming — see the field doc).
         self.doc_views_used.store(true, Ordering::Relaxed);
@@ -604,20 +790,22 @@ impl ScopeCell {
     /// Steps 1–2 happen under the ring lock so concurrent committers
     /// serialize; the clock is only ever advanced here.
     pub fn commit_graph(&self, fresh: LinkageGraph) -> usize {
+        let _commit = self.commit_lock.lock().unwrap_or_else(|e| e.into_inner());
         let old = self.graph_arc();
         let t = now_ms();
 
-        // Ring lock taken FIRST: it is the commit-section mutex.
-        // Poison recovery (robustness H2): see `graph_arc`.
-        let mut ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
-        let seq_start = self.seq.load(Ordering::SeqCst);
         // Document deltas first, then the feature/meta-edge projection deltas,
         // CONTINUING the same monotonic clock (constellation-live-delta ADR /
         // S50): one seq space across both species so a held constellation
         // keyframe splices live with no gap. Both ride the ring (resume
         // buffer) and the `graph` channel; each carries its `granularity` tag.
-        let doc_log = engine_graph::diff::diff(&old, &fresh, t, seq_start);
-        let feat_seq_start = doc_log.entries.last().map_or(seq_start, |e| e.seq + 1);
+        //
+        // The expensive diff/projection/serialization work runs under a narrow
+        // commit mutex but OUTSIDE the resume-ring lock. The ring is then held
+        // only for sequence reservation and append/broadcast, so `since=` readers
+        // are not blocked by graph-scale projection work.
+        let doc_log = engine_graph::diff::diff(&old, &fresh, t, 0);
+        let feat_seq_start = doc_log.entries.len() as u64;
         let (feat_entries, _) =
             engine_query::graph::feature_delta(&old, &fresh, &self.scope, t, feat_seq_start);
 
@@ -628,10 +816,10 @@ impl ScopeCell {
         // panic inside the commit section (which would poison the ring lock and
         // wedge every later commit + every `since=` resume). The dropped entry
         // is logged; the rest of the batch and the clock advance normally.
-        let mut payloads: Vec<(u64, serde_json::Value)> = Vec::new();
+        let mut payloads: Vec<serde_json::Value> = Vec::new();
         for entry in &doc_log.entries {
             match serde_json::to_value(entry) {
-                Ok(value) => payloads.push((entry.seq, value)),
+                Ok(value) => payloads.push(value),
                 Err(e) => eprintln!(
                     "vaultspec serve: dropping unserializable doc delta seq={}: {e}",
                     entry.seq
@@ -640,15 +828,21 @@ impl ScopeCell {
         }
         for entry in feat_entries {
             match entry["seq"].as_u64() {
-                Some(seq) => payloads.push((seq, entry)),
+                Some(_) => payloads.push(entry),
                 None => eprintln!("vaultspec serve: dropping feature delta with no seq: {entry}"),
             }
         }
 
         let emitted = payloads.len();
-        if let Some((tip, _)) = payloads.last() {
-            self.seq.store(tip + 1, Ordering::SeqCst);
-            for (seq, payload) in payloads {
+        if emitted > 0 {
+            let seq_start = self.seq.fetch_add(emitted as u64, Ordering::SeqCst);
+            // Poison recovery (robustness H2): see `graph_arc`.
+            let mut ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
+            for (offset, mut payload) in payloads.into_iter().enumerate() {
+                let seq = seq_start + offset as u64;
+                if let Some(obj) = payload.as_object_mut() {
+                    obj.insert("seq".into(), serde_json::Value::from(seq));
+                }
                 if ring.len() == RING_CAP {
                     ring.pop_front();
                 }
@@ -663,7 +857,6 @@ impl ScopeCell {
         // Poison recovery (robustness H2): see `graph_arc`.
         *self.graph.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(fresh);
         self.generation.fetch_add(1, Ordering::SeqCst);
-        drop(ring);
         emitted
     }
 }
@@ -689,6 +882,11 @@ pub struct AppState {
     /// The currently-active default scope token: the scope `/status`, boot,
     /// and the error-path tiers fallback resolve when no `scope=` is supplied.
     pub active_scope: RwLock<String>,
+    /// Bounded, transient dashboard intent snapshots, keyed by scope for this
+    /// process session only. This is never persisted to `.vault`, git, or graph
+    /// semantics; it exists so the dashboard has one backend-backed state
+    /// authority during the browser session.
+    pub dashboard_state: Mutex<crate::routes::state::DashboardStateSlot>,
 }
 
 impl AppState {
@@ -938,6 +1136,7 @@ pub fn build_state(root: PathBuf) -> Arc<AppState> {
         bearer,
         user_state,
         active_scope: RwLock::new(active_token.clone()),
+        dashboard_state: Mutex::new(crate::routes::state::DashboardStateSlot::new()),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned
@@ -985,7 +1184,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
         std::fs::write(
             dir.path().join(".vault/plan/2026-06-12-w-plan.md"),
-            "---\ntags:\n  - '#plan'\n  - '#w'\n---\n\nMentions `src/a.rs` and [[2026-06-12-w-adr]].\n",
+            "---\ntags:\n  - '#plan'\n  - '#w'\n---\n\nMentions [[2026-06-12-w-adr]] and [[2026-06-12-old-adr]].\n",
         )
         .unwrap();
         let state = build_state(dir.path().to_path_buf());
@@ -1003,9 +1202,9 @@ mod tests {
         // holds the initial adds. Assert that starting state directly.
         let cell = state.active_cell();
         let edges_before = cell.graph_arc().edge_count();
-        assert_eq!(edges_before, 2, "path + wiki mention");
+        assert_eq!(edges_before, 2, "two wiki mentions");
 
-        // Edit: the path mention disappears.
+        // Edit: one wiki mention disappears.
         std::fs::write(
             dir.path().join(".vault/plan/2026-06-12-w-plan.md"),
             "---\ntags:\n  - '#plan'\n  - '#w'\n---\n\nOnly [[2026-06-12-w-adr]] remains.\n",
@@ -1060,6 +1259,131 @@ mod tests {
         );
         let _ = cell.rebuild_and_swap();
         let c = cell.feature_nodes();
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    #[test]
+    fn lineage_nodes_are_memoized_per_generation() {
+        // The timeline is a server-backed projection cache, not a hot recompute:
+        // the FULL range-independent lineage node set is memoized per generation,
+        // so a scroll/zoom (a re-slice of the same cached set) is a warm-cache hit
+        // (same Arc — no re-scan of every node, no edge iteration), and a watcher
+        // rebuild (generation bump) invalidates it. This is the warm-read +
+        // generation-bump-invalidation proof the timeline cache rests on.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.lineage_nodes();
+        let b = cell.lineage_nodes();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: the lineage node set is a warm-cache hit, not re-scanned"
+        );
+        let _ = cell.rebuild_and_swap();
+        let c = cell.lineage_nodes();
+        assert!(
+            !Arc::ptr_eq(&a, &c),
+            "a generation bump invalidates the cache (recomputed, fresh Arc)"
+        );
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    #[test]
+    fn filters_vocabulary_is_memoized_per_generation() {
+        // `/filters` is a full-graph scan that only changes on a rebuild, so it is
+        // memoized per generation: a repeat poll is a warm-cache hit (same Arc),
+        // and a generation bump recomputes.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.filters_vocabulary();
+        let b = cell.filters_vocabulary();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: the vocabulary is a warm-cache hit, not re-scanned"
+        );
+        let _ = cell.rebuild_and_swap();
+        let c = cell.filters_vocabulary();
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    #[test]
+    fn pipeline_artifacts_are_memoized_per_generation() {
+        // `/pipeline` re-projected every `doc:` node per poll; the in-flight set is
+        // generation-stable, so it is memoized per generation: a repeat Work poll
+        // is a warm-cache hit (same Arc), a generation bump recomputes.
+        let (_dir, state) = fixture_state();
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+        let a = cell.pipeline_artifacts();
+        let b = cell.pipeline_artifacts();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: the pipeline artifacts are a warm-cache hit, not re-projected"
+        );
+        let _ = cell.rebuild_and_swap();
+        let c = cell.pipeline_artifacts();
+        assert_eq!(*a, *c, "content equal across a no-op rebuild");
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "f")
+            .env("GIT_AUTHOR_EMAIL", "f@t")
+            .env("GIT_COMMITTER_NAME", "f")
+            .env("GIT_COMMITTER_EMAIL", "f@t")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn recent_commits_are_memoized_per_generation_not_re_walked() {
+        // `/history` walked the git object DB on EVERY poll; the recent commit walk
+        // is HEAD-stable (a new commit bumps the generation through a rebuild), so
+        // it is memoized per generation: a repeat poll is a warm-cache hit (same
+        // Arc — NO per-request disk/git walk), and a generation bump invalidates
+        // it. This is the "node-only/history request does not touch disk per
+        // request" proof. Uses a real git repo (no fakes/stubs).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        git(root, &["init", "-b", "main", "."]);
+        std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
+        std::fs::write(
+            root.join(".vault/plan/2026-06-18-h-plan.md"),
+            "---\ntags:\n  - '#plan'\n  - '#h'\n---\n\nbody\n",
+        )
+        .unwrap();
+        git(root, &["add", "."]);
+        git(root, &["commit", "-m", "first"]);
+
+        let state = build_state(root.to_path_buf());
+        let cell = state.active_cell();
+        cell.rebuild_and_swap().unwrap();
+
+        let a = cell.recent_commits().expect("git repo is readable");
+        let b = cell.recent_commits().expect("warm read");
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "same generation: the commit walk is a warm-cache hit, not re-walked"
+        );
+        assert_eq!(a.len(), 1, "one commit on HEAD");
+
+        // A generation bump (rebuild) invalidates the cache — the next read
+        // recomputes a fresh Arc (content equal across a no-op rebuild: HEAD is
+        // unchanged, so the same commit set).
+        let _ = cell.rebuild_and_swap();
+        let c = cell.recent_commits().expect("warm read after rebuild");
+        assert!(
+            !Arc::ptr_eq(&a, &c),
+            "a generation bump invalidates the cached commit walk"
+        );
         assert_eq!(*a, *c, "content equal across a no-op rebuild");
     }
 
