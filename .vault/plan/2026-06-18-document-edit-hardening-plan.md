@@ -23,8 +23,8 @@ Make the document edit feature live-usable and fully bidirectional, engine-broke
 Resolve the brokered core to the project-pinned environment and verify the required verbs are present, degrading with an honest advisory on a miss.
 
 - [x] `W01.P01.S01` - Resolve the brokered core invocation to the project-pinned environment instead of an arbitrary PATH binary; `engine/crates/ingest-struct/src/runner.rs`.
-- [ ] `W01.P01.S02` - Verify the resolved core advertises the required write verbs at the write boundary and degrade the write tier with an honest advisory on a capability miss; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `W01.P01.S03` - Live-verify a brokered set-body write succeeds against the pinned core and a missing-verb core degrades with a tiered advisory not an exit-2 passthrough; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W01.P01.S02` - Verify the resolved core advertises the required write verbs at the write boundary and degrade the write tier with an honest advisory on a capability miss; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W01.P01.S03` - Live-verify a brokered set-body write succeeds against the pinned core and a missing-verb core degrades with a tiered advisory not an exit-2 passthrough; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
 ## Wave `W02` - Core rename verb and engine rename broker
 
