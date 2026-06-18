@@ -54,7 +54,7 @@ Harden the frontend state coupling: rename re-keying across tab/editor/selection
 Re-key the open tab, editor slice, and shared selection on rename, and guarantee the open editor and dependent views refresh after re-ingest.
 
 - [ ] `W03.P04.S09` - Add a useRenameDoc mutation routing through ops that re-keys the open tab, editor slice, and shared selection atomically from the old to the new doc id; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P04.S10` - Extend post-write invalidation so the open editor content view re-reads after backend re-ingest; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P04.S10` - Extend post-write invalidation so the open editor content view re-reads after backend re-ingest; `frontend/src/stores/server/queries.ts`.
 - [ ] `W03.P04.S11` - Live-verify the SSE generation-bump heals the write-then-refetch timing race so dependent views are never left stale; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `W03.P05` - Frontmatter merge and UTF-8 fidelity
