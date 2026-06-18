@@ -8,8 +8,6 @@
 // the SAME client against a real spawned engine (testing/liveClient), so a
 // passing test IS the contract-shape verification — there is no mock double.
 
-import { useQuery } from "@tanstack/react-query";
-
 import {
   adaptContent,
   adaptDashboardState,
@@ -208,6 +206,8 @@ export interface MapWorktree {
   has_vault: boolean;
   is_default?: boolean;
   degraded?: string[];
+  /** Working tree differs from HEAD; absent only if an older engine omitted it. */
+  dirty?: boolean;
   /** Commits in HEAD not yet pushed to upstream; absent when no upstream is configured. */
   ahead?: number;
   /** Commits in upstream not yet merged into HEAD; absent when no upstream is configured. */
@@ -454,6 +454,12 @@ export interface EngineNode {
    */
   salience?: number;
   /**
+   * Backend-projected world-space node body radius. This is additive contract
+   * surface for the graph renderer; current canvas sizing still derives from
+   * salience/member_count until the renderer switches over explicitly.
+   */
+  node_size?: number;
+  /**
    * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
    * the rag embedding delivered to the CPU worker for the semantic UMAP layout
    * mode. The engine never serves layout coordinates (graph-compute-is-CPU); it
@@ -530,7 +536,8 @@ export type DerivationRelation =
  * authority PageRank + coreness. This is a wire/dashboard-state concept, not a
  * standalone view store authority.
  */
-export type SalienceLens = "status" | "design";
+export const SALIENCE_LENSES = ["status", "design"] as const;
+export type SalienceLens = (typeof SALIENCE_LENSES)[number];
 export const DEFAULT_SALIENCE_LENS: SalienceLens = "status";
 
 /** The engine-owned filter object, echoed back normalized (§4). */
@@ -561,24 +568,40 @@ export type DashboardTimelineMode =
   | { kind: "live" }
   | { kind: "time-travel"; at: number };
 
-export type GraphGranularity = "document" | "feature";
+export const GRAPH_GRANULARITIES = ["document", "feature"] as const;
+export type GraphGranularity = (typeof GRAPH_GRANULARITIES)[number];
 
-export type RepresentationMode =
-  | "connectivity"
-  | "lineage"
-  | "hierarchical"
-  | "radial"
-  | "community"
-  | "semantic";
+export const REPRESENTATION_MODES = [
+  "connectivity",
+  "temporal",
+  "lineage",
+  "hierarchical",
+  "radial",
+  "community",
+  "semantic",
+] as const;
+export type RepresentationMode = (typeof REPRESENTATION_MODES)[number];
+
+export const DASHBOARD_PANEL_TABS = ["status", "changes", "search"] as const;
+export type DashboardPanelTab = (typeof DASHBOARD_PANEL_TABS)[number];
+
+export const DASHBOARD_BOUND_SHAPES = ["free", "circle", "rect"] as const;
+export type DashboardBoundShape = (typeof DASHBOARD_BOUND_SHAPES)[number];
 
 export interface DashboardPanelState {
   left_collapsed: boolean;
   right_collapsed: boolean;
-  right_tab: "status" | "changes" | "search";
+  right_tab: DashboardPanelTab;
+  /** The serialized dock workspace layout (editor-dock-workspace): an opaque
+   *  JSON string carrying the dockview `SerializedDockview` plus the open-tab
+   *  metadata, persisted per scope so the workspace restores on reload. The
+   *  engine treats it as an opaque blob; the stores layer serializes/parses it.
+   *  Optional/absent until the workspace first persists a layout. */
+  workspace_layout?: string;
 }
 
 export interface DashboardGraphBounds {
-  shape: "free" | "circle" | "rect";
+  shape: DashboardBoundShape;
   size: number;
 }
 
@@ -705,7 +728,6 @@ export interface NodeDetail {
 
 export interface NodeEvidence {
   documents: { path: string; doc_type: string }[];
-  code_locations: { path: string; symbol?: string; line?: number; state: string }[];
   // The engine `CorrelatedCommit` serializes `confidence: f32` (the correlating
   // edge's confidence) alongside `sha`/`subject`/`rule`, and the mock mirrors it
   // byte-for-byte; the type declares it optional so a richer consumer (the binding
@@ -952,6 +974,7 @@ export interface OpsResult {
  *  concurrency token echoed from the last read's `blob_hash`; a mismatch is the
  *  conflict the editor reconciles (never a silent overwrite). */
 export interface OpsWriteBody {
+  scope?: string;
   ref: string;
   body?: string;
   expected_blob_hash?: string;
@@ -962,6 +985,7 @@ export interface OpsWriteBody {
 
 /** The body of a create op (`POST /ops/core/create`). */
 export interface OpsCreateBody {
+  scope?: string;
   doc_type: string;
   feature: string;
   title?: string;
@@ -971,15 +995,18 @@ export interface OpsCreateBody {
 /**
  * The typed, discriminated result of a write/create op, interpreted by
  * `adaptOpsWrite` from the sibling envelope's `status` + `data` fields (never the
- * HTTP code). Four outcomes the editor drives its state from:
+ * HTTP code). Four outcomes the write/create stores seam exposes:
  *  - `saved`    — `set-body`/`edit`/`set-frontmatter` succeeded; the new
  *                 `blobHash` is the next optimistic-concurrency base, and `checks`
- *                 carries any non-fatal advisory checks.
+ *                 carries any non-fatal advisory checks. Consumed by the editor
+ *                 save lifecycle.
  *  - `conflict` — the `expected_blob_hash` did not match the on-disk blob
- *                 (someone else wrote); `expected`/`actual` drive the reconcile UI.
+ *                 (someone else wrote); `expected`/`actual` drive the editor
+ *                 reconcile UI.
  *  - `refused`  — a frontmatter (or other) validation refusal; `checks`/`errors`
  *                 explain why the write was rejected without parsing prose.
- *  - `created`  — a `create` succeeded; the new doc's `path` + `stem`.
+ *  - `created`  — a `create` succeeded; the new doc's `path` + `stem`. Consumed
+ *                 by the create-doc flow, not by the editor save lifecycle.
  */
 export type OpsWriteResult =
   | { kind: "saved"; path: string; blobHash: string; checks: unknown[] }
@@ -1518,8 +1545,8 @@ export class EngineClient {
     return adaptPipeline(await this.get("/pipeline", { scope }));
   }
 
-  node(id: string): Promise<NodeDetail> {
-    return this.get(`/nodes/${encodeURIComponent(id)}`);
+  node(id: string, scope?: string): Promise<NodeDetail> {
+    return this.get(`/nodes/${encodeURIComponent(id)}`, { scope });
   }
 
   /** The read-only, bounded content fetch (review-rail-viewers ADR): the bytes of
@@ -1542,20 +1569,20 @@ export class EngineClient {
     return this.get(`/nodes/${encodeURIComponent(id)}/neighbors`, params);
   }
 
-  nodeEvidence(id: string): Promise<NodeEvidence> {
-    return this.get(`/nodes/${encodeURIComponent(id)}/evidence`);
+  nodeEvidence(id: string, scope?: string): Promise<NodeEvidence> {
+    return this.get(`/nodes/${encodeURIComponent(id)}/evidence`, { scope });
   }
 
   /** The bounded plan-container interior of a plan node (dashboard-pipeline-wire
    *  W03): the wave/phase/step tree under a node ceiling. */
-  async planInterior(id: string): Promise<PlanInteriorResponse> {
+  async planInterior(id: string, scope?: string): Promise<PlanInteriorResponse> {
     return adaptPlanInterior(
-      await this.get(`/nodes/${encodeURIComponent(id)}/plan-interior`),
+      await this.get(`/nodes/${encodeURIComponent(id)}/plan-interior`, { scope }),
     );
   }
 
-  discover(id: string): Promise<DiscoverResponse> {
-    return this.post(`/nodes/${encodeURIComponent(id)}/discover`, {});
+  discover(id: string, scope?: string): Promise<DiscoverResponse> {
+    return this.post(`/nodes/${encodeURIComponent(id)}/discover`, { scope });
   }
 
   // §5
@@ -1660,8 +1687,9 @@ export class EngineClient {
   opsRagGet<T = unknown>(
     verb: string,
     params?: Record<string, string | number | undefined>,
+    signal?: AbortSignal,
   ): Promise<{ envelope: T | null; tiers: TiersBlock }> {
-    return this.get(`/ops/rag/${encodeURIComponent(verb)}`, params);
+    return this.get(`/ops/rag/${encodeURIComponent(verb)}`, params, signal);
   }
 
   /** The read-only git pass-through (dashboard-pipeline-wire W04; historical diff
@@ -1672,7 +1700,7 @@ export class EngineClient {
    *  none. */
   async opsGit(
     verb: "status" | "numstat" | "diff" | "histdiff",
-    body: { path?: string; from?: string; to?: string } = {},
+    body: { scope?: string; path?: string; from?: string; to?: string } = {},
   ): Promise<GitOpResponse> {
     return adaptGitOp(await this.post(`/ops/git/${encodeURIComponent(verb)}`, body));
   }
@@ -1702,6 +1730,7 @@ export class EngineClient {
 
   // §8
   async search(body: {
+    scope?: string;
     query: string;
     target?: "vault" | "code";
     filters?: Record<string, string>;
@@ -1745,6 +1774,7 @@ export class EngineClient {
   private async get<T>(
     path: string,
     params?: Record<string, string | number | undefined>,
+    signal?: AbortSignal,
   ): Promise<T> {
     let url = `${this.baseUrl}${path}`;
     if (params) {
@@ -1755,7 +1785,7 @@ export class EngineClient {
       const qs = search.toString();
       if (qs) url += `?${qs}`;
     }
-    const response = await this.fetchImpl(url);
+    const response = await this.fetchImpl(url, signal ? { signal } : undefined);
     if (!response.ok) throw await engineErrorFrom(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
@@ -1793,18 +1823,3 @@ export class EngineClient {
 
 /** The app-wide default client, bound to the live engine origin. */
 export const engineClient = new EngineClient();
-
-export async function fetchEngineStatus(): Promise<EngineStatus> {
-  return engineClient.status();
-}
-
-/** The right rail's recovery snapshot; /stream deltas refine it later.
- *  Polls every 8 s while errored so NowStrip self-heals after engine-up
- *  transitions without requiring a page reload (mirrors useWorkspaceMap). */
-export function useEngineStatus() {
-  return useQuery({
-    queryKey: ["engine", "status"],
-    queryFn: fetchEngineStatus,
-    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
-  });
-}
