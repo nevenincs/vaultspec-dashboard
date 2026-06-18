@@ -11,7 +11,7 @@ There is **one** AppShell lineage; no duplicate/abandoned AppShell exists to ret
 | Node | Name | State it represents |
 | --- | --- | --- |
 | `117:2` | **AppShell** | The dashboard, **graph-only** state — no document open, graph fills the centre stage. |
-| `384:1004` | **AppShell — Dock Workspace (docs left · graph right)** | The dashboard **docked** state (editor-dock-workspace, 2026-06-18) — a document is open, so documents tab to the LEFT (VS Code provisional/permanent tabs, markdown read+edit), the graph stays RIGHT with its own dockview tab. Added 2026-06-18; titled + captioned on canvas. |
+| `384:1004` | **AppShell — Dock Workspace (docs left · graph right)** | The dashboard **docked** state (editor-dock-workspace, 2026-06-18) — a document is open, so documents tab to the LEFT, the graph stays RIGHT. Added 2026-06-18; titled + captioned on canvas. **Composed entirely from prototypes (no ad-hoc elements):** the documents column is a **Reader** (`269:941`, `Mode=View`) instance under a tab bar of **Tab** (`135:14`, `State=Active/Inactive`) instances on the shared `surface/base` background; the graph has a SINGLE tab so it shows NO tab bar; the collapsed left **icon-bar** is hidden (it must only show when the rail is collapsed — never doubled with the open rail). |
 
 `117:2` and `384:1004` are the **two states of the same dock workspace** and are both
 current. `384:1004` carries an on-canvas title (`389:1497`) and caption (`389:1498`).
