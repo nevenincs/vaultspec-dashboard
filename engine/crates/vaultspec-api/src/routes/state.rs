@@ -25,6 +25,10 @@ const DASHBOARD_STATE_SCOPE_CAP: usize = 16;
 const MAX_SELECTED_IDS: usize = 256;
 const MAX_NODE_ID_LEN: usize = 512;
 const MAX_PANEL_TAB_LEN: usize = 32;
+/// Cap the opaque dock workspace-layout blob (editor-dock-workspace): the
+/// serialized open-tab set is small (a bounded list of node ids), so 64 KiB is
+/// generous headroom while keeping the per-scope retained snapshot bounded.
+const MAX_WORKSPACE_LAYOUT_LEN: usize = 64 * 1024;
 const MAX_BOUND_SIZE: f64 = 1_000_000.0;
 
 /// A bounded per-process LRU of dashboard-state snapshots. The cap is declared
@@ -497,6 +501,21 @@ fn validate_panel_state(
             StatusCode::BAD_REQUEST,
             "panel_state.right_tab must be one of status, changes, search".to_string(),
         ));
+    }
+    // Bound the opaque workspace-layout blob at the field (bounded-by-default):
+    // it is retained per scope in the in-memory slot, so cap it here rather than
+    // relying on the incidental request-body limit.
+    if let Some(layout) = &panel_state.workspace_layout {
+        if layout.len() > MAX_WORKSPACE_LAYOUT_LEN {
+            return Err(super::api_error(
+                state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "panel_state.workspace_layout is {} bytes; maximum is {MAX_WORKSPACE_LAYOUT_LEN}",
+                    layout.len()
+                ),
+            ));
+        }
     }
     Ok(())
 }

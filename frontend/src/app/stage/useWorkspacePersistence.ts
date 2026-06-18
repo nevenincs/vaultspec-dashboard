@@ -18,7 +18,10 @@
 import { useEffect, useRef } from "react";
 
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
-import { useDashboardShellChromeView } from "../../stores/server/queries";
+import {
+  useDashboardShellChromeView,
+  useDashboardState,
+} from "../../stores/server/queries";
 import {
   restoreDocTabsIfEmpty,
   useDockWorkspaceTabsView,
@@ -77,21 +80,28 @@ export function parseWorkspaceTabs(
 export function useWorkspacePersistence(scope: string | null): void {
   const shellChrome = useDashboardShellChromeView(scope);
   const persistedBlob = shellChrome.panelState.workspace_layout ?? null;
+  // The dashboard-state query's SETTLED signal: the panel-state blob is only
+  // meaningful once the query has resolved. Before that, `persistedBlob` is null
+  // because the fallback panel-state carries no layout — restoring (or marking
+  // restored) off that transient null would discard the saved layout (HIGH-1).
+  const stateSettled = useDashboardState(scope).isSuccess;
   const mutations = useDashboardStateMutations(scope);
   const tabs = useDockWorkspaceTabsView();
 
-  // Restore once per scope, when this scope's persisted layout is first available.
+  // Restore once per scope, when this scope's persisted layout is first available
+  // — gated on the query being SETTLED so a late-arriving blob is never missed.
   // Only seeds when the tab slice is empty (a fresh load / post-scope-swap), so a
   // restore never clobbers documents the user already opened this session.
   const restoredScopeRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (restoredScopeRef.current === scope) return;
     if (!scope) return;
+    if (!stateSettled) return;
     restoredScopeRef.current = scope;
     const restored = parseWorkspaceTabs(persistedBlob);
     if (!restored) return;
     restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
-  }, [scope, persistedBlob]);
+  }, [scope, stateSettled, persistedBlob]);
 
   // Persist the tab set + active tab, coalesced. Skipped until this scope has been
   // restored (so the initial empty state never overwrites a saved layout before

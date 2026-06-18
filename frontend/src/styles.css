@@ -940,7 +940,8 @@
   --dv-tab-border-radius: 6px;
   --dv-border-radius: 6px;
 
-  /* Floating groups - raised surface + soft depth (no bespoke shadow color). */
+  /* Floating groups - raised surface + the shared overlay elevation token (binds
+     to the tier, flips per theme) rather than a bespoke literal shadow. */
   --dv-floating-titlebar-background-color: var(--color-paper-sunken);
-  --dv-floating-box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  --dv-floating-box-shadow: var(--shadow-fg-overlay);
 }
