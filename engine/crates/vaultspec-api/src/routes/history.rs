@@ -60,11 +60,18 @@ pub struct HistoryParams {
     /// through the shared `validate_scope` path so a bad scope 400s honestly
     /// with the tiers block attached.
     pub scope: String,
-    /// How many recent commits to serve. Absent uses [`DEFAULT_HISTORY_LIMIT`];
-    /// a value above [`MAX_HISTORY_LIMIT`] is clamped to the ceiling (and the
-    /// clamp is reported in the `truncated` block).
+    /// How many recent commits to serve per page. Absent uses
+    /// [`DEFAULT_HISTORY_LIMIT`]; a value above [`MAX_HISTORY_LIMIT`] is clamped
+    /// to the ceiling (and the clamp is reported in the `truncated` block).
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Opaque pagination cursor for the rail's "show more": the offset into the
+    /// bounded recent-commit window to start from. Absent starts at 0. The
+    /// response echoes a `next_cursor` while more commits remain within the
+    /// cached window ([`MAX_HISTORY_LIMIT`]); its absence means the bounded
+    /// window is exhausted. A non-numeric cursor is treated as 0 (start).
+    #[serde(default)]
+    pub cursor: Option<String>,
 }
 
 /// `GET /history?scope=&limit=N` — the last N commits as
@@ -82,6 +89,15 @@ pub async fn history(
     // unbounded walk and a clamped request is reported honestly.
     let requested = params.limit.unwrap_or(DEFAULT_HISTORY_LIMIT);
     let limit = requested.min(MAX_HISTORY_LIMIT);
+    // Pagination offset (the rail's "show more"): parse the opaque cursor as the
+    // window offset, clamped to the cache ceiling so it can never index past the
+    // bounded window. A non-numeric cursor starts at 0.
+    let offset = params
+        .cursor
+        .as_deref()
+        .and_then(|c| c.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(MAX_HISTORY_LIMIT);
 
     // The HEAD commit walk is a LIVE git read, so it is memoized per generation on
     // the cell (cache-until-invalidated): `/history` no longer walks the object DB
@@ -105,6 +121,7 @@ pub async fn history(
     let graph = cell.graph_arc();
     let rows: Vec<Value> = recent
         .iter()
+        .skip(offset)
         .take(limit)
         .map(|c| {
             let node_ids = correlate_node_ids(c, &graph);
@@ -134,13 +151,24 @@ pub async fn history(
         None
     };
 
+    // Pagination cursor for "show more": there is another page while the window
+    // beyond this slice still holds commits (bounded by the cached ceiling). When
+    // the slice reaches the end of the cached window, `next_cursor` is absent —
+    // an honest "no more in the bounded recent window".
+    let next_offset = offset + rows.len();
+    let next_cursor = if rows.len() == limit && next_offset < recent.len() {
+        Some(next_offset.to_string())
+    } else {
+        None
+    };
+
     Ok(super::envelope(
         json!({
             "commits": rows,
             "truncated": truncated,
         }),
         super::query_tiers(&cell),
-        None,
+        next_cursor,
     ))
 }
 
