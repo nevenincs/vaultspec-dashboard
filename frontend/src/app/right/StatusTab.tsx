@@ -477,20 +477,10 @@ function OpenIssuesBody({ scope }: { scope: string | null }) {
 // Recent commits — expandable rows revealing the full message body + show-more.
 // ---------------------------------------------------------------------------
 
-function relativeAge(ts: number, now: number): string {
-  if (!Number.isFinite(ts) || ts <= 0) return "";
-  const age = now - ts;
-  if (age < 60_000) return "just now";
-  if (age < 3_600_000) return `${Math.floor(age / 60_000)}m`;
-  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)}h`;
-  return `${Math.floor(age / 86_400_000)}d`;
-}
-
 function RecentCommitsBody({ scope }: { scope: string | null }) {
   const [limit, setLimit] = useState(HISTORY_PAGE);
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const view = useHistoryView(scope, limit);
-  const now = Date.now();
 
   if (view.degraded || view.errored) {
     return (
@@ -510,7 +500,7 @@ function RecentCommitsBody({ scope }: { scope: string | null }) {
       </p>
     );
   }
-  if (view.commits.length === 0) {
+  if (view.recentCommitRows.length === 0) {
     return (
       <p className="text-label text-ink-faint" data-recent-commits-state="empty">
         no commits yet on this branch.
@@ -526,29 +516,24 @@ function RecentCommitsBody({ scope }: { scope: string | null }) {
       return next;
     });
 
-  // "Show more" while the page came back full (likely more within the bounded
-  // window) and we are under the engine's ceiling.
-  const canShowMore = view.commits.length >= limit && limit < 200;
-
   return (
     <div className="space-y-fg-0-5" data-recent-commits-list>
       <ul className="space-y-fg-0-5" role="list">
-        {view.commits.map((commit) => {
+        {view.recentCommitRows.map((row) => {
+          const { commit } = row;
           const expanded = open.has(commit.hash);
           const Chevron = expanded ? ChevronDown : ChevronRight;
-          const touched = commit.node_ids.filter((id) => !id.startsWith("commit:"));
-          const hasBody = commit.body.trim().length > 0;
           return (
             <li key={commit.hash} data-recent-commit data-hash={commit.hash}>
               <div className="flex items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-1">
                 <button
                   type="button"
                   onClick={() => toggle(commit.hash)}
-                  disabled={!hasBody}
+                  disabled={!row.hasBody}
                   aria-expanded={expanded}
                   aria-label={`${expanded ? "collapse" : "expand"} message for ${commit.short_hash}`}
                   className={`flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                    hasBody ? "" : "opacity-40"
+                    row.hasBody ? "" : "opacity-40"
                   }`}
                   data-commit-toggle
                 >
@@ -557,14 +542,14 @@ function RecentCommitsBody({ scope }: { scope: string | null }) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (touched.length > 0)
+                    if (row.selectable)
                       void selectEventNodes(
-                        `commit:${commit.hash}`,
-                        touched,
+                        row.eventId,
+                        row.touchedNodeIds,
                         scope,
                       ).catch(() => undefined);
                   }}
-                  disabled={touched.length === 0}
+                  disabled={!row.selectable}
                   className="flex min-w-0 flex-1 items-center gap-fg-1-5 text-left focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                   aria-label={`commit ${commit.short_hash}: ${commit.subject}`}
                 >
@@ -582,11 +567,11 @@ function RecentCommitsBody({ scope }: { scope: string | null }) {
                     {commit.subject || "(no subject)"}
                   </span>
                   <span className="shrink-0 text-meta text-ink-faint" data-tabular>
-                    {relativeAge(commit.ts, now)}
+                    {row.ageLabel}
                   </span>
                 </button>
               </div>
-              {expanded && hasBody && (
+              {expanded && row.hasBody && (
                 <div
                   className="ml-fg-5 mt-fg-0-5 whitespace-pre-wrap rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label text-ink-muted"
                   data-commit-body
@@ -598,7 +583,7 @@ function RecentCommitsBody({ scope }: { scope: string | null }) {
           );
         })}
       </ul>
-      {canShowMore && (
+      {view.canShowMore && (
         <button
           type="button"
           onClick={() => setLimit((l) => l + HISTORY_PAGE)}
@@ -618,16 +603,24 @@ function RecentCommitsBody({ scope }: { scope: string | null }) {
 
 export function StatusTab() {
   const scope = useActiveScope();
+  // Section-header counts mirror the binding board ("OPEN PLANS — N"). They read
+  // the same interpreted views the bodies consume; TanStack dedupes the shared
+  // query keys, so a count and its body never double-fetch.
+  const timeline = useDashboardTimelineModeView(scope);
+  const plansView = usePipelineStatusView(scope, timeline.asOf);
+  const openPrs = usePRsView(scope, "open");
+  const openIssues = useIssuesView(scope, "open");
+  const count = (n: number) => (n > 0 ? n : undefined);
   return (
     <div className="space-y-fg-2 text-body" data-status-tab>
       <LocationStrip scope={scope} />
-      <SectionCard title="Open plans">
+      <SectionCard title="Open plans" count={count(plansView.plans.length)}>
         <OpenPlansBody scope={scope} />
       </SectionCard>
-      <SectionCard title="Open PRs">
+      <SectionCard title="Open PRs" count={count(openPrs.prs.length)}>
         <OpenPrsBody scope={scope} />
       </SectionCard>
-      <SectionCard title="Open issues">
+      <SectionCard title="Open issues" count={count(openIssues.issues.length)}>
         <OpenIssuesBody scope={scope} />
       </SectionCard>
       <SectionCard title="Recent PRs">
