@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
+import { parseWorkspaceTabs } from "../view/tabs";
+import type { OpenDoc } from "../view/viewStore";
 import { useViewStore } from "../view/viewStore";
 import type { SessionState } from "./engine";
 import {
@@ -72,6 +74,11 @@ export interface SessionContextSeed {
   scope: string | null;
   folder: string | null;
   featureTags: string[];
+  /** The restored dock workspace tabs (editor-dock-workspace), parsed from the
+   *  durable session `scope_context.workspace_layout`; empty when none saved. */
+  openDocs: OpenDoc[];
+  /** The restored active tab id, or null. */
+  activeDocId: string | null;
 }
 
 export interface ScopeContextMirrorInput {
@@ -88,7 +95,7 @@ export function deriveAcceptedScopeContextMirror({
   writeScope,
   activeScope,
   session,
-}: ScopeContextMirrorInput): Omit<SessionContextSeed, "workspace" | "scope"> | null {
+}: ScopeContextMirrorInput): Pick<SessionContextSeed, "folder" | "featureTags"> | null {
   if (writeSeq !== currentSeq) return null;
   if (writeScope !== null && activeScope !== writeScope) return null;
   if (writeScope !== null && session.active_scope !== writeScope) return null;
@@ -104,11 +111,16 @@ export function restoredSessionContextSeed(
 ): SessionContextSeed | null {
   if (pickedScope) return null;
   if (!session) return null;
+  const restoredTabs = parseWorkspaceTabs(
+    session.scope_context.workspace_layout ?? null,
+  );
   return {
     workspace: session.active_workspace ?? session.workspace,
     scope: session.active_scope || null,
     folder: session.scope_context.folder,
     featureTags: session.scope_context.feature_tags,
+    openDocs: restoredTabs?.openDocs ?? [],
+    activeDocId: restoredTabs?.activeDocId ?? null,
   };
 }
 

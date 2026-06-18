@@ -28,7 +28,6 @@ import {
 } from "../../stores/server/sessionContext";
 import {
   parseWorkspaceTabs,
-  restoreDocTabsIfEmpty,
   serializeWorkspaceTabs,
   useDockWorkspaceTabsView,
 } from "../../stores/view/tabs";
@@ -67,56 +66,31 @@ export function useWorkspacePersistence(scope: string | null): void {
   const persistLayoutRef = useRef(persistLayout);
   persistLayoutRef.current = persistLayout;
   // Track the current durable blob for the persist effect (which does not depend
-  // on it) so it can guard against clobbering a saved layout before restore.
+  // on it) so it can guard against clobbering a saved layout before the seed lands.
   const persistedBlobRef = useRef(persistedBlob);
   persistedBlobRef.current = persistedBlob;
   const tabs = useDockWorkspaceTabsView();
 
-  // Restore: re-attempt whenever the SETTLED blob value changes, keyed on the blob
-  // itself rather than once-per-scope. The dashboard-state query can first resolve
-  // with the fallback panel-state (no layout) and update to the real blob a render
-  // later; a once-per-scope gate marks the scope restored on that empty first pass
-  // and then misses the real blob (the live-verified restore miss). `restoreDoc
-  // TabsIfEmpty` only seeds when the slice is empty, so a blob change AFTER the
-  // user has opened tabs (the persist echo) or after they closed them all is a
-  // safe no-op. `initializedScopeRef` records that restore has had a settled pass
-  // for the scope, which gates the persist below.
-  const initializedScopeRef = useRef<string | null | undefined>(undefined);
-  const lastRestoredBlobRef = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    if (!scope) return;
-    if (!stateSettled) return;
-    initializedScopeRef.current = scope;
-    if (persistedBlob === lastRestoredBlobRef.current) return;
-    lastRestoredBlobRef.current = persistedBlob;
-    const restored = parseWorkspaceTabs(persistedBlob);
-    if (restored && restored.openDocs.length > 0) {
-      restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
-    }
-  }, [scope, stateSettled, persistedBlob]);
-
-  // Persist the tab set + active tab, coalesced. Skipped until this scope's restore
-  // has had a settled pass (so the initial empty state never overwrites a saved
-  // layout before the restore runs), and when the serialized value is unchanged
-  // for the same scope.
+  // RESTORE is not done here: it happens ATOMICALLY in `seedFromSession` (the
+  // one-shot session seed in the stores layer), so the tab restore cannot race the
+  // scope settle. This hook only PERSISTS the open-tab set + active tab, coalesced.
+  //
+  // Guard: a load-time empty store must never clobber a durably-saved non-empty
+  // layout before the seed restores it. We persist an EMPTY layout only once this
+  // hook has actually SEEN tabs this session (`sawTabsRef`) — i.e. a genuine user
+  // "closed all", not the pre-seed empty. (If the durable blob is itself empty
+  // there is nothing to protect, so the first empty persists harmlessly.)
+  const sawTabsRef = useRef(false);
+  if (tabs.openDocs.length > 0) sawTabsRef.current = true;
   const lastPersistedRef = useRef<LastPersistedWorkspaceLayout | null>(null);
   useEffect(() => {
     if (!scope) return;
-    if (initializedScopeRef.current !== scope) return;
+    if (!stateSettled) return;
     const next = serializeWorkspaceTabs(tabs.openDocs, tabs.activeDocId);
-    // Never let a transient load-time empty clobber a durably-saved non-empty
-    // layout before the restore has seeded it: skip an EMPTY persist while the
-    // durable blob still carries tabs the restore has not yet processed.
-    // `lastRestoredBlobRef` equals the durable blob only once restore has handled
-    // it; after that an empty store is a genuine user "closed all", which persists.
-    const durableBlob = persistedBlobRef.current;
-    if (
-      (parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0 &&
-      (parseWorkspaceTabs(durableBlob)?.openDocs.length ?? 0) > 0 &&
-      lastRestoredBlobRef.current !== durableBlob
-    ) {
-      return;
-    }
+    const nextEmpty = (parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0;
+    const durableHasTabs =
+      (parseWorkspaceTabs(persistedBlobRef.current)?.openDocs.length ?? 0) > 0;
+    if (nextEmpty && durableHasTabs && !sawTabsRef.current) return;
     if (isSamePersistedWorkspaceLayout(lastPersistedRef.current, scope, next)) {
       return;
     }
@@ -127,5 +101,5 @@ export function useWorkspacePersistence(scope: string | null): void {
       persistLayoutRef.current(scope, next);
     }, PERSIST_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [scope, tabs.openDocs, tabs.activeDocId]);
+  }, [scope, stateSettled, tabs.openDocs, tabs.activeDocId]);
 }

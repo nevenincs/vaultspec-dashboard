@@ -6,14 +6,18 @@ import { resetBrowserMode } from "./browserMode";
 import { resetBrowserTreeExpansion } from "./browserTreeExpansion";
 import { resetCommandPalette } from "./commandPalette";
 import { resetContextMenu } from "./contextMenu";
+import { resetDiscoveryPanel } from "./discoveries";
 import { resetFilterSidebar } from "./filterSidebar";
+import { resetGraphControlsChrome } from "./graphControlsChrome";
 import { resetInspectorExpansion } from "./inspectorExpansion";
 import { resetKeyboardShortcuts } from "./keyboardShortcuts";
 import { useLensStore } from "./lenses";
+import { resetMinimapChrome } from "./minimapChrome";
 import { usePinStore } from "./pins";
 import { resetPipelineExpansion } from "./pipelineExpansion";
 import { resetSearchIntent } from "./searchIntent";
 import { resetTimelineViewState } from "./timeline";
+import { resetWorktreePickerChrome } from "./worktreePickerChrome";
 
 // View state for local chrome and session-only affordances. Cross-surface
 // dashboard intent lives in backend dashboard-state and is read through TanStack
@@ -207,9 +211,18 @@ export interface ViewState {
    * persistence is the session API's job, not this setter's.
    */
   seedFromSession: (context: {
+    workspace: string;
     scope: string | null;
     folder: string | null;
     featureTags: string[];
+    /** The restored dock workspace tabs (editor-dock-workspace), parsed from the
+     *  durable session `workspace_layout`. Seeded ATOMICALLY with the scope/folder
+     *  here — the one-shot session seed — so the tab restore cannot race the scope
+     *  settle (a separate restore effect could seed and then be cleared by the
+     *  scope-swap reset). Only seeds when the slice is empty. */
+    openDocs?: OpenDoc[];
+    /** The restored active tab id, applied with `openDocs`. */
+    activeDocId?: string | null;
   }) => void;
   /**
    * Set the active folder + feature-tag contexts (W04.P09.S30). Mirrors the
@@ -375,8 +388,12 @@ function resetCorpusLocalStores(): void {
   resetSearchIntent();
   resetCommandPalette();
   resetContextMenu();
+  resetDiscoveryPanel();
   resetFilterSidebar();
+  resetGraphControlsChrome();
   resetKeyboardShortcuts();
+  resetMinimapChrome();
+  resetWorktreePickerChrome();
 }
 
 function corpusLocalViewState(scope: string | null) {
@@ -445,11 +462,30 @@ export const useViewStore = create<ViewState>((set) => ({
     resetCorpusLocalStores();
     set(corpusLocalViewState(scope));
   },
-  seedFromSession: ({ scope, folder, featureTags }) => {
+  seedFromSession: ({
+    workspace,
+    scope,
+    folder,
+    featureTags,
+    openDocs,
+    activeDocId,
+  }) => {
     // Restore is not a user-initiated wholesale swap, but scoped client stores
-    // still need the restored key before visual consumers read pin/lens state.
-    rekeyScopedClientStores(scope);
-    set({ scope, activeFolder: folder, featureContexts: featureTags });
+    // still need the restored workspace+scope key before visual consumers read
+    // pin/lens state.
+    rekeyScopedClientStores(scope, workspace);
+    // Restore the dock workspace tabs ATOMICALLY with the scope seed (this is the
+    // one-shot session seed), so the tab restore cannot race the scope settle. Only
+    // seed when the slice is empty — a restore must never clobber tabs the user has
+    // already opened this session.
+    set((state) => ({
+      scope,
+      activeFolder: folder,
+      featureContexts: featureTags,
+      ...(openDocs && openDocs.length > 0 && state.openDocs.length === 0
+        ? { openDocs: [...openDocs], activeDocId: activeDocId ?? null }
+        : {}),
+    }));
   },
   setScopeContext: ({ folder, featureTags }) =>
     set({ activeFolder: folder, featureContexts: featureTags }),
