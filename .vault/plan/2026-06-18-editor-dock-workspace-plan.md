@@ -113,19 +113,19 @@ Add dockview as a frontend dependency and bind its --dv-* surface to the OKLCH t
 
 Mount the Pixi canvas once in a stable app-lifetime container and track a dockview placeholder rect, proving the WebGL context and SceneController survive docking and re-parenting.
 
-- [ ] `P02.S03` - Extract the Pixi canvas into a stable app-lifetime container decoupled from its current Stage DOM parent; `frontend/src/app/stage/Stage.tsx`.
-- [ ] `P02.S04` - Add a rect-tracking controller using getBoundingClientRect, ResizeObserver, and panel dimension events to position the fixed canvas overlay; `frontend/src/app/stage/canvasPin.ts`.
-- [ ] `P02.S05` - Build the graph dockview panel that renders only a transparent rect-reporting placeholder; `frontend/src/app/stage/GraphPanel.tsx`.
+- [x] `P02.S03` - Extract the Pixi canvas into a stable app-lifetime container decoupled from its current Stage DOM parent; `frontend/src/app/stage/Stage.tsx`.
+- [x] `P02.S04` - Add a rect-tracking controller using getBoundingClientRect, ResizeObserver, and panel dimension events to position the fixed canvas overlay; `frontend/src/app/stage/canvasPin.ts`.
+- [x] `P02.S05` - Build the graph dockview panel that renders only a transparent rect-reporting placeholder; `frontend/src/app/stage/GraphPanel.tsx`.
 - [ ] `P02.S06` - Verify the WebGL context and SceneController survive a dock, move, and float without re-parenting the canvas; `frontend/src/app/stage/canvasPin.test.ts`.
 
 ### Phase `P03` - Bounded tab model in the stores layer
 
 Replace the single viewerTarget with a bounded open-document slice carrying provisional/permanent semantics, a cap, and LRU eviction, owning which content query each panel drives.
 
-- [ ] `P03.S07` - Add the bounded open-document slice with openDocs, activeDocId, and provisionalDocId plus a cap and LRU eviction; `frontend/src/stores/view/viewStore.ts`.
-- [ ] `P03.S08` - Implement provisional open replace-in-place and permanent promotion on double-click, edit, or drag as named seam operations; `frontend/src/stores/view/tabs.ts`.
+- [x] `P03.S07` - Add the bounded open-document slice with openDocs, activeDocId, and provisionalDocId plus a cap and LRU eviction; `frontend/src/stores/view/viewStore.ts`.
+- [x] `P03.S08` - Implement provisional open replace-in-place and permanent promotion on double-click, edit, or drag as named seam operations; `frontend/src/stores/view/tabs.ts`.
 - [ ] `P03.S09` - Retire the single viewerTarget path and migrate its readers to the tab slice; `frontend/src/stores/view/viewer.ts`.
-- [ ] `P03.S10` - Add unit tests for the bounded slice covering cap, LRU, provisional replace, promotion, and scope-swap reset; `frontend/src/stores/view/tabs.test.ts`.
+- [x] `P03.S10` - Add unit tests for the bounded slice covering cap, LRU, provisional replace, promotion, and scope-swap reset; `frontend/src/stores/view/tabs.test.ts`.
 
 ### Phase `P04` - Dock workspace host and open intents
 

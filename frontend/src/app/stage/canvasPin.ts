@@ -78,14 +78,26 @@ export function setGraphVisible(visible: boolean): void {
   emit();
 }
 
+// The workspace container element — the positioned DockWorkspace root that both
+// the canvas host and the dockview panels descend from. Rects are published
+// RELATIVE to it so the absolutely-positioned canvas host can place itself with
+// plain left/top. Registered by the workspace so the graph panel placeholder
+// need not thread the ref through dockview's panel boundary.
+let workspaceContainer: HTMLElement | null = null;
+
+export function setWorkspaceContainer(el: HTMLElement | null): void {
+  workspaceContainer = el;
+}
+
 /**
- * Track `el`'s rect relative to `container`, publishing it to the pin. Wires a
- * ResizeObserver on both elements plus window resize/scroll, and runs a bounded
- * settle loop on every trigger so dockview moves that shift the panel WITHOUT
- * resizing it (a sibling sash drag, an animated split) are still followed to a
- * pixel. Returns a cleanup that tears everything down.
+ * Track `el`'s rect relative to the registered workspace container, publishing
+ * it to the pin. Wires a ResizeObserver on the element plus window resize/scroll,
+ * and runs a bounded settle loop on every trigger so dockview moves that shift
+ * the panel WITHOUT resizing it (a sibling sash drag, an animated split) are
+ * still followed to a pixel. Returns a cleanup that tears everything down.
  */
-export function trackGraphRect(el: HTMLElement, container: HTMLElement): () => void {
+export function trackGraphRect(el: HTMLElement): () => void {
+  const container = workspaceContainer ?? (el.offsetParent as HTMLElement) ?? el;
   let frame = 0;
   let stableFrames = 0;
   let stopped = false;
@@ -155,31 +167,4 @@ let activePoke: (() => void) | null = null;
 /** Re-measure the graph rect now (called from the workspace layout-change hook). */
 export function pokeGraphRect(): void {
   activePoke?.();
-}
-
-// The app-lifetime canvas host element. Shared so the graph chrome (`Stage`,
-// rendered in the graph panel) can bind the keyboard graph-walk to the SAME
-// focusable element the canvas lives in — pointer (Pixi) and keyboard both own
-// the canvas host, while the panel placeholder is a pointer-transparent rect
-// source. Pinned here (not in React context) because the canvas host and the
-// chrome live in different React subtrees (one outside dockview, one inside a
-// dockview-managed panel).
-let canvasHostEl: HTMLElement | null = null;
-const hostElListeners = new Set<() => void>();
-
-export function setCanvasHostEl(el: HTMLElement | null): void {
-  if (canvasHostEl === el) return;
-  canvasHostEl = el;
-  for (const listener of hostElListeners) listener();
-}
-
-export function getCanvasHostEl(): HTMLElement | null {
-  return canvasHostEl;
-}
-
-export function subscribeCanvasHostEl(listener: () => void): () => void {
-  hostElListeners.add(listener);
-  return () => {
-    hostElListeners.delete(listener);
-  };
 }

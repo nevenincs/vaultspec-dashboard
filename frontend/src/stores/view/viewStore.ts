@@ -1,21 +1,23 @@
 import { create } from "zustand";
 
 import type { EngineEdge } from "../server/engine";
-import type { RepresentationMode } from "../../scene/field/representationLayout";
-import { DEFAULT_REPRESENTATION_MODE } from "../../scene/field/representationLayout";
-import { useLiveStatusStore } from "../server/liveStatus";
+import { resetLiveStatus } from "../server/liveStatus";
 import { resetBrowserMode } from "./browserMode";
-import { useFilterStore } from "./filters";
+import { resetBrowserTreeExpansion } from "./browserTreeExpansion";
+import { resetCommandPalette } from "./commandPalette";
+import { resetContextMenu } from "./contextMenu";
+import { resetFilterSidebar } from "./filterSidebar";
+import { resetInspectorExpansion } from "./inspectorExpansion";
+import { resetKeyboardShortcuts } from "./keyboardShortcuts";
 import { useLensStore } from "./lenses";
 import { usePinStore } from "./pins";
+import { resetPipelineExpansion } from "./pipelineExpansion";
+import { resetSearchIntent } from "./searchIntent";
+import { resetTimelineViewState } from "./timeline";
 
-// View state (gui-spec §5.2): selection, working set, filters/lens,
-// timeline mode, panel layout. This store is the shared brain that keeps
-// browser / stage / timeline / inspector in sync — "selection is one
-// concept" (decisions G2.b) lives here. Server state belongs to TanStack
+// View state for local chrome and session-only affordances. Cross-surface
+// dashboard intent lives in backend dashboard-state and is read through TanStack
 // Query; per-frame scene state belongs to the scene layer, never here.
-
-export type TimelineMode = { kind: "live" } | { kind: "time-travel"; at: number };
 
 /**
  * Which viewer surface a node opens in (review-rail-viewers ADR). A `doc:<stem>`
@@ -38,6 +40,25 @@ export interface ViewerTarget {
   nodeId: string;
   /** Which viewer surface renders it. */
   surface: ViewerSurface;
+}
+
+/**
+ * One open document tab in the dock workspace (editor-dock-workspace). The panel
+ * id in dockview IS the `nodeId`, so the geometry dockview owns and this slice
+ * reconcile by id. `provisional` marks the VS Code preview tab: a single-click
+ * open shows a provisional tab (rendered distinct, e.g. italic) that the NEXT
+ * provisional open REPLACES in place; a double-click, an edit, or a drag PROMOTES
+ * it (clears `provisional`) so it persists beside others. At most ONE doc is
+ * provisional at a time. `surface` routes the panel to the markdown reader/editor
+ * (`markdown`) or the read-only code viewer (`code`).
+ */
+export interface OpenDoc {
+  /** The stable node id (`doc:<stem>` / `code:<path>`); also the dockview panel id. */
+  nodeId: string;
+  /** Which viewer surface the panel renders. */
+  surface: ViewerSurface;
+  /** Whether this is the single provisional (preview) tab. */
+  provisional: boolean;
 }
 
 /**
@@ -70,22 +91,8 @@ export interface EditorTarget {
   nodeId: string;
 }
 
-export interface TierFilter {
-  declared: boolean;
-  structural: boolean;
-  temporal: boolean;
-  semantic: boolean;
-  /** Per-tier minimum confidence, 0..1 floats on the wire (contract R3). */
-  minConfidence: Partial<Record<"temporal" | "semantic", number>>;
-}
-
-/**
- * The single shared selection (G2.b): one concept across browser, stage,
- * timeline, and inspector — selecting anywhere focuses everywhere. Event
- * selections carry their node ids so the stage can cross-highlight.
- */
+/** Local non-node selection metadata. Node selection lives in dashboard-state. */
 export type Selection =
-  | { kind: "node"; id: string }
   | { kind: "edge"; id: string }
   | {
       kind: "event";
@@ -96,6 +103,23 @@ export type Selection =
       truncatedNodeIds?: number;
     }
   | null;
+
+export interface GraphOverlayState {
+  featureCountries: boolean;
+  featureHulls: boolean;
+}
+
+export const DEFAULT_GRAPH_OVERLAYS: GraphOverlayState = {
+  featureCountries: true,
+  featureHulls: true,
+};
+
+function graphOverlays(overlays: GraphOverlayState): GraphOverlayState {
+  return {
+    featureCountries: overlays.featureCountries,
+    featureHulls: overlays.featureHulls,
+  };
+}
 
 export interface ViewState {
   /**
@@ -118,19 +142,8 @@ export interface ViewState {
    * session's `scope_context.feature_tags` on load.
    */
   featureContexts: string[];
-  /** The shared selection; `selectedId` mirrors its id for convenience. */
+  /** Event/edge selection metadata that is not yet represented in dashboard-state. */
   selection: Selection;
-  selectedId: string | null;
-  /**
-   * The transiently-hovered node id (node-visual-richness P04): the third LOD
-   * rung between the far glyph and the heavyweight opened island — it drives the
-   * hover-bloom card. This is a DISTINCT concept from `selection` (the focus/pin)
-   * and `openedIds` (the opened interior): hovering one node never selects or
-   * opens it, so the three intents stay cleanly separate. Null when nothing is
-   * hovered. The dwell delay before the card shows, and the suppression when the
-   * id is already opened, live at the host — this slice carries the raw truth.
-   */
-  hoveredId: string | null;
   /** The stage's explicit working set — "why is this node on my screen?" */
   workingSet: string[];
   /** Nodes opened in place — rendered as DOM islands above the field (G6.a). */
@@ -143,6 +156,18 @@ export interface ViewState {
    * scope/workspace swap so a stale viewer does not survive a corpus change.
    */
   viewerTarget: ViewerTarget | null;
+  /**
+   * The open document tabs in the dock workspace (editor-dock-workspace). An
+   * ordered, BOUNDED list — capped at `MAX_OPEN_DOCS` with LRU eviction of the
+   * oldest non-active permanent tab (mirroring `OPENED_IDS_CAP`) — because each
+   * tab mounts a `useContentView` observer holding up to `MAX_CONTENT_BYTES`, so
+   * an uncapped tab set is the unbounded accumulator bounded-by-default forbids.
+   * Scoped to the corpus: cleared on a scope/workspace swap. At most one entry
+   * has `provisional: true`.
+   */
+  openDocs: OpenDoc[];
+  /** The active (focused) document tab's node id, or null when none is open. */
+  activeDocId: string | null;
   /**
    * The single open editor target (document-editor backend): the `doc:<stem>`
    * node the editor is mutating, or null when nothing is open for editing. ONE
@@ -174,53 +199,12 @@ export interface ViewState {
    * session only; nothing is written anywhere.
    */
   pinnedDiscoveries: EngineEdge[];
-  /** The tier dial — the signature filter control (gui-spec §3.5). */
-  tierFilter: TierFilter;
-  timelineMode: TimelineMode;
-  leftRailCollapsed: boolean;
-  rightRailCollapsed: boolean;
-  /**
-   * Graph query granularity (contract §4): "feature" renders the
-   * constellation (~12 feature-convergence nodes, the Obsidian overview);
-   * "document" renders the full document graph (~200 nodes). Resets to
-   * "feature" on every scope swap so a new scope always starts at the
-   * overview — loading 200 nodes for an unknown corpus is unexpected.
-   */
-  granularity: "document" | "feature";
-  /**
-   * The feature a constellation descent is focused on, or null at the overview.
-   * Opening a feature-convergence node DESCENDS into that feature: granularity
-   * flips to "document" and the graph query is bounded to the feature's member
-   * documents (`filter.feature_tags=[focusedFeature]`) — the designed bounded
-   * descent (graph-queries-are-bounded-by-default), which also keeps the
-   * document slice small instead of serving the whole corpus. Cleared by any
-   * manual granularity toggle (a fresh view choice) and by every scope swap.
-   */
-  focusedFeature: string | null;
-  /**
-   * The active REPRESENTATION mode (graph-representation ADR): connectivity
-   * (default) | lineage | semantic. Owned here as view state and emitted to the
-   * scene as a `set-representation-mode` command; the scene re-lays-out. DISTINCT
-   * from the force/circular layout tuning (a scene-only render knob) and from the
-   * salience lens (a wire concern). Does NOT reset on scope swap — a chosen mode
-   * is a viewer preference, not corpus state.
-   */
-  activeRepresentationMode: RepresentationMode;
   /**
    * Overlay visibility (graph-representation ADR): feature-country labels at
    * overview and BubbleSets hulls at document LOD. Owned here, emitted as
    * `set-overlays`.
    */
-  overlays: { featureCountries: boolean; featureHulls: boolean };
-  /**
-   * The canvas/sim CONTAINMENT (node-graph-rework ADR D3): the bound shape the
-   * field enforces on node positions - "circle" (default) | "free" | "rect" - and
-   * its size (radius for circle, half-extent for rect; 0 = auto-fit non-overlapping).
-   * A viewer preference like the representation mode and overlays: owned here,
-   * emitted to the scene as a `set-bounds` command, and NOT reset on scope swap.
-   */
-  boundShape: "free" | "circle" | "rect";
-  boundSize: number;
+  overlays: GraphOverlayState;
 
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
   setScope: (scope: string | null) => void;
@@ -252,20 +236,12 @@ export interface ViewState {
   }) => void;
   /**
    * Set the active folder + feature-tag contexts (W04.P09.S30). Mirrors the
-   * selection into the view store for synchronous reads; the durable write goes
+   * context into the view store for synchronous reads; the durable write goes
    * through the session API at the call site (a stores mutation), never
    * localStorage.
    */
   setScopeContext: (context: { folder: string | null; featureTags: string[] }) => void;
-  /** Select a node by id (the common path); null clears. */
-  select: (id: string | null) => void;
-  /**
-   * Set the transiently-hovered node id (node-visual-richness P04); null clears.
-   * A no-op write (same id) is short-circuited so a stream of identical hover
-   * events does not churn subscribers.
-   */
-  setHoveredId: (id: string | null) => void;
-  /** Select any entity kind (edge, event with node ids, …). */
+  /** Select event/edge metadata that is not just a node id. */
   selectEntity: (selection: Selection) => void;
   openNode: (id: string) => void;
   closeNode: (id: string) => void;
@@ -279,6 +255,25 @@ export interface ViewState {
   openInViewer: (nodeId: string, surface: ViewerSurface) => void;
   /** Close the viewer surface (clears the open-in-viewer target). */
   closeViewer: () => void;
+  /**
+   * Open a document tab (editor-dock-workspace). `permanent: false` (default, a
+   * single-click/preview) opens or replaces the single provisional tab IN PLACE;
+   * `permanent: true` (a double-click/explicit open) opens a permanent tab, or
+   * promotes the doc if it is already the provisional one. Re-opening an
+   * already-open doc activates it (and promotes it when `permanent`). Bounded:
+   * adding beyond `MAX_OPEN_DOCS` evicts the oldest non-active permanent tab.
+   */
+  openDoc: (nodeId: string, surface: ViewerSurface, permanent?: boolean) => void;
+  /** Promote the provisional tab (or a given doc) to permanent (clears its
+   *  `provisional` flag) — on double-click, first edit, or a tab drag. */
+  promoteDoc: (nodeId: string) => void;
+  /** Make a tab the active one (a tab click or a dockview activation). */
+  activateDoc: (nodeId: string) => void;
+  /** Close a tab; if it was active, activate its nearest neighbour. */
+  closeDoc: (nodeId: string) => void;
+  /** Reorder the open docs to match dockview's geometry (after a tab drag),
+   *  reconciling by id; unknown ids are dropped and missing ones preserved. */
+  reorderDocs: (orderedIds: string[]) => void;
   /**
    * Open a document for editing (document-editor backend): seed the editor with
    * the target node id, the just-read body text as the initial draft, and that
@@ -307,26 +302,39 @@ export interface ViewState {
   closeEditor: () => void;
   pinDiscovery: (edge: EngineEdge) => void;
   unpinDiscovery: (edgeId: string) => void;
+  /**
+   * Reconcile view-local node affordances against the currently held graph model.
+   * These ids are visual subscriptions, not durable truth: when the canonical graph
+   * slice no longer carries a node, its event-selection ring, opened island,
+   * working-set expansion, or pinned candidate edge must not keep retaining
+   * observers.
+   */
+  pruneNodeAffordances: (nodeIds: readonly string[]) => void;
   addToWorkingSet: (id: string) => void;
   removeFromWorkingSet: (id: string) => void;
   clearWorkingSet: () => void;
-  setTierFilter: (filter: TierFilter) => void;
-  setTimelineMode: (mode: TimelineMode) => void;
-  toggleLeftRail: () => void;
-  toggleRightRail: () => void;
-  /** Switch between the feature-constellation overview and the full document
-   *  graph. A manual switch clears any feature descent (a fresh view choice). */
-  setGranularity: (granularity: "document" | "feature") => void;
-  /** Descend into a feature from the constellation: focus it and flip to the
-   *  bounded document view of its member documents. `tag` is the bare feature
-   *  tag (the `feature:` node-id prefix already stripped). */
-  descendIntoFeature: (tag: string) => void;
-  /** Switch the active representation mode (connectivity/lineage/semantic). */
-  setRepresentationMode: (mode: RepresentationMode) => void;
   /** Set overlay visibility (feature countries, feature hulls). */
-  setOverlays: (overlays: { featureCountries: boolean; featureHulls: boolean }) => void;
-  /** Set the canvas/sim containment shape + size (node-graph-rework ADR D3). */
-  setBound: (shape: "free" | "circle" | "rect", size: number) => void;
+  setOverlays: (overlays: GraphOverlayState) => void;
+
+  /** Whether the entire left rail bar is mounted in the shell layout. */
+  leftRailVisible: boolean;
+  /** Expanded left rail width in pixels; collapsed icon width is shell-owned. */
+  leftRailWidth: number;
+  /** Expanded right rail width in pixels. */
+  rightRailWidth: number;
+  /** Whether the bottom timeline region is mounted in the shell layout. */
+  timelineVisible: boolean;
+  /** Expanded timeline height in pixels. */
+  timelineHeight: number;
+  /** Whether the shell panel-controls flyout is open. */
+  panelFlyoutOpen: boolean;
+  setLeftRailVisible: (visible: boolean) => void;
+  setLeftRailWidth: (width: number) => void;
+  setRightRailWidth: (width: number) => void;
+  setTimelineVisible: (visible: boolean) => void;
+  setTimelineHeight: (height: number) => void;
+  setPanelFlyoutOpen: (open: boolean) => void;
+  togglePanelFlyout: () => void;
 }
 
 /** Cap the working set (P-MED-4): each entry materializes its own ego-network
@@ -345,104 +353,119 @@ export const PINNED_DISCOVERIES_CAP = 50;
  *  closes (LRU), mirroring WORKING_SET_CAP. */
 export const OPENED_IDS_CAP = 12;
 
+/** Cap open document tabs (editor-dock-workspace, bounded-by-default): each tab
+ *  mounts a `useContentView` observer holding up to MAX_CONTENT_BYTES, so an
+ *  uncapped tab set retains every opened doc's bytes for the session. Keep the
+ *  most-recent N; the oldest non-active PERMANENT tab is evicted (LRU), mirroring
+ *  OPENED_IDS_CAP. */
+export const MAX_OPEN_DOCS = 12;
+
+export const LEFT_RAIL_MIN_WIDTH = 180;
+export const LEFT_RAIL_MAX_WIDTH = 420;
+export const LEFT_RAIL_DEFAULT_WIDTH = 290;
+export const RIGHT_RAIL_MIN_WIDTH = 220;
+export const RIGHT_RAIL_MAX_WIDTH = 420;
+export const RIGHT_RAIL_DEFAULT_WIDTH = 290;
+export const TIMELINE_MIN_HEIGHT = 120;
+export const TIMELINE_MAX_HEIGHT = 360;
+export const TIMELINE_DEFAULT_HEIGHT = 212;
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** Evict open document tabs down to MAX_OPEN_DOCS, dropping the OLDEST permanent,
+ *  non-active tab first (LRU by insertion order). The provisional tab and the
+ *  active tab are preserved; only as a last resort (every other tab is active or
+ *  provisional) is an older non-active tab dropped regardless of provisional. */
+function evictToCap(docs: OpenDoc[], activeId: string): OpenDoc[] {
+  if (docs.length <= MAX_OPEN_DOCS) return docs;
+  const result = docs.slice();
+  while (result.length > MAX_OPEN_DOCS) {
+    let index = result.findIndex((d) => !d.provisional && d.nodeId !== activeId);
+    if (index < 0) index = result.findIndex((d) => d.nodeId !== activeId);
+    if (index < 0) break;
+    result.splice(index, 1);
+  }
+  return result;
+}
+
+function rekeyScopedClientStores(scope: string | null, workspace?: string): void {
+  const nextWorkspace = workspace ?? usePinStore.getState().workspace;
+  const nextScope = scope ?? "default";
+  usePinStore.getState().setScopeKey(nextWorkspace, nextScope);
+  useLensStore.getState().setScopeKey(nextWorkspace, nextScope);
+}
+
+function resetCorpusLocalStores(): void {
+  resetLiveStatus();
+  resetBrowserMode();
+  resetBrowserTreeExpansion();
+  resetTimelineViewState();
+  resetPipelineExpansion();
+  resetInspectorExpansion();
+  resetSearchIntent();
+  resetCommandPalette();
+  resetContextMenu();
+  resetFilterSidebar();
+  resetKeyboardShortcuts();
+}
+
+function corpusLocalViewState(scope: string | null) {
+  return {
+    scope,
+    activeFolder: null,
+    featureContexts: [],
+    selection: null,
+    workingSet: [],
+    openedIds: [],
+    viewerTarget: null,
+    openDocs: [],
+    activeDocId: null,
+    editorTarget: null,
+    draftText: "",
+    baseBlobHash: "",
+    editorStatus: "idle" as const,
+    pinnedDiscoveries: [],
+    panelFlyoutOpen: false,
+  };
+}
+
 export const useViewStore = create<ViewState>((set) => ({
   scope: null,
   activeFolder: null,
   featureContexts: [],
   selection: null,
-  selectedId: null,
-  hoveredId: null,
   workingSet: [],
   openedIds: [],
   viewerTarget: null,
+  openDocs: [],
+  activeDocId: null,
   editorTarget: null,
   draftText: "",
   baseBlobHash: "",
   editorStatus: "idle",
   pinnedDiscoveries: [],
-  tierFilter: {
-    declared: true,
-    structural: true,
-    temporal: true,
-    semantic: true,
-    minConfidence: {},
-  },
-  timelineMode: { kind: "live" },
-  leftRailCollapsed: false,
-  rightRailCollapsed: false,
-  // Default to the DOCUMENT graph: real documents coloured by type are the
-  // headline view. The feature constellation collapsed every node to one type
-  // (`feature`) and therefore one colour — the constellation stays reachable via
-  // the granularity toggle / feature descent, but it is no longer the default.
-  granularity: "document",
-  focusedFeature: null,
-  activeRepresentationMode: DEFAULT_REPRESENTATION_MODE,
-  overlays: { featureCountries: true, featureHulls: true },
-  // Default containment: FREE + soft gravity centering - the knowledge-graph norm
-  // (ADR 2026-06-17 norm addendum); circle/rect are soft compactness presets. A
-  // viewer preference: NOT reset on a scope/workspace swap (absent from the reset
-  // blocks below). Matches cosmosField DEFAULT_BOUNDS + the seam default (all free).
-  boundShape: "free",
-  boundSize: 0,
+  overlays: graphOverlays(DEFAULT_GRAPH_OVERLAYS),
+  leftRailVisible: true,
+  leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
+  rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
+  timelineVisible: true,
+  timelineHeight: TIMELINE_DEFAULT_HEIGHT,
+  panelFlyoutOpen: false,
 
   setScope: (scope) => {
     // WHOLESALE swap (ADR §2.1; finding scope-swap-partial-reset-022):
     // everything scoped to the previous corpus resets — selection, working
     // set, opened islands, session-pinned discoveries (old-corpus semantic
-    // candidates must not ride into the new slice), and the timeline mode
-    // (the new scope must not arrive pre-scrubbed to a foreign timestamp).
-    // The filter model resets too: its facet choices embed the previous
-    // scope's vocabulary. Cross-store, applied in one move.
-    useFilterStore.getState().reset();
+    // candidates must not ride into the new slice).
     // Re-key the pin and lens stores so the previous scope's pins/lenses do
     // not bleed into the new scope (finding-018/022/023; isolation-01/02/03).
     // workspace is preserved; scope flips to the new value.
-    const workspace = usePinStore.getState().workspace;
-    usePinStore.getState().setScopeKey(workspace, scope ?? "default");
-    useLensStore.getState().setScopeKey(workspace, scope ?? "default");
-    // Reset the live-connection slice too (live-state ADR D1): the previous
-    // corpus's broken-link count / resume seq must not bleed into the new scope
-    // before the new slice and stream arrive (the same isolation discipline as
-    // pins/lenses, findings 022/023).
-    useLiveStatusStore.getState().reset();
-    // Reset the browser-region view state (dashboard-left-rail ADR): the chosen
-    // vault/code mode and the in-rail filter are re-keyed per scope, so a stale
-    // mode or filter from the prior corpus must not ride into the new scope.
-    resetBrowserMode();
-    set({
-      scope,
-      // The folder context is scoped to the previous corpus — clear it on a
-      // wholesale swap (W04.P09.S30). The new scope's persisted context is
-      // re-seeded from the session by the stores restore hook (seedFromSession).
-      activeFolder: null,
-      featureContexts: [],
-      selection: null,
-      selectedId: null,
-      // A hover is scoped to the previous corpus's node — clear it on a swap so
-      // a stale hovered id cannot anchor a card against the new slice.
-      hoveredId: null,
-      workingSet: [],
-      openedIds: [],
-      // The open viewer is scoped to the previous corpus's doc/file — clear it on
-      // a swap so a stale viewer target does not survive the corpus change.
-      viewerTarget: null,
-      // The open EDITOR (document-editor backend) is scoped to the previous
-      // corpus's doc too — clear it (and its draft/base/status) on a swap so a
-      // stale draft cannot be saved against the new corpus (the same isolation
-      // discipline as viewerTarget; findings 022/023).
-      editorTarget: null,
-      draftText: "",
-      baseBlobHash: "",
-      editorStatus: "idle",
-      pinnedDiscoveries: [],
-      timelineMode: { kind: "live" },
-      // Open the new scope at the DOCUMENT graph (the headline coloured view),
-      // not the single-type feature constellation.
-      granularity: "document",
-      // A descent is scoped to the previous corpus's feature — clear it on a
-      // swap so the new scope opens at the unfocused document graph.
-      focusedFeature: null,
-    });
+    rekeyScopedClientStores(scope);
+    resetCorpusLocalStores();
+    set(corpusLocalViewState(scope));
   },
   swapWorkspace: (workspace, scope) => {
     // WORKSPACE-LEVEL WHOLESALE swap (dashboard-workspace-registry ADR): the
@@ -451,59 +474,21 @@ export const useViewStore = create<ViewState>((set) => ({
     // clear at least as much as a worktree change, plus re-key the pin/lens
     // stores to the NEW WORKSPACE (a worktree swap preserves the workspace key;
     // a workspace swap does not, or the prior project's pins/lenses bleed in).
-    useFilterStore.getState().reset();
     // Re-key the pin and lens stores to the NEW WORKSPACE + the new scope — the
     // load-bearing difference from setScope, which preserves the workspace key.
-    usePinStore.getState().setScopeKey(workspace, scope ?? "default");
-    useLensStore.getState().setScopeKey(workspace, scope ?? "default");
-    // Reset the live-connection slice (broken-link count / resume seq) so no
-    // prior-project counters bleed in before the new slice and stream arrive.
-    useLiveStatusStore.getState().reset();
-    // Reset the browser-region view state too (dashboard-left-rail ADR): the
-    // coarser workspace swap must clear at least as much as a worktree swap, so
-    // the prior PROJECT's browser mode and in-rail filter cannot bleed in.
-    resetBrowserMode();
-    set({
-      scope,
-      activeFolder: null,
-      featureContexts: [],
-      selection: null,
-      selectedId: null,
-      hoveredId: null,
-      workingSet: [],
-      openedIds: [],
-      // Clear the open viewer too: the coarser workspace swap must clear at least
-      // as much as a worktree swap, so a prior project's viewer cannot survive.
-      viewerTarget: null,
-      // Clear the open EDITOR + its draft/base/status (document-editor backend):
-      // the coarser workspace swap must clear at least as much as a worktree swap,
-      // so a prior project's unsaved draft cannot survive into the new corpus.
-      editorTarget: null,
-      draftText: "",
-      baseBlobHash: "",
-      editorStatus: "idle",
-      pinnedDiscoveries: [],
-      timelineMode: { kind: "live" },
-      // Open the new project at the DOCUMENT graph (same rationale as the
-      // worktree swap): the coloured headline view, not the feature constellation.
-      granularity: "document",
-      // A descent is scoped to the previous corpus's feature — clear it on a
-      // swap so the new scope opens at the unfocused document graph.
-      focusedFeature: null,
-    });
+    rekeyScopedClientStores(scope, workspace);
+    resetCorpusLocalStores();
+    set(corpusLocalViewState(scope));
   },
-  seedFromSession: ({ scope, folder, featureTags }) =>
-    set({ scope, activeFolder: folder, featureContexts: featureTags }),
+  seedFromSession: ({ scope, folder, featureTags }) => {
+    // Restore is not a user-initiated wholesale swap, but scoped client stores
+    // still need the restored key before visual consumers read pin/lens state.
+    rekeyScopedClientStores(scope);
+    set({ scope, activeFolder: folder, featureContexts: featureTags });
+  },
   setScopeContext: ({ folder, featureTags }) =>
     set({ activeFolder: folder, featureContexts: featureTags }),
-  select: (id) =>
-    set({
-      selection: id === null ? null : { kind: "node", id },
-      selectedId: id,
-    }),
-  selectEntity: (selection) => set({ selection, selectedId: selection?.id ?? null }),
-  setHoveredId: (id) =>
-    set((state) => (state.hoveredId === id ? state : { hoveredId: id })),
+  selectEntity: (selection) => set({ selection }),
   openNode: (id) =>
     set((state) => {
       // Move-to-end LRU cap (B3): re-opening an already-open id refreshes its
@@ -525,6 +510,89 @@ export const useViewStore = create<ViewState>((set) => ({
     })),
   openInViewer: (nodeId, surface) => set({ viewerTarget: { nodeId, surface } }),
   closeViewer: () => set({ viewerTarget: null }),
+  openDoc: (nodeId, surface, permanent = false) =>
+    set((state) => {
+      const existing = state.openDocs.find((d) => d.nodeId === nodeId);
+      if (existing) {
+        // Already open: activate it, and promote if this open is a permanent
+        // gesture on what was the provisional tab.
+        const openDocs =
+          permanent && existing.provisional
+            ? state.openDocs.map((d) =>
+                d.nodeId === nodeId ? { ...d, provisional: false } : d,
+              )
+            : state.openDocs;
+        return openDocs === state.openDocs && state.activeDocId === nodeId
+          ? state
+          : { openDocs, activeDocId: nodeId };
+      }
+      const entry: OpenDoc = { nodeId, surface, provisional: !permanent };
+      let openDocs: OpenDoc[];
+      if (!permanent) {
+        // Provisional (preview) open: REPLACE the existing provisional in place so
+        // walking the rail reuses one preview tab rather than spawning many.
+        const provIndex = state.openDocs.findIndex((d) => d.provisional);
+        if (provIndex >= 0) {
+          openDocs = state.openDocs.slice();
+          openDocs[provIndex] = entry;
+        } else {
+          openDocs = [...state.openDocs, entry];
+        }
+      } else {
+        openDocs = [...state.openDocs, entry];
+      }
+      return { openDocs: evictToCap(openDocs, nodeId), activeDocId: nodeId };
+    }),
+  promoteDoc: (nodeId) =>
+    set((state) =>
+      state.openDocs.some((d) => d.nodeId === nodeId && d.provisional)
+        ? {
+            openDocs: state.openDocs.map((d) =>
+              d.nodeId === nodeId ? { ...d, provisional: false } : d,
+            ),
+          }
+        : state,
+    ),
+  activateDoc: (nodeId) =>
+    set((state) =>
+      state.activeDocId === nodeId || !state.openDocs.some((d) => d.nodeId === nodeId)
+        ? state
+        : { activeDocId: nodeId },
+    ),
+  closeDoc: (nodeId) =>
+    set((state) => {
+      const index = state.openDocs.findIndex((d) => d.nodeId === nodeId);
+      if (index < 0) return state;
+      const openDocs = state.openDocs.filter((d) => d.nodeId !== nodeId);
+      let activeDocId = state.activeDocId;
+      if (state.activeDocId === nodeId) {
+        // Activate the nearest neighbour: the tab now at this index (the former
+        // next), else the previous, else none.
+        const next = openDocs[index] ?? openDocs[index - 1] ?? null;
+        activeDocId = next ? next.nodeId : null;
+      }
+      return { openDocs, activeDocId };
+    }),
+  reorderDocs: (orderedIds) =>
+    set((state) => {
+      const byId = new Map(state.openDocs.map((d) => [d.nodeId, d]));
+      const reordered: OpenDoc[] = [];
+      for (const id of orderedIds) {
+        const doc = byId.get(id);
+        if (doc) {
+          reordered.push(doc);
+          byId.delete(id);
+        }
+      }
+      // Preserve any open doc dockview did not name (append in original order).
+      for (const doc of state.openDocs) {
+        if (byId.has(doc.nodeId)) reordered.push(doc);
+      }
+      const same =
+        reordered.length === state.openDocs.length &&
+        reordered.every((d, i) => d.nodeId === state.openDocs[i]?.nodeId);
+      return same ? state : { openDocs: reordered };
+    }),
   openEditor: (nodeId, text, baseBlobHash) =>
     set({
       editorTarget: { nodeId },
@@ -564,6 +632,42 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => ({
       pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== edgeId),
     })),
+  pruneNodeAffordances: (nodeIds) =>
+    set((state) => {
+      const valid = new Set(nodeIds);
+      const selection =
+        state.selection?.kind === "event"
+          ? (() => {
+              const nodeIds = state.selection.nodeIds.filter((id) => valid.has(id));
+              return nodeIds.length === state.selection.nodeIds.length
+                ? state.selection
+                : { ...state.selection, nodeIds };
+            })()
+          : state.selection;
+      const workingSet = state.workingSet.filter((id) => valid.has(id));
+      const openedIds = state.openedIds.filter((id) => valid.has(id));
+      const pinnedDiscoveries = state.pinnedDiscoveries.filter(
+        (edge) => valid.has(edge.src) && valid.has(edge.dst),
+      );
+      const nextSelection =
+        selection?.kind === "event" && selection.nodeIds.length === 0
+          ? null
+          : selection;
+      if (
+        nextSelection === state.selection &&
+        workingSet.length === state.workingSet.length &&
+        openedIds.length === state.openedIds.length &&
+        pinnedDiscoveries.length === state.pinnedDiscoveries.length
+      ) {
+        return state;
+      }
+      return {
+        selection: nextSelection,
+        workingSet,
+        openedIds,
+        pinnedDiscoveries,
+      };
+    }),
   addToWorkingSet: (id) =>
     set((state) => {
       if (state.workingSet.includes(id)) return state;
@@ -580,22 +684,18 @@ export const useViewStore = create<ViewState>((set) => ({
       workingSet: state.workingSet.filter((entry) => entry !== id),
     })),
   clearWorkingSet: () => set({ workingSet: [] }),
-  setTierFilter: (tierFilter) => set({ tierFilter }),
-  setTimelineMode: (timelineMode) => set({ timelineMode }),
-  toggleLeftRail: () =>
-    set((state) => ({ leftRailCollapsed: !state.leftRailCollapsed })),
-  toggleRightRail: () =>
-    set((state) => ({ rightRailCollapsed: !state.rightRailCollapsed })),
-  // A manual granularity switch is a fresh, unfocused view choice, so it clears
-  // any feature descent (toggling back to "feature" returns to the constellation;
-  // toggling to "document" shows the full graph, not one feature's members).
-  setGranularity: (granularity) => set({ granularity, focusedFeature: null }),
-  // Descend into a feature: focus it AND flip to the bounded document view in one
-  // move, so the slice query narrows to the feature's members
-  // (filter.feature_tags=[tag]) instead of re-serving the whole document corpus.
-  descendIntoFeature: (tag) => set({ focusedFeature: tag, granularity: "document" }),
-  setRepresentationMode: (activeRepresentationMode) =>
-    set({ activeRepresentationMode }),
-  setOverlays: (overlays) => set({ overlays }),
-  setBound: (boundShape, boundSize) => set({ boundShape, boundSize }),
+  setOverlays: (overlays) => set({ overlays: graphOverlays(overlays) }),
+  setLeftRailVisible: (leftRailVisible) => set({ leftRailVisible }),
+  setLeftRailWidth: (width) =>
+    set({ leftRailWidth: clamp(width, LEFT_RAIL_MIN_WIDTH, LEFT_RAIL_MAX_WIDTH) }),
+  setRightRailWidth: (width) =>
+    set({ rightRailWidth: clamp(width, RIGHT_RAIL_MIN_WIDTH, RIGHT_RAIL_MAX_WIDTH) }),
+  setTimelineVisible: (timelineVisible) => set({ timelineVisible }),
+  setTimelineHeight: (height) =>
+    set({
+      timelineHeight: clamp(height, TIMELINE_MIN_HEIGHT, TIMELINE_MAX_HEIGHT),
+    }),
+  setPanelFlyoutOpen: (panelFlyoutOpen) => set({ panelFlyoutOpen }),
+  togglePanelFlyout: () =>
+    set((state) => ({ panelFlyoutOpen: !state.panelFlyoutOpen })),
 }));

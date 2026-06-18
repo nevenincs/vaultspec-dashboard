@@ -1,56 +1,49 @@
-// The app-lifetime graph canvas host (editor-dock-workspace P02). Mounts the
-// Pixi field ONCE into a stable DOM node that is never re-parented, and
-// positions that node to track the graph dockview panel's rect (published by
-// `canvasPin`). dockview moves the graph PANEL freely; this host stays put in
-// the DOM, so the WebGL context and the SceneController seam survive every dock,
-// split, float, and re-dock — the load-bearing contract of the workspace.
+// The app-lifetime graph canvas host (editor-dock-workspace P02). Renders the
+// UNCHANGED Stage (canvas + chrome) inside a single, app-lifetime DOM node that
+// is positioned to track the graph dockview panel's rect (published by
+// `canvasPin`). Because Stage lives here and this host is never re-parented,
+// dockview never moves Stage's DOM — so the Pixi WebGL context and the
+// SceneController seam survive every dock, split, float, and re-dock. The
+// dockview graph panel renders only an empty placeholder that publishes its rect
+// (see `GraphPanel`); this host floats over that rect.
 //
-// This host owns the canvas lifecycle (mount / resize / destroy) that `Stage`
-// used to own; `Stage` is now pure chrome rendered inside the graph panel. The
-// host is focusable and is the keyboard graph-walk target (pointer + keyboard
-// both live where the canvas is); the panel placeholder is a pointer-transparent
-// rect source above this host, and pointer events on empty graph area fall
-// through it to the canvas.
+// This is the load-bearing contract of the workspace and is deliberately the
+// LEAST invasive design: Stage is untouched (its canvas mount, chrome pointer
+// model, and keyboard host are exactly as before), so nothing about the graph's
+// interaction changes — only WHERE the whole Stage paints.
 //
-// Layer law: this is `app/` chrome over the preserved SceneController seam
-// (view-rewrite-preserves-the-state-and-scene-contract). It mounts the singleton
-// scene and issues no commands of its own beyond mount/resize/destroy.
+// Layer law: `app/` chrome over the preserved Stage / SceneController seam
+// (view-rewrite-preserves-the-state-and-scene-contract). It issues no commands.
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
-import {
-  getGraphPin,
-  setCanvasHostEl,
-  subscribeGraphPin,
-} from "./canvasPin";
-import { getScene } from "./Stage";
+import { getGraphPin, subscribeGraphPin } from "./canvasPin";
+import { Stage } from "./Stage";
 
 export function GraphCanvasHost() {
-  const hostRef = useRef<HTMLDivElement>(null);
   const pin = useSyncExternalStore(subscribeGraphPin, getGraphPin);
+  const hostRef = useRef<HTMLDivElement>(null);
 
+  // During a dockview panel drag, drop this host's pointer events so a panel
+  // dragged OVER the graph area reaches dockview's drop targets beneath it (the
+  // canvas would otherwise eat the dragover). dockview uses native HTML5 DnD for
+  // tabs, so window drag start/end is the signal.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const scene = getScene();
-    // Mount the field into the stable host. This is the ONE mount for the app
-    // lifetime; the host is never re-parented, so the canvas context persists.
-    scene.controller.mount(host);
-    setCanvasHostEl(host);
-    // Dev-only seam handle for the test harness (moved here from Stage with the
-    // canvas mount). Never exposed in a production build.
-    if (import.meta.env.DEV) {
-      (globalThis as unknown as { __scene?: typeof scene }).__scene = scene;
-    }
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) scene.controller.resize(rect.width, rect.height);
-    });
-    observer.observe(host);
+    const onDragStart = () => {
+      host.style.pointerEvents = "none";
+    };
+    const onDragEnd = () => {
+      host.style.pointerEvents = "";
+    };
+    window.addEventListener("dragstart", onDragStart, true);
+    window.addEventListener("dragend", onDragEnd, true);
+    window.addEventListener("drop", onDragEnd, true);
     return () => {
-      observer.disconnect();
-      setCanvasHostEl(null);
-      scene.controller.destroy();
+      window.removeEventListener("dragstart", onDragStart, true);
+      window.removeEventListener("dragend", onDragEnd, true);
+      window.removeEventListener("drop", onDragEnd, true);
     };
   }, []);
 
@@ -61,25 +54,21 @@ export function GraphCanvasHost() {
     <div
       ref={hostRef}
       data-graph-canvas-host
-      // Focusable surface for the keyboard graph-walk (the chrome binds the walk
-      // to this element via `getCanvasHostEl`); pointer events land here so Pixi
-      // interaction works and a click focuses it for keyboard operability.
-      tabIndex={visible ? 0 : -1}
-      role="application"
-      aria-label="node canvas — arrow keys walk the graph, Enter opens, e expands"
       aria-hidden={!visible}
-      className="absolute outline-none focus-visible:ring-2 focus-visible:ring-state-active/40"
+      className="absolute"
       style={{
         left: rect ? `${rect.left}px` : 0,
         top: rect ? `${rect.top}px` : 0,
         width: rect ? `${rect.width}px` : 0,
         height: rect ? `${rect.height}px` : 0,
-        // Beneath the dockview chrome (z-0); the graph panel placeholder above is
-        // pointer-transparent so empty-area events reach this canvas, and opaque
-        // document panels cover it where they sit.
-        zIndex: 0,
+        // Above the dockview container (z-10) so the graph paints over the
+        // (transparent) graph panel; opaque document panels sit in their own
+        // groups and are never under this rect.
+        zIndex: 20,
         display: visible ? "block" : "none",
       }}
-    />
+    >
+      <Stage />
+    </div>
   );
 }
