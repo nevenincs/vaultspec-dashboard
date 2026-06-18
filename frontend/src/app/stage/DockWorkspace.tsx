@@ -15,17 +15,19 @@
 import { useCallback, useEffect, useRef } from "react";
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent } from "dockview";
 
+import { useActiveScope } from "../../stores/server/queries";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
 import { DocPanel } from "./DocPanel";
 import { vaultspecDockTheme } from "./dockTheme";
 import { GraphCanvasHost } from "./GraphCanvasHost";
 import { GraphPanel } from "./GraphPanel";
+import { useWorkspacePersistence } from "./useWorkspacePersistence";
 import {
   activateDocTab,
   closeDocTab,
+  deriveDockWorkspaceSyncPlan,
   reorderDocTabs,
-  useActiveDocId,
-  useOpenDocs,
+  useDockWorkspaceTabsView,
 } from "../../stores/view/tabs";
 
 /** The always-present graph panel id (never a node id, so it cannot collide). */
@@ -33,23 +35,15 @@ const GRAPH_PANEL_ID = "__graph__";
 
 const components = { graph: GraphPanel, doc: DocPanel };
 
-/** A short display title for a tab from its node id. */
-function titleFor(nodeId: string): string {
-  if (nodeId.startsWith("doc:")) return nodeId.slice(4);
-  if (nodeId.startsWith("code:")) {
-    const path = nodeId.slice(5);
-    return path.slice(path.lastIndexOf("/") + 1);
-  }
-  return nodeId;
-}
-
 export function DockWorkspace() {
   const apiRef = useRef<DockviewApi | null>(null);
   // Guards the store<->dockview sync against feedback loops: while we mutate
   // dockview to match the store, its echo events (active/remove) are ignored.
   const syncingRef = useRef(false);
-  const openDocs = useOpenDocs();
-  const activeDocId = useActiveDocId();
+  const tabs = useDockWorkspaceTabsView();
+  // P06: persist + restore the open-tab set per scope through dashboard-state.
+  // The restore seeds the tab slice; the reconcile effect below rebuilds panels.
+  useWorkspacePersistence(useActiveScope());
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
     const api = event.api;
@@ -89,40 +83,32 @@ export function DockWorkspace() {
     if (!api) return;
     syncingRef.current = true;
     try {
-      const wanted = new Set(openDocs.map((d) => d.nodeId));
-      const docPanels = api.panels.filter((p) => p.id !== GRAPH_PANEL_ID);
+      const plan = deriveDockWorkspaceSyncPlan(
+        tabs.openDocs,
+        tabs.activeDocId,
+        api.panels.map((panel) => panel.id),
+        GRAPH_PANEL_ID,
+      );
       // Remove doc panels no longer open.
-      for (const panel of docPanels) {
-        if (!wanted.has(panel.id)) api.removePanel(panel);
+      for (const panelId of plan.removeIds) {
+        const panel = api.getPanel(panelId);
+        if (panel) api.removePanel(panel);
       }
       // Add newly-open doc panels.
-      const present = new Set(api.panels.map((p) => p.id));
-      for (const doc of openDocs) {
-        if (present.has(doc.nodeId)) continue;
-        const existingDoc = api.panels.find(
-          (p) => p.id !== GRAPH_PANEL_ID && p.id !== doc.nodeId,
-        );
-        api.addPanel({
-          id: doc.nodeId,
-          component: "doc",
-          title: titleFor(doc.nodeId),
-          params: { nodeId: doc.nodeId, surface: doc.surface },
-          // First document splits LEFT of the graph; further documents tab into
-          // the existing document group. The user can re-dock freely afterward.
-          position: existingDoc
-            ? { referencePanel: existingDoc.id, direction: "within" }
-            : { referencePanel: GRAPH_PANEL_ID, direction: "left" },
-        });
+      for (const panel of plan.addPanels) {
+        // First document splits LEFT of the graph; further documents tab into the
+        // existing document group. The user can re-dock freely afterward.
+        api.addPanel(panel);
       }
       // Activate the active document.
-      if (activeDocId) {
-        const panel = api.getPanel(activeDocId);
+      if (plan.activeDocId) {
+        const panel = api.getPanel(plan.activeDocId);
         panel?.api.setActive();
       }
     } finally {
       syncingRef.current = false;
     }
-  }, [openDocs, activeDocId]);
+  }, [tabs]);
 
   const setRoot = useCallback((el: HTMLDivElement | null) => {
     setWorkspaceContainer(el);

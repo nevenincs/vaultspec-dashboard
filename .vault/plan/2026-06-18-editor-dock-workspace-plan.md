@@ -153,10 +153,10 @@ Mount the existing editor backend as a view/edit toggle with a PROPERTIES card, 
 
 Persist and restore the serialized dock layout plus tab metadata in engine dashboard-state per scope, coalesced and size-capped, degrading cleanly to the default layout.
 
-- [ ] `P06.S23` - Add a bounded workspace_layout field to the engine dashboard-state schema with a migration; `engine/crates/vaultspec-session/src/session.rs`.
-- [ ] `P06.S24` - Serve and accept workspace_layout through the dashboard-state route via the shared envelope; `engine/crates/vaultspec-api/src/routes/session.rs`.
-- [ ] `P06.S25` - Persist the serialized dock layout and tab metadata via the dashboard-state mutation on a coalesced layout-change event; `frontend/src/stores/server/dashboardState.ts`.
-- [ ] `P06.S26` - Restore the layout on load with fromJSON and rehydrate panels by id, degrading to the default layout on parse or oversize; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P06.S23` - Add a bounded workspace_layout field to the engine dashboard-state schema with a migration; `engine/crates/vaultspec-session/src/session.rs`.
+- [x] `P06.S24` - Serve and accept workspace_layout through the dashboard-state route via the shared envelope; `engine/crates/vaultspec-api/src/routes/session.rs`.
+- [x] `P06.S25` - Persist the serialized dock layout and tab metadata via the dashboard-state mutation on a coalesced layout-change event; `frontend/src/stores/server/dashboardState.ts`.
+- [x] `P06.S26` - Restore the layout on load with fromJSON and rehydrate panels by id, degrading to the default layout on parse or oversize; `frontend/src/app/stage/DockWorkspace.tsx`.
 - [ ] `P06.S27` - Add tests for the persist and restore round-trip and the degrade-to-default path; `frontend/src/stores/server/dashboardState.test.ts`.
 
 ### Phase `P07` - Integration, gate, and verification
