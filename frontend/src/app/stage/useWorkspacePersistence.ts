@@ -23,59 +23,13 @@ import {
   useDashboardState,
 } from "../../stores/server/queries";
 import {
+  parseWorkspaceTabs,
   restoreDocTabsIfEmpty,
+  serializeWorkspaceTabs,
   useDockWorkspaceTabsView,
 } from "../../stores/view/tabs";
-import type { OpenDoc } from "../../stores/view/viewStore";
 
 const PERSIST_DEBOUNCE_MS = 800;
-const PERSIST_VERSION = 1;
-
-/** Serialize the open-tab set + active tab into the opaque persisted blob. */
-export function serializeWorkspaceTabs(
-  openDocs: readonly OpenDoc[],
-  activeDocId: string | null,
-): string {
-  return JSON.stringify({
-    v: PERSIST_VERSION,
-    // Provisional (preview) tabs are NOT persisted — only the documents the user
-    // committed to keeping survive a reload, matching VS Code.
-    tabs: openDocs
-      .filter((doc) => !doc.provisional)
-      .map((doc) => ({ nodeId: doc.nodeId, surface: doc.surface })),
-    active: activeDocId,
-  });
-}
-
-/** Parse the persisted blob back into a tab set; null on absent/invalid input
- *  (degrade to the default empty workspace, never throw). */
-export function parseWorkspaceTabs(
-  blob: string | null,
-): { openDocs: OpenDoc[]; activeDocId: string | null } | null {
-  if (!blob) return null;
-  try {
-    const parsed = JSON.parse(blob) as {
-      v?: number;
-      tabs?: Array<{ nodeId?: unknown; surface?: unknown }>;
-      active?: unknown;
-    };
-    if (parsed.v !== PERSIST_VERSION || !Array.isArray(parsed.tabs)) return null;
-    const openDocs: OpenDoc[] = [];
-    for (const entry of parsed.tabs) {
-      if (typeof entry?.nodeId !== "string") continue;
-      const surface = entry.surface === "code" ? "code" : "markdown";
-      openDocs.push({ nodeId: entry.nodeId, surface, provisional: false });
-    }
-    const activeDocId =
-      typeof parsed.active === "string" &&
-      openDocs.some((doc) => doc.nodeId === parsed.active)
-        ? parsed.active
-        : (openDocs[0]?.nodeId ?? null);
-    return { openDocs, activeDocId };
-  } catch {
-    return null;
-  }
-}
 
 export function useWorkspacePersistence(scope: string | null): void {
   const shellChrome = useDashboardShellChromeView(scope);
@@ -85,39 +39,55 @@ export function useWorkspacePersistence(scope: string | null): void {
   // because the fallback panel-state carries no layout — restoring (or marking
   // restored) off that transient null would discard the saved layout (HIGH-1).
   const stateSettled = useDashboardState(scope).isSuccess;
+  // Hold the mutations object in a ref so it is NOT a persist-effect dependency:
+  // `useDashboardStateMutations` returns a new object every render, so depending
+  // on it would re-run the debounced persist effect every render — and under the
+  // app's live-streaming re-renders (faster than the debounce) the timeout would
+  // be cleared+rescheduled every render and NEVER fire, so the open tabs would
+  // never persist (found in live verification: the blob stayed `tabs:[]`).
   const mutations = useDashboardStateMutations(scope);
+  const mutationsRef = useRef(mutations);
+  mutationsRef.current = mutations;
   const tabs = useDockWorkspaceTabsView();
 
-  // Restore once per scope, when this scope's persisted layout is first available
-  // — gated on the query being SETTLED so a late-arriving blob is never missed.
-  // Only seeds when the tab slice is empty (a fresh load / post-scope-swap), so a
-  // restore never clobbers documents the user already opened this session.
-  const restoredScopeRef = useRef<string | null | undefined>(undefined);
+  // Restore: re-attempt whenever the SETTLED blob value changes, keyed on the blob
+  // itself rather than once-per-scope. The dashboard-state query can first resolve
+  // with the fallback panel-state (no layout) and update to the real blob a render
+  // later; a once-per-scope gate marks the scope restored on that empty first pass
+  // and then misses the real blob (the live-verified restore miss). `restoreDoc
+  // TabsIfEmpty` only seeds when the slice is empty, so a blob change AFTER the
+  // user has opened tabs (the persist echo) or after they closed them all is a
+  // safe no-op. `initializedScopeRef` records that restore has had a settled pass
+  // for the scope, which gates the persist below.
+  const initializedScopeRef = useRef<string | null | undefined>(undefined);
+  const lastRestoredBlobRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (restoredScopeRef.current === scope) return;
     if (!scope) return;
     if (!stateSettled) return;
-    restoredScopeRef.current = scope;
+    initializedScopeRef.current = scope;
+    if (persistedBlob === lastRestoredBlobRef.current) return;
+    lastRestoredBlobRef.current = persistedBlob;
     const restored = parseWorkspaceTabs(persistedBlob);
-    if (!restored) return;
-    restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
+    if (restored && restored.openDocs.length > 0) {
+      restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
+    }
   }, [scope, stateSettled, persistedBlob]);
 
-  // Persist the tab set + active tab, coalesced. Skipped until this scope has been
-  // restored (so the initial empty state never overwrites a saved layout before
-  // the restore runs), and when the serialized value is unchanged.
+  // Persist the tab set + active tab, coalesced. Skipped until this scope's restore
+  // has had a settled pass (so the initial empty state never overwrites a saved
+  // layout before the restore runs), and when the serialized value is unchanged.
   const lastPersistedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!scope) return;
-    if (restoredScopeRef.current !== scope) return;
+    if (initializedScopeRef.current !== scope) return;
     const next = serializeWorkspaceTabs(tabs.openDocs, tabs.activeDocId);
     if (next === lastPersistedRef.current) return;
     const handle = setTimeout(() => {
       lastPersistedRef.current = next;
-      void mutations
+      void mutationsRef.current
         .updatePanelState({ workspace_layout: next })
         .catch(() => undefined);
     }, PERSIST_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [scope, tabs.openDocs, tabs.activeDocId, mutations]);
+  }, [scope, tabs.openDocs, tabs.activeDocId]);
 }
