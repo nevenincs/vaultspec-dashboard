@@ -44,10 +44,7 @@ function rectsEqual(a: GraphRect | null, b: GraphRect | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   return (
-    a.left === b.left &&
-    a.top === b.top &&
-    a.width === b.width &&
-    a.height === b.height
+    a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
   );
 }
 
