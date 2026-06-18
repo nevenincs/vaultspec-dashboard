@@ -890,3 +890,57 @@
      tokens are lifted to oklch 0.55/0.70 (4.18:1 / 7.61:1) so borders become
      visible separators there. This is the intended design, not an unmet floor.
    =========================================================================== */
+
+/* ===========================================================================
+   DOCKVIEW THEME REMAP (editor-dock-workspace) - the dock workspace chrome is
+   re-themed ONLY by binding dockview's --dv-* surface to the OKLCH semantic
+   token tier (themes-are-oklch-generated-from-a-token-tier,
+   design-system-is-centralized). Because --color-* already flips per
+   [data-theme], ONE theme class serves light / dark / high-contrast with no
+   per-theme dockview block: the var() chain resolves to the active theme's
+   token. No new accent, gradient, or texture (warmth-lives-in-tokens).
+   The base dockview stylesheet is imported once from the workspace module
+   (Vite JS-imported CSS), so this block only overrides variables.
+   =========================================================================== */
+.dockview-theme-vaultspec {
+  --dv-group-view-background-color: var(--color-paper);
+  --dv-tabs-and-actions-container-background-color: var(--color-paper-sunken);
+  --dv-tabs-and-actions-container-height: 36px;
+
+  /* Active group, visible (selected) tab - the focused document. */
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-paper);
+  --dv-activegroup-visiblepanel-tab-color: var(--color-ink);
+  /* Active group, hidden (background) tab. */
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--color-paper-sunken);
+  --dv-activegroup-hiddenpanel-tab-color: var(--color-ink-muted);
+  /* Inactive group, visible tab. */
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-paper-sunken);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--color-ink-muted);
+  /* Inactive group, hidden tab. */
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--color-paper-sunken);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--color-ink-faint);
+
+  --dv-separator-border: var(--color-rule);
+  --dv-tab-divider-color: var(--color-rule);
+  --dv-paneview-header-border-color: var(--color-rule);
+
+  /* Splitter sashes - felt-not-seen until active, then the single accent. */
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--color-accent);
+
+  /* Drag-to-dock affordance - the single muted accent, no second hue. */
+  --dv-drag-over-background-color: var(--color-accent-subtle);
+  --dv-drag-over-border-color: var(--color-accent);
+  --dv-paneview-active-outline-color: var(--color-accent);
+
+  --dv-icon-hover-background-color: var(--color-paper-raised);
+  --dv-tabs-container-scrollbar-color: var(--color-rule-strong);
+  --dv-scrollbar-background-color: var(--color-paper-sunken);
+
+  --dv-tab-border-radius: 6px;
+  --dv-border-radius: 6px;
+
+  /* Floating groups - raised surface + soft depth (no bespoke shadow color). */
+  --dv-floating-titlebar-background-color: var(--color-paper-sunken);
+  --dv-floating-box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}

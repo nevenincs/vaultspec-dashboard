@@ -106,8 +106,8 @@ Add dockview as a frontend dependency and bind its --dv-* surface to the OKLCH t
 
 <!-- One-line headline summary plan. -->
 
-- [ ] `P01.S01` - Add dockview to frontend dependencies and import its base stylesheet once; `frontend/package.json`.
-- [ ] `P01.S02` - Author the dockview theme remap binding every --dv-* variable to the OKLCH token tier for light, dark, and high-contrast; `frontend/src/app/styles.css`.
+- [x] `P01.S01` - Add dockview to frontend dependencies and import its base stylesheet once; `frontend/package.json`.
+- [x] `P01.S02` - Author the dockview theme remap binding every --dv-* variable to the OKLCH token tier for light, dark, and high-contrast; `frontend/src/app/styles.css`.
 
 ### Phase `P02` - Portal-pinned canvas seam
 
