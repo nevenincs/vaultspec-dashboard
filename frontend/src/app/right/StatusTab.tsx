@@ -1,12 +1,14 @@
 // The Status overview — the rail's primary informational surface, rebuilt to the
 // binding Figma redesign (ActivityRail · Status, node 353:1027). The rail answers
 // the operator's "where / what's in flight / what's open / what just changed"
-// questions through a stack of COLLAPSIBLE SECTION CARDS, each a thin-outlined
-// card that takes a slightly darker (paper-sunken) ground while open so the
-// section being browsed is identifiable:
-//   • a slim LOCATION strip (worktree · branch over a faint path),
-//   • OPEN PLANS — plan trackers as contained pills foregrounding a real progress
-//     bar, expandable into the standardized step tree,
+// questions through a stack of flush COLLAPSIBLE SECTIONS — the one canonical
+// fold (a twisty + SectionLabel over a collapsible body, NO border, NO card
+// background; the kit `FoldSection` primitive, shared identically with the left
+// rail):
+//   • a slim LOCATION strip (the current branch name only — the worktree name and
+//     folder picker live in the left rail's single title),
+//   • OPEN PLANS — flush plan trackers foregrounding a real progress bar,
+//     expandable into the standardized step tree,
 //   • OPEN PRS / OPEN ISSUES / RECENT PRS — GitHub work items,
 //   • RECENT COMMITS — expandable commit rows that reveal the full message body,
 //     with a "Show more" control.
@@ -23,9 +25,9 @@
 // recent-commit expansion, and local paging live behind the status-tab chrome
 // seam so the surface does not own ad hoc state.
 //
-// Design system (design-system-is-centralized): section grounds, pills, the
-// progress bar, badges, and the disclosure chevrons resolve to centralized kit
-// primitives and bound tokens — no raw hex, no loose font-size.
+// Design system (design-system-is-centralized): the fold, the progress bar,
+// badges, and the disclosure chevrons resolve to centralized kit primitives and
+// bound tokens — no raw hex, no loose font-size, no per-surface card chrome.
 
 import type { ReactNode } from "react";
 
