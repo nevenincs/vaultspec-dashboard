@@ -6215,6 +6215,16 @@ describe("dashboard layer ownership", () => {
       violations.push(`${viewRel}: missing graph overlay normalizer`);
     }
     if (
+      !/\bexport\s+function\s+normalizeGraphOverlays\s*\(\s*overlays:\s*unknown\s*\)/.test(
+        view,
+      )
+    ) {
+      violations.push(`${viewRel}: graph overlay normalizer accepts typed-only input`);
+    }
+    if (!/\bfunction\s+graphOverlayInputRecord\s*\(\s*value:\s*unknown\s*\)/.test(view)) {
+      violations.push(`${viewRel}: missing unknown graph overlay record reader`);
+    }
+    if (
       !/\bsetOverlays:\s*\([^)]*\)\s*=>\s*set\s*\(\s*\{\s*overlays:\s*normalizeGraphOverlays\s*\(/.test(
         view,
       )
@@ -6227,6 +6237,20 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${graphOverlaysRel}: graph overlay read bypasses normalizer`);
+    }
+    if (
+      !/\bsetGraphOverlays\s*\(\s*overlays:\s*unknown\s*\)/.test(graphOverlays)
+    ) {
+      violations.push(`${graphOverlaysRel}: graph overlay write accepts typed-only input`);
+    }
+    for (const typedOnly of [
+      "setOverlays: (overlays: GraphOverlayState)",
+      "setGraphOverlays(overlays: GraphOverlayState)",
+      "normalizeGraphOverlays(\n  overlays: GraphOverlayInput",
+    ]) {
+      if (view.includes(typedOnly) || graphOverlays.includes(typedOnly)) {
+        violations.push(`${graphOverlaysRel}: typed-only graph overlay seam ${typedOnly}`);
+      }
     }
     if (
       !/\bstageOverlaysCommand\b[\s\S]*\bnormalizeGraphOverlays\s*\(\s*overlays\s*\)/.test(
