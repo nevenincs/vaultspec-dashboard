@@ -119,10 +119,37 @@ describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10
   it("cssColorNumber resolves each scene-read node-category token as literal hex", () => {
     applyTokens(CATEGORY_TOKENS);
     for (const [name, hex] of Object.entries(CATEGORY_TOKENS)) {
-      // The scene reader parses #rrggbb only; an oklch() or var() chain would
-      // fall through to the fallback. -1 fallback proves a real hex was read.
+      // The scene reader parses these #rrggbb tokens directly (the fast path);
+      // an UNRESOLVABLE value would fall through. -1 fallback proves a hex read.
       expect(cssColorNumber(name, -1)).toBe(hexToNum(hex));
     }
+  });
+
+  it("parses a resolved oklch() value (the aliased chrome-token case), not just hex", () => {
+    // getComputedStyle flattens a chrome token like --color-accent to its oklch()
+    // accent semantic; the reader must parse that, not fall back to the light hex
+    // (the dark/HC ring bug). hue 150 → a green, so the green channel dominates.
+    document.documentElement.style.setProperty("--color-accent", "oklch(0.7 0.09 150)");
+    const n = cssColorNumber("--color-accent", 0x8a7d5a);
+    expect(n).not.toBe(0x8a7d5a); // NOT the light fallback
+    const r = (n >> 16) & 0xff;
+    const g = (n >> 8) & 0xff;
+    const b = n & 0xff;
+    expect(g).toBeGreaterThan(r);
+    expect(g).toBeGreaterThan(b);
+  });
+
+  it("also parses an rgb() resolved value", () => {
+    document.documentElement.style.setProperty("--probe", "rgb(10, 20, 30)");
+    expect(cssColorNumber("--probe", -1)).toBe((10 << 16) | (20 << 8) | 30);
+  });
+
+  it("falls back on an unresolvable value (self-cycle var / garbage / absent)", () => {
+    document.documentElement.style.setProperty("--probe", "var(--missing)");
+    expect(cssColorNumber("--probe", 0x123456)).toBe(0x123456);
+    document.documentElement.style.setProperty("--probe", "not-a-color");
+    expect(cssColorNumber("--probe", 0x123456)).toBe(0x123456);
+    expect(cssColorNumber("--never-set", 0x123456)).toBe(0x123456);
   });
 
   it("re-resolves the dark theme hex when the token layer flips", () => {
