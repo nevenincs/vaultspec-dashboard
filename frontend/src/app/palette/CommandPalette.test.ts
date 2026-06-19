@@ -14,6 +14,12 @@ import {
   gateCommandsForTimeTravel,
   groupByFamily,
 } from "../../stores/view/commandPaletteCommands";
+import {
+  COMMAND_PALETTE_ACTION_ID,
+  COMMAND_PALETTE_KEYBINDING,
+  COMMAND_PALETTE_SHORTCUT_LABEL,
+} from "../../stores/view/commandPalette";
+import { RIGHT_RAIL_TABS } from "../../stores/view/shellLayout";
 
 function sources(over: Partial<PaletteSources> = {}): PaletteSources {
   return {
@@ -30,6 +36,16 @@ function sources(over: Partial<PaletteSources> = {}): PaletteSources {
 }
 
 describe("buildCommands (G2.a / G5.c)", () => {
+  it("declares the command-palette toggle as a bindable command", () => {
+    expect(COMMAND_PALETTE_KEYBINDING).toEqual({
+      id: COMMAND_PALETTE_ACTION_ID,
+      defaultChord: "Mod+K",
+      label: COMMAND_PALETTE_SHORTCUT_LABEL,
+      group: "General",
+      context: "global",
+    });
+  });
+
   it("fronts navigation, lenses, and the whitelisted ops verbs", () => {
     const commands = buildCommands(sources());
     const ids = commands.map((c) => c.id);
@@ -136,9 +152,7 @@ describe("buildWindowCommands (window-management parity)", () => {
       "window:left-collapse",
       "window:right-rail",
       "window:timeline",
-      "window:rail-status",
-      "window:rail-changes",
-      "window:rail-search",
+      ...RIGHT_RAIL_TABS.map((tab) => `window:rail-${tab.id}`),
       "window:reset-layout",
       "window:keyboard-shortcuts",
     ]);

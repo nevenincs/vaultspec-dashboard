@@ -7,8 +7,9 @@ import {
   type KeybindingOverrides,
   effectiveChord,
   listKeybindings,
+  registerKeybindings,
 } from "../../platform/keymap/registry";
-import { getKeymapOverrides } from "./keymapDispatcher";
+import { getKeymapOverrides, registerKeyAction } from "./keymapDispatcher";
 
 /** One shortcut legend row: a human label and the ordered keycaps that trigger it. */
 export interface KeyboardShortcutRowView {
@@ -29,6 +30,16 @@ interface KeyboardShortcutsState {
   toggleDialog: () => void;
   reset: () => void;
 }
+
+export const KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID = "app:keyboard-shortcuts";
+export const KEYBOARD_SHORTCUTS_TOGGLE_LABEL = "Show keyboard shortcuts";
+export const KEYBOARD_SHORTCUTS_TOGGLE_BINDING: KeybindingDef = {
+  id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
+  defaultChord: "?",
+  label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
+  group: "General",
+  context: "global",
+};
 
 /**
  * Derive the shortcut legend from the keybinding registry — the SINGLE source of
@@ -74,39 +85,20 @@ export function useKeyboardShortcutGroups(): readonly KeyboardShortcutGroupView[
   return deriveKeyboardShortcutGroups();
 }
 
-function isKeyboardShortcutsFormTarget(target: EventTarget | null): boolean {
-  return (
-    typeof HTMLElement !== "undefined" &&
-    target instanceof HTMLElement &&
-    /^(input|textarea|select)$/i.test(target.tagName)
-  );
-}
-
-export interface KeyboardShortcutsKeyEvent {
-  key: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  target: EventTarget | null;
-}
-
-export function shouldToggleKeyboardShortcuts(
-  event: KeyboardShortcutsKeyEvent,
-): boolean {
-  if (event.ctrlKey || event.metaKey || event.altKey) return false;
-  if (isKeyboardShortcutsFormTarget(event.target)) return false;
-  return event.key === "?";
-}
-
 export function useKeyboardShortcutsGlobalToggle(): void {
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!shouldToggleKeyboardShortcuts(event)) return;
-      event.preventDefault();
-      toggleKeyboardShortcuts();
+    const disposeBinding = registerKeybindings([KEYBOARD_SHORTCUTS_TOGGLE_BINDING]);
+    const disposeAction = registerKeyAction(KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID, () => {
+      return {
+        id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
+        label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
+        run: toggleKeyboardShortcuts,
+      };
+    });
+    return () => {
+      disposeAction();
+      disposeBinding();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
   }, []);
 }
 
