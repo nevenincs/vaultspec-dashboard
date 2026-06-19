@@ -34,7 +34,7 @@ function StatusVisualHarness() {
   return (
     <main className="flex min-h-screen items-start justify-start bg-paper p-6">
       <div
-        className="w-[300px] overflow-hidden rounded-fg-lg border border-rule bg-paper-raised"
+        className="w-[18.75rem] overflow-hidden rounded-fg-lg border border-rule bg-paper-raised"
         data-status-harness
       >
         <div className="flex flex-col gap-fg-2 p-fg-2">

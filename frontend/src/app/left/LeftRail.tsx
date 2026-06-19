@@ -45,7 +45,7 @@ export function LeftRail() {
       data-left-rail
       // Binding rail spacing (board 244:750): px 12, pt 14, and a uniform 14px gap
       // between the stacked slots — NO separators (the board has none).
-      className="flex min-h-0 flex-1 flex-col gap-[14px] px-[12px] pt-[14px] text-ink-muted"
+      className="flex min-h-0 flex-1 flex-col gap-[0.875rem] px-fg-3 pt-[0.875rem] text-ink-muted"
     >
       {/* The single rail title: one clickable element showing the current
           worktree's NAME (default = "main"); clicking opens the worktree/folder
@@ -57,7 +57,7 @@ export function LeftRail() {
 
       {/* 3. Browser region: Vault/Code toggle, the filter, and the document
              list. Fills the remaining height so the browser dominates the rail. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-[14px]" data-rail-slot="browser">
+      <div className="flex min-h-0 flex-1 flex-col gap-[0.875rem]" data-rail-slot="browser">
         <BrowserRegion />
       </div>
     </nav>

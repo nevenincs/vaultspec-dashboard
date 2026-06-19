@@ -47,7 +47,7 @@ export function DocRow({
     <div
       data-kit="doc-row"
       data-selected={selected ? "" : undefined}
-      className={`relative flex h-[30px] w-full min-w-0 items-center gap-fg-2 rounded-fg-md ps-[14px] pe-[10px] text-left transition-colors duration-ui-fast ease-settle ${
+      className={`relative flex h-[1.875rem] w-full min-w-0 items-center gap-fg-2 rounded-fg-md ps-[0.875rem] pe-[0.625rem] text-left transition-colors duration-ui-fast ease-settle ${
         selected ? "bg-accent-subtle" : "hover:bg-paper-sunken"
       } ${className}`.trim()}
       {...rest}
@@ -57,7 +57,7 @@ export function DocRow({
       {selected && (
         <span
           aria-hidden
-          className="absolute left-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-[1.5px] bg-accent"
+          className="absolute left-1 top-1/2 h-4 w-[0.15625rem] -translate-y-1/2 rounded-[0.09375rem] bg-accent"
         />
       )}
       {leading != null && (
@@ -66,17 +66,17 @@ export function DocRow({
         </span>
       )}
       <span
-        className={`min-w-0 truncate text-[12.5px] ${
+        className={`min-w-0 truncate text-[0.78125rem] ${
           selected ? "font-medium text-ink" : "text-ink"
         }`}
       >
         {title}
       </span>
       {tag != null && (
-        <span className="shrink-0 truncate text-[11px] text-ink-faint">{tag}</span>
+        <span className="shrink-0 truncate text-[0.6875rem] text-ink-faint">{tag}</span>
       )}
       {age != null && (
-        <span data-tabular className="shrink-0 text-[11px] tabular-nums text-ink-faint">
+        <span data-tabular className="shrink-0 text-[0.6875rem] tabular-nums text-ink-faint">
           {age}
         </span>
       )}

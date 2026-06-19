@@ -258,7 +258,7 @@ export function TreeBrowser({
                 onToggle={() => toggleExpanded(fKey)}
                 bodyId={fSectionId}
                 twistyPx={CHEVRON_PX}
-                headerClassName="flex h-[30px] w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 text-meta font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                headerClassName="flex h-[1.875rem] w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 text-meta font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 headerRef={registerNav(fKey)}
                 headerProps={{
                   tabIndex: rovingKey === fKey ? 0 : -1,
@@ -299,7 +299,7 @@ export function TreeBrowser({
                         onToggle={() => toggleExpanded(dKey)}
                         bodyId={dSectionId}
                         twistyPx={CHEVRON_PX}
-                        headerClassName="flex h-[30px] w-full items-center gap-fg-1 rounded-fg-xs pl-fg-3 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                        headerClassName="flex h-[1.875rem] w-full items-center gap-fg-1 rounded-fg-xs pl-fg-3 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                         headerRef={registerNav(dKey)}
                         headerProps={{
                           tabIndex: rovingKey === dKey ? 0 : -1,
@@ -422,7 +422,7 @@ function TreeRow({
         // Level-2 indent (binding row at `pl-36px`) lines the rows up under the
         // doc-type group; the kit ListRow accent treatment (2px left bar + tint)
         // marks selection, the leading category cue + stem + freshness follow.
-        className={`flex h-[30px] w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 pe-fg-1 ps-fg-6 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex h-[1.875rem] w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 pe-fg-1 ps-fg-6 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
             ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
             : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"

@@ -28,7 +28,7 @@ export function Switch({ checked, onChange, label, disabled, id }: SwitchProps) 
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-fg-pill border transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
+      className={`relative inline-flex h-[1.125rem] w-8 shrink-0 items-center rounded-fg-pill border transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
         checked ? "border-accent bg-accent" : "border-rule bg-paper-sunken"
       }`}
       data-kit="switch"

@@ -1,58 +1,58 @@
 // The browser region (dashboard-left-rail ADR "Browser" + "In-rail filter" /
 // Figma `LeftRail_*`): the single file-thinking region of the rail that hosts the
-// THREE browser modes — VAULT (grouped by `.vault/` subtree), TREE (the same
-// `/vault-tree` projection re-nested feature → doc_type → document, a pure
-// client-side re-projection), and CODE (the `/file-tree` projection) — behind a
-// compact keyboard-reachable toggle, with an in-rail filter scoped to the active
-// mode above the listing.
+// TWO browser modes — VAULT (the `/vault-tree` projection re-nested feature →
+// doc_type → document) and CODE (the `/file-tree` projection) — behind a
+// compact keyboard-reachable toggle, with an in-rail filter above the listing.
 //
 // Composition only (dashboard-layer-ownership): this region fetches nothing,
 // mints no node identity, and reads no `tiers` block — the VaultBrowser and
 // CodeTree it mounts each own that through their stores hooks. It reads the
-// chosen mode and the filter text from the per-scope browser-mode store
-// (`stores/view/browserMode`), and the store's wholesale-reset wiring
-// (`viewStore.setScope` / `swapWorkspace`) clears both on a scope/workspace
-// swap, so neither bleeds across a swap (the ADR's "view-local state re-keyed
-// per scope").
+// chosen mode from the browser-mode store and the filter text from canonical
+// dashboard state, so browser narrowing, graph filtering, and filter chips share
+// one text-filter authority.
 //
-// The filter narrows the ALREADY-FETCHED listing client-side — for code mode it
-// rides CodeTree's `filter` prop; for vault mode it rides VaultBrowser's `filter`
-// prop. It issues no wire request, the deliberate counterpart to the global
-// right-rail search pillar.
+// The filter narrows the ALREADY-FETCHED listing client-side while the shared
+// text-filter draft seam commits the canonical dashboard filter. It issues no
+// extra listing request, the deliberate counterpart to the global right-rail
+// search pillar.
 
-import { useBrowserModeStore } from "../../stores/view/browserMode";
+import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserMode";
+import { useActiveScope } from "../../stores/server/queries";
+import { useDashboardTextFilterDraft } from "../../stores/view/dashboardTextFilter";
 import { BrowserModeToggle } from "./BrowserModeToggle";
 import { CodeTree } from "./CodeTree";
 import { RailFilter } from "./RailFilter";
-import { TreeBrowser } from "./TreeBrowser";
 import { VaultBrowser } from "./VaultBrowser";
 
 export function BrowserRegion() {
-  const mode = useBrowserModeStore((s) => s.mode);
-  const filter = useBrowserModeStore((s) => s.filter);
-  const setMode = useBrowserModeStore((s) => s.setMode);
-  const setFilter = useBrowserModeStore((s) => s.setFilter);
+  const scope = useActiveScope();
+  const mode = useBrowserMode();
+  const setMode = useBrowserModeIntent();
+  const textFilter = useDashboardTextFilterDraft(scope);
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col gap-[14px]"
+      className="flex min-h-0 flex-1 flex-col gap-[0.875rem]"
       aria-label="file browser"
       data-browser-region
     >
       {/* Mode toggle + in-rail filter — the region's two view-local affordances,
           above the scrollable listing so they stay reachable as the tree grows. */}
       <BrowserModeToggle mode={mode} onModeChange={setMode} />
-      <RailFilter modeLabel={mode} value={filter} onChange={setFilter} />
+      <RailFilter
+        modeLabel={mode}
+        value={textFilter.value}
+        onChange={textFilter.setValue}
+        onClear={textFilter.clear}
+      />
 
       {/* The active mode's browser, all three narrowed by the same in-rail
           filter. The listing scrolls; the affordances above stay pinned. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {mode === "code" ? (
-          <CodeTree filter={filter} />
-        ) : mode === "tree" ? (
-          <TreeBrowser filter={filter} />
+          <CodeTree filter={textFilter.value} />
         ) : (
-          <VaultBrowser filter={filter} />
+          <VaultBrowser filter={textFilter.value} />
         )}
       </div>
     </section>

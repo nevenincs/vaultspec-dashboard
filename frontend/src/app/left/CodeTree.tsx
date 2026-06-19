@@ -1,12 +1,13 @@
 // The codebase file browser (dashboard-code-tree ADR "The rail's code mode"): a
 // read-only, lazy, collapsible DIRECTORY HIERARCHY over the active worktree,
 // beside the vault browser. It consumes the `/file-tree` projection ONLY through
-// the stores' query hook (`useFileTree`), reads degradation ONLY through a stores
-// selector (`useFileTreeAvailability`, never the raw `tiers` block), and joins
-// selection on the contract's stable `code:<path>` node id — the same
+// stores hooks (`useFileTreeRootSurface` for the root, `useFileTreeLevel` for lazy
+// child levels), reads degradation ONLY through a stores selector (never the raw
+// `tiers` block), and joins selection on the contract's stable `code:<path>` node id — the same
 // bidirectional join the vault browser realizes for `doc:<stem>`. It fetches
 // nothing itself and defines no model (dashboard-layer-ownership): chrome over the
-// one projection.
+// one projection. The root surface state (loading / degraded / transport error)
+// is classified by the stores selector, not recomputed in chrome.
 //
 // Two ADR-mandated deltas from the vault browser: the tree is a TRUE directory
 // hierarchy (not doc-type grouping), and it is BOUNDED + LAZY — each directory
@@ -22,37 +23,44 @@
 import { File, Folder, type Icon } from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useState } from "react";
+import { useCallback, useRef } from "react";
 
 import type { CodeFileEntity } from "../../platform/actions/entity";
 import type { FileTreeEntry } from "../../stores/server/engine";
-import { useFileTree, useFileTreeAvailability } from "../../stores/server/queries";
+import {
+  useActiveScope,
+  useFileTreeLevel,
+  useFileTreeRootSurface,
+  fileTreeChildStatusStyle,
+  type FileTreeRowView,
+} from "../../stores/server/queries";
+import {
+  deriveBrowserTreeRovingKey,
+  deriveCodeBrowserTreeRowView,
+  useBrowserTreeExpansion,
+} from "../../stores/view/browserTreeExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
-import { useActiveScope } from "../stage/Stage";
-import { handleCodeEntryClick, useHighlightedCodePath } from "./browserSelection";
+import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
+import {
+  useDashboardBrowserSelection,
+  useHighlightedCodePath,
+} from "./browserSelection";
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
 // module runs its `registerResolver("code-file", …)` side effect once.
 import "./menus/codeFileMenu";
 
 /** Build the code-file context-menu entity from a tree row's data. A directory
  *  carries no graph node, so its `nodeId` is left undefined. */
-function codeFileEntity(entry: FileTreeEntry): CodeFileEntity {
+function codeFileEntity(entry: FileTreeEntry, scope: string | null): CodeFileEntity {
   const isDir = entry.kind === "dir";
   return {
     kind: "code-file",
     id: entry.node_id,
+    scope,
     path: entry.path,
     isDir,
     nodeId: isDir ? undefined : entry.node_id || undefined,
   };
-}
-
-// --- pure helpers (unit-tested) ---------------------------------------------------
-
-/** Display name for a row: the path's final segment (monospace path identity).
- *  The full repo-relative path rides the row's `title` for hover. */
-export function basename(path: string): string {
-  return path.replace(/\/+$/, "").replace(/^.*\//, "");
 }
 
 // Domain marks (iconography ADR): Phosphor `Folder` / `File`, each grayscale-
@@ -112,26 +120,79 @@ export interface CodeTreeProps {
  */
 export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps) {
   const scope = useActiveScope();
-  const rootLevel = useFileTree(scope);
-  const availability = useFileTreeAvailability(scope);
-  const clickHandler = onEntryClick ?? handleCodeEntryClick;
-  const normalizedFilter = (filter ?? "").trim().toLowerCase();
+  const rootSurface = useFileTreeRootSurface(scope);
+  const { rootLevel, state, degradedMessage, browserLabel } = rootSurface;
+  const dashboardSelection = useDashboardBrowserSelection(scope);
+  const clickHandler = onEntryClick ?? dashboardSelection.handleCodeEntryClick;
+  const { expanded, activeKey, toggle, setActiveKey } = useBrowserTreeExpansion(
+    scope,
+    "code",
+  );
+  const navEls = useRef(new Map<string, HTMLButtonElement>());
+  const previousNavOrder = useRef<string[]>([]);
+  const currentNavOrder = useRef<string[]>([]);
+  const tabStopAssigned = useRef(false);
+  const rovingKey = deriveBrowserTreeRovingKey(activeKey, previousNavOrder.current);
 
-  if (rootLevel.isPending) {
+  currentNavOrder.current = [];
+  tabStopAssigned.current = false;
+
+  const registerNav = useCallback(
+    (key: string) => (el: HTMLButtonElement | null) => {
+      if (el) {
+        navEls.current.set(key, el);
+      } else {
+        navEls.current.delete(key);
+      }
+    },
+    [],
+  );
+  const registerVisibleKey = useCallback(
+    (key: string) => {
+      currentNavOrder.current.push(key);
+      previousNavOrder.current = currentNavOrder.current;
+      const tabbable =
+        rovingKey === key || (rovingKey === null && !tabStopAssigned.current);
+      if (tabbable) tabStopAssigned.current = true;
+      return tabbable ? 0 : -1;
+    },
+    [rovingKey],
+  );
+  const moveActive = useCallback(
+    (from: string, delta: number) => {
+      const order = previousNavOrder.current;
+      if (order.length === 0) return;
+      const current = Math.max(0, order.indexOf(from));
+      const next = order[Math.min(order.length - 1, Math.max(0, current + delta))];
+      if (!next) return;
+      setActiveKey(next);
+      navEls.current.get(next)?.focus();
+    },
+    [setActiveKey],
+  );
+  const expansion = { expanded, toggle };
+  const navigation = {
+    registerNav,
+    registerVisibleKey,
+    setActiveKey,
+    moveActive,
+  };
+
+  if (state === "loading") {
     // Loading: a quiet, copy-toned pending line — no spinner theatre (ADR
     // "States"). The subtle liveness pulse is tied to genuine in-flight work.
     return (
       <p
-        className="animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint"
+        className={rootSurface.loadingClassName}
         role="status"
         aria-live="polite"
       >
-        reading the worktree…
+        {rootLevel.loadingMessage}
       </p>
     );
   }
 
-  if (rootLevel.isError && !availability.degraded) {
+  if (state === "error") {
     // Error: a genuine /file-tree failure — contained, region-scoped, with retry,
     // distinguished from degradation so the user can tell "this read failed" from
     // "a backend is down" (ADR "States"). A tiers-bearing failure (a backend tier
@@ -140,18 +201,18 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     // this error state (degradation-is-read-from-tiers).
     return (
       <div
-        className="space-y-fg-1 px-fg-1 py-fg-0-5"
+        className={rootSurface.errorRootClassName}
         role="status"
         aria-live="polite"
         data-code-error
       >
-        <p className="text-label text-state-broken">code tree unavailable</p>
+        <p className={rootSurface.errorTitleClassName}>{rootLevel.errorTitle}</p>
         <button
           type="button"
-          onClick={() => void rootLevel.refetch()}
-          className="rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          onClick={rootLevel.retry}
+          className={rootSurface.retryButtonClassName}
         >
-          try again
+          {rootLevel.retryLabel}
         </button>
       </div>
     );
@@ -161,200 +222,208 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
   // scope) or an absent structural tier renders as a DESIGNED degraded state
   // explaining the absence, distinct from empty; read through the stores
   // selector, never the raw tiers block (ADR "Structural-tier degradation").
-  if (availability.degraded) {
-    const reason =
-      availability.degradedTiers.map((t) => availability.reasons[t]).find(Boolean) ??
-      "";
+  if (state === "degraded") {
     return (
       <p
-        className="mx-fg-1 my-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
+        className={rootSurface.degradedClassName}
         role="status"
         aria-live="polite"
         data-code-degraded
       >
-        this scope has no code tree
-        {reason ? ` — ${reason}` : ""}. the vault browser remains available.
+        {degradedMessage}
       </p>
     );
   }
 
-  const entries = rootLevel.data?.entries ?? [];
+  const entries = rootLevel.entries;
 
   if (entries.length === 0) {
     // Empty: an approachable empty state — a worktree that resolves to no
     // listable source is a real condition, not a fault (ADR "States").
     return (
-      <p className="px-fg-1 py-fg-0-5 text-label text-ink-faint" data-code-empty>
-        no source files in this scope yet.
+      <p className={rootSurface.emptyClassName} data-code-empty>
+        {rootLevel.emptyMessage}
       </p>
     );
   }
 
   return (
-    <nav className="text-label" aria-label="code browser" data-code-browser>
+    <nav className={rootSurface.navClassName} aria-label={browserLabel} data-code-browser>
       <ul>
-        {entries.map((entry) => (
+        {rootLevel.rows.map((row) => (
           <DirectoryRow
-            key={entry.path}
-            entry={entry}
+            key={row.entry.path}
+            row={row}
             scope={scope}
             depth={0}
             clickHandler={clickHandler}
             linkedNodeIds={linkedNodeIds}
-            filter={normalizedFilter}
-            truncated={rootLevel.data?.truncated ?? null}
+            filter={filter ?? ""}
+            truncated={rootLevel.truncated}
+            expansion={expansion}
+            navigation={navigation}
           />
         ))}
       </ul>
       {/* Bounded-read honesty at the root level: a capped level reads as "more
           here", never a silent partial result (graph-queries-are-bounded). */}
-      {rootLevel.data?.truncated && (
-        <TruncatedNote total={rootLevel.data.truncated.total_children} />
+      {rootLevel.truncationMessage && (
+        <TruncatedNote
+          message={rootLevel.truncationMessage}
+          className={rootLevel.truncationClassName}
+        />
       )}
     </nav>
   );
 }
 
 /** The "more here — expand a subdirectory" note for a capped level. */
-function TruncatedNote({ total }: { total: number }) {
+function TruncatedNote({
+  message,
+  className,
+}: {
+  message: string;
+  className: string;
+}) {
   return (
     <p
-      className="px-fg-1 py-fg-0-5 text-caption text-ink-faint"
+      className={className}
       role="status"
       data-code-truncated
     >
-      more here ({total}) — expand a subdirectory to narrow.
+      {message}
     </p>
   );
 }
 
 interface RowProps {
-  entry: FileTreeEntry;
+  row: FileTreeRowView;
   scope: string | null;
   depth: number;
   clickHandler: (entry: FileTreeEntry) => void;
   linkedNodeIds?: ReadonlySet<string>;
   filter: string;
   truncated: { total_children: number } | null;
+  expansion: { expanded: ReadonlySet<string>; toggle: (id: string) => void };
+  navigation: CodeTreeNavigation;
+}
+
+interface CodeTreeNavigation {
+  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
+  registerVisibleKey: (key: string) => number;
+  setActiveKey: (id: string | null) => void;
+  moveActive: (from: string, delta: number) => void;
 }
 
 /**
  * One row in the hierarchy. A directory is a disclosure (Lucide chevron + Phosphor
  * folder mark) that LAZILY fetches and renders its children on first expansion; a
  * file is a leaf that joins selection to its `code:` node. The whole subtree is
- * built recursively, one level per `useFileTree` call — the bounded, lazy grammar.
+ * built recursively, one level per `useFileTreeLevel` call — the bounded, lazy grammar.
  */
 function DirectoryRow({
-  entry,
+  row,
   scope,
   depth,
   clickHandler,
   linkedNodeIds,
   filter,
+  expansion,
+  navigation,
 }: RowProps) {
-  const [expanded, setExpanded] = useState(false);
-  const highlight = useHighlightedCodePath([entry]);
-  const isDir = entry.kind === "dir";
-  const name = basename(entry.path);
+  const { entry } = row;
+  const highlight = useHighlightedCodePath([entry], scope);
+  const rowView = deriveCodeBrowserTreeRowView(entry, {
+    depth,
+    filter,
+    highlightPath: highlight,
+    expanded: expansion.expanded,
+    linkedNodeIds,
+    chevronPx: CHEVRON_PX,
+  });
 
-  // In-rail filter: a client-side narrowing of the visible tree. A file row is
-  // hidden when it does not match; a directory always stays visible (its match
-  // may live in an unfetched descendant), so the filter never hides a path to a
-  // possible match. Empty filter shows everything.
-  if (filter.length > 0 && !isDir && !entry.path.toLowerCase().includes(filter)) {
+  if (!rowView.visible) {
     return null;
   }
 
-  // The quiet linkage marker (ADR "The interlink"): present only when this file's
-  // `code:` node exists in the host-supplied linkage set. A file with no node is
-  // the quiet ABSENT state — no marker, still listed and selectable, never an
-  // error. Directories never carry the marker (they are not graph nodes).
-  const linked = !isDir && (linkedNodeIds?.has(entry.node_id) ?? false);
-  const highlighted = entry.path === highlight;
+  const tabIndex = navigation.registerVisibleKey(rowView.navKey);
   const Mark = rowMark(entry.kind);
-  const indent = { paddingLeft: `${0.25 + depth * 0.75}rem` };
 
   return (
     <li>
       <button
         type="button"
         title={entry.path}
-        aria-current={highlighted ? "page" : undefined}
-        aria-expanded={isDir ? expanded : undefined}
+        aria-current={rowView.highlighted ? "page" : undefined}
+        aria-expanded={rowView.isDir ? rowView.expanded : undefined}
+        tabIndex={tabIndex}
+        ref={navigation.registerNav(rowView.navKey)}
         data-code-row
-        data-code-dir={isDir ? "" : undefined}
-        data-code-linked={linked ? "" : undefined}
+        data-code-dir={rowView.isDir ? "" : undefined}
+        data-code-linked={rowView.linked ? "" : undefined}
+        onFocus={() => navigation.setActiveKey(rowView.navKey)}
         onClick={() => {
-          if (isDir) {
-            setExpanded((prev) => !prev);
+          if (rowView.isDir) {
+            expansion.toggle(entry.path);
           } else {
             clickHandler(entry);
           }
         }}
         onContextMenu={(e) => {
           e.preventDefault();
-          openContextMenu(codeFileEntity(entry), { x: e.clientX, y: e.clientY });
+          openContextMenu(codeFileEntity(entry, scope), {
+            x: e.clientX,
+            y: e.clientY,
+          });
         }}
         onKeyDown={(e) => {
-          // Keyboard menu entry (ContextMenu key / Shift+F10): anchor at the
-          // row's bottom-left, then fall through to the directory disclosure
-          // keyboard contract for everything else (ArrowRight/Left expand/
-          // collapse, Enter/Space activate).
-          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-            e.preventDefault();
-            const r = e.currentTarget.getBoundingClientRect();
-            openContextMenu(codeFileEntity(entry), { x: r.left, y: r.bottom });
+          if (
+            handleKeyboardContextMenu(e, (anchor) =>
+              openContextMenu(codeFileEntity(entry, scope), anchor),
+            )
+          ) {
             return;
           }
-          onRowKeyDown(isDir, expanded, setExpanded)(e);
+          onRowKeyDown(
+            rowView.isDir,
+            rowView.expanded,
+            () => expansion.toggle(entry.path),
+            () => navigation.moveActive(rowView.navKey, 1),
+            () => navigation.moveActive(rowView.navKey, -1),
+          )(e);
         }}
-        style={indent}
-        className={`flex h-[30px] w-full items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-          highlighted
-            ? "bg-accent-subtle font-medium text-ink"
-            : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
-        }`}
+        style={rowView.rowStyle}
+        className={rowView.rowClassName}
       >
-        {/* Grayscale-safe selection: a leading accent bar marks the active row so
-            the cue survives without hue (matching the vault browser). */}
-        <span
-          aria-hidden
-          className={`h-3 w-0.5 shrink-0 rounded-full ${
-            highlighted ? "bg-accent" : "bg-transparent"
-          }`}
-        />
-        {/* Lucide disclosure chevron for a directory; a fixed gap keeps file rows
-            aligned under their siblings' names. */}
-        <span className="shrink-0 text-ink-faint" aria-hidden>
-          {isDir ? (
-            expanded ? (
+        <DepthGuides depth={depth} />
+        <span aria-hidden className={rowView.selectionCueClassName} />
+        <span className={rowView.chevronClassName} aria-hidden>
+          {rowView.isDir ? (
+            rowView.expanded ? (
               <ChevronDown size={CHEVRON_PX} />
             ) : (
               <ChevronRight size={CHEVRON_PX} />
             )
           ) : (
-            <span style={{ display: "inline-block", width: CHEVRON_PX }} />
+            <span style={rowView.chevronSpacerStyle} />
           )}
         </span>
-        <span className="shrink-0 text-ink-faint">
+        <span className={rowView.markClassName}>
           <Mark size={ROW_MARK_PX} />
         </span>
-        <span className="min-w-0 truncate font-mono">{name}</span>
-        {/* Quiet right-aligned linkage marker: this file has a graph node, so it
-            is one click from the stage. Absent files carry nothing (the quiet
-            absent-interlink state). */}
-        {linked && (
+        <span className={rowView.labelClassName}>{row.displayName}</span>
+        {rowView.linked && (
           <span
-            aria-label="has graph linkage"
-            className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent/70"
+            aria-label={rowView.linkedCueAriaLabel}
+            className={rowView.linkedCueClassName}
           />
         )}
       </button>
 
       {/* Lazily-fetched children: mounted only once the directory is expanded, so
-          its `useFileTree(scope, path)` query fires on first expansion and is
+          its `useFileTreeLevel(scope, path)` selector fires on first expansion and is
           cached per scope thereafter — the one-level-per-call lazy grammar. */}
-      {isDir && expanded && (
+      {rowView.isDir && rowView.expanded && (
         <ChildLevel
           path={entry.path}
           scope={scope}
@@ -362,9 +431,32 @@ function DirectoryRow({
           clickHandler={clickHandler}
           linkedNodeIds={linkedNodeIds}
           filter={filter}
+          expansion={expansion}
+          navigation={navigation}
         />
       )}
     </li>
+  );
+}
+
+function DepthGuides({ depth }: { depth: number }) {
+  if (depth <= 0) return null;
+  return (
+    <span
+      aria-hidden
+      className="relative h-full shrink-0"
+      style={{ width: `${depth * 0.75}rem` }}
+      data-code-depth-guides
+      data-code-depth={depth}
+    >
+      {Array.from({ length: depth }, (_, i) => (
+        <span
+          key={i}
+          className="absolute top-[0.3125rem] bottom-[0.3125rem] w-px rounded-full bg-rule"
+          style={{ left: `${i * 0.75 + 0.375}rem` }}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -374,16 +466,23 @@ function DirectoryRow({
 function onRowKeyDown(
   isDir: boolean,
   expanded: boolean,
-  setExpanded: (fn: (prev: boolean) => boolean) => void,
+  toggleExpanded: () => void,
+  focusNext: () => void,
+  focusPrevious: () => void,
 ) {
   return (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (!isDir) return;
-    if (e.key === "ArrowRight" && !expanded) {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      setExpanded(() => true);
-    } else if (e.key === "ArrowLeft" && expanded) {
+      focusNext();
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setExpanded(() => false);
+      focusPrevious();
+    } else if (isDir && e.key === "ArrowRight" && !expanded) {
+      e.preventDefault();
+      toggleExpanded();
+    } else if (isDir && e.key === "ArrowLeft" && expanded) {
+      e.preventDefault();
+      toggleExpanded();
     }
   };
 }
@@ -395,11 +494,13 @@ interface ChildLevelProps {
   clickHandler: (entry: FileTreeEntry) => void;
   linkedNodeIds?: ReadonlySet<string>;
   filter: string;
+  expansion: { expanded: ReadonlySet<string>; toggle: (id: string) => void };
+  navigation: CodeTreeNavigation;
 }
 
 /**
  * One lazily-fetched directory level. Mounting this component IS the lazy fetch:
- * `useFileTree(scope, path, true)` fires for `path`'s children only when the
+ * `useFileTreeLevel(scope, path, true)` fires for `path`'s children only when the
  * parent directory is expanded (this component is mounted). A subordinate
  * liveness cue shows while the level is in flight (no spinner theatre); an empty
  * level and a per-level read failure are handled subordinately, never crashing the
@@ -412,55 +513,61 @@ function ChildLevel({
   clickHandler,
   linkedNodeIds,
   filter,
+  expansion,
+  navigation,
 }: ChildLevelProps) {
-  const level = useFileTree(scope, path);
+  const level = useFileTreeLevel(scope, path);
 
-  if (level.isPending) {
+  if (level.state === "loading") {
     return (
       <p
-        className="animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint"
-        style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
+        className={level.childLoadingClassName}
+        style={fileTreeChildStatusStyle(depth)}
         role="status"
         aria-live="polite"
         data-code-level-loading
       >
-        …
+        {level.childLoadingMessage}
       </p>
     );
   }
 
-  if (level.isError) {
+  if (level.state === "error") {
     return (
       <p
-        className="px-fg-1 py-fg-0-5 text-caption text-state-broken"
-        style={{ paddingLeft: `${0.25 + depth * 0.75}rem` }}
+        className={level.childErrorClassName}
+        style={fileTreeChildStatusStyle(depth)}
         role="status"
         data-code-level-error
       >
-        could not list this directory.
+        {level.childErrorMessage}
       </p>
     );
   }
 
-  const entries = level.data?.entries ?? [];
-  if (entries.length === 0) return null;
+  if (level.state === "empty") return null;
 
   return (
     <ul>
-      {entries.map((entry) => (
+      {level.rows.map((row) => (
         <DirectoryRow
-          key={entry.path}
-          entry={entry}
+          key={row.entry.path}
+          row={row}
           scope={scope}
           depth={depth}
           clickHandler={clickHandler}
           linkedNodeIds={linkedNodeIds}
           filter={filter}
-          truncated={level.data?.truncated ?? null}
+          truncated={level.truncated}
+          expansion={expansion}
+          navigation={navigation}
         />
       ))}
-      {level.data?.truncated && (
-        <TruncatedNote total={level.data.truncated.total_children} />
+      {level.truncationMessage && (
+        <TruncatedNote
+          message={level.truncationMessage}
+          className={level.truncationClassName}
+        />
       )}
     </ul>
   );

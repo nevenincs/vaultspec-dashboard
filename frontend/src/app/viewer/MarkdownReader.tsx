@@ -24,12 +24,11 @@ import remarkGfm from "remark-gfm";
 import {
   deriveMarkdownReaderView,
   type ContentView,
-  type FrontmatterHeaderView,
-  type FrontmatterTagCategory,
+  type MarkdownReaderEditorialView,
   type MarkdownReaderView,
 } from "../../stores/server/queries";
 import { openDocTab } from "../../stores/view/tabs";
-import { StatusDot, categoryColorVar, type Category } from "../kit";
+import { StatusDot, categoryColorVar } from "../kit";
 import { remarkWikiLink, wikiLinkNodeId } from "./remarkWikiLink";
 import { useHighlightedHast } from "./useHighlighter";
 
@@ -42,99 +41,6 @@ function urlTransform(url: string): string {
 /** Render a Shiki HAST tree to React elements through the jsx runtime. */
 function hastToReact(hast: Root): ReactElement {
   return toJsxRuntime(hast, { Fragment, jsx, jsxs }) as ReactElement;
-}
-
-// --- editorial document model (board 259:838 DocHeader + footer) ---------------
-//
-// The binding reader lifts the doc-type eyebrow, title, dek, and meta out of the
-// raw body into a structured header, and moves tags/related to a footer. These are
-// pure app-layer projections over the already-served content (the reader still
-// fetches nothing) — derived from the parsed frontmatter and a light split of the
-// body's leading H1 + dek paragraph.
-
-/** The doc-type directory tags that earn the header eyebrow (the rest stay footer
- *  chips). Mirrors the vault directory taxonomy. */
-const DOCTYPE_EYEBROW: Partial<Record<FrontmatterTagCategory, string>> = {
-  adr: "Decision",
-  audit: "Audit",
-  exec: "Step",
-  index: "Index",
-  plan: "Plan",
-  research: "Research",
-};
-
-function eyebrowFor(
-  fm: FrontmatterHeaderView | null,
-): { label: string; category: Category } | null {
-  if (!fm) return null;
-  for (const tag of fm.tags) {
-    const label = tag.category ? DOCTYPE_EYEBROW[tag.category] : undefined;
-    if (tag.category && label) return { label, category: tag.category };
-  }
-  return null;
-}
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
-/** `2026-06-16` → `16 June 2026` (Reader/Meta date form). */
-function formatLongDate(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return iso;
-  const [, y, mo, d] = m;
-  return `${Number(d)} ${MONTHS[Number(mo) - 1] ?? mo} ${y}`;
-}
-
-/** Estimated reading minutes from the body word count (~200 wpm, floor 1). */
-function readingMinutes(body: string): number {
-  const words = body.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.round(words / 200));
-}
-
-/** Split the body into the editorial title (leading H1), dek (the paragraph that
- *  immediately follows it), and the remaining markdown to render. A body with no
- *  leading H1 keeps everything in `rest`. */
-function splitEditorial(body: string): {
-  title: string | null;
-  dek: string | null;
-  rest: string;
-} {
-  const lines = body.split("\n");
-  let i = 0;
-  while (i < lines.length && lines[i].trim() === "") i++;
-  let title: string | null = null;
-  const h1 = /^#\s+(.+?)\s*$/.exec(lines[i] ?? "");
-  if (h1) {
-    title = h1[1].trim();
-    i++;
-  }
-  while (i < lines.length && lines[i].trim() === "") i++;
-  let dek: string | null = null;
-  const next = lines[i]?.trim() ?? "";
-  const isProse = next !== "" && !/^(#{1,6}\s|[-*>|]|\d+\.\s|```)/.test(next);
-  if (title && isProse) {
-    const dekLines: string[] = [];
-    while (i < lines.length && lines[i].trim() !== "") {
-      dekLines.push(lines[i].trim());
-      i++;
-    }
-    dek = dekLines.join(" ");
-  }
-  const rest = lines.slice(i).join("\n").replace(/^\n+/, "");
-  return { title, dek, rest };
 }
 
 // --- fenced code (CodeBlock board 256:836) ------------------------------------
@@ -224,43 +130,34 @@ const REMARK_PLUGINS = [remarkGfm, remarkWikiLink];
 /** The editorial DocHeader block: doc-type eyebrow, serif title, italic dek, and
  *  the date · reading-time · status meta line (board 259:838). */
 function DocHeaderBlock({
-  view,
-  title,
-  dek,
-  body,
+  editorial,
 }: {
-  view: MarkdownReaderView;
-  title: string | null;
-  dek: string | null;
-  body: string;
+  editorial: MarkdownReaderEditorialView;
 }): ReactElement {
-  const eyebrow = eyebrowFor(view.frontmatter);
-  const date = formatLongDate(
-    view.frontmatter?.dates.find((d) => d.label === "created")?.value,
-  );
-  const meta = [date, `${readingMinutes(body)} min read`, view.status].filter(
-    (part): part is string => Boolean(part),
-  );
   return (
-    <header className="flex flex-col gap-[11px]">
-      {eyebrow && (
-        <div className="flex items-center gap-[7px]">
-          <StatusDot category={eyebrow.category} />
+    <header className="flex flex-col gap-[0.6875rem]">
+      {editorial.eyebrow && (
+        <div className="flex items-center gap-[0.4375rem]">
+          <StatusDot category={editorial.eyebrow.category} />
           <span
             className="reader-eyebrow"
-            style={{ color: categoryColorVar(eyebrow.category) }}
+            style={{ color: categoryColorVar(editorial.eyebrow.category) }}
           >
-            {eyebrow.label}
+            {editorial.eyebrow.label}
           </span>
         </div>
       )}
-      {title && <h1 className="reader-title text-ink">{title}</h1>}
-      {dek && <p className="reader-dek text-ink-muted">{dek}</p>}
-      {meta.length > 0 && (
+      {editorial.title && (
+        <h1 className="reader-title text-ink">{editorial.title}</h1>
+      )}
+      {editorial.dek && (
+        <p className="reader-dek text-ink-muted">{editorial.dek}</p>
+      )}
+      {editorial.meta.length > 0 && (
         <p className="reader-meta text-ink-muted">
-          {meta.map((part, idx) => (
+          {editorial.meta.map((part, idx) => (
             <span key={part}>
-              {idx > 0 && <span className="px-[10px] text-ink-faint">·</span>}
+              {idx > 0 && <span className="px-[0.625rem] text-ink-faint">·</span>}
               {part}
             </span>
           ))}
@@ -273,29 +170,26 @@ function DocHeaderBlock({
 /** The Tagged / Related footer (board 263:886): feature tags as chips and related
  *  stems as in-app wiki-links; the doc-type tag is omitted (it is the eyebrow). */
 function ReaderFooter({
-  view,
+  editorial,
   scope,
 }: {
-  view: MarkdownReaderView;
+  editorial: MarkdownReaderEditorialView;
   scope: string | null;
 }): ReactElement | null {
-  const fm = view.frontmatter;
-  if (!fm) return null;
-  const footerTags = fm.tags.filter(
-    (tag) => !(tag.category && DOCTYPE_EYEBROW[tag.category]),
-  );
-  if (footerTags.length === 0 && fm.related.length === 0) return null;
+  if (editorial.footerTags.length === 0 && editorial.related.length === 0) {
+    return null;
+  }
   return (
-    <footer className="flex flex-col gap-fg-4 px-[72px] pb-[30px] pt-[22px]">
+    <footer className="flex flex-col gap-fg-4 px-[4.5rem] pb-[1.875rem] pt-[1.375rem]">
       <div className="h-px w-full bg-rule" />
-      {footerTags.length > 0 && (
+      {editorial.footerTags.length > 0 && (
         <div className="flex items-center gap-fg-3">
           <span className="reader-meta w-16 shrink-0 text-ink-muted">Tagged</span>
-          <div className="flex flex-1 flex-wrap gap-[7px]">
-            {footerTags.map((tag) => (
+          <div className="flex flex-1 flex-wrap gap-[0.4375rem]">
+            {editorial.footerTags.map((tag) => (
               <span
                 key={tag.label}
-                className="rounded-full bg-paper-sunken px-[10px] py-[4px] text-[11px] text-ink-muted"
+                className="rounded-full bg-paper-sunken px-[0.625rem] py-fg-1 text-[0.6875rem] text-ink-muted"
               >
                 {tag.label}
               </span>
@@ -303,11 +197,11 @@ function ReaderFooter({
           </div>
         </div>
       )}
-      {fm.related.length > 0 && (
+      {editorial.related.length > 0 && (
         <div className="flex items-center gap-fg-3">
           <span className="reader-meta w-16 shrink-0 text-ink-muted">Related</span>
           <div className="flex flex-1 flex-wrap gap-x-fg-4 gap-y-fg-1-5">
-            {fm.related.map((related) => (
+            {editorial.related.map((related) => (
               <button
                 key={related.nodeId}
                 type="button"
@@ -316,7 +210,7 @@ function ReaderFooter({
                     () => undefined,
                   );
                 }}
-                className="text-[13.5px] font-medium text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="text-[0.84375rem] font-medium text-accent-text underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               >
                 {related.stem}
               </button>
@@ -337,7 +231,6 @@ function MarkdownBody({
   view: MarkdownReaderView;
   scope: string | null;
 }): ReactElement {
-  const { title, dek, rest } = useMemo(() => splitEditorial(view.body), [view.body]);
   const components = useMemo<Components>(
     () => ({
       ...COMPONENTS,
@@ -372,8 +265,8 @@ function MarkdownBody({
     [scope],
   );
   return (
-    <div className="px-[72px] pb-[10px] pt-[30px]">
-      <DocHeaderBlock view={view} title={title} dek={dek} body={rest} />
+    <div className="px-[4.5rem] pb-[0.625rem] pt-[1.875rem]">
+      <DocHeaderBlock editorial={view.editorial} />
       <div className="my-fg-4 h-px w-full bg-rule" />
       <article className="vs-markdown">
         <Markdown
@@ -381,7 +274,7 @@ function MarkdownBody({
           urlTransform={urlTransform}
           components={components}
         >
-          {rest}
+          {view.editorial.body}
         </Markdown>
       </article>
     </div>
@@ -406,7 +299,7 @@ export function MarkdownReader({
 
   if (markdownView.state !== "ready") {
     return (
-      <ReaderState tone={markdownView.stateTone}>
+      <ReaderState className={markdownView.stateToneClass}>
         {markdownView.stateMessage}
       </ReaderState>
     );
@@ -415,16 +308,13 @@ export function MarkdownReader({
   return (
     <div className="flex h-full flex-col bg-paper text-ink">
       {markdownView.truncated && (
-        <div className="reader-meta border-b border-rule bg-paper-sunken px-[72px] py-fg-1 text-ink-muted">
-          Truncated to the first{" "}
-          {markdownView.truncated.returned_bytes.toLocaleString()} of{" "}
-          {markdownView.truncated.total_bytes.toLocaleString()} bytes — open the file
-          directly for the full document.
+        <div className="reader-meta border-b border-rule bg-paper-sunken px-[4.5rem] py-fg-1 text-ink-muted">
+          {markdownView.truncationMessage}
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto">
         <MarkdownBody view={markdownView} scope={scope} />
-        <ReaderFooter view={markdownView} scope={scope} />
+        <ReaderFooter editorial={markdownView.editorial} scope={scope} />
       </div>
     </div>
   );
@@ -436,20 +326,14 @@ export function MarkdownReader({
  *  for error). */
 function ReaderState({
   children,
-  tone = "faint",
+  className,
 }: {
   children: ReactNode;
-  tone?: "faint" | "muted" | "broken";
+  className: string;
 }): ReactElement {
-  const inkClass =
-    tone === "broken"
-      ? "text-state-broken"
-      : tone === "muted"
-        ? "text-ink-muted"
-        : "text-ink-faint";
   return (
     <div
-      className={`reader-meta flex h-full items-center justify-center p-fg-6 text-center ${inkClass}`}
+      className={`reader-meta flex h-full items-center justify-center p-fg-6 text-center ${className}`}
     >
       <p>{children}</p>
     </div>

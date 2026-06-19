@@ -58,19 +58,19 @@ const content = deriveContentView(response, null, false);
 // the Figma frame; the breadcrumb/toggle are faithful static chrome for now.
 function ChromeTopbar() {
   return (
-    <div className="flex shrink-0 items-center justify-between bg-paper py-[13px] pl-[20px] pr-[14px]">
-      <div className="flex items-center gap-[6px] text-[12.5px]">
+    <div className="flex shrink-0 items-center justify-between bg-paper py-[0.8125rem] pl-[1.25rem] pr-[0.875rem]">
+      <div className="flex items-center gap-fg-1-5 text-[0.78125rem]">
         <span className="text-ink-muted">Vault</span>
         <span className="text-ink-faint">/</span>
         <span className="text-ink-muted">Decisions</span>
         <span className="text-ink-faint">/</span>
         <span className="font-medium text-ink">Graph layout catalog</span>
       </div>
-      <div className="flex items-center gap-[2px] rounded-[9px] bg-paper-sunken p-[3px]">
-        <span className="rounded-[5px] bg-paper-raised px-[12px] py-[5px] text-[11.5px] font-medium text-ink">
+      <div className="flex items-center gap-fg-0-5 rounded-[0.5625rem] bg-paper-sunken p-[0.1875rem]">
+        <span className="rounded-fg-sm bg-paper-raised px-fg-3 py-[0.3125rem] text-[0.71875rem] font-medium text-ink">
           View
         </span>
-        <span className="rounded-[5px] px-[12px] py-[5px] text-[11.5px] text-ink-muted">
+        <span className="rounded-fg-sm px-fg-3 py-[0.3125rem] text-[0.71875rem] text-ink-muted">
           Edit
         </span>
       </div>
@@ -82,7 +82,7 @@ function ReaderVisualHarness() {
   return (
     <div className="flex h-screen min-h-0 justify-center bg-paper text-ink">
       <div
-        className="flex min-h-0 flex-col overflow-hidden rounded-[16px] border border-rule bg-paper"
+        className="flex min-h-0 flex-col overflow-hidden rounded-[1rem] border border-rule bg-paper"
         style={{ width: `${surfaceWidth}px` }}
         data-reader-surface
       >

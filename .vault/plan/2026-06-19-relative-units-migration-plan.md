@@ -120,47 +120,47 @@ Map off-scale inline px to the existing rem DTCG scale and close genuine gaps by
 
 Convert the shared kit components' hardcoded px to rem token utilities or rem arbitrary values.
 
-- [ ] `P03.S05` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/DocRow.tsx`.
-- [ ] `P03.S06` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/FacetRow.tsx`.
-- [ ] `P03.S07` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/SearchField.tsx`.
-- [ ] `P03.S08` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/SectionLabel.tsx`.
-- [ ] `P03.S09` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/Switch.tsx`.
-- [ ] `P03.S10` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/TreeRow.tsx`.
+- [x] `P03.S05` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/DocRow.tsx`.
+- [x] `P03.S06` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/FacetRow.tsx`.
+- [x] `P03.S07` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/SearchField.tsx`.
+- [x] `P03.S08` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/SectionLabel.tsx`.
+- [x] `P03.S09` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/Switch.tsx`.
+- [x] `P03.S10` - Convert hardcoded px to rem token utilities; `frontend/src/app/kit/TreeRow.tsx`.
 
 ### Phase `P04` - left rail conversion
 
 Convert the left-rail surfaces' hardcoded px to rem.
 
-- [ ] `P04.S11` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/TreeBrowser.tsx`.
-- [ ] `P04.S12` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/LeftRail.tsx`.
-- [ ] `P04.S13` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/CodeTree.tsx`.
-- [ ] `P04.S14` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/BrowserRegion.tsx`.
+- [x] `P04.S11` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/TreeBrowser.tsx`.
+- [x] `P04.S12` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/LeftRail.tsx`.
+- [x] `P04.S13` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/CodeTree.tsx`.
+- [x] `P04.S14` - Convert hardcoded px to rem token utilities; `frontend/src/app/left/BrowserRegion.tsx`.
 
 ### Phase `P05` - timeline conversion
 
 Convert the timeline surfaces' hardcoded px to rem, distinguishing layout sizing (migrate) from canvas/scroll math (leave).
 
-- [ ] `P05.S15` - Convert layout-sizing px to rem, leaving canvas/scroll math; `frontend/src/app/timeline/TimelineControls.tsx`.
-- [ ] `P05.S16` - Convert layout-sizing px to rem, leaving canvas/scroll math; `frontend/src/app/timeline/Timeline.tsx`.
-- [ ] `P05.S17` - Convert layout-sizing px to rem, leaving canvas/scroll math; `frontend/src/app/timeline/Minimap.tsx`.
+- [x] `P05.S15` - Convert layout-sizing px to rem, leaving canvas/scroll math; `frontend/src/app/timeline/TimelineControls.tsx`.
+- [x] `P05.S16` - Convert layout-sizing px to rem, leaving canvas/scroll math; `frontend/src/app/timeline/Timeline.tsx`.
+- [x] `P05.S17` - Convert layout-sizing px to rem, leaving canvas/scroll math; `frontend/src/app/timeline/Minimap.tsx`.
 
 ### Phase `P06` - viewer and shell conversion
 
 Convert the viewer and shell chrome surfaces' hardcoded px to rem.
 
-- [ ] `P06.S18` - Convert hardcoded px to rem token utilities; `frontend/src/app/viewer/MarkdownReader.tsx`.
-- [ ] `P06.S19` - Convert hardcoded px to rem token utilities; `frontend/src/app/shell/IconRail.tsx`.
+- [x] `P06.S18` - Convert hardcoded px to rem token utilities; `frontend/src/app/viewer/MarkdownReader.tsx`.
+- [x] `P06.S19` - Convert hardcoded px to rem token utilities; `frontend/src/app/shell/IconRail.tsx`.
 
 ### Phase `P07` - stage filters and dev harnesses
 
 Convert the stage filter menu and the visual dev-harness entry points' hardcoded px to rem.
 
-- [ ] `P07.S20` - Convert hardcoded px to rem token utilities; `frontend/src/app/stage/FilterMenu.tsx`.
-- [ ] `P07.S21` - Convert hardcoded px to rem in the viewer visual dev harness; `frontend/src/viewer-visual/main.tsx`.
-- [ ] `P07.S22` - Convert hardcoded px to rem in the filters visual dev harness; `frontend/src/filters-visual/main.tsx`.
-- [ ] `P07.S23` - Convert hardcoded px to rem in the status visual dev harness; `frontend/src/status-visual/main.tsx`.
-- [ ] `P07.S24` - Convert hardcoded px to rem in the crash injector overlay; `frontend/src/platform/errors/CrashInjector.tsx`.
-- [ ] `P07.S29` - Convert hardcoded px to rem token utilities; `frontend/src/app/stage/FilterSidebar.tsx`.
+- [x] `P07.S20` - Convert hardcoded px to rem token utilities; `frontend/src/app/stage/FilterMenu.tsx`.
+- [x] `P07.S21` - Convert hardcoded px to rem in the viewer visual dev harness; `frontend/src/viewer-visual/main.tsx`.
+- [x] `P07.S22` - Convert hardcoded px to rem in the filters visual dev harness; `frontend/src/filters-visual/main.tsx`.
+- [x] `P07.S23` - Convert hardcoded px to rem in the status visual dev harness; `frontend/src/status-visual/main.tsx`.
+- [x] `P07.S24` - Convert hardcoded px to rem in the crash injector overlay; `frontend/src/platform/errors/CrashInjector.tsx`.
+- [x] `P07.S29` - Convert hardcoded px to rem token utilities; `frontend/src/app/stage/FilterSidebar.tsx`.
 
 ### Phase `P08` - app stylesheet literals
 

@@ -49,9 +49,6 @@ import {
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
 import {
   DEFAULT_PX_PER_MS,
-  fitTimelineViewportForScope,
-  setTimelineScrollOffset,
-  setTimelineViewport,
   setTimelineViewportWidth,
   timelineCorpusFitKey,
   useTimelineAutoFittedCorpusKey,
@@ -59,8 +56,15 @@ import {
   useTimelineLaneVisibility,
   useTimelineScrollState,
 } from "../../stores/view/timeline";
+import {
+  fitTimelineScopeToCorpus,
+  jumpTimelineNavigationToCorpusEdge,
+  panTimelineNavigation,
+  zoomTimelineNavigationAt,
+} from "../../stores/view/timelineIntent";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import {
+  deriveTimelineSurfaceChromeView,
   useActiveScope,
   useDashboardDateRangeView,
   useFiltersVocabularyView,
@@ -86,19 +90,12 @@ import { Minimap } from "./Minimap";
 import {
   PHASE_LANES,
   groupIndexOf,
-  laneGroupLabelLines,
   type PhaseLane,
-  type TimelineLaneGroup,
-  TIMELINE_LANE_GROUPS,
 } from "./phaseLanes";
 import {
   TIMELINE_ORIGIN_MS,
-  clampPxPerMs,
-  panScrollOffset,
-  timeToStripX,
   timeToX,
   visibleRange,
-  zoomAt,
 } from "./scrollStrip";
 import { lineageToTemporalScene, type TemporalSceneResult } from "./temporalScene";
 
@@ -151,8 +148,6 @@ export { PHASE_LANES, type PhaseLane };
 // the split design label lives in the 12..116 rail, with an 8px gap before marks.
 const GROUP_LABEL_W = 124;
 const GRAPH_RIGHT_PAD = 12;
-/** The x of the lane-group label text in the rail gutter. */
-const LANE_LABEL_X = 12;
 /** Virtualization margin (px) so a mark partly off-screen stays drawn. */
 const VIRTUAL_MARGIN_PX = 120;
 const WHEEL_ZOOM_FACTOR = 1.0018;
@@ -307,12 +302,6 @@ export function temporalDebugText(
   ];
 }
 
-function compactDayLabel(iso: string): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return iso.slice(0, 10);
-  return new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 export interface TimelineTimeWindow {
   fromMs: number;
   toMs: number;
@@ -363,41 +352,11 @@ export function timelineQueryWindow(
   return corpus ? intersectTimelineWindows(cropped, corpus) : cropped;
 }
 
-export function temporalFieldLegendItems(
-  sceneData: TemporalSceneResult,
-  visibleWindow?: { fromMs: number; toMs: number },
-): { key: string; label: string; value: string }[] {
-  const densest = sceneData.debug.densestBucket;
-  const from = visibleWindow
-    ? new Date(visibleWindow.fromMs).toISOString()
-    : sceneData.debug.range.from;
-  const to = visibleWindow
-    ? new Date(visibleWindow.toMs).toISOString()
-    : sceneData.debug.range.to;
-  return [
-    {
-      key: "range",
-      label: "Range",
-      value: `${compactDayLabel(from)} → ${compactDayLabel(to)}`,
-    },
-    {
-      key: "docs",
-      label: "Docs",
-      value: `${sceneData.debug.visibleNodeCount}`,
-    },
-    {
-      key: "days",
-      label: "Days",
-      value: `${sceneData.debug.bucketCount}`,
-    },
-    {
-      key: "busiest",
-      label: "Busiest day",
-      value: densest
-        ? `${compactDayLabel(`${densest.key}T00:00:00Z`)} · ${densest.count} docs`
-        : "none",
-    },
-  ];
+export function timelineDocumentCountText(
+  visibleDocuments: number,
+  totalDocuments: number,
+): string {
+  return `${visibleDocuments.toLocaleString("en-US")} visible of ${totalDocuments.toLocaleString("en-US")} total documents`;
 }
 
 /** A 1-hop ego set: the hovered node plus every node one arc away from it. */
@@ -567,51 +526,28 @@ function TemporalGraphCanvas({
   );
 }
 
-function TemporalFieldLegend({
-  sceneData,
-  visibleWindow,
+function TemporalDocumentCountPill({
+  visibleDocuments,
+  totalDocuments,
 }: {
-  sceneData: TemporalSceneResult;
-  visibleWindow: { fromMs: number; toMs: number };
+  visibleDocuments: number;
+  totalDocuments: number;
 }) {
-  const items = temporalFieldLegendItems(sceneData, visibleWindow);
-  const slots: Record<string, { labelX: number; valueX: number; width: number }> = {
-    range: { labelX: 0, valueX: 30, width: 103 },
-    docs: { labelX: 114, valueX: 140, width: 74 },
-    days: { labelX: 174, valueX: 200, width: 42 },
-    busiest: { labelX: 214, valueX: 272, width: 150 },
-  };
+  const label = timelineDocumentCountText(visibleDocuments, totalDocuments);
   return (
     <div
-      className="pointer-events-none relative h-[12px] w-full shrink-0 whitespace-nowrap text-[10px] leading-[12px] text-ink-muted"
-      role="list"
-      aria-label="timeline field legend"
+      className="pointer-events-none absolute bottom-[0.125rem] left-[0.75rem] flex h-[1.125rem] items-center gap-fg-1-5 rounded-fg-xs border border-rule bg-paper/90 px-fg-2 text-[0.625rem] leading-[0.75rem] text-ink-muted shadow-fg-raised"
+      aria-label="timeline document count"
       data-timeline-field-legend
     >
-      {items.map((item) => {
-        const slot = slots[item.key];
-        if (!slot) return null;
-        return (
-          <span
-            key={item.key}
-            className="absolute top-0 block h-[12px]"
-            style={{ left: `${slot.labelX}px`, width: `${slot.width}px` }}
-            role="listitem"
-            data-timeline-legend-role={item.key}
-          >
-            <span className="absolute top-0 text-ink-muted" style={{ left: 0 }}>
-              {item.label}
-            </span>
-            <span
-              data-tabular
-              className="absolute top-0 font-semibold text-ink"
-              style={{ left: `${slot.valueX - slot.labelX}px` }}
-            >
-              {item.value}
-            </span>
-          </span>
-        );
-      })}
+      <span className="sr-only">{label}</span>
+      <span data-tabular aria-hidden="true">
+        {visibleDocuments.toLocaleString("en-US")} visible
+      </span>
+      <span className="font-semibold text-ink">of</span>
+      <span data-tabular aria-hidden="true">
+        {totalDocuments.toLocaleString("en-US")} total documents
+      </span>
     </div>
   );
 }
@@ -700,7 +636,7 @@ function TimelineAxisLayer({
       data-timeline-axis-layer
     >
       <line
-        x1={GROUP_LABEL_W}
+        x1={0}
         x2={width}
         y1={axisY}
         y2={axisY}
@@ -723,14 +659,14 @@ function TimelineMonthAxis({
   if (labels.length === 0) return null;
   return (
     <div
-      className="pointer-events-none relative h-[20px] shrink-0 bg-paper"
+      className="pointer-events-none relative h-[1.25rem] shrink-0 bg-paper"
       aria-hidden="true"
       data-timeline-month-axis
     >
       {labels.map((item) => (
         <span
           key={item.key}
-          className="absolute top-[2px] whitespace-nowrap text-caption font-normal text-ink-muted"
+          className="absolute top-[0.125rem] whitespace-nowrap text-caption font-normal text-ink-muted"
           style={{ left: `${item.x}px` }}
         >
           {item.label}
@@ -931,35 +867,21 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   const corpusBounds = vocabulary.dateBounds;
   const zoomAround = useCallback(
     (cursorX: number, factor: number) => {
-      const next = zoomAt(pxPerMs, scrollOffset, cursorX, factor);
-      setTimelineViewport(next.pxPerMs, next.scrollOffset);
+      zoomTimelineNavigationAt(pxPerMs, scrollOffset, cursorX, factor);
     },
     [pxPerMs, scrollOffset],
   );
   const panBy = useCallback(
     (deltaPx: number) => {
-      setTimelineScrollOffset(panScrollOffset(scrollOffset, deltaPx));
+      panTimelineNavigation(scrollOffset, deltaPx);
     },
     [scrollOffset],
   );
   const jumpToCorpusEdge = useCallback(
     (edge: "start" | "end") => {
-      const raw =
-        edge === "start"
-          ? corpusBounds?.from
-            ? Date.parse(corpusBounds.from)
-            : NaN
-          : corpusBounds?.to
-            ? Date.parse(corpusBounds.to)
-            : Date.now();
-      const tMs = Number.isFinite(raw) ? raw : Date.now();
-      const next =
-        edge === "start"
-          ? timeToStripX(tMs, TIMELINE_ORIGIN_MS, pxPerMs) - 24
-          : timeToStripX(tMs, TIMELINE_ORIGIN_MS, pxPerMs) - width + 24;
-      setTimelineScrollOffset(Math.max(0, next));
+      jumpTimelineNavigationToCorpusEdge(edge, corpusBounds, pxPerMs, width);
     },
-    [corpusBounds?.from, corpusBounds?.to, pxPerMs, width],
+    [corpusBounds, pxPerMs, width],
   );
   const onTimelineWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -1000,9 +922,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const pan = panRef.current;
       if (!pan || pan.pointerId !== event.pointerId) return;
-      setTimelineScrollOffset(
-        panScrollOffset(pan.startScrollOffset, pan.startX - event.clientX),
-      );
+      panTimelineNavigation(pan.startScrollOffset, pan.startX - event.clientX);
     },
     [],
   );
@@ -1063,15 +983,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   useEffect(() => {
     if (scope == null || width <= 0) return;
     if (!corpusFitKey || corpusFitSatisfied) return;
-    const fromMs = corpusBounds?.from ? Date.parse(corpusBounds.from) : NaN;
-    if (!Number.isFinite(fromMs)) return; // wait for the bounds (or no dated corpus)
-    const toRaw = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
-    const toMs = Number.isFinite(toRaw) ? toRaw : Date.now();
-    const inset = 24;
-    const usable = Math.max(1, width - inset * 2);
-    const px = clampPxPerMs(usable / Math.max(1, toMs - fromMs));
-    const offset = Math.max(0, timeToStripX(fromMs, TIMELINE_ORIGIN_MS, px) - inset);
-    fitTimelineViewportForScope(scope, px, offset, corpusFitKey);
+    fitTimelineScopeToCorpus(scope, corpusBounds, width, corpusFitKey);
   }, [
     scope,
     corpusBounds?.from,
@@ -1139,12 +1051,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   // harmless capability the timeline never drives.)
   const lineage = useTimelineLineageView(scope);
 
-  // A visual lane group is drawn when ANY of its phase tokens is visible. The
-  // design lane stays on; the execution lane is toggled by the control bar's
-  // "Steps & summaries" switch (which flips its exec + codify phase keys together).
-  const groupVisible = (g: TimelineLaneGroup) =>
-    g.phases.some((p) => laneVisibility[p]);
-
   const { loading, errored, nodes, arcs } = lineage;
   const overviewInstants = useMemo(
     () =>
@@ -1185,19 +1091,19 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   );
 
   const hasMarks = temporalScene.nodes.length > 0;
-
-  const noHistory =
-    scope != null &&
-    !loading &&
-    !errored &&
-    !autoFitPending &&
-    !hasMarks &&
-    (surface === "empty" || surface === "normal" || surface === "lifecycle-sparse");
+  const timelineChrome = deriveTimelineSurfaceChromeView({
+    scopePresent: scope != null,
+    loading,
+    errored,
+    autoFitPending,
+    hasMarks,
+    surface,
+  });
 
   return (
     <div
       ref={hostRef}
-      className="relative flex h-full flex-col bg-paper pt-[2px] select-none"
+      className="relative flex h-full flex-col bg-paper pt-fg-0-5 select-none"
       data-timeline
     >
       <TimelineMonthAxis visibleWindow={visibleWindow} width={width} />
@@ -1206,7 +1112,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           scoped to THIS area (not the navigator) so they never cover the scrubber. */}
       <div
         ref={chartRef}
-        className="relative min-h-0 flex-1 cursor-grab bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus active:cursor-grabbing"
+        className="relative min-h-0 flex-1 cursor-grab bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-0.125rem] focus-visible:outline-focus active:cursor-grabbing"
         role="region"
         tabIndex={0}
         aria-label="timeline viewport"
@@ -1243,91 +1149,69 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           />
         )}
 
-        {/* Lane-group rail labels (binding AppShell 117:2): the design lane breaks
-            over two gutter lines ("Research · Decisions" / "Plans · Audits"), and
-            execution stays a single line. Decorative; focusable controls are the
-            dated marks. */}
-        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          {TIMELINE_LANE_GROUPS.map((group) => {
-            if (!groupVisible(group)) return null;
-            // Binding AppShell 117:2 fixes the lane rail copy to the 100px chart
-            // grammar: design labels at y=78/90 and execution at y=142 in the
-            // 212px surface. Relative to the chart's y=66 band, those are top
-            // offsets 12 and 76, independent of the axis midpoint.
-            const top = group.id === "design" ? 12 : 76;
-            return (
-              <span
-                key={group.id}
-                data-lane-rail={group.id}
-                className="absolute flex flex-col whitespace-nowrap text-[9px] font-normal leading-[12px] text-ink-muted"
-                style={{ left: `${LANE_LABEL_X}px`, top: `${top}px` }}
-              >
-                {laneGroupLabelLines(group).map((line) => (
-                  <span key={line}>{line}</span>
-                ))}
-              </span>
-            );
-          })}
-        </div>
-
         {/* Loading / positioning: a quiet copy-toned liveness line — the lane
             scaffold stays visible, so the surface never flashes empty (ADR
             "States"). Also shown while the corpus auto-fit is pending. */}
-        {(loading || autoFitPending) && (
+        {timelineChrome.showLoading && (
           <div
-            className="pointer-events-none absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-1 text-caption text-ink-faint"
+            className={timelineChrome.loadingClassName}
             role="status"
             data-timeline-loading
           >
-            <span className="h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-live" />
-            reading the timeline…
+            <span className={timelineChrome.loadingDotClassName} />
+            {timelineChrome.loadingLabel}
           </div>
         )}
 
         {/* Empty / no-history: approachable, never an error. */}
-        {noHistory && (
+        {timelineChrome.showEmpty && (
           <div
-            className="pointer-events-none absolute inset-0 flex items-center justify-center text-caption text-ink-faint"
+            className={timelineChrome.emptyClassName}
             role="status"
             data-timeline-empty
           >
-            {surface === "lifecycle-sparse"
-              ? "lineage appears as documents gain dates"
-              : "no lineage in this range yet"}
+            {timelineChrome.emptyLabel}
           </div>
         )}
 
         {/* Degraded-from-tiers (S59): the DESIGNED degraded state, read pre-derived
             from the stores degradation layer (RECONNECTING on stream loss) — never
             guessed from a transport error. */}
-        {degraded && !errored && (
+        {timelineChrome.showDegraded && (
           <div
-            className="pointer-events-none absolute top-fg-1 right-fg-2 flex items-center gap-fg-1 rounded-fg-pill bg-paper-raised/95 px-fg-1-5 py-fg-0-5 text-caption text-state-stale shadow-fg-raised"
+            className={timelineChrome.degradedClassName}
             role="status"
             aria-live="polite"
             data-timeline-degraded
           >
-            <span className="h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-stale" />
-            reconnecting — showing the last lineage
+            <span className={timelineChrome.degradedDotClassName} />
+            {timelineChrome.degradedLabel}
           </div>
         )}
 
         {/* Error: a contained, copy-toned message scoped to the timeline. */}
-        {errored && (
+        {timelineChrome.showError && (
           <div
-            className="absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-2 text-caption text-ink-muted"
+            className={timelineChrome.errorClassName}
             role="alert"
             data-timeline-error
           >
-            <span>couldn’t load the timeline</span>
+            <span>{timelineChrome.errorLabel}</span>
             <button
               type="button"
               onClick={lineage.retry}
-              className="rounded-fg-xs bg-paper-sunken px-fg-1-5 py-fg-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              className={timelineChrome.retryButtonClassName}
             >
-              retry
+              {timelineChrome.retryLabel}
             </button>
           </div>
+        )}
+
+        {!loading && !errored && !autoFitPending && (
+          <TemporalDocumentCountPill
+            visibleDocuments={temporalScene.debug.visibleNodeCount}
+            totalDocuments={nodes.length}
+          />
         )}
 
         {overlay}
@@ -1336,19 +1220,8 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
       {/* The range navigator / scrubber: a dedicated band docked at the bottom edge
           (its own row, no longer overlapping the marks) showing the WHOLE corpus
           span with the visible window as a draggable brush — click/drag to scrub. */}
-      <div className="shrink-0 bg-paper pb-[6px]" data-timeline-scrubber>
-        <Minimap
-          viewportWidth={width}
-          overviewInstants={overviewInstants}
-          fieldLegend={
-            !loading && !errored && hasMarks ? (
-              <TemporalFieldLegend
-                sceneData={temporalScene}
-                visibleWindow={cropWindow}
-              />
-            ) : null
-          }
-        />
+      <div className="shrink-0 bg-paper" data-timeline-scrubber>
+        <Minimap viewportWidth={width} overviewInstants={overviewInstants} />
       </div>
     </div>
   );

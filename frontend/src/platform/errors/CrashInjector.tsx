@@ -47,7 +47,7 @@ export function CrashInjector(): ReactNode {
   return (
     <div
       data-crash-injector
-      className="fixed bottom-2 left-2 z-50 flex items-center gap-1 rounded border border-rose-300 bg-rose-50/90 p-1 text-[10px] text-rose-900 shadow-sm"
+      className="fixed bottom-2 left-2 z-50 flex items-center gap-1 rounded border border-rose-300 bg-rose-50/90 p-1 text-[0.625rem] text-rose-900 shadow-sm"
     >
       <span className="font-medium">crash:</span>
       {REGIONS.map((region) => (

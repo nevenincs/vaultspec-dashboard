@@ -1,24 +1,3 @@
 [
-  "src/app/kit/DocRow.tsx",
-  "src/app/kit/FacetRow.tsx",
-  "src/app/kit/SearchField.tsx",
-  "src/app/kit/SectionLabel.tsx",
-  "src/app/kit/Switch.tsx",
-  "src/app/kit/TreeRow.tsx",
-  "src/app/left/BrowserRegion.tsx",
-  "src/app/left/CodeTree.tsx",
-  "src/app/left/LeftRail.tsx",
-  "src/app/left/TreeBrowser.tsx",
-  "src/app/shell/IconRail.tsx",
-  "src/app/stage/FilterMenu.tsx",
-  "src/app/stage/FilterSidebar.tsx",
-  "src/app/timeline/Minimap.tsx",
-  "src/app/timeline/Timeline.tsx",
-  "src/app/timeline/TimelineControls.tsx",
-  "src/app/viewer/MarkdownReader.tsx",
-  "src/filters-visual/main.tsx",
-  "src/platform/errors/CrashInjector.tsx",
-  "src/status-visual/main.tsx",
-  "src/styles.css",
-  "src/viewer-visual/main.tsx"
+  "src/styles.css"
 ]

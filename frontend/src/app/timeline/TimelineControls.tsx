@@ -20,94 +20,75 @@
 import { Clock } from "lucide-react";
 import { useRef } from "react";
 
-import { useFiltersVocabulary } from "../../stores/server/queries";
+import { useDateRangeIntent } from "../../stores/server/dateRangeIntent";
+import {
+  useActiveScope,
+  useDashboardDateRangeView,
+  useFiltersVocabularyView,
+} from "../../stores/server/queries";
 import { Calendar, IconButton, Maximize, Minus, Plus, Switch } from "../kit";
 import { useElementWidth } from "../chrome/useElementWidth";
-import { useActiveScope } from "../stage/Stage";
-import { movePlayhead } from "./Playhead";
-import { useTimelineStore } from "./Timeline";
 import {
-  MAX_PX_PER_MS,
-  MIN_PX_PER_MS,
-  TIMELINE_ORIGIN_MS,
-  clampPxPerMs,
-  timeToStripX,
-  visibleRange,
-  zoomAt,
-} from "./scrollStrip";
+  fitTimelineNavigationToCorpus,
+  fitTimelineNavigationToDateRange,
+  jumpTimelineNavigationToLive,
+  zoomTimelineNavigation,
+} from "../../stores/view/timelineIntent";
+import {
+  closeTimelineDatePicker,
+  formatTimelineDayMonth,
+  openTimelineDatePicker,
+  orderedTimelineDateInputRange,
+  parseTimelineInstant,
+  setTimelineDatePickerDraftFrom,
+  setTimelineDatePickerDraftTo,
+  timelineDateInputValue,
+  timelineCanZoomIn,
+  timelineCanZoomOut,
+  TIMELINE_ZOOM_STEP,
+  toggleTimelineLane,
+  useTimelineDatePickerState,
+  useTimelineLaneVisibility,
+  useTimelineScrollState,
+} from "../../stores/view/timeline";
+import { visibleRange } from "./scrollStrip";
 
-// --- pure fit/zoom/jump helpers (unit-tested, no DOM, no store) ------------------
-
-/** The factor a single zoom-in / zoom-out step applies to `pxPerMs`. */
-export const ZOOM_STEP = 1.6;
-
-/**
- * The scale + offset that fits a closed corpus span [fromMs, toMs] into a viewport
- * of `viewportWidth` px, with a small inset margin so the edge marks are not flush
- * to the frame. Pure and clamped: the resulting scale is held inside the supported
- * zoom band, and the offset docks the span's start at the left inset. A degenerate
- * (zero/negative) span falls back to the minimum scale anchored at the start.
- */
-export function fitSpan(
-  fromMs: number,
-  toMs: number,
-  viewportWidth: number,
-  insetPx = 24,
-): { pxPerMs: number; scrollOffset: number } {
-  const usable = Math.max(1, viewportWidth - insetPx * 2);
-  const spanMs = toMs - fromMs;
-  const rawScale = spanMs > 0 ? usable / spanMs : MIN_PX_PER_MS;
-  const pxPerMs = clampPxPerMs(rawScale);
-  // Dock the span start at the left inset: stripX(from) - scrollOffset == inset.
-  const scrollOffset = Math.max(
-    0,
-    timeToStripX(fromMs, TIMELINE_ORIGIN_MS, pxPerMs) - insetPx,
-  );
-  return { pxPerMs, scrollOffset };
-}
-
-/**
- * The scroll offset that centres a chosen instant in a viewport of `viewportWidth`
- * px at `pxPerMs` (jump-to-date). Pure and clamped >= 0. The scale is unchanged — a
- * jump moves WHERE you look, not HOW zoomed you are.
- */
-export function jumpToDateOffset(
-  tMs: number,
-  pxPerMs: number,
-  viewportWidth: number,
-): number {
-  return Math.max(
-    0,
-    timeToStripX(tMs, TIMELINE_ORIGIN_MS, pxPerMs) - viewportWidth / 2,
-  );
-}
-
-/** Parse an ISO date (yyyy-mm-dd or full) to an epoch-ms instant, or null. */
-export function parseDateInput(value: string): number | null {
-  if (!value) return null;
-  const t = Date.parse(value);
-  return Number.isFinite(t) ? t : null;
-}
-
-/**
- * A short "MMM D" day label for the binding date-range pills (e.g. "Apr 3"). The
- * `en-US` locale matches the binding board's month abbreviations exactly.
- */
-export function formatDayMonth(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
+export {
+  fitTimelineSpan as fitSpan,
+  formatTimelineDayMonth as formatDayMonth,
+  timelineJumpToDateOffset as jumpToDateOffset,
+  TIMELINE_ZOOM_STEP as ZOOM_STEP,
+  parseTimelineDateInput as parseDateInput,
+} from "../../stores/view/timeline";
 
 // --- the control bar -------------------------------------------------------------
 
 /** A calendar-iconed date-range pill (binding board: bordered paper pill). */
-function DatePill({ children }: { children: React.ReactNode }) {
+function DatePill({
+  children,
+  label,
+  onClick,
+  active,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active: boolean;
+}) {
+  const widthClass = String(children).length > 5 ? "w-[4.8125rem]" : "w-[4.4375rem]";
   return (
-    <span className="inline-flex items-center gap-fg-1 rounded-fg-md border border-rule bg-paper px-fg-1-5 py-fg-0-5 text-ink-muted">
-      <Calendar size={12} aria-hidden className="text-ink-faint" />
-      <span data-tabular className="tabular-nums">
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={active}
+      onClick={onClick}
+      className={`inline-flex h-[1.8125rem] ${widthClass} items-center gap-fg-1-5 rounded-fg-md border border-rule/60 bg-paper-sunken pl-[0.5625rem] pr-fg-2 text-[0.75rem] leading-[0.9375rem] text-ink transition-colors duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus`}
+    >
+      <Calendar size={14} aria-hidden className="text-ink-muted" />
+      <span data-tabular className="whitespace-nowrap tabular-nums font-medium">
         {children}
       </span>
-    </span>
+    </button>
   );
 }
 
@@ -118,102 +99,180 @@ export interface TimelineControlsProps {
    * for standalone use.
    */
   viewportWidth?: number;
+  /**
+   * Visual-harness escape hatch: product chrome displays canonical dashboard date
+   * range when present; screenshot parity can instead show the viewport window
+   * driven by URL scroll-strip params without mutating backend dashboard state.
+   */
+  preferViewportDateRange?: boolean;
 }
 
-export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps = {}) {
+export function TimelineControls({
+  viewportWidth = 800,
+  preferViewportDateRange = false,
+}: TimelineControlsProps = {}) {
   const scope = useActiveScope();
-  const vocabulary = useFiltersVocabulary(scope);
+  const vocabulary = useFiltersVocabularyView(scope);
+  const rangeIntent = useDateRangeIntent(scope);
+  const datePicker = useTimelineDatePickerState();
 
   // Scroll-strip view state (zoom / fit / jump write these).
-  const pxPerMs = useTimelineStore((s) => s.pxPerMs);
-  const scrollOffset = useTimelineStore((s) => s.scrollOffset);
-  const setPxPerMs = useTimelineStore((s) => s.setPxPerMs);
-  const setScrollOffset = useTimelineStore((s) => s.setScrollOffset);
+  const { pxPerMs, scrollOffset } = useTimelineScrollState();
 
   // Per-lane visibility (the "Steps & summaries" switch drives the execution lane).
-  const laneVisibility = useTimelineStore((s) => s.laneVisibility);
-  const toggleLane = useTimelineStore((s) => s.toggleLane);
+  const laneVisibility = useTimelineLaneVisibility();
 
   // The control bar spans the full footer width — the same width as the timeline
   // surface it drives — so it measures its OWN rendered width as the fit / zoom
   // viewport rather than trusting a hardcoded default.
   const rootRef = useRef<HTMLDivElement>(null);
-  const measuredWidth = useElementWidth(rootRef);
+  const measuredWidth = useElementWidth(rootRef, { box: "border" });
   const effectiveWidth = measuredWidth ?? viewportWidth;
 
-  const corpusBounds = vocabulary.data?.date_bounds;
+  const corpusBounds = vocabulary.dateBounds;
 
-  // Zoom about the viewport centre, preserving the centred instant, clamped to band.
-  const zoomBy = (factor: number) => {
-    const next = zoomAt(pxPerMs, scrollOffset, effectiveWidth / 2, factor);
-    setPxPerMs(next.pxPerMs);
-    setScrollOffset(next.scrollOffset);
-  };
-  const canZoomIn = pxPerMs < MAX_PX_PER_MS;
-  const canZoomOut = pxPerMs > MIN_PX_PER_MS;
-
-  // Fit the whole loaded corpus span (engine-enumerated date bounds) into the view.
-  const fitAll = () => {
-    const from = corpusBounds?.from ? Date.parse(corpusBounds.from) : NaN;
-    const to = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
-    if (!Number.isFinite(from)) return;
-    const next = fitSpan(from, Number.isFinite(to) ? to : Date.now(), effectiveWidth);
-    setPxPerMs(next.pxPerMs);
-    setScrollOffset(next.scrollOffset);
-  };
-
-  // Jump to now: dock the strip at the corpus's latest instant and return the
-  // playhead to live (the board's clock control).
-  const jumpToNow = () => {
-    const toRaw = corpusBounds?.to ? Date.parse(corpusBounds.to) : Date.now();
-    const end = Number.isFinite(toRaw) ? toRaw : Date.now();
-    setScrollOffset(
-      Math.max(0, timeToStripX(end, TIMELINE_ORIGIN_MS, pxPerMs) - effectiveWidth + 24),
-    );
-    movePlayhead("live");
-  };
+  const canZoomIn = timelineCanZoomIn(pxPerMs);
+  const canZoomOut = timelineCanZoomOut(pxPerMs);
 
   // The visible window's [from, to] for the binding date-range pills — a dumb read
   // of the same scroll-strip view state the surface renders against.
   const visible = visibleRange(scrollOffset, effectiveWidth, pxPerMs, 0);
+  const corpusFrom = parseTimelineInstant(corpusBounds?.from);
+  const corpusTo = parseTimelineInstant(corpusBounds?.to);
+  const dataWindowFallback =
+    Number.isFinite(corpusFrom) && Number.isFinite(corpusTo) && corpusFrom < corpusTo
+      ? { fromMs: corpusFrom, toMs: corpusTo }
+      : visible;
+  const dashboardDisplayRange = useDashboardDateRangeView(scope, dataWindowFallback);
+  const displayRange = preferViewportDateRange ? visible : dashboardDisplayRange;
+
+  const openDatePicker = () => {
+    openTimelineDatePicker(
+      timelineDateInputValue(displayRange.fromMs),
+      timelineDateInputValue(displayRange.toMs),
+    );
+  };
+  const applyDatePicker = () => {
+    const ordered = orderedTimelineDateInputRange(
+      datePicker.draftFrom,
+      datePicker.draftTo,
+    );
+    if (ordered === null || !scope) return;
+    fitTimelineNavigationToDateRange(ordered, effectiveWidth);
+    void rangeIntent.setRange({ from: ordered.from, to: ordered.to });
+    closeTimelineDatePicker();
+  };
+  const clearDatePicker = () => {
+    if (scope) void rangeIntent.clearRange();
+    closeTimelineDatePicker();
+    fitTimelineNavigationToCorpus(corpusBounds, effectiveWidth);
+  };
 
   // The "Steps & summaries" switch toggles the execution lane: its exec + codify
   // phase visibility keys flip together (exec is the lead key the switch reflects).
   const executionVisible = laneVisibility.exec;
   const toggleExecution = (next: boolean) => {
-    toggleLane("exec", next);
-    toggleLane("codify", next);
+    toggleTimelineLane("exec", next);
+    toggleTimelineLane("codify", next);
   };
 
   return (
     <div
       ref={rootRef}
-      className="pointer-events-auto flex items-center gap-fg-2 border-b border-rule bg-paper-raised px-fg-3 py-fg-2 text-label"
+      className="pointer-events-auto relative z-20 flex h-[2.75rem] items-center gap-fg-2 border-b border-rule bg-paper px-fg-3 text-label"
       data-timeline-controls
     >
       {/* Binding header label (board 239:714): a plain medium "Timeline", not an
           uppercase eyebrow. */}
-      <span className="shrink-0 font-medium text-ink">Timeline</span>
+      <span className="w-[3.375rem] shrink-0 translate-y-[0.03125rem] text-[0.8125rem] font-semibold leading-4 text-ink">
+        Timeline
+      </span>
 
       {/* Date-range pills — the visible window's start -> end, calendar-iconed,
           tabular, exactly the "Apr 3 -> Jun 18" readout the board draws. */}
       <span
-        className="flex shrink-0 items-center gap-fg-1-5"
+        className="relative flex shrink-0 translate-y-[0.03125rem] items-center gap-fg-2"
         aria-label="visible date range"
       >
-        <DatePill>{formatDayMonth(visible.fromMs)}</DatePill>
-        <span aria-hidden className="text-ink-faint">
+        <DatePill
+          label="choose timeline start date"
+          active={datePicker.open}
+          onClick={openDatePicker}
+        >
+          {formatTimelineDayMonth(displayRange.fromMs)}
+        </DatePill>
+        <span
+          aria-hidden
+          className="inline-block w-3 text-center text-[0.75rem] leading-[0.9375rem] text-ink-faint"
+        >
           →
         </span>
-        <DatePill>{formatDayMonth(visible.toMs)}</DatePill>
+        <DatePill
+          label="choose timeline end date"
+          active={datePicker.open}
+          onClick={openDatePicker}
+        >
+          {formatTimelineDayMonth(displayRange.toMs)}
+        </DatePill>
+        {datePicker.open && (
+          <div
+            className="absolute left-0 top-[2.125rem] z-50 flex w-[15.5rem] flex-col gap-fg-1 rounded-fg-md border border-rule bg-paper-raised p-fg-2 text-label text-ink shadow-fg-raised"
+            role="dialog"
+            aria-label="choose timeline date range"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeTimelineDatePicker();
+            }}
+          >
+            <label className="flex items-center justify-between gap-fg-2">
+              <span className="text-ink-muted">Start</span>
+              <input
+                type="date"
+                value={datePicker.draftFrom}
+                onChange={(event) =>
+                  setTimelineDatePickerDraftFrom(event.currentTarget.value)
+                }
+                className="h-7 rounded-fg-sm border border-rule/60 bg-paper-sunken px-fg-1 text-label text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-fg-2">
+              <span className="text-ink-muted">End</span>
+              <input
+                type="date"
+                value={datePicker.draftTo}
+                onChange={(event) =>
+                  setTimelineDatePickerDraftTo(event.currentTarget.value)
+                }
+                className="h-7 rounded-fg-sm border border-rule/60 bg-paper-sunken px-fg-1 text-label text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              />
+            </label>
+            <span className="mt-fg-1 flex items-center justify-end gap-fg-1">
+              <button
+                type="button"
+                onClick={clearDatePicker}
+                className="rounded-fg-sm px-fg-1-5 py-fg-0-5 text-ink-muted transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={applyDatePicker}
+                className="rounded-fg-sm bg-accent-subtle px-fg-1-5 py-fg-0-5 text-accent-text transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+              >
+                Apply
+              </button>
+            </span>
+          </div>
+        )}
       </span>
 
       {/* Flexible gap pushes the switch + control cluster to the right edge. */}
       <span className="flex-1" />
 
       {/* "Steps & summaries" switch (kit Switch) — toggles the execution lane. */}
-      <span className="flex shrink-0 items-center gap-fg-1-5">
-        <span className="text-ink-muted">Steps &amp; summaries</span>
+      <span className="flex w-[9rem] shrink-0 translate-y-[0.03125rem] items-center justify-between">
+        <span className="text-[0.71875rem] leading-[0.875rem] text-ink-muted">
+          Steps &amp; summaries
+        </span>
         <Switch
           checked={executionVisible}
           onChange={toggleExecution}
@@ -224,14 +283,21 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
       {/* Zoom / fit cluster card (board 239:714): zoom in / out / fit-all /
           jump-to-now, kit IconButtons in a bordered card. */}
       <span
-        className="flex shrink-0 items-center gap-fg-0-5 rounded-fg-md border border-rule bg-paper-raised px-fg-1 py-fg-0-5"
+        className="flex h-8 w-[7.4375rem] shrink-0 translate-y-[0.03125rem] items-center gap-fg-0-5 rounded-fg-md border border-rule/80 bg-paper-raised px-fg-0-5 py-fg-0-5 text-ink shadow-fg-raised [&_[data-kit=icon-button]]:size-[1.625rem]"
         aria-label="timeline controls"
       >
         <IconButton
           label="zoom in"
           title="zoom in"
           disabled={!canZoomIn}
-          onClick={() => zoomBy(ZOOM_STEP)}
+          onClick={() =>
+            zoomTimelineNavigation(
+              pxPerMs,
+              scrollOffset,
+              effectiveWidth,
+              TIMELINE_ZOOM_STEP,
+            )
+          }
         >
           <Plus size={14} aria-hidden />
         </IconButton>
@@ -239,17 +305,31 @@ export function TimelineControls({ viewportWidth = 800 }: TimelineControlsProps 
           label="zoom out"
           title="zoom out"
           disabled={!canZoomOut}
-          onClick={() => zoomBy(1 / ZOOM_STEP)}
+          onClick={() =>
+            zoomTimelineNavigation(
+              pxPerMs,
+              scrollOffset,
+              effectiveWidth,
+              1 / TIMELINE_ZOOM_STEP,
+            )
+          }
         >
           <Minus size={14} aria-hidden />
         </IconButton>
-        <IconButton label="fit all" title="fit the whole corpus" onClick={fitAll}>
+        <span className="h-[1.125rem] w-px shrink-0 bg-rule" aria-hidden />
+        <IconButton
+          label="fit all"
+          title="fit the whole corpus"
+          onClick={() => fitTimelineNavigationToCorpus(corpusBounds, effectiveWidth)}
+        >
           <Maximize size={14} aria-hidden />
         </IconButton>
         <IconButton
           label="jump to now"
           title="jump to the latest instant"
-          onClick={jumpToNow}
+          onClick={() =>
+            jumpTimelineNavigationToLive(corpusBounds, pxPerMs, effectiveWidth, scope)
+          }
         >
           <Clock size={14} aria-hidden />
         </IconButton>
