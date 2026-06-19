@@ -9,7 +9,7 @@ import { createThreeScene } from "../scene/field/fieldAssembly";
 import type { SceneController } from "../scene/sceneController";
 import type { SceneEdgeData, SceneNodeData } from "../scene/sceneController";
 import { sliceToScene } from "../scene/sceneMapping";
-import { graphLabDevSlice } from "../graph-lab/sampleGraph";
+import { graphLabDevSlice } from "./sampleGraph";
 import type { ThreeField } from "../scene/three/threeField";
 import type { D3ForceParams } from "../scene/three/d3ForceSolver";
 import {
