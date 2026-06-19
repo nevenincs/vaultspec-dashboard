@@ -43,7 +43,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from "react";
 
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
@@ -62,7 +61,6 @@ import {
   panTimelineNavigation,
   zoomTimelineNavigationAt,
 } from "../../stores/view/timelineIntent";
-import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import {
   deriveTimelineSurfaceChromeView,
   useActiveScope,
@@ -398,103 +396,26 @@ export interface TimelineSurfaceProps {
 function TemporalGraphCanvas({
   sceneData,
   arcs,
-  degraded,
   onNodeClick,
   setHoverIntent,
 }: {
   sceneData: TemporalSceneResult;
   arcs: readonly LineageArc[];
-  degraded: boolean;
   onNodeClick?: (node: LineageNode, arcs: readonly LineageArc[]) => void;
   setHoverIntent: (id: string | null) => void;
 }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<ReturnType<typeof createDashboardScene> | null>(null);
-  if (sceneRef.current === null) sceneRef.current = createDashboardScene();
-  const scene = sceneRef.current;
-  const [debug, setDebug] = useState(() => scene.field.debugSnapshot());
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    scene.controller.mount(host);
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) scene.controller.resize(rect.width, rect.height);
-    });
-    observer.observe(host);
-    const timer = window.setInterval(() => {
-      setDebug(scene.field.debugSnapshot());
-    }, 250);
-    return () => {
-      window.clearInterval(timer);
-      observer.disconnect();
-      setHoverIntent(null);
-      scene.controller.destroy();
-    };
-  }, [scene, setHoverIntent]);
-
-  // Read the click handler inputs through refs so this scene subscription binds
-  // ONCE per scene rather than every render. An unstable dep here (e.g. an inline
-  // `onNodeClick` prop, new each render) would re-run the effect every render, and
-  // its cleanup fires `setHoverIntent(null)` — a dashboard-state PATCH — on every
-  // re-run, which re-renders and loops (the `hovered_id:null` PATCH flood that
-  // crashed the shell). Keeping the deps to the stable `[scene, setHoverIntent]`
-  // breaks the loop while preserving the hover/select behaviour.
-  const onNodeClickRef = useRef(onNodeClick);
-  onNodeClickRef.current = onNodeClick;
-  const arcsRef = useRef(arcs);
-  arcsRef.current = arcs;
-  const sceneDataRef = useRef(sceneData);
-  sceneDataRef.current = sceneData;
-
-  useEffect(() => {
-    const off = scene.controller.on((event) => {
-      if (event.kind === "hover") {
-        setHoverIntent(event.id);
-      }
-      if (event.kind === "select" && event.id) {
-        const node = sceneDataRef.current.nodeById.get(event.id);
-        if (node) onNodeClickRef.current?.(node, arcsRef.current);
-      }
-    });
-    return () => {
-      off();
-      setHoverIntent(null);
-    };
-  }, [scene, setHoverIntent]);
-
-  useEffect(() => {
-    scene.controller.command({
-      kind: "set-data",
-      nodes: sceneData.nodes,
-      edges: sceneData.edges,
-    });
-    scene.controller.command({
-      kind: "set-edge-render-params",
-      params: { lineWidthScale: 0.35 },
-    });
-    scene.controller.command({ kind: "set-representation-mode", mode: "temporal" });
-    scene.controller.command({ kind: "set-simulation-active", active: false });
-    const frame = window.requestAnimationFrame(() => {
-      scene.controller.command({ kind: "fit-to-view" });
-      setDebug(scene.field.debugSnapshot());
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [scene, sceneData.edges, sceneData.nodes]);
-
-  const debugLines = temporalDebugText(sceneData, debug, degraded);
+  // The timeline's graph view is PURE SVG (the dot / axis layers); the sr-only
+  // accessible-node layer is its only interactive surface. The scene field that
+  // used to mount here was vestigial - an invisible (opacity-0, pointer-events-none)
+  // canvas whose sole consumer was an optional debug snapshot - so it was removed in
+  // the graph-backend-unification cutover. No graph rendering moves to three.js for
+  // the timeline; its graph is SVG.
   const showDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("timelineDebug") === "1";
 
   return (
-    <div className="absolute inset-0" data-timeline-cosmos-canvas>
-      <div
-        ref={hostRef}
-        className="pointer-events-none absolute inset-0 opacity-0"
-        data-timeline-graph-field
-      />
+    <div className="absolute inset-0">
       {showDebug && <TemporalBucketOverlay sceneData={sceneData} />}
       <TemporalAccessibleNodes
         sceneData={sceneData}
@@ -502,18 +423,6 @@ function TemporalGraphCanvas({
         onNodeClick={onNodeClick}
         setHoverIntent={setHoverIntent}
       />
-      {showDebug && (
-        <div
-          className="pointer-events-none absolute right-fg-2 top-fg-1 flex max-w-[min(42rem,calc(100%-1rem))] flex-wrap justify-end gap-x-fg-2 gap-y-fg-0-5 rounded-fg-xs border border-rule bg-paper-raised/90 px-fg-1-5 py-fg-1 text-caption text-ink-muted shadow-fg-raised"
-          data-timeline-debug
-        >
-          {debugLines.map((line) => (
-            <span key={line} className="whitespace-nowrap tabular-nums">
-              {line}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -998,7 +907,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
   // guessed from a fetch rejection (degradation-is-read-from-tiers-not-guessed-
   // from-errors).
   const surface = useSurfaceStates().timeline;
-  const degraded = surface === "reconnecting";
 
   // The visible time range for the current scroll position (virtualized + margin)
   // bounds the read at any corpus age (graph-queries-are-bounded-by-default).
@@ -1119,7 +1027,6 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           <TemporalGraphCanvas
             sceneData={temporalScene}
             arcs={arcs}
-            degraded={degraded}
             onNodeClick={onNodeClick}
             setHoverIntent={setHoverIntent}
           />
