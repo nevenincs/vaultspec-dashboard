@@ -628,6 +628,20 @@ export class D3ForceSolver {
     return { ...this.params };
   }
 
+  /** Update collision radii live (a node-size appearance change) so the non-overlap
+   *  spacing tracks the drawn node size, then rebuild the collide force and gently
+   *  reheat. Node size is both look AND behaviour — the drawn disc and the collision
+   *  body are the same radius — so a size knob that did not re-feed collide would let
+   *  enlarged nodes overlap. Non-finite entries are ignored (keep the prior radius). */
+  setRadii(radii: number[]): void {
+    for (let i = 0; i < this.count; i++) {
+      const r = radii[i];
+      if (typeof r === "number" && Number.isFinite(r)) this.nodes[i].radius = r;
+    }
+    this.sim.force("collide", this.collide());
+    this.reheat(false);
+  }
+
   dispose(): void {
     this.sim.stop();
     this.nodes.length = 0;

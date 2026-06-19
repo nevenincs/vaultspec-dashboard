@@ -20,6 +20,7 @@ import {
   BufferGeometry,
   CircleGeometry,
   Color,
+  ColorManagement,
   DataTexture,
   DoubleSide,
   Float32BufferAttribute,
@@ -49,13 +50,16 @@ import {
 import { semanticLevel } from "../field/camera";
 import {
   accentColor,
+  APPEARANCE_DEFAULTS,
+  type AppearanceParams,
   canvasBackground,
   edgeAppearance,
+  edgeEndColors,
+  highlightColor,
   inkColor,
   inkMutedColor,
   nodeColorNumber,
   nodeWorldRadius,
-  readTierColors,
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
 
@@ -84,19 +88,30 @@ varying float vDim;
 varying float vEdge;
 varying float vAA;
 
+// Nodes and edges share ONE reference frame: world-space, scaling with zoom, but
+// each CLAMPED to an on-screen px band so it never vanishes when zoomed far out
+// (min) nor balloons when zoomed far in (max) — the deck.gl radiusMin/MaxPixels +
+// widthMin/MaxPixels pattern. This keeps the node↔edge proportion constant at every
+// zoom (Obsidian/Cytoscape scale-together), fixing the prior mismatch where nodes
+// scaled in world units but edges held a constant pixel width.
+const float NODE_MIN_PX = 1.5;   // node radius never below 1.5 px (visible zoomed out)
+const float NODE_MAX_PX = 240.0; // node radius never above 240 px (no balloon zoomed in)
+
 void main() {
   vec2 uv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
   vec2 center = texture2D(uPositions, uv).xy;
-  float scale = aHidden > 0.5 ? 0.0 : aSize;
+  float ppw = uPixelsPerWorld;
+  // World radius → wanted on-screen px → clamp to the band → back to world.
+  float pxWanted = aSize * ppw;
+  float pxC = clamp(pxWanted, NODE_MIN_PX, NODE_MAX_PX);
+  float radiusWorld = ppw > 0.0 ? pxC / ppw : aSize;
+  float scale = aHidden > 0.5 ? 0.0 : radiusWorld;
   vec2 world = center + position.xy * scale;
   vColor = aColor;
   vDim = aDim;
   vEdge = length(position.xy); // 0 at centre → 1 at the rim
-  // Analytic edge-AA band in local units: ~1.5 screen px at the rim, derived from
-  // node size × zoom. Avoids fwidth/derivatives (a WebGL1 extension pitfall under
-  // the GLSL1 ShaderMaterial path) and stays crisp at any size.
-  float px = aSize * uPixelsPerWorld;
-  vAA = px > 0.0 ? clamp(1.5 / px, 0.0, 0.5) : 0.01;
+  // Analytic edge-AA band: ~1.5 screen px at the rim, from the CLAMPED on-screen px.
+  vAA = pxC > 0.0 ? clamp(1.5 / pxC, 0.0, 0.5) : 0.01;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 0.0, 1.0);
 }
 `;
@@ -142,6 +157,14 @@ vec2 nodePos(float idx) {
   return texture2D(uPositions, uv).xy;
 }
 
+// Edge width shares the node frame: aWidthPx is read as a WORLD width, so it scales
+// with zoom exactly like node radius (parity), then floored/capped on screen so an
+// edge never disappears when zoomed far out (deck.gl widthMinPixels; sigma
+// minEdgeThickness) nor dominates when zoomed in. NOTE: aWidthPx now carries WORLD
+// units, not pixels — the attribute name is kept to avoid churn in the edge build.
+const float EDGE_MIN_PX = 1.0;  // edge never thinner than 1 px (won't vanish)
+const float EDGE_MAX_PX = 64.0; // edge never thicker than 64 px (no balloon)
+
 void main() {
   vec2 a = nodePos(aIndexA);
   vec2 b = nodePos(aIndexB);
@@ -149,7 +172,10 @@ void main() {
   vec2 dir = b - a;
   float len = length(dir);
   vec2 nrm = len > 0.0001 ? vec2(-dir.y, dir.x) / len : vec2(0.0);
-  float halfWorld = (aWidthPx * 0.5) / uPixelsPerWorld;
+  float ppw = uPixelsPerWorld;
+  float pxWanted = aWidthPx * ppw; // world width → on-screen px (scales with zoom)
+  float pxC = clamp(pxWanted, EDGE_MIN_PX, EDGE_MAX_PX);
+  float halfWorld = ppw > 0.0 ? (pxC * 0.5) / ppw : aWidthPx * 0.5;
   vec2 world = base + nrm * aSide * halfWorld;
   vColor = aColor;
   vAlpha = aAlpha;
@@ -204,7 +230,18 @@ export class ThreeField implements SceneFieldRenderer {
 
   // graph model (CPU side)
   private nodes: SceneNodeData[] = [];
+  // Per-node category colour (int RGB), indexed by node index — the source of truth
+  // edges inherit their colour from (an edge never carries a flat tier/grey/black hue).
+  private nodeColors: number[] = [];
   private builtEdges: BuiltEdge[] = [];
+  // The rendered edge inputs (the `valid` filter of set-data), aligned 1:1 with
+  // builtEdges and the per-edge quad block — kept so a live edge-appearance retune
+  // can recompute width/opacity without a full rebuild.
+  private edgeData: SceneEdgeData[] = [];
+  // Per-edge base opacity from edgeAppearance, before the visibility mask. The
+  // displayed aAlpha is base × visibility, so an opacity retune and a filter compose
+  // (and a retune never clobbers the filter's hidden edges).
+  private edgeBaseAlpha = new Float32Array(0);
   private idToIndex = new Map<string, number>();
   private neighbors = new Map<string, Set<string>>();
   private featureCohort = new Map<string, Set<string>>();
@@ -218,6 +255,7 @@ export class ThreeField implements SceneFieldRenderer {
   private featureFlags: SceneFeatureFlags = { ...DEFAULT_SCENE_FEATURE_FLAGS };
 
   private params: D3ForceParams = { ...D3_FORCE_DEFAULTS };
+  private appearance: AppearanceParams = { ...APPEARANCE_DEFAULTS };
   private running = false;
   private frozen = false;
   private needsRender = false;
@@ -240,6 +278,19 @@ export class ThreeField implements SceneFieldRenderer {
   private dragActive = false;
 
   mount(host: HTMLElement): void {
+    // Colour-space contract: the scene's category/tier/ink tokens are authored as
+    // sRGB literal hex (themes-are-oklch-generated-from-a-token-tier) and every other
+    // scene consumer paints them as sRGB PASSTHROUGH — cosmos via `rgba()` (raw bytes
+    // /255), Pixi, and this field's own canvas-2D label overlay. three.js's default
+    // (ColorManagement on) is the outlier: `Color.set(hex)` would convert the sRGB
+    // token to LINEAR, and because our custom ShaderMaterials write gl_FragColor
+    // directly (no built-in linearToOutputTexel re-encode), that linear value lands on
+    // the sRGB canvas and renders visibly DARKER than the declared token. Disabling
+    // colour management aligns three with the scene-wide sRGB-passthrough contract, so
+    // node/edge/dim/background colours match the tokens (and cosmos) exactly. Safe and
+    // contained: three is imported only by this field.
+    ColorManagement.enabled = false;
+
     const renderer = new WebGLRenderer({ antialias: true, alpha: false });
     this.dpr = Math.min(window.devicePixelRatio, 2);
     renderer.setPixelRatio(this.dpr);
@@ -418,7 +469,7 @@ export class ThreeField implements SceneFieldRenderer {
     }
 
     // Real node body radii drive forceCollide non-overlap (clean spacing).
-    const radii = nodes.map((node) => nodeWorldRadius(node));
+    const radii = nodes.map((node) => nodeWorldRadius(node, this.appearance));
     this.solver = new D3ForceSolver(
       n,
       this.builtEdges.map((e) => ({ source: e.a, target: e.b })),
@@ -464,10 +515,13 @@ export class ThreeField implements SceneFieldRenderer {
     const aDim = new Float32Array(n);
     const aHidden = new Float32Array(n);
     const tmp = new Color();
+    this.nodeColors = new Array<number>(n);
     nodes.forEach((node, i) => {
       aIndex[i] = i;
-      aSize[i] = nodeWorldRadius(node);
-      tmp.set(nodeColorNumber(node));
+      aSize[i] = nodeWorldRadius(node, this.appearance);
+      const col = nodeColorNumber(node);
+      this.nodeColors[i] = col;
+      tmp.set(col);
       aColor[i * 3] = tmp.r;
       aColor[i * 3 + 1] = tmp.g;
       aColor[i * 3 + 2] = tmp.b;
@@ -514,9 +568,11 @@ export class ThreeField implements SceneFieldRenderer {
     const valid = edges.filter(
       (e) => index.has(e.src) && index.has(e.dst) && e.src !== e.dst,
     );
+    // Retain the rendered edge inputs + a base-opacity buffer for live retuning.
+    this.edgeData = valid;
+    this.edgeBaseAlpha = new Float32Array(valid.length);
     if (valid.length === 0) return;
 
-    const tierColors = readTierColors();
     const quad = valid.length * 4;
     const aIndexA = new Float32Array(quad);
     const aIndexB = new Float32Array(quad);
@@ -527,26 +583,38 @@ export class ThreeField implements SceneFieldRenderer {
     const aAlpha = new Float32Array(quad);
     const aDim = new Float32Array(quad);
     const indices = new Uint32Array(valid.length * 6);
-    const tmp = new Color();
+    const colA = new Color();
+    const colB = new Color();
 
     valid.forEach((e, i) => {
       const s = index.get(e.src) as number;
       const t = index.get(e.dst) as number;
-      const ap = edgeAppearance(e, tierColors);
-      tmp.set(ap.color);
+      const ap = edgeAppearance(e, this.appearance);
+      this.edgeBaseAlpha[i] = ap.alpha;
+      // Inherit colour from the endpoint nodes (never a flat tier/grey/black edge):
+      // solid → both ends the source (leaf) hue; gradient → leaf→parent blend that
+      // the shader interpolates across the quad (A verts = source, B verts = target).
+      const endColors = edgeEndColors(
+        this.appearance.edgeColorMode,
+        this.nodeColors[s],
+        this.nodeColors[t],
+      );
+      colA.set(endColors.a);
+      colB.set(endColors.b);
       // 4 verts: 0=A-left,1=A-right,2=B-left,3=B-right
-      const ends = [0, 0, 1, 1];
+      const endT = [0, 0, 1, 1];
       const sides = [-1, 1, -1, 1];
       for (let k = 0; k < 4; k++) {
         const v = i * 4 + k;
         aIndexA[v] = s;
         aIndexB[v] = t;
-        aEnd[v] = ends[k];
+        aEnd[v] = endT[k];
         aSide[v] = sides[k];
         aWidthPx[v] = ap.width;
-        aColor[v * 3] = tmp.r;
-        aColor[v * 3 + 1] = tmp.g;
-        aColor[v * 3 + 2] = tmp.b;
+        const c = k < 2 ? colA : colB;
+        aColor[v * 3] = c.r;
+        aColor[v * 3 + 1] = c.g;
+        aColor[v * 3 + 2] = c.b;
         aAlpha[v] = ap.alpha;
       }
       const base = i * 4;
@@ -609,7 +677,10 @@ export class ThreeField implements SceneFieldRenderer {
     this.solver?.dispose();
     this.solver = null;
     this.nodes = [];
+    this.nodeColors = [];
     this.builtEdges = [];
+    this.edgeData = [];
+    this.edgeBaseAlpha = new Float32Array(0);
   }
 
   // --- emphasis / visibility -----------------------------------------------
@@ -664,16 +735,24 @@ export class ThreeField implements SceneFieldRenderer {
       hidden.setX(i, nodeIds.has(this.nodes[i].id) ? 0 : 1);
     }
     hidden.needsUpdate = true;
+    // edgeIds membership is by edge id; we kept only endpoint ids, so visibility
+    // falls back to endpoint membership (both endpoints visible ⇒ shown). Apply the
+    // edge alpha from the retained base opacity gated by that mask.
+    void edgeIds;
+    this.applyEdgeAlpha();
+  }
+
+  /** Write every edge quad's displayed alpha from its retained base opacity gated by
+   *  the current visibility mask, so an opacity retune and a filter compose (and a
+   *  retune never clobbers a hidden edge). */
+  private applyEdgeAlpha(): void {
+    if (!this.edgeMesh) return;
     const alpha = this.edgeMesh.geometry.getAttribute("aAlpha");
-    // edgeIds membership is by edge id; we kept only endpoint ids, so fall back to
-    // endpoint visibility (both endpoints visible ⇒ shown) when an id is unknown.
+    const vis = this.visibleNodeIds;
     this.builtEdges.forEach((e, i) => {
-      const show = nodeIds.has(e.srcId) && nodeIds.has(e.dstId);
-      void edgeIds;
-      for (let k = 0; k < 4; k++) {
-        const base = alpha.getX(i * 4 + k);
-        alpha.setX(i * 4 + k, show ? Math.max(base, 0.0001) : 0);
-      }
+      const shown = !vis || (vis.has(e.srcId) && vis.has(e.dstId));
+      const a = shown ? (this.edgeBaseAlpha[i] ?? 0) : 0;
+      for (let k = 0; k < 4; k++) alpha.setX(i * 4 + k, a);
     });
     alpha.needsUpdate = true;
   }
@@ -714,6 +793,76 @@ export class ThreeField implements SceneFieldRenderer {
       this.running = true;
       this.wake();
     }
+  }
+
+  /**
+   * Re-tune the LOOK live (node module size, edge width/opacity) — the appearance
+   * sibling of setForceParams. Edge changes just rewrite the instanced width/alpha
+   * attributes with NO re-simulation (cheap). A node-SIZE change also re-feeds the
+   * solver's collide radii so non-overlap spacing tracks the drawn size, which does
+   * gently reheat — node size is both look and collision body, so it cannot be a
+   * pure attribute rewrite. A change that touches neither (no-op) costs nothing.
+   */
+  setAppearanceParams(params: Partial<AppearanceParams>): void {
+    const prev = this.appearance;
+    this.appearance = { ...prev, ...params };
+
+    const sizeChanged =
+      this.appearance.nodeSizeScale !== prev.nodeSizeScale ||
+      this.appearance.nodeSalienceScale !== prev.nodeSalienceScale;
+    const edgeChanged =
+      this.appearance.edgeWidthMin !== prev.edgeWidthMin ||
+      this.appearance.edgeWidthMax !== prev.edgeWidthMax ||
+      this.appearance.edgeOpacityMin !== prev.edgeOpacityMin ||
+      this.appearance.edgeOpacityMax !== prev.edgeOpacityMax ||
+      this.appearance.edgeColorMode !== prev.edgeColorMode;
+
+    if (sizeChanged && this.nodeMesh) {
+      const aSize = this.nodeMesh.geometry.getAttribute("aSize");
+      for (let i = 0; i < this.nodes.length; i++) {
+        aSize.setX(i, nodeWorldRadius(this.nodes[i], this.appearance));
+      }
+      aSize.needsUpdate = true;
+      // Node size is the collision body too: re-feed collide radii so spacing tracks
+      // the drawn size (the solver rebuilds collide + gently reheats).
+      if (this.solver) {
+        this.solver.setRadii(
+          this.nodes.map((node) => nodeWorldRadius(node, this.appearance)),
+        );
+        this.running = true;
+        this.wake();
+      }
+    }
+
+    if (edgeChanged && this.edgeMesh && this.edgeData.length > 0) {
+      const aWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
+      const aColor = this.edgeMesh.geometry.getAttribute("aColor");
+      const colA = new Color();
+      const colB = new Color();
+      this.edgeData.forEach((e, i) => {
+        const ap = edgeAppearance(e, this.appearance);
+        this.edgeBaseAlpha[i] = ap.alpha;
+        const s = this.idToIndex.get(e.src) ?? 0;
+        const t = this.idToIndex.get(e.dst) ?? 0;
+        const endColors = edgeEndColors(
+          this.appearance.edgeColorMode,
+          this.nodeColors[s],
+          this.nodeColors[t],
+        );
+        colA.set(endColors.a);
+        colB.set(endColors.b);
+        for (let k = 0; k < 4; k++) {
+          aWidth.setX(i * 4 + k, ap.width);
+          const c = k < 2 ? colA : colB;
+          aColor.setXYZ(i * 4 + k, c.r, c.g, c.b);
+        }
+      });
+      aWidth.needsUpdate = true;
+      aColor.needsUpdate = true;
+      this.applyEdgeAlpha();
+    }
+
+    this.requestRender();
   }
 
   /**
@@ -796,9 +945,18 @@ export class ThreeField implements SceneFieldRenderer {
     const level = semanticLevel(this.camera.zoom);
     const ink = `#${inkColor().toString(16).padStart(6, "0")}`;
     const accent = `#${accentColor().toString(16).padStart(6, "0")}`;
+    const highlight = `#${highlightColor().toString(16).padStart(6, "0")}`;
     const ppw = this.pixelsPerWorld();
 
-    // rings first (under labels)
+    // Emphasis rings (under labels). Three theme-token treatments kept visually
+    // distinct so hover, selection, and pin never read the same:
+    //   • SELECTED — the dominant ring: ACCENT hue, thickness scaled as a
+    //     MULTIPLIER of the node radius (floored 3.5px, capped 10px) + a wide gap.
+    //   • HOVERED  — a thinner ring in the distinct theme HIGHLIGHT hue, so a
+    //     transient hover never reads as a selection.
+    //   • PINNED   — a thin dashed ACCENT ring (layout-fixed marker).
+    // Precedence selected > hovered > pinned: a selected node keeps its strong
+    // ring while hovered.
     for (let i = 0; i < this.nodes.length; i++) {
       const id = this.nodes[i].id;
       const selected = this.selectedIds.has(id);
@@ -807,12 +965,22 @@ export class ThreeField implements SceneFieldRenderer {
       if (!selected && !hovered && !pinned) continue;
       const p = this.worldToScreen(i);
       if (!p) continue;
-      const r = Math.max(3, nodeWorldRadius(this.nodes[i]) * ppw) + 3;
+      const nodeR = Math.max(3, nodeWorldRadius(this.nodes[i], this.appearance) * ppw);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = selected ? 2.5 : 1.5;
-      if (pinned && !selected && !hovered) ctx.setLineDash([3, 3]);
+      if (selected) {
+        ctx.arc(p.x, p.y, nodeR + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = Math.min(10, Math.max(3.5, nodeR * 0.22));
+      } else if (hovered) {
+        ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = highlight;
+        ctx.lineWidth = 1.75;
+      } else {
+        ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+      }
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -828,7 +996,7 @@ export class ThreeField implements SceneFieldRenderer {
       const p = this.worldToScreen(i);
       if (!p || p.x < -40 || p.x > this.width + 40 || p.y < 0 || p.y > this.height)
         continue;
-      const r = Math.max(3, nodeWorldRadius(node) * ppw);
+      const r = Math.max(3, nodeWorldRadius(node, this.appearance) * ppw);
       const text = node.title ?? node.id;
       ctx.fillStyle = node.kind === "feature" ? ink : ink;
       ctx.globalAlpha = node.kind === "feature" ? 1 : 0.85;
@@ -979,7 +1147,10 @@ export class ThreeField implements SceneFieldRenderer {
       if (this.visibleNodeIds && !this.visibleNodeIds.has(this.nodes[i].id)) continue;
       const p = this.worldToScreen(i);
       if (!p) continue;
-      const radius = Math.max(PICK_RADIUS_PX, nodeWorldRadius(this.nodes[i]) * ppw);
+      const radius = Math.max(
+        PICK_RADIUS_PX,
+        nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
+      );
       const dx = p.x - sx;
       const dy = p.y - sy;
       const distSq = dx * dx + dy * dy;

@@ -17,6 +17,21 @@ import {
   FORCE_CONTROL_DEFAULTS,
   FORCE_CONTROL_GROUPS,
 } from "../scene/three/forceControls";
+import {
+  DEFAULT_PRESET_NAME,
+  type ForcePresets,
+  buildShareUrl,
+  deletePreset,
+  initialForceParams,
+  loadPreset,
+  paramsToJson,
+  parseParamsJson,
+  presetNames,
+  readPresets,
+  savePreset,
+  writeStoredParams,
+} from "./forcePresets";
+import { AppearancePanel } from "./AppearancePanel";
 
 interface GeneratedGraph {
   nodes: SceneNodeData[];
@@ -95,23 +110,118 @@ export function ThreeLab() {
   const [status, setStatus] = useState("loading…");
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [params, setParamsState] = useState<D3ForceParams>({
-    ...FORCE_CONTROL_DEFAULTS,
-  });
+  // Params hydrate from `?sim=` › localStorage › defaults (forcePresets), so a
+  // tuned config survives reload and is shareable by URL.
+  const [params, setParamsState] = useState<D3ForceParams>(() =>
+    initialForceParams(window.location.search),
+  );
+  const paramsRef = useRef(params);
+  const [presets, setPresets] = useState<ForcePresets>(() => readPresets());
+  const [selectedPreset, setSelectedPreset] = useState<string>(DEFAULT_PRESET_NAME);
+  const [presetDraft, setPresetDraft] = useState("");
+  const [jsonDraft, setJsonDraft] = useState("");
+  const [labStatus, setLabStatus] = useState("");
   const [showControls, setShowControls] = useState(true);
 
-  // Live retune: push one changed knob into the running solver (it reheats and
-  // re-settles so the effect is visible immediately) and mirror it in the panel.
+  // Persist the live params on every change so a tweak survives reload (and a
+  // `?sim=` hydration becomes the working set). The ref keeps the latest value
+  // available to the mount effect without re-running it.
+  useEffect(() => {
+    paramsRef.current = params;
+    writeStoredParams(params);
+  }, [params]);
+
+  // Apply a full param set: mirror it in the panel AND push it into the running
+  // solver (it reheats and re-settles so the effect is visible immediately).
+  const applyParams = useCallback((next: D3ForceParams) => {
+    setParamsState(next);
+    sceneRef.current?.field.setForceParams(next);
+  }, []);
+
+  // Live retune of one knob.
   const setParam = useCallback((key: keyof D3ForceParams, value: number) => {
     setParamsState((prev) => ({ ...prev, [key]: value }) as D3ForceParams);
     sceneRef.current?.field.setForceParams({ [key]: value } as Partial<D3ForceParams>);
   }, []);
 
   const resetParams = useCallback(() => {
-    const d: D3ForceParams = { ...FORCE_CONTROL_DEFAULTS };
-    setParamsState(d);
-    sceneRef.current?.field.setForceParams(d);
-  }, []);
+    applyParams({ ...FORCE_CONTROL_DEFAULTS });
+    setSelectedPreset(DEFAULT_PRESET_NAME);
+    setLabStatus("Restored defaults");
+  }, [applyParams]);
+
+  const onLoadPreset = useCallback(
+    (name: string) => {
+      setSelectedPreset(name);
+      applyParams(loadPreset(presets, name));
+      setLabStatus(`Loaded preset “${name}”`);
+    },
+    [applyParams, presets],
+  );
+
+  const onSavePreset = useCallback(() => {
+    const name = presetDraft.trim();
+    if (!name || name === DEFAULT_PRESET_NAME) {
+      setLabStatus("Enter a preset name (not “Default”)");
+      return;
+    }
+    setPresets((prev) => savePreset(prev, name, params));
+    setSelectedPreset(name);
+    setPresetDraft("");
+    setLabStatus(`Saved preset “${name}”`);
+  }, [params, presetDraft]);
+
+  const onDeletePreset = useCallback(() => {
+    if (selectedPreset === DEFAULT_PRESET_NAME) {
+      setLabStatus("The Default preset can’t be deleted");
+      return;
+    }
+    const name = selectedPreset;
+    setPresets((prev) => deletePreset(prev, name));
+    setSelectedPreset(DEFAULT_PRESET_NAME);
+    setLabStatus(`Deleted preset “${name}”`);
+  }, [selectedPreset]);
+
+  const onCopyJson = useCallback(() => {
+    const text = paramsToJson(params);
+    setJsonDraft(text);
+    const pending = navigator.clipboard?.writeText?.(text);
+    if (pending) {
+      void pending.then(
+        () => setLabStatus("Copied params JSON to clipboard"),
+        () => setLabStatus("Clipboard blocked — copy from the box below"),
+      );
+    } else {
+      setLabStatus("Clipboard unavailable — copy from the box below");
+    }
+  }, [params]);
+
+  const onLoadJson = useCallback(() => {
+    try {
+      applyParams(parseParamsJson(jsonDraft));
+      setSelectedPreset(DEFAULT_PRESET_NAME);
+      setLabStatus("Applied pasted JSON");
+    } catch {
+      setLabStatus("Invalid JSON");
+    }
+  }, [applyParams, jsonDraft]);
+
+  const onCopyShareUrl = useCallback(() => {
+    const url = buildShareUrl(params);
+    if (!url) {
+      setLabStatus("Could not build a share URL");
+      return;
+    }
+    const pending = navigator.clipboard?.writeText?.(url);
+    if (pending) {
+      void pending.then(
+        () => setLabStatus("Copied shareable ?sim= URL"),
+        () => setLabStatus("Clipboard blocked"),
+      );
+    } else {
+      setLabStatus("Clipboard unavailable");
+    }
+  }, [params]);
 
   const load = useCallback(
     (nodes: SceneNodeData[], edges: SceneEdgeData[], label: string) => {
@@ -140,6 +250,10 @@ export function ThreeLab() {
     const scene = createThreeScene();
     sceneRef.current = scene;
     scene.controller.mount(host);
+    // Hydrate the freshly-built field with the persisted/URL params BEFORE the
+    // first set-data, so the solver is constructed at those values (no
+    // default-then-reheat flash).
+    scene.field.setForceParams(paramsRef.current);
 
     const off = scene.controller.on((ev) => {
       if (ev.kind === "hover") setHovered(ev.id);
@@ -192,6 +306,8 @@ export function ThreeLab() {
 
   const cmd = (c: Parameters<SceneController["command"]>[0]) =>
     sceneRef.current?.controller.command(c);
+
+  const presetOptions = presetNames(presets);
 
   return (
     <div
@@ -276,6 +392,71 @@ export function ThreeLab() {
         </header>
         {showControls && (
           <div style={{ overflowY: "auto", padding: "2px 8px 8px" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: "4px 0 8px",
+                borderBottom: "1px solid var(--color-border, #eee)",
+              }}
+            >
+              <div style={{ display: "flex", gap: 4 }}>
+                <select
+                  value={selectedPreset}
+                  onChange={(e) => onLoadPreset(e.target.value)}
+                  title="Load a saved preset"
+                  style={{ flex: 1, font: "inherit" }}
+                >
+                  {presetOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={onDeletePreset}
+                  disabled={selectedPreset === DEFAULT_PRESET_NAME}
+                  title="Delete the selected preset"
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input
+                  value={presetDraft}
+                  onChange={(e) => setPresetDraft(e.target.value)}
+                  placeholder="Save current as…"
+                  style={{ flex: 1, font: "inherit", minWidth: 0 }}
+                />
+                <button onClick={onSavePreset}>Save</button>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={onCopyJson} style={{ flex: 1 }}>
+                  Copy JSON
+                </button>
+                <button onClick={onCopyShareUrl} style={{ flex: 1 }}>
+                  Copy URL
+                </button>
+              </div>
+              <textarea
+                value={jsonDraft}
+                onChange={(e) => setJsonDraft(e.target.value)}
+                placeholder="Paste D3ForceParams JSON…"
+                spellCheck={false}
+                rows={3}
+                style={{
+                  width: "100%",
+                  font: "11px ui-monospace, monospace",
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                }}
+              />
+              <button onClick={onLoadJson}>Load JSON</button>
+              {labStatus && (
+                <div style={{ fontSize: 10, opacity: 0.7 }}>{labStatus}</div>
+              )}
+            </div>
             {FORCE_CONTROL_GROUPS.map((group) => (
               <div key={group}>
                 <div
@@ -329,6 +510,7 @@ export function ThreeLab() {
           </div>
         )}
       </section>
+      <AppearancePanel getField={() => sceneRef.current?.field ?? null} />
     </div>
   );
 }
