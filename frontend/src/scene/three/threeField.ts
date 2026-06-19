@@ -65,7 +65,9 @@ import {
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
 import { labelTextStyle } from "./labelStyle";
+import { uiScale } from "./uiScale";
 
+// Pointer hit tolerance in screen px at the 16px rem basis; UI-scaled at use.
 const PICK_RADIUS_PX = 14;
 /** Gentle restart alpha for a warm-started (mostly-carried-over) layout — low so
  *  persistent nodes barely move while new nodes settle in (object constancy). */
@@ -100,6 +102,7 @@ varying float vAA;
 // widthMin/MaxPixels pattern. This keeps the node↔edge proportion constant at every
 // zoom (Obsidian/Cytoscape scale-together), fixing the prior mismatch where nodes
 // scaled in world units but edges held a constant pixel width.
+uniform float uPxScale;          // UI-scale (root font / 16): the screen-px band tracks the DOM
 const float NODE_MIN_PX = 1.5;   // node radius never below 1.5 px (visible zoomed out)
 const float NODE_MAX_PX = 240.0; // node radius never above 240 px (no balloon zoomed in)
 
@@ -109,7 +112,7 @@ void main() {
   float ppw = uPixelsPerWorld;
   // World radius → wanted on-screen px → clamp to the band → back to world.
   float pxWanted = aSize * ppw;
-  float pxC = clamp(pxWanted, NODE_MIN_PX, NODE_MAX_PX);
+  float pxC = clamp(pxWanted, NODE_MIN_PX * uPxScale, NODE_MAX_PX * uPxScale);
   float radiusWorld = ppw > 0.0 ? pxC / ppw : aSize;
   float scale = aHidden > 0.5 ? 0.0 : radiusWorld;
   vec2 world = center + position.xy * scale;
@@ -168,6 +171,7 @@ vec2 nodePos(float idx) {
 // edge never disappears when zoomed far out (deck.gl widthMinPixels; sigma
 // minEdgeThickness) nor dominates when zoomed in. NOTE: aWidthPx now carries WORLD
 // units, not pixels — the attribute name is kept to avoid churn in the edge build.
+uniform float uPxScale;         // UI-scale (root font / 16): the screen-px band tracks the DOM
 const float EDGE_MIN_PX = 1.0;  // edge never thinner than 1 px (won't vanish)
 const float EDGE_MAX_PX = 64.0; // edge never thicker than 64 px (no balloon)
 
@@ -180,7 +184,7 @@ void main() {
   vec2 nrm = len > 0.0001 ? vec2(-dir.y, dir.x) / len : vec2(0.0);
   float ppw = uPixelsPerWorld;
   float pxWanted = aWidthPx * ppw; // world width → on-screen px (scales with zoom)
-  float pxC = clamp(pxWanted, EDGE_MIN_PX, EDGE_MAX_PX);
+  float pxC = clamp(pxWanted, EDGE_MIN_PX * uPxScale, EDGE_MAX_PX * uPxScale);
   float halfWorld = ppw > 0.0 ? (pxC * 0.5) / ppw : aWidthPx * 0.5;
   vec2 world = base + nrm * aSide * halfWorld;
   vColor = aColor;
@@ -692,6 +696,7 @@ export class ThreeField implements SceneFieldRenderer {
         uTexSize: { value: texSize },
         uPixelsPerWorld: { value: this.pixelsPerWorld() },
         uDimColor: { value: [dim.r, dim.g, dim.b] },
+        uPxScale: { value: uiScale() },
       },
       vertexShader: NODE_VERTEX,
       fragmentShader: NODE_FRAGMENT,
@@ -788,6 +793,7 @@ export class ThreeField implements SceneFieldRenderer {
         uTexSize: { value: texSize },
         uPixelsPerWorld: { value: this.pixelsPerWorld() },
         uDimColor: { value: [dim.r, dim.g, dim.b] },
+        uPxScale: { value: uiScale() },
       },
       vertexShader: EDGE_VERTEX,
       fragmentShader: EDGE_FRAGMENT,
@@ -1066,13 +1072,16 @@ export class ThreeField implements SceneFieldRenderer {
     if (!this.renderer) return;
     const tex = this.positionTex;
     const ppw = this.pixelsPerWorld();
+    const pxScale = uiScale();
     if (this.nodeMaterial) {
       this.nodeMaterial.uniforms.uPositions.value = tex;
       this.nodeMaterial.uniforms.uPixelsPerWorld.value = ppw;
+      this.nodeMaterial.uniforms.uPxScale.value = pxScale;
     }
     if (this.edgeMaterial) {
       this.edgeMaterial.uniforms.uPositions.value = tex;
       this.edgeMaterial.uniforms.uPixelsPerWorld.value = ppw;
+      this.edgeMaterial.uniforms.uPxScale.value = pxScale;
     }
     this.renderer.render(this.scene, this.camera);
     this.drawLabels();
@@ -1119,6 +1128,8 @@ export class ThreeField implements SceneFieldRenderer {
     const accent = `#${accentColor().toString(16).padStart(6, "0")}`;
     const highlight = `#${highlightColor().toString(16).padStart(6, "0")}`;
     const ppw = this.pixelsPerWorld();
+    // Screen-px UI-scale: ring gaps, stroke widths, and label offsets track the DOM.
+    const s = uiScale();
 
     // Emphasis rings (under labels). Three theme-token treatments kept visually
     // distinct so hover, selection, and pin never read the same:
@@ -1138,23 +1149,26 @@ export class ThreeField implements SceneFieldRenderer {
       if (!selected && !hovered && !pinned && !pulsed) continue;
       const p = this.worldToScreen(i);
       if (!p) continue;
-      const nodeR = Math.max(3, nodeWorldRadius(this.nodes[i], this.appearance) * ppw);
+      const nodeR = Math.max(
+        3 * s,
+        nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
+      );
       // Base emphasis ring (precedence selected > hovered > pinned).
       if (selected || hovered || pinned) {
         ctx.beginPath();
         if (selected) {
-          ctx.arc(p.x, p.y, nodeR + 5, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, nodeR + 5 * s, 0, Math.PI * 2);
           ctx.strokeStyle = accent;
-          ctx.lineWidth = Math.min(10, Math.max(3.5, nodeR * 0.22));
+          ctx.lineWidth = Math.min(10 * s, Math.max(3.5 * s, nodeR * 0.22));
         } else if (hovered) {
-          ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, nodeR + 3 * s, 0, Math.PI * 2);
           ctx.strokeStyle = highlight;
-          ctx.lineWidth = 1.75;
+          ctx.lineWidth = 1.75 * s;
         } else {
-          ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, nodeR + 3 * s, 0, Math.PI * 2);
           ctx.strokeStyle = accent;
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([3, 3]);
+          ctx.lineWidth = 1.5 * s;
+          ctx.setLineDash([3 * s, 3 * s]);
         }
         ctx.stroke();
         ctx.setLineDash([]);
@@ -1162,9 +1176,9 @@ export class ThreeField implements SceneFieldRenderer {
       // Transient pulse ring (additive flash in the highlight hue).
       if (pulsed) {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, nodeR + 8, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, nodeR + 8 * s, 0, Math.PI * 2);
         ctx.strokeStyle = highlight;
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.5 * s;
         ctx.globalAlpha = 0.85;
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -1188,13 +1202,13 @@ export class ThreeField implements SceneFieldRenderer {
       const p = this.worldToScreen(i);
       if (!p || p.x < -40 || p.x > this.width + 40 || p.y < 0 || p.y > this.height)
         continue;
-      const r = Math.max(3, nodeWorldRadius(node, this.appearance) * ppw);
+      const r = Math.max(3 * s, nodeWorldRadius(node, this.appearance) * ppw);
       const text = node.title ?? node.id;
       const isFeature = node.kind === "feature";
       ctx.font = isFeature ? featureFont : docFont;
       ctx.fillStyle = isFeature ? ink : inkMuted;
       ctx.globalAlpha = isFeature ? 1 : 0.9;
-      ctx.fillText(text, p.x + r + 4, p.y);
+      ctx.fillText(text, p.x + r + 4 * s, p.y);
       budget--;
     }
     ctx.globalAlpha = 1;
@@ -1342,7 +1356,7 @@ export class ThreeField implements SceneFieldRenderer {
       const p = this.worldToScreen(i);
       if (!p) continue;
       const radius = Math.max(
-        PICK_RADIUS_PX,
+        PICK_RADIUS_PX * uiScale(),
         nodeWorldRadius(this.nodes[i], this.appearance) * ppw,
       );
       const dx = p.x - sx;

@@ -13,9 +13,11 @@
 // when `document` is undefined (node test env) it falls back to the light-theme
 // ramp values, kept in lockstep with styles.css.
 
-const FALLBACK_ROOT_PX = 16;
+import { rootFontPx, uiScale } from "./uiScale";
+
 const FONT_FALLBACK = "Inter, system-ui, -apple-system, sans-serif";
-/** Floor so a label never renders illegibly small (relative-scaling safety). */
+/** Floor so a label never renders illegibly small, in rem-relative px (scales with
+ *  UI scale so the legibility floor tracks the rest of the canvas). */
 const MIN_LABEL_PX = 9;
 
 /** Guarded read of a CSS custom property off `:root` (empty when no document). */
@@ -24,18 +26,12 @@ function readVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-/** Root font size in px — the divisor that makes rem tokens UI-scale-relative. */
-function rootFontPx(): number {
-  if (typeof document === "undefined") return FALLBACK_ROOT_PX;
-  const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  return Number.isFinite(px) && px > 0 ? px : FALLBACK_ROOT_PX;
-}
-
 /** Resolve a `--text-*` size token (rem or px) to floored pixels, scaling rem by
- *  the root font size (the relative-scaling bridge). */
+ *  the root font size (the relative-scaling bridge, shared via `uiScale`). The min
+ *  floor is itself UI-scaled so it stays proportional under a UI-scale change. */
 function resolveSizePx(token: string, fallbackPx: number): number {
   const raw = readVar(token);
-  let px = fallbackPx;
+  let px = fallbackPx * uiScale();
   if (raw.endsWith("rem")) {
     const rem = parseFloat(raw);
     if (Number.isFinite(rem)) px = rem * rootFontPx();
@@ -43,7 +39,7 @@ function resolveSizePx(token: string, fallbackPx: number): number {
     const v = parseFloat(raw);
     if (Number.isFinite(v)) px = v;
   }
-  return Math.max(MIN_LABEL_PX, px);
+  return Math.max(MIN_LABEL_PX * uiScale(), px);
 }
 
 export type LabelRole = "feature" | "document";
