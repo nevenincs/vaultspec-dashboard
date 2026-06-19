@@ -53,6 +53,16 @@ function GraphTab(props: IDockviewPanelHeaderProps) {
 
 const tabComponents = { graphTab: GraphTab };
 
+// The graph is structural, not a document. When it is alone in its group it must
+// read as the bare canvas — NO tab row above it (a single "Graph" tab is visual
+// noise with no purpose). The tab header appears only once the user explicitly
+// tabs another panel into the graph's group. Hiding the header on the graph's own
+// group leaves any separate document group's tabs untouched.
+function syncGraphGroupHeader(api: DockviewApi): void {
+  const group = api.getPanel(GRAPH_PANEL_ID)?.group;
+  if (group) group.header.hidden = group.panels.length <= 1;
+}
+
 export function DockWorkspace() {
   const apiRef = useRef<DockviewApi | null>(null);
   // Guards the store<->dockview sync against feedback loops: while we mutate
@@ -74,12 +84,14 @@ export function DockWorkspace() {
       tabComponent: "graphTab",
       title: "Graph",
     });
+    syncGraphGroupHeader(api);
     // Any layout change re-measures the graph rect so the pinned canvas follows
     // (a split, a sash drag, a dock, a float), and syncs dockview's tab order
     // back into the slice after a user drag-reorder. Skipped during our own
     // programmatic sync. [P06 persists here too.]
     api.onDidLayoutChange(() => {
       pokeGraphRect();
+      syncGraphGroupHeader(api);
       if (syncingRef.current) return;
       reorderDocTabs(
         api.panels.filter((p) => p.id !== GRAPH_PANEL_ID).map((p) => p.id),
@@ -128,6 +140,7 @@ export function DockWorkspace() {
         const panel = api.getPanel(plan.activeDocId);
         panel?.api.setActive();
       }
+      syncGraphGroupHeader(api);
     } finally {
       syncingRef.current = false;
     }
