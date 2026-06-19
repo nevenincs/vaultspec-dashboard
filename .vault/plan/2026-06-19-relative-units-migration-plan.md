@@ -113,8 +113,8 @@ Migrate all hardcoded px in the frontend DOM CSS and styling to relative units (
 
 Map off-scale inline px to the existing rem DTCG scale and close genuine gaps by adding tokens to the DTCG sources (regenerated, Figma kept binding).
 
-- [ ] `P02.S03` - Audit every off-scale inline px value and map each to the nearest rem DTCG token, recording genuine scale gaps; `frontend/tokens`.
-- [ ] `P02.S04` - Add the missing spacing/type tokens to the DTCG sources, regenerate the styles.css managed region and Tailwind registration, and mirror to the Figma bridge; `frontend/tokens/spacing.tokens.json`.
+- [x] `P02.S03` - Audit every off-scale inline px value and map each to the nearest rem DTCG token, recording genuine scale gaps; `frontend/tokens`.
+- [x] `P02.S04` - Add the missing spacing/type tokens to the DTCG sources, regenerate the styles.css managed region and Tailwind registration, and mirror to the Figma bridge; `frontend/tokens/spacing.tokens.json`.
 
 ### Phase `P03` - kit primitives conversion
 
