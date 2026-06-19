@@ -210,6 +210,20 @@ re-opening them.
   ordering is the template for any future scope axis the contract keeps open by
   keeping scope a parameter.
 
+## Status
+
+Accepted, with one boundary revised. The `filter-consolidation` ADR
+(`2026-06-19-filter-consolidation-adr`, accepted) supersedes this ADR's
+"two kinds of find must not collide" boundary — the in-rail filter is no longer a
+text-only *local listing narrower* distinct from the graph filter. The left
+rail's filter area is now the SINGLE canonical filter surface (search field plus
+the centralized facet flyout) that authors the one shared `dashboardState.filters`,
+which the graph, timeline, and right rail consume. The search-vs-filter line this
+ADR also drew (the global semantic Search pillar is a distinct concept from
+filtering) is RETAINED. Every other invariant here — read-only navigation,
+hosted-slot composition, stable-id selection, bounded reads, coarse-to-fine
+ordering — is unchanged.
+
 ## Codification candidates
 
 - **Rule slug:** `left-rail-is-read-only-navigation`.
