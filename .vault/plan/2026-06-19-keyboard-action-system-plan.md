@@ -136,9 +136,9 @@ Make bindings user-customizable and persisted through the one engine-owned setti
 
 Additive engine registry change: a new SettingType/ControlKind carrying a validated, size-capped sparse override map, declared as one keybindings SettingDef, served through the existing schema route.
 
-- [ ] `W02.P04.S09` - Add the keybindings SettingType and ControlKind with chord-parse and size-cap validation; `engine/crates/vaultspec-session/src/settings_schema.rs`.
-- [ ] `W02.P04.S10` - Declare the keybindings SettingDef and its group, served through the existing schema route; `engine/crates/vaultspec-session/src/settings_schema.rs`.
-- [ ] `W02.P04.S11` - Engine-test keybindings validation (well-formed, chord-parse, over-cap rejection) and schema serving; `engine/crates/vaultspec-session/src/settings_schema.rs`.
+- [x] `W02.P04.S09` - Add the keybindings SettingType and ControlKind with chord-parse and size-cap validation; `engine/crates/vaultspec-session/src/settings_schema.rs`.
+- [x] `W02.P04.S10` - Declare the keybindings SettingDef and its group, served through the existing schema route; `engine/crates/vaultspec-session/src/settings_schema.rs`.
+- [x] `W02.P04.S11` - Engine-test keybindings validation (well-formed, chord-parse, over-cap rejection) and schema serving; `engine/crates/vaultspec-session/src/settings_schema.rs`.
 
 ### Phase `W02.P05` - stores: override-map resolution and effective bindings
 

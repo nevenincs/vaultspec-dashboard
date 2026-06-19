@@ -36,7 +36,19 @@ pub enum SettingType {
     /// An integer in the inclusive range `[min, max]`, wire-encoded as a
     /// decimal string.
     Integer { min: i64, max: i64 },
+    /// A sparse keyboard-binding OVERRIDE map, wire-encoded as a JSON object
+    /// string `{action_id: chord}`. The engine validates structure and bounds
+    /// the map at `max_entries` (bounded-by-default) but does NOT own the chord
+    /// grammar: the frontend keybinding registry is the authority for which
+    /// action ids exist and the canonical chord form, and it tolerates a corrupt
+    /// or unknown entry by falling back to the default. So the engine's job is to
+    /// keep the persisted value well-formed and bounded, not to parse chords.
+    Keybindings { max_entries: usize },
 }
+
+/// Per-chord byte ceiling inside a keybindings override map. A generous bound
+/// that rejects garbage while admitting any real chord string.
+const KEYBINDING_CHORD_MAX_LEN: usize = 64;
 
 /// The UI control a setting renders as (the schema-driven render hint). Adding
 /// a new control kind is the one place the client and this enum must agree.
@@ -51,6 +63,9 @@ pub enum ControlKind {
     Text,
     /// A slider for a bounded integer.
     Slider,
+    /// The keybinding editor: renders the frontend registry's action catalog as
+    /// per-action chord recorders and writes back the sparse override map.
+    Keybinding,
 }
 
 /// One declared setting. Owned (not `&'static`) so the registry can carry enum
@@ -132,8 +147,13 @@ pub fn registry() -> &'static [SettingDef] {
 /// The display order of the setting groups (engine-owned so the dialog's
 /// section order is part of the contract, not a client guess).
 pub fn groups() -> &'static [&'static str] {
-    &["Appearance", "Graph"]
+    &["Appearance", "Graph", "Keybindings"]
 }
+
+/// The cap on user keybinding overrides, mirrored by the frontend registry's
+/// `MAX_KEYBINDING_OVERRIDES`. Bounded-by-default: the persisted map can never
+/// grow without limit.
+pub const MAX_KEYBINDING_OVERRIDES: usize = 256;
 
 /// Look up a declared setting by key.
 pub fn find(key: &str) -> Option<&'static SettingDef> {
@@ -182,7 +202,39 @@ pub fn check_value(value_type: &SettingType, value: &str) -> Result<String, Stri
             Ok(_) => Err(format!("must be between {min} and {max}")),
             Err(_) => Err("must be an integer".to_string()),
         },
+        SettingType::Keybindings { max_entries } => check_keybindings(value, *max_entries),
     }
+}
+
+/// Validate a keybindings override map: a JSON object of `action_id -> chord`
+/// strings, bounded at `max_entries`, with each id and chord non-empty and each
+/// chord at most [`KEYBINDING_CHORD_MAX_LEN`] bytes. Returns the CANONICAL form
+/// (compact JSON with sorted keys) so storage is normalized regardless of the
+/// client's key order or whitespace. The chord grammar itself is the frontend's
+/// authority - this only keeps the persisted value well-formed and bounded.
+fn check_keybindings(value: &str, max_entries: usize) -> Result<String, String> {
+    use std::collections::BTreeMap;
+    let map: BTreeMap<String, String> = serde_json::from_str(value)
+        .map_err(|_| "must be a JSON object of action-id to chord strings".to_string())?;
+    if map.len() > max_entries {
+        return Err(format!("at most {max_entries} bindings may be overridden"));
+    }
+    for (id, chord) in &map {
+        if id.is_empty() {
+            return Err("a binding id must not be empty".to_string());
+        }
+        let trimmed = chord.trim();
+        if trimmed.is_empty() {
+            return Err(format!("binding `{id}` has an empty chord"));
+        }
+        if chord.len() > KEYBINDING_CHORD_MAX_LEN {
+            return Err(format!(
+                "binding `{id}` chord exceeds {KEYBINDING_CHORD_MAX_LEN} characters"
+            ));
+        }
+    }
+    // BTreeMap re-serializes with sorted keys and no insignificant whitespace.
+    serde_json::to_string(&map).map_err(|_| "could not normalize bindings".to_string())
 }
 
 fn invalid(key: &str, reason: String) -> ValidationError {
@@ -284,6 +336,27 @@ fn build_registry() -> Vec<SettingDef> {
             step: None,
             unit: None,
             placeholder: Some("type a stem…".to_string()),
+        },
+        // The user's keyboard-shortcut overrides: a sparse `action_id -> chord`
+        // map layered over the frontend keybinding registry's defaults. One
+        // honest setting consumed by the keymap dispatcher (no dead control); the
+        // dedicated `Keybinding` control renders the catalog as chord recorders.
+        // Bounded at MAX_KEYBINDING_OVERRIDES; global (shortcuts are not scoped).
+        SettingDef {
+            key: "keybindings".to_string(),
+            value_type: SettingType::Keybindings {
+                max_entries: MAX_KEYBINDING_OVERRIDES,
+            },
+            default: "{}".to_string(),
+            scope_eligible: false,
+            control: ControlKind::Keybinding,
+            label: "Keyboard shortcuts".to_string(),
+            description: "Customize the chord for any command.".to_string(),
+            group: "Keybindings".to_string(),
+            order: 1,
+            step: None,
+            unit: None,
+            placeholder: None,
         },
     ]
 }
@@ -399,5 +472,58 @@ mod tests {
     fn scope_eligible_setting_accepts_both() {
         assert!(validate("default_granularity", "document", true).is_ok());
         assert!(validate("default_granularity", "document", false).is_ok());
+    }
+
+    #[test]
+    fn keybindings_is_declared_global_with_the_keybinding_control() {
+        let def = find("keybindings").expect("keybindings is declared");
+        assert!(matches!(
+            def.value_type,
+            SettingType::Keybindings { max_entries } if max_entries == MAX_KEYBINDING_OVERRIDES
+        ));
+        assert_eq!(def.control, ControlKind::Keybinding);
+        assert_eq!(def.group, "Keybindings");
+        assert_eq!(def.default, "{}");
+        assert!(!def.scope_eligible, "shortcuts are not scoped");
+        // The declared default validates against its own type.
+        assert!(validate("keybindings", "{}", false).is_ok());
+        // And it is offered as a group so the dialog renders it.
+        assert!(groups().contains(&"Keybindings"));
+    }
+
+    #[test]
+    fn keybindings_accepts_a_well_formed_map_and_normalizes_it() {
+        let ty = SettingType::Keybindings { max_entries: 8 };
+        // Re-serialized canonical: sorted keys, no insignificant whitespace.
+        assert_eq!(
+            check_value(&ty, "{ \"palette\": \"Mod+K\", \"graph.open\": \"Enter\" }").unwrap(),
+            "{\"graph.open\":\"Enter\",\"palette\":\"Mod+K\"}"
+        );
+        assert_eq!(check_value(&ty, "{}").unwrap(), "{}");
+    }
+
+    #[test]
+    fn keybindings_rejects_malformed_oversized_or_empty_entries() {
+        let ty = SettingType::Keybindings { max_entries: 2 };
+        // Not an object of strings.
+        assert!(check_value(&ty, "not json").is_err());
+        assert!(check_value(&ty, "[\"Mod+K\"]").is_err());
+        assert!(check_value(&ty, "{\"a\": 1}").is_err());
+        // Over the entry cap.
+        assert!(check_value(&ty, "{\"a\":\"Mod+A\",\"b\":\"Mod+B\",\"c\":\"Mod+C\"}").is_err());
+        // Empty chord.
+        assert!(check_value(&ty, "{\"a\":\"\"}").is_err());
+        assert!(check_value(&ty, "{\"a\":\"   \"}").is_err());
+        // Over-long chord.
+        let long = "x".repeat(KEYBINDING_CHORD_MAX_LEN + 1);
+        assert!(check_value(&ty, &format!("{{\"a\":\"{long}\"}}")).is_err());
+    }
+
+    #[test]
+    fn keybindings_is_global_only() {
+        assert_eq!(
+            validate("keybindings", "{}", true).unwrap_err().kind(),
+            "scope_not_allowed"
+        );
     }
 }
