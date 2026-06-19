@@ -13,7 +13,13 @@
 // stores + SceneController contracts; no fetch, no raw tiers.
 
 import { useCallback, useEffect, useRef } from "react";
-import { DockviewReact, type DockviewApi, type DockviewReadyEvent } from "dockview";
+import {
+  DockviewDefaultTab,
+  DockviewReact,
+  type DockviewApi,
+  type DockviewReadyEvent,
+  type IDockviewPanelHeaderProps,
+} from "dockview";
 
 import { useActiveScope } from "../../stores/server/queries";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
@@ -35,6 +41,18 @@ const GRAPH_PANEL_ID = "__graph__";
 
 const components = { graph: GraphPanel, doc: DocPanel };
 
+// The graph panel is structural, not a document: it is the portal-pinned canvas's
+// rect source and must always exist (graph-canvas-is-portal-pinned). The default
+// dockview tab renders a close (✕) action; closing the graph would drop the
+// placeholder rect with no restore path. A `hideClose` tab makes the graph tab
+// non-closable so the invariant holds — document tabs keep the default closable
+// tab.
+function GraphTab(props: IDockviewPanelHeaderProps) {
+  return <DockviewDefaultTab {...props} hideClose />;
+}
+
+const tabComponents = { graphTab: GraphTab };
+
 export function DockWorkspace() {
   const apiRef = useRef<DockviewApi | null>(null);
   // Guards the store<->dockview sync against feedback loops: while we mutate
@@ -50,7 +68,12 @@ export function DockWorkspace() {
     apiRef.current = api;
     // The graph panel is always present and seeds the layout (full width until a
     // document opens to its left).
-    api.addPanel({ id: GRAPH_PANEL_ID, component: "graph", title: "Graph" });
+    api.addPanel({
+      id: GRAPH_PANEL_ID,
+      component: "graph",
+      tabComponent: "graphTab",
+      title: "Graph",
+    });
     // Any layout change re-measures the graph rect so the pinned canvas follows
     // (a split, a sash drag, a dock, a float), and syncs dockview's tab order
     // back into the slice after a user drag-reorder. Skipped during our own
@@ -123,6 +146,7 @@ export function DockWorkspace() {
       <div className="absolute inset-0 z-10">
         <DockviewReact
           components={components}
+          tabComponents={tabComponents}
           onReady={onReady}
           theme={vaultspecDockTheme}
         />

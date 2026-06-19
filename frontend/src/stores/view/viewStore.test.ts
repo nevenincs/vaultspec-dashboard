@@ -3,51 +3,74 @@ import { describe, expect, it } from "vitest";
 import type { EngineEdge } from "../server/engine";
 import { useLiveStatusStore } from "../server/liveStatus";
 import {
+  browserTreeExpansionKey,
+  useBrowserTreeExpansionStore,
+} from "./browserTreeExpansion";
+import { useCommandPaletteStore } from "./commandPalette";
+import { openContextMenu, useContextMenuStore } from "./contextMenu";
+import {
+  setCreateDocFeature,
+  toggleCreateDocDialog,
+  useCreateDocChromeStore,
+} from "./createDocChrome";
+import { openDiscoveryPanel, useDiscoveryPanelStore } from "./discoveries";
+import { useFilterSidebarStore } from "./filterSidebar";
+import {
+  setGraphControlsSettingsOpen,
+  useGraphControlsChromeStore,
+} from "./graphControlsChrome";
+import {
+  inspectorExpansionKey,
+  useInspectorExpansionStore,
+} from "./inspectorExpansion";
+import { useKeyboardShortcutsStore } from "./keyboardShortcuts";
+import { setMinimapCollapsed, useMinimapChromeStore } from "./minimapChrome";
+import { pipelineExpansionKey, usePipelineExpansionStore } from "./pipelineExpansion";
+import { useSearchIntentStore } from "./searchIntent";
+import {
+  showMoreRecentCommits,
+  toggleRecentCommit,
+  toggleStatusSection,
+  useStatusTabChromeStore,
+} from "./statusTabChrome";
+import { DEFAULT_PX_PER_MS, useTimelineStore } from "./timeline";
+import {
+  LEFT_RAIL_DEFAULT_WIDTH,
+  LEFT_RAIL_MAX_WIDTH,
+  LEFT_RAIL_MIN_WIDTH,
   OPENED_IDS_CAP,
   PINNED_DISCOVERIES_CAP,
+  RIGHT_RAIL_DEFAULT_WIDTH,
+  RIGHT_RAIL_MAX_WIDTH,
+  RIGHT_RAIL_MIN_WIDTH,
+  TIMELINE_DEFAULT_HEIGHT,
+  TIMELINE_MAX_HEIGHT,
+  TIMELINE_MIN_HEIGHT,
   WORKING_SET_CAP,
+  DEFAULT_GRAPH_OVERLAYS,
   useViewStore,
 } from "./viewStore";
+import {
+  beginWorktreeSwitch,
+  setWorktreePickerExpanded,
+  useWorktreePickerChromeStore,
+} from "./worktreePickerChrome";
 
 describe("view store", () => {
-  it("shares one selection concept", () => {
-    useViewStore.getState().select("feature:editor-demo");
-    expect(useViewStore.getState().selectedId).toBe("feature:editor-demo");
-    useViewStore.getState().select(null);
-    expect(useViewStore.getState().selectedId).toBeNull();
-  });
-
-  it("descends into a feature: focuses it AND flips to the bounded document view", () => {
-    const store = useViewStore.getState();
-    store.setGranularity("feature"); // start at the constellation overview
-    expect(useViewStore.getState().focusedFeature).toBeNull();
-    store.descendIntoFeature("dashboard-optimization");
-    expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
-    // Descent is what bounds the document query (filter.feature_tags=[tag]).
-    expect(useViewStore.getState().granularity).toBe("document");
-  });
-
-  it("a manual granularity toggle clears the feature descent (returns to overview)", () => {
-    const store = useViewStore.getState();
-    store.descendIntoFeature("dashboard-optimization");
-    expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
-    // Toggling back to the constellation clears the focus...
-    store.setGranularity("feature");
-    expect(useViewStore.getState().focusedFeature).toBeNull();
-    // ...and a manual switch to the full document graph is also unfocused.
-    store.descendIntoFeature("x");
-    store.setGranularity("document");
-    expect(useViewStore.getState().focusedFeature).toBeNull();
-  });
-
-  it("clears the feature descent on a scope swap (no cross-corpus focus bleed)", () => {
-    const store = useViewStore.getState();
-    store.descendIntoFeature("dashboard-optimization");
-    expect(useViewStore.getState().focusedFeature).toBe("dashboard-optimization");
-    store.setScope("Y:/code/some-other-worktree");
-    expect(useViewStore.getState().focusedFeature).toBeNull();
-    // and back to the unfocused DOCUMENT graph (the default headline view)
-    expect(useViewStore.getState().granularity).toBe("document");
+  it("stores local event/edge selection metadata only", () => {
+    useViewStore
+      .getState()
+      .selectEntity({ kind: "event", id: "evt-1", nodeIds: ["doc:a"] });
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "event",
+      id: "evt-1",
+      nodeIds: ["doc:a"],
+    });
+    useViewStore.getState().selectEntity({ kind: "edge", id: "edge-1" });
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "edge",
+      id: "edge-1",
+    });
   });
 
   it("keeps the working set explicit and deduplicated", () => {
@@ -111,21 +134,74 @@ describe("view store", () => {
     expect(pins.some((e) => e.id === "p0")).toBe(false);
   });
 
-  it("defaults to LIVE timeline mode with all tiers on", () => {
-    useViewStore.getState().setTimelineMode({ kind: "live" });
-    const { timelineMode, tierFilter } = useViewStore.getState();
-    expect(timelineMode).toEqual({ kind: "live" });
-    expect(tierFilter.declared && tierFilter.semantic).toBe(true);
+  it("prunes visual node affordances against the held graph model", () => {
+    const validEdge: EngineEdge = {
+      id: "pin-valid",
+      src: "doc:keep",
+      dst: "doc:related",
+      relation: "similar-to",
+      tier: "semantic",
+      confidence: 0.7,
+    };
+    const staleEdge: EngineEdge = {
+      id: "pin-stale",
+      src: "doc:keep",
+      dst: "doc:missing",
+      relation: "similar-to",
+      tier: "semantic",
+      confidence: 0.7,
+    };
+    useViewStore.setState({
+      selection: null,
+      workingSet: [],
+      openedIds: [],
+      pinnedDiscoveries: [],
+    });
+    const store = useViewStore.getState();
+    store.selectEntity({
+      kind: "event",
+      id: "evt-stale",
+      nodeIds: ["doc:keep", "doc:missing"],
+    });
+    store.addToWorkingSet("doc:keep");
+    store.addToWorkingSet("doc:missing");
+    store.openNode("doc:keep");
+    store.openNode("doc:missing");
+    store.pinDiscovery(validEdge);
+    store.pinDiscovery(staleEdge);
+
+    store.pruneNodeAffordances(["doc:keep", "doc:related"]);
+
+    expect(useViewStore.getState()).toMatchObject({
+      selection: { kind: "event", id: "evt-stale", nodeIds: ["doc:keep"] },
+      workingSet: ["doc:keep"],
+      openedIds: ["doc:keep"],
+      pinnedDiscoveries: [validEdge],
+    });
   });
 
-  it("defaults to the document graph and resets to it on scope swap", () => {
-    // Toggle to the feature constellation...
-    useViewStore.getState().setGranularity("feature");
-    expect(useViewStore.getState().granularity).toBe("feature");
-    // ...a scope swap reverts to the DOCUMENT default (the coloured headline
-    // view), never leaving a new corpus on the single-type constellation.
-    useViewStore.getState().setScope("worktree-c");
-    expect(useViewStore.getState().granularity).toBe("document");
+  it("clears local event selection when none of its carried nodes remain", () => {
+    useViewStore.setState({
+      selection: { kind: "event", id: "evt-stale", nodeIds: ["doc:missing"] },
+    });
+
+    useViewStore.getState().pruneNodeAffordances(["doc:keep"]);
+
+    expect(useViewStore.getState().selection).toBeNull();
+  });
+
+  it("copies graph overlay state at the store boundary", () => {
+    const overlays = { featureCountries: false, featureHulls: true };
+
+    useViewStore.getState().setOverlays(overlays);
+    overlays.featureCountries = true;
+
+    expect(useViewStore.getState().overlays).toEqual({
+      featureCountries: false,
+      featureHulls: true,
+    });
+
+    useViewStore.getState().setOverlays(DEFAULT_GRAPH_OVERLAYS);
   });
 
   it("resets the live-connection slice on a wholesale scope swap (live-state D1)", () => {
@@ -141,5 +217,282 @@ describe("view store", () => {
       lastSeq: null,
       brokenLinkCount: 0,
     });
+  });
+
+  it("resets timeline view affordances on a wholesale scope swap", () => {
+    const timeline = useTimelineStore.getState();
+    timeline.setPlayhead(1234);
+    timeline.setPxPerMs(DEFAULT_PX_PER_MS * 8);
+    timeline.setScrollOffset(999);
+    timeline.toggleLane("exec", false);
+
+    useViewStore.getState().setScope("timeline-reset-scope");
+
+    expect(useTimelineStore.getState()).toMatchObject({
+      playheadT: "live",
+      pxPerMs: DEFAULT_PX_PER_MS,
+      scrollOffset: 0,
+    });
+    expect(useTimelineStore.getState().laneVisibility.exec).toBe(true);
+  });
+
+  it("resets right-rail pipeline expansion on a wholesale scope swap", () => {
+    const key = pipelineExpansionKey("previous-scope");
+    usePipelineExpansionStore.getState().toggle(key, "doc:previous-plan");
+
+    useViewStore.getState().setScope("pipeline-reset-scope");
+
+    expect(usePipelineExpansionStore.getState().expandedIds).toEqual([]);
+  });
+
+  it("resets left-rail browser tree expansion on a wholesale scope swap", () => {
+    const key = browserTreeExpansionKey("previous-scope", "vault");
+    useBrowserTreeExpansionStore.getState().toggle(key, "f:previous-feature");
+
+    useViewStore.getState().setScope("browser-tree-reset-scope");
+
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).toEqual([]);
+  });
+
+  it("resets inspector expansion on a wholesale scope swap", () => {
+    const key = inspectorExpansionKey("previous-scope", "doc:previous");
+    useInspectorExpansionStore.getState().toggleTier(key, "structural");
+
+    useViewStore.getState().setScope("inspector-reset-scope");
+
+    expect(useInspectorExpansionStore.getState().expandedTiers).toEqual([]);
+  });
+
+  it("resets right-rail search intent on a wholesale scope swap", () => {
+    const search = useSearchIntentStore.getState();
+    search.setQuery("previous corpus");
+    search.setTarget("code");
+
+    useViewStore.getState().setScope("search-reset-scope");
+
+    expect(useSearchIntentStore.getState()).toMatchObject({
+      query: "",
+      target: "vault",
+    });
+  });
+
+  it("closes the command palette on a wholesale scope swap", () => {
+    useCommandPaletteStore.getState().openPalette();
+    useKeyboardShortcutsStore.getState().openDialog();
+    openContextMenu({ kind: "node", id: "doc:previous" }, { x: 10, y: 20 });
+    useContextMenuStore.getState().arm("node:delete");
+
+    useViewStore.getState().setScope("command-palette-reset-scope");
+
+    expect(useCommandPaletteStore.getState().open).toBe(false);
+    expect(useKeyboardShortcutsStore.getState().open).toBe(false);
+    expect(useContextMenuStore.getState()).toMatchObject({
+      open: false,
+      entity: null,
+      anchor: null,
+      armedItemId: null,
+    });
+  });
+
+  it("closes the stage filter sidebar on wholesale swaps", () => {
+    useFilterSidebarStore.getState().setOpen(true);
+
+    useViewStore.getState().setScope("filter-sidebar-reset-scope");
+
+    expect(useFilterSidebarStore.getState().open).toBe(false);
+
+    useFilterSidebarStore.getState().setOpen(true);
+    useViewStore.getState().swapWorkspace("/project-b/.git", "/project-b/main");
+
+    expect(useFilterSidebarStore.getState().open).toBe(false);
+  });
+
+  it("stores shell panel flyout state and closes it on wholesale swaps", () => {
+    const store = useViewStore.getState();
+    store.setPanelFlyoutOpen(false);
+
+    store.togglePanelFlyout();
+    expect(useViewStore.getState().panelFlyoutOpen).toBe(true);
+
+    store.setScope("panel-flyout-reset-scope");
+    expect(useViewStore.getState().panelFlyoutOpen).toBe(false);
+
+    useViewStore.getState().setPanelFlyoutOpen(true);
+    useViewStore.getState().swapWorkspace("/project-b/.git", "/project-b/main");
+    expect(useViewStore.getState().panelFlyoutOpen).toBe(false);
+  });
+
+  it("restores the shell layout to defaults on reset", () => {
+    const store = useViewStore.getState();
+    store.setLeftRailVisible(false);
+    store.setTimelineVisible(false);
+    store.setLeftRailWidth(LEFT_RAIL_MAX_WIDTH);
+    store.setRightRailWidth(RIGHT_RAIL_MAX_WIDTH);
+    store.setTimelineHeight(TIMELINE_MAX_HEIGHT);
+    store.setPanelFlyoutOpen(true);
+
+    useViewStore.getState().resetShellLayout();
+
+    expect(useViewStore.getState()).toMatchObject({
+      leftRailVisible: true,
+      timelineVisible: true,
+      leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
+      rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
+      timelineHeight: TIMELINE_DEFAULT_HEIGHT,
+      panelFlyoutOpen: false,
+    });
+  });
+
+  it("keeps shell panel dimensions bounded", () => {
+    const store = useViewStore.getState();
+
+    store.setLeftRailWidth(10);
+    store.setRightRailWidth(10);
+    store.setTimelineHeight(10);
+    expect(useViewStore.getState().leftRailWidth).toBe(LEFT_RAIL_MIN_WIDTH);
+    expect(useViewStore.getState().rightRailWidth).toBe(RIGHT_RAIL_MIN_WIDTH);
+    expect(useViewStore.getState().timelineHeight).toBe(TIMELINE_MIN_HEIGHT);
+
+    store.setLeftRailWidth(9999);
+    store.setRightRailWidth(9999);
+    store.setTimelineHeight(9999);
+    expect(useViewStore.getState().leftRailWidth).toBe(LEFT_RAIL_MAX_WIDTH);
+    expect(useViewStore.getState().rightRailWidth).toBe(RIGHT_RAIL_MAX_WIDTH);
+    expect(useViewStore.getState().timelineHeight).toBe(TIMELINE_MAX_HEIGHT);
+  });
+
+  it("stores shell panel visibility without resetting scoped corpus state", () => {
+    const store = useViewStore.getState();
+    store.setScopeContext({ folder: ".vault/adr", featureTags: ["rail"] });
+
+    store.setLeftRailVisible(false);
+    store.setTimelineVisible(false);
+    expect(useViewStore.getState()).toMatchObject({
+      leftRailVisible: false,
+      timelineVisible: false,
+      activeFolder: ".vault/adr",
+      featureContexts: ["rail"],
+    });
+
+    store.setLeftRailVisible(true);
+    store.setTimelineVisible(true);
+    expect(useViewStore.getState()).toMatchObject({
+      leftRailVisible: true,
+      timelineVisible: true,
+      activeFolder: ".vault/adr",
+      featureContexts: ["rail"],
+    });
+  });
+
+  it("keeps shell layout preferences across corpus swaps while clearing transient panel chrome", () => {
+    const store = useViewStore.getState();
+    store.setScopeContext({ folder: ".vault/adr", featureTags: ["rail"] });
+    store.selectEntity({ kind: "event", id: "evt:previous", nodeIds: ["doc:old"] });
+    store.addToWorkingSet("doc:old");
+    store.setOverlays({ featureCountries: false, featureHulls: true });
+    store.setLeftRailVisible(false);
+    store.setTimelineVisible(false);
+    store.setLeftRailWidth(333);
+    store.setRightRailWidth(277);
+    store.setTimelineHeight(188);
+    store.setPanelFlyoutOpen(true);
+    openDiscoveryPanel("doc:previous-discovery");
+    toggleCreateDocDialog();
+    setCreateDocFeature("previous-feature");
+    setGraphControlsSettingsOpen(true);
+    setMinimapCollapsed(true);
+    toggleStatusSection("recent-commits", true);
+    toggleRecentCommit("previous-commit");
+    showMoreRecentCommits(20, 20);
+    setWorktreePickerExpanded(true, false);
+    beginWorktreeSwitch("previous-worktree");
+
+    store.setScope("shell-layout-preserved-worktree");
+
+    expect(useViewStore.getState()).toMatchObject({
+      leftRailVisible: false,
+      timelineVisible: false,
+      leftRailWidth: 333,
+      rightRailWidth: 277,
+      timelineHeight: 188,
+      panelFlyoutOpen: false,
+      activeFolder: null,
+      featureContexts: [],
+      selection: null,
+      workingSet: [],
+      overlays: { featureCountries: false, featureHulls: true },
+    });
+    expect(useDiscoveryPanelStore.getState().openFor).toBeNull();
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      open: false,
+      feature: "",
+    });
+    expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
+    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
+    expect(useStatusTabChromeStore.getState()).toMatchObject({
+      sections: {},
+      openRecentCommitHashes: [],
+      recentCommitsLimit: null,
+    });
+    expect(useWorktreePickerChromeStore.getState()).toMatchObject({
+      expanded: false,
+      pendingId: null,
+      switchError: null,
+    });
+
+    useViewStore.getState().setLeftRailVisible(true);
+    useViewStore.getState().setTimelineVisible(true);
+    useViewStore.getState().setLeftRailWidth(312);
+    useViewStore.getState().setRightRailWidth(318);
+    useViewStore.getState().setTimelineHeight(222);
+    useViewStore.getState().setPanelFlyoutOpen(true);
+    useViewStore.getState().addToWorkingSet("doc:workspace-old");
+    useViewStore
+      .getState()
+      .setOverlays({ featureCountries: true, featureHulls: false });
+    openDiscoveryPanel("doc:workspace-old-discovery");
+    toggleCreateDocDialog();
+    setCreateDocFeature("workspace-old-feature");
+    setGraphControlsSettingsOpen(true);
+    setMinimapCollapsed(true);
+    toggleStatusSection("recent-commits", true);
+    toggleRecentCommit("workspace-old-commit");
+    showMoreRecentCommits(20, 20);
+    setWorktreePickerExpanded(true, false);
+    beginWorktreeSwitch("workspace-old-worktree");
+
+    useViewStore.getState().swapWorkspace("/project-b/.git", "/project-b/main");
+
+    expect(useViewStore.getState()).toMatchObject({
+      leftRailVisible: true,
+      timelineVisible: true,
+      leftRailWidth: 312,
+      rightRailWidth: 318,
+      timelineHeight: 222,
+      panelFlyoutOpen: false,
+      activeFolder: null,
+      featureContexts: [],
+      workingSet: [],
+      overlays: { featureCountries: true, featureHulls: false },
+    });
+    expect(useDiscoveryPanelStore.getState().openFor).toBeNull();
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      open: false,
+      feature: "",
+    });
+    expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
+    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
+    expect(useStatusTabChromeStore.getState()).toMatchObject({
+      sections: {},
+      openRecentCommitHashes: [],
+      recentCommitsLimit: null,
+    });
+    expect(useWorktreePickerChromeStore.getState()).toMatchObject({
+      expanded: false,
+      pendingId: null,
+      switchError: null,
+    });
+
+    useViewStore.getState().setOverlays(DEFAULT_GRAPH_OVERLAYS);
   });
 });

@@ -4,8 +4,10 @@ import type { EngineEdge } from "../server/engine";
 import { resetLiveStatus } from "../server/liveStatus";
 import { resetBrowserMode } from "./browserMode";
 import { resetBrowserTreeExpansion } from "./browserTreeExpansion";
+import { resetCodeViewerScroll } from "./codeViewer";
 import { resetCommandPalette } from "./commandPalette";
 import { resetContextMenu } from "./contextMenu";
+import { resetCreateDocChrome } from "./createDocChrome";
 import { resetDiscoveryPanel } from "./discoveries";
 import { resetFilterSidebar } from "./filterSidebar";
 import { resetGraphControlsChrome } from "./graphControlsChrome";
@@ -16,6 +18,7 @@ import { resetMinimapChrome } from "./minimapChrome";
 import { usePinStore } from "./pins";
 import { resetPipelineExpansion } from "./pipelineExpansion";
 import { resetSearchIntent } from "./searchIntent";
+import { resetStatusTabChrome } from "./statusTabChrome";
 import { resetTimelineViewState } from "./timeline";
 import { resetWorktreePickerChrome } from "./worktreePickerChrome";
 
@@ -133,6 +136,22 @@ export interface ViewState {
   featureContexts: string[];
   /** Event/edge selection metadata that is not yet represented in dashboard-state. */
   selection: Selection;
+  /**
+   * The transient hovered node id — VIEW-LOCAL ONLY (graph-perf 2026-06-18). Hover
+   * is not "real" cross-surface state and must NEVER round-trip to the engine: it
+   * is set from the scene's own GPU hover-detect (and the timeline) and read by the
+   * hover-card host, all client-side. The visual node emphasis is applied directly
+   * on the GPU by the scene field; this slice carries only the id for the DOM card.
+   * Persisting it to dashboard-state caused a server PATCH on every pointer move
+   * (hover-state-004 / the historical `hovered_id:null` PATCH flood).
+   */
+  hoveredId: string | null;
+  /**
+   * The hover id that survived the hover-card dwell gate. It is still view-local
+   * chrome state, but storing it beside `hoveredId` keeps the timer-retained id
+   * out of app-layer component state and lets corpus resets clear it atomically.
+   */
+  dwelledHoverId: string | null;
   /** The stage's explicit working set — "why is this node on my screen?" */
   workingSet: string[];
   /** Nodes opened in place — rendered as DOM islands above the field (G6.a). */
@@ -233,6 +252,10 @@ export interface ViewState {
   setScopeContext: (context: { folder: string | null; featureTags: string[] }) => void;
   /** Select event/edge metadata that is not just a node id. */
   selectEntity: (selection: Selection) => void;
+  /** Set the transient hovered node id (view-local; never persisted to the wire). */
+  setHovered: (id: string | null) => void;
+  /** Set the hover id that survived the card dwell gate. */
+  setDwelledHover: (id: string | null) => void;
   openNode: (id: string) => void;
   closeNode: (id: string) => void;
   /**
@@ -315,6 +338,11 @@ export interface ViewState {
   setTimelineHeight: (height: number) => void;
   setPanelFlyoutOpen: (open: boolean) => void;
   togglePanelFlyout: () => void;
+  /** Restore the view-local shell layout (rail widths, timeline height, rail and
+   *  timeline visibility) to their defaults. The collapse + active-tab state lives
+   *  in dashboard-state, so the "reset layout" command resets that seam alongside
+   *  this one. */
+  resetShellLayout: () => void;
 }
 
 /** Cap the working set (P-MED-4): each entry materializes its own ego-network
@@ -382,17 +410,20 @@ function resetCorpusLocalStores(): void {
   resetLiveStatus();
   resetBrowserMode();
   resetBrowserTreeExpansion();
+  resetCodeViewerScroll();
   resetTimelineViewState();
   resetPipelineExpansion();
   resetInspectorExpansion();
   resetSearchIntent();
   resetCommandPalette();
   resetContextMenu();
+  resetCreateDocChrome();
   resetDiscoveryPanel();
   resetFilterSidebar();
   resetGraphControlsChrome();
   resetKeyboardShortcuts();
   resetMinimapChrome();
+  resetStatusTabChrome();
   resetWorktreePickerChrome();
 }
 
@@ -402,6 +433,8 @@ function corpusLocalViewState(scope: string | null) {
     activeFolder: null,
     featureContexts: [],
     selection: null,
+    hoveredId: null,
+    dwelledHoverId: null,
     workingSet: [],
     openedIds: [],
     openDocs: [],
@@ -420,6 +453,8 @@ export const useViewStore = create<ViewState>((set) => ({
   activeFolder: null,
   featureContexts: [],
   selection: null,
+  hoveredId: null,
+  dwelledHoverId: null,
   workingSet: [],
   openedIds: [],
   openDocs: [],
@@ -490,6 +525,16 @@ export const useViewStore = create<ViewState>((set) => ({
   setScopeContext: ({ folder, featureTags }) =>
     set({ activeFolder: folder, featureContexts: featureTags }),
   selectEntity: (selection) => set({ selection }),
+  setHovered: (hoveredId) =>
+    set((state) =>
+      state.hoveredId === hoveredId
+        ? state
+        : { hoveredId, ...(hoveredId === null ? { dwelledHoverId: null } : {}) },
+    ),
+  setDwelledHover: (dwelledHoverId) =>
+    set((state) =>
+      state.dwelledHoverId === dwelledHoverId ? state : { dwelledHoverId },
+    ),
   openNode: (id) =>
     set((state) => {
       // Move-to-end LRU cap (B3): re-opening an already-open id refreshes its
@@ -645,6 +690,14 @@ export const useViewStore = create<ViewState>((set) => ({
           : state.selection;
       const workingSet = state.workingSet.filter((id) => valid.has(id));
       const openedIds = state.openedIds.filter((id) => valid.has(id));
+      const hoveredId =
+        state.hoveredId !== null && !valid.has(state.hoveredId)
+          ? null
+          : state.hoveredId;
+      const dwelledHoverId =
+        state.dwelledHoverId !== null && !valid.has(state.dwelledHoverId)
+          ? null
+          : state.dwelledHoverId;
       const pinnedDiscoveries = state.pinnedDiscoveries.filter(
         (edge) => valid.has(edge.src) && valid.has(edge.dst),
       );
@@ -654,6 +707,8 @@ export const useViewStore = create<ViewState>((set) => ({
           : selection;
       if (
         nextSelection === state.selection &&
+        hoveredId === state.hoveredId &&
+        dwelledHoverId === state.dwelledHoverId &&
         workingSet.length === state.workingSet.length &&
         openedIds.length === state.openedIds.length &&
         pinnedDiscoveries.length === state.pinnedDiscoveries.length
@@ -662,6 +717,8 @@ export const useViewStore = create<ViewState>((set) => ({
       }
       return {
         selection: nextSelection,
+        hoveredId,
+        dwelledHoverId,
         workingSet,
         openedIds,
         pinnedDiscoveries,
@@ -697,4 +754,13 @@ export const useViewStore = create<ViewState>((set) => ({
   setPanelFlyoutOpen: (panelFlyoutOpen) => set({ panelFlyoutOpen }),
   togglePanelFlyout: () =>
     set((state) => ({ panelFlyoutOpen: !state.panelFlyoutOpen })),
+  resetShellLayout: () =>
+    set({
+      leftRailVisible: true,
+      leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
+      rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
+      timelineVisible: true,
+      timelineHeight: TIMELINE_DEFAULT_HEIGHT,
+      panelFlyoutOpen: false,
+    }),
 }));
