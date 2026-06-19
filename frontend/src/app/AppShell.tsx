@@ -3,11 +3,10 @@ import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
 import { useActiveScope } from "../stores/server/queries";
-import { useShellPanelIntent } from "../stores/server/panelStateIntent";
 import { useBackendSignalSubscription } from "../stores/view/backendSignals";
 import {
-  setBrowserMode,
   useBrowserMode,
+  useBrowserModeIntent,
   type BrowserMode,
 } from "../stores/view/browserMode";
 import {
@@ -17,12 +16,9 @@ import {
   RIGHT_RAIL_MIN_WIDTH,
   TIMELINE_MAX_HEIGHT,
   TIMELINE_MIN_HEIGHT,
-  setShellLeftRailVisible as setLeftRailVisible,
   setShellLeftRailWidth as setLeftRailWidth,
-  setShellPanelFlyoutOpen as setPanelFlyoutOpen,
   setShellRightRailWidth as setRightRailWidth,
   setShellTimelineHeight as setTimelineHeight,
-  setShellTimelineVisible as setTimelineVisible,
   deriveShellResizeHandleView,
   shellResizeKeySize,
   shellResizePointerSize,
@@ -32,11 +28,12 @@ import {
   type RailTabId,
   type ShellFrameView,
   useShellFrameView,
+  useShellWindowActions,
 } from "../stores/view/shellLayout";
 import { LeftRail } from "./left/LeftRail";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
-import { IconButton } from "./kit";
+import { IconButton, Popover } from "./kit";
 import { PanelLeft } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
@@ -54,9 +51,7 @@ import { IconRail } from "./shell/IconRail";
 import { getScene } from "./stage/Stage";
 import { DockWorkspace } from "./stage/DockWorkspace";
 import { Playhead } from "./timeline/Playhead";
-import { RangeSelect } from "./timeline/RangeSelect";
 import { Timeline } from "./timeline/Timeline";
-import { TimelineControls } from "./timeline/TimelineControls";
 import { handleNodeClick } from "./timeline/eventSelection";
 // The reader/code-viewer stack (react-markdown + Shiki) is heavy and only needed
 // Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): three
@@ -73,12 +68,10 @@ import { handleNodeClick } from "./timeline/eventSelection";
 // consuming the preserved stores hooks and SceneController contract UNCHANGED. It
 // adds no new fetch, mints no model, and reads no raw `tiers`.
 
-export { appShellGridColumns } from "../stores/view/shellLayout";
-
 export function AppShell() {
   const scope = useActiveScope();
   const shellFrame = useShellFrameView(scope);
-  const panelIntent = useShellPanelIntent(scope);
+  const shellActions = useShellWindowActions(scope, shellFrame);
   const {
     leftRailVisible,
     leftRailWidth,
@@ -87,27 +80,16 @@ export function AppShell() {
     panelFlyoutOpen,
     timeTravel,
     leftCollapsed,
-    rightCollapsed,
     rightTab,
     gridColumns,
     panelControls,
   } = shellFrame;
   const browserMode = useBrowserMode();
-  const setLeftCollapsed = (left_collapsed: boolean) => {
-    void panelIntent.setLeftCollapsed(left_collapsed).catch(() => undefined);
-  };
-  const toggleLeftCollapsed = () => setLeftCollapsed(!leftCollapsed);
-  const toggleRight = () => {
-    void panelIntent.setRightCollapsed(!rightCollapsed).catch(() => undefined);
-  };
+  const browserModeIntent = useBrowserModeIntent();
   const openLeftRailMode = (mode: BrowserMode) => {
-    setBrowserMode(mode);
-    setLeftRailVisible(true);
-    if (leftCollapsed) setLeftCollapsed(false);
-  };
-  const runPanelAction = (action: () => void) => {
-    action();
-    setPanelFlyoutOpen(false);
+    browserModeIntent(mode);
+    if (!leftRailVisible) shellActions.toggleLeftRail();
+    if (leftCollapsed) shellActions.toggleLeftCollapsed();
   };
 
   const startLeftResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -279,12 +261,14 @@ export function AppShell() {
           </ErrorBoundary>
         </div>
 
-        {/* Bottom timeline. The relational phase-lane timeline
-            (dashboard-timeline ADR): the control bar docks at the region's top
-            edge, the lineage surface fills the rest. Layer law: this region wires
-            stores hooks and shared-state intent only — no fetch, no raw `tiers`. A
-            mark click flows into the ONE shared selection + a bounded stage ego
-            pulse through `handleNodeClick`. */}
+        {/* Bottom timeline — the lower SECTION of the unified graph+timeline element
+            (graph-timeline-workspace). Its own header is retired: navigation lives in
+            the shared stage top bar, and the ResizeHandle above is the fine-tunable
+            buffer between the two sections. The lineage surface fills the section.
+            Layer law: this region wires stores hooks and shared-state intent only —
+            no fetch, no raw `tiers`. A mark click flows into the ONE shared selection
+            + a bounded stage ego pulse through `handleNodeClick`. The playhead stays
+            (temporal navigation); the date-range brush is gone (filtering retired). */}
         {shellFrame.showTimeline && (
           <footer
             className={shellFrame.timelineClassName}
@@ -306,20 +290,12 @@ export function AppShell() {
             />
             <ErrorBoundary region="timeline">
               <CrashZone region="timeline" />
-              <div className={shellFrame.timelineControlsClassName}>
-                <TimelineControls />
-              </div>
               <div className={shellFrame.timelineBodyClassName}>
                 <Timeline
                   onNodeClick={(node, arcs) =>
                     handleNodeClick(node, arcs, getScene().controller, scope)
                   }
-                  overlay={
-                    <>
-                      <RangeSelect />
-                      <Playhead scope={scope} />
-                    </>
-                  }
+                  overlay={<Playhead scope={scope} />}
                 />
               </div>
             </ErrorBoundary>
@@ -349,9 +325,7 @@ export function AppShell() {
             <ActivityRail
               tab={rightTab}
               shellFrame={shellFrame}
-              onTabChange={(right_tab) => {
-                void panelIntent.setRightTab(right_tab).catch(() => undefined);
-              }}
+              onTabChange={shellActions.setRightTab}
             />
           </ErrorBoundary>
         )}
@@ -363,11 +337,11 @@ export function AppShell() {
           (board 244:750 keeps the rail header clean). When the rail is collapsed
           or hidden it falls back to the stage's top-left, where there is no
           content to collide with. */}
-      <div
-        className="pointer-events-none absolute top-2 z-20"
-        style={{
-          left: leftRailVisible && !leftCollapsed ? Math.max(8, leftRailWidth - 38) : 8,
-        }}
+      <Popover
+        open={panelFlyoutOpen}
+        onDismiss={shellActions.closePanelFlyout}
+        className={shellFrame.panelFlyoutRootClassName}
+        style={shellFrame.panelFlyoutRootStyle}
       >
         <span className={shellFrame.panelFlyoutButtonWrapperClassName}>
           <IconButton
@@ -387,36 +361,30 @@ export function AppShell() {
             <PanelFlyoutItem
               label={panelControls.leftRailVisibilityLabel}
               className={panelControls.itemClassName}
-              onClick={() =>
-                runPanelAction(() => {
-                  setLeftRailVisible(!leftRailVisible);
-                })
-              }
+              onClick={() => shellActions.runPanelAction(shellActions.toggleLeftRail)}
             />
             {panelControls.showLeftCollapseControl && (
               <PanelFlyoutItem
                 label={panelControls.leftCollapseLabel}
                 className={panelControls.itemClassName}
-                onClick={() => runPanelAction(toggleLeftCollapsed)}
+                onClick={() =>
+                  shellActions.runPanelAction(shellActions.toggleLeftCollapsed)
+                }
               />
             )}
             <PanelFlyoutItem
               label={panelControls.rightRailVisibilityLabel}
               className={panelControls.itemClassName}
-              onClick={() => runPanelAction(toggleRight)}
+              onClick={() => shellActions.runPanelAction(shellActions.toggleRightRail)}
             />
             <PanelFlyoutItem
               label={panelControls.timelineVisibilityLabel}
               className={panelControls.itemClassName}
-              onClick={() =>
-                runPanelAction(() => {
-                  setTimelineVisible(!shellFrame.timelineVisible);
-                })
-              }
+              onClick={() => shellActions.runPanelAction(shellActions.toggleTimeline)}
             />
           </div>
         )}
-      </div>
+      </Popover>
 
       <CrashInjector />
     </div>

@@ -20,7 +20,9 @@ test("the served shell carries the token bootstrap and boots the app", async ({
   );
   // The four-region anatomy mounts.
   await expect(page.locator("[data-timeline]")).toBeVisible();
-  await expect(page.locator("[data-filter-bar]")).toBeVisible();
+  // The unified stage top bar (graph + timeline navigation) replaced the retired
+  // filter bar (graph-timeline-workspace).
+  await expect(page.locator("[data-stage-nav-bar]")).toBeVisible();
 });
 
 test("the constellation renders from the live graph", async ({ page }) => {
@@ -28,8 +30,10 @@ test("the constellation renders from the live graph", async ({ page }) => {
   // The field mounts its canvas into the stage host…
   const canvas = page.locator("[data-stage-host] canvas");
   await expect(canvas).toBeVisible({ timeout: 15_000 });
-  // …and the rail reports a non-empty live corpus (adapter-verified read).
-  await expect(page.locator("[data-now-strip]")).toBeVisible();
+  // ...and the current activity rail is mounted while the live corpus is read
+  // through the engine status endpoint below. The active tab is persisted state,
+  // so assert the rail shell instead of a specific tab panel.
+  await expect(page.locator("[data-rail-tabs]")).toBeVisible();
   const engineNodes = await page.evaluate(async () => {
     const token = document
       .querySelector('meta[name="vaultspec-token"]')
@@ -98,9 +102,11 @@ test("search round-trips through the live pass-through", async ({ page }) => {
 // seq from the diff batch (timeTravel.ts scrubTo, fixed alongside this test).
 test("scrubbing the playhead renders the network as of T", async ({ page }) => {
   await page.goto("/");
+  await page.locator("[data-playhead-live]").click();
+  await expect(page.locator("[data-time-travel-chip]")).toHaveCount(0);
   const grip = page.locator("[data-playhead-grip]");
   await grip.dragTo(page.locator("[data-timeline]"), {
     targetPosition: { x: 200, y: 10 },
   });
-  await expect(page.getByText(/viewing .* return to live/)).toBeVisible();
+  await expect(page.locator("[data-time-travel-chip]")).toBeVisible();
 });

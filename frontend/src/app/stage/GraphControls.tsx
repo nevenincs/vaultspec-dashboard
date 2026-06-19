@@ -1,36 +1,31 @@
-// Consolidated graph controls (binding Figma stage chrome: NavControls 260:893,
-// `graph/Settings popover` 88:2, `graph/Hero` 213:505). A COMPACT, NON-OCCLUDING
-// edge overlay: the Hero binding shows the category-circle canvas CLEAN with the
-// controls as an unobtrusive cluster — never a panel that covers the field. This
-// surface is the bottom-LEFT all-icon cluster; the Layout picker lives in the top
-// toolbar (FilterBar → LensSelector) and the minimap is a docked card bottom-right
-// (rendered by Stage), matching the binding stage layout.
+// Graph control building blocks for the unified stage top bar
+// (graph-timeline-workspace). The floating bottom-left cluster is RETIRED: the
+// graph and timeline are one element with one top bar, and these pieces compose
+// into it (`StageNavBar`) as horizontal items. Only the minimap remains a canvas
+// overlay; the canvas itself reads clean.
 //
-//   Navigate — a VERTICAL icon stack of kit IconButtons (board NavControls 260:893):
-//              zoom in (+), zoom out (−), a divider, fit (Maximize), recenter
-//              (Crosshair). Camera commands only (SceneController.command). No text
-//              labels — the cluster is all-icon.
-//   Settings — an icon-only gear (kit IconButton) opening the "Graph settings"
-//              popover (board 88:2, a kit Card) on demand, so the canvas is never
-//              occluded. Inside it: the Freeze-layout toggle and the d3-force knobs
-//              (forceLayout.ts) as kit Sliders — Spacing → repel, Link length →
-//              linkDistance, Clustering → linkForce — plus Reset to defaults.
+//   GraphNavButtons — a HORIZONTAL row of kit IconButtons: zoom in (+), zoom out
+//              (−), a divider, fit (Maximize), recenter (Crosshair). Camera commands
+//              only (SceneController.command). All-icon, no text labels.
+//   GraphSettingsPopover — an icon-only gear (kit IconButton) opening the "Graph
+//              settings" popover (a kit Card) on demand so the canvas is never
+//              occluded; the panel drops DOWN from the top bar. Inside it: the
+//              canvas-bound control, the Freeze-layout toggle, and the Cosmos knobs
+//              as kit Sliders — Repulsion, Link distance, Link spring — plus Reset.
 //
-// figma-frontend-rewrite W03.P07 / W04.P11: the hand-built primitives and the
-// bespoke popover shell are RETIRED in favour of the centralized kit — every
-// control resolves to a real, shared kit definition (design-system-is-centralized).
-// The LOD detail slider was retired from the canvas (not on the board); granularity
-// defaults and is driven by camera zoom.
+// Every control resolves to a real, shared kit definition
+// (design-system-is-centralized). The retired chrome (search, filter, the
+// layout/representation "mode" switch) is gone for visual clarity — this surface
+// carries navigation only.
 //
 // Layer ownership (dashboard-layer-ownership): app chrome steering the scene.
 // Camera + layout affordances emit SceneController.command() ONLY; granularity is a
-// stores write (viewStore.setGranularity); representation mode is a stores write
-// (viewStore.setRepresentationMode) that Stage's single scene-owner effect turns
-// into a scene command. The panel fetches nothing, reads no raw `tiers` block,
-// holds no node shape. Icons are Lucide structural marks (the sanctioned chrome
-// family) from the kit. Tokens only — no raw hex.
+// stores write through the canonical dashboard-state mutations that Stage's
+// single scene-owner effects turn into scene commands. The panel fetches nothing,
+// reads no raw `tiers` block, holds no node shape. Icons are Lucide structural
+// marks (the sanctioned chrome family) from the kit. Tokens only — no raw hex.
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 
 import { Pause, Play, SlidersHorizontal } from "lucide-react";
 
@@ -41,57 +36,81 @@ import {
   Maximize,
   Minus,
   Plus,
+  Popover,
   Segment,
   SegmentedToggle,
   Slider,
 } from "../kit";
-import type { LayoutParams } from "../../scene/field/forceLayout";
-import { LAYOUT_DEFAULTS } from "../../scene/field/forceLayout";
-import { useViewStore } from "../../stores/view/viewStore";
+import type { DashboardGraphBounds } from "../../stores/server/engine";
+import { useDashboardGraphControlsIntent } from "../../stores/server/dashboardGraphControlsIntent";
+import {
+  useActiveScope,
+  useDashboardGraphControlsView,
+} from "../../stores/server/queries";
+import {
+  GRAPH_CONTROLS_TUNE_DEFAULTS,
+  deriveGraphControlsBoundPresentationView,
+  deriveGraphControlsFreezeToggleView,
+  deriveGraphControlsNavigationView,
+  deriveGraphControlsSettingsPopoverView,
+  deriveGraphControlsTunePresentationView,
+  formatGraphControlsBoundSize,
+  formatGraphControlsTuneValue,
+  patchGraphControlsTuneParams,
+  setGraphControlsFrozen,
+  setGraphControlsSettingsOpen,
+  setGraphControlsTuneParams,
+  type GraphControlsTuneParams,
+  useGraphControlsFrozen,
+  useGraphControlsFrozenScope,
+  toggleGraphControlsSettingsOpen,
+  useGraphControlsSettingsOpen,
+  useGraphControlsTuneParams,
+} from "../../stores/view/graphControlsChrome";
 import { getScene } from "./Stage";
 
 const ICON_PX = 15;
 
 // ---------------------------------------------------------------------------
-// Freeze toggle (graph-force-stability D7): Obsidian's pause. Emits a single
-// `set-frozen` scene command and reflects the local frozen state. Meaningful only
-// in connectivity mode (the deterministic modes hold the solver stopped), so it
-// disables itself outside it. The cooling schedule stays fixed and unexposed; the
-// collision/separation/damping knobs are NOT exposed (D7). A kit IconButton: the
-// pressed (frozen) state reads through the kit's accent-subtle active treatment.
+// Freeze toggle: pauses/resumes the Cosmos simulation without adding new energy.
+// Meaningful only in connectivity mode, so it disables itself outside it.
 // ---------------------------------------------------------------------------
 
 function FreezeToggle() {
   const scene = getScene();
-  const representationMode = useViewStore((s) => s.activeRepresentationMode);
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const live = timelineMode.kind === "live";
-  const connectivity = representationMode === "connectivity" && live;
-  const [frozen, setFrozen] = useState(false);
+  const scope = useActiveScope();
+  const { freezeAvailable } = useDashboardGraphControlsView(scope);
+  const frozen = useGraphControlsFrozen();
+  const frozenScope = useGraphControlsFrozenScope();
+  const freezeView = deriveGraphControlsFreezeToggleView(frozen, freezeAvailable);
 
-  // A mode switch re-runs the solver, so a stale frozen flag must not persist.
+  // A mode/scope switch re-runs the solver, so a stale frozen flag must not persist.
   useEffect(() => {
-    if (!connectivity && frozen) setFrozen(false);
-  }, [connectivity, frozen]);
+    if (!frozen) return;
+    const scopeChanged = frozenScope !== scope;
+    if (freezeAvailable && !scopeChanged) return;
+    setGraphControlsFrozen(false, null);
+    scene.controller.command({ kind: "set-frozen", frozen: false });
+  }, [freezeAvailable, frozen, frozenScope, scene.controller, scope]);
+
+  useEffect(() => {
+    return () => {
+      if (frozen) scene.controller.command({ kind: "set-frozen", frozen: false });
+    };
+  }, [frozen, scene.controller]);
 
   function toggle() {
     const next = !frozen;
-    setFrozen(next);
+    setGraphControlsFrozen(next, scope);
     scene.controller.command({ kind: "set-frozen", frozen: next });
   }
 
   return (
     <IconButton
-      label={frozen ? "resume layout" : "freeze layout"}
-      title={
-        connectivity
-          ? frozen
-            ? "resume the force layout"
-            : "freeze the force layout in place"
-          : "freeze is available in the Network layout"
-      }
+      label={freezeView.label}
+      title={freezeView.title}
       active={frozen}
-      disabled={!connectivity}
+      disabled={!freezeAvailable}
       onClick={toggle}
       data-freeze-toggle
     >
@@ -104,40 +123,44 @@ function FreezeToggle() {
   );
 }
 
-function NavigateGroup() {
+// The graph camera cluster, rendered HORIZONTALLY for the unified stage top bar
+// (graph-timeline-workspace): zoom in / zoom out · a vertical divider · fit /
+// recenter. Camera commands only (SceneController.command). The floating
+// bottom-left cluster is retired — all navigation lives in the top bar now, and
+// only the minimap remains a canvas overlay.
+export function GraphNavButtons() {
   const scene = getScene();
-  // Board NavControls (260:893): a VERTICAL cluster — zoom in / zoom out, a
-  // divider, then fit / recenter. Camera commands only.
+  const navigationView = deriveGraphControlsNavigationView();
   return (
     <div
-      className="flex flex-col items-center gap-fg-0-5"
+      className="flex items-center gap-fg-0-5"
       role="group"
-      aria-label="Navigate"
+      aria-label={navigationView.ariaLabel}
       data-nav-group
     >
       <IconButton
-        label="zoom in"
+        label={navigationView.zoomIn.label}
         onClick={() => scene.controller.command({ kind: "zoom-in" })}
       >
         <Plus size={ICON_PX} aria-hidden />
       </IconButton>
       <IconButton
-        label="zoom out"
+        label={navigationView.zoomOut.label}
         onClick={() => scene.controller.command({ kind: "zoom-out" })}
       >
         <Minus size={ICON_PX} aria-hidden />
       </IconButton>
-      <span className="my-fg-0-5 h-px w-5 bg-rule" aria-hidden />
+      <span className="mx-fg-0-5 h-4 w-px bg-rule" aria-hidden />
       <IconButton
-        label="fit to view"
-        title="fit all nodes into the viewport"
+        label={navigationView.fitToView.label}
+        title={navigationView.fitToView.title}
         onClick={() => scene.controller.command({ kind: "fit-to-view" })}
       >
         <Maximize size={ICON_PX} aria-hidden />
       </IconButton>
       <IconButton
-        label="reset view"
-        title="reset the camera to the origin"
+        label={navigationView.resetView.label}
+        title={navigationView.resetView.title}
         onClick={() => scene.controller.command({ kind: "reset-view" })}
       >
         <Crosshair size={ICON_PX} aria-hidden />
@@ -237,33 +260,43 @@ interface SettingsPopoverProps {
   /** data-attribute marker for tests / styling hooks. */
   marker: string;
   children: React.ReactNode;
+  /**
+   * Where the panel grows relative to the trigger. The default `below` is used by
+   * the unified stage top bar (the trigger sits at the TOP edge, so the panel must
+   * drop down into the canvas); `above` is the legacy bottom-cluster placement.
+   */
+  placement?: "above" | "below";
 }
 
-function SettingsPopover({ label, icon, marker, children }: SettingsPopoverProps) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+function SettingsPopover({
+  label,
+  icon,
+  marker,
+  children,
+  placement = "below",
+}: SettingsPopoverProps) {
+  const open = useGraphControlsSettingsOpen();
+  const popover = deriveGraphControlsSettingsPopoverView(open, label);
+  // The deriver bakes the `above` position into its className; for a top-bar
+  // trigger we swap it for a drop-down placement so the panel never clips off the
+  // top of the viewport.
+  const panelClassName =
+    placement === "below"
+      ? popover.panelClassName
+          .replace("bottom-full", "top-full")
+          .replace("mb-fg-2", "mt-fg-2")
+      : popover.panelClassName;
   const panelId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    function onDocPointer(e: PointerEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("pointerdown", onDocPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onDocPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  const close = useCallback(() => setGraphControlsSettingsOpen(false), []);
 
   return (
-    <div
+    // The shared kit Popover owns the light-dismiss wiring (Escape + outside
+    // pointer); the trigger is a child, so no ignoreSelector is needed.
+    <Popover
+      open={open}
+      onDismiss={close}
+      escapeTarget={document}
       className="relative flex items-center"
-      ref={wrapRef}
       data-popover-group={marker}
     >
       <span data-popover-trigger>
@@ -271,42 +304,34 @@ function SettingsPopover({ label, icon, marker, children }: SettingsPopoverProps
             gear, never a text label. */}
         <IconButton
           label={label}
-          active={open}
-          aria-expanded={open}
+          active={popover.active}
+          aria-expanded={popover.ariaExpanded}
           aria-controls={panelId}
-          onClick={() => setOpen((v) => !v)}
+          onClick={toggleGraphControlsSettingsOpen}
         >
           {icon}
         </IconButton>
       </span>
-      {open && (
+      {popover.panelVisible && (
         <Card
           id={panelId}
           elevation="overlay"
           padded={false}
           role="group"
-          aria-label={label}
-          className="absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 bg-paper-raised/95 p-fg-3 backdrop-blur-sm"
+          aria-label={popover.panelAriaLabel}
+          className={panelClassName}
           data-popover-panel
         >
           {children}
         </Card>
       )}
-    </div>
+    </Popover>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Tune group — the plain-language d3-force knobs (collapsed settings-popover body).
+// Tune group — Cosmos-native force knobs (collapsed settings-popover body).
 // ---------------------------------------------------------------------------
-
-// The Figma names map onto the real driver knobs (forceLayout.ts LayoutParams):
-//   Spacing          → repel        (node repulsion; higher = more space)
-//   Connection reach → linkDistance (spring rest length between linked nodes)
-//   Clustering       → linkForce    (spring stiffness; higher = tighter groups)
-// `center` (gravity) has no plain-language home in the design and is left at its
-// default — FLAGGED in the report.
-const TUNE_DEFAULTS: Required<LayoutParams> = { ...LAYOUT_DEFAULTS };
 
 /** Trailing-debounce window (ms) for ending a keyboard-driven slider interaction
  *  (D2): a key step has no pointerup, so end-interaction fires once the steps
@@ -315,15 +340,15 @@ const TUNE_DEFAULTS: Required<LayoutParams> = { ...LAYOUT_DEFAULTS };
 const KEYBOARD_SETTLE_MS = 250;
 
 function TuneBody() {
-  const liveState = getScene().controller.getLayoutState();
-  const [params, setParams] = useState<Required<LayoutParams>>({
-    ...TUNE_DEFAULTS,
-    ...liveState.params,
-  });
-  // Coalesce the held-warmth interaction (D2): begin once on the FIRST onChange/
-  // pointer/key of a drag, hold it across the drag (the driver applies the latest
-  // params each tick under the held alphaTarget — no per-onChange reheat kick),
-  // and end on pointerup/blur or a trailing debounce for keyboard steps.
+  const liveState = getScene().controller.getCosmosConfigState();
+  const params = useGraphControlsTuneParams();
+  const tuneView = deriveGraphControlsTunePresentationView();
+  const repulsion = tuneView.sliders.simulationRepulsion;
+  const linkDistance = tuneView.sliders.simulationLinkDistance;
+  const linkSpring = tuneView.sliders.simulationLinkSpring;
+  // Coalesce the interaction: begin once on the first slider change, let Cosmos
+  // use its interaction decay while the user is dragging, and end on pointerup,
+  // blur, or a trailing debounce for keyboard steps.
   const interactingRef = useRef(false);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -350,11 +375,27 @@ function TuneBody() {
     settleTimerRef.current = setTimeout(endInteraction, KEYBOARD_SETTLE_MS);
   }, [endInteraction]);
 
-  // Stay in sync with layout-changed events (another actor may set params).
+  useEffect(() => {
+    setGraphControlsTuneParams({
+      simulationRepulsion: liveState.simulationRepulsion,
+      simulationLinkDistance: liveState.simulationLinkDistance,
+      simulationLinkSpring: liveState.simulationLinkSpring,
+    });
+  }, [
+    liveState.simulationLinkDistance,
+    liveState.simulationLinkSpring,
+    liveState.simulationRepulsion,
+  ]);
+
+  // Stay in sync with Cosmos config events (another actor may set params).
   useEffect(() => {
     return getScene().controller.on((event) => {
-      if (event.kind === "layout-changed") {
-        setParams((prev) => ({ ...prev, ...event.params }));
+      if (event.kind === "cosmos-config-changed") {
+        patchGraphControlsTuneParams({
+          simulationRepulsion: event.config.simulationRepulsion,
+          simulationLinkDistance: event.config.simulationLinkDistance,
+          simulationLinkSpring: event.config.simulationLinkSpring,
+        });
       }
     });
   }, []);
@@ -362,68 +403,68 @@ function TuneBody() {
   // End any in-flight interaction if the popover unmounts mid-drag.
   useEffect(() => endInteraction, [endInteraction]);
 
-  function apply(update: Partial<LayoutParams>) {
+  function apply(update: Partial<GraphControlsTuneParams>) {
     const next = { ...params, ...update };
-    setParams(next);
+    setGraphControlsTuneParams(next);
     // Ensure the held floor is up for the very first change of a drag (covers the
     // case where onChange fires before pointerdown handlers in some browsers).
     beginInteraction();
-    getScene().controller.command({ kind: "set-layout-params", params: next });
+    getScene().controller.command({ kind: "set-cosmos-config", config: update });
     // Re-arm the keyboard settle each change; a pointerup/blur ends it sooner.
     armKeyboardSettle();
   }
 
   return (
-    <div className="flex w-48 flex-col gap-fg-3">
-      {/* Freeze the force layout (graph-force-stability) — lives in the settings
+    <div className={tuneView.containerClassName}>
+      {/* Freeze the Cosmos simulation — lives in the settings
           popover now that the bottom cluster is NavControls-only. */}
-      <div className="flex items-center justify-between">
-        <span className="text-label text-ink-muted">Freeze layout</span>
+      <div className={tuneView.freezeRowClassName}>
+        <span className={tuneView.freezeLabelClassName}>{tuneView.freezeLabel}</span>
         <FreezeToggle />
       </div>
       <LabelledSlider
-        label="Spacing"
-        title="How far nodes push each other apart"
-        value={params.repel}
-        min={0}
-        max={400}
-        step={10}
-        onChange={(v) => apply({ repel: v })}
-        format={(v) => String(Math.round(v))}
+        label={repulsion.label}
+        title={repulsion.title}
+        value={params.simulationRepulsion}
+        min={repulsion.min}
+        max={repulsion.max}
+        step={repulsion.step}
+        onChange={(v) => apply({ simulationRepulsion: v })}
+        format={(v) => formatGraphControlsTuneValue("simulationRepulsion", v)}
         onInteractStart={beginInteraction}
         onInteractEnd={endInteraction}
       />
       <LabelledSlider
-        label="Link length"
-        title="The rest length of the links between connected nodes"
-        value={params.linkDistance}
-        min={10}
-        max={120}
-        step={5}
-        onChange={(v) => apply({ linkDistance: v })}
-        format={(v) => String(Math.round(v))}
+        label={linkDistance.label}
+        title={linkDistance.title}
+        value={params.simulationLinkDistance}
+        min={linkDistance.min}
+        max={linkDistance.max}
+        step={linkDistance.step}
+        onChange={(v) => apply({ simulationLinkDistance: v })}
+        format={(v) => formatGraphControlsTuneValue("simulationLinkDistance", v)}
         onInteractStart={beginInteraction}
         onInteractEnd={endInteraction}
       />
       <LabelledSlider
-        label="Clustering"
-        title="How tightly connected nodes pull together into groups"
-        value={params.linkForce}
-        min={0}
-        max={1}
-        step={0.05}
-        onChange={(v) => apply({ linkForce: v })}
-        format={(v) => v.toFixed(2)}
+        label={linkSpring.label}
+        title={linkSpring.title}
+        value={params.simulationLinkSpring}
+        min={linkSpring.min}
+        max={linkSpring.max}
+        step={linkSpring.step}
+        onChange={(v) => apply({ simulationLinkSpring: v })}
+        format={(v) => formatGraphControlsTuneValue("simulationLinkSpring", v)}
         onInteractStart={beginInteraction}
         onInteractEnd={endInteraction}
       />
       {/* Reset to defaults (board Graph settings 88:2). */}
       <button
         type="button"
-        onClick={() => apply(TUNE_DEFAULTS)}
-        className="self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        onClick={() => apply(GRAPH_CONTROLS_TUNE_DEFAULTS)}
+        className={tuneView.resetButtonClassName}
       >
-        Reset to defaults
+        {tuneView.resetLabel}
       </button>
     </div>
   );
@@ -431,54 +472,46 @@ function TuneBody() {
 
 // ---------------------------------------------------------------------------
 // BoundBody — the canvas/sim CONTAINMENT control (node-graph-rework ADR D3): the
-// bound shape (Free | Circle | Rect) and its size. The shape is the user's
-// explicit request — the default is a centred circle, with free and rect options
-// and a settable size (0 = auto-fit non-overlapping). A stores write
-// (viewStore.setBound) PLUS the scene command (set-bounds), mirroring the Freeze
-// toggle's local-state-plus-command shape; the field enforces the bound where it
-// produces positions (cosmos has no radial bound).
+// bound shape (Free | Circle | Rect) and its size. The default is free/unbounded.
+// A canonical dashboard-state write only; Stage's single scene-owner effect
+// projects the accepted graph_bounds back into the field as set-bounds.
 // ---------------------------------------------------------------------------
 
 function BoundBody() {
-  const scene = getScene();
-  const boundShape = useViewStore((s) => s.boundShape);
-  const boundSize = useViewStore((s) => s.boundSize);
-  const setBound = useViewStore((s) => s.setBound);
+  const scope = useActiveScope();
+  const graphControlsIntent = useDashboardGraphControlsIntent(scope);
+  const { graphBounds } = useDashboardGraphControlsView(scope);
+  const boundView = deriveGraphControlsBoundPresentationView(graphBounds.shape);
 
-  function apply(shape: "free" | "circle" | "rect", size: number) {
-    setBound(shape, size);
-    scene.controller.command({
-      kind: "set-bounds",
-      shape,
-      size: size > 0 ? size : undefined,
-    });
+  function apply(shape: DashboardGraphBounds["shape"], size: number) {
+    void graphControlsIntent.setGraphBounds({ shape, size }).catch(() => undefined);
   }
 
   return (
-    <div className="flex w-48 flex-col gap-fg-2">
-      <div className="flex flex-col gap-fg-1">
-        <span className="text-label text-ink-muted">Canvas bound</span>
+    <div className={boundView.containerClassName}>
+      <div className={boundView.groupClassName}>
+        <span className={boundView.labelClassName}>{boundView.label}</span>
         <SegmentedToggle
-          ariaLabel="Canvas bound shape"
-          value={boundShape}
-          onChange={(v) => apply(v as "free" | "circle" | "rect", boundSize)}
+          ariaLabel={boundView.shapeAriaLabel}
+          value={graphBounds.shape}
+          onChange={(v) => apply(v as DashboardGraphBounds["shape"], graphBounds.size)}
           fullWidth
         >
-          <Segment value="free">Free</Segment>
-          <Segment value="circle">Circle</Segment>
-          <Segment value="rect">Rect</Segment>
+          <Segment value="free">{boundView.freeLabel}</Segment>
+          <Segment value="circle">{boundView.circleLabel}</Segment>
+          <Segment value="rect">{boundView.rectLabel}</Segment>
         </SegmentedToggle>
       </div>
-      {boundShape !== "free" && (
+      {boundView.showSizeControl && (
         <LabelledSlider
-          label="Bound size"
-          title="Radius (circle) or half-width (rect) in world units; 0 = auto-fit"
-          value={boundSize}
-          min={0}
-          max={4000}
-          step={100}
-          onChange={(v) => apply(boundShape, v)}
-          format={(v) => (v === 0 ? "auto" : String(Math.round(v)))}
+          label={boundView.sizeLabel}
+          title={boundView.sizeTitle}
+          value={graphBounds.size}
+          min={boundView.sizeMin}
+          max={boundView.sizeMax}
+          step={boundView.sizeStep}
+          onChange={(v) => apply(graphBounds.shape, v)}
+          format={formatGraphControlsBoundSize}
         />
       )}
     </div>
@@ -486,44 +519,24 @@ function BoundBody() {
 }
 
 // ---------------------------------------------------------------------------
-// The consolidated panel — a slim bottom-edge toolbar. Light groups inline; the
-// heavy Tune group collapsed behind a settings popover trigger so the
-// category-circle canvas is ALWAYS visible. `pointer-events-auto` is on the bar
-// only, so the field reads through the space around it. The bar never spans the
-// full stage: it sizes to its content and stays anchored at the bottom edge; on a
-// narrow stage it scrolls horizontally rather than wrapping into a tall,
-// canvas-covering block.
+// The graph-settings popover — the gear trigger that holds the heavy Tune (force)
+// knobs and the canvas-bound control, COLLAPSED by default so the field is never
+// occluded. Lives in the unified stage top bar alongside the camera cluster
+// (graph-timeline-workspace); the panel drops DOWN into the canvas. The bottom-
+// left floating cluster is retired — only the minimap remains a canvas overlay.
 // ---------------------------------------------------------------------------
 
-export function GraphControls() {
+export function GraphSettingsPopover() {
   return (
-    <div
-      className="pointer-events-none absolute bottom-fg-2 left-fg-2 z-20 flex"
-      data-graph-controls-shell
+    <SettingsPopover
+      label="Graph settings"
+      marker="tune"
+      placement="below"
+      icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
     >
-      <Card
-        elevation="overlay"
-        padded={false}
-        className="pointer-events-auto flex flex-col items-center gap-fg-1 bg-paper-raised/95 px-fg-1 py-fg-2 backdrop-blur-sm"
-        role="group"
-        aria-label="graph controls"
-        data-graph-controls
-      >
-        {/* Board NavControls (260:893): the vertical zoom/fit cluster. */}
-        <NavigateGroup />
-        <span className="h-px w-5 bg-rule" aria-hidden />
-        {/* The graph-settings (Tune) knobs collapsed behind a gear so the canvas
-            stays clear (board Graph settings popover 88:2). */}
-        <SettingsPopover
-          label="Graph settings"
-          marker="tune"
-          icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
-        >
-          <BoundBody />
-          <span className="h-px w-full bg-rule" aria-hidden />
-          <TuneBody />
-        </SettingsPopover>
-      </Card>
-    </div>
+      <BoundBody />
+      <span className="h-px w-full bg-rule" aria-hidden />
+      <TuneBody />
+    </SettingsPopover>
   );
 }
