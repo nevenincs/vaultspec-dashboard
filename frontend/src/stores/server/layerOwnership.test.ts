@@ -7624,6 +7624,20 @@ describe("dashboard layer ownership", () => {
     if (!/\bsetCodeViewerScrollTop\s*\(/.test(stripped)) {
       violations.push("app/viewer/CodeViewer.tsx: missing code viewer scroll setter");
     }
+    const storeRel = "stores/view/codeViewer.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
+    if (!/\bexport\s+function\s+boundedScrollTop\s*\(\s*scrollTop:\s*unknown\s*\)/.test(store)) {
+      violations.push(`${storeRel}: missing runtime scroll-top normalizer`);
+    }
+    if (/\bsetScrollTop:\s*\(scrollTop:\s*number\)/.test(store)) {
+      violations.push(`${storeRel}: typed-only scroll setter`);
+    }
+    if (/\bsetCodeViewerScrollTop\s*\(\s*scrollTop:\s*number\s*\)/.test(store)) {
+      violations.push(`${storeRel}: typed-only scroll helper`);
+    }
+    if (!/\bboundedPositiveInteger\b/.test(store)) {
+      violations.push(`${storeRel}: line window bypasses measurement normalizer`);
+    }
     for (const localCopy of [
       "This file is empty",
       "read-only",
@@ -11010,7 +11024,6 @@ describe("dashboard layer ownership", () => {
       if (/\bfilters\.text\b/.test(stripped)) {
         const allowedTextFilterReaders = new Set([
           "app/left/BrowserRegion.tsx",
-          "app/stage/FilterBar.tsx",
         ]);
         if (!allowedTextFilterReaders.has(rel)) {
           violations.push(`${rel}: local dashboard text-filter read`);
@@ -11040,102 +11053,6 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${draftRel}: scope changes do not reset text-filter draft`);
-    }
-
-    expect(violations).toEqual([]);
-  });
-
-  it("keeps the stage filter toolbar behind the stores filter summary view", () => {
-    const rel = "app/stage/FilterBar.tsx";
-    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
-    const violations: string[] = [];
-
-    for (const statement of importStatements(stripped)) {
-      if (/\buseDashboardState\b/.test(statement)) {
-        violations.push(`${rel}: raw dashboard-state filter summary subscription`);
-      }
-      if (/\buseDashboardStateMutations\b/.test(statement)) {
-        violations.push(`${rel}: raw dashboard filter mutation seam`);
-      }
-      if (/\bdebounce\b/.test(statement)) {
-        violations.push(`${rel}: local dashboard text-filter debounce`);
-      }
-      if (/\buseState\b|\buseMemo\b|\buseRef\b/.test(statement)) {
-        violations.push(`${rel}: local stage filter toolbar state`);
-      }
-    }
-    if (/\bdashboardState\b/.test(stripped)) {
-      violations.push(`${rel}: local dashboard filter summary state read`);
-    }
-    if (/\bdate_range\b/.test(stripped)) {
-      violations.push(`${rel}: raw dashboard date-range summary read`);
-    }
-    if (/\bfilters\.text\b|\bsetTextFilter\b/.test(stripped)) {
-      violations.push(`${rel}: local dashboard text-filter wiring`);
-    }
-    if (!/\buseDashboardTextFilterDraft\s*\(\s*scope\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing dashboard text-filter draft seam`);
-    }
-    if (!/\buseDashboardFilterSummaryView\s*\(\s*scope\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing dashboard filter-summary view seam`);
-    }
-    if (
-      !/\bderiveFilterBarChromeView\s*\(\s*filterSummary\s*,\s*hidden\s*,/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: missing filter-bar chrome projection seam`);
-    }
-    if (!/\bvalue=\{textFilter\.value\}/.test(stripped)) {
-      violations.push(`${rel}: missing canonical text-filter draft value`);
-    }
-    if (!/\bonChange=\{textFilter\.setValue\}/.test(stripped)) {
-      violations.push(`${rel}: missing canonical text-filter draft setter`);
-    }
-    if (!/\bonClear=\{textFilter\.clear\}/.test(stripped)) {
-      violations.push(`${rel}: missing canonical text-filter clear`);
-    }
-    for (const field of [
-      "filterBarChrome.containerClassName",
-      "filterBarChrome.sidebarGroupClassName",
-      "filterBarChrome.sidebarToggleLabel",
-      "filterBarChrome.sidebarToggleTitle",
-      "filterBarChrome.sidebarToggleActive",
-      "filterBarChrome.showActiveFilterBadge",
-      "filterBarChrome.activeFilterCount",
-      "filterBarChrome.searchPlaceholder",
-      "filterBarChrome.searchAriaLabel",
-      "filterBarChrome.nodeCountClassName",
-      "filterBarChrome.dateRangeChipVisible",
-      "filterBarChrome.dateRangeChipClassName",
-      "filterBarChrome.dateRangeChipLabel",
-      "filterBarChrome.dateRangeChipTimelineLabel",
-      "filterBarChrome.hiddenCostLabel",
-      "filterBarChrome.hiddenCostChipClassName",
-    ]) {
-      if (!stripped.includes(field)) {
-        violations.push(`${rel}: missing filter-bar chrome field ${field}`);
-      }
-    }
-    if (/\bfunction\s+hiddenCountLabel\b/.test(stripped)) {
-      violations.push(`${rel}: local hidden filter-cost formatter`);
-    }
-    for (const localFilterBarChrome of [
-      "pointer-events-auto absolute inset-x-0 top-0 z-10 flex flex-wrap content-center items-center gap-x-fg-2 gap-y-fg-1 border-b border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label",
-      "flex items-center gap-fg-1",
-      "close filter panel",
-      "open filter panel",
-      "toggle filter sidebar",
-      "Search documents…",
-      "text match filter",
-      "tabular-nums text-ink-muted",
-      "rounded-fg-pill border border-rule bg-paper px-fg-1-5 py-fg-0-5 tabular-nums text-ink-muted",
-      "(timeline)",
-      "rounded-fg-pill border border-state-stale bg-paper-raised px-fg-1-5 py-fg-0-5 tabular-nums text-state-stale",
-    ]) {
-      if (stripped.includes(localFilterBarChrome)) {
-        violations.push(`${rel}: local filter-bar chrome ${localFilterBarChrome}`);
-      }
     }
 
     expect(violations).toEqual([]);
