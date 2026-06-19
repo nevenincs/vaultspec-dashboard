@@ -1,8 +1,9 @@
 // d3-force solver — the CPU force-simulation core driving the three.js field.
 //
 // Why d3-force and not a GPGPU/FA2 solver: d3-force (Bostock, v3) is the most
-// battle-tested force-directed engine on the web. Its velocity-Verlet integrator
-// with alpha-annealing converges deterministically, its quadtree/Barnes–Hut
+// battle-tested force-directed engine on the web. Its damped symplectic-Euler
+// integrator (which d3's docs loosely call "velocity Verlet") with alpha-annealing
+// converges deterministically, its quadtree/Barnes–Hut
 // many-body is O(N log N), and — critically for THIS field — every stability and
 // flicker control we need is first-class: deterministic phyllotaxis seeding (no
 // RNG divergence between reloads), a manually-drivable tick (`stop()` + `tick()`),
@@ -15,12 +16,17 @@
 //                     (1/min(deg) × a global multiplier) so hubs aren't yanked
 //                     around by their many edges — the single most important
 //                     stability lever for graphs with high-degree feature nodes.
-//   • forceManyBody — Barnes–Hut repulsion, bounded by `distanceMax` so the layout
-//                     stays compact and disconnected components don't drift to
-//                     infinity (finite distanceMax also makes it faster).
+//   • forceManyBody — Barnes–Hut repulsion, bounded by `distanceMax` so repulsion
+//                     stays LOCAL and the quadtree is cheaper (it is the forceX/Y
+//                     gravity below — NOT distanceMax — that keeps disconnected
+//                     components from drifting apart; finite distanceMax alone would
+//                     let far components feel no repulsion and collapse together).
 //   • forceCollide  — circle non-overlap at the real node radius (+pad), the clean
 //                     "no two nodes touching" look; a soft constraint (strength<1,
-//                     1 iteration) so it relaxes instead of buzzing.
+//                     1 iteration). NB collide is NOT alpha-scaled, so it never fully
+//                     cools — a dense graph "settles" only because the loop freezes
+//                     it at alphaMin (see tick()); a true fixed point would require
+//                     scaling collide by alpha (a known refinement).
 //   • forceX/forceY(0) — gentle positional gravity toward the origin. Chosen over
 //                     forceCenter: forceX/Y is a per-node spring that both centres
 //                     AND keeps the layout compact, and it never fights the other
@@ -35,19 +41,25 @@
 // layout is settled only because alpha is tiny — the underlying forces are still
 // substantial (e.g. centering pulls a far node hard, balanced by repulsion only
 // approximately). So the canonical d3 drag (`alphaTarget(0.3).restart()`) re-reveals
-// those forces everywhere and the whole graph jiggles — exactly the bug. Obsidian
-// and real physics engines don't do this; they SLEEP settled nodes.
+// those forces everywhere and the whole graph jiggles. Most graph tools — Obsidian's
+// own graph included — live with that drift; freezing distant settled nodes is the
+// rarer behaviour we want here, inspired by physics-engine sleeping.
 //
-// Our model (a Box2D-style island/sleep system layered on d3): a sleeping node is
-// PINNED via `fx`/`fy`, so d3 holds it fixed regardless of the global alpha — it is
-// physically immovable, not merely "low energy". A drag pins the grabbed node to the
-// cursor and wakes nodes by PROPAGATION: a node that has actually moved more than
-// `wakeMove` from its rest drags its sleeping link-neighbours awake (a stretched
-// spring is a real force). Motion therefore ripples outward only as far as the drag
-// truly reaches; distant clusters are pinned and cannot move. Woken nodes settle and
-// sleep again (re-pin) once they go quiet. d3 still computes the full force field —
-// sleeping nodes remain in the quadtree as fixed obstacles — but only awake nodes
-// are free to integrate.
+// Our model is a sleep/active-set layer on d3. It is INSPIRED BY, but is NOT, a
+// Box2D island system: Box2D sleeps/wakes whole connected ISLANDS atomically and
+// wakes through every contact; we instead wake PER-NODE, only along links that
+// actually stretched, and only within a spatial radius around the cursor — trading
+// strict force-balance for locality. A sleeping node is PINNED via `fx`/`fy`, so d3
+// holds it fixed regardless of the global alpha — physically immovable, not merely
+// "low energy" (INVARIANT: asleep ⇔ pinned; see sleepAll/sleepNode/wakeNode). A drag
+// pins the grabbed node to the cursor and wakes nodes by PROPAGATION: a node that
+// has actually moved more than `wakeMove` from its rest drags its sleeping link-
+// neighbours awake (a stretched spring is a real force) within `wakeRadius`. Motion
+// ripples outward only as far as the drag truly reaches; distant clusters are pinned
+// and cannot move — so a node dragged THROUGH an unrelated cluster overlaps it rather
+// than parting it (a deliberate locality/physicality trade). d3 still computes the
+// full force field — sleeping nodes remain in the quadtree as fixed obstacles — but
+// only awake nodes are free to integrate.
 
 import {
   forceCollide,
@@ -305,13 +317,22 @@ export class D3ForceSolver {
     this.awakeCount = this.count;
   }
 
-  /** Record every node's current position as its rest and mark all asleep (no pin;
-   *  the global settle does not pin — a drag pins on demand). */
+  /** Record every node's current position as its rest, PIN it there (fx/fy), and
+   *  mark it asleep. Pinning is the load-bearing invariant (asleep ⇔ pinned): an
+   *  asleep node is ALWAYS pinned, so the global alpha can never drift it.
+   *
+   *  (Bug H1, fixed here: the global settle used to sleep WITHOUT pinning. A later
+   *  drag only re-pins sleepers on the first localMode entry, so any node slept by
+   *  this guard after a previous drag stayed unpinned, and the next grab integrated
+   *  it at dragAlpha — distant "settled" nodes slid a little on every drag. Pinning
+   *  here makes asleep ⇔ pinned hold on every path.) */
   private sleepAll(): void {
     for (let i = 0; i < this.count; i++) {
       const n = this.nodes[i];
       this.restX[i] = n.x ?? 0;
       this.restY[i] = n.y ?? 0;
+      n.fx = this.restX[i];
+      n.fy = this.restY[i];
       n.vx = 0;
       n.vy = 0;
       this.awake[i] = 0;

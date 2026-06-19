@@ -1000,9 +1000,9 @@ export class ThreeField implements SceneFieldRenderer {
     if (!this.solver) return;
     this.dragNodeIndex = index;
     this.dragActive = true;
-    // No heat, no global re-energise: the drag pins one node; FA2's full-strength
-    // attraction pulls only its force-bearing neighbours, and the adaptive speed
-    // keeps it stable. Distant settled nodes carry ~0 net force → they stay put.
+    // No global re-energise: the solver pins the grabbed node and wakes only its
+    // link-neighbours within wakeRadius (the sleep/active-set model); every other
+    // settled node stays pinned, so distant clusters do not move.
     this.running = true;
     const w = this.screenToWorld(sx, sy);
     this.solver.setDrag(index, w.x, w.y);
@@ -1014,7 +1014,7 @@ export class ThreeField implements SceneFieldRenderer {
     this.solver?.clearDrag();
     this.dragNodeIndex = -1;
     this.dragActive = false;
-    // Keep ticking; FA2 re-converges the released neighbourhood, then it freezes.
+    // Keep ticking; the released neighbourhood re-settles via the solver, then sleeps.
     this.running = true;
     this.wake();
   }
