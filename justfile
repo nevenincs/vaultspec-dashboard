@@ -44,7 +44,6 @@ _dev-help:
   @echo "  serve     live dev survey: engine + Vite HMR, auto-rebuild + auto-refresh"
   @echo "  clean     reclaim dev artifact sprawl (cargo target, dead worktrees, tmp)"
   @echo "  tokens    regenerate the DTCG color CSS and check parity/drift"
-  @echo "  storybook run the component gallery (append 'build' to build static)"
   @echo "  precommit pre-commit hook management (install, upgrade, run)"
 
 # ===========================================================================
@@ -159,6 +158,7 @@ _dev-lint-rust:
 
 _dev-lint-frontend:
   npm --prefix frontend run lint
+  npm --prefix frontend run lint:px
   npm --prefix frontend run format:check
   npm --prefix frontend run typecheck
   npm --prefix frontend run tokens:check
@@ -168,10 +168,6 @@ _dev-lint-frontend:
 _dev-tokens:
   npm --prefix frontend run tokens:build
   npm --prefix frontend run tokens:check
-
-# Run the Storybook component gallery (the Figma seeding + parity substrate).
-_dev-storybook *args='':
-  npm --prefix frontend run {{ if args == "build" { "build-storybook" } else { "storybook" } }}
 
 _dev-lint-typos:
   @{{ if os() == "windows" { \
