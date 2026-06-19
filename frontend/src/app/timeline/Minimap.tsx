@@ -41,11 +41,7 @@ import {
   useTimelineScrollState,
 } from "../../stores/view/timeline";
 import { categoryColorVar, type Category } from "../kit/category";
-import {
-  TIMELINE_ORIGIN_MS,
-  stripXToTime,
-  timeToStripX,
-} from "./scrollStrip";
+import { TIMELINE_ORIGIN_MS, stripXToTime, timeToStripX } from "./scrollStrip";
 
 // Range-control geometry (figma binding SlhonORmySdoSMTQgDWw3w, scrubber row
 // 251:801 redesign): a recessed overview track with the visible window drawn as a
@@ -355,8 +351,7 @@ export function Minimap({
     [vocabulary.dateBounds],
   );
   const brush = useMemo(
-    () =>
-      brushOnRibbon(scrollOffset, pxPerMs, viewportWidth, span, ribbonWidth),
+    () => brushOnRibbon(scrollOffset, pxPerMs, viewportWidth, span, ribbonWidth),
     [scrollOffset, pxPerMs, viewportWidth, span, ribbonWidth],
   );
   const ticks = useMemo(
@@ -369,12 +364,7 @@ export function Minimap({
   );
 
   const applyWindow = (fromMs: number, toMs: number) => {
-    const next = timelineMinimapViewportForWindow(
-      fromMs,
-      toMs,
-      span,
-      viewportWidth,
-    );
+    const next = timelineMinimapViewportForWindow(fromMs, toMs, span, viewportWidth);
     setTimelineViewport(next.pxPerMs, next.scrollOffset);
   };
 
@@ -398,8 +388,7 @@ export function Minimap({
     );
     const pointerT = ribbonXToCorpus(x, span, ribbonWidth);
     const duration = Math.max(1, initialToMs - initialFromMs);
-    const grabOffsetMs =
-      mode === "center" ? duration / 2 : pointerT - initialFromMs;
+    const grabOffsetMs = mode === "center" ? duration / 2 : pointerT - initialFromMs;
     if (mode === "center") {
       applyWindow(pointerT - duration / 2, pointerT + duration / 2);
     }
@@ -579,46 +568,47 @@ export function Minimap({
         />
         {/* Grabbable accent handles capping each edge, with a paper grip so they
             read unmistakably as drag affordances (cursor: ew-resize). */}
-        {(
-          [
-            ["left", leftHandleX] as const,
-            ["right", rightHandleX] as const,
-          ]
-        ).map(([side, hx]) => {
-          const center = hx + HANDLE_W / 2;
-          return (
-            <g key={side} className="cursor-ew-resize" data-minimap-brush-handle={side}>
-              <rect
-                x={hx}
-                y={HANDLE_Y}
-                width={HANDLE_W}
-                height={HANDLE_H}
-                rx={HANDLE_RADIUS}
-                className="fill-accent"
-              />
-              <line
-                x1={center - 1.25}
-                x2={center - 1.25}
-                y1={gripY1}
-                y2={gripY2}
-                className="stroke-paper"
-                strokeWidth={1.25}
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
-              />
-              <line
-                x1={center + 1.25}
-                x2={center + 1.25}
-                y1={gripY1}
-                y2={gripY2}
-                className="stroke-paper"
-                strokeWidth={1.25}
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            </g>
-          );
-        })}
+        {[["left", leftHandleX] as const, ["right", rightHandleX] as const].map(
+          ([side, hx]) => {
+            const center = hx + HANDLE_W / 2;
+            return (
+              <g
+                key={side}
+                className="cursor-ew-resize"
+                data-minimap-brush-handle={side}
+              >
+                <rect
+                  x={hx}
+                  y={HANDLE_Y}
+                  width={HANDLE_W}
+                  height={HANDLE_H}
+                  rx={HANDLE_RADIUS}
+                  className="fill-accent"
+                />
+                <line
+                  x1={center - 1.25}
+                  x2={center - 1.25}
+                  y1={gripY1}
+                  y2={gripY2}
+                  className="stroke-paper"
+                  strokeWidth={1.25}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <line
+                  x1={center + 1.25}
+                  x2={center + 1.25}
+                  y1={gripY1}
+                  y2={gripY2}
+                  className="stroke-paper"
+                  strokeWidth={1.25}
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            );
+          },
+        )}
       </svg>
       <span className="absolute right-[0.75rem] top-[0.375rem] flex size-8 items-center justify-center rounded-fg-md border border-rule bg-paper-raised p-[0.1875rem] text-ink shadow-fg-raised [&_[data-kit=icon-button]]:size-[1.625rem]">
         <IconButton
