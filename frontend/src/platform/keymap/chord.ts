@@ -129,7 +129,16 @@ export function parseChord(input: string): Chord | null {
   }
 
   if (keys.length !== 1) return null;
-  return { mod, ctrl, alt, shift, key: normalizeKey(keys[0]) };
+  const key = normalizeKey(keys[0]);
+  // H1: a symbol key (?, [, {, ...) bakes its shifted state into the character
+  // the browser reports, so Shift is NOT part of its identity. The matcher skips
+  // the shift comparison for symbol keys, and the recorder may capture shiftKey
+  // true for a shifted symbol - so we strip shift HERE at parse time too, making
+  // record, store, conflict-check, and match all share ONE identity
+  // ("Shift+?" canonicalizes to "?"). Without this the recorder could persist
+  // "Shift+?" while the matcher fires it on a bare "?", a silent divergence.
+  const shiftForKey = isSymbolKey(key) ? false : shift;
+  return { mod, ctrl, alt, shift: shiftForKey, key };
 }
 
 /** The display form of the key portion: single letters upper-cased for legibility. */

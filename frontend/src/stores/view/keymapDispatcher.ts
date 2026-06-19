@@ -130,6 +130,13 @@ export function handleKeymapEvent(
   if (def === null) return false;
 
   if (deps.isTextEntry(event.target)) {
+    // While focus is in a text field, only a chord carrying a non-Shift modifier
+    // (Mod/Ctrl/Alt) fires. Shift alone is excluded on purpose: Shift+letter is
+    // capitalizing, and an UNMODIFIED named key (ArrowLeft, Enter, Home, Tab) is
+    // a meaningful editing key in an input - so named keys are intentionally NOT
+    // exempted here, even though they are "non-printable", or a global ArrowLeft
+    // binding would hijack the caret. The chord is re-parsed (cheap; only on a
+    // matched keystroke) because resolveKeybinding does not surface it.
     const chord = parseChord(effectiveChord(def, deps.getOverrides()));
     const modified = chord !== null && (chord.mod || chord.ctrl || chord.alt);
     if (!modified) return false;

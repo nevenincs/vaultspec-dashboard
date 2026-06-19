@@ -8,7 +8,10 @@
 // shape and never composes precedence itself or reads raw value maps.
 
 import type { KeybindingOverrides } from "../../platform/keymap/registry";
-import { MAX_KEYBINDING_OVERRIDES } from "../../platform/keymap/registry";
+import {
+  MAX_KEYBINDING_CHORD_LEN,
+  MAX_KEYBINDING_OVERRIDES,
+} from "../../platform/keymap/registry";
 import type {
   GraphGranularity,
   SettingDef,
@@ -315,6 +318,9 @@ export function parseKeybindingOverrides(raw: string | undefined): KeybindingOve
     if (count >= MAX_KEYBINDING_OVERRIDES) break;
     if (typeof id !== "string" || id === "") continue;
     if (typeof chord !== "string" || chord === "") continue;
+    // M3: mirror the engine's per-chord byte ceiling so a value that bypassed the
+    // engine cannot feed an unbounded string into the matcher or the legend.
+    if (chord.length > MAX_KEYBINDING_CHORD_LEN) continue;
     out[id] = chord;
     count += 1;
   }

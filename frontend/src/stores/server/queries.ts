@@ -4923,6 +4923,14 @@ export function useKeymapOverridesBinding(): void {
       setKeymapOverridesReader(() => liveKeybindingOverrides);
       keymapReaderWired = true;
     }
+    // M4: reset to the no-override default on unmount so a teardown/remount (HMR,
+    // StrictMode, a future non-app-lifetime mount) never leaves the dispatcher
+    // reading a stale closure over the last-known overrides.
+    return () => {
+      setKeymapOverridesReader(() => ({}));
+      liveKeybindingOverrides = {};
+      keymapReaderWired = false;
+    };
   }, []);
 
   useEffect(() => {

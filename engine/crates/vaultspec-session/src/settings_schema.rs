@@ -219,7 +219,11 @@ fn check_keybindings(value: &str, max_entries: usize) -> Result<String, String> 
     if map.len() > max_entries {
         return Err(format!("at most {max_entries} bindings may be overridden"));
     }
-    for (id, chord) in &map {
+    // Normalize each chord to its trimmed form so the stored value never carries
+    // insignificant leading/trailing whitespace (M2). The length bound is a byte
+    // ceiling on the trimmed chord.
+    let mut normalized: BTreeMap<String, String> = BTreeMap::new();
+    for (id, chord) in map {
         if id.is_empty() {
             return Err("a binding id must not be empty".to_string());
         }
@@ -227,14 +231,15 @@ fn check_keybindings(value: &str, max_entries: usize) -> Result<String, String> 
         if trimmed.is_empty() {
             return Err(format!("binding `{id}` has an empty chord"));
         }
-        if chord.len() > KEYBINDING_CHORD_MAX_LEN {
+        if trimmed.len() > KEYBINDING_CHORD_MAX_LEN {
             return Err(format!(
-                "binding `{id}` chord exceeds {KEYBINDING_CHORD_MAX_LEN} characters"
+                "binding `{id}` chord exceeds {KEYBINDING_CHORD_MAX_LEN} bytes"
             ));
         }
+        normalized.insert(id, trimmed.to_string());
     }
     // BTreeMap re-serializes with sorted keys and no insignificant whitespace.
-    serde_json::to_string(&map).map_err(|_| "could not normalize bindings".to_string())
+    serde_json::to_string(&normalized).map_err(|_| "could not normalize bindings".to_string())
 }
 
 fn invalid(key: &str, reason: String) -> ValidationError {
@@ -500,6 +505,11 @@ mod tests {
             "{\"graph.open\":\"Enter\",\"palette\":\"Mod+K\"}"
         );
         assert_eq!(check_value(&ty, "{}").unwrap(), "{}");
+        // M2: chord values are trimmed in the stored canonical form.
+        assert_eq!(
+            check_value(&ty, "{\"palette\":\"  Mod+K  \"}").unwrap(),
+            "{\"palette\":\"Mod+K\"}"
+        );
     }
 
     #[test]

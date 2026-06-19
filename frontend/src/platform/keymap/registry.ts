@@ -53,6 +53,14 @@ export const SURFACE_CONTEXTS: readonly BindingContext[] = [
  */
 export const MAX_KEYBINDING_OVERRIDES = 256;
 
+/**
+ * Per-chord byte ceiling, mirroring the engine's `KEYBINDING_CHORD_MAX_LEN`. The
+ * engine rejects an over-length chord on write; the frontend mirrors the bound so
+ * a value that bypassed the engine (an older persisted blob, a direct file edit)
+ * can never feed an unbounded string into the per-keystroke matcher or the legend.
+ */
+export const MAX_KEYBINDING_CHORD_LEN = 64;
+
 /** One bindable command action. Construct in a surface's action module. */
 export interface KeybindingDef {
   /** Stable action id; the override-map key and the dispatcher's resolve key. */

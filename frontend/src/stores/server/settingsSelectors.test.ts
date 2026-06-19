@@ -146,6 +146,13 @@ describe("keybinding override decode", () => {
     ).toEqual({ a: "Mod+A", f: "Shift+F" });
   });
 
+  it("drops an over-length chord value (M3 mirror of the engine byte cap)", () => {
+    const huge = "x".repeat(65);
+    expect(parseKeybindingOverrides(`{"a":"Mod+A","big":"${huge}"}`)).toEqual({
+      a: "Mod+A",
+    });
+  });
+
   it("resolves the effective override map through the served schema", () => {
     const keybindingsDef: SettingDef = {
       key: "keybindings",

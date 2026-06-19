@@ -146,3 +146,32 @@ describe("matchesChord", () => {
     expect(matchesChord(parseChord("]")!, ev({ key: "]" }), false)).toBe(true);
   });
 });
+
+describe("symbol-key shift identity (H1)", () => {
+  it("strips shift from a symbol-key chord at parse so it has one identity", () => {
+    expect(parseChord("Shift+?")).toEqual<Chord>({
+      mod: false,
+      ctrl: false,
+      alt: false,
+      shift: false,
+      key: "?",
+    });
+    expect(canonicalizeChord("Shift+?")).toBe("?");
+    expect(canonicalizeChord("?")).toBe("?");
+  });
+
+  it("keeps shift on a letter/named-key chord", () => {
+    expect(parseChord("Shift+A")?.shift).toBe(true);
+    expect(parseChord("Shift+Enter")?.shift).toBe(true);
+  });
+
+  it("a recorded Shift+symbol and a bare symbol are the same chord", () => {
+    // The recorder may capture shiftKey true for a shifted symbol; both must
+    // canonicalize identically so the matcher (which skips shift for symbols)
+    // never silently double-resolves.
+    expect(canonicalizeChord("Shift+?")).toBe(canonicalizeChord("?"));
+    expect(
+      matchesChord(parseChord("Shift+?")!, ev({ key: "?", shiftKey: true }), false),
+    ).toBe(true);
+  });
+});
