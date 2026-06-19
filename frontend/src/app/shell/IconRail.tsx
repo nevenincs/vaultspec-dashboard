@@ -8,10 +8,7 @@
 // (IconButton + the two sanctioned glyph families) and reads only the props it is
 // handed; it never fetches, mints no model, and reads no raw `tiers`.
 
-import {
-  BROWSER_MODE_OPTIONS,
-  type BrowserMode,
-} from "../../stores/view/browserMode";
+import { BROWSER_MODE_OPTIONS, type BrowserMode } from "../../stores/view/browserMode";
 import { IconButton } from "../kit";
 import { Books, TreeStructure } from "../kit/glyphs";
 

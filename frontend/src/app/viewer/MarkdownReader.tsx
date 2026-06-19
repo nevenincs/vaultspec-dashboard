@@ -147,12 +147,8 @@ function DocHeaderBlock({
           </span>
         </div>
       )}
-      {editorial.title && (
-        <h1 className="reader-title text-ink">{editorial.title}</h1>
-      )}
-      {editorial.dek && (
-        <p className="reader-dek text-ink-muted">{editorial.dek}</p>
-      )}
+      {editorial.title && <h1 className="reader-title text-ink">{editorial.title}</h1>}
+      {editorial.dek && <p className="reader-dek text-ink-muted">{editorial.dek}</p>}
       {editorial.meta.length > 0 && (
         <p className="reader-meta text-ink-muted">
           {editorial.meta.map((part, idx) => (

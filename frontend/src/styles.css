@@ -466,18 +466,22 @@
   /* -- DARK (S06): warm-tinted near-black, equal peer to light ----------- */
   [data-theme="dark"] {
     /* The three-level Figma elevation deepens against the dark ground. */
-    --shadow-fg-raised: 0 1px 3px 0 rgb(0 0 0 / 0.25), 0 1px 2px -1px rgb(0 0 0 / 0.25);
+    --shadow-fg-raised:
+      0 0.0625rem 0.1875rem 0 rgb(0 0 0 / 0.25),
+      0 0.0625rem 0.125rem -0.0625rem rgb(0 0 0 / 0.25);
     --shadow-fg-overlay:
-      0 4px 16px -2px rgb(0 0 0 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.2);
+      0 0.25rem 1rem -0.125rem rgb(0 0 0 / 0.35),
+      0 0.125rem 0.375rem -0.125rem rgb(0 0 0 / 0.2);
     --shadow-fg-popover:
-      0 10px 32px -6px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.3);
+      0 0.625rem 2rem -0.375rem rgb(0 0 0 / 0.45),
+      0 0.25rem 0.75rem -0.25rem rgb(0 0 0 / 0.3);
   }
 
   /* -- HIGH-CONTRAST (S08): first-class peer, max separation ------------- */
   [data-theme="high-contrast"] {
-    --shadow-fg-raised: 0 0 0 1px oklch(0.7 0.01 75);
-    --shadow-fg-overlay: 0 0 0 1px oklch(0.7 0.01 75);
-    --shadow-fg-popover: 0 0 0 1px oklch(0.7 0.01 75);
+    --shadow-fg-raised: 0 0 0 0.0625rem oklch(0.7 0.01 75);
+    --shadow-fg-overlay: 0 0 0 0.0625rem oklch(0.7 0.01 75);
+    --shadow-fg-popover: 0 0 0 0.0625rem oklch(0.7 0.01 75);
   }
 
   body {
@@ -546,7 +550,7 @@
     font-size: 0.6875rem; /* 11 */
     line-height: 1.3;
     font-weight: 500;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.0375rem;
     text-transform: uppercase;
   }
   .reader-title {
@@ -554,7 +558,7 @@
     font-size: 2.125rem; /* 34 */
     line-height: 1.12;
     font-weight: 600;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.01875rem;
   }
   .reader-dek {
     font-family: var(--font-serif);
@@ -618,7 +622,7 @@
     font-size: 2.125rem;
     line-height: 1.12;
     font-weight: 600;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.01875rem;
     margin-block: 0 var(--spacing-fg-4);
   }
   .vs-markdown h2 {
@@ -723,8 +727,8 @@
     line-height: 1.5;
     font-style: italic;
     color: var(--color-ink-muted);
-    border-inline-start: 3px solid var(--color-accent);
-    border-radius: 2px;
+    border-inline-start: 0.1875rem solid var(--color-accent);
+    border-radius: 0.125rem;
     padding-inline-start: var(--spacing-fg-4);
     margin-block: 1.375rem 3.25rem;
   }
@@ -746,7 +750,7 @@
   }
   .vs-markdown hr {
     border: 0;
-    border-top: 1px solid var(--color-rule);
+    border-top: 0.0625rem solid var(--color-rule);
     margin-block: var(--spacing-fg-6);
   }
   /* Reader table (board 266:886): rounded outline, sunken header row, horizontal
@@ -759,7 +763,7 @@
     border-spacing: 0;
     width: 100%;
     margin-block: 3.25rem 1.25rem;
-    border: 1px solid var(--color-rule);
+    border: 0.0625rem solid var(--color-rule);
     border-radius: var(--radius-fg-md);
     overflow: hidden;
   }
@@ -774,7 +778,7 @@
     font-weight: 600;
   }
   .vs-markdown tbody td {
-    border-top: 1px solid var(--color-rule);
+    border-top: 0.0625rem solid var(--color-rule);
     color: var(--color-ink-muted);
   }
   .vs-markdown tr > :first-child {
@@ -791,8 +795,8 @@
   .vs-markdown .vs-code-fence {
     overflow: hidden;
     margin-block: 2.75rem 1.25rem;
-    border: 1px solid var(--color-rule);
-    border-radius: 10px;
+    border: 0.0625rem solid var(--color-rule);
+    border-radius: var(--radius-fg-lg);
     background: var(--color-paper-sunken);
     font-size: var(--text-fg-mono);
     line-height: 1.66;
@@ -804,7 +808,7 @@
     gap: var(--spacing-fg-2);
     padding: 0.625rem 0.75rem 0.625rem 1rem;
     background: var(--color-paper);
-    border-bottom: 1px solid var(--color-rule);
+    border-bottom: 0.0625rem solid var(--color-rule);
   }
   .vs-markdown .vs-code-fence__lang {
     font-family: var(--font-mono);
@@ -826,7 +830,7 @@
     font-weight: 500;
     color: var(--color-ink-muted);
     padding: 0.5rem 0.875rem;
-    border-radius: 5px;
+    border-radius: var(--radius-fg-sm);
   }
   .vs-markdown .vs-code-fence__body {
     overflow-x: auto;
@@ -889,7 +893,7 @@
 
 @keyframes slide-in-up {
   from {
-    transform: translateY(6px);
+    transform: translateY(0.375rem);
     opacity: 0;
   }
   to {
@@ -900,7 +904,7 @@
 
 @keyframes slide-in-down {
   from {
-    transform: translateY(-4px);
+    transform: translateY(-0.25rem);
     opacity: 0;
   }
   to {
@@ -1032,7 +1036,7 @@
 .dockview-theme-vaultspec {
   --dv-group-view-background-color: var(--color-paper);
   --dv-tabs-and-actions-container-background-color: var(--color-paper-sunken);
-  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tabs-and-actions-container-height: 2.125rem;
   /* Match the app's type ramp (label = 0.75rem) instead of dockview's hardcoded
      13px, so dock tabs read in the same font/size as every other tab strip
      (design-system-is-centralized). The custom DocTab content also uses the
@@ -1070,8 +1074,8 @@
   --dv-tabs-container-scrollbar-color: var(--color-rule-strong);
   --dv-scrollbar-background-color: var(--color-paper-sunken);
 
-  --dv-tab-border-radius: 6px;
-  --dv-border-radius: 6px;
+  --dv-tab-border-radius: 0.375rem;
+  --dv-border-radius: 0.375rem;
 
   /* Floating groups - raised surface + the shared overlay elevation token (binds
      to the tier, flips per theme) rather than a bespoke literal shadow. */

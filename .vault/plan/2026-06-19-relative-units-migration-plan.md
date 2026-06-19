@@ -166,7 +166,7 @@ Convert the stage filter menu and the visual dev-harness entry points' hardcoded
 
 Convert the hand-authored literals in the app stylesheet (borders, shadows, letter-spacing, radius, dockview vars) to rem/em, leaving the CLI-managed token region untouched.
 
-- [ ] `P08.S25` - Convert hand-authored literals (borders to 0.0625rem, shadow geometry to rem, letter-spacing to em, radius literals, dockview vars) outside the managed token region; `frontend/src/styles.css`.
+- [x] `P08.S25` - Convert hand-authored literals (borders to 0.0625rem, shadow geometry to rem, letter-spacing to em, radius literals, dockview vars) outside the managed token region; `frontend/src/styles.css`.
 
 ### Phase `P09` - final gate and close
 

@@ -182,11 +182,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     // Loading: a quiet, copy-toned pending line — no spinner theatre (ADR
     // "States"). The subtle liveness pulse is tied to genuine in-flight work.
     return (
-      <p
-        className={rootSurface.loadingClassName}
-        role="status"
-        aria-live="polite"
-      >
+      <p className={rootSurface.loadingClassName} role="status" aria-live="polite">
         {rootLevel.loadingMessage}
       </p>
     );
@@ -248,7 +244,11 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
   }
 
   return (
-    <nav className={rootSurface.navClassName} aria-label={browserLabel} data-code-browser>
+    <nav
+      className={rootSurface.navClassName}
+      aria-label={browserLabel}
+      data-code-browser
+    >
       <ul>
         {rootLevel.rows.map((row) => (
           <DirectoryRow
@@ -278,19 +278,9 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
 }
 
 /** The "more here — expand a subdirectory" note for a capped level. */
-function TruncatedNote({
-  message,
-  className,
-}: {
-  message: string;
-  className: string;
-}) {
+function TruncatedNote({ message, className }: { message: string; className: string }) {
   return (
-    <p
-      className={className}
-      role="status"
-      data-code-truncated
-    >
+    <p className={className} role="status" data-code-truncated>
       {message}
     </p>
   );

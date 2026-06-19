@@ -76,7 +76,10 @@ export function DocRow({
         <span className="shrink-0 truncate text-[0.6875rem] text-ink-faint">{tag}</span>
       )}
       {age != null && (
-        <span data-tabular className="shrink-0 text-[0.6875rem] tabular-nums text-ink-faint">
+        <span
+          data-tabular
+          className="shrink-0 text-[0.6875rem] tabular-nums text-ink-faint"
+        >
           {age}
         </span>
       )}

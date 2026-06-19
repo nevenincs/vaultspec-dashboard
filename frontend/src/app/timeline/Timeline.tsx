@@ -87,16 +87,8 @@ import {
   type DotLayout,
 } from "./dotLayout";
 import { Minimap } from "./Minimap";
-import {
-  PHASE_LANES,
-  groupIndexOf,
-  type PhaseLane,
-} from "./phaseLanes";
-import {
-  TIMELINE_ORIGIN_MS,
-  timeToX,
-  visibleRange,
-} from "./scrollStrip";
+import { PHASE_LANES, groupIndexOf, type PhaseLane } from "./phaseLanes";
+import { TIMELINE_ORIGIN_MS, timeToX, visibleRange } from "./scrollStrip";
 import { lineageToTemporalScene, type TemporalSceneResult } from "./temporalScene";
 
 // --- retained event helpers (unit-tested) ---------------------------------------
