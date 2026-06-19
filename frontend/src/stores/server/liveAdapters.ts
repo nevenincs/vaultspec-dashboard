@@ -711,6 +711,11 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
     doc_types: list("doc_types"),
     feature_tags: list("feature_tags"),
     kinds: list("kinds"),
+    // STATUS lifecycle vocabulary — the engine enumerates ADR status adjectives
+    // and plan tiers data-driven; empty stays honest (the facet rows hide).
+    statuses: list("statuses"),
+    plan_tiers: list("plan_tiers"),
+    health: list("health"),
     date_bounds: dateBounds,
     tiers_block: (body.tiers ?? undefined) as TiersBlock | undefined,
   };
@@ -1141,6 +1146,9 @@ function adaptScopeContext(value: unknown): ScopeContextWire {
     feature_tags: Array.isArray(value.feature_tags)
       ? (value.feature_tags as string[])
       : [],
+    ...(typeof value.workspace_layout === "string"
+      ? { workspace_layout: value.workspace_layout }
+      : {}),
   };
 }
 
@@ -1256,7 +1264,13 @@ export function adaptSettings(body: unknown): SettingsState {
   };
 }
 
-const CONTROL_KINDS: SettingControlKind[] = ["segmented", "switch", "text", "slider"];
+const CONTROL_KINDS: SettingControlKind[] = [
+  "segmented",
+  "switch",
+  "text",
+  "slider",
+  "keybinding",
+];
 
 /** Decode one `value_type` tagged union from the wire, defaulting unknown or
  *  malformed shapes to a permissive `string` so a sparse or newer wire never
@@ -1280,6 +1294,11 @@ function adaptValueType(value: unknown): SettingValueType {
         type: "integer",
         min: typeof value.min === "number" ? value.min : 0,
         max: typeof value.max === "number" ? value.max : 100,
+      };
+    case "keybindings":
+      return {
+        type: "keybindings",
+        max_entries: typeof value.max_entries === "number" ? value.max_entries : 256,
       };
     case "string":
     default:

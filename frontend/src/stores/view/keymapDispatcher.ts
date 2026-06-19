@@ -16,8 +16,7 @@
 import { useEffect } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
-import { isRunnable } from "../../platform/actions/action";
-import { appDispatcher } from "../../platform/dispatch/middleware";
+import { fireActionDescriptor, isRunnable } from "../../platform/actions/action";
 import { type ChordEvent, defaultIsMac, parseChord } from "../../platform/keymap/chord";
 import {
   type BindingContext,
@@ -88,11 +87,7 @@ export function activeContextsFromElement(el: Element | null): Set<BindingContex
 
 /** Fire a resolved descriptor through its existing lane (dispatch seam or run). */
 export function fireKeyAction(action: ActionDescriptor): void {
-  if (action.dispatch) {
-    appDispatcher.dispatch(action.dispatch);
-  } else {
-    action.run?.();
-  }
+  fireActionDescriptor(action);
 }
 
 // --- the pure handler --------------------------------------------------------
@@ -158,6 +153,16 @@ let timeTravelReader: () => boolean = () => false;
 /** W02 wires the persisted-override selector here; defaults to no overrides. */
 export function setKeymapOverridesReader(reader: () => KeybindingOverrides): void {
   overridesReader = reader;
+}
+
+/**
+ * The current live override map, read through whatever reader W02 wired (defaults
+ * to `{}` until the stores binding mounts). The synchronous read the keyboard-
+ * shortcut legend uses to render effective chords — the same truth the dispatcher
+ * resolves against, so the legend can never drift from what actually fires.
+ */
+export function getKeymapOverrides(): KeybindingOverrides {
+  return overridesReader();
 }
 
 /** Enrollment wires the time-travel truth here; defaults to never-historical. */

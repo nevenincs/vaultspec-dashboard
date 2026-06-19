@@ -551,8 +551,16 @@ export interface GraphFilter {
   kinds?: string[];
   doc_types?: string[];
   feature_tags?: string[];
+  /** Glob/regex search over feature tags (filter-controls campaign): a node
+   *  passes if any of its feature_tags matches. The topic search graduates to
+   *  this for power queries; distinct from exact `feature_tags` membership. */
+  feature_query?: { value: string; mode: "glob" | "regex" };
   statuses?: string[];
   plan_tiers?: string[];
+  /** Document-health conditions (filter-controls campaign): `dangling`/`orphaned`
+   *  (engine-derived) + `invalid`/`empty-scaffold` (with core ingestion). A node
+   *  passes if it carries any requested condition. */
+  health?: string[];
   date_range?: { from?: string; to?: string };
   text?: string;
 }
@@ -678,6 +686,14 @@ export interface FiltersVocabulary {
   doc_types: string[];
   feature_tags: string[];
   kinds: string[];
+  /** ADR status adjectives (proposed/accepted/rejected/deprecated) + plan
+   *  meta-states (in-progress/finished) — the STATUS lifecycle facet. */
+  statuses?: string[];
+  /** Plan complexity tiers (L1–L4). */
+  plan_tiers?: string[];
+  /** Document-health conditions present in the corpus (filter-controls campaign):
+   *  the `dangling`/`orphaned` HEALTH facet, empty when the corpus is clean. */
+  health?: string[];
   date_bounds?: { from?: string; to?: string };
   tiers_block?: TiersBlock;
 }
@@ -724,6 +740,12 @@ export interface NodeDetail {
 
 export interface NodeEvidence {
   documents: { path: string; doc_type: string }[];
+  code_locations: {
+    path: string;
+    symbol?: string;
+    line?: number;
+    state?: string;
+  }[];
   // The engine `CorrelatedCommit` serializes `confidence: f32` (the correlating
   // edge's confidence) alongside `sha`/`subject`/`rule`, and the mock mirrors it
   // byte-for-byte; the type declares it optional so a richer consumer (the binding
@@ -1045,6 +1067,8 @@ export interface OpsWriteBody {
   date?: string;
   tags?: string[];
   related?: string[];
+  /** The new identity-bearing stem for the `rename` verb (forwarded as `--to`). */
+  to?: string;
 }
 
 /** The body of a create op (`POST /ops/core/create`). */
@@ -1081,7 +1105,7 @@ export type OpsWriteResult =
 /** Narrow the sibling envelope (`{schema, status, data}`) the engine forwards
  *  verbatim under `data.envelope`. The transport already unwrapped `{data, tiers}`
  *  onto the flat `OpsResult` shape, so `envelope` here is that sibling object. */
-function envelopeData(envelope: unknown): {
+export function envelopeData(envelope: unknown): {
   status?: string;
   data: Record<string, unknown>;
 } {
@@ -1144,15 +1168,16 @@ export function adaptOpsWrite(result: OpsResult): OpsWriteResult {
 // --- read-only /ops/git pass-through (dashboard-pipeline-wire W04) ---------------------
 //
 // The live engine NOW serves a read-only `/ops/git/{verb}` pass-through (POST):
-// porcelain `status`, `numstat`, and unified `diff` for a path, forwarded
-// VERBATIM inside the shared `{data: {verb, output}, tiers}` envelope. The engine
-// implements NO diff algorithm and exposes NO mutating git verb — the whitelist
-// is read-only by construction (`engine-read-and-infer`). `output` is git's raw
-// text; the client parses it (the structured `GitFileDiff` below is the parse
-// target the DiffView renders).
+// porcelain `status`, `numstat`, unified `diff` for a path, and two-rev
+// `histdiff`, forwarded VERBATIM inside the shared `{data: {verb, output}, tiers}`
+// envelope. The engine implements NO diff algorithm and exposes NO mutating git
+// verb - the whitelist is read-only by construction (`engine-read-and-infer`).
+// `output` is git's raw text; the client parses it (the structured `GitFileDiff`
+// below is the parse target the DiffView renders).
 
 /** The raw `/ops/git/{verb}` pass-through envelope shape: the verb echoed back
- *  and git's output forwarded verbatim. `verb` is `status` | `numstat` | `diff`. */
+ *  and git's output forwarded verbatim. `verb` is `status` | `numstat` | `diff`
+ *  | `histdiff`. */
 export interface GitOpResponse {
   verb: string;
   /** Git's stdout, forwarded verbatim (porcelain status / numstat / unified diff). */
@@ -1442,10 +1467,21 @@ export type SettingValueType =
   | { type: "enum"; members: string[] }
   | { type: "bool" }
   | { type: "string"; max_len: number }
-  | { type: "integer"; min: number; max: number };
+  | { type: "integer"; min: number; max: number }
+  // The keybinding override map (keyboard-action-system W02): the value is a JSON
+  // OBJECT STRING `{action_id: chord}`, bounded by `max_entries`
+  // (bounded-by-default-for-every-accumulator). The client decodes it into a
+  // `KeybindingOverrides` map; the engine enforces the same entry cap.
+  | { type: "keybindings"; max_entries: number };
 
-/** The UI control a setting renders as (the schema-driven render hint). */
-export type SettingControlKind = "segmented" | "switch" | "text" | "slider";
+/** The UI control a setting renders as (the schema-driven render hint). The
+ *  `keybinding` kind renders the chord-recorder catalog (KeybindingControl). */
+export type SettingControlKind =
+  | "segmented"
+  | "switch"
+  | "text"
+  | "slider"
+  | "keybinding";
 
 /** One declared setting (GET /settings/schema data.settings[]). */
 export interface SettingDef {

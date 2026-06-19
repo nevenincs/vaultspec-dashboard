@@ -160,6 +160,25 @@ export function canonicalizeChord(input: string): string | null {
 }
 
 /**
+ * Split a canonical chord string into ordered display keycaps for the legend and
+ * the settings recorder (e.g. `"Mod+Shift+K"` -> `["Mod","Shift","K"]`). The
+ * `Mod` token renders as the platform-primary accelerator symbol — `"⌘"` on
+ * macOS, `"Ctrl"` elsewhere — so the legend reads true to the host; every other
+ * token (including a named key like `"ArrowLeft"`) renders verbatim. A chord that
+ * fails to canonicalize yields a single keycap of its raw text so a corrupt entry
+ * is shown honestly rather than dropped.
+ */
+export function chordToKeycaps(
+  chordString: string,
+  isMac: boolean = defaultIsMac(),
+): string[] {
+  const canonical = canonicalizeChord(chordString);
+  if (canonical === null) return [chordString];
+  const modSymbol = isMac ? "⌘" : "Ctrl";
+  return canonical.split("+").map((token) => (token === "Mod" ? modSymbol : token));
+}
+
+/**
  * Whether a keyboard event satisfies a chord. Modifier matching is exact after
  * resolving `Mod` to the platform key: on macOS `Mod` requires Command, else it
  * requires Control. The shift comparison is intentionally skipped for symbol

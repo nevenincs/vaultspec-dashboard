@@ -8,6 +8,7 @@ import type { ComponentType } from "react";
 
 import type { SettingControlKind } from "../../../stores/server/engine";
 import { EnumControl } from "./EnumControl";
+import { KeybindingControl } from "./KeybindingControl";
 import { NumberControl } from "./NumberControl";
 import { SwitchControl } from "./SwitchControl";
 import { TextControl } from "./TextControl";
@@ -23,6 +24,7 @@ export const CONTROL_RENDERERS: Record<
   switch: SwitchControl,
   text: TextControl,
   slider: NumberControl,
+  keybinding: KeybindingControl,
 };
 
 /** Render the control for a declared setting by dispatching on its control kind. */

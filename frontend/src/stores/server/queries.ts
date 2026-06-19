@@ -118,6 +118,7 @@ import {
 import {
   CONSUMED_SETTING_KEYS,
   resolveGraphSettingsDefaults,
+  resolveKeybindingOverrides,
   resolveReduceMotionSetting,
   resolveEffectiveSetting,
   resolveSettings,
@@ -126,8 +127,10 @@ import {
   type SettingsGroup,
 } from "./settingsSelectors";
 import { filterChoicesFromDashboardState, type FilterChoices } from "../view/filters";
+import { setKeymapOverridesReader } from "../view/keymapDispatcher";
 import { movePlayhead } from "../view/timelineIntent";
 import { useViewStore } from "../view/viewStore";
+import type { KeybindingOverrides } from "../../platform/keymap/registry";
 
 // --- stable serialization for key parts -----------------------------------------
 
@@ -4945,6 +4948,47 @@ export function usePutSession() {
       seedSessionCache(queryClient, session);
     },
   });
+}
+
+// --- live keybinding override binding (keyboard-action-system W02) ---------------
+//
+// The one global keymap dispatcher resolves a chord against the registry using a
+// SYNCHRONOUS override reader (`setKeymapOverridesReader`). The persisted override
+// map lives in the engine `keybindings` setting, read through this layer (the sole
+// wire client — dashboard-layer-ownership). We bridge the two with a module-scoped
+// cache: the binding hook recomputes the decoded map whenever the settings snapshot
+// changes and stores it here, and the reader returns it on each keydown without a
+// React render. This keeps stores the owner of wire access while the dispatcher
+// stays a pure synchronous resolver.
+
+let liveKeybindingOverrides: KeybindingOverrides = {};
+let keymapReaderWired = false;
+
+/**
+ * Mount-once binding that wires the persisted-override selector into the global
+ * keymap dispatcher. It reads the live settings snapshot through the stores hooks
+ * and pushes the decoded override map into the module cache the dispatcher's
+ * synchronous reader returns. App chrome mounts this once near the shell top; it
+ * fetches nothing itself and reads no raw `tiers` block.
+ */
+export function useKeymapOverridesBinding(): void {
+  const schema = useSettingsSchema();
+  const settings = useSettings();
+  const overrides = useMemo(
+    () => resolveKeybindingOverrides(schema.data, settings.data),
+    [schema.data, settings.data],
+  );
+
+  useEffect(() => {
+    if (!keymapReaderWired) {
+      setKeymapOverridesReader(() => liveKeybindingOverrides);
+      keymapReaderWired = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    liveKeybindingOverrides = overrides;
+  }, [overrides]);
 }
 
 /** Persist a single settings write; seed + invalidate the settings cache. */
