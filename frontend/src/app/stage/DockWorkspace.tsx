@@ -20,6 +20,7 @@ import {
   type DockviewReadyEvent,
   type IDockviewPanelHeaderProps,
 } from "dockview";
+import { X } from "lucide-react";
 
 import { useActiveScope } from "../../stores/server/queries";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
@@ -33,6 +34,7 @@ import {
   closeDocTab,
   deriveDockWorkspaceSyncPlan,
   reorderDocTabs,
+  useDockTabHeaderView,
   useDockWorkspaceTabsView,
 } from "../../stores/view/tabs";
 
@@ -51,7 +53,44 @@ function GraphTab(props: IDockviewPanelHeaderProps) {
   return <DockviewDefaultTab {...props} hideClose />;
 }
 
-const tabComponents = { graphTab: GraphTab };
+// Document tab content. dockview's default tab renders at its own hardcoded 13px
+// in a font untied to the app's type ramp — the source of the "wrong font/size"
+// drift. This composes the SAME type/colour tokens as the centralized kit `Tab`
+// (`text-label font-medium`, active = ink, inactive = ink-faint) so a dock tab
+// reads identically to every other tab strip (design-system-is-centralized). The
+// close (✕) is a Lucide glyph that reveals on hover/focus and stops propagation so
+// it never activates or drags the tab. dockview's `.dv-tab` wrapper still owns
+// click-to-activate, drag-to-dock, and the tokenized active/inactive background.
+function DocTab({ api }: IDockviewPanelHeaderProps) {
+  const view = useDockTabHeaderView(api);
+  return (
+    <div className={view.rootClassName}>
+      <span className={view.titleClassName}>{view.title}</span>
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={view.closeAriaLabel}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          api.close();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            api.close();
+          }
+        }}
+        className={view.closeButtonClassName}
+      >
+        <X size={11} aria-hidden />
+      </span>
+    </div>
+  );
+}
+
+const tabComponents = { graphTab: GraphTab, docTab: DocTab };
 
 // The graph is structural, not a document. When it is alone in its group it must
 // read as the bare canvas — NO tab row above it (a single "Graph" tab is visual
@@ -132,8 +171,10 @@ export function DockWorkspace() {
       // Add newly-open doc panels.
       for (const panel of plan.addPanels) {
         // First document splits LEFT of the graph; further documents tab into the
-        // existing document group. The user can re-dock freely afterward.
-        api.addPanel(panel);
+        // existing document group. The user can re-dock freely afterward. The doc
+        // tab uses the centralized `DocTab` content so its font/colour matches the
+        // app type ramp, not dockview's default.
+        api.addPanel({ ...panel, tabComponent: "docTab" });
       }
       // Activate the active document.
       if (plan.activeDocId) {

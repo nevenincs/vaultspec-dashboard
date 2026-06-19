@@ -1029,7 +1029,13 @@
 .dockview-theme-vaultspec {
   --dv-group-view-background-color: var(--color-paper);
   --dv-tabs-and-actions-container-background-color: var(--color-paper-sunken);
-  --dv-tabs-and-actions-container-height: 36px;
+  --dv-tabs-and-actions-container-height: 34px;
+  /* Match the app's type ramp (label = 0.75rem) instead of dockview's hardcoded
+     13px, so dock tabs read in the same font/size as every other tab strip
+     (design-system-is-centralized). The custom DocTab content also uses the
+     `text-label` token; this aligns any dockview-native chrome (overflow, action
+     buttons) to the same step. */
+  --dv-tabs-and-actions-container-font-size: var(--text-fg-label);
 
   /* Active group, visible (selected) tab - the focused document. */
   --dv-activegroup-visiblepanel-tab-background-color: var(--color-paper);
