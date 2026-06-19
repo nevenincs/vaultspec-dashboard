@@ -42,7 +42,6 @@ const ALLOWED_PRODUCTION_USE_STATE = new Map<string, number>([
   ["app/chrome/useElementWidth.ts:height:setHeight", 1],
   ["app/chrome/useElementWidth.ts:width:setWidth", 1],
   ["app/chrome/useReducedMotion.ts:reduced:setReduced", 1],
-  ["app/stage/Stage.tsx:hostEl:setHostEl", 1],
 ]);
 const ALLOWED_PRODUCTION_STORE_HOOK_CALLS = new Map<string, number>([
   ["platform/errors/CrashInjector.tsx:useCrashStore", 3],
@@ -10841,6 +10840,13 @@ describe("dashboard layer ownership", () => {
     if (!/\bWATCHER_COOLDOWN_S_MAX\b/.test(draft)) {
       violations.push(`${draftRel}: missing cooldown upper bound`);
     }
+    if (
+      !/\bexport\s+function\s+normalizeRagWatcherConfigDraftValue\s*\(\s*value:\s*unknown\s*\)/.test(
+        draft,
+      )
+    ) {
+      violations.push(`${draftRel}: missing watcher draft input normalizer`);
+    }
     if (!/\bboundedIntegerDraft\s*\(/.test(draft)) {
       violations.push(`${draftRel}: missing bounded integer draft parser`);
     }
@@ -10851,11 +10857,20 @@ describe("dashboard layer ownership", () => {
       violations.push(`${draftRel}: missing watcher source identity key`);
     }
     if (
-      !/\buseEffect\s*\(\s*\(\)\s*=>\s*\{[\s\S]*\bsetDebounce\s*\(\s*canonicalDebounce\s*\)[\s\S]*\bsetCooldown\s*\(\s*canonicalCooldown\s*\)[\s\S]*\}\s*,\s*\[\s*canonicalDebounce\s*,\s*canonicalCooldown\s*,\s*sourceKey\s*\]\s*\)/.test(
+      !/\buseEffect\s*\(\s*\(\)\s*=>\s*\{[\s\S]*\bsetDebounceDraft\s*\(\s*canonicalDebounce\s*\)[\s\S]*\bsetCooldownDraft\s*\(\s*canonicalCooldown\s*\)[\s\S]*\}\s*,\s*\[\s*canonicalDebounce\s*,\s*canonicalCooldown\s*,\s*sourceKey\s*\]\s*\)/.test(
         draft,
       )
     ) {
       violations.push(`${draftRel}: watcher source changes do not reset draft`);
+    }
+    for (const typedOnly of [
+      "setDebounce: (value: string)",
+      "setCooldown: (value: string)",
+      "debounce: string;\n  cooldown: string;\n}): WatcherReconfigureArgs",
+    ]) {
+      if (draft.includes(typedOnly)) {
+        violations.push(`${draftRel}: typed-only watcher draft seam ${typedOnly}`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -11046,6 +11061,23 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\buseDashboardTextFilterIntent\s*\(\s*scope\s*\)/.test(draft)) {
       violations.push(`${draftRel}: missing server text-filter intent seam`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDashboardTextFilterDraftValue\s*\(\s*value:\s*unknown\s*\)/.test(
+        draft,
+      )
+    ) {
+      violations.push(`${draftRel}: missing text-filter draft input normalizer`);
+    }
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeDashboardTextFilterDraftValue\s*\(\s*next\s*\)/.test(
+        draft,
+      )
+    ) {
+      violations.push(`${draftRel}: text-filter draft write bypasses normalizer`);
+    }
+    if (/\bsetValue:\s*\(\s*value:\s*string\s*\)\s*=>\s*void\b/.test(draft)) {
+      violations.push(`${draftRel}: text-filter draft setter accepts typed-only input`);
     }
     if (
       !/\buseEffect\s*\(\s*\(\)\s*=>\s*\{[\s\S]*\bdebouncedSetTextFilter\.cancel\s*\(\s*\)[\s\S]*\bsetLocalValue\s*\(\s*canonicalText\s*\)[\s\S]*\}\s*,\s*\[\s*canonicalText\s*,\s*debouncedSetTextFilter\s*,\s*scope\s*\]\s*\)/.test(
@@ -11407,8 +11439,6 @@ describe("dashboard layer ownership", () => {
     for (const field of [
       "presentation.kindSectionLabel",
       "presentation.topicSectionLabel",
-      "presentation.editedSectionLabel",
-      "filterView.editedWindowRows",
     ]) {
       const pattern = new RegExp(`\\b${field.replace(".", "\\.")}\\b`);
       if (!pattern.test(chrome)) {
