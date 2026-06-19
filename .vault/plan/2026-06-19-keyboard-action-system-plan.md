@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#keyboard-action-system'
 date: '2026-06-19'
-modified: '2026-06-19'
+modified: '2026-06-20'
 tier: L3
 related:
   - '[[2026-06-19-keyboard-action-system-adr]]'
@@ -144,25 +144,25 @@ Additive engine registry change: a new SettingType/ControlKind carrying a valida
 
 Mirror the new schema types and resolve effective bindings (registry defaults merged with the persisted sparse overrides) as a stores selector the dispatcher consumes.
 
-- [ ] `W02.P05.S12` - Mirror the new keybindings schema value-type and control kind in the client engine types; `frontend/src/stores/server/engine.ts`.
-- [ ] `W02.P05.S13` - Resolve effective bindings (registry defaults merged with persisted sparse overrides) as a stores selector the dispatcher reads; `frontend/src/stores/server/settingsSelectors.ts`.
-- [ ] `W02.P05.S14` - Unit-test the override-map selector and the defaults-plus-overrides resolution; `frontend/src/stores/server/settingsSelectors.test.ts`.
+- [x] `W02.P05.S12` - Mirror the new keybindings schema value-type and control kind in the client engine types; `frontend/src/stores/server/engine.ts`.
+- [x] `W02.P05.S13` - Resolve effective bindings (registry defaults merged with persisted sparse overrides) as a stores selector the dispatcher reads; `frontend/src/stores/server/settingsSelectors.ts`.
+- [x] `W02.P05.S14` - Unit-test the override-map selector and the defaults-plus-overrides resolution; `frontend/src/stores/server/settingsSelectors.test.ts`.
 
 ### Phase `W02.P06` - keybinding settings control: recorder and conflict surfacing
 
 A new keybinding control kind rendering the full frontend catalog as per-action chord recorders grouped by surface, writing back sparse overrides and surfacing conflicts inline.
 
-- [ ] `W02.P06.S15` - Build the KeybindingControl chord-recorder component and its view deriver; `frontend/src/app/settings/controls/KeybindingControl.tsx`.
-- [ ] `W02.P06.S16` - Register the keybinding control kind and render the catalog grouped by surface; `frontend/src/app/settings/controls/registry.tsx`.
-- [ ] `W02.P06.S17` - Surface binding conflicts inline in the recorder and unit-test the control view and conflict path; `frontend/src/app/settings/controls/KeybindingControl.test.tsx`.
+- [x] `W02.P06.S15` - Build the KeybindingControl chord-recorder component and its view deriver; `frontend/src/app/settings/controls/KeybindingControl.tsx`.
+- [x] `W02.P06.S16` - Register the keybinding control kind and render the catalog grouped by surface; `frontend/src/app/settings/controls/registry.tsx`.
+- [x] `W02.P06.S17` - Surface binding conflicts inline in the recorder and unit-test the control view and conflict path; `frontend/src/app/settings/controls/KeybindingControl.test.tsx`.
 
 ### Phase `W02.P07` - legend convergence: derive from the registry
 
 Delete the hand-transcribed KEYBOARD_SHORTCUT_GROUPS and render the ? legend from the registry so keycaps can never drift from live bindings.
 
-- [ ] `W02.P07.S18` - Derive the keyboard-shortcuts legend groups from the registry; `frontend/src/stores/view/keyboardShortcuts.ts`.
-- [ ] `W02.P07.S19` - Delete the hand-transcribed KEYBOARD_SHORTCUT_GROUPS and point the legend dialog at the derived groups; `frontend/src/stores/view/keyboardShortcuts.ts`.
-- [ ] `W02.P07.S20` - Update legend tests to assert the legend matches the live registry bindings; `frontend/src/stores/view/keyboardShortcuts.test.ts`.
+- [x] `W02.P07.S18` - Derive the keyboard-shortcuts legend groups from the registry; `frontend/src/stores/view/keyboardShortcuts.ts`.
+- [x] `W02.P07.S19` - Delete the hand-transcribed KEYBOARD_SHORTCUT_GROUPS and point the legend dialog at the derived groups; `frontend/src/stores/view/keyboardShortcuts.ts`.
+- [x] `W02.P07.S20` - Update legend tests to assert the legend matches the live registry bindings; `frontend/src/stores/view/keyboardShortcuts.test.ts`.
 
 ## Wave `W03` - enrollment: command navigation, graph, timeline
 
@@ -172,25 +172,25 @@ Enroll the command-palette/global openers, graph navigation, and timeline surfac
 
 Move the Ctrl+K and ? openers and palette navigation into global registry bindings; delete the hardcoded palette/legend window listeners.
 
-- [ ] `W03.P08.S21` - Register the Ctrl+K palette opener and the ? legend opener as global registry bindings; `frontend/src/platform/keymap/registry.ts`.
-- [ ] `W03.P08.S22` - Route the openers through the dispatcher and delete the hardcoded palette and legend window listeners; `frontend/src/app/palette/CommandPalette.tsx`.
-- [ ] `W03.P08.S23` - Keep the palette listbox and legend dialog internal navigation as widget-intrinsic ARIA (Class B), documenting the boundary; `frontend/src/app/palette/CommandPalette.tsx`.
+- [x] `W03.P08.S21` - Register the Ctrl+K palette opener and the ? legend opener as global registry bindings; `frontend/src/platform/keymap/registry.ts`.
+- [x] `W03.P08.S22` - Route the openers through the dispatcher and delete the hardcoded palette and legend window listeners; `frontend/src/app/palette/CommandPalette.tsx`.
+- [x] `W03.P08.S23` - Keep the palette listbox and legend dialog internal navigation as widget-intrinsic ARIA (Class B), documenting the boundary; `frontend/src/app/palette/CommandPalette.tsx`.
 
 ### Phase `W03.P09` - enroll graph navigation
 
 Converge graphWalk verbs and neighbour/feature cycling plus lens/layout and fit/reset onto the canvas-context registry bindings, preserving the no-keyboard-trap and live-region floor; delete the old handlers.
 
-- [ ] `W03.P09.S24` - Contribute graph ActionDescriptors (walk forward/back, open, expand, clear, neighbour/feature cycle, fit/reset, lens) under the canvas context; `frontend/src/app/stage/graphActions.ts`.
-- [ ] `W03.P09.S25` - Route graph verbs through the dispatcher canvas context and delete the graphWalk private listener and the KeyboardNav neighbour/feature path; `frontend/src/app/stage/graphWalk.ts`.
-- [ ] `W03.P09.S26` - Preserve the accessibility floor (no-keyboard-trap on Tab, live-region announcements, instant non-animated selection) under the new path and test it; `frontend/src/app/stage/graphActions.test.ts`.
+- [x] `W03.P09.S24` - Contribute graph ActionDescriptors (walk forward/back, open, expand, clear, neighbour/feature cycle, fit/reset, lens) under the canvas context; `frontend/src/app/stage/graphActions.ts`.
+- [x] `W03.P09.S25` - Route graph verbs through the dispatcher canvas context and delete the graphWalk private listener and the KeyboardNav neighbour/feature path; `frontend/src/app/stage/graphWalk.ts`.
+- [x] `W03.P09.S26` - Preserve the accessibility floor (no-keyboard-trap on Tab, live-region announcements, instant non-animated selection) under the new path and test it; `frontend/src/app/stage/graphActions.test.ts`.
 
 ### Phase `W03.P10` - enroll timeline
 
 Converge playhead step/nudge/jump-to-live and range select/clear onto timeline-context registry bindings; remove the duplicated KeyboardNav playhead path.
 
-- [ ] `W03.P10.S27` - Contribute timeline ActionDescriptors (playhead step/nudge, jump-to-live, range clear) under the timeline context; `frontend/src/app/timeline/timelineActions.ts`.
-- [ ] `W03.P10.S28` - Route timeline verbs through the dispatcher and remove the duplicated KeyboardNav playhead path, keeping the Playhead slider ARIA intact; `frontend/src/app/timeline/Playhead.tsx`.
-- [ ] `W03.P10.S29` - Unit-test the timeline action contributions and the removal of the duplicated handler; `frontend/src/app/timeline/timelineActions.test.ts`.
+- [x] `W03.P10.S27` - Contribute timeline ActionDescriptors (playhead step/nudge, jump-to-live, range clear) under the timeline context; `frontend/src/app/timeline/timelineActions.ts`.
+- [x] `W03.P10.S28` - Route timeline verbs through the dispatcher and remove the duplicated KeyboardNav playhead path, keeping the Playhead slider ARIA intact; `frontend/src/app/timeline/Playhead.tsx`.
+- [x] `W03.P10.S29` - Unit-test the timeline action contributions and the removal of the duplicated handler; `frontend/src/app/timeline/timelineActions.test.ts`.
 
 ## Wave `W04` - enrollment: left rail and filters, right rail, then review and codify
 
@@ -200,25 +200,25 @@ Enroll the left rail (mode switch, expand/collapse, reveal) and its unified filt
 
 Contribute left-rail and unified filter ActionDescriptors (focus, mode switch, expand/collapse, reveal, KIND/TOPIC/STATUS/HEALTH/EDITED toggles, clear-all) as left-rail/filters-context bindings; delete old handlers.
 
-- [ ] `W04.P11.S30` - Contribute left-rail nav ActionDescriptors (focus rail, mode switch, expand/collapse, reveal in tree) under the left-rail context; `frontend/src/app/left/leftRailActions.ts`.
-- [ ] `W04.P11.S31` - Contribute filter ActionDescriptors (KIND/TOPIC/STATUS/HEALTH/EDITED toggles, clear-all, focus glob/regex) under the filters context; `frontend/src/app/left/filterActions.ts`.
-- [ ] `W04.P11.S32` - Route both through the dispatcher, keep the tree roving-tabindex as Class B, and test the contributions; `frontend/src/app/left/leftRailActions.test.ts`.
+- [x] `W04.P11.S30` - Contribute left-rail nav ActionDescriptors (focus rail, mode switch, expand/collapse, reveal in tree) under the left-rail context; `frontend/src/app/left/leftRailActions.ts`.
+- [x] `W04.P11.S31` - Contribute filter ActionDescriptors (KIND/TOPIC/STATUS/HEALTH/EDITED toggles, clear-all, focus glob/regex) under the filters context; `frontend/src/app/left/filterActions.ts`.
+- [x] `W04.P11.S32` - Route both through the dispatcher, keep the tree roving-tabindex as Class B, and test the contributions; `frontend/src/app/left/leftRailActions.test.ts`.
 
 ### Phase `W04.P12` - enroll right rail
 
 Contribute right-rail ActionDescriptors (activity tab switch, focus search, work-tree step) as right-rail-context bindings; delete old handlers.
 
-- [ ] `W04.P12.S33` - Contribute right-rail ActionDescriptors (activity tab switch, focus search, work-tree step) under the right-rail context; `frontend/src/app/right/rightRailActions.ts`.
-- [ ] `W04.P12.S34` - Route right-rail verbs through the dispatcher, keeping RailTabs and SearchTab roving navigation as Class B, and test the contributions; `frontend/src/app/right/rightRailActions.test.ts`.
+- [x] `W04.P12.S33` - Contribute right-rail ActionDescriptors (activity tab switch, focus search, work-tree step) under the right-rail context; `frontend/src/app/right/rightRailActions.ts`.
+- [x] `W04.P12.S34` - Route right-rail verbs through the dispatcher, keeping RailTabs and SearchTab roving navigation as Class B, and test the contributions; `frontend/src/app/right/rightRailActions.test.ts`.
 
 ### Phase `W04.P13` - campaign review and codify
 
 Full-gate verification, live chord verification in the running app, code review of the converged system, and codification of the one-keymap-registry rule after it holds across enrollment.
 
-- [ ] `W04.P13.S35` - Run the full lint gate (just dev lint all) and the frontend and engine test suites to exit 0; `frontend/package.json`.
+- [x] `W04.P13.S35` - Run the full lint gate (just dev lint all) and the frontend and engine test suites to exit 0; `frontend/package.json`.
 - [ ] `W04.P13.S36` - Live-verify representative chords and a customized binding in the running app via chrome-devtools; `frontend/src/app/AppShell.tsx`.
-- [ ] `W04.P13.S37` - Run a code review of the converged keyboard-action system and address findings; `.vault/audit/2026-06-19-keyboard-action-system-audit.md`.
-- [ ] `W04.P13.S38` - Codify the one-keymap-registry rule once it holds across enrollment; `.vaultspec/rules/rules/keyboard-shortcuts-bind-through-the-one-keymap-registry.md`.
+- [x] `W04.P13.S37` - Run a code review of the converged keyboard-action system and address findings; `.vault/audit/2026-06-19-keyboard-action-system-audit.md`.
+- [x] `W04.P13.S38` - Codify the one-keymap-registry rule once it holds across enrollment; `.vaultspec/rules/rules/keyboard-shortcuts-bind-through-the-one-keymap-registry.md`.
 
 ## Description
 
