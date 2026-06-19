@@ -11,19 +11,28 @@
 // same surface. Surface changes from here on are ADR-flagged redlines, not
 // drive-by edits.
 //
-// 2026-06-17: the live graph seam is Cosmos-native. The retired d3 force tuning
-// commands have been replaced by one explicit Cosmos config command.
+// 2026-06-19: the live graph seam is the three.js + d3-force field. The Cosmos
+// config command has been removed; force tuning is the field's own concern.
 
-import {
-  COSMOS_SIMULATION_DEFAULTS,
-  type CosmosSimulationConfig,
-} from "./field/cosmosConfig";
 import type { RepresentationMode } from "./field/representationLayout";
 import type { StatusClass } from "./field/statusStamp";
 import type { SemanticLevel } from "./field/cameraCore";
 
 export interface EdgeRenderParams {
   lineWidthScale: number;
+}
+
+/**
+ * The force knobs the graph-controls UI tunes on the active field (replaces the
+ * retired Cosmos config command). Three-native d3-force params: `charge` is the
+ * many-body repulsion (negative = repel), `linkDistance` the spring rest length,
+ * `linkStrength` the global link-spring multiplier. All optional — a slider sends
+ * only what it changed and the field merges them via its own setForceParams.
+ */
+export interface GraphForceParams {
+  charge?: number;
+  linkDistance?: number;
+  linkStrength?: number;
 }
 
 export const EDGE_RENDER_DEFAULTS: EdgeRenderParams = {
@@ -213,11 +222,12 @@ export type SceneCommand =
   | { kind: "zoom-out" }
   | { kind: "fit-to-view" }
   | { kind: "reset-view" }
-  // Cosmos simulation controls: direct @cosmos.gl/graph config names and units.
-  | { kind: "set-cosmos-config"; config: Partial<CosmosSimulationConfig> }
   | { kind: "set-simulation-active"; active: boolean }
   | { kind: "set-edge-render-params"; params: Partial<EdgeRenderParams> }
   | { kind: "set-layout-mode"; mode: "force" | "circular" }
+  // Three-native force tuning (replaces the retired set-cosmos-config): the
+  // graph-controls sliders patch the field's d3-force params live.
+  | { kind: "set-force-params"; params: GraphForceParams }
   // --- node-graph-rework addendum (ADR D3) -----------------------------------
   // Configurable canvas/sim containment: free (default, unbounded) | circle |
   // rect, with an optional size (radius for circle, half-extent for rect; omitted
@@ -226,14 +236,13 @@ export type SceneCommand =
   // compact circle. ADR-flagged additive redline per the W01.P01.S04 lock
   // discipline - additive to the locked union, nothing renamed.
   | { kind: "set-bounds"; shape: "free" | "circle" | "rect"; size?: number }
-  // --- live Cosmos interaction addenda ---------------------------------------
-  // Chrome brackets slider/drag interaction so the field can temporarily switch
-  // to the configured interaction decay and alpha.
+  // --- live interaction addenda ----------------------------------------------
+  // Chrome brackets a slider/drag interaction so the field can bracket an
+  // interaction decay/alpha (a light no-op on the three.js field today).
   | { kind: "begin-interaction" }
   | { kind: "end-interaction" }
-  // Freeze toggle: `frozen:true` pauses Cosmos where it is; `frozen:false`
-  // resumes without injecting new alpha. The graph lab can tune the lower-level
-  // Cosmos config through set-cosmos-config.
+  // Freeze toggle: `frozen:true` pauses the field's simulation where it is;
+  // `frozen:false` resumes without injecting new alpha.
   | { kind: "set-frozen"; frozen: boolean }
   // --- graph-representation addenda (W03.P08) -------------------------------
   // Representation-mode switch (graph-representation ADR): connectivity (FA2,
@@ -290,8 +299,6 @@ export type SceneEvent =
   // --- graph-quality addenda (2026-06-13, P01.S04 / P02.S06) -----------------
   /** Emitted on every camera.onChange — toolbar zoom display + LOD level. */
   | { kind: "camera-change"; scale: number; level: SemanticLevel }
-  /** Emitted after set-cosmos-config is applied. */
-  | { kind: "cosmos-config-changed"; config: CosmosSimulationConfig }
   // --- context menu (2026-06-15, dashboard-context-menus W04.P10) -------------
   /**
    * Emitted on right-click over the field: `id` is the node under the pointer or
@@ -365,7 +372,6 @@ export class SceneController {
 
   // --- graph-quality: layout state (P01.S02) -----------------------------------
   private _layoutMode: "force" | "circular" = "force";
-  private _cosmosConfig: CosmosSimulationConfig = { ...COSMOS_SIMULATION_DEFAULTS };
   private _edgeRenderParams: EdgeRenderParams = { ...EDGE_RENDER_DEFAULTS };
   // --- node-graph-rework: canvas/sim containment (ADR D3) -----------------------
   private _bounds: { shape: "free" | "circle" | "rect"; size: number } = {
@@ -419,10 +425,6 @@ export class SceneController {
         this.nodes = cmd.nodes;
         this.edges = cmd.edges;
         break;
-      case "set-cosmos-config":
-        this._cosmosConfig = { ...this._cosmosConfig, ...cmd.config };
-        this.emit({ kind: "cosmos-config-changed", config: { ...this._cosmosConfig } });
-        break;
       case "set-simulation-active":
         break;
       case "set-edge-render-params":
@@ -466,6 +468,7 @@ export class SceneController {
       case "begin-interaction":
       case "end-interaction":
       case "set-frozen":
+      case "set-force-params":
         // Renderer concerns — forwarded below.
         break;
     }
@@ -549,11 +552,6 @@ export class SceneController {
   /** Synchronous snapshot of the current layout mode. */
   getLayoutState(): { mode: "force" | "circular" } {
     return { mode: this._layoutMode };
-  }
-
-  /** Synchronous snapshot of runtime Cosmos simulation parameters. */
-  getCosmosConfigState(): CosmosSimulationConfig {
-    return { ...this._cosmosConfig };
   }
 
   /** Synchronous snapshot of renderer edge treatment controls. */

@@ -462,10 +462,13 @@ export class ThreeField implements SceneFieldRenderer {
         // Light no-op: reheat-on-change already keeps the sim warm during edits;
         // no interaction-specific decay bracket is needed.
         break;
-      case "set-cosmos-config":
+      case "set-force-params":
+        // Live force tuning from the graph-controls sliders.
+        this.setForceParams(cmd.params);
+        break;
       case "set-layout-mode":
-        // No-op: Cosmos-native config / layout-mode have no analogue in the d3
-        // force field, which exposes its own force params via setForceParams.
+        // No-op: layout-mode has no analogue in the d3 force field, which exposes
+        // its force params via set-force-params / setForceParams.
         break;
       default:
         break;
@@ -557,11 +560,14 @@ export class ThreeField implements SceneFieldRenderer {
     this.buildEdges(edges, index, texSize);
 
     // Warm-start: carry persisting nodes' positions over by id and seed each NEW node
-    // next to a persisting neighbour (or the carried centroid), so the solver resumes
-    // the prior layout. WARM when anything carried over (an expansion / live update) —
-    // gentle alpha + NO camera refit, so persistent nodes barely move and the user's
-    // view is preserved. COLD when nothing carried over (first load / scope switch) —
-    // full off-screen prewarm + a one-time camera fit (the flicker-free init).
+    // next to a persisting neighbour (or near the carried centroid), so the solver
+    // resumes the prior layout. WARM only when the carried set still DOMINATES (>= half
+    // the nodes) — an expansion or live update — with gentle alpha + NO camera refit so
+    // persistent nodes barely move and the user's view is preserved. COLD otherwise
+    // (first load, scope/lens switch, or a big partial-overlap change) — full off-screen
+    // prewarm + a one-time camera fit. The >=half gate matters: a partial-overlap that
+    // shares just a few ids must NOT warm, or its many new nodes under-settle at the low
+    // warm alpha into an off-screen clump with no refit (review: warm-start threshold).
     let carried = 0;
     let cx = 0;
     let cy = 0;
@@ -573,7 +579,7 @@ export class ThreeField implements SceneFieldRenderer {
         cy += p.y;
       }
     }
-    const warm = carried > 0;
+    const warm = nodes.length > 0 && carried >= 0.5 * nodes.length;
     if (warm) {
       const centroid = { x: cx / carried, y: cy / carried };
       this.solver.seed((i) => {
@@ -585,7 +591,12 @@ export class ThreeField implements SceneFieldRenderer {
           const np = prevPos.get(nb);
           if (np) return np;
         }
-        return centroid; // else the carried centroid (null would fall to phyllotaxis)
+        // else a small deterministic golden-angle ring around the carried centroid, so a
+        // BATCH of neighbourless new nodes does not seed coincident (coincident points
+        // separate only slowly under the low warm alpha).
+        const a = i * 2.399963229; // golden angle (radians)
+        const r = 6 + (i % 7);
+        return { x: centroid.x + Math.cos(a) * r, y: centroid.y + Math.sin(a) * r };
       });
     }
     // Off-screen settle before the first paint: gentle when warm-started, full energy

@@ -9,9 +9,10 @@
 //              only (SceneController.command). All-icon, no text labels.
 //   GraphSettingsPopover — an icon-only gear (kit IconButton) opening the "Graph
 //              settings" popover (a kit Card) on demand so the canvas is never
-//              occluded; the panel drops DOWN from the top bar. Inside it: the
-//              canvas-bound control, the Freeze-layout toggle, and the Cosmos knobs
-//              as kit Sliders — Repulsion, Link distance, Link spring — plus Reset.
+//              occluded; the panel drops DOWN from the top bar. It carries the
+//              Freeze-layout toggle. (The Cosmos force sliders + canvas-bound control
+//              were removed with the Cosmos field — they get rebuilt three-native
+//              against the field's `set-force-params` seam.)
 //
 // Every control resolves to a real, shared kit definition
 // (design-system-is-centralized). The retired chrome (search, filter, the
@@ -19,60 +20,37 @@
 // carries navigation only.
 //
 // Layer ownership (dashboard-layer-ownership): app chrome steering the scene.
-// Camera + layout affordances emit SceneController.command() ONLY; granularity is a
-// stores write through the canonical dashboard-state mutations that Stage's
-// single scene-owner effects turn into scene commands. The panel fetches nothing,
-// reads no raw `tiers` block, holds no node shape. Icons are Lucide structural
-// marks (the sanctioned chrome family) from the kit. Tokens only — no raw hex.
+// Camera + layout affordances emit SceneController.command() ONLY; the panel fetches
+// nothing, reads no raw `tiers` block, holds no node shape. Icons are Lucide
+// structural marks (the sanctioned chrome family) from the kit. Tokens only — no raw
+// hex.
 
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId } from "react";
 
 import { Pause, Play, SlidersHorizontal } from "lucide-react";
 
-import {
-  Card,
-  Crosshair,
-  IconButton,
-  Maximize,
-  Minus,
-  Plus,
-  Popover,
-  Segment,
-  SegmentedToggle,
-  Slider,
-} from "../kit";
-import type { DashboardGraphBounds } from "../../stores/server/engine";
-import { useDashboardGraphControlsIntent } from "../../stores/server/dashboardGraphControlsIntent";
+import { Card, Crosshair, IconButton, Maximize, Minus, Plus, Popover } from "../kit";
 import {
   useActiveScope,
   useDashboardGraphControlsView,
 } from "../../stores/server/queries";
 import {
-  GRAPH_CONTROLS_TUNE_DEFAULTS,
-  deriveGraphControlsBoundPresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
   deriveGraphControlsSettingsPopoverView,
-  deriveGraphControlsTunePresentationView,
-  formatGraphControlsBoundSize,
-  formatGraphControlsTuneValue,
-  patchGraphControlsTuneParams,
   setGraphControlsFrozen,
   setGraphControlsSettingsOpen,
-  setGraphControlsTuneParams,
-  type GraphControlsTuneParams,
+  toggleGraphControlsSettingsOpen,
   useGraphControlsFrozen,
   useGraphControlsFrozenScope,
-  toggleGraphControlsSettingsOpen,
   useGraphControlsSettingsOpen,
-  useGraphControlsTuneParams,
 } from "../../stores/view/graphControlsChrome";
 import { getScene } from "./Stage";
 
 const ICON_PX = 15;
 
 // ---------------------------------------------------------------------------
-// Freeze toggle: pauses/resumes the Cosmos simulation without adding new energy.
+// Freeze toggle: pauses/resumes the field's simulation without adding new energy.
 // Meaningful only in connectivity mode, so it disables itself outside it.
 // ---------------------------------------------------------------------------
 
@@ -170,88 +148,9 @@ export function GraphNavButtons() {
 }
 
 // ---------------------------------------------------------------------------
-// LabelledSlider — a kit Slider with a label row and a quiet tabular readout, used
-// for the Tune knobs and the Zoom descent. The kit Slider owns the native range
-// input (drag + keyboard arrows, accent track); this composes the binding label /
-// readout / end-caption chrome around it. The optional interaction callbacks drive
-// the D2 force-coalescing (begin/end-interaction) — the kit Slider has no such
-// hooks, so they ride a wrapper whose bubbling pointer/key/blur events bracket the
-// drag.
-// ---------------------------------------------------------------------------
-
-interface LabelledSliderProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-  format?: (v: number) => string;
-  title?: string;
-  /** Optional end captions rendered under the track (Zoom: Overview / Detail). */
-  ends?: [string, string];
-  /** Fired when a drag/keyboard interaction with the track begins (D2 coalesce). */
-  onInteractStart?: () => void;
-  /** Fired when the interaction ends (pointerup / blur / keyboard settle, D2). */
-  onInteractEnd?: () => void;
-}
-
-function LabelledSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-  format,
-  title,
-  ends,
-  onInteractStart,
-  onInteractEnd,
-}: LabelledSliderProps) {
-  const display = format ? format(value) : String(value);
-  return (
-    <div className="flex w-full flex-col gap-fg-1" title={title}>
-      <span className="flex h-3.5 items-center justify-between">
-        <span className="text-label text-ink-muted">{label}</span>
-        {!ends && (
-          <span data-tabular className="text-caption tabular-nums text-ink-faint">
-            {display}
-          </span>
-        )}
-      </span>
-      <div
-        onPointerDown={onInteractStart}
-        onPointerUp={onInteractEnd}
-        onKeyDown={onInteractStart}
-        onBlur={onInteractEnd}
-      >
-        <Slider
-          label={label}
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={onChange}
-        />
-      </div>
-      {ends && (
-        <span className="flex justify-between text-caption text-ink-faint">
-          <span>{ends[0]}</span>
-          <span>{ends[1]}</span>
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SettingsPopover — a small collapsible group docked to a kit DropdownButton
-// trigger. The heavy Tune (force) knobs live here so they are COLLAPSED by default
-// and never occlude the canvas; the trigger is a labelled DropdownButton, the body
-// pops up ABOVE the bar (so it grows away from the field, not over it) inside a kit
-// Card. Closes on outside click and Escape. Reduced-motion-safe: no entrance
-// animation.
+// SettingsPopover — a small collapsible group docked to a gear trigger. The body
+// pops up away from the bar inside a kit Card so it never occludes the canvas.
+// Closes on outside click and Escape. Reduced-motion-safe: no entrance animation.
 // ---------------------------------------------------------------------------
 
 interface SettingsPopoverProps {
@@ -330,200 +229,10 @@ function SettingsPopover({
 }
 
 // ---------------------------------------------------------------------------
-// Tune group — Cosmos-native force knobs (collapsed settings-popover body).
-// ---------------------------------------------------------------------------
-
-/** Trailing-debounce window (ms) for ending a keyboard-driven slider interaction
- *  (D2): a key step has no pointerup, so end-interaction fires once the steps
- *  stop. Short enough that the field re-cools promptly, long enough to coalesce a
- *  burst of held-arrow steps into one interaction. */
-const KEYBOARD_SETTLE_MS = 250;
-
-function TuneBody() {
-  const liveState = getScene().controller.getCosmosConfigState();
-  const params = useGraphControlsTuneParams();
-  const tuneView = deriveGraphControlsTunePresentationView();
-  const repulsion = tuneView.sliders.simulationRepulsion;
-  const linkDistance = tuneView.sliders.simulationLinkDistance;
-  const linkSpring = tuneView.sliders.simulationLinkSpring;
-  // Coalesce the interaction: begin once on the first slider change, let Cosmos
-  // use its interaction decay while the user is dragging, and end on pointerup,
-  // blur, or a trailing debounce for keyboard steps.
-  const interactingRef = useRef(false);
-  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const beginInteraction = useCallback(() => {
-    if (interactingRef.current) return;
-    interactingRef.current = true;
-    getScene().controller.command({ kind: "begin-interaction" });
-  }, []);
-
-  const endInteraction = useCallback(() => {
-    if (settleTimerRef.current) {
-      clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = null;
-    }
-    if (!interactingRef.current) return;
-    interactingRef.current = false;
-    getScene().controller.command({ kind: "end-interaction" });
-  }, []);
-
-  // Trailing debounce: a keyboard step (no pointerup) ends the interaction once
-  // the steps stop. Re-armed on every change while a key interaction is live.
-  const armKeyboardSettle = useCallback(() => {
-    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(endInteraction, KEYBOARD_SETTLE_MS);
-  }, [endInteraction]);
-
-  useEffect(() => {
-    setGraphControlsTuneParams({
-      simulationRepulsion: liveState.simulationRepulsion,
-      simulationLinkDistance: liveState.simulationLinkDistance,
-      simulationLinkSpring: liveState.simulationLinkSpring,
-    });
-  }, [
-    liveState.simulationLinkDistance,
-    liveState.simulationLinkSpring,
-    liveState.simulationRepulsion,
-  ]);
-
-  // Stay in sync with Cosmos config events (another actor may set params).
-  useEffect(() => {
-    return getScene().controller.on((event) => {
-      if (event.kind === "cosmos-config-changed") {
-        patchGraphControlsTuneParams({
-          simulationRepulsion: event.config.simulationRepulsion,
-          simulationLinkDistance: event.config.simulationLinkDistance,
-          simulationLinkSpring: event.config.simulationLinkSpring,
-        });
-      }
-    });
-  }, []);
-
-  // End any in-flight interaction if the popover unmounts mid-drag.
-  useEffect(() => endInteraction, [endInteraction]);
-
-  function apply(update: Partial<GraphControlsTuneParams>) {
-    const next = { ...params, ...update };
-    setGraphControlsTuneParams(next);
-    // Ensure the held floor is up for the very first change of a drag (covers the
-    // case where onChange fires before pointerdown handlers in some browsers).
-    beginInteraction();
-    getScene().controller.command({ kind: "set-cosmos-config", config: update });
-    // Re-arm the keyboard settle each change; a pointerup/blur ends it sooner.
-    armKeyboardSettle();
-  }
-
-  return (
-    <div className={tuneView.containerClassName}>
-      {/* Freeze the Cosmos simulation — lives in the settings
-          popover now that the bottom cluster is NavControls-only. */}
-      <div className={tuneView.freezeRowClassName}>
-        <span className={tuneView.freezeLabelClassName}>{tuneView.freezeLabel}</span>
-        <FreezeToggle />
-      </div>
-      <LabelledSlider
-        label={repulsion.label}
-        title={repulsion.title}
-        value={params.simulationRepulsion}
-        min={repulsion.min}
-        max={repulsion.max}
-        step={repulsion.step}
-        onChange={(v) => apply({ simulationRepulsion: v })}
-        format={(v) => formatGraphControlsTuneValue("simulationRepulsion", v)}
-        onInteractStart={beginInteraction}
-        onInteractEnd={endInteraction}
-      />
-      <LabelledSlider
-        label={linkDistance.label}
-        title={linkDistance.title}
-        value={params.simulationLinkDistance}
-        min={linkDistance.min}
-        max={linkDistance.max}
-        step={linkDistance.step}
-        onChange={(v) => apply({ simulationLinkDistance: v })}
-        format={(v) => formatGraphControlsTuneValue("simulationLinkDistance", v)}
-        onInteractStart={beginInteraction}
-        onInteractEnd={endInteraction}
-      />
-      <LabelledSlider
-        label={linkSpring.label}
-        title={linkSpring.title}
-        value={params.simulationLinkSpring}
-        min={linkSpring.min}
-        max={linkSpring.max}
-        step={linkSpring.step}
-        onChange={(v) => apply({ simulationLinkSpring: v })}
-        format={(v) => formatGraphControlsTuneValue("simulationLinkSpring", v)}
-        onInteractStart={beginInteraction}
-        onInteractEnd={endInteraction}
-      />
-      {/* Reset to defaults (board Graph settings 88:2). */}
-      <button
-        type="button"
-        onClick={() => apply(GRAPH_CONTROLS_TUNE_DEFAULTS)}
-        className={tuneView.resetButtonClassName}
-      >
-        {tuneView.resetLabel}
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// BoundBody — the canvas/sim CONTAINMENT control (node-graph-rework ADR D3): the
-// bound shape (Free | Circle | Rect) and its size. The default is free/unbounded.
-// A canonical dashboard-state write only; Stage's single scene-owner effect
-// projects the accepted graph_bounds back into the field as set-bounds.
-// ---------------------------------------------------------------------------
-
-function BoundBody() {
-  const scope = useActiveScope();
-  const graphControlsIntent = useDashboardGraphControlsIntent(scope);
-  const { graphBounds } = useDashboardGraphControlsView(scope);
-  const boundView = deriveGraphControlsBoundPresentationView(graphBounds.shape);
-
-  function apply(shape: DashboardGraphBounds["shape"], size: number) {
-    void graphControlsIntent.setGraphBounds({ shape, size }).catch(() => undefined);
-  }
-
-  return (
-    <div className={boundView.containerClassName}>
-      <div className={boundView.groupClassName}>
-        <span className={boundView.labelClassName}>{boundView.label}</span>
-        <SegmentedToggle
-          ariaLabel={boundView.shapeAriaLabel}
-          value={graphBounds.shape}
-          onChange={(v) => apply(v as DashboardGraphBounds["shape"], graphBounds.size)}
-          fullWidth
-        >
-          <Segment value="free">{boundView.freeLabel}</Segment>
-          <Segment value="circle">{boundView.circleLabel}</Segment>
-          <Segment value="rect">{boundView.rectLabel}</Segment>
-        </SegmentedToggle>
-      </div>
-      {boundView.showSizeControl && (
-        <LabelledSlider
-          label={boundView.sizeLabel}
-          title={boundView.sizeTitle}
-          value={graphBounds.size}
-          min={boundView.sizeMin}
-          max={boundView.sizeMax}
-          step={boundView.sizeStep}
-          onChange={(v) => apply(graphBounds.shape, v)}
-          format={formatGraphControlsBoundSize}
-        />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The graph-settings popover — the gear trigger that holds the heavy Tune (force)
-// knobs and the canvas-bound control, COLLAPSED by default so the field is never
-// occluded. Lives in the unified stage top bar alongside the camera cluster
-// (graph-timeline-workspace); the panel drops DOWN into the canvas. The bottom-
-// left floating cluster is retired — only the minimap remains a canvas overlay.
+// The graph-settings popover — the gear trigger that holds the Freeze-layout
+// toggle, COLLAPSED by default so the field is never occluded. Lives in the
+// unified stage top bar alongside the camera cluster (graph-timeline-workspace);
+// the panel drops DOWN into the canvas.
 // ---------------------------------------------------------------------------
 
 export function GraphSettingsPopover() {
@@ -534,9 +243,10 @@ export function GraphSettingsPopover() {
       placement="below"
       icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
     >
-      <BoundBody />
-      <span className="h-px w-full bg-rule" aria-hidden />
-      <TuneBody />
+      <div className="flex w-48 items-center justify-between gap-fg-2">
+        <span className="text-label text-ink-muted">Freeze layout</span>
+        <FreezeToggle />
+      </div>
     </SettingsPopover>
   );
 }

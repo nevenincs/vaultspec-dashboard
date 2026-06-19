@@ -5599,9 +5599,6 @@ describe("dashboard layer ownership", () => {
     if (!/\buseDashboardGraphControlsView\s*\(\s*scope\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing stores graph-controls view seam`);
     }
-    if (!/\buseDashboardGraphControlsIntent\s*\(\s*scope\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing stores graph-controls intent seam`);
-    }
 
     expect(violations).toEqual([]);
   });
@@ -5729,170 +5726,10 @@ describe("dashboard layer ownership", () => {
       "useGraphControlsFrozen",
       "useGraphControlsFrozenScope",
       "setGraphControlsFrozen",
-      "useGraphControlsTuneParams",
-      "setGraphControlsTuneParams",
-      "patchGraphControlsTuneParams",
     ]) {
       if (!new RegExp(`\\b${helper}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${helper} seam`);
       }
-    }
-
-    expect(violations).toEqual([]);
-  });
-
-  it("keeps GraphControls canvas-bound presentation behind the chrome seam", () => {
-    const rel = "app/stage/GraphControls.tsx";
-    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
-    const violations: string[] = [];
-
-    if (
-      !/\bderiveGraphControlsBoundPresentationView\s*\(\s*graphBounds\.shape\s*\)/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: missing graph bound presentation seam`);
-    }
-    if (!/\bformatGraphControlsBoundSize\b/.test(stripped)) {
-      violations.push(`${rel}: missing graph bound size formatter seam`);
-    }
-    for (const field of [
-      "boundView.containerClassName",
-      "boundView.groupClassName",
-      "boundView.labelClassName",
-      "boundView.label",
-      "boundView.shapeAriaLabel",
-      "boundView.freeLabel",
-      "boundView.circleLabel",
-      "boundView.rectLabel",
-      "boundView.showSizeControl",
-      "boundView.sizeLabel",
-      "boundView.sizeTitle",
-      "boundView.sizeMin",
-      "boundView.sizeMax",
-      "boundView.sizeStep",
-    ]) {
-      if (!stripped.includes(field)) {
-        violations.push(`${rel}: missing graph bound presentation field ${field}`);
-      }
-    }
-    for (const localBoundChrome of [
-      "flex w-48 flex-col gap-fg-2",
-      "flex flex-col gap-fg-1",
-      "Canvas bound",
-      "Canvas bound shape",
-      "Bound size",
-      "Circle radius in world units; 0 = auto-fit",
-      "Rectangle half-extent in world units; 0 = auto-fit",
-    ]) {
-      if (stripped.includes(localBoundChrome)) {
-        violations.push(`${rel}: local graph bound presentation ${localBoundChrome}`);
-      }
-    }
-    if (/graphBounds\.shape\s*===\s*["']circle["']\s*\?/.test(stripped)) {
-      violations.push(`${rel}: local graph bound title projection`);
-    }
-    if (/v\s*===\s*0\s*\?\s*["']auto["']/.test(stripped)) {
-      violations.push(`${rel}: local graph bound size formatting`);
-    }
-
-    expect(violations).toEqual([]);
-  });
-
-  it("keeps GraphControls tuning presentation behind the chrome seam", () => {
-    const rel = "app/stage/GraphControls.tsx";
-    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
-    const violations: string[] = [];
-
-    if (!/\bderiveGraphControlsTunePresentationView\s*\(\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing graph tuning presentation seam`);
-    }
-    if (!/\bformatGraphControlsTuneValue\b/.test(stripped)) {
-      violations.push(`${rel}: missing graph tuning formatter seam`);
-    }
-    for (const field of [
-      "tuneView.containerClassName",
-      "tuneView.freezeRowClassName",
-      "tuneView.freezeLabelClassName",
-      "tuneView.freezeLabel",
-      "tuneView.resetButtonClassName",
-      "tuneView.resetLabel",
-      "tuneView.sliders.simulationRepulsion",
-      "tuneView.sliders.simulationLinkDistance",
-      "tuneView.sliders.simulationLinkSpring",
-    ]) {
-      if (!stripped.includes(field)) {
-        violations.push(`${rel}: missing graph tuning presentation field ${field}`);
-      }
-    }
-    for (const slider of ["repulsion", "linkDistance", "linkSpring"]) {
-      for (const field of [".label", ".title", ".min", ".max", ".step"]) {
-        if (!stripped.includes(`${slider}${field}`)) {
-          violations.push(
-            `${rel}: missing graph tuning slider field ${slider}${field}`,
-          );
-        }
-      }
-    }
-    for (const localTuneChrome of [
-      "flex w-48 flex-col gap-fg-3",
-      "flex items-center justify-between",
-      "Freeze simulation",
-      "How far nodes push each other apart",
-      "Link distance",
-      "The rest length of the links between connected nodes",
-      "Link spring",
-      "How tightly connected nodes pull together into groups",
-      "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-      "Reset to defaults",
-    ]) {
-      if (stripped.includes(localTuneChrome)) {
-        violations.push(`${rel}: local graph tuning presentation ${localTuneChrome}`);
-      }
-    }
-    if (/v\.toFixed\s*\(/.test(stripped)) {
-      violations.push(`${rel}: local graph tuning value formatting`);
-    }
-
-    expect(violations).toEqual([]);
-  });
-
-  it("keeps GraphControls tune params normalized at the chrome store seam", () => {
-    const rel = "stores/view/graphControlsChrome.ts";
-    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
-    const violations: string[] = [];
-
-    if (!/\bexport\s+function\s+normalizeGraphControlsTuneParams\b/.test(stripped)) {
-      violations.push(`${rel}: missing graph tuning params normalizer`);
-    }
-    if (!/\bfiniteOrDefault\s*\(/.test(stripped)) {
-      violations.push(
-        `${rel}: graph tuning params normalizer does not reject non-finite values`,
-      );
-    }
-    if (!/\btuneParams:\s*normalizeGraphControlsTuneParams\s*\(/.test(stripped)) {
-      violations.push(`${rel}: graph tuning initial state bypasses normalizer`);
-    }
-    if (
-      !/\bsetTuneParams:\s*\([^)]*\)\s*=>[\s\S]*\bnormalizeGraphControlsTuneParams\s*\(\s*tuneParams\s*\)/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: graph tuning set bypasses normalizer`);
-    }
-    if (
-      !/\bpatchTuneParams:\s*\([^)]*\)\s*=>[\s\S]*\bnormalizeGraphControlsTuneParams\s*\(\s*\{[\s\S]*\.\.\.state\.tuneParams[\s\S]*\.\.\.patch[\s\S]*\}\s*\)/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: graph tuning patch bypasses normalizer`);
-    }
-    if (
-      !/\breset:\s*\(\)\s*=>[\s\S]*\btuneParams:\s*normalizeGraphControlsTuneParams\s*\(/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: graph tuning reset reuses raw defaults object`);
     }
 
     expect(violations).toEqual([]);
@@ -7577,6 +7414,40 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bnormalizeActiveDocId\b/.test(view)) {
       violations.push(`${viewRel}: missing normalized active-doc helper`);
+    }
+    if (!/\bexport\s+function\s+normalizeViewerSurface\b/.test(view)) {
+      violations.push(`${viewRel}: missing viewer-surface normalizer`);
+    }
+    if (!/\bArray\.isArray\s*\(\s*openDocs\s*\)/.test(view)) {
+      violations.push(`${viewRel}: open-doc normalizer assumes array input`);
+    }
+    for (const typedOnly of [
+      "openDoc: (nodeId: string, surface: ViewerSurface, permanent?: boolean)",
+      "promoteDoc: (nodeId: string)",
+      "activateDoc: (nodeId: string)",
+      "closeDoc: (nodeId: string)",
+      "reorderDocs: (orderedIds: string[])",
+      "previewDocTab(\n  nodeId: string",
+      "openDocTab(\n  nodeId: string",
+      "promoteDocTab(nodeId: string)",
+      "activateDocTab(nodeId: string)",
+      "closeDocTab(nodeId: string)",
+      "reorderDocTabs(orderedIds: string[])",
+    ]) {
+      if (view.includes(typedOnly) || tabs.includes(typedOnly)) {
+        violations.push(`${tabsRel}: typed-only dock-tab seam ${typedOnly}`);
+      }
+    }
+    for (const helper of ["previewDocTab", "openDocTab"]) {
+      const start = tabs.indexOf(`export function ${helper}`);
+      const end = start >= 0 ? tabs.indexOf("\nexport function", start + 1) : -1;
+      const body = start >= 0 ? tabs.slice(start, end >= 0 ? end : undefined) : "";
+      if (!/\bnormalizeNodeId\s*\(\s*nodeId\s*\)/.test(body)) {
+        violations.push(`${tabsRel}: ${helper} bypasses node-id normalizer`);
+      }
+      if (!/\bnormalizeViewerSurface\s*\(\s*surface\s*\)/.test(body)) {
+        violations.push(`${tabsRel}: ${helper} bypasses viewer-surface normalizer`);
+      }
     }
     for (const helper of [
       "deriveDockWorkspaceSyncPlan",
@@ -10090,6 +9961,9 @@ describe("dashboard layer ownership", () => {
     if (!/\bcappedOpenRecentCommitHashes\s*\(/.test(store)) {
       violations.push(`${storeRel}: missing bounded open commit projection`);
     }
+    if (!/\bArray\.isArray\s*\(\s*hashes\s*\)/.test(store)) {
+      violations.push(`${storeRel}: open commit projection assumes array input`);
+    }
     if (!/\bboundedPositiveCount\s*\(/.test(store)) {
       violations.push(`${storeRel}: missing bounded paging input projection`);
     }
@@ -11982,6 +11856,29 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizePipelineExpandedIds\b/.test(stripped)) {
       violations.push(`${rel}: missing bounded expanded-id normalizer`);
     }
+    if (!/\bexport\s+function\s+normalizePipelineExpansionKey\b/.test(stripped)) {
+      violations.push(`${rel}: missing pipeline expansion key normalizer`);
+    }
+    if (!/\bArray\.isArray\s*\(\s*ids\s*\)/.test(stripped)) {
+      violations.push(`${rel}: expanded-id normalizer assumes array input`);
+    }
+    for (const typedOnly of [
+      "setKey: (key: string)",
+      "toggle: (key: string, id: string)",
+      "pruneVisible: (key: string, visibleIds: readonly string[])",
+      "toggle: (id: string) => void",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only pipeline expansion seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bsetKey:\s*\(key\)\s*=>[\s\S]*\bnormalizePipelineExpansionKey\s*\(\s*key\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline expansion setKey bypasses key normalizer`);
+    }
     if (
       !/\bnormalizePipelineExpandedIds[\s\S]*\bnormalizeNodeId\s*\(\s*ids\[i\]\s*\)/.test(
         stripped,
@@ -11990,20 +11887,18 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: expanded-id normalizer bypasses node-id seam`);
     }
     if (
-      !/\btoggle:\s*\(key,\s*id\)\s*=>[\s\S]*\bnormalizeNodeId\s*\(\s*id\s*\)/.test(
+      !/\btoggle:\s*\(key,\s*id\)\s*=>[\s\S]*\bnormalizePipelineExpansionKey\s*\(\s*key\s*\)[\s\S]*\bnormalizeNodeId\s*\(\s*id\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: pipeline expansion toggle bypasses id normalizer`);
+      violations.push(`${rel}: pipeline expansion toggle bypasses normalizers`);
     }
     if (
-      !/\bpruneVisible:\s*\(key,\s*visibleIds\)\s*=>[\s\S]*\bnormalizePipelineExpandedIds\s*\(\s*visibleIds\s*\)/.test(
+      !/\bpruneVisible:\s*\(key,\s*visibleIds\)\s*=>[\s\S]*\bnormalizePipelineExpansionKey\s*\(\s*key\s*\)[\s\S]*\bnormalizePipelineExpandedIds\s*\(\s*visibleIds\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(
-        `${rel}: pipeline expansion prune bypasses visible-id normalizer`,
-      );
+      violations.push(`${rel}: pipeline expansion prune bypasses normalizers`);
     }
     if (!/\bpipelineExpansionRowId[\s\S]*\bnormalizeNodeId\s*\(/.test(stripped)) {
       violations.push(`${rel}: pipeline row projection bypasses id normalizer`);
