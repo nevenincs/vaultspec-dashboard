@@ -58,7 +58,10 @@ export const APPEARANCE_DEFAULTS: AppearanceParams = {
   edgeWidthMax: EDGE_WIDTH_MAX,
   edgeOpacityMin: EDGE_ALPHA_MIN,
   edgeOpacityMax: EDGE_ALPHA_MAX,
-  edgeColorMode: "solid",
+  // Gradient edges are the binding default (graph-backend-unification ADR D2): each
+  // edge blends its leaf-endpoint hue into its parent-endpoint hue (edgeEndColors +
+  // the EDGE_VERTEX/FRAGMENT shader interpolation). "solid" remains a selectable mode.
+  edgeColorMode: "gradient",
 };
 
 /** World-space node radius — mirrors cosmosField.cosmosPointSize, scaled by the
