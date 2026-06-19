@@ -358,7 +358,17 @@ export function AppShell() {
       </aside>
 
       {/* ── Single panel flyout ─────────────────────────────────────── */}
-      <div className={shellFrame.panelFlyoutRootClassName}>
+      {/* Anchor the panel-controls toggle to the EXPANDED rail's top-right corner
+          so it never bleeds over the left-aligned worktree/project header
+          (board 244:750 keeps the rail header clean). When the rail is collapsed
+          or hidden it falls back to the stage's top-left, where there is no
+          content to collide with. */}
+      <div
+        className="pointer-events-none absolute top-2 z-20"
+        style={{
+          left: leftRailVisible && !leftCollapsed ? Math.max(8, leftRailWidth - 38) : 8,
+        }}
+      >
         <span className={shellFrame.panelFlyoutButtonWrapperClassName}>
           <IconButton
             label={panelControls.flyoutButtonLabel}
