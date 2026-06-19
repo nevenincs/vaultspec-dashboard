@@ -20,7 +20,7 @@ import {
 } from "./field/cosmosConfig";
 import type { RepresentationMode } from "./field/representationLayout";
 import type { StatusClass } from "./field/statusStamp";
-import type { SemanticLevel } from "./field/camera";
+import type { SemanticLevel } from "./field/cameraCore";
 
 export interface EdgeRenderParams {
   lineWidthScale: number;

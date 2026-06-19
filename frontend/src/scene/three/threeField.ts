@@ -49,7 +49,7 @@ import {
   type EdgeRenderParams,
   DEFAULT_SCENE_FEATURE_FLAGS,
 } from "../sceneController";
-import { semanticLevel } from "../field/camera";
+import { semanticLevel } from "../field/cameraCore";
 import {
   accentColor,
   APPEARANCE_DEFAULTS,

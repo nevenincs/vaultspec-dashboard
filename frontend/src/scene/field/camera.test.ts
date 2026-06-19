@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneEvent } from "../sceneController";
 import type { Container } from "pixi.js";
 
+import { Camera } from "./camera";
 import {
-  Camera,
   DOCUMENT_LEVEL_SCALE,
   DRAG_THRESHOLD_PX,
   FEATURE_LEVEL_SCALE,
@@ -17,7 +17,7 @@ import {
   semanticLevel,
   worldToScreen,
   zoomAt,
-} from "./camera";
+} from "./cameraCore";
 
 describe("semanticLevel", () => {
   it("maps geometric scale onto the three discrete levels", () => {

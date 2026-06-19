@@ -11,7 +11,7 @@
 
 import { Container, Graphics, Text } from "pixi.js";
 
-import type { SemanticLevel } from "./camera";
+import type { SemanticLevel } from "./cameraCore";
 import { countryLabels } from "./overlays";
 import { featureHulls } from "./bubbleSets";
 import type { SceneNodeData } from "../sceneController";

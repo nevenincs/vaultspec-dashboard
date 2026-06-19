@@ -23,7 +23,7 @@
 
 import type { NodePosition } from "../positionCache";
 import type { SceneNodeData } from "../sceneController";
-import type { CameraState } from "./camera";
+import type { CameraState } from "./cameraCore";
 import { cssColorString } from "./tokenReads";
 
 /** The fixed canvas size the chrome should create (width × height in px). */

@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MinimapLayer } from "./minimapLayer";
 import type { NodePosition } from "../positionCache";
 import type { SceneNodeData } from "../sceneController";
-import type { CameraState } from "./camera";
+import type { CameraState } from "./cameraCore";
 
 const TOKENS: Record<string, string> = {
   "--color-canvas-bg": "#fdfaf6",
