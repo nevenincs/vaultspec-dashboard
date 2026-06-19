@@ -32,7 +32,6 @@ import type {
   SettingsState,
   TiersBlock,
   VaultTreeEntry,
-  WorkspacesState,
 } from "./engine";
 import { adaptLineageSlice, adaptStatus, unwrapEnvelope } from "./liveAdapters";
 import type { ContentView, StreamChunk } from "./queries";
@@ -89,7 +88,6 @@ import {
   deriveVaultTreeBrowserView,
   deriveVaultTreeAvailability,
   deriveVaultTreeSurfaceState,
-  deriveWorkspaceTitleView,
   deriveWorkspaceMapAvailability,
   deriveWorkspaceMapPickerPresentationView,
   deriveWorkspaceMapSurfaceState,
@@ -575,82 +573,6 @@ describe("stableKey", () => {
   });
 });
 
-describe("deriveWorkspaceTitleView (left-rail project title)", () => {
-  const registry: WorkspacesState = {
-    active_workspace: "workspace:b",
-    workspaces: [
-      {
-        id: "workspace:a",
-        label: "Alpha",
-        path: "/repo/a",
-        is_launch: true,
-        reachable: true,
-        unreachable_reason: null,
-      },
-      {
-        id: "workspace:b",
-        label: "Beta",
-        path: "/repo/b",
-        is_launch: false,
-        reachable: true,
-        unreachable_reason: null,
-      },
-    ],
-    tiers: {
-      structural: { available: true },
-    },
-  };
-
-  it("returns the active workspace title when the registry is loaded", () => {
-    expect(deriveWorkspaceTitleView(registry, false)).toMatchObject({
-      state: "ready",
-      label: "Beta",
-      path: "/repo/b",
-      current: registry.workspaces[1],
-      loadingLabel: "loading…",
-      loadingClassName: "px-fg-1 text-label text-ink-faint",
-      rootClassName: "flex items-center px-fg-1",
-      titleClassName: "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
-    });
-  });
-
-  it("falls back to the first root when the active workspace is absent", () => {
-    expect(
-      deriveWorkspaceTitleView({ ...registry, active_workspace: "missing" }, false),
-    ).toMatchObject({
-      state: "ready",
-      label: "Alpha",
-      path: "/repo/a",
-      current: registry.workspaces[0],
-    });
-  });
-
-  it("returns the neutral project label while loading or empty", () => {
-    expect(deriveWorkspaceTitleView(undefined, true)).toMatchObject({
-      state: "loading",
-      label: "Project",
-      path: undefined,
-      current: null,
-      loadingLabel: "loading…",
-      loadingClassName: "px-fg-1 text-label text-ink-faint",
-      rootClassName: "flex items-center px-fg-1",
-      titleClassName: "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
-    });
-    expect(
-      deriveWorkspaceTitleView({ ...registry, workspaces: [] }, false),
-    ).toMatchObject({
-      state: "ready",
-      label: "Project",
-      path: undefined,
-      current: null,
-      loadingLabel: "loading…",
-      loadingClassName: "px-fg-1 text-label text-ink-faint",
-      rootClassName: "flex items-center px-fg-1",
-      titleClassName: "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
-    });
-  });
-});
-
 describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
   const vocabulary: FiltersVocabulary = {
     relations: ["links"],
@@ -846,7 +768,7 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
     expect(view.presentation).toMatchObject({
       panelAriaLabel: "filter panel",
       panelClassName:
-        "pointer-events-auto absolute left-[8px] top-[42px] z-30 animate-slide-in-left",
+        "pointer-events-auto absolute left-0 top-[calc(100%+0.5rem)] z-30 animate-slide-in-left",
       headerClassName:
         "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
       titleClassName: "text-body font-medium text-ink",

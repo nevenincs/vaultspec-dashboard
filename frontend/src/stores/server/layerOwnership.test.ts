@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,22 +35,14 @@ const VIEW_STORES_ROOT = resolve(SRC_ROOT, "stores/view");
 const DASHBOARD_STATE_STORE = resolve(SRC_ROOT, "stores/server/dashboardState.ts");
 const NON_WHOLESALE_VIEW_RESETS = new Set([
   "commandPalette.ts:resetCommandPaletteOpsFeedback",
+  "commandPalette.ts:resetCommandPaletteSurfaceState",
   "opsReceipt.ts:resetOpsReceipt",
 ]);
 const ALLOWED_PRODUCTION_USE_STATE = new Map<string, number>([
   ["app/chrome/useElementWidth.ts:height:setHeight", 1],
   ["app/chrome/useElementWidth.ts:width:setWidth", 1],
   ["app/chrome/useReducedMotion.ts:reduced:setReduced", 1],
-  ["app/islands/HoverCard.tsx:bloomed:setBloomed", 1],
-  ["app/islands/IslandLayer.tsx:anchor:setAnchor", 1],
-  ["app/kit/Tooltip.tsx:open:setOpen", 1],
-  ["app/palette/CommandPalette.tsx:armedCommandId:setArmedCommandId", 1],
-  ["app/palette/CommandPalette.tsx:cursor:setCursor", 1],
-  ["app/palette/CommandPalette.tsx:query:setQuery", 1],
   ["app/stage/Stage.tsx:hostEl:setHostEl", 1],
-  ["app/timeline/Timeline.tsx:debug:setDebug", 1],
-  ["app/viewer/useHighlighter.ts:result:setResult", 2],
-  ["platform/dispatch/useAction.ts:armed:setArmed", 1],
 ]);
 const ALLOWED_PRODUCTION_STORE_HOOK_CALLS = new Map<string, number>([
   ["platform/errors/CrashInjector.tsx:useCrashStore", 3],
@@ -96,6 +88,10 @@ function importStatements(source: string): string[] {
   return [...source.matchAll(/import\s+(?:[\s\S]*?)\s+from\s+["'][^"']+["'];?/g)].map(
     (match) => match[0],
   );
+}
+
+function existingSourceRels(rels: readonly string[]): string[] {
+  return rels.filter((rel) => existsSync(join(SRC_ROOT, rel)));
 }
 
 function isRuntimeEngineImport(statement: string): boolean {
@@ -316,11 +312,33 @@ describe("dashboard layer ownership", () => {
     if (/\bpatchDashboardTimelineMode\b/.test(playhead)) {
       violations.push(`${PLAYHEAD_COMPONENT}: component owns timeline-mode write`);
     }
+    if (!/\bstartPlayheadDragPointerSession\s*\(/.test(playhead)) {
+      violations.push(`${PLAYHEAD_COMPONENT}: missing playhead drag pointer seam`);
+    }
+    if (/\b(?:host|globalThis)\.addEventListener\s*\(\s*["']pointer/.test(playhead)) {
+      violations.push(`${PLAYHEAD_COMPONENT}: local playhead pointer listener`);
+    }
+    if (
+      /\b(?:host|globalThis)\.removeEventListener\s*\(\s*["']pointer/.test(playhead)
+    ) {
+      violations.push(`${PLAYHEAD_COMPONENT}: local playhead pointer cleanup`);
+    }
     if (!/\bpatchDashboardTimelineMode\b/.test(intent)) {
       violations.push(`${TIMELINE_INTENT}: missing dashboard timeline-mode write`);
     }
     if (!/\bsetTimelinePlayhead\b/.test(intent)) {
       violations.push(`${TIMELINE_INTENT}: missing local playhead projection`);
+    }
+    for (const seam of [
+      "startPlayheadDragPointerSession",
+      "dragToPlayhead",
+      "keyboardStep",
+      "timelineViewportXToTime",
+      "timelineViewSnapshot",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(intent)) {
+        violations.push(`${TIMELINE_INTENT}: missing ${seam} seam`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -740,6 +758,13 @@ describe("dashboard layer ownership", () => {
 
   it("keeps OpsPanel rag-control reads behind the rag control view", () => {
     const rel = "app/right/OpsPanel.tsx";
+    if (!existsSync(join(SRC_ROOT, rel))) {
+      const rightRail = sourceFiles(join(SRC_ROOT, "app/right"))
+        .map((file) => stripComments(readFileSync(file, "utf8")))
+        .join("\n");
+      expect(rightRail).not.toMatch(/\buseOpsPanelRagControl\b|\buseRagControlView\b/);
+      return;
+    }
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const ragControl = stripComments(
       readFileSync(join(SRC_ROOT, "stores/server/ragControl.ts"), "utf8"),
@@ -1347,6 +1372,13 @@ describe("dashboard layer ownership", () => {
 
   it("keeps OpsPanel status and receipt composition behind the ops panel view", () => {
     const rel = "app/right/OpsPanel.tsx";
+    if (!existsSync(join(SRC_ROOT, rel))) {
+      const rightRail = sourceFiles(join(SRC_ROOT, "app/right"))
+        .map((file) => stripComments(readFileSync(file, "utf8")))
+        .join("\n");
+      expect(rightRail).not.toMatch(/\buseOpsPanelView\b|\buseOpsReceipt\b/);
+      return;
+    }
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
@@ -1441,6 +1473,13 @@ describe("dashboard layer ownership", () => {
 
   it("keeps OpsPanel watcher config draft behind the rag watcher draft seam", () => {
     const rel = "app/right/OpsPanel.tsx";
+    if (!existsSync(join(SRC_ROOT, rel))) {
+      const rightRail = sourceFiles(join(SRC_ROOT, "app/right"))
+        .map((file) => stripComments(readFileSync(file, "utf8")))
+        .join("\n");
+      expect(rightRail).not.toMatch(/\buseRagWatcherConfigDraft\b/);
+      return;
+    }
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
@@ -1668,6 +1707,20 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bderiveStatusCardPresentationView\s*\(\s*model\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing status-card presentation seam`);
+    }
+    if (!/\buseStatusCardBloomMotionView\s*\(\s*reduce\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing status-card bloom motion seam`);
+    }
+    if (/\buseState\b|\buseRef\b|\buseEffect\b/.test(stripped)) {
+      violations.push(`${rel}: local hover-card bloom lifecycle`);
+    }
+    if (!/\buseReducedMotion\s*\(\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing shared reduced-motion seam`);
+    }
+    for (const statement of importStatements(stripped)) {
+      if (/\bprefersReducedMotion\b/.test(statement)) {
+        violations.push(`${rel}: direct reduced-motion media-query helper import`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -2171,6 +2224,8 @@ describe("dashboard layer ownership", () => {
     const switchRel = "app/settings/controls/SwitchControl.tsx";
     const numberRel = "app/settings/controls/NumberControl.tsx";
     const textRel = "app/settings/controls/TextControl.tsx";
+    const keybindingRel = "app/settings/controls/KeybindingControl.tsx";
+    const viewRel = "stores/view/settingsControls.ts";
 
     for (const file of sourceFiles(join(SRC_ROOT, "app/settings/controls"))) {
       const rel = relative(SRC_ROOT, file).replaceAll("\\", "/");
@@ -2245,6 +2300,44 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bmaxLength\s*=\s*def\.value_type/.test(textControl)) {
       violations.push(`${textRel}: local text max-length projection`);
+    }
+
+    const keybindingControl = stripComments(
+      readFileSync(join(SRC_ROOT, keybindingRel), "utf8"),
+    );
+    const settingsControlView = stripComments(
+      readFileSync(join(SRC_ROOT, viewRel), "utf8"),
+    );
+    for (const seam of [
+      "deriveSettingsKeybindingControlView",
+      "useSettingsKeybindingRecorder",
+      "toggleSettingsKeybindingRecording",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(keybindingControl)) {
+        violations.push(`${keybindingRel}: missing ${seam} seam`);
+      }
+    }
+    if (/\buseState\s*\(/.test(keybindingControl)) {
+      violations.push(`${keybindingRel}: local keybinding recorder state`);
+    }
+    if (/\baddEventListener\s*\(\s*["']keydown["']/.test(keybindingControl)) {
+      violations.push(`${keybindingRel}: local keybinding recorder listener`);
+    }
+    if (
+      /\bKeyboardEvent\b|\bchordStringFromEvent\b|\bMODIFIER_KEYS\b/.test(
+        keybindingControl,
+      )
+    ) {
+      violations.push(`${keybindingRel}: local keybinding recorder key parsing`);
+    }
+    for (const seam of [
+      "useSettingsKeybindingRecorderStore",
+      "settingsKeybindingChordFromEvent",
+      "useSettingsKeybindingRecorder",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(settingsControlView)) {
+        violations.push(`${viewRel}: missing ${seam} keybinding recorder seam`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -2662,15 +2755,34 @@ describe("dashboard layer ownership", () => {
     if (/\$\{scope\s*\?\?\s*["']none["']\}::\$\{mode\}/.test(stripped)) {
       violations.push(`${rel}: browser-tree key can collide with literal none scope`);
     }
-    if (!/\bif\s*\(\s*id\.length\s*===\s*0\s*\)\s*return\s+state/.test(stripped)) {
-      violations.push(`${rel}: empty disclosure keys are not rejected at the seam`);
+    for (const seam of [
+      "normalizeBrowserTreeExpansionKey",
+      "normalizeBrowserTreeItemKey",
+      "normalizeBrowserTreeActiveKey",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} seam`);
+      }
     }
-    if (
-      !/\bconst\s+normalizedActiveKey\s*=\s*activeKey\s*===\s*["']["']\s*\?\s*null\s*:\s*activeKey/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: empty active key is not normalized at the seam`);
+    for (const typedOnly of [
+      "setKey: (key: string)",
+      "toggle: (key: string, id: string)",
+      "setActiveKey: (key: string, id: string | null)",
+      "toggle: (id: string) => void",
+      "setActiveKey: (id: string | null) => void",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only browser-tree expansion seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeBrowserTreeExpansionKey(key)",
+      "normalizeBrowserTreeItemKey(id)",
+      "normalizeBrowserTreeActiveKey(activeKey)",
+    ]) {
+      if (!stripped.includes(required)) {
+        violations.push(`${rel}: browser-tree update bypasses ${required}`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -2833,15 +2945,23 @@ describe("dashboard layer ownership", () => {
 
   it("keeps timeline navigation writes behind the timeline intent seam", () => {
     const rel = "app/timeline/TimelineControls.tsx";
+    const surfaceRel = "app/timeline/Timeline.tsx";
     const stageRel = "app/stage/StageNavBar.tsx";
     const menuRel = "app/timeline/menus/eventMarkMenu.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const timelineSurface = stripComments(
+      readFileSync(join(SRC_ROOT, surfaceRel), "utf8"),
+    );
     const stageNav = stripComments(readFileSync(join(SRC_ROOT, stageRel), "utf8"));
     const eventMenu = stripComments(readFileSync(join(SRC_ROOT, menuRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
-      if (/\bzoomAt\b|\btimeToStripX\b|\bclampPxPerMs\b/.test(statement)) {
+      if (
+        /\bzoomAt\b|\btimeToStripX\b|\bclampPxPerMs\b|\bfitTimelineSpan\b|\bsetTimelineViewport\b/.test(
+          statement,
+        )
+      ) {
         violations.push(`${rel}: app-layer timeline viewport math import`);
       }
       if (/\bMAX_PX_PER_MS\b|\bMIN_PX_PER_MS\b/.test(statement)) {
@@ -2855,6 +2975,15 @@ describe("dashboard layer ownership", () => {
         )
       ) {
         violations.push(`${stageRel}: timeline navigation write bypasses intent seam`);
+      }
+    }
+    for (const statement of importStatements(timelineSurface)) {
+      if (
+        /\bzoomAt\b|\bpanScrollOffset\b|\btimeToStripX\b|\bclampPxPerMs\b|\bfitTimelineSpan\b|\bfitTimelineViewportForScope\b|\bsetTimelineViewport\b|\bsetTimelineScrollOffset\b/.test(
+          statement,
+        )
+      ) {
+        violations.push(`${surfaceRel}: timeline viewport write bypasses intent seam`);
       }
     }
     for (const statement of importStatements(eventMenu)) {
@@ -2881,8 +3010,21 @@ describe("dashboard layer ownership", () => {
         violations.push(`${stageRel}: missing ${helper} seam`);
       }
     }
+    if (!/\bfitTimelineNavigationToDateRange\b/.test(stripped)) {
+      violations.push(`${rel}: missing fitTimelineNavigationToDateRange seam`);
+    }
     if (!/\bzoomTimelineNavigationToInstant\b/.test(eventMenu)) {
       violations.push(`${menuRel}: missing event zoom timeline intent seam`);
+    }
+    for (const helper of [
+      "zoomTimelineNavigationAt",
+      "panTimelineNavigation",
+      "jumpTimelineNavigationToCorpusEdge",
+      "fitTimelineScopeToCorpus",
+    ]) {
+      if (!new RegExp(`\\b${helper}\\b`).test(timelineSurface)) {
+        violations.push(`${surfaceRel}: missing ${helper} seam`);
+      }
     }
     if (/\bexport\s+const\s+ZOOM_STEP\b/.test(stripped)) {
       violations.push(`${rel}: local timeline zoom-step projection`);
@@ -2904,8 +3046,20 @@ describe("dashboard layer ownership", () => {
     if (/\bpxPerMs\s*[<>]\s*(?:MAX_PX_PER_MS|MIN_PX_PER_MS)\b/.test(stripped)) {
       violations.push(`${rel}: local timeline zoom-bound check`);
     }
-    if (/\btimeToStripX\s*\(/.test(stripped) || /\bzoomAt\s*\(/.test(stripped)) {
+    if (
+      /\btimeToStripX\s*\(/.test(stripped) ||
+      /\bzoomAt\s*\(/.test(stripped) ||
+      /\bfitTimelineSpan\s*\(/.test(stripped) ||
+      /\bsetTimelineViewport\s*\(/.test(stripped)
+    ) {
       violations.push(`${rel}: local timeline strip viewport projection`);
+    }
+    if (
+      /\b(?:zoomAt|panScrollOffset|timeToStripX|clampPxPerMs|fitTimelineSpan|fitTimelineViewportForScope|setTimelineViewport|setTimelineScrollOffset)\s*\(/.test(
+        timelineSurface,
+      )
+    ) {
+      violations.push(`${surfaceRel}: local timeline viewport write projection`);
     }
     if (
       /\bviewportZoomToInstant\b|\bsetTimelineViewport\s*\(|\btimelineViewSnapshot\s*\(|\bclampPxPerMs\s*\(|\bliveEdgeOffset\s*\(|\btimeToStripX\s*\(/.test(
@@ -3117,13 +3271,29 @@ describe("dashboard layer ownership", () => {
     }
     for (const helper of [
       "useTimelineRangeDragState",
-      "startTimelineRangeDrag",
-      "updateTimelineRangeDrag",
       "clearTimelineRangeDrag",
+      "startTimelineRangeDragPointerSession",
     ]) {
       if (!new RegExp(`\\b${helper}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${helper} seam`);
       }
+    }
+    for (const localOwner of [
+      "startTimelineRangeDrag",
+      "updateTimelineRangeDrag",
+      "timelineViewSnapshot",
+    ]) {
+      if (new RegExp(`\\b${localOwner}\\b`).test(stripped)) {
+        violations.push(`${rel}: app-layer ${localOwner} ownership`);
+      }
+    }
+    if (/\b(?:host|globalThis)\.addEventListener\s*\(\s*["']pointer/.test(stripped)) {
+      violations.push(`${rel}: local timeline range pointer listener`);
+    }
+    if (
+      /\b(?:host|globalThis)\.removeEventListener\s*\(\s*["']pointer/.test(stripped)
+    ) {
+      violations.push(`${rel}: local timeline range pointer cleanup`);
     }
 
     expect(violations).toEqual([]);
@@ -3208,6 +3378,12 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bnormalizeDashboardDateRange\b/.test(seam)) {
       violations.push("stores/server/dateRangeIntent.ts: missing date normalizer");
+    }
+    if (
+      /\bsetRange:\s*\(range:\s*DashboardDateRange\)/.test(seam) ||
+      /import\s+type\s+\{\s*DashboardDateRange\s*\}/.test(seam)
+    ) {
+      violations.push("stores/server/dateRangeIntent.ts: typed-only setRange seam");
     }
     if (
       !/\bsetRange:\s*\([^)]*range[^)]*\)\s*=>[\s\S]*mutations\.setDateRange\s*\(\s*normalizeDashboardDateRange\s*\(\s*range\s*\)/.test(
@@ -3396,9 +3572,7 @@ describe("dashboard layer ownership", () => {
   it("keeps enrolled timeline-mode consumers behind the stores timeline view", () => {
     const enrolled = new Set([
       "app/palette/CommandPalette.tsx",
-      "app/right/OpsPanel.tsx",
       "app/right/StatusTab.tsx",
-      "app/right/WorkTab.tsx",
       "app/stage/LensSelector.tsx",
       "app/stage/TierDial.tsx",
     ]);
@@ -3801,11 +3975,40 @@ describe("dashboard layer ownership", () => {
     if (/\bupdatePanelState\s*\(/.test(stripped)) {
       violations.push(`${rel}: local dashboard panel-state write`);
     }
-    if (!/\bshellResizePointerSize\b/.test(stripped)) {
-      violations.push(`${rel}: missing stores shell pointer-resize seam`);
+    if (!/\bstartShellResizePointerSession\b/.test(stripped)) {
+      violations.push(`${rel}: missing stores shell pointer-resize intent seam`);
     }
-    if (!/\bshellResizeKeySize\b/.test(stripped)) {
-      violations.push(`${rel}: missing stores shell keyboard-resize seam`);
+    if (!/\bresizeShellPanelByKey\b/.test(stripped)) {
+      violations.push(`${rel}: missing stores shell keyboard-resize intent seam`);
+    }
+    if (/\bshellResizePointerSize\b/.test(stripped)) {
+      violations.push(`${rel}: local shell pointer-resize projection`);
+    }
+    if (/\bshellResizeKeySize\b/.test(stripped)) {
+      violations.push(`${rel}: local shell keyboard-resize projection`);
+    }
+    if (
+      /\b(?:document|ownerDocument)\.addEventListener\s*\(\s*["']pointermove["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: local shell pointermove listener`);
+    }
+    if (
+      /\b(?:document|ownerDocument)\.addEventListener\s*\(\s*["']pointerup["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: local shell pointerup listener`);
+    }
+    for (const statement of importStatements(stripped)) {
+      if (
+        /\b(?:LEFT_RAIL_MIN_WIDTH|LEFT_RAIL_MAX_WIDTH|RIGHT_RAIL_MIN_WIDTH|RIGHT_RAIL_MAX_WIDTH|TIMELINE_MIN_HEIGHT|TIMELINE_MAX_HEIGHT|setShellLeftRailWidth|setShellRightRailWidth|setShellTimelineHeight)\b/.test(
+          statement,
+        )
+      ) {
+        violations.push(`${rel}: app-layer shell resize bound/write import`);
+      }
     }
     if (/\bboundedShellPanelSize\s*\(/.test(stripped)) {
       violations.push(`${rel}: local shell panel bounding projection`);
@@ -3911,6 +4114,15 @@ describe("dashboard layer ownership", () => {
     if (!/\bnormalizeDashboardPanelStateUpdate\b/.test(stripped)) {
       violations.push(`${rel}: panel-state intent bypasses update normalizer`);
     }
+    for (const typedOnly of [
+      "setLeftCollapsed: (leftCollapsed: boolean)",
+      "setRightCollapsed: (rightCollapsed: boolean)",
+      "setRightTab: (rightTab: DashboardPanelState",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only panel intent seam ${typedOnly}`);
+      }
+    }
     if (
       !/\bsetLeftCollapsed:\s*\([^)]*leftCollapsed[^)]*\)\s*=>[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*left_collapsed:\s*leftCollapsed\s*\}/.test(
         stripped,
@@ -3946,8 +4158,27 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizeDashboardPanelState\b/.test(dashboard)) {
       violations.push(`${dashboardRel}: missing panel-state normalizer`);
     }
+    if (
+      !/\bfunction\s+dashboardPanelStateRecord\s*\(\s*state:\s*unknown\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: missing panel-state unknown input reader`);
+    }
     if (!/\bexport\s+function\s+normalizeDashboardPanelStateUpdate\b/.test(dashboard)) {
       violations.push(`${dashboardRel}: missing panel-state update normalizer`);
+    }
+    if (
+      /\bnormalizeDashboardPanelState\s*\(\s*state:\s*Partial<DashboardPanelState>/.test(
+        dashboard,
+      ) ||
+      /\bnormalizeDashboardPanelStateUpdate\s*\(\s*update:\s*Partial<DashboardPanelState>/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(
+        `${dashboardRel}: panel-state normalizer exposes typed-only input`,
+      );
     }
     if (
       !/\bpanelStatePatch\b[\s\S]*\bnormalizeDashboardPanelState\s*\(/.test(dashboard)
@@ -3998,6 +4229,18 @@ describe("dashboard layer ownership", () => {
       if (/\bconst\s+RAIL_TABS\b/.test(stripped)) {
         violations.push(`${rel}: local right-rail tab option list`);
       }
+      if (
+        rel === "app/right/RailTabs.tsx" &&
+        !/\brightRailAdjacentTab\b/.test(stripped)
+      ) {
+        violations.push(`${rel}: missing right-rail roving movement seam`);
+      }
+      if (
+        rel === "app/right/RailTabs.tsx" &&
+        /\bRIGHT_RAIL_TABS\.length\b|%\s*RIGHT_RAIL_TABS\.length/.test(stripped)
+      ) {
+        violations.push(`${rel}: local right-rail roving movement projection`);
+      }
       for (const label of ["Status", "Changes", "Search"]) {
         if (new RegExp(`label:\\s*["']${label}["']`).test(stripped)) {
           violations.push(`${rel}: local ${label.toLowerCase()} tab label`);
@@ -4032,6 +4275,113 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bpanelIntent\./.test(palette)) {
       violations.push(`${paletteRel}: local shell panel intent dispatch`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps right-rail keybinding enrollment behind the stores-owned view seam", () => {
+    const appRel = "app/right/rightRailActions.tsx";
+    const seamRel = "stores/view/rightRailKeybindings.ts";
+    const app = stripComments(readFileSync(join(SRC_ROOT, appRel), "utf8"));
+    const seam = stripComments(readFileSync(join(SRC_ROOT, seamRel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/from\s+["']\.\.\/\.\.\/stores\/view\/rightRailKeybindings["']/.test(app)) {
+      violations.push(`${appRel}: missing right-rail keybinding seam export`);
+    }
+    for (const localOwner of [
+      "registerKeybindings",
+      "registerKeyAction",
+      "useShellPanelIntent",
+      "useActiveScope",
+      "RIGHT_RAIL_TABS",
+      "queueMicrotask",
+      "document.querySelector",
+      "focusRightRailSearch",
+      "focusSearchField",
+      "rightRailTabChord",
+    ]) {
+      if (new RegExp(`\\b${localOwner.replace(".", "\\.")}\\b`).test(app)) {
+        violations.push(`${appRel}: app-layer ${localOwner} ownership`);
+      }
+    }
+    if (/setRightTab\s*\(\s*["']search["']\s*\)/.test(app)) {
+      violations.push(`${appRel}: app-layer search tab write`);
+    }
+
+    for (const required of [
+      "RIGHT_RAIL_TABS",
+      "useShellPanelIntent",
+      "useActiveScope",
+      "registerKeybindings",
+      "registerKeyAction",
+      "deriveRightRailKeybindings",
+      "rightRailTabActionId",
+      "RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID",
+    ]) {
+      if (!new RegExp(`\\b${required}\\b`).test(seam)) {
+        violations.push(`${seamRel}: missing ${required}`);
+      }
+    }
+    if (!/\buseShellPanelIntent\s*\(\s*scope\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: panel intent is not scoped from active scope`);
+    }
+    if (!/setRightTab\s*\(\s*["']search["']\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: missing centralized focus-search tab write`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps left-rail keybinding enrollment behind the stores-owned view seam", () => {
+    const appRel = "app/left/leftRailActions.tsx";
+    const seamRel = "stores/view/leftRailKeybindings.ts";
+    const app = stripComments(readFileSync(join(SRC_ROOT, appRel), "utf8"));
+    const seam = stripComments(readFileSync(join(SRC_ROOT, seamRel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/from\s+["']\.\.\/\.\.\/stores\/view\/leftRailKeybindings["']/.test(app)) {
+      violations.push(`${appRel}: missing left-rail keybinding seam export`);
+    }
+    for (const localOwner of [
+      "registerKeybindings",
+      "registerKeyAction",
+      "useActiveScope",
+      "useDashboardTextFilterDraft",
+      "cycleBrowserMode",
+      "document.querySelector",
+      "focusLeftRailFilter",
+      "deriveLeftRailKeybindings",
+    ]) {
+      if (new RegExp(`\\b${localOwner.replace(".", "\\.")}\\b`).test(app)) {
+        violations.push(`${appRel}: app-layer ${localOwner} ownership`);
+      }
+    }
+
+    for (const required of [
+      "useActiveScope",
+      "useDashboardTextFilterDraft",
+      "cycleBrowserMode",
+      "registerKeybindings",
+      "registerKeyAction",
+      "deriveLeftRailKeybindings",
+      "LEFT_RAIL_CYCLE_MODE_ACTION_ID",
+      "LEFT_RAIL_FOCUS_FILTER_ACTION_ID",
+      "LEFT_RAIL_CLEAR_FILTER_ACTION_ID",
+    ]) {
+      if (!new RegExp(`\\b${required}\\b`).test(seam)) {
+        violations.push(`${seamRel}: missing ${required}`);
+      }
+    }
+    if (!/\buseDashboardTextFilterDraft\s*\(\s*scope\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: text-filter draft is not scoped from active scope`);
+    }
+    if (!/\brun\s*:\s*cycleBrowserMode\b/.test(seam)) {
+      violations.push(`${seamRel}: missing centralized browser-mode cycle action`);
+    }
+    if (!/\btextFilter\.clear\s*\(\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: missing centralized text-filter clear action`);
     }
 
     expect(violations).toEqual([]);
@@ -4132,6 +4482,15 @@ describe("dashboard layer ownership", () => {
     if (!/\bwriteIntent\.write\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing settings row write dispatch`);
     }
+    if (
+      !/\bexport\s+function\s+isSettingsEditTarget\s*\(\s*value:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: settings edit-target validator accepts typed-only input`,
+      );
+    }
     if (!/\bisSettingsEditTarget\s*\(\s*nextTarget\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing settings edit-target runtime validation`);
     }
@@ -4157,6 +4516,21 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: missing settings row write normalizer`);
     }
     if (
+      !/\bfunction\s+settingsRowWriteRecord\s*\(\s*update:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing settings row unknown input reader`);
+    }
+    if (
+      /\bnormalizeSettingsRowWrite\s*\(\s*update:\s*Partial<SettingsRowWrite>/.test(
+        stripped,
+      ) ||
+      /\bupdate:\s*SettingsRowWrite,\s*[\r\n\s]*handlers\?/.test(stripped)
+    ) {
+      violations.push(`${rel}: settings row write exposes typed-only input seam`);
+    }
+    if (
       !/\bconst\s+normalized\s*=\s*normalizeSettingsRowWrite\s*\(\s*update\s*\)/.test(
         stripped,
       )
@@ -4171,6 +4545,12 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bsettingsWriteErrorMessage\s*\(\s*error\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing normalized settings write error`);
+    }
+    if (!/\bDEFAULT_SETTINGS_WRITE_ERROR\b/.test(stripped)) {
+      violations.push(`${rel}: missing settings write fallback error message`);
+    }
+    if (/\bconst\s+err\s*=\s*error\s+as\s+EngineError\b/.test(stripped)) {
+      violations.push(`${rel}: settings write error uses typed-only cast`);
     }
 
     expect(violations).toEqual([]);
@@ -4187,8 +4567,27 @@ describe("dashboard layer ownership", () => {
     if (!/\bCONSUMED_SETTING_KEYS\.theme\b/.test(stripped)) {
       violations.push(`${rel}: missing stores-owned theme setting key`);
     }
+    if (!/\bexport\s+function\s+normalizeThemeSettingPreference\b/.test(stripped)) {
+      violations.push(`${rel}: missing theme preference write normalizer`);
+    }
+    if (!/\bisThemePreference\s*\(\s*value\s*\)/.test(stripped)) {
+      violations.push(`${rel}: theme preference normalizer bypasses platform domain`);
+    }
+    if (/\bsetThemePreference:\s*\(value:\s*string\)/.test(stripped)) {
+      violations.push(`${rel}: typed-only theme preference seam`);
+    }
     if (
-      !/\bsetThemePreference\b[\s\S]*\bputSettings\.mutate\s*\(\s*\{\s*key:\s*CONSUMED_SETTING_KEYS\.theme\s*,\s*value\s*\}/.test(
+      !/\bconst\s+normalized\s*=\s*normalizeThemeSettingPreference\s*\(\s*value\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: theme preference dispatch bypasses normalizer`);
+    }
+    if (!/\bif\s*\(\s*normalized\s*===\s*null\s*\)\s*return\b/.test(stripped)) {
+      violations.push(`${rel}: malformed theme preference write is not dropped`);
+    }
+    if (
+      !/\bsetThemePreference\b[\s\S]*\bputSettings\.mutate\s*\(\s*\{\s*key:\s*CONSUMED_SETTING_KEYS\.theme\s*,\s*value:\s*normalized\s*\}/.test(
         stripped,
       )
     ) {
@@ -4409,6 +4808,9 @@ describe("dashboard layer ownership", () => {
     if (!/\bconst\s+INSPECTOR_TIER_IDS\s*=\s*\[/.test(stripped)) {
       violations.push(`${rel}: missing canonical inspector tier vocabulary`);
     }
+    if (!/\bexport\s+function\s+normalizeInspectorExpansionKey\b/.test(stripped)) {
+      violations.push(`${rel}: missing inspector expansion key normalizer`);
+    }
     if (!/\bexport\s+function\s+normalizeInspectorExpansionTier\b/.test(stripped)) {
       violations.push(`${rel}: missing inspector expansion tier normalizer`);
     }
@@ -4419,12 +4821,30 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: inspector expansion tier list bypasses normalizer`);
     }
+    for (const typedOnly of [
+      "setKey: (key: string)",
+      "toggleTier: (key: string, tier: string)",
+      "pruneVisible: (key: string, visibleTiers: readonly string[])",
+      "visibleTiers: readonly string[]",
+      "toggle: (tier: string) => void",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only inspector expansion seam ${typedOnly}`);
+      }
+    }
     if (
-      !/\btoggleTier:\s*\(key,\s*tier\)\s*=>[\s\S]*\bnormalizeInspectorExpansionTier\s*\(\s*tier\s*\)[\s\S]*\bnormalizeInspectorExpansionTiers\s*\(/.test(
+      !/\bsetKey:\s*\(key\)[\s\S]*\bnormalizeInspectorExpansionKey\s*\(\s*key\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: inspector expansion toggle bypasses tier normalizer`);
+      violations.push(`${rel}: inspector setKey bypasses key normalizer`);
+    }
+    if (
+      !/\btoggleTier:\s*\(key,\s*tier\)\s*=>[\s\S]*\bnormalizeInspectorExpansionKey\s*\(\s*key\s*\)[\s\S]*\bnormalizeInspectorExpansionTier\s*\(\s*tier\s*\)[\s\S]*\bnormalizeInspectorExpansionTiers\s*\(/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: inspector expansion toggle bypasses normalizers`);
     }
     const storeBlock = stripped;
     const pruneStart = storeBlock.lastIndexOf("pruneVisible:");
@@ -4434,12 +4854,13 @@ describe("dashboard layer ownership", () => {
         ? storeBlock.slice(pruneStart, pruneEnd)
         : "";
     if (
+      !/\bnormalizeInspectorExpansionKey\s*\(\s*key\s*\)/.test(pruneBlock) ||
       !/\bnormalizeInspectorExpansionTiers\s*\(\s*visibleTiers\s*\)/.test(pruneBlock) ||
       !/\bnormalizeInspectorExpansionTiers\s*\(\s*state\.expandedTiers\s*,?\s*\)/.test(
         pruneBlock,
       )
     ) {
-      violations.push(`${rel}: inspector expansion prune bypasses tier normalizer`);
+      violations.push(`${rel}: inspector expansion prune bypasses normalizers`);
     }
 
     expect(violations).toEqual([]);
@@ -4536,7 +4957,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps keyboard selection behind the selection seam", () => {
     const rel = "app/a11y/KeyboardNav.tsx";
+    const seamRel = "stores/view/keyboardNavigation.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const seam = stripComments(readFileSync(join(SRC_ROOT, seamRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -4565,13 +4988,14 @@ describe("dashboard layer ownership", () => {
     if (/\bneighbors\.data\b|\bvocabulary\.featureTags\b/.test(stripped)) {
       violations.push(`${rel}: local keyboard navigation data projection`);
     }
-    if (!/\buseDashboardSelectedNodeId\s*\(\s*scope\s*\)/.test(stripped)) {
-      if (!/\buseKeyboardNavigationView\s*\(\s*scope\s*\)/.test(stripped)) {
-        violations.push(`${rel}: missing keyboard navigation selector seam`);
-      }
+    if (!/\buseKeyboardNavigationSurface\s*\(\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing keyboard navigation surface seam`);
     }
-    if (!/\buseDashboardNodeSelection\s*\(\s*scope\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing dashboard node-selection seam`);
+    if (/\buseDashboardNodeSelection\s*\(/.test(stripped)) {
+      violations.push(`${rel}: app-layer dashboard node-selection seam`);
+    }
+    if (!/\buseDashboardNodeSelection\s*\(\s*scope\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: missing dashboard node-selection seam`);
     }
 
     expect(violations).toEqual([]);
@@ -4579,12 +5003,17 @@ describe("dashboard layer ownership", () => {
 
   it("keeps keyboard navigation data behind the keyboard navigation view", () => {
     const rel = "app/a11y/KeyboardNav.tsx";
+    const seamRel = "stores/view/keyboardNavigation.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const seam = stripComments(readFileSync(join(SRC_ROOT, seamRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
       if (/\buseDashboardSelectedNodeId\b/.test(statement)) {
         violations.push(`${rel}: raw keyboard selected-node read`);
+      }
+      if (/\buseKeyboardNavigationView\b/.test(statement)) {
+        violations.push(`${rel}: app-layer keyboard navigation view import`);
       }
       if (/\bderiveKeyboardNavigationView\b/.test(statement)) {
         violations.push(`${rel}: app-layer keyboard navigation projection`);
@@ -4610,25 +5039,75 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: local keyboard navigation data assembly`);
     }
     if (
-      !/\bconst\s+navigation\s*=\s*useKeyboardNavigationView\s*\(\s*scope\s*\)/.test(
+      !/\bconst\s+navigation\s*=\s*useKeyboardNavigationSurface\s*\(\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: missing canonical keyboard navigation view`);
+      violations.push(`${rel}: missing canonical keyboard navigation surface`);
     }
-    if (!/\bderiveKeyboardNavigationKeyIntent\s*\(/.test(stripped)) {
-      violations.push(`${rel}: missing stores keyboard key-intent projection`);
+    if (/\bderiveKeyboardNavigationKeyIntent\s*\(/.test(stripped)) {
+      violations.push(`${rel}: local keyboard key-intent projection`);
+    }
+    if (/\bintent\.kind\s*===\s*["'](?:select-node|move-playhead)["']/.test(stripped)) {
+      violations.push(`${rel}: local keyboard intent dispatch`);
+    }
+    for (const appOwner of [
+      "KEYBOARD_NAVIGATION_BINDINGS",
+      "keyboardNavigationKeyForAction",
+      "registerKeybindings",
+      "registerKeyAction",
+      "useKeymapDispatcher",
+      "timelineViewSnapshot",
+      "visibleRange",
+      "movePlayhead",
+    ]) {
+      if (new RegExp(`\\b${appOwner}\\b`).test(stripped)) {
+        violations.push(`${rel}: app-layer ${appOwner} ownership`);
+      }
+    }
+    for (const required of [
+      "KEYBOARD_NAVIGATION_BINDINGS",
+      "keyboardNavigationKeyForAction",
+      "deriveKeyboardNavigationKeyIntent",
+      "deriveKeyboardNavigationActionDescriptor",
+      "useKeyboardNavigationView",
+      "useKeyboardNavigationKeybindings",
+      "useKeyboardNavigationSurface",
+      "registerKeybindings",
+      "registerKeyAction",
+      "useKeymapDispatcher",
+    ]) {
+      if (!new RegExp(`\\b${required}\\b`).test(seam)) {
+        violations.push(`${seamRel}: missing ${required} keymap seam`);
+      }
     }
     if (
-      !/\bconst\s+intent\s*=\s*deriveKeyboardNavigationKeyIntent\s*\(/.test(stripped)
+      !/\bconst\s+navigation\s*=\s*useKeyboardNavigationView\s*\(\s*scope\s*\)/.test(
+        seam,
+      )
     ) {
-      violations.push(`${rel}: missing keyboard intent dispatch seam`);
+      violations.push(`${seamRel}: missing canonical keyboard navigation view`);
     }
-    if (!/\bintent\.kind\s*===\s*["']select-node["']/.test(stripped)) {
-      violations.push(`${rel}: missing select-node keyboard intent dispatch`);
+    if (!/\bconst\s+intent\s*=\s*deriveKeyboardNavigationKeyIntent\s*\(/.test(seam)) {
+      violations.push(`${seamRel}: missing keyboard intent dispatch seam`);
     }
-    if (!/\bintent\.kind\s*===\s*["']move-playhead["']/.test(stripped)) {
-      violations.push(`${rel}: missing playhead keyboard intent dispatch`);
+    if (!/\bintent\.kind\s*===\s*["']select-node["']/.test(seam)) {
+      violations.push(`${seamRel}: missing select-node keyboard intent dispatch`);
+    }
+    if (!/\bmovePlayhead\s*\(\s*intent\.playhead\s*,\s*scope\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: missing playhead keyboard intent dispatch`);
+    }
+    if (!/\btimelineVisibleRange\s*\(/.test(seam)) {
+      violations.push(`${seamRel}: missing stores timeline visible-range projection`);
+    }
+    if (/\baddEventListener\s*\(\s*["']keydown["']/.test(stripped)) {
+      violations.push(`${rel}: local keyboard navigation listener`);
+    }
+    if (/\b(?:e|event)\.(?:ctrlKey|metaKey|altKey)\b/.test(stripped)) {
+      violations.push(`${rel}: local keyboard modifier inspection`);
+    }
+    if (/\bisFormTarget\b/.test(stripped)) {
+      violations.push(`${rel}: local form-target key guard`);
     }
     if (
       /\bfunction\s+cycle\b|\bfunction\s+bracketStep\b|\bfunction\s+steppedPlayhead\b/.test(
@@ -5944,7 +6423,7 @@ describe("dashboard layer ownership", () => {
       "bindPinsToScene",
       "useWorkingSet",
       "handleStageSceneEvent",
-      "reconcileGraphAffordances",
+      "useGraphAffordanceReconciliation",
     ]) {
       if (!new RegExp(`\\b${required}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${required} seam`);
@@ -5985,7 +6464,11 @@ describe("dashboard layer ownership", () => {
       if (rel === "app/stage/Stage.tsx") continue;
 
       for (const statement of importStatements(stripped)) {
-        if (/\breconcileGraphAffordances\b/.test(statement)) {
+        if (
+          /\b(?:reconcileGraphAffordances|useGraphAffordanceReconciliation)\b/.test(
+            statement,
+          )
+        ) {
           violations.push(
             `${rel}: graph-affordance reconciliation outside Stage owner`,
           );
@@ -5999,23 +6482,29 @@ describe("dashboard layer ownership", () => {
     const stage = stripComments(
       readFileSync(join(SRC_ROOT, "app/stage/Stage.tsx"), "utf8"),
     );
-    if (!/\breconcileGraphAffordances\b/.test(stage)) {
+    if (!/\buseGraphAffordanceReconciliation\b/.test(stage)) {
       violations.push(
         "app/stage/Stage.tsx: missing graph-affordance reconciliation seam",
       );
     }
+    if (/\bmergedNodeIds\b|\bmerged\.nodes\.map\s*\(/.test(stage)) {
+      violations.push("app/stage/Stage.tsx: local graph-affordance id projection");
+    }
+    if (!/\buseGraphAffordanceReconciliation\s*\(\s*merged\s*\)/.test(stage)) {
+      violations.push(
+        "app/stage/Stage.tsx: reconciliation is not fed by merged graph model",
+      );
+    }
+    const seam = stripComments(
+      readFileSync(join(SRC_ROOT, "stores/view/graphAffordances.ts"), "utf8"),
+    );
     if (
-      !/const\s+mergedNodeIds\s*=\s*useMemo\s*\(\s*\(\)\s*=>\s*\(\s*merged\s*\?\s*merged\.nodes\.map\s*\(\s*\(\s*node\s*\)\s*=>\s*node\.id\s*\)\s*:\s*null\s*\)/.test(
-        stage,
+      !/\bgraphAffordanceNodeIds\b[\s\S]*\.nodes\.map\s*\(\s*\(\s*node\s*\)\s*=>\s*node\.id\s*\)/.test(
+        seam,
       )
     ) {
       violations.push(
-        "app/stage/Stage.tsx: graph-affordance ids are not derived from merged nodes",
-      );
-    }
-    if (!/\breconcileGraphAffordances\s*\(\s*mergedNodeIds\s*\)/.test(stage)) {
-      violations.push(
-        "app/stage/Stage.tsx: reconciliation is not fed by merged node ids",
+        "stores/view/graphAffordances.ts: missing graph-owned node-id projection",
       );
     }
 
@@ -6291,6 +6780,16 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${discoveriesRel}: discovery panel open target is raw`);
     }
+    if (!/\bopen:\s*\(\s*nodeId:\s*unknown\s*\)\s*=>\s*void\b/.test(discoveries)) {
+      violations.push(
+        `${discoveriesRel}: discovery panel open accepts typed-only input`,
+      );
+    }
+    if (!/\bopenDiscoveryPanel\s*\(\s*nodeId:\s*unknown\s*\)/.test(discoveries)) {
+      violations.push(
+        `${discoveriesRel}: discovery panel public open accepts typed-only input`,
+      );
+    }
     if (
       !/\buseDiscoveryPanelOpenFor\b[\s\S]*\bnormalizeNodeId\s*\(\s*state\.openFor\s*\)/.test(
         discoveries,
@@ -6553,6 +7052,8 @@ describe("dashboard layer ownership", () => {
   it("keeps minimap chrome state behind the minimap chrome seam", () => {
     const rel = "app/stage/MinimapWidget.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const storeRel = "stores/view/minimapChrome.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -6571,6 +7072,22 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\btoggleMinimapCollapsed\b/.test(stripped)) {
       violations.push(`${rel}: missing minimap collapse write seam`);
+    }
+    if (!/\bexport\s+function\s+normalizeMinimapCollapsed\b/.test(store)) {
+      violations.push(`${storeRel}: missing minimap collapsed normalizer`);
+    }
+    if (
+      !/\bsetCollapsed:\s*\(collapsed\)\s*=>[\s\S]*\bnormalizeMinimapCollapsed\s*\(\s*collapsed\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: setCollapsed bypasses normalizer`);
+    }
+    if (
+      /\bsetCollapsed:\s*\([^)]*:\s*boolean/.test(store) ||
+      /\bfunction\s+setMinimapCollapsed\s*\([^)]*:\s*boolean/.test(store)
+    ) {
+      violations.push(`${storeRel}: minimap setter exposes typed-only input seam`);
     }
     for (const field of [
       "view.collapsed",
@@ -6678,7 +7195,7 @@ describe("dashboard layer ownership", () => {
     const files = [
       {
         rel: "app/islands/HoverCardLayer.tsx",
-        allowedTuples: new Set([]),
+        allowedTuples: new Set<string>(),
         required: [
           /\buseHoveredNodeId\s*\(\s*\)/,
           /\buseDwelledHoverNodeId\s*\(\s*hoveredId\s*\)/,
@@ -6686,16 +7203,18 @@ describe("dashboard layer ownership", () => {
           /\bderiveHoverCardLayerView\s*\(\s*dwelledId\s*,\s*openedIds\s*\)/,
           /\bopenNodeIsland\s*\(\s*openId\s*,\s*scope\s*\)/,
           /\buseHoverCardView\s*\(\s*id\s*,\s*scope\s*\)/,
+          /["']\.\.\/\.\.\/stores\/view\/islandAnchors["']/,
         ],
       },
       {
         rel: "app/islands/IslandLayer.tsx",
-        allowedTuples: new Set(["anchor:setAnchor"]),
+        allowedTuples: new Set<string>(),
         required: [
           /\buseOpenedNodeIslands\s*\(\s*\)/,
           /\bcloseNodeIsland\s*\(\s*id\s*\)/,
-          /\bscene\.trackNode\s*\(\s*id\s*,\s*setAnchor\s*\)/,
+          /\buseNodeAnchor\s*\(\s*scene\s*,\s*id\s*\)/,
           /\bopenContextMenu\s*\(\s*\{\s*kind:\s*"island"\s*,\s*id\s*,\s*scope\s*\}/,
+          /["']\.\.\/\.\.\/stores\/view\/islandAnchors["']/,
         ],
       },
     ];
@@ -6724,6 +7243,9 @@ describe("dashboard layer ownership", () => {
         /\bselectNode\s*\(|\bselectNodes\s*\(|\bisNodeIslandOpen\s*\(/.test(stripped)
       ) {
         violations.push(`${rel}: overlay bypasses selection seam`);
+      }
+      if (/\bscene\.trackNode\s*\(/.test(stripped)) {
+        violations.push(`${rel}: raw scene anchor subscription`);
       }
       if (/\.openedIds\b|\.openNode\s*\(|\.closeNode\s*\(/.test(stripped)) {
         violations.push(`${rel}: raw opened-island state access`);
@@ -7345,6 +7867,19 @@ describe("dashboard layer ownership", () => {
     if (!highlighter.includes("langLoads") || !highlighter.includes("new Map")) {
       violations.push("app/viewer/useHighlighter.ts: missing grammar load de-dupe map");
     }
+    if (/\buseState\s*\(/.test(highlighter)) {
+      violations.push("app/viewer/useHighlighter.ts: hook-local tokenization state");
+    }
+    if (!/\buseSyncExternalStore\b/.test(highlighter)) {
+      violations.push(
+        "app/viewer/useHighlighter.ts: missing external-store snapshot seam",
+      );
+    }
+    if (!/\bTOKENIZATION_CACHE_CAP\b/.test(highlighter)) {
+      violations.push(
+        "app/viewer/useHighlighter.ts: missing bounded tokenization cache",
+      );
+    }
 
     const codeViewer = stripComments(readFileSync(CODE_VIEWER, "utf8"));
     if (
@@ -7502,7 +8037,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps markdown editor reads behind the editor read model", () => {
     const rel = "app/viewer/MarkdownDocView.tsx";
+    const storeRel = "stores/view/editor.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -7530,6 +8067,32 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\beditorChrome\.frontmatterDraft\b/.test(stripped)) {
       violations.push(`${rel}: missing frontmatter draft read-model seam`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeMarkdownEditorFrontmatterDraft\s*\([\s\S]*?\bdraft:\s*unknown[\s\S]*?\):\s*Partial<MarkdownEditorFrontmatterDraft>/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing frontmatter draft runtime normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeEditorDraftText\s*\(\s*value:\s*unknown\s*\)/.test(store)
+    ) {
+      violations.push(`${storeRel}: missing editor draft text normalizer`);
+    }
+    if (
+      !/\bsetRenameDraft:\s*\(draft\)\s*=>\s*set\s*\(\s*\{\s*renameDraft:\s*normalizeEditorDraftText\s*\(\s*draft\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: rename draft setter bypasses normalizer`);
+    }
+    if (
+      !/\bsetFrontmatterDraft:\s*\(draft\)\s*=>[\s\S]*\bnormalizeMarkdownEditorFrontmatterDraft\s*\(\s*draft\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: frontmatter draft setter bypasses normalizer`);
     }
     if (/\bSTATUS_LABEL\b/.test(stripped)) {
       violations.push(`${rel}: local editor status labels`);
@@ -7780,6 +8343,12 @@ describe("dashboard layer ownership", () => {
 
   it("keeps shell layout writes behind the shell layout seam", () => {
     const violations: string[] = [];
+    const shellLayoutRel = "stores/view/shellLayout.ts";
+    const viewStoreRel = "stores/view/viewStore.ts";
+    const shellLayout = stripComments(
+      readFileSync(join(SRC_ROOT, shellLayoutRel), "utf8"),
+    );
+    const viewStore = stripComments(readFileSync(join(SRC_ROOT, viewStoreRel), "utf8"));
     const rawShellLayoutWrite =
       /\.(?:setLeftRailVisible|setLeftRailWidth|setRightRailWidth|setTimelineVisible|setTimelineHeight|setPanelFlyoutOpen|togglePanelFlyout)\s*\(/;
     const rawShellLayoutRead =
@@ -7811,11 +8380,52 @@ describe("dashboard layer ownership", () => {
       }
     }
 
+    for (const seam of [
+      "normalizeShellLayoutVisible",
+      "normalizeShellLayoutPanelSize",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(viewStore)) {
+        violations.push(`${viewStoreRel}: missing ${seam} seam`);
+      }
+    }
+    for (const typedOnly of [
+      "setLeftRailVisible: (visible: boolean)",
+      "setLeftRailWidth: (width: number)",
+      "setRightRailWidth: (width: number)",
+      "setTimelineVisible: (visible: boolean)",
+      "setTimelineHeight: (height: number)",
+      "setPanelFlyoutOpen: (open: boolean)",
+      "setShellLeftRailVisible(visible: boolean)",
+      "setShellLeftRailWidth(width: number)",
+      "setShellRightRailWidth(width: number)",
+      "setShellTimelineVisible(visible: boolean)",
+      "setShellTimelineHeight(height: number)",
+      "setShellPanelFlyoutOpen(open: boolean)",
+    ]) {
+      if (viewStore.includes(typedOnly) || shellLayout.includes(typedOnly)) {
+        violations.push(`shell layout typed-only seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeShellLayoutVisible(leftRailVisible)",
+      "normalizeShellLayoutPanelSize(\n        width,\n        LEFT_RAIL_MIN_WIDTH,\n        LEFT_RAIL_MAX_WIDTH",
+      "normalizeShellLayoutPanelSize(\n        width,\n        RIGHT_RAIL_MIN_WIDTH,\n        RIGHT_RAIL_MAX_WIDTH",
+      "normalizeShellLayoutVisible(timelineVisible)",
+      "normalizeShellLayoutPanelSize(\n        height,\n        TIMELINE_MIN_HEIGHT,\n        TIMELINE_MAX_HEIGHT",
+      "normalizeShellLayoutVisible(panelFlyoutOpen)",
+    ]) {
+      if (!viewStore.includes(required)) {
+        violations.push(`${viewStoreRel}: shell layout update bypasses ${required}`);
+      }
+    }
+
     expect(violations).toEqual([]);
   });
 
   it("keeps working-set access behind the working-set seam", () => {
     const violations: string[] = [];
+    const storeRel = "stores/view/workingSet.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const rawWorkingSetAccess =
       /(?:\.workingSet\b|\.addToWorkingSet\s*\(|\.removeFromWorkingSet\s*\(|\.clearWorkingSet\s*\()/;
 
@@ -7833,6 +8443,32 @@ describe("dashboard layer ownership", () => {
         }
         if (!/\buseWorkingSetView\s*\(\s*\)/.test(stripped)) {
           violations.push(`${rel}: missing working-set presentation view`);
+        }
+        if (
+          !/\buseWorkingSetKeybindings\s*\(\s*canonicalSelectedId\s*\?\?\s*null\s*\)/.test(
+            stripped,
+          )
+        ) {
+          violations.push(`${rel}: missing working-set keybinding seam`);
+        }
+        for (const appOwner of [
+          "WORKING_SET_KEYBINDINGS",
+          "registerKeybindings",
+          "registerKeyAction",
+          "workingSetKeyAction",
+        ]) {
+          if (new RegExp(`\\b${appOwner}\\b`).test(stripped)) {
+            violations.push(`${rel}: app-layer ${appOwner} ownership`);
+          }
+        }
+        if (/\baddEventListener\s*\(\s*["']keydown["']/.test(stripped)) {
+          violations.push(`${rel}: local working-set keyboard listener`);
+        }
+        if (/\bKeyboardEvent\b/.test(stripped)) {
+          violations.push(`${rel}: local working-set keyboard event parser`);
+        }
+        if (/\b(?:e|event)\.(?:key|ctrlKey|metaKey|altKey)\b/.test(stripped)) {
+          violations.push(`${rel}: local working-set keyboard inspection`);
         }
         for (const localCopy of [
           "working set",
@@ -7872,6 +8508,26 @@ describe("dashboard layer ownership", () => {
           }
         }
       }
+    }
+
+    for (const seam of [
+      "WORKING_SET_KEYBINDINGS",
+      "WORKING_SET_EXPAND_SELECTION_ACTION_ID",
+      "WORKING_SET_COLLAPSE_LAST_ACTION_ID",
+      "workingSetKeyAction",
+      "useWorkingSetKeybindings",
+      "registerKeybindings",
+      "registerKeyAction",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(store)) {
+        violations.push(`${storeRel}: missing ${seam} seam`);
+      }
+    }
+    if (!/\bdefaultChord\s*:\s*["']E["']/.test(store)) {
+      violations.push(`${storeRel}: missing working-set expand keybinding default`);
+    }
+    if (!/\bdefaultChord\s*:\s*["']Backspace["']/.test(store)) {
+      violations.push(`${storeRel}: missing working-set collapse keybinding default`);
     }
 
     expect(violations).toEqual([]);
@@ -7920,6 +8576,16 @@ describe("dashboard layer ownership", () => {
       if (/\buseWorktreePickerChromeStore\b/.test(statement)) {
         violations.push(`${rel}: raw worktree picker chrome store access`);
       }
+      if (/\buseWorktreePickerChrome\b/.test(statement)) {
+        violations.push(`${rel}: raw worktree picker chrome hook import`);
+      }
+      if (
+        /\b(?:useWorkspaceMapSurface|useActiveScope|useActivateWorktreeScope|deriveWorkspaceMapPickerPresentationView|isSessionMutationRejected|isSupersededScopeSwitch)\b/.test(
+          statement,
+        )
+      ) {
+        violations.push(`${rel}: raw worktree picker state/projection import`);
+      }
     }
     if (
       /\[\s*(?:expanded|switchError|pendingId|keyboardToggle)\s*,\s*set[A-Z]/.test(
@@ -7928,8 +8594,8 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: local worktree picker chrome tuple`);
     }
-    if (!/\buseWorktreePickerChrome\s*\(\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing worktree picker chrome view seam`);
+    if (!/\buseWorktreePickerView\s*\(\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing worktree picker view seam`);
     }
     if (/\buseSwitchActiveScope\s*\(\s*\)/.test(stripped)) {
       violations.push(`${rel}: local worktree activation session hook`);
@@ -7937,11 +8603,14 @@ describe("dashboard layer ownership", () => {
     if (/\bmovePlayhead\s*\(\s*["']live["']/.test(stripped)) {
       violations.push(`${rel}: local worktree activation playhead reset`);
     }
-    if (!/\buseActivateWorktreeScope\s*\(\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing worktree activation seam`);
+    if (/\buseActivateWorktreeScope\s*\(\s*\)/.test(stripped)) {
+      violations.push(`${rel}: raw worktree activation seam`);
     }
-    if (!/\bderiveWorkspaceMapPickerPresentationView\s*\(/.test(stripped)) {
-      violations.push(`${rel}: missing workspace-map picker presentation seam`);
+    if (/\bderiveWorkspaceMapPickerPresentationView\s*\(/.test(stripped)) {
+      violations.push(`${rel}: local workspace-map picker presentation`);
+    }
+    if (!/\bactivateRow\s*\(\s*row\s*,/.test(stripped)) {
+      violations.push(`${rel}: missing worktree activation view seam`);
     }
     if (
       /worktree scope:|choose a worktree scope|pick a worktree|no worktrees mapped|no vault-bearing worktree|this is the only vault-bearing|context only, no vault corpus|switching…/.test(
@@ -7953,12 +8622,8 @@ describe("dashboard layer ownership", () => {
     if (/could not switch|could not persist|selection not saved/.test(stripped)) {
       violations.push(`${rel}: local worktree switch failure copy`);
     }
-    if (
-      !/\bfailWorktreeSwitch\s*\(\s*worktree\.id\s*,\s*worktree\.branch\s*,/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: missing classified worktree switch failure seam`);
+    if (/\bfailWorktreeSwitch\s*\(/.test(stripped)) {
+      violations.push(`${rel}: local classified worktree switch failure`);
     }
     if (/\brepositories\.flatMap\b|\.sort\s*\(/.test(stripped)) {
       violations.push(`${rel}: local workspace-map row projection`);
@@ -8043,10 +8708,6 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: local worktree selectable branch`);
     }
     for (const helper of [
-      "beginWorktreeSwitch",
-      "completeWorktreeSwitch",
-      "cancelWorktreeSwitch",
-      "failWorktreeSwitch",
       "setWorktreePickerExpanded",
       "toggleWorktreePickerExpanded",
     ]) {
@@ -8054,8 +8715,57 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: missing ${helper} seam`);
       }
     }
+    for (const helper of [
+      "useWorktreePickerView",
+      "beginWorktreeSwitch",
+      "completeWorktreeSwitch",
+      "cancelWorktreeSwitch",
+      "failWorktreeSwitch",
+    ]) {
+      if (!new RegExp(`\\b${helper}\\b`).test(chrome)) {
+        violations.push(`${chromeRel}: missing ${helper} seam`);
+      }
+    }
     if (!/\bexport\s+function\s+normalizeWorktreePickerSwitchId\b/.test(chrome)) {
       violations.push(`${chromeRel}: missing worktree switch id normalizer`);
+    }
+    if (!/\bexport\s+function\s+normalizeWorktreePickerBoolean\b/.test(chrome)) {
+      violations.push(`${chromeRel}: missing worktree picker boolean normalizer`);
+    }
+    if (!/\bexport\s+function\s+normalizeWorktreePickerSwitchError\b/.test(chrome)) {
+      violations.push(`${chromeRel}: missing worktree switch error normalizer`);
+    }
+    for (const typedOnly of [
+      "setExpanded: (expanded: boolean, viaKeyboard: boolean)",
+      "toggleExpanded: (viaKeyboard: boolean)",
+      "beginSwitch: (id: string)",
+      "completeSwitch: (id: string)",
+      "cancelSwitch: (id: string)",
+      "failSwitch: (id: string, message: string)",
+      "setWorktreePickerExpanded(\n  expanded: boolean,\n  viaKeyboard: boolean",
+      "toggleWorktreePickerExpanded(viaKeyboard: boolean)",
+      "beginWorktreeSwitch(id: string)",
+      "completeWorktreeSwitch(id: string)",
+      "cancelWorktreeSwitch(id: string)",
+      "failWorktreeSwitch(\n  id: string,\n  branch: string",
+    ]) {
+      if (chrome.includes(typedOnly)) {
+        violations.push(`${chromeRel}: typed-only worktree picker seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bsetExpanded:\s*\(expanded,\s*viaKeyboard\)[\s\S]*\bnormalizeWorktreePickerBoolean\s*\(\s*expanded\s*\)[\s\S]*\bnormalizeWorktreePickerBoolean\s*\(\s*viaKeyboard\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: disclosure setter bypasses boolean normalizer`);
+    }
+    if (
+      !/\btoggleExpanded:\s*\(viaKeyboard\)[\s\S]*\bnormalizeWorktreePickerBoolean\s*\(\s*viaKeyboard\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: disclosure toggle bypasses boolean normalizer`);
     }
     if (
       !/\bbeginSwitch:\s*\(pendingId\)\s*=>\s*\{[\s\S]*\bnormalizeWorktreePickerSwitchId\s*\(\s*pendingId\s*\)[\s\S]*\bpendingId:\s*id\b/.test(
@@ -8073,48 +8783,12 @@ describe("dashboard layer ownership", () => {
         violations.push(`${chromeRel}: ${action} bypasses normalized pending id`);
       }
     }
-
-    expect(violations).toEqual([]);
-  });
-
-  it("keeps workspace title presentation behind the workspace title seam", () => {
-    const rel = "app/left/WorkspacePicker.tsx";
-    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
-    const violations: string[] = [];
-
-    for (const statement of importStatements(stripped)) {
-      if (
-        /\buseWorkspaces\b|\buseWorkspaceRoots\b|\buseActiveWorkspace\b/.test(statement)
-      ) {
-        violations.push(`${rel}: raw workspace registry selector import`);
-      }
-    }
-    if (!/\buseWorkspaceTitleView\s*\(\s*\)/.test(stripped)) {
-      violations.push(`${rel}: missing workspace title view seam`);
-    }
-    if (/loading…|Project/.test(stripped)) {
-      violations.push(`${rel}: local workspace title copy`);
-    }
-    for (const field of [
-      "workspace.loadingClassName",
-      "workspace.loadingLabel",
-      "workspace.rootClassName",
-      "workspace.titleClassName",
-      "workspace.label",
-      "workspace.path",
-    ]) {
-      if (!stripped.includes(field)) {
-        violations.push(`${rel}: missing workspace title projection ${field}`);
-      }
-    }
-    for (const localChrome of [
-      "px-fg-1 text-label text-ink-faint",
-      "flex items-center px-fg-1",
-      "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
-    ]) {
-      if (stripped.includes(localChrome)) {
-        violations.push(`${rel}: local workspace title chrome ${localChrome}`);
-      }
+    if (
+      !/\bfailSwitch:\s*\(id,\s*switchError\)[\s\S]*\bnormalizeWorktreePickerSwitchError\s*\(\s*switchError\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: fail switch bypasses error normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -8137,15 +8811,18 @@ describe("dashboard layer ownership", () => {
     if (/\brun:\s*switchable\b|\brun:\s*\(\s*\)\s*=>/.test(stripped)) {
       violations.push(`${rel}: mutating worktree menu uses run closure`);
     }
-    if (!/\bWORKTREE_ACTIVATE_SCOPE_ACTION\b/.test(stripped)) {
-      violations.push(`${rel}: missing worktree activation dispatch action`);
+    if (/\bWORKTREE_ACTIVATE_SCOPE_ACTION\b/.test(stripped)) {
+      violations.push(`${rel}: app-layer worktree action type import`);
     }
     if (
-      !/switchable\s*\?\s*\{[\s\S]*?dispatch:\s*\{[\s\S]*?type:\s*WORKTREE_ACTIVATE_SCOPE_ACTION[\s\S]*?payload:\s*\{\s*scope:\s*entity\.id\s*\}/.test(
+      !/switchable\s*\?\s*\{[\s\S]*?dispatch:\s*worktreeActivateScopeDispatch\s*\(\s*entity\.id\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: missing worktree activation dispatch seam`);
+      violations.push(`${rel}: missing stores-owned worktree activation dispatch seam`);
+    }
+    if (/payload:\s*\{\s*scope:\s*entity\.id\s*\}/.test(stripped)) {
+      violations.push(`${rel}: app-layer worktree activation payload shape`);
     }
     if (/dispatch:\s*switchable\s*\?/.test(stripped)) {
       violations.push(`${rel}: disabled worktree action carries undefined dispatch`);
@@ -8252,6 +8929,16 @@ describe("dashboard layer ownership", () => {
     if (!/\bfunction\s+isWorktreeActivateScopePayload\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing worktree activation payload validator`);
     }
+    if (!/\bfunction\s+worktreeActivateScopeDispatch\s*\(/.test(stripped)) {
+      violations.push(`${rel}: missing worktree activation dispatch factory`);
+    }
+    if (
+      !/worktreeActivateScopeDispatch\s*\(\s*scope:\s*string\s*\)[\s\S]*payload:\s*\{\s*scope\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: dispatch factory does not own scope payload shape`);
+    }
     if (
       !/\bisWorktreeActivateScopePayload\s*\(\s*action\.payload\s*\)/.test(stripped)
     ) {
@@ -8353,7 +9040,7 @@ describe("dashboard layer ownership", () => {
       ...PRODUCTION_SURFACES.map((surface) => join(SRC_ROOT, surface)),
       VIEW_STORES_ROOT,
     ];
-    const allowedHookConsumer = "app/left/WorktreePicker.tsx";
+    const allowedHookConsumer = "stores/view/worktreePickerChrome.ts";
     const owner = "stores/view/viewStore.ts";
 
     for (const root of roots) {
@@ -8404,6 +9091,8 @@ describe("dashboard layer ownership", () => {
   it("keeps create-document chrome behind the create-doc view seam", () => {
     const rel = "app/stage/CreateDocButton.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const storeRel = "stores/view/createDocChrome.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -8435,6 +9124,58 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bnodeIdFromPath\b|\.path\.split\s*\(/.test(stripped)) {
       violations.push(`${rel}: local created-doc identity derivation`);
+    }
+    if (!/\bexport\s+function\s+normalizeCreateDocType\b/.test(store)) {
+      violations.push(`${storeRel}: missing create-doc type normalizer`);
+    }
+    if (!/\bexport\s+function\s+normalizeCreateDocDraftText\b/.test(store)) {
+      violations.push(`${storeRel}: missing create-doc draft text normalizer`);
+    }
+    if (!/\bexport\s+function\s+normalizeCreateDocError\b/.test(store)) {
+      violations.push(`${storeRel}: missing create-doc error normalizer`);
+    }
+    if (
+      !/\bsetDocType:\s*\(docType\)\s*=>[\s\S]*\bnormalizeCreateDocType\s*\(\s*docType\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: setDocType bypasses type normalizer`);
+    }
+    if (
+      !/\bsetFeature:\s*\(feature\)\s*=>[\s\S]*\bnormalizeCreateDocDraftText\s*\(\s*feature\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: setFeature bypasses draft normalizer`);
+    }
+    if (
+      !/\bsetTitle:\s*\(title\)\s*=>[\s\S]*\bnormalizeCreateDocDraftText\s*\(\s*title\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: setTitle bypasses draft normalizer`);
+    }
+    if (
+      !/\bsetError:\s*\(error\)\s*=>[\s\S]*\bnormalizeCreateDocError\s*\(\s*error\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: setError bypasses error normalizer`);
+    }
+    if (
+      /\b(?:setFeature|setTitle):\s*\([^)]*:\s*string/.test(store) ||
+      /\bsetError:\s*\([^)]*:\s*string\s*\|\s*null/.test(store) ||
+      /\bfunction\s+setCreateDoc(?:Feature|Title)\s*\([^)]*:\s*string/.test(store) ||
+      /\bfunction\s+setCreateDocError\s*\([^)]*:\s*string\s*\|\s*null/.test(store)
+    ) {
+      violations.push(`${storeRel}: create-doc setters expose typed-only input seams`);
+    }
+    if (
+      !/\bderiveCreateDocSubmission[\s\S]*\bnormalizeCreateDocType\s*\(\s*draft\.docType\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: submission bypasses type normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -8639,6 +9380,10 @@ describe("dashboard layer ownership", () => {
 
   it("keeps browser-mode app access behind the browser-mode seam", () => {
     const violations: string[] = [];
+    const leftRailActionsRel = "stores/view/leftRailKeybindings.ts";
+    const leftRailActions = stripComments(
+      readFileSync(join(SRC_ROOT, leftRailActionsRel), "utf8"),
+    );
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
       const source = readFileSync(file, "utf8");
@@ -8656,6 +9401,13 @@ describe("dashboard layer ownership", () => {
       if (/\bsetBrowserMode\s*\(/.test(stripped)) {
         violations.push(`${rel}: direct browser-mode mutation`);
       }
+    }
+
+    if (!/\bcycleBrowserMode\b/.test(leftRailActions)) {
+      violations.push(`${leftRailActionsRel}: missing browser-mode cycle seam`);
+    }
+    if (/\bBROWSER_MODE_OPTIONS\b[\s\S]*\.findIndex\s*\(/.test(leftRailActions)) {
+      violations.push(`${leftRailActionsRel}: local browser-mode cycle projection`);
     }
 
     expect(violations).toEqual([]);
@@ -8729,7 +9481,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps keyboard-shortcut legend rows behind the keyboard-shortcuts seam", () => {
     const rel = "app/menu/KeyboardShortcuts.tsx";
+    const storeRel = "stores/view/keyboardShortcuts.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -8758,6 +9512,28 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\buseKeyboardShortcutsGlobalToggle\s*\(\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing shortcut global-toggle seam`);
+    }
+    for (const seam of [
+      "KEYBOARD_SHORTCUTS_TOGGLE_BINDING",
+      "registerKeybindings",
+      "registerKeyAction",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(store)) {
+        violations.push(`${storeRel}: missing ${seam} keymap seam`);
+      }
+    }
+    if (/\bshouldToggleKeyboardShortcuts\b/.test(store)) {
+      violations.push(`${storeRel}: local shortcut toggle key parser`);
+    }
+    if (
+      /\bKeyboardEvent\b|\bisKeyboardShortcutsFormTarget\b|\baddEventListener\s*\(\s*["']keydown["']/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: local shortcut toggle listener`);
+    }
+    if (/\b(?:event|e)\.(?:ctrlKey|metaKey|altKey)\b/.test(store)) {
+      violations.push(`${storeRel}: local shortcut modifier inspection`);
     }
 
     expect(violations).toEqual([]);
@@ -9330,9 +10106,33 @@ describe("dashboard layer ownership", () => {
       violations.push(`${storeRel}: missing status section id normalizer`);
     }
     if (
+      !/\bfunction\s+normalizeRecentCommitHash\s*\(\s*hash:\s*unknown\s*\)/.test(store)
+    ) {
+      violations.push(`${storeRel}: missing recent commit hash input normalizer`);
+    }
+    for (const typedOnly of [
+      "toggleSection: (id: StatusSectionId, defaultOpen: boolean)",
+      "toggleRecentCommit: (hash: string)",
+      "showMoreRecentCommits: (page: number, defaultLimit: number)",
+      "toggleStatusSection(id: StatusSectionId, defaultOpen: boolean)",
+      "toggleRecentCommit(hash: string)",
+      "showMoreRecentCommits(page: number, defaultLimit: number)",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only status chrome seam ${typedOnly}`);
+      }
+    }
+    if (
       !/\btoggleSection\b[\s\S]*\bnormalizeStatusSectionId\s*\(\s*id\s*\)/.test(store)
     ) {
       violations.push(`${storeRel}: section disclosure bypasses id normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedHash\s*=\s*normalizeRecentCommitHash\s*\(\s*hash\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: recent commit toggle bypasses hash normalizer`);
     }
     if (
       !/\buseRecentCommitsChrome\b[\s\S]*\bderiveRecentCommitsChromeView\s*\(/.test(
@@ -9444,11 +10244,11 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps right-rail DOM roving focus behind the shared chrome primitive", () => {
-    const rels = [
+    const rels = existingSourceRels([
       "app/right/SearchTab.tsx",
       "app/right/WorkTab.tsx",
       "app/right/DiffView.tsx",
-    ];
+    ]);
     const violations: string[] = [];
 
     for (const rel of rels) {
@@ -9490,7 +10290,7 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps right-rail work activation behind the scoped selection seam", () => {
-    const rel = "app/right/WorkTab.tsx";
+    const rel = "app/right/StatusTab.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
@@ -9505,8 +10305,11 @@ describe("dashboard layer ownership", () => {
     if (/\bselectNode\s*\(/.test(stripped)) {
       violations.push(`${rel}: raw work selection call`);
     }
-    if (!/\buseDashboardNodeSelection\s*\(/.test(stripped)) {
-      violations.push(`${rel}: missing scoped work selection seam`);
+    if (!/\bselectEventNodes\s*\(/.test(stripped)) {
+      violations.push(`${rel}: missing event selection seam`);
+    }
+    if (!/<PlanStepTree\b/.test(stripped)) {
+      violations.push(`${rel}: missing shared plan-step selection surface`);
     }
     if (
       !/\bderivePipelineExpansionRows\s*\(\s*view\.planRows\s*,\s*expanded\s*\)/.test(
@@ -9525,8 +10328,15 @@ describe("dashboard layer ownership", () => {
     if (/\bview\.plans\s*\[\s*0\s*\]|\bview\.plans\.map\b/.test(stripped)) {
       violations.push(`${rel}: app-layer work plan row lookup`);
     }
-    if (!/\brow\.selectAriaLabel\b/.test(stripped)) {
-      violations.push(`${rel}: missing work plan selection label projection`);
+    const treeRel = "app/right/PlanStepTree.tsx";
+    const tree = stripComments(readFileSync(join(SRC_ROOT, treeRel), "utf8"));
+    if (
+      !/\buseDashboardNodeSelection\s*\(\s*useActiveScope\s*\(\s*\)\s*\)/.test(tree)
+    ) {
+      violations.push(`${treeRel}: missing scoped plan-step selection seam`);
+    }
+    if (!/\bstep\.rowAriaLabel\b/.test(tree)) {
+      violations.push(`${treeRel}: missing plan-step row label projection`);
     }
 
     expect(violations).toEqual([]);
@@ -9534,6 +10344,8 @@ describe("dashboard layer ownership", () => {
 
   it("keeps context-menu host state behind the context-menu seam", () => {
     const violations: string[] = [];
+    const storeRel = "stores/view/contextMenu.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
       const source = readFileSync(file, "utf8");
@@ -9542,6 +10354,42 @@ describe("dashboard layer ownership", () => {
 
       if (/\buseContextMenuStore\b/.test(stripped)) {
         violations.push(`${rel}: raw context-menu store access`);
+      }
+    }
+
+    for (const seam of [
+      "normalizeContextMenuAnchor",
+      "normalizeContextMenuCursor",
+      "normalizeContextMenuItemId",
+      "normalizeContextMenuEntity",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(store)) {
+        violations.push(`${storeRel}: missing ${seam} seam`);
+      }
+    }
+    for (const typedOnly of [
+      "openMenu: (entity: EntityDescriptor, anchor: MenuAnchor)",
+      "arm: (itemId: string)",
+      "setCursor: (cursor: number)",
+      "setPosition: (position: MenuAnchor | null)",
+      "openContextMenu(entity: EntityDescriptor, anchor: MenuAnchor)",
+      "armContextMenuItem(itemId: string)",
+      "setContextMenuCursor(cursor: number)",
+      "setContextMenuPosition(position: MenuAnchor | null)",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only context-menu seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeContextMenuEntity(entity)",
+      "normalizeContextMenuAnchor(anchor)",
+      "normalizeContextMenuItemId(itemId)",
+      "normalizeContextMenuCursor(cursor)",
+      "normalizeContextMenuAnchor(position)",
+    ]) {
+      if (!store.includes(required)) {
+        violations.push(`${storeRel}: context-menu update bypasses ${required}`);
       }
     }
 
@@ -9564,6 +10412,17 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bsetContextMenuPosition\b/.test(host)) {
       violations.push(`${hostRel}: missing context-menu position seam`);
+    }
+    if (!/\buseContextMenuViewportDismiss\s*\(\s*\)/.test(host)) {
+      violations.push(`${hostRel}: missing context-menu viewport dismiss seam`);
+    }
+    if (/\bwindow\.addEventListener\s*\(\s*["'](?:scroll|resize|blur)["']/.test(host)) {
+      violations.push(`${hostRel}: local context-menu viewport dismiss listener`);
+    }
+    if (
+      /\bwindow\.removeEventListener\s*\(\s*["'](?:scroll|resize|blur)["']/.test(host)
+    ) {
+      violations.push(`${hostRel}: local context-menu viewport dismiss cleanup`);
     }
     if (!/\bderiveContextMenuPanelPosition\b/.test(host)) {
       violations.push(`${hostRel}: missing context-menu panel-position projection`);
@@ -9693,14 +10552,14 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps keyboard context-menu row anchoring behind the chrome primitive", () => {
-    const rels = [
+    const rels = existingSourceRels([
       "app/left/CodeTree.tsx",
       "app/left/TreeBrowser.tsx",
       "app/left/WorktreePicker.tsx",
       "app/right/DiffView.tsx",
       "app/right/Inspector.tsx",
       "app/right/SearchTab.tsx",
-    ];
+    ]);
     const violations: string[] = [];
 
     for (const rel of rels) {
@@ -9877,6 +10736,16 @@ describe("dashboard layer ownership", () => {
         }
         if (/\bfunction\s+prefersReducedMotion\s*\(/.test(stripped)) {
           violations.push(`${rel}: local reduced-motion helper`);
+        }
+        if (root === "app" && rel !== "app/chrome/useReducedMotion.ts") {
+          for (const statement of importStatements(stripped)) {
+            if (
+              /platform\/reducedMotion/.test(statement) ||
+              /\bprefersReducedMotion\b/.test(statement)
+            ) {
+              violations.push(`${rel}: direct reduced-motion platform import`);
+            }
+          }
         }
       }
     }
@@ -10133,6 +11002,9 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizeCommandPaletteOpsMessage\b/.test(store)) {
       violations.push(`${storeRel}: missing ops feedback message normalizer`);
     }
+    if (!/\bexport\s+function\s+normalizeCommandPaletteOpsEpoch\b/.test(store)) {
+      violations.push(`${storeRel}: missing ops feedback epoch normalizer`);
+    }
     if (!/\bmessage\.trim\s*\(\s*\)/.test(store)) {
       violations.push(`${storeRel}: ops feedback messages are not trimmed`);
     }
@@ -10150,12 +11022,49 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${storeRel}: epoch feedback update bypasses normalizer`);
     }
+    if (
+      !/\bsetOpsFeedbackForEpoch:\s*\(epoch,\s*message\)[\s\S]*\bnormalizeCommandPaletteOpsEpoch\s*\(\s*epoch\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: epoch feedback update bypasses epoch normalizer`);
+    }
+    for (const typedOnly of [
+      "beginOpsFeedback: (message: string)",
+      "setOpsFeedbackForEpoch: (epoch: number, message: string)",
+      "beginCommandPaletteOpsFeedback(message: string)",
+      "setCommandPaletteOpsFeedbackForEpoch(\n  epoch: number,\n  message: string",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only palette ops seam ${typedOnly}`);
+      }
+    }
 
     expect(violations).toEqual([]);
   });
 
   it("keeps continuous settings drafts behind the settings draft seam", () => {
     const violations: string[] = [];
+    const storeRel = "stores/view/settingsControlDraft.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
+
+    if (
+      !/\bexport\s+function\s+normalizeSettingsControlDraftValue\s*\(\s*value:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing settings draft input normalizer`);
+    }
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeSettingsControlDraftValue\s*\(\s*next\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: settings draft change bypasses normalizer`);
+    }
+    if (/\bchange:\s*\(\s*next:\s*string\s*\)\s*=>\s*void\b/.test(store)) {
+      violations.push(`${storeRel}: settings draft change accepts typed-only input`);
+    }
 
     for (const file of sourceFiles(join(SRC_ROOT, "app/settings"))) {
       const source = readFileSync(file, "utf8");
@@ -10496,6 +11405,51 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps filter-sidebar visual chrome input normalized at the store seam", () => {
+    const rel = "stores/view/filterSidebar.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeFilterSidebarOpen",
+      "normalizeFilterSidebarVisualStateKey",
+      "normalizeFilterSidebarSectionKey",
+      "normalizeFilterSidebarListKey",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} seam`);
+      }
+    }
+    for (const typedOnly of [
+      "setOpen: (open: boolean)",
+      "syncVisualStateKey: (key: string)",
+      "setTopicSearch: (value: string)",
+      "setSectionOpen: (key: FilterSidebarSectionKey, open: boolean)",
+      "expandList: (key: FilterSidebarListKey)",
+      "setFilterSidebarOpen(open: boolean)",
+      "setFilterSidebarTopicSearch(value: string)",
+      "setFilterSidebarSectionOpen(\n  key: FilterSidebarSectionKey,\n  open: boolean",
+      "expandFilterSidebarList(key: FilterSidebarListKey)",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only filter-sidebar chrome seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeFilterSidebarOpen(open)",
+      "normalizeFilterSidebarVisualStateKey(key)",
+      "normalizeFilterSidebarSectionKey(key)",
+      "normalizeFilterSidebarOpen(open)",
+      "normalizeFilterSidebarListKey(key)",
+    ]) {
+      if (!stripped.includes(required)) {
+        violations.push(`${rel}: filter-sidebar update bypasses ${required}`);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps filter-sidebar topic search bounded in the visual-state seam", () => {
     const rel = "stores/view/filterSidebar.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -10705,7 +11659,7 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps right-rail pipeline artifact grouping behind the pipeline-status view", () => {
-    const enrolled = ["app/right/WorkTab.tsx", "app/right/StatusTab.tsx"];
+    const enrolled = ["app/right/StatusTab.tsx"];
     const violations: string[] = [];
 
     for (const rel of enrolled) {
@@ -10729,7 +11683,7 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps right-rail pipeline state copy behind the pipeline-status view", () => {
-    const enrolled = ["app/right/WorkTab.tsx", "app/right/StatusTab.tsx"];
+    const enrolled = ["app/right/StatusTab.tsx"];
     const violations: string[] = [];
 
     for (const rel of enrolled) {
@@ -10941,7 +11895,7 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps right-rail pipeline expansion behind the shared expansion seam", () => {
-    const enrolled = ["app/right/WorkTab.tsx", "app/right/StatusTab.tsx"];
+    const enrolled = ["app/right/StatusTab.tsx"];
     const violations: string[] = [];
 
     for (const rel of enrolled) {
@@ -11524,7 +12478,7 @@ describe("dashboard layer ownership", () => {
   it("keeps right-rail feature surfaces from importing each other as helper owners", () => {
     const pairs = [
       ["app/right/StatusTab.tsx", "WorkTab"],
-      ["app/right/WorkTab.tsx", "StatusTab"],
+      ["app/right/ChangesOverview.tsx", "StatusTab"],
     ] as const;
     const violations: string[] = [];
 
@@ -11711,10 +12665,30 @@ describe("dashboard layer ownership", () => {
 
   it("keeps the diff body as a pure parsed-git projection", () => {
     const rel = "app/right/DiffView.tsx";
-    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const queriesRel = "stores/server/queries.ts";
     const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
     const violations: string[] = [];
+    if (!existsSync(join(SRC_ROOT, rel))) {
+      const changesRel = "app/right/ChangesOverview.tsx";
+      const changes = stripComments(readFileSync(join(SRC_ROOT, changesRel), "utf8"));
+      if (/\b(?:useGitFileDiff|useGitHistoricalFileDiff)\b/.test(changes)) {
+        violations.push(`${changesRel}: changes overview owns diff-body reads`);
+      }
+      if (!/\bexport function normalizeGitDiffRequest\b/.test(queries)) {
+        violations.push(`${queriesRel}: missing shared git diff argument normalizer`);
+      }
+      if (!/\bfunction canReadGitFileDiff\b/.test(queries)) {
+        violations.push(`${queriesRel}: missing normalized live git diff read gate`);
+      }
+      if (!/\bfunction canReadGitHistoricalFileDiff\b/.test(queries)) {
+        violations.push(
+          `${queriesRel}: missing normalized historical git diff read gate`,
+        );
+      }
+      expect(violations).toEqual([]);
+      return;
+    }
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
 
     for (const statement of importStatements(stripped)) {
       if (
@@ -12017,6 +12991,12 @@ describe("dashboard layer ownership", () => {
     if (!/\bnormalizeFilterChoices\b/.test(intent)) {
       violations.push(`${intentRel}: lens intent bypasses filter-choice normalizer`);
     }
+    if (/\btype\s+FilterChoices\b/.test(intent)) {
+      violations.push(`${intentRel}: lens intent imports typed-only lens payloads`);
+    }
+    if (/\bapplyLensChoices\s*:\s*\(\s*choices\s*:\s*FilterChoices\s*\)/.test(intent)) {
+      violations.push(`${intentRel}: lens intent does not accept runtime payloads`);
+    }
     if (
       !/\bconst\s+normalized\s*=\s*normalizeFilterChoices\s*\(\s*choices\s*\)/.test(
         intent,
@@ -12031,7 +13011,7 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps command-palette transient input state as a narrow local exception", () => {
+  it("keeps command-palette transient workflow state behind the palette store seam", () => {
     const rel = "app/palette/CommandPalette.tsx";
     const storeRel = "stores/view/commandPalette.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -12046,47 +13026,136 @@ describe("dashboard layer ownership", () => {
     if (/\[\s*open\s*,\s*setOpen\s*\]\s*=\s*useState/.test(stripped)) {
       violations.push(`${rel}: local command-palette open state`);
     }
-    if (
-      !/\[\s*query\s*,\s*setQuery\s*\]\s*=\s*useState\s*\(\s*["']["']\s*\)/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: missing local ephemeral query state`);
-    }
-    if (
-      !/\[\s*cursor\s*,\s*setCursor\s*\]\s*=\s*useState\s*\(\s*0\s*\)/.test(stripped)
-    ) {
-      violations.push(`${rel}: missing local ephemeral cursor state`);
-    }
-    if (
-      !/\[\s*armedCommandId\s*,\s*setArmedCommandId\s*\]\s*=\s*useState\s*<\s*string\s*\|\s*null\s*>\s*\(\s*null\s*\)/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: missing local confirm-row companion state`);
-    }
-    if (/\b(?:query|cursor|armedCommandId)\s*:/.test(store)) {
-      violations.push(`${storeRel}: palette ephemeral surface state in store`);
+    if (/\buseState\s*\(/.test(stripped)) {
+      violations.push(`${rel}: local command-palette workflow state`);
     }
     for (const seam of [
       "useCommandPaletteOpen",
-      "openCommandPalette",
+      "useCommandPaletteQuery",
+      "useCommandPaletteCursor",
+      "useCommandPaletteArmedCommandId",
       "closeCommandPalette",
+      "setCommandPaletteQuery",
+      "setCommandPaletteCursor",
+      "setCommandPaletteArmedCommandId",
+      "resetCommandPaletteSurfaceState",
       "resetCommandPaletteOpsFeedback",
       "useCommandPaletteOpsMessage",
+      "useCommandPaletteGlobalToggle",
+      "useCommandPaletteEscapeDismiss",
     ]) {
       if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${seam} seam`);
       }
+    }
+    if (/\bwindow\.addEventListener\s*\(\s*["']keydown["']/.test(stripped)) {
+      violations.push(`${rel}: local command-palette global Escape listener`);
+    }
+    if (/\bwindow\.removeEventListener\s*\(\s*["']keydown["']/.test(stripped)) {
+      violations.push(`${rel}: local command-palette global Escape cleanup`);
+    }
+    if (
+      /\bevent\.key\s*!==\s*["']Escape["']|\be\.key\s*===\s*["']Escape["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: local command-palette Escape classification`);
+    }
+    for (const localOwner of [
+      "registerKeybindings",
+      "registerKeyAction",
+      "openCommandPalette",
+      "COMMAND_PALETTE_ACTION_ID",
+      "COMMAND_PALETTE_KEYBINDING",
+    ]) {
+      if (new RegExp(`\\b${localOwner}\\b`).test(stripped)) {
+        violations.push(`${rel}: app-layer ${localOwner} ownership`);
+      }
+    }
+    for (const seam of [
+      "COMMAND_PALETTE_ACTION_ID",
+      "COMMAND_PALETTE_SHORTCUT_LABEL",
+      "COMMAND_PALETTE_KEYBINDING",
+      "useCommandPaletteGlobalToggle",
+      "useCommandPaletteEscapeDismiss",
+      "registerKeybindings",
+      "registerKeyAction",
+      "openCommandPalette",
+      "closeCommandPalette",
+      "resetCommandPaletteOpsFeedback",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(store)) {
+        violations.push(`${storeRel}: missing ${seam} keybinding seam`);
+      }
+    }
+    for (const seam of [
+      "COMMAND_PALETTE_QUERY_MAX_CHARS",
+      "normalizeCommandPaletteQuery",
+      "normalizeCommandPaletteCursor",
+      "normalizeCommandPaletteArmedCommandId",
+      "query: string",
+      "cursor: number",
+      "armedCommandId: string | null",
+      "setQuery:",
+      "setCursor:",
+      "setArmedCommandId:",
+      "resetSurfaceState:",
+    ]) {
+      if (!store.includes(seam)) {
+        violations.push(`${storeRel}: missing palette workflow state seam ${seam}`);
+      }
+    }
+    for (const typedOnly of [
+      "setQuery: (query: string)",
+      "setCursor: (cursor: number)",
+      "setArmedCommandId: (commandId: string | null)",
+      "setCommandPaletteQuery(query: string)",
+      "setCommandPaletteCursor(cursor: number)",
+      "setCommandPaletteArmedCommandId(commandId: string | null)",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only command-palette seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bsetQuery:\s*\(query\)\s*=>[\s\S]*\bnormalizeCommandPaletteQuery\s*\(\s*query\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: query setter bypasses normalizer`);
+    }
+    if (
+      !/\bsetCursor:\s*\(cursor\)\s*=>[\s\S]*\bnormalizeCommandPaletteCursor\s*\(\s*cursor\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: cursor setter bypasses normalizer`);
+    }
+    if (
+      !/\bsetArmedCommandId:\s*\(commandId\)\s*=>[\s\S]*\bnormalizeCommandPaletteArmedCommandId\s*\(\s*commandId\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: armed command setter bypasses normalizer`);
+    }
+    if (/\bdefaultChord\s*:\s*["']Mod\+K["']/.test(stripped)) {
+      violations.push(`${rel}: local command-palette keybinding default`);
+    }
+    if (!/\bdefaultChord\s*:\s*["']Mod\+K["']/.test(store)) {
+      violations.push(`${storeRel}: missing command-palette keybinding default`);
+    }
+    if (/\bkey\.toLowerCase\s*\(\s*\)\s*===\s*["']k["']/.test(stripped)) {
+      violations.push(`${rel}: local command-palette shortcut key parsing`);
+    }
+    if (/\b(?:e|event)\.(?:ctrlKey|metaKey)\b/.test(stripped)) {
+      violations.push(`${rel}: local command-palette modifier inspection`);
     }
     if (
       !/\buseFocusRestore\s*\(\s*open\s*,\s*\{[\s\S]*\bonClose\s*:\s*reset/.test(
         stripped,
       )
     ) {
-      violations.push(
-        `${rel}: local palette state is not reset through focus lifecycle`,
-      );
+      violations.push(`${rel}: palette state is not reset through focus lifecycle`);
     }
     if (
       !/\bconst\s+close\s*=\s*useCallback\s*\([\s\S]*\breset\s*\(\s*\)[\s\S]*\bcloseCommandPalette\s*\(\s*\)/.test(
@@ -12125,12 +13194,14 @@ describe("dashboard layer ownership", () => {
     if (/\bfilterChoicesFromDashboardState\s*\(/.test(stripped)) {
       violations.push(`${rel}: local dashboard filter-choice projection`);
     }
-    if (!/\buseDashboardFilterChoices\s*\(/.test(stripped)) {
-      violations.push(`${rel}: missing stores dashboard filter-choice seam`);
+    if (
+      !/\buseDashboardVisibilityCommand\s*\(\s*scope\s*,\s*merged\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: missing stores dashboard visibility command seam`);
     }
     for (const helper of ["computeVisibility", "visibilitySceneCommand"]) {
-      if (!new RegExp(`\\b${helper}\\b`).test(stripped)) {
-        violations.push(`${rel}: missing stores ${helper} seam`);
+      if (new RegExp(`\\b${helper}\\b`).test(stripped)) {
+        violations.push(`${rel}: local stores visibility helper call ${helper}`);
       }
     }
     if (/kind:\s*["']set-visibility["']/.test(stripped)) {
@@ -12207,15 +13278,14 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps broken-link live-status reductions behind the live-status seam", () => {
-    const enrolled = ["app/stage/Stage.tsx", "app/timeline/timeTravel.ts"];
+    const stageRel = "app/stage/Stage.tsx";
+    const timeTravelRel = "app/timeline/timeTravel.ts";
+    const liveStatusRel = "stores/server/liveStatus.ts";
     const violations: string[] = [];
 
-    for (const rel of enrolled) {
+    for (const rel of [stageRel, timeTravelRel]) {
       const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
 
-      if (!/\bcountBrokenLinks\b/.test(stripped)) {
-        violations.push(`${rel}: missing live-status broken-link reducer`);
-      }
       if (
         /\.filter\s*\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.state\s*===\s*["']broken["']\s*\)/.test(
           stripped,
@@ -12226,6 +13296,36 @@ describe("dashboard layer ownership", () => {
       if (/\bfunction\s+countBrokenStructuralEdges\b/.test(stripped)) {
         violations.push(`${rel}: local broken-link helper`);
       }
+    }
+    const stage = stripComments(readFileSync(join(SRC_ROOT, stageRel), "utf8"));
+    const timeTravel = stripComments(
+      readFileSync(join(SRC_ROOT, timeTravelRel), "utf8"),
+    );
+    const liveStatus = stripComments(
+      readFileSync(join(SRC_ROOT, liveStatusRel), "utf8"),
+    );
+
+    if (
+      !/\buseLiveBrokenLinkCountFromEdges\s*\(\s*merged\?\.edges\s*\?\?\s*null\s*,\s*liveTimeline\s*\)/.test(
+        stage,
+      )
+    ) {
+      violations.push(`${stageRel}: missing live-status edge reduction hook`);
+    }
+    if (/\bsetLiveBrokenLinkCount\b|\bcountBrokenLinks\b/.test(stage)) {
+      violations.push(`${stageRel}: local broken-link live-status composition`);
+    }
+    if (!/\bsetLiveBrokenLinkCountFromEdges\s*\(\s*edges\s*\)/.test(timeTravel)) {
+      violations.push(`${timeTravelRel}: missing live-status edge reduction seam`);
+    }
+    if (!/\bfunction\s+countBrokenLinks\b/.test(liveStatus)) {
+      violations.push(`${liveStatusRel}: missing live-status broken-link reducer`);
+    }
+    if (!/\bfunction\s+setLiveBrokenLinkCountFromEdges\b/.test(liveStatus)) {
+      violations.push(`${liveStatusRel}: missing broken-link edge write seam`);
+    }
+    if (!/\bfunction\s+useLiveBrokenLinkCountFromEdges\b/.test(liveStatus)) {
+      violations.push(`${liveStatusRel}: missing broken-link hook seam`);
     }
 
     expect(violations).toEqual([]);
@@ -12266,8 +13366,8 @@ describe("dashboard layer ownership", () => {
     if (!/\buseTimelineAutoFittedScope\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing timeline auto-fit provenance seam`);
     }
-    if (!/\bfitTimelineViewportForScope\s*\(/.test(stripped)) {
-      violations.push(`${rel}: missing atomic timeline fit viewport seam`);
+    if (!/\bfitTimelineScopeToCorpus\s*\(/.test(stripped)) {
+      violations.push(`${rel}: missing timeline scope-fit intent seam`);
     }
 
     expect(violations).toEqual([]);

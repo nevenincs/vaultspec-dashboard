@@ -1,22 +1,22 @@
 // The left scope rail composition (dashboard-left-rail ADR "The rail as an
 // ordered stack of hosted slots"): the rail is CHROME that hosts independently-
-// specified controls and owns only their composition. Top to bottom, each
-// separated by a soft 1px rule, this stack hosts:
+// specified controls and owns only their composition. Top to bottom this stack
+// hosts:
 //
-//   1. WorkspacePicker  — the coarsest scope chooser (which PROJECT); a quiet
-//                          header when only one root is registered.
-//   2. WorktreePicker   — the repository → branch → worktree picker (which
-//                          WORKTREE), scoped to the active workspace.
-//   3. BrowserRegion    — the file-thinking surface: vault | code modes behind a
+//   1. WorktreePicker   — the ONE rail title: a single clickable element showing
+//                          the current worktree's NAME (default "main"); clicking
+//                          opens the worktree/folder picker. This is the only
+//                          place the repository identity is stated in the left
+//                          rail — the branch is shown once, in the right rail.
+//   2. BrowserRegion    — the file-thinking surface: vault | code modes behind a
 //                          toggle, with an in-rail filter (which DOCUMENT/FILE).
 //
 // "The ordering is the contract made physical": scope is chosen coarse-to-fine —
-// workspace, then worktree, then document/file — mirroring the stateless-scope
-// rule. The header's collapse toggle (owned by the AppShell `aside` chrome) is
-// FIRST in the rail's single top-to-bottom focus order; this content stack
-// continues that order (workspace → worktree → browser mode toggle → filter →
-// the active mode's rows), and the whole rail content is ONE labelled navigation
-// landmark.
+// worktree, then document/file — mirroring the stateless-scope rule. The header's
+// collapse toggle (owned by the AppShell `aside` chrome) is FIRST in the rail's
+// single top-to-bottom focus order; this content stack continues that order
+// (worktree title → browser mode toggle → filter → the active mode's rows), and
+// the whole rail content is ONE labelled navigation landmark.
 //
 // THE SINGLE NAVIGATION LAW (dashboard-left-rail ADR / engine-read-and-infer):
 // every interaction in this stack resolves to one of exactly three intents,

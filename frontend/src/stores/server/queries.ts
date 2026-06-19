@@ -72,7 +72,6 @@ import type {
   VaultTreeEntry,
   VaultTreeResponse,
   WorkspaceRoot,
-  WorkspacesState,
 } from "./engine";
 import {
   CANONICAL_TIERS,
@@ -830,66 +829,6 @@ export function deriveWorkspacesAvailability(
  *  block. */
 export function useWorkspacesAvailability(): WorkspacesAvailability {
   return deriveWorkspacesAvailability(tiersFromQuery(useWorkspaces()));
-}
-
-export type WorkspaceTitleState = "loading" | "ready";
-
-export interface WorkspaceTitleView {
-  state: WorkspaceTitleState;
-  label: string;
-  path: string | undefined;
-  current: WorkspaceRoot | null;
-  loadingLabel: string;
-  loadingClassName: string;
-  rootClassName: string;
-  titleClassName: string;
-}
-
-export function deriveWorkspaceTitleView(
-  data: WorkspacesState | undefined,
-  loading: boolean,
-): WorkspaceTitleView {
-  const loadingLabel = "loading…";
-  const loadingClassName = "px-fg-1 text-label text-ink-faint";
-  const rootClassName = "flex items-center px-fg-1";
-  const titleClassName = "min-w-0 flex-1 truncate text-[14px] font-medium text-ink";
-  if (loading) {
-    return {
-      state: "loading",
-      label: "Project",
-      path: undefined,
-      current: null,
-      loadingLabel,
-      loadingClassName,
-      rootClassName,
-      titleClassName,
-    };
-  }
-  const current =
-    data?.workspaces.find((root) => root.id === data.active_workspace) ??
-    data?.workspaces[0] ??
-    null;
-  return {
-    state: "ready",
-    label: current?.label ?? "Project",
-    path: current?.path,
-    current,
-    loadingLabel,
-    loadingClassName,
-    rootClassName,
-    titleClassName,
-  };
-}
-
-/**
- * Stores selector for the left-rail project title. The title surface reads the
- * workspace registry once and receives the active-or-first workspace label as an
- * interpreted view, rather than composing `useWorkspaces` + root selectors in
- * chrome.
- */
-export function useWorkspaceTitleView(): WorkspaceTitleView {
-  const workspaces = useWorkspaces();
-  return deriveWorkspaceTitleView(workspaces.data, workspaces.isPending);
 }
 
 /** Stores selector: the active workspace's id (from the registry's
@@ -1875,7 +1814,7 @@ export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresen
   {
     panelAriaLabel: "filter panel",
     panelClassName:
-      "pointer-events-auto absolute left-[8px] top-[42px] z-30 animate-slide-in-left",
+      "pointer-events-auto absolute left-0 top-[calc(100%+0.5rem)] z-30 animate-slide-in-left",
     headerClassName:
       "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
     titleClassName: "text-body font-medium text-ink",
