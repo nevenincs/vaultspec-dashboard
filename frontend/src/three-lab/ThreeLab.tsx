@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createThreeScene } from "../scene/field/fieldAssembly";
+import { createDashboardScene } from "../scene/field/fieldAssembly";
 import type { SceneController } from "../scene/sceneController";
 import type { SceneEdgeData, SceneNodeData } from "../scene/sceneController";
 import { sliceToScene } from "../scene/sceneMapping";
@@ -247,7 +247,7 @@ export function ThreeLab() {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const scene = createThreeScene();
+    const scene = createDashboardScene();
     sceneRef.current = scene;
     scene.controller.mount(host);
     // Hydrate the freshly-built field with the persisted/URL params BEFORE the
