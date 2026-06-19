@@ -6,19 +6,14 @@
 // FLAT-GREY node-connection field sitting LOW-OPACITY BEHIND the nodes, so the
 // canvas reads as clean category circles on faint connective rule lines, never a
 // coloured web. Every edge draws in ONE uniform grey — the --color-scene-rule
-// scene token (literal hex per theme, resolved through the getComputedStyle seam,
-// never a var() chain). This SUPERSEDES the prior tier-coloured stroke encoding
-// ON THE CANVAS (Figma is binding): declared/structural/temporal/semantic no
-// longer paint distinct hues.
+// scene token. This SUPERSEDES the prior tier-coloured stroke encoding ON THE
+// CANVAS (Figma is binding): declared/structural/temporal/semantic no longer paint
+// distinct hues.
 //
 // The tier DATA survives untouched — the model still carries
 // `tier`/`state`/`confidence`, filtering and selection still key off it, and the
-// grouping below still PARTITIONS by tier so each treatment's geometry (dashes /
-// haze quads / meta ribbon / routed lineage chains) is preserved for the off-
-// canvas consumers; only the resolved TINT flattens to the single grey and the
-// per-treatment alpha stays close so the field reads as one uniform connection
-// mesh. (Codify follow-up: this deliberately retires the tier-edge colour
-// encoding per the headline-canvas redesign.)
+// grouping still PARTITIONS by tier so each treatment's geometry (dashes / haze
+// quads / meta ribbon / routed lineage chains) is preserved.
 //
 // Geometry strategy proven by the W01.P01 spike: static topology built per
 // edge-set change, position buffers re-uploaded in place per frame. Solid and
@@ -26,139 +21,26 @@
 // quads (GL lines have no width). Dotted edges use a fixed dash count per edge so
 // per-frame updates never resize buffers.
 //
-// Unknown tiers are a surfaced data error, not a silent re-bucket (audit finding
-// spike-tier-wrap-003): the truthfulness stance applies to our own rendering
-// pipeline too.
+// The pure edge style + classification helpers (group key, lineage axis, colour,
+// haze/meta widths) live in `edgeStyle.ts` (pixi-free); this file keeps the
+// pixi-bound `EdgeMeshLayer` and the Float32Array buffer writers, importing the
+// style helpers back.
 
 import { Container, Mesh, MeshGeometry, Texture } from "pixi.js";
 
 import type { SceneEdgeData } from "../sceneController";
-import { cssColorNumber as getCssColor } from "./tokenReads";
-
-// --- fixed treatment palette (interim values pending the S47 token layer) ---
-
-export const EDGE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
-export type EdgeTier = (typeof EDGE_TIERS)[number];
-
-/** Light-mode fallback for the scene rule grey (node test env has no document). */
-export const SCENE_RULE_FALLBACK = 0xd8d2ca;
+import {
+  UnknownTierError,
+  edgeGroupKey,
+  groupColor,
+  hazeHalfWidth,
+  metaHalfWidth,
+} from "./edgeStyle";
 
 /** Dash slots per temporal edge — fixed so buffers never resize per frame. */
 export const DASHES_PER_EDGE = 8;
 
-// --- pure helpers (unit-tested) ----------------------------------------------
-
-export class UnknownTierError extends Error {
-  readonly edgeId: string;
-  readonly tier: string;
-  constructor(edgeId: string, tier: string) {
-    super(
-      `edge ${edgeId} carries unknown tier "${tier}" — refusing to render it silently`,
-    );
-    this.edgeId = edgeId;
-    this.tier = tier;
-  }
-}
-
-/**
- * Group key for an edge: which mesh it batches into. Throws on unknown
- * tiers — the caller surfaces the error, never re-buckets.
- */
-export function edgeGroupKey(edge: SceneEdgeData): string {
-  // Constellation meta-edges are their own treatment: an aggregation
-  // ribbon (quad, width by count), not a tier line (G3.d).
-  if (edge.meta) return "meta";
-  switch (edge.tier) {
-    case "declared":
-      return "declared";
-    case "structural":
-      return `structural:${edge.state ?? "resolved"}`;
-    case "temporal":
-      return `temporal:${confidenceBucket(edge.confidence)}`;
-    case "semantic":
-      return `semantic:${confidenceBucket(edge.confidence)}`;
-    default:
-      throw new UnknownTierError(edge.id, String(edge.tier));
-  }
-}
-
-/**
- * Pipeline-derivation labels in PROV/lineage axis order (graph-node-semantics /
- * graph-representation): the directed chain research -> adr -> plan -> exec ->
- * audit -> rule. A derivation-bearing edge is a LINEAGE edge — the lineage layout
- * orders nodes along this axis. Tier still carries the line treatment (the channel
- * separation is preserved): derivation never becomes a competing edge colour, it
- * is a layout-axis and edge-classification signal only.
- */
-export const DERIVATION_AXIS_ORDER: Record<string, number> = {
-  grounds: 0, // research -> adr
-  authorizes: 1, // adr -> plan
-  binds: 1, // adr -> plan (synonym)
-  "generated-by": 2, // plan -> exec
-  aggregates: 3, // exec -> summary
-  reviews: 4, // exec -> audit
-  "promoted-from": 5, // audit -> rule
-};
-
-/** True when the edge carries a pipeline-derivation label (a lineage edge). */
-export function isLineageEdge(edge: SceneEdgeData): boolean {
-  return (
-    typeof edge.derivation === "string" && edge.derivation in DERIVATION_AXIS_ORDER
-  );
-}
-
-/** Confidence quantized to 4 lightness buckets (0 = faintest, 3 = fullest). */
-export function confidenceBucket(confidence: number): number {
-  const c = Math.max(0, Math.min(1, confidence));
-  return Math.min(3, Math.floor(c * 4));
-}
-
-/**
- * Mix a colour toward the canvas-background ground — lightness carries
- * confidence (per the ADR: lightness, never transparency).  The optional
- * `paper` argument lets callers pass the resolved theme value; when absent,
- * the light-mode paper warm-white is used (keeps unit tests pure).
- */
-export function mixTowardPaper(
-  color: number,
-  amount: number,
-  paper = { r: 0xfa, g: 0xf9, b: 0xf7 },
-): number {
-  const t = Math.max(0, Math.min(1, amount));
-  const r = (color >> 16) & 0xff;
-  const g = (color >> 8) & 0xff;
-  const b = color & 0xff;
-  const mix = (ch: number, p: number) => Math.round(ch + (p - ch) * t);
-  return (mix(r, paper.r) << 16) | (mix(g, paper.g) << 8) | mix(b, paper.b);
-}
-
-/** Lightness mix for a group: bucket 3 → 0 (full ink), bucket 0 → 0.6. */
-export function bucketLightness(bucket: number): number {
-  return (3 - Math.max(0, Math.min(3, bucket))) * 0.2;
-}
-
-/**
- * Resolved stroke colour for a group key — now a SINGLE uniform grey for every
- * tier (graph/Hero 85:2 binding redesign): the --color-scene-rule scene token,
- * read as literal hex per theme through the scene token seam. The `key` argument
- * is retained (the grouping still partitions by tier so each treatment's geometry
- * survives), but the resolved tint no longer varies by tier/state/confidence —
- * the canvas edge is one clean grey rule, the way the Hero shows it. In the node
- * test environment the seam returns the SCENE_RULE_FALLBACK light-mode grey.
- */
-export function groupColor(_key: string): number {
-  return getCssColor("--color-scene-rule", SCENE_RULE_FALLBACK);
-}
-
-/** Semantic haze half-width from the score (width by score per G3.c). */
-export function hazeHalfWidth(confidence: number): number {
-  return 0.75 + 1.25 * Math.max(0, Math.min(1, confidence));
-}
-
-/** Meta-edge ribbon half-width from the aggregated count (G3.d). */
-export function metaHalfWidth(count: number): number {
-  return Math.min(6, 1 + Math.log2(Math.max(1, count)) * 1.5);
-}
+// --- buffer writers (unit-tested; pure Float32Array geometry writes) ----------
 
 /** Write one solid segment (4 floats) into `out` at `offset`. */
 export function writeSegment(
@@ -706,13 +588,6 @@ export class EdgeMeshLayer {
     // touch fainter (it is a wide soft body, not a hairline) so it does not bloom
     // brighter than the rule lines. While an ego is lifted, non-lifted groups
     // recede (G3.b).
-    // Connection lines must read clearly as a mesh (the binding "category circles
-    // on a connective mesh" treatment) — at the prior 0.42/0.32 the dark scene-rule
-    // grey on the near-black dark ground blended to within ~13/255 of the
-    // background and the lines effectively vanished. These higher alphas keep the
-    // mesh a quiet connective web while making every edge actually visible; the
-    // soft semantic haze stays a touch fainter than the crisp tier lines so it
-    // never blooms brighter than them.
     const treatmentAlpha = isSemantic ? 0.55 : 0.82;
     const baseAlpha =
       this.highlight && !lifted ? treatmentAlpha * 0.25 : treatmentAlpha;

@@ -24,7 +24,7 @@
 // are preserved and flow through to the edge layer with routed waypoints (D6).
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
-import { DERIVATION_AXIS_ORDER, isLineageEdge } from "./edgeMeshes";
+import { DERIVATION_AXIS_ORDER, isLineageEdge } from "./edgeStyle";
 import {
   type LayeredEdge,
   type RoutedEdge,

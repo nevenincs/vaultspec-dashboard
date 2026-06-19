@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { groupColor } from "./edgeMeshes";
+import { groupColor } from "./edgeStyle";
 import { stateColor } from "./nodeAppearance";
 import { cssColorNumber } from "./tokenReads";
 

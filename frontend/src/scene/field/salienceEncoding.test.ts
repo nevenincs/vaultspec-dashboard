@@ -16,7 +16,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SceneNodeData } from "../sceneController";
-import { isLineageEdge } from "./edgeMeshes";
+import { isLineageEdge } from "./edgeStyle";
 import {
   SALIENCE_RADIUS_MAX,
   ambientLabelFloor,

@@ -5,6 +5,12 @@ import type { SceneEdgeData } from "../sceneController";
 import {
   DASHES_PER_EDGE,
   EdgeMeshLayer,
+  writeDashedSegments,
+  writePolyline,
+  writeQuadCorners,
+  writeSegment,
+} from "./edgeMeshes";
+import {
   SCENE_RULE_FALLBACK,
   UnknownTierError,
   bucketLightness,
@@ -13,11 +19,7 @@ import {
   groupColor,
   hazeHalfWidth,
   mixTowardPaper,
-  writeDashedSegments,
-  writePolyline,
-  writeQuadCorners,
-  writeSegment,
-} from "./edgeMeshes";
+} from "./edgeStyle";
 
 const edge = (tier: string, extra?: Partial<SceneEdgeData>): SceneEdgeData =>
   ({
