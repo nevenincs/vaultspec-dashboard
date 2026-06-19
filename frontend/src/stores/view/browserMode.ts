@@ -1,31 +1,43 @@
 import { create } from "zustand";
+import { useCallback } from "react";
 
-// Browser-region view-local state (dashboard-left-rail ADR "Browser" + "In-rail
-// filter"): the chosen mode (vault | tree | code) and the in-rail filter text,
-// BOTH re-keyed per scope so they do not bleed across a worktree/workspace swap.
+// Browser-region view-local state (dashboard-left-rail ADR "Browser"): the chosen
+// mode (vault | code), re-keyed per scope so it does not bleed across a
+// worktree/workspace swap. Filter text is canonical dashboard-state now.
 //
 // The ADR is explicit on two points this store realizes:
 //   1. The mode is "view-local state re-keyed per scope so it does not bleed
 //      across a swap" — a stale `code` mode (or a stale filter) must not ride
 //      into a new corpus.
-//   2. The in-rail filter "issues no wire request and clears on scope swap" — it
-//      is a client-side narrowing of the ALREADY-FETCHED listing, categorically
-//      distinct from the global right-rail search pillar (a `POST /search`).
-//
 // This lives in `stores/view/` (the view-local-state home), NOT in the server
 // stores: it touches no wire, holds no query cache, and reads no `tiers` block
 // (dashboard-layer-ownership). The wholesale reset in `viewStore.setScope` /
-// `viewStore.swapWorkspace` calls `resetBrowserMode()` so the reset stays in ONE
-// place — the rail control never resets this itself (the single-navigation-law
-// "no surface owns the reset; the stores layer does").
+// `viewStore.swapWorkspace` calls `resetBrowserMode()` so the mode reset stays in
+// ONE place — the rail control never resets this itself (the
+// single-navigation-law "no surface owns the reset; the stores layer does").
 
-// The three file-thinking modes (dashboard-left-rail / Figma `LeftRail_*`): VAULT
-// (the `/vault-tree` projection grouped by `.vault/` subtree, the default), TREE
-// (a pure CLIENT-SIDE projection of the SAME `/vault-tree` response nested
-// feature → doc_type → document — no engine work, views-are-projections-of-one-
-// model), and CODE (the `/file-tree` projection). The segmented toggle in the
-// rail reads vault·tree·code, left to right, matching the binding design.
-export type BrowserMode = "vault" | "tree" | "code";
+// The two file-thinking modes (dashboard-left-rail / Figma `LeftRail_*`): VAULT
+// (the `/vault-tree` projection nested feature → doc_type → document, the
+// default) and CODE (the `/file-tree` projection). The dropped middle Tree tab is
+// folded into Vault so the rail exposes only vault·code.
+export type BrowserMode = "vault" | "code";
+
+export interface BrowserModeOption {
+  id: BrowserMode;
+  label: string;
+}
+
+// vault -> code, left to right: the binding board's browser-mode segmented
+// control. Labels live with the mode domain so app chrome does not duplicate the
+// option set.
+export const BROWSER_MODE_OPTIONS: readonly BrowserModeOption[] = [
+  { id: "vault", label: "Vault" },
+  { id: "code", label: "Code" },
+];
+
+export function isBrowserMode(value: string): value is BrowserMode {
+  return BROWSER_MODE_OPTIONS.some((option) => option.id === value);
+}
 
 /** The default mode for a fresh scope: vault, "the corpus the product is about"
  *  (ADR "Browser" — the default mode is vault). */
@@ -35,37 +47,45 @@ export interface BrowserModeState {
   /** The active browser mode for the CURRENT scope. Reset to the default on a
    *  wholesale scope/workspace swap so it never bleeds across corpora. */
   mode: BrowserMode;
-  /** The in-rail filter text for the CURRENT scope and mode — a client-side
-   *  narrowing, never a wire query. Cleared on a wholesale swap. */
-  filter: string;
 
   setMode: (mode: BrowserMode) => void;
-  setFilter: (filter: string) => void;
   /**
    * Reset the browser-region view state to a fresh-scope baseline: the default
-   * (vault) mode and an empty filter. Called by the view store's wholesale reset
-   * (`setScope` / `swapWorkspace`) so a scope or workspace swap can never carry a
-   * stale mode or a stale filter into the new corpus. Switching the FILTER alone
-   * when the mode changes is handled by `setMode` clearing the filter, because a
-   * filter scoped to the vault listing is meaningless against the code listing.
+   * (vault) mode. Called by the view store's wholesale reset (`setScope` /
+   * `swapWorkspace`) so a scope or workspace swap can never carry a stale mode
+   * into the new corpus.
    */
   resetForScope: () => void;
 }
 
 export const useBrowserModeStore = create<BrowserModeState>((set) => ({
   mode: DEFAULT_BROWSER_MODE,
-  filter: "",
-  setMode: (mode) =>
-    set((state) =>
-      // Switching modes clears the filter: a filter typed against the vault
-      // listing has no meaning against the code listing (the filter is "scoped
-      // to the active browser mode", ADR "In-rail filter"). A no-op mode set
-      // leaves the filter intact.
-      state.mode === mode ? state : { mode, filter: "" },
-    ),
-  setFilter: (filter) => set({ filter }),
-  resetForScope: () => set({ mode: DEFAULT_BROWSER_MODE, filter: "" }),
+  setMode: (mode) => set((state) => (state.mode === mode ? state : { mode })),
+  resetForScope: () => set({ mode: DEFAULT_BROWSER_MODE }),
 }));
+
+export function useBrowserMode(): BrowserMode {
+  return useBrowserModeStore((state) => state.mode);
+}
+
+export function setBrowserMode(mode: string): void {
+  if (!isBrowserMode(mode)) return;
+  useBrowserModeStore.getState().setMode(mode);
+}
+
+export function nextBrowserMode(current: BrowserMode): BrowserMode {
+  const index = BROWSER_MODE_OPTIONS.findIndex((option) => option.id === current);
+  return BROWSER_MODE_OPTIONS[(index + 1) % BROWSER_MODE_OPTIONS.length]!.id;
+}
+
+export function cycleBrowserMode(): void {
+  const current = useBrowserModeStore.getState().mode;
+  useBrowserModeStore.getState().setMode(nextBrowserMode(current));
+}
+
+export function useBrowserModeIntent(): (mode: string) => void {
+  return useCallback((mode: string) => setBrowserMode(mode), []);
+}
 
 /** Imperative reset for the view store's wholesale swap — called from outside a
  *  React render (the same shape as the filter/pin/lens store resets the view

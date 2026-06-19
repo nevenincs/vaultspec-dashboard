@@ -10,18 +10,9 @@ import {
   type BrowserMode,
 } from "../stores/view/browserMode";
 import {
-  LEFT_RAIL_MAX_WIDTH,
-  LEFT_RAIL_MIN_WIDTH,
-  RIGHT_RAIL_MAX_WIDTH,
-  RIGHT_RAIL_MIN_WIDTH,
-  TIMELINE_MAX_HEIGHT,
-  TIMELINE_MIN_HEIGHT,
-  setShellLeftRailWidth as setLeftRailWidth,
-  setShellRightRailWidth as setRightRailWidth,
-  setShellTimelineHeight as setTimelineHeight,
   deriveShellResizeHandleView,
-  shellResizeKeySize,
-  shellResizePointerSize,
+  resizeShellPanelByKey,
+  startShellResizePointerSession,
   type ShellResizeAxis,
   type ShellResizeHandleSide,
   toggleShellPanelFlyout as togglePanelFlyout,
@@ -31,6 +22,14 @@ import {
   useShellWindowActions,
 } from "../stores/view/shellLayout";
 import { LeftRail } from "./left/LeftRail";
+import {
+  LEFT_RAIL_KEYMAP_CONTEXT,
+  useLeftRailKeybindings,
+} from "./left/leftRailActions";
+import {
+  RIGHT_RAIL_KEYMAP_CONTEXT,
+  useRightRailKeybindings,
+} from "./right/rightRailActions";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { IconButton, Popover } from "./kit";
@@ -92,102 +91,32 @@ export function AppShell() {
     if (leftCollapsed) shellActions.toggleLeftCollapsed();
   };
 
-  const startLeftResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const startResize = (
+    axis: ShellResizeAxis,
+    startSize: number,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
     event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = leftRailWidth;
-    const onMove = (move: PointerEvent) => {
-      setLeftRailWidth(
-        shellResizePointerSize({
-          axis: "left",
-          startSize: startWidth,
-          startClientX: startX,
-          startClientY: event.clientY,
-          clientX: move.clientX,
-          clientY: move.clientY,
-          min: LEFT_RAIL_MIN_WIDTH,
-          max: LEFT_RAIL_MAX_WIDTH,
-        }),
-      );
-    };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp, { once: true });
-  };
-
-  const startRightResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = rightRailWidth;
-    const onMove = (move: PointerEvent) => {
-      setRightRailWidth(
-        shellResizePointerSize({
-          axis: "right",
-          startSize: startWidth,
-          startClientX: startX,
-          startClientY: event.clientY,
-          clientX: move.clientX,
-          clientY: move.clientY,
-          min: RIGHT_RAIL_MIN_WIDTH,
-          max: RIGHT_RAIL_MAX_WIDTH,
-        }),
-      );
-    };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp, { once: true });
-  };
-
-  const startTimelineResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = timelineHeight;
-    const onMove = (move: PointerEvent) => {
-      setTimelineHeight(
-        shellResizePointerSize({
-          axis: "timeline",
-          startSize: startHeight,
-          startClientX: event.clientX,
-          startClientY: startY,
-          clientX: move.clientX,
-          clientY: move.clientY,
-          min: TIMELINE_MIN_HEIGHT,
-          max: TIMELINE_MAX_HEIGHT,
-        }),
-      );
-    };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp, { once: true });
+    startShellResizePointerSession({
+      axis,
+      startSize,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      target: event.currentTarget.ownerDocument,
+    });
   };
 
   const resizeByKey = (
     event: KeyboardEvent<HTMLDivElement>,
     current: number,
-    setSize: (size: number) => void,
-    min: number,
-    max: number,
     axis: ShellResizeAxis,
   ) => {
-    const next = shellResizeKeySize({
+    resizeShellPanelByKey({
       axis,
       current,
       key: event.key,
-      min,
-      max,
+      preventDefault: () => event.preventDefault(),
     });
-    if (next === null) return;
-    event.preventDefault();
-    setSize(next);
   };
 
   // Theme is an engine setting now (dashboard-settings W05): the bridge reconciles
@@ -201,6 +130,14 @@ export function AppShell() {
   // once here so status / rag-health stay live regardless of which rail tab is
   // open; NowStrip and the search controller read the deduped shared accumulator.
   useBackendSignalSubscription();
+  // Enroll the left/right rail + filter command shortcuts onto the one keymap
+  // registry (keyboard-action-system W04.P11-P12). Each hook registers its
+  // bindings + action resolvers in an effect and disposes them on unmount; the
+  // single global dispatcher owns the keydown listener. Mounted here once at the
+  // shell top so the bindings are present for the rails' lifetime (the surface
+  // contexts gate which bindings fire when each rail region is focused).
+  useLeftRailKeybindings();
+  useRightRailKeybindings();
 
   return (
     <div
@@ -224,19 +161,19 @@ export function AppShell() {
         {shellFrame.showExpandedLeftRail && (
           <ErrorBoundary region="left-rail">
             <CrashZone region="left-rail" />
-            <div className={shellFrame.leftRailContentClassName}>
+            <div
+              className={shellFrame.leftRailContentClassName}
+              data-keymap-context={LEFT_RAIL_KEYMAP_CONTEXT}
+            >
               <LeftRail />
             </div>
             <ResizeHandle
               side="right"
-              onPointerDown={startLeftResize}
+              onPointerDown={(event) => startResize("left", leftRailWidth, event)}
               onKeyDown={(event) =>
                 resizeByKey(
                   event,
                   leftRailWidth,
-                  setLeftRailWidth,
-                  LEFT_RAIL_MIN_WIDTH,
-                  LEFT_RAIL_MAX_WIDTH,
                   "left",
                 )
               }
@@ -276,14 +213,13 @@ export function AppShell() {
           >
             <ResizeHandle
               side="top"
-              onPointerDown={startTimelineResize}
+              onPointerDown={(event) =>
+                startResize("timeline", timelineHeight, event)
+              }
               onKeyDown={(event) =>
                 resizeByKey(
                   event,
                   timelineHeight,
-                  setTimelineHeight,
-                  TIMELINE_MIN_HEIGHT,
-                  TIMELINE_MAX_HEIGHT,
                   "timeline",
                 )
               }
@@ -310,14 +246,11 @@ export function AppShell() {
             <CrashZone region="right-rail" />
             <ResizeHandle
               side="left"
-              onPointerDown={startRightResize}
+              onPointerDown={(event) => startResize("right", rightRailWidth, event)}
               onKeyDown={(event) =>
                 resizeByKey(
                   event,
                   rightRailWidth,
-                  setRightRailWidth,
-                  RIGHT_RAIL_MIN_WIDTH,
-                  RIGHT_RAIL_MAX_WIDTH,
                   "right",
                 )
               }
@@ -448,7 +381,10 @@ function ActivityRail({
   onTabChange: (tab: RailTabId) => void;
 }) {
   return (
-    <div className={shellFrame.activityRailClassName}>
+    <div
+      className={shellFrame.activityRailClassName}
+      data-keymap-context={RIGHT_RAIL_KEYMAP_CONTEXT}
+    >
       {/* Tab bar (roving-keys tablist) — the board's three label-only tabs. */}
       <RailTabs active={tab} onChange={onTabChange} />
 

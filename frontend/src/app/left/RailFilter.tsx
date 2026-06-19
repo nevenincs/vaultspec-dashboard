@@ -3,9 +3,8 @@
 // centralized kit `SearchField` (board "Design System — Components" 135:2) so the
 // field is a real shared definition, not a per-surface hand-built input
 // (design-system-is-centralized). It narrows the ALREADY-FETCHED listing
-// client-side by name / stem / tag — it issues NO wire request (the narrowing
-// happens in the VaultBrowser / CodeTree over entries the stores query already
-// returned) and clears on scope swap (the browser-mode store's per-scope reset).
+// client-side by name / stem / tag after its parent reads canonical dashboard
+// filter text.
 //
 // It stays the deliberate counterpart to the global right-rail SEARCH pillar
 // (`POST /search`): its placeholder names the client-side narrowing ("Filter
@@ -15,9 +14,8 @@
 // prior cycle's distinct funnel mark; the "Filter …" placeholder carries the
 // distinction.)
 //
-// Read-only navigation law: this is a view-local affordance only — it emits no
-// scope/node selection and never fetches; it writes the filter text into the
-// browser-mode store and nothing else.
+// Read-only navigation law: this emits no scope/node selection and never fetches;
+// its parent routes text changes through canonical dashboard filters.
 
 import { SearchField } from "../kit";
 
@@ -27,10 +25,11 @@ export interface RailFilterProps {
   modeLabel: string;
   value: string;
   onChange: (value: string) => void;
+  onClear?: () => void;
 }
 
-export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
-  // Name the narrowed listing for the active mode: vault/tree narrow documents,
+export function RailFilter({ modeLabel, value, onChange, onClear }: RailFilterProps) {
+  // Name the narrowed listing for the active mode: vault narrows documents,
   // code narrows files. Always begins with "Filter …" (never "search…").
   const noun = modeLabel === "code" ? "files" : "documents";
   return (
@@ -38,7 +37,7 @@ export function RailFilter({ modeLabel, value, onChange }: RailFilterProps) {
       <SearchField
         value={value}
         onChange={onChange}
-        onClear={() => onChange("")}
+        onClear={onClear ?? (() => onChange(""))}
         placeholder={`Filter ${noun}…`}
         ariaLabel={`filter the ${modeLabel} listing`}
       />
