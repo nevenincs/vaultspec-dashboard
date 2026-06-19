@@ -35,8 +35,15 @@ const PREFIX = "vaultspec-dashboard:positions";
 /** Most scopes a workspace keeps warm; least-recently-updated evict first. */
 const MAX_SCOPES = 12;
 
-const scopeKey = (workspace: string, scope: string): string =>
+const keyPart = (value: string): string => encodeURIComponent(value);
+
+const legacyScopeKey = (workspace: string, scope: string): string =>
   `${PREFIX}:${workspace}:${scope}`;
+const scopeKey = (workspace: string, scope: string): string =>
+  `${PREFIX}:${keyPart(workspace)}:${keyPart(scope)}`;
+const legacyIndexKey = (workspace: string): string => `${PREFIX}:${workspace}::index`;
+const indexKey = (workspace: string): string =>
+  `${PREFIX}:${keyPart(workspace)}::index`;
 
 export class PositionCache {
   private store: KeyValueStore;
@@ -47,7 +54,11 @@ export class PositionCache {
 
   /** Restore the remembered positions for a workspace + scope, if any. */
   load(workspace: string, scope: string): Map<string, NodePosition> {
-    const raw = this.store.getItem(scopeKey(workspace, scope));
+    const key = scopeKey(workspace, scope);
+    const legacyKey = legacyScopeKey(workspace, scope);
+    const primaryRaw = this.store.getItem(key);
+    const usingLegacy = primaryRaw === null && legacyKey !== key;
+    const raw = primaryRaw ?? (usingLegacy ? this.store.getItem(legacyKey) : null);
     const out = new Map<string, NodePosition>();
     if (!raw) return out;
     try {
@@ -58,7 +69,7 @@ export class PositionCache {
       }
     } catch {
       // Corrupt blob: a cache miss, never an error surface.
-      this.store.removeItem(scopeKey(workspace, scope));
+      this.store.removeItem(usingLegacy ? legacyKey : key);
     }
     return out;
   }
@@ -94,7 +105,7 @@ export class PositionCache {
 
   /** Drop one scope's cache (e.g. on a corrupt or stale layout). */
   clear(workspace: string, scope: string): void {
-    this.store.removeItem(scopeKey(workspace, scope));
+    this.removeScopeBlob(workspace, scope);
     this.index(workspace).delete(scope);
     this.writeIndex(workspace);
   }
@@ -110,15 +121,15 @@ export class PositionCache {
 
   private indexCache = new Map<string, Map<string, number>>();
 
-  private indexKey(workspace: string): string {
-    return `${PREFIX}:${workspace}::index`;
-  }
-
   private index(workspace: string): Map<string, number> {
     let idx = this.indexCache.get(workspace);
     if (idx) return idx;
     idx = new Map();
-    const raw = this.store.getItem(this.indexKey(workspace));
+    const key = indexKey(workspace);
+    const legacyKey = legacyIndexKey(workspace);
+    const primaryRaw = this.store.getItem(key);
+    const usingLegacy = primaryRaw === null && legacyKey !== key;
+    const raw = primaryRaw ?? (usingLegacy ? this.store.getItem(legacyKey) : null);
     if (raw) {
       try {
         for (const [scope, at] of Object.entries(
@@ -137,7 +148,7 @@ export class PositionCache {
   private writeIndex(workspace: string): void {
     try {
       this.store.setItem(
-        this.indexKey(workspace),
+        indexKey(workspace),
         JSON.stringify(Object.fromEntries(this.index(workspace))),
       );
     } catch {
@@ -150,7 +161,7 @@ export class PositionCache {
     idx.set(justSaved, Math.max(...[0, ...idx.values()]) + 1);
     while (idx.size > MAX_SCOPES) {
       const oldest = [...idx.entries()].sort((a, b) => a[1] - b[1])[0][0];
-      this.store.removeItem(scopeKey(workspace, oldest));
+      this.removeScopeBlob(workspace, oldest);
       idx.delete(oldest);
     }
     this.writeIndex(workspace);
@@ -160,12 +171,20 @@ export class PositionCache {
     const idx = this.index(workspace);
     for (const [scope] of [...idx.entries()].sort((a, b) => a[1] - b[1])) {
       if (scopeKey(workspace, scope) === excludeKey) continue;
-      this.store.removeItem(scopeKey(workspace, scope));
+      this.removeScopeBlob(workspace, scope);
       idx.delete(scope);
       this.writeIndex(workspace);
       return true;
     }
     return false;
+  }
+
+  private removeScopeBlob(workspace: string, scope: string): void {
+    this.store.removeItem(scopeKey(workspace, scope));
+    const legacyKey = legacyScopeKey(workspace, scope);
+    if (legacyKey !== scopeKey(workspace, scope)) {
+      this.store.removeItem(legacyKey);
+    }
   }
 }
 

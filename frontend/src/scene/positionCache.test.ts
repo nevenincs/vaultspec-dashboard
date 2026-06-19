@@ -24,6 +24,31 @@ class MemoryStore implements KeyValueStore {
 const pos = (x: number, y: number) => ({ x, y });
 
 describe("PositionCache", () => {
+  it("stores active position blobs under encoded workspace and scope keys", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    cache.save("Y:/repo/.git", "Y:/repo", new Map([["n1", pos(1, 2)]]), 1);
+
+    expect(
+      store.map.has("vaultspec-dashboard:positions:Y%3A%2Frepo%2F.git:Y%3A%2Frepo"),
+    ).toBe(true);
+    expect(store.map.has("vaultspec-dashboard:positions:Y:/repo/.git:Y:/repo")).toBe(
+      false,
+    );
+  });
+
+  it("encodes key parts so workspace and scope separator collisions are impossible", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    cache.save("a:b", "c", new Map([["n1", pos(1, 1)]]), 1);
+    cache.save("a", "b:c", new Map([["n2", pos(2, 2)]]), 2);
+
+    expect(cache.load("a:b", "c").get("n1")).toEqual({ x: 1, y: 1 });
+    expect(cache.load("a:b", "c").has("n2")).toBe(false);
+    expect(cache.load("a", "b:c").get("n2")).toEqual({ x: 2, y: 2 });
+    expect(cache.load("a", "b:c").has("n1")).toBe(false);
+  });
+
   it("round-trips positions keyed by workspace and scope", () => {
     const cache = new PositionCache(new MemoryStore());
     cache.save("ws", "scope-a", new Map([["n1", pos(1.234, 5.678)]]), 1);
@@ -41,13 +66,44 @@ describe("PositionCache", () => {
     expect(store.map.has("vaultspec-dashboard:positions:ws:s")).toBe(false);
   });
 
+  it("loads legacy raw keys so existing saved positions survive the key hardening", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    store.map.set(
+      "vaultspec-dashboard:positions:Y:/repo/.git:Y:/repo",
+      JSON.stringify({
+        v: 1,
+        updatedAt: 1,
+        positions: { n1: [3, 4] },
+      }),
+    );
+
+    expect(cache.load("Y:/repo/.git", "Y:/repo").get("n1")).toEqual({ x: 3, y: 4 });
+  });
+
+  it("clears corrupt legacy blobs when falling back from an encoded miss", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    const legacy = "vaultspec-dashboard:positions:Y:/repo/.git:Y:/repo";
+    store.map.set(legacy, "{not json");
+
+    expect(cache.load("Y:/repo/.git", "Y:/repo").size).toBe(0);
+    expect(store.map.has(legacy)).toBe(false);
+  });
+
   it("clears a single scope on demand", () => {
-    const cache = new PositionCache(new MemoryStore());
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
     cache.save("ws", "a", new Map([["n1", pos(0, 0)]]), 1);
     cache.save("ws", "b", new Map([["n1", pos(0, 0)]]), 2);
+    store.map.set(
+      "vaultspec-dashboard:positions:ws:a",
+      JSON.stringify({ legacy: true }),
+    );
     cache.clear("ws", "a");
     expect(cache.load("ws", "a").size).toBe(0);
     expect(cache.load("ws", "b").size).toBe(1);
+    expect(store.map.has("vaultspec-dashboard:positions:ws:a")).toBe(false);
     expect(cache.scopes("ws")).toEqual(["b"]);
   });
 
@@ -59,6 +115,35 @@ describe("PositionCache", () => {
     expect(cache.scopes("ws").length).toBe(12);
     expect(cache.load("ws", "scope-0").size).toBe(0);
     expect(cache.load("ws", "scope-13").size).toBe(1);
+  });
+
+  it("loads legacy raw index keys so existing eviction order survives key hardening", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    for (let i = 0; i < 12; i++) {
+      store.map.set(
+        `vaultspec-dashboard:positions:Y:/repo/.git:scope-${i}`,
+        JSON.stringify({ v: 1, updatedAt: i, positions: { n1: [i, i] } }),
+      );
+    }
+    store.map.set(
+      "vaultspec-dashboard:positions:Y:/repo/.git::index",
+      JSON.stringify(
+        Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`scope-${i}`, i])),
+      ),
+    );
+
+    expect(cache.scopes("Y:/repo/.git")[0]).toBe("scope-0");
+    cache.save("Y:/repo/.git", "scope-new", new Map([["n2", pos(9, 9)]]), 13);
+
+    expect(cache.load("Y:/repo/.git", "scope-0").size).toBe(0);
+    expect(store.map.has("vaultspec-dashboard:positions:Y:/repo/.git:scope-0")).toBe(
+      false,
+    );
+    expect(cache.load("Y:/repo/.git", "scope-new").get("n2")).toEqual({
+      x: 9,
+      y: 9,
+    });
   });
 
   it("evicts older scopes to make room when the store rejects a write", () => {

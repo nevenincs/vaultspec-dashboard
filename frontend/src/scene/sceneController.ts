@@ -253,7 +253,30 @@ export type SceneCommand =
       kind: "set-overlays";
       featureCountries: boolean;
       featureHulls: boolean;
-    };
+    }
+  // Feature kill-switches (graph-perf 2026-06-18): strip the field back to bare
+  // nodes + edges + simulation for diagnosis. Each flag, when false, fully disables
+  // that interaction layer's GPU/CPU work — hover picking + hover emphasis,
+  // selection emphasis, and the feature-tag cluster cohort on hover. Default all on.
+  | { kind: "set-feature-flags"; flags: Partial<SceneFeatureFlags> };
+
+/** Toggleable interaction layers over the base nodes+edges+simulation field. */
+export interface SceneFeatureFlags {
+  /** Pointer hover: bounded picking, the hovered-node emphasis, and hover events. */
+  hover: boolean;
+  /** Selection emphasis (the shared selected-node greyout + focus ring). */
+  selection: boolean;
+  /** Expand a hover to the hovered node's feature-tag cohort (cluster highlight).
+   *  When false, hover lights only the single node, never its cluster. */
+  clusterHighlight: boolean;
+}
+
+/** All interaction layers on (the product default). */
+export const DEFAULT_SCENE_FEATURE_FLAGS: SceneFeatureFlags = {
+  hover: true,
+  selection: true,
+  clusterHighlight: true,
+};
 
 // RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
@@ -320,6 +343,8 @@ export interface SceneFieldRenderer {
   mount(host: HTMLElement): void;
   resize(width: number, height: number): void;
   destroy(): void;
+  /** Optional one-shot anchor refresh when a consumer starts tracking a node. */
+  refreshAnchors?(): void;
   /** Forwarded scene commands (renderer concerns: data, visibility, time). */
   command?(cmd: SceneCommand): void;
 }
@@ -468,6 +493,7 @@ export class SceneController {
       this.trackedNodes.set(id, set);
     }
     set.add(listener);
+    this.field?.refreshAnchors?.();
     return () => {
       set.delete(listener);
       if (set.size === 0) this.trackedNodes.delete(id);

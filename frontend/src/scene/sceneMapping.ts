@@ -4,7 +4,12 @@
 
 import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
 import { nodeStatusFromWire } from "./field/statusStamp";
-import type { SceneDelta, SceneEdgeData, SceneNodeData } from "./sceneController";
+import type {
+  SceneCommand,
+  SceneDelta,
+  SceneEdgeData,
+  SceneNodeData,
+} from "./sceneController";
 
 export function engineNodeToScene(node: EngineNode): SceneNodeData {
   return {
@@ -82,5 +87,19 @@ export function graphDeltaToScene(delta: GraphDeltaEntry): SceneDelta | null {
     edge: delta.edge ? engineEdgeToScene(delta.edge) : undefined,
     t: delta.t,
     seq: delta.seq,
+  };
+}
+
+export function graphDeltasToApplyCommand(
+  deltas: readonly GraphDeltaEntry[],
+): SceneCommand | null {
+  const sceneDeltas = deltas
+    .map((entry) => graphDeltaToScene(entry))
+    .filter((delta): delta is SceneDelta => delta !== null);
+  if (sceneDeltas.length === 0) return null;
+  return {
+    kind: "apply-deltas",
+    deltas: sceneDeltas,
+    seq: sceneDeltas[sceneDeltas.length - 1]!.seq,
   };
 }

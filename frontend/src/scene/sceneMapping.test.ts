@@ -4,6 +4,7 @@ import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/e
 import {
   engineEdgeToScene,
   engineNodeToScene,
+  graphDeltasToApplyCommand,
   graphDeltaToScene,
   sliceToScene,
 } from "./sceneMapping";
@@ -169,5 +170,45 @@ describe("graphDeltaToScene", () => {
     const node: EngineNode = { id: "doc:x", kind: "document", node_size: 9.6 };
     const result = graphDeltaToScene({ op: "add", node, t: 20, seq: 6 });
     expect(result!.node!.nodeSize).toBe(9.6);
+  });
+
+  it("projects a batch into the locked apply-deltas command", () => {
+    const node: EngineNode = {
+      id: "feature:auth",
+      kind: "feature",
+      title: "Auth",
+      member_count: 5,
+    };
+    const edge: EngineEdge = {
+      id: "e1",
+      src: "feature:auth",
+      dst: "feature:docs",
+      relation: "declares",
+      tier: "declared",
+      confidence: 0.9,
+    };
+
+    expect(
+      graphDeltasToApplyCommand([
+        { op: "add", t: 100, seq: 1 } as unknown as GraphDeltaEntry,
+        { op: "add", node, t: 200, seq: 2, granularity: "feature" },
+        { op: "change", edge, t: 300, seq: 3, granularity: "feature" },
+      ]),
+    ).toMatchObject({
+      kind: "apply-deltas",
+      seq: 3,
+      deltas: [
+        { op: "add", seq: 2, node: { id: "feature:auth", memberCount: 5 } },
+        { op: "change", seq: 3, edge: { id: "e1", tier: "declared" } },
+      ],
+    });
+  });
+
+  it("returns null for a batch with no scene-bearing deltas", () => {
+    expect(
+      graphDeltasToApplyCommand([
+        { op: "add", t: 100, seq: 1 } as unknown as GraphDeltaEntry,
+      ]),
+    ).toBeNull();
   });
 });

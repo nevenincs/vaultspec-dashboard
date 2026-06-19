@@ -1,10 +1,9 @@
 // cosmos.gl-backed scene field — node-graph-rework ADR (D1/D2/D3).
 //
-// Cosmos owns the live simulation and drag lifecycle. The scene uploads graph data
-// on topology changes, then controls Cosmos through its documented simulation API
-// (start/pause/unpause/stop + setConfig). It must not push point positions every
-// frame: Cosmos' render/update path clears hover state, so per-tick external
-// uploads break pointer interactivity.
+// Cosmos owns WebGL point/link drawing. The scene uploads deterministic graph data
+// on topology changes and renders on demand; Cosmos' GPU force solver and native
+// hover picking are deliberately disabled because they perform full-space quadtree
+// work and GPU->CPU readbacks that dominate small corpora.
 //
 // The canvas is FREE and CENTRED by default (soft center-gravity, no hard clip).
 // NOTE: with enableSimulation:true, cosmos's per-tick position shader DOES clamp
@@ -21,13 +20,16 @@ import { Graph } from "@cosmos.gl/graph";
 
 import type {
   EdgeRenderParams,
+  SceneAnchor,
   SceneCommand,
   SceneController,
+  SceneDelta,
   SceneEdgeData,
+  SceneFeatureFlags,
   SceneFieldRenderer,
   SceneNodeData,
 } from "../sceneController";
-import { EDGE_RENDER_DEFAULTS } from "../sceneController";
+import { DEFAULT_SCENE_FEATURE_FLAGS, EDGE_RENDER_DEFAULTS } from "../sceneController";
 import { categoryColor } from "./categoryColor";
 import {
   COSMOS_SIMULATION_DEFAULTS,
@@ -42,6 +44,10 @@ import {
 import { SALIENCE_RADIUS_MAX } from "./nodeSprites";
 import { cssColorNumber } from "./tokenReads";
 
+type CosmosD3Selection = {
+  on: (type: string, listener: null | ((event: unknown) => void)) => CosmosD3Selection;
+};
+
 /** The ONLY cosmos internal we reach for: stopFrames() halts the perpetual rAF
  *  render loop so the GPU truly idles. There is no public equivalent —
  *  start/pause/unpause only flip the simulation flag; only render() (re)starts
@@ -49,17 +55,41 @@ import { cssColorNumber } from "./tokenReads";
  *  public Graph API. */
 type CosmosRuntimeGraph = {
   stopFrames?: () => void;
+  renderFrame?: (timestamp?: number) => void;
+  findHoveredItem?: () => void;
+  _isMouseOnCanvas?: boolean;
+  canvas?: HTMLCanvasElement;
+  canvasD3Selection?: CosmosD3Selection;
+  zoomInstance?: {
+    eventTransform?: { k: number };
+    isRunning?: boolean;
+    convertSpaceToScreenPosition?: (position: [number, number]) => [number, number];
+  };
+  setZoomTransformByPointPositions?: (
+    positions: number[],
+    duration?: number,
+    scale?: number,
+    padding?: number,
+  ) => void;
 };
 
 /** Cosmos world-space size: sizes the position texture and screen mapping. */
-const SPACE_SIZE = 8192;
+const SPACE_SIZE = 4096;
 const SPACE_CENTRE = SPACE_SIZE / 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 /** Fallback node diameter when no per-node radius is known (auto-sizing a bound). */
 const FALLBACK_DIAMETER = 68;
 const COSMOS_POINT_SIZE = 4;
-const HOVER_RECEDING_POINT_ALPHA = 0.18;
-const HOVER_RECEDING_LINK_ALPHA = 0.04;
+// Emphasis dimming is driven by cosmos's NATIVE greyout (one mechanism for both
+// hover and selection): the active emphasis set is fed to selectPointsByIndices and
+// cosmos's shader dims everything else to these opacities. A point/link outside the
+// set recedes; a link incident to the set stays lit (cosmos greys links with no
+// selected endpoint). No per-frame colour-buffer mutation or re-upload.
+const GREYOUT_POINT_OPACITY = 0.18;
+const GREYOUT_LINK_OPACITY = 0.04;
+const COSMOS_GPU_SIMULATION_ENABLED = true;
+const PICK_RADIUS_PX = 14;
+const ONE_SHOT_IDLE_DELAY_MS = 48;
 const RENDERER_PRIMING_MIN_FRAMES = 8;
 const RENDERER_PRIMING_MIN_MS = 350;
 const RENDERER_PRIMING_MAX_MS = 1200;
@@ -140,6 +170,17 @@ function nowMs(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
+/** Shared empty selection set (avoids per-call allocation in the disabled path). */
+const EMPTY_ID_SET: ReadonlySet<string> = new Set<string>();
+
+/** Membership equality for two id sets (selection-emphasis-005 no-op guard). */
+function sameIdSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
+}
+
 /** Hex int (0xRRGGBB) -> cosmos [r,g,b,a] floats in [0,1]. */
 function rgba(hex: number): [number, number, number, number] {
   return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255, 1];
@@ -205,6 +246,12 @@ function slotPosition(
  * again. At tens of thousands of edges with long vault ids this turns an
  * O(sum of all edge-endpoint string lengths) pass into O(edges) integer folds — the
  * dominant cost of the dedup that often decides to do nothing.
+ *
+ * APPEARANCE is part of the signature (signature-006): the upload writes point
+ * colours/sizes and per-link colour/width from docType/kind, salience/memberCount,
+ * feature tags, and edge tier/confidence/state. Keying on topology alone would
+ * short-circuit an appearance-only change (e.g. a status/tier flip with unchanged
+ * ids), leaving stale GPU buffers. So the signature folds those inputs too.
  */
 function contentSignature(
   nodes: readonly SceneNodeData[],
@@ -234,6 +281,13 @@ function contentSignature(
   for (const n of nodes) {
     idIndex.set(n.id, next++);
     mix(n.id);
+    // Appearance inputs (signature-006): colour (docType/kind), size
+    // (salience/memberCount), and the hover cohort (feature tags). An
+    // appearance-only change must re-upload, so it must change the signature.
+    mix(n.docType ?? n.kind);
+    mixInt(Math.round((n.salience ?? -1) * 1000));
+    mixInt(n.memberCount ?? -1);
+    if (n.featureTags && n.featureTags.length) mix(n.featureTags.join(","));
   }
   for (const n of nodes) {
     if (n.seedPosition) {
@@ -243,8 +297,16 @@ function contentSignature(
     }
   }
   for (const e of edges) {
+    // Edge id is identity-bearing for linkEdgeIds and visibility masks. Two edges
+    // can share endpoints while carrying different ids; skipping the id leaves the
+    // uploaded edge-id mirror stale after an otherwise appearance-identical update.
+    mix(e.id);
     mixInt(idIndex.get(e.src) ?? -1);
     mixInt(idIndex.get(e.dst) ?? -1);
+    // Edge appearance (signature-006): tier → colour, confidence → width/opacity,
+    // state → dimming. Bucket confidence so float jitter does not thrash uploads.
+    mix(`${e.tier}:${e.state ?? ""}`);
+    mixInt(Math.round((e.confidence ?? 1) * 100));
   }
   return `${nodes.length}:${edges.length}:${(h >>> 0).toString(16)}`;
 }
@@ -318,6 +380,14 @@ interface PointSizeStats {
   linkDistanceToEffectiveAvg: number;
 }
 
+interface HoverPickCache {
+  id: string;
+  screenX: number;
+  screenY: number;
+  radiusPx: number;
+  zoomScale: number;
+}
+
 /** Per-link colour/width/opacity for an edge: tier -> hue, confidence -> width +
  *  opacity, broken/stale state -> dimming. `tierColors` is keyed by tier name with
  *  a `rule` fallback for an unknown tier (dimmed, never silently re-bucketed). */
@@ -369,14 +439,36 @@ export class CosmosField implements SceneFieldRenderer {
   private selectedIds = new Set<string>();
   private hoveredId: string | null = null;
   private hoverEmphasisIds = new Set<string>();
+  /** Renderer-local pointer cache. This avoids re-projecting every node on high
+   *  frequency pointermove when the cursor is still inside the current hit circle. */
+  private hoverPickCache: HoverPickCache | null = null;
   private basePointColors = new Float32Array();
   private baseLinkColors = new Float32Array();
-  /** Retained hover-dim buffers, reused across hovers (sized at set-data). Mutating
-   *  these in place avoids allocating a fresh full-graph colour array on every
-   *  hovered-node change — the GC churn that made hover janky at 37k links. */
-  private displayPointBuf = new Float32Array();
-  private displayLinkBuf = new Float32Array();
+  /** Base point sizes / link widths before any visibility mask, so set-visibility
+   *  can hide (size/width → 0) and restore without losing the salience/confidence
+   *  sizing. Retained per upload alongside the colour buffers. */
+  private baseSizes = new Float32Array();
+  private baseLinkWidths = new Float32Array();
+  /** CPU mirror of the LAST UPLOADED point positions (the seed/static layout, not
+   *  the live-settled GPU positions). The source for a representation-mode change's
+   *  base array, so mode switches NEVER do a `getPointPositions()` GPU→CPU readback
+   *  (a pipeline stall; the layout compute must not leave the GPU). */
+  private lastPositions = new Float32Array();
   private linkEndpointIds: [string, string][] = [];
+  /** Edge id per uploaded link (parallel to linkEndpointIds) so set-visibility can
+   *  hide a link by its edge id, matching the membership the stores layer sends. */
+  private linkEdgeIds: string[] = [];
+  /** Retained visibility membership (set-visibility): null = everything visible.
+   *  Re-applied after a set-data upload so a filter survives a keyframe. */
+  private visibleNodeIds: ReadonlySet<string> | null = null;
+  private visibleEdgeIds: ReadonlySet<string> | null = null;
+  /** Transient pulse cohort (pulse): highest emphasis precedence for a brief flash,
+   *  then cleared back to the hover/selection emphasis. */
+  private pulseIds = new Set<string>();
+  private pulseTimer: number | null = null;
+  /** Toggleable interaction layers (set-feature-flags): strip back to bare
+   *  nodes+edges+sim by disabling hover/selection/cluster-highlight. Default all on. */
+  private featureFlags: SceneFeatureFlags = { ...DEFAULT_SCENE_FEATURE_FLAGS };
   /** feature-tag -> node ids, built once per set-data so the hover cohort is a
    *  union over the hovered node's tags (O(cohort)) instead of a full O(nodes)
    *  re-scan with per-node tag allocation on every hover. */
@@ -398,14 +490,21 @@ export class CosmosField implements SceneFieldRenderer {
   private interacting = false;
   private lastAlpha = 0;
   /** Render-on-demand idle (node-graph-rework norm: idle GPU = 0). cosmos's frame
-   *  loop renders every frame forever once started; we halt it (stopFrames) when the
-   *  sim has settled AND the pointer is off the canvas, and wake it (render) on
-   *  pointer-enter, interaction, camera moves, and data/config changes. Hover
-   *  detection lives in the loop, so we only idle while the pointer is away. */
+   *  loop renders every frame forever once started; we halt it (stopFrames) after
+   *  one-shot paints. Hover is app-owned bounded picking, so pointer presence no
+   *  longer keeps Cosmos' frame loop alive. */
   private renderLoopIdle = false;
-  private pointerOver = false;
   private idleTimer: number | null = null;
-  private pointerHandlers: { enter: () => void; leave: () => void } | null = null;
+  private oneShotStopRaf: number | null = null;
+  private pointerHandlers: {
+    enter: (event: PointerEvent) => void;
+    move: (event: PointerEvent) => void;
+    wheel: () => void;
+    leave: () => void;
+    click: (event: MouseEvent) => void;
+    dblclick: (event: MouseEvent) => void;
+    contextmenu: (event: MouseEvent) => void;
+  } | null = null;
   private rendererLifecycle: RendererLifecycle = "empty";
   private rendererLifecycleSeq = 0;
   private rendererLifecycleChangedAt = nowMs();
@@ -442,10 +541,14 @@ export class CosmosField implements SceneFieldRenderer {
     this.graph = new Graph(container, {
       backgroundColor: hexString("--color-canvas-bg", 0xfdfaf6),
       spaceSize: SPACE_SIZE,
-      enableSimulation: true,
+      enableSimulation: COSMOS_GPU_SIMULATION_ENABLED,
       rescalePositions: false,
       ...this.cosmosForceConfig(),
       // ---- interaction (live) ---------------------------------------------
+      // Node dragging ON: the field is interactive. Canvas pan/zoom is cosmos's
+      // own d3-zoom (default enabled); both only render while the frame loop is
+      // alive — see maybeIdle, which keeps the loop running continuously while
+      // there is data so pan/zoom/drag are never frozen by render-on-demand idle.
       enableDrag: true,
       // Manual fitView() calls pass their own duration/padding; fitViewOnInit is
       // off, so the fitView*-on-init config knobs would be dead and are omitted.
@@ -468,22 +571,21 @@ export class CosmosField implements SceneFieldRenderer {
       linkWidthScale: 1,
       linkDefaultArrows: false,
       renderLinks: true,
-      linkGreyoutOpacity: 0.04,
+      // Native greyout opacities — the single dimming mechanism for hover AND
+      // selection (see applyEmphasis). When an emphasis set is active, cosmos dims
+      // every point/link outside it to these values on the GPU.
+      pointGreyoutOpacity: GREYOUT_POINT_OPACITY,
+      linkGreyoutOpacity: GREYOUT_LINK_OPACITY,
       linkVisibilityDistanceRange: [5, 6000],
       hoveredLinkColor: hexString("--color-accent", 0x8a7d5a),
       focusedPointRingColor: hexString("--color-accent", 0x8a7d5a),
-      onClick: (index) => {
-        const id = index === undefined ? null : (this.indexToId[index] ?? null);
-        this.controller?.emit({ kind: "select", id });
+      onZoom: () => {
+        this.clearHoverPickCache();
+        this.emitTrackedAnchors();
       },
-      onPointMouseOver: (index) => {
-        const id = this.indexToId[index] ?? null;
-        this.setHoverEmphasis(id);
-        this.controller?.emit({ kind: "hover", id });
-      },
-      onPointMouseOut: () => {
-        this.setHoverEmphasis(null);
-        this.controller?.emit({ kind: "hover", id: null });
+      onZoomEnd: () => {
+        this.clearHoverPickCache();
+        this.emitTrackedAnchors();
       },
       onDragStart: () => this.beginCosmosInteraction(),
       onDragEnd: () => {
@@ -494,6 +596,7 @@ export class CosmosField implements SceneFieldRenderer {
       },
       onSimulationEnd: () => {
         this.lastAlpha = 0;
+        this.simulationStarted = false;
         if (this.rendererLifecycle === "simulating") {
           this.setRendererLifecycle("ready", "simulation-end");
         }
@@ -501,22 +604,214 @@ export class CosmosField implements SceneFieldRenderer {
         this.scheduleIdle();
       },
     });
+    this.disableNativeHoverReadback();
 
-    // Render-on-demand idle: keep frames alive while the pointer is over the canvas
-    // (cosmos detects hover inside the loop), idle shortly after it leaves.
-    const enter = (): void => {
-      this.pointerOver = true;
-      this.ensureRenderLoop();
+    // Render-on-demand idle: pointer movement performs bounded CPU picking from
+    // the uploaded position mirror, then paints exactly one Cosmos frame.
+    const enter = (event: PointerEvent): void => {
+      this.updatePointerHover(event);
+    };
+    const move = (event: PointerEvent): void => {
+      this.updatePointerHover(event);
     };
     const leave = (): void => {
-      this.pointerOver = false;
+      if (this.hoveredId !== null) {
+        this.clearHoverPickCache();
+        this.setHoverEmphasis(null);
+        this.controller?.emit({ kind: "hover", id: null });
+      }
+      this.scheduleIdle(ONE_SHOT_IDLE_DELAY_MS);
+    };
+    const wheel = (): void => {
+      this.renderField(0);
       this.scheduleIdle();
     };
+    const click = (event: MouseEvent): void => {
+      event.stopPropagation();
+      const id = this.pickNodeFromEvent(event);
+      this.controller?.emit({ kind: "select", id });
+    };
+    const dblclick = (event: MouseEvent): void => {
+      event.stopPropagation();
+      const id = this.pickNodeFromEvent(event);
+      if (id) this.controller?.emit({ kind: "open", id });
+    };
+    const contextmenu = (event: MouseEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.controller?.emit({
+        kind: "context-menu",
+        id: this.pickNodeFromEvent(event),
+        target: "node",
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    };
     container.addEventListener("pointerenter", enter);
-    container.addEventListener("pointermove", enter);
-    container.addEventListener("wheel", enter, { passive: true });
+    container.addEventListener("pointermove", move);
+    container.addEventListener("wheel", wheel, { passive: true });
     container.addEventListener("pointerleave", leave);
-    this.pointerHandlers = { enter, leave };
+    container.addEventListener("click", click, true);
+    container.addEventListener("dblclick", dblclick, true);
+    container.addEventListener("contextmenu", contextmenu, true);
+    this.pointerHandlers = { enter, move, wheel, leave, click, dblclick, contextmenu };
+  }
+
+  refreshAnchors(): void {
+    this.emitTrackedAnchors();
+  }
+
+  private disableNativeHoverReadback(): void {
+    const runtime = this.graphRuntime();
+    if (!runtime) return;
+    runtime.findHoveredItem = () => undefined;
+    runtime._isMouseOnCanvas = false;
+    runtime.canvasD3Selection
+      ?.on("mouseenter.cosmos", null)
+      ?.on("mousemove.cosmos", null)
+      ?.on("mouseleave.cosmos", null)
+      ?.on("mousemove", null)
+      ?.on("click", null)
+      ?.on("contextmenu", null);
+  }
+
+  private screenPointFromEvent(event: MouseEvent): [number, number] | null {
+    const canvas = this.graphRuntime()?.canvas;
+    const target = canvas ?? this.container;
+    if (!target) return null;
+    const rect = target.getBoundingClientRect();
+    return [event.clientX - rect.left, event.clientY - rect.top];
+  }
+
+  private worldToScreen(world: [number, number]): [number, number] | null {
+    const zoom = this.graphRuntime()?.zoomInstance;
+    const fn = zoom?.convertSpaceToScreenPosition;
+    return typeof fn === "function" ? fn.call(zoom, world) : null;
+  }
+
+  private zoomScale(): number {
+    const k = this.graphRuntime()?.zoomInstance?.eventTransform?.k;
+    return typeof k === "number" && Number.isFinite(k) ? k : 1;
+  }
+
+  private pickNodeFromEvent(event: MouseEvent): string | null {
+    const screen = this.screenPointFromEvent(event);
+    if (!screen) return null;
+    return this.pickNodeAtScreen(screen[0], screen[1]);
+  }
+
+  private clearHoverPickCache(): void {
+    this.hoverPickCache = null;
+  }
+
+  private cachedHoverHit(screenX: number, screenY: number): string | null {
+    const cache = this.hoverPickCache;
+    if (!cache || cache.id !== this.hoveredId) return null;
+    if (this.visibleNodeIds && !this.visibleNodeIds.has(cache.id)) return null;
+    if (Math.abs(cache.zoomScale - this.zoomScale()) > 0.0001) return null;
+    const dx = cache.screenX - screenX;
+    const dy = cache.screenY - screenY;
+    return dx * dx + dy * dy <= cache.radiusPx * cache.radiusPx ? cache.id : null;
+  }
+
+  private pickNodeAtScreen(screenX: number, screenY: number): string | null {
+    if (this.lastPositions.length !== this.indexToId.length * 2) return null;
+    const zoom = this.graphRuntime()?.zoomInstance;
+    const toScreen = zoom?.convertSpaceToScreenPosition;
+    if (!zoom || typeof toScreen !== "function") return null;
+    const scale = this.zoomScale();
+    const visible = this.visibleNodeIds;
+    let bestId: string | null = null;
+    let bestScreenX = 0;
+    let bestScreenY = 0;
+    let bestRadiusPx = 0;
+    let bestDistanceSq = Number.POSITIVE_INFINITY;
+    const world: [number, number] = [0, 0];
+    for (let i = 0; i < this.indexToId.length; i++) {
+      const id = this.indexToId[i];
+      if (!id || (visible && !visible.has(id))) continue;
+      world[0] = this.lastPositions[i * 2];
+      world[1] = this.lastPositions[i * 2 + 1];
+      const screen = toScreen.call(zoom, world);
+      const radius = Math.max(PICK_RADIUS_PX, this.baseSizes[i] * scale);
+      const dx = screen[0] - screenX;
+      const dy = screen[1] - screenY;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq <= radius * radius && distanceSq < bestDistanceSq) {
+        bestDistanceSq = distanceSq;
+        bestId = id;
+        bestScreenX = screen[0];
+        bestScreenY = screen[1];
+        bestRadiusPx = radius;
+      }
+    }
+    this.hoverPickCache = bestId
+      ? {
+          id: bestId,
+          screenX: bestScreenX,
+          screenY: bestScreenY,
+          radiusPx: bestRadiusPx,
+          zoomScale: scale,
+        }
+      : null;
+    return bestId;
+  }
+
+  private updatePointerHover(event: PointerEvent): void {
+    if (!this.featureFlags.hover) return; // hover layer disabled (set-feature-flags)
+    const screen = this.screenPointFromEvent(event);
+    if (!screen) return;
+    const id =
+      this.cachedHoverHit(screen[0], screen[1]) ??
+      this.pickNodeAtScreen(screen[0], screen[1]);
+    if (id === this.hoveredId) return;
+    this.setHoverEmphasis(id);
+    this.controller?.emit({ kind: "hover", id });
+  }
+
+  private focusPointByIndex(index: number, duration = 250): void {
+    if (!this.graph || this.lastPositions.length !== this.indexToId.length * 2) return;
+    const x = this.lastPositions[index * 2];
+    const y = this.lastPositions[index * 2 + 1];
+    const runtime = this.graphRuntime();
+    if (typeof runtime?.setZoomTransformByPointPositions === "function") {
+      runtime.setZoomTransformByPointPositions(
+        [x, y],
+        duration,
+        Math.max(2.5, this.zoomScale()),
+      );
+    } else {
+      this.graph.fitViewByPointPositions([x, y], duration, 0.25);
+    }
+    this.emitTrackedAnchors();
+  }
+
+  private fitMirroredPositions(duration = 250, padding = 0.1): void {
+    if (!this.graph || this.lastPositions.length === 0) return;
+    this.graph.fitViewByPointPositions([...this.lastPositions], duration, padding);
+    this.emitTrackedAnchors();
+  }
+
+  private emitTrackedAnchors(): void {
+    const controller = this.controller;
+    if (!controller || this.lastPositions.length !== this.indexToId.length * 2) return;
+    const visible = this.visibleNodeIds;
+    const scale = this.zoomScale();
+    for (const id of controller.trackedNodeIds()) {
+      const index = this.idToIndex.get(id);
+      if (index === undefined || (visible && !visible.has(id))) {
+        controller.emitAnchor(id, null);
+        continue;
+      }
+      const screen = this.worldToScreen([
+        this.lastPositions[index * 2],
+        this.lastPositions[index * 2 + 1],
+      ]);
+      const anchor: SceneAnchor | null = screen
+        ? { x: screen[0], y: screen[1], scale }
+        : null;
+      controller.emitAnchor(id, anchor);
+    }
   }
 
   /** Centralized render: every frame-driving render() goes through here so the
@@ -534,6 +829,34 @@ export class CosmosField implements SceneFieldRenderer {
   private ensureRenderLoop(): void {
     if (!this.graph || !this.renderLoopIdle) return;
     this.renderField();
+  }
+
+  /** Cosmos has no public one-frame render API: `render(0)` still starts its
+   *  continuous rAF loop. Schedule our stop after Cosmos' next callback so
+   *  hover/selection/filter paints do not leave a multi-frame render tail. */
+  private renderOneShot(alpha = 0): void {
+    this.renderField(alpha);
+    if (typeof window === "undefined") return;
+    if (this.oneShotStopRaf !== null) window.cancelAnimationFrame(this.oneShotStopRaf);
+    this.oneShotStopRaf = window.requestAnimationFrame(() => {
+      this.oneShotStopRaf = null;
+      this.maybeIdle();
+    });
+  }
+
+  /** Emphasis-only updates already upload their tiny greyout texture before paint.
+   *  When the field is idle, draw one Cosmos frame directly and avoid `render(0)`,
+   *  which runs the update/init path and starts Cosmos' self-scheduling rAF loop. */
+  private paintOneFrame(): void {
+    const runtime = this.graphRuntime();
+    if (this.renderLoopIdle && typeof runtime?.renderFrame === "function") {
+      this.renderLoopIdle = false;
+      runtime.renderFrame(nowMs());
+      runtime.stopFrames?.();
+      this.renderLoopIdle = true;
+      return;
+    }
+    this.renderOneShot();
   }
 
   /** Halt the rAF loop so the GPU idles at zero. Only safe when nothing needs
@@ -557,12 +880,18 @@ export class CosmosField implements SceneFieldRenderer {
     }, delayMs);
   }
 
-  /** Idle the GPU only when the sim has settled, the pointer is off the canvas, and
-   *  no interaction/upload is in flight. Pointer-over keeps frames alive because
-   *  cosmos's hover detection runs inside the loop. */
+  /** Keep the Cosmos frame loop ALIVE while there is data — continuous 60fps so
+   *  canvas pan/zoom, node drag, and hover all render. Render-on-demand idling
+   *  (stopFrames after settle) froze the canvas mid-interaction: panning the
+   *  background changed the transform but no frame painted. The simulation still
+   *  cools and STOPS ticking (settle-and-stop decay), so a settled field is cheap
+   *  draw-only frames, not a hot n-body loop. Only idle the GPU when the field is
+   *  EMPTY (no points to draw). */
   private maybeIdle(): void {
     if (!this.graph || this.renderLoopIdle) return;
-    if (this.pointerOver || this.interacting) return;
+    if (this.pointCount() > 0) return;
+    if (this.interacting) return;
+    if (this.graphRuntime()?.zoomInstance?.isRunning) return;
     // A running sim (cosmosRunning) keeps frames; the transient pre-start phases
     // (priming/uploading/simulation-pending) mean a start is imminent. A paused or
     // ended sim — including a "simulating" lifecycle that was paused before
@@ -584,7 +913,7 @@ export class CosmosField implements SceneFieldRenderer {
       this.openingFitTimer = null;
       if (!this.graph || !this.fitPending) return;
       this.ensureRenderLoop();
-      this.graph.fitView(200, 0.25);
+      this.fitMirroredPositions(200, 0.25);
       this.fitPending = false;
       this.scheduleIdle(600);
     }, 120);
@@ -598,6 +927,10 @@ export class CosmosField implements SceneFieldRenderer {
     if (this.primingRaf2 !== null) {
       window.cancelAnimationFrame(this.primingRaf2);
       this.primingRaf2 = null;
+    }
+    if (this.oneShotStopRaf !== null) {
+      window.cancelAnimationFrame(this.oneShotStopRaf);
+      this.oneShotStopRaf = null;
     }
     this.primingStartedAt = 0;
     this.primingFrameCount = 0;
@@ -650,7 +983,7 @@ export class CosmosField implements SceneFieldRenderer {
         const i = this.idToIndex.get(cmd.id);
         if (i !== undefined) {
           this.ensureRenderLoop();
-          this.graph.zoomToPointByIndex(i);
+          this.focusPointByIndex(i);
           this.scheduleIdle(900);
         }
         break;
@@ -668,7 +1001,7 @@ export class CosmosField implements SceneFieldRenderer {
       case "fit-to-view":
       case "reset-view":
         this.ensureRenderLoop();
-        this.graph.fitView(400);
+        this.fitMirroredPositions(400);
         this.scheduleIdle(600);
         break;
       case "set-cosmos-config":
@@ -692,8 +1025,46 @@ export class CosmosField implements SceneFieldRenderer {
       case "set-pinned":
         this.setPinned(cmd.ids);
         break;
-      // visibility, representation mode, time, overlays, deltas land next.
+      case "apply-deltas":
+        this.applyDeltas(cmd.deltas);
+        break;
+      case "set-visibility":
+        this.setVisibility(cmd.visibleNodeIds, cmd.visibleEdgeIds);
+        break;
+      case "pulse":
+        this.pulseNodes(cmd.ids);
+        break;
+      case "set-time":
+        // The field does not own the time slice: the stores layer drives time
+        // travel by pushing the replayed slice through `set-data`. Acknowledged
+        // explicitly so the command is intentionally handled, never silently
+        // dropped (scene-command-gap-003); the field has no per-frame time state.
+        break;
+      case "set-overlays":
+        // Feature-country labels and BubbleSets hulls render in a separate overlay
+        // layer, not the cosmos point/link field. Acknowledged explicitly (not
+        // silently dropped); CosmosField carries no overlay geometry to toggle.
+        break;
+      case "set-feature-flags":
+        this.setFeatureFlags(cmd.flags);
+        break;
     }
+  }
+
+  /** Toggle interaction layers (hover/selection/cluster). Disabling a layer clears
+   *  its current emphasis immediately so the field strips back to bare
+   *  nodes+edges+sim without a stale highlight lingering. */
+  private setFeatureFlags(flags: Partial<SceneFeatureFlags>): void {
+    this.featureFlags = { ...this.featureFlags, ...flags };
+    if (!this.featureFlags.hover && this.hoveredId !== null) {
+      this.hoveredId = null;
+      this.hoverEmphasisIds = new Set<string>();
+      this.clearHoverPickCache();
+      this.controller?.emit({ kind: "hover", id: null });
+    }
+    if (!this.featureFlags.selection) this.selectedIds = new Set<string>();
+    if (!this.featureFlags.clusterHighlight) this.refreshHoverEmphasis();
+    this.applyVisualState({ emphasis: true });
   }
 
   private graphRuntime(): CosmosRuntimeGraph | null {
@@ -734,6 +1105,16 @@ export class CosmosField implements SceneFieldRenderer {
   }
 
   private startCosmosSimulation(kind: SimulationStartKind): void {
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.graph?.pause();
+      this.simulationRequested = false;
+      this.simulationStarted = false;
+      this.pendingSimulationStart = null;
+      if (this.pointCount() > 0)
+        this.setRendererLifecycle("static-ready", `simulation-disabled:${kind}`);
+      this.scheduleIdle();
+      return;
+    }
     if (!this.graph || this.frozen || !this.simulationRequested) return;
     if (this.pointCount() === 0) {
       if (this.rendererLifecycle !== "empty") {
@@ -770,6 +1151,16 @@ export class CosmosField implements SceneFieldRenderer {
   }
 
   private primeRendererThenStart(kind: SimulationStartKind): void {
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.pendingSimulationStart = null;
+      this.rendererPrimed = true;
+      this.setRendererLifecycle(
+        this.pointCount() > 0 ? "static-ready" : "empty",
+        `renderer-static:${kind}`,
+      );
+      this.scheduleIdle();
+      return;
+    }
     this.clearRendererPriming();
     this.pendingSimulationStart = this.preferSimulationStart(
       this.pendingSimulationStart,
@@ -811,10 +1202,23 @@ export class CosmosField implements SceneFieldRenderer {
   private setCosmosConfig(config: Partial<CosmosSimulationConfig>): void {
     this.cosmosConfig = { ...this.cosmosConfig, ...config };
     this.applyCosmosForceConfig();
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.renderField(0);
+      this.scheduleIdle();
+      return;
+    }
     this.startCosmosSimulation("param");
   }
 
   private setSimulationActive(active: boolean): void {
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.simulationRequested = false;
+      this.simulationStarted = false;
+      this.pendingSimulationStart = null;
+      this.graph?.pause();
+      this.scheduleIdle();
+      return;
+    }
     if (this.staticLayoutActive && active) {
       this.simulationRequested = false;
       this.graph?.pause();
@@ -847,6 +1251,11 @@ export class CosmosField implements SceneFieldRenderer {
   }
 
   private beginCosmosInteraction(): void {
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.interacting = true;
+      this.renderField(0);
+      return;
+    }
     this.interacting = true;
     this.applyCosmosForceConfig();
     this.startCosmosSimulation("interaction");
@@ -865,37 +1274,207 @@ export class CosmosField implements SceneFieldRenderer {
       if (i !== undefined) indices.push(i);
     }
     this.graph?.setPinnedPoints(indices);
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.renderField(0);
+      this.scheduleIdle();
+      return;
+    }
     this.startCosmosSimulation("pin");
   }
 
-  /** The shared selection (set-selected): ring the first selected node present in
-   *  the current slice. cosmos's focused-point ring is the on-canvas selection. */
-  private setSelected(ids: ReadonlySet<string>): void {
-    this.selectedIds = new Set(ids);
-    this.applySelectedState();
+  /**
+   * The lightweight live-update path (apply-deltas, scene-command-gap-003): fold
+   * add/remove/change ops into the held node/edge set, then upload through the
+   * existing keyframe path. Under the corpus-bounded sim budget a reheat is cheap
+   * (changeStartAlpha + retained slots), so this is correct without a bespoke
+   * incremental-buffer mutation; the dedup signature skips a no-op delta batch.
+   */
+  private applyDeltas(deltas: readonly SceneDelta[]): void {
+    if (!this.graph || deltas.length === 0) return;
+    const nodeById = new Map<string, SceneNodeData>(
+      this.currentNodes.map((n) => [n.id, n]),
+    );
+    const edgeById = new Map<string, SceneEdgeData>(
+      this.currentEdges.map((e) => [e.id, e]),
+    );
+    for (const d of deltas) {
+      if (d.node) {
+        if (d.op === "remove") {
+          nodeById.delete(d.node.id);
+          for (const [edgeId, edge] of edgeById) {
+            if (edge.src === d.node.id || edge.dst === d.node.id) {
+              edgeById.delete(edgeId);
+            }
+          }
+        } else {
+          nodeById.set(d.node.id, d.node);
+        }
+      }
+      if (d.edge) {
+        if (d.op === "remove") edgeById.delete(d.edge.id);
+        else edgeById.set(d.edge.id, d.edge);
+      }
+    }
+    this.setData([...nodeById.values()], [...edgeById.values()]);
   }
 
-  private applySelectedState(): void {
+  /**
+   * Apply a visibility membership (set-visibility, scene-command-gap-003): hide
+   * nodes/edges outside the set by zeroing their point size / link width — a
+   * channel DISTINCT from the emphasis greyout (opacity), so a filter and a
+   * hover/selection emphasis compose rather than fight. null members mean "all
+   * visible". Retained so the mask survives a subsequent set-data keyframe.
+   */
+  private setVisibility(
+    visibleNodeIds: ReadonlySet<string>,
+    visibleEdgeIds: ReadonlySet<string>,
+  ): void {
+    this.clearHoverPickCache();
+    this.visibleNodeIds = visibleNodeIds;
+    this.visibleEdgeIds = visibleEdgeIds;
+    this.applyVisualState({ visibility: true });
+  }
+
+  /** VISIBILITY channel (size/width → 0 for filtered-out nodes/edges). A pure GPU
+   *  write — no paint, no hover logic; the coordinator (applyVisualState) owns
+   *  paint and the hover-out-on-hide reconciliation. Never call directly. */
+  private applyVisibilityChannel(): void {
     if (!this.graph) return;
-    const selectedIndices: number[] = [];
+    const nodeMask = this.visibleNodeIds;
+    const edgeMask = this.visibleEdgeIds;
+    if (nodeMask && this.baseSizes.length === this.indexToId.length) {
+      const sizes = new Float32Array(this.baseSizes.length);
+      for (let i = 0; i < sizes.length; i++) {
+        sizes[i] = nodeMask.has(this.indexToId[i]) ? this.baseSizes[i] : 0;
+      }
+      this.graph.setPointSizes(sizes);
+    }
+    if (edgeMask && this.baseLinkWidths.length === this.linkEdgeIds.length) {
+      const widths = new Float32Array(this.baseLinkWidths.length);
+      for (let i = 0; i < widths.length; i++) {
+        widths[i] = edgeMask.has(this.linkEdgeIds[i]) ? this.baseLinkWidths[i] : 0;
+      }
+      this.graph.setLinkWidths(widths);
+    }
+  }
+
+  /**
+   * Transient cross-highlight (pulse, scene-command-gap-003): flash the named
+   * nodes via the native greyout at highest emphasis precedence, then revert to the
+   * hover/selection emphasis after a short window. GPU-resident (one greyout
+   * upload), no per-frame work.
+   */
+  private pulseNodes(ids: ReadonlySet<string>): void {
+    if (!this.graph || ids.size === 0) return;
+    this.pulseIds = new Set(ids);
+    this.applyVisualState({ emphasis: true });
+    if (this.pulseTimer !== null && typeof window !== "undefined") {
+      window.clearTimeout(this.pulseTimer);
+    }
+    if (typeof window !== "undefined") {
+      this.pulseTimer = window.setTimeout(() => {
+        this.pulseTimer = null;
+        this.pulseIds.clear();
+        this.applyVisualState({ emphasis: true });
+      }, 1100);
+    }
+  }
+
+  /** The shared selection (set-selected). Drives the same native-greyout emphasis
+   *  as hover; cosmos's focused-point ring marks the selected node.
+   *
+   *  Semantic-equality guard (selection-emphasis-005): the canonical selection is
+   *  re-projected to the scene on every dashboard-state identity change, so an
+   *  unchanged set would otherwise re-run applyEmphasis (an O(N) greyout upload that
+   *  also WAKES the render loop) for no reason. A set with the same membership is a
+   *  no-op — the emphasis already on the GPU stays as-is. */
+  private setSelected(ids: ReadonlySet<string>): void {
+    const next = this.featureFlags.selection ? ids : EMPTY_ID_SET;
+    if (sameIdSet(next, this.selectedIds)) return;
+    this.selectedIds = new Set(next);
+    this.applyVisualState({ emphasis: true });
+  }
+
+  /**
+   * The ONE dimming mechanism for both hover and selection: feed the active
+   * emphasis set to cosmos's native selection greyout (selectPointsByIndices), so
+   * the GPU dims every point/link outside it to GREYOUT_*_OPACITY. Hover cohort
+   * takes visual precedence while hovering; otherwise the shared selection drives
+   * it. The selection ring (focusedPointIndex) tracks the selected node
+   * independently, so it persists while hovering. No colour-buffer mutation.
+   */
+  /**
+   * THE single source of truth for the emphasis + visibility GPU channels and the
+   * SOLE place that paints them. Every mutator — selection, hover, pulse,
+   * visibility, feature-flags, set-data — updates state then calls this. `dirty`
+   * scopes which channels recompute so a hover does NOT re-upload the visibility
+   * mask and a filter does NOT re-run the greyout (centralized, channel-scoped,
+   * never the old two-applier fragmentation). Visibility writes first (size/width),
+   * then emphasis (greyout opacity + focus ring) — orthogonal channels, order-safe.
+   */
+  private applyVisualState(
+    dirty: { emphasis?: boolean; visibility?: boolean } = {
+      emphasis: true,
+      visibility: true,
+    },
+  ): void {
+    if (!this.graph) return;
+    let emphasis = dirty.emphasis ?? false;
+    if (dirty.visibility) {
+      this.applyVisibilityChannel();
+      this.emitTrackedAnchors();
+      // A filter that hides the hovered node clears the hover and forces an
+      // emphasis recompute, so a greyout cohort never outlives its visible anchor.
+      if (
+        this.visibleNodeIds &&
+        this.hoveredId &&
+        !this.visibleNodeIds.has(this.hoveredId)
+      ) {
+        this.hoveredId = null;
+        this.hoverEmphasisIds = new Set<string>();
+        this.controller?.emit({ kind: "hover", id: null });
+        emphasis = true;
+      }
+    }
+    if (emphasis) this.applyEmphasisChannel();
+    this.paintOneFrame();
+  }
+
+  /** EMPHASIS channel: cosmos's native greyout (selectPointsByIndices dims every
+   *  point/link outside the active set) + the selection focus ring. Precedence:
+   *  pulse > hover-cohort > selection. Pure GPU write — no paint; the coordinator
+   *  (applyVisualState) owns paint. Never call directly. */
+  private applyEmphasisChannel(): void {
+    if (!this.graph) return;
+    const activeIds =
+      this.pulseIds.size > 0
+        ? this.pulseIds
+        : this.hoverEmphasisIds.size > 0
+          ? this.hoverEmphasisIds
+          : this.selectedIds.size > 0
+            ? this.selectedIds
+            : null;
+    if (activeIds) {
+      const indices: number[] = [];
+      for (const id of activeIds) {
+        const i = this.idToIndex.get(id);
+        if (i !== undefined) indices.push(i);
+      }
+      if (indices.length > 0) this.graph.selectPointsByIndices(indices);
+      else this.graph.unselectPoints();
+    } else {
+      this.graph.unselectPoints();
+    }
+    // Selection ring: first selected node present in the slice, independent of hover.
     let focused: number | undefined;
     for (const id of this.selectedIds) {
       const i = this.idToIndex.get(id);
       if (i !== undefined) {
-        selectedIndices.push(i);
-        focused ??= i;
+        focused = i;
+        break;
       }
     }
-    if (selectedIndices.length > 0) {
-      this.graph.selectPointsByIndices(selectedIndices);
-    } else {
-      this.graph.unselectPoints();
-    }
     this.graph.setConfig({ focusedPointIndex: focused });
-    // Selection/focus only paints on the next frame; wake the loop if idled, then
-    // let it settle back to idle.
-    this.ensureRenderLoop();
-    this.scheduleIdle();
   }
 
   private debugSelectedIds(): string[] {
@@ -912,7 +1491,7 @@ export class CosmosField implements SceneFieldRenderer {
     if (id === this.hoveredId) return;
     this.hoveredId = id;
     this.refreshHoverEmphasis();
-    this.applyHoverEmphasisColors(true);
+    this.applyVisualState({ emphasis: true });
   }
 
   private refreshHoverEmphasis(): void {
@@ -927,6 +1506,8 @@ export class CosmosField implements SceneFieldRenderer {
   private buildHoverEmphasisIds(id: string): Set<string> {
     const hoveredNode = this.currentNodes.find((node) => node.id === id);
     if (!hoveredNode) return new Set<string>();
+    // Cluster-highlight disabled: light only the hovered node, never its cohort.
+    if (!this.featureFlags.clusterHighlight) return new Set<string>([id]);
     const featureTags = this.featureTagsForNode(hoveredNode);
     const emphasized = new Set<string>([id]);
     // Union the precomputed per-tag cohorts (O(cohort)) instead of re-scanning and
@@ -962,47 +1543,6 @@ export class CosmosField implements SceneFieldRenderer {
     return [...tags];
   }
 
-  private displayPointColors(): Float32Array {
-    if (this.hoverEmphasisIds.size === 0) return this.basePointColors;
-    if (this.displayPointBuf.length !== this.basePointColors.length) {
-      this.displayPointBuf = new Float32Array(this.basePointColors.length);
-    }
-    const colors = this.displayPointBuf;
-    colors.set(this.basePointColors);
-    for (let i = 0; i < this.indexToId.length; i += 1) {
-      const id = this.indexToId[i];
-      if (!id || this.hoverEmphasisIds.has(id)) continue;
-      colors[i * 4 + 3] = Math.min(colors[i * 4 + 3], HOVER_RECEDING_POINT_ALPHA);
-    }
-    return colors;
-  }
-
-  private displayLinkColors(): Float32Array {
-    if (this.hoverEmphasisIds.size === 0) return this.baseLinkColors;
-    if (this.displayLinkBuf.length !== this.baseLinkColors.length) {
-      this.displayLinkBuf = new Float32Array(this.baseLinkColors.length);
-    }
-    const colors = this.displayLinkBuf;
-    colors.set(this.baseLinkColors);
-    for (let i = 0; i < this.linkEndpointIds.length; i += 1) {
-      const [src, dst] = this.linkEndpointIds[i];
-      if (this.hoverEmphasisIds.has(src) || this.hoverEmphasisIds.has(dst)) continue;
-      colors[i * 4 + 3] = Math.min(colors[i * 4 + 3], HOVER_RECEDING_LINK_ALPHA);
-    }
-    return colors;
-  }
-
-  private applyHoverEmphasisColors(render = false): void {
-    if (!this.graph) return;
-    if (this.basePointColors.length > 0) {
-      this.graph.setPointColors(this.displayPointColors());
-    }
-    if (this.baseLinkColors.length > 0) {
-      this.graph.setLinkColors(this.displayLinkColors());
-    }
-    if (render) this.renderField();
-  }
-
   /** Apply the configurable bound as SOFT center gravity (the knowledge-graph
    *  norm), not a hard clamp: free = loose, circle = tight round blob, rect =
    *  medium compatibility; an explicit size tightens/loosens it. */
@@ -1014,6 +1554,11 @@ export class CosmosField implements SceneFieldRenderer {
     };
     this.applyCosmosForceConfig();
     this.fitPending = true;
+    if (!COSMOS_GPU_SIMULATION_ENABLED || this.staticLayoutActive) {
+      this.lastSignature = "";
+      this.setData(this.currentNodes, this.currentEdges);
+      return;
+    }
     this.armOpeningAutoFit();
     this.startCosmosSimulation("param");
   }
@@ -1034,6 +1579,7 @@ export class CosmosField implements SceneFieldRenderer {
     edges: readonly SceneEdgeData[],
   ): void {
     if (!this.graph) return;
+    this.clearHoverPickCache();
     this.currentNodes = nodes;
     this.currentEdges = edges;
 
@@ -1066,16 +1612,22 @@ export class CosmosField implements SceneFieldRenderer {
       this.pointSizeStats = { min: 0, max: 0, avg: 0 };
       this.hoveredId = null;
       this.hoverEmphasisIds.clear();
+      this.clearHoverPickCache();
       this.basePointColors = new Float32Array();
       this.baseLinkColors = new Float32Array();
+      this.baseSizes = new Float32Array();
+      this.baseLinkWidths = new Float32Array();
+      this.lastPositions = new Float32Array();
       this.linkEndpointIds = [];
+      this.linkEdgeIds = [];
       this.tagToNodeIds.clear();
       this.simulationStarted = false;
       this.pendingSimulationStart = null;
       this.graph.setPointPositions(new Float32Array(), true);
       this.graph.setLinks(new Float32Array());
       this.renderField(0);
-      this.applySelectedState();
+      this.applyVisualState({ emphasis: true });
+      this.emitTrackedAnchors();
       this.setRendererLifecycle("empty", "set-data-empty");
       this.scheduleIdle();
       return;
@@ -1162,6 +1714,7 @@ export class CosmosField implements SceneFieldRenderer {
     const linkColors: number[] = [];
     const linkWidths: number[] = [];
     const linkEndpointIds: [string, string][] = [];
+    const linkEdgeIds: string[] = [];
     let dropped = 0;
     for (const e of simEdges) {
       const s = this.idToIndex.get(e.src);
@@ -1172,6 +1725,7 @@ export class CosmosField implements SceneFieldRenderer {
       }
       linkList.push(s, t);
       linkEndpointIds.push([e.src, e.dst]);
+      linkEdgeIds.push(e.id);
       const ap = edgeAppearance(e, tierColors);
       linkColors.push(ap.r, ap.g, ap.b, ap.a);
       linkWidths.push(ap.width);
@@ -1179,7 +1733,10 @@ export class CosmosField implements SceneFieldRenderer {
     this.droppedEdges = dropped;
     this.basePointColors = colors;
     this.baseLinkColors = new Float32Array(linkColors);
+    this.baseSizes = sizes;
+    this.baseLinkWidths = new Float32Array(linkWidths);
     this.linkEndpointIds = linkEndpointIds;
+    this.linkEdgeIds = linkEdgeIds;
     this.rebuildTagIndex();
     this.refreshHoverEmphasis();
 
@@ -1187,20 +1744,29 @@ export class CosmosField implements SceneFieldRenderer {
 
     // Cosmos data upload: topology/appearance change only. Live movement after
     // this point is Cosmos' simulation loop, not an external per-frame upload.
+    this.lastPositions = positions;
     this.graph.setPointPositions(positions, true);
-    this.graph.setPointColors(this.displayPointColors());
+    this.graph.setPointColors(this.basePointColors);
     this.graph.setPointSizes(sizes);
     this.graph.setLinks(new Float32Array(linkList));
-    this.graph.setLinkColors(this.displayLinkColors());
+    this.graph.setLinkColors(this.baseLinkColors);
     this.graph.setLinkWidths(new Float32Array(linkWidths));
     this.applyCosmosForceConfig();
     this.renderField(0);
-    this.applySelectedState();
+    // One centralized pass re-derives BOTH channels off the fresh base buffers:
+    // emphasis (greyout/ring) and the retained visibility filter (which would
+    // otherwise be reset to full size by this keyframe). emitTrackedAnchors runs
+    // inside the visibility pass.
+    this.applyVisualState({ emphasis: true, visibility: true });
     if (shouldAutoFitOpening) this.armOpeningAutoFit();
-    if (this.staticLayoutActive) {
+    if (this.staticLayoutActive || !COSMOS_GPU_SIMULATION_ENABLED) {
       this.pendingSimulationStart = null;
       this.graph.pause();
-      this.setRendererLifecycle("static-ready", "static-layout");
+      this.simulationStarted = false;
+      this.setRendererLifecycle(
+        "static-ready",
+        this.staticLayoutActive ? "static-layout" : "static-upload",
+      );
       this.scheduleIdle();
     } else {
       // First load reheats COLD (full warmup + settle); a subsequent content delta
@@ -1230,9 +1796,30 @@ export class CosmosField implements SceneFieldRenderer {
   private setRepresentationMode(mode: RepresentationMode): void {
     this.representationMode = mode;
     if (!this.graph) return;
-    // getPointPositions() returns a number[]; wrap it as a Float32Array to mutate.
-    const positions = new Float32Array(this.graph.getPointPositions());
-    this.applyRepresentationPositions(positions);
+    if (!COSMOS_GPU_SIMULATION_ENABLED) {
+      this.lastSignature = "";
+      this.setData(this.currentNodes, this.currentEdges);
+      this.controller?.emit({
+        kind: "representation-mode-changed",
+        requested: mode,
+        applied: this.appliedRepresentationMode,
+        ...(this.appliedRepresentationMode !== mode
+          ? {
+              downgradeReason: `${mode} mode downgraded to ${this.appliedRepresentationMode}`,
+            }
+          : {}),
+      });
+      return;
+    }
+    // Base positions come from the CPU mirror of the last uploaded layout — NEVER a
+    // graph.getPointPositions() GPU→CPU readback (a pipeline stall). A static layout
+    // overwrites every laid node; an un-laid node keeps its mirrored seed position.
+    const count = this.indexToId.length;
+    const base =
+      this.lastPositions.length === count * 2
+        ? new Float32Array(this.lastPositions)
+        : new Float32Array(count * 2);
+    this.applyRepresentationPositions(base);
     this.controller?.emit({
       kind: "representation-mode-changed",
       requested: mode,
@@ -1243,17 +1830,22 @@ export class CosmosField implements SceneFieldRenderer {
           }
         : {}),
     });
-    if (positions.length > 0) {
-      this.graph.setPointPositions(positions, true);
-      this.renderField(0);
-    }
     if (this.staticLayoutActive) {
+      // A static layout OWNS positions: upload the computed seed once, mirror it,
+      // and freeze. This is the only position write a mode change makes.
+      if (base.length > 0) {
+        this.lastPositions = base;
+        this.graph.setPointPositions(base, true);
+        this.renderField(0);
+      }
       this.simulationRequested = false;
       this.simulationStarted = false;
       this.pendingSimulationStart = null;
       this.graph.pause();
       this.scheduleIdle();
     } else {
+      // connectivity: the force sim owns positions on the GPU. Don't read or write
+      // them — just (re)run the sim from wherever the points currently sit.
       this.setSimulationActive(this.simulationRequested);
     }
   }
@@ -1269,13 +1861,24 @@ export class CosmosField implements SceneFieldRenderer {
     }
     if (this.container && this.pointerHandlers) {
       this.container.removeEventListener("pointerenter", this.pointerHandlers.enter);
-      this.container.removeEventListener("pointermove", this.pointerHandlers.enter);
-      this.container.removeEventListener("wheel", this.pointerHandlers.enter);
+      this.container.removeEventListener("pointermove", this.pointerHandlers.move);
+      this.container.removeEventListener("wheel", this.pointerHandlers.wheel);
       this.container.removeEventListener("pointerleave", this.pointerHandlers.leave);
+      this.container.removeEventListener("click", this.pointerHandlers.click, true);
+      this.container.removeEventListener(
+        "dblclick",
+        this.pointerHandlers.dblclick,
+        true,
+      );
+      this.container.removeEventListener(
+        "contextmenu",
+        this.pointerHandlers.contextmenu,
+        true,
+      );
     }
     this.pointerHandlers = null;
     this.renderLoopIdle = false;
-    this.pointerOver = false;
+    this.clearHoverPickCache();
     this.graph?.destroy();
     this.graph = null;
     this.container?.remove();
@@ -1288,9 +1891,18 @@ export class CosmosField implements SceneFieldRenderer {
     this.hoverEmphasisIds.clear();
     this.basePointColors = new Float32Array();
     this.baseLinkColors = new Float32Array();
-    this.displayPointBuf = new Float32Array();
-    this.displayLinkBuf = new Float32Array();
+    this.baseSizes = new Float32Array();
+    this.baseLinkWidths = new Float32Array();
+    this.lastPositions = new Float32Array();
     this.linkEndpointIds = [];
+    this.linkEdgeIds = [];
+    this.visibleNodeIds = null;
+    this.visibleEdgeIds = null;
+    if (this.pulseTimer !== null) {
+      window.clearTimeout(this.pulseTimer);
+      this.pulseTimer = null;
+    }
+    this.pulseIds.clear();
     this.tagToNodeIds.clear();
     this.freeSlots = [];
     this.nextSlot = 0;

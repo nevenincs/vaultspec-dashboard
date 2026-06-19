@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 //
-// Render-on-demand idle (node-graph-rework norm: idle GPU = 0). cosmos's frame
-// loop renders every frame forever once started; CosmosField halts it (stopFrames)
-// when the sim has settled AND the pointer is off the canvas, and wakes it
-// (render) on pointer activity, interaction, and sim (re)starts. start()/pause()/
-// unpause() only flip the sim flag — they never touch the loop — so this test
-// mocks the cosmos Graph to assert the loop is started/stopped at the right times.
+// Continuous-while-data render model (graph-perf 2026-06-18). Render-on-demand
+// idle (stopFrames after settle) FROZE the canvas mid-interaction: panning the
+// background changed the transform but no frame painted. The field now keeps
+// Cosmos' frame loop ALIVE while there is data — continuous 60fps so pan/zoom/drag
+// all render — and idles the GPU only when the field is EMPTY (no points to draw).
+// The simulation still cools and stops ticking (settle-and-stop decay), so a
+// settled-but-alive loop is cheap draw-only frames, not a hot n-body loop. This
+// test mocks the cosmos Graph to assert the loop is alive/idled at the right times.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -67,6 +69,7 @@ class MockGraph {
     return [];
   }
   fitView(): void {}
+  fitViewByPointPositions(): void {}
   setZoomLevel(): void {}
   getZoomLevel(): number {
     return 1;
@@ -99,7 +102,7 @@ function smallGraph(n = 8) {
   return { nodes, edges };
 }
 
-describe("CosmosField render-on-demand idle", () => {
+describe("CosmosField continuous-while-data render loop", () => {
   let host: HTMLDivElement;
   let container: HTMLElement;
   let field: InstanceType<typeof CosmosField>;
@@ -123,7 +126,7 @@ describe("CosmosField render-on-demand idle", () => {
     vi.restoreAllMocks();
   });
 
-  it("runs the frame loop while simulating and idles it after settle + pointer away", async () => {
+  it("keeps the loop alive after settle while data is present (continuous render)", async () => {
     field.command({ kind: "set-simulation-active", active: true });
     field.command({ kind: "set-data", ...smallGraph() });
     // Loop is alive while the sim runs.
@@ -133,39 +136,44 @@ describe("CosmosField render-on-demand idle", () => {
     graph.fireSimulationEnd();
     await settle();
 
-    // Pointer is off the canvas -> the GPU loop is halted (idle = 0).
-    expect(graph.requestAnimationFrameId).toBe(0);
+    // Data is present, so the loop STAYS alive (cheap draw-only frames) — pan/zoom/
+    // drag must keep rendering. Render-on-demand idle here froze the canvas.
+    expect(graph.requestAnimationFrameId).not.toBe(0);
   });
 
-  it("keeps the loop alive while the pointer is over the canvas (hover needs frames)", async () => {
+  it("keeps the loop alive regardless of pointer position", async () => {
     field.command({ kind: "set-simulation-active", active: true });
     field.command({ kind: "set-data", ...smallGraph() });
     container.dispatchEvent(new Event("pointerenter"));
     graph.fireSimulationEnd();
     await settle();
-    // Pointer present -> the loop must NOT idle, or cosmos hover detection dies.
+    expect(graph.requestAnimationFrameId).not.toBe(0);
+    container.dispatchEvent(new Event("pointerleave"));
+    await settle();
+    // Pointer leaving does NOT idle a non-empty field — the canvas must stay live.
     expect(graph.requestAnimationFrameId).not.toBe(0);
   });
 
-  it("wakes the idled loop on pointer enter", async () => {
+  it("idles the GPU loop only when the field is emptied", async () => {
     field.command({ kind: "set-simulation-active", active: true });
     field.command({ kind: "set-data", ...smallGraph() });
     graph.fireSimulationEnd();
     await settle();
-    expect(graph.requestAnimationFrameId).toBe(0); // idled
+    expect(graph.requestAnimationFrameId).not.toBe(0); // alive with data
 
-    container.dispatchEvent(new Event("pointerenter"));
-    expect(graph.requestAnimationFrameId).not.toBe(0); // woken
-  });
-
-  it("wakes the idled loop on a fit-to-view command", async () => {
-    field.command({ kind: "set-simulation-active", active: true });
-    field.command({ kind: "set-data", ...smallGraph() });
-    graph.fireSimulationEnd();
+    // Empty the field -> no points to draw -> the GPU loop idles to zero.
+    field.command({ kind: "set-data", nodes: [], edges: [] });
     await settle();
     expect(graph.requestAnimationFrameId).toBe(0);
+  });
 
-    field.command({ kind: "fit-to-view" });
-    expect(graph.requestAnimationFrameId).not.toBe(0);
+  it("restarts the loop when data is re-loaded after empty", async () => {
+    field.command({ kind: "set-simulation-active", active: true });
+    field.command({ kind: "set-data", nodes: [], edges: [] });
+    await settle();
+    expect(graph.requestAnimationFrameId).toBe(0); // idled (empty)
+
+    field.command({ kind: "set-data", ...smallGraph() });
+    expect(graph.requestAnimationFrameId).not.toBe(0); // data -> loop alive
   });
 });
