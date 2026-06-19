@@ -11,15 +11,15 @@
 //
 // Sections: KIND (doc types) · TOPIC (feature tags + client-side search) · STATUS
 // (lifecycle — ADR adjectives + plan meta-states) · HEALTH (validity —
-// dangling/orphaned…) · EDITED (shared date-range window). STATUS/HEALTH render only
-// when the engine serves their vocabulary, so they are never dead controls.
+// dangling/orphaned…). STATUS/HEALTH render only when the engine serves their
+// vocabulary, so they are never dead controls. There is no date-range (EDITED)
+// control here: the timeline's interactive Setter is the sole date-range writer
+// (filter-consolidation ADR).
 
 import { Popover } from "../kit";
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import { useDateRangeIntent } from "../../stores/server/dateRangeIntent";
 import {
-  dashboardEditedWindowRange,
-  type DashboardEditedWindow,
   useDashboardFilterSidebarView,
   useFiltersVocabularyView,
 } from "../../stores/server/queries";
@@ -69,20 +69,18 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     topicSearch,
     onTopicSearchChange: setFilterSidebarTopicSearch,
     onToggleFacet: (facet, value) => void filterIntent.toggleFacet(facet, value),
-    onEditedWindowSelect: (value: DashboardEditedWindow) =>
-      void rangeIntent.setRange(dashboardEditedWindowRange(value)),
   });
 
   if (!open) return null;
 
   return (
     // The shared kit Popover owns the light-dismiss wiring (Escape + outside
-    // pointer); `ignoreSelector` excludes the external toolbar trigger so it owns
-    // its own open/close without a dismiss-then-reopen race.
+    // pointer); `ignoreSelector` excludes the external rail filter trigger so it
+    // owns its own open/close without a dismiss-then-reopen race.
     <Popover
       open={open}
       onDismiss={onClose}
-      ignoreSelector="[data-filter-bar]"
+      ignoreSelector="[data-rail-filter-trigger]"
       role="dialog"
       aria-label={presentation.panelAriaLabel}
       aria-modal={false}

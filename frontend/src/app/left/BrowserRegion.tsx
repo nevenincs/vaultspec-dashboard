@@ -17,8 +17,17 @@
 // search pillar.
 
 import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserMode";
-import { useActiveScope } from "../../stores/server/queries";
+import {
+  useActiveScope,
+  useDashboardFilterSummaryView,
+} from "../../stores/server/queries";
 import { useDashboardTextFilterDraft } from "../../stores/view/dashboardTextFilter";
+import {
+  closeFilterSidebar,
+  toggleFilterSidebar,
+  useFilterSidebarOpen,
+} from "../../stores/view/filterSidebar";
+import { FilterSidebar } from "../stage/FilterSidebar";
 import { BrowserModeToggle } from "./BrowserModeToggle";
 import { CodeTree } from "./CodeTree";
 import { RailFilter } from "./RailFilter";
@@ -29,6 +38,11 @@ export function BrowserRegion() {
   const mode = useBrowserMode();
   const setMode = useBrowserModeIntent();
   const textFilter = useDashboardTextFilterDraft(scope);
+  // The rail filter area is the one canonical facet-filter surface
+  // (filter-consolidation ADR): it owns the flyout open-state and the active-count
+  // badge, and mounts the centralized FilterSidebar anchored to the filter row.
+  const filterSummary = useDashboardFilterSummaryView(scope);
+  const filterOpen = useFilterSidebarOpen();
 
   return (
     <section
@@ -36,15 +50,28 @@ export function BrowserRegion() {
       aria-label="file browser"
       data-browser-region
     >
-      {/* Mode toggle + in-rail filter — the region's two view-local affordances,
-          above the scrollable listing so they stay reachable as the tree grows. */}
+      {/* Mode toggle + in-rail filter — the region's view-local affordances,
+          above the scrollable listing so they stay reachable as the tree grows.
+          The filter area is relatively positioned so the facet flyout drops
+          anchored to it. */}
       <BrowserModeToggle mode={mode} onModeChange={setMode} />
-      <RailFilter
-        modeLabel={mode}
-        value={textFilter.value}
-        onChange={textFilter.setValue}
-        onClear={textFilter.clear}
-      />
+      <div className="relative" data-rail-filter-area>
+        <RailFilter
+          modeLabel={mode}
+          value={textFilter.value}
+          onChange={textFilter.setValue}
+          onClear={textFilter.clear}
+          filterActiveCount={filterSummary.activeFilterCount}
+          filterOpen={filterOpen}
+          onToggleFilter={toggleFilterSidebar}
+        />
+        <FilterSidebar
+          open={filterOpen}
+          onClose={closeFilterSidebar}
+          scope={scope}
+          hidden={{ nodes: 0, edges: 0 }}
+        />
+      </div>
 
       {/* The active mode's browser, all three narrowed by the same in-rail
           filter. The listing scrolls; the affordances above stay pinned. */}
