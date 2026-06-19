@@ -305,7 +305,11 @@ export class D3ForceSolver {
 
   // --- sleeping helpers -----------------------------------------------------
 
-  /** Free every node (clear pins) and mark all awake — the global-settle state. */
+  /** Free every node (clear pins) and mark all awake — the global-settle state.
+   *  Also clears any in-flight drag: a global re-energise (reheat/prewarm/setParams)
+   *  must not leave a stale dragIndex pointing at a now-woken node (review follow-up
+   *  — makes the asleep⟺pinned invariant provably hold even if a knob is retuned
+   *  mid-drag). */
   private wakeAllFree(): void {
     for (let i = 0; i < this.count; i++) {
       const n = this.nodes[i];
@@ -315,6 +319,7 @@ export class D3ForceSolver {
     this.awake.fill(1);
     this.quiet.fill(0);
     this.awakeCount = this.count;
+    this.dragIndex = -1;
   }
 
   /** Record every node's current position as its rest, PIN it there (fx/fy), and
