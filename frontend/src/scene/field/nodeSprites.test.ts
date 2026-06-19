@@ -18,7 +18,7 @@ import {
   selectedRingRadius,
   stateColor,
   tierBadgeText,
-} from "./nodeSprites";
+} from "./nodeAppearance";
 import { categoryColor } from "./categoryColor";
 
 describe("lodFor", () => {

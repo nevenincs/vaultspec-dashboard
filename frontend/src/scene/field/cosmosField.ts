@@ -41,7 +41,7 @@ import {
   representationLayout,
   type RepresentationMode,
 } from "./representationLayout";
-import { SALIENCE_RADIUS_MAX } from "./nodeSprites";
+import { SALIENCE_RADIUS_MAX } from "./nodeAppearance";
 import { cssColorNumber } from "./tokenReads";
 
 type CosmosD3Selection = {

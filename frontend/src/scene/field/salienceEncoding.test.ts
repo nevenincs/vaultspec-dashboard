@@ -22,7 +22,7 @@ import {
   ambientLabelFloor,
   labelPriority,
   nodeRadius,
-} from "./nodeSprites";
+} from "./nodeAppearance";
 
 const node = (over: Partial<SceneNodeData>): SceneNodeData => ({
   id: "n",

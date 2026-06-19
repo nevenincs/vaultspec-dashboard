@@ -7,7 +7,7 @@
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { categoryColor } from "../field/categoryColor";
-import { SALIENCE_RADIUS_MAX } from "../field/nodeSprites";
+import { SALIENCE_RADIUS_MAX } from "../field/nodeAppearance";
 import { cssColorNumber } from "../field/tokenReads";
 
 // Mirror of cosmosField's COSMOS_POINT_SIZE — the base node diameter, used here as
