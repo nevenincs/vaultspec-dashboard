@@ -1,9 +1,109 @@
 import { create } from "zustand";
 
-// The Cosmos force sliders (Repulsion / Link distance / Link spring) were nuked
-// with the Cosmos field; the three-native force controls are rebuilt from scratch
-// in W04 against the field's `set-force-params` d3-force seam. The tune-param store
-// + presentation helpers were removed with them.
+// Three-native force controls, rebuilt against the field's `set-force-params`
+// d3-force seam after the Cosmos field was retired. The three knobs are UI-facing
+// magnitudes: `repulsion` (the many-body push, mapped to a negative charge on the
+// field), `linkDistance` (spring rest length), and `linkSpring` (link-spring
+// strength). The GraphControls component maps these onto `set-force-params`.
+
+export interface GraphControlsTuneParams {
+  repulsion: number;
+  linkDistance: number;
+  linkSpring: number;
+}
+
+export type GraphControlsTuneParamKey = keyof GraphControlsTuneParams;
+
+export const GRAPH_CONTROLS_TUNE_DEFAULTS: GraphControlsTuneParams = {
+  // Mirror the field's D3_FORCE_DEFAULTS: charge -120 (repulsion magnitude 120),
+  // linkDistance 40, linkStrength 1.
+  repulsion: 120,
+  linkDistance: 40,
+  linkSpring: 1,
+};
+
+function finiteOrDefault(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+export function normalizeGraphControlsTuneParams(
+  params: Partial<GraphControlsTuneParams> | null | undefined,
+): GraphControlsTuneParams {
+  return {
+    repulsion: finiteOrDefault(
+      params?.repulsion,
+      GRAPH_CONTROLS_TUNE_DEFAULTS.repulsion,
+    ),
+    linkDistance: finiteOrDefault(
+      params?.linkDistance,
+      GRAPH_CONTROLS_TUNE_DEFAULTS.linkDistance,
+    ),
+    linkSpring: finiteOrDefault(
+      params?.linkSpring,
+      GRAPH_CONTROLS_TUNE_DEFAULTS.linkSpring,
+    ),
+  };
+}
+
+export interface GraphControlsTuneSliderPresentationView {
+  label: string;
+  title: string;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export interface GraphControlsTunePresentationView {
+  containerClassName: string;
+  freezeRowClassName: string;
+  freezeLabelClassName: string;
+  freezeLabel: string;
+  resetButtonClassName: string;
+  resetLabel: string;
+  sliders: Record<GraphControlsTuneParamKey, GraphControlsTuneSliderPresentationView>;
+}
+
+export function deriveGraphControlsTunePresentationView(): GraphControlsTunePresentationView {
+  return {
+    containerClassName: "flex w-48 flex-col gap-fg-3",
+    freezeRowClassName: "flex items-center justify-between",
+    freezeLabelClassName: "text-label text-ink-muted",
+    freezeLabel: "Freeze simulation",
+    resetButtonClassName:
+      "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+    resetLabel: "Reset to defaults",
+    sliders: {
+      repulsion: {
+        label: "Repulsion",
+        title: "How far nodes push each other apart",
+        min: 0,
+        max: 400,
+        step: 10,
+      },
+      linkDistance: {
+        label: "Link distance",
+        title: "The rest length of the links between connected nodes",
+        min: 5,
+        max: 200,
+        step: 5,
+      },
+      linkSpring: {
+        label: "Link spring",
+        title: "How tightly connected nodes pull together into groups",
+        min: 0,
+        max: 3,
+        step: 0.1,
+      },
+    },
+  };
+}
+
+export function formatGraphControlsTuneValue(
+  key: GraphControlsTuneParamKey,
+  value: number,
+): string {
+  return key === "linkSpring" ? value.toFixed(1) : String(Math.round(value));
+}
 
 export type GraphControlsBoundShape = "free" | "circle" | "rect";
 
@@ -130,9 +230,12 @@ interface GraphControlsChromeState {
   settingsOpen: boolean;
   frozen: boolean;
   frozenScope: string | null;
+  tuneParams: GraphControlsTuneParams;
   setSettingsOpen: (open: boolean) => void;
   toggleSettingsOpen: () => void;
   setFrozen: (frozen: boolean, scope: string | null) => void;
+  setTuneParams: (params: GraphControlsTuneParams) => void;
+  patchTuneParams: (patch: Partial<GraphControlsTuneParams>) => void;
   reset: () => void;
 }
 
@@ -140,14 +243,25 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   settingsOpen: false,
   frozen: false,
   frozenScope: null,
+  tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   toggleSettingsOpen: () => set((state) => ({ settingsOpen: !state.settingsOpen })),
   setFrozen: (frozen, frozenScope) => set({ frozen, frozenScope }),
+  setTuneParams: (tuneParams) =>
+    set({ tuneParams: normalizeGraphControlsTuneParams(tuneParams) }),
+  patchTuneParams: (patch) =>
+    set((state) => ({
+      tuneParams: normalizeGraphControlsTuneParams({
+        ...state.tuneParams,
+        ...patch,
+      }),
+    })),
   reset: () =>
     set({
       settingsOpen: false,
       frozen: false,
       frozenScope: null,
+      tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
     }),
 }));
 
@@ -177,4 +291,18 @@ export function setGraphControlsFrozen(frozen: boolean, scope: string | null): v
 
 export function resetGraphControlsChrome(): void {
   useGraphControlsChromeStore.getState().reset();
+}
+
+export function useGraphControlsTuneParams(): GraphControlsTuneParams {
+  return useGraphControlsChromeStore((state) => state.tuneParams);
+}
+
+export function setGraphControlsTuneParams(params: GraphControlsTuneParams): void {
+  useGraphControlsChromeStore.getState().setTuneParams(params);
+}
+
+export function patchGraphControlsTuneParams(
+  patch: Partial<GraphControlsTuneParams>,
+): void {
+  useGraphControlsChromeStore.getState().patchTuneParams(patch);
 }

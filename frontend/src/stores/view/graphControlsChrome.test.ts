@@ -1,14 +1,20 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  GRAPH_CONTROLS_TUNE_DEFAULTS,
   deriveGraphControlsBoundPresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
   deriveGraphControlsSettingsPopoverView,
+  deriveGraphControlsTunePresentationView,
   formatGraphControlsBoundSize,
+  formatGraphControlsTuneValue,
+  normalizeGraphControlsTuneParams,
+  patchGraphControlsTuneParams,
   resetGraphControlsChrome,
   setGraphControlsFrozen,
   setGraphControlsSettingsOpen,
+  setGraphControlsTuneParams,
   toggleGraphControlsSettingsOpen,
   useGraphControlsChromeStore,
 } from "./graphControlsChrome";
@@ -128,5 +134,64 @@ describe("graph controls chrome view seam", () => {
     setGraphControlsFrozen(false, null);
     expect(useGraphControlsChromeStore.getState().frozen).toBe(false);
     expect(useGraphControlsChromeStore.getState().frozenScope).toBeNull();
+  });
+});
+
+describe("graph controls tune seam (three-native force params)", () => {
+  beforeEach(() => resetGraphControlsChrome());
+
+  it("defaults the tune params to the field's d3-force defaults", () => {
+    expect(GRAPH_CONTROLS_TUNE_DEFAULTS).toEqual({
+      repulsion: 120,
+      linkDistance: 40,
+      linkSpring: 1,
+    });
+    expect(useGraphControlsChromeStore.getState().tuneParams).toEqual(
+      GRAPH_CONTROLS_TUNE_DEFAULTS,
+    );
+  });
+
+  it("projects the three force sliders with d3-native ranges", () => {
+    const view = deriveGraphControlsTunePresentationView();
+    expect(view.sliders.repulsion).toEqual({
+      label: "Repulsion",
+      title: "How far nodes push each other apart",
+      min: 0,
+      max: 400,
+      step: 10,
+    });
+    expect(view.sliders.linkDistance).toMatchObject({ min: 5, max: 200, step: 5 });
+    expect(view.sliders.linkSpring).toMatchObject({ min: 0, max: 3, step: 0.1 });
+  });
+
+  it("formats repulsion / link-distance as integers and link-spring to one decimal", () => {
+    expect(formatGraphControlsTuneValue("repulsion", 119.6)).toBe("120");
+    expect(formatGraphControlsTuneValue("linkDistance", 40)).toBe("40");
+    expect(formatGraphControlsTuneValue("linkSpring", 1.5)).toBe("1.5");
+  });
+
+  it("sets, patches, normalizes, and resets the tune params through one seam", () => {
+    setGraphControlsTuneParams({ repulsion: 200, linkDistance: 80, linkSpring: 1.5 });
+    expect(useGraphControlsChromeStore.getState().tuneParams).toEqual({
+      repulsion: 200,
+      linkDistance: 80,
+      linkSpring: 1.5,
+    });
+
+    // A patch merges and normalizes non-finite values back to the default.
+    patchGraphControlsTuneParams({ linkDistance: Number.NaN, linkSpring: 2 });
+    expect(useGraphControlsChromeStore.getState().tuneParams).toEqual({
+      repulsion: 200,
+      linkDistance: GRAPH_CONTROLS_TUNE_DEFAULTS.linkDistance,
+      linkSpring: 2,
+    });
+
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState().tuneParams).toEqual(
+      GRAPH_CONTROLS_TUNE_DEFAULTS,
+    );
+    expect(normalizeGraphControlsTuneParams(null)).toEqual(
+      GRAPH_CONTROLS_TUNE_DEFAULTS,
+    );
   });
 });

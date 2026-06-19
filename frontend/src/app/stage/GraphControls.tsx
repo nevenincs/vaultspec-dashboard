@@ -10,9 +10,10 @@
 //   GraphSettingsPopover — an icon-only gear (kit IconButton) opening the "Graph
 //              settings" popover (a kit Card) on demand so the canvas is never
 //              occluded; the panel drops DOWN from the top bar. It carries the
-//              Freeze-layout toggle. (The Cosmos force sliders + canvas-bound control
-//              were removed with the Cosmos field — they get rebuilt three-native
-//              against the field's `set-force-params` seam.)
+//              Freeze-layout toggle plus the three-native force knobs (Repulsion,
+//              Link distance, Link spring) as kit Sliders, wired to the field's
+//              `set-force-params` d3-force seam. (The canvas-bound control was retired
+//              with the Cosmos field.)
 //
 // Every control resolves to a real, shared kit definition
 // (design-system-is-centralized). The retired chrome (search, filter, the
@@ -25,25 +26,40 @@
 // structural marks (the sanctioned chrome family) from the kit. Tokens only — no raw
 // hex.
 
-import { useCallback, useEffect, useId } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 
 import { Pause, Play, SlidersHorizontal } from "lucide-react";
 
-import { Card, Crosshair, IconButton, Maximize, Minus, Plus, Popover } from "../kit";
+import {
+  Card,
+  Crosshair,
+  IconButton,
+  Maximize,
+  Minus,
+  Plus,
+  Popover,
+  Slider,
+} from "../kit";
 import {
   useActiveScope,
   useDashboardGraphControlsView,
 } from "../../stores/server/queries";
 import {
+  GRAPH_CONTROLS_TUNE_DEFAULTS,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
   deriveGraphControlsSettingsPopoverView,
+  deriveGraphControlsTunePresentationView,
+  formatGraphControlsTuneValue,
   setGraphControlsFrozen,
   setGraphControlsSettingsOpen,
+  setGraphControlsTuneParams,
   toggleGraphControlsSettingsOpen,
+  type GraphControlsTuneParams,
   useGraphControlsFrozen,
   useGraphControlsFrozenScope,
   useGraphControlsSettingsOpen,
+  useGraphControlsTuneParams,
 } from "../../stores/view/graphControlsChrome";
 import { getScene } from "./Stage";
 
@@ -229,10 +245,187 @@ function SettingsPopover({
 }
 
 // ---------------------------------------------------------------------------
+// LabelledSlider — a kit Slider with a label row and a quiet tabular readout. The
+// kit Slider owns the native range input (drag + keyboard arrows, accent track);
+// this composes the binding label / readout chrome around it. The optional
+// interaction callbacks bracket the drag for the field's interaction coalescing.
+// ---------------------------------------------------------------------------
+
+interface LabelledSliderProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  format?: (v: number) => string;
+  title?: string;
+  onInteractStart?: () => void;
+  onInteractEnd?: () => void;
+}
+
+function LabelledSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format,
+  title,
+  onInteractStart,
+  onInteractEnd,
+}: LabelledSliderProps) {
+  const display = format ? format(value) : String(value);
+  return (
+    <div className="flex w-full flex-col gap-fg-1" title={title}>
+      <span className="flex h-3.5 items-center justify-between">
+        <span className="text-label text-ink-muted">{label}</span>
+        <span data-tabular className="text-caption tabular-nums text-ink-faint">
+          {display}
+        </span>
+      </span>
+      <div
+        onPointerDown={onInteractStart}
+        onPointerUp={onInteractEnd}
+        onKeyDown={onInteractStart}
+        onBlur={onInteractEnd}
+      >
+        <Slider
+          label={label}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={onChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tune group — the field's d3-force knobs (collapsed settings-popover body),
+// rebuilt three-native after the Cosmos field was retired. The sliders map onto
+// the field's `set-force-params` command (repulsion → −charge, link distance /
+// spring straight through).
+// ---------------------------------------------------------------------------
+
+/** Trailing-debounce window (ms) for ending a keyboard-driven slider interaction:
+ *  a key step has no pointerup, so end-interaction fires once the steps stop. */
+const KEYBOARD_SETTLE_MS = 250;
+
+function TuneBody() {
+  const params = useGraphControlsTuneParams();
+  const tuneView = deriveGraphControlsTunePresentationView();
+  const repulsion = tuneView.sliders.repulsion;
+  const linkDistance = tuneView.sliders.linkDistance;
+  const linkSpring = tuneView.sliders.linkSpring;
+  const interactingRef = useRef(false);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const beginInteraction = useCallback(() => {
+    if (interactingRef.current) return;
+    interactingRef.current = true;
+    getScene().controller.command({ kind: "begin-interaction" });
+  }, []);
+
+  const endInteraction = useCallback(() => {
+    if (settleTimerRef.current) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+    if (!interactingRef.current) return;
+    interactingRef.current = false;
+    getScene().controller.command({ kind: "end-interaction" });
+  }, []);
+
+  const armKeyboardSettle = useCallback(() => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(endInteraction, KEYBOARD_SETTLE_MS);
+  }, [endInteraction]);
+
+  // End any in-flight interaction if the popover unmounts mid-drag.
+  useEffect(() => endInteraction, [endInteraction]);
+
+  function apply(update: Partial<GraphControlsTuneParams>) {
+    const next = { ...params, ...update };
+    setGraphControlsTuneParams(next);
+    // Ensure the held floor is up for the very first change of a drag (covers the
+    // case where onChange fires before pointerdown handlers in some browsers).
+    beginInteraction();
+    // Map the UI knobs onto the field's d3-force params: repulsion is the push
+    // MAGNITUDE → a negative charge; link distance / spring map straight through.
+    getScene().controller.command({
+      kind: "set-force-params",
+      params: {
+        charge: -next.repulsion,
+        linkDistance: next.linkDistance,
+        linkStrength: next.linkSpring,
+      },
+    });
+    // Re-arm the keyboard settle each change; a pointerup/blur ends it sooner.
+    armKeyboardSettle();
+  }
+
+  return (
+    <div className={tuneView.containerClassName}>
+      <div className={tuneView.freezeRowClassName}>
+        <span className={tuneView.freezeLabelClassName}>{tuneView.freezeLabel}</span>
+        <FreezeToggle />
+      </div>
+      <LabelledSlider
+        label={repulsion.label}
+        title={repulsion.title}
+        value={params.repulsion}
+        min={repulsion.min}
+        max={repulsion.max}
+        step={repulsion.step}
+        onChange={(v) => apply({ repulsion: v })}
+        format={(v) => formatGraphControlsTuneValue("repulsion", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <LabelledSlider
+        label={linkDistance.label}
+        title={linkDistance.title}
+        value={params.linkDistance}
+        min={linkDistance.min}
+        max={linkDistance.max}
+        step={linkDistance.step}
+        onChange={(v) => apply({ linkDistance: v })}
+        format={(v) => formatGraphControlsTuneValue("linkDistance", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <LabelledSlider
+        label={linkSpring.label}
+        title={linkSpring.title}
+        value={params.linkSpring}
+        min={linkSpring.min}
+        max={linkSpring.max}
+        step={linkSpring.step}
+        onChange={(v) => apply({ linkSpring: v })}
+        format={(v) => formatGraphControlsTuneValue("linkSpring", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <button
+        type="button"
+        onClick={() => apply(GRAPH_CONTROLS_TUNE_DEFAULTS)}
+        className={tuneView.resetButtonClassName}
+      >
+        {tuneView.resetLabel}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The graph-settings popover — the gear trigger that holds the Freeze-layout
-// toggle, COLLAPSED by default so the field is never occluded. Lives in the
-// unified stage top bar alongside the camera cluster (graph-timeline-workspace);
-// the panel drops DOWN into the canvas.
+// toggle and the three-native force knobs, COLLAPSED by default so the field is
+// never occluded. Lives in the unified stage top bar alongside the camera cluster
+// (graph-timeline-workspace); the panel drops DOWN into the canvas.
 // ---------------------------------------------------------------------------
 
 export function GraphSettingsPopover() {
@@ -243,10 +436,7 @@ export function GraphSettingsPopover() {
       placement="below"
       icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
     >
-      <div className="flex w-48 items-center justify-between gap-fg-2">
-        <span className="text-label text-ink-muted">Freeze layout</span>
-        <FreezeToggle />
-      </div>
+      <TuneBody />
     </SettingsPopover>
   );
 }
