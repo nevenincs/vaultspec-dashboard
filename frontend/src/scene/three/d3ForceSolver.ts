@@ -6,10 +6,9 @@
 // many-body is O(N log N), and — critically for THIS field — every stability and
 // flicker control we need is first-class: deterministic phyllotaxis seeding (no
 // RNG divergence between reloads), a manually-drivable tick (`stop()` + `tick()`),
-// an `alpha < alphaMin` freeze point, and `fx`/`fy` node pinning for drag. The
-// renderer owns the loop (render-on-demand); this solver never runs d3's internal
-// timer — we `stop()` it at construction and step it ourselves, so the GPU idles
-// to zero on settle.
+// and `fx`/`fy` node pinning. The renderer owns the loop (render-on-demand); this
+// solver never runs d3's internal timer — we `stop()` it at construction and step
+// it ourselves, so the GPU idles to zero on settle.
 //
 // FRONTIER FORCE COMBINATION (the recipe leading knowledge-graph viz converge on):
 //   • forceLink     — Hooke spring at `linkDistance`, strength DEGREE-NORMALIZED
@@ -29,8 +28,26 @@
 //
 // FLICKER-FREE INIT: `prewarm()` runs the violent early ticks SYNCHRONOUSLY and
 // off-screen (bounded by tick count AND wall-clock) so the first frame the user
-// ever sees is already near-equilibrium — no "explode then settle", no camera
-// re-fit jump. The renderer fits the camera once after prewarm and reveals.
+// ever sees is already near-equilibrium — no "explode then settle".
+//
+// SLEEPING NODES (drag locality — why grabbing one node must NOT wake the graph):
+// d3's `alpha` is a GLOBAL temperature that scales EVERY force, and a "settled"
+// layout is settled only because alpha is tiny — the underlying forces are still
+// substantial (e.g. centering pulls a far node hard, balanced by repulsion only
+// approximately). So the canonical d3 drag (`alphaTarget(0.3).restart()`) re-reveals
+// those forces everywhere and the whole graph jiggles — exactly the bug. Obsidian
+// and real physics engines don't do this; they SLEEP settled nodes.
+//
+// Our model (a Box2D-style island/sleep system layered on d3): a sleeping node is
+// PINNED via `fx`/`fy`, so d3 holds it fixed regardless of the global alpha — it is
+// physically immovable, not merely "low energy". A drag pins the grabbed node to the
+// cursor and wakes nodes by PROPAGATION: a node that has actually moved more than
+// `wakeMove` from its rest drags its sleeping link-neighbours awake (a stretched
+// spring is a real force). Motion therefore ripples outward only as far as the drag
+// truly reaches; distant clusters are pinned and cannot move. Woken nodes settle and
+// sleep again (re-pin) once they go quiet. d3 still computes the full force field —
+// sleeping nodes remain in the quadtree as fixed obstacles — but only awake nodes
+// are free to integrate.
 
 import {
   forceCollide,
@@ -85,10 +102,22 @@ export interface D3ForceParams {
   velocityDecay: number;
   /** Per-tick cooling rate; default 0.0228 ≈ 300 ticks to settle. */
   alphaDecay: number;
-  /** Freeze threshold: the sim is "settled" once alpha drops below this. */
+  /** Freeze threshold: the global settle is "done" once alpha drops below this. */
   alphaMin: number;
-  /** Warm alpha target held while a node is being dragged. */
-  dragAlphaTarget: number;
+  /** Alpha held while dragging — energy for the WOKEN region only (sleeping nodes
+   *  are pinned, so this does not move them). */
+  dragAlpha: number;
+  /** How far a node must move from its rest (world units) before it drags its
+   *  sleeping link-neighbours awake — the "force above threshold" propagation. */
+  wakeMove: number;
+  /** Spatial bound (world units) on the drag's influence: only sleeping nodes
+   *  within this radius of the dragged node may wake, so distant settled clusters
+   *  stay frozen however they are connected. 0 = auto (~7× linkDistance). */
+  wakeRadius: number;
+  /** Speed below which an AWAKE node is counted quiet (heading toward sleep). */
+  sleepSpeed: number;
+  /** Consecutive quiet ticks before an awake node goes back to sleep. */
+  sleepTicks: number;
 }
 
 export const D3_FORCE_DEFAULTS: D3ForceParams = {
@@ -109,7 +138,11 @@ export const D3_FORCE_DEFAULTS: D3ForceParams = {
   velocityDecay: 0.5, // primary damping — kills overshoot/oscillation
   alphaDecay: 0.05, // ~104 ticks to settle (vs 300) — decisive, hides nothing
   alphaMin: 0.005, // freeze cleanly instead of crawling at low energy
-  dragAlphaTarget: 0.3,
+  dragAlpha: 0.3, // energy for the woken region during a drag
+  wakeMove: 14, // a neighbour moving this far wakes its sleeping neighbours
+  wakeRadius: 0, // auto = 7× linkDistance — keeps the drag's effect local
+  sleepSpeed: 0.4, // awake node slower than this heads toward sleep
+  sleepTicks: 18,
 };
 
 /** Cold-start alpha for a fresh layout (d3's full-energy default). */
@@ -123,8 +156,10 @@ const PREWARM_BUDGET_MS = 260;
 /** Per-tick dynamics for the host's convergence / diagnostics. */
 export interface TickMetrics {
   alpha: number;
-  /** Mean per-node displacement this tick (→0 at rest). */
+  /** Mean displacement this tick over the AWAKE nodes (→0 at rest). */
   meanDisplacement: number;
+  /** Number of awake (moving) nodes — 0 ⇒ the whole field is asleep. */
+  awake: number;
 }
 
 const now = (): number => (typeof performance === "undefined" ? 0 : performance.now());
@@ -139,8 +174,22 @@ export class D3ForceSolver {
   private readonly nodes: D3Node[];
   private readonly link: ForceLink<D3Node, D3Link>;
   private readonly degree: number[];
+  private readonly adjacency: number[][];
   private params: D3ForceParams;
+
+  // --- sleeping / active-set state -----------------------------------------
+  // `awake[i]` = node is free to move; a sleeping node is PINNED (fx/fy) at its
+  // rest position so the global alpha cannot move it. `restX/Y` doubles as the pin
+  // target and as the reference point for propagation (how far a node has moved).
+  private readonly awake: Uint8Array;
+  private readonly restX: Float32Array;
+  private readonly restY: Float32Array;
+  private readonly quiet: Uint16Array; // consecutive quiet ticks per awake node
+  private awakeCount = 0;
   private dragIndex = -1;
+  // Local mode gates sleeping (a drag perturbation); the global layout settle runs
+  // pure d3 with everything awake and unpinned until it cools.
+  private localMode = false;
 
   constructor(
     nodeCount: number,
@@ -159,8 +208,15 @@ export class D3ForceSolver {
       this.nodes[i] = { index: i, radius: radii[i] ?? 4 };
     }
 
-    // Degree per node — drives the degree-normalized spring strength below.
+    this.awake = new Uint8Array(nodeCount);
+    this.restX = new Float32Array(nodeCount);
+    this.restY = new Float32Array(nodeCount);
+    this.quiet = new Uint16Array(nodeCount);
+
+    // Degree + adjacency — degree drives the normalized spring strength; adjacency
+    // drives the drag wake-propagation along links.
     this.degree = new Array<number>(nodeCount).fill(0);
+    this.adjacency = Array.from({ length: nodeCount }, () => [] as number[]);
     const links: D3Link[] = [];
     for (const e of edges) {
       if (
@@ -174,6 +230,8 @@ export class D3ForceSolver {
       if (e.source === e.target) continue;
       this.degree[e.source]++;
       this.degree[e.target]++;
+      this.adjacency[e.source].push(e.target);
+      this.adjacency[e.target].push(e.source);
       links.push({ source: e.source, target: e.target });
     }
 
@@ -233,78 +291,272 @@ export class D3ForceSolver {
     return Math.max(350, Math.min(1400, this.params.linkDistance * 10));
   }
 
+  // --- sleeping helpers -----------------------------------------------------
+
+  /** Free every node (clear pins) and mark all awake — the global-settle state. */
+  private wakeAllFree(): void {
+    for (let i = 0; i < this.count; i++) {
+      const n = this.nodes[i];
+      n.fx = null;
+      n.fy = null;
+    }
+    this.awake.fill(1);
+    this.quiet.fill(0);
+    this.awakeCount = this.count;
+  }
+
+  /** Record every node's current position as its rest and mark all asleep (no pin;
+   *  the global settle does not pin — a drag pins on demand). */
+  private sleepAll(): void {
+    for (let i = 0; i < this.count; i++) {
+      const n = this.nodes[i];
+      this.restX[i] = n.x ?? 0;
+      this.restY[i] = n.y ?? 0;
+      n.vx = 0;
+      n.vy = 0;
+      this.awake[i] = 0;
+      this.quiet[i] = 0;
+    }
+    this.awakeCount = 0;
+  }
+
+  /** Pin every sleeping node at its rest position so the global alpha can't move
+   *  it — done when a drag enters local mode. */
+  private pinSleeping(): void {
+    for (let i = 0; i < this.count; i++) {
+      if (this.awake[i] || i === this.dragIndex) continue;
+      const n = this.nodes[i];
+      n.fx = this.restX[i];
+      n.fy = this.restY[i];
+      n.vx = 0;
+      n.vy = 0;
+    }
+  }
+
+  /** Put one awake node to sleep where it sits: record rest, pin, zero velocity. */
+  private sleepNode(i: number): void {
+    if (!this.awake[i]) return;
+    const n = this.nodes[i];
+    this.restX[i] = n.x ?? 0;
+    this.restY[i] = n.y ?? 0;
+    n.fx = this.restX[i];
+    n.fy = this.restY[i];
+    n.vx = 0;
+    n.vy = 0;
+    this.awake[i] = 0;
+    this.quiet[i] = 0;
+    this.awakeCount--;
+  }
+
+  /** Wake one sleeping node: unpin it so forces can move it. Its rest stays put as
+   *  the reference for further propagation. */
+  private wakeNode(i: number): void {
+    if (this.awake[i]) return;
+    const n = this.nodes[i];
+    n.fx = null;
+    n.fy = null;
+    this.awake[i] = 1;
+    this.quiet[i] = 0;
+    this.awakeCount++;
+  }
+
   /**
    * Run the violent early ticks SYNCHRONOUSLY and off-screen so the first visible
-   * frame is already near-equilibrium — the core of flicker-free init. Bounded by
-   * both a tick cap and a wall-clock budget so a large graph never janks the main
-   * thread (it reveals slightly less settled and finishes gently in the live loop).
+   * frame is already near-equilibrium — the core of flicker-free init. The global
+   * settle runs pure d3 (everything awake + unpinned) and sleeps the whole graph
+   * when it cools. Bounded by a tick cap AND a wall-clock budget so a large graph
+   * never janks the main thread (it reveals slightly less settled and finishes
+   * gently in the live loop).
    */
   prewarm(maxTicks = PREWARM_MAX_TICKS, budgetMs = PREWARM_BUDGET_MS): number {
+    this.localMode = false;
+    this.wakeAllFree();
     this.sim.alpha(COLD_ALPHA).alphaTarget(0);
     const start = now();
     let ticks = 0;
     while (ticks < maxTicks) {
-      this.sim.tick();
+      this.tick();
       ticks++;
-      if (this.sim.alpha() < this.params.alphaMin) break;
+      if (this.awakeCount === 0) break; // fully settled → whole graph asleep
       if (ticks % 16 === 0 && now() - start > budgetMs) break;
     }
     return ticks;
   }
 
-  /** Advance one tick; returns alpha + mean per-node displacement. */
+  /** Advance one tick. Pure d3 during the global settle; gated (sleeping) once a
+   *  drag has put the field into local mode. */
   tick(): TickMetrics {
-    this.sim.tick();
-    let disp = 0;
-    for (let i = 0; i < this.count; i++) {
-      const n = this.nodes[i];
-      disp += Math.hypot(n.vx ?? 0, n.vy ?? 0);
+    const dragging = this.dragIndex >= 0;
+
+    // Global cool-down guarantee: once cooled and not interacting, the whole graph
+    // sleeps — a definite stop even if a soft collide would otherwise micro-buzz.
+    if (!dragging && this.sim.alpha() < this.params.alphaMin && this.awakeCount > 0) {
+      this.sleepAll();
+      return { alpha: this.sim.alpha(), meanDisplacement: 0, awake: 0 };
     }
+
+    this.sim.tick(); // d3 integrates free nodes; pinned (sleeping/dragged) stay fixed.
+
+    if (!this.localMode) {
+      // Global layout settle — no gating; nodes sleep only via the guarantee above.
+      let disp = 0;
+      for (let i = 0; i < this.count; i++) {
+        const n = this.nodes[i];
+        disp += Math.hypot(n.vx ?? 0, n.vy ?? 0);
+      }
+      return {
+        alpha: this.sim.alpha(),
+        meanDisplacement: this.count ? disp / this.count : 0,
+        awake: this.awakeCount,
+      };
+    }
+
+    // --- local mode: sleep quiet awake nodes, then propagate wake along links ---
+    const { sleepSpeed, sleepTicks } = this.params;
+    let disp = 0;
+    let movers = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (i === this.dragIndex || !this.awake[i]) continue;
+      const n = this.nodes[i];
+      const speed = Math.hypot(n.vx ?? 0, n.vy ?? 0);
+      disp += speed;
+      movers++;
+      if (speed < sleepSpeed) {
+        if (++this.quiet[i] >= sleepTicks) this.sleepNode(i);
+      } else {
+        this.quiet[i] = 0;
+      }
+    }
+
+    // Wake propagation runs only while dragging and is bounded to a spatial radius
+    // around the cursor, so the disturbance stays LOCAL: a node that has actually
+    // moved past wakeMove drags its sleeping link-neighbours awake, but only those
+    // within `wakeRadius` of the dragged node. A distant settled cluster is never
+    // woken, however the drag connects to it — it stays pinned. (Post-release the
+    // woken region just relaxes and sleeps; no new wakes are needed.)
+    if (dragging) {
+      const dn = this.nodes[this.dragIndex];
+      const cx = dn.x ?? 0;
+      const cy = dn.y ?? 0;
+      const r =
+        this.params.wakeRadius > 0
+          ? this.params.wakeRadius
+          : this.params.linkDistance * 7;
+      const r2 = r * r;
+      const wakeMove = this.params.wakeMove;
+      this.propagateWake(this.dragIndex, cx, cy, r2, wakeMove);
+      for (let i = 0; i < this.count; i++) {
+        if (this.awake[i] && i !== this.dragIndex) {
+          this.propagateWake(i, cx, cy, r2, wakeMove);
+        }
+      }
+    }
+
     return {
       alpha: this.sim.alpha(),
-      meanDisplacement: this.count > 0 ? disp / this.count : 0,
+      meanDisplacement: movers ? disp / movers : 0,
+      awake: this.awakeCount,
     };
   }
 
-  /** Re-energise (e.g. a resume/restart). Cold = full explode, warm = gentle. */
+  private propagateWake(
+    a: number,
+    cx: number,
+    cy: number,
+    r2: number,
+    wakeMove: number,
+  ): void {
+    const n = this.nodes[a];
+    const ax = n.x ?? 0;
+    const ay = n.y ?? 0;
+    if (Math.hypot(ax - this.restX[a], ay - this.restY[a]) <= wakeMove) return;
+    const stretchMin = wakeMove * 0.6;
+    for (const s of this.adjacency[a]) {
+      if (s === this.dragIndex || this.awake[s]) continue;
+      // A sleeping neighbour is pinned at its rest, so its position IS its rest.
+      const sx = this.restX[s];
+      const sy = this.restY[s];
+      const dx = sx - cx;
+      const dy = sy - cy;
+      if (dx * dx + dy * dy >= r2) continue; // outside the local radius → stays frozen
+      // Wake only if the link a–s actually changed length — i.e. a real spring force
+      // now acts on s — not merely because a moved in some unrelated direction.
+      const restLen = Math.hypot(this.restX[a] - sx, this.restY[a] - sy);
+      const curLen = Math.hypot(ax - sx, ay - sy);
+      if (Math.abs(curLen - restLen) > stretchMin) this.wakeNode(s);
+    }
+  }
+
+  /** Re-energise the whole layout (resume / explicit restart). Cold = full
+   *  re-explode, warm = gentle. Returns to global (non-gated, unpinned) settle. */
   reheat(cold = false): void {
+    this.localMode = false;
+    this.wakeAllFree();
     this.sim.alpha(cold ? COLD_ALPHA : WARM_ALPHA).alphaTarget(0);
   }
 
-  /** True once cooled below the freeze threshold (and not held warm by a drag). */
+  /** True once the field is at rest: nothing awake and nothing being dragged. */
   isSettled(): boolean {
-    return this.sim.alphaTarget() === 0 && this.sim.alpha() < this.params.alphaMin;
+    return this.dragIndex < 0 && this.awakeCount === 0;
   }
 
   alpha(): number {
     return this.sim.alpha();
   }
 
+  /** Number of currently-moving nodes (0 ⇒ asleep). */
+  get activeCount(): number {
+    return this.awakeCount + (this.dragIndex >= 0 ? 1 : 0);
+  }
+
   /**
-   * Cursor-pin a node: d3 resets its position to fx/fy and zeroes its velocity at
-   * each tick's end, so it tracks the cursor exactly while its springs pull the
-   * connected neighbours along (visible edge-pull). Holds the sim warm so distant
-   * settled nodes stay put but the dragged neighbourhood keeps following.
+   * Cursor-pin a node and wake ONLY what the drag actually disturbs — never the
+   * whole graph. On the FIRST grab we enter local mode and pin every settled node
+   * (fx/fy) so the global alpha is physically unable to move them. The grabbed node
+   * is pinned to the cursor; as it moves past `wakeMove`, propagation wakes its
+   * link-neighbours, and so on outward — but only as far as motion really reaches.
+   * This is what stops the grab-reheats-everything jiggle d3's global alpha causes:
+   * a settled node stays put because it is pinned, not merely low-energy.
    */
   setDrag(index: number, x: number, y: number): void {
     if (index < 0 || index >= this.count) return;
     const n = this.nodes[index];
+    if (this.dragIndex !== index) {
+      if (!this.localMode) {
+        this.localMode = true;
+        this.pinSleeping();
+      }
+      // The grabbed node leaves the awake set (it's driven by the cursor, not
+      // forces); record its grab position as the propagation reference.
+      if (this.awake[index]) {
+        this.awake[index] = 0;
+        this.awakeCount--;
+      }
+      this.restX[index] = n.x ?? x;
+      this.restY[index] = n.y ?? y;
+      this.dragIndex = index;
+      // Energy for the region the drag wakes; pinned nodes ignore it entirely.
+      this.sim.alpha(Math.max(this.sim.alpha(), this.params.dragAlpha));
+      this.sim.alphaTarget(this.params.dragAlpha);
+    }
     n.fx = x;
     n.fy = y;
-    if (this.dragIndex !== index) {
-      this.dragIndex = index;
-      this.sim.alphaTarget(this.params.dragAlphaTarget);
-    }
   }
 
-  /** Release the dragged node and let the neighbourhood re-settle, then freeze. */
+  /** Release the dragged node and let its woken neighbourhood re-settle + sleep. */
   clearDrag(): void {
     if (this.dragIndex < 0) return;
-    const n = this.nodes[this.dragIndex];
+    const i = this.dragIndex;
+    const n = this.nodes[i];
     n.fx = null;
     n.fy = null;
+    this.restX[i] = n.x ?? 0; // measure further propagation from the release point
+    this.restY[i] = n.y ?? 0;
+    this.awake[i] = 1; // it becomes a free awake node and settles into place
+    this.awakeCount++;
+    this.quiet[i] = 0;
     this.dragIndex = -1;
-    this.sim.alphaTarget(0);
+    this.sim.alphaTarget(0); // cool the woken region; the rest stays pinned + asleep
   }
 
   /** Pack node positions into a `texSize²` RGBA float buffer as (x, y, 0, 1). A
