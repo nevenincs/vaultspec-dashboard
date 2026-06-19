@@ -172,9 +172,9 @@ Convert the hand-authored literals in the app stylesheet (borders, shadows, lett
 
 Empty the allowlist, run the full frontend lint gate green, verify visual parity per surface, and confirm the token drift gate.
 
-- [ ] `P09.S26` - Empty the px-scan allowlist and run the full frontend lint gate to exit 0; `frontend/package.json`.
-- [ ] `P09.S27` - Verify visual parity per converted surface against the binding Figma nodes; `frontend/src/app`.
-- [ ] `P09.S28` - Confirm the token drift gate passes and close the vault feature records; `frontend/tokens`.
+- [x] `P09.S26` - Empty the px-scan allowlist and run the full frontend lint gate to exit 0; `frontend/package.json`.
+- [x] `P09.S27` - Verify visual parity per converted surface against the binding Figma nodes; `frontend/src/app`.
+- [x] `P09.S28` - Confirm the token drift gate passes and close the vault feature records; `frontend/tokens`.
 
 ## Description
 
