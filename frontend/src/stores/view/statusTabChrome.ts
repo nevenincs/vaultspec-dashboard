@@ -1,5 +1,6 @@
+import { useMemo } from "react";
+
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 
 export type StatusSectionId =
   | "open-plans"
@@ -25,9 +26,9 @@ interface StatusTabChromeState {
   sections: Partial<Record<StatusSectionId, boolean>>;
   recentCommitsLimit: number | null;
   openRecentCommitHashes: string[];
-  toggleSection: (id: StatusSectionId, defaultOpen: boolean) => void;
-  toggleRecentCommit: (hash: string) => void;
-  showMoreRecentCommits: (page: number, defaultLimit: number) => void;
+  toggleSection: (id: unknown, defaultOpen: unknown) => void;
+  toggleRecentCommit: (hash: unknown) => void;
+  showMoreRecentCommits: (page: unknown, defaultLimit: unknown) => void;
   reset: () => void;
 }
 
@@ -37,14 +38,18 @@ const RESET_STATE = {
   openRecentCommitHashes: [],
 };
 
-function boundedPositiveCount(value: number, fallback: number): number {
+function boundedPositiveCount(value: unknown, fallback: unknown): number {
+  const fallbackCount =
+    typeof fallback === "number" && Number.isFinite(fallback)
+      ? Math.floor(fallback)
+      : 1;
   const candidate =
     value === Number.POSITIVE_INFINITY
       ? RECENT_COMMITS_LIMIT_CAP
-      : Number.isFinite(value)
+      : typeof value === "number" && Number.isFinite(value)
         ? Math.floor(value)
-        : fallback;
-  const positive = candidate > 0 ? candidate : fallback;
+        : fallbackCount;
+  const positive = candidate > 0 ? candidate : fallbackCount;
   return Math.min(RECENT_COMMITS_LIMIT_CAP, Math.max(1, positive));
 }
 
@@ -54,12 +59,17 @@ function normalizeStatusSectionId(id: unknown): StatusSectionId | null {
     : null;
 }
 
-function cappedOpenRecentCommitHashes(hashes: readonly string[]): string[] {
+function normalizeRecentCommitHash(hash: unknown): string | null {
+  return typeof hash === "string" && hash.trim().length > 0 ? hash.trim() : null;
+}
+
+function cappedOpenRecentCommitHashes(hashes: unknown): string[] {
+  if (!Array.isArray(hashes)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (let i = hashes.length - 1; i >= 0; i -= 1) {
-    const hash = hashes[i].trim();
-    if (!hash) continue;
+    const hash = normalizeRecentCommitHash(hashes[i]);
+    if (hash === null) continue;
     if (seen.has(hash)) continue;
     seen.add(hash);
     out.unshift(hash);
@@ -74,13 +84,14 @@ export const useStatusTabChromeStore = create<StatusTabChromeState>((set) => ({
     set((state) => {
       const sectionId = normalizeStatusSectionId(id);
       if (sectionId === null) return state;
-      const open = state.sections[sectionId] ?? defaultOpen;
+      const open =
+        state.sections[sectionId] ?? (typeof defaultOpen === "boolean" && defaultOpen);
       return { sections: { ...state.sections, [sectionId]: !open } };
     }),
   toggleRecentCommit: (hash) =>
     set((state) => {
-      const normalizedHash = hash.trim();
-      if (!normalizedHash) return state;
+      const normalizedHash = normalizeRecentCommitHash(hash);
+      if (normalizedHash === null) return state;
       const open = state.openRecentCommitHashes.includes(normalizedHash);
       return {
         openRecentCommitHashes: open
@@ -150,7 +161,7 @@ export interface RecentCommitsChromeView {
 
 export function deriveRecentCommitsChromeView(
   recentCommitsLimit: number | null,
-  openRecentCommitHashes: readonly string[],
+  openRecentCommitHashes: unknown,
   defaultLimit: number,
 ): RecentCommitsChromeView {
   return {
@@ -213,26 +224,36 @@ export function deriveRecentCommitChromeRows<T extends RecentCommitChromeInputRo
 }
 
 export function useRecentCommitsChrome(defaultLimit: number): RecentCommitsChromeView {
-  return useStatusTabChromeStore(
-    useShallow((state) =>
+  // Select RAW, stable store fields and derive the view in a useMemo — NOT inside
+  // the zustand selector. deriveRecentCommitsChromeView re-caps openHashes into a
+  // FRESH array, so calling it inside the selector returns a new reference on every
+  // getSnapshot and defeats useShallow → React's "getSnapshot should be cached"
+  // infinite loop (the right-rail crash). The store already caps on write, so the
+  // raw `openRecentCommitHashes` reference is stable between toggles.
+  const recentCommitsLimit = useStatusTabChromeStore((s) => s.recentCommitsLimit);
+  const openRecentCommitHashes = useStatusTabChromeStore(
+    (s) => s.openRecentCommitHashes,
+  );
+  return useMemo(
+    () =>
       deriveRecentCommitsChromeView(
-        state.recentCommitsLimit,
-        state.openRecentCommitHashes,
+        recentCommitsLimit,
+        openRecentCommitHashes,
         defaultLimit,
       ),
-    ),
+    [recentCommitsLimit, openRecentCommitHashes, defaultLimit],
   );
 }
 
-export function toggleStatusSection(id: StatusSectionId, defaultOpen: boolean): void {
+export function toggleStatusSection(id: unknown, defaultOpen: unknown): void {
   useStatusTabChromeStore.getState().toggleSection(id, defaultOpen);
 }
 
-export function toggleRecentCommit(hash: string): void {
+export function toggleRecentCommit(hash: unknown): void {
   useStatusTabChromeStore.getState().toggleRecentCommit(hash);
 }
 
-export function showMoreRecentCommits(page: number, defaultLimit: number): void {
+export function showMoreRecentCommits(page: unknown, defaultLimit: unknown): void {
   useStatusTabChromeStore.getState().showMoreRecentCommits(page, defaultLimit);
 }
 

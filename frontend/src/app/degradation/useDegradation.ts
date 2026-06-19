@@ -3,22 +3,23 @@
 // connection + broken-link count, live-state D4), combined with any debug
 // overrides, resolved through the §8 table.
 
-import { useEngineStatus } from "../../stores/server/engine";
-import { useLiveStatusStore } from "../../stores/server/liveStatus";
+import { useMemo } from "react";
+
+import { useDegradationInputs } from "../../stores/server/degradationInputs";
+import { useDegradationOverrides } from "../../stores/view/degradationDebug";
 import type { SurfaceStates } from "./matrix";
-import { deriveInputs, matrixFor, useDegradationStore } from "./matrix";
+import { matrixFor } from "./matrix";
 
 export function useSurfaceStates(): SurfaceStates {
-  const status = useEngineStatus();
-  // Live signals the /status snapshot cannot carry (ADR D4): read from the
-  // stores-owned live-connection slice so the stream-lost and broken-link
-  // degradation rows derive from real state instead of the old hardwired zeros.
-  const streamConnected = useLiveStatusStore((s) => s.streamConnected);
-  const brokenLinkCount = useLiveStatusStore((s) => s.brokenLinkCount);
-  const overrides = useDegradationStore((s) => s.overrides);
-  const real = deriveInputs(status.data, { streamConnected, brokenLinkCount });
+  const real = useDegradationInputs();
+  const overrides = useDegradationOverrides();
   // Apply dev overrides from the SAME subscribed value that drives the
   // re-render (finding 037): one source for subscription and computation, no
   // dead `void overrides` hack and no imperative `resolve()` get().
-  return matrixFor(overrides ? { ...real, ...overrides } : real);
+  // Memoized for referential stability so consumers don't see a fresh
+  // SurfaceStates every render (infinite-loop fix).
+  return useMemo(
+    () => matrixFor(overrides ? { ...real, ...overrides } : real),
+    [real, overrides],
+  );
 }

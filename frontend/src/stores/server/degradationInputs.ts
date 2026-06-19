@@ -5,7 +5,11 @@
 // (`app/degradation/matrix.ts`) consumes these derived inputs and maps them to
 // per-surface states (the §8 table); it no longer reads `tiers` itself.
 
-import type { EngineStatus } from "./engine";
+import { useMemo } from "react";
+
+import { readTierAvailability, type EngineStatus } from "./engine";
+import { useLiveStatusStore } from "./liveStatus";
+import { useEngineStatus } from "./queries";
 
 // --- conditions -------------------------------------------------------------------
 
@@ -44,10 +48,11 @@ export function deriveInputs(
   status: EngineStatus | undefined,
   live: LiveSignals = {},
 ): DegradationInputs {
+  const semanticDegraded =
+    status === undefined || readTierAvailability(status.tiers, ["semantic"]).degraded;
   return {
     ragDown:
-      status === undefined ||
-      status.tiers.semantic?.available === false ||
+      semanticDegraded ||
       (status.rag !== undefined && status.rag.service !== "running"),
     dateMandateMissing: status?.degradations.includes("date-mandate") ?? false,
     // No longer hardwired (GUI finding 036): a count over the held slice's
@@ -56,4 +61,19 @@ export function deriveInputs(
     streamLost: live.streamConnected === false,
     noVault: status !== undefined && status.nodes === 0,
   };
+}
+
+/** Stores hook: derive the app degradation inputs from status + live signals. */
+export function useDegradationInputs(): DegradationInputs {
+  const status = useEngineStatus();
+  const streamConnected = useLiveStatusStore((s) => s.streamConnected);
+  const brokenLinkCount = useLiveStatusStore((s) => s.brokenLinkCount);
+  // Referential stability (infinite-loop fix): a fresh inputs object every render
+  // churns every useSurfaceStates consumer (Stage/Timeline/Playhead) and, via the
+  // live broken-link write, the liveStatus useSyncExternalStore snapshot — the
+  // "getSnapshot should be cached" max-depth loop. Memo on the primitive inputs.
+  return useMemo(
+    () => deriveInputs(status.data, { streamConnected, brokenLinkCount }),
+    [status.data, streamConnected, brokenLinkCount],
+  );
 }
