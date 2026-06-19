@@ -1082,3 +1082,37 @@
   --dv-floating-titlebar-background-color: var(--color-paper-sunken);
   --dv-floating-box-shadow: var(--shadow-fg-overlay);
 }
+
+/* ============================================================================
+   RELATIVE-UNITS hairline override (relative-units-migration).
+
+   Tailwind's framework-default 1px utilities (`border`, the per-side borders, and
+   `w-px` / `h-px`) are the last absolute px in the design system. v4 exposes no
+   default-border-width token, and `border` alone has ~170 call sites, so re-
+   expressing them once here - in rem at the 16px basis (0.0625rem == 1px at the
+   default root) - is the single-source fix: every hairline now tracks UI scale with
+   the rest of the system, and no component file carries a px literal. Declared
+   UNLAYERED so it deterministically wins over Tailwind's layered utilities of equal
+   specificity. New per-side/px utilities should be added here if first used.
+   ============================================================================ */
+.border {
+  border-width: 0.0625rem;
+}
+.border-t {
+  border-top-width: 0.0625rem;
+}
+.border-b {
+  border-bottom-width: 0.0625rem;
+}
+.border-l {
+  border-left-width: 0.0625rem;
+}
+.border-r {
+  border-right-width: 0.0625rem;
+}
+.w-px {
+  width: 0.0625rem;
+}
+.h-px {
+  height: 0.0625rem;
+}
