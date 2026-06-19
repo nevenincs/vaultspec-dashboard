@@ -4,20 +4,16 @@
 // client-flattened doc edges. React sends commands and subscribes to
 // events; the field owns every frame.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
 import { graphDeltasToApplyCommand } from "../../scene/sceneMapping";
 import { useDashboardStageSceneIntent } from "../../stores/server/dashboardStageSceneIntent";
 import { useGraphLiveSync } from "../../stores/server/graphSync";
-import {
-  countBrokenLinks,
-  setLiveBrokenLinkCount,
-} from "../../stores/server/liveStatus";
+import { useLiveBrokenLinkCountFromEdges } from "../../stores/server/liveStatus";
 import {
   useActiveScope,
   useActiveWorkspace,
-  useDashboardFilterChoices,
   useDashboardStageSceneView,
   useGraphSlice,
   useGraphSliceAvailability,
@@ -27,14 +23,14 @@ import {
   useRestoreSessionScope,
   useSeedSessionContext,
 } from "../../stores/server/sessionContext";
-import { computeVisibility, visibilitySceneCommand } from "../../stores/view/filters";
+import { useDashboardVisibilityCommand } from "../../stores/view/dashboardFilterChoices";
 import {
   stageBoundsCommand,
   stageOverlaysCommand,
   stageRepresentationCommand,
   stageSetDataCommand,
 } from "../../stores/view/stageSceneCommands";
-import { reconcileGraphAffordances } from "../../stores/view/graphAffordances";
+import { useGraphAffordanceReconciliation } from "../../stores/view/graphAffordances";
 import { useGraphOverlays } from "../../stores/view/graphOverlays";
 import { usePinnedDiscoveries } from "../../stores/view/discoveries";
 import { bindPinsToScene } from "../../stores/view/pins";
@@ -55,7 +51,7 @@ import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { CategoryLegend } from "./CategoryLegend";
 import { MinimapWidget } from "./MinimapWidget";
 import { Discover } from "./Discover";
-import { useGraphWalkKeyboard } from "./graphWalk";
+import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { StageNavBar } from "./StageNavBar";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
@@ -80,9 +76,6 @@ export function useSceneSelectionBridge(
 
 export function Stage() {
   const hostRef = useRef<HTMLDivElement>(null);
-  // The host element is tracked as state so the keyboard graph-walk binds once
-  // it is in the DOM (a ref alone never re-runs the binding effect).
-  const [hostEl, setHostEl] = useState<HTMLDivElement | null>(null);
   // Restore the persisted session on load: the scope cold-start persist (S29)
   // and the scope+folder context seed (S30) both fire from this single owner,
   // since Stage mounts once per app lifetime.
@@ -245,14 +238,7 @@ export function Stage() {
         : null,
     [slice.data, expansionSig, pinnedDiscoveries],
   );
-  const mergedNodeIds = useMemo(
-    () => (merged ? merged.nodes.map((node) => node.id) : null),
-    [merged],
-  );
-  useEffect(() => {
-    if (!mergedNodeIds) return;
-    reconcileGraphAffordances(mergedNodeIds);
-  }, [mergedNodeIds]);
+  useGraphAffordanceReconciliation(merged);
   // Scene persistence follows the active workspace+scope; client-side pin/lens
   // store keys are owned by viewStore scope actions, including session restore.
   useEffect(() => {
@@ -305,45 +291,39 @@ export function Stage() {
     if (command) scene.controller.command(command);
   }, [featureDeltas, scope, liveTimeline]);
 
-  // One filter model, applied as a visibility membership diff (RL-5a). The
-  // graph query and scene visibility now project through the shared stores-owned
-  // dashboard filter-choice snapshot so no local projection can drift.
-  const filterChoices = useDashboardFilterChoices(scope);
-  const membership = useMemo(
-    () =>
-      merged ? computeVisibility(merged.nodes, merged.edges, filterChoices) : null,
-    [merged, filterChoices],
-  );
+  // One filter model, applied as a visibility membership diff (RL-5a). The graph
+  // query and scene visibility project through the same stores-owned dashboard
+  // filter-choice snapshot so no local projection can drift.
+  const visibilityCommand = useDashboardVisibilityCommand(scope, merged);
   useEffect(() => {
     // Membership computes over the LIVE slice; while the scene holds a
     // historical set-data it must not be overwritten (finding
     // timetravel-visibility-stale-021).
-    if (!membership || !liveTimeline) return;
-    scene.controller.command(visibilitySceneCommand(membership));
-  }, [membership, liveTimeline]);
+    if (!visibilityCommand || !liveTimeline) return;
+    scene.controller.command(visibilityCommand);
+  }, [visibilityCommand, liveTimeline]);
 
-  // Surface the structural-broken degradation truth (live-state D4): the LIVE
-  // keyframe path reduces the live held slice here; while time travelling, the
+  // Surface the structural-broken degradation truth (live-state D4): the
+  // liveStatus seam reduces the LIVE held slice; while time travelling, the
   // time-travel target reduces the exact replayed slice it pushes to the scene.
-  useEffect(() => {
-    if (!liveTimeline) return;
-    setLiveBrokenLinkCount(merged ? countBrokenLinks(merged.edges) : 0);
-  }, [merged, liveTimeline]);
+  useLiveBrokenLinkCountFromEdges(merged?.edges ?? null, liveTimeline);
 
-  // Keyboard graph-walk (node-canvas ADR "Keyboard operability"): the focused
-  // node walks its edges across the held slice; select/open/expand have keyboard
-  // equivalents, all INSTANT shared-store state. The graph and handlers are read
-  // lazily so the binding survives across slice refetches without re-running.
-  // mergedRef keeps the latest slice readable from the bound listener.
+  // Keyboard graph-walk (node-canvas ADR "Keyboard operability", keymap W03.P09):
+  // the focused node walks its edges across the held slice; select/open/expand
+  // have keyboard equivalents, all INSTANT shared-store state. The verbs are
+  // enrolled on the ONE central keymap registry as `context: "canvas"` bindings
+  // (the stage host declares that context below), so the single global dispatcher
+  // owns the listener and a canvas binding overrides the colliding global
+  // neighbour/feature-cycle binding when the canvas is focused — no second host
+  // listener, no double-fire. The graph and handlers are stable refs read lazily
+  // so the enrollment mounts once and survives slice refetches.
+  // mergedRef keeps the latest slice readable from the resolver thunks.
   const mergedRef = useRef(merged);
   mergedRef.current = merged;
-  // Stable getter (a ref) so the keyboard binding keys on the host alone and is
-  // not re-bound each render; it reads the latest held slice at call time.
   const graphGetterRef = useRef(() => mergedRef.current ?? { nodes: [], edges: [] });
-  useGraphWalkKeyboard(hostEl, graphGetterRef.current, walkHandlersRef.current);
+  useGraphWalkKeybindings(graphGetterRef.current, walkHandlersRef.current);
   const setStageHost = useCallback((el: HTMLDivElement | null) => {
     hostRef.current = el;
-    setHostEl((current) => (current === el ? current : el));
   }, []);
 
   // Resolve the one designed canvas state from stores-derived truth — the
@@ -366,6 +346,11 @@ export function Stage() {
         aria-label="node canvas — arrow keys walk the graph, Enter opens, e expands"
         className="absolute inset-0 outline-none focus-visible:ring-2 focus-visible:ring-state-active/40"
         data-stage-host
+        // Declares the canvas keymap context: when focus is on/within the canvas
+        // host, the central dispatcher activates the "canvas" context so the
+        // graph-walk bindings resolve and override the colliding global
+        // neighbour/feature-cycle bindings (keymap W03.P09).
+        data-keymap-context={CANVAS_KEYMAP_CONTEXT}
       />
       {/* The unified stage top bar (graph-timeline-workspace): all graph + timeline
           navigation as horizontal items. Search, filtering, and the layout/mode

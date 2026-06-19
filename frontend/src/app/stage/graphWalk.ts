@@ -1,19 +1,25 @@
 // Keyboard graph-walk (W02.P09.S25, node-canvas ADR "Keyboard operability").
 //
 // The ADR makes the canvas keyboard-operable: a focused node can be moved across
-// the graph by WALKING ITS EDGES (arrow/Tab over the ego set), and select / open
-// / expand carry keyboard equivalents. Every keyboard-initiated selection is
+// the graph by WALKING ITS EDGES (arrow over the ego set), and select / open /
+// expand carry keyboard equivalents. Every keyboard-initiated selection is
 // INSTANT — it is shared-store state, never an animated transition (the base
 // motion law: keyboard actions do not animate, and `prefers-reduced-motion` is
 // moot here because nothing is tweened on this path).
 //
-// Layer ownership: this hook reads the held slice the stores own (a projection
-// over the one LinkageGraph) and the shared selection, and emits intent back
-// through the existing view-store actions (select / openNode / addToWorkingSet)
-// and the seam-bound selection. It NEVER fetches and NEVER reads the raw `tiers`
-// block (dashboard-layer-ownership, views-are-projections-of-one-model).
-
-import { useEffect } from "react";
+// These are the PURE walk helpers: the ego cohort, the next-focus step, and the
+// per-action runner. The keys that drive them are enrolled on the one central
+// keymap registry as `context: "canvas"` bindings (see `graphWalkKeybindings.ts`)
+// so they resolve through the single global dispatcher and override the colliding
+// global navigation bindings when the canvas is focused (most-specific context
+// wins) — instead of a second host `keydown` listener that double-fired with the
+// global dispatcher (keymap W03.P09).
+//
+// Layer ownership: these helpers read the held slice the stores own (a projection
+// over the one LinkageGraph) and the shared selection, and emit intent back
+// through the existing stores/view seams (selection / open-island / working-set).
+// They NEVER fetch and NEVER read the raw `tiers` block (dashboard-layer-
+// ownership, views-are-projections-of-one-model).
 
 import type { SceneEdgeData, SceneNodeData } from "../../scene/sceneController";
 
@@ -43,8 +49,8 @@ export function egoNeighbors(graph: WalkGraph, id: string): string[] {
  * The next focus when walking the ego set in `direction`. With no current
  * selection (or a selection absent from the slice), the first node in id order
  * seeds the walk so the keyboard can enter an unfocused field. Walking from a
- * node with neighbors steps through its ego set, wrapping at the ends so Tab
- * cycles. A node with no neighbors holds focus (nowhere to walk).
+ * node with neighbors steps through its ego set, wrapping at the ends so the
+ * walk cycles. A node with no neighbors holds focus (nowhere to walk).
  */
 export function nextFocus(
   graph: WalkGraph,
@@ -68,36 +74,37 @@ export function nextFocus(
 }
 
 /**
- * The keyboard verbs the canvas understands — derived from a KeyboardEvent.
- * A `walk` carries `via` so the binding can keep Tab a non-trapping escape key
- * (no-keyboard-trap) while still letting Tab step the ego ring once focused.
+ * The keyboard verbs the canvas understands. Tab is intentionally NOT a walk
+ * verb: it is left to normal browser focus traversal so the canvas can never
+ * trap the keyboard (WCAG 2.1.2, no-keyboard-trap) — arrows are the walk
+ * mechanism, Tab always escapes. (The old host-listener path treated Tab as a
+ * conditional walk; that was dropped when the walk converged onto the central
+ * keymap registry — keymap W03.P09.)
  */
 export type WalkAction =
-  | { kind: "walk"; direction: "forward" | "backward"; via: "arrow" | "tab" }
+  | { kind: "walk"; direction: "forward" | "backward" }
   | { kind: "open" }
   | { kind: "expand" }
   | { kind: "clear" };
 
 /**
  * Map a key to a canvas verb, or null when the canvas does not handle it.
- * Pure so the binding table is unit-testable. ArrowRight/Down + Tab walk
- * forward; ArrowLeft/Up + Shift+Tab walk backward; Enter opens in place; "e"
- * expands the ego onto the working set; Escape clears the selection.
+ * Pure so the binding table is unit-testable. ArrowRight/Down walk forward;
+ * ArrowLeft/Up walk backward; Enter opens in place; "e" expands the ego onto
+ * the working set; Escape clears the selection. Tab is absent on purpose (no
+ * keyboard trap — see `WalkAction`).
  */
-export function actionForKey(e: { key: string; shiftKey: boolean }): WalkAction | null {
+export function actionForKey(e: {
+  key: string;
+  shiftKey?: boolean;
+}): WalkAction | null {
   switch (e.key) {
     case "ArrowRight":
     case "ArrowDown":
-      return { kind: "walk", direction: "forward", via: "arrow" };
+      return { kind: "walk", direction: "forward" };
     case "ArrowLeft":
     case "ArrowUp":
-      return { kind: "walk", direction: "backward", via: "arrow" };
-    case "Tab":
-      return {
-        kind: "walk",
-        direction: e.shiftKey ? "backward" : "forward",
-        via: "tab",
-      };
+      return { kind: "walk", direction: "backward" };
     case "Enter":
       return { kind: "open" };
     case "e":
@@ -122,85 +129,38 @@ export interface GraphWalkHandlers {
 }
 
 /**
- * Bind keyboard graph-walk to a host element. Returns a teardown. Kept as a
- * plain function (not a hook) so it is exercised in tests against a synthetic
- * host and a static graph, with no React or DOM-renderer dependency.
+ * Run one canvas walk verb against the live graph and the shared selection,
+ * returning true when it did something (the dispatcher consumes the key) and
+ * false when there was nothing to do (the dispatcher no-ops so the key falls
+ * through). Pure of the DOM and of React: the central dispatcher already owns
+ * the listener, focus/context resolution, and the text-entry gate, so this is
+ * just the per-action effect the old `bindGraphWalk` switch performed.
  */
-export function bindGraphWalk(
-  host: HTMLElement,
-  graph: () => WalkGraph,
+export function runGraphWalkAction(
+  action: WalkAction,
+  graph: WalkGraph,
   handlers: GraphWalkHandlers,
-): () => void {
-  const onKeyDown = (e: KeyboardEvent) => {
-    const action = actionForKey(e);
-    if (!action) return;
-    // Only handle when the canvas host (not a focused input/island) owns focus,
-    // so typing in a filter field or island never hijacks a graph-walk key.
-    const active = document.activeElement;
-    if (active && active !== host && host.contains(active)) {
-      const tag = active.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON") return;
-      if ((active as HTMLElement).isContentEditable) return;
+): boolean {
+  const current = handlers.selectedId();
+  switch (action.kind) {
+    case "walk": {
+      const next = nextFocus(graph, current, action.direction);
+      if (next === null) return false;
+      // Arrow re-seeding onto the same node still consumes the key (the field
+      // becomes focused); a true step also consumes it.
+      handlers.select(next);
+      return true;
     }
-    const current = handlers.selectedId();
-    const seeding = current === null;
-    switch (action.kind) {
-      case "walk": {
-        // No-keyboard-trap (WCAG 2.1.2): Tab must always be able to leave the
-        // canvas widget. We only swallow Tab when a walk genuinely advances
-        // WITHIN the ego ring (a selection is present and steps to a neighbor);
-        // when there is no selection to walk from, Tab is left to bubble so
-        // focus escapes to the next control. Arrow keys seed/walk freely (they
-        // are not focus-traversal keys), so the field stays arrow-navigable.
-        if (action.via === "tab" && seeding) return;
-        const next = nextFocus(graph(), current, action.direction);
-        if (next !== null && next !== current) {
-          e.preventDefault();
-          handlers.select(next);
-        } else if (next !== null && action.via !== "tab") {
-          // Arrow re-seeding onto the same node still consumes the key.
-          e.preventDefault();
-          handlers.select(next);
-        }
-        return;
-      }
-      case "open":
-        if (current) {
-          e.preventDefault();
-          handlers.open(current);
-        }
-        return;
-      case "expand":
-        if (current) {
-          e.preventDefault();
-          handlers.expand(current);
-        }
-        return;
-      case "clear":
-        e.preventDefault();
-        handlers.select(null);
-        return;
-    }
-  };
-  host.addEventListener("keydown", onKeyDown);
-  return () => host.removeEventListener("keydown", onKeyDown);
-}
-
-/**
- * React face of the graph-walk binding. Mounted by Stage against the canvas
- * host ref. `graphRef` is read lazily on each keypress so the walk always sees
- * the latest held slice without re-binding the listener every render.
- */
-export function useGraphWalkKeyboard(
-  host: HTMLElement | null,
-  graph: () => WalkGraph,
-  handlers: GraphWalkHandlers,
-): void {
-  // `graph` and `handlers` are stable refs (closures over store getters), so the
-  // binding is intentionally keyed on `host` alone — the listener is not torn
-  // down each render, and the closures read live state at call time.
-  useEffect(() => {
-    if (!host) return;
-    return bindGraphWalk(host, graph, handlers);
-  }, [host, graph, handlers]);
+    case "open":
+      if (current === null) return false;
+      handlers.open(current);
+      return true;
+    case "expand":
+      if (current === null) return false;
+      handlers.expand(current);
+      return true;
+    case "clear":
+      handlers.select(null);
+      return true;
+  }
 }

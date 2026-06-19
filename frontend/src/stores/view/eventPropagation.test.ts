@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { actionForKey } from "../../app/stage/graphWalk";
 import type { SceneCommand, SceneFieldRenderer } from "../../scene/sceneController";
 import { SceneController } from "../../scene/sceneController";
-import { bindSelectionToScene, focusFromWalk, selectFromScene } from "./selection";
+import { bindSelectionToScene, focusFromWalk, selectEvent } from "./selection";
 import { useViewStore } from "./viewStore";
 
 function captureScene() {
@@ -51,29 +51,21 @@ function expectSynchronous(label: string, drive: () => void, reflected: () => vo
 describe("event plane propagates at ms-level for every event kind", () => {
   beforeEach(() => {
     const s = useViewStore.getState();
-    s.select(null);
-    s.setHoveredId(null);
+    s.selectEntity(null);
     s.clearWorkingSet();
   });
 
-  it("mouse hover -> hovered id, synchronously", () => {
-    expectSynchronous(
-      "hover",
-      () => useViewStore.getState().setHoveredId("doc:hovered"),
-      () => expect(useViewStore.getState().hoveredId).toBe("doc:hovered"),
-    );
-  });
-
-  it("mouse select -> shared selection AND the canvas ring, synchronously", () => {
+  it("event select -> local metadata AND the canvas ring, synchronously", () => {
     const { scene, commands } = captureScene();
     const off = bindSelectionToScene(scene);
     expectSynchronous(
       "select",
-      () => selectFromScene("doc:selected"),
+      () => selectEvent("evt:selected", ["doc:selected"]),
       () => {
         expect(useViewStore.getState().selection).toEqual({
-          kind: "node",
-          id: "doc:selected",
+          kind: "event",
+          id: "evt:selected",
+          nodeIds: ["doc:selected"],
         });
         expect(commands).toContainEqual({
           kind: "set-selected",
@@ -106,10 +98,6 @@ describe("event plane propagates at ms-level for every event kind", () => {
       "keyboard walk",
       () => focusFromWalk(scene, "doc:walked"),
       () => {
-        expect(useViewStore.getState().selection).toEqual({
-          kind: "node",
-          id: "doc:walked",
-        });
         // The walk owns the camera move and issues it INSTANTLY (animate:false),
         // so a held arrow never lags behind the keypress.
         expect(commands).toContainEqual({
@@ -125,25 +113,21 @@ describe("event plane propagates at ms-level for every event kind", () => {
     // actionForKey is the keypress->verb table; pure and allocation-light so a
     // keypress is decided in microseconds, never blocking the canvas.
     const t0 = performance.now();
-    expect(actionForKey({ key: "ArrowRight", shiftKey: false })).toEqual({
+    expect(actionForKey({ key: "ArrowRight" })).toEqual({
       kind: "walk",
       direction: "forward",
-      via: "arrow",
     });
-    expect(actionForKey({ key: "ArrowUp", shiftKey: false })).toEqual({
+    expect(actionForKey({ key: "ArrowUp" })).toEqual({
       kind: "walk",
       direction: "backward",
-      via: "arrow",
     });
-    expect(actionForKey({ key: "Tab", shiftKey: true })).toEqual({
-      kind: "walk",
-      direction: "backward",
-      via: "tab",
-    });
-    expect(actionForKey({ key: "Enter", shiftKey: false })).toEqual({ kind: "open" });
-    expect(actionForKey({ key: "e", shiftKey: false })).toEqual({ kind: "expand" });
-    expect(actionForKey({ key: "Escape", shiftKey: false })).toEqual({ kind: "clear" });
-    expect(actionForKey({ key: "q", shiftKey: false })).toBeNull();
+    // Tab is no longer a walk verb — it is left to browser focus traversal so the
+    // canvas can never trap the keyboard (no-keyboard-trap; keymap W03.P09).
+    expect(actionForKey({ key: "Tab" })).toBeNull();
+    expect(actionForKey({ key: "Enter" })).toEqual({ kind: "open" });
+    expect(actionForKey({ key: "e" })).toEqual({ kind: "expand" });
+    expect(actionForKey({ key: "Escape" })).toEqual({ kind: "clear" });
+    expect(actionForKey({ key: "q" })).toBeNull();
     expect(performance.now() - t0).toBeLessThan(5);
   });
 });

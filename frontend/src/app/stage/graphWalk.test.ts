@@ -1,12 +1,10 @@
-// @vitest-environment happy-dom
-
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   actionForKey,
-  bindGraphWalk,
   egoNeighbors,
   nextFocus,
+  runGraphWalkAction,
   type GraphWalkHandlers,
   type WalkGraph,
 } from "./graphWalk";
@@ -64,52 +62,57 @@ describe("nextFocus (walking the graph by edges)", () => {
 });
 
 describe("actionForKey (the keyboard verb table)", () => {
-  it("maps arrows and Tab to a directional walk, tagging the source", () => {
-    expect(actionForKey({ key: "ArrowRight", shiftKey: false })).toEqual({
+  it("maps arrows to a directional walk", () => {
+    expect(actionForKey({ key: "ArrowRight" })).toEqual({
       kind: "walk",
       direction: "forward",
-      via: "arrow",
     });
-    expect(actionForKey({ key: "ArrowUp", shiftKey: false })).toEqual({
+    expect(actionForKey({ key: "ArrowDown" })).toEqual({
+      kind: "walk",
+      direction: "forward",
+    });
+    expect(actionForKey({ key: "ArrowUp" })).toEqual({
       kind: "walk",
       direction: "backward",
-      via: "arrow",
     });
-    expect(actionForKey({ key: "Tab", shiftKey: true })).toEqual({
+    expect(actionForKey({ key: "ArrowLeft" })).toEqual({
       kind: "walk",
       direction: "backward",
-      via: "tab",
     });
   });
 
   it("maps Enter/e/Escape to open/expand/clear", () => {
-    expect(actionForKey({ key: "Enter", shiftKey: false })).toEqual({ kind: "open" });
-    expect(actionForKey({ key: "e", shiftKey: false })).toEqual({ kind: "expand" });
-    expect(actionForKey({ key: "Escape", shiftKey: false })).toEqual({ kind: "clear" });
+    expect(actionForKey({ key: "Enter" })).toEqual({ kind: "open" });
+    expect(actionForKey({ key: "e" })).toEqual({ kind: "expand" });
+    expect(actionForKey({ key: "Escape" })).toEqual({ kind: "clear" });
+  });
+
+  it("does NOT map Tab — it is left to browser focus traversal (no keyboard trap)", () => {
+    expect(actionForKey({ key: "Tab" })).toBeNull();
   });
 
   it("ignores keys the canvas does not own", () => {
-    expect(actionForKey({ key: "z", shiftKey: false })).toBeNull();
+    expect(actionForKey({ key: "z" })).toBeNull();
   });
 });
 
-describe("bindGraphWalk (instant, store-driven, no animation)", () => {
-  let teardown: (() => void) | null = null;
-
-  afterEach(() => {
-    teardown?.();
-    teardown = null;
-    document.body.innerHTML = "";
-  });
-
+// The per-action runner that the canvas-context keymap resolvers call (the logic
+// that the old host-listener `bindGraphWalk` switch used to perform). Ported from
+// the former `bindGraphWalk` behavioral tests so the same behaviors stay covered,
+// now exercised directly against the pure runner with no DOM dependency.
+describe("runGraphWalkAction (instant, store-driven, no animation)", () => {
   function harness(initial: string | null) {
     let selected = initial;
+    const selectedCalls: (string | null)[] = [];
+    const opened: string[] = [];
+    const expanded: string[] = [];
     const calls = {
-      select: vi.fn((id: string | null) => {
+      select: (id: string | null) => {
         selected = id;
-      }),
-      open: vi.fn(),
-      expand: vi.fn(),
+        selectedCalls.push(id);
+      },
+      open: (id: string) => opened.push(id),
+      expand: (id: string) => expanded.push(id),
     };
     const handlers: GraphWalkHandlers = {
       selectedId: () => selected,
@@ -117,74 +120,63 @@ describe("bindGraphWalk (instant, store-driven, no animation)", () => {
       open: calls.open,
       expand: calls.expand,
     };
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    teardown = bindGraphWalk(host, () => GRAPH, handlers);
-    return { host, calls };
+    return { handlers, selectedCalls, opened, expanded };
   }
 
-  function press(host: HTMLElement, key: string, shiftKey = false) {
-    const e = new KeyboardEvent("keydown", {
-      key,
-      shiftKey,
-      bubbles: true,
-      cancelable: true,
-    });
-    host.dispatchEvent(e);
-    return e;
-  }
-
-  it("walks the focus across edges via arrow keys", () => {
-    const { host, calls } = harness("b");
-    press(host, "ArrowRight"); // b's ego forward → a
-    expect(calls.select).toHaveBeenCalledWith("a");
+  it("walks the focus across edges (consumes the key)", () => {
+    const { handlers, selectedCalls } = harness("b");
+    const consumed = runGraphWalkAction(
+      { kind: "walk", direction: "forward" },
+      GRAPH,
+      handlers,
+    ); // b's ego forward → a
+    expect(selectedCalls).toEqual(["a"]);
+    expect(consumed).toBe(true);
   });
 
-  it("Tab steps the ego ring once focused (walks within the graph)", () => {
-    const { host, calls } = harness("b");
-    const e = press(host, "Tab"); // b's ego forward → a
-    expect(calls.select).toHaveBeenCalledWith("a");
-    expect(e.defaultPrevented).toBe(true);
+  it("seeds the field when nothing is focused (an arrow enters the unfocused field)", () => {
+    const { handlers, selectedCalls } = harness(null);
+    const consumed = runGraphWalkAction(
+      { kind: "walk", direction: "forward" },
+      GRAPH,
+      handlers,
+    ); // seeds the first node in id order
+    expect(selectedCalls).toEqual(["a"]);
+    expect(consumed).toBe(true);
   });
 
-  it("does NOT trap Tab when nothing is focused — focus can escape the widget", () => {
-    const { host, calls } = harness(null);
-    const e = press(host, "Tab");
-    // No selection to walk from → Tab bubbles uninterrupted (WCAG no-keyboard-trap).
-    expect(calls.select).not.toHaveBeenCalled();
-    expect(e.defaultPrevented).toBe(false);
-  });
-
-  it("arrow keys still seed the field when nothing is focused", () => {
-    const { host, calls } = harness(null);
-    press(host, "ArrowRight"); // seeds the first node in id order
-    expect(calls.select).toHaveBeenCalledWith("a");
+  it("walk no-ops (does not consume) on an empty graph", () => {
+    const { handlers, selectedCalls } = harness(null);
+    const consumed = runGraphWalkAction(
+      { kind: "walk", direction: "forward" },
+      { nodes: [], edges: [] },
+      handlers,
+    );
+    expect(selectedCalls).toEqual([]);
+    expect(consumed).toBe(false);
   });
 
   it("Enter opens the focused node, e expands it, Escape clears", () => {
-    const { host, calls } = harness("c");
-    press(host, "Enter");
-    expect(calls.open).toHaveBeenCalledWith("c");
-    press(host, "e");
-    expect(calls.expand).toHaveBeenCalledWith("c");
-    press(host, "Escape");
-    expect(calls.select).toHaveBeenCalledWith(null);
+    const { handlers, selectedCalls, opened, expanded } = harness("c");
+    expect(runGraphWalkAction({ kind: "open" }, GRAPH, handlers)).toBe(true);
+    expect(opened).toEqual(["c"]);
+    expect(runGraphWalkAction({ kind: "expand" }, GRAPH, handlers)).toBe(true);
+    expect(expanded).toEqual(["c"]);
+    expect(runGraphWalkAction({ kind: "clear" }, GRAPH, handlers)).toBe(true);
+    expect(selectedCalls).toEqual([null]);
   });
 
-  it("does not hijack keys while a form control inside the host has focus", () => {
-    const { host, calls } = harness("a");
-    const input = document.createElement("input");
-    host.appendChild(input);
-    input.focus();
-    press(input, "ArrowRight");
-    expect(calls.select).not.toHaveBeenCalled();
+  it("open/expand are no-ops (do not consume) with nothing focused", () => {
+    const { handlers, opened, expanded } = harness(null);
+    expect(runGraphWalkAction({ kind: "open" }, GRAPH, handlers)).toBe(false);
+    expect(runGraphWalkAction({ kind: "expand" }, GRAPH, handlers)).toBe(false);
+    expect(opened).toEqual([]);
+    expect(expanded).toEqual([]);
   });
 
-  it("open/expand are no-ops with nothing focused", () => {
-    const { host, calls } = harness(null);
-    press(host, "Enter");
-    press(host, "e");
-    expect(calls.open).not.toHaveBeenCalled();
-    expect(calls.expand).not.toHaveBeenCalled();
+  it("clear always consumes the key, even with nothing focused", () => {
+    const { handlers, selectedCalls } = harness(null);
+    expect(runGraphWalkAction({ kind: "clear" }, GRAPH, handlers)).toBe(true);
+    expect(selectedCalls).toEqual([null]);
   });
 });
