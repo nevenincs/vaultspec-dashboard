@@ -387,17 +387,43 @@ export class D3ForceSolver {
   }
 
   /**
+   * Warm-start seed: place nodes at given positions (zeroing velocity) BEFORE the
+   * first prewarm, so a re-`setData` that carries most nodes over by id resumes from
+   * the prior layout instead of re-exploding (object constancy). `seedFn(i)` returns
+   * the world {x, y} for node i, or null to leave d3's deterministic phyllotaxis seed
+   * in place (for a node with no prior position). Velocity is zeroed so the seeded
+   * layout starts at rest.
+   */
+  seed(seedFn: (index: number) => { x: number; y: number } | null): void {
+    for (let i = 0; i < this.count; i++) {
+      const s = seedFn(i);
+      if (!s || !Number.isFinite(s.x) || !Number.isFinite(s.y)) continue;
+      const n = this.nodes[i];
+      n.x = s.x;
+      n.y = s.y;
+      n.vx = 0;
+      n.vy = 0;
+    }
+  }
+
+  /**
    * Run the violent early ticks SYNCHRONOUSLY and off-screen so the first visible
    * frame is already near-equilibrium — the core of flicker-free init. The global
    * settle runs pure d3 (everything awake + unpinned) and sleeps the whole graph
    * when it cools. Bounded by a tick cap AND a wall-clock budget so a large graph
    * never janks the main thread (it reveals slightly less settled and finishes
-   * gently in the live loop).
+   * gently in the live loop). `startAlpha` defaults to a full cold start; a warm
+   * start (most nodes seeded from the prior layout) passes a lower value so the
+   * carried layout barely moves while new nodes settle in.
    */
-  prewarm(maxTicks = PREWARM_MAX_TICKS, budgetMs = PREWARM_BUDGET_MS): number {
+  prewarm(
+    maxTicks = PREWARM_MAX_TICKS,
+    budgetMs = PREWARM_BUDGET_MS,
+    startAlpha = COLD_ALPHA,
+  ): number {
     this.localMode = false;
     this.wakeAllFree();
-    this.sim.alpha(COLD_ALPHA).alphaTarget(0);
+    this.sim.alpha(startAlpha).alphaTarget(0);
     const start = now();
     let ticks = 0;
     while (ticks < maxTicks) {

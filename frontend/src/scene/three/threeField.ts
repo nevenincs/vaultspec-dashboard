@@ -40,11 +40,13 @@ import {
 
 import {
   type SceneCommand,
+  type SceneDelta,
   type SceneEdgeData,
   type SceneFeatureFlags,
   type SceneFieldRenderer,
   type SceneNodeData,
   type SceneController,
+  type EdgeRenderParams,
   DEFAULT_SCENE_FEATURE_FLAGS,
 } from "../sceneController";
 import { semanticLevel } from "../field/camera";
@@ -62,8 +64,12 @@ import {
   nodeWorldRadius,
 } from "./appearance";
 import { D3_FORCE_DEFAULTS, D3ForceSolver, type D3ForceParams } from "./d3ForceSolver";
+import { labelTextStyle } from "./labelStyle";
 
 const PICK_RADIUS_PX = 14;
+/** Gentle restart alpha for a warm-started (mostly-carried-over) layout — low so
+ *  persistent nodes barely move while new nodes settle in (object constancy). */
+const WARM_START_ALPHA = 0.3;
 
 // Settle is alpha-driven inside the solver: d3-force cools by alphaDecay each tick
 // and the host freezes the loop once `solver.isSettled()` (alpha < alphaMin and not
@@ -256,6 +262,11 @@ export class ThreeField implements SceneFieldRenderer {
 
   private params: D3ForceParams = { ...D3_FORCE_DEFAULTS };
   private appearance: AppearanceParams = { ...APPEARANCE_DEFAULTS };
+  // Edge render params (set-edge-render-params): a global multiplier on edge width.
+  private edgeLineWidthScale = 1;
+  // Transient pulse cohort (pulse command): briefly ring these nodes, then clear.
+  private pulseIds: ReadonlySet<string> = new Set();
+  private pulseTimer = 0;
   private running = false;
   private frozen = false;
   private needsRender = false;
@@ -352,6 +363,8 @@ export class ThreeField implements SceneFieldRenderer {
 
   destroy(): void {
     if (this.raf) cancelAnimationFrame(this.raf);
+    if (this.pulseTimer) clearTimeout(this.pulseTimer);
+    this.pulseTimer = 0;
     this.scheduled = false;
     this.disposeGraph();
     this.labelCanvas?.remove();
@@ -415,9 +428,42 @@ export class ThreeField implements SceneFieldRenderer {
       case "zoom-out":
         this.zoomBy(1 / 1.2);
         break;
+      case "apply-deltas":
+        this.applyDeltas(cmd.deltas);
+        break;
+      case "set-edge-render-params":
+        this.setEdgeRenderParams(cmd.params);
+        break;
+      case "pulse":
+        this.pulseNodes(cmd.ids);
+        break;
+      case "set-representation-mode":
+        // No-op: the representation-mode switch was retired (only connectivity
+        // ships). Acknowledged so it is never silently dropped.
+        break;
+      case "set-time":
+        // No-op: time travel is driven by the stores replaying the slice through
+        // set-data; the field owns no time state (mirrors CosmosField).
+        break;
+      case "set-overlays":
+        // No-op: feature-country labels + BubbleSets hulls render in a separate
+        // overlay layer, not the field (mirrors CosmosField).
+        break;
+      case "set-bounds":
+        // No-op: the field uses a free force layout (forceX/Y gravity toward the
+        // origin); bounded containment shapes are not modelled here.
+        break;
+      case "begin-interaction":
+      case "end-interaction":
+        // Light no-op: reheat-on-change already keeps the sim warm during edits;
+        // no interaction-specific decay bracket is needed.
+        break;
+      case "set-cosmos-config":
+      case "set-layout-mode":
+        // No-op: Cosmos-native config / layout-mode have no analogue in the d3
+        // force field, which exposes its own force params via setForceParams.
+        break;
       default:
-        // Cosmos-specific config, representation modes, overlays, deltas, time:
-        // deferred — the three field renders the same model without them.
         break;
     }
   }
@@ -426,6 +472,18 @@ export class ThreeField implements SceneFieldRenderer {
 
   private setData(nodes: SceneNodeData[], edges: SceneEdgeData[]): void {
     if (!this.renderer) return;
+
+    // Warm-start (object constancy): capture the PRIOR layout by id BEFORE teardown,
+    // so nodes that persist across this set-data resume from where they were instead
+    // of re-exploding. The app re-sends set-data on every working-set expansion and
+    // live update; without this the graph re-explodes each time.
+    const prevPos = new Map<string, { x: number; y: number }>();
+    for (const [id, idx] of this.idToIndex) {
+      const x = this.cpuPositions[idx * 4];
+      const y = this.cpuPositions[idx * 4 + 1];
+      if (Number.isFinite(x) && Number.isFinite(y)) prevPos.set(id, { x, y });
+    }
+
     this.disposeGraph();
 
     this.nodes = nodes;
@@ -494,18 +552,105 @@ export class ThreeField implements SceneFieldRenderer {
     this.buildNodes(nodes, texSize);
     this.buildEdges(edges, index, texSize);
 
-    // Flicker-free init: settle the violent early ticks OFF-SCREEN, then pack the
-    // CPU mirror and fit the camera ONCE — the first visible frame is already at
-    // equilibrium. If prewarm hit its wall-clock budget the layout finishes the
-    // gentle remainder in the live loop; otherwise it stays frozen (idle GPU 0).
-    this.solver.prewarm();
+    // Warm-start: carry persisting nodes' positions over by id and seed each NEW node
+    // next to a persisting neighbour (or the carried centroid), so the solver resumes
+    // the prior layout. WARM when anything carried over (an expansion / live update) —
+    // gentle alpha + NO camera refit, so persistent nodes barely move and the user's
+    // view is preserved. COLD when nothing carried over (first load / scope switch) —
+    // full off-screen prewarm + a one-time camera fit (the flicker-free init).
+    let carried = 0;
+    let cx = 0;
+    let cy = 0;
+    for (const node of nodes) {
+      const p = prevPos.get(node.id);
+      if (p) {
+        carried++;
+        cx += p.x;
+        cy += p.y;
+      }
+    }
+    const warm = carried > 0;
+    if (warm) {
+      const centroid = { x: cx / carried, y: cy / carried };
+      this.solver.seed((i) => {
+        const node = nodes[i];
+        const prev = prevPos.get(node.id);
+        if (prev) return prev; // persistent → resume exact position
+        // new node → next to a persisting neighbour (collide/forces separate it)
+        for (const nb of this.neighbors.get(node.id) ?? []) {
+          const np = prevPos.get(nb);
+          if (np) return np;
+        }
+        return centroid; // else the carried centroid (null would fall to phyllotaxis)
+      });
+    }
+    // Off-screen settle before the first paint: gentle when warm-started, full energy
+    // when cold. If prewarm hits its wall-clock budget the remainder finishes in the
+    // live loop; otherwise it freezes (idle GPU 0).
+    this.solver.prewarm(undefined, undefined, warm ? WARM_START_ALPHA : undefined);
     this.solver.pack(this.cpuPositions);
     this.uploadPositions();
-    this.fitToView();
+    // Fit the camera ONCE on a cold load; a warm update preserves the user's view.
+    if (!warm) this.fitToView();
     this.running = !this.solver.isSettled();
     this.requestRender();
     if (this.running) this.wake();
   }
+
+  /** Live incremental update (apply-deltas): fold add/remove/change-by-id into the
+   *  current node + edge set, then re-run setData — which warm-starts by id, so a
+   *  delta updates the graph in place without re-exploding the layout. */
+  private applyDeltas(deltas: SceneDelta[]): void {
+    if (!deltas || deltas.length === 0) return;
+    const nodeMap = new Map(this.nodes.map((n) => [n.id, n] as const));
+    const edgeMap = new Map(this.edgeData.map((e) => [e.id, e] as const));
+    for (const d of deltas) {
+      if (d.op === "remove") {
+        if (d.node) nodeMap.delete(d.node.id);
+        if (d.edge) edgeMap.delete(d.edge.id);
+      } else {
+        if (d.node) nodeMap.set(d.node.id, d.node);
+        if (d.edge) edgeMap.set(d.edge.id, d.edge);
+      }
+    }
+    this.setData([...nodeMap.values()], [...edgeMap.values()]);
+  }
+
+  /** Edge render params (set-edge-render-params): a global multiplier on edge width
+   *  (the timeline thins/thickens edges; also the W02 gradient hook). Rewrites the
+   *  instanced width attribute in place — no re-simulation. */
+  setEdgeRenderParams(params: Partial<EdgeRenderParams>): void {
+    if (typeof params.lineWidthScale === "number") {
+      this.edgeLineWidthScale = params.lineWidthScale;
+    }
+    if (this.edgeMesh && this.edgeData.length > 0) {
+      const aWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
+      this.edgeData.forEach((e, i) => {
+        const w = edgeAppearance(e, this.appearance).width * this.edgeLineWidthScale;
+        for (let k = 0; k < 4; k++) aWidth.setX(i * 4 + k, w);
+      });
+      aWidth.needsUpdate = true;
+      this.requestRender();
+    }
+  }
+
+  /** Transient cross-highlight (pulse): briefly ring the named nodes, then clear —
+   *  the timeline's event-click flash. Bounded by a single self-clearing timer. */
+  private pulseNodes(ids: ReadonlySet<string>): void {
+    this.pulseIds = new Set(ids);
+    if (this.pulseTimer) clearTimeout(this.pulseTimer);
+    this.requestRender();
+    this.pulseTimer = window.setTimeout(() => {
+      this.pulseTimer = 0;
+      this.pulseIds = new Set();
+      this.requestRender();
+    }, 900);
+  }
+
+  /** Persistence scope (Stage calls this directly). No-op: warm-start keys on node
+   *  id, which is already scope-unique — a scope switch yields a disjoint id set, so
+   *  setData takes the cold path automatically. Mirrors CosmosField's no-op. */
+  setPersistenceScope(_workspace: string, _scope: string): void {}
 
   private buildNodes(nodes: SceneNodeData[], texSize: number): void {
     const n = nodes.length;
@@ -610,7 +755,7 @@ export class ThreeField implements SceneFieldRenderer {
         aIndexB[v] = t;
         aEnd[v] = endT[k];
         aSide[v] = sides[k];
-        aWidthPx[v] = ap.width;
+        aWidthPx[v] = ap.width * this.edgeLineWidthScale;
         const c = k < 2 ? colA : colB;
         aColor[v * 3] = c.r;
         aColor[v * 3 + 1] = c.g;
@@ -852,7 +997,7 @@ export class ThreeField implements SceneFieldRenderer {
         colA.set(endColors.a);
         colB.set(endColors.b);
         for (let k = 0; k < 4; k++) {
-          aWidth.setX(i * 4 + k, ap.width);
+          aWidth.setX(i * 4 + k, ap.width * this.edgeLineWidthScale);
           const c = k < 2 ? colA : colB;
           aColor.setXYZ(i * 4 + k, c.r, c.g, c.b);
         }
@@ -931,6 +1076,33 @@ export class ThreeField implements SceneFieldRenderer {
     }
     this.renderer.render(this.scene, this.camera);
     this.drawLabels();
+    this.emitAnchors();
+  }
+
+  // --- anchors (RL-4: DOM islands + hover card) ----------------------------
+
+  /** For every node a consumer is tracking (opened islands, hover card), emit its
+   *  screen-space anchor each render so the DOM overlay follows it; emit null when
+   *  the node is gone or off the viewport so the overlay hides. Mirrors CosmosField's
+   *  per-frame trackedNodeIds → emitAnchor pass. */
+  private emitAnchors(): void {
+    const ctrl = this.controller;
+    if (!ctrl) return;
+    const scale = this.camera.zoom;
+    for (const id of ctrl.trackedNodeIds()) {
+      const i = this.idToIndex.get(id);
+      const p = i === undefined ? null : this.worldToScreen(i);
+      if (!p || p.x < 0 || p.x > this.width || p.y < 0 || p.y > this.height) {
+        ctrl.emitAnchor(id, null);
+      } else {
+        ctrl.emitAnchor(id, { x: p.x, y: p.y, scale });
+      }
+    }
+  }
+
+  /** One-shot anchor refresh when a consumer starts tracking a node (RL-4). */
+  refreshAnchors(): void {
+    this.emitAnchors();
   }
 
   // --- labels + rings (2D overlay) -----------------------------------------
@@ -962,33 +1134,53 @@ export class ThreeField implements SceneFieldRenderer {
       const selected = this.selectedIds.has(id);
       const hovered = this.hoveredId === id;
       const pinned = this.pinnedIds.has(id);
-      if (!selected && !hovered && !pinned) continue;
+      const pulsed = this.pulseIds.has(id);
+      if (!selected && !hovered && !pinned && !pulsed) continue;
       const p = this.worldToScreen(i);
       if (!p) continue;
       const nodeR = Math.max(3, nodeWorldRadius(this.nodes[i], this.appearance) * ppw);
-      ctx.beginPath();
-      if (selected) {
-        ctx.arc(p.x, p.y, nodeR + 5, 0, Math.PI * 2);
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = Math.min(10, Math.max(3.5, nodeR * 0.22));
-      } else if (hovered) {
-        ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = highlight;
-        ctx.lineWidth = 1.75;
-      } else {
-        ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([3, 3]);
+      // Base emphasis ring (precedence selected > hovered > pinned).
+      if (selected || hovered || pinned) {
+        ctx.beginPath();
+        if (selected) {
+          ctx.arc(p.x, p.y, nodeR + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = Math.min(10, Math.max(3.5, nodeR * 0.22));
+        } else if (hovered) {
+          ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
+          ctx.strokeStyle = highlight;
+          ctx.lineWidth = 1.75;
+        } else {
+          ctx.arc(p.x, p.y, nodeR + 3, 0, Math.PI * 2);
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
-      ctx.stroke();
-      ctx.setLineDash([]);
+      // Transient pulse ring (additive flash in the highlight hue).
+      if (pulsed) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, nodeR + 8, 0, Math.PI * 2);
+        ctx.strokeStyle = highlight;
+        ctx.lineWidth = 2.5;
+        ctx.globalAlpha = 0.85;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
 
-    // labels — DOI by semantic level, plus always-on for hovered/selected/pinned
-    ctx.font = "12px system-ui, -apple-system, sans-serif";
+    // Labels — typography from the CENTRALIZED design tokens (binding Figma
+    // "graph/Label — Feature | Document"): feature = Label/12 · ink, document =
+    // Meta/11 · ink-muted, plate-less. Sizes are rem-relative (resolved against the
+    // root font size in labelStyle) so canvas labels scale with the DOM under one
+    // UI scale — never a hardcoded px. DOI by semantic level, plus always-on for
+    // hovered/selected/pinned (labelVisible).
+    const featureFont = labelTextStyle("feature").font;
+    const docFont = labelTextStyle("document").font;
+    const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
-    ctx.fillStyle = ink;
     let budget = 220; // clutter cap
     for (let i = 0; i < this.nodes.length && budget > 0; i++) {
       const node = this.nodes[i];
@@ -998,8 +1190,10 @@ export class ThreeField implements SceneFieldRenderer {
         continue;
       const r = Math.max(3, nodeWorldRadius(node, this.appearance) * ppw);
       const text = node.title ?? node.id;
-      ctx.fillStyle = node.kind === "feature" ? ink : ink;
-      ctx.globalAlpha = node.kind === "feature" ? 1 : 0.85;
+      const isFeature = node.kind === "feature";
+      ctx.font = isFeature ? featureFont : docFont;
+      ctx.fillStyle = isFeature ? ink : inkMuted;
+      ctx.globalAlpha = isFeature ? 1 : 0.9;
       ctx.fillText(text, p.x + r + 4, p.y);
       budget--;
     }
