@@ -1,6 +1,6 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
-  "$description": "Semantic tier (default = LIGHT theme) plus the public token surface, mirrored from frontend/src/styles.css layers 2/3a/3b (design-language ADR S02/S03). The semantic.* roles are the layer a [data-theme] remaps; the public.* surface is what chrome utilities and the scene getComputedStyle readers consume. Each public token pins its exact CSS custom-property name and emit mode in $extensions['com.vaultspec.css'] so the Style Dictionary format reproduces styles.css byte-for-byte. emit: 'alias' -> var(...) ; 'hex' -> literal #rrggbb (scene-read subset, HIGH-1) ; 'raw' -> literal oklch().",
+  "$description": "Semantic tier (default = LIGHT theme) plus the public token surface, authored to match the binding Figma foundation while preserving the design-language ADR S02/S03 remap mechanism. The semantic.* roles are the layer a [data-theme] remaps; the public.* surface is what chrome utilities and the scene getComputedStyle readers consume. Each public token pins its exact CSS custom-property name and emit mode in $extensions['com.vaultspec.css'] so the Style Dictionary format reproduces styles.css byte-for-byte. emit: 'alias' -> var(...) ; 'hex' -> literal #rrggbb (scene-read subset, HIGH-1) ; 'raw' -> literal oklch().",
   "semantic": {
     "$description": "Radix-style role tier aliasing primitives; remapped per [data-theme].",
     "surface": {

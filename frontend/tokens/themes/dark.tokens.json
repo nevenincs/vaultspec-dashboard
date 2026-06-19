@@ -1,6 +1,6 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
-  "$description": "DARK theme override set, mirrored from the [data-theme=\"dark\"] block in frontend/src/styles.css (design-language ADR S06). Overrides the semantic tier, the diverging public chrome tokens, and the full scene-read hex surface. Chrome tokens that merely follow the remapped semantic tier are not restated (they alias the semantic roles, which are overridden here). Per-theme shadow remaps remain hand-authored in styles.css and are out of the DTCG color scope.",
+  "$description": "DARK theme override set, authored to match the binding Figma dark foundation while preserving the design-language ADR S06 remap mechanism. Overrides the semantic tier, the diverging public chrome tokens, and the full scene-read hex surface. Chrome tokens that merely follow the remapped semantic tier are not restated (they alias the semantic roles, which are overridden here). Per-theme shadow remaps remain hand-authored in styles.css and are out of the DTCG color scope.",
   "semantic": {
     "surface": {
       "base": { "$type": "color", "$value": "{primitive.neutral.900}" },

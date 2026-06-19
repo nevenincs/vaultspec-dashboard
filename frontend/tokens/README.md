@@ -1,14 +1,14 @@
-# Design tokens (DTCG) — the canonical color source
+# Design tokens (DTCG) — Figma-binding implementation layer
 
-These W3C DTCG token files are the **canonical source of truth** for the dashboard's
-color framework. They mirror the OKLCH token tier that currently lives hand-authored in
-`frontend/src/styles.css`. The end state (plan phase `W01.P03`) is that the **color**
-blocks of `styles.css` are *generated* from these files via Style Dictionary; until that
-flip lands, these files are a parity-verified export and `styles.css` remains canonical.
+The binding Figma file `SlhonORmySdoSMTQgDWw3w` is the source of truth for dashboard
+foundation values. These W3C DTCG files are the implementation layer that preserves the
+project's OKLCH generation mechanism, emits CSS for the app, and produces Tokens Studio
+output for Figma verification.
 
-This realizes the `figma-design-bridge` ADR decision: tokens are code-canonical and flow
-one way to both the CSS tier and Figma Variables. Figma never holds OKLCH — it receives
-the resolved per-mode hex projection. OKLCH stays lossless here in DTCG.
+When Figma and code disagree, update these files to match the binding Figma foundation
+while preserving the semantic tier and scene-read literal-hex contract. Figma cannot
+store OKLCH, so this layer keeps OKLCH lossless and projects resolved per-mode hex where
+Figma needs it.
 
 ## Files
 
@@ -42,19 +42,15 @@ canonical flip.
 
 ## Scope boundary
 
-DTCG owns **color** only. Typography, spacing, shadow, radius, and motion tokens remain
-hand-authored in `styles.css` for now (the per-theme shadow remaps in the dark and
-high-contrast blocks are deliberately excluded here). The generated output therefore
-replaces only the color declarations; the structural integration (a generated color
-partial that `styles.css` imports, vs. inlined blocks) is decided in `W01.P02`. Dimension
-and type tokens may be promoted into DTCG later if they need to reach Figma as number /
-string variables.
+DTCG owns the foundation families mirrored into code from binding Figma: color, type,
+spacing, radius, and elevation. Motion remains outside this token set. The scene-read
+subset continues to emit literal hex because the canvas readers parse resolved custom
+properties directly.
 
 ## Downstream
 
 - **Code:** `style-dictionary` transforms these into the `:root` + `[data-theme]` CSS and
   the Tailwind `@theme` registration (`W01.P02`). A CI drift gate fails the build when the
   generated CSS diverges from committed output (`W01.P05`).
-- **Figma:** Tokens Studio reads the same files (from Git) and writes a Primitives
-  collection (one mode) and a Semantic collection (light / dark / high-contrast modes) via
-  the Plugin API — no Enterprise REST (`W01.P04`).
+- **Figma:** Tokens Studio reads the generated `tokens/figma/tokens.json` and writes or
+  verifies the Primitives, Semantic, and foundation collections in the live binding file.

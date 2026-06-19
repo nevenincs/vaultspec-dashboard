@@ -1,6 +1,6 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/format/",
-  "$description": "HIGH-CONTRAST theme override set, mirrored from the [data-theme=\"high-contrast\"] block in frontend/src/styles.css (design-language ADR S08). The HC semantic tier is authored as raw oklch (max separation), not primitive aliases; the scene-read surface is literal hex. Per-theme shadow remaps (1px ring borders) remain hand-authored in styles.css and are out of the DTCG color scope.",
+  "$description": "HIGH-CONTRAST theme override set, authored to match the binding Figma high-contrast foundation while preserving the design-language ADR S08 remap mechanism. The HC semantic tier is authored as raw oklch (max separation), not primitive aliases; the scene-read surface is literal hex. Per-theme shadow remaps (1px ring borders) remain hand-authored in styles.css and are out of the DTCG color scope.",
   "semantic": {
     "surface": {
       "base": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.12, 0.004, 75] } },

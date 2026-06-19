@@ -1,7 +1,7 @@
 {
   "$schema": "https://design-tokens.github.io/community-group/resolver/",
   "name": "vaultspec-dashboard",
-  "description": "DTCG resolver manifest for the dashboard color framework. The 'base' set (primitives + the light/default semantic + public surface) is always active; the theme axis selects exactly one of light/dark/high-contrast, which override the semantic tier and the diverging public tokens. This mirrors the [data-theme] remap model in frontend/src/styles.css: light is the :root default (also emitted as an explicit [data-theme=\"light\"] peer), dark and high-contrast are peer remaps. Style Dictionary consumes (sets, modifier) pairs to emit the :root + [data-theme] CSS; Tokens Studio consumes the same to write Figma collections (Primitives = one mode; Semantic = light/dark/high-contrast modes).",
+  "description": "DTCG resolver manifest for the dashboard color framework. The 'base' set (primitives + the light/default semantic + public surface) is always active; the theme axis selects exactly one of light/dark/high-contrast, which override the semantic tier and the diverging public tokens. This preserves the [data-theme] remap model in frontend/src/styles.css while the token values are authored to match the binding Figma foundation: light is the :root default (also emitted as an explicit [data-theme=\"light\"] peer), dark and high-contrast are peer remaps. Style Dictionary consumes (sets, modifier) pairs to emit the :root + [data-theme] CSS; Tokens Studio consumes the same to write Figma collections (Primitives = one mode; Semantic = light/dark/high-contrast modes).",
   "sets": [
     { "name": "primitives", "values": "primitives.tokens.json" },
     { "name": "semantic", "values": "semantic.tokens.json" }
