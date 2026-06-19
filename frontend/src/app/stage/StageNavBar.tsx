@@ -22,17 +22,15 @@ import { IconButton, Maximize, Minus, Plus } from "../kit";
 import { CreateDocButton } from "./CreateDocButton";
 import { GraphNavButtons, GraphSettingsPopover } from "./GraphControls";
 import { useActiveScope, useFiltersVocabularyView } from "../../stores/server/queries";
-import { movePlayhead } from "../../stores/view/timelineIntent";
 import {
-  fitTimelineSpan,
-  parseTimelineInstant,
-  setTimelineScrollOffset,
-  setTimelineViewport,
+  fitTimelineNavigationToCorpus,
+  jumpTimelineNavigationToLive,
+  zoomTimelineNavigation,
+} from "../../stores/view/timelineIntent";
+import {
   TIMELINE_ZOOM_STEP,
   timelineCanZoomIn,
   timelineCanZoomOut,
-  timelineJumpToEndOffset,
-  timelineZoomViewport,
   useTimelineViewportState,
 } from "../../stores/view/timeline";
 
@@ -45,29 +43,6 @@ function TimelineNavButtons() {
   const vocabulary = useFiltersVocabularyView(scope);
   const corpusBounds = vocabulary.dateBounds;
   const { pxPerMs, scrollOffset, viewportWidth } = useTimelineViewportState();
-  const effectiveWidth = viewportWidth > 0 ? viewportWidth : 800;
-
-  const zoomBy = (factor: number) => {
-    const next = timelineZoomViewport(pxPerMs, scrollOffset, effectiveWidth, factor);
-    setTimelineViewport(next.pxPerMs, next.scrollOffset);
-  };
-  const fitAll = () => {
-    const from = parseTimelineInstant(corpusBounds?.from);
-    const to = parseTimelineInstant(corpusBounds?.to, Date.now());
-    if (!Number.isFinite(from)) return;
-    const next = fitTimelineSpan(
-      from,
-      Number.isFinite(to) ? to : Date.now(),
-      effectiveWidth,
-    );
-    setTimelineViewport(next.pxPerMs, next.scrollOffset);
-  };
-  const jumpToNow = () => {
-    const toRaw = parseTimelineInstant(corpusBounds?.to, Date.now());
-    const end = Number.isFinite(toRaw) ? toRaw : Date.now();
-    setTimelineScrollOffset(timelineJumpToEndOffset(end, pxPerMs, effectiveWidth));
-    movePlayhead("live", scope);
-  };
 
   return (
     <div
@@ -80,7 +55,14 @@ function TimelineNavButtons() {
         label="zoom in timeline"
         title="zoom in"
         disabled={!timelineCanZoomIn(pxPerMs)}
-        onClick={() => zoomBy(TIMELINE_ZOOM_STEP)}
+        onClick={() =>
+          zoomTimelineNavigation(
+            pxPerMs,
+            scrollOffset,
+            viewportWidth,
+            TIMELINE_ZOOM_STEP,
+          )
+        }
       >
         <Plus size={15} aria-hidden />
       </IconButton>
@@ -88,18 +70,31 @@ function TimelineNavButtons() {
         label="zoom out timeline"
         title="zoom out"
         disabled={!timelineCanZoomOut(pxPerMs)}
-        onClick={() => zoomBy(1 / TIMELINE_ZOOM_STEP)}
+        onClick={() =>
+          zoomTimelineNavigation(
+            pxPerMs,
+            scrollOffset,
+            viewportWidth,
+            1 / TIMELINE_ZOOM_STEP,
+          )
+        }
       >
         <Minus size={15} aria-hidden />
       </IconButton>
       <span className="mx-fg-0-5 h-4 w-px bg-rule" aria-hidden />
-      <IconButton label="fit timeline" title="fit the whole corpus" onClick={fitAll}>
+      <IconButton
+        label="fit timeline"
+        title="fit the whole corpus"
+        onClick={() => fitTimelineNavigationToCorpus(corpusBounds, viewportWidth)}
+      >
         <Maximize size={15} aria-hidden />
       </IconButton>
       <IconButton
         label="jump to now"
         title="jump to the latest instant"
-        onClick={jumpToNow}
+        onClick={() =>
+          jumpTimelineNavigationToLive(corpusBounds, pxPerMs, viewportWidth, scope)
+        }
       >
         <Clock size={15} aria-hidden />
       </IconButton>
