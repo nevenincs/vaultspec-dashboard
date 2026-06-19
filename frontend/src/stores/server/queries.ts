@@ -53,6 +53,7 @@ import type {
   LineageNode,
   LineageSlice,
   MapResponse,
+  MapWorktree,
   NodeDetail,
   OpsResult,
   OpsWriteResult,
@@ -60,6 +61,7 @@ import type {
   PlanInterior,
   PRsResponse,
   PullRequest,
+  RepresentationMode,
   SessionState,
   SessionUpdate,
   SettingsSchema,
@@ -67,6 +69,7 @@ import type {
   SettingUpdate,
   TierAvailability,
   TiersBlock,
+  VaultTreeEntry,
   VaultTreeResponse,
   WorkspaceRoot,
   WorkspacesState,
@@ -76,6 +79,7 @@ import {
   DEFAULT_SALIENCE_LENS,
   EngineError,
   adaptOpsWrite,
+  envelopeData,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
@@ -84,8 +88,13 @@ import type { SalienceLens } from "./engine";
 import { dispatchOps } from "./opsActions";
 import { parseDocument, type Frontmatter } from "./parseDocument";
 import {
+  cloneDashboardFilters,
   dashboardGraphQueryVariables,
   dashboardSelectionId,
+  normalizeDashboardGraphBounds,
+  normalizeDashboardPanelState,
+  normalizeDashboardRepresentationMode,
+  normalizeDashboardSalienceLens,
   type DashboardGraphQueryVariables,
 } from "./dashboardState";
 import { isFreshDashboardGraphDefaultsState } from "./dashboardDefaults";
@@ -93,6 +102,7 @@ import {
   dashboardPlayheadForTimelineMode,
   type DashboardPlayhead,
 } from "./dashboardTimeline";
+import { normalizeDashboardDateRange } from "./dashboardDateRange";
 import { queryClient as defaultQueryClient } from "./queryClient";
 import {
   codeNodeIdFromPath,
@@ -115,6 +125,8 @@ import {
   type GraphSettingsDefaults,
   type SettingsGroup,
 } from "./settingsSelectors";
+import { filterChoicesFromDashboardState, type FilterChoices } from "../view/filters";
+import { movePlayhead } from "../view/timelineIntent";
 import { useViewStore } from "../view/viewStore";
 
 // --- stable serialization for key parts -----------------------------------------
@@ -312,6 +324,8 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "discover",
   "events",
   "history",
+  "prs",
+  "issues",
   "stream",
   "diff",
   "lineage",
@@ -498,6 +512,82 @@ export type WorkspaceMapAvailability = TierAvailability;
 const WORKSPACE_MAP_TIERS = ["structural"] as const;
 export type WorkspaceMapSurfaceState = "loading" | "error" | "ready";
 
+export interface WorkspaceMapPickerRowView {
+  worktree: MapWorktree;
+  selectable: boolean;
+  isActive: boolean;
+  isPending: boolean;
+  isDegraded: boolean;
+  rowClassName: string;
+  activeCueClassName: string;
+  /** The worktree's display NAME (path basename) — shown in place of the branch
+   *  so repository status reads once per rail. */
+  nameLabel: string;
+  branchClassName: string;
+  badgeClassName: string;
+  degradedIconClassName: string;
+  pendingLabelClassName: string;
+  title: string;
+  ariaLabel: string;
+  defaultLabel: string | null;
+  bareLabel: string | null;
+  degradedTitle: string;
+  pendingLabel: string | null;
+}
+
+export interface WorkspaceMapPickerPresentationView {
+  worktrees: MapWorktree[];
+  rows: WorkspaceMapPickerRowView[];
+  pending: boolean;
+  triggerLabel: string;
+  triggerAriaLabel: string;
+  triggerClassName: string;
+  triggerLabelClassName: string;
+  triggerIconClassName: string;
+  loadingLabel: string;
+  loadingClassName: string;
+  errorLabel: string;
+  errorRootClassName: string;
+  errorLabelClassName: string;
+  retryLabel: string;
+  retryAriaLabel: string;
+  retryButtonClassName: string;
+  degradedLabel: string | null;
+  degradedClassName: string;
+  listAriaLabel: string;
+  emptyLabel: string | null;
+  emptyClassName: string;
+  singleScopeLabel: string | null;
+  singleScopeClassName: string;
+}
+
+const WORKSPACE_MAP_PICKER_LOADING_CLASS =
+  "px-fg-1 py-fg-0-5 text-label text-ink-faint";
+const WORKSPACE_MAP_PICKER_ERROR_ROOT_CLASS = "space-y-fg-1 px-fg-1 py-fg-0-5";
+const WORKSPACE_MAP_PICKER_ERROR_LABEL_CLASS = "text-label text-state-broken";
+const WORKSPACE_MAP_PICKER_RETRY_BUTTON_CLASS =
+  "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+const WORKSPACE_MAP_PICKER_TRIGGER_CLASS =
+  "flex w-full items-center gap-fg-1-5 rounded-fg-md bg-paper-sunken px-[10px] py-[6px] transition-colors duration-ui-fast hover:bg-paper-sunken/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const WORKSPACE_MAP_PICKER_TRIGGER_LABEL_BASE_CLASS =
+  "min-w-0 flex-1 truncate text-left text-body-strong";
+const WORKSPACE_MAP_PICKER_TRIGGER_ICON_CLASS = "shrink-0 text-ink-faint";
+const WORKSPACE_MAP_PICKER_DEGRADED_CLASS =
+  "mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted";
+const WORKSPACE_MAP_PICKER_EMPTY_CLASS = "px-fg-2 py-fg-1 text-label text-ink-faint";
+const WORKSPACE_MAP_PICKER_SINGLE_SCOPE_CLASS =
+  "px-fg-2 py-fg-0-5 text-caption text-ink-faint";
+const WORKSPACE_MAP_PICKER_ROW_BASE_CLASS =
+  "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const WORKSPACE_MAP_PICKER_ACTIVE_CUE_BASE_CLASS =
+  "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full";
+const WORKSPACE_MAP_PICKER_BRANCH_CLASS = "min-w-0 truncate";
+const WORKSPACE_MAP_PICKER_BADGE_CLASS = "shrink-0 text-ink-faint";
+const WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS =
+  "flex shrink-0 items-center text-state-stale";
+const WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS =
+  "ml-auto shrink-0 text-caption text-ink-faint";
+
 export function deriveWorkspaceMapAvailability(
   tiers: TiersBlock | undefined,
 ): WorkspaceMapAvailability {
@@ -521,6 +611,146 @@ export function deriveWorkspaceMapSurfaceState(
   if (query.isPending) return "loading";
   if (query.isError && !availability.degraded) return "error";
   return "ready";
+}
+
+/** The worktree's display NAME — the basename of its path (the default worktree
+ *  of `…/main` reads "main"). The left rail's single clickable title shows this,
+ *  not the branch, so the worktree identity is stated once per rail. */
+export function worktreeName(path: string): string {
+  const segments = path.split(/[\\/]+/).filter(Boolean);
+  return segments[segments.length - 1] ?? path;
+}
+
+/** Sort corpus-bearing worktrees first, defaults leading, bare refs last. */
+export function orderWorkspaceMapWorktrees(
+  worktrees: readonly MapWorktree[],
+): MapWorktree[] {
+  return [...worktrees].sort(
+    (a, b) =>
+      Number(b.has_vault) - Number(a.has_vault) ||
+      Number(b.is_default ?? false) - Number(a.is_default ?? false) ||
+      a.branch.localeCompare(b.branch),
+  );
+}
+
+export function workspaceMapPickerRowClassName(state: {
+  isActive: boolean;
+  selectable: boolean;
+}): string {
+  const stateClass = state.isActive
+    ? "bg-accent-subtle font-medium text-ink"
+    : state.selectable
+      ? "text-ink-muted hover:bg-paper-sunken hover:text-ink"
+      : "cursor-not-allowed text-ink-faint/60";
+  return `${WORKSPACE_MAP_PICKER_ROW_BASE_CLASS} ${stateClass}`;
+}
+
+export function workspaceMapPickerActiveCueClassName(isActive: boolean): string {
+  return `${WORKSPACE_MAP_PICKER_ACTIVE_CUE_BASE_CLASS} ${
+    isActive ? "bg-accent" : "bg-transparent"
+  }`;
+}
+
+export function workspaceMapPickerTriggerLabelClassName(pending: boolean): string {
+  return `${WORKSPACE_MAP_PICKER_TRIGGER_LABEL_BASE_CLASS} ${
+    pending ? "text-ink-muted" : "text-ink"
+  }`;
+}
+
+export function deriveWorkspaceMapPickerPresentationView({
+  map,
+  activeScope,
+  pendingId,
+  availability,
+}: {
+  map: MapResponse | undefined;
+  activeScope: string | null;
+  pendingId: string | null;
+  availability: WorkspaceMapAvailability;
+}): WorkspaceMapPickerPresentationView {
+  const worktrees = orderWorkspaceMapWorktrees(
+    map?.repositories.flatMap((repo) => repo.worktrees) ?? [],
+  );
+  const selectableCount = worktrees.filter((worktree) => worktree.has_vault).length;
+  const current = worktrees.find((worktree) => worktree.id === activeScope);
+  const pending = pendingId !== null && pendingId !== activeScope;
+  const pendingWorktree = pending
+    ? worktrees.find((worktree) => worktree.id === pendingId)
+    : undefined;
+  const headlineWorktree = pendingWorktree ?? current;
+  const headlineName = headlineWorktree ? worktreeName(headlineWorktree.path) : null;
+  const availabilityReason = tierAvailabilityReason(availability);
+
+  return {
+    worktrees,
+    rows: worktrees.map((worktree) => {
+      const selectable = worktree.has_vault;
+      const isActive = worktree.id === activeScope;
+      const isPending = pending && worktree.id === pendingId;
+      const isDegraded = (worktree.degraded?.length ?? 0) > 0;
+      return {
+        worktree,
+        selectable,
+        isActive,
+        isPending,
+        isDegraded,
+        rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
+        activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
+        nameLabel: worktreeName(worktree.path),
+        branchClassName: WORKSPACE_MAP_PICKER_BRANCH_CLASS,
+        badgeClassName: WORKSPACE_MAP_PICKER_BADGE_CLASS,
+        degradedIconClassName: WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS,
+        pendingLabelClassName: WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS,
+        title: worktree.has_vault
+          ? worktree.path
+          : `${worktree.path} — no vault corpus, context only`,
+        ariaLabel: worktree.has_vault
+          ? `switch to ${worktreeName(worktree.path)}${worktree.is_default ? ", the default" : ""}${
+              isActive ? ", current scope" : ""
+            }`
+          : `${worktreeName(worktree.path)} — context only, no vault corpus to switch to`,
+        defaultLabel: worktree.is_default ? "·default" : null,
+        bareLabel: worktree.has_vault ? null : "·bare",
+        degradedTitle: worktree.degraded?.join(", ") ?? "",
+        pendingLabel: isPending ? "switching…" : null,
+      };
+    }),
+    pending,
+    triggerLabel: headlineName ?? "pick a worktree…",
+    triggerAriaLabel: headlineName
+      ? `worktree scope: ${headlineName}${pending ? ", switching" : ""}`
+      : "choose a worktree scope",
+    triggerClassName: WORKSPACE_MAP_PICKER_TRIGGER_CLASS,
+    triggerLabelClassName: workspaceMapPickerTriggerLabelClassName(pending),
+    triggerIconClassName: WORKSPACE_MAP_PICKER_TRIGGER_ICON_CLASS,
+    loadingLabel: "mapping worktrees…",
+    loadingClassName: WORKSPACE_MAP_PICKER_LOADING_CLASS,
+    errorLabel: "workspace map unavailable",
+    errorRootClassName: WORKSPACE_MAP_PICKER_ERROR_ROOT_CLASS,
+    errorLabelClassName: WORKSPACE_MAP_PICKER_ERROR_LABEL_CLASS,
+    retryLabel: "retry",
+    retryAriaLabel: "retry loading the workspace map",
+    retryButtonClassName: WORKSPACE_MAP_PICKER_RETRY_BUTTON_CLASS,
+    degradedLabel: availability.degraded
+      ? `the worktree map is partly unavailable right now${
+          availabilityReason ? ` — ${availabilityReason}` : ""
+        }. showing what loaded.`
+      : null,
+    degradedClassName: WORKSPACE_MAP_PICKER_DEGRADED_CLASS,
+    listAriaLabel: "worktree scopes",
+    emptyLabel:
+      worktrees.length === 0
+        ? "no worktrees mapped yet — point the engine at a repository to begin."
+        : selectableCount === 0
+          ? "no vault-bearing worktree to switch to here. listed refs are context only."
+          : null,
+    emptyClassName: WORKSPACE_MAP_PICKER_EMPTY_CLASS,
+    singleScopeLabel:
+      selectableCount === 1 && worktrees.length === 1
+        ? "this is the only vault-bearing worktree."
+        : null,
+    singleScopeClassName: WORKSPACE_MAP_PICKER_SINGLE_SCOPE_CLASS,
+  };
 }
 
 /** Stores hook: the workspace map's degradation, read through the wire client so
@@ -606,14 +836,31 @@ export interface WorkspaceTitleView {
   label: string;
   path: string | undefined;
   current: WorkspaceRoot | null;
+  loadingLabel: string;
+  loadingClassName: string;
+  rootClassName: string;
+  titleClassName: string;
 }
 
 export function deriveWorkspaceTitleView(
   data: WorkspacesState | undefined,
   loading: boolean,
 ): WorkspaceTitleView {
+  const loadingLabel = "loading…";
+  const loadingClassName = "px-fg-1 text-label text-ink-faint";
+  const rootClassName = "flex items-center px-fg-1";
+  const titleClassName = "min-w-0 flex-1 truncate text-[14px] font-medium text-ink";
   if (loading) {
-    return { state: "loading", label: "Project", path: undefined, current: null };
+    return {
+      state: "loading",
+      label: "Project",
+      path: undefined,
+      current: null,
+      loadingLabel,
+      loadingClassName,
+      rootClassName,
+      titleClassName,
+    };
   }
   const current =
     data?.workspaces.find((root) => root.id === data.active_workspace) ??
@@ -624,6 +871,10 @@ export function deriveWorkspaceTitleView(
     label: current?.label ?? "Project",
     path: current?.path,
     current,
+    loadingLabel,
+    loadingClassName,
+    rootClassName,
+    titleClassName,
   };
 }
 
@@ -770,6 +1021,13 @@ function clearWorkspaceSwitchIntent(intent: WorkspaceSwitchIntent): void {
   }
 }
 
+function mirrorAcceptedSessionScopeContext(session: SessionState): void {
+  useViewStore.getState().mirrorSessionScopeContext({
+    folder: session.scope_context.folder,
+    featureTags: session.scope_context.feature_tags,
+  });
+}
+
 function applyAcceptedWorkspaceSwitch(
   session: SessionState,
   intent: WorkspaceSwitchIntent,
@@ -781,6 +1039,7 @@ function applyAcceptedWorkspaceSwitch(
       session.active_workspace ?? intent.workspace,
       session.active_scope || intent.scope,
     );
+  mirrorAcceptedSessionScopeContext(session);
   // The PUT builds/warms the new scope server-side. Clear stale project reads
   // only after acceptance, then refetch now that the scope is warm so the
   // switch lands its corpus in-session (live verification finding H6).
@@ -814,6 +1073,12 @@ export function isSupersededScopeSwitch(
 let requestedActiveScope: string | null = null;
 let activeScopeSwitchTail: Promise<void> = Promise.resolve();
 
+function assertNonEmptyScope(scope: string): void {
+  if (scope.trim().length === 0) {
+    throw new Error("scope switch requires a non-empty scope");
+  }
+}
+
 function supersededScopeSwitch(scope: string): SupersededScopeSwitchError | null {
   return requestedActiveScope !== null && requestedActiveScope !== scope
     ? new SupersededScopeSwitchError(scope, requestedActiveScope)
@@ -826,6 +1091,7 @@ function applyAcceptedActiveScopeSwitch(
 ): void {
   seedSessionCache(queryClient, session);
   useViewStore.getState().setScope(session.active_scope);
+  mirrorAcceptedSessionScopeContext(session);
   refreshAfterAcceptedScopeSwitch(queryClient);
 }
 
@@ -835,12 +1101,16 @@ function applyAcceptedActiveScopeSwitch(
  * superseded requests are ignored at this seam, so a rapid A -> B click cannot
  * let A's later response re-apply stale graph/git/search scope after B became the
  * user's latest intent. Pure resolvers can call the imperative form; React
- * surfaces use `useSwitchActiveScope` to bind their provider client.
+ * surfaces that need only the durable scope transition use `useSwitchActiveScope`
+ * to bind their provider client. Worktree UI activation uses
+ * `activateWorktreeScope`, which layers the accepted-scope live playhead reset on
+ * top of this durable switch.
  */
 export async function switchActiveScope(
   scope: string,
   queryClient: QueryClient = defaultQueryClient,
 ): Promise<SessionState> {
+  assertNonEmptyScope(scope);
   requestedActiveScope = scope;
   const run = activeScopeSwitchTail
     .catch(() => undefined)
@@ -872,13 +1142,37 @@ export function useSwitchActiveScope(): (scope: string) => Promise<SessionState>
   );
 }
 
+/**
+ * Worktree activation intent: persist the accepted active scope first, then
+ * dock dashboard time back to LIVE for that accepted scope. Row clicks and
+ * context-menu actions use this single stores-layer transition so session and
+ * timeline propagation cannot drift.
+ */
+export async function activateWorktreeScope(
+  scope: string,
+  queryClient: QueryClient = defaultQueryClient,
+): Promise<SessionState> {
+  const session = await switchActiveScope(scope, queryClient);
+  movePlayhead("live", session.active_scope);
+  return session;
+}
+
+export function useActivateWorktreeScope(): (scope: string) => Promise<SessionState> {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (scope: string) => activateWorktreeScope(scope, queryClient),
+    [queryClient],
+  );
+}
+
 export function useVaultTree(scope: string | null) {
+  const enabled = scope !== null;
   const query = useQuery({
     queryKey: engineKeys.vaultTree(scope ?? ""),
     queryFn: () => engineClient.vaultTree(scope!),
-    enabled: scope !== null,
+    enabled,
   });
-  return withManualRetry(query);
+  return withManualRetry(enabled ? query : { ...query, data: undefined });
 }
 
 /**
@@ -919,7 +1213,7 @@ export function useVaultTreeAvailability(scope: string | null): VaultTreeAvailab
 }
 
 export interface VaultTreeSurfaceView {
-  tree: UseQueryResult<VaultTreeResponse> & { retry: () => void };
+  tree: ReturnType<typeof useVaultTree>;
   availability: VaultTreeAvailability;
   state: VaultTreeSurfaceState;
 }
@@ -939,6 +1233,108 @@ export function useVaultTreeSurface(scope: string | null): VaultTreeSurfaceView 
   };
 }
 
+export interface VaultTreeDocTypeGroup {
+  docType: string;
+  entries: VaultTreeEntry[];
+}
+
+export interface VaultTreeFeatureGroup {
+  /** The feature tag, without the leading `#`; untagged documents use `(untagged)`. */
+  feature: string;
+  /** Total document count across every doc-type group in this feature bucket. */
+  count: number;
+  /** Doc-type sub-groups, in canonical `.vault/` order then alphabetical. */
+  docTypes: VaultTreeDocTypeGroup[];
+}
+
+export interface VaultTreeBrowserView {
+  activeFilter: string;
+  entries: VaultTreeEntry[];
+  groups: VaultTreeFeatureGroup[];
+  filteredToNothing: boolean;
+}
+
+const VAULT_TREE_DOC_TYPE_ORDER = [
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
+  "index",
+] as const;
+
+function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
+  const presentSet = new Set(present);
+  const order: string[] = [...VAULT_TREE_DOC_TYPE_ORDER];
+  for (const extra of [...presentSet].sort()) {
+    if (!order.includes(extra)) order.push(extra);
+  }
+  return order.filter((docType) => presentSet.has(docType));
+}
+
+export function projectVaultTreeFeatureGroups(
+  entries: readonly VaultTreeEntry[],
+): VaultTreeFeatureGroup[] {
+  const UNTAGGED = "(untagged)";
+  const byFeature = new Map<string, Map<string, VaultTreeEntry[]>>();
+  for (const entry of entries) {
+    const features = entry.feature_tags.length > 0 ? entry.feature_tags : [UNTAGGED];
+    for (const feature of features) {
+      let docMap = byFeature.get(feature);
+      if (!docMap) {
+        docMap = new Map();
+        byFeature.set(feature, docMap);
+      }
+      const list = docMap.get(entry.doc_type) ?? [];
+      list.push(entry);
+      docMap.set(entry.doc_type, list);
+    }
+  }
+
+  const groups: VaultTreeFeatureGroup[] = [];
+  for (const [feature, docMap] of byFeature) {
+    const docTypes = vaultTreeDocTypeOrder(docMap.keys()).map((docType) => ({
+      docType,
+      entries: docMap
+        .get(docType)!
+        .slice()
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    }));
+    const count = docTypes.reduce((n, group) => n + group.entries.length, 0);
+    groups.push({ feature, count, docTypes });
+  }
+  return groups;
+}
+
+export function filterVaultTreeEntries(
+  entries: readonly VaultTreeEntry[],
+  filter: string,
+): VaultTreeEntry[] {
+  const q = filter.trim().toLowerCase();
+  if (q.length === 0) return [...entries];
+  return entries.filter(
+    (entry) =>
+      stemFromPath(entry.path).toLowerCase().includes(q) ||
+      entry.path.toLowerCase().includes(q) ||
+      entry.feature_tags.some((tag) => tag.toLowerCase().includes(q)),
+  );
+}
+
+export function deriveVaultTreeBrowserView(
+  entries: readonly VaultTreeEntry[],
+  filter: string,
+): VaultTreeBrowserView {
+  const activeFilter = filter.trim();
+  const filteredEntries = filterVaultTreeEntries(entries, activeFilter);
+  return {
+    activeFilter,
+    entries: filteredEntries,
+    groups: projectVaultTreeFeatureGroups(filteredEntries),
+    filteredToNothing: activeFilter.length > 0 && filteredEntries.length === 0,
+  };
+}
+
 // --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
 //
 // The read-only codebase file-tree browser's wire seam, consumed through these
@@ -953,12 +1349,13 @@ export function useVaultTreeSurface(scope: string | null): VaultTreeSurfaceView 
 // expanded), mirroring `useNodeNeighbors`'s lazy-on-id pattern.
 
 export function useFileTree(scope: string | null, path?: string, enabled = true) {
+  const active = scope !== null && enabled;
   const query = useQuery({
     queryKey: engineKeys.fileTree(scope ?? "", path),
     queryFn: () => engineClient.fileTree({ scope: scope!, path }),
-    enabled: scope !== null && enabled,
+    enabled: active,
   });
-  return withManualRetry(query);
+  return withManualRetry(active ? query : { ...query, data: undefined });
 }
 
 /**
@@ -997,11 +1394,58 @@ export function deriveFileTreeRootSurfaceState(
 
 export type FileTreeLevelState = "loading" | "error" | "empty" | "ready";
 
+export interface FileTreeRowView {
+  entry: FileTreeEntry;
+  /** Final path segment rendered by the code browser row. */
+  displayName: string;
+}
+
 export interface FileTreeLevelView {
   state: FileTreeLevelState;
   entries: FileTreeEntry[];
+  /** Render-ready rows so app chrome does not parse file paths. */
+  rows: FileTreeRowView[];
   truncated: FileTreeResponse["truncated"];
+  loadingMessage: string;
+  errorTitle: string;
+  retryLabel: string;
+  emptyMessage: string;
+  childLoadingMessage: string;
+  childErrorMessage: string;
+  truncationMessage: string | null;
+  childLoadingClassName: string;
+  childErrorClassName: string;
+  truncationClassName: string;
   retry: () => void;
+}
+
+function fileTreeEntryDisplayName(path: string): string {
+  return path.replace(/\/+$/, "").replace(/^.*\//, "");
+}
+
+function fileTreeTruncationMessage(
+  truncated: FileTreeResponse["truncated"],
+): string | null {
+  return truncated
+    ? `more here (${truncated.total_children}) — expand a subdirectory to narrow.`
+    : null;
+}
+
+const FILE_TREE_LEVEL_COPY = {
+  loadingMessage: "reading the worktree…",
+  errorTitle: "code tree unavailable",
+  retryLabel: "try again",
+  emptyMessage: "no source files in this scope yet.",
+  childLoadingMessage: "…",
+  childErrorMessage: "could not list this directory.",
+  childLoadingClassName:
+    "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
+  childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
+  truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
+} as const;
+
+export function fileTreeChildStatusStyle(depth: number): { paddingLeft: string } {
+  return { paddingLeft: `${0.25 + depth * 0.75}rem` };
 }
 
 export function deriveFileTreeLevelView(
@@ -1010,17 +1454,29 @@ export function deriveFileTreeLevelView(
   errored: boolean,
   retry: () => void = noopRetry,
 ): FileTreeLevelView {
+  const base = {
+    ...FILE_TREE_LEVEL_COPY,
+    truncationMessage: null,
+    retry,
+  };
   if (loading) {
-    return { state: "loading", entries: [], truncated: null, retry };
+    return { state: "loading", entries: [], rows: [], truncated: null, ...base };
   }
   if (errored) {
-    return { state: "error", entries: [], truncated: null, retry };
+    return { state: "error", entries: [], rows: [], truncated: null, ...base };
   }
   const entries = data?.entries ?? [];
+  const rows = entries.map((entry) => ({
+    entry,
+    displayName: fileTreeEntryDisplayName(entry.path),
+  }));
   return {
     state: entries.length === 0 ? "empty" : "ready",
     entries,
+    rows,
     truncated: data?.truncated ?? null,
+    ...FILE_TREE_LEVEL_COPY,
+    truncationMessage: fileTreeTruncationMessage(data?.truncated ?? null),
     retry,
   };
 }
@@ -1051,6 +1507,20 @@ export interface FileTreeRootSurfaceView {
   rootLevel: FileTreeLevelView;
   availability: FileTreeAvailability;
   state: FileTreeRootSurfaceState;
+  degradedMessage: string;
+  browserLabel: string;
+  loadingClassName: string;
+  errorRootClassName: string;
+  errorTitleClassName: string;
+  retryButtonClassName: string;
+  degradedClassName: string;
+  emptyClassName: string;
+  navClassName: string;
+}
+
+function fileTreeDegradedMessage(availability: FileTreeAvailability): string {
+  const reason = tierAvailabilityReason(availability);
+  return `this scope has no code tree${reason ? ` — ${reason}` : ""}. the vault browser remains available.`;
 }
 
 /**
@@ -1070,6 +1540,17 @@ export function useFileTreeRootSurface(scope: string | null): FileTreeRootSurfac
     ),
     availability,
     state: deriveFileTreeRootSurfaceState(rootQuery, availability),
+    degradedMessage: fileTreeDegradedMessage(availability),
+    browserLabel: "code browser",
+    loadingClassName: "animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint",
+    errorRootClassName: "space-y-fg-1 px-fg-1 py-fg-0-5",
+    errorTitleClassName: "text-label text-state-broken",
+    retryButtonClassName:
+      "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+    degradedClassName:
+      "mx-fg-1 my-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
+    emptyClassName: "px-fg-1 py-fg-0-5 text-label text-ink-faint",
+    navClassName: "text-label",
   };
 }
 
@@ -1089,6 +1570,10 @@ export interface FiltersVocabularyView {
   facetsLoading: boolean;
   docTypes: string[];
   featureTags: string[];
+  /** STATUS lifecycle vocabulary (ADR adjectives + plan meta-states). */
+  statuses: string[];
+  /** HEALTH validity vocabulary (dangling/orphaned, present-in-corpus). */
+  health: string[];
   dateBounds: FiltersVocabulary["date_bounds"];
 }
 
@@ -1103,6 +1588,8 @@ export function deriveFiltersVocabularyView(
     facetsLoading: awaitingScope || loading,
     docTypes: vocabulary?.doc_types ?? [],
     featureTags: vocabulary?.feature_tags ?? [],
+    statuses: vocabulary?.statuses ?? [],
+    health: vocabulary?.health ?? [],
     dateBounds: vocabulary?.date_bounds,
   };
 }
@@ -1144,11 +1631,19 @@ export function dashboardStateSessionIdentity(
 export function useDashboardState(scope: string | null) {
   const session = useSession();
   const sessionIdentity = dashboardStateSessionIdentity(session.data);
-  return useQuery<DashboardState>({
+  const enabled = scope !== null && session.isSuccess;
+  const query = useQuery<DashboardState>({
     queryKey: engineKeys.dashboardState(scope ?? "", sessionIdentity),
     queryFn: () => engineClient.dashboardState(scope!),
-    enabled: scope !== null && session.isSuccess,
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
+}
+
+/** Stores/server selector for the canonical selected dashboard node id. */
+export function useDashboardSelectedNodeId(scope: string | null): string | null {
+  const dashboardState = useDashboardState(scope);
+  return dashboardSelectionId(dashboardState.data);
 }
 
 export interface DashboardDateRangeView {
@@ -1167,8 +1662,9 @@ export function deriveDashboardDateRangeView(
   dateRange: DashboardDateRange | undefined,
   fallback: Pick<DashboardDateRangeView, "fromMs" | "toMs">,
 ): DashboardDateRangeView {
-  const fromMs = parseDashboardDateTick(dateRange?.from);
-  const toMs = parseDashboardDateTick(dateRange?.to);
+  const normalized = normalizeDashboardDateRange(dateRange);
+  const fromMs = parseDashboardDateTick(normalized.from);
+  const toMs = parseDashboardDateTick(normalized.to);
   if (fromMs !== null && toMs !== null) {
     return { fromMs, toMs, source: "dashboard" };
   }
@@ -1199,7 +1695,7 @@ export function deriveDashboardRangeSelectView(
   state: Pick<DashboardState, "date_range"> | undefined,
 ): DashboardRangeSelectView {
   return {
-    dateRange: state?.date_range ? { ...state.date_range } : {},
+    dateRange: normalizeDashboardDateRange(state?.date_range),
   };
 }
 
@@ -1255,9 +1751,10 @@ export interface DashboardFilterSummaryView {
 function dashboardDateRangeLabel(
   dateRange: DashboardDateRange | undefined,
 ): string | null {
-  if (!dateRange?.from && !dateRange?.to) return null;
-  return `${dateRange.from?.slice(0, 10) ?? "…"} → ${
-    dateRange.to?.slice(0, 10) ?? "…"
+  const normalized = normalizeDashboardDateRange(dateRange);
+  if (!normalized.from && !normalized.to) return null;
+  return `${normalized.from?.slice(0, 10) ?? "…"} → ${
+    normalized.to?.slice(0, 10) ?? "…"
   }`;
 }
 
@@ -1291,9 +1788,128 @@ export function useDashboardFilterSummaryView(
   );
 }
 
+export interface DashboardFilterChoicesView {
+  choices: FilterChoices;
+  loaded: boolean;
+}
+
+export function deriveDashboardFilterChoicesView(
+  state: Pick<DashboardState, "filters" | "date_range"> | undefined,
+): DashboardFilterChoicesView {
+  return {
+    choices: filterChoicesFromDashboardState(state),
+    loaded: state !== undefined,
+  };
+}
+
+/**
+ * Stores/server selector for canonical dashboard filter choices. The pure
+ * projection stays in stores/view/filters, but the dashboard-state subscription
+ * lives here with the other dashboard-state selectors so consumers do not wire a
+ * query hook from the view layer.
+ */
+export function useDashboardFilterChoicesView(
+  scope: string | null,
+): DashboardFilterChoicesView {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(
+    () => deriveDashboardFilterChoicesView(dashboardState.data),
+    [dashboardState.data],
+  );
+}
+
+export function useDashboardFilterChoices(scope: string | null): FilterChoices {
+  return useDashboardFilterChoicesView(scope).choices;
+}
+
 export type DashboardEditedWindow = "any" | "7d" | "30d" | "year";
 
 const DAY_MS = 24 * 3600 * 1000;
+
+export interface DashboardEditedWindowOptionView {
+  key: DashboardEditedWindow;
+  label: string;
+}
+
+export interface DashboardEditedWindowRowView extends DashboardEditedWindowOptionView {
+  active: boolean;
+  inputClassName: string;
+  labelClassName: string;
+  valueClassName: string;
+}
+
+export interface DashboardFilterSidebarPresentationView {
+  panelAriaLabel: string;
+  panelClassName: string;
+  headerClassName: string;
+  titleClassName: string;
+  headerActionsClassName: string;
+  titleLabel: string;
+  clearAllClassName: string;
+  clearAllLabel: string;
+  clearAllAriaLabel: string;
+  closeButtonClassName: string;
+  closeAriaLabel: string;
+  sectionClassName: string;
+  sectionButtonClassName: string;
+  sectionMetaClassName: string;
+  sectionBadgeClassName: string;
+  sectionIconClassName: string;
+  sectionBodyClassName: string;
+  kindSectionLabel: string;
+  topicSectionLabel: string;
+  editedSectionLabel: string;
+  editedWindowAriaLabel: string;
+  facetEmptyClassName: string;
+  facetListClassName: string;
+  facetOverflowButtonClassName: string;
+  footerClassName: string;
+  footerTextClassName: string;
+  editedWindows: DashboardEditedWindowOptionView[];
+}
+
+export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresentationView =
+  {
+    panelAriaLabel: "filter panel",
+    panelClassName:
+      "pointer-events-auto absolute left-[8px] top-[42px] z-30 animate-slide-in-left",
+    headerClassName:
+      "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
+    titleClassName: "text-body font-medium text-ink",
+    headerActionsClassName: "flex items-center gap-fg-2",
+    titleLabel: "Filter documents",
+    clearAllClassName:
+      "text-caption text-accent-text underline-offset-2 hover:underline",
+    clearAllLabel: "Clear all",
+    clearAllAriaLabel: "clear all filters",
+    closeButtonClassName:
+      "rounded-fg-xs p-fg-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink",
+    closeAriaLabel: "close filter panel",
+    sectionClassName: "border-b border-rule",
+    sectionButtonClassName:
+      "flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium uppercase tracking-wider text-ink-muted hover:bg-paper-sunken",
+    sectionMetaClassName: "flex items-center gap-fg-1-5",
+    sectionBadgeClassName:
+      "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",
+    sectionIconClassName: "text-ink-faint",
+    sectionBodyClassName: "pb-2",
+    kindSectionLabel: "Kind",
+    topicSectionLabel: "Topic",
+    editedSectionLabel: "Edited",
+    editedWindowAriaLabel: "edited window",
+    facetEmptyClassName: "px-fg-3 py-fg-1 text-label italic text-ink-faint",
+    facetListClassName: "space-y-fg-0-5 px-fg-3",
+    facetOverflowButtonClassName:
+      "ml-fg-1 text-label text-ink-faint underline hover:text-ink-muted",
+    footerClassName: "border-t border-rule px-fg-3 py-fg-1-5",
+    footerTextClassName: "text-label text-state-stale",
+    editedWindows: [
+      { key: "any", label: "Any time" },
+      { key: "7d", label: "Last 7 days" },
+      { key: "30d", label: "Last 30 days" },
+      { key: "year", label: "This year" },
+    ],
+  };
 
 export function dashboardEditedWindowRange(
   key: DashboardEditedWindow,
@@ -1332,9 +1948,13 @@ export interface DashboardFilterSidebarView {
   dateRange: DashboardDateRange;
   docTypes: string[];
   featureTags: string[];
+  statuses: string[];
+  health: string[];
   editedWindow: DashboardEditedWindow;
+  editedWindowRows: DashboardEditedWindowRowView[];
   dateActive: boolean;
   anyActive: boolean;
+  presentation: DashboardFilterSidebarPresentationView;
 }
 
 export function deriveDashboardFilterSidebarView(
@@ -1342,18 +1962,34 @@ export function deriveDashboardFilterSidebarView(
   now = Date.now(),
 ): DashboardFilterSidebarView {
   const filters = state?.filters ?? {};
-  const dateRange = state?.date_range ?? {};
+  const dateRange = normalizeDashboardDateRange(state?.date_range);
   const dateActive = hasActiveDashboardDateRange(dateRange);
+  const editedWindow = dashboardEditedWindowFromRange(dateRange, now);
   return {
     filters,
     dateRange,
     docTypes: filters.doc_types ?? [],
     featureTags: filters.feature_tags ?? [],
-    editedWindow: dashboardEditedWindowFromRange(dateRange, now),
+    statuses: filters.statuses ?? [],
+    health: filters.health ?? [],
+    editedWindow,
+    editedWindowRows: DASHBOARD_FILTER_SIDEBAR_PRESENTATION.editedWindows.map(
+      (option) => ({
+        ...option,
+        active: option.key === editedWindow,
+        inputClassName: "accent-accent",
+        labelClassName:
+          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
+        valueClassName: option.key === editedWindow ? "text-ink" : "text-ink-muted",
+      }),
+    ),
     dateActive,
+    presentation: DASHBOARD_FILTER_SIDEBAR_PRESENTATION,
     anyActive:
       (filters.doc_types?.length ?? 0) > 0 ||
       (filters.feature_tags?.length ?? 0) > 0 ||
+      (filters.statuses?.length ?? 0) > 0 ||
+      (filters.health?.length ?? 0) > 0 ||
       (filters.relations?.length ?? 0) > 0 ||
       (filters.structural_state?.length ?? 0) > 0 ||
       (filters.text?.length ?? 0) > 0 ||
@@ -1467,8 +2103,12 @@ export function deriveDashboardStageSceneView(
     selectedNodeId: dashboardSelectionId(state),
     graphQuery: state ? dashboardGraphQueryVariables(state) : null,
     granularity: state?.graph_granularity ?? "feature",
-    activeRepresentationMode: state?.representation_mode ?? "connectivity",
-    graphBounds: state?.graph_bounds ? { ...state.graph_bounds } : undefined,
+    activeRepresentationMode: normalizeDashboardRepresentationMode(
+      state?.representation_mode,
+    ),
+    graphBounds: state?.graph_bounds
+      ? normalizeDashboardGraphBounds(state.graph_bounds)
+      : undefined,
     timeline,
     liveTimeline: !timeline.timeTravel,
   };
@@ -1496,22 +2136,17 @@ export interface DashboardGraphControlsView {
   freezeAvailable: boolean;
 }
 
-const FALLBACK_DASHBOARD_GRAPH_BOUNDS: DashboardGraphBounds = {
-  shape: "free",
-  size: 0,
-};
-
 export function deriveDashboardGraphControlsView(
   state:
     | Pick<DashboardState, "graph_bounds" | "representation_mode" | "timeline_mode">
     | undefined,
 ): DashboardGraphControlsView {
   const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
-  const representationMode = state?.representation_mode ?? "connectivity";
+  const representationMode = normalizeDashboardRepresentationMode(
+    state?.representation_mode,
+  );
   return {
-    graphBounds: state?.graph_bounds
-      ? { ...state.graph_bounds }
-      : { ...FALLBACK_DASHBOARD_GRAPH_BOUNDS },
+    graphBounds: normalizeDashboardGraphBounds(state?.graph_bounds),
     timeline,
     representationMode,
     freezeAvailable: representationMode === "connectivity" && !timeline.timeTravel,
@@ -1540,9 +2175,69 @@ export interface DashboardLayoutSelectorView {
   timeline: DashboardTimelineModeView;
 }
 
+export type DashboardSpatialRepresentationMode = Exclude<
+  RepresentationMode,
+  "temporal"
+>;
+
+export interface DashboardLayoutSegmentRowView<T extends string> {
+  value: T;
+  label: string;
+  title: string;
+  available?: boolean;
+  active: boolean;
+  tabIndex: 0 | -1;
+  className: string;
+}
+
+export interface DashboardLayoutSegmentGroupView<T extends string> {
+  ariaLabel: string;
+  className: string;
+  segments: DashboardLayoutSegmentRowView<T>[];
+}
+
+export interface DashboardLayoutSelectorPresentationView {
+  containerClassName: string;
+  spatial: DashboardLayoutSegmentGroupView<DashboardSpatialRepresentationMode>;
+  temporal: DashboardLayoutSegmentGroupView<"timeline">;
+}
+
 export interface DashboardLensSelectorView {
   lens: SalienceLens;
 }
+
+export interface DashboardLensSelectorRowView {
+  lens: SalienceLens;
+  label: string;
+  hint: string;
+  ariaLabel: string;
+  active: boolean;
+  disabled: boolean;
+  className: string;
+}
+
+export interface DashboardLensSelectorPresentationView {
+  containerAriaLabel: string;
+  containerClassName: string;
+  rows: DashboardLensSelectorRowView[];
+}
+
+const DASHBOARD_LENS_SELECTOR_OPTIONS: readonly {
+  lens: SalienceLens;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    lens: "status",
+    label: "Status",
+    hint: "What is in-flight: plans, progress, the pivotal bridges that gate work",
+  },
+  {
+    lens: "design",
+    label: "Design",
+    hint: "Why the system is this way: the binding decisions and their grounding",
+  },
+];
 
 export function deriveDashboardLayoutSelectorView(
   state:
@@ -1550,12 +2245,136 @@ export function deriveDashboardLayoutSelectorView(
     | undefined,
 ): DashboardLayoutSelectorView {
   const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
-  const representationMode = state?.representation_mode ?? "connectivity";
+  const representationMode = normalizeDashboardRepresentationMode(
+    state?.representation_mode,
+  );
   return {
-    dateRange: state?.date_range ? { ...state.date_range } : {},
+    dateRange: normalizeDashboardDateRange(state?.date_range),
     representationMode,
     spatialActive: timeline.timeTravel ? null : representationMode,
     timeline,
+  };
+}
+
+const DASHBOARD_LAYOUT_SEGMENT_GROUP_CLASS =
+  "flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5";
+const DASHBOARD_LAYOUT_SEGMENT_BASE_CLASS =
+  "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus";
+const DASHBOARD_LAYOUT_SEGMENT_ACTIVE_CLASS =
+  "bg-paper-raised font-medium text-ink shadow-fg-raised";
+const DASHBOARD_LAYOUT_SEGMENT_INACTIVE_CLASS = "text-ink-muted hover:text-ink";
+
+const DASHBOARD_SPATIAL_LAYOUT_OPTIONS: readonly Omit<
+  DashboardLayoutSegmentRowView<DashboardSpatialRepresentationMode>,
+  "active" | "tabIndex" | "className"
+>[] = [
+  {
+    value: "connectivity",
+    label: "Free",
+    title: "Connections pull related items together - force-directed",
+  },
+  {
+    value: "lineage",
+    label: "Lineage",
+    title: "What came from what - top to bottom (derivation DAG)",
+  },
+  {
+    value: "hierarchical",
+    label: "Hierarchy",
+    title: "Ranked in tiers, fewest crossings - Sugiyama layered",
+  },
+  {
+    value: "radial",
+    label: "Radial",
+    title: "Rings around a chosen root - concentric tree",
+  },
+  {
+    value: "community",
+    label: "Clusters",
+    title: "Topics group together - Louvain community",
+  },
+  {
+    value: "semantic",
+    label: "Meaning",
+    title: "Nearby = similar in meaning - semantic (UMAP)",
+  },
+];
+
+const DASHBOARD_TIMELINE_LAYOUT_OPTIONS: readonly Omit<
+  DashboardLayoutSegmentRowView<"timeline">,
+  "active" | "tabIndex" | "className"
+>[] = [
+  {
+    value: "timeline",
+    label: "Timeline",
+    title: "Arrange along time - enter the temporal view (time-travel)",
+  },
+];
+
+function dashboardLayoutSegmentClassName(active: boolean, available = true): string {
+  return [
+    DASHBOARD_LAYOUT_SEGMENT_BASE_CLASS,
+    active
+      ? DASHBOARD_LAYOUT_SEGMENT_ACTIVE_CLASS
+      : DASHBOARD_LAYOUT_SEGMENT_INACTIVE_CLASS,
+    available === false ? "italic" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function projectDashboardLayoutSegmentRows<T extends string>(
+  options: readonly Omit<
+    DashboardLayoutSegmentRowView<T>,
+    "active" | "tabIndex" | "className"
+  >[],
+  activeValue: T | null,
+): DashboardLayoutSegmentRowView<T>[] {
+  const tabStopValue = activeValue ?? options[0]?.value ?? null;
+  return options.map((option) => {
+    const active = option.value === activeValue;
+    return {
+      ...option,
+      active,
+      tabIndex: option.value === tabStopValue ? 0 : -1,
+      className: dashboardLayoutSegmentClassName(active, option.available),
+    };
+  });
+}
+
+export function deriveDashboardLayoutSelectorPresentationView(
+  view: DashboardLayoutSelectorView,
+  options: { semanticShipped: boolean },
+): DashboardLayoutSelectorPresentationView {
+  const spatialOptions = DASHBOARD_SPATIAL_LAYOUT_OPTIONS.map((option) =>
+    option.value === "semantic"
+      ? {
+          ...option,
+          title: options.semanticShipped
+            ? option.title
+            : "Nearby = similar in meaning - falls back to Free until the semantic projection ships",
+          available: options.semanticShipped,
+        }
+      : option,
+  );
+  const spatialActive = view.spatialActive === "temporal" ? null : view.spatialActive;
+  const temporalActive = view.timeline.timeTravel ? "timeline" : null;
+
+  return {
+    containerClassName: "flex items-center gap-fg-1",
+    spatial: {
+      ariaLabel: "spatial layout",
+      className: DASHBOARD_LAYOUT_SEGMENT_GROUP_CLASS,
+      segments: projectDashboardLayoutSegmentRows(spatialOptions, spatialActive),
+    },
+    temporal: {
+      ariaLabel: "temporal view",
+      className: DASHBOARD_LAYOUT_SEGMENT_GROUP_CLASS,
+      segments: projectDashboardLayoutSegmentRows(
+        DASHBOARD_TIMELINE_LAYOUT_OPTIONS,
+        temporalActive,
+      ),
+    },
   };
 }
 
@@ -1563,7 +2382,33 @@ export function deriveDashboardLensSelectorView(
   state: Pick<DashboardState, "salience_lens"> | undefined,
 ): DashboardLensSelectorView {
   return {
-    lens: state?.salience_lens ?? DEFAULT_DASHBOARD_SALIENCE_LENS,
+    lens: normalizeDashboardSalienceLens(state?.salience_lens),
+  };
+}
+
+export function deriveDashboardLensSelectorPresentationView(
+  view: DashboardLensSelectorView,
+  state: { disabled: boolean },
+): DashboardLensSelectorPresentationView {
+  return {
+    containerAriaLabel: "salience lens",
+    containerClassName:
+      "flex items-center gap-fg-0-5 rounded-fg-md border border-rule bg-paper-raised/95 p-fg-0-5 shadow-fg-raised backdrop-blur-sm",
+    rows: DASHBOARD_LENS_SELECTOR_OPTIONS.map((option) => {
+      const active = option.lens === view.lens;
+      return {
+        ...option,
+        ariaLabel: `${option.label} lens`,
+        active,
+        disabled: state.disabled,
+        className: [
+          "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+          active
+            ? "border border-accent bg-accent-subtle text-ink"
+            : "border border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",
+        ].join(" "),
+      };
+    }),
   };
 }
 
@@ -1601,17 +2446,11 @@ export interface DashboardShellChromeView {
   timeline: DashboardTimelineModeView;
 }
 
-const FALLBACK_DASHBOARD_PANEL_STATE: DashboardPanelState = {
-  left_collapsed: false,
-  right_collapsed: false,
-  right_tab: "status",
-};
-
 export function deriveDashboardShellChromeView(
   state: Pick<DashboardState, "panel_state" | "timeline_mode"> | undefined,
 ): DashboardShellChromeView {
   return {
-    panelState: state?.panel_state ?? FALLBACK_DASHBOARD_PANEL_STATE,
+    panelState: normalizeDashboardPanelState(state?.panel_state),
     timeline: deriveDashboardTimelineModeView(state?.timeline_mode),
   };
 }
@@ -1635,6 +2474,35 @@ type DashboardTierName = (typeof CANONICAL_TIERS)[number];
 
 type DashboardTierMap = Record<DashboardTierName, boolean>;
 
+export interface DashboardTierDialRowView {
+  tier: DashboardTierName;
+  label: string;
+  on: boolean;
+  blocked: boolean;
+  inapplicable: boolean;
+  offline: boolean;
+  state: "on" | "off" | "offline" | "inapplicable";
+  stateLabel: string;
+  title: string;
+  buttonAriaLabel: string;
+  markTitle: string;
+  buttonClassName: string;
+  rowClassName: string;
+  offlineLabel: string | null;
+  offlineLabelClassName: string;
+  showConfidence: boolean;
+  confidenceTier: "temporal" | "semantic" | null;
+  confidenceValue: number;
+  confidencePercent: number;
+  confidenceAriaLabel: string;
+  confidenceAriaValueText: string;
+  confidenceTitle: string;
+  confidenceSliderClassName: string;
+  confidenceReadoutClassName: string;
+  confidenceReadoutLabel: string;
+  confidenceGroupClassName: string;
+}
+
 export interface DashboardTierDialView {
   filters: DashboardFilters;
   tiers: DashboardTierMap;
@@ -1642,78 +2510,140 @@ export interface DashboardTierDialView {
   timeline: DashboardTimelineModeView;
   availability: GraphSliceAvailability;
   semanticDegraded: boolean;
+  rootClassName: string;
+  ariaLabel: string;
+  rows: DashboardTierDialRowView[];
 }
 
-interface DashboardGraphSliceVariables {
-  scope: string;
-  filter: GraphFilter;
-  asOf?: string | number;
-  granularity: GraphGranularity;
-  lens: SalienceLens;
-  focus: string | null;
+const DASHBOARD_TIER_LABELS: Record<DashboardTierName, string> = {
+  declared: "declared",
+  structural: "structural",
+  temporal: "temporal",
+  semantic: "semantic",
+};
+
+const TIER_DIAL_ROOT_CLASS = "flex items-center gap-fg-2 text-label";
+const TIER_DIAL_ROW_CLASS = "flex items-center gap-fg-1";
+const TIER_DIAL_BUTTON_BASE_CLASS =
+  "flex items-center gap-fg-1 rounded-fg-xs border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const TIER_DIAL_BUTTON_BLOCKED_CLASS =
+  "cursor-not-allowed border-dashed border-rule text-ink-faint";
+const TIER_DIAL_BUTTON_ON_CLASS = "border-rule-strong bg-paper-sunken text-ink";
+const TIER_DIAL_BUTTON_OFF_CLASS =
+  "border-rule text-ink-faint hover:border-rule-strong hover:text-ink-muted";
+const TIER_DIAL_OFFLINE_LABEL_CLASS = "text-caption text-state-stale";
+const TIER_DIAL_CONFIDENCE_GROUP_CLASS = "flex items-center gap-fg-1";
+const TIER_DIAL_CONFIDENCE_SLIDER_CLASS = "h-1 w-14 accent-accent";
+const TIER_DIAL_CONFIDENCE_READOUT_CLASS =
+  "w-7 text-right text-caption tabular-nums text-ink-faint";
+
+export function isDashboardTierInapplicable(
+  tier: DashboardTierName,
+  timeTravel: boolean,
+): boolean {
+  return tier === "semantic" && timeTravel;
 }
 
-function cloneDashboardDateRangeForQuery(
-  range: DashboardDateRange | undefined,
-): DashboardDateRange {
-  return range ? { ...range } : {};
-}
-
-function cloneDashboardFiltersForQuery(filters: DashboardFilters): DashboardFilters {
-  return {
-    ...filters,
-    tiers: filters.tiers ? { ...filters.tiers } : undefined,
-    min_confidence: filters.min_confidence ? { ...filters.min_confidence } : undefined,
-    relations: filters.relations ? [...filters.relations] : undefined,
-    structural_state: filters.structural_state
-      ? [...filters.structural_state]
-      : undefined,
-    kinds: filters.kinds ? [...filters.kinds] : undefined,
-    doc_types: filters.doc_types ? [...filters.doc_types] : undefined,
-    feature_tags: filters.feature_tags ? [...filters.feature_tags] : undefined,
-    date_range: filters.date_range
-      ? cloneDashboardDateRangeForQuery(filters.date_range)
-      : undefined,
-  };
-}
-
-function dashboardGraphSliceVariables(
-  state: DashboardState,
-): DashboardGraphSliceVariables {
-  const filter = cloneDashboardFiltersForQuery(state.filters);
-  if (state.date_range.from || state.date_range.to) {
-    filter.date_range = cloneDashboardDateRangeForQuery(state.date_range);
-  } else {
-    delete filter.date_range;
-  }
-  return {
-    scope: state.scope,
-    filter,
-    asOf:
-      state.timeline_mode.kind === "time-travel" ? state.timeline_mode.at : undefined,
-    granularity: state.graph_granularity,
-    lens: state.salience_lens,
-    focus: state.salience_focus,
-  };
+export function deriveDashboardTierDialRows(
+  tiers: DashboardTierMap,
+  minConfidence: NonNullable<DashboardFilters["min_confidence"]>,
+  timeTravel: boolean,
+  semanticDegraded: boolean,
+): DashboardTierDialRowView[] {
+  return CANONICAL_TIERS.map((tier) => {
+    const label = DASHBOARD_TIER_LABELS[tier];
+    const inapplicable = isDashboardTierInapplicable(tier, timeTravel);
+    const offline = tier === "semantic" && semanticDegraded && !inapplicable;
+    const blocked = inapplicable || offline;
+    const on = tiers[tier] && !blocked;
+    const state = inapplicable
+      ? "inapplicable"
+      : offline
+        ? "offline"
+        : on
+          ? "on"
+          : "off";
+    const stateLabel = inapplicable
+      ? "inapplicable while time travelling"
+      : offline
+        ? "offline - rag is not available"
+        : on
+          ? "on"
+          : "off";
+    const confidenceTier = tier === "temporal" || tier === "semantic" ? tier : null;
+    const confidenceValue =
+      confidenceTier === null ? 0 : (minConfidence[confidenceTier] ?? 0);
+    const confidencePercent = Math.round(confidenceValue * 100);
+    return {
+      tier,
+      label,
+      on,
+      blocked,
+      inapplicable,
+      offline,
+      state,
+      stateLabel,
+      title: inapplicable
+        ? "semantic is about now - inapplicable while time travelling"
+        : offline
+          ? "semantic is offline - rag is not available"
+          : `${label} tier ${stateLabel}`,
+      buttonAriaLabel: `${label} tier`,
+      markTitle: `${label} tier mark`,
+      buttonClassName: `${TIER_DIAL_BUTTON_BASE_CLASS} ${
+        blocked
+          ? TIER_DIAL_BUTTON_BLOCKED_CLASS
+          : on
+            ? TIER_DIAL_BUTTON_ON_CLASS
+            : TIER_DIAL_BUTTON_OFF_CLASS
+      }`,
+      rowClassName: TIER_DIAL_ROW_CLASS,
+      offlineLabel: offline ? "offline" : null,
+      offlineLabelClassName: TIER_DIAL_OFFLINE_LABEL_CLASS,
+      showConfidence: confidenceTier !== null && !blocked && on,
+      confidenceTier,
+      confidenceValue,
+      confidencePercent,
+      confidenceAriaLabel: `${label} confidence floor`,
+      confidenceAriaValueText: `${confidencePercent} percent`,
+      confidenceTitle: `min confidence ${confidencePercent}%`,
+      confidenceSliderClassName: TIER_DIAL_CONFIDENCE_SLIDER_CLASS,
+      confidenceReadoutClassName: TIER_DIAL_CONFIDENCE_READOUT_CLASS,
+      confidenceReadoutLabel: `${confidencePercent}%`,
+      confidenceGroupClassName: TIER_DIAL_CONFIDENCE_GROUP_CLASS,
+    };
+  });
 }
 
 export function deriveDashboardTierDialView(
   state: Pick<DashboardState, "filters" | "timeline_mode"> | undefined,
   availability: GraphSliceAvailability,
 ): DashboardTierDialView {
-  const filters = cloneDashboardFiltersForQuery(state?.filters ?? {});
+  const filters = cloneDashboardFilters(state?.filters ?? {});
+  const tiers = {
+    declared: filters.tiers?.declared ?? true,
+    structural: filters.tiers?.structural ?? true,
+    temporal: filters.tiers?.temporal ?? true,
+    semantic: filters.tiers?.semantic ?? true,
+  };
+  const minConfidence = filters.min_confidence ?? {};
+  const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
+  const semanticDegraded = availability.degradedTiers.includes("semantic");
   return {
     filters,
-    tiers: {
-      declared: filters.tiers?.declared ?? true,
-      structural: filters.tiers?.structural ?? true,
-      temporal: filters.tiers?.temporal ?? true,
-      semantic: filters.tiers?.semantic ?? true,
-    },
-    minConfidence: filters.min_confidence ?? {},
-    timeline: deriveDashboardTimelineModeView(state?.timeline_mode),
+    tiers,
+    minConfidence,
+    timeline,
     availability,
-    semanticDegraded: availability.degradedTiers.includes("semantic"),
+    semanticDegraded,
+    rootClassName: TIER_DIAL_ROOT_CLASS,
+    ariaLabel: "tier dial",
+    rows: deriveDashboardTierDialRows(
+      tiers,
+      minConfidence,
+      timeline.timeTravel,
+      semanticDegraded,
+    ),
   };
 }
 
@@ -1726,7 +2656,7 @@ export function useDashboardTierDialView(scope: string | null): DashboardTierDia
   const dashboardState = useDashboardState(scope);
   const graphQuery = useMemo(
     () =>
-      dashboardState.data ? dashboardGraphSliceVariables(dashboardState.data) : null,
+      dashboardState.data ? dashboardGraphQueryVariables(dashboardState.data) : null,
     [dashboardState.data],
   );
   const slice = useGraphSlice(
@@ -1752,7 +2682,8 @@ export function useGraphSlice(
   lens?: SalienceLens,
   focus?: string | null,
 ) {
-  return useQuery({
+  const enabled = scope !== null;
+  const query = useQuery({
     queryKey: engineKeys.graph(scope ?? "", filter, asOf, granularity, lens, focus),
     queryFn: () =>
       engineClient.graphQuery({
@@ -1763,8 +2694,9 @@ export function useGraphSlice(
         lens,
         focus,
       }),
-    enabled: scope !== null,
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /**
@@ -1967,14 +2899,17 @@ export function deriveSemanticEmbeddingsView(
     };
   }
   const tiers = tiersFromQuery({ data, error });
+  const availability = readTierAvailability(tiers, [SEMANTIC_TIER]);
   const semantic = tiers?.[SEMANTIC_TIER];
-  // Held is read from the tiers block ALONE: an explicit available:false marks the
-  // tier down. A tiers-less transport fault and an empty array are NOT held.
-  const unavailable = semantic !== undefined && semantic.available === false;
+  // Held is read from the tiers block ALONE: an explicit available:false OR an
+  // absent semantic tier in a served block marks the tier down. A tiers-less
+  // transport fault and an empty array are NOT held.
+  const unavailable = tiers !== undefined && availability.degraded;
   // The tier is affirmatively up only when the block reports it available:true.
-  // (An absent semantic tier is neither up nor explicitly down — it cannot satisfy
-  // the positive availability gate, matching contract §2 absence-is-not-available.)
-  const tierUp = semantic !== undefined && semantic.available === true;
+  // A tiers-less transport fault and a degraded served block cannot satisfy the
+  // positive availability gate.
+  const tierUp =
+    tiers !== undefined && !availability.degraded && semantic?.available === true;
   const embeddings = new Map<string, number[]>();
   if (!unavailable && data) {
     for (const e of data.embeddings) embeddings.set(e.node_id, e.vector);
@@ -2088,11 +3023,13 @@ export function isAddressableNode(id: string | null): id is string {
 }
 
 export function useNodeDetail(id: string | null, scope: string | null) {
-  return useQuery({
+  const enabled = scope !== null && isAddressableNode(id);
+  const query = useQuery({
     queryKey: engineKeys.node(scope ?? "", id ?? ""),
     queryFn: () => engineClient.node(id!, scope!),
-    enabled: scope !== null && isAddressableNode(id),
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 export type NodeDetailSurfaceState = "idle" | "loading" | "unavailable" | "ready";
@@ -2197,11 +3134,13 @@ export function useFeatureLifecycleView(
 }
 
 export function useNodeNeighbors(id: string | null, scope: string | null, depth = 1) {
-  return useQuery({
+  const enabled = scope !== null && isAddressableNode(id);
+  const query = useQuery({
     queryKey: engineKeys.neighbors(scope ?? "", id ?? "", depth),
     queryFn: () => engineClient.nodeNeighbors(id!, { scope: scope!, depth }),
-    enabled: scope !== null && isAddressableNode(id),
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 export const INSPECTOR_EDGE_TIER_ORDER = [
@@ -2266,12 +3205,14 @@ const CONTENT_GC_TIME = 60_000;
  * the viewer closes, so a long session does not retain every opened file's bytes.
  */
 export function useNodeContent(nodeId: string | null, scope: string | null) {
-  return useQuery({
+  const enabled = nodeId !== null && scope !== null;
+  const query = useQuery({
     queryKey: engineKeys.content(scope ?? "", nodeId ?? ""),
     queryFn: () => engineClient.content(nodeId!, scope ?? undefined),
-    enabled: nodeId !== null && scope !== null,
+    enabled,
     gcTime: CONTENT_GC_TIME,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /**
@@ -2367,6 +3308,8 @@ export interface CodeViewerView {
   stateMessage: string | null;
   /** Placeholder tone for non-ready states. */
   stateTone: ViewerStateTone;
+  /** Placeholder ink class for non-ready states. */
+  stateToneClass: string;
   /** Text passed to the tokenizer; blank outside the ready state. */
   text: string;
   /** Raw, 1:1 source lines for the virtualized line list. */
@@ -2377,6 +3320,23 @@ export interface CodeViewerView {
   languageHint: string | null;
   /** Honest byte-cap marker shown only with ready content. */
   truncated: ContentTruncated | null;
+  /** Header affordance label for the display-only code viewer. */
+  readOnlyLabel: string;
+  /** Render-ready byte-cap receipt, null when the content is not truncated. */
+  truncationMessage: string | null;
+}
+
+function codeViewerTruncationMessage(
+  truncated: ContentTruncated | null,
+): string | null {
+  if (truncated === null) return null;
+  return `Truncated to the first ${truncated.returned_bytes.toLocaleString("en-US")} of ${truncated.total_bytes.toLocaleString("en-US")} bytes — open the file directly for the full contents.`;
+}
+
+function viewerStateToneClass(tone: ViewerStateTone): string {
+  if (tone === "broken") return "text-state-broken";
+  if (tone === "muted") return "text-ink-muted";
+  return "text-ink-faint";
 }
 
 /**
@@ -2391,51 +3351,65 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
     path: content.path,
     languageHint: null,
     truncated: null,
+    readOnlyLabel: "read-only",
+    truncationMessage: null,
   };
   if (content.loading) {
+    const stateTone: ViewerStateTone = "faint";
     return {
       ...base,
       state: "loading",
       stateMessage: "Loading file...",
-      stateTone: "faint",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.errored) {
+    const stateTone: ViewerStateTone = "broken";
     return {
       ...base,
       state: "errored",
       stateMessage: "The file could not be loaded.",
-      stateTone: "broken",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.degraded) {
     const reason = content.reasons.structural;
+    const stateTone: ViewerStateTone = "muted";
     return {
       ...base,
       state: "degraded",
       stateMessage: `File unavailable${reason ? `: ${reason}` : ""}.`,
-      stateTone: "muted",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (!content.available || content.text.length === 0) {
+    const stateTone: ViewerStateTone = "faint";
     return {
       ...base,
       state: "empty",
       stateMessage: "This file is empty.",
-      stateTone: "faint",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
 
   const text = content.text;
+  const stateTone: ViewerStateTone = "faint";
   return {
     state: "ready",
     stateMessage: null,
-    stateTone: "faint",
+    stateTone,
+    stateToneClass: viewerStateToneClass(stateTone),
     text,
     rawLines: text.replace(/\n$/, "").split("\n"),
     path: content.path,
     languageHint: content.languageHint,
     truncated: content.truncated,
+    readOnlyLabel: "read-only",
+    truncationMessage: codeViewerTruncationMessage(content.truncated),
   };
 }
 
@@ -2523,14 +3497,20 @@ export interface MarkdownReaderView {
   stateMessage: string | null;
   /** Placeholder tone for non-ready states. */
   stateTone: ViewerStateTone;
+  /** Placeholder ink class for non-ready states. */
+  stateToneClass: string;
   /** Structured frontmatter chrome, null when the document has no visible metadata. */
   frontmatter: FrontmatterHeaderView | null;
   /** Reader meta status from frontmatter, if present. */
   status: string | null;
   /** Markdown body with the leading frontmatter fence removed. */
   body: string;
+  /** Editorial header/footer projection rendered by the reader app chrome. */
+  editorial: MarkdownReaderEditorialView;
   /** Honest byte-cap marker shown only with ready content. */
   truncated: ContentTruncated | null;
+  /** Render-ready byte-cap receipt, null when the content is not truncated. */
+  truncationMessage: string | null;
 }
 
 export type FrontmatterTagCategory =
@@ -2565,6 +3545,45 @@ export interface FrontmatterHeaderView {
   dates: FrontmatterDateView[];
   related: FrontmatterRelatedView[];
 }
+
+export interface MarkdownReaderEyebrowView {
+  label: string;
+  category: FrontmatterTagCategory;
+}
+
+export interface MarkdownReaderEditorialView {
+  title: string | null;
+  dek: string | null;
+  body: string;
+  eyebrow: MarkdownReaderEyebrowView | null;
+  meta: string[];
+  footerTags: FrontmatterTagView[];
+  related: FrontmatterRelatedView[];
+}
+
+const DOCTYPE_EYEBROW: Partial<Record<FrontmatterTagCategory, string>> = {
+  adr: "Decision",
+  audit: "Audit",
+  exec: "Step",
+  index: "Index",
+  plan: "Plan",
+  research: "Research",
+};
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 const FRONTMATTER_TAG_CATEGORIES = new Set<FrontmatterTagCategory>([
   "adr",
@@ -2607,6 +3626,101 @@ export function deriveFrontmatterHeaderView(
   return { tags, dates, related };
 }
 
+function markdownReaderEyebrow(
+  frontmatter: FrontmatterHeaderView | null,
+): MarkdownReaderEyebrowView | null {
+  if (!frontmatter) return null;
+  for (const tag of frontmatter.tags) {
+    const label = tag.category ? DOCTYPE_EYEBROW[tag.category] : undefined;
+    if (tag.category && label) return { label, category: tag.category };
+  }
+  return null;
+}
+
+function markdownReaderFooterTags(
+  frontmatter: FrontmatterHeaderView | null,
+): FrontmatterTagView[] {
+  return (
+    frontmatter?.tags.filter(
+      (tag) => !(tag.category && DOCTYPE_EYEBROW[tag.category]),
+    ) ?? []
+  );
+}
+
+function formatReaderLongDate(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso;
+  const [, year, month, day] = match;
+  return `${Number(day)} ${MONTHS[Number(month) - 1] ?? month} ${year}`;
+}
+
+function markdownReaderReadingMinutes(body: string): number {
+  const words = body.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+}
+
+function splitMarkdownReaderEditorialBody(body: string): {
+  title: string | null;
+  dek: string | null;
+  rest: string;
+} {
+  const lines = body.split("\n");
+  let index = 0;
+  while (index < lines.length && lines[index].trim() === "") index += 1;
+  let title: string | null = null;
+  const heading = /^#\s+(.+?)\s*$/.exec(lines[index] ?? "");
+  if (heading) {
+    title = heading[1].trim();
+    index += 1;
+  }
+  while (index < lines.length && lines[index].trim() === "") index += 1;
+  let dek: string | null = null;
+  const next = lines[index]?.trim() ?? "";
+  const isProse = next !== "" && !/^(#{1,6}\s|[-*>|]|\d+\.\s|```)/.test(next);
+  if (title && isProse) {
+    const dekLines: string[] = [];
+    while (index < lines.length && lines[index].trim() !== "") {
+      dekLines.push(lines[index].trim());
+      index += 1;
+    }
+    dek = dekLines.join(" ");
+  }
+  return { title, dek, rest: lines.slice(index).join("\n").replace(/^\n+/, "") };
+}
+
+function markdownReaderTruncationMessage(
+  truncated: ContentTruncated | null,
+): string | null {
+  if (truncated === null) return null;
+  return `Truncated to the first ${truncated.returned_bytes.toLocaleString("en-US")} of ${truncated.total_bytes.toLocaleString("en-US")} bytes — open the file directly for the full document.`;
+}
+
+function deriveMarkdownReaderEditorialView(
+  body: string,
+  frontmatter: FrontmatterHeaderView | null,
+  status: string | null,
+): MarkdownReaderEditorialView {
+  const split = splitMarkdownReaderEditorialBody(body);
+  const date = formatReaderLongDate(
+    frontmatter?.dates.find((entry) => entry.label === "created")?.value,
+  );
+  const meta = [
+    date,
+    `${markdownReaderReadingMinutes(split.rest)} min read`,
+    status,
+  ].filter((part): part is string => Boolean(part));
+  return {
+    title: split.title,
+    dek: split.dek,
+    body: split.rest,
+    eyebrow: markdownReaderEyebrow(frontmatter),
+    meta,
+    footerTags: markdownReaderFooterTags(frontmatter),
+    related: frontmatter?.related ?? [],
+  };
+}
+
 /**
  * Derive the markdown reader's document model from the already-served content
  * view. The reader renders this projection, while navigation click intent stays
@@ -2617,50 +3731,66 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
     frontmatter: null,
     status: null,
     body: "",
+    editorial: deriveMarkdownReaderEditorialView("", null, null),
     truncated: null,
+    truncationMessage: null,
   };
   if (content.loading) {
+    const stateTone: ViewerStateTone = "faint";
     return {
       ...base,
       state: "loading",
       stateMessage: "Loading document…",
-      stateTone: "faint",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.errored) {
+    const stateTone: ViewerStateTone = "broken";
     return {
       ...base,
       state: "errored",
       stateMessage: "The document could not be loaded.",
-      stateTone: "broken",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.degraded) {
     const reason = content.reasons.structural;
+    const stateTone: ViewerStateTone = "muted";
     return {
       ...base,
       state: "degraded",
       stateMessage: `Document unavailable${reason ? `: ${reason}` : ""}.`,
-      stateTone: "muted",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (!content.available || content.text.length === 0) {
+    const stateTone: ViewerStateTone = "faint";
     return {
       ...base,
       state: "empty",
       stateMessage: "This document is empty.",
-      stateTone: "faint",
+      stateTone,
+      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   const parsed = parseDocument(content.text);
+  const frontmatter = deriveFrontmatterHeaderView(parsed.frontmatter);
+  const status = parsed.frontmatter?.status ?? null;
+  const stateTone: ViewerStateTone = "faint";
   return {
     state: "ready",
     stateMessage: null,
-    stateTone: "faint",
-    frontmatter: deriveFrontmatterHeaderView(parsed.frontmatter),
-    status: parsed.frontmatter?.status ?? null,
+    stateTone,
+    stateToneClass: viewerStateToneClass(stateTone),
+    frontmatter,
+    status,
     body: parsed.body,
+    editorial: deriveMarkdownReaderEditorialView(parsed.body, frontmatter, status),
     truncated: content.truncated,
+    truncationMessage: markdownReaderTruncationMessage(content.truncated),
   };
 }
 
@@ -2681,14 +3811,19 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
  *  the whole log. The engine clamps a larger value to its hard ceiling. */
 export const DEFAULT_HISTORY_LIMIT = 20;
 
-/** The Status overview renders a short commit snapshot, not every fetched row. */
-export const STATUS_RECENT_COMMIT_ROWS = 12;
+/** The rail's bounded local paging ceiling mirrors the engine's history clamp. */
+export const MAX_HISTORY_LIMIT = 200;
 
 /** How long an unobserved history entry survives before garbage collection
  *  (bounded-by-default-for-every-accumulator). 60s matches the content query's
  *  prompt eviction — generous for tab back-and-forth while keeping a long session
  *  from retaining every scope's commit list. */
 const HISTORY_GC_TIME = 60_000;
+
+export function normalizeHistoryLimit(limit: number): number {
+  const candidate = Number.isFinite(limit) ? Math.floor(limit) : DEFAULT_HISTORY_LIMIT;
+  return Math.min(MAX_HISTORY_LIMIT, Math.max(1, candidate));
+}
 
 /**
  * The read-only recent-commit history fetch for one scope (status-overview ADR),
@@ -2697,12 +3832,15 @@ const HISTORY_GC_TIME = 60_000;
  * after the tab is left, so a long session does not retain every scope's list.
  */
 export function useNodeHistory(scope: string | null, limit = DEFAULT_HISTORY_LIMIT) {
-  return useQuery({
-    queryKey: engineKeys.history(scope ?? "", limit),
-    queryFn: () => engineClient.history({ scope: scope!, limit }),
-    enabled: scope !== null,
+  const normalizedLimit = normalizeHistoryLimit(limit);
+  const enabled = scope !== null;
+  const query = useQuery({
+    queryKey: engineKeys.history(scope ?? "", normalizedLimit),
+    queryFn: () => engineClient.history({ scope: scope!, limit: normalizedLimit }),
+    enabled,
     gcTime: HISTORY_GC_TIME,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /**
@@ -2721,8 +3859,25 @@ export interface HistoryView extends TierAvailability {
   commits: HistoryCommit[];
   /** Render-ready recent commit rows with selectable graph targets pre-derived. */
   recentCommitRows: RecentCommitRow[];
+  /** True when the current bounded history window can request the next page. */
+  canShowMore: boolean;
   /** True iff the engine answered with history (vs loading/degraded/errored). */
   available: boolean;
+  showLoading: boolean;
+  showUnavailable: boolean;
+  showEmpty: boolean;
+  showList: boolean;
+  unavailableLabel: string;
+  loadingLabel: string;
+  emptyLabel: string;
+  showMoreLabel: string;
+  loadingClassName: string;
+  unavailableClassName: string;
+  emptyClassName: string;
+  listRootClassName: string;
+  listClassName: string;
+  commitBodyClassName: string;
+  showMoreButtonClassName: string;
 }
 
 export interface RecentCommitRow {
@@ -2733,6 +3888,14 @@ export interface RecentCommitRow {
   touchedNodeIds: string[];
   /** Whether activating the row has a graph selection target. */
   selectable: boolean;
+  /** Whether the row has an expandable commit message body. */
+  hasBody: boolean;
+  /** Commit subject with the empty-subject fallback already applied. */
+  subjectLabel: string;
+  /** Accessible label for activating the row selection. */
+  rowAriaLabel: string;
+  /** Accessible label for expanding/collapsing the full message body. */
+  messageToggleLabel: (expanded: boolean) => string;
   /** Compact age label for the status rail; derived with the row projection. */
   ageLabel: string;
 }
@@ -2767,7 +3930,9 @@ export function deriveHistoryView(
   error: unknown,
   loading: boolean,
   now = Date.now(),
+  limit = DEFAULT_HISTORY_LIMIT,
 ): HistoryView {
+  const renderLimit = normalizeHistoryLimit(limit);
   const tiers = tiersFromQuery({ data, error });
   const availability = readTierAvailability(tiers, HISTORY_TIERS);
   const errored =
@@ -2777,24 +3942,53 @@ export function deriveHistoryView(
   const commits =
     loading || availability.degraded || errored ? [] : (data?.commits ?? []);
   const recentCommitRows = commits
-    .slice(0, STATUS_RECENT_COMMIT_ROWS)
+    .slice(0, renderLimit)
     .map((commit): RecentCommitRow => {
       const touchedNodeIds = commit.node_ids.filter((id) => !id.startsWith("commit:"));
+      const subjectLabel = commit.subject || "(no subject)";
       return {
         commit,
         eventId: `commit:${commit.hash}`,
         touchedNodeIds,
         selectable: touchedNodeIds.length > 0,
+        hasBody: commit.body.trim().length > 0,
+        subjectLabel,
+        rowAriaLabel: `commit ${commit.short_hash}: ${subjectLabel}`,
+        messageToggleLabel: (expanded) =>
+          `${expanded ? "collapse" : "expand"} message for ${commit.short_hash}`,
         ageLabel: recentCommitAgeLabel(commit.ts, now),
       };
     });
+  const canShowMore = commits.length >= renderLimit && renderLimit < MAX_HISTORY_LIMIT;
+  const showLoading = loading;
+  const showUnavailable = !showLoading && (availability.degraded || errored);
+  const showEmpty = available && recentCommitRows.length === 0;
+  const showList = available && recentCommitRows.length > 0;
   return {
     ...availability,
     loading,
     errored,
     commits,
     recentCommitRows,
+    canShowMore,
     available,
+    showLoading,
+    showUnavailable,
+    showEmpty,
+    showList,
+    unavailableLabel: "recent history unavailable",
+    loadingLabel: "reading recent commits...",
+    emptyLabel: "no commits yet on this branch.",
+    showMoreLabel: "Show more",
+    loadingClassName: STATUS_BODY_LOADING_CLASS,
+    unavailableClassName: "text-label text-ink-muted",
+    emptyClassName: STATUS_BODY_EMPTY_CLASS,
+    listRootClassName: STATUS_BODY_LIST_CLASS,
+    listClassName: STATUS_BODY_LIST_CLASS,
+    commitBodyClassName:
+      "ml-fg-5 mt-fg-0-5 whitespace-pre-wrap rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label text-ink-muted",
+    showMoreButtonClassName:
+      "w-full rounded-fg-xs px-fg-2 py-fg-1 text-center text-label text-ink-muted transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
   };
 }
 
@@ -2808,9 +4002,16 @@ export function useHistoryView(
   scope: string | null,
   limit = DEFAULT_HISTORY_LIMIT,
 ): HistoryView {
-  const query = useNodeHistory(scope, limit);
+  const normalizedLimit = normalizeHistoryLimit(limit);
+  const query = useNodeHistory(scope, normalizedLimit);
   const loading = scope !== null && query.isPending;
-  return deriveHistoryView(query.data, query.error ?? null, loading);
+  return deriveHistoryView(
+    query.data,
+    query.error ?? null,
+    loading,
+    Date.now(),
+    normalizedLimit,
+  );
 }
 
 // --- GitHub work items: open PRs, recent (merged) PRs, open issues -------------------
@@ -2827,32 +4028,223 @@ export interface PRsView {
   errored: boolean;
   /** The engine answered and `gh` is reachable + authed (data.available). */
   available: boolean;
+  showLoading: boolean;
+  showUnavailable: boolean;
+  showEmpty: boolean;
+  showList: boolean;
   /** The capability-local reason when unavailable (gh missing/offline/unauthed). */
   reason: string | null;
   prs: PullRequest[];
+  rows: PullRequestRowView[];
+  loadingLabel: string;
+  emptyLabel: string;
+  unavailableLabel: string;
+  loadingClassName: string;
+  unavailableClassName: string;
+  emptyClassName: string;
+  listClassName: string;
 }
 
 export interface IssuesView {
   loading: boolean;
   errored: boolean;
   available: boolean;
+  showLoading: boolean;
+  showUnavailable: boolean;
+  showEmpty: boolean;
+  showList: boolean;
   reason: string | null;
   issues: Issue[];
+  rows: IssueRowView[];
+  loadingLabel: string;
+  emptyLabel: string;
+  unavailableLabel: string;
+  loadingClassName: string;
+  unavailableClassName: string;
+  emptyClassName: string;
+  listClassName: string;
+}
+
+export interface PullRequestRowView {
+  pr: PullRequest;
+  icon: "pull-request" | "merged";
+  iconTone: "accent" | "muted" | "faint";
+  iconToneClass: string;
+  numberLabel: string;
+  titleLabel: string;
+  stateLabel: string;
+  stateTone: "accent" | "neutral";
+  authorLabel: string | null;
+  checksLabel: string | null;
+  checksTone: "active" | "broken" | "faint" | null;
+  checksToneClass: string | null;
+  mergedLabel: string | null;
+}
+
+export interface IssueRowView {
+  issue: Issue;
+  numberLabel: string;
+  titleLabel: string;
+  authorLabel: string | null;
+  labels: string[];
+}
+
+function pullRequestLoadingLabel(state: "open" | "merged"): string {
+  return state === "merged" ? "reading recent PRs..." : "reading open PRs...";
+}
+
+function pullRequestEmptyLabel(state: "open" | "merged"): string {
+  return state === "merged"
+    ? "no recently-merged pull requests"
+    : "no open pull requests";
+}
+
+function pullRequestUnavailableLabel(reason: string | null): string {
+  return reason ?? "pull requests unavailable - GitHub not reachable";
+}
+
+function issueUnavailableLabel(reason: string | null): string {
+  return reason ?? "issues unavailable - GitHub not reachable";
+}
+
+const STATUS_BODY_LOADING_CLASS =
+  "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none";
+const STATUS_BODY_UNAVAILABLE_CLASS = "text-label text-ink-faint";
+const STATUS_BODY_EMPTY_CLASS = "text-label text-ink-faint";
+const STATUS_BODY_LIST_CLASS = "space-y-fg-0-5";
+
+interface GitHubWorkItemAvailability<T> {
+  loading: boolean;
+  errored: boolean;
+  available: boolean;
+  showLoading: boolean;
+  showUnavailable: boolean;
+  showEmpty: boolean;
+  showList: boolean;
+  reason: string | null;
+  items: T[];
+}
+
+function deriveGitHubWorkItemAvailability<T>(
+  data:
+    | {
+        available: boolean;
+        reason: string | null;
+      }
+    | undefined,
+  items: T[] | undefined,
+  error: unknown,
+  loading: boolean,
+): GitHubWorkItemAvailability<T> {
+  const errored = error != null;
+  const available = !loading && !errored && data?.available === true;
+  const visibleItems = available ? (items ?? []) : [];
+  const showLoading = loading;
+  const showUnavailable = !showLoading && !available;
+  const showEmpty = available && visibleItems.length === 0;
+  const showList = available && visibleItems.length > 0;
+  return {
+    loading,
+    errored,
+    available,
+    showLoading,
+    showUnavailable,
+    showEmpty,
+    showList,
+    reason: data?.reason ?? null,
+    items: visibleItems,
+  };
+}
+
+function pullRequestIconToneClass(tone: PullRequestRowView["iconTone"]): string {
+  if (tone === "muted") return "text-ink-muted";
+  if (tone === "faint") return "text-ink-faint";
+  return "text-accent";
+}
+
+function pullRequestChecksToneClass(
+  tone: NonNullable<PullRequestRowView["checksTone"]>,
+): string {
+  if (tone === "active") return "text-state-active";
+  if (tone === "broken") return "text-state-broken";
+  return "text-ink-faint";
+}
+
+export function derivePullRequestRowView(
+  pr: PullRequest,
+  state: "open" | "merged",
+): PullRequestRowView {
+  const merged = state === "merged";
+  const failing = pr.checks?.failing ?? 0;
+  const passed = pr.checks?.passed ?? 0;
+  const total = pr.checks?.total ?? 0;
+  const checksOk = total > 0 && failing === 0 && passed === total;
+  const checksLabel =
+    total === 0
+      ? null
+      : checksOk
+        ? "checks"
+        : failing > 0
+          ? `${failing} failing`
+          : "checks pending";
+  const iconTone: PullRequestRowView["iconTone"] = merged
+    ? "muted"
+    : pr.is_draft
+      ? "faint"
+      : "accent";
+  const checksTone: PullRequestRowView["checksTone"] =
+    total === 0 ? null : checksOk ? "active" : failing > 0 ? "broken" : "faint";
+  return {
+    pr,
+    icon: merged ? "merged" : "pull-request",
+    iconTone,
+    iconToneClass: pullRequestIconToneClass(iconTone),
+    numberLabel: `#${pr.number}`,
+    titleLabel: pr.title,
+    stateLabel: merged ? "merged" : pr.is_draft ? "draft" : "open",
+    stateTone: merged || pr.is_draft ? "neutral" : "accent",
+    authorLabel: pr.author || null,
+    checksLabel,
+    checksTone,
+    checksToneClass:
+      checksTone === null ? null : pullRequestChecksToneClass(checksTone),
+    mergedLabel: merged && pr.merged_at ? "merged" : null,
+  };
+}
+
+export function deriveIssueRowView(issue: Issue): IssueRowView {
+  return {
+    issue,
+    numberLabel: `#${issue.number}`,
+    titleLabel: issue.title,
+    authorLabel: issue.author || null,
+    labels: issue.labels.slice(0, 3),
+  };
 }
 
 export function derivePRsView(
   data: PRsResponse | undefined,
   error: unknown,
   loading: boolean,
+  state: "open" | "merged" = "open",
 ): PRsView {
-  const errored = error != null;
-  const available = !loading && !errored && data?.available === true;
-  return {
+  const { items: prs, ...availability } = deriveGitHubWorkItemAvailability(
+    data,
+    data?.prs,
+    error,
     loading,
-    errored,
-    available,
-    reason: data?.reason ?? null,
-    prs: available ? (data?.prs ?? []) : [],
+  );
+  return {
+    ...availability,
+    prs,
+    rows: prs.map((pr) => derivePullRequestRowView(pr, state)),
+    loadingLabel: pullRequestLoadingLabel(state),
+    emptyLabel: pullRequestEmptyLabel(state),
+    unavailableLabel: pullRequestUnavailableLabel(data?.reason ?? null),
+    loadingClassName: STATUS_BODY_LOADING_CLASS,
+    unavailableClassName: STATUS_BODY_UNAVAILABLE_CLASS,
+    emptyClassName: STATUS_BODY_EMPTY_CLASS,
+    listClassName: STATUS_BODY_LIST_CLASS,
   };
 }
 
@@ -2861,33 +4253,46 @@ export function deriveIssuesView(
   error: unknown,
   loading: boolean,
 ): IssuesView {
-  const errored = error != null;
-  const available = !loading && !errored && data?.available === true;
-  return {
+  const { items: issues, ...availability } = deriveGitHubWorkItemAvailability(
+    data,
+    data?.issues,
+    error,
     loading,
-    errored,
-    available,
-    reason: data?.reason ?? null,
-    issues: available ? (data?.issues ?? []) : [],
+  );
+  return {
+    ...availability,
+    issues,
+    rows: issues.map(deriveIssueRowView),
+    loadingLabel: "reading open issues...",
+    emptyLabel: "no open issues",
+    unavailableLabel: issueUnavailableLabel(data?.reason ?? null),
+    loadingClassName: STATUS_BODY_LOADING_CLASS,
+    unavailableClassName: STATUS_BODY_UNAVAILABLE_CLASS,
+    emptyClassName: STATUS_BODY_EMPTY_CLASS,
+    listClassName: STATUS_BODY_LIST_CLASS,
   };
 }
 
 function useNodePrs(scope: string | null, state: "open" | "merged") {
-  return useQuery({
+  const enabled = scope !== null;
+  const query = useQuery({
     queryKey: engineKeys.prs(scope ?? "", state),
     queryFn: () => engineClient.prs({ scope: scope!, state }),
-    enabled: scope !== null,
+    enabled,
     gcTime: HISTORY_GC_TIME,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 function useNodeIssues(scope: string | null, state: "open" | "closed") {
-  return useQuery({
+  const enabled = scope !== null;
+  const query = useQuery({
     queryKey: engineKeys.issues(scope ?? "", state),
     queryFn: () => engineClient.issues({ scope: scope!, state }),
-    enabled: scope !== null,
+    enabled,
     gcTime: HISTORY_GC_TIME,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /** Interpreted pull-request view for the rail's OPEN PRS / RECENT PRS sections.
@@ -2898,7 +4303,7 @@ export function usePRsView(
 ): PRsView {
   const query = useNodePrs(scope, state);
   const loading = scope !== null && query.isPending;
-  return derivePRsView(query.data, query.error ?? null, loading);
+  return derivePRsView(query.data, query.error ?? null, loading, state);
 }
 
 /** Interpreted issue view for the rail's OPEN ISSUES section. */
@@ -2909,6 +4314,57 @@ export function useIssuesView(
   const query = useNodeIssues(scope, state);
   const loading = scope !== null && query.isPending;
   return deriveIssuesView(query.data, query.error ?? null, loading);
+}
+
+export type StatusTabSectionId =
+  | "open-plans"
+  | "open-prs"
+  | "open-issues"
+  | "recent-prs"
+  | "recent-commits";
+
+export interface StatusSectionCardView {
+  id: StatusTabSectionId;
+  title: string;
+  count?: number;
+}
+
+export interface StatusTabSectionsView {
+  openPlans: StatusSectionCardView;
+  openPrs: StatusSectionCardView;
+  openIssues: StatusSectionCardView;
+  recentPrs: StatusSectionCardView;
+  recentCommits: StatusSectionCardView;
+}
+
+function positiveStatusCount(count: number): number | undefined {
+  return count > 0 ? count : undefined;
+}
+
+export function deriveStatusTabSectionsView(counts: {
+  openPlans: number;
+  openPrs: number;
+  openIssues: number;
+}): StatusTabSectionsView {
+  return {
+    openPlans: {
+      id: "open-plans",
+      title: "Open plans",
+      count: positiveStatusCount(counts.openPlans),
+    },
+    openPrs: {
+      id: "open-prs",
+      title: "Open PRs",
+      count: positiveStatusCount(counts.openPrs),
+    },
+    openIssues: {
+      id: "open-issues",
+      title: "Open issues",
+      count: positiveStatusCount(counts.openIssues),
+    },
+    recentPrs: { id: "recent-prs", title: "Recent PRs" },
+    recentCommits: { id: "recent-commits", title: "Recent commits" },
+  };
 }
 
 /**
@@ -2935,24 +4391,31 @@ export function useNodeNeighborsBulk(
   // the set exceeds the cap, since those are the user's latest expansions.
   const bounded =
     ids.length > MAX_BULK_NEIGHBOR_IDS ? ids.slice(-MAX_BULK_NEIGHBOR_IDS) : ids;
-  return useQueries({
-    queries: bounded.map((id) => ({
+  const queries = bounded.map((id) => {
+    const enabled = scope !== null && isAddressableNode(id);
+    return {
       queryKey: engineKeys.neighbors(scope ?? "", id, depth),
       queryFn: () => engineClient.nodeNeighbors(id, { scope: scope!, depth }),
       // Skip synthesized feature aggregates — the engine has no ego network for a
       // `feature:<tag>` id (it 404s); expanding one is a no-op, not a degraded
       // request. Real nodes (doc:, …) expand as before.
-      enabled: scope !== null && isAddressableNode(id),
-    })),
+      enabled,
+    };
   });
+  const results = useQueries({ queries });
+  return results.map((result, index) =>
+    queries[index]?.enabled ? result : { ...result, data: undefined },
+  );
 }
 
 export function useNodeEvidence(id: string | null, scope: string | null) {
-  return useQuery({
+  const enabled = scope !== null && isAddressableNode(id);
+  const query = useQuery({
     queryKey: engineKeys.evidence(scope ?? "", id ?? ""),
     queryFn: () => engineClient.nodeEvidence(id!, scope!),
-    enabled: scope !== null && isAddressableNode(id),
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 // --- node-scoped semantic discover (canvas-controls ADR) ---------------------
@@ -3002,18 +4465,16 @@ export function deriveDiscoverView(
   enabled: boolean,
 ): DiscoverView {
   if (!enabled) return { loading: false, offline: false, candidates: [] };
-  const errTiers = error instanceof EngineError ? error.tiers : undefined;
-  const tiers = data?.tiers ?? errTiers;
+  const tiers = tiersFromQuery({ data, error });
   const tierDegraded =
-    tiers !== undefined &&
-    (tiers[DISCOVER_TIER] === undefined || tiers[DISCOVER_TIER]?.available === false);
+    tiers !== undefined && readTierAvailability(tiers, [DISCOVER_TIER]).degraded;
   // Any error on the discover route is rag-down (the route fails only then), so
   // a tiers-less transport fault is still the designed offline state.
   const offline = error !== null || tierDegraded;
   return {
     loading,
     offline,
-    candidates: data?.candidates ?? [],
+    candidates: offline ? [] : (data?.candidates ?? []),
   };
 }
 
@@ -3044,11 +4505,13 @@ export function useEngineEvents(
   range: { from?: string; to?: string } = {},
   bucket?: string,
 ) {
-  return useQuery({
+  const enabled = scope !== null;
+  const query = useQuery({
     queryKey: engineKeys.events(scope ?? "", range, bucket),
     queryFn: () => engineClient.events({ scope: scope!, ...range, bucket }),
-    enabled: scope !== null,
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /**
@@ -3068,6 +4531,7 @@ export function useTimelineLineage(
   filter?: string,
   asOf?: string | number,
 ) {
+  const enabled = scope !== null;
   const query = useQuery({
     queryKey: engineKeys.lineage(scope ?? "", range, filter, asOf),
     queryFn: () =>
@@ -3081,7 +4545,7 @@ export function useTimelineLineage(
         // (LIVE) = live graph. A distinct `asOf` is its own cache entry (above).
         t: asOf == null ? undefined : String(asOf),
       }),
-    enabled: scope !== null,
+    enabled,
     // Flicker-free refresh on a BESPOKE backend signal: the timeline holds its
     // dataset in memory and windows it client-side, so this query refetches ONLY
     // when its identity changes — a graph generation bump (the SSE delta clock
@@ -3091,7 +4555,7 @@ export function useTimelineLineage(
     // the range-keyed fetch used to cause). Continuous, never destroyed.
     placeholderData: keepPreviousData,
   });
-  return withManualRetry(query);
+  return withManualRetry(enabled ? query : { ...query, data: undefined });
 }
 
 export interface TimelineLineageView {
@@ -3100,6 +4564,25 @@ export interface TimelineLineageView {
   nodes: LineageNode[];
   arcs: LineageArc[];
   retry: () => void;
+}
+
+export interface TimelineSurfaceChromeView {
+  showLoading: boolean;
+  loadingLabel: string;
+  loadingClassName: string;
+  loadingDotClassName: string;
+  showEmpty: boolean;
+  emptyLabel: string;
+  emptyClassName: string;
+  showDegraded: boolean;
+  degradedLabel: string;
+  degradedClassName: string;
+  degradedDotClassName: string;
+  showError: boolean;
+  errorLabel: string;
+  errorClassName: string;
+  retryLabel: string;
+  retryButtonClassName: string;
 }
 
 export function deriveTimelineLineageView(
@@ -3115,6 +4598,56 @@ export function deriveTimelineLineageView(
     nodes: slice?.nodes ?? [],
     arcs: slice?.arcs ?? [],
     retry,
+  };
+}
+
+export function deriveTimelineSurfaceChromeView({
+  scopePresent,
+  loading,
+  errored,
+  autoFitPending,
+  hasMarks,
+  surface,
+}: {
+  scopePresent: boolean;
+  loading: boolean;
+  errored: boolean;
+  autoFitPending: boolean;
+  hasMarks: boolean;
+  surface: string;
+}): TimelineSurfaceChromeView {
+  const showEmpty =
+    scopePresent &&
+    !loading &&
+    !errored &&
+    !autoFitPending &&
+    !hasMarks &&
+    (surface === "empty" || surface === "normal" || surface === "lifecycle-sparse");
+  return {
+    showLoading: loading || autoFitPending,
+    loadingLabel: "reading the timeline…",
+    loadingClassName:
+      "pointer-events-none absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-1 text-caption text-ink-faint",
+    loadingDotClassName: "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-live",
+    showEmpty,
+    emptyLabel:
+      surface === "lifecycle-sparse"
+        ? "lineage appears as documents gain dates"
+        : "no lineage in this range yet",
+    emptyClassName:
+      "pointer-events-none absolute inset-0 flex items-center justify-center text-caption text-ink-faint",
+    showDegraded: surface === "reconnecting" && !errored,
+    degradedLabel: "reconnecting — showing the last lineage",
+    degradedClassName:
+      "pointer-events-none absolute top-fg-1 right-fg-2 flex items-center gap-fg-1 rounded-fg-pill bg-paper-raised/95 px-fg-1-5 py-fg-0-5 text-caption text-state-stale shadow-fg-raised",
+    degradedDotClassName: "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-stale",
+    showError: errored,
+    errorLabel: "couldn’t load the timeline",
+    errorClassName:
+      "absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-2 text-caption text-ink-muted",
+    retryLabel: "retry",
+    retryButtonClassName:
+      "rounded-fg-xs bg-paper-sunken px-fg-1-5 py-fg-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
   };
 }
 
@@ -3156,11 +4689,13 @@ export function useGraphDiff(
   to: string | number,
   filter?: string,
 ) {
-  return useQuery({
+  const enabled = scope !== null && String(from) !== String(to);
+  const query = useQuery({
     queryKey: engineKeys.diff(scope ?? "", from, to, filter),
     queryFn: () => engineClient.graphDiff({ scope: scope!, from, to, filter }),
-    enabled: scope !== null && String(from) !== String(to),
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 export function useEngineSearch(
@@ -3168,7 +4703,8 @@ export function useEngineSearch(
   query: string,
   target: "vault" | "code" = "vault",
 ) {
-  return useQuery({
+  const enabled = scope !== null && query.length > 0;
+  const result = useQuery({
     queryKey: engineKeys.search(scope ?? "", query, target),
     queryFn: async ({ signal }) => {
       const controller = new AbortController();
@@ -3188,7 +4724,7 @@ export function useEngineSearch(
         signal.removeEventListener("abort", abort);
       }
     },
-    enabled: scope !== null && query.length > 0,
+    enabled,
     // Search is user-driven and has an explicit retry affordance. Do not let the
     // shared transient retry policy prolong a bounded search timeout into a
     // second spinner cycle.
@@ -3200,6 +4736,7 @@ export function useEngineSearch(
     // instead of holding every term for the global 120s default.
     gcTime: 30_000,
   });
+  return enabled ? result : { ...result, data: undefined };
 }
 
 const SEARCH_QUERY_TIMEOUT_MS = 5_000;
@@ -3255,16 +4792,26 @@ export function useSettingsSchema() {
 }
 
 export interface SettingsDialogView {
+  loading: boolean;
   schemaLoading: boolean;
+  settingsLoading: boolean;
   groups: SettingsGroup[];
+  title: string;
+  description: string;
+  loadingMessage: string;
+  emptyMessage: string;
+  cancelLabel: string;
+  doneLabel: string;
 }
 
 export interface ThemeSettingView {
+  loading: boolean;
   serverTheme: string | undefined;
   themeMembers: readonly string[];
 }
 
 export interface SettingsEffectsView {
+  loading: boolean;
   reduceMotion: boolean;
   graphDefaults: GraphSettingsDefaults | null;
 }
@@ -3274,24 +4821,38 @@ export function deriveSettingsDialogView(
   settings: SettingsState | undefined,
   activeScope: string | null,
   schemaLoading: boolean,
+  settingsLoading = false,
 ): SettingsDialogView {
+  const loading = schemaLoading || settingsLoading;
   return {
+    loading,
     schemaLoading,
-    groups: resolveSettings(schema, settings, activeScope),
+    settingsLoading,
+    groups: loading ? [] : resolveSettings(schema, settings, activeScope),
+    title: "Settings",
+    description: "Preferences are saved to this workspace. Some apply per scope.",
+    loadingMessage: "Loading settings…",
+    emptyMessage: "No settings are available.",
+    cancelLabel: "Cancel",
+    doneLabel: "Done",
   };
 }
 
 export function deriveThemeSettingView(
   schema: SettingsSchema | undefined,
   settings: SettingsState | undefined,
+  schemaLoading = false,
+  settingsLoading = false,
 ): ThemeSettingView {
+  const loading = schemaLoading || settingsLoading;
   const themeSetting = resolveEffectiveSetting(
-    schema,
-    settings,
+    loading ? undefined : schema,
+    loading ? undefined : settings,
     null,
     CONSUMED_SETTING_KEYS.theme,
   );
   return {
+    loading,
     serverTheme: themeSetting?.value,
     themeMembers: settingEnumMembers(themeSetting?.def),
   };
@@ -3301,10 +4862,16 @@ export function deriveSettingsEffectsView(
   schema: SettingsSchema | undefined,
   settings: SettingsState | undefined,
   activeScope: string | null,
+  schemaLoading = false,
+  settingsLoading = false,
 ): SettingsEffectsView {
+  const loading = schemaLoading || settingsLoading;
   return {
-    reduceMotion: resolveReduceMotionSetting(schema, settings),
-    graphDefaults: resolveGraphSettingsDefaults(schema, settings, activeScope),
+    loading,
+    reduceMotion: loading ? false : resolveReduceMotionSetting(schema, settings),
+    graphDefaults: loading
+      ? null
+      : resolveGraphSettingsDefaults(schema, settings, activeScope),
   };
 }
 
@@ -3320,7 +4887,8 @@ export function useSettingsDialogView(activeScope: string | null): SettingsDialo
     schema.data,
     settings.data,
     activeScope,
-    schema.isLoading,
+    schema.isPending,
+    settings.isPending,
   );
 }
 
@@ -3331,7 +4899,12 @@ export function useSettingsDialogView(activeScope: string | null): SettingsDialo
 export function useThemeSettingView(): ThemeSettingView {
   const schema = useSettingsSchema();
   const settings = useSettings();
-  return deriveThemeSettingView(schema.data, settings.data);
+  return deriveThemeSettingView(
+    schema.data,
+    settings.data,
+    schema.isPending,
+    settings.isPending,
+  );
 }
 
 /**
@@ -3344,7 +4917,13 @@ export function useSettingsEffectsView(
 ): SettingsEffectsView {
   const schema = useSettingsSchema();
   const settings = useSettings();
-  return deriveSettingsEffectsView(schema.data, settings.data, activeScope);
+  return deriveSettingsEffectsView(
+    schema.data,
+    settings.data,
+    activeScope,
+    schema.isPending,
+    settings.isPending,
+  );
 }
 
 /**
@@ -3498,14 +5077,17 @@ export function invalidateAfterVaultMutation(
 
   void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
   void queryClient.invalidateQueries({ queryKey: engineKeys.map() });
-  invalidateQueryPrefix(queryClient, [...engineKeys.all, "search"]);
 
-  if (scope !== null) {
-    invalidateGraphGenerationSubtrees(queryClient, scope);
-    void queryClient.invalidateQueries({ queryKey: engineKeys.gitChanges(scope) });
-    invalidateQueryPrefix(queryClient, [...engineKeys.all, "file-tree", scope]);
-    invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-diff", scope]);
+  if (scope === null) {
+    invalidateQueryPrefix(queryClient, [...engineKeys.all, "search"]);
+    return;
   }
+
+  invalidateGraphGenerationSubtrees(queryClient, scope);
+  void queryClient.invalidateQueries({ queryKey: engineKeys.gitChanges(scope) });
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "file-tree", scope]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-diff", scope]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "git-histdiff", scope]);
 }
 
 /**
@@ -3524,10 +5106,10 @@ export function invalidateGraphGenerationReads(
 
 /**
  * Backend `git` signal recovery invalidation. `/status` carries the dirty/ahead
- * rollup, while `/ops/git/status|numstat|diff` and `/history` are separate scoped
- * projections. A git stream frame means the rollup, per-scope git reads, and
- * commit history may be stale, so refresh them from the same stores-owned
- * recovery seam.
+ * rollup, while `/ops/git/status|numstat|diff|histdiff` and `/history` are
+ * separate scoped projections. A git stream frame means the rollup, per-scope git
+ * reads, and commit history may be stale, so refresh them from the same
+ * stores-owned recovery seam.
  */
 export function invalidateGitRecoveryReads(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
@@ -3652,6 +5234,101 @@ export function useCreateDoc() {
     onSuccess: ({ result }, args) => {
       if (result.kind === "created") {
         invalidateAfterVaultMutation(queryClient, args.scope);
+      }
+    },
+  });
+}
+
+/** Args for {@link useRenameDoc}: the open document's node id, the new stem, and
+ *  the optimistic-concurrency base. */
+export interface RenameDocArgs {
+  scope?: string;
+  /** The current node id (`doc:<old-stem>`) being renamed. */
+  nodeId: string;
+  /** The new identity-bearing stem (filename without `.md`). */
+  to: string;
+  /** The pre-rename blob hash for optimistic concurrency. */
+  expectedBlobHash?: string;
+}
+
+/** The typed outcome of a rename, branched on the rename envelope (NEVER the HTTP
+ *  code): `renamed` carries the re-keyed `newNodeId` the caller retargets the open
+ *  editor/tab to; the failure kinds drive the editor's reconcile/advisory UI
+ *  without parsing prose. */
+export type RenameDocResult =
+  | {
+      kind: "renamed";
+      oldNodeId: string;
+      newNodeId: string;
+      newBlobHash: string;
+      incomingRewritten: number;
+    }
+  | { kind: "conflict"; expected: string; actual: string }
+  | { kind: "collision"; message: string }
+  | { kind: "refused"; message: string; checks: unknown[] };
+
+/**
+ * Rename a document's file (`rename`) through the ONE ops-dispatch seam — the new
+ * stem becomes the document's identity. On a `renamed` outcome the caller re-keys
+ * the open editor/tab from `oldNodeId` to `newNodeId` (the engine has already
+ * re-pointed incoming `related:` links, and the watcher re-ingests). A
+ * `conflict`/`collision`/`refused` is a typed result the caller drives editor
+ * state from — NOT a thrown error; only a transport fault rejects. The same
+ * vault-mutation read surfaces are invalidated as a save (a rename changes tree
+ * rows, the content key, graph nodes, and git entries).
+ */
+export function useRenameDoc() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      args: RenameDocArgs,
+    ): Promise<{ result: RenameDocResult; tiers: TiersBlock }> => {
+      const ops: OpsResult = await dispatchOps({
+        target: "core",
+        verb: "rename",
+        mode: "write",
+        body: {
+          scope: args.scope ?? undefined,
+          ref: stemFromNodeId(args.nodeId),
+          to: args.to,
+          expected_blob_hash: args.expectedBlobHash,
+        },
+      });
+      const { status, data } = envelopeData(ops.envelope);
+      let result: RenameDocResult;
+      if (status === "updated") {
+        result = {
+          kind: "renamed",
+          oldNodeId: args.nodeId,
+          newNodeId: docNodeIdFromStem(args.to),
+          newBlobHash: typeof data.new_blob_hash === "string" ? data.new_blob_hash : "",
+          incomingRewritten:
+            typeof data.incoming_rewritten === "number" ? data.incoming_rewritten : 0,
+        };
+      } else if (data.conflict === true) {
+        result = {
+          kind: "conflict",
+          expected: typeof data.expected === "string" ? data.expected : "",
+          actual: typeof data.actual === "string" ? data.actual : "",
+        };
+      } else if (data.collision === true) {
+        result = {
+          kind: "collision",
+          message:
+            typeof data.message === "string" ? data.message : "Target already exists",
+        };
+      } else {
+        result = {
+          kind: "refused",
+          message: typeof data.message === "string" ? data.message : "Rename refused",
+          checks: Array.isArray(data.checks) ? data.checks : [],
+        };
+      }
+      return { result, tiers: ops.tiers };
+    },
+    onSuccess: ({ result }, args) => {
+      if (result.kind === "renamed") {
+        invalidateAfterVaultMutation(queryClient, args.scope ?? null);
       }
     },
   });
@@ -3955,10 +5632,19 @@ export function useCoreStatus(): CoreStatusView {
 export interface LocationAnchorView {
   /** The absolute worktree path being browsed (canonical token, forward slashes). */
   path: string | null;
+  /** Empty-state copy for consumers when no active scope is resolved. */
+  emptyLabel: string | null;
+  /** Render class for the empty location state. */
+  emptyClassName: string;
   /** The current git branch (preferring the `/map` worktree, then the git rollup). */
   branch: string | null;
   /** True when the active scope is the repository's main/default worktree. */
   isMain: boolean;
+  /** Worktree label shown for the repository default worktree. */
+  mainLabel: string | null;
+  mainClassName: string;
+  branchClassName: string;
+  pathClassName: string;
   /** Working-tree dirty truth from the git rollup (false when unknown/clean). */
   dirty: boolean;
   /** Commits ahead of upstream; undefined = no upstream configured (not zero). */
@@ -3996,8 +5682,14 @@ export function deriveLocationAnchor(
   }
   return {
     path: scope,
+    emptyLabel: scope ? null : "no scope — pick a worktree first",
+    emptyClassName: "px-fg-1 text-label text-ink-faint",
     branch,
     isMain,
+    mainLabel: isMain ? "main" : null,
+    mainClassName: "shrink-0 font-medium text-ink",
+    branchClassName: "min-w-0 truncate font-medium text-accent-text",
+    pathClassName: "truncate font-mono text-meta text-ink-faint",
     dirty: git.dirty,
     ahead: git.git?.ahead,
     behind: git.git?.behind,
@@ -4084,9 +5776,9 @@ export function deriveRagStatusView(
   pending: boolean,
 ): RagStatusView {
   const tiers = tiersFromQuery({ data, error });
-  const tier = tiers?.[RAG_TIER];
-  const degraded = tier !== undefined && tier.available === false;
-  const reason = degraded ? tier?.reason : undefined;
+  const availability = readTierAvailability(tiers, [RAG_TIER]);
+  const degraded = tiers !== undefined && availability.degraded;
+  const reason = availability.reasons[RAG_TIER];
 
   if (data?.rag) {
     const rag = data.rag;
@@ -4286,11 +5978,13 @@ export const ADR_STATUS_SERVED = true;
  * parameter — the surface still degrades honestly via the served tiers block.
  */
 export function usePipelineStatus(scope: string | null, asOf?: string | number) {
-  return useQuery({
+  const enabled = scope !== null;
+  const query = useQuery({
     queryKey: engineKeys.pipeline(scope ?? "", asOf),
     queryFn: () => engineClient.pipeline(scope!),
-    enabled: scope !== null,
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /**
@@ -4299,11 +5993,13 @@ export function usePipelineStatus(scope: string | null, asOf?: string | number) 
  * enabled-on-id pattern so the interior is fetched lazily, never for every row.
  */
 export function usePlanInterior(planId: string | null, scope: string | null) {
-  return useQuery({
+  const enabled = scope !== null && planId !== null;
+  const query = useQuery({
     queryKey: engineKeys.planInterior(scope ?? "", planId ?? ""),
     queryFn: () => engineClient.planInterior(planId!, scope!),
-    enabled: scope !== null && planId !== null,
+    enabled,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 /**
@@ -4316,12 +6012,26 @@ export function usePlanInterior(planId: string | null, scope: string | null) {
 export interface PipelineStatusView extends TierAvailability {
   /** The pipeline query is in flight with no held data. */
   loading: boolean;
+  /** Work tab's rendered state token for the root data attribute. */
+  workSurfaceState: "degraded" | "loading" | "empty" | "list";
+  /** Whether Work tab should render the designed degraded status state. */
+  showWorkDegraded: boolean;
+  /** Whether Work tab should render the loading status state. */
+  showWorkLoading: boolean;
+  /** Whether Work tab should render the designed empty status state. */
+  showWorkEmpty: boolean;
+  /** Whether Work tab should render the in-flight list. */
+  showWorkList: boolean;
   /** The in-flight artifacts (active plans + in-flight ADRs); empty while degraded. */
   artifacts: PipelineArtifact[];
   /** Plan artifacts, split once in the stores layer for right-rail work surfaces. */
   plans: PipelineArtifact[];
+  /** Plan rows with Status-tab presentation labels pre-derived from the artifact. */
+  planRows: PipelinePlanRowView[];
   /** ADR artifacts, split once in the stores layer for right-rail work surfaces. */
   adrs: PipelineArtifact[];
+  /** ADR rows with Work-tab presentation labels pre-derived from the artifact. */
+  adrRows: PipelineAdrRowView[];
   /** Plan node ids for expansion-store enrollment. */
   planIds: string[];
   /** Occupied pipeline phases for the compact pipeline arc. */
@@ -4330,11 +6040,152 @@ export interface PipelineStatusView extends TierAvailability {
   count: number;
   /** Polite live-region text for the pipeline surface state. */
   liveMessage: string;
+  /** Full Work tab status heading for degraded/loading/empty states. */
+  workStatusTitle: string;
+  /** Full Work tab status detail for degraded/empty states. */
+  workStatusDetail: string;
+  /** Compact Status tab open-plans status label for degraded/loading/empty states. */
+  openPlansStatusLabel: string;
+  /** Work tab section accessible label. */
+  workSurfaceAriaLabel: string;
+  /** Work tab status-state section class. */
+  workStatusSectionClassName: string;
+  /** Work tab list-state section class. */
+  workListSectionClassName: string;
+  /** Work tab live-region class. */
+  workLiveRegionClassName: string;
+  /** Work tab status-state icon wrapper class. */
+  workStatusIconClassName: string;
+  /** Work tab status title class. */
+  workStatusTitleClassName: string;
+  /** Work tab status detail class. */
+  workStatusDetailClassName: string;
+  /** Work tab in-flight list accessible label. */
+  workListAriaLabel: string;
+  /** Work tab in-flight list class. */
+  workListClassName: string;
+  /** Work tab's single roving Tab stop when a plan row is first. */
+  workTabbablePlanId: string | null;
+  /** Work tab's single roving Tab stop when no plan row is present. */
+  workTabbableAdrId: string | null;
+}
+
+export interface PipelinePlanRowView {
+  artifact: PipelineArtifact;
+  nodeId: string;
+  titleLabel: string;
+  modifiedAt: string | undefined;
+  phaseLabel: string;
+  tierLabel: string | null;
+  tierAriaLabel: string | null;
+  openAriaLabel: string;
+  selectAriaLabel: string;
+  showProgress: boolean;
+  progressDone: number;
+  progressTotal: number;
+  progressTextLabel: string;
+  progressLabel: string;
+  progressPercentLabel: string | null;
+  toggleLabel: (expanded: boolean) => string;
+}
+
+export interface PipelineAdrRowView {
+  artifact: PipelineArtifact;
+  nodeId: string;
+  titleLabel: string;
+  modifiedAt: string | undefined;
+  selectAriaLabel: string;
+  statusLabel: string | null;
+  featureLabel: string | null;
+  showStatusPlaceholder: boolean;
+  statusPlaceholderLabel: string;
+  rowClassName: string;
+  iconClassName: string;
+  bodyClassName: string;
+  headingClassName: string;
+  titleClassName: string;
+  statusPlaceholderClassName: string;
+  metaClassName: string;
 }
 
 // The pipeline projection is resolved by the engine's STRUCTURAL read of the vault
 // corpus, so the `structural` tier gates availability (contract §2).
 const PIPELINE_STATUS_TIERS = ["structural"] as const;
+const WORK_STATUS_SECTION_CLASS =
+  "flex flex-col items-center gap-fg-2 px-fg-2 py-fg-6 text-center text-label text-ink-muted";
+const WORK_LOADING_SECTION_CLASS =
+  "flex flex-col items-center gap-fg-2 px-fg-2 py-fg-6 text-center text-label text-ink-faint";
+const WORK_LIST_SECTION_CLASS = "space-y-fg-2 text-body";
+const WORK_LIVE_REGION_CLASS = "sr-only";
+const WORK_STATUS_ICON_CLASS = "text-ink-faint";
+const WORK_STATUS_TITLE_CLASS = "font-medium text-ink";
+const WORK_LOADING_TITLE_CLASS = "animate-pulse-live";
+const WORK_STATUS_DETAIL_CLASS = "text-ink-faint";
+const WORK_LIST_CLASS = "space-y-fg-1";
+const WORK_ADR_ROW_CLASS =
+  "flex w-full items-center gap-fg-1-5 rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const WORK_ADR_ICON_CLASS = "shrink-0 text-ink-faint";
+const WORK_ADR_BODY_CLASS = "min-w-0 flex-1";
+const WORK_ADR_HEADING_CLASS = "flex items-center gap-fg-1-5";
+const WORK_ADR_TITLE_CLASS = "min-w-0 truncate text-body text-ink";
+const WORK_ADR_STATUS_PLACEHOLDER_CLASS =
+  "shrink-0 rounded-fg-pill border border-rule px-fg-1-5 py-px text-caption text-ink-faint";
+const WORK_ADR_META_CLASS =
+  "mt-px flex items-center gap-fg-1-5 text-caption text-ink-faint";
+
+function pipelineArtifactTitleLabel(artifact: PipelineArtifact): string {
+  return (artifact.title ?? artifact.stem).replace(/`/g, "");
+}
+
+function pipelinePlanRowView(artifact: PipelineArtifact): PipelinePlanRowView {
+  const titleLabel = pipelineArtifactTitleLabel(artifact);
+  const done = artifact.progress?.done ?? 0;
+  const total = artifact.progress?.total ?? 0;
+  const tierLabel = artifact.tier ?? null;
+  const progressPercent = total > 0 ? Math.round((done / total) * 100) : null;
+  return {
+    artifact,
+    nodeId: artifact.node_id,
+    titleLabel,
+    modifiedAt: artifact.dates?.modified,
+    phaseLabel: artifact.phase,
+    tierLabel,
+    tierAriaLabel: tierLabel === null ? null : `tier ${tierLabel}`,
+    openAriaLabel: `open plan ${titleLabel} in the reader`,
+    selectAriaLabel: `select plan ${titleLabel} on the stage`,
+    showProgress: total > 0,
+    progressDone: done,
+    progressTotal: total,
+    progressTextLabel: `${done}/${total}`,
+    progressLabel: `${titleLabel} completion`,
+    progressPercentLabel: progressPercent === null ? null : `${progressPercent}%`,
+    toggleLabel: (expanded) =>
+      `${expanded ? "collapse" : "expand"} steps for ${titleLabel}`,
+  };
+}
+
+function pipelineAdrRowView(artifact: PipelineArtifact): PipelineAdrRowView {
+  const titleLabel = pipelineArtifactTitleLabel(artifact);
+  const statusLabel = artifact.status ?? null;
+  return {
+    artifact,
+    nodeId: artifact.node_id,
+    titleLabel,
+    modifiedAt: artifact.dates?.modified,
+    selectAriaLabel: `ADR ${titleLabel}${statusLabel ? `, status ${statusLabel}` : ""}`,
+    statusLabel,
+    featureLabel: artifact.feature_tags?.[0] ?? null,
+    showStatusPlaceholder: statusLabel === null && !ADR_STATUS_SERVED,
+    statusPlaceholderLabel: "status pending",
+    rowClassName: WORK_ADR_ROW_CLASS,
+    iconClassName: WORK_ADR_ICON_CLASS,
+    bodyClassName: WORK_ADR_BODY_CLASS,
+    headingClassName: WORK_ADR_HEADING_CLASS,
+    titleClassName: WORK_ADR_TITLE_CLASS,
+    statusPlaceholderClassName: WORK_ADR_STATUS_PLACEHOLDER_CLASS,
+    metaClassName: WORK_ADR_META_CLASS,
+  };
+}
 
 /**
  * Derive the pipeline-status view from a pipeline query's data + error + pending flags,
@@ -4355,28 +6206,94 @@ export function derivePipelineStatusView(
   const availability = readTierAvailability(tiers, PIPELINE_STATUS_TIERS);
   const trustedArtifacts = availability.degraded ? [] : artifacts;
   const plans = trustedArtifacts.filter((artifact) => artifact.doc_type === "plan");
+  const planRows = plans.map(pipelinePlanRowView);
   const adrs = trustedArtifacts.filter((artifact) => artifact.doc_type === "adr");
+  const adrRows = adrs.map(pipelineAdrRowView);
+  const workTabbablePlanId = planRows[0]?.nodeId ?? null;
+  const workTabbableAdrId =
+    workTabbablePlanId === null ? (adrRows[0]?.nodeId ?? null) : null;
   const count = trustedArtifacts.length;
+  const showWorkDegraded = availability.degraded;
+  const showWorkLoading = !showWorkDegraded && loading;
+  const showWorkEmpty = !showWorkDegraded && !showWorkLoading && count === 0;
+  const showWorkList = !showWorkDegraded && !showWorkLoading && count > 0;
+  const workSurfaceState = showWorkDegraded
+    ? "degraded"
+    : showWorkLoading
+      ? "loading"
+      : showWorkEmpty
+        ? "empty"
+        : "list";
+  const degradedReason = availability.reasons[WORK_PILLAR_TIER];
+  const liveMessage = availability.degraded
+    ? "pipeline status unavailable"
+    : loading
+      ? "loading in-flight work"
+      : count === 0
+        ? "no in-flight work"
+        : `${count} in-flight item${count === 1 ? "" : "s"}`;
+  const workStatusTitle = availability.degraded
+    ? "pipeline status unavailable"
+    : loading
+      ? "reading in-flight work…"
+      : count === 0
+        ? "no work in flight on this branch"
+        : liveMessage;
+  const workStatusDetail = availability.degraded
+    ? degradedReason
+      ? `the pipeline read is degraded — ${degradedReason}`
+      : "the pipeline read is degraded; in-flight work will appear here once it recovers"
+    : loading
+      ? ""
+      : count === 0
+        ? "no in-flight pipeline work in the current scope; active ADRs and plans will appear here as they advance."
+        : "";
+  const openPlansStatusLabel = availability.degraded
+    ? "pipeline status unavailable"
+    : loading
+      ? "reading in-flight work…"
+      : plans.length === 0
+        ? "no plans in flight on this branch"
+        : `${plans.length} plan${plans.length === 1 ? "" : "s"} in flight`;
   return {
     loading,
+    workSurfaceState,
+    showWorkDegraded,
+    showWorkLoading,
+    showWorkEmpty,
+    showWorkList,
     ...availability,
     // While degraded the projection cannot be trusted, so do not render a stale list as
     // current in-flight work; the surface shows the degraded notice instead.
     artifacts: trustedArtifacts,
     plans,
+    planRows,
     adrs,
+    adrRows,
     planIds: plans.map((plan) => plan.node_id),
     occupiedPhases: new Set(
       trustedArtifacts.map((artifact) => artifact.phase as string),
     ),
     count,
-    liveMessage: availability.degraded
-      ? "pipeline status unavailable"
-      : loading
-        ? "loading in-flight work"
-        : count === 0
-          ? "no in-flight work"
-          : `${count} in-flight item${count === 1 ? "" : "s"}`,
+    liveMessage,
+    workStatusTitle,
+    workStatusDetail,
+    openPlansStatusLabel,
+    workSurfaceAriaLabel: "work pipeline status",
+    workStatusSectionClassName: showWorkLoading
+      ? WORK_LOADING_SECTION_CLASS
+      : WORK_STATUS_SECTION_CLASS,
+    workListSectionClassName: WORK_LIST_SECTION_CLASS,
+    workLiveRegionClassName: WORK_LIVE_REGION_CLASS,
+    workStatusIconClassName: WORK_STATUS_ICON_CLASS,
+    workStatusTitleClassName: showWorkLoading
+      ? WORK_LOADING_TITLE_CLASS
+      : WORK_STATUS_TITLE_CLASS,
+    workStatusDetailClassName: WORK_STATUS_DETAIL_CLASS,
+    workListAriaLabel: "in-flight pipeline work",
+    workListClassName: WORK_LIST_CLASS,
+    workTabbablePlanId,
+    workTabbableAdrId,
   };
 }
 
@@ -4410,7 +6327,13 @@ export interface InteriorRollup {
   total: number;
 }
 
-export type InteriorStepView = InteriorStep;
+export interface InteriorStepView extends InteriorStep {
+  targetNodeId: string | null;
+  selectable: boolean;
+  headingLabel: string;
+  rowAriaLabel: string;
+  rowClassName: string;
+}
 
 export interface InteriorPhaseView {
   node_id: string;
@@ -4431,21 +6354,48 @@ export interface InteriorWaveView {
 export interface PlanInteriorView {
   /** The interior query is in flight with no held data (the expanded row is loading). */
   loading: boolean;
+  /** Whether the plan-interior capability is served by the backend. */
+  served: boolean;
+  /** Whether the served interior carries no visible containers or steps. */
+  empty: boolean;
   /** The ordered waves (L3/L4 shape); empty for L1/L2 plans. */
   waves: InteriorWaveView[];
   /** The ordered phases (L2 shape); empty for L1 and L3/L4 plans. */
   phases: InteriorPhaseView[];
   /** The flat steps (L1 shape); empty for L2/L3/L4 plans. */
   steps: InteriorStepView[];
+  /** Whether the flat L1 step bucket should be rendered. */
+  hasUngroupedSteps: boolean;
   /** The plan-level rolled-up completion across every step the interior carries. */
   rollup: InteriorRollup;
   /** Honest bounded-interior truncation when the engine capped the tree; null otherwise. */
   truncated: PlanInterior["truncated"];
+  loadingMessage: string;
+  placeholderMessage: string;
+  emptyMessage: string;
+  listAriaLabel: string;
+  truncatedMessage: string | null;
 }
 
 /** Roll up a step list to a done/total fraction (a done step is `done: true`). */
 function rollupSteps(steps: InteriorStep[]): InteriorRollup {
   return { done: steps.filter((s) => s.done).length, total: steps.length };
+}
+
+function interiorStepView(step: InteriorStep): InteriorStepView {
+  const targetNodeId = step.exec_node_id ?? null;
+  return {
+    ...step,
+    targetNodeId,
+    selectable: targetNodeId !== null,
+    headingLabel: step.action ?? step.id,
+    rowAriaLabel: `step ${step.id}${
+      targetNodeId ? ", open exec record" : ", no exec record"
+    }`,
+    rowClassName: `flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+      targetNodeId ? "hover:bg-paper-sunken" : "cursor-default opacity-80"
+    }`,
+  };
 }
 
 /** Sum two rollups (phase → wave, wave → plan aggregation). */
@@ -4470,39 +6420,63 @@ export function derivePlanInteriorView(
   if (!interior) {
     return {
       loading,
+      served: PLAN_INTERIOR_SERVED,
+      empty: true,
       waves: [],
       phases: [],
       steps: [],
+      hasUngroupedSteps: false,
       rollup: { done: 0, total: 0 },
       truncated: null,
+      loadingMessage: "loading steps...",
+      placeholderMessage: "step tree pending - the plan interior is not yet served.",
+      emptyMessage: "no steps in this plan yet.",
+      listAriaLabel: "plan steps",
+      truncatedMessage: null,
     };
   }
   const phases: InteriorPhaseView[] = interior.phases.map((p) => ({
     ...p,
+    steps: p.steps.map(interiorStepView),
     rollup: rollupSteps(p.steps),
   }));
   const waves: InteriorWaveView[] = interior.waves.map((w) => {
-    const phaseViews = w.phases.map((p) => ({ ...p, rollup: rollupSteps(p.steps) }));
+    const phaseViews = w.phases.map((p) => ({
+      ...p,
+      steps: p.steps.map(interiorStepView),
+      rollup: rollupSteps(p.steps),
+    }));
     return {
       ...w,
       phases: phaseViews,
       rollup: sumRollups(phaseViews.map((p) => p.rollup)),
     };
   });
-  const steps: InteriorStepView[] = interior.steps.map((s) => ({ ...s }));
+  const steps: InteriorStepView[] = interior.steps.map(interiorStepView);
   // Plan-level rollup spans whichever container shape the tier serves.
   const planRollup = sumRollups([
     ...waves.map((w) => w.rollup),
     ...phases.map((p) => p.rollup),
     rollupSteps(steps),
   ]);
+  const truncated = interior.truncated ?? null;
   return {
     loading,
+    served: PLAN_INTERIOR_SERVED,
+    empty: waves.length === 0 && phases.length === 0 && steps.length === 0,
     waves,
     phases,
     steps,
+    hasUngroupedSteps: steps.length > 0,
     rollup: planRollup,
-    truncated: interior.truncated ?? null,
+    truncated,
+    loadingMessage: "loading steps...",
+    placeholderMessage: "step tree pending - the plan interior is not yet served.",
+    emptyMessage: "no steps in this plan yet.",
+    listAriaLabel: "plan steps",
+    truncatedMessage: truncated
+      ? `showing ${truncated.returned_nodes} of ${truncated.total_nodes} nodes - this plan exceeds the interior ceiling; open it on the stage to see the full tree.`
+      : null,
   };
 }
 
@@ -4632,8 +6606,17 @@ export interface ChangedSourceFileRow {
   basename: string;
   nodeId: string;
   group: ChangedFile["group"];
+  dotColor: string;
+  rowClassName: string;
+  dotClassName: string;
+  basenameClassName: string;
   adds: number | null;
   dels: number | null;
+  addsLabel: string | null;
+  delsLabel: string | null;
+  addsClassName: string;
+  delsClassName: string;
+  openArrowClassName: string;
 }
 
 export interface ChangedDocumentRow {
@@ -4641,6 +6624,10 @@ export interface ChangedDocumentRow {
   title: string;
   nodeId: string;
   category?: ChangedDocumentCategory;
+  rowClassName: string;
+  fallbackDotClassName: string;
+  titleClassName: string;
+  openArrowClassName: string;
 }
 
 const CHANGED_DOCUMENT_CATEGORY: Record<string, ChangedDocumentCategory> = {
@@ -4686,15 +6673,41 @@ function changedDocumentTitle(path: string): string {
   return stem.charAt(0).toUpperCase() + stem.slice(1);
 }
 
+const CHANGES_OVERVIEW_ROW_CLASS =
+  "flex h-[30px] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const CHANGED_FILE_DOT_CLASS = "size-2 shrink-0 rounded-full";
+const CHANGED_FILE_BASENAME_CLASS =
+  "min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink";
+const CHANGED_FILE_ADDS_CLASS = "shrink-0 text-[11px] text-diff-add";
+const CHANGED_FILE_DELS_CLASS = "shrink-0 text-[11px] text-diff-remove";
+const CHANGED_DOCUMENT_FALLBACK_DOT_CLASS = "size-2 shrink-0 rounded-full bg-ink-faint";
+const CHANGED_DOCUMENT_TITLE_CLASS = "min-w-0 flex-1 truncate text-[12.5px] text-ink";
+const CHANGES_OVERVIEW_OPEN_ARROW_CLASS = "shrink-0 text-[13px] text-ink-faint";
+
 function changedFileRow(file: ChangedFile): ChangedSourceFileRow {
   return {
     path: file.path,
     basename: fileBasename(file.path),
     nodeId: codeNodeIdFromPath(file.path),
     group: file.group,
+    dotColor: changedFileDotColor(file.group),
+    rowClassName: CHANGES_OVERVIEW_ROW_CLASS,
+    dotClassName: CHANGED_FILE_DOT_CLASS,
+    basenameClassName: CHANGED_FILE_BASENAME_CLASS,
     adds: file.adds,
     dels: file.dels,
+    addsLabel: file.adds === null ? null : `${file.adds} added`,
+    delsLabel: file.dels === null ? null : `${file.dels} removed`,
+    addsClassName: CHANGED_FILE_ADDS_CLASS,
+    delsClassName: CHANGED_FILE_DELS_CLASS,
+    openArrowClassName: CHANGES_OVERVIEW_OPEN_ARROW_CLASS,
   };
+}
+
+function changedFileDotColor(group: ChangedFile["group"]): string {
+  if (group === "added") return "var(--color-diff-add)";
+  if (group === "deleted" || group === "renamed") return "var(--color-diff-remove)";
+  return "var(--color-state-stale)";
 }
 
 function changedDocumentRow(file: ChangedFile): ChangedDocumentRow {
@@ -4704,6 +6717,10 @@ function changedDocumentRow(file: ChangedFile): ChangedDocumentRow {
     path: file.path,
     title: changedDocumentTitle(file.path),
     nodeId: docNodeIdFromStem(stemFromPath(file.path)),
+    rowClassName: CHANGES_OVERVIEW_ROW_CLASS,
+    fallbackDotClassName: CHANGED_DOCUMENT_FALLBACK_DOT_CLASS,
+    titleClassName: CHANGED_DOCUMENT_TITLE_CLASS,
+    openArrowClassName: CHANGES_OVERVIEW_OPEN_ARROW_CLASS,
     ...(category ? { category } : {}),
   };
 }
@@ -4742,33 +6759,134 @@ const EMPTY_CHANGED_FILES_SUMMARY: ChangedFilesView["summary"] = {
 };
 
 export interface ChangesOverviewView {
+  noScope: boolean;
   loading: boolean;
   degraded: boolean;
   errored: boolean;
   clean: boolean;
   hasChanges: boolean;
+  hasFiles: boolean;
+  hasDocuments: boolean;
   files: ChangedSourceFileRow[];
   documents: ChangedDocumentRow[];
   summary: ChangedFilesView["summary"];
+  summaryLabels: {
+    files: string;
+    documents: string;
+    additions: string;
+    deletions: string;
+  };
+  loadingLabel: string;
+  degradedLabel: string;
+  errorTitle: string;
+  retryLabel: string;
+  noScopeLabel: string;
+  filesSectionLabel: string;
+  filesListAriaLabel: string;
+  documentsSectionLabel: string;
+  documentsListAriaLabel: string;
+  cleanLabel: string;
+  noScopeClassName: string;
+  rootClassName: string;
+  summaryClassName: string;
+  summaryPrimaryClassName: string;
+  summaryDividerClassName: string;
+  summaryAdditionsClassName: string;
+  summaryDeletionsClassName: string;
+  loadingClassName: string;
+  degradedClassName: string;
+  errorRootClassName: string;
+  errorTitleClassName: string;
+  retryButtonClassName: string;
+  sectionLabelClassName: string;
+  listClassName: string;
+  cleanClassName: string;
   retry: () => void;
 }
+
+function pluralLabel(count: number, singular: string): string {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+function changedSummaryLabels(
+  summary: ChangedFilesView["summary"],
+): ChangesOverviewView["summaryLabels"] {
+  return {
+    files: pluralLabel(summary.files, "file"),
+    documents: pluralLabel(summary.documents, "document"),
+    additions: `+${summary.additions}`,
+    deletions: `−${summary.deletions}`,
+  };
+}
+
+const CHANGES_OVERVIEW_NO_SCOPE_CLASS = "text-label text-ink-faint";
+const CHANGES_OVERVIEW_ROOT_CLASS = "space-y-fg-3 text-label";
+const CHANGES_OVERVIEW_SUMMARY_CLASS = "flex flex-wrap items-center gap-fg-1-5";
+const CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS = "font-medium text-ink";
+const CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS = "text-ink-faint";
+const CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS = "text-[11px] text-diff-add";
+const CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS = "text-[11px] text-diff-remove";
+const CHANGES_OVERVIEW_LOADING_CLASS =
+  "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none";
+const CHANGES_OVERVIEW_DEGRADED_CLASS =
+  "rounded-fg-md bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted";
+const CHANGES_OVERVIEW_ERROR_ROOT_CLASS = "flex items-center gap-fg-2";
+const CHANGES_OVERVIEW_ERROR_TITLE_CLASS = "flex-1 text-label text-state-broken";
+const CHANGES_OVERVIEW_RETRY_BUTTON_CLASS =
+  "rounded-fg-xs text-caption text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const CHANGES_OVERVIEW_SECTION_LABEL_CLASS = "mb-fg-1";
+const CHANGES_OVERVIEW_LIST_CLASS = "space-y-fg-1";
+const CHANGES_OVERVIEW_CLEAN_CLASS = "text-label text-ink-faint";
 
 export function deriveChangesOverviewView(
   git: GitStatusHookView,
   changed: ChangedFilesView,
+  scope: string | null | undefined = undefined,
 ): ChangesOverviewView {
   const gitAvailable = git.git !== undefined;
   const summary = gitAvailable ? changed.summary : EMPTY_CHANGED_FILES_SUMMARY;
   const hasChanges = gitAvailable && summary.total > 0;
+  const files = gitAvailable ? changed.codeFiles.map(changedFileRow) : [];
+  const documents = gitAvailable ? changed.documents.map(changedDocumentRow) : [];
   return {
+    noScope: scope === null,
     loading: (git.loading || changed.loading) && !hasChanges,
     degraded: git.degraded && !hasChanges,
     errored: (git.errored || changed.errored) && !hasChanges,
-    clean: gitAvailable && !git.loading && !changed.loading && !hasChanges,
+    clean:
+      scope !== null && gitAvailable && !git.loading && !changed.loading && !hasChanges,
     hasChanges,
-    files: gitAvailable ? changed.codeFiles.map(changedFileRow) : [],
-    documents: gitAvailable ? changed.documents.map(changedDocumentRow) : [],
+    hasFiles: files.length > 0,
+    hasDocuments: documents.length > 0,
+    files,
+    documents,
     summary,
+    summaryLabels: changedSummaryLabels(summary),
+    loadingLabel: "reading changes…",
+    degradedLabel: "repository state unavailable",
+    errorTitle: "changes unavailable",
+    retryLabel: "retry",
+    noScopeLabel: "no scope — pick a worktree first",
+    filesSectionLabel: "Changed files — open diff or source",
+    filesListAriaLabel: "changed files",
+    documentsSectionLabel: "Changed documents — open reader",
+    documentsListAriaLabel: "changed documents",
+    cleanLabel: "working tree clean — no changes to review.",
+    noScopeClassName: CHANGES_OVERVIEW_NO_SCOPE_CLASS,
+    rootClassName: CHANGES_OVERVIEW_ROOT_CLASS,
+    summaryClassName: CHANGES_OVERVIEW_SUMMARY_CLASS,
+    summaryPrimaryClassName: CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS,
+    summaryDividerClassName: CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS,
+    summaryAdditionsClassName: CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS,
+    summaryDeletionsClassName: CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS,
+    loadingClassName: CHANGES_OVERVIEW_LOADING_CLASS,
+    degradedClassName: CHANGES_OVERVIEW_DEGRADED_CLASS,
+    errorRootClassName: CHANGES_OVERVIEW_ERROR_ROOT_CLASS,
+    errorTitleClassName: CHANGES_OVERVIEW_ERROR_TITLE_CLASS,
+    retryButtonClassName: CHANGES_OVERVIEW_RETRY_BUTTON_CLASS,
+    sectionLabelClassName: CHANGES_OVERVIEW_SECTION_LABEL_CLASS,
+    listClassName: CHANGES_OVERVIEW_LIST_CLASS,
+    cleanClassName: CHANGES_OVERVIEW_CLEAN_CLASS,
     retry: git.retry,
   };
 }
@@ -4817,7 +6935,7 @@ export function useChangedFiles(scope: string | null): ChangedFilesView {
 export function useChangesOverview(scope: string | null): ChangesOverviewView {
   const git = useGitStatus();
   const changed = useChangedFilesForGit(scope, git);
-  return deriveChangesOverviewView(git, changed);
+  return deriveChangesOverviewView(git, changed, scope);
 }
 
 /**
@@ -4850,6 +6968,66 @@ export function deriveGitFileDiffView(
   };
 }
 
+export interface NormalizedGitDiffRequest {
+  scope: string | null;
+  path: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+function normalizeGitDiffArg(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Canonicalize git diff selector inputs at the stores boundary before they become
+ * query keys or `/ops/git` arguments. Blank presentation state disables the read;
+ * non-blank values use one trimmed identity for cache and wire.
+ */
+export function normalizeGitDiffRequest(
+  scope: string | null,
+  path: string | null,
+  from: string | null = null,
+  to: string | null = null,
+): NormalizedGitDiffRequest {
+  return {
+    scope: normalizeGitDiffArg(scope),
+    path: normalizeGitDiffArg(path),
+    from: normalizeGitDiffArg(from),
+    to: normalizeGitDiffArg(to),
+  };
+}
+
+export function canReadGitFileDiff(
+  scope: string | null,
+  path: string | null,
+  git: Pick<GitStatusHookView, "git">,
+): boolean {
+  const request = normalizeGitDiffRequest(scope, path);
+  return (
+    request.scope !== null &&
+    request.path !== null &&
+    GIT_DIFF_CAPABILITY_SERVED &&
+    git.git !== undefined
+  );
+}
+
+export function canReadGitHistoricalFileDiff(
+  scope: string | null,
+  path: string | null,
+  from: string | null,
+  to: string | null,
+  git: Pick<GitStatusHookView, "git">,
+): boolean {
+  const request = normalizeGitDiffRequest(scope, path, from, to);
+  return (
+    canReadGitFileDiff(request.scope, request.path, git) &&
+    request.from !== null &&
+    request.to !== null
+  );
+}
+
 /**
  * Stores selector for a changed file's read-only diff. Fetches the unified diff
  * for the path through `client.opsGit("diff", { scope, path })` and parses it
@@ -4865,19 +7043,18 @@ export function useGitFileDiff(
   status?: string,
 ): GitFileDiffView {
   const git = useGitStatus();
-  const enabled =
-    scope !== null &&
-    path !== null &&
-    GIT_DIFF_CAPABILITY_SERVED &&
-    git.git !== undefined;
+  const request = normalizeGitDiffRequest(scope, path);
+  const enabled = canReadGitFileDiff(request.scope, request.path, git);
   const query = useQuery({
-    queryKey: engineKeys.gitDiff(scope ?? "", path ?? ""),
+    queryKey: engineKeys.gitDiff(request.scope ?? "", request.path ?? ""),
     queryFn: async () => {
+      const scoped = request.scope!;
+      const gitPath = request.path!;
       const op = await engineClient.opsGit("diff", {
-        scope: scope!,
-        path: path!,
+        scope: scoped,
+        path: gitPath,
       });
-      return parseUnifiedDiff(op.output, path!, status);
+      return parseUnifiedDiff(op.output, gitPath, status);
     },
     enabled,
   });
@@ -4903,31 +7080,33 @@ export function useGitHistoricalFileDiff(
   status?: string,
 ): GitFileDiffView {
   const git = useGitStatus();
-  const enabled =
-    scope !== null &&
-    path !== null &&
-    path.length > 0 &&
-    from !== null &&
-    from.length > 0 &&
-    to !== null &&
-    to.length > 0 &&
-    GIT_DIFF_CAPABILITY_SERVED &&
-    git.git !== undefined;
+  const request = normalizeGitDiffRequest(scope, path, from, to);
+  const enabled = canReadGitHistoricalFileDiff(
+    request.scope,
+    request.path,
+    request.from,
+    request.to,
+    git,
+  );
   const query = useQuery({
     queryKey: engineKeys.gitHistoricalDiff(
-      scope ?? "",
-      path ?? "",
-      from ?? "",
-      to ?? "",
+      request.scope ?? "",
+      request.path ?? "",
+      request.from ?? "",
+      request.to ?? "",
     ),
     queryFn: async () => {
+      const scoped = request.scope!;
+      const gitPath = request.path!;
+      const fromRev = request.from!;
+      const toRev = request.to!;
       const op = await engineClient.opsGit("histdiff", {
-        scope: scope!,
-        path: path!,
-        from: from!,
-        to: to!,
+        scope: scoped,
+        path: gitPath,
+        from: fromRev,
+        to: toRev,
       });
-      return parseUnifiedDiff(op.output, path!, status);
+      return parseUnifiedDiff(op.output, gitPath, status);
     },
     enabled,
   });

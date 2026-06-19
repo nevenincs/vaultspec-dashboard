@@ -2831,9 +2831,13 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps timeline control viewport math behind the timeline seam", () => {
+  it("keeps timeline navigation writes behind the timeline intent seam", () => {
     const rel = "app/timeline/TimelineControls.tsx";
+    const stageRel = "app/stage/StageNavBar.tsx";
+    const menuRel = "app/timeline/menus/eventMarkMenu.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const stageNav = stripComments(readFileSync(join(SRC_ROOT, stageRel), "utf8"));
+    const eventMenu = stripComments(readFileSync(join(SRC_ROOT, menuRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -2844,10 +2848,28 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: app-layer timeline zoom-bound import`);
       }
     }
+    for (const statement of importStatements(stageNav)) {
+      if (
+        /\btimelineZoomViewport\b|\bfitTimelineSpan\b|\btimelineJumpToEndOffset\b|\bparseTimelineInstant\b|\bsetTimelineViewport\b|\bsetTimelineScrollOffset\b/.test(
+          statement,
+        )
+      ) {
+        violations.push(`${stageRel}: timeline navigation write bypasses intent seam`);
+      }
+    }
+    for (const statement of importStatements(eventMenu)) {
+      if (
+        /\btimelineZoomViewport\b|\bfitTimelineSpan\b|\btimelineJumpToEndOffset\b|\bparseTimelineInstant\b|\bsetTimelineViewport\b|\btimelineViewSnapshot\b|\bclampPxPerMs\b|\bliveEdgeOffset\b|\btimeToStripX\b/.test(
+          statement,
+        )
+      ) {
+        violations.push(`${menuRel}: event zoom bypasses timeline intent seam`);
+      }
+    }
     for (const helper of [
-      "timelineZoomViewport",
-      "fitTimelineSpan",
-      "timelineJumpToEndOffset",
+      "zoomTimelineNavigation",
+      "fitTimelineNavigationToCorpus",
+      "jumpTimelineNavigationToLive",
       "timelineCanZoomIn",
       "timelineCanZoomOut",
       "TIMELINE_ZOOM_STEP",
@@ -2855,18 +2877,42 @@ describe("dashboard layer ownership", () => {
       if (!new RegExp(`\\b${helper}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${helper} seam`);
       }
+      if (!new RegExp(`\\b${helper}\\b`).test(stageNav)) {
+        violations.push(`${stageRel}: missing ${helper} seam`);
+      }
+    }
+    if (!/\bzoomTimelineNavigationToInstant\b/.test(eventMenu)) {
+      violations.push(`${menuRel}: missing event zoom timeline intent seam`);
     }
     if (/\bexport\s+const\s+ZOOM_STEP\b/.test(stripped)) {
       violations.push(`${rel}: local timeline zoom-step projection`);
     }
-    if (/\bfunction\s+(?:fitSpan|jumpToDateOffset)\b/.test(stripped)) {
-      violations.push(`${rel}: local timeline viewport helper`);
+    if (
+      /\bconst\s+(?:zoomBy|fitAll|jumpToNow)\s*=/.test(stripped) ||
+      /\bfunction\s+(?:zoomBy|fitAll|jumpToNow|fitSpan|jumpToDateOffset)\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: local timeline navigation helper`);
+    }
+    if (
+      /\bconst\s+(?:zoomBy|fitAll|jumpToNow)\s*=/.test(stageNav) ||
+      /\bfunction\s+(?:zoomBy|fitAll|jumpToNow)\b/.test(stageNav)
+    ) {
+      violations.push(`${stageRel}: local timeline navigation helper`);
     }
     if (/\bpxPerMs\s*[<>]\s*(?:MAX_PX_PER_MS|MIN_PX_PER_MS)\b/.test(stripped)) {
       violations.push(`${rel}: local timeline zoom-bound check`);
     }
     if (/\btimeToStripX\s*\(/.test(stripped) || /\bzoomAt\s*\(/.test(stripped)) {
       violations.push(`${rel}: local timeline strip viewport projection`);
+    }
+    if (
+      /\bviewportZoomToInstant\b|\bsetTimelineViewport\s*\(|\btimelineViewSnapshot\s*\(|\bclampPxPerMs\s*\(|\bliveEdgeOffset\s*\(|\btimeToStripX\s*\(/.test(
+        eventMenu,
+      )
+    ) {
+      violations.push(`${menuRel}: local event timeline zoom projection`);
     }
 
     expect(violations).toEqual([]);
@@ -7960,7 +8006,7 @@ describe("dashboard layer ownership", () => {
       "text-label text-state-broken",
       "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
       "flex w-full items-center gap-fg-1-5 rounded-fg-md bg-paper-sunken px-[10px] py-[6px] transition-colors duration-ui-fast hover:bg-paper-sunken/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-      "min-w-0 flex-1 truncate text-left text-[12.5px] font-medium",
+      "min-w-0 flex-1 truncate text-left text-body-strong",
       "shrink-0 text-ink-faint",
       "mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
       "mt-fg-1 space-y-fg-0-5",
@@ -9209,7 +9255,6 @@ describe("dashboard layer ownership", () => {
     }
     for (const helper of [
       "useStatusSectionOpen",
-      "deriveStatusSectionChromeView",
       "toggleStatusSection",
       "useRecentCommitsChrome",
       "deriveRecentCommitChromeRows",
@@ -9231,18 +9276,19 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: local status-section card class projection`);
     }
+    if (!/\bderiveStatusSectionChromeView\s*\(\s*id\s*,\s*open\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing status-section chrome view seam`);
+    }
     for (const field of [
-      "chrome.rootClassName",
-      "chrome.toggleClassName",
-      "chrome.twistyClassName",
+      "chrome.bodyId",
+      "chrome.twistyPx",
+      "chrome.headerClassName",
       "chrome.bodyClassName",
+      "chrome.bodyVisible",
     ]) {
       if (!stripped.includes(field)) {
         violations.push(`${rel}: missing status-section chrome ${field}`);
       }
-    }
-    if (!/\bchrome\.bodyVisible\b/.test(stripped)) {
-      violations.push(`${rel}: missing status-section body visibility view`);
     }
     for (const localSectionChrome of [
       "overflow-hidden rounded-fg-md border border-rule transition-colors duration-ui-fast ease-settle",
@@ -9273,6 +9319,9 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bderiveRecentCommitsChromeView\b/.test(store)) {
       violations.push(`${storeRel}: missing recent commits chrome selector projection`);
+    }
+    if (!/\bderiveStatusSectionChromeView\b/.test(store)) {
+      violations.push(`${storeRel}: missing status-section chrome selector projection`);
     }
     if (!/\bSTATUS_SECTION_IDS\b/.test(store)) {
       violations.push(`${storeRel}: missing declared status section vocabulary`);
@@ -9321,13 +9370,7 @@ describe("dashboard layer ownership", () => {
     if (!/\banchor\.emptyLabel\b/.test(stripped)) {
       violations.push(`${rel}: missing location-anchor empty label`);
     }
-    for (const field of [
-      "anchor.emptyClassName",
-      "anchor.mainLabel",
-      "anchor.mainClassName",
-      "anchor.branchClassName",
-      "anchor.pathClassName",
-    ]) {
+    for (const field of ["anchor.emptyClassName", "anchor.branchClassName"]) {
       if (!stripped.includes(field)) {
         violations.push(`${rel}: missing location-anchor presentation ${field}`);
       }

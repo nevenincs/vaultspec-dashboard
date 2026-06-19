@@ -21,19 +21,26 @@ import type {
   GraphSlice,
   HistoryResponse,
   LineageSlice,
+  MapWorktree,
   NodeDetail,
   PipelineArtifact,
   PlanInterior,
+  PRsResponse,
+  IssuesResponse,
+  SessionState,
   SettingsSchema,
   SettingsState,
   TiersBlock,
+  VaultTreeEntry,
   WorkspacesState,
 } from "./engine";
 import { adaptLineageSlice, adaptStatus, unwrapEnvelope } from "./liveAdapters";
 import type { ContentView, StreamChunk } from "./queries";
 import {
   SCOPED_ENGINE_QUERY_SUBTREES,
+  DEFAULT_HISTORY_LIMIT,
   GRAPH_GENERATION_QUERY_SUBTREES,
+  MAX_HISTORY_LIMIT,
   STREAM_RETENTION,
   deriveChangedFilesView,
   deriveCodeViewerView,
@@ -44,7 +51,9 @@ import {
   deriveDashboardFilterSummaryView,
   deriveDashboardGraphControlsView,
   deriveDashboardGraphDefaultsInitializationView,
+  deriveDashboardLayoutSelectorPresentationView,
   deriveDashboardLayoutSelectorView,
+  deriveDashboardLensSelectorPresentationView,
   deriveDashboardLensSelectorView,
   deriveDashboardPlayheadView,
   deriveDashboardRangeSelectView,
@@ -53,6 +62,7 @@ import {
   deriveDashboardTierDialView,
   deriveDashboardTimelineModeView,
   deriveDiscoverView,
+  fileTreeChildStatusStyle,
   deriveFileTreeLevelView,
   deriveFileTreeRootSurfaceState,
   deriveFiltersVocabularyView,
@@ -60,22 +70,32 @@ import {
   deriveGitStatusView,
   deriveGraphSliceAvailability,
   deriveHistoryView,
+  deriveIssuesView,
   deriveInspectorNeighborTierView,
+  deriveLocationAnchor,
   deriveMarkdownHeaderView,
   deriveMarkdownReaderView,
   deriveNodeDetailView,
   derivePipelineStatusView,
   derivePlanInteriorView,
+  derivePRsView,
   deriveSalienceSliceView,
   deriveSettingsDialogView,
   deriveSettingsEffectsView,
+  deriveStatusTabSectionsView,
   deriveThemeSettingView,
   deriveTimelineLineageView,
+  deriveTimelineSurfaceChromeView,
+  deriveVaultTreeBrowserView,
   deriveVaultTreeAvailability,
   deriveVaultTreeSurfaceState,
   deriveWorkspaceTitleView,
   deriveWorkspaceMapAvailability,
+  deriveWorkspaceMapPickerPresentationView,
   deriveWorkspaceMapSurfaceState,
+  canReadGitFileDiff,
+  canReadGitHistoricalFileDiff,
+  orderWorkspaceMapWorktrees,
   engineKeys,
   dashboardEditedWindowRange,
   invalidateAfterVaultMutation,
@@ -83,6 +103,8 @@ import {
   invalidateGitRecoveryReads,
   isAddressableNode,
   latestBackendSignalSignature,
+  normalizeHistoryLimit,
+  normalizeGitDiffRequest,
   parseSseFrames,
   refreshAfterAcceptedScopeSwitch,
   refreshAfterAcceptedWorkspaceSwitch,
@@ -90,11 +112,32 @@ import {
   stableKey,
   streamReducer,
   tierAvailabilityReason,
+  useDashboardState,
+  useChangedFiles,
+  useChangesOverview,
+  useEngineEvents,
+  useEngineSearch,
+  useFileTree,
+  useGraphDiff,
   useGraphSlice,
   useGraphSliceAvailability,
   useGitFileDiff,
   useGitHistoricalFileDiff,
+  useHistoryView,
+  useIssuesView,
   useLinkResolution,
+  useNodeContent,
+  useNodeDetail,
+  useNodeEvidence,
+  useNodeHistory,
+  useNodeNeighborsBulk,
+  useNodeNeighbors,
+  usePipelineStatus,
+  usePlanInterior,
+  usePRsView,
+  useTimelineLineage,
+  useVaultTree,
+  dashboardStateSessionIdentity,
 } from "./queries";
 
 function wrapper(client: QueryClient) {
@@ -113,6 +156,73 @@ function testQueryClient(): QueryClient {
 
 function seedQuery(client: QueryClient, queryKey: readonly unknown[]): void {
   client.setQueryData(queryKey, { seeded: true });
+}
+
+function sessionState(scope: string): SessionState {
+  return {
+    workspace: "workspace-a",
+    active_workspace: "workspace-a",
+    active_scope: scope,
+    scope_context: { folder: null, feature_tags: [] },
+    recents: [],
+    tiers: {},
+  };
+}
+
+function dashboardState(scope: string): DashboardState {
+  return {
+    scope,
+    selected_ids: ["doc:cached"],
+    hovered_id: null,
+    filters: { text: "cached" },
+    date_range: { from: "2026-06-01", to: "2026-06-30" },
+    timeline_mode: { kind: "time-travel", at: 42 },
+    graph_granularity: "document",
+    salience_lens: "design",
+    salience_focus: "doc:cached",
+    representation_mode: "lineage",
+    panel_state: {
+      left_collapsed: true,
+      right_collapsed: true,
+      right_tab: "changes",
+    },
+    graph_bounds: { shape: "rect", size: 1200 },
+    tiers: {},
+  };
+}
+
+function graphSlice(): GraphSlice {
+  return {
+    nodes: [],
+    edges: [],
+    tiers: {},
+  };
+}
+
+function lineageSlice(): LineageSlice {
+  return {
+    nodes: [],
+    arcs: [],
+    tiers: {},
+    truncated: null,
+  };
+}
+
+function planInterior(): PlanInterior {
+  return {
+    plan_node_id: "doc:plan",
+    waves: [],
+    phases: [],
+    steps: [
+      {
+        node_id: "doc:plan#step-1",
+        id: "step-1",
+        action: "Trace state boundary",
+        done: false,
+      },
+    ],
+    truncated: null,
+  };
 }
 
 function isInvalidated(client: QueryClient, queryKey: readonly unknown[]): boolean {
@@ -192,6 +302,227 @@ describe("deriveNodeDetailView (node-detail surface state)", () => {
       detail,
       node: detail.node,
     });
+  });
+});
+
+describe("node-scoped query cache boundaries", () => {
+  const detail: NodeDetail = {
+    node: { id: "doc:ready", kind: "plan", title: "Ready" },
+    tiers: {},
+  };
+
+  it("does not expose cached node detail when no scope or no addressable node is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.node("", "doc:ready"), detail);
+    client.setQueryData(engineKeys.node("scope-a", "feature:state"), detail);
+
+    const noScope = renderHook(() => useNodeDetail("doc:ready", null), {
+      wrapper: wrapper(client),
+    });
+    const featureNode = renderHook(() => useNodeDetail("feature:state", "scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(featureNode.result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached node neighbors when no scope or no addressable node is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.neighbors("", "doc:ready", 1), graphSlice());
+    client.setQueryData(
+      engineKeys.neighbors("scope-a", "feature:state", 1),
+      graphSlice(),
+    );
+
+    const noScope = renderHook(() => useNodeNeighbors("doc:ready", null), {
+      wrapper: wrapper(client),
+    });
+    const featureNode = renderHook(() => useNodeNeighbors("feature:state", "scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(featureNode.result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached bulk node neighbors when entries are disabled", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.neighbors("", "doc:ready", 1), graphSlice());
+    client.setQueryData(
+      engineKeys.neighbors("scope-a", "feature:state", 1),
+      graphSlice(),
+    );
+
+    const noScope = renderHook(() => useNodeNeighborsBulk(["doc:ready"], null), {
+      wrapper: wrapper(client),
+    });
+    const featureNode = renderHook(
+      () => useNodeNeighborsBulk(["feature:state"], "scope-a"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+
+    expect(noScope.result.current[0]?.data).toBeUndefined();
+    expect(featureNode.result.current[0]?.data).toBeUndefined();
+  });
+
+  it("does not expose cached node evidence when no scope or no addressable node is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.evidence("", "doc:ready"), { commits: [] });
+    client.setQueryData(engineKeys.evidence("scope-a", "feature:state"), {
+      commits: [],
+    });
+
+    const noScope = renderHook(() => useNodeEvidence("doc:ready", null), {
+      wrapper: wrapper(client),
+    });
+    const featureNode = renderHook(() => useNodeEvidence("feature:state", "scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(featureNode.result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached node content when no node or no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.content("", "doc:ready"), { text: "cached" });
+    client.setQueryData(engineKeys.content("scope-a", ""), { text: "cached" });
+
+    const noScope = renderHook(() => useNodeContent("doc:ready", null), {
+      wrapper: wrapper(client),
+    });
+    const noNode = renderHook(() => useNodeContent(null, "scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(noNode.result.current.data).toBeUndefined();
+  });
+});
+
+describe("remaining scoped query cache boundaries", () => {
+  it("does not expose cached history data when no scope is selected", () => {
+    const client = testQueryClient();
+    const history: HistoryResponse = {
+      commits: [
+        {
+          hash: "abc123",
+          short_hash: "abc123",
+          subject: "cached commit",
+          body: "",
+          ts: Date.parse("2026-06-19T00:00:00Z"),
+          node_ids: ["commit:abc123", "doc:cached"],
+        },
+      ],
+      truncated: null,
+      next_cursor: null,
+      tiers: { structural: { available: true } },
+    };
+    client.setQueryData(engineKeys.history("", DEFAULT_HISTORY_LIMIT), history);
+
+    const raw = renderHook(() => useNodeHistory(null), {
+      wrapper: wrapper(client),
+    });
+    const view = renderHook(() => useHistoryView(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(raw.result.current.data).toBeUndefined();
+    expect(view.result.current.showList).toBe(false);
+    expect(view.result.current.commits).toEqual([]);
+  });
+
+  it("does not expose cached PR or issue data when no scope is selected", () => {
+    const client = testQueryClient();
+    const prs: PRsResponse = {
+      prs: [],
+      available: true,
+      reason: null,
+      tiers: {},
+    };
+    const issues: IssuesResponse = {
+      issues: [],
+      available: true,
+      reason: null,
+      tiers: {},
+    };
+    client.setQueryData(engineKeys.prs("", "open"), prs);
+    client.setQueryData(engineKeys.issues("", "open"), issues);
+
+    const prView = renderHook(() => usePRsView(null), {
+      wrapper: wrapper(client),
+    });
+    const issueView = renderHook(() => useIssuesView(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(prView.result.current.available).toBe(false);
+    expect(prView.result.current.showList).toBe(false);
+    expect(issueView.result.current.available).toBe(false);
+    expect(issueView.result.current.showList).toBe(false);
+  });
+
+  it("does not expose cached event data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.events("", {}), {
+      events: [
+        {
+          id: "evt:cached",
+          ts: "2026-06-19",
+          kind: "commit",
+          ref: "abc",
+          node_ids: [],
+        },
+      ],
+      tiers: {},
+    });
+
+    const { result } = renderHook(() => useEngineEvents(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached graph diff data when no scope or no window is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.diff("", 1, 2), { ops: [], tiers: {} });
+    client.setQueryData(engineKeys.diff("scope-a", 1, 1), { ops: [], tiers: {} });
+
+    const noScope = renderHook(() => useGraphDiff(null, 1, 2), {
+      wrapper: wrapper(client),
+    });
+    const emptyWindow = renderHook(() => useGraphDiff("scope-a", 1, 1), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(emptyWindow.result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached search data when no scope or no query is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.search("", "cached", "vault"), {
+      results: [{ id: "doc:cached" }],
+      tiers: {},
+    });
+    client.setQueryData(engineKeys.search("scope-a", "", "vault"), {
+      results: [{ id: "doc:cached" }],
+      tiers: {},
+    });
+
+    const noScope = renderHook(() => useEngineSearch(null, "cached"), {
+      wrapper: wrapper(client),
+    });
+    const emptyQuery = renderHook(() => useEngineSearch("scope-a", ""), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(emptyQuery.result.current.data).toBeUndefined();
   });
 });
 
@@ -276,6 +607,10 @@ describe("deriveWorkspaceTitleView (left-rail project title)", () => {
       label: "Beta",
       path: "/repo/b",
       current: registry.workspaces[1],
+      loadingLabel: "loading…",
+      loadingClassName: "px-fg-1 text-label text-ink-faint",
+      rootClassName: "flex items-center px-fg-1",
+      titleClassName: "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
     });
   });
 
@@ -291,17 +626,27 @@ describe("deriveWorkspaceTitleView (left-rail project title)", () => {
   });
 
   it("returns the neutral project label while loading or empty", () => {
-    expect(deriveWorkspaceTitleView(undefined, true)).toEqual({
+    expect(deriveWorkspaceTitleView(undefined, true)).toMatchObject({
       state: "loading",
       label: "Project",
       path: undefined,
       current: null,
+      loadingLabel: "loading…",
+      loadingClassName: "px-fg-1 text-label text-ink-faint",
+      rootClassName: "flex items-center px-fg-1",
+      titleClassName: "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
     });
-    expect(deriveWorkspaceTitleView({ ...registry, workspaces: [] }, false)).toEqual({
+    expect(
+      deriveWorkspaceTitleView({ ...registry, workspaces: [] }, false),
+    ).toMatchObject({
       state: "ready",
       label: "Project",
       path: undefined,
       current: null,
+      loadingLabel: "loading…",
+      loadingClassName: "px-fg-1 text-label text-ink-faint",
+      rootClassName: "flex items-center px-fg-1",
+      titleClassName: "min-w-0 flex-1 truncate text-[14px] font-medium text-ink",
     });
   });
 });
@@ -323,6 +668,8 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       facetsLoading: false,
       docTypes: ["adr", "plan"],
       featureTags: ["state", "search"],
+      statuses: [],
+      health: [],
       dateBounds: { from: "2026-06-01", to: "2026-06-30" },
     });
   });
@@ -334,6 +681,8 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       facetsLoading: true,
       docTypes: [],
       featureTags: [],
+      statuses: [],
+      health: [],
       dateBounds: undefined,
     });
   });
@@ -372,6 +721,26 @@ describe("deriveDashboardDateRangeView (dashboard date display)", () => {
     expect(deriveDashboardDateRangeView(undefined, fallback)).toEqual({
       ...fallback,
       source: "fallback",
+    });
+  });
+
+  it("normalizes dashboard date range before parsing display ticks", () => {
+    expect(
+      deriveDashboardDateRangeView({ from: "2026-06-30", to: "2026-06-01" }, fallback),
+    ).toEqual({
+      fromMs: Date.parse("2026-06-01"),
+      toMs: Date.parse("2026-06-30"),
+      source: "dashboard",
+    });
+    expect(
+      deriveDashboardDateRangeView(
+        { from: "2026-06-01T00:00:00Z", to: "2026-06-30" },
+        fallback,
+      ),
+    ).toEqual({
+      fromMs: Date.parse("2026-06-01"),
+      toMs: Date.parse("2026-06-30"),
+      source: "dashboard",
     });
   });
 });
@@ -434,8 +803,87 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
     expect(view.docTypes).toEqual(["adr"]);
     expect(view.featureTags).toEqual(["state", "filters"]);
     expect(view.editedWindow).toBe("7d");
+    expect(view.editedWindowRows).toEqual([
+      {
+        key: "any",
+        label: "Any time",
+        active: false,
+        inputClassName: "accent-accent",
+        labelClassName:
+          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
+        valueClassName: "text-ink-muted",
+      },
+      {
+        key: "7d",
+        label: "Last 7 days",
+        active: true,
+        inputClassName: "accent-accent",
+        labelClassName:
+          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
+        valueClassName: "text-ink",
+      },
+      {
+        key: "30d",
+        label: "Last 30 days",
+        active: false,
+        inputClassName: "accent-accent",
+        labelClassName:
+          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
+        valueClassName: "text-ink-muted",
+      },
+      {
+        key: "year",
+        label: "This year",
+        active: false,
+        inputClassName: "accent-accent",
+        labelClassName:
+          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
+        valueClassName: "text-ink-muted",
+      },
+    ]);
     expect(view.dateActive).toBe(true);
     expect(view.anyActive).toBe(true);
+    expect(view.presentation).toMatchObject({
+      panelAriaLabel: "filter panel",
+      panelClassName:
+        "pointer-events-auto absolute left-[8px] top-[42px] z-30 animate-slide-in-left",
+      headerClassName:
+        "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
+      titleClassName: "text-body font-medium text-ink",
+      headerActionsClassName: "flex items-center gap-fg-2",
+      titleLabel: "Filter documents",
+      clearAllClassName:
+        "text-caption text-accent-text underline-offset-2 hover:underline",
+      clearAllLabel: "Clear all",
+      clearAllAriaLabel: "clear all filters",
+      closeButtonClassName:
+        "rounded-fg-xs p-fg-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink",
+      closeAriaLabel: "close filter panel",
+      sectionClassName: "border-b border-rule",
+      sectionButtonClassName:
+        "flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium uppercase tracking-wider text-ink-muted hover:bg-paper-sunken",
+      sectionMetaClassName: "flex items-center gap-fg-1-5",
+      sectionBadgeClassName:
+        "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",
+      sectionIconClassName: "text-ink-faint",
+      sectionBodyClassName: "pb-2",
+      kindSectionLabel: "Kind",
+      topicSectionLabel: "Topic",
+      editedSectionLabel: "Edited",
+      editedWindowAriaLabel: "edited window",
+      facetEmptyClassName: "px-fg-3 py-fg-1 text-label italic text-ink-faint",
+      facetListClassName: "space-y-fg-0-5 px-fg-3",
+      facetOverflowButtonClassName:
+        "ml-fg-1 text-label text-ink-faint underline hover:text-ink-muted",
+      footerClassName: "border-t border-rule px-fg-3 py-fg-1-5",
+      footerTextClassName: "text-label text-state-stale",
+      editedWindows: [
+        { key: "any", label: "Any time" },
+        { key: "7d", label: "Last 7 days" },
+        { key: "30d", label: "Last 30 days" },
+        { key: "year", label: "This year" },
+      ],
+    });
   });
 
   it("treats top-level dashboard date range as active filter intent", () => {
@@ -492,6 +940,42 @@ describe("deriveDashboardTierDialView (stage tier dial)", () => {
     expect(view.timeline.timeTravel).toBe(true);
     expect(view.semanticDegraded).toBe(true);
     expect(view.availability.reasons.semantic).toBe("rag offline");
+    expect(view.rootClassName).toBe("flex items-center gap-fg-2 text-label");
+    expect(view.ariaLabel).toBe("tier dial");
+    expect(view.rows.find((row) => row.tier === "semantic")).toMatchObject({
+      tier: "semantic",
+      label: "semantic",
+      on: false,
+      blocked: true,
+      inapplicable: true,
+      offline: false,
+      state: "inapplicable",
+      stateLabel: "inapplicable while time travelling",
+      title: "semantic is about now - inapplicable while time travelling",
+      buttonAriaLabel: "semantic tier",
+      markTitle: "semantic tier mark",
+      rowClassName: "flex items-center gap-fg-1",
+      offlineLabel: null,
+      offlineLabelClassName: "text-caption text-state-stale",
+      showConfidence: false,
+      confidenceTier: "semantic",
+      confidenceValue: 0.65,
+      confidencePercent: 65,
+      confidenceAriaLabel: "semantic confidence floor",
+      confidenceAriaValueText: "65 percent",
+      confidenceTitle: "min confidence 65%",
+      confidenceSliderClassName: "h-1 w-14 accent-accent",
+      confidenceReadoutClassName:
+        "w-7 text-right text-caption tabular-nums text-ink-faint",
+      confidenceReadoutLabel: "65%",
+      confidenceGroupClassName: "flex items-center gap-fg-1",
+    });
+    expect(view.rows.find((row) => row.tier === "declared")).toMatchObject({
+      on: true,
+      blocked: false,
+      state: "on",
+      showConfidence: false,
+    });
   });
 
   it("falls back to all tiers on before dashboard state loads", () => {
@@ -509,6 +993,8 @@ describe("deriveDashboardTierDialView (stage tier dial)", () => {
     expect(view.minConfidence).toEqual({});
     expect(view.timeline.timeTravel).toBe(false);
     expect(view.availability.loading).toBe(true);
+    expect(view.rows).toHaveLength(4);
+    expect(view.rows.every((row) => row.on)).toBe(true);
   });
 });
 
@@ -559,11 +1045,14 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
       state: "ready",
       stateMessage: null,
       stateTone: "faint",
+      stateToneClass: "text-ink-faint",
       text: "line one\nline two\n",
       rawLines: ["line one", "line two"],
       path: "src/auth/mod.rs",
       languageHint: "rust",
       truncated: null,
+      readOnlyLabel: "read-only",
+      truncationMessage: null,
     });
   });
 
@@ -574,8 +1063,11 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
       state: "loading",
       stateMessage: "Loading file...",
       stateTone: "faint",
+      stateToneClass: "text-ink-faint",
       text: "",
       rawLines: [],
+      readOnlyLabel: "read-only",
+      truncationMessage: null,
     });
     expect(
       deriveCodeViewerView(content({ errored: true, available: false, text: "" })),
@@ -583,6 +1075,7 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
       state: "errored",
       stateMessage: "The file could not be loaded.",
       stateTone: "broken",
+      stateToneClass: "text-state-broken",
     });
     expect(
       deriveCodeViewerView(
@@ -597,12 +1090,14 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
       state: "degraded",
       stateMessage: "File unavailable: worktree not listable.",
       stateTone: "muted",
+      stateToneClass: "text-ink-muted",
     });
     expect(deriveCodeViewerView(content({ available: false, text: "" }))).toMatchObject(
       {
         state: "empty",
         stateMessage: "This file is empty.",
         stateTone: "faint",
+        stateToneClass: "text-ink-faint",
       },
     );
   });
@@ -615,10 +1110,18 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
     };
 
     expect(deriveCodeViewerView(content({ truncated })).truncated).toEqual(truncated);
+    expect(deriveCodeViewerView(content({ truncated })).truncationMessage).toBe(
+      "Truncated to the first 1,048,576 of 2,000,000 bytes — open the file directly for the full contents.",
+    );
     expect(
       deriveCodeViewerView(
         content({ loading: true, available: false, text: "", truncated }),
       ).truncated,
+    ).toBeNull();
+    expect(
+      deriveCodeViewerView(
+        content({ loading: true, available: false, text: "", truncated }),
+      ).truncationMessage,
     ).toBeNull();
   });
 });
@@ -722,6 +1225,20 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
     });
     expect(view.body).toBe("\n# Body heading");
     expect(view.status).toBe("accepted");
+    expect(view.editorial).toMatchObject({
+      title: "Body heading",
+      dek: null,
+      body: "",
+      eyebrow: { label: "Decision", category: "adr" },
+      meta: ["17 June 2026", "1 min read", "accepted"],
+      footerTags: [],
+      related: [
+        {
+          stem: "2026-06-18-reader-plan",
+          nodeId: "doc:2026-06-18-reader-plan",
+        },
+      ],
+    });
   });
 
   it("leaves general markdown untouched when no frontmatter fence is present", () => {
@@ -729,11 +1246,64 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       state: "ready",
       stateMessage: null,
       stateTone: "faint",
+      stateToneClass: "text-ink-faint",
       frontmatter: null,
       status: null,
       body: "# Plain markdown",
+      editorial: {
+        title: "Plain markdown",
+        dek: null,
+        body: "",
+        eyebrow: null,
+        meta: ["1 min read"],
+        footerTags: [],
+        related: [],
+      },
       truncated: null,
+      truncationMessage: null,
     });
+  });
+
+  it("projects reader editorial header, footer, and truncation chrome", () => {
+    const view = deriveMarkdownReaderView(
+      content({
+        text: [
+          "---",
+          "tags:",
+          "  - '#plan'",
+          "  - '#state-boundary'",
+          "date: '2026-06-19'",
+          "status: draft",
+          "related:",
+          "  - '[[dashboard-state-plan]]'",
+          "---",
+          "",
+          "# Reader title",
+          "",
+          "The dek is lifted out of the rendered markdown body.",
+          "",
+          "The remaining paragraph stays in the markdown article.",
+        ].join("\n"),
+        truncated: {
+          total_bytes: 2500,
+          returned_bytes: 1024,
+          reason: "content byte ceiling",
+        },
+      }),
+    );
+
+    expect(view.editorial).toEqual({
+      title: "Reader title",
+      dek: "The dek is lifted out of the rendered markdown body.",
+      body: "The remaining paragraph stays in the markdown article.",
+      eyebrow: { label: "Plan", category: "plan" },
+      meta: ["19 June 2026", "1 min read", "draft"],
+      footerTags: [{ label: "#state-boundary" }],
+      related: [{ stem: "dashboard-state-plan", nodeId: "doc:dashboard-state-plan" }],
+    });
+    expect(view.truncationMessage).toBe(
+      "Truncated to the first 1,024 of 2,500 bytes — open the file directly for the full document.",
+    );
   });
 
   it("projects loading, error, degraded, empty, and truncated states", () => {
@@ -743,6 +1313,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       state: "loading",
       stateMessage: "Loading document…",
       stateTone: "faint",
+      stateToneClass: "text-ink-faint",
       body: "",
     });
     expect(
@@ -753,6 +1324,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       state: "errored",
       stateMessage: "The document could not be loaded.",
       stateTone: "broken",
+      stateToneClass: "text-state-broken",
       body: "",
     });
     expect(
@@ -768,6 +1340,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       state: "degraded",
       stateMessage: "Document unavailable: worktree not listable.",
       stateTone: "muted",
+      stateToneClass: "text-ink-muted",
       body: "",
     });
     expect(
@@ -776,6 +1349,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       state: "empty",
       stateMessage: "This document is empty.",
       stateTone: "faint",
+      stateToneClass: "text-ink-faint",
       body: "",
     });
 
@@ -864,6 +1438,24 @@ describe("deriveDashboardGraphControlsView (stage graph controls)", () => {
       }).freezeAvailable,
     ).toBe(false);
   });
+
+  it("normalizes malformed graph bounds before graph controls consume them", () => {
+    expect(
+      deriveDashboardGraphControlsView({
+        graph_bounds: { shape: "rect", size: Number.NaN },
+        representation_mode: "connectivity",
+        timeline_mode: { kind: "live" },
+      }).graphBounds,
+    ).toEqual({ shape: "rect", size: 0 });
+
+    expect(
+      deriveDashboardGraphControlsView({
+        graph_bounds: { shape: "hex" as "circle", size: 1200 },
+        representation_mode: "connectivity",
+        timeline_mode: { kind: "live" },
+      }).graphBounds,
+    ).toEqual({ shape: "free", size: 0 });
+  });
 });
 
 describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
@@ -871,7 +1463,15 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
     scope: "scope-a",
     selected_ids: ["node:a", "node:b"],
     hovered_id: null,
-    filters: { doc_types: ["adr"], tiers: { semantic: false } },
+    filters: {
+      doc_types: ["adr"],
+      tiers: { semantic: false },
+      feature_query: { value: "state-*", mode: "glob" },
+      statuses: ["draft"],
+      plan_tiers: ["wave-1"],
+      health: ["orphaned"],
+      text: "centralize",
+    },
     date_range: { from: "2026-06-01", to: "2026-06-18" },
     timeline_mode: { kind: "time-travel", at: 42 },
     graph_granularity: "document",
@@ -896,6 +1496,11 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
         filter: {
           doc_types: ["adr"],
           tiers: { semantic: false },
+          feature_query: { value: "state-*", mode: "glob" },
+          statuses: ["draft"],
+          plan_tiers: ["wave-1"],
+          health: ["orphaned"],
+          text: "centralize",
           date_range: { from: "2026-06-01", to: "2026-06-18" },
         },
         asOf: 42,
@@ -932,6 +1537,31 @@ describe("deriveDashboardStageSceneView (Stage scene owner)", () => {
       },
       liveTimeline: true,
     });
+  });
+
+  it("normalizes graph bounds before the Stage scene-owner view consumes them", () => {
+    expect(
+      deriveDashboardStageSceneView({
+        ...state,
+        graph_bounds: { shape: "circle", size: Number.NEGATIVE_INFINITY },
+      }).graphBounds,
+    ).toEqual({ shape: "circle", size: 0 });
+
+    expect(
+      deriveDashboardStageSceneView({
+        ...state,
+        graph_bounds: { shape: "invalid" as "rect", size: 100 },
+      }).graphBounds,
+    ).toEqual({ shape: "free", size: 0 });
+  });
+
+  it("normalizes representation mode before the Stage scene-owner view consumes it", () => {
+    expect(
+      deriveDashboardStageSceneView({
+        ...state,
+        representation_mode: "invalid" as "connectivity",
+      }).activeRepresentationMode,
+    ).toBe("connectivity");
   });
 });
 
@@ -989,6 +1619,129 @@ describe("deriveDashboardLayoutSelectorView (stage layout picker)", () => {
       },
     });
   });
+
+  it("normalizes malformed representation mode before layout selection", () => {
+    expect(
+      deriveDashboardLayoutSelectorView({
+        date_range: {},
+        representation_mode: "invalid" as "connectivity",
+        timeline_mode: { kind: "live" },
+      }),
+    ).toMatchObject({
+      representationMode: "connectivity",
+      spatialActive: "connectivity",
+    });
+  });
+
+  it("projects layout picker segment chrome for live mode", () => {
+    const view = deriveDashboardLayoutSelectorView({
+      date_range: {},
+      representation_mode: "radial",
+      timeline_mode: { kind: "live" },
+    });
+
+    expect(
+      deriveDashboardLayoutSelectorPresentationView(view, { semanticShipped: true }),
+    ).toMatchObject({
+      containerClassName: "flex items-center gap-fg-1",
+      spatial: {
+        ariaLabel: "spatial layout",
+        className: "flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5",
+        segments: [
+          {
+            value: "connectivity",
+            label: "Free",
+            title: "Connections pull related items together - force-directed",
+            active: false,
+            tabIndex: -1,
+            className:
+              "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus text-ink-muted hover:text-ink",
+          },
+          {
+            value: "lineage",
+            label: "Lineage",
+            active: false,
+            tabIndex: -1,
+          },
+          {
+            value: "hierarchical",
+            label: "Hierarchy",
+            active: false,
+            tabIndex: -1,
+          },
+          {
+            value: "radial",
+            label: "Radial",
+            active: true,
+            tabIndex: 0,
+            className:
+              "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus bg-paper-raised font-medium text-ink shadow-fg-raised",
+          },
+          {
+            value: "community",
+            label: "Clusters",
+            active: false,
+            tabIndex: -1,
+          },
+          {
+            value: "semantic",
+            label: "Meaning",
+            title: "Nearby = similar in meaning - semantic (UMAP)",
+            available: true,
+            active: false,
+            tabIndex: -1,
+          },
+        ],
+      },
+      temporal: {
+        ariaLabel: "temporal view",
+        className: "flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5",
+        segments: [
+          {
+            value: "timeline",
+            label: "Timeline",
+            title: "Arrange along time - enter the temporal view (time-travel)",
+            active: false,
+            tabIndex: 0,
+          },
+        ],
+      },
+    });
+  });
+
+  it("projects time-travel and unavailable semantic layout states", () => {
+    const view = deriveDashboardLayoutSelectorView({
+      date_range: {},
+      representation_mode: "semantic",
+      timeline_mode: { kind: "time-travel", at: 42 },
+    });
+    const presentation = deriveDashboardLayoutSelectorPresentationView(view, {
+      semanticShipped: false,
+    });
+
+    expect(presentation.spatial.segments[0]).toMatchObject({
+      value: "connectivity",
+      active: false,
+      tabIndex: 0,
+    });
+    expect(
+      presentation.spatial.segments[presentation.spatial.segments.length - 1],
+    ).toMatchObject({
+      value: "semantic",
+      available: false,
+      active: false,
+      tabIndex: -1,
+      title:
+        "Nearby = similar in meaning - falls back to Free until the semantic projection ships",
+      className:
+        "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus text-ink-muted hover:text-ink italic",
+    });
+    expect(presentation.temporal.segments[0]).toMatchObject({
+      value: "timeline",
+      active: true,
+      tabIndex: 0,
+    });
+  });
 });
 
 describe("deriveDashboardLensSelectorView (stage lens picker)", () => {
@@ -998,6 +1751,46 @@ describe("deriveDashboardLensSelectorView (stage lens picker)", () => {
     });
     expect(deriveDashboardLensSelectorView(undefined)).toEqual({
       lens: "status",
+    });
+    expect(
+      deriveDashboardLensSelectorView({ salience_lens: "invalid" as "status" }),
+    ).toEqual({
+      lens: "status",
+    });
+  });
+
+  it("projects lens rows for the stage renderer", () => {
+    expect(
+      deriveDashboardLensSelectorPresentationView(
+        deriveDashboardLensSelectorView({ salience_lens: "design" }),
+        { disabled: true },
+      ),
+    ).toEqual({
+      containerAriaLabel: "salience lens",
+      containerClassName:
+        "flex items-center gap-fg-0-5 rounded-fg-md border border-rule bg-paper-raised/95 p-fg-0-5 shadow-fg-raised backdrop-blur-sm",
+      rows: [
+        {
+          lens: "status",
+          label: "Status",
+          hint: "What is in-flight: plans, progress, the pivotal bridges that gate work",
+          ariaLabel: "Status lens",
+          active: false,
+          disabled: true,
+          className:
+            "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus border border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",
+        },
+        {
+          lens: "design",
+          label: "Design",
+          hint: "Why the system is this way: the binding decisions and their grounding",
+          ariaLabel: "Design lens",
+          active: true,
+          disabled: true,
+          className:
+            "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus border border-accent bg-accent-subtle text-ink",
+        },
+      ],
     });
   });
 });
@@ -1011,6 +1804,16 @@ describe("deriveDashboardRangeSelectView (timeline range selector)", () => {
       dateRange: { from: "2026-06-01", to: "2026-06-18" },
     });
     expect(view.dateRange).not.toBe(source.date_range);
+  });
+
+  it("normalizes committed dashboard date range for the range band", () => {
+    expect(
+      deriveDashboardRangeSelectView({
+        date_range: { from: "2026-06-30", to: "2026-06-01" },
+      }),
+    ).toEqual({
+      dateRange: { from: "2026-06-01", to: "2026-06-30" },
+    });
   });
 
   it("falls back to an empty committed range before dashboard state loads", () => {
@@ -1047,6 +1850,40 @@ describe("deriveDashboardGraphDefaultsInitializationView (settings effects)", ()
         filters: { text: "user-owned" },
       }),
     ).toEqual({ loaded: true, fresh: false });
+  });
+});
+
+describe("useDashboardState cache boundaries", () => {
+  it("does not expose cached dashboard intent when no scope is selected", () => {
+    const client = testQueryClient();
+    const session = sessionState("scope-a");
+    const sessionIdentity = dashboardStateSessionIdentity(session);
+    client.setQueryData(engineKeys.session(), session);
+    client.setQueryData(
+      engineKeys.dashboardState("", sessionIdentity),
+      dashboardState(""),
+    );
+
+    const { result } = renderHook(() => useDashboardState(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached dashboard intent while session identity is pending", () => {
+    const client = testQueryClient();
+    client.setQueryDefaults(engineKeys.session(), { enabled: false });
+    client.setQueryData(
+      engineKeys.dashboardState("scope-a", dashboardStateSessionIdentity(undefined)),
+      dashboardState("scope-a"),
+    );
+
+    const { result } = renderHook(() => useDashboardState("scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
   });
 });
 
@@ -1113,6 +1950,25 @@ describe("deriveDashboardShellChromeView (AppShell chrome)", () => {
       },
     });
   });
+
+  it("normalizes malformed panel state before AppShell chrome consumes it", () => {
+    expect(
+      deriveDashboardShellChromeView({
+        panel_state: {
+          left_collapsed: "yes" as unknown as boolean,
+          right_collapsed: true,
+          right_tab: "invalid" as "status",
+        },
+        timeline_mode: { kind: "live" },
+      }),
+    ).toMatchObject({
+      panelState: {
+        left_collapsed: false,
+        right_collapsed: true,
+        right_tab: "status",
+      },
+    });
+  });
 });
 
 describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
@@ -1142,7 +1998,17 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
   it("resolves effective schema groups and loading state in the stores layer", () => {
     const view = deriveSettingsDialogView(schema, settings, null, false);
 
+    expect(view.loading).toBe(false);
     expect(view.schemaLoading).toBe(false);
+    expect(view.settingsLoading).toBe(false);
+    expect(view).toMatchObject({
+      title: "Settings",
+      description: "Preferences are saved to this workspace. Some apply per scope.",
+      loadingMessage: "Loading settings…",
+      emptyMessage: "No settings are available.",
+      cancelLabel: "Cancel",
+      doneLabel: "Done",
+    });
     expect(view.groups).toHaveLength(1);
     expect(view.groups[0]).toMatchObject({ name: "Appearance" });
     expect(view.groups[0]!.settings[0]).toMatchObject({
@@ -1152,9 +2018,26 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
   });
 
   it("keeps the dialog empty while the schema is not served yet", () => {
-    expect(deriveSettingsDialogView(undefined, undefined, null, true)).toEqual({
+    expect(deriveSettingsDialogView(undefined, undefined, null, true)).toMatchObject({
+      loading: true,
       schemaLoading: true,
+      settingsLoading: false,
       groups: [],
+      loadingMessage: "Loading settings…",
+      emptyMessage: "No settings are available.",
+    });
+  });
+
+  it("keeps the dialog empty while persisted settings are still loading", () => {
+    expect(
+      deriveSettingsDialogView(schema, undefined, null, false, true),
+    ).toMatchObject({
+      loading: true,
+      schemaLoading: false,
+      settingsLoading: true,
+      groups: [],
+      loadingMessage: "Loading settings…",
+      emptyMessage: "No settings are available.",
     });
   });
 });
@@ -1186,8 +2069,17 @@ describe("deriveThemeSettingView (platform theme bridge)", () => {
         tiers: {},
       }),
     ).toEqual({
+      loading: false,
       serverTheme: "dark",
       themeMembers: ["system", "light", "dark"],
+    });
+  });
+
+  it("does not expose a schema-default theme while persisted settings are loading", () => {
+    expect(deriveThemeSettingView(schema, undefined, false, true)).toEqual({
+      loading: true,
+      serverTheme: undefined,
+      themeMembers: [],
     });
   });
 });
@@ -1260,12 +2152,23 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         "scope-a",
       ),
     ).toEqual({
+      loading: false,
       reduceMotion: true,
       graphDefaults: {
         defaultGranularity: "feature",
         confidenceFloor: 60,
         labelFilter: "adr",
       },
+    });
+  });
+
+  it("keeps effects inert while persisted settings are still loading", () => {
+    expect(
+      deriveSettingsEffectsView(schema, undefined, "scope-a", false, true),
+    ).toEqual({
+      loading: true,
+      reduceMotion: false,
+      graphDefaults: null,
     });
   });
 });
@@ -1338,6 +2241,13 @@ describe("left-rail root surface states", () => {
   const structuralDown = deriveWorkspaceMapAvailability({
     structural: { available: false, reason: "worktree missing" },
   });
+  const wt = (id: string, extra?: Partial<MapWorktree>): MapWorktree => ({
+    id,
+    path: `/repo/${id}`,
+    branch: id,
+    has_vault: false,
+    ...extra,
+  });
 
   it("keeps workspace-map loading/error classification in stores", () => {
     expect(
@@ -1360,6 +2270,138 @@ describe("left-rail root surface states", () => {
     ).toBe("ready");
   });
 
+  it("projects worktree picker ordering, labels, and pending state in stores", () => {
+    const ordered = orderWorkspaceMapWorktrees([
+      wt("bare-z"),
+      wt("vault-b", { has_vault: true }),
+      wt("vault-a", { has_vault: true, is_default: true }),
+      wt("bare-a", { degraded: ["structural"] }),
+    ]);
+    expect(ordered.map((worktree) => worktree.id)).toEqual([
+      "vault-a",
+      "vault-b",
+      "bare-a",
+      "bare-z",
+    ]);
+
+    const view = deriveWorkspaceMapPickerPresentationView({
+      map: {
+        repositories: [
+          {
+            path: "/repo",
+            branches: [],
+            worktrees: ordered,
+          },
+        ],
+        tiers: {},
+      },
+      activeScope: "vault-a",
+      pendingId: "vault-b",
+      availability: structuralDown,
+    });
+
+    expect(view.triggerLabel).toBe("vault-b");
+    expect(view.triggerAriaLabel).toBe("worktree scope: vault-b, switching");
+    expect(view.triggerClassName).toBe(
+      "flex w-full items-center gap-fg-1-5 rounded-fg-md bg-paper-sunken px-[10px] py-[6px] transition-colors duration-ui-fast hover:bg-paper-sunken/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+    );
+    expect(view.triggerLabelClassName).toBe(
+      "min-w-0 flex-1 truncate text-left text-body-strong text-ink-muted",
+    );
+    expect(view.triggerIconClassName).toBe("shrink-0 text-ink-faint");
+    expect(view.loadingClassName).toBe("px-fg-1 py-fg-0-5 text-label text-ink-faint");
+    expect(view.errorRootClassName).toBe("space-y-fg-1 px-fg-1 py-fg-0-5");
+    expect(view.errorLabelClassName).toBe("text-label text-state-broken");
+    expect(view.retryButtonClassName).toBe(
+      "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+    );
+    expect(view.degradedLabel).toBe(
+      "the worktree map is partly unavailable right now — worktree missing. showing what loaded.",
+    );
+    expect(view.degradedClassName).toBe(
+      "mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
+    );
+    expect(view.rows.map((row) => row.worktree.id)).toEqual([
+      "vault-a",
+      "vault-b",
+      "bare-a",
+      "bare-z",
+    ]);
+    expect(view.rows[0]).toMatchObject({
+      selectable: true,
+      isActive: true,
+      rowClassName:
+        "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus bg-accent-subtle font-medium text-ink",
+      activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-accent",
+      branchClassName: "min-w-0 truncate",
+      badgeClassName: "shrink-0 text-ink-faint",
+      degradedIconClassName: "flex shrink-0 items-center text-state-stale",
+      pendingLabelClassName: "ml-auto shrink-0 text-caption text-ink-faint",
+      defaultLabel: "·default",
+      ariaLabel: "switch to vault-a, the default, current scope",
+    });
+    expect(view.rows[1]).toMatchObject({
+      isPending: true,
+      rowClassName:
+        "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus text-ink-muted hover:bg-paper-sunken hover:text-ink",
+      activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
+      pendingLabel: "switching…",
+    });
+    expect(view.rows[2]).toMatchObject({
+      selectable: false,
+      isDegraded: true,
+      rowClassName:
+        "flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-not-allowed text-ink-faint/60",
+      activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
+      bareLabel: "·bare",
+      degradedTitle: "structural",
+      ariaLabel: "bare-a — context only, no vault corpus to switch to",
+    });
+  });
+
+  it("projects worktree picker empty and single-scope states in stores", () => {
+    expect(
+      deriveWorkspaceMapPickerPresentationView({
+        map: { repositories: [], tiers: {} },
+        activeScope: null,
+        pendingId: null,
+        availability: noDegradation,
+      }),
+    ).toMatchObject({
+      triggerLabel: "pick a worktree…",
+      triggerAriaLabel: "choose a worktree scope",
+      emptyLabel:
+        "no worktrees mapped yet — point the engine at a repository to begin.",
+      singleScopeLabel: null,
+    });
+
+    expect(
+      deriveWorkspaceMapPickerPresentationView({
+        map: {
+          repositories: [
+            {
+              path: "/repo",
+              branches: [],
+              worktrees: [wt("main", { has_vault: true })],
+            },
+          ],
+          tiers: {},
+        },
+        activeScope: "main",
+        pendingId: null,
+        availability: noDegradation,
+      }),
+    ).toMatchObject({
+      triggerLabel: "main",
+      triggerLabelClassName:
+        "min-w-0 flex-1 truncate text-left text-body-strong text-ink",
+      emptyLabel: null,
+      emptyClassName: "px-fg-2 py-fg-1 text-label text-ink-faint",
+      singleScopeLabel: "this is the only vault-bearing worktree.",
+      singleScopeClassName: "px-fg-2 py-fg-0-5 text-caption text-ink-faint",
+    });
+  });
+
   it("keeps vault-tree transport failure distinct from tiered degradation", () => {
     expect(
       deriveVaultTreeSurfaceState({ isPending: true, isError: false }, noDegradation),
@@ -1370,6 +2412,89 @@ describe("left-rail root surface states", () => {
     expect(
       deriveVaultTreeSurfaceState({ isPending: false, isError: true }, structuralDown),
     ).toBe("ready");
+  });
+
+  it("projects vault-tree browser groups and filter-empty state in the stores layer", () => {
+    const entry = (
+      path: string,
+      docType: string,
+      featureTags: string[],
+    ): VaultTreeEntry => ({
+      path,
+      doc_type: docType,
+      feature_tags: featureTags,
+      dates: {},
+    });
+    const entries = [
+      entry(".vault/plan/2026-01-08-grid-plan.md", "plan", ["grid"]),
+      entry(".vault/research/2026-01-08-grid-research.md", "research", ["grid"]),
+      entry(".vault/adr/2026-01-08-grid-adr.md", "adr", ["grid"]),
+      entry(".vault/index/root.index.md", "index", []),
+    ];
+
+    const view = deriveVaultTreeBrowserView(entries, "GRID");
+    expect(view.entries.map((item) => item.path)).toEqual([
+      ".vault/plan/2026-01-08-grid-plan.md",
+      ".vault/research/2026-01-08-grid-research.md",
+      ".vault/adr/2026-01-08-grid-adr.md",
+    ]);
+    expect(view.groups).toHaveLength(1);
+    expect(view.groups[0]).toMatchObject({ feature: "grid", count: 3 });
+    expect(view.groups[0]!.docTypes.map((group) => group.docType)).toEqual([
+      "research",
+      "adr",
+      "plan",
+    ]);
+    expect(deriveVaultTreeBrowserView(entries, "missing")).toMatchObject({
+      activeFilter: "missing",
+      entries: [],
+      groups: [],
+      filteredToNothing: true,
+    });
+    expect(deriveVaultTreeBrowserView(entries, "")).toMatchObject({
+      activeFilter: "",
+      filteredToNothing: false,
+    });
+    expect(deriveVaultTreeBrowserView(entries, "").groups.at(-1)?.feature).toBe(
+      "(untagged)",
+    );
+  });
+
+  it("does not expose cached vault-tree data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.vaultTree(""), { entries: [], tiers: {} });
+
+    const { result } = renderHook(() => useVaultTree(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached file-tree data when no scope or level is disabled", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.fileTree(""), {
+      path: "",
+      entries: [],
+      truncated: null,
+      tiers: {},
+    });
+    client.setQueryData(engineKeys.fileTree("scope-a", "src"), {
+      path: "src",
+      entries: [],
+      truncated: null,
+      tiers: {},
+    });
+
+    const noScope = renderHook(() => useFileTree(null), {
+      wrapper: wrapper(client),
+    });
+    const disabledLevel = renderHook(() => useFileTree("scope-a", "src", false), {
+      wrapper: wrapper(client),
+    });
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(disabledLevel.result.current.data).toBeUndefined();
   });
 
   it("treats file-tree structural degradation as the terminal code-mode state", () => {
@@ -1404,13 +2529,37 @@ describe("left-rail root surface states", () => {
     expect(deriveFileTreeLevelView(undefined, true, false, retry)).toEqual({
       state: "loading",
       entries: [],
+      rows: [],
       truncated: null,
+      loadingMessage: "reading the worktree…",
+      errorTitle: "code tree unavailable",
+      retryLabel: "try again",
+      emptyMessage: "no source files in this scope yet.",
+      childLoadingMessage: "…",
+      childErrorMessage: "could not list this directory.",
+      truncationMessage: null,
+      childLoadingClassName:
+        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
+      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
+      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     expect(deriveFileTreeLevelView(undefined, false, true, retry)).toEqual({
       state: "error",
       entries: [],
+      rows: [],
       truncated: null,
+      loadingMessage: "reading the worktree…",
+      errorTitle: "code tree unavailable",
+      retryLabel: "try again",
+      emptyMessage: "no source files in this scope yet.",
+      childLoadingMessage: "…",
+      childErrorMessage: "could not list this directory.",
+      truncationMessage: null,
+      childLoadingClassName:
+        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
+      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
+      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     expect(
@@ -1423,7 +2572,19 @@ describe("left-rail root surface states", () => {
     ).toEqual({
       state: "empty",
       entries: [],
+      rows: [],
       truncated: null,
+      loadingMessage: "reading the worktree…",
+      errorTitle: "code tree unavailable",
+      retryLabel: "try again",
+      emptyMessage: "no source files in this scope yet.",
+      childLoadingMessage: "…",
+      childErrorMessage: "could not list this directory.",
+      truncationMessage: null,
+      childLoadingClassName:
+        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
+      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
+      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     const entry = {
@@ -1447,9 +2608,47 @@ describe("left-rail root surface states", () => {
     ).toEqual({
       state: "ready",
       entries: [entry],
+      rows: [{ entry, displayName: "main.ts" }],
       truncated,
+      loadingMessage: "reading the worktree…",
+      errorTitle: "code tree unavailable",
+      retryLabel: "try again",
+      emptyMessage: "no source files in this scope yet.",
+      childLoadingMessage: "…",
+      childErrorMessage: "could not list this directory.",
+      truncationMessage: "more here (20) — expand a subdirectory to narrow.",
+      childLoadingClassName:
+        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
+      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
+      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
+    expect(fileTreeChildStatusStyle(2)).toEqual({ paddingLeft: "1.75rem" });
+  });
+
+  it("derives file-tree row display names in the stores level view", () => {
+    const entries = [
+      {
+        path: "src/components/",
+        kind: "dir" as const,
+        has_children: true,
+        node_id: "code:src/components",
+      },
+      {
+        path: "src/components/Button.tsx",
+        kind: "file" as const,
+        has_children: false,
+        node_id: "code:src/components/Button.tsx",
+      },
+    ];
+
+    expect(
+      deriveFileTreeLevelView(
+        { path: "src", entries, truncated: null, tiers: {} },
+        false,
+        false,
+      ).rows.map((row) => row.displayName),
+    ).toEqual(["components", "Button.tsx"]);
   });
 });
 
@@ -1566,6 +2765,124 @@ describe("useLinkResolution closed-editor boundary", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(graphRequests).toEqual([]);
     unmount();
+  });
+});
+
+describe("useChangedFiles git availability boundary", () => {
+  const statusWithoutGit: EngineStatus = {
+    ok: true,
+    nodes: 0,
+    edges: 0,
+    degradations: [],
+    tiers: {
+      structural: { available: true },
+    },
+  };
+  const cachedChangedFile: ChangedFile = {
+    path: "src/stale.ts",
+    code: " M",
+    letter: "M",
+    group: "modified",
+    vault: false,
+    adds: 4,
+    dels: 1,
+  };
+
+  it("does not issue changed-file reads or expose cached rows when git is unavailable", async () => {
+    const client = testQueryClient();
+    const scope = "scope-without-git";
+    client.setQueryData(engineKeys.status(), statusWithoutGit);
+    client.setQueryData(engineKeys.gitChanges(scope), [cachedChangedFile]);
+    const gitRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/ops/git/status") || input.includes("/ops/git/numstat")) {
+        gitRequests.push(input);
+      }
+      return liveTransport(input, init);
+    });
+
+    const { result, unmount } = renderHook(() => useChangedFiles(scope), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current).toMatchObject({
+      loading: false,
+      errored: false,
+      files: [],
+      codeFiles: [],
+      documents: [],
+      summary: {
+        files: 0,
+        documents: 0,
+        additions: 0,
+        deletions: 0,
+        total: 0,
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gitRequests).toEqual([]);
+    unmount();
+  });
+
+  it("keeps the changes overview on the degraded empty state with cached changed rows", () => {
+    const client = testQueryClient();
+    const scope = "scope-without-git";
+    client.setQueryData(engineKeys.status(), statusWithoutGit);
+    client.setQueryData(engineKeys.gitChanges(scope), [cachedChangedFile]);
+
+    const { result, unmount } = renderHook(() => useChangesOverview(scope), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current).toMatchObject({
+      degraded: true,
+      hasChanges: false,
+      hasFiles: false,
+      hasDocuments: false,
+      files: [],
+      documents: [],
+      summary: {
+        files: 0,
+        documents: 0,
+        additions: 0,
+        deletions: 0,
+        total: 0,
+      },
+    });
+    unmount();
+  });
+});
+
+describe("git diff selector argument normalization", () => {
+  const availableGit = { git: { branch: "main", dirty: true } };
+
+  it("uses one trimmed stores-layer identity for git diff cache and wire inputs", () => {
+    expect(
+      normalizeGitDiffRequest(
+        "  wt-1  ",
+        "  .vault/plan.md  ",
+        "  HEAD~1  ",
+        "  HEAD  ",
+      ),
+    ).toEqual({
+      scope: "wt-1",
+      path: ".vault/plan.md",
+      from: "HEAD~1",
+      to: "HEAD",
+    });
+  });
+
+  it("disables live and historical diff reads for blank presentation values", () => {
+    expect(canReadGitFileDiff("wt-1", "   ", availableGit)).toBe(false);
+    expect(
+      canReadGitHistoricalFileDiff(
+        "wt-1",
+        ".vault/plan.md",
+        "HEAD~1",
+        "  ",
+        availableGit,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -1770,6 +3087,26 @@ describe("deriveDiscoverView (canvas-controls discover, contract §4)", () => {
     expect(v.offline).toBe(true);
   });
 
+  it("treats a served block missing semantic as offline", () => {
+    const v = deriveDiscoverView(
+      { candidates: [edge("stale")], tiers: { structural: { available: true } } },
+      null,
+      false,
+      true,
+    );
+    expect(v.offline).toBe(true);
+    expect(v.candidates).toEqual([]);
+  });
+
+  it("lets a fresh tiers-bearing error win over stale discover candidates", () => {
+    const err = new EngineError("/nodes/x/discover", 502, {
+      tiers: { semantic: { available: false, reason: "rag service down" } },
+    });
+    const v = deriveDiscoverView(served([edge("stale")]), err, false, true);
+    expect(v.offline).toBe(true);
+    expect(v.candidates).toEqual([]);
+  });
+
   it("is empty-not-offline when rag is up and serves zero candidates", () => {
     const v = deriveDiscoverView(served([]), null, false, true);
     expect(v.offline).toBe(false);
@@ -1895,6 +3232,8 @@ describe("engineKeys", () => {
       engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.history("wt-1", 20),
+      engineKeys.prs("wt-1", "open"),
+      engineKeys.issues("wt-1", "open"),
       engineKeys.stream(["graph"], 42, "wt-1"),
       engineKeys.diff("wt-1", 1_000, 2_000),
       engineKeys.lineage("wt-1", {}),
@@ -1905,6 +3244,10 @@ describe("engineKeys", () => {
       engineKeys.gitDiff("wt-1", ".vault/plan.md"),
       engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
       ["engine", "ops-rag", "service-state", "wt-1"] as const,
+      ["engine", "ops-rag", "watcher", "wt-1"] as const,
+      ["engine", "ops-rag", "readiness", "wt-1"] as const,
+      ["engine", "ops-rag", "projects", "wt-1"] as const,
+      ["engine", "ops-rag", "jobs", "wt-1", "job-1"] as const,
     ];
     const scopedFamilies = new Set(scopedKeys.map((key) => String(key[1])));
     expect(new Set(SCOPED_ENGINE_QUERY_SUBTREES)).toEqual(scopedFamilies);
@@ -1955,6 +3298,8 @@ describe("engineKeys", () => {
       engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.history("wt-1", 20),
+      engineKeys.prs("wt-1", "open"),
+      engineKeys.issues("wt-1", "open"),
       engineKeys.stream(["graph"], 42, "wt-1"),
       engineKeys.diff("wt-1", 1_000, 2_000),
       engineKeys.lineage("wt-1", {}),
@@ -1965,6 +3310,10 @@ describe("engineKeys", () => {
       engineKeys.gitDiff("wt-1", ".vault/plan.md"),
       engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
       ["engine", "ops-rag", "service-state", "wt-1"] as const,
+      ["engine", "ops-rag", "watcher", "wt-1"] as const,
+      ["engine", "ops-rag", "readiness", "wt-1"] as const,
+      ["engine", "ops-rag", "projects", "wt-1"] as const,
+      ["engine", "ops-rag", "jobs", "wt-1", "job-1"] as const,
     ];
     const globalKeys = [engineKeys.map(), engineKeys.status()];
     const sessionKeys = [engineKeys.session(), engineKeys.workspaces()];
@@ -1999,6 +3348,8 @@ describe("engineKeys", () => {
       engineKeys.discover("wt-1", "doc:plan"),
       engineKeys.events("wt-1", {}),
       engineKeys.history("wt-1", 20),
+      engineKeys.prs("wt-1", "open"),
+      engineKeys.issues("wt-1", "open"),
       engineKeys.stream(["graph"], 42, "wt-1"),
       engineKeys.diff("wt-1", 1_000, 2_000),
       engineKeys.lineage("wt-1", {}),
@@ -2009,6 +3360,10 @@ describe("engineKeys", () => {
       engineKeys.gitDiff("wt-1", ".vault/plan.md"),
       engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
       ["engine", "ops-rag", "service-state", "wt-1"] as const,
+      ["engine", "ops-rag", "watcher", "wt-1"] as const,
+      ["engine", "ops-rag", "readiness", "wt-1"] as const,
+      ["engine", "ops-rag", "projects", "wt-1"] as const,
+      ["engine", "ops-rag", "jobs", "wt-1", "job-1"] as const,
     ];
     const removedGlobalKeys = [engineKeys.map()];
     const refreshedGlobalKeys = [engineKeys.workspaces(), engineKeys.status()];
@@ -2044,6 +3399,7 @@ describe("engineKeys", () => {
       engineKeys.fileTree(scope, ".vault", undefined),
       engineKeys.gitChanges(scope),
       engineKeys.gitDiff(scope, ".vault/plan.md"),
+      engineKeys.gitHistoricalDiff(scope, ".vault/plan.md", "HEAD~1", "HEAD"),
       engineKeys.node(scope, nodeId),
       engineKeys.neighbors(scope, nodeId, 1),
       engineKeys.evidence(scope, nodeId),
@@ -2063,17 +3419,91 @@ describe("engineKeys", () => {
       engineKeys.dashboardState(otherScope, "session-a"),
       engineKeys.graph(otherScope, undefined, undefined, "document", "status", null),
       engineKeys.gitChanges(otherScope),
+      engineKeys.gitHistoricalDiff(otherScope, ".vault/plan.md", "HEAD~1", "HEAD"),
       engineKeys.events(otherScope, { from: "2026-01-01", to: "2026-01-31" }),
       engineKeys.diff(otherScope, 1_000, 2_000),
       engineKeys.lineage(otherScope, {}),
       engineKeys.stream(["backends"], undefined, otherScope),
       engineKeys.history(otherScope, 20),
+      engineKeys.search(otherScope, "alpha", "vault"),
     ];
 
     for (const key of affectedKeys) seedQuery(client, key);
     for (const key of unaffectedKeys) seedQuery(client, key);
 
     invalidateAfterVaultMutation(client, scope, nodeId);
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  it("invalidates scoped generation reads after a vault mutation without a node id", () => {
+    const client = testQueryClient();
+    const scope = "wt-create";
+    const otherScope = "wt-other";
+    const nodeId = "doc:new-plan";
+    const affectedKeys = [
+      engineKeys.status(),
+      engineKeys.map(),
+      engineKeys.content(scope, nodeId),
+      engineKeys.vaultTree(scope),
+      engineKeys.fileTree(scope, ".vault", undefined),
+      engineKeys.graph(scope, undefined, undefined, "document", "status", null),
+      engineKeys.history(scope, 20),
+      engineKeys.search(scope, "new", "vault"),
+      engineKeys.gitChanges(scope),
+      engineKeys.gitDiff(scope, ".vault/plan/new-plan.md"),
+      engineKeys.gitHistoricalDiff(scope, ".vault/plan/new-plan.md", "HEAD~1", "HEAD"),
+    ];
+    const unaffectedKeys = [
+      engineKeys.content(otherScope, nodeId),
+      engineKeys.history(otherScope, 20),
+      engineKeys.gitChanges(otherScope),
+      engineKeys.gitDiff(otherScope, ".vault/plan/new-plan.md"),
+      engineKeys.gitHistoricalDiff(
+        otherScope,
+        ".vault/plan/new-plan.md",
+        "HEAD~1",
+        "HEAD",
+      ),
+      engineKeys.search(otherScope, "new", "vault"),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateAfterVaultMutation(client, scope);
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  it("falls back to global search invalidation when a vault mutation has no scope", () => {
+    const client = testQueryClient();
+    const affectedKeys = [
+      engineKeys.status(),
+      engineKeys.map(),
+      engineKeys.search("wt-1", "alpha", "vault"),
+      engineKeys.search("wt-2", "alpha", "vault"),
+    ];
+    const unaffectedKeys = [
+      engineKeys.graph("wt-1", undefined, undefined, "document", "status", null),
+      engineKeys.gitChanges("wt-1"),
+      engineKeys.vaultTree("wt-1"),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateAfterVaultMutation(client, null);
 
     for (const key of affectedKeys) {
       expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
@@ -2228,6 +3658,17 @@ describe("the lens-keyed graph query cache", () => {
       null,
     );
     expect(omitted).toEqual(explicit);
+  });
+
+  it("does not expose cached graph data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.graph(""), graphSlice());
+
+    const { result } = renderHook(() => useGraphSlice(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
   });
 });
 
@@ -2466,6 +3907,62 @@ describe("deriveGitStatusView", () => {
   });
 });
 
+describe("deriveLocationAnchor", () => {
+  it("keeps location empty-state copy and branch resolution in stores", () => {
+    const git = deriveGitStatusView(
+      statusWith({ branch: "git-main", dirty: true, ahead: 2, behind: 1 }),
+      undefined,
+      false,
+    );
+
+    expect(deriveLocationAnchor(null, undefined, git)).toMatchObject({
+      path: null,
+      emptyLabel: "no scope — pick a worktree first",
+      emptyClassName: "px-fg-1 text-label text-ink-faint",
+      branch: "git-main",
+      mainLabel: null,
+      mainClassName: "shrink-0 font-medium text-ink",
+      branchClassName: "min-w-0 truncate font-medium text-accent-text",
+      pathClassName: "truncate font-mono text-meta text-ink-faint",
+      dirty: true,
+      ahead: 2,
+      behind: 1,
+    });
+
+    expect(
+      deriveLocationAnchor(
+        "scope-a",
+        {
+          repositories: [
+            {
+              path: "/repo",
+              branches: [],
+              worktrees: [
+                {
+                  id: "scope-a",
+                  path: "/repo/main",
+                  branch: "map-main",
+                  has_vault: true,
+                  is_default: true,
+                },
+              ],
+            },
+          ],
+          tiers: {},
+        },
+        git,
+      ),
+    ).toMatchObject({
+      path: "scope-a",
+      emptyLabel: null,
+      branch: "map-main",
+      isMain: true,
+      mainLabel: "main",
+      dirty: true,
+    });
+  });
+});
+
 describe("deriveChangedFilesView", () => {
   it("splits vault documents from source files and computes the summary once", () => {
     const files: ChangedFile[] = [
@@ -2589,7 +4086,10 @@ describe("deriveChangesOverviewView", () => {
     );
     const view = deriveChangesOverviewView(availableGit, changed);
 
+    expect(view.noScope).toBe(false);
     expect(view.hasChanges).toBe(true);
+    expect(view.hasFiles).toBe(true);
+    expect(view.hasDocuments).toBe(true);
     expect(view.loading).toBe(false);
     expect(view.clean).toBe(false);
     expect(view.files.map((file) => file.path)).toEqual(["src/app.ts"]);
@@ -2598,8 +4098,18 @@ describe("deriveChangesOverviewView", () => {
       basename: "app.ts",
       nodeId: "code:src/app.ts",
       group: "modified",
+      dotColor: "var(--color-state-stale)",
+      rowClassName:
+        "flex h-[30px] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+      dotClassName: "size-2 shrink-0 rounded-full",
+      basenameClassName: "min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink",
       adds: 4,
       dels: 1,
+      addsLabel: "4 added",
+      delsLabel: "1 removed",
+      addsClassName: "shrink-0 text-[11px] text-diff-add",
+      delsClassName: "shrink-0 text-[11px] text-diff-remove",
+      openArrowClassName: "shrink-0 text-[13px] text-ink-faint",
     });
     expect(view.documents.map((file) => file.path)).toEqual([
       ".vault/adr/2026-06-18-x.md",
@@ -2609,8 +4119,45 @@ describe("deriveChangesOverviewView", () => {
       title: "X",
       nodeId: "doc:2026-06-18-x",
       category: "adr",
+      rowClassName:
+        "flex h-[30px] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+      fallbackDotClassName: "size-2 shrink-0 rounded-full bg-ink-faint",
+      titleClassName: "min-w-0 flex-1 truncate text-[12.5px] text-ink",
+      openArrowClassName: "shrink-0 text-[13px] text-ink-faint",
     });
     expect(view.summary.total).toBe(2);
+    expect(view.summaryLabels).toEqual({
+      files: "1 file",
+      documents: "1 document",
+      additions: "+6",
+      deletions: "−1",
+    });
+    expect(view.noScopeLabel).toBe("no scope — pick a worktree first");
+    expect(view.filesSectionLabel).toBe("Changed files — open diff or source");
+    expect(view.filesListAriaLabel).toBe("changed files");
+    expect(view.documentsSectionLabel).toBe("Changed documents — open reader");
+    expect(view.documentsListAriaLabel).toBe("changed documents");
+    expect(view.noScopeClassName).toBe("text-label text-ink-faint");
+    expect(view.rootClassName).toBe("space-y-fg-3 text-label");
+    expect(view.summaryClassName).toBe("flex flex-wrap items-center gap-fg-1-5");
+    expect(view.summaryPrimaryClassName).toBe("font-medium text-ink");
+    expect(view.summaryDividerClassName).toBe("text-ink-faint");
+    expect(view.summaryAdditionsClassName).toBe("text-[11px] text-diff-add");
+    expect(view.summaryDeletionsClassName).toBe("text-[11px] text-diff-remove");
+    expect(view.loadingClassName).toBe(
+      "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
+    );
+    expect(view.degradedClassName).toBe(
+      "rounded-fg-md bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted",
+    );
+    expect(view.errorRootClassName).toBe("flex items-center gap-fg-2");
+    expect(view.errorTitleClassName).toBe("flex-1 text-label text-state-broken");
+    expect(view.retryButtonClassName).toBe(
+      "rounded-fg-xs text-caption text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+    );
+    expect(view.sectionLabelClassName).toBe("mb-fg-1");
+    expect(view.listClassName).toBe("space-y-fg-1");
+    expect(view.cleanClassName).toBe("text-label text-ink-faint");
     expect(view.retry).toBe(retry);
   });
 
@@ -2619,19 +4166,101 @@ describe("deriveChangesOverviewView", () => {
 
     expect(
       deriveChangesOverviewView({ ...availableGit, loading: true }, empty),
-    ).toMatchObject({ loading: true, clean: false, hasChanges: false });
+    ).toMatchObject({
+      loading: true,
+      clean: false,
+      hasChanges: false,
+      loadingLabel: "reading changes…",
+    });
     expect(
       deriveChangesOverviewView(
         { ...availableGit, git: undefined, degraded: true, dirty: false },
         empty,
       ),
-    ).toMatchObject({ degraded: true, clean: false, hasChanges: false });
+    ).toMatchObject({
+      degraded: true,
+      clean: false,
+      hasChanges: false,
+      degradedLabel: "repository state unavailable",
+    });
     expect(
       deriveChangesOverviewView(
         { ...availableGit, git: undefined, errored: true, dirty: false },
         empty,
       ),
-    ).toMatchObject({ errored: true, clean: false, hasChanges: false });
+    ).toMatchObject({
+      errored: true,
+      clean: false,
+      hasChanges: false,
+      errorTitle: "changes unavailable",
+      retryLabel: "retry",
+    });
+    expect(deriveChangesOverviewView(availableGit, empty)).toMatchObject({
+      clean: true,
+      hasFiles: false,
+      hasDocuments: false,
+      cleanLabel: "working tree clean — no changes to review.",
+    });
+  });
+
+  it("projects the no-scope display state for the rail renderer", () => {
+    const empty = deriveChangedFilesView([], false, false);
+
+    expect(deriveChangesOverviewView(availableGit, empty, null)).toMatchObject({
+      noScope: true,
+      clean: false,
+      hasChanges: false,
+      hasFiles: false,
+      hasDocuments: false,
+      noScopeLabel: "no scope — pick a worktree first",
+    });
+  });
+
+  it("projects changed-file dot color from the git status group", () => {
+    const changed = deriveChangedFilesView(
+      [
+        {
+          path: "src/new.ts",
+          code: "A ",
+          letter: "A",
+          group: "added",
+          vault: false,
+          adds: 1,
+          dels: 0,
+        },
+        {
+          path: "src/old.ts",
+          code: "D ",
+          letter: "D",
+          group: "deleted",
+          vault: false,
+          adds: 0,
+          dels: 2,
+        },
+        {
+          path: "src/moved.ts",
+          code: "R ",
+          letter: "R",
+          group: "renamed",
+          vault: false,
+          adds: 0,
+          dels: 0,
+        },
+      ],
+      false,
+      false,
+    );
+
+    expect(
+      deriveChangesOverviewView(availableGit, changed).files.map((file) => [
+        file.group,
+        file.dotColor,
+      ]),
+    ).toEqual([
+      ["added", "var(--color-diff-add)"],
+      ["deleted", "var(--color-diff-remove)"],
+      ["renamed", "var(--color-diff-remove)"],
+    ]);
   });
 
   it("does not let stale changed rows mask unavailable git", () => {
@@ -2659,6 +4288,8 @@ describe("deriveChangesOverviewView", () => {
     expect(view).toMatchObject({
       degraded: true,
       hasChanges: false,
+      hasFiles: false,
+      hasDocuments: false,
       files: [],
       documents: [],
       summary: {
@@ -2667,6 +4298,12 @@ describe("deriveChangesOverviewView", () => {
         additions: 0,
         deletions: 0,
         total: 0,
+      },
+      summaryLabels: {
+        files: "0 files",
+        documents: "0 documents",
+        additions: "+0",
+        deletions: "−0",
       },
     });
   });
@@ -2753,6 +4390,16 @@ function historyWith(
   return { commits, truncated: null, next_cursor: null, tiers: tiers ?? {} };
 }
 
+describe("history selector limit normalization", () => {
+  it("uses the same bounded limit before history cache keys and wire reads", () => {
+    expect(normalizeHistoryLimit(Number.NaN)).toBe(DEFAULT_HISTORY_LIMIT);
+    expect(normalizeHistoryLimit(Number.POSITIVE_INFINITY)).toBe(DEFAULT_HISTORY_LIMIT);
+    expect(normalizeHistoryLimit(0)).toBe(1);
+    expect(normalizeHistoryLimit(20.9)).toBe(20);
+    expect(normalizeHistoryLimit(MAX_HISTORY_LIMIT + 50)).toBe(MAX_HISTORY_LIMIT);
+  });
+});
+
 describe("deriveHistoryView", () => {
   it("reports available with the commit list when structural is served", () => {
     const now = 1_000_000_000_000;
@@ -2773,6 +4420,22 @@ describe("deriveHistoryView", () => {
     );
     expect(view).toMatchObject({ loading: false, degraded: false, errored: false });
     expect(view.available).toBe(true);
+    expect(view).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: false,
+      showList: true,
+      loadingClassName:
+        "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
+      unavailableClassName: "text-label text-ink-muted",
+      emptyClassName: "text-label text-ink-faint",
+      listRootClassName: "space-y-fg-0-5",
+      listClassName: "space-y-fg-0-5",
+      commitBodyClassName:
+        "ml-fg-5 mt-fg-0-5 whitespace-pre-wrap rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label text-ink-muted",
+      showMoreButtonClassName:
+        "w-full rounded-fg-xs px-fg-2 py-fg-1 text-center text-label text-ink-muted transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+    });
     expect(view.commits).toHaveLength(1);
     expect(view.recentCommitRows).toEqual([
       {
@@ -2780,9 +4443,107 @@ describe("deriveHistoryView", () => {
         eventId: "commit:abc123",
         touchedNodeIds: ["doc:x", "code:src/x.ts"],
         selectable: true,
+        hasBody: false,
+        subjectLabel: "feat: x",
+        rowAriaLabel: "commit abc123: feat: x",
+        messageToggleLabel: expect.any(Function),
         ageLabel: "5m",
       },
     ]);
+    expect(view.recentCommitRows[0]!.messageToggleLabel(false)).toBe(
+      "expand message for abc123",
+    );
+    expect(view.recentCommitRows[0]!.messageToggleLabel(true)).toBe(
+      "collapse message for abc123",
+    );
+    expect(view.canShowMore).toBe(false);
+  });
+
+  it("derives recent commit subject fallback and row labels in the stores view", () => {
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, [
+        {
+          hash: "empty-subject",
+          short_hash: "empty",
+          subject: "",
+          body: "",
+          ts: 1,
+          node_ids: ["doc:x"],
+        },
+      ]),
+      undefined,
+      false,
+      1_000_000,
+    );
+
+    expect(view.recentCommitRows[0]).toMatchObject({
+      subjectLabel: "(no subject)",
+      rowAriaLabel: "commit empty: (no subject)",
+    });
+  });
+
+  it("derives commit body expansion and bounded show-more state in the stores view", () => {
+    const commits = Array.from({ length: 20 }, (_, i) => ({
+      hash: `hash-${i}`,
+      short_hash: `h${i}`,
+      subject: `commit ${i}`,
+      body: i === 0 ? "\n\nbody text\n" : "",
+      ts: i,
+      node_ids: [`commit:hash-${i}`],
+    }));
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, commits),
+      undefined,
+      false,
+      1_000_000,
+      20,
+    );
+
+    expect(view.canShowMore).toBe(true);
+    expect(view.recentCommitRows[0].hasBody).toBe(true);
+    expect(view.recentCommitRows[1].hasBody).toBe(false);
+
+    const capped = deriveHistoryView(
+      historyWith({ structural: { available: true } }, commits),
+      undefined,
+      false,
+      1_000_000,
+      200,
+    );
+    expect(capped.canShowMore).toBe(false);
+  });
+
+  it("projects recent-history visibility states in stores", () => {
+    expect(deriveHistoryView(undefined, undefined, true)).toMatchObject({
+      showLoading: true,
+      showUnavailable: false,
+      showEmpty: false,
+      showList: false,
+    });
+    expect(
+      deriveHistoryView(
+        historyWith({ structural: { available: false } }, []),
+        undefined,
+        false,
+      ),
+    ).toMatchObject({
+      showLoading: false,
+      showUnavailable: true,
+      showEmpty: false,
+      showList: false,
+    });
+    expect(
+      deriveHistoryView(
+        historyWith({ structural: { available: true } }, []),
+        undefined,
+        false,
+      ),
+    ).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: true,
+      showList: false,
+    });
   });
 
   it("derives recent commit age labels inside the stores row projection", () => {
@@ -2837,8 +4598,8 @@ describe("deriveHistoryView", () => {
     ]);
   });
 
-  it("limits status commit rows and excludes the commit node from selectable targets", () => {
-    const commits = Array.from({ length: 14 }, (_, i) => ({
+  it("renders recent commit rows from the requested bounded history limit", () => {
+    const commits = Array.from({ length: 45 }, (_, i) => ({
       hash: `hash-${i}`,
       short_hash: `h${i}`,
       subject: `commit ${i}`,
@@ -2851,14 +4612,63 @@ describe("deriveHistoryView", () => {
       undefined,
       false,
       1_000_000,
+      20,
     );
 
-    expect(view.commits).toHaveLength(14);
-    expect(view.recentCommitRows).toHaveLength(12);
+    expect(view.commits).toHaveLength(45);
+    expect(view.recentCommitRows).toHaveLength(20);
     expect(view.recentCommitRows.map((row) => row.eventId)).toEqual(
-      commits.slice(0, 12).map((commit) => `commit:${commit.hash}`),
+      commits.slice(0, 20).map((commit) => `commit:${commit.hash}`),
     );
     expect(view.recentCommitRows[0].touchedNodeIds).toEqual(["doc:touched-0"]);
+
+    const expanded = deriveHistoryView(
+      historyWith({ structural: { available: true } }, commits),
+      undefined,
+      false,
+      1_000_000,
+      40,
+    );
+    expect(expanded.recentCommitRows).toHaveLength(40);
+  });
+
+  it("bounds malformed history render limits at the projection seam", () => {
+    const commits = Array.from({ length: MAX_HISTORY_LIMIT + 5 }, (_, i) => ({
+      hash: `hash-${i}`,
+      short_hash: `h${i}`,
+      subject: `commit ${i}`,
+      body: "",
+      ts: i,
+      node_ids: [],
+    }));
+
+    expect(
+      deriveHistoryView(
+        historyWith({ structural: { available: true } }, commits),
+        undefined,
+        false,
+        1_000_000,
+        Number.POSITIVE_INFINITY,
+      ).recentCommitRows,
+    ).toHaveLength(DEFAULT_HISTORY_LIMIT);
+    expect(
+      deriveHistoryView(
+        historyWith({ structural: { available: true } }, commits),
+        undefined,
+        false,
+        1_000_000,
+        -10,
+      ).recentCommitRows,
+    ).toHaveLength(1);
+    expect(
+      deriveHistoryView(
+        historyWith({ structural: { available: true } }, commits),
+        undefined,
+        false,
+        1_000_000,
+        MAX_HISTORY_LIMIT + 100,
+      ).recentCommitRows,
+    ).toHaveLength(MAX_HISTORY_LIMIT);
   });
 
   it("does not expose held commits while the history query is loading", () => {
@@ -2930,6 +4740,248 @@ describe("deriveHistoryView", () => {
     expect(view.loading).toBe(true);
     expect(view.degraded).toBe(false);
     expect(view.errored).toBe(false);
+    expect(view.loadingLabel).toBe("reading recent commits...");
+    expect(view.unavailableLabel).toBe("recent history unavailable");
+    expect(view.emptyLabel).toBe("no commits yet on this branch.");
+    expect(view.showMoreLabel).toBe("Show more");
+  });
+});
+
+describe("derivePRsView and deriveIssuesView", () => {
+  const pr = (patch: Partial<PRsResponse["prs"][number]> = {}) => ({
+    number: 42,
+    title: "Centralize status rows",
+    author: "octo",
+    state: "OPEN",
+    is_draft: false,
+    url: "https://example.test/pr/42",
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T01:00:00Z",
+    merged_at: null,
+    review_decision: "",
+    checks: { total: 3, passed: 3, failing: 0, pending: 0 },
+    ...patch,
+  });
+  const issue = (patch: Partial<IssuesResponse["issues"][number]> = {}) => ({
+    number: 7,
+    title: "Harden state boundary",
+    author: "octo",
+    state: "OPEN",
+    url: "https://example.test/issues/7",
+    created_at: "2026-06-18T00:00:00Z",
+    updated_at: "2026-06-18T01:00:00Z",
+    labels: ["state", "ui", "extra", "hidden"],
+    ...patch,
+  });
+
+  it("projects open PR row labels, checks, and state messages in stores", () => {
+    const view = derivePRsView(
+      { prs: [pr()], available: true, reason: null, tiers: {} },
+      null,
+      false,
+      "open",
+    );
+
+    expect(view.loadingLabel).toBe("reading open PRs...");
+    expect(view.emptyLabel).toBe("no open pull requests");
+    expect(view.unavailableLabel).toBe(
+      "pull requests unavailable - GitHub not reachable",
+    );
+    expect(view).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: false,
+      showList: true,
+      loadingClassName:
+        "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
+      unavailableClassName: "text-label text-ink-faint",
+      emptyClassName: "text-label text-ink-faint",
+      listClassName: "space-y-fg-0-5",
+    });
+    expect(view.rows[0]).toMatchObject({
+      numberLabel: "#42",
+      titleLabel: "Centralize status rows",
+      stateLabel: "open",
+      stateTone: "accent",
+      icon: "pull-request",
+      iconTone: "accent",
+      iconToneClass: "text-accent",
+      authorLabel: "octo",
+      checksLabel: "checks",
+      checksTone: "active",
+      checksToneClass: "text-state-active",
+      mergedLabel: null,
+    });
+  });
+
+  it("projects merged and draft PR rows without app-layer branching", () => {
+    expect(
+      derivePRsView(
+        {
+          prs: [
+            pr({
+              is_draft: true,
+              checks: { total: 2, passed: 0, failing: 1, pending: 1 },
+            }),
+          ],
+          available: true,
+          reason: null,
+          tiers: {},
+        },
+        null,
+        false,
+        "open",
+      ).rows[0],
+    ).toMatchObject({
+      stateLabel: "draft",
+      stateTone: "neutral",
+      iconTone: "faint",
+      iconToneClass: "text-ink-faint",
+      checksLabel: "1 failing",
+      checksTone: "broken",
+      checksToneClass: "text-state-broken",
+    });
+
+    const merged = derivePRsView(
+      {
+        prs: [pr({ merged_at: "2026-06-18T01:00:00Z", checks: null })],
+        available: true,
+        reason: null,
+        tiers: {},
+      },
+      null,
+      false,
+      "merged",
+    );
+
+    expect(merged.loadingLabel).toBe("reading recent PRs...");
+    expect(merged.emptyLabel).toBe("no recently-merged pull requests");
+    expect(merged.rows[0]).toMatchObject({
+      icon: "merged",
+      iconTone: "muted",
+      iconToneClass: "text-ink-muted",
+      stateLabel: "merged",
+      stateTone: "neutral",
+      checksLabel: null,
+      checksToneClass: null,
+      mergedLabel: "merged",
+    });
+  });
+
+  it("projects unavailable PR and issue messages from capability-local reasons", () => {
+    expect(
+      derivePRsView(
+        { prs: [pr()], available: false, reason: "gh auth missing", tiers: {} },
+        null,
+        false,
+      ),
+    ).toMatchObject({
+      available: false,
+      showLoading: false,
+      showUnavailable: true,
+      showEmpty: false,
+      showList: false,
+      prs: [],
+      rows: [],
+      unavailableLabel: "gh auth missing",
+    });
+
+    expect(
+      deriveIssuesView(
+        { issues: [issue()], available: false, reason: "gh unavailable", tiers: {} },
+        null,
+        false,
+      ),
+    ).toMatchObject({
+      available: false,
+      showLoading: false,
+      showUnavailable: true,
+      showEmpty: false,
+      showList: false,
+      issues: [],
+      rows: [],
+      unavailableLabel: "gh unavailable",
+    });
+  });
+
+  it("projects issue row labels and capped issue chips in stores", () => {
+    const view = deriveIssuesView(
+      { issues: [issue()], available: true, reason: null, tiers: {} },
+      null,
+      false,
+    );
+
+    expect(view.loadingLabel).toBe("reading open issues...");
+    expect(view.emptyLabel).toBe("no open issues");
+    expect(view.unavailableLabel).toBe("issues unavailable - GitHub not reachable");
+    expect(view).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: false,
+      showList: true,
+      loadingClassName:
+        "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
+      unavailableClassName: "text-label text-ink-faint",
+      emptyClassName: "text-label text-ink-faint",
+      listClassName: "space-y-fg-0-5",
+    });
+    expect(view.rows[0]).toMatchObject({
+      numberLabel: "#7",
+      titleLabel: "Harden state boundary",
+      authorLabel: "octo",
+      labels: ["state", "ui", "extra"],
+    });
+  });
+
+  it("projects PR and issue loading and empty visibility states in stores", () => {
+    expect(derivePRsView(undefined, null, true, "open")).toMatchObject({
+      showLoading: true,
+      showUnavailable: false,
+      showEmpty: false,
+      showList: false,
+    });
+    expect(
+      derivePRsView({ prs: [], available: true, reason: null, tiers: {} }, null, false),
+    ).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: true,
+      showList: false,
+    });
+    expect(deriveIssuesView(undefined, null, true)).toMatchObject({
+      showLoading: true,
+      showUnavailable: false,
+      showEmpty: false,
+      showList: false,
+    });
+    expect(
+      deriveIssuesView(
+        { issues: [], available: true, reason: null, tiers: {} },
+        null,
+        false,
+      ),
+    ).toMatchObject({
+      showLoading: false,
+      showUnavailable: false,
+      showEmpty: true,
+      showList: false,
+    });
+  });
+
+  it("projects status-tab section headers and count receipts in stores", () => {
+    expect(
+      deriveStatusTabSectionsView({
+        openPlans: 2,
+        openPrs: 0,
+        openIssues: 4,
+      }),
+    ).toEqual({
+      openPlans: { id: "open-plans", title: "Open plans", count: 2 },
+      openPrs: { id: "open-prs", title: "Open PRs", count: undefined },
+      openIssues: { id: "open-issues", title: "Open issues", count: 4 },
+      recentPrs: { id: "recent-prs", title: "Recent PRs" },
+      recentCommits: { id: "recent-commits", title: "Recent commits" },
+    });
   });
 });
 
@@ -3028,13 +5080,120 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     expect(view.plans.map((artifact) => artifact.node_id)).toEqual([
       "doc:2026-06-14-x-plan",
     ]);
+    expect(view.planRows).toHaveLength(1);
+    expect(view.planRows[0]).toMatchObject({
+      artifact: view.plans[0],
+      nodeId: "doc:2026-06-14-x-plan",
+      titleLabel: "x plan",
+      modifiedAt: undefined,
+      phaseLabel: "execute",
+      tierLabel: "L3",
+      tierAriaLabel: "tier L3",
+      openAriaLabel: "open plan x plan in the reader",
+      selectAriaLabel: "select plan x plan on the stage",
+      showProgress: true,
+      progressDone: 2,
+      progressTotal: 5,
+      progressTextLabel: "2/5",
+      progressLabel: "x plan completion",
+      progressPercentLabel: "40%",
+    });
+    expect(view.planRows[0]!.toggleLabel(false)).toBe("expand steps for x plan");
+    expect(view.planRows[0]!.toggleLabel(true)).toBe("collapse steps for x plan");
     expect(view.adrs.map((artifact) => artifact.node_id)).toEqual([
       "doc:2026-06-14-x-adr",
+    ]);
+    expect(view.adrRows).toEqual([
+      {
+        artifact: view.adrs[0],
+        nodeId: "doc:2026-06-14-x-adr",
+        titleLabel: "x adr",
+        modifiedAt: undefined,
+        selectAriaLabel: "ADR x adr, status proposed",
+        statusLabel: "proposed",
+        featureLabel: null,
+        showStatusPlaceholder: false,
+        statusPlaceholderLabel: "status pending",
+        rowClassName:
+          "flex w-full items-center gap-fg-1-5 rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+        iconClassName: "shrink-0 text-ink-faint",
+        bodyClassName: "min-w-0 flex-1",
+        headingClassName: "flex items-center gap-fg-1-5",
+        titleClassName: "min-w-0 truncate text-body text-ink",
+        statusPlaceholderClassName:
+          "shrink-0 rounded-fg-pill border border-rule px-fg-1-5 py-px text-caption text-ink-faint",
+        metaClassName: "mt-px flex items-center gap-fg-1-5 text-caption text-ink-faint",
+      },
     ]);
     expect(view.planIds).toEqual(["doc:2026-06-14-x-plan"]);
     expect([...view.occupiedPhases]).toEqual(["execute", "adr"]);
     expect(view.count).toBe(2);
+    expect(view.workSurfaceState).toBe("list");
+    expect(view.showWorkDegraded).toBe(false);
+    expect(view.showWorkLoading).toBe(false);
+    expect(view.showWorkEmpty).toBe(false);
+    expect(view.showWorkList).toBe(true);
     expect(view.liveMessage).toBe("2 in-flight items");
+    expect(view.workStatusTitle).toBe("2 in-flight items");
+    expect(view.workStatusDetail).toBe("");
+    expect(view.openPlansStatusLabel).toBe("1 plan in flight");
+    expect(view.workSurfaceAriaLabel).toBe("work pipeline status");
+    expect(view.workStatusSectionClassName).toBe(
+      "flex flex-col items-center gap-fg-2 px-fg-2 py-fg-6 text-center text-label text-ink-muted",
+    );
+    expect(view.workListSectionClassName).toBe("space-y-fg-2 text-body");
+    expect(view.workLiveRegionClassName).toBe("sr-only");
+    expect(view.workStatusIconClassName).toBe("text-ink-faint");
+    expect(view.workStatusTitleClassName).toBe("font-medium text-ink");
+    expect(view.workStatusDetailClassName).toBe("text-ink-faint");
+    expect(view.workListAriaLabel).toBe("in-flight pipeline work");
+    expect(view.workListClassName).toBe("space-y-fg-1");
+    expect(view.workTabbablePlanId).toBe("doc:2026-06-14-x-plan");
+    expect(view.workTabbableAdrId).toBeNull();
+  });
+
+  it("derives WorkTab ADR row labels from pipeline artifacts", () => {
+    const view = derivePipelineStatusView(
+      structuralUp,
+      [
+        {
+          node_id: "doc:adr-with-feature",
+          stem: "adr-with-feature",
+          title: "`Feature` ADR",
+          doc_type: "adr",
+          status: "accepted",
+          phase: "adr",
+          feature_tags: ["graph"],
+          dates: { modified: "2026-06-18T00:00:00Z" },
+        },
+      ],
+      false,
+    );
+
+    expect(view.adrRows).toEqual([
+      {
+        artifact: view.adrs[0],
+        nodeId: "doc:adr-with-feature",
+        titleLabel: "Feature ADR",
+        modifiedAt: "2026-06-18T00:00:00Z",
+        selectAriaLabel: "ADR Feature ADR, status accepted",
+        statusLabel: "accepted",
+        featureLabel: "graph",
+        showStatusPlaceholder: false,
+        statusPlaceholderLabel: "status pending",
+        rowClassName:
+          "flex w-full items-center gap-fg-1-5 rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+        iconClassName: "shrink-0 text-ink-faint",
+        bodyClassName: "min-w-0 flex-1",
+        headingClassName: "flex items-center gap-fg-1-5",
+        titleClassName: "min-w-0 truncate text-body text-ink",
+        statusPlaceholderClassName:
+          "shrink-0 rounded-fg-pill border border-rule px-fg-1-5 py-px text-caption text-ink-faint",
+        metaClassName: "mt-px flex items-center gap-fg-1-5 text-caption text-ink-faint",
+      },
+    ]);
+    expect(view.workTabbablePlanId).toBeNull();
+    expect(view.workTabbableAdrId).toBe("doc:adr-with-feature");
   });
 
   it("reports degraded when the structural tier is explicitly unavailable", () => {
@@ -3045,10 +5204,89 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     // While degraded the projection is not trusted: no stale list is rendered.
     expect(view.artifacts).toEqual([]);
     expect(view.plans).toEqual([]);
+    expect(view.planRows).toEqual([]);
     expect(view.adrs).toEqual([]);
     expect(view.planIds).toEqual([]);
+    expect(view.workTabbablePlanId).toBeNull();
+    expect(view.workTabbableAdrId).toBeNull();
     expect(view.count).toBe(0);
+    expect(view.workSurfaceState).toBe("degraded");
+    expect(view.showWorkDegraded).toBe(true);
+    expect(view.showWorkLoading).toBe(false);
+    expect(view.showWorkEmpty).toBe(false);
+    expect(view.showWorkList).toBe(false);
     expect(view.liveMessage).toBe("pipeline status unavailable");
+    expect(view.workStatusTitle).toBe("pipeline status unavailable");
+    expect(view.workStatusDetail).toBe(
+      "the pipeline read is degraded — vault index rebuilding",
+    );
+    expect(view.openPlansStatusLabel).toBe("pipeline status unavailable");
+  });
+
+  it("carries the designed degraded fallback copy when the tier reason is absent", () => {
+    const view = derivePipelineStatusView(
+      { structural: { available: false } },
+      artifacts,
+      false,
+    );
+    expect(view.workStatusTitle).toBe("pipeline status unavailable");
+    expect(view.workStatusDetail).toBe(
+      "the pipeline read is degraded; in-flight work will appear here once it recovers",
+    );
+  });
+
+  it("derives status-tab plan row labels from plan artifacts", () => {
+    const view = derivePipelineStatusView(
+      structuralUp,
+      [
+        {
+          node_id: "doc:backtick-plan",
+          stem: "backtick-plan",
+          title: "`Backtick` plan",
+          doc_type: "plan",
+          phase: "plan",
+        },
+      ],
+      false,
+    );
+
+    expect(view.planRows[0]).toMatchObject({
+      nodeId: "doc:backtick-plan",
+      titleLabel: "Backtick plan",
+      modifiedAt: undefined,
+      phaseLabel: "plan",
+      tierLabel: null,
+      tierAriaLabel: null,
+      openAriaLabel: "open plan Backtick plan in the reader",
+      selectAriaLabel: "select plan Backtick plan on the stage",
+      showProgress: false,
+      progressDone: 0,
+      progressTotal: 0,
+      progressTextLabel: "0/0",
+      progressLabel: "Backtick plan completion",
+      progressPercentLabel: null,
+    });
+    expect(view.planRows[0]!.toggleLabel(false)).toBe("expand steps for Backtick plan");
+  });
+
+  it("derives the WorkTab roving tab stop from the first plan, then first ADR", () => {
+    const adrOnly = derivePipelineStatusView(
+      structuralUp,
+      [
+        {
+          node_id: "doc:2026-06-14-x-adr",
+          stem: "2026-06-14-x-adr",
+          title: "x adr",
+          doc_type: "adr",
+          status: "proposed",
+          phase: "adr",
+        },
+      ],
+      false,
+    );
+
+    expect(adrOnly.workTabbablePlanId).toBeNull();
+    expect(adrOnly.workTabbableAdrId).toBe("doc:2026-06-14-x-adr");
   });
 
   it("reports degraded when the structural tier is ABSENT from the served block (absence != available)", () => {
@@ -3083,7 +5321,48 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
   it("carries the real pending flag through as loading", () => {
     const view = derivePipelineStatusView(structuralUp, [], true);
     expect(view.loading).toBe(true);
+    expect(view.workSurfaceState).toBe("loading");
+    expect(view.showWorkDegraded).toBe(false);
+    expect(view.showWorkLoading).toBe(true);
+    expect(view.showWorkEmpty).toBe(false);
+    expect(view.showWorkList).toBe(false);
     expect(view.liveMessage).toBe("loading in-flight work");
+    expect(view.workStatusTitle).toBe("reading in-flight work…");
+    expect(view.workStatusDetail).toBe("");
+    expect(view.workStatusSectionClassName).toBe(
+      "flex flex-col items-center gap-fg-2 px-fg-2 py-fg-6 text-center text-label text-ink-faint",
+    );
+    expect(view.workStatusTitleClassName).toBe("animate-pulse-live");
+    expect(view.openPlansStatusLabel).toBe("reading in-flight work…");
+  });
+
+  it("carries the designed empty-state copy from the stores layer", () => {
+    const view = derivePipelineStatusView(structuralUp, [], false);
+    expect(view.workSurfaceState).toBe("empty");
+    expect(view.showWorkDegraded).toBe(false);
+    expect(view.showWorkLoading).toBe(false);
+    expect(view.showWorkEmpty).toBe(true);
+    expect(view.showWorkList).toBe(false);
+    expect(view.liveMessage).toBe("no in-flight work");
+    expect(view.workStatusTitle).toBe("no work in flight on this branch");
+    expect(view.workStatusDetail).toBe(
+      "no in-flight pipeline work in the current scope; active ADRs and plans will appear here as they advance.",
+    );
+    expect(view.openPlansStatusLabel).toBe("no plans in flight on this branch");
+  });
+
+  it("does not expose cached pipeline data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.pipeline(""), {
+      artifacts,
+      tiers: structuralUp,
+    });
+
+    const { result } = renderHook(() => usePipelineStatus(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
   });
 });
 
@@ -3117,6 +5396,7 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
     const view = derivePlanInteriorView(interior, false);
     expect(view.waves[0].phases[0].rollup).toEqual({ done: 2, total: 3 });
     expect(view.waves[0].rollup).toEqual({ done: 2, total: 3 });
+    expect(view.hasUngroupedSteps).toBe(false);
     expect(view.rollup).toEqual({ done: 2, total: 3 });
     expect(view.truncated).toBeNull();
   });
@@ -3127,25 +5407,79 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
       waves: [],
       phases: [],
       steps: [
-        { node_id: "x#S01", id: "S01", done: true },
+        {
+          node_id: "x#S01",
+          id: "S01",
+          done: true,
+          action: "wire the plan",
+          exec_node_id: "doc:exec-a",
+        },
         { node_id: "x#S02", id: "S02", done: false },
       ],
       truncated: { total_nodes: 9001, returned_nodes: 2000, reason: "node ceiling" },
     };
     const view = derivePlanInteriorView(interior, false);
     expect(view.rollup).toEqual({ done: 1, total: 2 });
+    expect(view.empty).toBe(false);
+    expect(view.hasUngroupedSteps).toBe(true);
+    expect(view.listAriaLabel).toBe("plan steps");
+    expect(view.steps).toMatchObject([
+      {
+        targetNodeId: "doc:exec-a",
+        selectable: true,
+        headingLabel: "wire the plan",
+        rowAriaLabel: "step S01, open exec record",
+        rowClassName:
+          "flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus hover:bg-paper-sunken",
+      },
+      {
+        targetNodeId: null,
+        selectable: false,
+        headingLabel: "S02",
+        rowAriaLabel: "step S02, no exec record",
+        rowClassName:
+          "flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-default opacity-80",
+      },
+    ]);
     expect(view.truncated).toEqual({
       total_nodes: 9001,
       returned_nodes: 2000,
       reason: "node ceiling",
     });
+    expect(view.truncatedMessage).toBe(
+      "showing 2000 of 9001 nodes - this plan exceeds the interior ceiling; open it on the stage to see the full tree.",
+    );
   });
 
   it("is the inert empty view while loading with no held interior", () => {
     const view = derivePlanInteriorView(undefined, true);
     expect(view.loading).toBe(true);
+    expect(view.served).toBe(true);
+    expect(view.empty).toBe(true);
+    expect(view.loadingMessage).toBe("loading steps...");
+    expect(view.placeholderMessage).toBe(
+      "step tree pending - the plan interior is not yet served.",
+    );
+    expect(view.emptyMessage).toBe("no steps in this plan yet.");
+    expect(view.listAriaLabel).toBe("plan steps");
+    expect(view.truncatedMessage).toBeNull();
     expect(view.rollup).toEqual({ done: 0, total: 0 });
     expect(view.waves).toEqual([]);
+    expect(view.hasUngroupedSteps).toBe(false);
+  });
+
+  it("does not expose cached plan interior data when the row is collapsed", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.planInterior("scope-a", ""), {
+      interior: planInterior(),
+      tiers: {},
+    });
+
+    const { result } = renderHook(() => usePlanInterior(null, "scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
   });
 });
 
@@ -3209,6 +5543,113 @@ describe("deriveTimelineLineageView (timeline lineage read model)", () => {
       errored: true,
       nodes: [],
       arcs: [],
+    });
+  });
+
+  it("does not expose cached lineage data when no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.lineage("", {}), lineageSlice());
+
+    const { result } = renderHook(() => useTimelineLineage(null), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+});
+
+describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
+  it("projects loading and auto-fit pending as the same quiet loading state", () => {
+    expect(
+      deriveTimelineSurfaceChromeView({
+        scopePresent: true,
+        loading: false,
+        errored: false,
+        autoFitPending: true,
+        hasMarks: false,
+        surface: "normal",
+      }),
+    ).toMatchObject({
+      showLoading: true,
+      loadingLabel: "reading the timeline…",
+      loadingClassName:
+        "pointer-events-none absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-1 text-caption text-ink-faint",
+      loadingDotClassName: "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-live",
+      showEmpty: false,
+      showError: false,
+    });
+  });
+
+  it("projects empty copy from the surface state", () => {
+    expect(
+      deriveTimelineSurfaceChromeView({
+        scopePresent: true,
+        loading: false,
+        errored: false,
+        autoFitPending: false,
+        hasMarks: false,
+        surface: "lifecycle-sparse",
+      }),
+    ).toMatchObject({
+      showEmpty: true,
+      emptyLabel: "lineage appears as documents gain dates",
+      emptyClassName:
+        "pointer-events-none absolute inset-0 flex items-center justify-center text-caption text-ink-faint",
+    });
+
+    expect(
+      deriveTimelineSurfaceChromeView({
+        scopePresent: true,
+        loading: false,
+        errored: false,
+        autoFitPending: false,
+        hasMarks: false,
+        surface: "normal",
+      }),
+    ).toMatchObject({
+      showEmpty: true,
+      emptyLabel: "no lineage in this range yet",
+    });
+  });
+
+  it("projects degraded reconnecting and real error states distinctly", () => {
+    expect(
+      deriveTimelineSurfaceChromeView({
+        scopePresent: true,
+        loading: false,
+        errored: false,
+        autoFitPending: false,
+        hasMarks: true,
+        surface: "reconnecting",
+      }),
+    ).toMatchObject({
+      showDegraded: true,
+      degradedLabel: "reconnecting — showing the last lineage",
+      degradedClassName:
+        "pointer-events-none absolute top-fg-1 right-fg-2 flex items-center gap-fg-1 rounded-fg-pill bg-paper-raised/95 px-fg-1-5 py-fg-0-5 text-caption text-state-stale shadow-fg-raised",
+      degradedDotClassName:
+        "h-1.5 w-1.5 animate-pulse-live rounded-full bg-state-stale",
+      showError: false,
+    });
+
+    expect(
+      deriveTimelineSurfaceChromeView({
+        scopePresent: true,
+        loading: false,
+        errored: true,
+        autoFitPending: false,
+        hasMarks: false,
+        surface: "reconnecting",
+      }),
+    ).toMatchObject({
+      showDegraded: false,
+      showError: true,
+      errorLabel: "couldn’t load the timeline",
+      errorClassName:
+        "absolute left-fg-2 top-1/2 flex -translate-y-1/2 items-center gap-fg-2 text-caption text-ink-muted",
+      retryLabel: "retry",
+      retryButtonClassName:
+        "rounded-fg-xs bg-paper-sunken px-fg-1-5 py-fg-0-5 text-ink transition-colors duration-ui-fast ease-settle hover:bg-accent-subtle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     });
   });
 });

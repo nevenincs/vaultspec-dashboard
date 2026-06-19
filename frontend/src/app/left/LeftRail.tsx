@@ -26,12 +26,11 @@
 // toggle, filter, group expand). The rail issues NO mutation intent of any kind:
 // there is no write path from the rail to git, disk, or the vault, and no
 // component here fetches the engine, mints a node identity, or reads the raw
-// `tiers` block — git is surfaced as read-only status only (the WorktreePicker's
-// inline ahead/behind/dirty badge), and working git review is the right rail's
-// concern. This module composes; the hosted controls own their own behaviour.
+// `tiers` block. Git is surfaced as read-only status through stores-owned
+// projections; working git review is the right rail's concern. This module
+// composes; the hosted controls own their own behaviour.
 
 import { BrowserRegion } from "./BrowserRegion";
-import { WorkspacePicker } from "./WorkspacePicker";
 import { WorktreePicker } from "./WorktreePicker";
 
 export function LeftRail() {
@@ -48,17 +47,15 @@ export function LeftRail() {
       // between the stacked slots — NO separators (the board has none).
       className="flex min-h-0 flex-1 flex-col gap-[14px] px-[12px] pt-[14px] text-ink-muted"
     >
-      {/* 1. Project title (board header): the active workspace name. */}
-      <div className="shrink-0" data-rail-slot="workspace">
-        <WorkspacePicker />
-      </div>
-
-      {/* 2. The single worktree dropdown (board "main"). */}
+      {/* The single rail title: one clickable element showing the current
+          worktree's NAME (default = "main"); clicking opens the worktree/folder
+          picker. Repository status (the branch) is stated once, in the right
+          rail — the left rail no longer repeats a project title or the branch. */}
       <div className="shrink-0" data-rail-slot="worktree">
         <WorktreePicker />
       </div>
 
-      {/* 3. Browser region: Vault/Tree/Code toggle, the filter, and the document
+      {/* 3. Browser region: Vault/Code toggle, the filter, and the document
              list. Fills the remaining height so the browser dominates the rail. */}
       <div className="flex min-h-0 flex-1 flex-col gap-[14px]" data-rail-slot="browser">
         <BrowserRegion />

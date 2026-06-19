@@ -22,7 +22,7 @@ export function SectionLabel({
 }: SectionLabelProps) {
   return (
     <div
-      className={`flex items-center gap-fg-1-5 text-[10px] font-medium uppercase tracking-[0.4px] text-ink-faint ${className}`.trim()}
+      className={`flex items-center gap-fg-1-5 text-caption font-medium uppercase tracking-[0.4px] text-ink-faint ${className}`.trim()}
       {...rest}
     >
       <span className="truncate">{children}</span>

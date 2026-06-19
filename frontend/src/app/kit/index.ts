@@ -31,10 +31,14 @@ export { Slider } from "./Slider";
 export type { SliderProps } from "./Slider";
 export { DropdownButton } from "./DropdownButton";
 export type { DropdownButtonProps } from "./DropdownButton";
+export { FacetRow, facetDotColor } from "./FacetRow";
+export type { FacetRowProps, FacetDotTone } from "./FacetRow";
 
 // Containers and misc (S05)
 export { Card } from "./Card";
 export type { CardProps, CardElevation } from "./Card";
+export { Popover } from "./Popover";
+export type { PopoverProps } from "./Popover";
 export { ListRow } from "./ListRow";
 export type { ListRowProps } from "./ListRow";
 export { DocRow } from "./DocRow";
@@ -55,6 +59,8 @@ export { TreeRow } from "./TreeRow";
 export type { TreeRowProps, TreeRowState } from "./TreeRow";
 export { PropertyRow } from "./PropertyRow";
 export type { PropertyRowProps } from "./PropertyRow";
+export { FoldSection } from "./FoldSection";
+export type { FoldSectionProps } from "./FoldSection";
 export { CodeBlock } from "./CodeBlock";
 export type { CodeBlockProps } from "./CodeBlock";
 
