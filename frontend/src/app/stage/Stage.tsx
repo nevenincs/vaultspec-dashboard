@@ -50,11 +50,10 @@ import { useTimeTravel } from "../timeline/timeTravel";
 import { CanvasStateOverlay, resolveCanvasState } from "./CanvasStateOverlay";
 import { CategoryLegend } from "./CategoryLegend";
 import { MinimapWidget } from "./MinimapWidget";
-import { Discover } from "./Discover";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
 import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
-import { WorkingSet, mergeSlices } from "./WorkingSet";
+import { mergeSlices } from "./WorkingSet";
 
 // One scene singleton per app lifetime: the object survives route remounts, but
 // its renderer is released on unmount (F#1) and rebuilt on remount.
@@ -361,8 +360,14 @@ export function Stage() {
           surface. The category legend keys the node-fill encoding (top-left); the
           vertical camera cluster zooms / fits / recenters (bottom-left); the graph
           settings panel drops the Sim + Display controls from a top-right trigger.
-          Create-doc and timeline navigation were removed from the graph entirely —
-          they were never graph affordances (their UX home is decided elsewhere). */}
+          The binding graph/Hero has EXACTLY these overlays — create-doc, timeline
+          navigation, the discover panel, and the working-set chip trail were all
+          removed from the graph (they are not in the binding design; their features
+          and data flow are preserved, their UX home decided elsewhere). The remaining
+          mounts are transient runtime layers, not chrome: the time-travel chip (a
+          mode indicator), the hover-bloom card and opened-island layer (node hover/
+          open interactions), and the designed canvas states (which the binding DOES
+          define: loading / empty / degraded). */}
       <CategoryLegend />
       <GraphNavControls />
       <GraphSettingsPanel />
@@ -370,8 +375,6 @@ export function Stage() {
           minimap 212:521) — it owns the bottom-right corner directly. The scene owns
           every pixel inside its canvas through the unchanged seam. */}
       <MinimapWidget />
-      <WorkingSet selectedId={selectedNodeId} />
-      <Discover selectedId={selectedNodeId} scope={scope} />
       <TimeTravelChip scope={scope} />
       {/* The hover-bloom card (third LOD rung) sits BELOW the opened islands so a
           card never paints over an opened interior; open-suppression keeps the
