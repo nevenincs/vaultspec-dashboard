@@ -58,14 +58,22 @@ describe("filter-consolidation: one canonical filter surface", () => {
     }
   });
 
-  it("keeps the graph stage top bar free of filter controls", () => {
-    const navbar = FILES.find((f) => f.rel === "app/stage/StageNavBar.tsx");
-    expect(navbar).toBeTruthy();
-    expect(
-      /<FilterSidebar[\s/>]|<FilterMenu[\s/>]|toggleFilterSidebar|<SearchField[\s/>]/.test(
-        navbar!.body,
-      ),
-    ).toBe(false);
+  it("keeps the graph stage chrome free of filter controls", () => {
+    // The graph top bar is retired (graph/Hero redesign): the stage is now
+    // overlay-only. Its live chrome — the stage host and the graph overlay controls
+    // — hosts no filter control. (The retired FilterSidebar/FilterMenu files still
+    // on disk under app/stage/ are dead, pending cleanup, and not mounted here.)
+    const graphChrome = ["app/stage/Stage.tsx", "app/stage/GraphControls.tsx"];
+    for (const rel of graphChrome) {
+      const file = FILES.find((f) => f.rel === rel);
+      expect(file, `${rel} not found`).toBeTruthy();
+      expect(
+        /<FilterSidebar[\s/>]|<FilterMenu[\s/>]|toggleFilterSidebar|<SearchField[\s/>]/.test(
+          file!.body,
+        ),
+        `${rel} hosts a filter control`,
+      ).toBe(false);
+    }
   });
 
   it("keeps the timeline free of any facet-filter control (Setter only)", () => {

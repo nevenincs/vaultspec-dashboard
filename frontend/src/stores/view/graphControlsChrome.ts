@@ -115,6 +115,10 @@ export interface GraphControlsTuneSliderPresentationView {
 }
 
 export interface GraphControlsTunePresentationView {
+  /** Panel title (binding Figma `graph/Sim + Display controls` 714:2630). */
+  title: string;
+  /** The "LAYOUT" category eyebrow (the collapsible group these sliders live in). */
+  categoryLabel: string;
   containerClassName: string;
   freezeRowClassName: string;
   freezeLabelClassName: string;
@@ -128,33 +132,40 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
   const charge = numericSpec("charge");
   const linkDistance = numericSpec("linkDistance");
   const linkStrength = numericSpec("linkStrength");
+  // User-facing labels are the BINDING Figma plain-language vocabulary
+  // (ui-labels-are-user-facing): the seam keeps the technical ids (charge /
+  // linkDistance / linkStrength) and the screen reads Spacing / Link length /
+  // Grouping. The schema's technical labels stay the dev-lab vocabulary.
   return {
-    containerClassName: "flex w-48 flex-col gap-fg-3",
-    freezeRowClassName: "flex items-center justify-between",
-    freezeLabelClassName: "text-label text-ink-muted",
-    freezeLabel: "Freeze simulation",
+    title: "Graph controls",
+    categoryLabel: "Layout",
+    containerClassName: "flex w-full flex-col gap-fg-2",
+    freezeRowClassName: "flex items-center justify-between gap-fg-2",
+    freezeLabelClassName: "text-body text-ink-muted",
+    freezeLabel: "Freeze layout",
     resetButtonClassName:
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     resetLabel: "Reset to defaults",
     sliders: {
-      // Repulsion presents the MAGNITUDE: the canonical signed `charge` range
-      // (negative) maps to a positive magnitude by negating + swapping min/max.
+      // Spacing presents the repulsion MAGNITUDE: the canonical signed `charge`
+      // range (negative) maps to a positive magnitude by negating + swapping
+      // min/max. The field still stores the signed charge.
       repulsion: {
-        label: charge.label,
+        label: "Spacing",
         title: "How far nodes push each other apart",
         min: -charge.max,
         max: -charge.min,
         step: charge.step,
       },
       linkDistance: {
-        label: linkDistance.label,
+        label: "Link length",
         title: "The rest length of the links between connected nodes",
         min: linkDistance.min,
         max: linkDistance.max,
         step: linkDistance.step,
       },
       linkSpring: {
-        label: linkStrength.label,
+        label: "Grouping",
         title: "How tightly connected nodes pull together into groups",
         min: linkStrength.min,
         max: linkStrength.max,
@@ -320,41 +331,44 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
   const edgeWidth = numericSpec("edgeWidthMax");
   const edgeOpacity = numericSpec("edgeOpacityMax");
   return {
-    containerClassName: "flex w-48 flex-col gap-fg-3",
+    // User-facing labels are the BINDING Figma plain-language vocabulary
+    // (ui-labels-are-user-facing): Node size / Importance / Link thickness / Link
+    // opacity / Link colour [Solid | Blended]. The seam keeps the technical ids.
+    containerClassName: "flex w-full flex-col gap-fg-2",
     headingClassName: "text-label text-ink-muted",
     heading: "Appearance",
-    colorModeLabel: specById("edgeColorMode")?.label ?? "Edge colour",
-    colorModeAriaLabel: "Edge colour mode",
+    colorModeLabel: "Link colour",
+    colorModeAriaLabel: "Link colour mode",
     solidLabel: "Solid",
-    gradientLabel: "Gradient",
+    gradientLabel: "Blended",
     resetButtonClassName:
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     resetLabel: "Reset to defaults",
     sliders: {
       nodeSizeScale: {
-        label: nodeSize.label,
+        label: "Node size",
         title: "Scale every node's drawn size",
         min: nodeSize.min,
         max: nodeSize.max,
         step: nodeSize.step,
       },
       nodeSalienceScale: {
-        label: salience.label,
-        title: "How strongly salience drives node size (0 = uniform)",
+        label: "Importance",
+        title: "How strongly a node's importance drives its size (0 = uniform)",
         min: salience.min,
         max: salience.max,
         step: salience.step,
       },
       edgeWidthMax: {
-        label: edgeWidth.label,
-        title: "Thickness of the strongest edges",
+        label: "Link thickness",
+        title: "Thickness of the strongest links",
         min: edgeWidth.min,
         max: edgeWidth.max,
         step: edgeWidth.step,
       },
       edgeOpacityMax: {
-        label: edgeOpacity.label,
-        title: "Opacity of the strongest edges",
+        label: "Link opacity",
+        title: "Opacity of the strongest links",
         min: edgeOpacity.min,
         max: edgeOpacity.max,
         step: edgeOpacity.step,
@@ -387,8 +401,12 @@ export function deriveGraphControlsSettingsPopoverView(
     ariaExpanded: open,
     panelVisible: open,
     panelAriaLabel: label,
+    // The panel drops DOWN-LEFT from the top-right trigger (binding graph/Hero
+    // 213:505 `graph-settings-trigger` top-right + `graph/Sim + Display controls`
+    // 714:2630 264px card). Right-aligned to the trigger so the 264px body never
+    // clips off the right edge of the canvas.
     panelClassName:
-      "absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 bg-paper-raised/95 p-fg-3 backdrop-blur-sm",
+      "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
   };
 }
 
@@ -402,11 +420,11 @@ export function deriveGraphControlsFreezeToggleView(
   freezeAvailable: boolean,
 ): GraphControlsFreezeToggleView {
   return {
-    label: frozen ? "resume simulation" : "freeze simulation",
+    label: frozen ? "resume layout" : "freeze layout",
     title: freezeAvailable
       ? frozen
-        ? "resume the simulation"
-        : "pause the simulation in place"
+        ? "resume the layout"
+        : "freeze the layout in place"
       : "freeze is available in the Network layout",
   };
 }
@@ -428,9 +446,11 @@ export interface GraphControlsNavigationView {
 
 export function deriveGraphControlsNavigationView(): GraphControlsNavigationView {
   return {
-    containerClassName: "flex items-center gap-fg-0-5",
+    // VERTICAL cluster (binding graph/Hero 213:505 NavControls/Vertical 260:839,
+    // bottom-left): zoom in / zoom out · a horizontal rule · fit / recenter.
+    containerClassName: "flex flex-col items-center gap-fg-0-5",
     ariaLabel: "Navigate",
-    dividerClassName: "mx-fg-0-5 h-4 w-px bg-rule",
+    dividerClassName: "my-fg-0-5 h-px w-6 bg-rule",
     zoomIn: { label: "zoom in" },
     zoomOut: { label: "zoom out" },
     fitToView: {
@@ -446,12 +466,18 @@ export function deriveGraphControlsNavigationView(): GraphControlsNavigationView
 
 interface GraphControlsChromeState {
   settingsOpen: boolean;
+  layoutOpen: boolean;
+  appearanceOpen: boolean;
   frozen: boolean;
   frozenScope: string | null;
   tuneParams: GraphControlsTuneParams;
   appearanceParams: GraphControlsAppearanceParams;
   setSettingsOpen: (open: unknown) => void;
   toggleSettingsOpen: () => void;
+  setLayoutOpen: (open: unknown) => void;
+  toggleLayoutOpen: () => void;
+  setAppearanceOpen: (open: unknown) => void;
+  toggleAppearanceOpen: () => void;
   setFrozen: (frozen: unknown, scope: unknown) => void;
   setTuneParams: (params: unknown) => void;
   patchTuneParams: (patch: unknown) => void;
@@ -462,6 +488,8 @@ interface GraphControlsChromeState {
 
 export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set) => ({
   settingsOpen: false,
+  layoutOpen: true,
+  appearanceOpen: true,
   frozen: false,
   frozenScope: null,
   tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
@@ -471,6 +499,13 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   setSettingsOpen: (settingsOpen) =>
     set({ settingsOpen: normalizeGraphControlsOpen(settingsOpen) }),
   toggleSettingsOpen: () => set((state) => ({ settingsOpen: !state.settingsOpen })),
+  setLayoutOpen: (layoutOpen) =>
+    set({ layoutOpen: normalizeGraphControlsOpen(layoutOpen) }),
+  toggleLayoutOpen: () => set((state) => ({ layoutOpen: !state.layoutOpen })),
+  setAppearanceOpen: (appearanceOpen) =>
+    set({ appearanceOpen: normalizeGraphControlsOpen(appearanceOpen) }),
+  toggleAppearanceOpen: () =>
+    set((state) => ({ appearanceOpen: !state.appearanceOpen })),
   setFrozen: (frozen, frozenScope) =>
     set({
       frozen: normalizeGraphControlsFrozen(frozen),
@@ -511,6 +546,8 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   reset: () =>
     set({
       settingsOpen: false,
+      layoutOpen: true,
+      appearanceOpen: true,
       frozen: false,
       frozenScope: null,
       tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
@@ -522,6 +559,14 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
 
 export function useGraphControlsSettingsOpen(): boolean {
   return useGraphControlsChromeStore((state) => state.settingsOpen);
+}
+
+export function useGraphControlsLayoutOpen(): boolean {
+  return useGraphControlsChromeStore((state) => state.layoutOpen);
+}
+
+export function useGraphControlsAppearanceOpen(): boolean {
+  return useGraphControlsChromeStore((state) => state.appearanceOpen);
 }
 
 export function useGraphControlsFrozen(): boolean {
@@ -538,6 +583,22 @@ export function setGraphControlsSettingsOpen(open: unknown): void {
 
 export function toggleGraphControlsSettingsOpen(): void {
   useGraphControlsChromeStore.getState().toggleSettingsOpen();
+}
+
+export function setGraphControlsLayoutOpen(open: unknown): void {
+  useGraphControlsChromeStore.getState().setLayoutOpen(open);
+}
+
+export function toggleGraphControlsLayoutOpen(): void {
+  useGraphControlsChromeStore.getState().toggleLayoutOpen();
+}
+
+export function setGraphControlsAppearanceOpen(open: unknown): void {
+  useGraphControlsChromeStore.getState().setAppearanceOpen(open);
+}
+
+export function toggleGraphControlsAppearanceOpen(): void {
+  useGraphControlsChromeStore.getState().toggleAppearanceOpen();
 }
 
 export function setGraphControlsFrozen(frozen: unknown, scope: unknown): void {

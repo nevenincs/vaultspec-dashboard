@@ -1,48 +1,56 @@
-// Category legend (binding Figma stage chrome: the "category legend chip row" that
-// sits under the stage toolbar, AppShell 117:2). A quiet, non-interactive key to
-// the node-fill encoding: one kit `Chip` per canonical document category, each
-// carrying the SAME bound scene/category color the graph nodes paint with (the
-// chip's leading dot reads `var(--color-scene-category-<token>)` through the shared
-// `category` vocabulary), so a pill and its nodes always agree.
+// Category legend (binding Figma `graph/Hero` 213:505 Legend 99:2): a quiet,
+// non-interactive key to the node-fill encoding, docked top-left of the canvas as a
+// single raised card. Each item is a small dot carrying the SAME bound
+// scene/category color the graph nodes paint with (via the shared `category`
+// vocabulary) over a plain-language label, so a swatch and its nodes always agree.
 //
-// figma-frontend-rewrite W03.P07.S10: the legend composes the centralized kit
-// `Chip` rather than hand-drawing colored pills (design-system-is-centralized), and
-// the colors come only from the bound category tokens — never a literal hex
-// (warmth-lives-in-tokens). Pure chrome: it reads nothing off the wire, holds no
-// state, and emits no intent; it merely names the encoding.
+// figma-frontend-rewrite / graph-overlay redesign: the legend composes the
+// centralized kit `Card` and the bound category tokens — never a hand-drawn pill or
+// a literal hex (design-system-is-centralized, warmth-lives-in-tokens). Pure chrome:
+// it reads nothing off the wire, holds no state, and emits no intent; it merely
+// names the encoding.
 
-import { Chip } from "../kit";
-import type { CategoryToken } from "../kit";
+import { Card, categoryColorVar } from "../kit";
+import type { Category } from "../kit";
 
-/** The eight canonical scene categories, in a stable reading order, with their
- *  human display label. These are the SAME tokens the graph node fills use, so the
- *  legend is a faithful key to the canvas encoding. */
-// Board 213:505 legend vocabulary, in reading order: Topic · Research · Decision ·
-// Plan · Step · Review. The graph is the VAULT corpus — `code` is a separate corpus
-// (not a vault category) and `index` documents are excluded from the graph API
-// (they only link features), so neither appears in the legend.
-const LEGEND: { token: CategoryToken; label: string }[] = [
-  { token: "feature", label: "Topic" },
-  { token: "research", label: "Research" },
-  { token: "adr", label: "Decision" },
-  { token: "plan", label: "Plan" },
-  { token: "exec", label: "Step" },
-  { token: "audit", label: "Review" },
+/** The legend vocabulary in the binding reading order (board 99:2): Topic ·
+ *  Research · Decision · Plan · Step · Review · Summary. The graph is the VAULT
+ *  corpus, so each label is the user-facing doc-kind name and its dot resolves to
+ *  the same bound scene/category color the nodes use. */
+const LEGEND: { category: Category; label: string }[] = [
+  { category: "topic", label: "Topic" },
+  { category: "research", label: "Research" },
+  { category: "decision", label: "Decision" },
+  { category: "plan", label: "Plan" },
+  { category: "step", label: "Step" },
+  { category: "audit", label: "Review" },
+  { category: "summary", label: "Summary" },
 ];
 
 export function CategoryLegend() {
   return (
-    <div
-      className="pointer-events-auto absolute left-fg-2 top-16 z-10 flex max-w-[60%] flex-wrap items-center gap-fg-1"
+    <Card
+      elevation="raised"
+      padded={false}
+      className="pointer-events-auto absolute left-fg-2 top-fg-2 z-10 flex max-w-[60%] flex-wrap items-center gap-fg-3 px-fg-3 py-fg-2"
       role="list"
       aria-label="category legend"
       data-category-legend
     >
-      {LEGEND.map(({ token, label }) => (
-        <span role="listitem" key={token}>
-          <Chip category={token}>{label}</Chip>
+      {LEGEND.map(({ category, label }) => (
+        <span
+          role="listitem"
+          key={label}
+          className="flex shrink-0 items-center gap-fg-1"
+        >
+          <span
+            aria-hidden
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: categoryColorVar(category) }}
+          />
+          <span className="text-caption text-ink-muted">{label}</span>
         </span>
       ))}
-    </div>
+    </Card>
   );
 }

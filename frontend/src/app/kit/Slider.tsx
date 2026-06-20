@@ -22,6 +22,9 @@ export interface SliderProps {
   unit?: string;
   /** Show a tabular-numeral readout of the current value to the right. */
   showValue?: boolean;
+  /** Stretch the track to fill its container (the binding panel-row slider) rather
+   *  than the default 160px symbol width. */
+  fullWidth?: boolean;
   disabled?: boolean;
   id?: string;
 }
@@ -35,11 +38,15 @@ export function Slider({
   step = 1,
   unit,
   showValue = false,
+  fullWidth = false,
   disabled,
   id,
 }: SliderProps) {
   return (
-    <div className="flex shrink-0 items-center gap-fg-2" data-kit="slider">
+    <div
+      className={`flex shrink-0 items-center gap-fg-2 ${fullWidth ? "w-full" : ""}`.trim()}
+      data-kit="slider"
+    >
       <input
         type="range"
         id={id}
@@ -51,7 +58,9 @@ export function Slider({
         aria-label={label}
         aria-valuetext={unit ? `${value}${unit}` : undefined}
         onChange={(e) => onChange(e.target.valueAsNumber)}
-        className="w-40 accent-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
+        className={`${
+          fullWidth ? "w-full" : "w-40"
+        } accent-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50`}
       />
       {showValue && (
         <span

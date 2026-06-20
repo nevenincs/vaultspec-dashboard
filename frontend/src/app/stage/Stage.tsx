@@ -52,7 +52,7 @@ import { CategoryLegend } from "./CategoryLegend";
 import { MinimapWidget } from "./MinimapWidget";
 import { Discover } from "./Discover";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
-import { StageNavBar } from "./StageNavBar";
+import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene singleton per app lifetime: the object survives route remounts, but
@@ -352,15 +352,19 @@ export function Stage() {
         // neighbour/feature-cycle bindings (keymap W03.P09).
         data-keymap-context={CANVAS_KEYMAP_CONTEXT}
       />
-      {/* The unified stage top bar (graph-timeline-workspace): all graph + timeline
-          navigation as horizontal items. Search, filtering, and the layout/mode
-          switch are retired for visual clarity — the bar carries navigation only. */}
-      <StageNavBar />
+      {/* Graph overlays (binding graph/Hero 213:505): the top bar is RETIRED, so
+          every graph affordance is a canvas overlay and the field reads as the whole
+          surface. The category legend keys the node-fill encoding (top-left); the
+          vertical camera cluster zooms / fits / recenters (bottom-left); the graph
+          settings panel drops the Sim + Display controls from a top-right trigger.
+          Create-doc and timeline navigation were removed from the graph entirely —
+          they were never graph affordances (their UX home is decided elsewhere). */}
       <CategoryLegend />
-      {/* The overview minimap is a DOCKED card bottom-right (binding stage layout
-          "minimap card bottom-right", AppShell 117:2) — it owns the bottom-right
-          corner directly rather than hiding inside a controls popover. The scene
-          owns every pixel inside its canvas through the unchanged seam. */}
+      <GraphNavControls />
+      <GraphSettingsPanel />
+      {/* The overview minimap is a DOCKED card bottom-right (binding graph/Hero
+          minimap 212:521) — it owns the bottom-right corner directly. The scene owns
+          every pixel inside its canvas through the unchanged seam. */}
       <MinimapWidget />
       <WorkingSet selectedId={selectedNodeId} />
       <Discover selectedId={selectedNodeId} scope={scope} />

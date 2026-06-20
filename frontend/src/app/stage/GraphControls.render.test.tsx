@@ -1,21 +1,19 @@
 // @vitest-environment happy-dom
 //
-// Consolidated graph controls (binding Figma redesign `graph/Controls` 88:2,
-// `graph/Hero` 85:2). Rendered against the real SceneController singleton
-// (getScene), real dashboard-state, and real view scope — no component-internal
-// doubles.
+// Graph overlay controls (binding Figma redesign `graph/Hero` 213:505 +
+// `graph/Sim + Display controls` 714:2630 + `NavControls/Vertical` 260:839).
+// Rendered against the real SceneController singleton (getScene), real
+// dashboard-state, and real view scope — no component-internal doubles.
 //
-// Post-Cosmos: the set-cosmos-config seam, the canvas-bound control, and the
-// retired LayoutSelector / representation-mode picker were removed; the force
-// controls are rebuilt THREE-NATIVE against the field's `set-force-params` d3-force
-// seam. The GraphControls surface is navigation + a collapsed settings popover
-// (Freeze toggle + the force sliders):
+// The graph top bar is RETIRED: navigation is the bottom-left vertical camera
+// cluster (GraphNavControls) and tuning lives in a top-right "Graph controls" panel
+// (GraphSettingsPanel), collapsed by default so the field is never occluded:
 //   • Navigate emits the real camera SceneCommands (zoom-in/out, fit, reset);
-//   • the settings popover is COLLAPSED by default and only renders its body once
-//     opened — so the canvas is never occluded; opening + closing (toggle / Escape)
-//     works;
-//   • the force sliders (Repulsion / Link distance / Link spring) emit
-//     set-force-params (repulsion → −charge; distance / spring straight through);
+//   • the settings panel is COLLAPSED by default and only renders its body once
+//     opened — opening + closing (toggle / Escape) works;
+//   • the LAYOUT sliders (Spacing / Link length / Grouping) emit set-force-params
+//     (Spacing → −charge; distance / spring straight through);
+//   • the APPEARANCE controls emit set-appearance-params;
 //   • freezing the scene clears when the active scope changes;
 //   • the controls read + write only stores / the scene seam, never fetch.
 
@@ -45,7 +43,7 @@ import { dashboardDocumentStateResetPatch } from "../../stores/server/dashboardS
 import { queryClient } from "../../stores/server/queryClient";
 import { resetGraphControlsChrome } from "../../stores/view/graphControlsChrome";
 import { useViewStore } from "../../stores/view/viewStore";
-import { GraphNavButtons, GraphSettingsPopover } from "./GraphControls";
+import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
 import { getScene } from "./Stage";
 
 let scope: string;
@@ -81,20 +79,20 @@ function renderGraphControls() {
       createElement(
         "div",
         null,
-        createElement(GraphNavButtons),
-        createElement(GraphSettingsPopover),
+        createElement(GraphNavControls),
+        createElement(GraphSettingsPanel),
       ),
     ),
   );
 }
 
-// The settings popover is collapsed behind a gear trigger so the canvas is never
-// occluded; its body (the Freeze toggle) only mounts once the trigger opens.
+// The settings panel is collapsed behind a top-right trigger so the canvas is never
+// occluded; its body (the Freeze switch + sliders) only mounts once the trigger opens.
 function openSettings() {
-  fireEvent.click(screen.getByRole("button", { name: "Graph settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Graph controls" }));
 }
 
-describe("GraphControls — Navigate (camera commands)", () => {
+describe("GraphNavControls — Navigate (camera commands)", () => {
   it("emits the four camera SceneCommands", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
@@ -111,67 +109,67 @@ describe("GraphControls — Navigate (camera commands)", () => {
   });
 });
 
-describe("GraphControls — non-occluding overlay (collapsed settings popover)", () => {
-  it("does not render the Freeze toggle until the settings popover is opened", () => {
+describe("GraphSettingsPanel — non-occluding overlay (collapsed by default)", () => {
+  it("does not render the panel body until the trigger is opened", () => {
     renderGraphControls();
-    // Collapsed by default: no popover body, so the canvas behind reads clean.
-    expect(screen.queryByRole("button", { name: "freeze simulation" })).toBeNull();
+    // Collapsed by default: no panel body, so the canvas behind reads clean.
+    expect(screen.queryByRole("switch", { name: "freeze layout" })).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "Graph settings" })
+        .getByRole("button", { name: "Graph controls" })
         .getAttribute("aria-expanded"),
     ).toBe("false");
     openSettings();
-    expect(screen.getByRole("button", { name: "freeze simulation" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "freeze layout" })).toBeTruthy();
     expect(
       screen
-        .getByRole("button", { name: "Graph settings" })
+        .getByRole("button", { name: "Graph controls" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
   });
 
-  it("closes the settings popover on a second trigger click (toggle)", () => {
+  it("closes the panel on a second trigger click (toggle)", () => {
     renderGraphControls();
     openSettings();
-    expect(screen.getByRole("button", { name: "freeze simulation" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Graph settings" }));
-    expect(screen.queryByRole("button", { name: "freeze simulation" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "freeze layout" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Graph controls" }));
+    expect(screen.queryByRole("switch", { name: "freeze layout" })).toBeNull();
   });
 
-  it("closes the settings popover on Escape", () => {
+  it("closes the panel on Escape", () => {
     renderGraphControls();
     openSettings();
-    expect(screen.getByRole("button", { name: "freeze simulation" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "freeze layout" })).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("button", { name: "freeze simulation" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "freeze layout" })).toBeNull();
   });
 });
 
-describe("GraphControls — force tuning (set-force-params)", () => {
-  it("a Repulsion slider change emits set-force-params with the mapped d3 charge", () => {
+describe("GraphSettingsPanel — layout tuning (set-force-params)", () => {
+  it("a Spacing slider change emits set-force-params with the mapped d3 charge", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
     openSettings();
-    const slider = screen.getByRole("slider", { name: "Repulsion" });
+    const slider = screen.getByRole("slider", { name: "Spacing" });
     fireEvent.change(slider, { target: { value: "200" } });
     const call = spy.mock.calls.find(
       (c) => (c[0] as { kind: string }).kind === "set-force-params",
     );
     expect(call).toBeTruthy();
-    // Repulsion is a magnitude → a NEGATIVE charge on the d3-force field.
+    // Spacing is a magnitude → a NEGATIVE charge on the d3-force field.
     expect((call![0] as { params: { charge: number } }).params.charge).toBeCloseTo(
       -200,
     );
   });
 
-  it("Link distance / Link strength map straight through to the field params", () => {
+  it("Link length / Grouping map straight through to the field params", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
     openSettings();
-    fireEvent.change(screen.getByRole("slider", { name: "Link distance" }), {
+    fireEvent.change(screen.getByRole("slider", { name: "Link length" }), {
       target: { value: "120" },
     });
-    fireEvent.change(screen.getByRole("slider", { name: "Link strength" }), {
+    fireEvent.change(screen.getByRole("slider", { name: "Grouping" }), {
       target: { value: "1.5" },
     });
     const params = spy.mock.calls
@@ -185,7 +183,7 @@ describe("GraphControls — force tuning (set-force-params)", () => {
   });
 });
 
-describe("GraphControls — appearance (set-appearance-params)", () => {
+describe("GraphSettingsPanel — appearance (set-appearance-params)", () => {
   it("a Node size slider change emits set-appearance-params", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
@@ -202,7 +200,7 @@ describe("GraphControls — appearance (set-appearance-params)", () => {
     ).toBeCloseTo(1.5);
   });
 
-  it("the edge-colour toggle emits set-appearance-params with the chosen mode", () => {
+  it("the link-colour toggle emits set-appearance-params with the chosen mode", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
     openSettings();
@@ -217,13 +215,13 @@ describe("GraphControls — appearance (set-appearance-params)", () => {
   });
 });
 
-describe("GraphControls — Freeze toggle", () => {
+describe("GraphSettingsPanel — Freeze toggle", () => {
   it("unfreezes the scene when the active scope changes", async () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
     openSettings();
 
-    fireEvent.click(screen.getByRole("button", { name: "freeze simulation" }));
+    fireEvent.click(screen.getByRole("switch", { name: "freeze layout" }));
     expect(
       spy.mock.calls.some(
         (c) =>

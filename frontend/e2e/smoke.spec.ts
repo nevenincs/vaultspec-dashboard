@@ -20,9 +20,9 @@ test("the served shell carries the token bootstrap and boots the app", async ({
   );
   // The four-region anatomy mounts.
   await expect(page.locator("[data-timeline]")).toBeVisible();
-  // The unified stage top bar (graph + timeline navigation) replaced the retired
-  // filter bar (graph-timeline-workspace).
-  await expect(page.locator("[data-stage-nav-bar]")).toBeVisible();
+  // The graph top bar is retired: graph navigation is now a canvas overlay (the
+  // vertical camera cluster), per the binding graph/Hero redesign.
+  await expect(page.locator("[data-graph-nav-controls]")).toBeVisible();
 });
 
 test("the constellation renders from the live graph", async ({ page }) => {
