@@ -27,6 +27,7 @@ MANIFEST
 
 # Auto-generated temp files
 tmp/
+.tmp/
 
 # Unit test / coverage reports
 htmlcov/
