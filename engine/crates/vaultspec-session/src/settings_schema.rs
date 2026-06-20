@@ -44,11 +44,26 @@ pub enum SettingType {
     /// or unknown entry by falling back to the default. So the engine's job is to
     /// keep the persisted value well-formed and bounded, not to parse chords.
     Keybindings { max_entries: usize },
+    /// A sparse GRAPH-CONTROL override map, wire-encoded as a JSON object string
+    /// `{control_id: value}` where each value is a JSON number or string. Exactly
+    /// the keybindings boundary applied to the graph's force/appearance tuning:
+    /// the engine validates structure (object of number|string values) and bounds
+    /// the map at `max_entries` (bounded-by-default), but does NOT own the control
+    /// vocabulary — the frontend `graphControlSchema` is the authority for which
+    /// control ids exist and their ranges/semantics, and it resolves schema
+    /// defaults for any absent or unknown id. So the engine's job is to keep the
+    /// persisted value well-formed and bounded, not to know the controls.
+    GraphControls { max_entries: usize },
 }
 
 /// Per-chord byte ceiling inside a keybindings override map. A generous bound
 /// that rejects garbage while admitting any real chord string.
 const KEYBINDING_CHORD_MAX_LEN: usize = 64;
+
+/// Per-value byte ceiling for a string-valued graph-control override. A generous
+/// bound that rejects garbage while admitting any real control value (e.g. a
+/// gradient-mode enum string); numeric values are not length-bound.
+const GRAPH_CONTROL_VALUE_MAX_LEN: usize = 64;
 
 /// The UI control a setting renders as (the schema-driven render hint). Adding
 /// a new control kind is the one place the client and this enum must agree.
@@ -66,6 +81,11 @@ pub enum ControlKind {
     /// The keybinding editor: renders the frontend registry's action catalog as
     /// per-action chord recorders and writes back the sparse override map.
     Keybinding,
+    /// The graph-controls override map. Surfaced and edited from the graph
+    /// controls overlay panel (the bespoke force/appearance tuning surface), not
+    /// the settings dialog — the dialog skips this control kind. The value is the
+    /// sparse `control_id -> value` override map the overlay writes back.
+    GraphControls,
 }
 
 /// One declared setting. Owned (not `&'static`) so the registry can carry enum
@@ -155,6 +175,11 @@ pub fn groups() -> &'static [&'static str] {
 /// grow without limit.
 pub const MAX_KEYBINDING_OVERRIDES: usize = 256;
 
+/// The cap on user graph-control overrides, mirrored by the frontend graph
+/// controls schema. Bounded-by-default: the persisted map can never grow without
+/// limit. Sized generously above the real force/appearance control count.
+pub const MAX_GRAPH_CONTROL_OVERRIDES: usize = 256;
+
 /// Look up a declared setting by key.
 pub fn find(key: &str) -> Option<&'static SettingDef> {
     registry().iter().find(|d| d.key == key)
@@ -203,6 +228,7 @@ pub fn check_value(value_type: &SettingType, value: &str) -> Result<String, Stri
             Err(_) => Err("must be an integer".to_string()),
         },
         SettingType::Keybindings { max_entries } => check_keybindings(value, *max_entries),
+        SettingType::GraphControls { max_entries } => check_graph_controls(value, *max_entries),
     }
 }
 
@@ -240,6 +266,52 @@ fn check_keybindings(value: &str, max_entries: usize) -> Result<String, String> 
     }
     // BTreeMap re-serializes with sorted keys and no insignificant whitespace.
     serde_json::to_string(&normalized).map_err(|_| "could not normalize bindings".to_string())
+}
+
+/// Validate a graph-controls override map: a JSON object of `control_id -> value`
+/// where each value is a JSON number or string, bounded at `max_entries`, with
+/// each id non-empty and each string value trimmed, non-empty, and at most
+/// [`GRAPH_CONTROL_VALUE_MAX_LEN`] bytes. Returns the CANONICAL form (compact
+/// JSON with sorted keys) so storage is normalized regardless of the client's
+/// key order or whitespace. The control vocabulary and numeric ranges are the
+/// frontend's authority — this only keeps the persisted value well-formed,
+/// type-restricted (number|string), and bounded.
+fn check_graph_controls(value: &str, max_entries: usize) -> Result<String, String> {
+    use serde_json::Value;
+    use std::collections::BTreeMap;
+    let map: BTreeMap<String, Value> = serde_json::from_str(value).map_err(|_| {
+        "must be a JSON object of control-id to number-or-string values".to_string()
+    })?;
+    if map.len() > max_entries {
+        return Err(format!("at most {max_entries} controls may be overridden"));
+    }
+    let mut normalized: BTreeMap<String, Value> = BTreeMap::new();
+    for (id, val) in map {
+        if id.is_empty() {
+            return Err("a control id must not be empty".to_string());
+        }
+        let canonical = match val {
+            Value::Number(n) => Value::Number(n),
+            Value::String(s) => {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    return Err(format!("control `{id}` has an empty value"));
+                }
+                if trimmed.len() > GRAPH_CONTROL_VALUE_MAX_LEN {
+                    return Err(format!(
+                        "control `{id}` value exceeds {GRAPH_CONTROL_VALUE_MAX_LEN} bytes"
+                    ));
+                }
+                Value::String(trimmed.to_string())
+            }
+            _ => {
+                return Err(format!("control `{id}` value must be a number or string"));
+            }
+        };
+        normalized.insert(id, canonical);
+    }
+    // BTreeMap re-serializes with sorted keys and no insignificant whitespace.
+    serde_json::to_string(&normalized).map_err(|_| "could not normalize controls".to_string())
 }
 
 fn invalid(key: &str, reason: String) -> ValidationError {
@@ -341,6 +413,30 @@ fn build_registry() -> Vec<SettingDef> {
             step: None,
             unit: None,
             placeholder: Some("type a stem…".to_string()),
+        },
+        // The user's graph force/appearance tuning overrides: a sparse
+        // `control_id -> value` (number|string) map layered over the frontend
+        // `graphControlSchema` defaults. One honest, consumed setting — the graph
+        // controls overlay panel resolves and writes it (NOT the settings dialog,
+        // which skips the GraphControls control kind). Global (one graph look
+        // across all workspaces, like theme/keybindings); `frozen` is deliberately
+        // EXCLUDED — a transient layout pause, never a persisted preference.
+        // Bounded at MAX_GRAPH_CONTROL_OVERRIDES.
+        SettingDef {
+            key: "graph_controls".to_string(),
+            value_type: SettingType::GraphControls {
+                max_entries: MAX_GRAPH_CONTROL_OVERRIDES,
+            },
+            default: "{}".to_string(),
+            scope_eligible: false,
+            control: ControlKind::GraphControls,
+            label: "Graph controls".to_string(),
+            description: "Persisted force and appearance tuning for the graph.".to_string(),
+            group: "Graph".to_string(),
+            order: 4,
+            step: None,
+            unit: None,
+            placeholder: None,
         },
         // The user's keyboard-shortcut overrides: a sparse `action_id -> chord`
         // map layered over the frontend keybinding registry's defaults. One
@@ -533,6 +629,72 @@ mod tests {
     fn keybindings_is_global_only() {
         assert_eq!(
             validate("keybindings", "{}", true).unwrap_err().kind(),
+            "scope_not_allowed"
+        );
+    }
+
+    #[test]
+    fn graph_controls_is_declared_global_with_the_graph_controls_control() {
+        let def = find("graph_controls").expect("graph_controls is declared");
+        assert!(matches!(
+            def.value_type,
+            SettingType::GraphControls { max_entries } if max_entries == MAX_GRAPH_CONTROL_OVERRIDES
+        ));
+        assert_eq!(def.control, ControlKind::GraphControls);
+        assert_eq!(def.group, "Graph");
+        assert_eq!(def.default, "{}");
+        assert!(!def.scope_eligible, "graph look is global, not scoped");
+        // The declared default validates against its own type.
+        assert!(validate("graph_controls", "{}", false).is_ok());
+    }
+
+    #[test]
+    fn graph_controls_accepts_numbers_and_strings_and_normalizes() {
+        let ty = SettingType::GraphControls { max_entries: 16 };
+        // Re-serialized canonical: sorted keys, no insignificant whitespace,
+        // mixed number + string values preserved by JSON type.
+        assert_eq!(
+            check_value(&ty, "{ \"charge\": -30, \"gradientMode\": \"tier\" }").unwrap(),
+            "{\"charge\":-30,\"gradientMode\":\"tier\"}"
+        );
+        assert_eq!(check_value(&ty, "{}").unwrap(), "{}");
+        // Float values are preserved.
+        assert_eq!(
+            check_value(&ty, "{\"linkStrength\":0.5}").unwrap(),
+            "{\"linkStrength\":0.5}"
+        );
+        // String values are trimmed in the stored canonical form.
+        assert_eq!(
+            check_value(&ty, "{\"gradientMode\":\"  tier  \"}").unwrap(),
+            "{\"gradientMode\":\"tier\"}"
+        );
+    }
+
+    #[test]
+    fn graph_controls_rejects_malformed_oversized_or_wrong_typed_entries() {
+        let ty = SettingType::GraphControls { max_entries: 2 };
+        // Not an object of number|string.
+        assert!(check_value(&ty, "not json").is_err());
+        assert!(check_value(&ty, "[1, 2]").is_err());
+        // Disallowed value types: bool, null, nested object/array.
+        assert!(check_value(&ty, "{\"a\": true}").is_err());
+        assert!(check_value(&ty, "{\"a\": null}").is_err());
+        assert!(check_value(&ty, "{\"a\": {\"b\": 1}}").is_err());
+        assert!(check_value(&ty, "{\"a\": [1]}").is_err());
+        // Over the entry cap.
+        assert!(check_value(&ty, "{\"a\":1,\"b\":2,\"c\":3}").is_err());
+        // Empty string value.
+        assert!(check_value(&ty, "{\"a\":\"\"}").is_err());
+        assert!(check_value(&ty, "{\"a\":\"   \"}").is_err());
+        // Over-long string value.
+        let long = "x".repeat(GRAPH_CONTROL_VALUE_MAX_LEN + 1);
+        assert!(check_value(&ty, &format!("{{\"a\":\"{long}\"}}")).is_err());
+    }
+
+    #[test]
+    fn graph_controls_is_global_only() {
+        assert_eq!(
+            validate("graph_controls", "{}", true).unwrap_err().kind(),
             "scope_not_allowed"
         );
     }
