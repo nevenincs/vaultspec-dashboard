@@ -9,7 +9,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CanvasStateOverlay } from "./CanvasStateOverlay";
+import { CanvasStateOverlay, degradedBannerCopy } from "./CanvasStateOverlay";
 
 afterEach(cleanup);
 
@@ -57,13 +57,49 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
       />,
     );
     const banner = document.querySelector('[data-canvas-state="degraded"]');
-    // Names the down tier and affirms the graph is still live — never the blocking
-    // "Graph is not available" card (which would occlude a working graph).
-    expect(banner?.textContent).toContain("semantic");
+    // Names the affected FEATURE in plain language (never the internal tier name)
+    // and affirms the graph is still live — never the blocking "Graph is not
+    // available" card (which would occlude a working graph).
+    expect(banner?.textContent).toContain("Semantic search unavailable");
     expect(banner?.textContent).toContain("the rest of the graph is live");
+    expect(banner?.textContent).not.toContain("tier");
     expect(banner?.textContent).not.toContain("Graph is not available");
     // The outer never blanks the canvas; the field stays interactive behind it.
     expect(banner?.className).toContain("pointer-events-none");
+  });
+
+  it("frames a transient build (reason 'building') as loading, not unavailable", () => {
+    render(
+      <CanvasStateOverlay
+        state={{
+          kind: "degraded",
+          tiers: ["declared"],
+          reasons: { declared: "declared tier building" },
+        }}
+      />,
+    );
+    const banner = document.querySelector('[data-canvas-state="degraded"]');
+    expect(banner?.textContent).toContain("Still loading links");
+    expect(banner?.textContent).not.toContain("unavailable");
+  });
+
+  it("composes a mixed building + down state in plain language", () => {
+    render(
+      <CanvasStateOverlay
+        state={{
+          kind: "degraded",
+          tiers: ["declared", "semantic"],
+          reasons: {
+            declared: "declared tier building",
+            semantic: "rag service not installed or not started",
+          },
+        }}
+      />,
+    );
+    const banner = document.querySelector('[data-canvas-state="degraded"]');
+    expect(banner?.textContent).toBe(
+      "Still loading links; semantic search unavailable — the rest of the graph is live",
+    );
   });
 
   it("renders the truncated affordance with tabular counts and a refine prompt", () => {
@@ -87,5 +123,39 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
     const banner = document.querySelector('[data-canvas-state="unknown-tier"]');
     expect(banner?.textContent).toContain("quantum");
     expect(banner?.textContent).toContain("data error");
+  });
+});
+
+describe("degradedBannerCopy (plain-language tier copy)", () => {
+  it("maps each tier to its plain feature name (no tier jargon)", () => {
+    expect(degradedBannerCopy(["semantic"], {})).toBe(
+      "Semantic search unavailable — the rest of the graph is live",
+    );
+    expect(degradedBannerCopy(["declared"], {})).toBe(
+      "Links unavailable — the rest of the graph is live",
+    );
+  });
+
+  it("frames a 'building' reason as loading (transient), not unavailable", () => {
+    expect(
+      degradedBannerCopy(["declared"], { declared: "declared tier building" }),
+    ).toBe("Still loading links…");
+  });
+
+  it("composes mixed building + down with plain prose joins", () => {
+    expect(
+      degradedBannerCopy(["declared", "semantic"], {
+        declared: "declared tier building",
+        semantic: "rag not started",
+      }),
+    ).toBe(
+      "Still loading links; semantic search unavailable — the rest of the graph is live",
+    );
+  });
+
+  it("joins multiple down features with 'and'", () => {
+    expect(degradedBannerCopy(["declared", "semantic"], {})).toBe(
+      "Links and semantic search unavailable — the rest of the graph is live",
+    );
   });
 });

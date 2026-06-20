@@ -222,10 +222,7 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
     case "degraded":
       return (
         <CornerBanner testid="degraded" tone="muted">
-          <span>
-            {tierList(state.tiers)} tier{state.tiers.length > 1 ? "s" : ""} unavailable
-            — the rest of the graph is live
-          </span>
+          <span>{degradedBannerCopy(state.tiers, state.reasons)}</span>
         </CornerBanner>
       );
     case "truncated":
@@ -261,4 +258,58 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
 /** Join tier names with a comma, lowercased, for the non-color state copy. */
 function tierList(tiers: string[]): string {
   return tiers.join(", ");
+}
+
+/**
+ * Plain, user-facing names for each provenance tier (`ui-labels-are-user-facing`):
+ * the degraded banner names the affected FEATURE, never the internal tier name.
+ * Stored lowercase for mid-sentence use; capitalized at a sentence start.
+ */
+const TIER_FEATURE_LABEL: Record<string, string> = {
+  semantic: "semantic search",
+  declared: "links",
+  structural: "mentions",
+  temporal: "timeline",
+};
+
+/**
+ * A tier whose reason names a transient index build reads as "loading", not
+ * "unavailable". INTERIM heuristic: the reason STRING is the only signal until the
+ * engine emits a structured build state — the one match is isolated here so it swaps
+ * to that signal cleanly when it lands (graph-tiers follow-up A). */
+function isBuildingReason(reason: string | undefined): boolean {
+  return reason !== undefined && reason.toLowerCase().includes("building");
+}
+
+/** Join feature names as plain prose: "a", "a and b", "a, b and c". */
+function featureList(tiers: string[]): string {
+  const names = tiers.map((tier) => TIER_FEATURE_LABEL[tier] ?? tier);
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+function capitalizeFirst(text: string): string {
+  return text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
+}
+
+/**
+ * The degraded-banner copy (`ui-labels-are-user-facing`): plain language naming the
+ * affected feature, splitting tiers whose reason is a transient build ("Still
+ * loading …") from genuinely-down tiers ("… unavailable — the rest of the graph is
+ * live"). Pure + exported for unit tests.
+ */
+export function degradedBannerCopy(
+  tiers: string[],
+  reasons: Record<string, string>,
+): string {
+  const building = tiers.filter((tier) => isBuildingReason(reasons[tier]));
+  const down = tiers.filter((tier) => !isBuildingReason(reasons[tier]));
+  const live = " — the rest of the graph is live";
+  if (building.length > 0 && down.length > 0) {
+    return `Still loading ${featureList(building)}; ${featureList(down)} unavailable${live}`;
+  }
+  if (building.length > 0) {
+    return `Still loading ${featureList(building)}…`;
+  }
+  return `${capitalizeFirst(featureList(down))} unavailable${live}`;
 }
