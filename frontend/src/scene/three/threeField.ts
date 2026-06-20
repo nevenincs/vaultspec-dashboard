@@ -73,6 +73,19 @@ const PICK_RADIUS_PX = 14;
  *  persistent nodes barely move while new nodes settle in (object constancy). */
 const WARM_START_ALPHA = 0.3;
 
+/** Cold-fit padding: the graph span is divided by this when framing, so the graph
+ *  occupies ~1/factor of the smaller viewport dimension — leaving a margin so nodes
+ *  (and their labels/radii) are never flush to the canvas edge. 1.2 ≈ 8% per edge. */
+const FIT_PADDING_FACTOR = 1.2;
+
+/** Fractional inset of the minimap overview from the minimap canvas edges. */
+const MINIMAP_INSET = 0.1;
+
+/** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
+function hexCss(n: number): string {
+  return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
+}
+
 // Settle is alpha-driven inside the solver: d3-force cools by alphaDecay each tick
 // and the host freezes the loop once `solver.isSettled()` (alpha < alphaMin and not
 // held warm by a drag). A drag holds the sim warm via alphaTarget, so it perturbs
@@ -292,6 +305,19 @@ export class ThreeField implements SceneFieldRenderer {
   private dragNodeIndex = -1;
   private dragActive = false;
 
+  // --- minimap (overview navigator) ---------------------------------------
+  // A chrome-hosted <canvas> the field draws a downscaled overview into (node dots
+  // + the current-viewport rectangle), refreshed on every render frame (settle
+  // ticks, camera moves, data changes) — bounded by the on-demand render model, no
+  // separate loop. Pointer click/drag on it pans the main camera.
+  private minimapCanvas: HTMLCanvasElement | null = null;
+  private minimapCtx: CanvasRenderingContext2D | null = null;
+  private detachMinimap: (() => void) | null = null;
+  // The last world→minimap transform, retained so a pointer on the minimap maps
+  // back to world coordinates for camera panning.
+  private minimapView: { scale: number; cx: number; cy: number } | null = null;
+  private minimapDragging = false;
+
   mount(host: HTMLElement): void {
     // Colour-space contract: the scene's category/tier/ink tokens are authored as
     // sRGB literal hex (themes-are-oklch-generated-from-a-token-tier) and every other
@@ -371,6 +397,10 @@ export class ThreeField implements SceneFieldRenderer {
     this.pulseTimer = 0;
     this.scheduled = false;
     this.disposeGraph();
+    this.detachMinimap?.();
+    this.detachMinimap = null;
+    this.minimapCanvas = null;
+    this.minimapCtx = null;
     this.labelCanvas?.remove();
     this.labelCanvas = null;
     this.labelCtx = null;
@@ -1097,6 +1127,7 @@ export class ThreeField implements SceneFieldRenderer {
     this.renderer.render(this.scene, this.camera);
     this.drawLabels();
     this.emitAnchors();
+    this.renderMinimap();
   }
 
   // --- anchors (RL-4: DOM islands + hover card) ----------------------------
@@ -1275,8 +1306,15 @@ export class ThreeField implements SceneFieldRenderer {
     );
   }
 
-  private fitToView(): void {
-    if (!this.solver) return this.fitToSeed();
+  /** Axis-aligned bounding box over all live node positions, or null when there are
+   *  no finite positions yet. Shared by fitToView (cold framing) and the minimap. */
+  private graphBounds(): {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  } | null {
+    if (!this.solver) return null;
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -1290,8 +1328,13 @@ export class ThreeField implements SceneFieldRenderer {
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
-    if (minX > maxX) return this.fitToSeed();
-    this.frameBounds(minX, minY, maxX, maxY);
+    return minX > maxX ? null : { minX, minY, maxX, maxY };
+  }
+
+  private fitToView(): void {
+    const b = this.graphBounds();
+    if (!b) return this.fitToSeed();
+    this.frameBounds(b.minX, b.minY, b.maxX, b.maxY);
   }
 
   private frameBounds(minX: number, minY: number, maxX: number, maxY: number): void {
@@ -1300,8 +1343,8 @@ export class ThreeField implements SceneFieldRenderer {
     const spanX = Math.max(maxX - minX, 1);
     const spanY = Math.max(maxY - minY, 1);
     const aspect = this.width / this.height;
-    const zoomX = (this.viewHeight * aspect) / (spanX * 1.12);
-    const zoomY = this.viewHeight / (spanY * 1.12);
+    const zoomX = (this.viewHeight * aspect) / (spanX * FIT_PADDING_FACTOR);
+    const zoomY = this.viewHeight / (spanY * FIT_PADDING_FACTOR);
     this.camera.position.set(cx, cy, 10);
     this.camera.zoom = Math.max(0.02, Math.min(50, Math.min(zoomX, zoomY)));
     this.camera.updateProjectionMatrix();
@@ -1344,6 +1387,131 @@ export class ThreeField implements SceneFieldRenderer {
   private emitCameraChange(): void {
     const level = semanticLevel(this.camera.zoom);
     this.controller?.emit({ kind: "camera-change", scale: this.camera.zoom, level });
+  }
+
+  // --- minimap -------------------------------------------------------------
+
+  /** Register (or clear) the chrome-hosted minimap canvas. The field owns every
+   *  pixel inside it; chrome never draws. Forwarded from
+   *  SceneController.setMinimapCanvas via duck-typing. */
+  setMinimapCanvas(canvas: HTMLCanvasElement | null): void {
+    this.detachMinimap?.();
+    this.detachMinimap = null;
+    this.minimapCanvas = canvas;
+    this.minimapCtx = canvas ? canvas.getContext("2d") : null;
+    this.minimapView = null;
+    if (canvas) {
+      this.detachMinimap = this.attachMinimapInteraction(canvas);
+      this.renderMinimap();
+    }
+  }
+
+  /** Draw the downscaled overview (node dots) + the current-viewport rectangle into
+   *  the minimap canvas. Called from renderFrame, so it tracks settle ticks, camera
+   *  moves, and data changes with no separate loop (bounded). */
+  private renderMinimap(): void {
+    const canvas = this.minimapCanvas;
+    const ctx = this.minimapCtx;
+    if (!canvas || !ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const b = this.graphBounds();
+    if (!b) {
+      this.minimapView = null;
+      return;
+    }
+    const spanX = Math.max(b.maxX - b.minX, 1);
+    const spanY = Math.max(b.maxY - b.minY, 1);
+    const scale = Math.min(
+      (w * (1 - 2 * MINIMAP_INSET)) / spanX,
+      (h * (1 - 2 * MINIMAP_INSET)) / spanY,
+    );
+    const cx = (b.minX + b.maxX) / 2;
+    const cy = (b.minY + b.maxY) / 2;
+    this.minimapView = { scale, cx, cy };
+    const toX = (wx: number): number => w / 2 + (wx - cx) * scale;
+    const toY = (wy: number): number => h / 2 - (wy - cy) * scale; // world up = screen up
+
+    // Node dots — a faint muted-ink constellation; bounded dot size.
+    const count = this.solver?.count ?? 0;
+    const dot = Math.max(1, Math.min(2.5, scale * 6));
+    const r = dot / 2;
+    ctx.fillStyle = hexCss(inkMutedColor());
+    ctx.globalAlpha = 0.7;
+    for (let i = 0; i < count; i++) {
+      const x = this.cpuPositions[i * 4];
+      const y = this.cpuPositions[i * 4 + 1];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      ctx.fillRect(toX(x) - r, toY(y) - r, dot, dot);
+    }
+    ctx.globalAlpha = 1;
+
+    // Viewport rectangle — the current camera view in world → minimap. The only
+    // stroked outline on the overview, so position reads in grayscale too.
+    const halfW = (this.camera.right - this.camera.left) / 2 / this.camera.zoom;
+    const halfH = (this.camera.top - this.camera.bottom) / 2 / this.camera.zoom;
+    const left = toX(this.camera.position.x - halfW);
+    const right = toX(this.camera.position.x + halfW);
+    const top = toY(this.camera.position.y + halfH);
+    const bottom = toY(this.camera.position.y - halfH);
+    ctx.strokeStyle = hexCss(accentColor());
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      Math.round(left) + 0.5,
+      Math.round(top) + 0.5,
+      Math.max(1, Math.round(right - left)),
+      Math.max(1, Math.round(bottom - top)),
+    );
+  }
+
+  /** Pointer click/drag on the minimap pans the main camera to the picked world
+   *  point. Returns a cleanup that removes the listeners. */
+  private attachMinimapInteraction(canvas: HTMLCanvasElement): () => void {
+    const toWorld = (ev: PointerEvent): { x: number; y: number } | null => {
+      const view = this.minimapView;
+      if (!view) return null;
+      const rect = canvas.getBoundingClientRect();
+      // CSS px → backing-store px (canvas.width may differ from its CSS size).
+      const sx = ((ev.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width;
+      const sy = ((ev.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height;
+      return {
+        x: view.cx + (sx - canvas.width / 2) / view.scale,
+        y: view.cy - (sy - canvas.height / 2) / view.scale,
+      };
+    };
+    const panTo = (ev: PointerEvent): void => {
+      const world = toWorld(ev);
+      if (!world) return;
+      this.camera.position.set(world.x, world.y, 10);
+      this.camera.updateProjectionMatrix();
+      this.emitCameraChange();
+      this.requestRender();
+    };
+    const onDown = (ev: PointerEvent): void => {
+      this.minimapDragging = true;
+      canvas.setPointerCapture(ev.pointerId);
+      panTo(ev);
+    };
+    const onMove = (ev: PointerEvent): void => {
+      if (this.minimapDragging) panTo(ev);
+    };
+    const onUp = (ev: PointerEvent): void => {
+      this.minimapDragging = false;
+      if (canvas.hasPointerCapture(ev.pointerId))
+        canvas.releasePointerCapture(ev.pointerId);
+    };
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
+    canvas.style.cursor = "pointer";
+    return () => {
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onUp);
+    };
   }
 
   // --- picking + interaction ----------------------------------------------
