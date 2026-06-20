@@ -6,7 +6,7 @@
 // they are corner banners over a live canvas, while the loading/empty states
 // center. The overlay is a dumb projection: it renders the resolved state only.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CanvasStateOverlay } from "./CanvasStateOverlay";
@@ -19,40 +19,39 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("offers the empty/no-graph state as an approachable invitation", () => {
+  it("renders the empty state as the binding no-results card", () => {
     render(<CanvasStateOverlay state={{ kind: "empty" }} />);
     const node = document.querySelector('[data-canvas-state="empty"]');
     expect(node).toBeTruthy();
-    expect(node?.textContent).toContain("no second brain yet");
-    // The next step is offered in mono (a real command), not a dead end.
-    expect(screen.getByText("vaultspec-core install").tagName).toBe("CODE");
+    expect(node?.textContent).toContain("No nodes match the current filter");
+    // The card is pointer-transparent so it never steals the canvas pointer.
+    expect(node?.className).toContain("pointer-events-none");
   });
 
-  it("spells the scope-appropriate loading copy", () => {
+  it("renders the binding 'Loading...' card for every loading state", () => {
     const { rerender } = render(
       <CanvasStateOverlay state={{ kind: "loading-constellation" }} />,
     );
     expect(
       document.querySelector('[data-canvas-state="loading-constellation"]')
         ?.textContent,
-    ).toContain("constellation");
+    ).toContain("Loading...");
     rerender(<CanvasStateOverlay state={{ kind: "loading-document" }} />);
     expect(
       document.querySelector('[data-canvas-state="loading-document"]')?.textContent,
-    ).toContain("document graph");
+    ).toContain("Loading...");
   });
 
-  it("renders a degraded tier as a non-blocking banner naming the tier (non-color cue)", () => {
+  it("renders the degraded state as the binding 'Graph is not available' card", () => {
     render(
       <CanvasStateOverlay
         state={{ kind: "degraded", tiers: ["semantic"], reasons: {} }}
       />,
     );
-    const banner = document.querySelector('[data-canvas-state="degraded"]');
-    expect(banner?.textContent).toContain("semantic");
-    expect(banner?.textContent).toContain("unavailable");
-    // The banner inner is pointer-interactive but the outer never blanks the canvas.
-    expect(banner?.className).toContain("pointer-events-none");
+    const node = document.querySelector('[data-canvas-state="degraded"]');
+    expect(node?.textContent).toContain("Graph is not available");
+    // Centered card, pointer-transparent — it never blanks or grabs the canvas.
+    expect(node?.className).toContain("pointer-events-none");
   });
 
   it("renders the truncated affordance with tabular counts and a refine prompt", () => {

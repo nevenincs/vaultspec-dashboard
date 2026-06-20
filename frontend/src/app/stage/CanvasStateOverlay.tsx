@@ -14,7 +14,7 @@
 // The resolver below is a pure function from those inputs to one state, so the
 // ADR's state table is unit-testable without a DOM or a live backend.
 
-import { AlertTriangle, Brain, ScanSearch } from "lucide-react";
+import { AlertTriangle, ScanSearch } from "lucide-react";
 
 import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
@@ -98,8 +98,14 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
   return { kind: "ok" };
 }
 
-/** A centered, pointer-transparent overlay shell — never steals canvas pointer. */
-function CenteredNotice({
+/**
+ * The binding centered state card (graph/Hero state variants 713:2116/2296/2475 —
+ * `LoadingState`/`DegradedState`/`EmptyState` 498:987–993): a raised paper card,
+ * `border/subtle`, rounded 10px, 26×22 interior, centered in the canvas. Pointer-
+ * transparent so it never steals the canvas pointer, and it never blanks the field
+ * — the legend / nav / minimap overlays stay live around it.
+ */
+function StateCard({
   children,
   testid,
 }: {
@@ -108,12 +114,26 @@ function CenteredNotice({
 }) {
   return (
     <div
-      className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-fg-2 px-fg-4 text-center"
+      className="pointer-events-none absolute inset-0 flex items-center justify-center px-fg-4"
       data-canvas-state={testid}
       role="status"
     >
-      {children}
+      <div className="flex flex-col items-center justify-center gap-[0.625rem] rounded-[0.625rem] border border-rule bg-paper-raised px-[1.625rem] py-[1.375rem] text-center">
+        {children}
+      </div>
     </div>
+  );
+}
+
+/** The three binding skeleton bars (498:989–991): `border/subtle` fill, 10px tall,
+ *  4px radius, 200 / 150 / 220px wide. Pulse only when motion is allowed. */
+function LoadingSkeleton() {
+  return (
+    <>
+      <span className="h-[0.625rem] w-[12.5rem] rounded-[0.25rem] bg-rule motion-safe:animate-pulse" />
+      <span className="h-[0.625rem] w-[9.375rem] rounded-[0.25rem] bg-rule motion-safe:animate-pulse" />
+      <span className="h-[0.625rem] w-[13.75rem] rounded-[0.25rem] bg-rule motion-safe:animate-pulse" />
+    </>
   );
 }
 
@@ -152,45 +172,34 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
   switch (state.kind) {
     case "ok":
       return null;
+    // Loading (binding LoadingState 498:987): "Loading..." in faint ink over three
+    // skeleton bars. The awaiting-scope and both granularity loads share the one
+    // binding loading card.
     case "awaiting-scope":
-      return (
-        <CenteredNotice testid="awaiting-scope">
-          <p className="text-body text-ink-faint">waiting for a worktree scope…</p>
-        </CenteredNotice>
-      );
     case "loading-constellation":
-      return (
-        <CenteredNotice testid="loading-constellation">
-          <p className="text-body text-ink-faint">loading the constellation…</p>
-        </CenteredNotice>
-      );
     case "loading-document":
       return (
-        <CenteredNotice testid="loading-document">
-          <p className="text-body text-ink-faint">loading the document graph…</p>
-        </CenteredNotice>
+        <StateCard testid={state.kind}>
+          <p className="text-body font-medium text-ink-faint">Loading...</p>
+          <LoadingSkeleton />
+        </StateCard>
       );
+    // Empty (binding EmptyState): the no-results message in muted ink.
     case "empty":
       return (
-        <CenteredNotice testid="empty">
-          <Brain aria-hidden className="text-ink-faint" size={40} strokeWidth={1.25} />
-          <p className="text-body text-ink-muted">
-            this worktree has no second brain yet
-          </p>
-          <p className="text-label text-ink-faint">
-            run <code className="font-mono">vaultspec-core install</code> to start a
-            vault here
-          </p>
-        </CenteredNotice>
+        <StateCard testid="empty">
+          <p className="text-body text-ink-muted">No nodes match the current filter</p>
+        </StateCard>
       );
+    // Degraded (binding DegradedState 498:992): the graph-unavailable message in the
+    // stale/caution accent, read by shape + the amber token (never colour alone).
     case "degraded":
       return (
-        <CornerBanner testid="degraded" tone="muted">
-          <span>
-            {tierList(state.tiers)} tier{state.tiers.length > 1 ? "s" : ""} unavailable
-            — the rest of the graph is live
-          </span>
-        </CornerBanner>
+        <StateCard testid="degraded">
+          <p className="text-body font-medium text-state-stale">
+            Graph is not available
+          </p>
+        </StateCard>
       );
     case "truncated":
       return (
