@@ -84,10 +84,21 @@ const ZOOM_MIN = controlNumber("zoomMin");
 const ZOOM_MAX = controlNumber("zoomMax");
 const ZOOM_STEP_BUTTON = controlNumber("zoomStepButton");
 const ZOOM_STEP_WHEEL = controlNumber("zoomStepWheel");
+// Label LOD + ring treatment (read from the registry; one definition each).
+const LABEL_BUDGET = controlNumber("labelBudget");
+const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
+const HOVER_RING_WIDTH = controlNumber("hoverRingWidth");
+const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
   return "#" + (n & 0xffffff).toString(16).padStart(6, "0");
+}
+
+/** Format a number as a GLSL float literal so an integer default (e.g. 240) compiles
+ *  as `240.0`, not the bare int `240` that GLSL rejects where a float is required. */
+function glslFloat(n: number): string {
+  return Number.isInteger(n) ? n.toFixed(1) : String(n);
 }
 
 // Settle is alpha-driven inside the solver: d3-force cools by alphaDecay each tick
@@ -120,8 +131,8 @@ varying float vAA;
 // zoom (Obsidian/Cytoscape scale-together), fixing the prior mismatch where nodes
 // scaled in world units but edges held a constant pixel width.
 uniform float uPxScale;          // UI-scale (root font / 16): the screen-px band tracks the DOM
-const float NODE_MIN_PX = 1.5;   // node radius never below 1.5 px (visible zoomed out)
-const float NODE_MAX_PX = 240.0; // node radius never above 240 px (no balloon zoomed in)
+const float NODE_MIN_PX = ${glslFloat(controlNumber("nodeMinPx"))}; // floor on screen — visible zoomed out (schema nodeMinPx)
+const float NODE_MAX_PX = ${glslFloat(controlNumber("nodeMaxPx"))}; // ceiling on screen — no balloon zoomed in (schema nodeMaxPx)
 
 void main() {
   vec2 uv = (vec2(mod(aIndex, uTexSize), floor(aIndex / uTexSize)) + 0.5) / uTexSize;
@@ -189,8 +200,8 @@ vec2 nodePos(float idx) {
 // minEdgeThickness) nor dominates when zoomed in. NOTE: aWidthPx now carries WORLD
 // units, not pixels — the attribute name is kept to avoid churn in the edge build.
 uniform float uPxScale;         // UI-scale (root font / 16): the screen-px band tracks the DOM
-const float EDGE_MIN_PX = 1.0;  // edge never thinner than 1 px (won't vanish)
-const float EDGE_MAX_PX = 64.0; // edge never thicker than 64 px (no balloon)
+const float EDGE_MIN_PX = ${glslFloat(controlNumber("edgeMinPx"))}; // floor — won't vanish (schema edgeMinPx)
+const float EDGE_MAX_PX = ${glslFloat(controlNumber("edgeMaxPx"))}; // ceiling — no balloon (schema edgeMaxPx)
 
 void main() {
   vec2 a = nodePos(aIndexA);
@@ -1178,7 +1189,7 @@ export class ThreeField implements SceneFieldRenderer {
         } else if (hovered) {
           ctx.arc(p.x, p.y, nodeR + 3 * s, 0, Math.PI * 2);
           ctx.strokeStyle = highlight;
-          ctx.lineWidth = 1.75 * s;
+          ctx.lineWidth = HOVER_RING_WIDTH * s;
         } else {
           ctx.arc(p.x, p.y, nodeR + 3 * s, 0, Math.PI * 2);
           ctx.strokeStyle = accent;
@@ -1193,7 +1204,7 @@ export class ThreeField implements SceneFieldRenderer {
         ctx.beginPath();
         ctx.arc(p.x, p.y, nodeR + 8 * s, 0, Math.PI * 2);
         ctx.strokeStyle = highlight;
-        ctx.lineWidth = 2.5 * s;
+        ctx.lineWidth = PULSE_RING_WIDTH * s;
         ctx.globalAlpha = 0.85;
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -1210,7 +1221,7 @@ export class ThreeField implements SceneFieldRenderer {
     const docFont = labelTextStyle("document").font;
     const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
-    let budget = 220; // clutter cap
+    let budget = LABEL_BUDGET; // clutter cap
     for (let i = 0; i < this.nodes.length && budget > 0; i++) {
       const node = this.nodes[i];
       if (!this.labelVisible(node, level)) continue;
@@ -1235,7 +1246,7 @@ export class ThreeField implements SceneFieldRenderer {
     if (this.pinnedIds.has(node.id)) return true;
     if (this.visibleNodeIds && !this.visibleNodeIds.has(node.id)) return false;
     if (node.kind === "feature") return true; // features always anchor the field
-    if (level === "document") return (node.salience ?? 0) >= 0.45;
+    if (level === "document") return (node.salience ?? 0) >= DOC_LABEL_SALIENCE_FLOOR;
     return false;
   }
 
