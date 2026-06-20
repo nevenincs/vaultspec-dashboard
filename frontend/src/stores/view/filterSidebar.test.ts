@@ -6,17 +6,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   canSyncFilterSidebarVisualStateScope,
   closeFilterSidebar,
-  clearFilterSidebarTopicSearch,
+  clearFilterSidebarFeatureSearch,
   deriveFilterSidebarFacetListView,
   deriveFilterSidebarMenuSections,
   deriveFilterSidebarVisualStateKey,
   expandFilterSidebarList,
-  FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS,
+  FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS,
   FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS,
   FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES,
   FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS,
   filterSidebarDocTypeLabel,
-  filterSidebarTopicOptions,
+  filterSidebarFeatureOptions,
   filterSidebarHealthDot,
   filterSidebarHealthLabel,
   filterSidebarStatusDot,
@@ -28,12 +28,12 @@ import {
   normalizeFilterSidebarSectionKey,
   normalizeFilterSidebarSections,
   normalizeFilterSidebarScope,
-  normalizeFilterSidebarTopicSearch,
+  normalizeFilterSidebarFeatureSearch,
   normalizeFilterSidebarVocabularyPart,
   normalizeFilterSidebarVisualStateKey,
   setFilterSidebarSectionOpen,
   setFilterSidebarOpen,
-  setFilterSidebarTopicSearch,
+  setFilterSidebarFeatureSearch,
   toggleFilterSidebar,
   useFilterSidebarVisualState,
   useFilterSidebarStore,
@@ -74,18 +74,18 @@ describe("filter sidebar view store", () => {
     expect(canSyncFilterSidebarVisualStateScope(null)).toBe(true);
     expect(canSyncFilterSidebarVisualStateScope({ scope: "scope-a" })).toBe(false);
     expect(canSyncFilterSidebarVisualStateScope("   ")).toBe(false);
-    expect(normalizeFilterSidebarSectionKey("topic")).toBe("topic");
+    expect(normalizeFilterSidebarSectionKey("feature")).toBe("feature");
     expect(normalizeFilterSidebarSectionKey("unknown")).toBeNull();
     expect(normalizeFilterSidebarListKey("feature-tags")).toBe("feature-tags");
     expect(normalizeFilterSidebarListKey(null)).toBeNull();
     expect(
       normalizeFilterSidebarSections({
-        topic: true,
+        feature: true,
         edited: false,
         rogue: true,
         health: "open",
       }),
-    ).toEqual({ topic: true, edited: false });
+    ).toEqual({ feature: true, edited: false });
     expect(normalizeFilterSidebarSections(null)).toEqual({});
     expect(
       normalizeFilterSidebarExpandedLists({
@@ -148,17 +148,15 @@ describe("filter sidebar view store", () => {
     expect(useFilterSidebarStore.getState().open).toBe(true);
 
     useFilterSidebarStore.getState().syncVisualStateKey("scope-a");
-    useFilterSidebarStore.getState().setSectionOpen("topic", true);
+    useFilterSidebarStore.getState().setSectionOpen("feature", true);
     useFilterSidebarStore.getState().expandList("feature-tags");
     useFilterSidebarStore.getState().syncVisualStateKey(null);
     useFilterSidebarStore
       .getState()
-      .syncVisualStateKey(
-        "x".repeat(FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS + 1),
-      );
+      .syncVisualStateKey("x".repeat(FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS + 1));
     expect(useFilterSidebarStore.getState()).toMatchObject({
       visualStateKey: "scope-a",
-      sections: { topic: true },
+      sections: { feature: true },
       expandedLists: { "feature-tags": true },
     });
 
@@ -166,7 +164,7 @@ describe("filter sidebar view store", () => {
     setFilterSidebarSectionOpen("kind", "open");
     expandFilterSidebarList("unknown");
     expect(useFilterSidebarStore.getState()).toMatchObject({
-      sections: { topic: true },
+      sections: { feature: true },
       expandedLists: { "feature-tags": true },
     });
   });
@@ -174,9 +172,9 @@ describe("filter sidebar view store", () => {
   it("repairs malformed visual maps before merging store updates", () => {
     useFilterSidebarStore.setState({
       open: "yes",
-      topicSearch: "  design  ",
+      featureSearch: "  design  ",
       sections: {
-        topic: true,
+        feature: true,
         rogue: true,
         health: "open",
       },
@@ -195,14 +193,14 @@ describe("filter sidebar view store", () => {
 
     expect(useFilterSidebarStore.getState()).toMatchObject({
       open: true,
-      sections: { topic: true, kind: false },
+      sections: { feature: true, kind: false },
       expandedLists: { "doc-types": true, "feature-tags": true },
     });
   });
 
   it("resets to the fresh-scope closed baseline", () => {
     useFilterSidebarStore.getState().setOpen(true);
-    useFilterSidebarStore.getState().setSectionOpen("topic", true);
+    useFilterSidebarStore.getState().setSectionOpen("feature", true);
     useFilterSidebarStore.getState().expandList("feature-tags");
     useFilterSidebarStore.getState().syncVisualStateKey("scope-a");
 
@@ -218,17 +216,17 @@ describe("filter sidebar view store", () => {
     const store = useFilterSidebarStore.getState();
 
     store.syncVisualStateKey("scope-a:old");
-    store.setSectionOpen("topic", true);
+    store.setSectionOpen("feature", true);
     store.expandList("feature-tags");
-    store.setTopicSearch("design");
-    expect(useFilterSidebarStore.getState().sections.topic).toBe(true);
+    store.setFeatureSearch("design");
+    expect(useFilterSidebarStore.getState().sections.feature).toBe(true);
     expect(useFilterSidebarStore.getState().expandedLists["feature-tags"]).toBe(true);
-    expect(useFilterSidebarStore.getState().topicSearch).toBe("design");
+    expect(useFilterSidebarStore.getState().featureSearch).toBe("design");
 
     store.syncVisualStateKey("scope-a:new");
 
     expect(useFilterSidebarStore.getState().visualStateKey).toBe("scope-a:new");
-    expect(useFilterSidebarStore.getState().topicSearch).toBe("");
+    expect(useFilterSidebarStore.getState().featureSearch).toBe("");
     expect(useFilterSidebarStore.getState().sections).toEqual({});
     expect(useFilterSidebarStore.getState().expandedLists).toEqual({});
   });
@@ -277,8 +275,8 @@ describe("filter sidebar view store", () => {
   it("keeps malformed runtime scope inert at the visual-state sync seam", () => {
     const store = useFilterSidebarStore.getState();
     store.syncVisualStateKey("scope-a:old");
-    store.setTopicSearch("design");
-    store.setSectionOpen("topic", true);
+    store.setFeatureSearch("design");
+    store.setSectionOpen("feature", true);
     store.expandList("feature-tags");
 
     renderHook(() =>
@@ -293,8 +291,8 @@ describe("filter sidebar view store", () => {
 
     expect(useFilterSidebarStore.getState()).toMatchObject({
       visualStateKey: "scope-a:old",
-      topicSearch: "design",
-      sections: { topic: true },
+      featureSearch: "design",
+      sections: { feature: true },
       expandedLists: { "feature-tags": true },
     });
   });
@@ -302,8 +300,8 @@ describe("filter sidebar view store", () => {
   it("keeps explicit null scope writable for no-scope visual-state sync", () => {
     const store = useFilterSidebarStore.getState();
     store.syncVisualStateKey("scope-a:old");
-    store.setTopicSearch("design");
-    store.setSectionOpen("topic", true);
+    store.setFeatureSearch("design");
+    store.setSectionOpen("feature", true);
 
     const { result } = renderHook(() =>
       useFilterSidebarVisualState(null, ["adr"], ["core"], ["accepted"], ["dangling"]),
@@ -311,7 +309,7 @@ describe("filter sidebar view store", () => {
 
     expect(useFilterSidebarStore.getState()).toMatchObject({
       visualStateKey: result.current,
-      topicSearch: "",
+      featureSearch: "",
       sections: {},
       expandedLists: {},
     });
@@ -356,13 +354,9 @@ describe("filter sidebar view store", () => {
       ),
     ).toBe(canonical);
     expect(
-      deriveFilterSidebarVisualStateKey(
-        "scope-a",
-        "adr",
-        null,
-        undefined,
-        { health: ["dangling"] },
-      ),
+      deriveFilterSidebarVisualStateKey("scope-a", "adr", null, undefined, {
+        health: ["dangling"],
+      }),
     ).toBe('["scope-a",[],[],[],[]]');
   });
 
@@ -392,10 +386,7 @@ describe("filter sidebar view store", () => {
     expect(featureTags).toHaveLength(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES);
     expect(featureTags).not.toContain(overlong);
     expect(featureTags.at(-1)).toBe(
-      `tag:${String(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES - 1).padStart(
-        4,
-        "0",
-      )}`,
+      `tag:${String(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES - 1).padStart(4, "0")}`,
     );
   });
 
@@ -458,39 +449,44 @@ describe("filter sidebar view store", () => {
     expect(filterSidebarHealthDot("custom")).toBe("stale");
   });
 
-  it("filters topic options from the shared sidebar topic-search projection", () => {
+  it("filters feature options from the shared sidebar feature-search projection", () => {
     expect(
-      filterSidebarTopicOptions(["delta-sync", "design-system", "timeline"], "DESIGN"),
+      filterSidebarFeatureOptions(
+        ["delta-sync", "design-system", "timeline"],
+        "DESIGN",
+      ),
     ).toEqual(["design-system"]);
-    expect(filterSidebarTopicOptions(["delta-sync", "timeline"], "   ")).toEqual([
+    expect(filterSidebarFeatureOptions(["delta-sync", "timeline"], "   ")).toEqual([
       "delta-sync",
       "timeline",
     ]);
     expect(
-      filterSidebarTopicOptions(
+      filterSidebarFeatureOptions(
         [" design-system ", "timeline", "design-system", null],
         "design",
       ),
     ).toEqual(["design-system"]);
-    expect(filterSidebarTopicOptions("design-system", "design")).toEqual([]);
+    expect(filterSidebarFeatureOptions("design-system", "design")).toEqual([]);
   });
 
-  it("normalizes topic search before visual state or projection consumption", () => {
-    expect(normalizeFilterSidebarTopicSearch(null)).toBe("");
-    expect(normalizeFilterSidebarTopicSearch(" design ")).toBe("design");
+  it("normalizes feature search before visual state or projection consumption", () => {
+    expect(normalizeFilterSidebarFeatureSearch(null)).toBe("");
+    expect(normalizeFilterSidebarFeatureSearch(" design ")).toBe("design");
     expect(
-      normalizeFilterSidebarTopicSearch(
-        "x".repeat(FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS + 1),
+      normalizeFilterSidebarFeatureSearch(
+        "x".repeat(FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS + 1),
       ),
-    ).toHaveLength(FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS);
+    ).toHaveLength(FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS);
 
-    setFilterSidebarTopicSearch("  design  ");
-    expect(useFilterSidebarStore.getState().topicSearch).toBe("design");
+    setFilterSidebarFeatureSearch("  design  ");
+    expect(useFilterSidebarStore.getState().featureSearch).toBe("design");
 
-    setFilterSidebarTopicSearch("state".repeat(FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS));
+    setFilterSidebarFeatureSearch(
+      "state".repeat(FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS),
+    );
 
-    expect(useFilterSidebarStore.getState().topicSearch).toHaveLength(
-      FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS,
+    expect(useFilterSidebarStore.getState().featureSearch).toHaveLength(
+      FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS,
     );
   });
 
@@ -554,7 +550,7 @@ describe("filter sidebar view store", () => {
           sectionIconClassName: "",
           sectionBodyClassName: "",
           kindSectionLabel: "Kind",
-          topicSectionLabel: "Topic",
+          featureSectionLabel: "Feature",
           editedSectionLabel: "Edited",
           editedWindowAriaLabel: "edited window",
           facetEmptyClassName: "",
@@ -568,16 +564,17 @@ describe("filter sidebar view store", () => {
           ],
         },
       },
-      topicSearch: "design",
-      onTopicSearchChange: () => undefined,
+      featureSearch: "design",
+      onFeatureSearchChange: () => undefined,
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
     });
 
     expect(sections.map((section) => section.key)).toEqual([
       "kind",
-      "topic",
+      "feature",
       "status",
       "health",
+      "edited",
     ]);
     expect(sections[0]).toMatchObject({
       type: "checkbox",
@@ -587,7 +584,7 @@ describe("filter sidebar view store", () => {
     });
     expect(sections[1]).toMatchObject({
       type: "checkbox",
-      key: "topic",
+      key: "feature",
       selected: ["state"],
       options: [{ value: "design-system", label: "design-system" }],
     });
@@ -598,6 +595,15 @@ describe("filter sidebar view store", () => {
     expect(sections[3]).toMatchObject({
       key: "health",
       options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
+    });
+    expect(sections[4]).toMatchObject({
+      type: "radio",
+      key: "edited",
+      value: "any",
+      options: [
+        { value: "any", label: "Any time" },
+        { value: "7d", label: "Last 7 days" },
+      ],
     });
 
     if (sections[0]?.type === "checkbox") sections[0].onToggle("adr");
@@ -648,7 +654,7 @@ describe("filter sidebar view store", () => {
           sectionIconClassName: "",
           sectionBodyClassName: "",
           kindSectionLabel: "Kind",
-          topicSectionLabel: "Topic",
+          featureSectionLabel: "Feature",
           editedSectionLabel: "Edited",
           editedWindowAriaLabel: "edited window",
           facetEmptyClassName: "",
@@ -659,8 +665,8 @@ describe("filter sidebar view store", () => {
           editedWindows: [],
         },
       },
-      topicSearch: "state",
-      onTopicSearchChange: () => undefined,
+      featureSearch: "state",
+      onFeatureSearchChange: () => undefined,
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
     });
 
@@ -708,14 +714,14 @@ describe("filter sidebar view store", () => {
     expandFilterSidebarList("feature-tags");
     expect(useFilterSidebarStore.getState().expandedLists["feature-tags"]).toBe(true);
 
-    setFilterSidebarTopicSearch("state");
-    expect(useFilterSidebarStore.getState().topicSearch).toBe("state");
+    setFilterSidebarFeatureSearch("state");
+    expect(useFilterSidebarStore.getState().featureSearch).toBe("state");
 
-    setFilterSidebarTopicSearch(null);
-    expect(useFilterSidebarStore.getState().topicSearch).toBe("");
+    setFilterSidebarFeatureSearch(null);
+    expect(useFilterSidebarStore.getState().featureSearch).toBe("");
 
-    clearFilterSidebarTopicSearch();
-    expect(useFilterSidebarStore.getState().topicSearch).toBe("");
+    clearFilterSidebarFeatureSearch();
+    expect(useFilterSidebarStore.getState().featureSearch).toBe("");
   });
 
   it("derives facet list loading, empty, and overflow presentation", () => {

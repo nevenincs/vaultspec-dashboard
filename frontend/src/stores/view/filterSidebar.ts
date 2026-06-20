@@ -6,6 +6,7 @@ import {
   normalizeDashboardFilterFacetValue,
   type DashboardFilterFacet,
 } from "../server/dashboardState";
+import { docTypeLabel } from "../server/docTypeVocabulary";
 import type { DashboardFilterSidebarView } from "../server/queries";
 import { normalizeSearchQuery } from "../searchQuery";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
@@ -15,12 +16,17 @@ import { normalizeViewStoreSessionString } from "./scopeIdentity";
 // its visual disclosure state. The view store resets it on scope/workspace swaps
 // and the sidebar registers its scoped vocabulary identity so disclosure state
 // never rides across a different corpus vocabulary.
-export type FilterSidebarSectionKey = "kind" | "topic" | "status" | "health" | "edited";
+export type FilterSidebarSectionKey =
+  | "kind"
+  | "feature"
+  | "status"
+  | "health"
+  | "edited";
 export type FilterSidebarListKey = "doc-types" | "feature-tags";
 
 const FILTER_SIDEBAR_SECTION_KEYS = [
   "kind",
-  "topic",
+  "feature",
   "status",
   "health",
   "edited",
@@ -95,13 +101,13 @@ export type FilterSidebarFacetDotTone =
   | "provisional"
   | "danger";
 
-export const FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS = 128;
+export const FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS = 128;
 export const FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS = 256;
 export const FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES = 512;
 export const FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS = 1024 * 1024;
 
-export function normalizeFilterSidebarTopicSearch(value: unknown): string {
-  return normalizeSearchQuery(value).slice(0, FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS);
+export function normalizeFilterSidebarFeatureSearch(value: unknown): string {
+  return normalizeSearchQuery(value).slice(0, FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS);
 }
 
 export function normalizeFilterSidebarOpen(value: unknown): boolean | null {
@@ -160,17 +166,6 @@ export function normalizeFilterSidebarExpandedLists(
   return normalized;
 }
 
-const FILTER_SIDEBAR_DOC_TYPE_LABEL: Record<string, string> = {
-  research: "Research",
-  adr: "Decisions",
-  plan: "Plans",
-  exec: "Steps",
-  audit: "Audits",
-  reference: "Reference",
-  index: "Indexes",
-  summary: "Summaries",
-};
-
 const FILTER_SIDEBAR_STATUS_DOT: Record<string, FilterSidebarFacetDotTone> = {
   accepted: "complete",
   finished: "complete",
@@ -201,15 +196,15 @@ const FILTER_SIDEBAR_HEALTH_LABEL: Record<string, string> = {
 export interface FilterSidebarState {
   open: boolean;
   visualStateKey: string | null;
-  topicSearch: string;
+  featureSearch: string;
   sections: Partial<Record<FilterSidebarSectionKey, boolean>>;
   expandedLists: Partial<Record<FilterSidebarListKey, boolean>>;
   setOpen: (open: unknown) => void;
   toggle: () => void;
   close: () => void;
   syncVisualStateKey: (key: unknown) => void;
-  setTopicSearch: (value: unknown) => void;
-  clearTopicSearch: () => void;
+  setFeatureSearch: (value: unknown) => void;
+  clearFeatureSearch: () => void;
   setSectionOpen: (key: unknown, open: unknown) => void;
   expandList: (key: unknown) => void;
   resetForScope: () => void;
@@ -218,7 +213,7 @@ export interface FilterSidebarState {
 export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
   open: false,
   visualStateKey: null,
-  topicSearch: "",
+  featureSearch: "",
   sections: {},
   expandedLists: {},
   setOpen: (open) =>
@@ -239,17 +234,17 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
         ? state
         : {
             visualStateKey,
-            topicSearch: "",
+            featureSearch: "",
             sections: {},
             expandedLists: {},
           };
     }),
-  setTopicSearch: (value) =>
+  setFeatureSearch: (value) =>
     set((state) => {
-      const topicSearch = normalizeFilterSidebarTopicSearch(value);
-      return state.topicSearch === topicSearch ? state : { topicSearch };
+      const featureSearch = normalizeFilterSidebarFeatureSearch(value);
+      return state.featureSearch === featureSearch ? state : { featureSearch };
     }),
-  clearTopicSearch: () => set({ topicSearch: "" }),
+  clearFeatureSearch: () => set({ featureSearch: "" }),
   setSectionOpen: (key, open) =>
     set((state) => {
       const sectionKey = normalizeFilterSidebarSectionKey(key);
@@ -277,7 +272,7 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
     set({
       open: false,
       visualStateKey: null,
-      topicSearch: "",
+      featureSearch: "",
       sections: {},
       expandedLists: {},
     }),
@@ -371,10 +366,7 @@ export function useFilterSidebarVisualState(
   statuses: unknown,
   health: unknown,
 ): string {
-  const canSync = useMemo(
-    () => canSyncFilterSidebarVisualStateScope(scope),
-    [scope],
-  );
+  const canSync = useMemo(() => canSyncFilterSidebarVisualStateScope(scope), [scope]);
   const key = useMemo(
     () =>
       deriveFilterSidebarVisualStateKey(scope, docTypes, featureTags, statuses, health),
@@ -384,9 +376,9 @@ export function useFilterSidebarVisualState(
   return key;
 }
 
-export function useFilterSidebarTopicSearch(): string {
+export function useFilterSidebarFeatureSearch(): string {
   return useFilterSidebarStore((state) =>
-    normalizeFilterSidebarTopicSearch(state.topicSearch),
+    normalizeFilterSidebarFeatureSearch(state.featureSearch),
   );
 }
 
@@ -428,7 +420,8 @@ export function deriveFilterSidebarFacetListView(
     limit === undefined || showAllValues
       ? [...normalizedValues]
       : normalizedValues.slice(0, limit);
-  const overflow = limit === undefined ? 0 : Math.max(0, normalizedValues.length - limit);
+  const overflow =
+    limit === undefined ? 0 : Math.max(0, normalizedValues.length - limit);
   return {
     shown,
     rows: shown.map((value) => ({
@@ -451,11 +444,11 @@ export function deriveFilterSidebarFacetListView(
   };
 }
 
-export function filterSidebarTopicOptions(
+export function filterSidebarFeatureOptions(
   featureTags: unknown,
-  topicSearch: unknown,
+  featureSearch: unknown,
 ): string[] {
-  const query = normalizeFilterSidebarTopicSearch(topicSearch).trim().toLowerCase();
+  const query = normalizeFilterSidebarFeatureSearch(featureSearch).trim().toLowerCase();
   const normalizedFeatureTags = normalizeFilterSidebarFacetValues(featureTags);
   return query
     ? normalizedFeatureTags.filter((tag) => tag.toLowerCase().includes(query))
@@ -465,9 +458,13 @@ export function filterSidebarTopicOptions(
 export interface FilterSidebarMenuSectionsInput {
   vocabulary: unknown;
   filterView: unknown;
-  topicSearch: unknown;
-  onTopicSearchChange: (value: unknown) => void;
+  featureSearch: unknown;
+  onFeatureSearchChange: (value: unknown) => void;
   onToggleFacet: (facet: unknown, value: unknown) => void;
+  /** Select an edited-window option (the EDITED date-range radios). The caller
+   *  maps the window key to a canonical date range and writes it through the
+   *  date-range intent. Omit to render the section read-only (e.g. in tests). */
+  onSelectEditedWindow?: (window: unknown) => void;
 }
 
 function isFilterSidebarRecord(value: unknown): value is Record<string, unknown> {
@@ -499,19 +496,20 @@ function filterSidebarToggleHandler(
 export function deriveFilterSidebarMenuSections({
   vocabulary,
   filterView,
-  topicSearch,
-  onTopicSearchChange,
+  featureSearch,
+  onFeatureSearchChange,
   onToggleFacet,
+  onSelectEditedWindow,
 }: FilterSidebarMenuSectionsInput): FilterSidebarMenuSectionView[] {
   const vocabularyRecord = isFilterSidebarRecord(vocabulary) ? vocabulary : {};
   const filterViewRecord = isFilterSidebarRecord(filterView) ? filterView : {};
   const presentation =
     isFilterSidebarRecord(filterViewRecord.presentation) &&
     "kindSectionLabel" in filterViewRecord.presentation &&
-    "topicSectionLabel" in filterViewRecord.presentation
+    "featureSectionLabel" in filterViewRecord.presentation
       ? (filterViewRecord.presentation as unknown as DashboardFilterSidebarView["presentation"])
       : ({} as DashboardFilterSidebarView["presentation"]);
-  const normalizedTopicSearch = normalizeFilterSidebarTopicSearch(topicSearch);
+  const normalizedFeatureSearch = normalizeFilterSidebarFeatureSearch(featureSearch);
   const docTypes = normalizeFilterSidebarFacetValues(vocabularyRecord.docTypes);
   const featureTags = normalizeFilterSidebarFacetValues(vocabularyRecord.featureTags);
   const statuses = normalizeFilterSidebarFacetValues(vocabularyRecord.statuses);
@@ -522,6 +520,28 @@ export function deriveFilterSidebarMenuSections({
   );
   const selectedStatuses = normalizeFilterSidebarFacetValues(filterViewRecord.statuses);
   const selectedHealth = normalizeFilterSidebarFacetValues(filterViewRecord.health);
+  // EDITED — the date-range radios (Any time / Last 7 days / …). The window options
+  // and the selected window are interpreted in the stores filter-sidebar view; here
+  // they become a radio section whose select maps to a canonical date range through
+  // the caller's `onSelectEditedWindow`. Always present (the windows are static, not
+  // vocabulary-gated) and never a dead control — it writes the consumed date range.
+  const editedWindow =
+    typeof filterViewRecord.editedWindow === "string"
+      ? filterViewRecord.editedWindow
+      : "any";
+  const editedWindowOptions = (
+    Array.isArray(filterViewRecord.editedWindowRows)
+      ? filterViewRecord.editedWindowRows
+      : []
+  )
+    .filter(
+      (row): row is Record<string, unknown> =>
+        isFilterSidebarRecord(row) && typeof row.key === "string",
+    )
+    .map((row) => ({
+      value: row.key as string,
+      label: typeof row.label === "string" ? row.label : (row.key as string),
+    }));
   return [
     {
       type: "checkbox",
@@ -537,17 +557,17 @@ export function deriveFilterSidebarMenuSections({
     },
     {
       type: "checkbox",
-      key: "topic",
-      label: presentation.topicSectionLabel,
+      key: "feature",
+      label: presentation.featureSectionLabel,
       selected: selectedFeatureTags,
       onToggle: filterSidebarToggleHandler("feature_tags", onToggleFacet),
       loading: vocabularyRecord.facetsLoading === true,
       search: {
-        value: normalizedTopicSearch,
-        onChange: onTopicSearchChange,
-        placeholder: "Search topics…",
+        value: normalizedFeatureSearch,
+        onChange: onFeatureSearchChange,
+        placeholder: "Search features…",
       },
-      options: filterSidebarTopicOptions(featureTags, normalizedTopicSearch).map(
+      options: filterSidebarFeatureOptions(featureTags, normalizedFeatureSearch).map(
         (value) => ({ value, label: value }),
       ),
     },
@@ -583,14 +603,23 @@ export function deriveFilterSidebarMenuSections({
           },
         ]
       : []),
+    ...(editedWindowOptions.length > 0
+      ? [
+          {
+            type: "radio" as const,
+            key: "edited",
+            label: presentation.editedSectionLabel ?? "EDITED",
+            options: editedWindowOptions,
+            value: editedWindow,
+            onSelect: (value: string) => onSelectEditedWindow?.(value),
+          },
+        ]
+      : []),
   ];
 }
 
 export function filterSidebarDocTypeLabel(value: string): string {
-  return (
-    FILTER_SIDEBAR_DOC_TYPE_LABEL[value] ??
-    value.charAt(0).toUpperCase() + value.slice(1)
-  );
+  return docTypeLabel(value);
 }
 
 export function filterSidebarStatusDot(value: string): FilterSidebarFacetDotTone {
@@ -617,12 +646,12 @@ export function closeFilterSidebar(): void {
   useFilterSidebarStore.getState().close();
 }
 
-export function setFilterSidebarTopicSearch(value: unknown): void {
-  useFilterSidebarStore.getState().setTopicSearch(value);
+export function setFilterSidebarFeatureSearch(value: unknown): void {
+  useFilterSidebarStore.getState().setFeatureSearch(value);
 }
 
-export function clearFilterSidebarTopicSearch(): void {
-  useFilterSidebarStore.getState().clearTopicSearch();
+export function clearFilterSidebarFeatureSearch(): void {
+  useFilterSidebarStore.getState().clearFeatureSearch();
 }
 
 export function setFilterSidebarSectionOpen(key: unknown, open: unknown): void {

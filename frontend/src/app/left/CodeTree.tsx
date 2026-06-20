@@ -46,6 +46,7 @@ import {
   useDashboardBrowserSelection,
   useHighlightedCodePath,
 } from "./browserSelection";
+import { RailMessage, RailSkeleton } from "./railStates";
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
 // module runs its `registerResolver("code-file", …)` side effect once.
 import "./menus/codeFileMenu";
@@ -179,13 +180,9 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
   };
 
   if (state === "loading") {
-    // Loading: a quiet, copy-toned pending line — no spinner theatre (ADR
-    // "States"). The subtle liveness pulse is tied to genuine in-flight work.
-    return (
-      <p className={rootSurface.loadingClassName} role="status" aria-live="polite">
-        {rootLevel.loadingMessage}
-      </p>
-    );
+    // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton,
+    // identical to the Vault tree's — the rail's modes are ONE feature, not per-tab.
+    return <RailSkeleton label={rootLevel.loadingMessage} />;
   }
 
   if (state === "error") {
@@ -219,28 +216,16 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
   // explaining the absence, distinct from empty; read through the stores
   // selector, never the raw tiers block (ADR "Structural-tier degradation").
   if (state === "degraded") {
-    return (
-      <p
-        className={rootSurface.degradedClassName}
-        role="status"
-        aria-live="polite"
-        data-code-degraded
-      >
-        {degradedMessage}
-      </p>
-    );
+    // DEGRADED mode (binding `LeftRail` State=Degraded): the shared designed state —
+    // AlertTriangle + the clean view-model sentence, never a raw tier reason.
+    return <RailMessage tone="degraded" label={degradedMessage} />;
   }
 
   const entries = rootLevel.entries;
 
   if (entries.length === 0) {
-    // Empty: an approachable empty state — a worktree that resolves to no
-    // listable source is a real condition, not a fault (ADR "States").
-    return (
-      <p className={rootSurface.emptyClassName} data-code-empty>
-        {rootLevel.emptyMessage}
-      </p>
-    );
+    // EMPTY mode (binding `LeftRail` State=Empty): the shared designed state.
+    return <RailMessage tone="empty" label={rootLevel.emptyMessage} />;
   }
 
   return (

@@ -9,7 +9,7 @@
 // dismissed on Escape or an outside pointer (the toolbar is excluded so its own
 // toggle owns open/close).
 //
-// Sections: KIND (doc types) · TOPIC (feature tags + client-side search) · STATUS
+// Sections: KIND (doc types) · FEATURE (feature tags + client-side search) · STATUS
 // (lifecycle — ADR adjectives + plan meta-states) · HEALTH (validity —
 // dangling/orphaned…). STATUS/HEALTH render only when the engine serves their
 // vocabulary, so they are never dead controls. There is no date-range (EDITED)
@@ -20,14 +20,16 @@ import { Popover } from "../kit";
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import { useDateRangeIntent } from "../../stores/server/dateRangeIntent";
 import {
+  dashboardEditedWindowRange,
   useDashboardFilterSidebarView,
   useFiltersVocabularyView,
+  type DashboardEditedWindow,
 } from "../../stores/server/queries";
 import {
-  clearFilterSidebarTopicSearch,
+  clearFilterSidebarFeatureSearch,
   deriveFilterSidebarMenuSections,
-  setFilterSidebarTopicSearch,
-  useFilterSidebarTopicSearch,
+  setFilterSidebarFeatureSearch,
+  useFilterSidebarFeatureSearch,
   useFilterSidebarVisualState,
 } from "../../stores/view/filterSidebar";
 import { FilterMenu } from "./FilterMenu";
@@ -51,9 +53,9 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   const filterView = useDashboardFilterSidebarView(scope);
   const filterIntent = useDashboardFilterSidebarIntent(scope);
   const rangeIntent = useDateRangeIntent(scope);
-  const topicSearch = useFilterSidebarTopicSearch();
+  const featureSearch = useFilterSidebarFeatureSearch();
   // Reset the disclosure/search store when the scoped vocabulary changes so the
-  // topic search never rides across a different corpus.
+  // feature search never rides across a different corpus.
   const visualStateKey = useFilterSidebarVisualState(
     scope,
     vocabulary.docTypes,
@@ -66,9 +68,21 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   const sections = deriveFilterSidebarMenuSections({
     vocabulary,
     filterView,
-    topicSearch,
-    onTopicSearchChange: setFilterSidebarTopicSearch,
+    featureSearch,
+    onFeatureSearchChange: setFilterSidebarFeatureSearch,
     onToggleFacet: (facet, value) => void filterIntent.toggleFacet(facet, value),
+    // EDITED date-range radios: "Any time" clears the range; a window maps to its
+    // canonical {from,to} and writes through the date-range intent (the rail is the
+    // canonical date-range author now, alongside the timeline).
+    onSelectEditedWindow: (window) => {
+      if (window === "any") {
+        void rangeIntent.clearRange();
+        return;
+      }
+      void rangeIntent.setRange(
+        dashboardEditedWindowRange(window as DashboardEditedWindow),
+      );
+    },
   });
 
   if (!open) return null;
@@ -94,7 +108,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
         onClearAll={() => {
           void filterIntent.clearFilters();
           void rangeIntent.clearRange();
-          clearFilterSidebarTopicSearch();
+          clearFilterSidebarFeatureSearch();
         }}
         sections={sections}
         maxHeight="calc(100vh - 3.5rem)"

@@ -16,6 +16,14 @@ vi.mock("../../stores/server/queries", () => ({
 vi.mock("../../stores/view/dashboardTextFilter", () => ({
   useDashboardTextFilterDraft: () => ({ value: "", setValue: vi.fn(), clear }),
 }));
+// The filter-sidebar intent reaches the query client; stub it so the keybinding
+// hook can register without a QueryClientProvider (matching the mocks above).
+vi.mock("../../stores/server/dashboardFilterSidebarIntent", () => ({
+  useDashboardFilterSidebarIntent: () => ({
+    toggleFacet: vi.fn(),
+    clearFilters: vi.fn(),
+  }),
+}));
 
 import { useBrowserModeStore } from "../../stores/view/browserMode";
 import {
