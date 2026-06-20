@@ -432,7 +432,7 @@ export const GRAPH_CONTROL_SCHEMA = [
     unit: "world",
     exposure: [],
     description:
-      "Base node world radius. Canonical = appearance.BASE_POINT_SIZE (the LIVE three-field path via nodeWorldRadius). NB nodeAppearance.NODE_RADIUS = 6 is a SEPARATE value (cosmos/pixi-era) — reconcile/confirm dead before unifying.",
+      "Base node world radius. Canonical = appearance.BASE_POINT_SIZE (the LIVE three-field path via nodeWorldRadius). The retired nodeAppearance.NODE_RADIUS=6 cosmos/pixi duplicate was removed in Phase B, so this is now the single base radius.",
   },
   {
     id: "salienceRadiusMax",
@@ -547,8 +547,8 @@ export const GRAPH_CONTROL_SCHEMA = [
     description: "Zoom-scaling ceiling: edge width never above this on screen (GLSL).",
   },
   {
-    id: "selectedRingWidth",
-    label: "Selected ring width",
+    id: "pinnedRingWidth",
+    label: "Pinned ring width",
     group: "visualisation",
     type: "number",
     min: 0.5,
@@ -556,7 +556,8 @@ export const GRAPH_CONTROL_SCHEMA = [
     step: 0.25,
     default: 1.5,
     exposure: [],
-    description: "Selected-node accent ring stroke width.",
+    description:
+      "Pinned-node dashed accent ring stroke width (the live threeField value). NB the SELECTED ring is a radius-proportional formula, not a fixed width — this 1.5 is the pinned ring.",
   },
   {
     id: "hoverRingWidth",
@@ -759,7 +760,7 @@ export const GRAPH_CONTROL_SCHEMA = [
     default: 0.02,
     exposure: [],
     description:
-      "Camera zoom floor — the LIVE three-field clamp. Supersedes the stale cameraCore.MIN_SCALE (0.05); the effective range is 0.02–50.",
+      "Camera zoom floor — the LIVE three-field clamp (effective range 0.02–50). The cameraCore.MIN_SCALE (0.05) Camera-class clamp it superseded was removed in Phase B.",
   },
   {
     id: "zoomMax",
@@ -772,7 +773,7 @@ export const GRAPH_CONTROL_SCHEMA = [
     default: 50,
     exposure: [],
     description:
-      "Camera zoom ceiling — the LIVE three-field clamp. Supersedes the stale cameraCore.MAX_SCALE (8).",
+      "Camera zoom ceiling — the LIVE three-field clamp. The cameraCore.MAX_SCALE (8) Camera-class clamp it superseded was removed in Phase B.",
   },
   {
     id: "zoomStepButton",
@@ -862,7 +863,7 @@ export const GRAPH_CONTROL_SCHEMA = [
     unit: "px",
     exposure: [],
     description:
-      "Pointer motion (screen px) before a drag/pan engages. Source: cameraCore.DRAG_THRESHOLD_PX.",
+      "Pointer motion before a drag/pan engages. NB unwired (exposure []) and needs a reconcile: the retired cameraCore.DRAG_THRESHOLD_PX (4, euclidean hypot) was removed in Phase B; the LIVE threeField pan-engage uses a manhattan |dx|+|dy| > 2 check. The value here is the old 4 pending that decision.",
   },
   {
     id: "pickRadiusPx",
