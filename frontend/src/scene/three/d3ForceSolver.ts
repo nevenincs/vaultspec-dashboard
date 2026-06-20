@@ -74,7 +74,7 @@ import {
   type SimulationNodeDatum,
 } from "d3-force";
 
-import { simulationDefaults } from "./graphControlSchema";
+import { controlNumber, simulationDefaults } from "./graphControlSchema";
 
 /** A simulation node: d3's earmarked fields plus the collision radius. */
 export interface D3Node extends SimulationNodeDatum {
@@ -143,13 +143,17 @@ export interface D3ForceParams {
 // are tuned for world-space node radii ≈ 4–20 (BASE_POINT_SIZE = 4), ~50–2000 nodes.
 export const D3_FORCE_DEFAULTS: D3ForceParams = simulationDefaults();
 
+// Settle/init energy constants read FROM the canonical control registry
+// (graphControlSchema) so each has ONE definition — value-preserving (coldAlpha 1,
+// warmReheatAlpha 0.5, prewarm 300/260ms). The threeField warm-START alpha (0.3) is a
+// DISTINCT path and is already schema-read there.
 /** Cold-start alpha for a fresh layout (d3's full-energy default). */
-const COLD_ALPHA = 1;
-/** Warm-start alpha for a re-energise that should not fully explode. */
-const WARM_ALPHA = 0.5;
+const COLD_ALPHA = controlNumber("coldAlpha");
+/** Warm/reheat alpha for a re-energise that should not fully explode. */
+const WARM_ALPHA = controlNumber("warmReheatAlpha");
 /** Pre-warm caps: settle off-screen but never block the main thread for long. */
-const PREWARM_MAX_TICKS = 300;
-const PREWARM_BUDGET_MS = 260;
+const PREWARM_MAX_TICKS = controlNumber("prewarmMaxTicks");
+const PREWARM_BUDGET_MS = controlNumber("prewarmBudgetMs");
 
 /** Per-tick dynamics for the host's convergence / diagnostics. */
 export interface TickMetrics {
