@@ -4,6 +4,10 @@ import { create } from "zustand";
 
 export type StatusSectionId =
   | "changes"
+  // The Changes fold's status sub-groups (binding GitStatusPill 642:1745 tree).
+  | "changes:modified"
+  | "changes:deleted"
+  | "changes:new"
   | "open-plans"
   | "open-prs"
   | "open-issues"
@@ -12,6 +16,9 @@ export type StatusSectionId =
 
 const STATUS_SECTION_IDS = [
   "changes",
+  "changes:modified",
+  "changes:deleted",
+  "changes:new",
   "open-plans",
   "open-prs",
   "open-issues",
@@ -214,8 +221,13 @@ export interface RecentCommitChromeRowView<T extends RecentCommitChromeInputRow>
   ageClassName: string;
 }
 
+// Commit pill card (binding ActivityRail · Status CommitPill, node 550:1458): each
+// commit is a bordered white card (`bg-paper-raised` + `border-rule` hairline +
+// `rounded-fg-sm`), matching the plan / PR / issue cards. The header is the
+// clickable row inside that card.
+const RECENT_COMMIT_ROOT_CLASS = "rounded-fg-sm border border-rule bg-paper-raised";
 const RECENT_COMMIT_HEADER_CLASS =
-  "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-1";
+  "flex items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5";
 const RECENT_COMMIT_TOGGLE_BASE_CLASS =
   "flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const RECENT_COMMIT_TOGGLE_DISABLED_CLASS = `${RECENT_COMMIT_TOGGLE_BASE_CLASS} opacity-40`;
@@ -237,7 +249,7 @@ export function deriveRecentCommitChromeRows<T extends RecentCommitChromeInputRo
       row,
       expanded,
       showBody: expanded && row.hasBody,
-      rootClassName: "",
+      rootClassName: RECENT_COMMIT_ROOT_CLASS,
       headerClassName: RECENT_COMMIT_HEADER_CLASS,
       toggleClassName: row.hasBody
         ? RECENT_COMMIT_TOGGLE_BASE_CLASS
