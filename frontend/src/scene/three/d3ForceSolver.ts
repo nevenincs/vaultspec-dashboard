@@ -74,6 +74,8 @@ import {
   type SimulationNodeDatum,
 } from "d3-force";
 
+import { simulationDefaults } from "./graphControlSchema";
+
 /** A simulation node: d3's earmarked fields plus the collision radius. */
 export interface D3Node extends SimulationNodeDatum {
   /** Collision radius in world units (the node's drawn body radius). */
@@ -132,30 +134,14 @@ export interface D3ForceParams {
   sleepTicks: number;
 }
 
-export const D3_FORCE_DEFAULTS: D3ForceParams = {
-  // Tuned for world-space node radii ≈ 4–20 (appearance.ts BASE_POINT_SIZE = 4),
-  // a ~50–2000-node knowledge graph. Values follow the frontier d3-force recipe:
-  // degree-normalized springs, bounded Barnes–Hut repulsion, soft collide, gentle
-  // forceX/Y gravity (no forceCenter), heavier damping + decisive cooling so the
-  // settle is fast AND calm (no low-energy crawl, no jitter at rest).
-  linkDistance: 40,
-  linkStrength: 1,
-  charge: -120,
-  chargeDistanceMax: 0, // auto = ~10× linkDistance (bounded → compact + fast)
-  chargeTheta: 0.8,
-  centerStrength: 0.06,
-  collidePadding: 3,
-  collideStrength: 0.8,
-  collideIterations: 1, // 1 avoids the velocity ping-pong that 2+ can induce
-  velocityDecay: 0.5, // primary damping — kills overshoot/oscillation
-  alphaDecay: 0.05, // ~104 ticks to settle (vs 300) — decisive, hides nothing
-  alphaMin: 0.005, // freeze cleanly instead of crawling at low energy
-  dragAlpha: 0.3, // energy for the woken region during a drag
-  wakeMove: 14, // a neighbour moving this far wakes its sleeping neighbours
-  wakeRadius: 0, // auto = 7× linkDistance — keeps the drag's effect local
-  sleepSpeed: 0.4, // awake node slower than this heads toward sleep
-  sleepTicks: 18,
-};
+// The defaults DERIVE from the canonical control registry (graphControlSchema) so
+// the schema is the single source of truth — change a default there and the solver,
+// the appearance path, and the lab control panels all follow. The frontier d3-force
+// recipe (degree-normalized springs, bounded Barnes–Hut repulsion, soft collide,
+// gentle forceX/Y gravity, heavier damping + decisive cooling so the settle is fast
+// AND calm) lives in those schema defaults plus the force construction below; values
+// are tuned for world-space node radii ≈ 4–20 (BASE_POINT_SIZE = 4), ~50–2000 nodes.
+export const D3_FORCE_DEFAULTS: D3ForceParams = simulationDefaults();
 
 /** Cold-start alpha for a fresh layout (d3's full-energy default). */
 const COLD_ALPHA = 1;

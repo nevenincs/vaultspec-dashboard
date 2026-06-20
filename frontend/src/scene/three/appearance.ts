@@ -9,15 +9,11 @@ import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { categoryColor } from "../field/categoryColor";
 import { SALIENCE_RADIUS_MAX } from "../field/nodeAppearance";
 import { cssColorNumber } from "../field/tokenReads";
+import { appearanceDefaults } from "./graphControlSchema";
 
 // Mirror of cosmosField's COSMOS_POINT_SIZE — the base node diameter, used here as
 // the base world radius so relative sizing matches cosmos.
 const BASE_POINT_SIZE = 4;
-
-const EDGE_ALPHA_MIN = 0.1;
-const EDGE_ALPHA_MAX = 0.5;
-const EDGE_WIDTH_MIN = 0.6;
-const EDGE_WIDTH_MAX = 2.2;
 
 /**
  * Edge colour inheritance mode. An edge NEVER carries a flat tier/grey/black colour
@@ -51,18 +47,11 @@ export interface AppearanceParams {
   edgeColorMode: EdgeColorMode;
 }
 
-export const APPEARANCE_DEFAULTS: AppearanceParams = {
-  nodeSizeScale: 1,
-  nodeSalienceScale: 1,
-  edgeWidthMin: EDGE_WIDTH_MIN,
-  edgeWidthMax: EDGE_WIDTH_MAX,
-  edgeOpacityMin: EDGE_ALPHA_MIN,
-  edgeOpacityMax: EDGE_ALPHA_MAX,
-  // Gradient edges are the binding default (graph-backend-unification ADR D2): each
-  // edge blends its leaf-endpoint hue into its parent-endpoint hue (edgeEndColors +
-  // the EDGE_VERTEX/FRAGMENT shader interpolation). "solid" remains a selectable mode.
-  edgeColorMode: "gradient",
-};
+// Derived from the canonical control registry (graphControlSchema) — the schema is
+// the single source of truth for the appearance defaults (node size/salience spread,
+// edge width/opacity range, and the gradient edge-colour default; "solid" remains a
+// selectable mode). graph-backend-unification ADR D2: gradient edges are binding.
+export const APPEARANCE_DEFAULTS: AppearanceParams = appearanceDefaults();
 
 /** World-space node radius — mirrors cosmosField.cosmosPointSize, scaled by the
  *  live appearance params (node module size + salience spread). */
