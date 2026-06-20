@@ -21,6 +21,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
+import {
+  resetWorktreePickerChrome,
+  setWorktreePickerExpanded,
+} from "../../stores/view/worktreePickerChrome";
 import { liveScope } from "../../testing/liveClient";
 import { WorktreePicker } from "./WorktreePicker";
 
@@ -38,10 +42,12 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     scope = await liveScope();
   });
   beforeEach(() => {
+    resetWorktreePickerChrome();
     useViewStore.getState().setScope(scope);
   });
   afterEach(() => {
     cleanup();
+    resetWorktreePickerChrome();
     queryClient.clear();
     useViewStore.getState().setScope(null);
   });
@@ -76,6 +82,16 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     trigger.focus();
     fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("list", { name: /worktree scopes/i })).toBeTruthy();
+  });
+
+  it("does not collapse store-owned disclosure state on a default runtime mount", async () => {
+    setWorktreePickerExpanded(true, false);
+    renderPicker();
+
+    const trigger = await screen.findByRole("button", { name: /worktree scope/i });
+
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("list", { name: /worktree scopes/i })).toBeTruthy();
   });

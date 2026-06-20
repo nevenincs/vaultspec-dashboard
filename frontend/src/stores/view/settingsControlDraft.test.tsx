@@ -8,6 +8,7 @@ import {
   normalizeSettingsControlDraftContinuous,
   normalizeSettingsControlDraftValue,
   SETTINGS_CONTINUOUS_COMMIT_MS,
+  SETTINGS_CONTROL_DRAFT_MAX_CHARS,
   useSettingsControlDraft,
 } from "./settingsControlDraft";
 
@@ -25,8 +26,18 @@ describe("settings control draft", () => {
     expect(normalizeSettingsControlDraftValue("dark")).toBe("dark");
     expect(normalizeSettingsControlDraftValue("semantic", 4)).toBe("sema");
     expect(normalizeSettingsControlDraftValue("semantic", -1)).toBe("semantic");
+    expect(
+      normalizeSettingsControlDraftValue(
+        "x".repeat(SETTINGS_CONTROL_DRAFT_MAX_CHARS + 1),
+      ),
+    ).toHaveLength(SETTINGS_CONTROL_DRAFT_MAX_CHARS);
     expect(normalizeSettingsControlDraftMaxLength(4.8)).toBe(4);
-    expect(normalizeSettingsControlDraftMaxLength("4")).toBeUndefined();
+    expect(normalizeSettingsControlDraftMaxLength("4")).toBe(
+      SETTINGS_CONTROL_DRAFT_MAX_CHARS,
+    );
+    expect(
+      normalizeSettingsControlDraftMaxLength(SETTINGS_CONTROL_DRAFT_MAX_CHARS + 20),
+    ).toBe(SETTINGS_CONTROL_DRAFT_MAX_CHARS);
     expect(normalizeSettingsControlDraftValue(null)).toBe("");
     expect(normalizeSettingsControlDraftValue({ value: "dark" })).toBe("");
     expect(normalizeSettingsControlDraftContinuous(true)).toBe(true);

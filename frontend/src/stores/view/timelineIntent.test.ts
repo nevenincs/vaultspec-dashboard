@@ -14,6 +14,9 @@ import {
   jumpTimelineNavigationToCorpusEdge,
   jumpTimelineNavigationToLive,
   panTimelineNavigation,
+  playheadKeyboardTarget,
+  PLAYHEAD_KEY_NUDGE_FRACTION,
+  PLAYHEAD_KEY_STEP_FRACTION,
   TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH,
   TIMELINE_NAV_EVENT_SPAN_MS,
   timelineNavigationViewportWidth,
@@ -100,6 +103,36 @@ describe("timeline navigation intent seam", () => {
     });
   });
 
+  it("rejects malformed runtime scope and corpus-fit identity before auto-fit writes", () => {
+    expect(
+      fitTimelineScopeToCorpus(
+        { scope: "timeline-scope" },
+        { from: "2026-06-01T00:00:00.000Z", to: "2026-06-11T00:00:00.000Z" },
+        800,
+        "timeline-corpus-fit:scope:value:timeline-scope:from:value:2026-06-01:to:value:2026-06-11",
+      ),
+    ).toBeNull();
+    expect(timelineViewSnapshot()).toMatchObject({
+      autoFittedScope: null,
+      autoFittedCorpusKey: null,
+      pxPerMs: DEFAULT_PX_PER_MS,
+      scrollOffset: 0,
+    });
+
+    expect(
+      fitTimelineScopeToCorpus(
+        "timeline-scope",
+        { from: "2026-06-01T00:00:00.000Z", to: "2026-06-11T00:00:00.000Z" },
+        800,
+        { key: "timeline-corpus-fit" },
+      ),
+    ).toBeNull();
+    expect(timelineViewSnapshot()).toMatchObject({
+      autoFittedScope: null,
+      autoFittedCorpusKey: null,
+    });
+  });
+
   it("ignores corpus fit when the served start bound is missing or invalid", () => {
     expect(fitTimelineNavigationToCorpus({ to: "2026-06-11" }, 800)).toBeNull();
     expect(timelineViewSnapshot()).toMatchObject({
@@ -141,6 +174,49 @@ describe("timeline navigation intent seam", () => {
       scrollOffset: offset,
     });
     expect(offset).toBeGreaterThan(0);
+  });
+
+  it("does not create local playhead state for malformed live-jump scope", () => {
+    const initial = 1234;
+    const liveOffset = jumpTimelineNavigationToCorpusEdge(
+      "end",
+      { to: "2026-06-11T00:00:00.000Z" },
+      DEFAULT_PX_PER_MS,
+      800,
+    );
+    timelineViewSnapshot().setPlayhead(initial);
+
+    const offset = jumpTimelineNavigationToLive(
+      { to: "2026-06-12T00:00:00.000Z" },
+      DEFAULT_PX_PER_MS,
+      800,
+      { scope: "timeline-scope" },
+    );
+
+    expect(offset).toBeGreaterThan(liveOffset);
+    expect(timelineViewSnapshot().playheadT).toBe(initial);
+  });
+
+  it("projects playhead keyboard scrub through one timeline intent seam", () => {
+    const now = 100_000;
+    const span = 24_000;
+
+    expect(playheadKeyboardTarget("[", "live", span, now)).toBe(
+      now - span * PLAYHEAD_KEY_STEP_FRACTION,
+    );
+    expect(playheadKeyboardTarget("ArrowLeft", now, span, now)).toBe(
+      now - span * PLAYHEAD_KEY_NUDGE_FRACTION,
+    );
+    expect(playheadKeyboardTarget("]", now - 1, span, now)).toBe("live");
+    expect(playheadKeyboardTarget("ArrowRight", now - 1, span, now)).toBe("live");
+    expect(playheadKeyboardTarget("Home", now - span, span, now)).toBe("live");
+  });
+
+  it("keeps malformed playhead keyboard inputs inert at the intent seam", () => {
+    expect(playheadKeyboardTarget("Escape", "live", 1000, 5000)).toBeNull();
+    expect(playheadKeyboardTarget("[", "live", 0, 5000)).toBeNull();
+    expect(playheadKeyboardTarget("[", "live", Number.NaN, 5000)).toBeNull();
+    expect(playheadKeyboardTarget({ key: "[" }, "live", 1000, 5000)).toBeNull();
   });
 
   it("zooms the timeline viewport to a centered event instant through one intent", () => {

@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  canSyncFilterSidebarVisualStateScope,
   closeFilterSidebar,
   clearFilterSidebarTopicSearch,
   deriveFilterSidebarFacetListView,
@@ -8,6 +12,7 @@ import {
   deriveFilterSidebarVisualStateKey,
   expandFilterSidebarList,
   FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS,
+  FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS,
   FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES,
   FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS,
   filterSidebarDocTypeLabel,
@@ -15,11 +20,13 @@ import {
   filterSidebarHealthDot,
   filterSidebarHealthLabel,
   filterSidebarStatusDot,
+  normalizeFilterSidebarExpandedLists,
   normalizeFilterSidebarListKey,
   normalizeFilterSidebarFacetLimit,
   normalizeFilterSidebarFacetValues,
   normalizeFilterSidebarOpen,
   normalizeFilterSidebarSectionKey,
+  normalizeFilterSidebarSections,
   normalizeFilterSidebarScope,
   normalizeFilterSidebarTopicSearch,
   normalizeFilterSidebarVocabularyPart,
@@ -28,11 +35,13 @@ import {
   setFilterSidebarOpen,
   setFilterSidebarTopicSearch,
   toggleFilterSidebar,
+  useFilterSidebarVisualState,
   useFilterSidebarStore,
 } from "./filterSidebar";
 
 describe("filter sidebar view store", () => {
   beforeEach(() => useFilterSidebarStore.getState().resetForScope());
+  afterEach(() => cleanup());
 
   it("stores the stage filter panel visibility", () => {
     const store = useFilterSidebarStore.getState();
@@ -53,13 +62,39 @@ describe("filter sidebar view store", () => {
     expect(normalizeFilterSidebarOpen("true")).toBeNull();
     expect(normalizeFilterSidebarVisualStateKey("scope-a")).toBe("scope-a");
     expect(normalizeFilterSidebarVisualStateKey("")).toBeNull();
+    expect(
+      normalizeFilterSidebarVisualStateKey(
+        "x".repeat(FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS + 1),
+      ),
+    ).toBeNull();
     expect(normalizeFilterSidebarScope(" scope-a ")).toBe("scope-a");
     expect(normalizeFilterSidebarScope("   ")).toBeNull();
     expect(normalizeFilterSidebarScope({ scope: "scope-a" })).toBeNull();
+    expect(canSyncFilterSidebarVisualStateScope(" scope-a ")).toBe(true);
+    expect(canSyncFilterSidebarVisualStateScope(null)).toBe(true);
+    expect(canSyncFilterSidebarVisualStateScope({ scope: "scope-a" })).toBe(false);
+    expect(canSyncFilterSidebarVisualStateScope("   ")).toBe(false);
     expect(normalizeFilterSidebarSectionKey("topic")).toBe("topic");
     expect(normalizeFilterSidebarSectionKey("unknown")).toBeNull();
     expect(normalizeFilterSidebarListKey("feature-tags")).toBe("feature-tags");
     expect(normalizeFilterSidebarListKey(null)).toBeNull();
+    expect(
+      normalizeFilterSidebarSections({
+        topic: true,
+        edited: false,
+        rogue: true,
+        health: "open",
+      }),
+    ).toEqual({ topic: true, edited: false });
+    expect(normalizeFilterSidebarSections(null)).toEqual({});
+    expect(
+      normalizeFilterSidebarExpandedLists({
+        "doc-types": true,
+        "feature-tags": false,
+        rogue: true,
+      }),
+    ).toEqual({ "doc-types": true, "feature-tags": false });
+    expect(normalizeFilterSidebarExpandedLists(null)).toEqual({});
     expect(
       normalizeFilterSidebarVocabularyPart([
         " plan ",
@@ -116,6 +151,11 @@ describe("filter sidebar view store", () => {
     useFilterSidebarStore.getState().setSectionOpen("topic", true);
     useFilterSidebarStore.getState().expandList("feature-tags");
     useFilterSidebarStore.getState().syncVisualStateKey(null);
+    useFilterSidebarStore
+      .getState()
+      .syncVisualStateKey(
+        "x".repeat(FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS + 1),
+      );
     expect(useFilterSidebarStore.getState()).toMatchObject({
       visualStateKey: "scope-a",
       sections: { topic: true },
@@ -128,6 +168,35 @@ describe("filter sidebar view store", () => {
     expect(useFilterSidebarStore.getState()).toMatchObject({
       sections: { topic: true },
       expandedLists: { "feature-tags": true },
+    });
+  });
+
+  it("repairs malformed visual maps before merging store updates", () => {
+    useFilterSidebarStore.setState({
+      open: "yes",
+      topicSearch: "  design  ",
+      sections: {
+        topic: true,
+        rogue: true,
+        health: "open",
+      },
+      expandedLists: {
+        "doc-types": true,
+        rogue: true,
+        "feature-tags": "open",
+      },
+    } as unknown as Partial<ReturnType<typeof useFilterSidebarStore.getState>>);
+
+    toggleFilterSidebar();
+    expect(useFilterSidebarStore.getState().open).toBe(true);
+
+    setFilterSidebarSectionOpen("kind", false);
+    expandFilterSidebarList("feature-tags");
+
+    expect(useFilterSidebarStore.getState()).toMatchObject({
+      open: true,
+      sections: { topic: true, kind: false },
+      expandedLists: { "doc-types": true, "feature-tags": true },
     });
   });
 
@@ -203,6 +272,49 @@ describe("filter sidebar view store", () => {
         ["dangling"],
       ),
     ).not.toBe(canonical);
+  });
+
+  it("keeps malformed runtime scope inert at the visual-state sync seam", () => {
+    const store = useFilterSidebarStore.getState();
+    store.syncVisualStateKey("scope-a:old");
+    store.setTopicSearch("design");
+    store.setSectionOpen("topic", true);
+    store.expandList("feature-tags");
+
+    renderHook(() =>
+      useFilterSidebarVisualState(
+        { scope: "scope-a" },
+        ["adr"],
+        ["core"],
+        ["accepted"],
+        ["dangling"],
+      ),
+    );
+
+    expect(useFilterSidebarStore.getState()).toMatchObject({
+      visualStateKey: "scope-a:old",
+      topicSearch: "design",
+      sections: { topic: true },
+      expandedLists: { "feature-tags": true },
+    });
+  });
+
+  it("keeps explicit null scope writable for no-scope visual-state sync", () => {
+    const store = useFilterSidebarStore.getState();
+    store.syncVisualStateKey("scope-a:old");
+    store.setTopicSearch("design");
+    store.setSectionOpen("topic", true);
+
+    const { result } = renderHook(() =>
+      useFilterSidebarVisualState(null, ["adr"], ["core"], ["accepted"], ["dangling"]),
+    );
+
+    expect(useFilterSidebarStore.getState()).toMatchObject({
+      visualStateKey: result.current,
+      topicSearch: "",
+      sections: {},
+      expandedLists: {},
+    });
   });
 
   it("keeps visual vocabulary identity stable across order and duplicate noise", () => {
@@ -383,7 +495,7 @@ describe("filter sidebar view store", () => {
   });
 
   it("derives filter menu sections from dashboard-state and served vocabulary", () => {
-    const toggles: Array<[string, string]> = [];
+    const toggles: Array<[unknown, unknown]> = [];
     const sections = deriveFilterSidebarMenuSections({
       vocabulary: {
         vocabulary: undefined,
@@ -494,7 +606,7 @@ describe("filter sidebar view store", () => {
   });
 
   it("normalizes malformed facet rows before menu projection", () => {
-    const toggles: Array<[string, string]> = [];
+    const toggles: Array<[unknown, unknown]> = [];
     const sections = deriveFilterSidebarMenuSections({
       vocabulary: {
         vocabulary: undefined,
@@ -569,7 +681,13 @@ describe("filter sidebar view store", () => {
       options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
     });
 
-    if (sections[0]?.type === "checkbox") sections[0].onToggle("adr");
+    if (sections[0]?.type === "checkbox") {
+      sections[0].onToggle(" adr ");
+      sections[0].onToggle({ value: "adr" } as unknown as string);
+    }
+    if (sections[1]?.type === "checkbox") {
+      sections[1].search?.onChange(" state ");
+    }
     expect(toggles).toEqual([["doc_types", "adr"]]);
   });
 

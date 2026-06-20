@@ -1,6 +1,12 @@
+import { useCallback, useMemo, useRef } from "react";
+
 import { EngineError } from "./engine";
 import { normalizeSettingUpdate, usePutSettings } from "./queries";
-import type { SettingsEditTarget } from "./settingsSelectors";
+import {
+  normalizeSettingsEditTarget,
+  normalizeSettingsScope,
+  type SettingsEditTarget,
+} from "./settingsSelectors";
 
 export const DEFAULT_SETTINGS_WRITE_ERROR = "Settings update failed";
 export const SETTINGS_WRITE_ERROR_MESSAGE_CAP = 240;
@@ -41,10 +47,15 @@ export function normalizeSettingsRowWrite(
   update: unknown,
 ): NormalizedSettingsRowWrite | null {
   const row = settingsRowWriteRecord(update);
+  const target = normalizeSettingsEditTarget(row.target);
+  if (target === null) return null;
+  const scope =
+    target === "scope" ? normalizeSettingsScope(row.activeScope) : undefined;
+  if (target === "scope" && scope === null) return null;
   return normalizeSettingUpdate({
     key: row.key,
     value: row.value,
-    scope: row.target === "scope" ? row.activeScope : undefined,
+    scope,
   });
 }
 
@@ -71,15 +82,22 @@ export function settingsWriteErrorMessage(error: unknown): string {
  */
 export function useSettingsRowWriteIntent(): SettingsRowWriteIntent {
   const putSettings = usePutSettings();
-  return {
-    write: (update, handlers) => {
+  const mutateRef = useRef(putSettings.mutate);
+  mutateRef.current = putSettings.mutate;
+  const write = useCallback(
+    (
+      update: unknown,
+      handlers?: { onError?: (message: string) => void },
+    ) => {
       const normalized = normalizeSettingsRowWrite(update);
       if (normalized === null) return;
-      putSettings.mutate(normalized, {
+      mutateRef.current(normalized, {
         onError: (error) => {
           handlers?.onError?.(settingsWriteErrorMessage(error));
         },
       });
     },
-  };
+    [],
+  );
+  return useMemo(() => ({ write }), [write]);
 }

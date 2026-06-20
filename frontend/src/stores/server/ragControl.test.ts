@@ -25,7 +25,10 @@ import { unwrapEnvelope } from "./liveAdapters";
 import { queryClient } from "./queryClient";
 import { engineKeys } from "./queries";
 import {
+  RAG_CONTROL_KEY_PART_MAX_CHARS,
   RAG_JOBS_LIMIT_CAP,
+  RAG_JOB_TEXT_MAX_CHARS,
+  RAG_PROJECT_SLOTS_MAX_ITEMS,
   WATCHER_COOLDOWN_S_MAX,
   WATCHER_DEBOUNCE_MS_MAX,
   boundedRagJobsLimit,
@@ -86,10 +89,25 @@ describe("rag job interpreters", () => {
       {
         root: "Y:/repo",
       },
-    );
-    expect(normalizeRagProjectSlots({ projects: [{ root: "Y:/repo" }] })).toEqual([]);
-    expect(normalizeRagRequestSeq(2)).toBe(2);
-    expect(normalizeRagRequestSeq(2.5)).toBeNull();
+      );
+      expect(normalizeRagProjectSlots({ projects: [{ root: "Y:/repo" }] })).toEqual([]);
+      expect(
+        normalizeRagControlKeyPart("x".repeat(RAG_CONTROL_KEY_PART_MAX_CHARS + 1)),
+      ).toBe("");
+      expect(
+        normalizeRagProjectSlot({
+          root: "x".repeat(RAG_CONTROL_KEY_PART_MAX_CHARS + 1),
+        }),
+      ).toBeNull();
+      expect(
+        normalizeRagProjectSlots(
+          Array.from({ length: RAG_PROJECT_SLOTS_MAX_ITEMS + 1 }, (_, index) => ({
+            root: `Y:/repo-${index}`,
+          })),
+        ),
+      ).toHaveLength(RAG_PROJECT_SLOTS_MAX_ITEMS);
+      expect(normalizeRagRequestSeq(2)).toBe(2);
+      expect(normalizeRagRequestSeq(2.5)).toBeNull();
     expect(normalizeRagRequestSeq(-1)).toBeNull();
     expect(normalizeRagRequestSeq("2")).toBeNull();
   });
@@ -327,6 +345,31 @@ describe("rag job interpreters", () => {
       fraction: undefined,
       terminal: false,
       polling: true,
+    });
+
+    const overlong = "x".repeat(RAG_JOB_TEXT_MAX_CHARS + 1);
+    const dropped = interpretJobProgress(
+      {
+        envelope: {
+          jobs: [
+            {
+              id: overlong,
+              phase: overlong,
+              progress: { step: overlong, completed: 1, total: 2 },
+            },
+          ],
+        },
+        tiers: { semantic: { available: true } },
+      },
+      overlong,
+    );
+    expect(dropped).toMatchObject({
+      job: undefined,
+      phase: undefined,
+      step: undefined,
+      fraction: undefined,
+      terminal: false,
+      polling: false,
     });
   });
 

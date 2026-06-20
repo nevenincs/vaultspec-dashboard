@@ -25,7 +25,10 @@ export const useSettingsDialog = create<SettingsDialogState>((set) => ({
     }),
   openDialog: () => set({ open: true }),
   closeDialog: () => set({ open: false }),
-  toggle: () => set((s) => ({ open: !s.open })),
+  toggle: () =>
+    set((state) => ({
+      open: !(normalizeSettingsDialogOpen(state.open) ?? false),
+    })),
 }));
 
 export function normalizeSettingsDialogOpen(value: unknown): boolean | null {
@@ -33,7 +36,9 @@ export function normalizeSettingsDialogOpen(value: unknown): boolean | null {
 }
 
 export function useSettingsDialogOpen(): boolean {
-  return useSettingsDialog((state) => state.open);
+  return useSettingsDialog(
+    (state) => normalizeSettingsDialogOpen(state.open) ?? false,
+  );
 }
 
 export function setSettingsDialogOpen(open: unknown): void {

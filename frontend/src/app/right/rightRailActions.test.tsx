@@ -17,13 +17,18 @@ const setRightTab = vi.fn((_tab: string) => Promise.resolve(null));
 vi.mock("../../stores/server/queries", () => ({
   useActiveScope: () => "scope-a",
 }));
-vi.mock("../../stores/server/panelStateIntent", () => ({
-  useShellPanelIntent: () => ({
-    setLeftCollapsed: vi.fn(() => Promise.resolve(null)),
-    setRightCollapsed: vi.fn(() => Promise.resolve(null)),
-    setRightTab,
-  }),
-}));
+vi.mock("../../stores/server/panelStateIntent", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../stores/server/panelStateIntent")>();
+  return {
+    ...actual,
+    useShellPanelIntent: () => ({
+      setLeftCollapsed: vi.fn(() => Promise.resolve(null)),
+      setRightCollapsed: vi.fn(() => Promise.resolve(null)),
+      setRightTab,
+    }),
+  };
+});
 
 import {
   RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,

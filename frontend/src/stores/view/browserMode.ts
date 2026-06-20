@@ -32,7 +32,10 @@ export interface BrowserModeOption {
 // option set.
 export const BROWSER_MODE_OPTIONS: readonly BrowserModeOption[] = [
   { id: "vault", label: "Vault" },
-  { id: "code", label: "Code" },
+  // The user-facing label is "Files" (binding `LeftRail` 238:600); the internal
+  // mode id stays "code" (the `/file-tree` projection) — label and id are
+  // deliberately decoupled (ui-labels-are-user-facing).
+  { id: "code", label: "Files" },
 ];
 
 export function normalizeBrowserMode(value: unknown): BrowserMode | null {

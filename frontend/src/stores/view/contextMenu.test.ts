@@ -14,6 +14,7 @@ import {
   contextMenuActionRowClassName,
   deriveContextMenuActivation,
   deriveContextMenuCursorEdge,
+  deriveContextMenuKeyboardIntent,
   deriveContextMenuCursorMove,
   deriveContextMenuPanelPosition,
   deriveContextMenuCursorRepair,
@@ -24,7 +25,9 @@ import {
   normalizeContextMenuCursor,
   normalizeContextMenuEntity,
   normalizeContextMenuItemId,
+  normalizeContextMenuOpen,
   normalizeContextMenuPanelSize,
+  normalizeContextMenuSnapshot,
   normalizeContextMenuTimeTravel,
   normalizeContextMenuViewport,
   openContextMenu,
@@ -77,6 +80,9 @@ describe("context-menu slice", () => {
     expect(normalizeContextMenuTimeTravel(false)).toBe(false);
     expect(normalizeContextMenuTimeTravel("true")).toBe(false);
     expect(normalizeContextMenuTimeTravel(1)).toBe(false);
+    expect(normalizeContextMenuOpen(true)).toBe(true);
+    expect(normalizeContextMenuOpen("true")).toBe(false);
+    expect(normalizeContextMenuOpen(1)).toBe(false);
     expect(
       normalizeContextMenuEntity({
         kind: "node",
@@ -97,6 +103,44 @@ describe("context-menu slice", () => {
         source: "   ",
       }),
     ).toBeNull();
+  });
+
+  it("normalizes hydrated context-menu snapshots before consumers read them", () => {
+    expect(
+      normalizeContextMenuSnapshot({
+        open: "true",
+        anchor: { x: Number.NaN, y: 20 },
+        position: { x: 10, y: 20 },
+        entity: {
+          kind: "node",
+          id: " n1 ",
+          title: " Alpha ",
+          rogue: "surface-local payload",
+        },
+        armedItemId: " delete:n1 ",
+        cursor: 2.8,
+      }),
+    ).toEqual({
+      open: false,
+      anchor: null,
+      position: { x: 10, y: 20 },
+      entity: {
+        kind: "node",
+        id: "n1",
+        title: "Alpha",
+      },
+      armedItemId: "delete:n1",
+      cursor: 2,
+    });
+
+    expect(normalizeContextMenuSnapshot(null)).toEqual({
+      open: false,
+      anchor: null,
+      position: null,
+      entity: null,
+      armedItemId: null,
+      cursor: 0,
+    });
   });
 
   it("opens with the entity and anchor", () => {
@@ -531,5 +575,30 @@ describe("context-menu slice", () => {
     expect(deriveContextMenuCursorEdge([2, 4, 9], "last")).toBe(9);
     expect(deriveContextMenuCursorEdge([], "first")).toBeNull();
     expect(deriveContextMenuCursorEdge([], "last")).toBeNull();
+  });
+
+  it("derives keyboard intents at the context-menu store seam", () => {
+    expect(deriveContextMenuKeyboardIntent("Escape")).toEqual({ kind: "close" });
+    expect(deriveContextMenuKeyboardIntent("Tab")).toEqual({ kind: "close" });
+    expect(deriveContextMenuKeyboardIntent("ArrowDown")).toEqual({
+      kind: "move-cursor",
+      delta: 1,
+    });
+    expect(deriveContextMenuKeyboardIntent("ArrowUp")).toEqual({
+      kind: "move-cursor",
+      delta: -1,
+    });
+    expect(deriveContextMenuKeyboardIntent("Home")).toEqual({
+      kind: "cursor-edge",
+      edge: "first",
+    });
+    expect(deriveContextMenuKeyboardIntent("End")).toEqual({
+      kind: "cursor-edge",
+      edge: "last",
+    });
+    expect(deriveContextMenuKeyboardIntent("Enter")).toEqual({ kind: "activate" });
+    expect(deriveContextMenuKeyboardIntent(" ")).toEqual({ kind: "activate" });
+    expect(deriveContextMenuKeyboardIntent("PageDown")).toBeNull();
+    expect(deriveContextMenuKeyboardIntent({ key: "Enter" })).toBeNull();
   });
 });

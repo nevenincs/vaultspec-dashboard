@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { SCOPED_STORAGE_KEY_PART_MAX_CHARS } from "../platform/storage/scopedKeys";
 import type { KeyValueStore } from "./positionCache";
 import {
+  POSITION_CACHE_COORDINATE_MAX_ABS,
+  POSITION_CACHE_MAX_POSITIONS,
+  normalizePositionCacheNodeId,
   normalizePositionCacheKeyPart,
   PositionCache,
 } from "./positionCache";
@@ -55,6 +58,8 @@ describe("PositionCache", () => {
         "x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1),
       ),
     ).toBe("default");
+    expect(normalizePositionCacheNodeId(" doc:a ")).toBe("doc:a");
+    expect(normalizePositionCacheNodeId("   ")).toBeNull();
 
     cache.save(" ws ", " scope-a ", new Map([["n1", pos(1, 2)]]), 1);
     expect(cache.load("ws", "scope-a").get("n1")).toEqual({ x: 1, y: 2 });
@@ -233,5 +238,56 @@ describe("PositionCache", () => {
     const restored = cache.load("ws", "s");
     expect(restored.has("n1")).toBe(false);
     expect(restored.get("n2")).toEqual({ x: 3, y: 4 });
+  });
+
+  it("bounds position entries and rejects malformed saved coordinates", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    const positions = new Map<string, ReturnType<typeof pos>>([
+      [" doc:trimmed ", pos(1.23, 4.56)],
+      ["doc:bad-x", pos(Number.POSITIVE_INFINITY, 2)],
+      ["doc:huge-y", pos(1, POSITION_CACHE_COORDINATE_MAX_ABS + 1)],
+    ]);
+    for (let i = 0; i < POSITION_CACHE_MAX_POSITIONS + 3; i += 1) {
+      positions.set(`doc:${i}`, pos(i, i));
+    }
+
+    cache.save("ws", "bounded", positions, 1);
+    const restored = cache.load("ws", "bounded");
+
+    expect(restored.size).toBe(POSITION_CACHE_MAX_POSITIONS);
+    expect(restored.get("doc:trimmed")).toEqual({ x: 1.2, y: 4.6 });
+    expect(restored.has("doc:bad-x")).toBe(false);
+    expect(restored.has("doc:huge-y")).toBe(false);
+    expect(restored.has(`doc:${POSITION_CACHE_MAX_POSITIONS - 2}`)).toBe(true);
+    expect(restored.has(`doc:${POSITION_CACHE_MAX_POSITIONS - 1}`)).toBe(false);
+  });
+
+  it("bounds restored legacy blobs and ignores malformed node ids", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    store.map.set(
+      "vaultspec-dashboard:positions:ws:legacy",
+      JSON.stringify({
+        v: 1,
+        updatedAt: 0,
+        positions: {
+          "   ": [1, 2],
+          ...Object.fromEntries(
+            Array.from({ length: POSITION_CACHE_MAX_POSITIONS + 2 }, (_, i) => [
+              `doc:${i}`,
+              [i, i],
+            ]),
+          ),
+        },
+      }),
+    );
+
+    const restored = cache.load("ws", "legacy");
+
+    expect(restored.size).toBe(POSITION_CACHE_MAX_POSITIONS);
+    expect(restored.has("")).toBe(false);
+    expect(restored.has(`doc:${POSITION_CACHE_MAX_POSITIONS - 1}`)).toBe(true);
+    expect(restored.has(`doc:${POSITION_CACHE_MAX_POSITIONS}`)).toBe(false);
   });
 });

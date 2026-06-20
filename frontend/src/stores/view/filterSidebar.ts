@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
-import type { DashboardFilterFacet } from "../server/dashboardState";
-import type {
-  DashboardFilterSidebarView,
-  FiltersVocabularyView,
-} from "../server/queries";
+import {
+  normalizeDashboardFilterFacet,
+  normalizeDashboardFilterFacetValue,
+  type DashboardFilterFacet,
+} from "../server/dashboardState";
+import type { DashboardFilterSidebarView } from "../server/queries";
 import { normalizeSearchQuery } from "../searchQuery";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
@@ -97,6 +98,7 @@ export type FilterSidebarFacetDotTone =
 export const FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS = 128;
 export const FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS = 256;
 export const FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES = 512;
+export const FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS = 1024 * 1024;
 
 export function normalizeFilterSidebarTopicSearch(value: unknown): string {
   return normalizeSearchQuery(value).slice(0, FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS);
@@ -107,7 +109,11 @@ export function normalizeFilterSidebarOpen(value: unknown): boolean | null {
 }
 
 export function normalizeFilterSidebarVisualStateKey(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS
+    ? value
+    : null;
 }
 
 export const normalizeFilterSidebarScope = normalizeViewStoreSessionString;
@@ -126,6 +132,32 @@ export function normalizeFilterSidebarListKey(
   return typeof value === "string" && FILTER_SIDEBAR_LIST_KEY_SET.has(value)
     ? (value as FilterSidebarListKey)
     : null;
+}
+
+export function normalizeFilterSidebarSections(
+  value: unknown,
+): Partial<Record<FilterSidebarSectionKey, boolean>> {
+  if (value === null || typeof value !== "object") return {};
+  const normalized: Partial<Record<FilterSidebarSectionKey, boolean>> = {};
+  for (const [rawKey, rawOpen] of Object.entries(value)) {
+    const key = normalizeFilterSidebarSectionKey(rawKey);
+    const open = normalizeFilterSidebarOpen(rawOpen);
+    if (key !== null && open !== null) normalized[key] = open;
+  }
+  return normalized;
+}
+
+export function normalizeFilterSidebarExpandedLists(
+  value: unknown,
+): Partial<Record<FilterSidebarListKey, boolean>> {
+  if (value === null || typeof value !== "object") return {};
+  const normalized: Partial<Record<FilterSidebarListKey, boolean>> = {};
+  for (const [rawKey, rawOpen] of Object.entries(value)) {
+    const key = normalizeFilterSidebarListKey(rawKey);
+    const open = normalizeFilterSidebarOpen(rawOpen);
+    if (key !== null && open !== null) normalized[key] = open;
+  }
+  return normalized;
 }
 
 const FILTER_SIDEBAR_DOC_TYPE_LABEL: Record<string, string> = {
@@ -196,7 +228,8 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
         ? state
         : { open: normalized };
     }),
-  toggle: () => set((state) => ({ open: !state.open })),
+  toggle: () =>
+    set((state) => ({ open: !(normalizeFilterSidebarOpen(state.open) ?? false) })),
   close: () => set({ open: false }),
   syncVisualStateKey: (key) =>
     set((state) => {
@@ -223,7 +256,10 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
       const sectionOpen = normalizeFilterSidebarOpen(open);
       if (sectionKey === null || sectionOpen === null) return state;
       return {
-        sections: { ...state.sections, [sectionKey]: sectionOpen },
+        sections: {
+          ...normalizeFilterSidebarSections(state.sections),
+          [sectionKey]: sectionOpen,
+        },
       };
     }),
   expandList: (key) =>
@@ -231,7 +267,10 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
       const listKey = normalizeFilterSidebarListKey(key);
       if (listKey === null) return state;
       return {
-        expandedLists: { ...state.expandedLists, [listKey]: true },
+        expandedLists: {
+          ...normalizeFilterSidebarExpandedLists(state.expandedLists),
+          [listKey]: true,
+        },
       };
     }),
   resetForScope: () =>
@@ -245,13 +284,19 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
 }));
 
 export function useFilterSidebarOpen(): boolean {
-  return useFilterSidebarStore((state) => state.open);
+  return useFilterSidebarStore(
+    (state) => normalizeFilterSidebarOpen(state.open) ?? false,
+  );
 }
 
-export function useFilterSidebarVisualStateKey(key: string): void {
+export function useFilterSidebarVisualStateKey(
+  key: unknown,
+  canSync: unknown = true,
+): void {
   useEffect(() => {
+    if (canSync !== true) return;
     useFilterSidebarStore.getState().syncVisualStateKey(key);
-  }, [key]);
+  }, [canSync, key]);
 }
 
 function normalizeFilterSidebarVocabularyValue(value: unknown): string | null {
@@ -315,6 +360,10 @@ export function deriveFilterSidebarVisualStateKey(
   ]);
 }
 
+export function canSyncFilterSidebarVisualStateScope(scope: unknown): boolean {
+  return scope === null || normalizeFilterSidebarScope(scope) !== null;
+}
+
 export function useFilterSidebarVisualState(
   scope: unknown,
   docTypes: unknown,
@@ -322,28 +371,45 @@ export function useFilterSidebarVisualState(
   statuses: unknown,
   health: unknown,
 ): string {
+  const canSync = useMemo(
+    () => canSyncFilterSidebarVisualStateScope(scope),
+    [scope],
+  );
   const key = useMemo(
     () =>
       deriveFilterSidebarVisualStateKey(scope, docTypes, featureTags, statuses, health),
     [docTypes, featureTags, health, scope, statuses],
   );
-  useFilterSidebarVisualStateKey(key);
+  useFilterSidebarVisualStateKey(key, canSync);
   return key;
 }
 
 export function useFilterSidebarTopicSearch(): string {
-  return useFilterSidebarStore((state) => state.topicSearch);
+  return useFilterSidebarStore((state) =>
+    normalizeFilterSidebarTopicSearch(state.topicSearch),
+  );
 }
 
 export function useFilterSidebarSectionOpen(
-  key: FilterSidebarSectionKey,
-  defaultOpen: boolean,
+  key: unknown,
+  defaultOpen: unknown,
 ): boolean {
-  return useFilterSidebarStore((state) => state.sections[key] ?? defaultOpen);
+  const sectionKey = normalizeFilterSidebarSectionKey(key);
+  const fallbackOpen = normalizeFilterSidebarOpen(defaultOpen) ?? false;
+  return useFilterSidebarStore((state) =>
+    sectionKey === null
+      ? fallbackOpen
+      : (normalizeFilterSidebarSections(state.sections)[sectionKey] ?? fallbackOpen),
+  );
 }
 
-export function useFilterSidebarListExpanded(key: FilterSidebarListKey): boolean {
-  return useFilterSidebarStore((state) => state.expandedLists[key] ?? false);
+export function useFilterSidebarListExpanded(key: unknown): boolean {
+  const listKey = normalizeFilterSidebarListKey(key);
+  return useFilterSidebarStore((state) =>
+    listKey === null
+      ? false
+      : (normalizeFilterSidebarExpandedLists(state.expandedLists)[listKey] ?? false),
+  );
 }
 
 export function deriveFilterSidebarFacetListView(
@@ -396,36 +462,74 @@ export function filterSidebarTopicOptions(
     : normalizedFeatureTags;
 }
 
+export interface FilterSidebarMenuSectionsInput {
+  vocabulary: unknown;
+  filterView: unknown;
+  topicSearch: unknown;
+  onTopicSearchChange: (value: unknown) => void;
+  onToggleFacet: (facet: unknown, value: unknown) => void;
+}
+
+function isFilterSidebarRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function normalizeFilterSidebarFacetToggle(
+  facet: unknown,
+  value: unknown,
+): [DashboardFilterFacet, string] | null {
+  const normalizedFacet = normalizeDashboardFilterFacet(facet);
+  const normalizedValue = normalizeDashboardFilterFacetValue(value);
+  return normalizedFacet === null || normalizedValue === null
+    ? null
+    : [normalizedFacet, normalizedValue];
+}
+
+function filterSidebarToggleHandler(
+  facet: DashboardFilterFacet,
+  onToggleFacet: (facet: unknown, value: unknown) => void,
+): (value: unknown) => void {
+  return (value) => {
+    const normalized = normalizeFilterSidebarFacetToggle(facet, value);
+    if (normalized === null) return;
+    onToggleFacet(normalized[0], normalized[1]);
+  };
+}
+
 export function deriveFilterSidebarMenuSections({
   vocabulary,
   filterView,
   topicSearch,
   onTopicSearchChange,
   onToggleFacet,
-}: {
-  vocabulary: FiltersVocabularyView;
-  filterView: DashboardFilterSidebarView;
-  topicSearch: string;
-  onTopicSearchChange: (value: string) => void;
-  onToggleFacet: (facet: DashboardFilterFacet, value: string) => void;
-}): FilterSidebarMenuSectionView[] {
-  const presentation = filterView.presentation;
-  const docTypes = normalizeFilterSidebarFacetValues(vocabulary.docTypes);
-  const featureTags = normalizeFilterSidebarFacetValues(vocabulary.featureTags);
-  const statuses = normalizeFilterSidebarFacetValues(vocabulary.statuses);
-  const health = normalizeFilterSidebarFacetValues(vocabulary.health);
-  const selectedDocTypes = normalizeFilterSidebarFacetValues(filterView.docTypes);
-  const selectedFeatureTags = normalizeFilterSidebarFacetValues(filterView.featureTags);
-  const selectedStatuses = normalizeFilterSidebarFacetValues(filterView.statuses);
-  const selectedHealth = normalizeFilterSidebarFacetValues(filterView.health);
+}: FilterSidebarMenuSectionsInput): FilterSidebarMenuSectionView[] {
+  const vocabularyRecord = isFilterSidebarRecord(vocabulary) ? vocabulary : {};
+  const filterViewRecord = isFilterSidebarRecord(filterView) ? filterView : {};
+  const presentation =
+    isFilterSidebarRecord(filterViewRecord.presentation) &&
+    "kindSectionLabel" in filterViewRecord.presentation &&
+    "topicSectionLabel" in filterViewRecord.presentation
+      ? (filterViewRecord.presentation as unknown as DashboardFilterSidebarView["presentation"])
+      : ({} as DashboardFilterSidebarView["presentation"]);
+  const normalizedTopicSearch = normalizeFilterSidebarTopicSearch(topicSearch);
+  const docTypes = normalizeFilterSidebarFacetValues(vocabularyRecord.docTypes);
+  const featureTags = normalizeFilterSidebarFacetValues(vocabularyRecord.featureTags);
+  const statuses = normalizeFilterSidebarFacetValues(vocabularyRecord.statuses);
+  const health = normalizeFilterSidebarFacetValues(vocabularyRecord.health);
+  const selectedDocTypes = normalizeFilterSidebarFacetValues(filterViewRecord.docTypes);
+  const selectedFeatureTags = normalizeFilterSidebarFacetValues(
+    filterViewRecord.featureTags,
+  );
+  const selectedStatuses = normalizeFilterSidebarFacetValues(filterViewRecord.statuses);
+  const selectedHealth = normalizeFilterSidebarFacetValues(filterViewRecord.health);
   return [
     {
       type: "checkbox",
       key: "kind",
       label: presentation.kindSectionLabel,
       selected: selectedDocTypes,
-      onToggle: (value) => onToggleFacet("doc_types", value),
-      loading: vocabulary.facetsLoading,
+      onToggle: filterSidebarToggleHandler("doc_types", onToggleFacet),
+      loading: vocabularyRecord.facetsLoading === true,
       options: docTypes.map((value) => ({
         value,
         label: filterSidebarDocTypeLabel(value),
@@ -436,14 +540,14 @@ export function deriveFilterSidebarMenuSections({
       key: "topic",
       label: presentation.topicSectionLabel,
       selected: selectedFeatureTags,
-      onToggle: (value) => onToggleFacet("feature_tags", value),
-      loading: vocabulary.facetsLoading,
+      onToggle: filterSidebarToggleHandler("feature_tags", onToggleFacet),
+      loading: vocabularyRecord.facetsLoading === true,
       search: {
-        value: topicSearch,
+        value: normalizedTopicSearch,
         onChange: onTopicSearchChange,
         placeholder: "Search topics…",
       },
-      options: filterSidebarTopicOptions(featureTags, topicSearch).map(
+      options: filterSidebarTopicOptions(featureTags, normalizedTopicSearch).map(
         (value) => ({ value, label: value }),
       ),
     },
@@ -454,7 +558,7 @@ export function deriveFilterSidebarMenuSections({
             key: "status",
             label: "STATUS",
             selected: selectedStatuses,
-            onToggle: (value: string) => onToggleFacet("statuses", value),
+            onToggle: filterSidebarToggleHandler("statuses", onToggleFacet),
             options: statuses.map((value) => ({
               value,
               label: value,
@@ -470,7 +574,7 @@ export function deriveFilterSidebarMenuSections({
             key: "health",
             label: "HEALTH",
             selected: selectedHealth,
-            onToggle: (value: string) => onToggleFacet("health", value),
+            onToggle: filterSidebarToggleHandler("health", onToggleFacet),
             options: health.map((value) => ({
               value,
               label: filterSidebarHealthLabel(value),

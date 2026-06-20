@@ -9,6 +9,7 @@ import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { DEFAULT_CHOICES } from "../view/filters";
 import { dashboardDocumentStateResetPatch } from "./dashboardState";
 import {
+  normalizeCommandPaletteLensDateRange,
   normalizeCommandPaletteLensScope,
   useCommandPaletteLensIntent,
 } from "./commandPaletteLensIntent";
@@ -44,6 +45,17 @@ describe("useCommandPaletteLensIntent", () => {
     expect(normalizeCommandPaletteLensScope(" scope-a ")).toBe("scope-a");
     expect(normalizeCommandPaletteLensScope("   ")).toBeNull();
     expect(normalizeCommandPaletteLensScope({ scope: "scope-a" })).toBeNull();
+    expect(normalizeCommandPaletteLensDateRange(undefined)).toEqual({});
+    expect(normalizeCommandPaletteLensDateRange({})).toEqual({});
+    expect(
+      normalizeCommandPaletteLensDateRange({
+        from: "2026-06-30",
+        to: "2026-06-01",
+      }),
+    ).toEqual({ from: "2026-06-01", to: "2026-06-30" });
+    expect(normalizeCommandPaletteLensDateRange("2026-06-01")).toBeNull();
+    expect(normalizeCommandPaletteLensDateRange(["2026-06-01"])).toBeNull();
+    expect(normalizeCommandPaletteLensDateRange({ from: "bad" })).toBeNull();
   });
 
   it("is inert without a scope", async () => {
@@ -218,5 +230,52 @@ describe("useCommandPaletteLensIntent", () => {
     expect(dropped).toBeNull();
     expect(result.current.state.data?.filters).toEqual({});
     expect(result.current.state.data?.date_range).toEqual({});
+  });
+
+  it("rejects malformed lens date ranges before clearing dashboard date state", async () => {
+    const scope = await liveScope();
+    cleanupScope = scope;
+    await createLiveClient().patchDashboardState({
+      ...dashboardDocumentStateResetPatch(scope),
+      date_range: { from: "2026-05-01", to: "2026-05-31" },
+    });
+
+    const client = testQueryClient();
+    const { result } = renderHook(
+      () => ({
+        state: useDashboardState(scope),
+        intent: useCommandPaletteLensIntent(scope),
+      }),
+      { wrapper: wrapper(client) },
+    );
+
+    await waitFor(() => expect(result.current.state.isSuccess).toBe(true), {
+      timeout: 6000,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.intent.applyLensChoices({
+          ...structuredClone(DEFAULT_CHOICES),
+          featureTags: ["state"],
+          dateRange: { from: "not-a-date" },
+        }),
+      ).resolves.toBeNull();
+    });
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      filters: {},
+      date_range: { from: "2026-05-01", to: "2026-05-31" },
+    });
+
+    let cleared!: DashboardState;
+    await act(async () => {
+      cleared = (await result.current.intent.applyLensChoices({
+        ...structuredClone(DEFAULT_CHOICES),
+        dateRange: {},
+      })) as DashboardState;
+    });
+
+    expect(cleared.date_range).toEqual({});
   });
 });

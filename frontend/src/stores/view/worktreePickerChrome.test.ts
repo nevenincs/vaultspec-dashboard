@@ -10,6 +10,7 @@ import {
   failWorktreeSwitch,
   normalizeWorktreePickerActivationIntent,
   normalizeWorktreePickerBoolean,
+  normalizeWorktreePickerChromeView,
   normalizeWorktreePickerSwitchId,
   normalizeWorktreePickerSwitchError,
   normalizeWorktreePickerSwitchLabel,
@@ -17,9 +18,42 @@ import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
   useWorktreePickerChromeStore,
+  worktreePickerFirstRowFocusTarget,
   worktreePickerListClassName,
+  worktreePickerRowKeyboardTarget,
   worktreeSwitchFailureMessage,
 } from "./worktreePickerChrome";
+import type { WorkspaceMapPickerRowView } from "../server/queries";
+
+function row(id: string): WorkspaceMapPickerRowView {
+  return {
+    worktree: {
+      id,
+      path: id,
+      branch: id,
+      has_vault: true,
+      is_default: false,
+      degraded: [],
+    },
+    selectable: true,
+    isActive: false,
+    isPending: false,
+    title: id,
+    ariaLabel: id,
+    nameLabel: id,
+    defaultLabel: null,
+    bareLabel: null,
+    degradedTitle: "",
+    isDegraded: false,
+    pendingLabel: null,
+    rowClassName: "row",
+    activeCueClassName: "cue",
+    branchClassName: "branch",
+    badgeClassName: "badge",
+    degradedIconClassName: "degraded",
+    pendingLabelClassName: "pending",
+  };
+}
 
 describe("worktree picker chrome store", () => {
   beforeEach(() => resetWorktreePickerChrome());
@@ -54,6 +88,36 @@ describe("worktree picker chrome store", () => {
       expanded: false,
       keyboardToggle: false,
     });
+  });
+
+  it("normalizes malformed chrome reads before publishing or toggling", () => {
+    const longError = "x".repeat(WORKTREE_SWITCH_ERROR_CAP + 8);
+    useWorktreePickerChromeStore.setState({
+      expanded: "true",
+      keyboardToggle: "keyboard",
+      pendingId: " scope-a ",
+      switchError: longError,
+    } as unknown as Partial<ReturnType<typeof useWorktreePickerChromeStore.getState>>);
+
+    const view = normalizeWorktreePickerChromeView(
+      useWorktreePickerChromeStore.getState(),
+    );
+
+    expect(view).toMatchObject({
+      expanded: false,
+      keyboardToggle: false,
+      pendingId: "scope-a",
+    });
+    expect(view.switchError).toHaveLength(WORKTREE_SWITCH_ERROR_CAP);
+
+    toggleWorktreePickerExpanded(true);
+    expect(useWorktreePickerChromeStore.getState()).toMatchObject({
+      expanded: true,
+      keyboardToggle: true,
+    });
+
+    completeWorktreeSwitch("scope-a");
+    expect(useWorktreePickerChromeStore.getState().pendingId).toBeNull();
   });
 
   it("keeps pending switch feedback identity-scoped", () => {
@@ -210,5 +274,26 @@ describe("worktree picker chrome store", () => {
     expect(worktreePickerListClassName(false)).toBe(
       "mt-fg-1 space-y-fg-0-5 animate-slide-in-down",
     );
+  });
+
+  it("projects keyboard row focus targets behind the picker seam", () => {
+    const rows = [row("scope-a"), row("scope-b"), row("scope-c")];
+
+    expect(worktreePickerFirstRowFocusTarget(rows)).toBe("scope-a");
+    expect(worktreePickerRowKeyboardTarget(rows, 0, "ArrowDown")).toBe("scope-b");
+    expect(worktreePickerRowKeyboardTarget(rows, 1, "ArrowUp")).toBe("scope-a");
+    expect(worktreePickerRowKeyboardTarget(rows, 0, "ArrowUp")).toBe("scope-a");
+    expect(worktreePickerRowKeyboardTarget(rows, 2, "ArrowDown")).toBe("scope-c");
+  });
+
+  it("keeps malformed keyboard row targets inert", () => {
+    const rows = [row(" scope-a "), row("scope-b")];
+
+    expect(worktreePickerFirstRowFocusTarget([])).toBeNull();
+    expect(worktreePickerFirstRowFocusTarget(rows)).toBe("scope-a");
+    expect(worktreePickerRowKeyboardTarget(rows, 0, "Enter")).toBeNull();
+    expect(worktreePickerRowKeyboardTarget(rows, 0.5, "ArrowDown")).toBeNull();
+    expect(worktreePickerRowKeyboardTarget(rows, "0", "ArrowDown")).toBeNull();
+    expect(worktreePickerRowKeyboardTarget([], 0, "ArrowDown")).toBeNull();
   });
 });

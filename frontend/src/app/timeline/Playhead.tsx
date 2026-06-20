@@ -48,6 +48,7 @@ import {
   dragToPlayhead,
   keyboardStep,
   movePlayhead,
+  playheadKeyboardTarget,
   startPlayheadDragPointerSession,
 } from "../../stores/view/timelineIntent";
 import { useElementWidth } from "../chrome/useElementWidth";
@@ -61,10 +62,6 @@ export { LIVE_SNAP_PX, dragToPlayhead, keyboardStep };
  *  inline style to match the Timeline's MARK_PX / LANE_HEIGHT pattern (no raw
  *  arbitrary-px Tailwind class). */
 export const PLAYHEAD_W = 3;
-
-/** One keyboard step nudges the playhead this fraction of the visible span. */
-export const KEY_STEP_FRACTION = 1 / 24;
-export const KEY_NUDGE_FRACTION = 1 / 96;
 
 export function Playhead({ scope }: { scope: unknown }) {
   const normalizedScope = normalizeTimelineScope(scope);
@@ -111,25 +108,8 @@ export function Playhead({ scope }: { scope: unknown }) {
   // applies the pure projection INSTANTLY (no animation frame). The grip is the
   // slider, so it receives these keys when focused.
   const onGripKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const now = Date.now();
-    const step = visibleSpanMs * KEY_STEP_FRACTION;
-    const nudge = visibleSpanMs * KEY_NUDGE_FRACTION;
-    let next: number | "live";
-    switch (e.key) {
-      case "[":
-      case "ArrowLeft":
-        next = keyboardStep(playheadT, e.key === "[" ? -step : -nudge, now);
-        break;
-      case "]":
-      case "ArrowRight":
-        next = keyboardStep(playheadT, e.key === "]" ? step : nudge, now);
-        break;
-      case "Home":
-        next = "live";
-        break;
-      default:
-        return;
-    }
+    const next = playheadKeyboardTarget(e.key, playheadT, visibleSpanMs);
+    if (next === null) return;
     e.preventDefault();
     movePlayhead(next, scope);
   };

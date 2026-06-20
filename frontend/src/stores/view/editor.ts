@@ -85,11 +85,19 @@ interface MarkdownEditorChromeState {
   seed: (nodeId: unknown, currentStem: unknown, frontmatterDraft: unknown) => void;
   setRenameDraft: (draft: unknown) => void;
   setFrontmatterDraft: (draft: unknown) => void;
-  setAdvisories: (advisories: ConformanceCheck[]) => void;
+  setAdvisories: (advisories: unknown) => void;
 }
 
-function normalizeEditorDraftText(value: unknown): string {
-  return typeof value === "string" ? value : "";
+export const MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS = 4096;
+export const MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS = 64;
+export const MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS = 1024;
+
+function normalizeEditorDraftText(
+  value: unknown,
+  maxChars = MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS,
+): string {
+  if (typeof value !== "string") return "";
+  return value.length <= maxChars ? value : value.slice(0, maxChars);
 }
 
 const EMPTY_MARKDOWN_EDITOR_FRONTMATTER_DRAFT: MarkdownEditorFrontmatterDraft = {
@@ -117,6 +125,38 @@ export function normalizeMarkdownEditorFrontmatterDraftState(
     ...EMPTY_MARKDOWN_EDITOR_FRONTMATTER_DRAFT,
     ...normalizeMarkdownEditorFrontmatterDraft(draft),
   };
+}
+
+function normalizeAdvisoryText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.length <= MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS
+    ? value
+    : value.slice(0, MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS);
+}
+
+export function normalizeMarkdownEditorAdvisories(
+  advisories: unknown,
+): ConformanceCheck[] {
+  if (!Array.isArray(advisories)) return [];
+  const normalized: ConformanceCheck[] = [];
+  for (const advisory of advisories) {
+    if (advisory === null || typeof advisory !== "object") continue;
+    const value = advisory as Partial<Record<keyof ConformanceCheck, unknown>>;
+    normalized.push({
+      ...(normalizeAdvisoryText(value.check) !== undefined
+        ? { check: normalizeAdvisoryText(value.check) }
+        : {}),
+      ...(normalizeAdvisoryText(value.severity) !== undefined
+        ? { severity: normalizeAdvisoryText(value.severity) }
+        : {}),
+      ...(normalizeAdvisoryText(value.message) !== undefined
+        ? { message: normalizeAdvisoryText(value.message) }
+        : {}),
+      ...(typeof value.fixable === "boolean" ? { fixable: value.fixable } : {}),
+    });
+    if (normalized.length >= MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS) break;
+  }
+  return normalized;
 }
 
 const useMarkdownEditorChromeStore = create<MarkdownEditorChromeState>((set) => ({
@@ -148,7 +188,8 @@ const useMarkdownEditorChromeStore = create<MarkdownEditorChromeState>((set) => 
         ...normalizeMarkdownEditorFrontmatterDraft(draft),
       },
     })),
-  setAdvisories: (advisories) => set({ advisories }),
+  setAdvisories: (advisories) =>
+    set({ advisories: normalizeMarkdownEditorAdvisories(advisories) }),
 }));
 
 export function deriveMarkdownEditorChromeView(
@@ -169,7 +210,10 @@ export function deriveMarkdownEditorChromeView(
       ? normalizeMarkdownEditorFrontmatterDraftState(state.frontmatterDraft)
       : normalizeMarkdownEditorFrontmatterDraftState(sourceFrontmatterDraft);
   const trimmedRename = renameDraft.trim();
-  const advisories = state.nodeId === normalizedNodeId ? state.advisories : [];
+  const advisories =
+    state.nodeId === normalizedNodeId
+      ? normalizeMarkdownEditorAdvisories(state.advisories)
+      : [];
   return {
     currentStem: normalizedCurrentStem,
     renameDraft,
@@ -342,17 +386,11 @@ export function conformanceChecksOf(result: {
   checks?: unknown;
 }): ConformanceCheck[] {
   if (result.kind !== "saved" && result.kind !== "refused") return [];
-  return Array.isArray(result.checks)
-    ? result.checks.filter(
-        (check): check is ConformanceCheck => !!check && typeof check === "object",
-      )
-    : [];
+  return normalizeMarkdownEditorAdvisories(result.checks);
 }
 
-export function setMarkdownEditorAdvisories(
-  advisories: readonly ConformanceCheck[],
-): void {
-  useMarkdownEditorChromeStore.getState().setAdvisories([...advisories]);
+export function setMarkdownEditorAdvisories(advisories: unknown): void {
+  useMarkdownEditorChromeStore.getState().setAdvisories(advisories);
 }
 
 export function applyEditorWriteResult(result: EditorWriteResult): void {

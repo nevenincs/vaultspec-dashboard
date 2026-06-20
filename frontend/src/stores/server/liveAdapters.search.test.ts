@@ -49,3 +49,60 @@ describe("adaptSearch node_id grammar (§2 / M-B1)", () => {
     expect(deriveSearchNodeId({ source: "code", score: 0.5 })).toBeNull();
   });
 });
+
+// Rich-field forwarding (search-result representation): the engine forwards rag's
+// envelope verbatim (rag-client `forward_search`), so the per-result metadata the
+// rich Cmd-K pills render must survive adaptSearch — rag's `snippet` becomes the
+// excerpt, and the species-specific fields (vault: doc_type/feature/date; code:
+// language/line range/symbol) plus the long-form `rerank_text` carry through. A
+// vault hit's null code fields are simply absent (optional wire shape).
+describe("adaptSearch rich-field forwarding (mirror the live rag wire)", () => {
+  it("carries vault metadata + snippet + rerank_text through", () => {
+    const { results } = adaptSearch(
+      envelope([
+        {
+          source: "vault",
+          score: 0.97,
+          snippet: "the timeline becomes the corpus's diachronic lineage view",
+          rerank_text: "# dashboard-timeline adr\n\nThe full reranker body…",
+          doc_type: "adr",
+          feature: "dashboard-timeline",
+          date: "2026-06-15",
+          line_start: null,
+          stem: "2026-06-15-dashboard-timeline-adr",
+        },
+      ]),
+    ) as unknown as { results: Record<string, unknown>[] };
+    const r = results[0];
+    expect(r.excerpt).toBe("the timeline becomes the corpus's diachronic lineage view");
+    expect(r.rerank_text).toContain("dashboard-timeline adr");
+    expect(r.doc_type).toBe("adr");
+    expect(r.feature).toBe("dashboard-timeline");
+    expect(r.date).toBe("2026-06-15");
+    expect("line_start" in r).toBe(false); // null line dropped, not echoed
+  });
+
+  it("carries code symbol + line range + language through", () => {
+    const { results } = adaptSearch(
+      envelope([
+        {
+          source: "codebase",
+          score: 0.87,
+          snippet: "export function buildFallbackResults(entries, query) {",
+          language: "typescript",
+          line_start: 910,
+          line_end: 936,
+          node_type: "function_item",
+          function_name: "buildFallbackResults",
+          path: "frontend/src/stores/server/searchController.ts",
+        },
+      ]),
+    ) as unknown as { results: Record<string, unknown>[] };
+    const r = results[0];
+    expect(r.language).toBe("typescript");
+    expect(r.line_start).toBe(910);
+    expect(r.line_end).toBe(936);
+    expect(r.function_name).toBe("buildFallbackResults");
+    expect(r.node_type).toBe("function_item");
+  });
+});

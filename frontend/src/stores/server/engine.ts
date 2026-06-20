@@ -1080,6 +1080,12 @@ export interface OpsCreateBody {
   related?: string[];
 }
 
+/** The body of a feature-archive op (`POST /ops/core/archive`). */
+export interface OpsArchiveBody {
+  scope?: string;
+  feature: string;
+}
+
 /**
  * The typed, discriminated result of a write/create op, interpreted by
  * `adaptOpsWrite` from the sibling envelope's `status` + `data` fields (never the
@@ -1182,6 +1188,8 @@ export interface GitOpResponse {
   verb: string;
   /** Git's stdout, forwarded verbatim (porcelain status / numstat / unified diff). */
   output: string;
+  /** Adapter-side cap marker when the raw git stdout exceeded the stores boundary. */
+  truncated?: { returned_chars: number; reason: string };
   tiers: TiersBlock;
 }
 
@@ -1350,8 +1358,27 @@ export interface PlanInteriorResponse {
 
 export interface SearchResult {
   score: number;
+  /** The corpus the hit came from (`vault` | `codebase`) — NOT the identity. The
+   *  human identity is `title` (the doc H1) and the click-through is `node_id`. */
   source: string;
+  /** The human title the rag wire carries (the document's H1 / the code symbol or
+   *  file) — the pill's primary line. Absent on the text-match fallback. */
+  title?: string;
+  /** Short preview line (rag `snippet`/`excerpt`/`text`) — the Compact pill's body. */
   excerpt?: string;
+  /** Full reranker context body (rag `rerank_text`) — the editorial long-form source. */
+  rerank_text?: string;
+  // Vault metadata (present for `source: "vault"` hits; mirrors the rag wire verbatim).
+  doc_type?: string;
+  feature?: string;
+  date?: string;
+  // Code metadata (present for `source: "codebase"` hits).
+  language?: string;
+  line_start?: number;
+  line_end?: number;
+  node_type?: string;
+  function_name?: string;
+  class_name?: string;
   /** The engine's value-add: results click through into the graph. */
   node_id: string | null;
 }
@@ -1824,6 +1851,15 @@ export class EngineClient {
    *  doc's path + stem. */
   opsCoreCreate(body: OpsCreateBody): Promise<OpsResult> {
     return this.post("/ops/core/create", body);
+  }
+
+  /** A feature-archive op: `POST /ops/core/archive` forwards
+   *  `vaultspec-core vault feature archive <tag>`. The engine validates/bounds the
+   *  feature token and forwards core's envelope VERBATIM under `data.envelope` with
+   *  the tiers block (engine-read-and-infer); HTTP 200 for both a success and a
+   *  business refusal (e.g. unknown tag), the caller branching on the envelope. */
+  opsCoreArchive(body: OpsArchiveBody): Promise<OpsResult> {
+    return this.post("/ops/core/archive", body);
   }
 
   /** The brokered rag READ verbs (rag-control-plane ADR D2): a GET against the

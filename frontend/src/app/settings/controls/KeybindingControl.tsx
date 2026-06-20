@@ -19,13 +19,12 @@ import { Button, Kbd, SectionLabel } from "../../kit";
 import {
   clearKeybindingOverride,
   deriveSettingsKeybindingControlView,
-  keybindingConflictIds,
+  keybindingConflictLabels,
   nextKeybindingOverrides,
   serializeKeybindingOverrides,
   toggleSettingsKeybindingRecording,
   useSettingsKeybindingRecorder,
 } from "../../../stores/view/settingsControls";
-import { getKeybinding } from "../../../platform/keymap/registry";
 import type { ControlProps } from "./types";
 
 export function KeybindingControl({ value, onChange, disabled, id }: ControlProps) {
@@ -60,16 +59,14 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
               const recording = recordingId === row.id;
               const conflicts = recording
                 ? []
-                : keybindingConflictIds(view.overrides, row.id, row.chord).filter(
-                    (cid) => cid !== row.id,
-                  );
+                : keybindingConflictLabels(view.overrides, row.id, row.chord);
               return (
                 <li key={row.id} className="flex items-center justify-between gap-fg-2">
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate text-body text-ink">{row.label}</span>
                     {conflicts.length > 0 && (
                       <span role="alert" className="text-caption text-diff-remove">
-                        Conflicts with {conflicts.map(labelFor).join(", ")}
+                        Conflicts with {conflicts.join(", ")}
                       </span>
                     )}
                   </div>
@@ -111,9 +108,4 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
       ))}
     </div>
   );
-}
-
-/** The human label for a conflicting action id, falling back to the raw id. */
-function labelFor(actionId: string): string {
-  return getKeybinding(actionId)?.label ?? actionId;
 }

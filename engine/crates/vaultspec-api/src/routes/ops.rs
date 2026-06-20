@@ -932,6 +932,51 @@ pub async fn ops_core_autofix(
     ))
 }
 
+/// The typed request body for `POST /ops/core/archive`: the optional worktree
+/// `scope` and the `feature` tag whose documents are archived. The feature is
+/// validated/bounded BEFORE the subprocess spawns (the injection-guard surface).
+#[derive(serde::Deserialize, Default)]
+pub struct CoreArchiveBody {
+    #[serde(default)]
+    pub scope: Option<String>,
+    pub feature: String,
+}
+
+/// POST `/ops/core/archive` — forward `vault feature archive <tag>` through the
+/// engine broker so the dashboard's left rail can archive a completed feature's
+/// documents without exposing the frontend to vaultspec-core. FEATURE-SCOPED (the
+/// only archive grain vaultspec-core has — there is no per-document archive verb).
+/// Read-and-infer preserved: the engine validates and bounds the feature token and
+/// forwards the sibling's envelope VERBATIM under `data.envelope`; it persists
+/// nothing and grows no archive semantics. A success and a business refusal
+/// (`status:"failed"`, e.g. an unknown tag) BOTH ride one HTTP 200 — the client
+/// branches on `envelope.status`, never the HTTP code. The watcher re-ingests the
+/// moved documents and the generation bump signals the frontend.
+pub async fn ops_core_archive(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CoreArchiveBody>,
+) -> ApiResult {
+    let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
+    let feature = validate_token(&state, "feature", &body.feature)?;
+    let args = ["vault", "feature", "archive", feature.as_str()];
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let envelope = run_sibling_write_bounded(
+        &state,
+        &cell,
+        &runner.invocation,
+        &args,
+        None,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
+        super::query_tiers(&cell),
+        None,
+    ))
+}
+
 /// The typed request body for `POST /ops/core/create` (W02): the typed params of
 /// `vaultspec-core vault add <type> --feature <tag> [--title <t>] [--related …]`.
 /// Unlike the write channel this carries NO body/stdin — `vault add` scaffolds a
@@ -1593,9 +1638,11 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
 /// through to the client verbatim (the hit travels as its JSON `Value`).
 ///
 /// The trap this shape documents: `source` is the search-type DISCRIMINATOR
-/// (`vault` | `code`), NOT a path. The path lives in `path` (with code
-/// symbols in `function_name` / `class_name`). An earlier annotation read
-/// `source` as a path and mis-derived every id.
+/// (`vault` for docs, `codebase` — historically `code` — for code), NOT a path.
+/// The path lives in `path` (with code symbols in `function_name` /
+/// `class_name`). An earlier annotation read `source` as a path and mis-derived
+/// every id; a later one matched only `code` and null-id'd every live `codebase`
+/// hit.
 #[derive(Debug, Default, serde::Deserialize)]
 struct RagHitShape {
     #[serde(default)]
@@ -1622,7 +1669,10 @@ fn hit_node_id(hit: &RagHitShape) -> Option<String> {
             let stem = file.strip_suffix(".md").unwrap_or(file);
             Some(node_id(&CanonicalKey::Document { stem }).0)
         }
-        Some("code") => {
+        // The live rag service emits `codebase` for the code corpus; an older
+        // recorded fixture used `code`. Accept both so a code hit always clicks
+        // through (a `code`-only match silently null-ids every live code result).
+        Some("code") | Some("codebase") => {
             let path = hit.path.as_deref().or(hit.source_path.as_deref())?;
             let symbol = hit.function_name.as_deref().or(hit.class_name.as_deref());
             Some(node_id(&CanonicalKey::CodeArtifact { path, symbol }).0)
@@ -1721,6 +1771,8 @@ mod tests {
                 {"path": "src/lib.rs", "score": 0.40, "source": "code",
                  "function_name": "alpha", "language": "rust"},
                 {"path": "src/lib.rs", "score": 0.30, "source": "code"},
+                {"path": "src/main.rs", "score": 0.25, "source": "codebase",
+                 "class_name": "Server", "language": "rust"},
                 {"score": 0.10, "source": "unknown-future-kind"}
             ]
         }
@@ -1736,7 +1788,7 @@ mod tests {
         assert_eq!(out["query"], "test");
         assert_eq!(out["search_type"], "vault");
         let results = out["results"].as_array().unwrap();
-        assert_eq!(results.len(), 4, "every hit survives; none dropped");
+        assert_eq!(results.len(), 5, "every hit survives; none dropped");
 
         // Vault hit → doc node from the PATH STEM, not the "vault"
         // discriminator. rag fields pass through verbatim alongside node_id.
@@ -1748,8 +1800,11 @@ mod tests {
         assert_eq!(results[1]["node_id"], "code:src/lib.rs#alpha");
         // Code hit without a symbol → bare path.
         assert_eq!(results[2]["node_id"], "code:src/lib.rs");
+        // The LIVE rag discriminator is `codebase` (not `code`); it must still
+        // click through, qualified by its class symbol.
+        assert_eq!(results[3]["node_id"], "code:src/main.rs#Server");
         // Unknown discriminator → explicit null (typed miss), never guessed.
-        assert_eq!(results[3]["node_id"], Value::Null);
+        assert_eq!(results[4]["node_id"], Value::Null);
     }
 
     #[test]

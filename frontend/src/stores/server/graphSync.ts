@@ -25,10 +25,12 @@ import {
 /** Collapse a delta burst into one trailing constellation refetch (P-HIGH-1). */
 const GRAPH_INVALIDATE_DEBOUNCE_MS = 150;
 export const GRAPH_FEATURE_DELTAS_CAP = 128;
+export const GRAPH_LIVE_GAP_COUNT_MAX = 1_000_000;
 
 export function normalizeGraphFeatureDeltas(
-  deltas: readonly GraphDeltaEntry[],
+  deltas: unknown,
 ): GraphDeltaEntry[] {
+  if (!Array.isArray(deltas)) return [];
   let changed = deltas.length > GRAPH_FEATURE_DELTAS_CAP;
   const start = Math.max(0, deltas.length - GRAPH_FEATURE_DELTAS_CAP);
   const normalized: GraphDeltaEntry[] = [];
@@ -52,6 +54,12 @@ export function normalizeGraphFeatureDeltas(
     : normalized;
 }
 
+export function normalizeGraphLiveGapCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.min(GRAPH_LIVE_GAP_COUNT_MAX, Math.trunc(value))
+    : 0;
+}
+
 export const normalizeGraphLiveScope = normalizeGraphSliceScope;
 
 export function normalizeGraphLiveKeyframeSeq(seq: unknown): number | null {
@@ -68,7 +76,7 @@ export interface GraphLiveDeltaState {
   featureDeltas: GraphDeltaEntry[];
   gapCount: number;
   setLifecycle: (scope: unknown, keyframeSeq: unknown) => void;
-  setFeatureDeltas: (deltas: GraphDeltaEntry[]) => void;
+  setFeatureDeltas: (deltas: unknown) => void;
   clearFeatureDeltas: () => void;
   incrementGap: () => void;
 }
@@ -97,7 +105,10 @@ export const useGraphLiveDeltaStore = create<GraphLiveDeltaState>((set) => ({
     set({ featureDeltas: [...normalizeGraphFeatureDeltas(featureDeltas)] }),
   clearFeatureDeltas: () => set({ featureDeltas: [] }),
   incrementGap: () =>
-    set((state) => ({ featureDeltas: [], gapCount: state.gapCount + 1 })),
+    set((state) => ({
+      featureDeltas: [],
+      gapCount: normalizeGraphLiveGapCount(state.gapCount + 1),
+    })),
 }));
 
 const EMPTY_GRAPH_LIVE_DELTA_VIEW = {
@@ -124,12 +135,12 @@ export function useGraphLiveDeltaView(
   return useGraphLiveDeltaStore(
     useShallow((state) =>
       state.scope === normalizedScope && state.keyframeSeq === normalizedKeyframeSeq
-        ? {
-            featureDeltas: normalizeGraphFeatureDeltas(state.featureDeltas),
-            gapCount: state.gapCount,
-          }
-        : EMPTY_GRAPH_LIVE_DELTA_VIEW,
-    ),
+          ? {
+              featureDeltas: normalizeGraphFeatureDeltas(state.featureDeltas),
+              gapCount: normalizeGraphLiveGapCount(state.gapCount),
+            }
+          : EMPTY_GRAPH_LIVE_DELTA_VIEW,
+      ),
   );
 }
 

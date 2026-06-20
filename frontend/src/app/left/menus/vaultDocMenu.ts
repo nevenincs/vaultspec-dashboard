@@ -15,6 +15,7 @@ import {
   openInEditorAction,
   revealAction,
 } from "../../../platform/actions/shellActions";
+import { newDocumentAction } from "../../../stores/view/leftRailKeybindings";
 import { focusMenuNode } from "../../../stores/view/menuActions";
 
 /**
@@ -54,6 +55,10 @@ export function vaultDocMenu(entity: unknown): ActionDescriptor[] {
       text: normalizedEntity.stem,
       what: "stem",
     }),
+    // Create a new vault document (vaultspec-core vault add) — the rail is the home
+    // for creation now that the stage create affordance is retired. Opens the
+    // shared dialog; the row's feature is not carried on the entity, so no prefill.
+    newDocumentAction(),
   ];
 }
 

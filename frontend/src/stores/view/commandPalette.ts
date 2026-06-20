@@ -22,6 +22,153 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   context: "global",
 };
 
+// The Cmd-K palette has two modes (figma SearchPalette frames 651:1771 / 652:1804):
+// `command` is the verb/navigation plane (the original surface); `search` is the
+// rag-backed semantic search surface that renders the SearchResultPill list and the
+// on-demand expanded reader split. Both modes share the one overlay so "Command-K
+// controls searching" holds — search is a mode of the palette, not a second popup.
+export type CommandPaletteMode = "command" | "search";
+
+export const SEARCH_PALETTE_ACTION_ID = "app:search";
+export const SEARCH_PALETTE_SHORTCUT_LABEL = "Search documents and code";
+export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
+  id: SEARCH_PALETTE_ACTION_ID,
+  defaultChord: "Mod+P",
+  label: SEARCH_PALETTE_SHORTCUT_LABEL,
+  group: "General",
+  context: "global",
+};
+
+export function normalizeCommandPaletteMode(mode: unknown): CommandPaletteMode {
+  return mode === "search" ? "search" : "command";
+}
+
+export function normalizeSearchPaletteCursor(cursor: unknown): number {
+  return typeof cursor === "number" && Number.isFinite(cursor)
+    ? Math.max(0, Math.trunc(cursor))
+    : 0;
+}
+
+export function normalizeSearchPaletteExpanded(expanded: unknown): boolean {
+  return expanded === true;
+}
+
+export interface SearchPalettePresentationView {
+  safeCursor: number;
+  selectedNodeId: string | null;
+  showExpandedPanel: boolean;
+  dialogLabel: string;
+  inputPlaceholder: string;
+  inputAriaExpanded: boolean;
+  resultCountLabel: string;
+  listboxLabel: string;
+  panelClassName: string;
+  emptyMessage: string | null;
+  liveMessage: string;
+  footerHints: {
+    move: string;
+    previousNext: string;
+    open: string;
+    close: string;
+  };
+}
+
+export type SearchPaletteKeyboardIntent =
+  | { kind: "move-cursor"; delta: 1 | -1 }
+  | { kind: "reveal-selected" }
+  | { kind: "open-selected" };
+
+export interface SearchPalettePillShape {
+  nodeId?: string | null;
+}
+
+export function searchPaletteMovedCursor(
+  length: number,
+  cursor: unknown,
+  delta: 1 | -1,
+): number {
+  if (length <= 0) return 0;
+  const current = normalizeSearchPaletteCursor(cursor);
+  return (current + delta + length) % length;
+}
+
+export function deriveSearchPaletteKeyboardIntent(
+  key: unknown,
+  expanded: unknown,
+): SearchPaletteKeyboardIntent | null {
+  const isExpanded = normalizeSearchPaletteExpanded(expanded);
+  if (key === "ArrowDown") return { kind: "move-cursor", delta: 1 };
+  if (key === "ArrowUp") return { kind: "move-cursor", delta: -1 };
+  if (isExpanded && key === "ArrowRight") return { kind: "move-cursor", delta: 1 };
+  if (isExpanded && key === "ArrowLeft") return { kind: "move-cursor", delta: -1 };
+  if (key === "Enter") {
+    return isExpanded ? { kind: "open-selected" } : { kind: "reveal-selected" };
+  }
+  return null;
+}
+
+export function deriveSearchPalettePresentationView(
+  context: {
+    query: unknown;
+    cursor: unknown;
+    expanded: unknown;
+    pills: readonly SearchPalettePillShape[];
+    searchState: unknown;
+    semanticOffline: unknown;
+    error: unknown;
+  },
+): SearchPalettePresentationView {
+  const query = normalizeCommandPaletteQuery(context.query);
+  const expanded = normalizeSearchPaletteExpanded(context.expanded);
+  const cursor = normalizeSearchPaletteCursor(context.cursor);
+  const count = context.pills.length;
+  const safeCursor = count > 0 ? Math.min(cursor, count - 1) : 0;
+  const selectedNodeId = context.pills[safeCursor]?.nodeId ?? null;
+  const resultCountLabel =
+    count > 0
+      ? `${count} result${count === 1 ? "" : "s"}`
+      : context.searchState === "loading"
+        ? "searching…"
+        : "";
+  const emptyMessage =
+    count > 0
+      ? null
+      : query.length === 0
+        ? "Search across your documents and code by meaning."
+        : context.searchState === "loading"
+          ? "Searching…"
+          : context.semanticOffline === true
+            ? "Semantic search is offline — showing title and text matches."
+            : `No matches for “${query}”.`;
+
+  return {
+    safeCursor,
+    selectedNodeId,
+    showExpandedPanel: expanded && count > 0,
+    dialogLabel: "Search documents and code",
+    inputPlaceholder: "Search documents and code…",
+    inputAriaExpanded: true,
+    resultCountLabel,
+    listboxLabel: "search results",
+    panelClassName: `flex max-h-[calc(100vh-9rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover animate-slide-in-down ${
+      expanded ? "w-[64rem]" : "w-[32rem]"
+    }`,
+    emptyMessage,
+    liveMessage:
+      context.error === true
+        ? "search request failed"
+        : context.semanticOffline === true
+          ? "semantic search offline — showing title and text matches"
+          : resultCountLabel,
+    footerHints: {
+      move: "move",
+      previousNext: "previous / next",
+      open: "open",
+      close: "close",
+    },
+  };
+}
+
 export function normalizeCommandPaletteOpsMessage(message: unknown): string | null {
   if (typeof message !== "string") return null;
   const trimmed = message.trim();
@@ -58,24 +205,41 @@ export function normalizeCommandPaletteOpsEpoch(epoch: unknown): number | null {
     : null;
 }
 
+function nextCommandPaletteOpsEpoch(epoch: unknown): number {
+  return (normalizeCommandPaletteOpsEpoch(epoch) ?? 0) + 1;
+}
+
 export const normalizeCommandPaletteFeedbackScope = normalizeViewStoreSessionString;
 
 export function normalizeCommandPaletteFeedbackTimeTravel(value: unknown): boolean {
   return value === true;
 }
 
+export function canResetCommandPaletteFeedbackBoundary(scope: unknown): boolean {
+  return scope === null || normalizeCommandPaletteFeedbackScope(scope) !== null;
+}
+
 interface CommandPaletteState {
   open: boolean;
+  mode: CommandPaletteMode;
   query: string;
   cursor: number;
+  /** Search mode: the selected result-row index (the cursored pill). */
+  searchCursor: number;
+  /** Search mode: whether the on-demand reader split is revealed. */
+  searchExpanded: boolean;
   armedCommandId: string | null;
   opsMessage: string | null;
   opsEpoch: number;
   openPalette: () => void;
+  openSearch: () => void;
   closePalette: () => void;
   togglePalette: () => void;
+  setMode: (mode: unknown) => void;
   setQuery: (query: unknown) => void;
   setCursor: (cursor: unknown) => void;
+  setSearchCursor: (cursor: unknown) => void;
+  setSearchExpanded: (expanded: unknown) => void;
   setArmedCommandId: (commandId: unknown) => void;
   resetSurfaceState: () => void;
   resetOpsFeedback: () => void;
@@ -84,49 +248,130 @@ interface CommandPaletteState {
   reset: () => void;
 }
 
+export interface CommandPaletteSurfaceState {
+  open: boolean;
+  query: string;
+  cursor: number;
+  armedCommandId: string | null;
+  opsMessage: string | null;
+  opsEpoch: number;
+}
+
+export function normalizeCommandPaletteOpen(open: unknown): boolean {
+  return open === true;
+}
+
+export function normalizeCommandPaletteSurfaceState(
+  state: unknown,
+): CommandPaletteSurfaceState {
+  const value =
+    state !== null && typeof state === "object"
+      ? (state as Partial<Record<keyof CommandPaletteSurfaceState, unknown>>)
+      : {};
+  return {
+    open: normalizeCommandPaletteOpen(value.open),
+    query: normalizeCommandPaletteQuery(value.query),
+    cursor: normalizeCommandPaletteCursor(value.cursor),
+    armedCommandId: normalizeCommandPaletteArmedCommandId(value.armedCommandId),
+    opsMessage: normalizeCommandPaletteOpsMessage(value.opsMessage),
+    opsEpoch: normalizeCommandPaletteOpsEpoch(value.opsEpoch) ?? 0,
+  };
+}
+
 export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => ({
   open: false,
+  mode: "command",
   query: "",
   cursor: 0,
+  searchCursor: 0,
+  searchExpanded: false,
   armedCommandId: null,
   opsMessage: null,
   opsEpoch: 0,
   openPalette: () =>
-    set((state) => ({
-      open: true,
-      query: "",
-      cursor: 0,
-      armedCommandId: null,
-      opsMessage: null,
-      opsEpoch: state.opsEpoch + 1,
-    })),
+    set((state) => {
+      const current = normalizeCommandPaletteSurfaceState(state);
+      return {
+        open: true,
+        mode: "command",
+        query: "",
+        cursor: 0,
+        searchCursor: 0,
+        searchExpanded: false,
+        armedCommandId: null,
+        opsMessage: null,
+        opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
+      };
+    }),
+  openSearch: () =>
+    set((state) => {
+      const current = normalizeCommandPaletteSurfaceState(state);
+      return {
+        open: true,
+        mode: "search",
+        query: "",
+        cursor: 0,
+        searchCursor: 0,
+        searchExpanded: false,
+        armedCommandId: null,
+        opsMessage: null,
+        opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
+      };
+    }),
   closePalette: () =>
-    set((state) => ({
-      open: false,
-      query: "",
-      cursor: 0,
-      armedCommandId: null,
-      opsMessage: null,
-      opsEpoch: state.opsEpoch + 1,
-    })),
+    set((state) => {
+      const current = normalizeCommandPaletteSurfaceState(state);
+      return {
+        open: false,
+        mode: "command",
+        query: "",
+        cursor: 0,
+        searchCursor: 0,
+        searchExpanded: false,
+        armedCommandId: null,
+        opsMessage: null,
+        opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
+      };
+    }),
   togglePalette: () =>
-    set((state) => ({
-      open: !state.open,
-      query: "",
-      cursor: 0,
-      armedCommandId: null,
-      opsMessage: null,
-      opsEpoch: state.opsEpoch + 1,
-    })),
+    set((state) => {
+      const current = normalizeCommandPaletteSurfaceState(state);
+      return {
+        open: !current.open,
+        mode: "command",
+        query: "",
+        cursor: 0,
+        searchCursor: 0,
+        searchExpanded: false,
+        armedCommandId: null,
+        opsMessage: null,
+        opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
+      };
+    }),
+  setMode: (mode) => set({ mode: normalizeCommandPaletteMode(mode) }),
   setQuery: (query) => set({ query: normalizeCommandPaletteQuery(query) }),
   setCursor: (cursor) => set({ cursor: normalizeCommandPaletteCursor(cursor) }),
+  setSearchCursor: (cursor) =>
+    set({ searchCursor: normalizeSearchPaletteCursor(cursor) }),
+  setSearchExpanded: (expanded) =>
+    set({ searchExpanded: normalizeSearchPaletteExpanded(expanded) }),
   setArmedCommandId: (commandId) =>
     set({ armedCommandId: normalizeCommandPaletteArmedCommandId(commandId) }),
-  resetSurfaceState: () => set({ query: "", cursor: 0, armedCommandId: null }),
+  resetSurfaceState: () =>
+    set({
+      query: "",
+      cursor: 0,
+      searchCursor: 0,
+      searchExpanded: false,
+      armedCommandId: null,
+    }),
   resetOpsFeedback: () =>
-    set((state) => ({ opsMessage: null, opsEpoch: state.opsEpoch + 1 })),
+    set((state) => ({
+      opsMessage: null,
+      opsEpoch: nextCommandPaletteOpsEpoch(state.opsEpoch),
+    })),
   beginOpsFeedback: (message) => {
-    const epoch = get().opsEpoch + 1;
+    const epoch = nextCommandPaletteOpsEpoch(get().opsEpoch);
     set({
       opsMessage: normalizeCommandPaletteOpsMessage(message),
       opsEpoch: epoch,
@@ -145,42 +390,84 @@ export const useCommandPaletteStore = create<CommandPaletteState>((set, get) => 
         : state;
     }),
   reset: () =>
-    set((state) => ({
-      open: false,
-      query: "",
-      cursor: 0,
-      armedCommandId: null,
-      opsMessage: null,
-      opsEpoch: state.opsEpoch + 1,
-    })),
+    set((state) => {
+      const current = normalizeCommandPaletteSurfaceState(state);
+      return {
+        open: false,
+        mode: "command",
+        query: "",
+        cursor: 0,
+        searchCursor: 0,
+        searchExpanded: false,
+        armedCommandId: null,
+        opsMessage: null,
+        opsEpoch: nextCommandPaletteOpsEpoch(current.opsEpoch),
+      };
+    }),
 }));
 
 export function useCommandPaletteOpen(): boolean {
-  return useCommandPaletteStore((state) => state.open);
+  return useCommandPaletteStore((state) => normalizeCommandPaletteOpen(state.open));
 }
 
 export function useCommandPaletteOpsMessage(): string | null {
-  return useCommandPaletteStore((state) => state.opsMessage);
+  return useCommandPaletteStore((state) =>
+    normalizeCommandPaletteOpsMessage(state.opsMessage),
+  );
+}
+
+export function useCommandPaletteMode(): CommandPaletteMode {
+  return useCommandPaletteStore((state) => normalizeCommandPaletteMode(state.mode));
+}
+
+export function useSearchPaletteCursor(): number {
+  return useCommandPaletteStore((state) =>
+    normalizeSearchPaletteCursor(state.searchCursor),
+  );
+}
+
+export function useSearchPaletteExpanded(): boolean {
+  return useCommandPaletteStore((state) =>
+    normalizeSearchPaletteExpanded(state.searchExpanded),
+  );
 }
 
 export function useCommandPaletteQuery(): string {
-  return useCommandPaletteStore((state) => state.query);
+  return useCommandPaletteStore((state) => normalizeCommandPaletteQuery(state.query));
 }
 
 export function useCommandPaletteCursor(): number {
-  return useCommandPaletteStore((state) => state.cursor);
+  return useCommandPaletteStore((state) => normalizeCommandPaletteCursor(state.cursor));
 }
 
 export function useCommandPaletteArmedCommandId(): string | null {
-  return useCommandPaletteStore((state) => state.armedCommandId);
+  return useCommandPaletteStore((state) =>
+    normalizeCommandPaletteArmedCommandId(state.armedCommandId),
+  );
 }
 
 export function openCommandPalette(): void {
   useCommandPaletteStore.getState().openPalette();
 }
 
+export function openSearchPalette(): void {
+  useCommandPaletteStore.getState().openSearch();
+}
+
 export function closeCommandPalette(): void {
   useCommandPaletteStore.getState().closePalette();
+}
+
+export function setCommandPaletteMode(mode: unknown): void {
+  useCommandPaletteStore.getState().setMode(mode);
+}
+
+export function setSearchPaletteCursor(cursor: unknown): void {
+  useCommandPaletteStore.getState().setSearchCursor(cursor);
+}
+
+export function setSearchPaletteExpanded(expanded: unknown): void {
+  useCommandPaletteStore.getState().setSearchExpanded(expanded);
 }
 
 export function toggleCommandPalette(): void {
@@ -247,6 +534,38 @@ export function useCommandPaletteGlobalToggle(cancelConfirm: () => void): void {
 }
 
 /**
+ * Register the global search shortcut (`app:search`, default `Mod+P`) on the one
+ * keymap registry + dispatcher (keyboard-shortcuts-bind-through-the-one-keymap-
+ * registry). It opens the palette directly in search mode (or, when the palette is
+ * already in search mode, toggles it closed); pressing it from command mode flips
+ * the open palette into search mode. Mirrors `useCommandPaletteGlobalToggle`.
+ */
+export function useSearchPaletteGlobalShortcut(cancelConfirm: () => void): void {
+  const open = useCommandPaletteOpen();
+  const mode = useCommandPaletteMode();
+  useEffect(() => {
+    const disposeBinding = registerKeybindings([SEARCH_PALETTE_KEYBINDING]);
+    const disposeAction = registerKeyAction(SEARCH_PALETTE_ACTION_ID, () => ({
+      id: SEARCH_PALETTE_ACTION_ID,
+      label: SEARCH_PALETTE_SHORTCUT_LABEL,
+      run: () => {
+        cancelConfirm();
+        resetCommandPaletteOpsFeedback();
+        if (open && mode === "search") {
+          closeCommandPalette();
+          return;
+        }
+        openSearchPalette();
+      },
+    }));
+    return () => {
+      disposeAction();
+      disposeBinding();
+    };
+  }, [cancelConfirm, open, mode]);
+}
+
+/**
  * Reset transient command-palette operation feedback when its validity context
  * changes. The feedback line describes one op outcome in one corpus/mode; a
  * scope swap or live/time-travel transition must also bump the epoch so late
@@ -258,7 +577,9 @@ export function useCommandPaletteOpsFeedbackBoundary(
 ): void {
   const normalizedScope = normalizeCommandPaletteFeedbackScope(scope);
   const normalizedTimeTravel = normalizeCommandPaletteFeedbackTimeTravel(timeTravel);
+  const canReset = canResetCommandPaletteFeedbackBoundary(scope);
   useEffect(() => {
+    if (!canReset) return;
     resetCommandPaletteOpsFeedback();
-  }, [normalizedScope, normalizedTimeTravel]);
+  }, [canReset, normalizedScope, normalizedTimeTravel]);
 }

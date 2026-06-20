@@ -6,6 +6,7 @@ import {
 import {
   fitTimelineSpan,
   fitTimelineViewportForScope,
+  normalizeTimelineCorpusKey,
   normalizeTimelinePlayhead,
   normalizeTimelineScope,
   parseTimelineInstant,
@@ -27,6 +28,8 @@ import {
 export const TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH = 800;
 export const TIMELINE_NAV_EVENT_SPAN_MS = 24 * 3600 * 1000;
 export const LIVE_SNAP_PX = 10;
+export const PLAYHEAD_KEY_STEP_FRACTION = 1 / 24;
+export const PLAYHEAD_KEY_NUDGE_FRACTION = 1 / 96;
 
 export function dragToPlayhead(
   x: number,
@@ -48,6 +51,39 @@ export function keyboardStep(
   const next = base + deltaMs;
   if (next >= now) return "live";
   return Math.min(now, next);
+}
+
+export function playheadKeyboardTarget(
+  key: unknown,
+  current: unknown,
+  visibleSpanMs: unknown,
+  now = Date.now(),
+): number | "live" | null {
+  if (typeof key !== "string") return null;
+  if (
+    typeof visibleSpanMs !== "number" ||
+    !Number.isFinite(visibleSpanMs) ||
+    visibleSpanMs <= 0
+  ) {
+    return null;
+  }
+  const playhead = normalizeTimelinePlayhead(current);
+  const step = visibleSpanMs * PLAYHEAD_KEY_STEP_FRACTION;
+  const nudge = visibleSpanMs * PLAYHEAD_KEY_NUDGE_FRACTION;
+  switch (key) {
+    case "[":
+      return keyboardStep(playhead, -step, now);
+    case "]":
+      return keyboardStep(playhead, step, now);
+    case "ArrowLeft":
+      return keyboardStep(playhead, -nudge, now);
+    case "ArrowRight":
+      return keyboardStep(playhead, nudge, now);
+    case "Home":
+      return "live";
+    default:
+      return null;
+  }
 }
 
 export interface PlayheadDragPointerSessionInput {
@@ -162,13 +198,15 @@ export function fitTimelineNavigationToDateRange(
 }
 
 export function fitTimelineScopeToCorpus(
-  scope: string | null,
+  scope: unknown,
   corpusBounds: TimelineCorpusBounds | undefined,
   viewportWidth: number,
-  corpusKey: string | null,
+  corpusKey: unknown,
   now = Date.now(),
 ): { pxPerMs: number; scrollOffset: number } | null {
-  if (scope == null || !corpusKey) return null;
+  const normalizedScope = normalizeTimelineScope(scope);
+  const normalizedCorpusKey = normalizeTimelineCorpusKey(corpusKey);
+  if (normalizedScope === null || normalizedCorpusKey === null) return null;
   const from = parseTimelineInstant(corpusBounds?.from);
   if (!Number.isFinite(from)) return null;
   const to = parseTimelineInstant(corpusBounds?.to, now);
@@ -177,7 +215,12 @@ export function fitTimelineScopeToCorpus(
     Number.isFinite(to) ? to : now,
     timelineNavigationViewportWidth(viewportWidth),
   );
-  fitTimelineViewportForScope(scope, next.pxPerMs, next.scrollOffset, corpusKey);
+  fitTimelineViewportForScope(
+    normalizedScope,
+    next.pxPerMs,
+    next.scrollOffset,
+    normalizedCorpusKey,
+  );
   return next;
 }
 
@@ -207,7 +250,7 @@ export function jumpTimelineNavigationToLive(
   corpusBounds: TimelineCorpusBounds | undefined,
   pxPerMs: number,
   viewportWidth: number,
-  scope: string | null,
+  scope: unknown,
   now = Date.now(),
 ): number {
   const scrollOffset = jumpTimelineNavigationToCorpusEdge(

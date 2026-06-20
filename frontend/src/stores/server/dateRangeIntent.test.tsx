@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { dashboardDocumentStateResetPatch } from "./dashboardState";
-import { normalizeDateRangeIntentScope, useDateRangeIntent } from "./dateRangeIntent";
+import {
+  normalizeDateRangeIntentRange,
+  normalizeDateRangeIntentScope,
+  useDateRangeIntent,
+} from "./dateRangeIntent";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -40,6 +44,19 @@ describe("useDateRangeIntent", () => {
     expect(normalizeDateRangeIntentScope(" scope-a ")).toBe("scope-a");
     expect(normalizeDateRangeIntentScope("   ")).toBeNull();
     expect(normalizeDateRangeIntentScope({ scope: "scope-a" })).toBeNull();
+    expect(
+      normalizeDateRangeIntentRange({
+        from: " 2026-06-30 ",
+        to: "2026-06-01",
+      }),
+    ).toEqual({ from: "2026-06-01", to: "2026-06-30" });
+    expect(normalizeDateRangeIntentRange({ to: "2026-06-30" })).toEqual({
+      to: "2026-06-30",
+    });
+    expect(normalizeDateRangeIntentRange({ from: "bad" })).toBeNull();
+    expect(normalizeDateRangeIntentRange({})).toBeNull();
+    expect(normalizeDateRangeIntentRange("2026-06-30")).toBeNull();
+    expect(normalizeDateRangeIntentRange(["2026-06-01"])).toBeNull();
   });
 
   it("is inert without a scope", async () => {
@@ -54,7 +71,7 @@ describe("useDateRangeIntent", () => {
     await expect(result.current.clearRange()).resolves.toBeNull();
   });
 
-  it("accepts malformed range payloads at the intent seam", async () => {
+  it("drops malformed range payloads at the intent seam", async () => {
     const client = testQueryClient();
     const { result } = renderHook(() => useDateRangeIntent(null), {
       wrapper: wrapper(client),
@@ -105,6 +122,35 @@ describe("useDateRangeIntent", () => {
     await expect(result.current.clearRange()).resolves.toBeNull();
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
       date_range: { from: "2026-05-01", to: "2026-05-31" },
+    });
+  });
+
+  it("rejects malformed range payloads before clearing canonical dashboard state", async () => {
+    const scope = await liveScope();
+    cleanupScope = scope;
+    await createLiveClient().patchDashboardState({
+      ...dashboardDocumentStateResetPatch(scope),
+      date_range: { from: "2026-05-01", to: "2026-05-31" },
+    });
+
+    const client = testQueryClient();
+    const { result } = renderHook(() => useDateRangeIntent(scope), {
+      wrapper: wrapper(client),
+    });
+
+    await expect(result.current.setRange("2026-06-01")).resolves.toBeNull();
+    await expect(result.current.setRange({ from: "bad" })).resolves.toBeNull();
+    await expect(result.current.setRange({})).resolves.toBeNull();
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      date_range: { from: "2026-05-01", to: "2026-05-31" },
+    });
+
+    await act(async () => {
+      await result.current.clearRange();
+    });
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      date_range: {},
     });
   });
 });

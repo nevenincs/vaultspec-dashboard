@@ -33,20 +33,24 @@ const INITIAL = {
   brokenLinkCount: 0,
 };
 
+export const LIVE_SEQ_MAX = Number.MAX_SAFE_INTEGER;
+export const LIVE_BROKEN_LINK_COUNT_MAX = 10_000;
+
 export function normalizeLiveStreamConnected(connected: unknown): boolean | null {
   return typeof connected === "boolean" ? connected : null;
 }
 
 export function normalizeLiveSeq(seq: unknown): number | null {
-  return typeof seq === "number" && Number.isFinite(seq) && seq >= 0
-    ? Math.floor(seq)
+  if (typeof seq !== "number" || !Number.isFinite(seq) || seq < 0) return null;
+  const normalized = Math.floor(seq);
+  return Number.isSafeInteger(normalized) && normalized <= LIVE_SEQ_MAX
+    ? normalized
     : null;
 }
 
 export function normalizeLiveBrokenLinkCount(count: unknown): number | null {
-  return typeof count === "number" && Number.isFinite(count)
-    ? Math.max(0, Math.floor(count))
-    : null;
+  if (typeof count !== "number" || !Number.isFinite(count)) return null;
+  return Math.min(LIVE_BROKEN_LINK_COUNT_MAX, Math.max(0, Math.floor(count)));
 }
 
 export const useLiveStatusStore = create<LiveStatusState>((set) => ({
@@ -91,13 +95,23 @@ export function setLiveBrokenLinkCount(count: unknown): void {
   useLiveStatusStore.getState().setBrokenLinkCount(count);
 }
 
-export function countBrokenLinks(edges: readonly { state?: string | null }[]): number {
-  return edges.filter((edge) => edge.state === "broken").length;
+function liveEdgeState(edge: unknown): unknown {
+  return edge !== null && typeof edge === "object"
+    ? (edge as { state?: unknown }).state
+    : undefined;
 }
 
-export function setLiveBrokenLinkCountFromEdges(
-  edges: readonly { state?: string | null }[],
-): void {
+export function countBrokenLinks(edges: unknown): number {
+  if (!Array.isArray(edges)) return 0;
+  let count = 0;
+  for (const edge of edges) {
+    if (liveEdgeState(edge) === "broken") count += 1;
+    if (count >= LIVE_BROKEN_LINK_COUNT_MAX) break;
+  }
+  return count;
+}
+
+export function setLiveBrokenLinkCountFromEdges(edges: unknown): void {
   setLiveBrokenLinkCount(countBrokenLinks(edges));
 }
 
@@ -107,12 +121,12 @@ export function setLiveBrokenLinkCountFromEdges(
  * not compose graph-derived degradation state locally.
  */
 export function useLiveBrokenLinkCountFromEdges(
-  edges: readonly { state?: string | null }[] | null,
-  enabled: boolean,
+  edges: unknown,
+  enabled: unknown,
 ): void {
   useEffect(() => {
-    if (!enabled) return;
-    setLiveBrokenLinkCountFromEdges(edges ?? []);
+    if (enabled !== true) return;
+    setLiveBrokenLinkCountFromEdges(edges);
   }, [edges, enabled]);
 }
 

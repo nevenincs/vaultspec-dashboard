@@ -5,6 +5,10 @@ import { liveTransport } from "../../testing/liveClient";
 import { engineClient } from "./engine";
 import {
   OPS_ACTION,
+  OPS_BODY_CONTENT_MAX_CHARS,
+  OPS_BODY_STRING_LIST_MAX_ITEMS,
+  OPS_BODY_STRING_MAX_CHARS,
+  OPS_VERB_MAX_CHARS,
   dispatchOps,
   isOpsDispatchIntent,
   isOpsWhitelistIntent,
@@ -41,6 +45,7 @@ describe("ops dispatch adoption (B-1)", () => {
     expect(normalizeOpsTarget({ target: "rag" })).toBeNull();
     expect(normalizeOpsVerb(" reindex ")).toBe("reindex");
     expect(normalizeOpsVerb("   ")).toBeNull();
+    expect(normalizeOpsVerb("x".repeat(OPS_VERB_MAX_CHARS + 1))).toBeNull();
     expect(normalizeOpsVerb({ verb: "reindex" })).toBeNull();
   });
 
@@ -105,6 +110,39 @@ describe("ops dispatch adoption (B-1)", () => {
     ).toBe(false);
     expect(
       isOpsDispatchIntent({
+        target: "core",
+        verb: "rename",
+        mode: "write",
+        body: { ref: "old-plan", to: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1) },
+      }),
+    ).toBe(false);
+    expect(
+      isOpsDispatchIntent({
+        target: "core",
+        verb: "set-body",
+        mode: "write",
+        body: {
+          ref: "plan",
+          body: "x".repeat(OPS_BODY_CONTENT_MAX_CHARS + 1),
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isOpsDispatchIntent({
+        target: "core",
+        verb: "set-frontmatter",
+        mode: "write",
+        body: {
+          ref: "plan",
+          tags: Array.from(
+            { length: OPS_BODY_STRING_LIST_MAX_ITEMS + 1 },
+            (_, index) => `tag-${index}`,
+          ),
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isOpsDispatchIntent({
         target: "rag",
         verb: "project-evict",
         body: { root: "Y:/repo" },
@@ -149,6 +187,39 @@ describe("ops dispatch adoption (B-1)", () => {
         body: { doc_type: "plan" },
       }),
     ).toThrow("operation is not dispatch-whitelisted: core:create");
+    expect(() =>
+      dispatchOps({
+        target: "core",
+        verb: "rename",
+        mode: "write",
+        body: {
+          ref: "old-plan",
+          to: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1),
+        },
+      }),
+    ).toThrow("operation is not dispatch-whitelisted: core:rename");
+    expect(() =>
+      dispatchOps({
+        target: "core",
+        verb: "set-body",
+        mode: "write",
+        body: {
+          ref: "plan",
+          body: "x".repeat(OPS_BODY_CONTENT_MAX_CHARS + 1),
+        },
+      }),
+    ).toThrow("operation is not dispatch-whitelisted: core:set-body");
+    expect(() =>
+      dispatchOps({
+        target: "core",
+        verb: "create",
+        mode: "create",
+        body: {
+          doc_type: "plan",
+          feature: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1),
+        },
+      }),
+    ).toThrow("operation is not dispatch-whitelisted: core:create");
 
     expect(calls).toEqual([]);
   });
@@ -176,6 +247,13 @@ describe("ops dispatch adoption (B-1)", () => {
     ).toThrow("operation is not dispatch-whitelisted: rag:watcher-reconfigure");
     expect(() =>
       dispatchOps({ target: "rag", verb: "project-evict", body: { root: "" } }),
+    ).toThrow("operation is not dispatch-whitelisted: rag:project-evict");
+    expect(() =>
+      dispatchOps({
+        target: "rag",
+        verb: "project-evict",
+        body: { root: "x".repeat(OPS_BODY_STRING_MAX_CHARS + 1) },
+      }),
     ).toThrow("operation is not dispatch-whitelisted: rag:project-evict");
     expect(() =>
       dispatchOps({ target: "rag", verb: "service-start", body: { extra: true } }),
@@ -228,6 +306,16 @@ describe("ops dispatch adoption (B-1)", () => {
         payload: { target: "core", verb: 42 },
       }),
     ).toThrow("operation is not dispatch-whitelisted: core:42");
+    expect(() =>
+      appDispatcher.dispatch({
+        type: OPS_ACTION,
+        payload: { target: "core", verb: "x".repeat(OPS_VERB_MAX_CHARS + 1) },
+      }),
+    ).toThrow(
+      `operation is not dispatch-whitelisted: core:${"x".repeat(
+        OPS_VERB_MAX_CHARS + 1,
+      )}`,
+    );
 
     expect(calls).toEqual([]);
   });

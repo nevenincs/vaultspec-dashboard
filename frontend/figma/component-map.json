@@ -551,8 +551,8 @@
       "bindingKind": "surface"
     },
     {
-      "name": "RailFilter",
-      "source": "src/app/left/RailFilter.tsx",
+      "name": "RailFilterField",
+      "source": "src/app/left/RailFilterField.tsx",
       "designSurface": true,
       "figmaNodeId": "636:1947",
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=636-1947",

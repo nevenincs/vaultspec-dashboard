@@ -31,10 +31,12 @@ import {
   featureNodeIdFromTag,
   featureTagFromNodeId,
   GIT_CHANGED_FILES_MAX_ROWS,
-  GIT_DIFF_LINE_MAX_CHARS,
-  GIT_DIFF_MAX_HUNKS,
-  GIT_DIFF_MAX_LINES,
-  GIT_PATH_MAX_CHARS,
+    GIT_DIFF_LINE_MAX_CHARS,
+    GIT_DIFF_MAX_HUNKS,
+    GIT_DIFF_MAX_LINES,
+    GIT_OP_OUTPUT_MAX_CHARS,
+    GIT_OP_VERB_MAX_CHARS,
+    GIT_PATH_MAX_CHARS,
   HISTORY_COMMIT_BODY_MAX_CHARS,
   HISTORY_COMMITS_MAX_ITEMS,
   HISTORY_STRING_MAX_CHARS,
@@ -44,6 +46,9 @@ import {
   parseGitNumstat,
   parseGitStatus,
   parseUnifiedDiff,
+  SEARCH_RESULT_EXCERPT_MAX_CHARS,
+  SEARCH_RESULT_IDENTITY_MAX_CHARS,
+  SEARCH_RESULTS_MAX_ITEMS,
   unwrapEnvelope,
 } from "./liveAdapters";
 import { engineNodeToScene } from "../../scene/sceneMapping";
@@ -975,6 +980,35 @@ describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
       },
     ]);
   });
+
+  it("bounds live search result strings and accumulated rows at the adapter", () => {
+    const overlongIdentity = "x".repeat(SEARCH_RESULT_IDENTITY_MAX_CHARS + 1);
+    const overlongExcerpt = "e".repeat(SEARCH_RESULT_EXCERPT_MAX_CHARS + 8);
+    const rows = [
+      {
+        path: overlongIdentity,
+        score: 0.5,
+        excerpt: "overlong identity is malformed",
+      },
+      ...Array.from({ length: SEARCH_RESULTS_MAX_ITEMS + 3 }, (_, index) => ({
+        path: `src/search/result-${index}.ts`,
+        score: 0.75,
+        text: index === 0 ? overlongExcerpt : `match ${index}`,
+      })),
+    ];
+
+    const adapted = adaptSearch({
+      envelope: { data: { results: rows } },
+      tiers: TIERS,
+    }) as { results: SearchResult[] };
+
+    expect(adapted.results).toHaveLength(SEARCH_RESULTS_MAX_ITEMS);
+    expect(adapted.results[0].source).toBe("src/search/result-0.ts");
+    expect(adapted.results[0].excerpt).toHaveLength(SEARCH_RESULT_EXCERPT_MAX_CHARS);
+    expect(adapted.results.at(-1)?.source).toBe(
+      `src/search/result-${SEARCH_RESULTS_MAX_ITEMS - 1}.ts`,
+    );
+  });
 });
 
 describe("deriveSearchNodeId (node-id grammar, null floor — search ADR)", () => {
@@ -1346,6 +1380,21 @@ describe("adaptGitOp + /ops/git consumer fidelity (W05.P12.S64)", () => {
     expect(diff.verb).toBe("diff");
     expect(diff.output).toContain("@@ -1,1 +1,1 @@");
     expect(diff.output).toContain("+new");
+  });
+
+  it("bounds git op verb and output at the adapter boundary", () => {
+    const adapted = adaptGitOp({
+      verb: "x".repeat(GIT_OP_VERB_MAX_CHARS + 1),
+      output: "d".repeat(GIT_OP_OUTPUT_MAX_CHARS + 1),
+      tiers: TIERS,
+    });
+
+    expect(adapted.verb).toBe("");
+    expect(adapted.output).toHaveLength(GIT_OP_OUTPUT_MAX_CHARS);
+    expect(adapted.truncated).toEqual({
+      returned_chars: GIT_OP_OUTPUT_MAX_CHARS,
+      reason: "git output ceiling",
+    });
   });
 });
 

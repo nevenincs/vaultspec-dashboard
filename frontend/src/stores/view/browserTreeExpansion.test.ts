@@ -1,11 +1,17 @@
-import { beforeEach, describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   BROWSER_TREE_EXPANDED_KEYS_CAP,
   BROWSER_TREE_ITEM_KEY_MAX_CHARS,
   BROWSER_TREE_KEY_MAX_CHARS,
   browserTreeExpansionKey,
+  canWriteBrowserTreeExpansionScope,
+  deriveAllVaultBrowserTreeKeys,
   deriveBrowserTreeExpansionItem,
+  deriveBrowserTreeKeyboardTarget,
   deriveBrowserTreeRovingKey,
   deriveCodeBrowserTreeNavKey,
   deriveCodeBrowserTreeRowView,
@@ -15,11 +21,63 @@ import {
   normalizeBrowserTreeItemKey,
   normalizeBrowserTreeMode,
   normalizeBrowserTreeScope,
+  useBrowserTreeExpansion,
   useBrowserTreeExpansionStore,
+  VAULT_BROWSER_TREE_SECTION_KEYS,
 } from "./browserTreeExpansion";
+
+describe("deriveAllVaultBrowserTreeKeys", () => {
+  it("returns the two sections plus every feature and doc-type folder key", () => {
+    expect(
+      deriveAllVaultBrowserTreeKeys({
+        features: ["alpha", "beta"],
+        docTypes: ["adr", "plan"],
+      }),
+    ).toEqual([
+      "sec:features",
+      "sec:documents",
+      "feat:alpha",
+      "feat:beta",
+      "type:adr",
+      "type:plan",
+    ]);
+  });
+
+  it("is just the section keys when the tree has no groups", () => {
+    expect(deriveAllVaultBrowserTreeKeys({ features: [], docTypes: [] })).toEqual([
+      ...VAULT_BROWSER_TREE_SECTION_KEYS,
+    ]);
+  });
+});
+
+describe("browser tree expand/collapse all", () => {
+  beforeEach(() => useBrowserTreeExpansionStore.getState().reset());
+
+  it("expandKeys sets then merges the expanded set; collapseAll clears it", () => {
+    const key = browserTreeExpansionKey(null, "vault");
+    const store = useBrowserTreeExpansionStore.getState();
+    store.expandKeys(key, ["sec:features", "feat:alpha"]);
+    expect(new Set(useBrowserTreeExpansionStore.getState().expandedKeys)).toEqual(
+      new Set(["sec:features", "feat:alpha"]),
+    );
+    store.expandKeys(key, ["feat:alpha", "type:adr"]);
+    expect(new Set(useBrowserTreeExpansionStore.getState().expandedKeys)).toEqual(
+      new Set(["sec:features", "feat:alpha", "type:adr"]),
+    );
+    store.collapseAll(key);
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).toEqual([]);
+  });
+
+  it("drops malformed item keys at the expandKeys boundary", () => {
+    const key = browserTreeExpansionKey(null, "vault");
+    useBrowserTreeExpansionStore.getState().expandKeys(key, ["ok", "", 5, null]);
+    expect(useBrowserTreeExpansionStore.getState().expandedKeys).toEqual(["ok"]);
+  });
+});
 
 describe("browser tree expansion store", () => {
   beforeEach(() => useBrowserTreeExpansionStore.getState().reset());
+  afterEach(() => cleanup());
 
   it("derives collision-resistant keys for null and separator-bearing scopes", () => {
     expect(browserTreeExpansionKey(null, "vault")).toBe(
@@ -42,15 +100,19 @@ describe("browser tree expansion store", () => {
     expect(normalizeBrowserTreeScope({ scope: "scope-a" })).toBeNull();
     expect(normalizeBrowserTreeMode("code")).toBe("code");
     expect(normalizeBrowserTreeMode("unknown")).toBe("vault");
+    expect(canWriteBrowserTreeExpansionScope(null)).toBe(true);
+    expect(canWriteBrowserTreeExpansionScope(" scope-a ")).toBe(true);
+    expect(canWriteBrowserTreeExpansionScope({ scope: "scope-a" })).toBe(false);
+    expect(canWriteBrowserTreeExpansionScope("   ")).toBe(false);
     expect(browserTreeExpansionKey(" scope-a ", "code")).toBe(
       "browser-tree:scope:value:scope-a:code",
     );
     expect(browserTreeExpansionKey({ scope: "scope-a" }, "other")).toBe(
       "browser-tree:scope:null:vault",
     );
-    expect(browserTreeExpansionKey("s".repeat(BROWSER_TREE_KEY_MAX_CHARS), "code")).toBe(
-      "browser-tree:scope:null:vault",
-    );
+    expect(
+      browserTreeExpansionKey("s".repeat(BROWSER_TREE_KEY_MAX_CHARS), "code"),
+    ).toBe("browser-tree:scope:null:vault");
   });
 
   it("keys disclosure state by scope and browser mode", () => {
@@ -175,6 +237,45 @@ describe("browser tree expansion store", () => {
     });
   });
 
+  it("keeps malformed runtime scope inert at the hook write seam", () => {
+    const key = browserTreeExpansionKey("scope-a", "vault");
+    useBrowserTreeExpansionStore.getState().toggle(key, "f:kept");
+
+    const { result } = renderHook(() =>
+      useBrowserTreeExpansion({ scope: "scope-a" }, "vault"),
+    );
+
+    expect(result.current.expanded.size).toBe(0);
+    expect(result.current.activeKey).toBeNull();
+
+    act(() => {
+      result.current.toggle("f:bad");
+      result.current.setActiveKey("f:bad");
+    });
+
+    expect(useBrowserTreeExpansionStore.getState()).toMatchObject({
+      key,
+      expandedKeys: ["f:kept"],
+      activeKey: null,
+    });
+  });
+
+  it("keeps explicit null scope writable as the intentional no-scope bucket", () => {
+    const key = browserTreeExpansionKey(null, "vault");
+    const { result } = renderHook(() => useBrowserTreeExpansion(null, "vault"));
+
+    act(() => {
+      result.current.toggle("f:null-scope");
+      result.current.setActiveKey("f:null-scope");
+    });
+
+    expect(useBrowserTreeExpansionStore.getState()).toMatchObject({
+      key,
+      expandedKeys: ["f:null-scope"],
+      activeKey: "f:null-scope",
+    });
+  });
+
   it("projects expanded state for browser tree row keys", () => {
     const expanded = new Set(["f:auth"]);
 
@@ -240,6 +341,33 @@ describe("browser tree expansion store", () => {
     );
     expect(deriveBrowserTreeRovingKey("r:missing.md", ["f:auth"])).toBe("f:auth");
     expect(deriveBrowserTreeRovingKey(null, [])).toBeNull();
+  });
+
+  it("projects keyboard roving targets from the visible browser-tree order", () => {
+    const order = ["f:auth", "d:auth/adr", "r:.vault/adr/auth.md"];
+
+    expect(deriveBrowserTreeKeyboardTarget(order, "f:auth", "ArrowDown")).toBe(
+      "d:auth/adr",
+    );
+    expect(deriveBrowserTreeKeyboardTarget(order, "d:auth/adr", "ArrowUp")).toBe(
+      "f:auth",
+    );
+    expect(deriveBrowserTreeKeyboardTarget(order, "f:auth", "ArrowUp")).toBe("f:auth");
+    expect(
+      deriveBrowserTreeKeyboardTarget(order, "r:.vault/adr/auth.md", "ArrowDown"),
+    ).toBe("r:.vault/adr/auth.md");
+  });
+
+  it("keeps malformed keyboard roving targets inert", () => {
+    const order = ["f:auth", "d:auth/adr"];
+
+    expect(deriveBrowserTreeKeyboardTarget(order, "f:auth", "Enter")).toBeNull();
+    expect(deriveBrowserTreeKeyboardTarget(order, "missing", "ArrowDown")).toBeNull();
+    expect(deriveBrowserTreeKeyboardTarget(order, "   ", "ArrowDown")).toBeNull();
+    expect(deriveBrowserTreeKeyboardTarget([], "f:auth", "ArrowDown")).toBeNull();
+    expect(
+      deriveBrowserTreeKeyboardTarget(order, { key: "f:auth" }, "ArrowDown"),
+    ).toBeNull();
   });
 
   it("derives code-tree nav keys by kind and path", () => {

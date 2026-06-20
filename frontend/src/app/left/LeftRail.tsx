@@ -1,66 +1,54 @@
-// The left scope rail composition (dashboard-left-rail ADR "The rail as an
-// ordered stack of hosted slots"): the rail is CHROME that hosts independently-
-// specified controls and owns only their composition. Top to bottom this stack
-// hosts:
+// The left scope rail composition (binding `LeftRail` 238:600). The rail is CHROME
+// that hosts independently-specified controls and owns only their composition. Top
+// to bottom this stack hosts, separated by hairline dividers exactly as the binding
+// frame:
 //
-//   1. WorktreePicker   — the ONE rail title: a single clickable element showing
-//                          the current worktree's NAME (default "main"); clicking
-//                          opens the worktree/folder picker. This is the only
-//                          place the repository identity is stated in the left
-//                          rail — the branch is shown once, in the right rail.
-//   2. BrowserRegion    — the file-thinking surface: vault | code modes behind a
-//                          toggle, with an in-rail filter (which DOCUMENT/FILE).
-//
-// "The ordering is the contract made physical": scope is chosen coarse-to-fine —
-// worktree, then document/file — mirroring the stateless-scope rule. The header's
-// collapse toggle (owned by the AppShell `aside` chrome) is FIRST in the rail's
-// single top-to-bottom focus order; this content stack continues that order
-// (worktree title → browser mode toggle → filter → the active mode's rows), and
-// the whole rail content is ONE labelled navigation landmark.
+//   1. WorktreePicker  — the project/worktree header: the current name as a plain
+//                        title that opens the chooser, plus the folder-add and
+//                        rail-collapse icon buttons.
+//   2. RailFilterField — the ONE canonical filter: a FEATURE filter (type → narrow)
+//                        that pops up the fine-tuned facet flyout on focus.
+//   3. BrowserRegion   — the Vault | Files tabs and the active tab's tree.
 //
 // THE SINGLE NAVIGATION LAW (dashboard-left-rail ADR / engine-read-and-infer):
-// every interaction in this stack resolves to one of exactly three intents,
-// emitted through the stores layer — (a) select a scope (workspace/worktree →
-// the wholesale reset), (b) select a node (vault doc / code file → focus the
-// stage by stable id), or (c) adjust a view-local affordance (collapse, mode
-// toggle, filter, group expand). The rail issues NO mutation intent of any kind:
-// there is no write path from the rail to git, disk, or the vault, and no
-// component here fetches the engine, mints a node identity, or reads the raw
-// `tiers` block. Git is surfaced as read-only status through stores-owned
-// projections; working git review is the right rail's concern. This module
-// composes; the hosted controls own their own behaviour.
+// every interaction resolves to one of exactly three intents emitted through the
+// stores layer — select a scope, select a node, or adjust a view-local affordance
+// (collapse, tab, filter, expand). The rail issues NO mutation intent: no write path
+// to git/disk/vault, no component fetches the engine, mints a node identity, or
+// reads the raw `tiers` block. This module composes; the hosted controls own their
+// behaviour.
 
+import { Divider } from "../kit";
 import { BrowserRegion } from "./BrowserRegion";
+import { RailFilterField } from "./RailFilterField";
 import { WorktreePicker } from "./WorktreePicker";
 
 export function LeftRail() {
   return (
-    // ONE labelled navigation landmark for the whole rail content (ADR "Keyboard
-    // and a11y", "the rail is one labelled navigation landmark"). Attenuated
-    // chrome: the rail cedes attention to the stage; the active surface is
-    // brightest. The flex column gives the browser region the remaining height so
-    // it dominates the rail (the workspace/worktree pickers are compact).
+    // ONE labelled navigation landmark for the whole rail content. The flex column
+    // gives the browser region the remaining height so it dominates the rail (the
+    // header, filter, and tabs are compact). Binding spacing: px/pt 12, a 12px gap
+    // between the stacked slots, hairline dividers bracketing the filter field.
     <nav
       aria-label="scope rail"
       data-left-rail
-      // Binding rail spacing (board 244:750): px 12, pt 14, and a uniform 14px gap
-      // between the stacked slots — NO separators (the board has none).
-      className="flex min-h-0 flex-1 flex-col gap-[0.875rem] px-fg-3 pt-[0.875rem] text-ink-muted"
+      className="flex min-h-0 flex-1 flex-col gap-fg-3 px-fg-3 pt-fg-3 text-ink-muted"
     >
-      {/* The single rail title: one clickable element showing the current
-          worktree's NAME (default = "main"); clicking opens the worktree/folder
-          picker. Repository status (the branch) is stated once, in the right
-          rail — the left rail no longer repeats a project title or the branch. */}
       <div className="shrink-0" data-rail-slot="worktree">
         <WorktreePicker />
       </div>
 
-      {/* 3. Browser region: Vault/Code toggle, the filter, and the document
-             list. Fills the remaining height so the browser dominates the rail. */}
-      <div
-        className="flex min-h-0 flex-1 flex-col gap-[0.875rem]"
-        data-rail-slot="browser"
-      >
+      <Divider />
+
+      <div className="shrink-0" data-rail-slot="filter">
+        <RailFilterField />
+      </div>
+
+      <Divider />
+
+      {/* Vault/Files tabs + the active tab's tree. Fills the remaining height so the
+          browser dominates the rail. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-fg-3" data-rail-slot="browser">
         <BrowserRegion />
       </div>
     </nav>

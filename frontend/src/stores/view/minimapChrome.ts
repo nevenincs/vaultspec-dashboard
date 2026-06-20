@@ -40,7 +40,8 @@ export interface MinimapChromeView {
 export const useMinimapChromeStore = create<MinimapChromeState>((set) => ({
   collapsed: false,
   setCollapsed: (collapsed) => set({ collapsed: normalizeMinimapCollapsed(collapsed) }),
-  toggleCollapsed: () => set((state) => ({ collapsed: !state.collapsed })),
+  toggleCollapsed: () =>
+    set((state) => ({ collapsed: !normalizeMinimapCollapsed(state.collapsed) })),
   reset: () => set({ collapsed: false }),
 }));
 
@@ -49,17 +50,19 @@ export function normalizeMinimapCollapsed(value: unknown): boolean {
 }
 
 export function deriveMinimapChromeView(
-  collapsed: boolean,
-  embedded = false,
+  collapsed: unknown,
+  embedded: unknown = false,
 ): MinimapChromeView {
-  const expanded = !collapsed;
+  const normalizedCollapsed = normalizeMinimapCollapsed(collapsed);
+  const embeddedMinimap = embedded === true;
+  const expanded = !normalizedCollapsed;
   return {
-    collapsed,
+    collapsed: normalizedCollapsed,
     expanded,
-    rootClassName: embedded
+    rootClassName: embeddedMinimap
       ? "overflow-hidden"
       : "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden backdrop-blur-sm",
-    rootStyle: { width: collapsed ? "auto" : MINIMAP_CANVAS_WIDTH + 2 },
+    rootStyle: { width: normalizedCollapsed ? "auto" : MINIMAP_CANVAS_WIDTH + 2 },
     groupAriaLabel: "graph minimap navigator",
     headerClassName:
       "flex items-center justify-between gap-fg-1 border-b border-rule pr-fg-1",
@@ -67,13 +70,13 @@ export function deriveMinimapChromeView(
     titleLabel: "Map",
     showRecenter: expanded,
     recenterLabel: "recenter the field in view",
-    collapseLabel: collapsed ? "expand minimap" : "collapse minimap",
+    collapseLabel: normalizedCollapsed ? "expand minimap" : "collapse minimap",
     collapseActive: expanded,
     collapseAriaExpanded: expanded,
-    collapseIcon: collapsed ? "expand" : "collapse",
+    collapseIcon: normalizedCollapsed ? "expand" : "collapse",
     canvasRegionId: MINIMAP_CANVAS_REGION_ID,
-    canvasRegionAriaHidden: collapsed,
-    canvasRegionStyle: { display: collapsed ? "none" : "block" },
+    canvasRegionAriaHidden: normalizedCollapsed,
+    canvasRegionStyle: { display: normalizedCollapsed ? "none" : "block" },
     canvasWidth: MINIMAP_CANVAS_WIDTH,
     canvasHeight: MINIMAP_CANVAS_HEIGHT,
     canvasAriaLabel:
@@ -84,11 +87,13 @@ export function deriveMinimapChromeView(
 }
 
 export function useMinimapCollapsed(): boolean {
-  return useMinimapChromeStore((state) => state.collapsed);
+  return useMinimapChromeStore((state) => normalizeMinimapCollapsed(state.collapsed));
 }
 
-export function useMinimapChromeView(embedded = false): MinimapChromeView {
-  const collapsed = useMinimapChromeStore((state) => state.collapsed);
+export function useMinimapChromeView(embedded: unknown = false): MinimapChromeView {
+  const collapsed = useMinimapChromeStore((state) =>
+    normalizeMinimapCollapsed(state.collapsed),
+  );
   return useMemo(
     () => deriveMinimapChromeView(collapsed, embedded),
     [collapsed, embedded],

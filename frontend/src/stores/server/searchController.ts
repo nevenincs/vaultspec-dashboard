@@ -73,6 +73,8 @@ export function pathToDocNodeId(path: string): string {
  * second fetch is forced — `useSearchController` reuses the cached scope tree).
  * Every fallback hit is clickable via its grammar-derived `doc:{stem}` id.
  */
+export const SEARCH_FALLBACK_RESULTS_MAX_ITEMS = 20;
+
 export function buildFallbackResults(
   entries: readonly VaultTreeEntry[] | undefined,
   query: unknown,
@@ -94,8 +96,14 @@ export function buildFallbackResults(
       excerpt: `${entry.doc_type} · #${entry.feature_tags.join(" #")}`,
       node_id: pathToDocNodeId(entry.path),
     });
+    if (results.length > SEARCH_FALLBACK_RESULTS_MAX_ITEMS) {
+      results.sort((a, b) => b.score - a.score);
+      results.pop();
+    }
   }
-  return results.sort((a, b) => b.score - a.score).slice(0, 20);
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, SEARCH_FALLBACK_RESULTS_MAX_ITEMS);
 }
 
 // --- degradation seam (pure, tiers-gated, unit-tested) -----------------------------
@@ -149,10 +157,15 @@ export function isTransportError(error: unknown): boolean {
 // recovered rag would stay pinned to the text-match fallback for the rest of the
 // session. A value-based read survives the ring cap unchanged.
 
+export const SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS = 64;
+
 export function normalizeSearchRagLifecycleWord(word: unknown): string | undefined {
   if (typeof word !== "string") return undefined;
   const normalized = word.trim();
-  return normalized.length > 0 ? normalized : undefined;
+  return normalized.length > 0 &&
+    normalized.length <= SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS
+    ? normalized
+    : undefined;
 }
 
 /** The rag lifecycle word from a single retained stream chunk, if it carries one. */
@@ -380,6 +393,12 @@ export function deriveSearchResultRowViews(
   return results.map((result, index) =>
     deriveSearchResultRowView(result, index, target, scope, fallback),
   );
+}
+
+export function searchResultKeyboardFocusDelta(key: unknown): -1 | 1 | null {
+  if (key === "ArrowDown") return 1;
+  if (key === "ArrowUp") return -1;
+  return null;
 }
 
 /**
@@ -728,4 +747,118 @@ export function useSearchController(
     filterVocabulary: requestSettled ? filters.data : undefined,
     retry,
   });
+}
+
+// --- unified (vault + code) search for the Cmd-K palette -----------------------------
+//
+// The command palette's search mode (figma SearchPalette/List 651:1771) shows ONE
+// mixed-species result list — Doc, Code, and Change pills interleaved — but the
+// `/search` wire is per-corpus (vault OR code). The unified controller composes the
+// two corpus controllers and merges their ranked hits by score into a single list,
+// so the palette renders the binding Figma design without a target toggle. The merge
+// is pure (`mergeUnifiedSearch`) so the ranking + state collapse is unit-testable.
+
+/** Upper bound on the merged result list (bounded-by-default-for-every-accumulator):
+ *  the palette renders a bounded slice even when both corpora return their caps. */
+export const UNIFIED_SEARCH_RESULTS_MAX_ITEMS = 40;
+
+export interface UnifiedSearchView {
+  /** The single interpreted phase the palette switches on. */
+  state: SearchState;
+  /** The merged, score-ranked hits across both corpora (bounded). */
+  results: SearchResult[];
+  /** True when EITHER corpus reports its semantic tier offline (tiers-gated). */
+  semanticOffline: boolean;
+  /** A query is in flight with no merged results to show yet. */
+  pending: boolean;
+  /** Both corpora failed with a genuine (non-degradation) transport error. */
+  error: boolean;
+  /** Re-run both corpus queries (the error state's retry affordance). */
+  retry: () => void;
+}
+
+/**
+ * Collapse the two corpus controller views into one unified palette view. Results
+ * are concatenated and sorted by descending score (stable across equal scores) and
+ * bounded; the state is the honest collapse of the pair — results win, then
+ * loading, then idle, then the degradation/error/no-results truths.
+ */
+/** A stable identity for a search hit, used to collapse duplicates across (and
+ *  within) the two corpora. Prefers the graph `node_id`; falls back to the wire
+ *  title, then the source+excerpt, so a null-node_id code chunk that recurs (the
+ *  rag code index can return several chunks of one file) appears once. */
+export function unifiedResultIdentity(result: SearchResult): string {
+  if (result.node_id !== null) return `n:${result.node_id}`;
+  if (result.title && result.title.trim().length > 0) return `t:${result.title}`;
+  return `s:${result.source}:${result.excerpt ?? ""}`;
+}
+
+export function mergeUnifiedSearch(
+  vault: SearchControllerView,
+  code: SearchControllerView,
+  retry: () => void,
+): UnifiedSearchView {
+  const ranked = [...vault.results, ...code.results].sort(
+    (a, b) => b.score - a.score,
+  );
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+  for (const result of ranked) {
+    const identity = unifiedResultIdentity(result);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    results.push(result);
+    if (results.length >= UNIFIED_SEARCH_RESULTS_MAX_ITEMS) break;
+  }
+  const semanticOffline = vault.semanticOffline || code.semanticOffline;
+  const pending = vault.pending || code.pending;
+  const bothIdle = vault.state === "idle" && code.state === "idle";
+  const bothError = vault.error && code.error;
+
+  let state: SearchState;
+  if (results.length > 0) {
+    state = "results";
+  } else if (pending) {
+    state = "loading";
+  } else if (bothIdle) {
+    state = "idle";
+  } else if (bothError) {
+    state = "error";
+  } else if (semanticOffline) {
+    state = "semantic-offline";
+  } else {
+    state = "no-results";
+  }
+
+  return {
+    state,
+    results,
+    semanticOffline,
+    pending,
+    error: bothError,
+    retry,
+  };
+}
+
+/**
+ * The unified search controller the Cmd-K palette consumes: it runs the vault and
+ * code corpus controllers over the same query/scope and merges their ranked hits.
+ * Each composed controller keeps its own debounce, degradation gate, and rag-health
+ * invalidation; this hook only collapses the pair. Scope-less (no active worktree)
+ * is the idle state via the underlying controllers.
+ */
+export function useUnifiedSearchController(
+  rawQuery: unknown,
+  scope: unknown,
+): UnifiedSearchView {
+  const vault = useSearchController(rawQuery, "vault", scope);
+  const code = useSearchController(rawQuery, "code", scope);
+  const retry = useMemo(
+    () => () => {
+      vault.retry();
+      code.retry();
+    },
+    [vault, code],
+  );
+  return mergeUnifiedSearch(vault, code, retry);
 }

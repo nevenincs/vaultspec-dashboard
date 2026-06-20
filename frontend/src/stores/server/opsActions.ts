@@ -8,12 +8,17 @@
 import { appDispatcher } from "../../platform/dispatch/middleware";
 import {
   engineClient,
+  type OpsArchiveBody,
   type OpsCreateBody,
   type OpsResult,
   type OpsWriteBody,
 } from "./engine";
 
 export const OPS_ACTION = "ops:run";
+export const OPS_VERB_MAX_CHARS = 128;
+export const OPS_BODY_STRING_MAX_CHARS = 4096;
+export const OPS_BODY_CONTENT_MAX_CHARS = 512 * 1024;
+export const OPS_BODY_STRING_LIST_MAX_ITEMS = 256;
 
 export interface OpsPayload {
   target: "core" | "rag";
@@ -22,11 +27,12 @@ export interface OpsPayload {
    * The dispatch mode for a `core` target (document-editor backend): `control`
    * (default) runs the argument-free `opsCore` control verb; `write` runs a
    * document mutation (`set-body` | `set-frontmatter` | `edit` | `rename`) against
-   * `/ops/core/{verb}/write`; `create` runs `/ops/core/create`. The write/create
-   * modes carry their payload in `body`. A `rag` target ignores `mode` (it always
-   * forwards `body` to the brokered control verb).
+   * `/ops/core/{verb}/write`; `create` runs `/ops/core/create`; `archive` runs
+   * `/ops/core/archive` (feature-scoped `vault feature archive`). The write/create/
+   * archive modes carry their payload in `body`. A `rag` target ignores `mode` (it
+   * always forwards `body` to the brokered control verb).
    */
-  mode?: "control" | "write" | "create";
+  mode?: "control" | "write" | "create" | "archive";
   /** Optional validated args. For a `rag` control verb: the reindex/watcher/evict
    *  args (rag-control-plane). For a `core` `write`/`create` mode: the
    *  `OpsWriteBody` / `OpsCreateBody` document-mutation payload. Absent for an
@@ -67,6 +73,7 @@ const OPS_CORE_WRITE_VERBS = new Set([
   "rename",
 ]);
 const OPS_CORE_CREATE_VERB = "create";
+const OPS_CORE_ARCHIVE_VERB = "feature-archive";
 
 export function isOpsWhitelistIntent(
   payload: Pick<OpsPayload, "target" | "verb">,
@@ -89,7 +96,9 @@ export function normalizeOpsTarget(value: unknown): OpsPayload["target"] | null 
 export function normalizeOpsVerb(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
+  return normalized.length > 0 && normalized.length <= OPS_VERB_MAX_CHARS
+    ? normalized
+    : null;
 }
 
 export function normalizeOpsWhitelistIntent(
@@ -108,21 +117,41 @@ function isOpsTarget(value: unknown): value is OpsPayload["target"] {
 }
 
 function isOpsMode(value: unknown): value is NonNullable<OpsPayload["mode"]> {
-  return value === "control" || value === "write" || value === "create";
+  return (
+    value === "control" ||
+    value === "write" ||
+    value === "create" ||
+    value === "archive"
+  );
 }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
+function isBoundedString(
+  value: unknown,
+  maxChars = OPS_BODY_STRING_MAX_CHARS,
+): value is string {
+  return typeof value === "string" && value.length <= maxChars;
 }
 
-function isOptionalString(value: unknown): value is string | undefined {
-  return value === undefined || typeof value === "string";
+function isNonEmptyString(
+  value: unknown,
+  maxChars = OPS_BODY_STRING_MAX_CHARS,
+): value is string {
+  return isBoundedString(value, maxChars) && value.length > 0;
+}
+
+function isOptionalString(
+  value: unknown,
+  maxChars = OPS_BODY_STRING_MAX_CHARS,
+): value is string | undefined {
+  return value === undefined || isBoundedString(value, maxChars);
 }
 
 function isOptionalStringArray(value: unknown): value is string[] | undefined {
   return (
     value === undefined ||
-    (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
+    (Array.isArray(value) &&
+      value.length <= OPS_BODY_STRING_LIST_MAX_ITEMS &&
+      value.every((entry) => isBoundedString(entry)))
   );
 }
 
@@ -131,7 +160,7 @@ function isOpsWriteBodyForVerb(verb: string, body: unknown): body is OpsWriteBod
   if (!isNonEmptyString(body.ref)) return false;
   if (
     !isOptionalString(body.scope) ||
-    !isOptionalString(body.body) ||
+    !isOptionalString(body.body, OPS_BODY_CONTENT_MAX_CHARS) ||
     !isOptionalString(body.expected_blob_hash) ||
     !isOptionalString(body.date) ||
     !isOptionalString(body.to) ||
@@ -140,7 +169,9 @@ function isOpsWriteBodyForVerb(verb: string, body: unknown): body is OpsWriteBod
   ) {
     return false;
   }
-  if (verb === "set-body" || verb === "edit") return typeof body.body === "string";
+  if (verb === "set-body" || verb === "edit") {
+    return isBoundedString(body.body, OPS_BODY_CONTENT_MAX_CHARS);
+  }
   if (verb === "rename") return isNonEmptyString(body.to);
   return verb === "set-frontmatter";
 }
@@ -154,6 +185,11 @@ function isOpsCreateBody(body: unknown): body is OpsCreateBody {
     isOptionalString(body.title) &&
     isOptionalStringArray(body.related)
   );
+}
+
+function isOpsArchiveBody(body: unknown): body is OpsArchiveBody {
+  if (!isRecord(body)) return false;
+  return isNonEmptyString(body.feature) && isOptionalString(body.scope);
 }
 
 function isEmptyOpsBody(body: unknown): boolean {
@@ -217,6 +253,9 @@ export function isOpsDispatchIntent(payload: unknown): payload is OpsPayload {
     if (mode === "create") {
       return verb === OPS_CORE_CREATE_VERB && isOpsCreateBody(payload.body);
     }
+    if (mode === "archive") {
+      return verb === OPS_CORE_ARCHIVE_VERB && isOpsArchiveBody(payload.body);
+    }
     return isOpsWhitelistIntent({ target, verb });
   }
   return (
@@ -255,6 +294,8 @@ appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
       return engineClient.opsCoreWrite(payload.verb, payload.body as OpsWriteBody);
     case "create":
       return engineClient.opsCoreCreate(payload.body as OpsCreateBody);
+    case "archive":
+      return engineClient.opsCoreArchive(payload.body as OpsArchiveBody);
     default:
       return engineClient.opsCore(payload.verb);
   }

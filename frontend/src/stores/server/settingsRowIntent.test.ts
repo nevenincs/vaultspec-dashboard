@@ -1,3 +1,8 @@
+// @vitest-environment happy-dom
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { EngineError } from "./engine";
@@ -7,7 +12,22 @@ import {
   normalizeSettingsWriteErrorText,
   normalizeSettingsRowWrite,
   settingsWriteErrorMessage,
+  useSettingsRowWriteIntent,
 } from "./settingsRowIntent";
+
+function wrapper(client: QueryClient) {
+  return ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client }, children);
+}
+
+function testQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
+  });
+}
 
 describe("settings row write intent", () => {
   it("normalizes row write payloads before settings mutation dispatch", () => {
@@ -25,12 +45,12 @@ describe("settings row write intent", () => {
     });
   });
 
-  it("preserves literal setting values while degrading invalid targets to global", () => {
+  it("preserves literal setting values for global writes", () => {
     expect(
       normalizeSettingsRowWrite({
         key: "label_filter",
         value: "  semantic only  ",
-        target: "workspace" as "global",
+        target: "global",
         activeScope: "workspace-a",
       }),
     ).toEqual({
@@ -40,7 +60,26 @@ describe("settings row write intent", () => {
     });
   });
 
-  it("omits scoped writes when no active scope can receive the row update", () => {
+  it("drops malformed targets before the mutation seam", () => {
+    expect(
+      normalizeSettingsRowWrite({
+        key: "label_filter",
+        value: "semantic",
+        target: "workspace",
+        activeScope: "workspace-a",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeSettingsRowWrite({
+        key: "label_filter",
+        value: "semantic",
+        target: { target: "global" },
+        activeScope: "workspace-a",
+      }),
+    ).toBeNull();
+  });
+
+  it("drops scoped writes when no active scope can receive the row update", () => {
     expect(
       normalizeSettingsRowWrite({
         key: "theme",
@@ -48,11 +87,7 @@ describe("settings row write intent", () => {
         target: "scope",
         activeScope: null,
       }),
-    ).toEqual({
-      key: "theme",
-      value: "light",
-      scope: undefined,
-    });
+    ).toBeNull();
     expect(
       normalizeSettingsRowWrite({
         key: "theme",
@@ -60,11 +95,7 @@ describe("settings row write intent", () => {
         target: "scope",
         activeScope: "   ",
       }),
-    ).toEqual({
-      key: "theme",
-      value: "light",
-      scope: undefined,
-    });
+    ).toBeNull();
     expect(
       normalizeSettingsRowWrite({
         key: "theme",
@@ -72,11 +103,7 @@ describe("settings row write intent", () => {
         target: "scope",
         activeScope: { scope: "workspace-a" },
       }),
-    ).toEqual({
-      key: "theme",
-      value: "light",
-      scope: undefined,
-    });
+    ).toBeNull();
   });
 
   it("drops malformed row write payloads before the mutation seam", () => {
@@ -135,5 +162,18 @@ describe("settings row write intent", () => {
       body: { error: ` ${long} ` },
     });
     expect(settingsWriteErrorMessage(err)).toBe(normalized);
+  });
+
+  it("keeps row write intent callbacks stable across rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(() => useSettingsRowWriteIntent(), {
+      wrapper: wrapper(client),
+    });
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
+    expect(result.current.write).toBe(first.write);
   });
 });

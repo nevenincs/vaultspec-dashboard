@@ -34,6 +34,7 @@ import {
 
 import {
   deriveSearchPresentationView,
+  searchResultKeyboardFocusDelta,
   type SearchResultRowView,
   useSearchController,
 } from "../../stores/server/searchController";
@@ -117,12 +118,10 @@ function ResultRow({ row, tabbable, onActivate }: ResultRowProps) {
           });
         }}
         onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
+          const delta = searchResultKeyboardFocusDelta(e.key);
+          if (delta !== null) {
             e.preventDefault();
-            moveRowFocus(e.currentTarget, 1);
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            moveRowFocus(e.currentTarget, -1);
+            moveRowFocus(e.currentTarget, delta);
           } else {
             handleKeyboardContextMenu(e, (anchor) =>
               openContextMenu(row.entity, anchor),

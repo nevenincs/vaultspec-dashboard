@@ -6,6 +6,8 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeDashboardStageControlsLens,
+  normalizeDashboardStageControlsRepresentationMode,
   normalizeDashboardStageControlsScope,
   useDashboardStageControlsIntent,
 } from "./dashboardStageControlsIntent";
@@ -29,6 +31,16 @@ describe("useDashboardStageControlsIntent", () => {
     expect(normalizeDashboardStageControlsScope(" scope-a ")).toBe("scope-a");
     expect(normalizeDashboardStageControlsScope("   ")).toBeNull();
     expect(normalizeDashboardStageControlsScope({ scope: "scope-a" })).toBeNull();
+    expect(normalizeDashboardStageControlsRepresentationMode(" radial ")).toBe(
+      "radial",
+    );
+    expect(normalizeDashboardStageControlsRepresentationMode("unknown")).toBeNull();
+    expect(
+      normalizeDashboardStageControlsRepresentationMode({ mode: "radial" }),
+    ).toBeNull();
+    expect(normalizeDashboardStageControlsLens(" design ")).toBe("design");
+    expect(normalizeDashboardStageControlsLens("unknown")).toBeNull();
+    expect(normalizeDashboardStageControlsLens({ lens: "design" })).toBeNull();
   });
 
   it("is inert without a scope", async () => {
@@ -52,5 +64,19 @@ describe("useDashboardStageControlsIntent", () => {
     expect(result.current.pending).toBe(false);
     await expect(result.current.setRepresentationMode("semantic")).resolves.toBeNull();
     await expect(result.current.setLens("design")).resolves.toBeNull();
+  });
+
+  it("is inert for malformed control enum values", async () => {
+    const client = testQueryClient();
+    const { result } = renderHook(() => useDashboardStageControlsIntent("scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    await expect(
+      result.current.setRepresentationMode({ mode: "radial" }),
+    ).resolves.toBeNull();
+    await expect(result.current.setRepresentationMode("unknown")).resolves.toBeNull();
+    await expect(result.current.setLens({ lens: "design" })).resolves.toBeNull();
+    await expect(result.current.setLens("unknown")).resolves.toBeNull();
   });
 });

@@ -1,9 +1,13 @@
 import {
   normalizeDashboardFeatureTag,
-  normalizeDashboardRepresentationMode,
   normalizeDashboardStateWriteScope,
+  normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
+import {
+  REPRESENTATION_MODES,
+  type RepresentationMode,
+} from "./engine";
 
 export interface DashboardStageSceneIntent {
   descendFeatureTag: (featureTag: unknown) => Promise<unknown>;
@@ -16,6 +20,12 @@ export function normalizeDashboardStageSceneFeatureTag(
   featureTag: unknown,
 ): string | null {
   return normalizeDashboardFeatureTag(featureTag);
+}
+
+export function normalizeDashboardStageSceneRepresentationMode(
+  mode: unknown,
+): RepresentationMode | null {
+  return normalizeStringMember(mode, REPRESENTATION_MODES);
 }
 
 /**
@@ -36,9 +46,11 @@ export function useDashboardStageSceneIntent(
         ? inert()
         : mutations.descendFeatureTag(normalizedFeatureTag);
     },
-    setRepresentationMode: (mode) =>
-      normalizedScope === null
+    setRepresentationMode: (mode) => {
+      const normalizedMode = normalizeDashboardStageSceneRepresentationMode(mode);
+      return normalizedScope === null || normalizedMode === null
         ? inert()
-        : mutations.setRepresentationMode(normalizeDashboardRepresentationMode(mode)),
+        : mutations.setRepresentationMode(normalizedMode);
+    },
   };
 }

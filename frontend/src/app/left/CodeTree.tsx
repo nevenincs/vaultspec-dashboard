@@ -35,6 +35,7 @@ import {
   type FileTreeRowView,
 } from "../../stores/server/queries";
 import {
+  deriveBrowserTreeKeyboardTarget,
   deriveBrowserTreeRovingKey,
   deriveCodeBrowserTreeRowView,
   useBrowserTreeExpansion,
@@ -159,11 +160,10 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
     [rovingKey],
   );
   const moveActive = useCallback(
-    (from: string, delta: number) => {
+    (from: string, key: unknown) => {
       const order = previousNavOrder.current;
       if (order.length === 0) return;
-      const current = Math.max(0, order.indexOf(from));
-      const next = order[Math.min(order.length - 1, Math.max(0, current + delta))];
+      const next = deriveBrowserTreeKeyboardTarget(order, from, key);
       if (!next) return;
       setActiveKey(next);
       navEls.current.get(next)?.focus();
@@ -302,7 +302,7 @@ interface CodeTreeNavigation {
   registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
   registerVisibleKey: (key: string) => number;
   setActiveKey: (id: string | null) => void;
-  moveActive: (from: string, delta: number) => void;
+  moveActive: (from: string, key: unknown) => void;
 }
 
 /**
@@ -378,8 +378,7 @@ function DirectoryRow({
             rowView.isDir,
             rowView.expanded,
             () => expansion.toggle(entry.path),
-            () => navigation.moveActive(rowView.navKey, 1),
-            () => navigation.moveActive(rowView.navKey, -1),
+            (key) => navigation.moveActive(rowView.navKey, key),
           )(e);
         }}
         style={rowView.rowStyle}
@@ -457,16 +456,15 @@ function onRowKeyDown(
   isDir: boolean,
   expanded: boolean,
   toggleExpanded: () => void,
-  focusNext: () => void,
-  focusPrevious: () => void,
+  focusByKey: (key: unknown) => void,
 ) {
   return (e: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      focusNext();
+      focusByKey(e.key);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      focusPrevious();
+      focusByKey(e.key);
     } else if (isDir && e.key === "ArrowRight" && !expanded) {
       e.preventDefault();
       toggleExpanded();

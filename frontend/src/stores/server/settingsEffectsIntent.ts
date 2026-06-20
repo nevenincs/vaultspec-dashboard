@@ -1,7 +1,12 @@
+import { useCallback, useMemo, useRef } from "react";
+
 import {
-  normalizeDashboardStateWriteScope,
+  normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
+import { normalizeDashboardTextFilter } from "./dashboardStateNormalization";
+import { GRAPH_GRANULARITIES } from "./engine";
+import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface SettingsEffectsIntent {
   applyGraphDefaults: (defaults: unknown) => Promise<unknown>;
@@ -11,7 +16,7 @@ export interface SettingsEffectsIntent {
   ) => Promise<unknown>;
 }
 
-export const normalizeSettingsEffectsScope = normalizeDashboardStateWriteScope;
+export const normalizeSettingsEffectsScope = normalizeStoreScope;
 
 export const SETTINGS_GRAPH_DEFAULTS_IDENTITY_MAX_CHARS = 512;
 export const SETTINGS_GRAPH_DEFAULTS_IDENTITY_GUARD_CAP = 256;
@@ -21,6 +26,40 @@ const pendingGraphDefaultsByIdentity = new Set<string>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+export interface SettingsEffectsGraphDefaultsIntent {
+  defaultGranularity: "feature" | "document";
+  confidenceFloor: number;
+  labelFilter: string;
+}
+
+export function normalizeSettingsEffectsGraphDefaults(
+  defaults: unknown,
+): SettingsEffectsGraphDefaultsIntent | null {
+  if (!isRecord(defaults) || Array.isArray(defaults)) return null;
+  const defaultGranularity = normalizeStringMember(
+    defaults.defaultGranularity,
+    GRAPH_GRANULARITIES,
+  );
+  if (defaultGranularity !== "feature" && defaultGranularity !== "document") {
+    return null;
+  }
+  const confidenceFloor = defaults.confidenceFloor;
+  if (
+    typeof confidenceFloor !== "number" ||
+    !Number.isFinite(confidenceFloor) ||
+    confidenceFloor < 0 ||
+    confidenceFloor > 100
+  ) {
+    return null;
+  }
+  if (typeof defaults.labelFilter !== "string") return null;
+  return {
+    defaultGranularity,
+    confidenceFloor,
+    labelFilter: normalizeDashboardTextFilter(defaults.labelFilter) ?? "",
+  };
 }
 
 export function normalizeSettingsGraphDefaultsInitializationIdentity(
@@ -100,23 +139,29 @@ export function releaseSettingsGraphDefaultsPendingIdentity(identity: unknown): 
 export function useSettingsEffectsIntent(scope: unknown): SettingsEffectsIntent {
   const normalizedScope = normalizeSettingsEffectsScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
-  const applyGraphDefaults = (defaults: unknown) =>
-    normalizedScope === null
-      ? Promise.resolve(null)
-      : mutations.applyGraphSettingsDefaults(defaults);
-  return {
-    applyGraphDefaults,
-    applyFreshGraphDefaults: (defaults, initialization) => {
+  const applyGraphSettingsDefaultsRef = useRef(mutations.applyGraphSettingsDefaults);
+  applyGraphSettingsDefaultsRef.current = mutations.applyGraphSettingsDefaults;
+  const applyGraphDefaults = useCallback(
+    (defaults: unknown) => {
+      const normalizedDefaults = normalizeSettingsEffectsGraphDefaults(defaults);
+      return normalizedScope === null || normalizedDefaults === null
+        ? Promise.resolve(null)
+        : applyGraphSettingsDefaultsRef.current(normalizedDefaults);
+    },
+    [normalizedScope],
+  );
+  const applyFreshGraphDefaults = useCallback(
+    (defaults: unknown, initialization: unknown) => {
       const identity = normalizeSettingsGraphDefaultsInitializationIdentity(
         isRecord(initialization) ? initialization.identity : null,
       );
       if (
         normalizedScope === null ||
         !isFreshSettingsGraphDefaultsInitialization(initialization) ||
-          identity === null ||
-          initializedGraphDefaultsByIdentity.has(identity) ||
-          pendingGraphDefaultsByIdentity.has(identity)
-        ) {
+        identity === null ||
+        initializedGraphDefaultsByIdentity.has(identity) ||
+        pendingGraphDefaultsByIdentity.has(identity)
+      ) {
         return Promise.resolve(null);
       }
 
@@ -132,5 +177,13 @@ export function useSettingsEffectsIntent(scope: unknown): SettingsEffectsIntent 
           releaseSettingsGraphDefaultsPendingIdentity(identity);
         });
     },
-  };
+    [applyGraphDefaults, normalizedScope],
+  );
+  return useMemo(
+    () => ({
+      applyGraphDefaults,
+      applyFreshGraphDefaults,
+    }),
+    [applyFreshGraphDefaults, applyGraphDefaults],
+  );
 }

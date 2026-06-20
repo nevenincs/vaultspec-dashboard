@@ -1,14 +1,14 @@
-// Isolated visual harness for the right-rail Status surface (figma-visual-parity).
-// Mounts the real ActivityRail composition — the RailTabs bar over the rebuilt
-// StatusTab — inside a 300px card that mirrors the binding ActivityRail board
-// (node 238:601), so a parity capture of /status.html lines up with the Figma
-// node. Wired with the same providers the app uses (QueryClient + theme); the
-// scope is seeded from the URL (?scope=…), exactly like the timeline harness.
+// Isolated visual harness for the right-rail activity surface (figma-visual-parity).
+// Mounts the real, retired-tabs ActivityRail composition — the single StatusTab
+// surface (location header + Changes fold + status sections) — inside a 300px card
+// that mirrors the binding ActivityRail board (node 599:2099), so a parity capture
+// of /status.html lines up with the Figma node. Wired with the same providers the
+// app uses (QueryClient + theme); the scope is seeded from the URL (?scope=…),
+// exactly like the timeline harness.
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
-import { RailTabs } from "../app/right/RailTabs";
 import { StatusTab } from "../app/right/StatusTab";
 import { getThemeController } from "../platform/theme/themeController";
 import { queryClient } from "../stores/server/queryClient";
@@ -38,7 +38,6 @@ function StatusVisualHarness() {
         data-status-harness
       >
         <div className="flex flex-col gap-fg-2 p-fg-2">
-          <RailTabs active="status" onChange={() => {}} />
           <StatusTab />
         </div>
       </div>

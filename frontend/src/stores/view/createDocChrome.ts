@@ -6,6 +6,8 @@ import { useShallow } from "zustand/react/shallow";
 export const CREATE_DOC_TYPES = ["research", "adr", "plan", "reference"] as const;
 export type CreateDocType = (typeof CREATE_DOC_TYPES)[number];
 export const DEFAULT_CREATE_DOC_TYPE: CreateDocType = "research";
+export const CREATE_DOC_DRAFT_TEXT_MAX_CHARS = 512;
+export const CREATE_DOC_ERROR_MAX_CHARS = 1024;
 
 export interface CreateDocChromeState {
   open: boolean;
@@ -40,17 +42,51 @@ export function normalizeCreateDocType(value: unknown): CreateDocType | null {
 }
 
 export function normalizeCreateDocDraftText(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  if (typeof value !== "string") return "";
+  return value.length <= CREATE_DOC_DRAFT_TEXT_MAX_CHARS
+    ? value
+    : value.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS);
 }
 
 export function normalizeCreateDocError(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
+  if (typeof value !== "string") return null;
+  const normalized =
+    value.length <= CREATE_DOC_ERROR_MAX_CHARS
+      ? value
+      : value.slice(0, CREATE_DOC_ERROR_MAX_CHARS);
+  return normalized.trim().length > 0 ? normalized : null;
+}
+
+export interface CreateDocChromeView {
+  open: boolean;
+  docType: CreateDocType;
+  feature: string;
+  title: string;
+  error: string | null;
+}
+
+export function normalizeCreateDocChromeView(state: unknown): CreateDocChromeView {
+  const value =
+    state !== null && typeof state === "object"
+      ? (state as Partial<Record<keyof CreateDocChromeView, unknown>>)
+      : {};
+  return {
+    open: value.open === true,
+    docType: normalizeCreateDocType(value.docType) ?? DEFAULT_CREATE_DOC_TYPE,
+    feature: normalizeCreateDocDraftText(value.feature),
+    title: normalizeCreateDocDraftText(value.title),
+    error: normalizeCreateDocError(value.error),
+  };
 }
 
 export const useCreateDocChromeStore = create<CreateDocChromeState>((set) => ({
   ...RESET_STATE,
   toggleOpen: () =>
-    set((state) => (state.open ? RESET_STATE : { ...state, open: true, error: null })),
+    set((state) =>
+      state.open
+        ? RESET_STATE
+        : { ...normalizeCreateDocChromeView(state), open: true, error: null },
+    ),
   setDocType: (docType) =>
     set((state) => {
       const normalized = normalizeCreateDocType(docType);
@@ -63,14 +99,6 @@ export const useCreateDocChromeStore = create<CreateDocChromeState>((set) => ({
   setError: (error) => set({ error: normalizeCreateDocError(error) }),
   reset: () => set(RESET_STATE),
 }));
-
-export interface CreateDocChromeView {
-  open: boolean;
-  docType: CreateDocType;
-  feature: string;
-  title: string;
-  error: string | null;
-}
 
 export type CreateDocSubmission =
   | {
@@ -115,18 +143,26 @@ export function deriveCreateDocSubmission(draft: unknown): CreateDocSubmission {
 
 export function useCreateDocChrome(): CreateDocChromeView {
   return useCreateDocChromeStore(
-    useShallow((state) => ({
-      open: state.open,
-      docType: state.docType,
-      feature: state.feature,
-      title: state.title,
-      error: state.error,
-    })),
+    useShallow((state) => normalizeCreateDocChromeView(state)),
   );
 }
 
 export function toggleCreateDocDialog(): void {
   useCreateDocChromeStore.getState().toggleOpen();
+}
+
+/**
+ * Open the create-document dialog from any surface (left rail, command palette,
+ * keyboard, context menu), optionally pre-filling the feature tag. Unlike
+ * {@link toggleCreateDocDialog} this is idempotent-open: it never closes an
+ * already-open dialog, so two surfaces racing to "new document" converge on one
+ * open dialog rather than toggling each other shut.
+ */
+export function openCreateDocDialog(prefillFeature?: unknown): void {
+  const store = useCreateDocChromeStore.getState();
+  if (!store.open) store.toggleOpen();
+  const feature = normalizeCreateDocDraftText(prefillFeature).trim();
+  if (feature.length > 0) store.setFeature(feature);
 }
 
 export function setCreateDocType(docType: unknown): void {

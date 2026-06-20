@@ -131,6 +131,10 @@ export function normalizeContextMenuEntity(value: unknown): EntityDescriptor | n
   return normalizeEntityDescriptor(value);
 }
 
+export function normalizeContextMenuOpen(value: unknown): boolean {
+  return value === true;
+}
+
 export function normalizeContextMenuTimeTravel(value: unknown): boolean {
   return value === true;
 }
@@ -193,6 +197,18 @@ export interface ContextMenuSnapshot {
   entity: EntityDescriptor | null;
   armedItemId: string | null;
   cursor: number;
+}
+
+export function normalizeContextMenuSnapshot(value: unknown): ContextMenuSnapshot {
+  const state = isContextMenuRecord(value) ? value : {};
+  return {
+    open: normalizeContextMenuOpen(state.open),
+    anchor: normalizeContextMenuAnchor(state.anchor),
+    position: normalizeContextMenuAnchor(state.position),
+    entity: normalizeContextMenuEntity(state.entity),
+    armedItemId: normalizeContextMenuItemId(state.armedItemId),
+    cursor: normalizeContextMenuCursor(state.cursor),
+  };
 }
 
 export interface ContextMenuActionGroup {
@@ -271,6 +287,12 @@ export type ContextMenuActivationView =
       type: string;
     }
   | { kind: "missing-dispatch"; type: string };
+
+export type ContextMenuKeyboardIntent =
+  | { kind: "close" }
+  | { kind: "move-cursor"; delta: 1 | -1 }
+  | { kind: "cursor-edge"; edge: "first" | "last" }
+  | { kind: "activate" };
 
 export interface ContextMenuPanelSize {
   width: number;
@@ -471,6 +493,18 @@ export function deriveContextMenuCursorEdge(
     : (runnableIndices[runnableIndices.length - 1] ?? null);
 }
 
+export function deriveContextMenuKeyboardIntent(
+  key: unknown,
+): ContextMenuKeyboardIntent | null {
+  if (key === "Escape" || key === "Tab") return { kind: "close" };
+  if (key === "ArrowDown") return { kind: "move-cursor", delta: 1 };
+  if (key === "ArrowUp") return { kind: "move-cursor", delta: -1 };
+  if (key === "Home") return { kind: "cursor-edge", edge: "first" };
+  if (key === "End") return { kind: "cursor-edge", edge: "last" };
+  if (key === "Enter" || key === " ") return { kind: "activate" };
+  return null;
+}
+
 function contextMenuAxisPosition(
   anchor: number,
   extent: number,
@@ -515,14 +549,7 @@ export function deriveContextMenuPanelPosition(
 
 export function useContextMenuState(): ContextMenuSnapshot {
   return useContextMenuStore(
-    useShallow((state) => ({
-      open: state.open,
-      anchor: state.anchor,
-      position: state.position,
-      entity: state.entity,
-      armedItemId: state.armedItemId,
-      cursor: state.cursor,
-    })),
+    useShallow((state) => normalizeContextMenuSnapshot(state)),
   );
 }
 
@@ -538,7 +565,7 @@ export function useContextMenuResolvedView(
 }
 
 export function useContextMenuViewportDismiss(): void {
-  const open = useContextMenuStore((state) => state.open);
+  const open = useContextMenuStore((state) => normalizeContextMenuOpen(state.open));
 
   useEffect(() => {
     if (!open) return;

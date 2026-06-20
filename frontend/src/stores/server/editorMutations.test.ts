@@ -31,7 +31,13 @@ import {
   openDocumentEditor,
   updateEditorDraft,
 } from "../view/editor";
-import { normalizeEditorTextValue, useViewStore } from "../view/viewStore";
+import {
+  EDITOR_BLOB_HASH_MAX_CHARS,
+  EDITOR_DRAFT_TEXT_MAX_CHARS,
+  normalizeEditorBlobHash,
+  normalizeEditorTextValue,
+  useViewStore,
+} from "../view/viewStore";
 import type { ContentView } from "./queries";
 import {
   deriveDocType,
@@ -98,6 +104,12 @@ describe("editor-state slice (bounded, single-value)", () => {
   it("normalizes malformed editor lifecycle payloads at the store seam", () => {
     expect(normalizeEditorTextValue("body")).toBe("body");
     expect(normalizeEditorTextValue(null)).toBe("");
+    expect(
+      normalizeEditorTextValue("x".repeat(EDITOR_DRAFT_TEXT_MAX_CHARS + 1)),
+    ).toHaveLength(EDITOR_DRAFT_TEXT_MAX_CHARS);
+    expect(
+      normalizeEditorBlobHash("h".repeat(EDITOR_BLOB_HASH_MAX_CHARS + 1)),
+    ).toHaveLength(EDITOR_BLOB_HASH_MAX_CHARS);
 
     openDocumentEditor(` ${DOC_ID} `, 42, null);
     expect(useViewStore.getState()).toMatchObject({
@@ -119,6 +131,16 @@ describe("editor-state slice (bounded, single-value)", () => {
       editorStatus: "saved",
       baseBlobHash: "",
     });
+
+    const longDraft = "x".repeat(EDITOR_DRAFT_TEXT_MAX_CHARS + 1);
+    const longHash = "h".repeat(EDITOR_BLOB_HASH_MAX_CHARS + 1);
+    openDocumentEditor(DOC_ID, longDraft, longHash);
+    expect(useViewStore.getState().draftText).toHaveLength(
+      EDITOR_DRAFT_TEXT_MAX_CHARS,
+    );
+    expect(useViewStore.getState().baseBlobHash).toHaveLength(
+      EDITOR_BLOB_HASH_MAX_CHARS,
+    );
 
     closeDocumentEditor();
     openDocumentEditor({ id: DOC_ID }, "ignored", "hash");

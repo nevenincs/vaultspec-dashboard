@@ -25,6 +25,7 @@ import {
   deriveDurableWorkspaceLayoutView,
   deriveSessionScopeRestoreIntent,
   normalizeDurableWorkspaceLayoutWrite,
+  normalizeScopeContextWrite,
   restoredSessionContextSeed,
 } from "./sessionContext";
 import {
@@ -422,6 +423,26 @@ describe("deriveDurableWorkspaceLayoutView", () => {
 });
 
 describe("normalizeDurableWorkspaceLayoutWrite", () => {
+  it("normalizes scope-context write identity", () => {
+    expect(
+      normalizeScopeContextWrite(" scope-a ", " .vault/adr ", [
+        " feature-a ",
+        "feature-a",
+        "",
+        7,
+      ]),
+    ).toEqual({
+      scope: "scope-a",
+      folder: ".vault/adr",
+      featureTags: ["feature-a"],
+    });
+    expect(normalizeScopeContextWrite({ scope: "scope-a" }, 42, "tag")).toEqual({
+      scope: null,
+      folder: null,
+      featureTags: [],
+    });
+  });
+
   it("normalizes durable workspace layout write identity", () => {
     expect(normalizeDurableWorkspaceLayoutWrite(" scope-a ", ' {"v":1} ')).toEqual({
       scope: "scope-a",

@@ -5,6 +5,7 @@ import { normalizeNodeId } from "../nodeIds";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
 const EMPTY_TIERS: readonly string[] = [];
+const noopInspectorExpansionWrite = () => undefined;
 const INSPECTOR_TIER_IDS = ["declared", "structural", "temporal", "semantic"] as const;
 const INSPECTOR_TIER_ID_SET = new Set<string>(INSPECTOR_TIER_IDS);
 export const INSPECTOR_EXPANSION_KEY_MAX_CHARS = 2048;
@@ -32,6 +33,16 @@ export function inspectorExpansionKey(scope: unknown, nodeId: unknown): string {
   return key.length <= INSPECTOR_EXPANSION_KEY_MAX_CHARS
     ? key
     : DEFAULT_INSPECTOR_EXPANSION_KEY;
+}
+
+export function canWriteInspectorExpansionIdentity(
+  scope: unknown,
+  nodeId: unknown,
+): boolean {
+  return (
+    (scope === null || normalizeInspectorExpansionScope(scope) !== null) &&
+    normalizeInspectorExpansionNodeId(nodeId) !== null
+  );
 }
 
 export function normalizeInspectorExpansionKey(value: unknown): string | null {
@@ -136,20 +147,33 @@ export function useInspectorTierExpansion(
   visibleTiers: readonly unknown[],
 ): { expanded: ReadonlySet<string>; toggle: (tier: unknown) => void } {
   const key = useMemo(() => inspectorExpansionKey(scope, nodeId), [scope, nodeId]);
+  const canWrite = useMemo(
+    () => canWriteInspectorExpansionIdentity(scope, nodeId),
+    [scope, nodeId],
+  );
   const storeKey = useInspectorExpansionStore((state) => state.key);
   const expandedTiers = useInspectorExpansionStore((state) => state.expandedTiers);
   const setKey = useInspectorExpansionStore((state) => state.setKey);
   const toggleStored = useInspectorExpansionStore((state) => state.toggleTier);
   const pruneVisible = useInspectorExpansionStore((state) => state.pruneVisible);
 
-  useEffect(() => setKey(key), [key, setKey]);
-  useEffect(() => pruneVisible(key, visibleTiers), [key, visibleTiers, pruneVisible]);
+  useEffect(() => {
+    if (!canWrite) return;
+    setKey(key);
+  }, [canWrite, key, setKey]);
+  useEffect(() => {
+    if (!canWrite) return;
+    pruneVisible(key, visibleTiers);
+  }, [canWrite, key, visibleTiers, pruneVisible]);
 
-  const activeTiers = storeKey === key ? expandedTiers : EMPTY_TIERS;
+  const activeTiers = canWrite && storeKey === key ? expandedTiers : EMPTY_TIERS;
   const expanded = useMemo(() => new Set(activeTiers), [activeTiers]);
   const toggle = useMemo(
-    () => (tier: unknown) => toggleStored(key, tier),
-    [key, toggleStored],
+    () =>
+      canWrite
+        ? (tier: unknown) => toggleStored(key, tier)
+        : noopInspectorExpansionWrite,
+    [canWrite, key, toggleStored],
   );
 
   return { expanded, toggle };

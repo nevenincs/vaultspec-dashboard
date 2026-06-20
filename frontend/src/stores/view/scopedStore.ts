@@ -42,6 +42,7 @@ export interface ScopedStore<T> {
 export { SCOPED_STORAGE_DEFAULT_KEY_PART as SCOPED_STORE_DEFAULT_KEY_PART } from "../../platform/storage/scopedKeys";
 
 export const normalizeScopedStoreKeyPart = normalizeScopedStorageKeyPart;
+export const SCOPED_STORE_VALUE_MAX_CHARS = 64 * 1024;
 
 /**
  * Build the load/save/storageKey/backingStore trio for one scope-keyed
@@ -74,6 +75,10 @@ export function createScopedStore<T>(config: ScopedStoreConfig<T>): ScopedStore<
       }
     }
     if (!raw) return parse(undefined);
+    if (raw.length > SCOPED_STORE_VALUE_MAX_CHARS) {
+      store.removeItem(rawKey);
+      return parse(undefined);
+    }
     try {
       return parse(JSON.parse(raw) as unknown);
     } catch {
@@ -89,7 +94,9 @@ export function createScopedStore<T>(config: ScopedStoreConfig<T>): ScopedStore<
     value: T,
   ): void => {
     try {
-      store.setItem(storageKey(workspace, scope), JSON.stringify(serialize(value)));
+      const raw = JSON.stringify(serialize(value));
+      if (raw.length > SCOPED_STORE_VALUE_MAX_CHARS) return;
+      store.setItem(storageKey(workspace, scope), raw);
     } catch {
       // Best-effort persistence; a full store loses the value, never crashes.
     }

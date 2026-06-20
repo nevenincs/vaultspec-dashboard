@@ -11,6 +11,7 @@ export const BROWSER_TREE_ITEM_KEY_MAX_CHARS = 2048;
 
 const EMPTY_EXPANDED_KEYS: readonly string[] = [];
 const DEFAULT_BROWSER_TREE_KEY = "browser-tree:scope:null:vault";
+const noopBrowserTreeWrite = () => undefined;
 
 export interface BrowserTreeExpansionItemView {
   key: string;
@@ -81,6 +82,10 @@ export function browserTreeExpansionKey(scope: unknown, mode: unknown): string {
   return key.length <= BROWSER_TREE_KEY_MAX_CHARS ? key : DEFAULT_BROWSER_TREE_KEY;
 }
 
+export function canWriteBrowserTreeExpansionScope(scope: unknown): boolean {
+  return scope === null || normalizeBrowserTreeScope(scope) !== null;
+}
+
 export function deriveBrowserTreeExpansionItem(
   key: string,
   expanded: ReadonlySet<string>,
@@ -89,6 +94,30 @@ export function deriveBrowserTreeExpansionItem(
     key,
     expanded: expanded.has(key),
   };
+}
+
+/** The two always-present collapsible section rows of the Vault tree. */
+export const VAULT_BROWSER_TREE_SECTION_KEYS = [
+  "sec:features",
+  "sec:documents",
+] as const;
+
+/**
+ * Every collapsible folder key in the Vault tree, matching the keys the tree
+ * actually toggles on (TreeBrowser): the two `sec:*` sections, the `feat:<feature>`
+ * rows under Features, and the `type:<docType>` rows under Documents. The
+ * "expand all" action sets the expanded set to exactly these; document rows are
+ * leaves and are never expanded.
+ */
+export function deriveAllVaultBrowserTreeKeys(input: {
+  features: readonly string[];
+  docTypes: readonly string[];
+}): string[] {
+  return [
+    ...VAULT_BROWSER_TREE_SECTION_KEYS,
+    ...input.features.map((feature) => `feat:${feature}`),
+    ...input.docTypes.map((docType) => `type:${docType}`),
+  ];
 }
 
 export function deriveVaultBrowserTreeNavOrder(
@@ -115,6 +144,20 @@ export function deriveBrowserTreeRovingKey(
   order: readonly string[],
 ): string | null {
   return activeKey && order.includes(activeKey) ? activeKey : (order[0] ?? null);
+}
+
+export function deriveBrowserTreeKeyboardTarget(
+  order: readonly string[],
+  from: unknown,
+  key: unknown,
+): string | null {
+  if (key !== "ArrowDown" && key !== "ArrowUp") return null;
+  const current = normalizeBrowserTreeActiveKey(from);
+  if (current === null || order.length === 0) return null;
+  const at = order.indexOf(current);
+  if (at === -1) return null;
+  const delta = key === "ArrowDown" ? 1 : -1;
+  return order[Math.min(order.length - 1, Math.max(0, at + delta))] ?? null;
 }
 
 export function deriveCodeBrowserTreeRowView(
@@ -160,8 +203,26 @@ interface BrowserTreeExpansionState {
   activeKey: string | null;
   setKey: (key: unknown) => void;
   toggle: (key: unknown, id: unknown) => void;
+  expandKeys: (key: unknown, ids: unknown) => void;
+  collapseAll: (key: unknown) => void;
   setActiveKey: (key: unknown, id: unknown) => void;
   reset: () => void;
+}
+
+/** Bound and de-duplicate a candidate expanded-key set at the store boundary. */
+function boundExpandedKeys(ids: unknown): string[] {
+  if (!Array.isArray(ids)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    const itemKey = normalizeBrowserTreeItemKey(id);
+    if (itemKey === null || seen.has(itemKey)) continue;
+    seen.add(itemKey);
+    out.push(itemKey);
+  }
+  return out.length > BROWSER_TREE_EXPANDED_KEYS_CAP
+    ? out.slice(out.length - BROWSER_TREE_EXPANDED_KEYS_CAP)
+    : out;
 }
 
 export function normalizeBrowserTreeExpansionKey(value: unknown): string | null {
@@ -173,9 +234,7 @@ export function normalizeBrowserTreeExpansionKey(value: unknown): string | null 
 export function normalizeBrowserTreeItemKey(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const key = value.trim();
-  return key.length > 0 && key.length <= BROWSER_TREE_ITEM_KEY_MAX_CHARS
-    ? key
-    : null;
+  return key.length > 0 && key.length <= BROWSER_TREE_ITEM_KEY_MAX_CHARS ? key : null;
 }
 
 export function normalizeBrowserTreeActiveKey(value: unknown): string | null {
@@ -212,6 +271,24 @@ export const useBrowserTreeExpansionStore = create<BrowserTreeExpansionState>(
               : next,
         };
       }),
+    expandKeys: (key, ids) =>
+      set((state) => {
+        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+        if (normalizedKey === null) return state;
+        const incoming = boundExpandedKeys(ids);
+        const current = state.key === normalizedKey ? state.expandedKeys : [];
+        const merged = boundExpandedKeys([...current, ...incoming]);
+        return { key: normalizedKey, expandedKeys: merged };
+      }),
+    collapseAll: (key) =>
+      set((state) => {
+        const normalizedKey = normalizeBrowserTreeExpansionKey(key);
+        if (normalizedKey === null) return state;
+        if (state.key === normalizedKey && state.expandedKeys.length === 0) {
+          return state;
+        }
+        return { key: normalizedKey, expandedKeys: [] };
+      }),
     setActiveKey: (key, activeKey) =>
       set((state) => {
         const normalizedKey = normalizeBrowserTreeExpansionKey(key);
@@ -241,31 +318,49 @@ export function useBrowserTreeExpansion(
   expanded: ReadonlySet<string>;
   activeKey: string | null;
   toggle: (id: unknown) => void;
+  expandAll: (ids: unknown) => void;
+  collapseAll: () => void;
   setActiveKey: (id: unknown) => void;
 } {
   const key = useMemo(() => browserTreeExpansionKey(scope, mode), [scope, mode]);
+  const canWrite = useMemo(() => canWriteBrowserTreeExpansionScope(scope), [scope]);
   const storeKey = useBrowserTreeExpansionStore((state) => state.key);
   const expandedKeys = useBrowserTreeExpansionStore((state) => state.expandedKeys);
   const storedActiveKey = useBrowserTreeExpansionStore((state) => state.activeKey);
   const setKey = useBrowserTreeExpansionStore((state) => state.setKey);
   const toggleStored = useBrowserTreeExpansionStore((state) => state.toggle);
+  const expandKeysStored = useBrowserTreeExpansionStore((state) => state.expandKeys);
+  const collapseAllStored = useBrowserTreeExpansionStore((state) => state.collapseAll);
   const setActiveKeyStored = useBrowserTreeExpansionStore(
     (state) => state.setActiveKey,
   );
 
-  useEffect(() => setKey(key), [key, setKey]);
+  useEffect(() => {
+    if (!canWrite) return;
+    setKey(key);
+  }, [canWrite, key, setKey]);
 
-  const activeKeys = storeKey === key ? expandedKeys : EMPTY_EXPANDED_KEYS;
-  const activeKey = storeKey === key ? storedActiveKey : null;
+  const activeKeys = canWrite && storeKey === key ? expandedKeys : EMPTY_EXPANDED_KEYS;
+  const activeKey = canWrite && storeKey === key ? storedActiveKey : null;
   const expanded = useMemo(() => new Set(activeKeys), [activeKeys]);
   const toggle = useMemo(
-    () => (id: unknown) => toggleStored(key, id),
-    [key, toggleStored],
+    () => (canWrite ? (id: unknown) => toggleStored(key, id) : noopBrowserTreeWrite),
+    [canWrite, key, toggleStored],
+  );
+  const expandAll = useMemo(
+    () =>
+      canWrite ? (ids: unknown) => expandKeysStored(key, ids) : noopBrowserTreeWrite,
+    [canWrite, key, expandKeysStored],
+  );
+  const collapseAll = useMemo(
+    () => (canWrite ? () => collapseAllStored(key) : noopBrowserTreeWrite),
+    [canWrite, key, collapseAllStored],
   );
   const setActiveKey = useMemo(
-    () => (id: unknown) => setActiveKeyStored(key, id),
-    [key, setActiveKeyStored],
+    () =>
+      canWrite ? (id: unknown) => setActiveKeyStored(key, id) : noopBrowserTreeWrite,
+    [canWrite, key, setActiveKeyStored],
   );
 
-  return { expanded, activeKey, toggle, setActiveKey };
+  return { expanded, activeKey, toggle, expandAll, collapseAll, setActiveKey };
 }

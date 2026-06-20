@@ -9,6 +9,7 @@ export const PIPELINE_EXPANSION_AS_OF_MAX_CHARS = 512;
 export const PIPELINE_EXPANSION_KEY_MAX_CHARS = 2048;
 
 const EMPTY_EXPANDED_IDS: readonly string[] = [];
+const noopPipelineExpansionWrite = () => undefined;
 
 type PipelineExpansionRowInput = { nodeId: string } | { node_id: string };
 
@@ -49,6 +50,16 @@ export function pipelineExpansionKey(scope: unknown, asOf?: unknown): string {
   return key.length <= PIPELINE_EXPANSION_KEY_MAX_CHARS
     ? key
     : pipelineExpansionKey(null);
+}
+
+export function canWritePipelineExpansionIdentity(
+  scope: unknown,
+  asOf: unknown,
+): boolean {
+  return (
+    (scope === null || normalizePipelineExpansionScope(scope) !== null) &&
+    (asOf === undefined || normalizePipelineExpansionAsOf(asOf) !== undefined)
+  );
 }
 
 const DEFAULT_PIPELINE_EXPANSION_KEY = pipelineExpansionKey(null);
@@ -176,23 +187,33 @@ export function usePipelineExpansion(
   visiblePlanIds: readonly unknown[],
 ): { expanded: ReadonlySet<string>; toggle: (id: unknown) => void } {
   const key = useMemo(() => pipelineExpansionKey(scope, asOf), [scope, asOf]);
+  const canWrite = useMemo(
+    () => canWritePipelineExpansionIdentity(scope, asOf),
+    [scope, asOf],
+  );
   const storeKey = usePipelineExpansionStore((state) => state.key);
   const expandedIds = usePipelineExpansionStore((state) => state.expandedIds);
   const setKey = usePipelineExpansionStore((state) => state.setKey);
   const toggleStored = usePipelineExpansionStore((state) => state.toggle);
   const pruneVisible = usePipelineExpansionStore((state) => state.pruneVisible);
 
-  useEffect(() => setKey(key), [key, setKey]);
-  useEffect(
-    () => pruneVisible(key, visiblePlanIds),
-    [key, visiblePlanIds, pruneVisible],
-  );
+  useEffect(() => {
+    if (!canWrite) return;
+    setKey(key);
+  }, [canWrite, key, setKey]);
+  useEffect(() => {
+    if (!canWrite) return;
+    pruneVisible(key, visiblePlanIds);
+  }, [canWrite, key, visiblePlanIds, pruneVisible]);
 
-  const activeIds = storeKey === key ? expandedIds : EMPTY_EXPANDED_IDS;
+  const activeIds = canWrite && storeKey === key ? expandedIds : EMPTY_EXPANDED_IDS;
   const expanded = useMemo(() => new Set(activeIds), [activeIds]);
   const toggle = useMemo(
-    () => (id: unknown) => toggleStored(key, id),
-    [key, toggleStored],
+    () =>
+      canWrite
+        ? (id: unknown) => toggleStored(key, id)
+        : noopPipelineExpansionWrite,
+    [canWrite, key, toggleStored],
   );
 
   return { expanded, toggle };

@@ -24,6 +24,7 @@ import {
   deriveContextMenuActivation,
   deriveContextMenuPanelPosition,
   deriveContextMenuCursorEdge,
+  deriveContextMenuKeyboardIntent,
   deriveContextMenuCursorMove,
   deriveContextMenuCursorRepair,
   disarmContextMenu,
@@ -139,33 +140,23 @@ export function ContextMenuHost({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
+      const intent = deriveContextMenuKeyboardIntent(e.key);
+      if (intent === null) return;
+      e.preventDefault();
+      if (intent.kind === "close") {
         closeContextMenu();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        moveCursor(1);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        moveCursor(-1);
-      } else if (e.key === "Home") {
-        e.preventDefault();
+      } else if (intent.kind === "move-cursor") {
+        moveCursor(intent.delta);
+      } else if (intent.kind === "cursor-edge") {
         disarmContextMenu();
-        const edgeCursor = deriveContextMenuCursorEdge(runnableIndices, "first");
+        const edgeCursor = deriveContextMenuCursorEdge(
+          runnableIndices,
+          intent.edge,
+        );
         if (edgeCursor !== null) setContextMenuCursor(edgeCursor);
-      } else if (e.key === "End") {
-        e.preventDefault();
-        disarmContextMenu();
-        const edgeCursor = deriveContextMenuCursorEdge(runnableIndices, "last");
-        if (edgeCursor !== null) setContextMenuCursor(edgeCursor);
-      } else if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
+      } else {
         const action = ordered[cursor];
         if (action) activate(action);
-      } else if (e.key === "Tab") {
-        // A context menu is not a tab surface; Tab closes it (cohort convention).
-        e.preventDefault();
-        closeContextMenu();
       }
     },
     [moveCursor, runnableIndices, ordered, cursor, activate],

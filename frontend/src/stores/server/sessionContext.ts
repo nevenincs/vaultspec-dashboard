@@ -165,6 +165,24 @@ export interface DurableWorkspaceLayoutWrite {
   blob: string | null;
 }
 
+export interface ScopeContextWrite {
+  scope: string | null;
+  folder: string | null;
+  featureTags: string[];
+}
+
+export function normalizeScopeContextWrite(
+  scope: unknown,
+  folder: unknown,
+  featureTags: unknown,
+): ScopeContextWrite {
+  return {
+    scope: normalizeViewStoreSessionString(scope),
+    folder: normalizeViewStoreSessionString(folder),
+    featureTags: normalizeViewStoreSessionStringList(featureTags),
+  };
+}
+
 export function normalizeDurableWorkspaceLayoutWrite(
   scope: unknown,
   blob: unknown,
@@ -240,15 +258,20 @@ export function useSelectFolderContext() {
   const writeSeqRef = useRef(0);
   const activeScopeRef = useRef(activeScope);
   activeScopeRef.current = activeScope;
-  const select = (folder: string | null, featureTags: string[]) => {
+  const select = (folder: unknown, featureTags: unknown) => {
     const seq = ++writeSeqRef.current;
-    const writeScope = activeScopeRef.current;
+    const write = normalizeScopeContextWrite(
+      activeScopeRef.current,
+      folder,
+      featureTags,
+    );
+    if (write.scope === null) return;
     putSession.mutate(
       {
         scope_context: {
-          scope: writeScope ?? undefined,
-          folder,
-          feature_tags: featureTags,
+          scope: write.scope,
+          folder: write.folder,
+          feature_tags: write.featureTags,
         },
       },
       {
@@ -256,7 +279,7 @@ export function useSelectFolderContext() {
           const mirror = deriveAcceptedScopeContextMirror({
             writeSeq: seq,
             currentSeq: writeSeqRef.current,
-            writeScope,
+            writeScope: write.scope,
             activeScope: activeScopeRef.current,
             session,
           });

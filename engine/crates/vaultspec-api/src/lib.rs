@@ -166,6 +166,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // `vault check all --fix --feature <tag>` so the editor's fixable
         // advisories can be repaired through the broker; watcher re-ingests.
         .route("/ops/core/autofix", post(routes::ops::ops_core_autofix))
+        // Feature archive: forwards `vault feature archive <tag>` so the left rail
+        // can retire a completed feature's documents through the broker. Feature-
+        // scoped (the only archive grain vaultspec-core has); watcher re-ingests.
+        .route("/ops/core/archive", post(routes::ops::ops_core_archive))
         // The brokered rag control plane (rag-control-plane ADR D2): GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher

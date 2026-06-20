@@ -132,11 +132,16 @@ export interface BrokeredResult<T> {
 // per-scope read families.
 
 export const normalizeRagControlScope = normalizeGraphSliceScope;
+export const RAG_CONTROL_KEY_PART_MAX_CHARS = 2048;
+export const RAG_JOB_TEXT_MAX_CHARS = 2048;
+export const RAG_PROJECT_SLOTS_MAX_ITEMS = 64;
 
 export function normalizeRagControlKeyPart(value: unknown, fallback = ""): string {
   if (typeof value !== "string") return fallback;
   const normalized = value.trim();
-  return normalized.length > 0 ? normalized : fallback;
+  return normalized.length > 0 && normalized.length <= RAG_CONTROL_KEY_PART_MAX_CHARS
+    ? normalized
+    : fallback;
 }
 
 export function normalizeRagProjectRoot(root: unknown): string | null {
@@ -166,10 +171,13 @@ export function normalizeRagProjectSlot(slot: unknown): RagProjectSlot | null {
 
 export function normalizeRagProjectSlots(slots: unknown): RagProjectSlot[] {
   if (!Array.isArray(slots)) return [];
-  return slots.flatMap((slot) => {
+  const projects: RagProjectSlot[] = [];
+  for (const slot of slots) {
     const normalized = normalizeRagProjectSlot(slot);
-    return normalized === null ? [] : [normalized];
-  });
+    if (normalized !== null) projects.push(normalized);
+    if (projects.length >= RAG_PROJECT_SLOTS_MAX_ITEMS) break;
+  }
+  return projects;
 }
 
 function skippedRagProjectEvictResult(): OpsResult {
@@ -213,7 +221,9 @@ const LIVE_PHASES = new Set(["queued", "running", "pending"]);
 function normalizeRagJobText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
+  return normalized.length > 0 && normalized.length <= RAG_JOB_TEXT_MAX_CHARS
+    ? normalized
+    : undefined;
 }
 
 function normalizeRagJobNumber(value: unknown): number | undefined {

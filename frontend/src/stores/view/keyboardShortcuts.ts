@@ -82,12 +82,17 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set) =>
     }),
   openDialog: () => set({ open: true }),
   closeDialog: () => set({ open: false }),
-  toggleDialog: () => set((state) => ({ open: !state.open })),
+  toggleDialog: () =>
+    set((state) => ({
+      open: !(normalizeKeyboardShortcutsOpen(state.open) ?? false),
+    })),
   reset: () => set({ open: false }),
 }));
 
 export function useKeyboardShortcutsOpen(): boolean {
-  return useKeyboardShortcutsStore((state) => state.open);
+  return useKeyboardShortcutsStore(
+    (state) => normalizeKeyboardShortcutsOpen(state.open) ?? false,
+  );
 }
 
 export function useKeyboardShortcutGroups(): readonly KeyboardShortcutGroupView[] {

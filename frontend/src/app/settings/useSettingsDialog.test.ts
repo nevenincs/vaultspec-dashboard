@@ -60,6 +60,16 @@ describe("useSettingsDialog store", () => {
     setSettingsDialogOpen(false);
     expect(useSettingsDialog.getState().open).toBe(false);
   });
+
+  it("normalizes malformed open-state reads before toggling", () => {
+    useSettingsDialog.setState({
+      open: "true",
+    } as unknown as Partial<ReturnType<typeof useSettingsDialog.getState>>);
+
+    toggleSettingsDialog();
+
+    expect(useSettingsDialog.getState().open).toBe(true);
+  });
 });
 
 describe("command-palette Settings entry point", () => {

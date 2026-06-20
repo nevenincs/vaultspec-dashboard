@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 //
-// The rail filter is canonical dashboard-state text intent. It narrows the
-// already-fetched browser client-side, but its write must preserve sibling filter
-// facets because dashboard-state stores `filters` as one object.
+// The rail filter field is the ONE canonical filter surface (a FEATURE filter, not
+// a semantic search). Its text write is canonical dashboard-state intent: it must
+// preserve sibling filter facets (dashboard-state stores `filters` as one object),
+// and the shared debounced draft must cancel a pending write on clear and when a
+// canonical value lands from elsewhere.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -22,7 +24,9 @@ import { dashboardStateSessionIdentity, engineKeys } from "../../stores/server/q
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
-import { BrowserRegion } from "./BrowserRegion";
+import { RailFilterField } from "./RailFilterField";
+
+const FILTER_LABEL = "filter the vault by feature";
 
 let scope: string;
 let docType: string;
@@ -58,7 +62,7 @@ afterAll(() => {
   useViewStore.getState().setScope(null);
 });
 
-describe("BrowserRegion rail filter", () => {
+describe("RailFilterField (the canonical feature filter)", () => {
   it("writes canonical text without dropping existing dashboard filter facets", async () => {
     const session = await createLiveClient().session();
     const sessionIdentity = dashboardStateSessionIdentity(session);
@@ -72,11 +76,11 @@ describe("BrowserRegion rail filter", () => {
     render(
       createElement(QueryClientProvider, {
         client: queryClient,
-        children: createElement(BrowserRegion),
+        children: createElement(RailFilterField),
       }),
     );
 
-    const input = await screen.findByLabelText("filter the vault listing");
+    const input = await screen.findByLabelText(FILTER_LABEL);
     fireEvent.change(input, { target: { value: "edge text" } });
 
     await waitFor(async () => {
@@ -90,11 +94,11 @@ describe("BrowserRegion rail filter", () => {
     render(
       createElement(QueryClientProvider, {
         client: queryClient,
-        children: createElement(BrowserRegion),
+        children: createElement(RailFilterField),
       }),
     );
 
-    const input = await screen.findByLabelText("filter the vault listing");
+    const input = await screen.findByLabelText(FILTER_LABEL);
     fireEvent.change(input, { target: { value: "stale rail text" } });
     fireEvent.click(screen.getByRole("button", { name: "clear search" }));
 
@@ -122,13 +126,11 @@ describe("BrowserRegion rail filter", () => {
     render(
       createElement(QueryClientProvider, {
         client: queryClient,
-        children: createElement(BrowserRegion),
+        children: createElement(RailFilterField),
       }),
     );
 
-    const input = (await screen.findByLabelText(
-      "filter the vault listing",
-    )) as HTMLInputElement;
+    const input = (await screen.findByLabelText(FILTER_LABEL)) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "stale browser text" } });
 
     const canonical = await createLiveClient().patchDashboardState({

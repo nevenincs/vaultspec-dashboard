@@ -1,43 +1,57 @@
-// FeatureTree browser — the Vault mode's feature-based tree representation. It
-// is a PURE CLIENT-SIDE PROJECTION of the `/vault-tree` response, re-nested
-// feature → doc_type → document (views-are-projections-of-one-model). There is
-// NO engine work and NO new model: it reuses the existing `useVaultTree()` stores hook, reads
-// degradation ONLY through the stores selector (never the raw `tiers` block), and
-// joins selection on the same stable `doc:<stem>` node id the vault browser uses
-// (dashboard-layer-ownership). It fetches nothing and mints no identity — chrome
-// over the one projection. The root surface state (loading / transport error)
-// is classified by the stores selector; degradation renders from the same
-// stores-owned availability view.
+// The Vault tab's tree (binding `LeftRail` 238:600): TWO parallel collapsible
+// sections over the ONE `/vault-tree` projection (views-are-projections-of-one-
+// model) — a FEATURES index and a doc-type-first DOCUMENTS tree. Both start
+// COLLAPSED; expanding a section reveals its folder rows, and expanding a folder
+// reveals its documents as two-line DocRows (title + date + status). The whole
+// listing is narrowed by the ONE canonical left-rail facet pass (feature text +
+// doc types + statuses + feature tags + edited range) read from
+// `dashboardState.filters`, so the rail tree agrees with the graph the same
+// filter narrows (left-rail-top ADR D5).
 //
-// Shape (binding design):
-//   #feature-tag                                  ← level 0, collapsed by default
-//     ▸ Research / ADR / Plan / Exec / Audit …    ← level 1, doc-type group
-//         …-stem                                  ← level 2, the document rows
-//
-// Each level is a collapsible disclosure (collapsed chevron points RIGHT,
-// expanded DOWN). Document rows carry their actual document-type glyph; the
-// selected document row gets the soft accent background + the leading accent bar
-// (exactly one selected row, as in the vault browser). The in-rail filter narrows
-// the already-fetched listing client-side — never a wire request.
+// Composition only (dashboard-layer-ownership): this fetches nothing, mints no
+// node identity, and reads degradation ONLY through the stores selector (never the
+// raw `tiers` block). Selection joins on the same stable `doc:<stem>` node id the
+// rest of the rail uses.
 
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useRef } from "react";
+import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
-import { FoldSection, SectionLabel } from "../kit";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FoldVertical,
+  UnfoldVertical,
+} from "lucide-react";
+
+import { Badge, FoldSection, IconButton, SectionLabel } from "../kit";
 import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import {
-  deriveVaultTreeBrowserView,
+  deriveVaultRailView,
   tierAvailabilityReason,
   useActiveScope,
+  useVaultRailFacets,
   useVaultTreeSurface,
+  type VaultDocTypeGroup,
+  type VaultTreeFeatureGroup,
 } from "../../stores/server/queries";
 import {
-  deriveBrowserTreeRovingKey,
+  deriveAllVaultBrowserTreeKeys,
+  deriveBrowserTreeKeyboardTarget,
   deriveBrowserTreeExpansionItem,
-  deriveVaultBrowserTreeNavOrder,
+  deriveBrowserTreeRovingKey,
   useBrowserTreeExpansion,
 } from "../../stores/view/browserTreeExpansion";
+import {
+  LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
+  LEFT_RAIL_COLLAPSE_TREE_LABEL,
+  LEFT_RAIL_EXPAND_TREE_ACTION_ID,
+  LEFT_RAIL_EXPAND_TREE_LABEL,
+  collapseTreeAction,
+  expandTreeAction,
+} from "../../stores/view/leftRailKeybindings";
+import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import {
@@ -47,16 +61,16 @@ import {
   useHighlightedPath,
 } from "./browserSelection";
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
-// module runs its `registerResolver("vault-doc", …)` side effect once. The tree
-// rows are the SAME vault documents, so they share the vault-doc menu.
+// module runs its `registerResolver("vault-doc", …)` side effect once. The rows
+// are the SAME vault documents, so they share the vault-doc menu.
 import "./menus/vaultDocMenu";
-// Shared row presentation — doc-type glyphs, freshness, and sizing for the
-// `/vault-tree` projection.
 import {
   CHEVRON_PX,
   DOC_MARK_PX,
+  docDateLabel,
+  docDisplayTitle,
   docGroupLabel,
-  docMark,
+  featureDisplayName,
   freshnessLabel,
   freshnessToneClass,
 } from "./vaultRowPresentation";
@@ -66,25 +80,20 @@ export function entryStem(path: string): string {
   return pathStem(path);
 }
 
-// --- component -------------------------------------------------------------------
+// --- props -----------------------------------------------------------------------
 
 export interface TreeBrowserProps {
   /** Row click handler (defaults to the shared bidirectional selection). */
   onEntryClick?: (entry: VaultTreeEntry) => void;
-  /** Row open handler (double-click / Enter → open in the reader). Defaults to
-   *  selecting the node and opening its body in the markdown reader. */
+  /** Row open handler (double-click / Enter → open in the reader). */
   onEntryOpen?: (entry: VaultTreeEntry) => void;
   /** The document path currently highlighted by the shared selection. */
   highlightedPath?: string | null;
-  /** In-rail filter — a client-side narrowing of the visible listing by
-   *  stem/path/feature-tag, never a wire search. Empty/absent shows all. */
-  filter?: string;
-  /** Landmark label for the mounted tree surface. Vault mode owns this now. */
+  /** Landmark label for the mounted tree surface. */
   ariaLabel?: "tree browser" | "vault browser";
 }
 
-/** Build the vault-doc context-menu entity from a tree row's data (shared with
- *  the vault browser — the rows are the same documents). */
+/** Build the vault-doc context-menu entity from a tree row's data. */
 function vaultDocEntity(entry: VaultTreeEntry, scope: string | null): VaultDocEntity {
   const nodeId = pathToNodeId(entry.path);
   return {
@@ -97,36 +106,70 @@ function vaultDocEntity(entry: VaultTreeEntry, scope: string | null): VaultDocEn
   };
 }
 
+/** Flatten a feature group's doc-type sub-lists into one recency-ordered list of
+ *  documents — the Features section lists a feature's documents directly (the
+ *  doc-type-first split lives in the Documents section). */
+function featureEntries(group: VaultTreeFeatureGroup): VaultTreeEntry[] {
+  return group.docTypes
+    .flatMap((sub) => sub.entries)
+    .slice()
+    .sort((a, b) => {
+      const am = a.dates.modified ?? "";
+      const bm = b.dates.modified ?? "";
+      if (am !== bm) return am < bm ? 1 : -1;
+      return a.path.localeCompare(b.path);
+    });
+}
+
 export function TreeBrowser({
   onEntryClick,
   onEntryOpen,
   highlightedPath,
-  filter,
   ariaLabel = "tree browser",
 }: TreeBrowserProps) {
   const scope = useActiveScope();
   const { tree, availability, state } = useVaultTreeSurface(scope);
+  const facets = useVaultRailFacets(scope);
   const dashboardSelection = useDashboardBrowserSelection(scope);
   const sharedHighlight = useHighlightedPath(tree.data?.entries, scope);
   const clickHandler = onEntryClick ?? dashboardSelection.handleEntryClick;
   const openHandler = onEntryOpen ?? dashboardSelection.handleEntryOpen;
   const highlight = highlightedPath ?? sharedHighlight;
 
-  // Expanded state, keyed by stable nav-key: feature groups `f:<feature>` and
-  // doc-type sub-groups `d:<feature>/<docType>`. The browser-tree store owns this
-  // so a scope/workspace swap clears disclosure state through one reset path.
-  const {
-    expanded,
-    activeKey,
-    setActiveKey,
-    toggle: toggleExpanded,
-  } = useBrowserTreeExpansion(scope, "vault");
-
-  // TRUE roving-tabindex focus model (matching the vault browser): the whole rail
-  // is ONE Tab-stop. Exactly one navigable element carries tabIndex 0; ArrowUp/
-  // ArrowDown move it through the single linear list of VISIBLE nodes in
-  // top-to-bottom DOM order (feature header → its doc-type headers → their rows).
+  // Expansion keyed by stable nav-key: sections `sec:*`, feature folders
+  // `feat:<feature>`, doc-type folders `type:<docType>`. The browser-tree store
+  // owns this so a scope/workspace swap clears disclosure state in ONE reset path.
+  // Default = collapsed (a fresh key is absent from the set) — the binding sections
+  // start collapsed.
+  const { expanded, toggle, activeKey, setActiveKey, expandAll, collapseAll } =
+    useBrowserTreeExpansion(scope, "vault");
+  // The full expandable-key set tracks the latest rendered tree (a ref, not state,
+  // so the registered key-action thunk reads fresh keys without re-registering on
+  // every render). The expand/collapse-all verbs are enrolled into the one keymap
+  // dispatcher here — where the loaded tree keys live — under the left-rail context.
+  const treeKeysRef = useRef<string[]>([]);
+  const expandWholeTree = useCallback(() => {
+    expandAll(treeKeysRef.current);
+  }, [expandAll]);
+  useEffect(() => {
+    const disposeExpand = registerKeyAction(LEFT_RAIL_EXPAND_TREE_ACTION_ID, () =>
+      expandTreeAction(expandWholeTree),
+    );
+    const disposeCollapse = registerKeyAction(LEFT_RAIL_COLLAPSE_TREE_ACTION_ID, () =>
+      collapseTreeAction(collapseAll),
+    );
+    return () => {
+      disposeCollapse();
+      disposeExpand();
+    };
+  }, [expandWholeTree, collapseAll]);
   const navEls = useRef(new Map<string, HTMLButtonElement>());
+  const previousNavOrder = useRef<string[]>([]);
+  const currentNavOrder = useRef<string[]>([]);
+  const tabStopAssigned = useRef(false);
+  const rovingKey = deriveBrowserTreeRovingKey(activeKey, previousNavOrder.current);
+  currentNavOrder.current = [];
+  tabStopAssigned.current = false;
   const registerNav = useCallback(
     (key: string) => (el: HTMLButtonElement | null) => {
       if (el) navEls.current.set(key, el);
@@ -134,25 +177,35 @@ export function TreeBrowser({
     },
     [],
   );
-  const navOrder = useRef<string[]>([]);
-  const moveActive = useCallback((from: string, delta: number) => {
-    const order = navOrder.current;
-    const at = order.indexOf(from);
-    if (at === -1) return;
-    const next = order[Math.min(order.length - 1, Math.max(0, at + delta))];
-    if (next === undefined) return;
-    setActiveKey(next);
-    navEls.current.get(next)?.focus();
-  }, []);
+  const registerVisibleKey = useCallback(
+    (key: string) => {
+      currentNavOrder.current.push(key);
+      previousNavOrder.current = currentNavOrder.current;
+      // The whole rail is ONE tab-stop: the active key roves, but before any focus
+      // (rovingKey === null) the FIRST visible node carries tabIndex 0 so the rail
+      // is reachable by Tab from the start (the proven CodeTree pattern).
+      const tabbable =
+        rovingKey === key || (rovingKey === null && !tabStopAssigned.current);
+      if (tabbable) tabStopAssigned.current = true;
+      return tabbable ? 0 : -1;
+    },
+    [rovingKey],
+  );
+  const moveActive = useCallback(
+    (from: string, key: unknown) => {
+      const next = deriveBrowserTreeKeyboardTarget(previousNavOrder.current, from, key);
+      if (next === null) return;
+      setActiveKey(next);
+      navEls.current.get(next)?.focus();
+    },
+    [setActiveKey],
+  );
   const navKeyDown = useCallback(
     (key: string, opts?: { onArrowRight?: () => void; onArrowLeft?: () => void }) =>
       (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-        if (e.key === "ArrowDown") {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
           e.preventDefault();
-          moveActive(key, 1);
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          moveActive(key, -1);
+          moveActive(key, e.key);
         } else if (e.key === "ArrowRight" && opts?.onArrowRight) {
           e.preventDefault();
           opts.onArrowRight();
@@ -177,8 +230,6 @@ export function TreeBrowser({
   }
 
   if (state === "error") {
-    // A genuine tiers-less transport failure — contained, distinguished from
-    // degradation (degradation-is-read-from-tiers).
     return (
       <div
         className="space-y-fg-1 px-fg-1 py-fg-0-5"
@@ -198,18 +249,19 @@ export function TreeBrowser({
     );
   }
 
-  const browser = deriveVaultTreeBrowserView(tree.data?.entries ?? [], filter ?? "");
-  const { groups, filteredToNothing } = browser;
-  const now = Date.now();
-
-  const order = deriveVaultBrowserTreeNavOrder(groups, expanded);
-  navOrder.current = order;
-  const rovingKey = deriveBrowserTreeRovingKey(activeKey, order);
+  const view = deriveVaultRailView(tree.data?.entries ?? [], facets);
   const degradedReason = tierAvailabilityReason(availability);
+  const empty = view.featureCount === 0 && view.docTypeCount === 0;
+  // Latest full expandable-key set (the two sections + every feature + doc-type
+  // folder) for the expand-all verb; document rows are leaves and never expand.
+  treeKeysRef.current = deriveAllVaultBrowserTreeKeys({
+    features: view.featureGroups.map((group) => group.feature),
+    docTypes: view.docTypeGroups.map((group) => group.docType),
+  });
 
   return (
     <nav
-      className="text-label"
+      className="flex flex-col gap-fg-1 text-label"
       aria-label={ariaLabel}
       data-tree-browser={ariaLabel === "tree browser" ? "" : undefined}
       data-vault-browser={ariaLabel === "vault browser" ? "" : undefined}
@@ -226,8 +278,8 @@ export function TreeBrowser({
         </p>
       )}
 
-      {groups.length === 0 ? (
-        filteredToNothing ? (
+      {empty ? (
+        view.filteredToNothing ? (
           <p
             className="px-fg-1 py-fg-0-5 text-label text-ink-faint"
             data-tree-filter-empty
@@ -240,209 +292,370 @@ export function TreeBrowser({
           </p>
         )
       ) : (
-        <div>
-          {groups.map((group) => {
-            const fKey = `f:${group.feature}`;
-            const fExpanded = deriveBrowserTreeExpansionItem(fKey, expanded).expanded;
-            const fSectionId = `tree-feature-${group.feature}`;
-            return (
-              // Level 0 — the #feature header, rendered through the ONE canonical
-              // fold (FoldSection): a flush twisty + a SEMIBOLD body-ink `#tag`,
-              // count quietly right-aligned. Identical fold idiom and structure to
-              // the right rail's Status sections (design-system-is-centralized).
-              // The rail keeps its roving-tabindex keyboard model by passing the
-              // nav ref + tabIndex/onFocus/onKeyDown through `headerRef`/`headerProps`.
-              <FoldSection
+        <>
+          {/* Tree-wide expand / collapse — the disclosure verbs surfaced as rail
+              controls (also Mod+Alt+] / Mod+Alt+[ and the command palette). */}
+          <div
+            className="flex items-center justify-end gap-fg-0-5 pr-fg-1"
+            data-tree-disclosure-controls
+          >
+            <IconButton
+              label={LEFT_RAIL_EXPAND_TREE_LABEL}
+              title={LEFT_RAIL_EXPAND_TREE_LABEL}
+              onClick={expandWholeTree}
+            >
+              <UnfoldVertical size={14} aria-hidden />
+            </IconButton>
+            <IconButton
+              label={LEFT_RAIL_COLLAPSE_TREE_LABEL}
+              title={LEFT_RAIL_COLLAPSE_TREE_LABEL}
+              onClick={collapseAll}
+            >
+              <FoldVertical size={14} aria-hidden />
+            </IconButton>
+          </div>
+
+          {/* FEATURES — feature → its documents. */}
+          <Section
+            title="Features"
+            count={view.featureCount}
+            sectionKey="sec:features"
+            expanded={expanded}
+            toggle={toggle}
+            registerNav={registerNav}
+            registerVisibleKey={registerVisibleKey}
+            setActiveKey={setActiveKey}
+            navKeyDown={navKeyDown}
+          >
+            {view.featureGroups.map((group) => (
+              <FolderRow
                 key={group.feature}
-                open={fExpanded}
-                onToggle={() => toggleExpanded(fKey)}
-                bodyId={fSectionId}
-                twistyPx={CHEVRON_PX}
-                headerClassName="flex h-[1.875rem] w-full items-center gap-fg-1 rounded-fg-xs px-fg-1 text-meta font-semibold text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-                headerRef={registerNav(fKey)}
-                headerProps={{
-                  tabIndex: rovingKey === fKey ? 0 : -1,
-                  onFocus: () => setActiveKey(fKey),
-                  onKeyDown: navKeyDown(fKey, {
-                    onArrowRight: () => !fExpanded && toggleExpanded(fKey),
-                    onArrowLeft: () => fExpanded && toggleExpanded(fKey),
-                  }),
-                }}
-                label={
-                  <span className="min-w-0 truncate" data-tree-feature-tag>
-                    #{group.feature}
-                  </span>
-                }
-                trailing={
-                  <span className="pl-fg-1 text-caption text-ink-faint" data-tabular>
-                    {group.count}
-                  </span>
-                }
-                data-tree-feature
-              >
-                {fExpanded &&
-                  group.docTypes.map((sub) => {
-                    const dKey = `d:${group.feature}/${sub.docType}`;
-                    const dExpanded = deriveBrowserTreeExpansionItem(
-                      dKey,
-                      expanded,
-                    ).expanded;
-                    const dSectionId = `tree-doctype-${group.feature}-${sub.docType}`;
-                    const DocTypeMark = docMark(sub.docType);
-                    return (
-                      // Level 1 — the doc-type group header, indented one step, the
-                      // same FoldSection with the doc-type glyph as the leading mark
-                      // and the kit SectionLabel eyebrow + count as the label.
-                      <FoldSection
-                        key={sub.docType}
-                        open={dExpanded}
-                        onToggle={() => toggleExpanded(dKey)}
-                        bodyId={dSectionId}
-                        twistyPx={CHEVRON_PX}
-                        headerClassName="flex h-[1.875rem] w-full items-center gap-fg-1 rounded-fg-xs pl-fg-3 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-                        headerRef={registerNav(dKey)}
-                        headerProps={{
-                          tabIndex: rovingKey === dKey ? 0 : -1,
-                          onFocus: () => setActiveKey(dKey),
-                          onKeyDown: navKeyDown(dKey, {
-                            onArrowRight: () => !dExpanded && toggleExpanded(dKey),
-                            onArrowLeft: () => dExpanded && toggleExpanded(dKey),
-                          }),
-                        }}
-                        leading={
-                          <span className="shrink-0 text-ink-faint" aria-hidden>
-                            <DocTypeMark size={DOC_MARK_PX} />
-                          </span>
-                        }
-                        label={
-                          <SectionLabel
-                            count={sub.entries.length}
-                            className="min-w-0 flex-1"
-                          >
-                            {docGroupLabel(sub.docType)}
-                          </SectionLabel>
-                        }
-                        data-tree-doctype
-                      >
-                        <ul>
-                          {sub.entries.map((entry) => (
-                            <TreeRow
-                              key={entry.path}
-                              entry={entry}
-                              docType={sub.docType}
-                              highlighted={entry.path === highlight}
-                              fresh={freshnessLabel(entry.dates.modified, now)}
-                              rovingKey={rovingKey}
-                              registerNav={registerNav}
-                              setActiveKey={setActiveKey}
-                              navKeyDown={navKeyDown}
-                              onClick={() => clickHandler(entry)}
-                              onOpen={() => openHandler(entry)}
-                              entity={vaultDocEntity(entry, scope)}
-                            />
-                          ))}
-                        </ul>
-                      </FoldSection>
-                    );
-                  })}
-              </FoldSection>
-            );
-          })}
-        </div>
+                folderKey={`feat:${group.feature}`}
+                name={featureDisplayName(group.feature)}
+                count={group.count}
+                entries={featureEntries(group)}
+                expanded={expanded}
+                toggle={toggle}
+                scope={scope}
+                highlight={highlight}
+                onClick={clickHandler}
+                onOpen={openHandler}
+                registerNav={registerNav}
+                registerVisibleKey={registerVisibleKey}
+                setActiveKey={setActiveKey}
+                navKeyDown={navKeyDown}
+              />
+            ))}
+          </Section>
+
+          {/* DOCUMENTS — doc-type folder → its documents. */}
+          <Section
+            title="Documents"
+            count={view.docTypeCount}
+            sectionKey="sec:documents"
+            expanded={expanded}
+            toggle={toggle}
+            registerNav={registerNav}
+            registerVisibleKey={registerVisibleKey}
+            setActiveKey={setActiveKey}
+            navKeyDown={navKeyDown}
+          >
+            {view.docTypeGroups.map((group: VaultDocTypeGroup) => (
+              <FolderRow
+                key={group.docType}
+                folderKey={`type:${group.docType}`}
+                name={docGroupLabel(group.docType)}
+                count={group.count}
+                entries={group.entries}
+                expanded={expanded}
+                toggle={toggle}
+                scope={scope}
+                highlight={highlight}
+                onClick={clickHandler}
+                onOpen={openHandler}
+                registerNav={registerNav}
+                registerVisibleKey={registerVisibleKey}
+                setActiveKey={setActiveKey}
+                navKeyDown={navKeyDown}
+              />
+            ))}
+          </Section>
+        </>
       )}
     </nav>
   );
 }
 
-// --- the document row (level 2) --------------------------------------------------
+// --- the section header (binding `LeftRail` SectionHeader 666:2158) ---------------
 
-interface TreeRowProps {
-  entry: VaultTreeEntry;
-  docType: string;
-  highlighted: boolean;
-  fresh: string;
-  rovingKey: string | null;
+interface SectionProps {
+  title: string;
+  count: number;
+  sectionKey: string;
+  expanded: ReadonlySet<string>;
+  toggle: (key: string) => void;
   registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
+  registerVisibleKey: (key: string) => number;
+  setActiveKey: (key: string) => void;
+  navKeyDown: (
+    key: string,
+    opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
+  ) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}
+
+/** A top-level collapsible section — a twisty + uppercase eyebrow + count, folding
+ *  its folder rows. Built on the ONE canonical fold (FoldSection), identical idiom
+ *  to the right rail's Status sections (design-system-is-centralized). The header
+ *  joins the rail's single roving-tabindex nav order (the whole rail is ONE
+ *  tab-stop) via `registerVisibleKey`/`registerNav`. */
+function Section({
+  title,
+  count,
+  sectionKey,
+  expanded,
+  toggle,
+  registerNav,
+  registerVisibleKey,
+  setActiveKey,
+  navKeyDown,
+  children,
+}: SectionProps) {
+  const open = deriveBrowserTreeExpansionItem(sectionKey, expanded).expanded;
+  const tabIndex = registerVisibleKey(sectionKey);
+  return (
+    <FoldSection
+      open={open}
+      onToggle={() => toggle(sectionKey)}
+      bodyId={`vault-${sectionKey}`}
+      twistyPx={DOC_MARK_PX}
+      headerClassName="flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-1 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      bodyClassName="flex flex-col gap-fg-1"
+      headerRef={registerNav(sectionKey)}
+      headerProps={{
+        tabIndex,
+        onFocus: () => setActiveKey(sectionKey),
+        onKeyDown: navKeyDown(sectionKey, {
+          onArrowRight: open ? undefined : () => toggle(sectionKey),
+          onArrowLeft: open ? () => toggle(sectionKey) : undefined,
+        }),
+      }}
+      label={
+        <SectionLabel
+          className="min-w-0 flex-1"
+          data-vault-section={title.toLowerCase()}
+        >
+          {title}
+        </SectionLabel>
+      }
+      trailing={
+        <span className="text-meta text-ink-faint" data-tabular>
+          {count}
+        </span>
+      }
+      data-vault-section-header
+    >
+      {children}
+    </FoldSection>
+  );
+}
+
+// --- the folder row (binding `LeftRail` Row 666:2165) -----------------------------
+
+interface FolderRowProps {
+  folderKey: string;
+  name: string;
+  count: number;
+  entries: VaultTreeEntry[];
+  expanded: ReadonlySet<string>;
+  toggle: (key: string) => void;
+  scope: string | null;
+  highlight: string | null;
+  onClick: (entry: VaultTreeEntry) => void;
+  onOpen: (entry: VaultTreeEntry) => void;
+  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
+  registerVisibleKey: (key: string) => number;
+  setActiveKey: (key: string) => void;
+  navKeyDown: (
+    key: string,
+    opts?: { onArrowRight?: () => void; onArrowLeft?: () => void },
+  ) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
+}
+
+/** A feature / doc-type folder: chevron + folder glyph + name + member count,
+ *  toggling a body of DocRows. The folder glyph is the ONE structural Lucide
+ *  chrome mark (icons-come-from-the-two-sanctioned-families); leaves (the DocRows)
+ *  carry no icon. */
+function FolderRow({
+  folderKey,
+  name,
+  count,
+  entries,
+  expanded,
+  toggle,
+  scope,
+  highlight,
+  onClick,
+  onOpen,
+  registerNav,
+  registerVisibleKey,
+  setActiveKey,
+  navKeyDown,
+}: FolderRowProps) {
+  const open = deriveBrowserTreeExpansionItem(folderKey, expanded).expanded;
+  const bodyId = `vault-${folderKey}`;
+  const tabIndex = registerVisibleKey(folderKey);
+  return (
+    <div data-vault-folder>
+      <button
+        ref={registerNav(folderKey)}
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        tabIndex={tabIndex}
+        onFocus={() => setActiveKey(folderKey)}
+        onClick={() => toggle(folderKey)}
+        onKeyDown={navKeyDown(folderKey, {
+          onArrowRight: open ? undefined : () => toggle(folderKey),
+          onArrowLeft: open ? () => toggle(folderKey) : undefined,
+        })}
+        className="flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+      >
+        <span className="shrink-0 text-ink-faint" aria-hidden>
+          {open ? (
+            <ChevronDown size={CHEVRON_PX} />
+          ) : (
+            <ChevronRight size={CHEVRON_PX} />
+          )}
+        </span>
+        <span className="shrink-0 text-ink-muted" aria-hidden>
+          <Folder size={DOC_MARK_PX} />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-body text-ink">{name}</span>
+        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
+          {count}
+        </span>
+      </button>
+
+      {open && (
+        <ul
+          id={bodyId}
+          className="flex flex-col gap-fg-2 py-fg-1-5"
+          data-vault-folder-body
+        >
+          {entries.map((entry) => (
+            <DocRow
+              key={entry.path}
+              navKey={`${folderKey}:doc:${entry.path}`}
+              entry={entry}
+              highlighted={entry.path === highlight}
+              scope={scope}
+              registerNav={registerNav}
+              registerVisibleKey={registerVisibleKey}
+              setActiveKey={setActiveKey}
+              navKeyDown={navKeyDown}
+              onClick={() => onClick(entry)}
+              onOpen={() => onOpen(entry)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// --- the document row (binding `LeftRail/DocRow` 660:1875) ------------------------
+
+interface DocRowProps {
+  navKey: string;
+  entry: VaultTreeEntry;
+  highlighted: boolean;
+  scope: string | null;
+  registerNav: (key: string) => (el: HTMLButtonElement | null) => void;
+  registerVisibleKey: (key: string) => number;
   setActiveKey: (key: string) => void;
   navKeyDown: (key: string) => (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
   onClick: () => void;
   onOpen: () => void;
-  entity: VaultDocEntity;
 }
 
-/** One document row at level 2 (binding `LeftRail` 244:750 document row): the
- *  leading cue is the actual doc-type glyph, followed by the stem and freshness
- *  label. The selected row
- *  alone gets the kit ListRow accent treatment — a 2px left accent bar +
- *  accent-subtle tint — exactly one selected row across the whole tree. */
-function TreeRow({
+/** One document, as a two-line leaf: the human title over a meta line carrying the
+ *  modified date and (for ADRs) the status badge. Selection alone gets the kit
+ *  accent treatment (2px left bar + accent tint) — exactly one selected row. */
+function DocRow({
+  navKey,
   entry,
-  docType,
   highlighted,
-  fresh,
-  rovingKey,
+  scope,
   registerNav,
+  registerVisibleKey,
   setActiveKey,
   navKeyDown,
   onClick,
   onOpen,
-  entity,
-}: TreeRowProps) {
-  const rowKey = `r:${entry.path}`;
-  const FallbackMark = docMark(docType);
-
+}: DocRowProps) {
+  const title = docDisplayTitle(entry.path);
+  const date = docDateLabel(entry.dates.modified);
+  const fresh = freshnessLabel(entry.dates.modified, Date.now());
+  const entity = vaultDocEntity(entry, scope);
+  const tabIndex = registerVisibleKey(navKey);
+  const handleNavKeyDown = navKeyDown(navKey);
   return (
     <li>
       <button
-        ref={registerNav(rowKey)}
+        ref={registerNav(navKey)}
         type="button"
         title={entry.path}
         aria-current={highlighted ? "page" : undefined}
-        tabIndex={rovingKey === rowKey ? 0 : -1}
+        tabIndex={tabIndex}
+        onFocus={() => setActiveKey(navKey)}
         onClick={onClick}
         onDoubleClick={onOpen}
-        onFocus={() => setActiveKey(rowKey)}
         onContextMenu={(e) => {
           e.preventDefault();
           openContextMenu(entity, { x: e.clientX, y: e.clientY });
         }}
-        onKeyDown={(e) => {
+        onKeyDown={(e: ReactKeyboardEvent<HTMLButtonElement>) => {
           if (
             handleKeyboardContextMenu(e, (anchor) => openContextMenu(entity, anchor))
           ) {
             return;
           }
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            handleNavKeyDown(e);
+            return;
+          }
           if (e.key === "Enter") {
             e.preventDefault();
             onOpen();
-            return;
           }
-          navKeyDown(rowKey)(e);
         }}
-        // Level-2 indent (binding row at `pl-36px`) lines the rows up under the
-        // doc-type group; the kit ListRow accent treatment (2px left bar + tint)
-        // marks selection, the leading category cue + stem + freshness follow.
-        className={`flex h-[1.875rem] w-full min-w-0 items-center gap-fg-1-5 rounded-r-fg-xs border-l-2 pe-fg-1 ps-fg-6 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+        className={`flex w-full min-w-0 flex-col gap-fg-0-5 rounded-r-fg-xs border-l-2 py-fg-1-5 pe-fg-2 ps-fg-8 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           highlighted
-            ? "border-l-accent bg-accent-subtle font-medium text-accent-text"
-            : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
+            ? "border-l-accent bg-accent-subtle"
+            : "border-l-transparent hover:bg-paper-sunken"
         }`}
       >
-        {/* Leading cue is the actual document-type glyph. The Vault tree no
-            longer uses legend-coloured circular document markers, so the row
-            identity survives in grayscale and matches the doc-type group. */}
-        <span className="flex shrink-0 items-center text-ink-faint" aria-hidden>
-          <FallbackMark size={DOC_MARK_PX} />
+        <span
+          className={`w-full truncate text-body ${highlighted ? "text-accent-text" : "text-ink"}`}
+        >
+          {title}
         </span>
-        <span className="min-w-0 shrink truncate">{entryStem(entry.path)}</span>
-        {fresh && (
-          <span
-            className={`ml-auto shrink-0 text-caption ${freshnessToneClass(fresh)}`}
-            data-tabular
-          >
-            {fresh}
-          </span>
-        )}
+        <span className="flex items-center gap-fg-1-5">
+          {date && (
+            <span
+              className={`shrink-0 text-meta ${freshnessToneClass(fresh)}`}
+              data-tabular
+            >
+              {date}
+            </span>
+          )}
+          {entry.status && (
+            <Badge tone="neutral" data-doc-status>
+              {entry.status}
+            </Badge>
+          )}
+        </span>
       </button>
     </li>
   );

@@ -1,9 +1,14 @@
 import {
-  normalizeDashboardRepresentationMode,
-  normalizeDashboardSalienceLens,
   normalizeDashboardStateWriteScope,
+  normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
+import {
+  REPRESENTATION_MODES,
+  SALIENCE_LENSES,
+  type RepresentationMode,
+  type SalienceLens,
+} from "./engine";
 
 export interface DashboardStageControlsIntent {
   pending: boolean;
@@ -12,6 +17,18 @@ export interface DashboardStageControlsIntent {
 }
 
 export const normalizeDashboardStageControlsScope = normalizeDashboardStateWriteScope;
+
+export function normalizeDashboardStageControlsRepresentationMode(
+  mode: unknown,
+): RepresentationMode | null {
+  return normalizeStringMember(mode, REPRESENTATION_MODES);
+}
+
+export function normalizeDashboardStageControlsLens(
+  lens: unknown,
+): SalienceLens | null {
+  return normalizeStringMember(lens, SALIENCE_LENSES);
+}
 
 /**
  * Stores/server write seam for stage layout and salience controls.
@@ -26,13 +43,17 @@ export function useDashboardStageControlsIntent(
   const inert = () => Promise.resolve(null);
   return {
     pending: mutations.mutation.isPending,
-    setRepresentationMode: (mode) =>
-      normalizedScope === null
+    setRepresentationMode: (mode) => {
+      const normalizedMode = normalizeDashboardStageControlsRepresentationMode(mode);
+      return normalizedScope === null || normalizedMode === null
         ? inert()
-        : mutations.setRepresentationMode(normalizeDashboardRepresentationMode(mode)),
-    setLens: (lens) =>
-      normalizedScope === null
+        : mutations.setRepresentationMode(normalizedMode);
+    },
+    setLens: (lens) => {
+      const normalizedLens = normalizeDashboardStageControlsLens(lens);
+      return normalizedScope === null || normalizedLens === null
         ? inert()
-        : mutations.setLens(normalizeDashboardSalienceLens(lens)),
+        : mutations.setLens(normalizedLens);
+    },
   };
 }

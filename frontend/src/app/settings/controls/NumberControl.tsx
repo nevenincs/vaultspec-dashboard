@@ -8,7 +8,10 @@
 // from the semantic accent token and the readout from the canonical text-label
 // role utility, so no legacy alias shim remained to migrate.
 
-import { deriveSettingsNumberControlView } from "../../../stores/view/settingsControls";
+import {
+  deriveSettingsNumberControlView,
+  settingsNumberControlCommitValue,
+} from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
 export function NumberControl({ def, value, onChange, disabled, id }: ControlProps) {
@@ -25,7 +28,10 @@ export function NumberControl({ def, value, onChange, disabled, id }: ControlPro
         disabled={disabled}
         aria-label={def.label}
         aria-valuetext={view.ariaValueText}
-        onChange={(e) => onChange(String(e.target.valueAsNumber))}
+        onChange={(e) => {
+          const next = settingsNumberControlCommitValue(def, e.currentTarget.value);
+          if (next !== null) onChange(next);
+        }}
         className="w-40 accent-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
       />
       <span

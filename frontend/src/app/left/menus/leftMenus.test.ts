@@ -130,7 +130,7 @@ describe("worktreeMenu", () => {
 });
 
 describe("vaultDocMenu", () => {
-  it("offers focus, reveal, open-in-editor, copy path, and copy stem", () => {
+  it("offers focus, reveal, open-in-editor, copy path, copy stem, and new document", () => {
     const actions = vaultDocMenu({
       kind: "vault-doc",
       id: " doc:my-stem ",
@@ -144,9 +144,11 @@ describe("vaultDocMenu", () => {
       "vault-doc:open-in-editor",
       "vault-doc:copy-path",
       "vault-doc:copy-stem",
+      "left-rail:new-document",
     ]);
     expect(byId(actions, "vault-doc:focus")?.section).toBe("navigate");
     expect(byId(actions, "vault-doc:copy-stem")?.section).toBe("copy");
+    expect(byId(actions, "left-rail:new-document")?.section).toBe("transform");
   });
 
   it("rejects non-vault-doc entities at resolver ingress", () => {

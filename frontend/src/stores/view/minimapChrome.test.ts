@@ -46,6 +46,22 @@ describe("minimap chrome view seam", () => {
     expect(useMinimapChromeStore.getState().collapsed).toBe(false);
   });
 
+  it("normalizes malformed collapse reads before toggles and projection", () => {
+    useMinimapChromeStore.setState({
+      collapsed: "true",
+    } as unknown as Partial<ReturnType<typeof useMinimapChromeStore.getState>>);
+
+    expect(deriveMinimapChromeView(useMinimapChromeStore.getState().collapsed)).toMatchObject({
+      collapsed: false,
+      expanded: true,
+      collapseLabel: "collapse minimap",
+    });
+
+    toggleMinimapCollapsed();
+
+    expect(useMinimapChromeStore.getState().collapsed).toBe(true);
+  });
+
   it("projects expanded minimap chrome for the widget renderer", () => {
     expect(deriveMinimapChromeView(false)).toMatchObject({
       collapsed: false,
@@ -87,6 +103,14 @@ describe("minimap chrome view seam", () => {
       collapseIcon: "expand",
       canvasRegionAriaHidden: true,
       canvasRegionStyle: { display: "none" },
+    });
+
+    expect(deriveMinimapChromeView("true", "yes")).toMatchObject({
+      collapsed: false,
+      expanded: true,
+      rootClassName:
+        "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden backdrop-blur-sm",
+      collapseLabel: "collapse minimap",
     });
   });
 

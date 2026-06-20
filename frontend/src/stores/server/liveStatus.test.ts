@@ -7,6 +7,8 @@ import {
   advanceLiveSeq,
   countBrokenLinks,
   isStreamLost,
+  LIVE_BROKEN_LINK_COUNT_MAX,
+  LIVE_SEQ_MAX,
   markLiveStreamLost,
   normalizeLiveBrokenLinkCount,
   normalizeLiveSeq,
@@ -61,9 +63,11 @@ describe("useLiveStatusStore", () => {
     expect(normalizeLiveSeq(4.9)).toBe(4);
     expect(normalizeLiveSeq(Number.NaN)).toBeNull();
     expect(normalizeLiveSeq(-1)).toBeNull();
+    expect(normalizeLiveSeq(LIVE_SEQ_MAX + 1)).toBeNull();
 
     advanceLiveSeq(4.9);
     advanceLiveSeq(Number.POSITIVE_INFINITY);
+    advanceLiveSeq(LIVE_SEQ_MAX + 1);
     advanceLiveSeq("8");
 
     expect(useLiveStatusStore.getState().lastSeq).toBe(4);
@@ -81,12 +85,18 @@ describe("useLiveStatusStore", () => {
     expect(normalizeLiveBrokenLinkCount(2.8)).toBe(2);
     expect(normalizeLiveBrokenLinkCount(-5)).toBe(0);
     expect(normalizeLiveBrokenLinkCount(Number.NaN)).toBeNull();
+    expect(normalizeLiveBrokenLinkCount(LIVE_BROKEN_LINK_COUNT_MAX + 5)).toBe(
+      LIVE_BROKEN_LINK_COUNT_MAX,
+    );
 
     setLiveBrokenLinkCount(2.8);
     setLiveBrokenLinkCount(Number.NaN);
+    setLiveBrokenLinkCount(LIVE_BROKEN_LINK_COUNT_MAX + 5);
     setLiveBrokenLinkCount("4");
 
-    expect(useLiveStatusStore.getState().brokenLinkCount).toBe(2);
+    expect(useLiveStatusStore.getState().brokenLinkCount).toBe(
+      LIVE_BROKEN_LINK_COUNT_MAX,
+    );
   });
 
   it("reset clears the whole live plane (scope swap)", () => {
@@ -147,6 +157,14 @@ describe("countBrokenLinks", () => {
         { state: "broken" },
       ]),
     ).toBe(2);
+    expect(countBrokenLinks({ edges: [] })).toBe(0);
+    expect(
+      countBrokenLinks(
+        Array.from({ length: LIVE_BROKEN_LINK_COUNT_MAX + 5 }, () => ({
+          state: "broken",
+        })),
+      ),
+    ).toBe(LIVE_BROKEN_LINK_COUNT_MAX);
   });
 
   it("sets the live broken-link count from edge projections", () => {

@@ -1,20 +1,26 @@
-import { beforeEach, describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   PIPELINE_EXPANSION_AS_OF_MAX_CHARS,
   PIPELINE_EXPANDED_IDS_CAP,
   PIPELINE_EXPANSION_KEY_MAX_CHARS,
+  canWritePipelineExpansionIdentity,
   derivePipelineExpansionRows,
   normalizePipelineExpansionAsOf,
   normalizePipelineExpandedIds,
   normalizePipelineExpansionKey,
   normalizePipelineExpansionScope,
   pipelineExpansionKey,
+  usePipelineExpansion,
   usePipelineExpansionStore,
 } from "./pipelineExpansion";
 
 describe("pipeline expansion store", () => {
   beforeEach(() => usePipelineExpansionStore.getState().reset());
+  afterEach(() => cleanup());
 
   it("derives collision-resistant keys for null, live, and separator-bearing parts", () => {
     expect(pipelineExpansionKey(null)).toBe(
@@ -48,6 +54,15 @@ describe("pipeline expansion store", () => {
       ),
     ).toBeUndefined();
     expect(normalizePipelineExpansionAsOf({ at: 42 })).toBeUndefined();
+    expect(canWritePipelineExpansionIdentity(" scope-a ", undefined)).toBe(true);
+    expect(canWritePipelineExpansionIdentity(null, undefined)).toBe(true);
+    expect(canWritePipelineExpansionIdentity("scope-a", 42)).toBe(true);
+    expect(canWritePipelineExpansionIdentity("scope-a", " live ")).toBe(true);
+    expect(canWritePipelineExpansionIdentity({ scope: "scope-a" }, undefined)).toBe(
+      false,
+    );
+    expect(canWritePipelineExpansionIdentity("scope-a", { at: 42 })).toBe(false);
+    expect(canWritePipelineExpansionIdentity("scope-a", null)).toBe(false);
     expect(pipelineExpansionKey(" scope-a ", " live ")).toBe(
       "pipeline-expansion:scope:value:scope-a:playhead:value:live",
     );
@@ -105,8 +120,8 @@ describe("pipeline expansion store", () => {
     ).toBe(pipelineExpansionKey("scope-a"));
     expect(
       pipelineExpansionKey(
-        "scope:".concat("x".repeat(PIPELINE_EXPANSION_KEY_MAX_CHARS)),
-        "live",
+        "s".repeat(PIPELINE_EXPANSION_KEY_MAX_CHARS - 300),
+        "t".repeat(PIPELINE_EXPANSION_AS_OF_MAX_CHARS),
       ),
     ).toBe(pipelineExpansionKey(null));
 
@@ -159,6 +174,49 @@ describe("pipeline expansion store", () => {
     expect(expandedIds[expandedIds.length - 1]).toBe(
       `doc:plan-${PIPELINE_EXPANDED_IDS_CAP + 3}`,
     );
+  });
+
+  it("keeps malformed runtime identity inert at the hook write seam", () => {
+    const key = pipelineExpansionKey("scope-a");
+    usePipelineExpansionStore.getState().toggle(key, "doc:plan-kept");
+
+    const malformedScope = renderHook(() =>
+      usePipelineExpansion({ scope: "scope-a" }, undefined, ["doc:plan-bad"]),
+    );
+
+    expect(malformedScope.result.current.expanded.size).toBe(0);
+
+    act(() => malformedScope.result.current.toggle("doc:plan-bad"));
+
+    expect(usePipelineExpansionStore.getState()).toMatchObject({
+      key,
+      expandedIds: ["doc:plan-kept"],
+    });
+
+    const malformedAsOf = renderHook(() =>
+      usePipelineExpansion("scope-a", { at: 42 }, ["doc:plan-bad"]),
+    );
+
+    act(() => malformedAsOf.result.current.toggle("doc:plan-bad"));
+
+    expect(usePipelineExpansionStore.getState()).toMatchObject({
+      key,
+      expandedIds: ["doc:plan-kept"],
+    });
+  });
+
+  it("keeps explicit null scope writable for the live pipeline bucket", () => {
+    const key = pipelineExpansionKey(null);
+    const { result } = renderHook(() =>
+      usePipelineExpansion(null, undefined, ["doc:plan-a"]),
+    );
+
+    act(() => result.current.toggle("doc:plan-a"));
+
+    expect(usePipelineExpansionStore.getState()).toMatchObject({
+      key,
+      expandedIds: ["doc:plan-a"],
+    });
   });
 
   it("projects expanded state onto server plan-row and artifact row shapes", () => {

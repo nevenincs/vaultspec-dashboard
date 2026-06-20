@@ -112,8 +112,14 @@ describe("SettingControl dispatch + control kit", () => {
   });
 
   it("slider (integer): reflects value/bounds and emits a decimal string", () => {
-    const onChange = vi.fn();
-    render(<SettingControl def={intDef} value="120" onChange={onChange} />);
+    const changes: string[] = [];
+    render(
+      <SettingControl
+        def={intDef}
+        value="120"
+        onChange={(next) => changes.push(next)}
+      />,
+    );
     const slider = screen.getByRole("slider", {
       name: "Label size",
     }) as HTMLInputElement;
@@ -124,7 +130,7 @@ describe("SettingControl dispatch + control kit", () => {
     // The readout shows the value + unit.
     expect(screen.getByText("120%")).toBeTruthy();
     fireEvent.change(slider, { target: { value: "150" } });
-    expect(onChange).toHaveBeenCalledWith("150");
+    expect(changes).toEqual(["150"]);
   });
 
   it("disabled: controls do not emit", () => {

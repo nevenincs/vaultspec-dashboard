@@ -1,16 +1,18 @@
 // @vitest-environment happy-dom
 //
-// Vault mode surface adoption: the vault browser rendered against the REAL
-// engine over the fixture vault — no mock transport, no injected backend
-// conditions. These cover the loaded feature tree, collapsed default, and the
-// keyboard / a11y contract.
+// Vault tab surface adoption (binding `LeftRail` 238:600): the vault browser
+// rendered against the REAL engine over the fixture vault — no mock transport, no
+// injected backend conditions. The Vault tab is TWO collapsible sections (Features
+// + Documents) that start COLLAPSED; expanding a section reveals its folder rows,
+// and expanding a folder reveals its document rows. These cover the collapsed
+// default, the one-tab-stop roving a11y contract, the disclosure cascade, and
+// selection.
 //
-// The four-honest-states selection logic (loading / empty / degraded / error)
-// lives in the PURE `deriveVaultTreeAvailability` selector, tested over explicit
-// tiers/error vectors in queries.test.ts. It is NOT re-tested here by stubbing
-// the transport into a never-resolving / 500 / tier-down state — those are the
-// fakes this codebase is burning down. A healthy live surface renders the loaded
-// state; the degraded/error JSX is driven by the pure selector's verdict.
+// The four-honest-states selection logic (loading / empty / degraded / error) lives
+// in the PURE `deriveVaultTreeAvailability` selector, tested over explicit
+// tiers/error vectors in queries.test.ts. It is NOT re-tested here by stubbing the
+// transport into a never-resolving / 500 / tier-down state — those are the fakes
+// this codebase is burning down.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -32,7 +34,7 @@ function renderBrowser() {
   );
 }
 
-describe("VaultBrowser feature tree + a11y (live engine)", () => {
+describe("VaultBrowser Features + Documents sections + a11y (live engine)", () => {
   let scope: string;
   beforeAll(async () => {
     scope = await liveScope();
@@ -48,21 +50,9 @@ describe("VaultBrowser feature tree + a11y (live engine)", () => {
     useViewStore.getState().setScope(null);
   });
 
-  it("renders a fully collapsed feature tree under a labelled landmark", async () => {
-    renderBrowser();
-    const nav = await screen.findByRole("navigation", { name: "vault browser" });
-    expect(nav).toBeTruthy();
-    await waitFor(() => {
-      const featureTags = document.querySelectorAll("[data-tree-feature-tag]");
-      expect(featureTags.length).toBeGreaterThan(0);
-      expect(featureTags[0]!.textContent?.startsWith("#")).toBe(true);
-    });
-    expect(document.querySelectorAll("[data-tree-doctype]")).toHaveLength(0);
-    expect(screen.getAllByRole("button", { expanded: false }).length).toBeGreaterThan(
-      0,
-    );
-  });
-
+  // Every navigable element in the rail's single roving-tabindex order: the two
+  // section headers, the folder rows, and the document rows. Section/folder headers
+  // carry aria-expanded; document rows carry a `.vault/` title.
   function navButtons(): HTMLButtonElement[] {
     return screen
       .getAllByRole("button")
@@ -77,6 +67,21 @@ describe("VaultBrowser feature tree + a11y (live engine)", () => {
     return navButtons().filter((b) => b.tabIndex === 0);
   }
 
+  it("renders both sections collapsed under a labelled landmark", async () => {
+    renderBrowser();
+    const nav = await screen.findByRole("navigation", { name: "vault browser" });
+    expect(nav).toBeTruthy();
+    await waitFor(() => {
+      const sections = document.querySelectorAll("[data-vault-section]");
+      expect(sections.length).toBe(2);
+    });
+    // Sections start collapsed → no folders or document rows are mounted yet.
+    expect(document.querySelectorAll("[data-vault-folder]")).toHaveLength(0);
+    expect(
+      screen.getAllByRole("button", { expanded: false }).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
   it("is ONE tab-stop: exactly one navigable element has tabIndex 0 at a time", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
@@ -87,27 +92,27 @@ describe("VaultBrowser feature tree + a11y (live engine)", () => {
     expect(tabZero()[0].hasAttribute("aria-expanded")).toBe(true);
   });
 
-  it("expands feature and doc-type groups to reveal document rows", async () => {
+  it("expands a section to reveal folders, then a folder to reveal document rows", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    const firstFeature = await waitFor(() => {
+    const section = await waitFor(() => {
       const button = screen
         .getAllByRole("button", { expanded: false })
-        .find((b) => b.querySelector("[data-tree-feature-tag]"));
+        .find((b) => b.querySelector("[data-vault-section]"));
       expect(button).toBeTruthy();
       return button!;
     });
-    fireEvent.click(firstFeature);
-    expect(firstFeature.getAttribute("aria-expanded")).toBe("true");
-    await waitFor(() =>
-      expect(document.querySelectorAll("[data-tree-doctype]").length).toBeGreaterThan(
-        0,
-      ),
-    );
-    const firstDocType = screen
-      .getAllByRole("button", { expanded: false })
-      .find((b) => b.closest("[data-tree-doctype]"))!;
-    fireEvent.click(firstDocType);
+    fireEvent.click(section);
+    expect(section.getAttribute("aria-expanded")).toBe("true");
+
+    const folder = await waitFor(() => {
+      const button = screen
+        .getAllByRole("button", { expanded: false })
+        .find((b) => b.closest("[data-vault-folder]"));
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    fireEvent.click(folder);
     await waitFor(() => {
       const rows = screen
         .getAllByRole("button")
@@ -140,23 +145,22 @@ describe("VaultBrowser feature tree + a11y (live engine)", () => {
   it("clicking a document row drives the shared selection (doc:<stem>)", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    const firstFeature = await waitFor(() => {
+    const section = await waitFor(() => {
       const button = screen
         .getAllByRole("button", { expanded: false })
-        .find((b) => b.querySelector("[data-tree-feature-tag]"));
+        .find((b) => b.querySelector("[data-vault-section]"));
       expect(button).toBeTruthy();
       return button!;
     });
-    fireEvent.click(firstFeature);
-    await waitFor(() =>
-      expect(document.querySelectorAll("[data-tree-doctype]").length).toBeGreaterThan(
-        0,
-      ),
-    );
-    const firstDocType = screen
-      .getAllByRole("button", { expanded: false })
-      .find((b) => b.closest("[data-tree-doctype]"))!;
-    fireEvent.click(firstDocType);
+    fireEvent.click(section);
+    const folder = await waitFor(() => {
+      const button = screen
+        .getAllByRole("button", { expanded: false })
+        .find((b) => b.closest("[data-vault-folder]"));
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    fireEvent.click(folder);
     const row = await waitFor(() => {
       const candidate = screen
         .getAllByRole("button")

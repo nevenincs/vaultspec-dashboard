@@ -7,7 +7,7 @@ import { ConfirmDialog } from "../../src/app/chrome/ConfirmDialog";
 import { Dialog } from "../../src/app/chrome/Dialog";
 import { BrowserModeToggle } from "../../src/app/left/BrowserModeToggle";
 import { BrowserRegion } from "../../src/app/left/BrowserRegion";
-import { RailFilter } from "../../src/app/left/RailFilter";
+import { RailFilterField } from "../../src/app/left/RailFilterField";
 import { VaultBrowser } from "../../src/app/left/VaultBrowser";
 import { WorkspacePicker } from "../../src/app/left/WorkspacePicker";
 import { WorktreePicker } from "../../src/app/left/WorktreePicker";
@@ -158,8 +158,10 @@ figma.connect(Playhead, "<MIRROR>?node-id=309-1034", {
   example: () => <Playhead {...coverageProps<ComponentProps<typeof Playhead>>()} />,
 });
 
-figma.connect(RailFilter, "<MIRROR>?node-id=309-1042", {
-  example: () => <RailFilter {...coverageProps<ComponentProps<typeof RailFilter>>()} />,
+figma.connect(RailFilterField, "<MIRROR>?node-id=309-1042", {
+  example: () => (
+    <RailFilterField {...coverageProps<ComponentProps<typeof RailFilterField>>()} />
+  ),
 });
 
 figma.connect(RangeSelect, "<MIRROR>?node-id=309-1046", {

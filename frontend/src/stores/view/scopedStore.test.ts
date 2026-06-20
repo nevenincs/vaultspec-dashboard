@@ -6,7 +6,11 @@ import {
   scopedStorageKey,
 } from "../../platform/storage/scopedKeys";
 import type { KeyValueStore } from "../../scene/positionCache";
-import { createScopedStore, normalizeScopedStoreKeyPart } from "./scopedStore";
+import {
+  createScopedStore,
+  normalizeScopedStoreKeyPart,
+  SCOPED_STORE_VALUE_MAX_CHARS,
+} from "./scopedStore";
 
 class MemoryStore implements KeyValueStore {
   map = new Map<string, string>();
@@ -109,6 +113,25 @@ describe("createScopedStore: scope-keyed persistence scaffold", () => {
     store.map.set(s.storageKey("ws", "s"), "{not json");
     expect(s.load(store, "ws", "s")).toEqual([]);
     expect(store.map.has(s.storageKey("ws", "s"))).toBe(false);
+  });
+
+  it("bounds scoped persisted values before parse and save", () => {
+    const store = new MemoryStore();
+    const s = factory();
+    const key = s.storageKey("ws", "s");
+    store.map.set(key, "x".repeat(SCOPED_STORE_VALUE_MAX_CHARS + 1));
+
+    expect(s.load(store, "ws", "s")).toEqual([]);
+    expect(store.map.has(key)).toBe(false);
+
+    const large = createScopedStore<string[]>({
+      prefix: "test:large",
+      parse: (raw) =>
+        Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [],
+      serialize: () => ["x".repeat(SCOPED_STORE_VALUE_MAX_CHARS + 1)],
+    });
+    large.save(store, "ws", "s", ["too-large"]);
+    expect(store.map.has(large.storageKey("ws", "s"))).toBe(false);
   });
 
   it("loads legacy raw keys so existing saved state survives the key hardening", () => {

@@ -65,6 +65,7 @@ import {
 } from "../../stores/view/statusTabChrome";
 import { openDocTab } from "../../stores/view/tabs";
 import { freshnessLabel } from "../presentation/freshness";
+import { ChangesOverview } from "./ChangesOverview";
 import { PlanStepTree } from "./PlanStepTree";
 // Centralized kit primitives (design-system-is-centralized).
 import {
@@ -139,26 +140,40 @@ function LocationStrip({ scope }: { scope: unknown }) {
       </p>
     );
   }
-  // De-duplicated location (4 displays → 2): the right rail shows ONLY the
-  // current branch name. The worktree name and folder picker live in the left
-  // rail's single clickable title; the absolute path and the redundant worktree
-  // label are no longer repeated here.
+  // The rail header anchors "where are we" (binding redesign LocationStrip,
+  // node 598:1137): a worktree · branch row over a faint mono path. Every value
+  // is read from the one `useLocationAnchor` selector — no fetch, no raw tiers.
   return (
     <div
-      className="flex items-center gap-fg-1-5 px-fg-1 text-label"
+      className="flex flex-col gap-fg-0-5 px-fg-1"
       data-location-strip
       data-location-state="located"
     >
-      <GitBranch size={ICON_PX} aria-hidden className="shrink-0 text-ink-faint" />
-      {anchor.branch && (
-        <span
-          className={anchor.branchClassName}
-          data-location-branch
-          title={anchor.branch}
-        >
-          {anchor.branch}
-        </span>
-      )}
+      <div className="flex items-center gap-fg-1-5 text-label">
+        <GitBranch size={ICON_PX} aria-hidden className="shrink-0 text-ink-faint" />
+        {anchor.mainLabel && (
+          <span className={anchor.mainClassName} data-location-worktree>
+            {anchor.mainLabel}
+          </span>
+        )}
+        {anchor.mainLabel && anchor.branch && (
+          <span aria-hidden className="shrink-0 text-ink-faint">
+            ·
+          </span>
+        )}
+        {anchor.branch && (
+          <span
+            className={anchor.branchClassName}
+            data-location-branch
+            title={anchor.branch}
+          >
+            {anchor.branch}
+          </span>
+        )}
+      </div>
+      <span className={anchor.pathClassName} data-location-path title={anchor.path}>
+        {anchor.path}
+      </span>
     </div>
   );
 }
@@ -617,6 +632,7 @@ export function StatusTab() {
   return (
     <div className="space-y-fg-2 text-body" data-status-tab>
       <LocationStrip scope={scope} />
+      <ChangesOverview />
       <SectionCard
         id={sections.openPlans.id}
         title={sections.openPlans.title}

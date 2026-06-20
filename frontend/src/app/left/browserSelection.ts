@@ -12,6 +12,7 @@ import {
   stemFromPath,
 } from "../../stores/server/liveAdapters";
 import { useDashboardSelectedNodeId } from "../../stores/server/queries";
+import { normalizeStoreScope } from "../../stores/server/scopeIdentity";
 import { openDocTab, previewDocTab } from "../../stores/view/tabs";
 
 export {
@@ -51,9 +52,10 @@ export function highlightedPathFor(
 /** Hook: the highlighted browser path for the shared selection. */
 export function useHighlightedPath(
   entries: readonly VaultTreeEntry[] | undefined,
-  scope: string | null = null,
+  scope: unknown = null,
 ): string | null {
-  const selectedId = useDashboardSelectedNodeId(scope);
+  const normalizedScope = normalizeStoreScope(scope);
+  const selectedId = useDashboardSelectedNodeId(normalizedScope);
   return highlightedPathFor(entries, selectedId);
 }
 
@@ -81,34 +83,39 @@ export function nodeIdToCodePath(id: string): string | null {
   return id.startsWith("code:") ? id.slice(5) : null;
 }
 
-export function useDashboardBrowserSelection(scope: string | null): {
+export function useDashboardBrowserSelection(scope: unknown): {
   handleEntryClick: (entry: VaultTreeEntry) => void;
   handleEntryOpen: (entry: VaultTreeEntry) => void;
   handleCodeEntryClick: (entry: FileTreeEntry) => void;
   handleCodeEntryOpen: (entry: FileTreeEntry) => void;
 } {
+  const normalizedScope = normalizeStoreScope(scope);
   return {
     // VS Code semantics (editor-dock-workspace): a single click PREVIEWS the
     // document in the single provisional tab (which the next preview replaces in
     // place); an open (double-click / Enter) makes it a PERMANENT tab. Both also
     // focus the node on the graph (the tab seam selects).
     handleEntryClick: (entry) => {
-      void previewDocTab(pathToNodeId(entry.path), "markdown", scope).catch(
+      if (normalizedScope === null) return;
+      void previewDocTab(pathToNodeId(entry.path), "markdown", normalizedScope).catch(
         () => undefined,
       );
     },
     handleEntryOpen: (entry) => {
-      void openDocTab(pathToNodeId(entry.path), "markdown", scope).catch(
+      if (normalizedScope === null) return;
+      void openDocTab(pathToNodeId(entry.path), "markdown", normalizedScope).catch(
         () => undefined,
       );
     },
     handleCodeEntryClick: (entry) => {
+      if (normalizedScope === null) return;
       const id = entry.node_id || codePathToNodeId(entry.path);
-      void previewDocTab(id, "code", scope).catch(() => undefined);
+      void previewDocTab(id, "code", normalizedScope).catch(() => undefined);
     },
     handleCodeEntryOpen: (entry) => {
+      if (normalizedScope === null) return;
       const id = entry.node_id || codePathToNodeId(entry.path);
-      void openDocTab(id, "code", scope).catch(() => undefined);
+      void openDocTab(id, "code", normalizedScope).catch(() => undefined);
     },
   };
 }
@@ -134,8 +141,9 @@ export function highlightedCodePathFor(
  *  visible (already-fetched) level entries. */
 export function useHighlightedCodePath(
   entries: readonly FileTreeEntry[] | undefined,
-  scope: string | null = null,
+  scope: unknown = null,
 ): string | null {
-  const selectedId = useDashboardSelectedNodeId(scope);
+  const normalizedScope = normalizeStoreScope(scope);
+  const selectedId = useDashboardSelectedNodeId(normalizedScope);
   return highlightedCodePathFor(entries, selectedId);
 }

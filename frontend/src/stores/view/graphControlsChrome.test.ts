@@ -19,9 +19,13 @@ import {
   patchGraphControlsTuneParams,
   resetGraphControlsChrome,
   setGraphControlsAppearanceParams,
+  setGraphControlsAppearanceOpen,
   setGraphControlsFrozen,
+  setGraphControlsLayoutOpen,
   setGraphControlsSettingsOpen,
   setGraphControlsTuneParams,
+  toggleGraphControlsAppearanceOpen,
+  toggleGraphControlsLayoutOpen,
   toggleGraphControlsSettingsOpen,
   useGraphControlsChromeStore,
 } from "./graphControlsChrome";
@@ -51,6 +55,40 @@ describe("graph controls chrome view seam", () => {
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
   });
 
+  it("sets, toggles, and resets graph section disclosure through one seam", () => {
+    expect(useGraphControlsChromeStore.getState()).toMatchObject({
+      layoutOpen: true,
+      appearanceOpen: true,
+    });
+
+    setGraphControlsLayoutOpen(false);
+    setGraphControlsAppearanceOpen(false);
+    expect(useGraphControlsChromeStore.getState()).toMatchObject({
+      layoutOpen: false,
+      appearanceOpen: false,
+    });
+
+    setGraphControlsLayoutOpen("false");
+    setGraphControlsAppearanceOpen("false");
+    expect(useGraphControlsChromeStore.getState()).toMatchObject({
+      layoutOpen: false,
+      appearanceOpen: false,
+    });
+
+    toggleGraphControlsLayoutOpen();
+    toggleGraphControlsAppearanceOpen();
+    expect(useGraphControlsChromeStore.getState()).toMatchObject({
+      layoutOpen: true,
+      appearanceOpen: true,
+    });
+
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState()).toMatchObject({
+      layoutOpen: true,
+      appearanceOpen: true,
+    });
+  });
+
   it("projects graph settings popover view state for the stage renderer", () => {
     expect(deriveGraphControlsSettingsPopoverView(true, "Graph settings")).toEqual({
       active: true,
@@ -58,7 +96,7 @@ describe("graph controls chrome view seam", () => {
       panelVisible: true,
       panelAriaLabel: "Graph settings",
       panelClassName:
-        "absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 bg-paper-raised/95 p-fg-3 backdrop-blur-sm",
+        "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
     });
     expect(deriveGraphControlsSettingsPopoverView(false, "Graph settings")).toEqual({
       active: false,
@@ -66,7 +104,7 @@ describe("graph controls chrome view seam", () => {
       panelVisible: false,
       panelAriaLabel: "Graph settings",
       panelClassName:
-        "absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 bg-paper-raised/95 p-fg-3 backdrop-blur-sm",
+        "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
     });
   });
 
@@ -106,24 +144,24 @@ describe("graph controls chrome view seam", () => {
 
   it("projects freeze toggle action copy from state and availability", () => {
     expect(deriveGraphControlsFreezeToggleView(false, true)).toEqual({
-      label: "freeze simulation",
-      title: "pause the simulation in place",
+      label: "freeze layout",
+      title: "freeze the layout in place",
     });
     expect(deriveGraphControlsFreezeToggleView(true, true)).toEqual({
-      label: "resume simulation",
-      title: "resume the simulation",
+      label: "resume layout",
+      title: "resume the layout",
     });
     expect(deriveGraphControlsFreezeToggleView(false, false)).toEqual({
-      label: "freeze simulation",
+      label: "freeze layout",
       title: "freeze is available in the Network layout",
     });
   });
 
   it("projects navigation action chrome through one seam", () => {
     expect(deriveGraphControlsNavigationView()).toEqual({
-      containerClassName: "flex items-center gap-fg-0-5",
+      containerClassName: "flex flex-col items-center gap-fg-0-5",
       ariaLabel: "Navigate",
-      dividerClassName: "mx-fg-0-5 h-4 w-px bg-rule",
+      dividerClassName: "my-fg-0-5 h-px w-6 bg-rule",
       zoomIn: { label: "zoom in" },
       zoomOut: { label: "zoom out" },
       fitToView: {
@@ -175,20 +213,20 @@ describe("graph controls tune seam (three-native force params)", () => {
     const linkStrength = specById("linkStrength")!;
     // Repulsion is the magnitude: the signed `charge` range negated + swapped.
     expect(view.sliders.repulsion).toEqual({
-      label: charge.label,
+      label: "Spacing",
       title: "How far nodes push each other apart",
       min: -charge.max!,
       max: -charge.min!,
       step: charge.step!,
     });
     expect(view.sliders.linkDistance).toMatchObject({
-      label: linkDistance.label,
+      label: "Link length",
       min: linkDistance.min!,
       max: linkDistance.max!,
       step: linkDistance.step!,
     });
     expect(view.sliders.linkSpring).toMatchObject({
-      label: linkStrength.label,
+      label: "Grouping",
       min: linkStrength.min!,
       max: linkStrength.max!,
       step: linkStrength.step!,
@@ -263,9 +301,9 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
       max: nodeSize.max!,
       step: nodeSize.step!,
     });
-    expect(view.colorModeLabel).toBe(specById("edgeColorMode")!.label);
+    expect(view.colorModeLabel).toBe("Link colour");
     expect(view.solidLabel).toBe("Solid");
-    expect(view.gradientLabel).toBe("Gradient");
+    expect(view.gradientLabel).toBe("Blended");
   });
 
   it("formats appearance readouts at the schema step precision", () => {

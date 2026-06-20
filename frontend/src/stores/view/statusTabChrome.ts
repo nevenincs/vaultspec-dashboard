@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 export type StatusSectionId =
+  | "changes"
   | "open-plans"
   | "open-prs"
   | "open-issues"
@@ -10,6 +11,7 @@ export type StatusSectionId =
   | "recent-commits";
 
 const STATUS_SECTION_IDS = [
+  "changes",
   "open-plans",
   "open-prs",
   "open-issues",
@@ -65,6 +67,18 @@ export function normalizeStatusSectionOpen(open: unknown): boolean {
   return typeof open === "boolean" ? open : false;
 }
 
+export function normalizeStatusSections(
+  sections: unknown,
+): Partial<Record<StatusSectionId, boolean>> {
+  if (typeof sections !== "object" || sections === null) return {};
+  const source = sections as Partial<Record<StatusSectionId, unknown>>;
+  const normalized: Partial<Record<StatusSectionId, boolean>> = {};
+  for (const id of STATUS_SECTION_IDS) {
+    if (typeof source[id] === "boolean") normalized[id] = source[id];
+  }
+  return normalized;
+}
+
 function normalizeRecentCommitHash(hash: unknown): string | null {
   if (typeof hash !== "string") return null;
   const normalized = hash.trim();
@@ -94,23 +108,22 @@ export const useStatusTabChromeStore = create<StatusTabChromeState>((set) => ({
     set((state) => {
       const sectionId = normalizeStatusSectionId(id);
       if (sectionId === null) return state;
-      const open = state.sections[sectionId] ?? normalizeStatusSectionOpen(defaultOpen);
-      return { sections: { ...state.sections, [sectionId]: !open } };
+      const sections = normalizeStatusSections(state.sections);
+      const open = sections[sectionId] ?? normalizeStatusSectionOpen(defaultOpen);
+      return { sections: { ...sections, [sectionId]: !open } };
     }),
   toggleRecentCommit: (hash) =>
     set((state) => {
       const normalizedHash = normalizeRecentCommitHash(hash);
       if (normalizedHash === null) return state;
-      const open = state.openRecentCommitHashes.includes(normalizedHash);
+      const openRecentCommitHashes = cappedOpenRecentCommitHashes(
+        state.openRecentCommitHashes,
+      );
+      const open = openRecentCommitHashes.includes(normalizedHash);
       return {
         openRecentCommitHashes: open
-          ? state.openRecentCommitHashes.filter(
-              (candidate) => candidate !== normalizedHash,
-            )
-          : cappedOpenRecentCommitHashes([
-              ...state.openRecentCommitHashes,
-              normalizedHash,
-            ]),
+          ? openRecentCommitHashes.filter((candidate) => candidate !== normalizedHash)
+          : cappedOpenRecentCommitHashes([...openRecentCommitHashes, normalizedHash]),
       };
     }),
   showMoreRecentCommits: (page, defaultLimit) =>
@@ -131,7 +144,9 @@ export function useStatusSectionOpen(id: unknown, defaultOpen: unknown): boolean
   const sectionId = normalizeStatusSectionId(id);
   const fallbackOpen = normalizeStatusSectionOpen(defaultOpen);
   return useStatusTabChromeStore((state) =>
-    sectionId === null ? fallbackOpen : (state.sections[sectionId] ?? fallbackOpen),
+    sectionId === null
+      ? fallbackOpen
+      : (normalizeStatusSections(state.sections)[sectionId] ?? fallbackOpen),
   );
 }
 

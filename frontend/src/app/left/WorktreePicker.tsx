@@ -13,17 +13,20 @@
 // engine, and emits the scope-selection intent through the durable session
 // transition — chrome over the one projection.
 
-import { ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import { GitBranch, TriangleAlert } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useId, useRef } from "react";
 
+import { FolderPlus, IconButton, PanelLeft } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
-import type { WorkspaceMapPickerRowView } from "../../stores/server/queries";
+import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import {
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
+  worktreePickerFirstRowFocusTarget,
+  worktreePickerRowKeyboardTarget,
   useWorktreePickerView,
 } from "../../stores/view/worktreePickerChrome";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
@@ -43,10 +46,7 @@ function worktreeEntity(worktree: MapWorktree): WorktreeEntity {
 }
 
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
-// 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure
-// caret reads one density step smaller so the structural chrome stays attenuated
-// relative to the worktree identity, matching the sidebar's CHEVRON_PX.
-const CARET_PX = 12;
+// Warning marks read one density step smaller than identity icons.
 const WARN_PX = 12;
 
 export interface WorktreePickerProps {
@@ -65,6 +65,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     listClassName,
     switchError,
     switchErrorClassName,
+    collapseLeftRail,
   } = useWorktreePickerView();
 
   // Roving focus across the expanded list (ADR keyboard contract): arrow keys
@@ -82,7 +83,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   const listId = useId();
 
   useEffect(() => {
-    setWorktreePickerExpanded(defaultExpanded, true);
+    if (defaultExpanded) setWorktreePickerExpanded(true, true);
   }, [defaultExpanded]);
 
   if (state === "loading") {
@@ -141,9 +142,8 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     (e: ReactKeyboardEvent<HTMLButtonElement>) => {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const delta = e.key === "ArrowDown" ? 1 : -1;
-        const next = Math.min(rows.length - 1, Math.max(0, index + delta));
-        rowEls.current.get(rows[next]!.worktree.id)?.focus();
+        const target = worktreePickerRowKeyboardTarget(rows, index, e.key);
+        if (target !== null) rowEls.current.get(target)?.focus();
       } else if (e.key === "Enter" || e.key === " ") {
         // Enter/Space activates a corpus-bearing row; a no-op (with the conveyed
         // disabled reason) on a bare/degraded row — never a stage scope.
@@ -168,38 +168,63 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         }
       }}
     >
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => toggle(false)}
-        onKeyDown={(e) => {
-          // Keyboard open is instant (never animates). Enter/Space toggle from
-          // the keyboard; ArrowDown opens and dives into the first row.
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggle(true);
-          } else if (e.key === "ArrowDown" && !expanded) {
-            e.preventDefault();
-            setWorktreePickerExpanded(true, true);
-            requestAnimationFrame(() =>
-              rowEls.current.get(rows[0]?.worktree.id ?? "")?.focus(),
-            );
-          }
-        }}
-        aria-expanded={expanded}
-        aria-controls={listId}
-        aria-label={pickerView.triggerAriaLabel}
-        className={pickerView.triggerClassName}
+      {/* The header row (binding `LeftRail` 686:2519): the project/worktree name as
+          a PLAIN title (no pill) that opens the chooser, then the folder-add and
+          rail-collapse icon buttons. The title carries the dropdown a11y wiring; the
+          dropdown list below is unchanged. */}
+      <div
+        className="flex items-center justify-between gap-fg-1 py-fg-1"
+        data-worktree-picker-header
       >
-        {/* The board dropdown shows JUST the worktree name (no ahead/behind/dirty
-            badges) on the paper-sunken ground, with a trailing chevron. */}
-        <span className={pickerView.triggerLabelClassName}>
-          {pickerView.triggerLabel}
-        </span>
-        <span className={pickerView.triggerIconClassName} aria-hidden>
-          {expanded ? <ChevronUp size={CARET_PX} /> : <ChevronDown size={CARET_PX} />}
-        </span>
-      </button>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => toggle(false)}
+          onKeyDown={(e) => {
+            // Keyboard open is instant (never animates). Enter/Space toggle from
+            // the keyboard; ArrowDown opens and dives into the first row.
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggle(true);
+            } else if (e.key === "ArrowDown" && !expanded) {
+              e.preventDefault();
+              setWorktreePickerExpanded(true, true);
+              requestAnimationFrame(() =>
+                rowEls.current
+                  .get(worktreePickerFirstRowFocusTarget(rows) ?? "")
+                  ?.focus(),
+              );
+            }
+          }}
+          aria-expanded={expanded}
+          aria-controls={listId}
+          aria-label={pickerView.triggerAriaLabel}
+          className={pickerView.triggerClassName}
+        >
+          <GitBranch
+            size={14}
+            aria-hidden
+            className={pickerView.triggerIconClassName}
+          />
+          <span className={pickerView.triggerLabelClassName}>
+            {pickerView.triggerLabel}
+          </span>
+        </button>
+        <IconButton
+          label="open or add a project"
+          title="open or add a project"
+          onClick={() => toggle(false)}
+        >
+          <FolderPlus size={16} aria-hidden />
+        </IconButton>
+        <IconButton
+          label="collapse left rail"
+          title="collapse left rail"
+          onClick={collapseLeftRail}
+        >
+          <PanelLeft size={16} aria-hidden />
+        </IconButton>
+      </div>
 
       {/* Degraded: a tier the engine reports unavailable renders as a designed
           degraded banner with the reason in copy tone — the control still lists

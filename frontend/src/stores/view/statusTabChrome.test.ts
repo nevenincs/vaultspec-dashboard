@@ -9,6 +9,7 @@ import {
   deriveStatusSectionChromeView,
   normalizeStatusSectionId,
   normalizeStatusSectionOpen,
+  normalizeStatusSections,
   resetStatusTabChrome,
   showMoreRecentCommits,
   toggleRecentCommit,
@@ -37,6 +38,13 @@ describe("statusTabChrome store", () => {
     expect(normalizeStatusSectionId("unexpected-section")).toBeNull();
     expect(normalizeStatusSectionOpen(true)).toBe(true);
     expect(normalizeStatusSectionOpen("true")).toBe(false);
+    expect(
+      normalizeStatusSections({
+        "open-plans": true,
+        "open-prs": "yes",
+        "unexpected-section": true,
+      }),
+    ).toEqual({ "open-plans": true });
 
     toggleStatusSection("unexpected-section", true);
     toggleStatusSection(null, true);
@@ -46,6 +54,23 @@ describe("statusTabChrome store", () => {
     toggleStatusSection("open-issues", false);
     expect(useStatusTabChromeStore.getState().sections).toEqual({
       "open-issues": true,
+    });
+  });
+
+  it("drops stray section state before updating disclosure chrome", () => {
+    useStatusTabChromeStore.setState({
+      sections: {
+        "open-plans": true,
+        "unexpected-section": true,
+        "recent-prs": "open",
+      } as unknown as Record<"open-plans", boolean>,
+    });
+
+    toggleStatusSection("recent-commits", false);
+
+    expect(useStatusTabChromeStore.getState().sections).toEqual({
+      "open-plans": true,
+      "recent-commits": true,
     });
   });
 
@@ -115,6 +140,32 @@ describe("statusTabChrome store", () => {
 
     toggleRecentCommit("abc123");
     expect(useStatusTabChromeStore.getState().openRecentCommitHashes).toEqual([]);
+  });
+
+  it("normalizes stored recent commit hashes before toggling", () => {
+    useStatusTabChromeStore.setState({
+      openRecentCommitHashes: [
+        "",
+        " abc123 ",
+        "abc123",
+        "x".repeat(RECENT_COMMIT_HASH_MAX_CHARS + 1),
+      ],
+    });
+
+    toggleRecentCommit("abc123");
+
+    expect(useStatusTabChromeStore.getState().openRecentCommitHashes).toEqual([]);
+
+    useStatusTabChromeStore.setState({
+      openRecentCommitHashes: [" bad ", { hash: "ignored" }] as unknown as string[],
+    });
+
+    toggleRecentCommit("def456");
+
+    expect(useStatusTabChromeStore.getState().openRecentCommitHashes).toEqual([
+      "bad",
+      "def456",
+    ]);
   });
 
   it("bounds malformed recent commit paging input at the store boundary", () => {

@@ -211,6 +211,43 @@ const DOC_TYPE_SUFFIXES = new Set([
   "summary",
 ]);
 
+// Short absolute date label for a DocRow's meta line (binding `LeftRail` 238:600
+// shows "Jun 14", not a relative "2d"). Parsed from the ISO `yyyy-mm-dd` string
+// directly (no `Date` / timezone shift) so the printed day matches the stored day.
+const SHORT_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** "Jun 14" from an ISO `yyyy-mm-dd` modified date; empty string when absent. */
+export function docDateLabel(iso?: string): string {
+  if (!iso) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return "";
+  const month = SHORT_MONTHS[Number(match[2]) - 1] ?? "";
+  return month ? `${month} ${Number(match[3])}` : "";
+}
+
+/** A readable FEATURE name for the Features section rows (binding `LeftRail`
+ *  238:600 — "Dashboard Left Rail", not the raw `#dashboard-left-rail` tag): drop
+ *  a leading `#`, de-kebab/underscore, and Title-Case each word. Presentation only;
+ *  the selection-join identity stays the real feature tag. */
+export function featureDisplayName(tag: string): string {
+  const cleaned = tag.replace(/^#/, "").replace(/[-_]+/g, " ").trim();
+  if (cleaned.length === 0) return tag;
+  return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
 /** A readable row title derived from the document stem (see note above). */
 export function docDisplayTitle(path: string): string {
   let stem = pathStemLocal(path).replace(/^\d{4}-\d{2}-\d{2}-/, "");

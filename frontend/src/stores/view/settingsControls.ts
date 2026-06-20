@@ -134,6 +134,22 @@ export function deriveSettingsNumberControlView(
   };
 }
 
+export function settingsNumberControlCommitValue(
+  def: SettingDef,
+  value: unknown,
+): string | null {
+  const raw =
+    typeof value === "number"
+      ? Number.isFinite(value)
+        ? String(Math.trunc(value))
+        : null
+      : typeof value === "string"
+        ? value.trim()
+        : null;
+  if (raw === null || !/^-?\d+$/.test(raw)) return null;
+  return String(deriveSettingsNumberControlView(def, raw).current);
+}
+
 // --- keybinding control view (keyboard-action-system W02.P06) ------------------
 //
 // The chord-recorder catalog derivation. The component stays thin: this builds
@@ -269,6 +285,26 @@ export function keybindingConflictIds(
     normalizedId,
     canonical,
   );
+}
+
+export function keybindingConflictLabels(
+  current: KeybindingOverrides,
+  id: unknown,
+  rawChord: unknown,
+  defs: readonly KeybindingDef[] = listKeybindings(),
+): string[] {
+  const normalizedId = normalizeSettingsKeybindingId(id);
+  if (normalizedId === null) return [];
+  return keybindingConflictIds(current, normalizedId, rawChord, defs)
+    .filter((conflictId) => conflictId !== normalizedId)
+    .map((conflictId) => {
+      const label = defs.find(
+        (def) => normalizeSettingsKeybindingId(def.id) === conflictId,
+      )?.label;
+      return typeof label === "string" && label.trim().length > 0
+        ? label
+        : conflictId;
+    });
 }
 
 export function normalizeSettingsKeybindingId(id: unknown): string | null {

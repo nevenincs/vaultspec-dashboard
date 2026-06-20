@@ -62,6 +62,16 @@ describe("keyboard shortcuts store", () => {
     expect(useKeyboardShortcutsStore.getState().open).toBe(false);
   });
 
+  it("normalizes malformed open-state reads before toggling", () => {
+    useKeyboardShortcutsStore.setState({
+      open: "true",
+    } as unknown as Partial<ReturnType<typeof useKeyboardShortcutsStore.getState>>);
+
+    toggleKeyboardShortcuts();
+
+    expect(useKeyboardShortcutsStore.getState().open).toBe(true);
+  });
+
   it("derives the legend from the live registry, not a static list", () => {
     setIsMacForTesting(false); // Mod -> "Ctrl"
     resetKeybindings();

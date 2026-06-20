@@ -7,6 +7,17 @@ import {
 import { useCommandPaletteLensIntent } from "../server/commandPaletteLensIntent";
 import { featureNodeIdFromTag } from "../server/liveAdapters";
 import { OPS_WHITELIST } from "../server/opsActions";
+import { useBrowserMode } from "./browserMode";
+import {
+  browserTreeExpansionKey,
+  useBrowserTreeExpansionStore,
+} from "./browserTreeExpansion";
+import {
+  LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
+  LEFT_RAIL_COLLAPSE_TREE_LABEL,
+  browseModeAction,
+  newDocumentAction,
+} from "./leftRailKeybindings";
 import {
   useActiveScope,
   useDashboardFilterChoicesView,
@@ -267,6 +278,29 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   return normalizedPaletteCommands(commands);
 }
 
+/**
+ * The left-rail commands on the palette: New document, the two direct browse-mode
+ * sets, and Collapse vault tree. They reuse the SAME shared `ActionDescriptor`
+ * builders the keymap and context menus use (the unified action plane), so cmd+K
+ * exposes the rail's create/navigate verbs without re-authoring them. Expand-all
+ * is deliberately absent — it needs the loaded tree key set, so it lives as a tree
+ * control + chord where that data is in hand.
+ */
+export function buildLeftRailCommands(collapseTree: () => void): PaletteCommand[] {
+  const commands: unknown[] = [
+    { ...newDocumentAction(), family: "app" },
+    { ...browseModeAction("vault"), family: "navigate" },
+    { ...browseModeAction("code"), family: "navigate" },
+    {
+      id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
+      label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
+      family: "navigate",
+      run: collapseTree,
+    },
+  ];
+  return normalizedPaletteCommands(commands);
+}
+
 export function gateCommandsForTimeTravel(
   commands: readonly PaletteCommand[],
   timeTravel: boolean,
@@ -359,6 +393,10 @@ export type CommandPaletteActivationView =
   | { kind: "arm"; cursor: number; commandId: string }
   | { kind: "run"; cursor: number; command: PaletteCommand; closeAfterRun: boolean };
 
+export type CommandPaletteKeyboardIntent =
+  | { kind: "move-cursor"; delta: 1 | -1 }
+  | { kind: "run-active" };
+
 export interface CommandPaletteArmedRepair {
   clearArmedCommandId: boolean;
   disarm: boolean;
@@ -386,6 +424,15 @@ export function commandPaletteMovedCursor(
 ): number {
   if (length === 0) return -1;
   return commandPaletteSafeCursor(length, cursor + delta);
+}
+
+export function deriveCommandPaletteKeyboardIntent(
+  key: unknown,
+): CommandPaletteKeyboardIntent | null {
+  if (key === "ArrowDown") return { kind: "move-cursor", delta: 1 };
+  if (key === "ArrowUp") return { kind: "move-cursor", delta: -1 };
+  if (key === "Enter") return { kind: "run-active" };
+  return null;
 }
 
 export function deriveCommandPaletteActivation(
@@ -525,6 +572,7 @@ export function useCommandPaletteCommandView(
   query: unknown,
 ): CommandPaletteCommandView {
   const scope = useActiveScope();
+  const browserMode = useBrowserMode();
   const normalizedQuery = normalizeCommandPaletteQuery(query);
   const vocabulary = useFiltersVocabularyView(scope);
   const dashboardFilterChoices = useDashboardFilterChoicesView(scope);
@@ -574,10 +622,15 @@ export function useCommandPaletteCommandView(
       resetLayout: shellActions.resetLayout,
       showKeyboardShortcuts: openKeyboardShortcuts,
     });
-    const all = [...baseCommands, ...windowCommands];
+    const leftRailCommands = buildLeftRailCommands(() => {
+      const key = browserTreeExpansionKey(scope, browserMode);
+      useBrowserTreeExpansionStore.getState().collapseAll(key);
+    });
+    const all = [...baseCommands, ...windowCommands, ...leftRailCommands];
     const gated = gateCommandsForTimeTravel(all, timeTravel);
     return filterCommands(gated, normalizedQuery);
   }, [
+    browserMode,
     dashboardFilterChoices,
     lensIntent,
     lenses,

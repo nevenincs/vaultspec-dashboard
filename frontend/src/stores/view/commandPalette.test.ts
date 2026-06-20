@@ -6,14 +6,19 @@ import {
   COMMAND_PALETTE_QUERY_MAX_CHARS,
   beginCommandPaletteOpsFeedback,
   closeCommandPalette,
+  deriveSearchPaletteKeyboardIntent,
+  deriveSearchPalettePresentationView,
   normalizeCommandPaletteArmedCommandId,
   normalizeCommandPaletteCursor,
   normalizeCommandPaletteFeedbackScope,
   normalizeCommandPaletteFeedbackTimeTravel,
+  normalizeCommandPaletteOpen,
   normalizeCommandPaletteOpsMessage,
   normalizeCommandPaletteQuery,
+  normalizeCommandPaletteSurfaceState,
   openCommandPalette,
   resetCommandPaletteSurfaceState,
+  searchPaletteMovedCursor,
   setCommandPaletteArmedCommandId,
   setCommandPaletteCursor,
   setCommandPaletteOpsFeedbackForEpoch,
@@ -110,6 +115,25 @@ describe("command palette store", () => {
     expect(normalizeCommandPaletteFeedbackTimeTravel(true)).toBe(true);
     expect(normalizeCommandPaletteFeedbackTimeTravel(false)).toBe(false);
     expect(normalizeCommandPaletteFeedbackTimeTravel("true")).toBe(false);
+    expect(normalizeCommandPaletteOpen(true)).toBe(true);
+    expect(normalizeCommandPaletteOpen("true")).toBe(false);
+    expect(
+      normalizeCommandPaletteSurfaceState({
+        open: "true",
+        query: "  typed lens  ",
+        cursor: 3.8,
+        armedCommandId: " ops:vault-check ",
+        opsMessage: " running ",
+        opsEpoch: "12",
+      }),
+    ).toEqual({
+      open: false,
+      query: "typed lens",
+      cursor: 3,
+      armedCommandId: "ops:vault-check",
+      opsMessage: "running",
+      opsEpoch: 0,
+    });
 
     setCommandPaletteQuery({ text: "ignored" });
     setCommandPaletteCursor(Number.POSITIVE_INFINITY);
@@ -128,6 +152,146 @@ describe("command palette store", () => {
       query: "",
       cursor: 0,
       armedCommandId: null,
+    });
+  });
+
+  it("projects search-palette keyboard intent and cursor movement at the store seam", () => {
+    expect(searchPaletteMovedCursor(3, 0, 1)).toBe(1);
+    expect(searchPaletteMovedCursor(3, 0, -1)).toBe(2);
+    expect(searchPaletteMovedCursor(0, 2, 1)).toBe(0);
+    expect(searchPaletteMovedCursor(3, Number.NaN, 1)).toBe(1);
+
+    expect(deriveSearchPaletteKeyboardIntent("ArrowDown", false)).toEqual({
+      kind: "move-cursor",
+      delta: 1,
+    });
+    expect(deriveSearchPaletteKeyboardIntent("ArrowLeft", false)).toBeNull();
+    expect(deriveSearchPaletteKeyboardIntent("ArrowLeft", true)).toEqual({
+      kind: "move-cursor",
+      delta: -1,
+    });
+    expect(deriveSearchPaletteKeyboardIntent("Enter", false)).toEqual({
+      kind: "reveal-selected",
+    });
+    expect(deriveSearchPaletteKeyboardIntent("Enter", true)).toEqual({
+      kind: "open-selected",
+    });
+    expect(deriveSearchPaletteKeyboardIntent({ key: "Enter" }, true)).toBeNull();
+  });
+
+  it("projects search-palette presentation copy and chrome from one seam", () => {
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "  auth  ",
+        cursor: 3,
+        expanded: true,
+        pills: [{ nodeId: "doc:a" }, { nodeId: "code:b" }],
+        searchState: "success",
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      safeCursor: 1,
+      selectedNodeId: "code:b",
+      showExpandedPanel: true,
+      dialogLabel: "Search documents and code",
+      inputPlaceholder: "Search documents and code…",
+      resultCountLabel: "2 results",
+      emptyMessage: null,
+      liveMessage: "2 results",
+      footerHints: {
+        move: "move",
+        previousNext: "previous / next",
+        open: "open",
+        close: "close",
+      },
+    });
+
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "  ",
+        cursor: 0,
+        expanded: true,
+        pills: [],
+        searchState: "idle",
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      safeCursor: 0,
+      selectedNodeId: null,
+      showExpandedPanel: false,
+      resultCountLabel: "",
+      emptyMessage: "Search across your documents and code by meaning.",
+      liveMessage: "",
+    });
+
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "loading",
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      resultCountLabel: "searching…",
+      emptyMessage: "Searching…",
+      liveMessage: "searching…",
+    });
+
+    expect(
+      deriveSearchPalettePresentationView({
+        query: "auth",
+        cursor: 0,
+        expanded: false,
+        pills: [],
+        searchState: "error",
+        semanticOffline: true,
+        error: true,
+      }),
+    ).toMatchObject({
+      emptyMessage: "Semantic search is offline — showing title and text matches.",
+      liveMessage: "search request failed",
+    });
+  });
+
+  it("normalizes corrupted palette state before open and toggle transitions", () => {
+    useCommandPaletteStore.setState({
+      open: "true",
+      query: { text: "bad" },
+      cursor: Number.POSITIVE_INFINITY,
+      armedCommandId: { id: "ops:bad" },
+      opsMessage: " stale ",
+      opsEpoch: "bad",
+    } as unknown as ReturnType<typeof useCommandPaletteStore.getState>);
+
+    openCommandPalette();
+
+    expect(useCommandPaletteStore.getState()).toMatchObject({
+      open: true,
+      query: "",
+      cursor: 0,
+      armedCommandId: null,
+      opsMessage: null,
+      opsEpoch: 1,
+    });
+
+    useCommandPaletteStore.setState({
+      open: "true",
+      opsEpoch: Number.NaN,
+    } as unknown as Partial<ReturnType<typeof useCommandPaletteStore.getState>>);
+    toggleCommandPalette();
+
+    expect(useCommandPaletteStore.getState()).toMatchObject({
+      open: true,
+      query: "",
+      cursor: 0,
+      armedCommandId: null,
+      opsMessage: null,
+      opsEpoch: 1,
     });
   });
 

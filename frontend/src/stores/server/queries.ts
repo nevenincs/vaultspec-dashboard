@@ -41,6 +41,7 @@ import type {
   FileTreeEntry,
   FileTreeResponse,
   GitFileDiff,
+  GitOpResponse,
   GraphFilter,
   GraphGranularity,
   GraphSlice,
@@ -86,10 +87,7 @@ import {
 import type { SalienceLens } from "./engine";
 import { dispatchOps } from "./opsActions";
 import { parseDocument, type Frontmatter } from "./parseDocument";
-import {
-  normalizeSearchTarget,
-  type SearchTarget,
-} from "../searchTarget";
+import { normalizeSearchTarget, type SearchTarget } from "../searchTarget";
 import {
   cloneDashboardFilters,
   dashboardGraphQueryVariables,
@@ -1342,6 +1340,176 @@ export function deriveVaultTreeBrowserView(
     groups: projectVaultTreeFeatureGroups(filteredEntries),
     filteredToNothing: activeFilter.length > 0 && filteredEntries.length === 0,
   };
+}
+
+// --- left-rail Vault tab projections (binding `LeftRail` 238:600) -----------------
+//
+// The Vault tab renders TWO parallel collapsible sections over the SAME
+// `/vault-tree` projection (views-are-projections-of-one-model): a FEATURES index
+// (feature → its documents) and a doc-type-first DOCUMENTS tree (ADRs / Audits /
+// Execution / Plans / References / Research → documents), each leaf a DocRow that
+// carries the human title + date + status. Both are narrowed by ONE facet pass —
+// the canonical left-rail filter (feature text, doc types, statuses, feature tags,
+// date range) — so the rail tree agrees with the graph it filters (left-rail-top
+// ADR D5). No engine work and no new wire field: `status`, `dates`, `doc_type`,
+// and `feature_tags` are already on the `VaultTreeEntry` the projection reads.
+
+/** Doc-type-first display order for the Documents section, mirroring the binding
+ *  board (ADRs · Audits · Execution · Plans · References · Research). `index` is
+ *  hidden (the rail mirrors `.vault/` EXCEPT the generated index); unknown types
+ *  append alphabetically. */
+const VAULT_RAIL_DOC_TYPE_ORDER = [
+  "adr",
+  "audit",
+  "exec",
+  "plan",
+  "reference",
+  "research",
+] as const;
+
+export interface VaultDocTypeGroup {
+  docType: string;
+  count: number;
+  /** Member documents, newest-modified first (the board lists recent ADRs top). */
+  entries: VaultTreeEntry[];
+}
+
+/** Newest-modified first; ties broken by path for a stable order. */
+function compareVaultRecency(a: VaultTreeEntry, b: VaultTreeEntry): number {
+  const am = a.dates.modified ?? "";
+  const bm = b.dates.modified ?? "";
+  if (am !== bm) return am < bm ? 1 : -1;
+  return a.path.localeCompare(b.path);
+}
+
+/** Group vault entries by doc type (the Documents section), excluding `index`. */
+export function projectVaultDocTypeGroups(
+  entries: readonly VaultTreeEntry[],
+): VaultDocTypeGroup[] {
+  const byType = new Map<string, VaultTreeEntry[]>();
+  for (const entry of entries) {
+    if (entry.doc_type === "index") continue;
+    const list = byType.get(entry.doc_type) ?? [];
+    list.push(entry);
+    byType.set(entry.doc_type, list);
+  }
+  const order: string[] = [...VAULT_RAIL_DOC_TYPE_ORDER];
+  for (const extra of [...byType.keys()].sort()) {
+    if (extra !== "index" && !order.includes(extra)) order.push(extra);
+  }
+  return order
+    .filter((docType) => byType.has(docType))
+    .map((docType) => {
+      const list = byType.get(docType)!.slice().sort(compareVaultRecency);
+      return { docType, count: list.length, entries: list };
+    });
+}
+
+/** The canonical left-rail filter facets, read from `dashboardState.filters`
+ *  (+ `date_range`). `text` is the rail's primary "filter by feature" control. */
+export interface VaultRailFacets {
+  text: string;
+  docTypes: string[];
+  statuses: string[];
+  featureTags: string[];
+  dateRange: { from?: string; to?: string };
+}
+
+/** Apply the canonical facet filters to the vault listing (D5): the rail tree
+ *  honours doc types, statuses, feature tags, and the edited date range — not just
+ *  the feature text — so it agrees with the graph the same filter narrows. */
+export function narrowVaultRailEntries(
+  entries: readonly VaultTreeEntry[],
+  facets: VaultRailFacets,
+): VaultTreeEntry[] {
+  const q = facets.text.trim().toLowerCase();
+  const { docTypes, statuses, featureTags } = facets;
+  const { from, to } = facets.dateRange;
+  return entries.filter((entry) => {
+    if (q.length > 0) {
+      const hit =
+        entry.feature_tags.some((tag) => tag.toLowerCase().includes(q)) ||
+        stemFromPath(entry.path).toLowerCase().includes(q) ||
+        entry.path.toLowerCase().includes(q);
+      if (!hit) return false;
+    }
+    if (docTypes.length > 0 && !docTypes.includes(entry.doc_type)) return false;
+    if (
+      statuses.length > 0 &&
+      !(entry.status !== undefined && statuses.includes(entry.status))
+    ) {
+      return false;
+    }
+    if (
+      featureTags.length > 0 &&
+      !entry.feature_tags.some((tag) => featureTags.includes(tag))
+    ) {
+      return false;
+    }
+    if (from || to) {
+      const modified = entry.dates.modified;
+      if (!modified) return false;
+      if (from && modified < from) return false;
+      if (to && modified > to) return false;
+    }
+    return true;
+  });
+}
+
+export interface VaultRailView {
+  /** The FEATURES section: feature → its documents (DocRows), most-active first. */
+  featureGroups: VaultTreeFeatureGroup[];
+  /** The DOCUMENTS section: doc-type folders → documents (DocRows). */
+  docTypeGroups: VaultDocTypeGroup[];
+  featureCount: number;
+  docTypeCount: number;
+  /** A facet was active but narrowed everything away (vs. an empty corpus). */
+  filteredToNothing: boolean;
+}
+
+/** Derive the whole Vault-tab view from the entries + the canonical facets. */
+export function deriveVaultRailView(
+  entries: readonly VaultTreeEntry[],
+  facets: VaultRailFacets,
+): VaultRailView {
+  const narrowed = narrowVaultRailEntries(entries, facets);
+  const featureGroups = projectVaultTreeFeatureGroups(narrowed).sort((a, b) => {
+    if (a.count !== b.count) return b.count - a.count;
+    return a.feature.localeCompare(b.feature);
+  });
+  const docTypeGroups = projectVaultDocTypeGroups(narrowed);
+  const anyFacet =
+    facets.text.trim().length > 0 ||
+    facets.docTypes.length > 0 ||
+    facets.statuses.length > 0 ||
+    facets.featureTags.length > 0 ||
+    Boolean(facets.dateRange.from) ||
+    Boolean(facets.dateRange.to);
+  return {
+    featureGroups,
+    docTypeGroups,
+    featureCount: featureGroups.length,
+    docTypeCount: docTypeGroups.length,
+    filteredToNothing: anyFacet && narrowed.length === 0,
+  };
+}
+
+/** Stores selector for the canonical left-rail facets. The rail reads the SAME
+ *  `dashboardState.filters` the graph filter authors (no second source of truth),
+ *  so the Vault tree and the graph narrow identically (dashboard-layer-ownership,
+ *  filtering-has-one-canonical-surface). */
+export function useVaultRailFacets(scope: unknown): VaultRailFacets {
+  const dashboardState = useDashboardState(scope);
+  return useMemo(() => {
+    const filters = dashboardState.data?.filters;
+    return {
+      text: filters?.text ?? "",
+      docTypes: filters?.doc_types ?? [],
+      statuses: filters?.statuses ?? [],
+      featureTags: filters?.feature_tags ?? [],
+      dateRange: dashboardState.data?.date_range ?? {},
+    };
+  }, [dashboardState.data]);
 }
 
 // --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
@@ -4149,9 +4317,7 @@ function normalizeHistoryCommitTimestamp(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-export function normalizeHistoryCommitForView(
-  commit: unknown,
-): HistoryCommit | null {
+export function normalizeHistoryCommitForView(commit: unknown): HistoryCommit | null {
   if (commit === null || typeof commit !== "object") return null;
   const record = commit as Partial<Record<keyof HistoryCommit, unknown>>;
   const hash = normalizeHistoryCommitText(record.hash);
@@ -5722,11 +5888,7 @@ export function invalidateScopedSemanticReads(
 ): void {
   const normalizedScope = normalizeSearchScope(scope);
   if (normalizedScope === null) return;
-  invalidateQueryPrefix(queryClient, [
-    ...engineKeys.all,
-    "search",
-    normalizedScope,
-  ]);
+  invalidateQueryPrefix(queryClient, [...engineKeys.all, "search", normalizedScope]);
   invalidateQueryPrefix(queryClient, [
     ...engineKeys.all,
     "graph-embeddings",
@@ -7721,6 +7883,23 @@ export function deriveGitFileDiffView(
   };
 }
 
+function parseGitOpDiff(
+  op: GitOpResponse,
+  path: string,
+  status?: unknown,
+): GitFileDiff {
+  const diff = parseUnifiedDiff(op.output, path, status);
+  if (op.truncated === undefined || diff.truncated !== undefined) return diff;
+  return {
+    ...diff,
+    truncated: {
+      total_hunks: diff.hunks.length,
+      returned_hunks: diff.hunks.length,
+      reason: op.truncated.reason,
+    },
+  };
+}
+
 export interface NormalizedGitDiffRequest {
   scope: string | null;
   path: string | null;
@@ -7807,7 +7986,7 @@ export function useGitFileDiff(
         scope: scoped,
         path: gitPath,
       });
-      return parseUnifiedDiff(op.output, gitPath, status);
+      return parseGitOpDiff(op, gitPath, status);
     },
     enabled,
   });
@@ -7859,7 +8038,7 @@ export function useGitHistoricalFileDiff(
         from: fromRev,
         to: toRev,
       });
-      return parseUnifiedDiff(op.output, gitPath, status);
+      return parseGitOpDiff(op, gitPath, status);
     },
     enabled,
   });
@@ -8111,9 +8290,7 @@ export function normalizeBackendSignalChannel(
   channel: unknown,
 ): BackendSignalChannel | null {
   const normalized = normalizeEngineStreamChannel(channel);
-  return normalized === "backends" || normalized === "git"
-    ? normalized
-    : null;
+  return normalized === "backends" || normalized === "git" ? normalized : null;
 }
 
 /**

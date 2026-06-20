@@ -2,6 +2,7 @@ import {
   normalizeDashboardStateWriteScope,
   useDashboardStateMutations,
 } from "./dashboardState";
+import { normalizeDashboardTextFilter } from "./dashboardStateNormalization";
 import {
   dashboardStateSessionIdentity,
   useDashboardState,
@@ -16,6 +17,10 @@ export interface DashboardTextFilterIntent {
 
 export const normalizeDashboardTextFilterScope = normalizeDashboardStateWriteScope;
 
+export function normalizeDashboardTextFilterCanonicalText(value: unknown): string {
+  return normalizeDashboardTextFilter(value) ?? "";
+}
+
 /**
  * Stores/server seam for canonical dashboard text-filter read/write state.
  * View-layer draft hooks may debounce local echo, but they should not subscribe to
@@ -29,7 +34,9 @@ export function useDashboardTextFilterIntent(
   const dashboardState = useDashboardState(normalizedScope);
   const dashboardMutations = useDashboardStateMutations(normalizedScope);
   return {
-    canonicalText: dashboardState.data?.filters.text ?? "",
+    canonicalText: normalizeDashboardTextFilterCanonicalText(
+      dashboardState.data?.filters.text,
+    ),
     sourceIdentity: dashboardStateSessionIdentity(session.data),
     writeTextFilter: (value) =>
       normalizedScope === null

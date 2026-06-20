@@ -11,8 +11,10 @@ import type { StreamChunk } from "./queries";
 import { GRAPH_GENERATION_QUERY_SUBTREES, engineKeys } from "./queries";
 import {
   GRAPH_FEATURE_DELTAS_CAP,
+  GRAPH_LIVE_GAP_COUNT_MAX,
   maxSeq,
   normalizeGraphFeatureDeltas,
+  normalizeGraphLiveGapCount,
   normalizeGraphLiveEnabled,
   normalizeGraphLiveKeyframeSeq,
   normalizeGraphLiveScope,
@@ -64,9 +66,10 @@ describe("graph live delta store seam", () => {
     expect(normalized[0]?.seq).toBe(3);
     expect(normalized.at(-1)?.seq).toBe(GRAPH_FEATURE_DELTAS_CAP + 2);
     expect(normalized.every((delta) => delta.granularity === "feature")).toBe(true);
+    expect(normalizeGraphFeatureDeltas({ deltas: [] })).toEqual([]);
   });
 
-  it("copies feature delta batches at the store boundary", () => {
+  it("copies and normalizes feature delta batches at the store boundary", () => {
     const deltas: GraphDeltaEntry[] = [
       {
         granularity: "feature",
@@ -89,6 +92,29 @@ describe("graph live delta store seam", () => {
 
     expect(useGraphLiveDeltaStore.getState().featureDeltas).toHaveLength(1);
     expect(useGraphLiveDeltaStore.getState().featureDeltas[0]?.seq).toBe(11);
+
+    useGraphLiveDeltaStore.getState().setFeatureDeltas({ deltas });
+    expect(useGraphLiveDeltaStore.getState().featureDeltas).toEqual([]);
+  });
+
+  it("bounds graph live gap counts at the store boundary", () => {
+    expect(normalizeGraphLiveGapCount(Number.NaN)).toBe(0);
+    expect(normalizeGraphLiveGapCount(-1)).toBe(0);
+    expect(normalizeGraphLiveGapCount(1.8)).toBe(1);
+    expect(normalizeGraphLiveGapCount(GRAPH_LIVE_GAP_COUNT_MAX + 5)).toBe(
+      GRAPH_LIVE_GAP_COUNT_MAX,
+    );
+
+    useGraphLiveDeltaStore.setState({
+      scope: "scopeA",
+      keyframeSeq: 10,
+      featureDeltas: [],
+      gapCount: GRAPH_LIVE_GAP_COUNT_MAX,
+    });
+    useGraphLiveDeltaStore.getState().incrementGap();
+    expect(useGraphLiveDeltaStore.getState().gapCount).toBe(
+      GRAPH_LIVE_GAP_COUNT_MAX,
+    );
   });
 
   it("normalizes live scope and keyframe identity at the store boundary", () => {

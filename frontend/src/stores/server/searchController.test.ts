@@ -43,6 +43,7 @@ import { queryClient } from "./queryClient";
 import {
   buildFallbackResults,
   deriveSearchPresentationView,
+  searchResultKeyboardFocusDelta,
   interpretSearch,
   isSemanticOffline,
   isTransportError,
@@ -51,6 +52,8 @@ import {
   pathStem,
   pathToDocNodeId,
   SEARCH_DEBOUNCE_MS,
+  SEARCH_FALLBACK_RESULTS_MAX_ITEMS,
+  SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS,
   useSearchController,
 } from "./searchController";
 
@@ -128,6 +131,20 @@ describe("buildFallbackResults (text-match fallback, search ADR)", () => {
     const longQuery = ` auth ${"x".repeat(SEARCH_QUERY_MAX_CHARS)}`;
     expect(buildFallbackResults(entries, " AUTH ")).toHaveLength(1);
     expect(buildFallbackResults(entries, longQuery)).toEqual([]);
+  });
+
+  it("keeps fallback result collection bounded without dropping better later hits", () => {
+    const noisyEntries = [
+      ...Array.from({ length: SEARCH_FALLBACK_RESULTS_MAX_ITEMS + 8 }, (_, index) =>
+        entry(`.vault/adr/low-${index}-needle.md`, []),
+      ),
+      entry(".vault/adr/needle-best.md", []),
+    ];
+
+    const results = buildFallbackResults(noisyEntries, "needle");
+
+    expect(results).toHaveLength(SEARCH_FALLBACK_RESULTS_MAX_ITEMS);
+    expect(results[0].node_id).toBe("doc:needle-best");
   });
 });
 
@@ -208,6 +225,11 @@ describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring c
     expect(normalizeSearchRagLifecycleWord(" running ")).toBe("running");
     expect(normalizeSearchRagLifecycleWord("   ")).toBeUndefined();
     expect(normalizeSearchRagLifecycleWord({ rag: "running" })).toBeUndefined();
+    expect(
+      normalizeSearchRagLifecycleWord(
+        "x".repeat(SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS + 1),
+      ),
+    ).toBeUndefined();
   });
 
   it("is undefined when no rag-bearing backends frame has arrived yet", () => {
@@ -260,6 +282,12 @@ describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring c
   it("only 'running' is available — any other lifecycle word is down", () => {
     expect(latestBackendsRagAvailable([frame("absent")])).toBe(false);
     expect(latestBackendsRagAvailable([frame("starting")])).toBe(false);
+    expect(
+      latestBackendsRagAvailable([
+        frame("running"),
+        frame("x".repeat(SEARCH_RAG_LIFECYCLE_WORD_MAX_CHARS + 1)),
+      ]),
+    ).toBe(true);
   });
 
   it("reads the value AFTER the ring cap saturates — the length-based detector's death", () => {
@@ -403,6 +431,13 @@ describe("interpretSearch (the explicit state machine)", () => {
 });
 
 describe("deriveSearchPresentationView (SearchTab display facts)", () => {
+  it("projects result keyboard focus deltas at the search presentation seam", () => {
+    expect(searchResultKeyboardFocusDelta("ArrowDown")).toBe(1);
+    expect(searchResultKeyboardFocusDelta("ArrowUp")).toBe(-1);
+    expect(searchResultKeyboardFocusDelta("Enter")).toBeNull();
+    expect(searchResultKeyboardFocusDelta({ key: "ArrowDown" })).toBeNull();
+  });
+
   it("derives the live region and first selectable row from served results", () => {
     expect(
       deriveSearchPresentationView(

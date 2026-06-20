@@ -11,6 +11,7 @@ import {
   isFreshSettingsGraphDefaultsInitialization,
   rememberSettingsGraphDefaultsInitializedIdentity,
   normalizeSettingsGraphDefaultsInitializationIdentity,
+  normalizeSettingsEffectsGraphDefaults,
   normalizeSettingsEffectsScope,
   releaseSettingsGraphDefaultsPendingIdentity,
   reserveSettingsGraphDefaultsPendingIdentity,
@@ -64,6 +65,38 @@ describe("useSettingsEffectsIntent", () => {
       normalizeSettingsGraphDefaultsInitializationIdentity(
         "x".repeat(SETTINGS_GRAPH_DEFAULTS_IDENTITY_MAX_CHARS + 1),
       ),
+    ).toBeNull();
+    expect(
+      normalizeSettingsEffectsGraphDefaults({
+        defaultGranularity: " feature ",
+        confidenceFloor: 60,
+        labelFilter: " adr ",
+      }),
+    ).toEqual({
+      defaultGranularity: "feature",
+      confidenceFloor: 60,
+      labelFilter: "adr",
+    });
+    expect(
+      normalizeSettingsEffectsGraphDefaults({
+        defaultGranularity: "radial",
+        confidenceFloor: 60,
+        labelFilter: "adr",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeSettingsEffectsGraphDefaults({
+        defaultGranularity: "document",
+        confidenceFloor: Number.POSITIVE_INFINITY,
+        labelFilter: "adr",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeSettingsEffectsGraphDefaults({
+        defaultGranularity: "document",
+        confidenceFloor: 60,
+        labelFilter: { text: "adr" },
+      }),
     ).toBeNull();
     expect(isFreshSettingsGraphDefaultsInitialization({ fresh: true })).toBe(true);
     expect(isFreshSettingsGraphDefaultsInitialization({ fresh: "true" })).toBe(false);
@@ -119,6 +152,26 @@ describe("useSettingsEffectsIntent", () => {
     ).resolves.toBeNull();
   });
 
+  it("keeps settings effects intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }) => useSettingsEffectsIntent(scope),
+      {
+        initialProps: { scope: " scope-a " },
+        wrapper: wrapper(client),
+      },
+    );
+    const first = result.current;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(first);
+    expect(result.current.applyGraphDefaults).toBe(first.applyGraphDefaults);
+    expect(result.current.applyFreshGraphDefaults).toBe(
+      first.applyFreshGraphDefaults,
+    );
+  });
+
   it("accepts trimmed scopes for canonical dashboard graph-default writes", async () => {
     const scope = await liveScope();
     cleanupScope = scope;
@@ -146,29 +199,31 @@ describe("useSettingsEffectsIntent", () => {
     expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
   });
 
-  it("normalizes malformed runtime graph defaults before dashboard writes", async () => {
+  it("rejects malformed runtime graph defaults before dashboard writes", async () => {
     const scope = await liveScope();
     cleanupScope = scope;
-    await createLiveClient().patchDashboardState(
-      dashboardDocumentStateResetPatch(scope),
-    );
+    await createLiveClient().patchDashboardState({
+      ...dashboardDocumentStateResetPatch(scope),
+      graph_granularity: "feature",
+      filters: { text: "user-owned" },
+    });
 
     const client = testQueryClient();
     const { result } = renderHook(() => useSettingsEffectsIntent(scope), {
       wrapper: wrapper(client),
     });
 
-    await act(async () => {
-      await result.current.applyGraphDefaults({
+    await expect(
+      result.current.applyGraphDefaults({
         defaultGranularity: " radial ",
         confidenceFloor: Number.POSITIVE_INFINITY,
         labelFilter: { text: "adr" },
-      });
-    });
+      }),
+    ).resolves.toBeNull();
 
     const state = await createLiveClient().dashboardState(scope);
-    expect(state.graph_granularity).toBe("document");
-    expect(state.filters.text).toBeUndefined();
+    expect(state.graph_granularity).toBe("feature");
+    expect(state.filters.text).toBe("user-owned");
     expect(state.filters.min_confidence).toBeUndefined();
   });
 

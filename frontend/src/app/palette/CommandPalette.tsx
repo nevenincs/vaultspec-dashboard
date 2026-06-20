@@ -36,14 +36,18 @@ import {
   useCommandPaletteGlobalToggle,
   useCommandPaletteArmedCommandId,
   useCommandPaletteCursor,
+  useCommandPaletteMode,
   useCommandPaletteOpen,
   useCommandPaletteOpsMessage,
   useCommandPaletteQuery,
+  useSearchPaletteGlobalShortcut,
 } from "../../stores/view/commandPalette";
+import { SearchPaletteSurface } from "./SearchPaletteSurface";
 import {
   commandPaletteMovedCursor,
   deriveCommandPaletteArmedRepair,
   deriveCommandPaletteActivation,
+  deriveCommandPaletteKeyboardIntent,
   deriveCommandPalettePresentationView,
   useCommandPaletteCommandView,
 } from "../../stores/view/commandPaletteCommands";
@@ -55,10 +59,16 @@ import { useFocusRestore } from "../chrome/useFocusRestore";
 
 export function CommandPalette() {
   const open = useCommandPaletteOpen();
+  const mode = useCommandPaletteMode();
   const commandPaletteConfirm = useConfirmable<void>("ops:run");
   useCommandPaletteGlobalToggle(commandPaletteConfirm.cancel);
+  // The search shortcut (Mod+P) opens the SAME palette in search mode — both modes
+  // share the one overlay so Command-K controls searching (filtering-has-one-
+  // canonical-surface / keyboard-shortcuts-bind-through-the-one-keymap-registry).
+  useSearchPaletteGlobalShortcut(commandPaletteConfirm.cancel);
 
-  return open ? <CommandPaletteSurface /> : null;
+  if (!open) return null;
+  return mode === "search" ? <SearchPaletteSurface /> : <CommandPaletteSurface />;
 }
 
 function CommandPaletteSurface() {
@@ -222,16 +232,11 @@ function CommandPaletteSurface() {
               disarm();
             }}
             onKeyDown={(e) => {
-              if (e.key === "ArrowDown") {
-                e.preventDefault();
-                moveCursor(1);
-              } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                moveCursor(-1);
-              } else if (e.key === "Enter") {
-                e.preventDefault();
-                runAt(safeCursor);
-              }
+              const intent = deriveCommandPaletteKeyboardIntent(e.key);
+              if (intent === null) return;
+              e.preventDefault();
+              if (intent.kind === "move-cursor") moveCursor(intent.delta);
+              else runAt(safeCursor);
             }}
             placeholder={presentation.inputPlaceholder}
             className="w-full bg-transparent py-fg-3 text-body text-ink outline-none placeholder:text-ink-faint"

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS } from "./dashboardState";
 import {
   normalizeDashboardStageSceneFeatureTag,
+  normalizeDashboardStageSceneRepresentationMode,
   normalizeDashboardStageSceneScope,
   useDashboardStageSceneIntent,
 } from "./dashboardStageSceneIntent";
@@ -39,6 +40,13 @@ describe("useDashboardStageSceneIntent", () => {
     ).toBeNull();
     expect(normalizeDashboardStageSceneFeatureTag("   ")).toBeNull();
     expect(normalizeDashboardStageSceneFeatureTag({ tag: "state" })).toBeNull();
+    expect(normalizeDashboardStageSceneRepresentationMode(" radial ")).toBe(
+      "radial",
+    );
+    expect(normalizeDashboardStageSceneRepresentationMode("unknown")).toBeNull();
+    expect(
+      normalizeDashboardStageSceneRepresentationMode({ mode: "radial" }),
+    ).toBeNull();
   });
 
   it("is inert without a scope", async () => {
@@ -81,5 +89,17 @@ describe("useDashboardStageSceneIntent", () => {
     await expect(
       result.current.descendFeatureTag({ tag: "state" }),
     ).resolves.toBeNull();
+  });
+
+  it("is inert for malformed scene representation payloads", async () => {
+    const client = testQueryClient();
+    const { result } = renderHook(() => useDashboardStageSceneIntent("scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    await expect(
+      result.current.setRepresentationMode({ mode: "radial" }),
+    ).resolves.toBeNull();
+    await expect(result.current.setRepresentationMode("unknown")).resolves.toBeNull();
   });
 });

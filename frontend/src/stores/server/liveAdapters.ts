@@ -688,15 +688,48 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
  * the graph node id from a stem when the engine annotation is absent —
  * the annotation gap is a flagged divergence, not silently papered.
  */
+export const SEARCH_RESULTS_MAX_ITEMS = 256;
+export const SEARCH_RESULT_IDENTITY_MAX_CHARS = 2048;
+export const SEARCH_RESULT_EXCERPT_MAX_CHARS = 4096;
+
 function normalizeSearchResultString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
+  return normalized.length > 0 &&
+    normalized.length <= SEARCH_RESULT_IDENTITY_MAX_CHARS
+    ? normalized
+    : undefined;
+}
+
+function normalizeSearchResultExcerpt(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  if (normalized.length === 0) return undefined;
+  return normalized.length <= SEARCH_RESULT_EXCERPT_MAX_CHARS
+    ? normalized
+    : normalized.slice(0, SEARCH_RESULT_EXCERPT_MAX_CHARS);
 }
 
 function normalizeSearchResultScore(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.max(0, Math.min(1, value));
+}
+
+/** A code result's 1-based line endpoint: a finite, non-negative integer, else
+ *  undefined (rag emits `null` for vault hits). */
+function normalizeSearchResultLine(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const n = Math.trunc(value);
+  return n >= 0 ? n : undefined;
+}
+
+/** Drop `undefined` entries so only present fields ride the optional wire shape. */
+function pickDefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const out: Partial<T> = {};
+  for (const key of Object.keys(obj) as (keyof T)[]) {
+    if (obj[key] !== undefined) out[key] = obj[key];
+  }
+  return out;
 }
 
 function adaptSearchResult(item: unknown): SearchResponse["results"][number] | null {
@@ -709,8 +742,11 @@ function adaptSearchResult(item: unknown): SearchResponse["results"][number] | n
   const stemValue = normalizeSearchResultString(item.stem);
   const source = sourceValue ?? pathValue ?? stemValue;
   if (source === undefined) return null;
+  // rag's short preview field is `snippet`; `excerpt`/`text` are tolerated aliases.
   const excerpt =
-    normalizeSearchResultString(item.excerpt) ?? normalizeSearchResultString(item.text);
+    normalizeSearchResultExcerpt(item.snippet) ??
+    normalizeSearchResultExcerpt(item.excerpt) ??
+    normalizeSearchResultExcerpt(item.text);
   const normalizedItem: Record<string, unknown> = {
     ...item,
     ...(nodeId !== undefined ? { node_id: nodeId } : { node_id: undefined }),
@@ -718,10 +754,29 @@ function adaptSearchResult(item: unknown): SearchResponse["results"][number] | n
     ...(pathValue !== undefined ? { path: pathValue } : { path: undefined }),
     ...(stemValue !== undefined ? { stem: stemValue } : { stem: undefined }),
   };
+  // The rag wire carries rich, species-specific metadata the rich pills render
+  // (vault: doc_type/feature/date; code: language/line range/symbol). The engine
+  // forwards it verbatim (rag-client `forward_search`); carry it through tolerantly
+  // and bounded so the view layer can read it without a second fetch. Only defined
+  // fields are emitted, mirroring the optional wire shape.
+  const rich = pickDefined({
+    title: normalizeSearchResultString(item.title),
+    rerank_text: normalizeSearchResultExcerpt(item.rerank_text),
+    doc_type: normalizeSearchResultString(item.doc_type),
+    feature: normalizeSearchResultString(item.feature),
+    date: normalizeSearchResultString(item.date),
+    language: normalizeSearchResultString(item.language),
+    line_start: normalizeSearchResultLine(item.line_start),
+    line_end: normalizeSearchResultLine(item.line_end),
+    node_type: normalizeSearchResultString(item.node_type),
+    function_name: normalizeSearchResultString(item.function_name),
+    class_name: normalizeSearchResultString(item.class_name),
+  });
   return {
     score,
     source,
     ...(excerpt !== undefined ? { excerpt } : {}),
+    ...rich,
     node_id: deriveSearchNodeId(normalizedItem),
   };
 }
@@ -732,10 +787,15 @@ export function adaptSearch(body: unknown): SearchResponse {
   const envelope = isRec(body.envelope) ? body.envelope : {};
   const data = isRec(envelope.data) ? envelope.data : {};
   const rawResults = Array.isArray(data.results) ? data.results : [];
+  const results: SearchResponse["results"] = [];
+  for (const item of rawResults) {
+    const result = adaptSearchResult(item);
+    if (result === null) continue;
+    results.push(result);
+    if (results.length >= SEARCH_RESULTS_MAX_ITEMS) break;
+  }
   return {
-    results: rawResults
-      .map(adaptSearchResult)
-      .filter((result): result is SearchResponse["results"][number] => result !== null),
+    results,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -1729,14 +1789,40 @@ export function adaptPlanInterior(body: unknown): PlanInteriorResponse {
   };
 }
 
+export const GIT_OP_VERB_MAX_CHARS = 32;
+export const GIT_OP_OUTPUT_MAX_CHARS = 1024 * 1024;
+
+function normalizeGitOpVerb(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.length <= GIT_OP_VERB_MAX_CHARS ? value : "";
+}
+
+function normalizeGitOpOutput(value: unknown): {
+  output: string;
+  truncated?: GitOpResponse["truncated"];
+} {
+  if (typeof value !== "string") return { output: "" };
+  if (value.length <= GIT_OP_OUTPUT_MAX_CHARS) return { output: value };
+  return {
+    output: value.slice(0, GIT_OP_OUTPUT_MAX_CHARS),
+    truncated: {
+      returned_chars: GIT_OP_OUTPUT_MAX_CHARS,
+      reason: "git output ceiling",
+    },
+  };
+}
+
 /** Live `/ops/git/{verb}` → the internal git-op response. TOLERANT: an absent
  *  `output` defaults to the empty string (no changes / empty diff), `verb` to the
- *  empty string. git's text output is forwarded verbatim for the client to parse. */
+ *  empty string. git's text output is capped at the stores boundary before the
+ *  parser projects it into changed-files or diff state. */
 export function adaptGitOp(body: unknown): GitOpResponse {
   if (!isRec(body)) return { verb: "", output: "", tiers: {} };
+  const { output, truncated } = normalizeGitOpOutput(body.output);
   return {
-    verb: typeof body.verb === "string" ? body.verb : "",
-    output: typeof body.output === "string" ? body.output : "",
+    verb: normalizeGitOpVerb(body.verb),
+    output,
+    ...(truncated === undefined ? {} : { truncated }),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }

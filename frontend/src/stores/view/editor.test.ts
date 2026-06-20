@@ -7,6 +7,10 @@ import {
   closeDocumentEditor,
   deriveMarkdownEditorFrontmatterPatch,
   deriveMarkdownEditorChromeView,
+  MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS,
+  MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS,
+  MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS,
+  normalizeMarkdownEditorAdvisories,
   normalizeMarkdownEditorFrontmatterDraft,
   normalizeMarkdownEditorFrontmatterDraftState,
   openDocumentEditor,
@@ -162,6 +166,60 @@ describe("editor view seam", () => {
         date: 20260619,
       }),
     ).toEqual({ tags: "#ok", date: "", related: "" });
+
+    const overlong = "x".repeat(MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS + 1);
+    expect(
+      normalizeMarkdownEditorFrontmatterDraft({
+        tags: overlong,
+        date: overlong,
+        related: overlong,
+      }),
+    ).toEqual({
+      tags: overlong.slice(0, MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS),
+      date: overlong.slice(0, MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS),
+      related: overlong.slice(0, MARKDOWN_EDITOR_DRAFT_TEXT_MAX_CHARS),
+    });
+  });
+
+  it("bounds markdown editor advisories before projection", () => {
+    const overlong = "x".repeat(MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS + 1);
+    const advisories = normalizeMarkdownEditorAdvisories([
+      null,
+      "bad",
+      {
+        check: overlong,
+        severity: "error",
+        message: overlong,
+        fixable: true,
+      },
+      ...Array.from({ length: MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS + 3 }, (_, index) => ({
+        check: `check-${index}`,
+        message: `message-${index}`,
+      })),
+    ]);
+
+    expect(advisories).toHaveLength(MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS);
+    expect(advisories[0]).toEqual({
+      check: overlong.slice(0, MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS),
+      severity: "error",
+      message: overlong.slice(0, MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS),
+      fixable: true,
+    });
+
+    const rows = deriveMarkdownEditorChromeView(
+      {
+        nodeId: "doc:alpha",
+        renameDraft: "alpha",
+        frontmatterDraft: { tags: "", date: "", related: "" },
+        advisories,
+      },
+      "doc:alpha",
+      "alpha",
+      { tags: "", date: "", related: "" },
+    ).advisoryRows;
+
+    expect(rows).toHaveLength(MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS);
+    expect(rows[0].message).toHaveLength(MARKDOWN_EDITOR_ADVISORY_TEXT_MAX_CHARS);
   });
 
   it("normalizes source frontmatter before exposing editor chrome", () => {

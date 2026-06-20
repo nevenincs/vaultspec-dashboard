@@ -21,6 +21,7 @@ import {
   scopedStorageIndexKey,
   scopedStorageKey,
 } from "../platform/storage/scopedKeys";
+import { normalizeNodeId } from "../platform/graph/nodeIds";
 
 export interface NodePosition {
   x: number;
@@ -44,8 +45,12 @@ interface CacheBlob {
 const PREFIX = "vaultspec-dashboard:positions";
 /** Most scopes a workspace keeps warm; least-recently-updated evict first. */
 const MAX_SCOPES = 12;
+/** Mirrors the engine graph slice ceiling; a cache blob must not outgrow the graph. */
+export const POSITION_CACHE_MAX_POSITIONS = 5000;
+export const POSITION_CACHE_COORDINATE_MAX_ABS = 1_000_000;
 
 export const normalizePositionCacheKeyPart = normalizeScopedStorageKeyPart;
+export const normalizePositionCacheNodeId = normalizeNodeId;
 
 const legacyScopeKey = (workspace: unknown, scope: unknown): string =>
   legacyScopedStorageKey(PREFIX, workspace, scope);
@@ -59,6 +64,22 @@ const legacyEncodedIndexKey = (workspace: unknown): string =>
   legacyEncodedStorageIndexKey(PREFIX, workspace);
 const indexKey = (workspace: unknown): string =>
   scopedStorageIndexKey(PREFIX, workspace);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizePositionCoordinate(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Math.abs(value) <= POSITION_CACHE_COORDINATE_MAX_ABS
+    ? value
+    : null;
+}
+
+function roundPositionCoordinate(value: number): number {
+  return Math.round(value * 10) / 10;
+}
 
 export class PositionCache {
   private store: KeyValueStore;
@@ -89,10 +110,15 @@ export class PositionCache {
     const out = new Map<string, NodePosition>();
     if (!raw) return out;
     try {
-      const blob = JSON.parse(raw) as CacheBlob;
-      if (blob.v !== 1) return out;
-      for (const [id, [x, y]] of Object.entries(blob.positions)) {
-        if (Number.isFinite(x) && Number.isFinite(y)) out.set(id, { x, y });
+      const blob = JSON.parse(raw) as unknown;
+      if (!isRecord(blob) || blob.v !== 1 || !isRecord(blob.positions)) return out;
+      for (const [rawId, position] of Object.entries(blob.positions)) {
+        if (out.size >= POSITION_CACHE_MAX_POSITIONS) break;
+        const id = normalizePositionCacheNodeId(rawId);
+        if (id === null || !Array.isArray(position)) continue;
+        const x = normalizePositionCoordinate(position[0]);
+        const y = normalizePositionCoordinate(position[1]);
+        if (x !== null && y !== null) out.set(id, { x, y });
       }
     } catch {
       // Corrupt blob: a cache miss, never an error surface.
@@ -115,8 +141,15 @@ export class PositionCache {
   ): void {
     const normalizedScope = normalizePositionCacheKeyPart(scope);
     const blob: CacheBlob = { v: 1, updatedAt: now, positions: {} };
-    for (const [id, p] of positions) {
-      blob.positions[id] = [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
+    let saved = 0;
+    for (const [rawId, p] of positions) {
+      if (saved >= POSITION_CACHE_MAX_POSITIONS) break;
+      const id = normalizePositionCacheNodeId(rawId);
+      const x = normalizePositionCoordinate(p.x);
+      const y = normalizePositionCoordinate(p.y);
+      if (id === null || x === null || y === null) continue;
+      blob.positions[id] = [roundPositionCoordinate(x), roundPositionCoordinate(y)];
+      saved += 1;
     }
     const key = scopeKey(workspace, scope);
     const value = JSON.stringify(blob);

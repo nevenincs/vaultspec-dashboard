@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCommands,
+  buildLeftRailCommands,
   commandPaletteMovedCursor,
   commandPaletteSafeCursor,
   COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS,
   COMMAND_PALETTE_SOURCE_ITEMS_CAP,
   deriveCommandPaletteArmedRepair,
   deriveCommandPaletteActivation,
+  deriveCommandPaletteKeyboardIntent,
   deriveCommandPalettePresentationView,
   filterCommands,
   gateCommandsForTimeTravel,
@@ -36,6 +38,33 @@ function sources(patch: Partial<Parameters<typeof buildCommands>[0]> = {}) {
     },
   };
 }
+
+describe("buildLeftRailCommands", () => {
+  it("enrolls new-document, both browse modes, and collapse — reusing the shared ids", () => {
+    const commands = buildLeftRailCommands(() => undefined);
+    expect(commands.map((c) => c.id)).toEqual([
+      "left-rail:new-document",
+      "left-rail:browse-vault",
+      "left-rail:browse-code",
+      "left-rail:collapse-tree",
+    ]);
+    const families = new Map(commands.map((c) => [c.id, c.family]));
+    expect(families.get("left-rail:new-document")).toBe("app");
+    expect(families.get("left-rail:browse-vault")).toBe("navigate");
+    expect(families.get("left-rail:collapse-tree")).toBe("navigate");
+    // Every palette command must carry a runnable effect (run-only plane).
+    expect(commands.every((c) => typeof c.run === "function")).toBe(true);
+  });
+
+  it("fires the injected collapse-tree effect (the only state-coupled command)", () => {
+    let collapsed = 0;
+    const commands = buildLeftRailCommands(() => {
+      collapsed += 1;
+    });
+    commands.find((c) => c.id === "left-rail:collapse-tree")?.run();
+    expect(collapsed).toBe(1);
+  });
+});
 
 function command(id: string, patch: Partial<PaletteCommand> = {}): PaletteCommand {
   return {
@@ -209,6 +238,22 @@ describe("command palette command projection", () => {
     expect(commandPaletteSafeCursor(3, 10)).toBe(2);
     expect(commandPaletteMovedCursor(3, 1, 1)).toBe(2);
     expect(commandPaletteMovedCursor(3, 0, -1)).toBe(0);
+  });
+
+  it("derives keyboard navigation intent at the store seam", () => {
+    expect(deriveCommandPaletteKeyboardIntent("ArrowDown")).toEqual({
+      kind: "move-cursor",
+      delta: 1,
+    });
+    expect(deriveCommandPaletteKeyboardIntent("ArrowUp")).toEqual({
+      kind: "move-cursor",
+      delta: -1,
+    });
+    expect(deriveCommandPaletteKeyboardIntent("Enter")).toEqual({
+      kind: "run-active",
+    });
+    expect(deriveCommandPaletteKeyboardIntent("Escape")).toBeNull();
+    expect(deriveCommandPaletteKeyboardIntent({ key: "ArrowDown" })).toBeNull();
   });
 
   it("projects rows, confirm labels, and live copy from one presentation seam", () => {

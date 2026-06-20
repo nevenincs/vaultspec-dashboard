@@ -16,7 +16,6 @@ import {
   type ShellResizeAxis,
   type ShellResizeHandleSide,
   toggleShellPanelFlyout as togglePanelFlyout,
-  type RailTabId,
   type ShellFrameView,
   useShellFrameView,
   useShellWindowActions,
@@ -35,6 +34,7 @@ import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { IconButton, Popover } from "./kit";
 import { PanelLeft } from "./kit/glyphs";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
+import { CreateDocDialog } from "./menu/CreateDocDialog";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
 // Register every per-surface context-menu resolver once at app load.
 import "./menus/registerAll";
@@ -42,9 +42,6 @@ import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { useSettingsEffects } from "./settings/settingsEffects";
 import { useThemeSetting } from "./settings/themeSetting";
-import { ChangesOverview } from "./right/ChangesOverview";
-import { RailTabs } from "./right/RailTabs";
-import { SearchTab } from "./right/SearchTab";
 import { StatusTab } from "./right/StatusTab";
 import { IconRail } from "./shell/IconRail";
 import { getScene } from "./stage/Stage";
@@ -79,7 +76,6 @@ export function AppShell() {
     panelFlyoutOpen,
     timeTravel,
     leftCollapsed,
-    rightTab,
     gridColumns,
     panelControls,
   } = shellFrame;
@@ -149,6 +145,7 @@ export function AppShell() {
       <CommandPalette />
       <SettingsDialog />
       <ContextMenuHost timeTravel={timeTravel} />
+      <CreateDocDialog />
       <KeyboardShortcuts />
       <DegradationDebugSwitch />
       <KeyboardNav />
@@ -235,11 +232,7 @@ export function AppShell() {
               onPointerDown={(event) => startResize("right", rightRailWidth, event)}
               onKeyDown={(event) => resizeByKey(event, rightRailWidth, "right")}
             />
-            <ActivityRail
-              tab={rightTab}
-              shellFrame={shellFrame}
-              onTabChange={shellActions.setRightTab}
-            />
+            <ActivityRail shellFrame={shellFrame} />
           </ErrorBoundary>
         )}
       </aside>
@@ -344,42 +337,30 @@ function PanelFlyoutItem({
   );
 }
 
-// The activity-rail composition (binding Figma `ActivityRail`, node 244:753): the
-// rail is EXACTLY three label-only tabs — Status | Changes | Search — over their
-// panes, with NO persistent pillar header (the rewrite retires the status-overview
-// liveness pillars and the Inspect pane that board 112:2 carried; node detail now
-// lives in the reader / DocHeader, and worktree/branch identity rides the Status
-// pane's context card). Status is the primary tab: the location anchor +
-// plan-derived open work + recent commits.
+// The activity-rail composition (binding redesign `ActivityRail / Status`, node
+// 599:2099): the rail's three tabs (Status · Changes · Search) are RETIRED — the
+// rail is now ONE scrollable status surface. The former Status pane is the rail:
+// a worktree/branch location header, the working-tree Changes fold, and the
+// plan-derived open work + GitHub items + recent commits. (Semantic search has
+// moved out of the rail into the command palette.) The rail keeps its keymap
+// context so rail-scoped command shortcuts still resolve.
 function ActivityRail({
-  tab,
   shellFrame,
-  onTabChange,
 }: {
-  tab: RailTabId;
   shellFrame: Pick<ShellFrameView, "activityRailClassName" | "activityPanelClassName">;
-  onTabChange: (tab: RailTabId) => void;
 }) {
   return (
     <div
       className={shellFrame.activityRailClassName}
       data-keymap-context={RIGHT_RAIL_KEYMAP_CONTEXT}
     >
-      {/* Tab bar (roving-keys tablist) — the board's three label-only tabs. */}
-      <RailTabs active={tab} onChange={onTabChange} />
-
-      {/* Active pane. Each pane is the tabpanel for its tab; only the active one
-          is mounted, so the rail body stays light. */}
       <div
         className={shellFrame.activityPanelClassName}
-        role="tabpanel"
-        id={`rail-panel-${tab}`}
-        aria-labelledby={`rail-tab-${tab}`}
+        role="region"
+        aria-label="activity"
         tabIndex={0}
       >
-        {tab === "status" && <StatusTab />}
-        {tab === "changes" && <ChangesOverview />}
-        {tab === "search" && <SearchTab />}
+        <StatusTab />
       </div>
     </div>
   );

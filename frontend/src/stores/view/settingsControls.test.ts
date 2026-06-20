@@ -9,10 +9,12 @@ import {
   deriveSettingsTextControlView,
   clearKeybindingOverride,
   keybindingConflictIds,
+  keybindingConflictLabels,
   nextKeybindingOverrides,
   normalizeSettingsKeybindingId,
   resetSettingsKeybindingRecorder,
   serializeKeybindingOverrides,
+  settingsNumberControlCommitValue,
   settingsEnumKeyboardTarget,
   settingsKeybindingChordFromEvent,
   toggleSettingsKeybindingRecording,
@@ -164,6 +166,16 @@ describe("settings control view projections", () => {
     );
   });
 
+  it("normalizes slider commit values before they leave the control seam", () => {
+    expect(settingsNumberControlCommitValue(integerDef, "70")).toBe("70");
+    expect(settingsNumberControlCommitValue(integerDef, "1000")).toBe("100");
+    expect(settingsNumberControlCommitValue(integerDef, "-10")).toBe("0");
+    expect(settingsNumberControlCommitValue(integerDef, 42.8)).toBe("42");
+    expect(settingsNumberControlCommitValue(integerDef, "not-a-number")).toBeNull();
+    expect(settingsNumberControlCommitValue(integerDef, Number.NaN)).toBeNull();
+    expect(settingsNumberControlCommitValue(integerDef, null)).toBeNull();
+  });
+
   it("projects text input constraints and chrome from the setting schema", () => {
     expect(deriveSettingsTextControlView(textDef)).toEqual({
       maxLength: 120,
@@ -255,6 +267,26 @@ describe("settings control view projections", () => {
         keybindingDefs,
       ),
     ).toEqual(["help.legend"]);
+    expect(
+      keybindingConflictLabels(
+        { " help.legend ": " F2 " },
+        " command.palette ",
+        "F2",
+        keybindingDefs,
+      ),
+    ).toEqual(["Keyboard shortcuts"]);
+    expect(
+      keybindingConflictLabels({}, " command.palette ", "Ctrl+P", [
+        ...keybindingDefs,
+        {
+          id: "custom.open",
+          defaultChord: "Ctrl+P",
+          label: "Custom open",
+          group: "General",
+          context: "global",
+        },
+      ]),
+    ).toEqual(["Custom open"]);
   });
 
   it("serializes keybinding overrides through the platform override normalizer", () => {

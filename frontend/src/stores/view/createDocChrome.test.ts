@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
+  CREATE_DOC_ERROR_MAX_CHARS,
   DEFAULT_CREATE_DOC_TYPE,
   deriveCreateDocSubmission,
   isCreateDocType,
+  normalizeCreateDocChromeView,
   normalizeCreateDocDraftText,
   normalizeCreateDocError,
   normalizeCreateDocType,
@@ -66,6 +69,36 @@ describe("createDocChrome store", () => {
     expect(useCreateDocChromeStore.getState().docType).toBe("plan");
   });
 
+  it("normalizes corrupted chrome state before reopening the dialog", () => {
+    const longDraft = "x".repeat(CREATE_DOC_DRAFT_TEXT_MAX_CHARS + 8);
+    const longError = "e".repeat(CREATE_DOC_ERROR_MAX_CHARS + 8);
+    useCreateDocChromeStore.setState({
+      open: false,
+      docType: "story",
+      feature: longDraft,
+      title: { value: "Bad" },
+      error: longError,
+    } as unknown as ReturnType<typeof useCreateDocChromeStore.getState>);
+
+    expect(normalizeCreateDocChromeView(useCreateDocChromeStore.getState())).toEqual({
+      open: false,
+      docType: DEFAULT_CREATE_DOC_TYPE,
+      feature: longDraft.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS),
+      title: "",
+      error: longError.slice(0, CREATE_DOC_ERROR_MAX_CHARS),
+    });
+
+    toggleCreateDocDialog();
+
+    expect(useCreateDocChromeStore.getState()).toMatchObject({
+      open: true,
+      docType: DEFAULT_CREATE_DOC_TYPE,
+      feature: longDraft.slice(0, CREATE_DOC_DRAFT_TEXT_MAX_CHARS),
+      title: "",
+      error: null,
+    });
+  });
+
   it("normalizes padded document types at the store boundary", () => {
     expect(normalizeCreateDocType(" adr ")).toBe("adr");
     expect(normalizeCreateDocType(" story ")).toBeNull();
@@ -92,6 +125,32 @@ describe("createDocChrome store", () => {
       title: "",
       error: null,
     });
+  });
+
+  it("bounds draft text and error strings at the store boundary", () => {
+    const longDraft = "x".repeat(CREATE_DOC_DRAFT_TEXT_MAX_CHARS + 8);
+    const longError = "e".repeat(CREATE_DOC_ERROR_MAX_CHARS + 8);
+
+    expect(normalizeCreateDocDraftText(longDraft)).toHaveLength(
+      CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
+    );
+    expect(normalizeCreateDocError(longError)).toHaveLength(
+      CREATE_DOC_ERROR_MAX_CHARS,
+    );
+
+    setCreateDocFeature(longDraft);
+    setCreateDocTitle(longDraft);
+    setCreateDocError(longError);
+
+    expect(useCreateDocChromeStore.getState().feature).toHaveLength(
+      CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
+    );
+    expect(useCreateDocChromeStore.getState().title).toHaveLength(
+      CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
+    );
+    expect(useCreateDocChromeStore.getState().error).toHaveLength(
+      CREATE_DOC_ERROR_MAX_CHARS,
+    );
   });
 
   it("derives normalized create submissions at the store seam", () => {

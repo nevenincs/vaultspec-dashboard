@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export const SETTINGS_CONTINUOUS_COMMIT_MS = 250;
+export const SETTINGS_CONTROL_DRAFT_MAX_CHARS = 4096;
 
 interface SettingsControlDraftOptions {
   controlValue: unknown;
@@ -16,9 +17,11 @@ export interface SettingsControlDraft {
   clearPending: () => void;
 }
 
-export function normalizeSettingsControlDraftMaxLength(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  return value > 0 ? Math.floor(value) : undefined;
+export function normalizeSettingsControlDraftMaxLength(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return SETTINGS_CONTROL_DRAFT_MAX_CHARS;
+  }
+  return Math.min(Math.floor(value), SETTINGS_CONTROL_DRAFT_MAX_CHARS);
 }
 
 export function normalizeSettingsControlDraftValue(
@@ -27,9 +30,7 @@ export function normalizeSettingsControlDraftValue(
 ): string {
   const normalized = typeof value === "string" ? value : "";
   const normalizedMaxLength = normalizeSettingsControlDraftMaxLength(maxLength);
-  return normalizedMaxLength === undefined
-    ? normalized
-    : normalized.slice(0, normalizedMaxLength);
+  return normalized.slice(0, normalizedMaxLength);
 }
 
 export function normalizeSettingsControlDraftContinuous(value: unknown): boolean {

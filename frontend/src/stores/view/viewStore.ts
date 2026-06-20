@@ -94,8 +94,19 @@ export interface EditorTarget {
   nodeId: string;
 }
 
-export function normalizeEditorTextValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
+export const EDITOR_DRAFT_TEXT_MAX_CHARS = 512 * 1024;
+export const EDITOR_BLOB_HASH_MAX_CHARS = 128;
+
+export function normalizeEditorTextValue(
+  value: unknown,
+  maxChars = EDITOR_DRAFT_TEXT_MAX_CHARS,
+): string {
+  if (typeof value !== "string") return "";
+  return value.length <= maxChars ? value : value.slice(0, maxChars);
+}
+
+export function normalizeEditorBlobHash(value: unknown): string {
+  return normalizeEditorTextValue(value, EDITOR_BLOB_HASH_MAX_CHARS);
 }
 
 /** Local non-node selection metadata. Node selection lives in dashboard-state. */
@@ -783,7 +794,7 @@ export const useViewStore = create<ViewState>((set) => ({
       return {
         editorTarget: { nodeId: docNodeId },
         draftText: normalizeEditorTextValue(text),
-        baseBlobHash: normalizeEditorTextValue(baseBlobHash),
+        baseBlobHash: normalizeEditorBlobHash(baseBlobHash),
         editorStatus: "idle",
       };
     }),
@@ -800,7 +811,7 @@ export const useViewStore = create<ViewState>((set) => ({
   markSaved: (blobHash) =>
     set({
       editorStatus: "saved",
-      baseBlobHash: normalizeEditorTextValue(blobHash),
+      baseBlobHash: normalizeEditorBlobHash(blobHash),
     }),
   markConflict: () => set({ editorStatus: "conflict" }),
   markFailed: () => set({ editorStatus: "save-failed" }),

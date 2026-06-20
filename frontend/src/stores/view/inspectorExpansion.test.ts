@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   INSPECTOR_EXPANSION_KEY_MAX_CHARS,
+  canWriteInspectorExpansionIdentity,
   inspectorExpansionKey,
   normalizeInspectorExpansionKey,
   normalizeInspectorExpansionNodeId,
@@ -9,10 +13,12 @@ import {
   normalizeInspectorExpansionTier,
   normalizeInspectorExpansionTiers,
   useInspectorExpansionStore,
+  useInspectorTierExpansion,
 } from "./inspectorExpansion";
 
 describe("inspector expansion store", () => {
   beforeEach(() => useInspectorExpansionStore.getState().reset());
+  afterEach(() => cleanup());
 
   it("derives collision-resistant keys for null and separator-bearing parts", () => {
     expect(inspectorExpansionKey(null, null)).toBe(
@@ -36,6 +42,17 @@ describe("inspector expansion store", () => {
     expect(normalizeInspectorExpansionNodeId(" doc:plan-a ")).toBe("doc:plan-a");
     expect(normalizeInspectorExpansionNodeId("   ")).toBeNull();
     expect(normalizeInspectorExpansionNodeId({ id: "doc:plan-a" })).toBeNull();
+    expect(canWriteInspectorExpansionIdentity(" scope-a ", " doc:plan-a ")).toBe(
+      true,
+    );
+    expect(canWriteInspectorExpansionIdentity(null, "doc:plan-a")).toBe(true);
+    expect(canWriteInspectorExpansionIdentity({ scope: "scope-a" }, "doc:plan-a")).toBe(
+      false,
+    );
+    expect(canWriteInspectorExpansionIdentity("scope-a", { id: "doc:plan-a" })).toBe(
+      false,
+    );
+    expect(canWriteInspectorExpansionIdentity("scope-a", null)).toBe(false);
     expect(inspectorExpansionKey(" scope-a ", " doc:plan-a ")).toBe(
       "inspector-expansion:scope:value:scope-a:node:value:doc%3Aplan-a",
     );
@@ -143,5 +160,64 @@ describe("inspector expansion store", () => {
       "semantic",
       "declared",
     ]);
+  });
+
+  it("keeps malformed runtime identity inert at the hook write seam", () => {
+    const key = inspectorExpansionKey("scope-a", "doc:plan-a");
+    useInspectorExpansionStore.getState().toggleTier(key, "semantic");
+
+    const { result } = renderHook(() =>
+      useInspectorTierExpansion({ scope: "scope-a" }, "doc:plan-a", ["semantic"]),
+    );
+
+    expect(result.current.expanded.size).toBe(0);
+
+    act(() => result.current.toggle("declared"));
+
+    expect(useInspectorExpansionStore.getState()).toMatchObject({
+      key,
+      expandedTiers: ["semantic"],
+    });
+
+    const malformedNode = renderHook(() =>
+      useInspectorTierExpansion("scope-a", { id: "doc:plan-a" }, ["semantic"]),
+    );
+
+    act(() => malformedNode.result.current.toggle("structural"));
+
+    expect(useInspectorExpansionStore.getState()).toMatchObject({
+      key,
+      expandedTiers: ["semantic"],
+    });
+  });
+
+  it("keeps null inspected node inert because tier expansion is node-scoped", () => {
+    const key = inspectorExpansionKey("scope-a", "doc:plan-a");
+    useInspectorExpansionStore.getState().toggleTier(key, "semantic");
+
+    const { result } = renderHook(() =>
+      useInspectorTierExpansion("scope-a", null, ["semantic"]),
+    );
+
+    act(() => result.current.toggle("declared"));
+
+    expect(useInspectorExpansionStore.getState()).toMatchObject({
+      key,
+      expandedTiers: ["semantic"],
+    });
+  });
+
+  it("keeps explicit null scope writable when the inspected node is valid", () => {
+    const key = inspectorExpansionKey(null, "doc:plan-a");
+    const { result } = renderHook(() =>
+      useInspectorTierExpansion(null, "doc:plan-a", ["semantic"]),
+    );
+
+    act(() => result.current.toggle("semantic"));
+
+    expect(useInspectorExpansionStore.getState()).toMatchObject({
+      key,
+      expandedTiers: ["semantic"],
+    });
   });
 });

@@ -6,12 +6,14 @@ import {
   deriveWorkspaceMapPickerPresentationView,
   isSessionMutationRejected,
   isSupersededScopeSwitch,
+  type WorkspaceMapPickerRowView,
   type WorkspaceMapPickerPresentationView,
   type WorkspaceMapSurfaceState,
   useActivateWorktreeScope,
   useActiveScope,
   useWorkspaceMapSurface,
 } from "../server/queries";
+import { useShellPanelIntent } from "../server/panelStateIntent";
 
 // Worktree picker chrome state. The accepted scope/workspace is still session
 // state, applied through stores/server queries + viewStore wholesale resets; this
@@ -99,16 +101,18 @@ export const useWorktreePickerChromeStore = create<WorktreePickerChromeState>(
         const nextExpanded = normalizeWorktreePickerBoolean(expanded);
         const keyboardToggle = normalizeWorktreePickerBoolean(viaKeyboard);
         if (nextExpanded === null || keyboardToggle === null) return state;
-        return state.expanded === nextExpanded &&
-          state.keyboardToggle === keyboardToggle
+        const current = normalizeWorktreePickerChromeView(state);
+        return current.expanded === nextExpanded &&
+          current.keyboardToggle === keyboardToggle
           ? state
           : { expanded: nextExpanded, keyboardToggle };
       }),
     toggleExpanded: (viaKeyboard) =>
       set((state) => {
         const keyboardToggle = normalizeWorktreePickerBoolean(viaKeyboard) ?? false;
+        const current = normalizeWorktreePickerChromeView(state);
         return {
-          expanded: !state.expanded,
+          expanded: !current.expanded,
           keyboardToggle,
         };
       }),
@@ -125,19 +129,27 @@ export const useWorktreePickerChromeStore = create<WorktreePickerChromeState>(
     completeSwitch: (id) => {
       const normalized = normalizeWorktreePickerSwitchId(id);
       if (normalized === null) return;
-      set((state) => (state.pendingId === normalized ? { pendingId: null } : state));
+      set((state) =>
+        normalizeWorktreePickerSwitchId(state.pendingId) === normalized
+          ? { pendingId: null }
+          : state,
+      );
     },
     cancelSwitch: (id) => {
       const normalized = normalizeWorktreePickerSwitchId(id);
       if (normalized === null) return;
-      set((state) => (state.pendingId === normalized ? { pendingId: null } : state));
+      set((state) =>
+        normalizeWorktreePickerSwitchId(state.pendingId) === normalized
+          ? { pendingId: null }
+          : state,
+      );
     },
     failSwitch: (id, switchError) => {
       const normalized = normalizeWorktreePickerSwitchId(id);
       const message = normalizeWorktreePickerSwitchError(switchError);
       if (normalized === null || message === null) return;
       set((state) =>
-        state.pendingId === normalized
+        normalizeWorktreePickerSwitchId(state.pendingId) === normalized
           ? { pendingId: null, switchError: message }
           : state,
       );
@@ -160,22 +172,49 @@ const WORKTREE_PICKER_LIST_ANIMATION_CLASS = "animate-slide-in-down";
 const WORKTREE_PICKER_SWITCH_ERROR_CLASS =
   "mt-fg-1 px-fg-1 text-caption text-state-broken";
 
+export function normalizeWorktreePickerChromeView(
+  value: unknown,
+): WorktreePickerChromeView {
+  const state = isWorktreePickerRecord(value) ? value : {};
+  return {
+    expanded: normalizeWorktreePickerBoolean(state.expanded) ?? false,
+    keyboardToggle: normalizeWorktreePickerBoolean(state.keyboardToggle) ?? false,
+    pendingId: normalizeWorktreePickerSwitchId(state.pendingId),
+    switchError: normalizeWorktreePickerSwitchError(state.switchError),
+    listClassName: worktreePickerListClassName(state.keyboardToggle),
+    switchErrorClassName: WORKTREE_PICKER_SWITCH_ERROR_CLASS,
+  };
+}
+
 export function worktreePickerListClassName(keyboardToggle: unknown): string {
   return normalizeWorktreePickerBoolean(keyboardToggle) === true
     ? WORKTREE_PICKER_LIST_BASE_CLASS
     : `${WORKTREE_PICKER_LIST_BASE_CLASS} ${WORKTREE_PICKER_LIST_ANIMATION_CLASS}`;
 }
 
+export function worktreePickerFirstRowFocusTarget(
+  rows: readonly WorkspaceMapPickerRowView[],
+): string | null {
+  return normalizeWorktreePickerSwitchId(rows[0]?.worktree.id);
+}
+
+export function worktreePickerRowKeyboardTarget(
+  rows: readonly WorkspaceMapPickerRowView[],
+  index: unknown,
+  key: unknown,
+): string | null {
+  if (key !== "ArrowDown" && key !== "ArrowUp") return null;
+  if (typeof index !== "number" || !Number.isInteger(index) || rows.length === 0) {
+    return null;
+  }
+  const delta = key === "ArrowDown" ? 1 : -1;
+  const next = Math.min(rows.length - 1, Math.max(0, index + delta));
+  return normalizeWorktreePickerSwitchId(rows[next]?.worktree.id);
+}
+
 export function useWorktreePickerChrome(): WorktreePickerChromeView {
   return useWorktreePickerChromeStore(
-    useShallow((state) => ({
-      expanded: state.expanded,
-      keyboardToggle: state.keyboardToggle,
-      pendingId: state.pendingId,
-      switchError: state.switchError,
-      listClassName: worktreePickerListClassName(state.keyboardToggle),
-      switchErrorClassName: WORKTREE_PICKER_SWITCH_ERROR_CLASS,
-    })),
+    useShallow((state) => normalizeWorktreePickerChromeView(state)),
   );
 }
 
@@ -184,6 +223,7 @@ export interface WorktreePickerView extends WorktreePickerChromeView {
   pickerView: WorkspaceMapPickerPresentationView;
   retry: () => void;
   activateRow: (row: unknown, onAccepted?: () => void) => void;
+  collapseLeftRail: () => void;
 }
 
 /**
@@ -195,6 +235,7 @@ export function useWorktreePickerView(): WorktreePickerView {
   const { map, availability, state } = useWorkspaceMapSurface();
   const activeScope = useActiveScope();
   const activateWorktreeScope = useActivateWorktreeScope();
+  const panelIntent = useShellPanelIntent(activeScope);
   const chrome = useWorktreePickerChrome();
   const pickerView = useMemo(
     () =>
@@ -232,6 +273,9 @@ export function useWorktreePickerView(): WorktreePickerView {
     },
     [activateWorktreeScope],
   );
+  const collapseLeftRail = useCallback(() => {
+    void panelIntent.setLeftCollapsed(true).catch(() => undefined);
+  }, [panelIntent]);
 
   return {
     ...chrome,
@@ -239,6 +283,7 @@ export function useWorktreePickerView(): WorktreePickerView {
     pickerView,
     retry: map.retry,
     activateRow,
+    collapseLeftRail,
   };
 }
 
