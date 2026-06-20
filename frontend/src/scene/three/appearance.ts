@@ -8,7 +8,7 @@
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { categoryColor } from "../field/categoryColor";
 import { cssColorNumber } from "../field/tokenReads";
-import { appearanceDefaults } from "./graphControlSchema";
+import { appearanceDefaults, controlNumber } from "./graphControlSchema";
 
 // Mirror of cosmosField's COSMOS_POINT_SIZE — the base node diameter, used here as
 // the base world radius so relative sizing matches cosmos.
@@ -17,6 +17,14 @@ const BASE_POINT_SIZE = 4;
  *  here from the retired nodeAppearance.ts (Phase B dead-module prune); nodeWorldRadius
  *  is its only consumer, and the schema's salienceRadiusMax registry entry mirrors it. */
 export const SALIENCE_RADIUS_MAX = 2.6;
+
+// Edge-state alpha multipliers — read FROM the canonical control registry
+// (graphControlSchema) so each has ONE definition (value-preserving: unknown-tier 0.6,
+// broken 0.55, stale 0.78). The field dims an edge of an unknown tier, or a stale/broken
+// structural edge, by these factors.
+const EDGE_UNKNOWN_TIER_ALPHA_MULT = controlNumber("edgeUnknownTierAlphaMult");
+const EDGE_BROKEN_ALPHA_MULT = controlNumber("edgeBrokenAlphaMult");
+const EDGE_STALE_ALPHA_MULT = controlNumber("edgeStaleAlphaMult");
 
 /**
  * Edge colour inheritance mode. An edge NEVER carries a flat tier/grey/black colour
@@ -102,9 +110,9 @@ export function edgeAppearance(
     typeof edge.confidence === "number" ? Math.max(0, Math.min(1, edge.confidence)) : 1;
   let alpha =
     params.edgeOpacityMin + (params.edgeOpacityMax - params.edgeOpacityMin) * conf;
-  if (!known) alpha *= 0.6;
-  if (edge.state === "broken") alpha *= 0.55;
-  else if (edge.state === "stale") alpha *= 0.78;
+  if (!known) alpha *= EDGE_UNKNOWN_TIER_ALPHA_MULT;
+  if (edge.state === "broken") alpha *= EDGE_BROKEN_ALPHA_MULT;
+  else if (edge.state === "stale") alpha *= EDGE_STALE_ALPHA_MULT;
   const width =
     params.edgeWidthMin + (params.edgeWidthMax - params.edgeWidthMin) * conf;
   return { alpha, width };
