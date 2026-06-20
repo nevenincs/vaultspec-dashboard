@@ -166,3 +166,21 @@ export function inkColor(): number {
 export function inkMutedColor(): number {
   return cssColorNumber("--color-ink-muted", 0x6f675c);
 }
+
+// Hover/focus emphasis scene colours — PARITY with the binding graph/Hover 742:3413
+// (figma-is-binding). Read through the scene token seam; the design-frame hexes are the
+// cssColorNumber FALLBACKS until design-review lands the proper Figma-bound
+// `--color-scene-hover-*` tokens (light + dark) in styles.css, after which these resolve
+// themed with NO code change (the sanctioned token+fallback bridge).
+export function hoverRecedeColor(): number {
+  return cssColorNumber("--color-scene-hover-recede", 0xccc1b4);
+}
+export function hoverContextLabelColor(): number {
+  return cssColorNumber("--color-scene-hover-context-label", 0xa7a095);
+}
+export function hoverFocusEdgeColor(): number {
+  return cssColorNumber("--color-scene-hover-focus-edge", 0x514c45);
+}
+export function hoverContextEdgeColor(): number {
+  return cssColorNumber("--color-scene-hover-context-edge", 0xbbb4ab);
+}
