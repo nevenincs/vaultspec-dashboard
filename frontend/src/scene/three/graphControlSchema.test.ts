@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   type ControlSpec,
   GRAPH_CONTROL_SCHEMA,
+  MAX_GRAPH_CONTROL_OVERRIDES,
   appearanceDefaults,
   defaultsFor,
+  normalizeGraphControlOverrides,
+  resolveAppearanceParams,
+  resolveForceParams,
   simulationDefaults,
 } from "./graphControlSchema";
 
@@ -201,5 +205,56 @@ describe("graphControlSchema ui labels (single source for the curated UI)", () =
       if (spec.exposure.includes("ui")) continue;
       expect(spec.uiLabel).toBeUndefined();
     }
+  });
+});
+
+describe("graph_controls overrides (normalize + resolve)", () => {
+  it("keeps valid schema ids, clamps numbers, validates enum; drops the rest", () => {
+    expect(
+      normalizeGraphControlOverrides({
+        charge: -300, // valid (in -600..0)
+        linkDistance: 9999, // out of range -> clamp to 200
+        edgeColorMode: "solid", // valid enum
+        nodeSizeScale: "big", // wrong type -> dropped
+        unknownId: 5, // not a schema id -> dropped
+        frozen: true, // not a schema id -> dropped
+      }),
+    ).toEqual({ charge: -300, linkDistance: 200, edgeColorMode: "solid" });
+  });
+
+  it("rejects an invalid enum value and non-finite numbers", () => {
+    expect(normalizeGraphControlOverrides({ edgeColorMode: "rainbow" })).toEqual({});
+    expect(
+      normalizeGraphControlOverrides({ charge: Number.POSITIVE_INFINITY }),
+    ).toEqual({});
+  });
+
+  it("returns {} for non-object payloads", () => {
+    expect(normalizeGraphControlOverrides(null)).toEqual({});
+    expect(normalizeGraphControlOverrides("x")).toEqual({});
+    expect(normalizeGraphControlOverrides([1, 2])).toEqual({});
+  });
+
+  it("declares a bounded override cap", () => {
+    expect(MAX_GRAPH_CONTROL_OVERRIDES).toBe(256);
+  });
+
+  it("resolveForceParams overlays simulation overrides on the schema defaults", () => {
+    const base = simulationDefaults();
+    const resolved = resolveForceParams({ charge: -300, linkDistance: 80 });
+    expect(resolved.charge).toBe(-300);
+    expect(resolved.linkDistance).toBe(80);
+    expect(resolved.linkStrength).toBe(base.linkStrength);
+  });
+
+  it("resolveAppearanceParams overlays visualisation overrides on the schema defaults", () => {
+    const base = appearanceDefaults();
+    const resolved = resolveAppearanceParams({
+      nodeSizeScale: 2,
+      edgeColorMode: "solid",
+    });
+    expect(resolved.nodeSizeScale).toBe(2);
+    expect(resolved.edgeColorMode).toBe("solid");
+    expect(resolved.edgeWidthMax).toBe(base.edgeWidthMax);
   });
 });

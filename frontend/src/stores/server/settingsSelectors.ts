@@ -11,6 +11,10 @@ import {
   normalizeKeybindingOverrides,
   type KeybindingOverrides,
 } from "../../platform/keymap/registry";
+import {
+  normalizeGraphControlOverrides,
+  type GraphControlOverrides,
+} from "../../scene/three/graphControlSchema";
 import type {
   GraphGranularity,
   SettingDef,
@@ -27,6 +31,7 @@ export const CONSUMED_SETTING_KEYS = {
   confidenceFloor: "confidence_floor",
   labelFilter: "label_filter",
   keybindings: "keybindings",
+  graphControls: "graph_controls",
 } as const;
 
 export type ConsumedSettingKey =
@@ -348,4 +353,47 @@ export function resolveKeybindingOverrides(
     CONSUMED_SETTING_KEYS.keybindings,
   );
   return parseKeybindingOverrides(setting?.value);
+}
+
+// --- graph_controls override map decode (graph-control-standardisation) --------
+//
+// The `graph_controls` setting persists a sparse `{control_id: number|string}` JSON
+// OBJECT STRING (the user's explicit graph-control overrides). Decoding mirrors the
+// keybindings pattern: DEFENSIVE (a corrupt value degrades to no overrides → the
+// graph falls back to its schema defaults), bounded/validated in
+// `normalizeGraphControlOverrides` (registry-owned, engine-never-learns-ids). The
+// setting is GLOBAL (scope_eligible false), so resolution uses a null scope.
+
+/** Parse the raw `graph_controls` JSON string into a normalized sparse override map.
+ *  Returns `{}` on any parse failure or a non-object payload. */
+export function parseGraphControlOverrides(
+  raw: string | undefined,
+): GraphControlOverrides {
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  return normalizeGraphControlOverrides(parsed);
+}
+
+/**
+ * Resolve the effective `graph_controls` override map through the engine-served
+ * schema. The setting is global (no per-scope override), so resolution uses a null
+ * scope, then decodes the JSON object string. Returns `{}` when the setting is absent
+ * or corrupt — the graph always falls back to its schema defaults.
+ */
+export function resolveGraphControlOverrides(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+): GraphControlOverrides {
+  const setting = resolveEffectiveSetting(
+    schema,
+    settings,
+    null,
+    CONSUMED_SETTING_KEYS.graphControls,
+  );
+  return parseGraphControlOverrides(setting?.value);
 }

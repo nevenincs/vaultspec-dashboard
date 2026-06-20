@@ -950,7 +950,9 @@ function isOverrideRecord(value: unknown): value is Record<string, unknown> {
  * the graph — it degrades to the schema defaults. `frozen` and any other non-schema
  * id is dropped: it is never a persisted control.
  */
-export function normalizeGraphControlOverrides(overrides: unknown): GraphControlOverrides {
+export function normalizeGraphControlOverrides(
+  overrides: unknown,
+): GraphControlOverrides {
   if (!isOverrideRecord(overrides)) return {};
   const out: GraphControlOverrides = {};
   let count = 0;
@@ -994,7 +996,9 @@ export function resolveForceParams(overrides: GraphControlOverrides): D3ForcePar
 
 /** Effective FIELD appearance params: schema appearance defaults overlaid with the
  *  (already-normalized) visualisation overrides — exactly the AppearanceParams shape. */
-export function resolveAppearanceParams(overrides: GraphControlOverrides): AppearanceParams {
+export function resolveAppearanceParams(
+  overrides: GraphControlOverrides,
+): AppearanceParams {
   const out = appearanceDefaults() as unknown as Record<string, number | string>;
   for (const [id, value] of Object.entries(overrides)) {
     if (SPEC_BY_ID.get(id)?.group === "visualisation") out[id] = value;

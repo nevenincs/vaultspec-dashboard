@@ -6,8 +6,10 @@ import {
   effectiveSettingsEditTarget,
   isSettingsEditTarget,
   normalizeSettingsEditTarget,
+  parseGraphControlOverrides,
   parseKeybindingOverrides,
   resolveEffective,
+  resolveGraphControlOverrides,
   resolveKeybindingOverrides,
   resolveReduceMotionSetting,
   settingCanTargetScope,
@@ -190,5 +192,52 @@ describe("keybinding override decode", () => {
     expect(resolveKeybindingOverrides(schema, settings())).toEqual({});
     // No schema at all -> empty map (keymap falls back to defaults).
     expect(resolveKeybindingOverrides(undefined, undefined)).toEqual({});
+  });
+});
+
+describe("graph_controls override resolution", () => {
+  const graphControlsDef: SettingDef = {
+    key: "graph_controls",
+    value_type: { type: "string", max_len: 4096 },
+    default: "{}",
+    scope_eligible: false,
+    control: "text",
+    label: "Graph controls",
+    description: "Persisted graph control overrides",
+    group: "Graph",
+    order: 1,
+  };
+  const schema = { settings: [graphControlsDef], groups: ["Graph"], tiers: {} };
+
+  it("parses a JSON object string into a normalized map; {} on corrupt/non-object", () => {
+    expect(
+      parseGraphControlOverrides('{"charge":-250,"edgeColorMode":"solid"}'),
+    ).toEqual({ charge: -250, edgeColorMode: "solid" });
+    expect(parseGraphControlOverrides("not json")).toEqual({});
+    expect(parseGraphControlOverrides(undefined)).toEqual({});
+    expect(parseGraphControlOverrides("[1,2]")).toEqual({});
+  });
+
+  it("resolves the global graph_controls setting through the schema (null-scope)", () => {
+    expect(
+      resolveGraphControlOverrides(
+        schema,
+        settings({ graph_controls: '{"charge":-250}' }),
+      ),
+    ).toEqual({ charge: -250 });
+    // Absent value -> schema default "{}" -> empty map.
+    expect(resolveGraphControlOverrides(schema, settings())).toEqual({});
+    // No schema -> empty map (graph falls back to schema defaults).
+    expect(resolveGraphControlOverrides(undefined, undefined)).toEqual({});
+  });
+
+  it("ignores a scoped value (global-only setting)", () => {
+    // scope_eligible:false + null-scope resolution -> a scoped row is never consulted.
+    expect(
+      resolveGraphControlOverrides(
+        schema,
+        settings({}, { "scope-a": { graph_controls: '{"charge":-400}' } }),
+      ),
+    ).toEqual({});
   });
 });
