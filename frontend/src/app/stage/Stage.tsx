@@ -336,6 +336,7 @@ export function Stage() {
     granularity,
     stageSurface: surfaces.stage,
     slice: slice.data ?? null,
+    queriedScope: graphScope,
     availability,
   });
   return (

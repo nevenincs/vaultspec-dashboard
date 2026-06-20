@@ -42,16 +42,28 @@ describe("CanvasStateOverlay (designed canvas states)", () => {
     ).toContain("Loading...");
   });
 
-  it("renders the degraded state as the binding 'Graph is not available' card", () => {
+  it("renders the unavailable state as the binding 'Graph is not available' card", () => {
+    render(<CanvasStateOverlay state={{ kind: "unavailable" }} />);
+    const node = document.querySelector('[data-canvas-state="unavailable"]');
+    expect(node?.textContent).toContain("Graph is not available");
+    // Centered card, pointer-transparent — it never grabs the canvas.
+    expect(node?.className).toContain("pointer-events-none");
+  });
+
+  it("renders a degraded tier as a NON-blocking corner banner over the live field", () => {
     render(
       <CanvasStateOverlay
         state={{ kind: "degraded", tiers: ["semantic"], reasons: {} }}
       />,
     );
-    const node = document.querySelector('[data-canvas-state="degraded"]');
-    expect(node?.textContent).toContain("Graph is not available");
-    // Centered card, pointer-transparent — it never blanks or grabs the canvas.
-    expect(node?.className).toContain("pointer-events-none");
+    const banner = document.querySelector('[data-canvas-state="degraded"]');
+    // Names the down tier and affirms the graph is still live — never the blocking
+    // "Graph is not available" card (which would occlude a working graph).
+    expect(banner?.textContent).toContain("semantic");
+    expect(banner?.textContent).toContain("the rest of the graph is live");
+    expect(banner?.textContent).not.toContain("Graph is not available");
+    // The outer never blanks the canvas; the field stays interactive behind it.
+    expect(banner?.className).toContain("pointer-events-none");
   });
 
   it("renders the truncated affordance with tabular counts and a refine prompt", () => {

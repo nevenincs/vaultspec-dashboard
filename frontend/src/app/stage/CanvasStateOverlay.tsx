@@ -37,6 +37,10 @@ export type CanvasState =
   | { kind: "loading-constellation" }
   | { kind: "loading-document" }
   | { kind: "empty" }
+  // The whole graph genuinely failed to load (a query ran and settled with no
+  // slice) — the binding "Graph is not available" centered card. DISTINCT from
+  // `degraded` (a single tier down while the graph is live).
+  | { kind: "unavailable" }
   | { kind: "degraded"; tiers: string[]; reasons: Record<string, string> }
   | { kind: "truncated"; total: number; returned: number; reason: string }
   | { kind: "unknown-tier"; tiers: string[] };
@@ -50,6 +54,10 @@ export interface CanvasStateInputs {
   stageSurface: SurfaceStates["stage"];
   /** The held slice, or null while the first keyframe is in flight. */
   slice: GraphSlice | null;
+  /** The scope a graph query was actually issued for (`graphQuery.scope`), or null
+   *  when no query is active yet. Distinguishes "a query ran and returned no slice"
+   *  (unavailable) from "no query has started" (still loading / idle). */
+  queriedScope: string | null;
   /** Pre-derived per-tier availability (never the raw `tiers` block). */
   availability: GraphSliceAvailability;
 }
@@ -63,16 +71,22 @@ export interface CanvasStateInputs {
  * honestly-absent tier is non-blocking degradation; otherwise the field is ok.
  */
 export function resolveCanvasState(inputs: CanvasStateInputs): CanvasState {
-  const { scope, granularity, stageSurface, slice, availability } = inputs;
+  const { scope, granularity, stageSurface, slice, queriedScope, availability } =
+    inputs;
   // The empty/no-graph invitation dominates: a worktree with no vault corpus is
   // not a void to load but a next step to offer.
   if (stageSurface === "empty-invitation") return { kind: "empty" };
   if (scope === null) return { kind: "awaiting-scope" };
-  // No held keyframe yet → scope-appropriate loading copy.
+  // No held slice. While the query is in flight (or none has started yet) it is a
+  // scope-appropriate loading state; once a query has settled WITHOUT a slice the
+  // graph genuinely failed to load → the unavailable card.
   if (!slice) {
-    return granularity === "document"
-      ? { kind: "loading-document" }
-      : { kind: "loading-constellation" };
+    if (availability.loading || queriedScope === null) {
+      return granularity === "document"
+        ? { kind: "loading-document" }
+        : { kind: "loading-constellation" };
+    }
+    return { kind: "unavailable" };
   }
   // An unknown tier on the wire is a data error, not a silent re-bucket: any
   // degraded-tier name outside the four canonical tiers surfaces here.
@@ -191,15 +205,28 @@ export function CanvasStateOverlay({ state }: { state: CanvasState }) {
           <p className="text-body text-ink-muted">No nodes match the current filter</p>
         </StateCard>
       );
-    // Degraded (binding DegradedState 498:992): the graph-unavailable message in the
-    // stale/caution accent, read by shape + the amber token (never colour alone).
-    case "degraded":
+    // Unavailable (binding DegradedState 498:992): the graph genuinely failed to
+    // load — "Graph is not available" in the stale/caution accent, read by shape +
+    // the amber token (never colour alone).
+    case "unavailable":
       return (
-        <StateCard testid="degraded">
+        <StateCard testid="unavailable">
           <p className="text-body font-medium text-state-stale">
             Graph is not available
           </p>
         </StateCard>
+      );
+    // Degraded — a single tier is down while the graph is LIVE behind it. A
+    // non-blocking corner banner naming the tier (never the blocking centered card,
+    // which would occlude a working graph); the field stays fully interactive.
+    case "degraded":
+      return (
+        <CornerBanner testid="degraded" tone="muted">
+          <span>
+            {tierList(state.tiers)} tier{state.tiers.length > 1 ? "s" : ""} unavailable
+            — the rest of the graph is live
+          </span>
+        </CornerBanner>
       );
     case "truncated":
       return (

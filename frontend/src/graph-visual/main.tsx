@@ -7,10 +7,12 @@
 // (timeline/status/filters/reader) follows this same mount-and-feed pattern.
 //
 // URL params:
-//   ?state=ok|loading|empty|degraded  → which designed canvas state to depict
-//                                        (ok feeds the fixture; the rest show the
-//                                         state card over an empty field, matching
-//                                         the binding state variants 713:2116/2296/2475)
+//   ?state=ok|loading|empty|unavailable|degraded → which designed canvas state to
+//                                        depict (ok feeds the fixture; loading/empty/
+//                                        unavailable show their centered card over an
+//                                        empty field, matching the binding state
+//                                        variants 713:2116/2296/2475; degraded is the
+//                                        non-blocking corner banner over the field)
 //   ?panel=1                          → open the Graph controls panel (714:2630)
 //   ?theme=light|dark|hc              → theme remap
 //
@@ -50,6 +52,11 @@ function resolveHarnessState(name: string): CanvasState {
       return { kind: "loading-constellation" };
     case "empty":
       return { kind: "empty" };
+    // The binding "Graph is not available" centered card (Figma DegradedState
+    // 498:992) — the graph genuinely failed to load.
+    case "unavailable":
+      return { kind: "unavailable" };
+    // A single tier down while the graph is live → the non-blocking corner banner.
     case "degraded":
       return { kind: "degraded", tiers: ["semantic"], reasons: {} };
     default:
