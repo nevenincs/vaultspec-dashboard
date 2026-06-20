@@ -1086,6 +1086,13 @@ export interface OpsArchiveBody {
   feature: string;
 }
 
+/** The body of a relate op (`POST /ops/core/link` → `vault link add <src> <dst>`). */
+export interface OpsLinkBody {
+  scope?: string;
+  src: string;
+  dst: string;
+}
+
 /**
  * The typed, discriminated result of a write/create op, interpreted by
  * `adaptOpsWrite` from the sibling envelope's `status` + `data` fields (never the
@@ -1499,7 +1506,12 @@ export type SettingValueType =
   // OBJECT STRING `{action_id: chord}`, bounded by `max_entries`
   // (bounded-by-default-for-every-accumulator). The client decodes it into a
   // `KeybindingOverrides` map; the engine enforces the same entry cap.
-  | { type: "keybindings"; max_entries: number };
+  | { type: "keybindings"; max_entries: number }
+  // A sparse GRAPH-CONTROL override map (graph-control-standardisation): a JSON
+  // OBJECT STRING `{control_id: number|string}`, bounded by `max_entries`. The
+  // frontend `graphControlSchema` owns the control vocabulary + ranges; the engine
+  // keeps the value well-formed + bounded. Decoded by `parseGraphControlOverrides`.
+  | { type: "graph_controls"; max_entries: number };
 
 /** The UI control a setting renders as (the schema-driven render hint). The
  *  `keybinding` kind renders the chord-recorder catalog (KeybindingControl). */
@@ -1508,7 +1520,10 @@ export type SettingControlKind =
   | "switch"
   | "text"
   | "slider"
-  | "keybinding";
+  | "keybinding"
+  // Edited from the graph-controls overlay panel, NOT the settings dialog — the
+  // dialog SKIPS this control kind (graph-control-standardisation).
+  | "graph_controls";
 
 /** One declared setting (GET /settings/schema data.settings[]). */
 export interface SettingDef {
@@ -1860,6 +1875,14 @@ export class EngineClient {
    *  business refusal (e.g. unknown tag), the caller branching on the envelope. */
   opsCoreArchive(body: OpsArchiveBody): Promise<OpsResult> {
     return this.post("/ops/core/archive", body);
+  }
+
+  /** A relate op: `POST /ops/core/link` forwards `vault link add <src> <dst>` to
+   *  add a `related:` edge. The engine validates/bounds the two stems and forwards
+   *  core's envelope VERBATIM under `data.envelope` with the tiers block; HTTP 200
+   *  for both a success and a business refusal (e.g. a dangling target). */
+  opsCoreLink(body: OpsLinkBody): Promise<OpsResult> {
+    return this.post("/ops/core/link", body);
   }
 
   /** The brokered rag READ verbs (rag-control-plane ADR D2): a GET against the

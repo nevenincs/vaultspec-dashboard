@@ -695,8 +695,7 @@ export const SEARCH_RESULT_EXCERPT_MAX_CHARS = 4096;
 function normalizeSearchResultString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= SEARCH_RESULT_IDENTITY_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= SEARCH_RESULT_IDENTITY_MAX_CHARS
     ? normalized
     : undefined;
 }
@@ -1481,6 +1480,7 @@ const CONTROL_KINDS: SettingControlKind[] = [
   "text",
   "slider",
   "keybinding",
+  "graph_controls",
 ];
 
 function normalizeSchemaString(value: unknown, fallback: string): string {
@@ -1540,6 +1540,11 @@ function adaptValueType(value: unknown): SettingValueType {
     case "keybindings":
       return {
         type: "keybindings",
+        max_entries: typeof value.max_entries === "number" ? value.max_entries : 256,
+      };
+    case "graph_controls":
+      return {
+        type: "graph_controls",
         max_entries: typeof value.max_entries === "number" ? value.max_entries : 256,
       };
     case "string":

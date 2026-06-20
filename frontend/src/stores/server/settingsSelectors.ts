@@ -273,6 +273,10 @@ export function resolveSettings(
   if (!schema) return [];
   const byGroup = new Map<string, EffectiveSetting[]>();
   for (const def of schema.settings) {
+    // The graph-controls override map is edited from the graph-controls overlay
+    // panel, NOT the settings dialog (graph-control-standardisation): skip its
+    // control kind so the dialog never renders it.
+    if (def.control === "graph_controls") continue;
     const resolved = resolveEffective(def, settings, activeScope);
     const list = byGroup.get(def.group) ?? [];
     list.push(resolved);

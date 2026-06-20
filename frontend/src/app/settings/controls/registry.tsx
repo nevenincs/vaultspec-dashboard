@@ -14,10 +14,17 @@ import { SwitchControl } from "./SwitchControl";
 import { TextControl } from "./TextControl";
 import type { ControlProps } from "./types";
 
-/** The kind → renderer map. The adapter already degrades an unknown engine
- *  control kind to `text`, so this map is total over the client's known kinds. */
+/** Control kinds the settings DIALOG renders. `graph_controls` is excluded — it is
+ *  edited from the graph-controls overlay panel, not the dialog (the dialog filters
+ *  it out upstream; graph-control-standardisation). */
+type DialogControlKind = Exclude<SettingControlKind, "graph_controls">;
+
+/** The kind → renderer map, total over the dialog-rendered kinds. The adapter
+ *  degrades an unknown engine control kind to `text`, and a non-dialog kind
+ *  (graph_controls) is filtered upstream, so the `?? TextControl` fallback is a
+ *  safety net rather than a routine path. */
 export const CONTROL_RENDERERS: Record<
-  SettingControlKind,
+  DialogControlKind,
   ComponentType<ControlProps>
 > = {
   segmented: EnumControl,
@@ -29,6 +36,7 @@ export const CONTROL_RENDERERS: Record<
 
 /** Render the control for a declared setting by dispatching on its control kind. */
 export function SettingControl(props: ControlProps) {
-  const Renderer = CONTROL_RENDERERS[props.def.control] ?? TextControl;
+  const Renderer =
+    CONTROL_RENDERERS[props.def.control as DialogControlKind] ?? TextControl;
   return <Renderer {...props} />;
 }
