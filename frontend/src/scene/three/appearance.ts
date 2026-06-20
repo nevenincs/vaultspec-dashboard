@@ -7,13 +7,16 @@
 
 import type { SceneEdgeData, SceneNodeData } from "../sceneController";
 import { categoryColor } from "../field/categoryColor";
-import { SALIENCE_RADIUS_MAX } from "../field/nodeAppearance";
 import { cssColorNumber } from "../field/tokenReads";
 import { appearanceDefaults } from "./graphControlSchema";
 
 // Mirror of cosmosField's COSMOS_POINT_SIZE — the base node diameter, used here as
 // the base world radius so relative sizing matches cosmos.
 const BASE_POINT_SIZE = 4;
+/** Salience multiplier band: salience 0 → 1.0× base; salience 1 → this × base. Moved
+ *  here from the retired nodeAppearance.ts (Phase B dead-module prune); nodeWorldRadius
+ *  is its only consumer, and the schema's salienceRadiusMax registry entry mirrors it. */
+export const SALIENCE_RADIUS_MAX = 2.6;
 
 /**
  * Edge colour inheritance mode. An edge NEVER carries a flat tier/grey/black colour

@@ -11,8 +11,8 @@
 // rule is the honest fallback only when the origin does not serve salience.
 //
 // These are pure-function assertions over the sizing source (`nodeWorldRadius` in
-// appearance.ts, plus `labelPriority`/`ambientLabelFloor` in nodeAppearance.ts); no
-// GPU is reached.
+// appearance.ts, plus `labelPriority`/`ambientLabelFloor` in nodeVisualEncoding.ts);
+// no GPU is reached.
 
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +22,7 @@ import {
   SALIENCE_RADIUS_MAX,
   ambientLabelFloor,
   labelPriority,
-} from "./nodeAppearance";
+} from "./nodeVisualEncoding";
 // Live node sizing is appearance.nodeWorldRadius (the retired nodeAppearance.nodeRadius
 // duplicate was removed); these salience-encoding assertions are relative/ratio-based so
 // they hold against the live sizing source.

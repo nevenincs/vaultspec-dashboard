@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { groupColor } from "./edgeStyle";
-import { stateColor } from "./nodeAppearance";
+import { stateColor } from "./nodeVisualEncoding";
 import { cssColorNumber } from "./tokenReads";
 
 // Node-category scene-read hex (Figma-canonical, light theme). These drive the
