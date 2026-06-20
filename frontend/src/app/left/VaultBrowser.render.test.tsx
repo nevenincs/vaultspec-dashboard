@@ -3,10 +3,10 @@
 // Vault tab surface adoption (binding `LeftRail` 238:600): the vault browser
 // rendered against the REAL engine over the fixture vault — no mock transport, no
 // injected backend conditions. The Vault tab is TWO collapsible sections (Features
-// + Documents) that start COLLAPSED; expanding a section reveals its folder rows,
-// and expanding a folder reveals its document rows. These cover the collapsed
-// default, the one-tab-stop roving a11y contract, the disclosure cascade, and
-// selection.
+// + Documents) that start EXPANDED by default to match the binding (Figma 238:600
+// SectionHeader is open); collapsing a section hides its folder rows, and expanding
+// a folder reveals its document rows. These cover the expanded default, the
+// one-tab-stop roving a11y contract, the disclosure cascade, and selection.
 //
 // The four-honest-states selection logic (loading / empty / degraded / error) lives
 // in the PURE `deriveVaultTreeAvailability` selector, tested over explicit
@@ -67,7 +67,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     return navButtons().filter((b) => b.tabIndex === 0);
   }
 
-  it("renders both sections collapsed under a labelled landmark", async () => {
+  it("renders both sections expanded by default under a labelled landmark", async () => {
     renderBrowser();
     const nav = await screen.findByRole("navigation", { name: "vault browser" });
     expect(nav).toBeTruthy();
@@ -75,10 +75,15 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       const sections = document.querySelectorAll("[data-vault-section]");
       expect(sections.length).toBe(2);
     });
-    // Sections start collapsed → no folders or document rows are mounted yet.
-    expect(document.querySelectorAll("[data-vault-folder]")).toHaveLength(0);
+    // Sections default OPEN (binding 238:600) → their folder rows ARE mounted, and
+    // both section headers read expanded.
+    await waitFor(() => {
+      expect(document.querySelectorAll("[data-vault-folder]").length).toBeGreaterThan(
+        0,
+      );
+    });
     expect(
-      screen.getAllByRole("button", { expanded: false }).length,
+      screen.getAllByRole("button", { expanded: true }).length,
     ).toBeGreaterThanOrEqual(2);
   });
 
@@ -92,16 +97,20 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     expect(tabZero()[0].hasAttribute("aria-expanded")).toBe(true);
   });
 
-  it("expands a section to reveal folders, then a folder to reveal document rows", async () => {
+  it("collapses then re-expands a section, and expands a folder to reveal document rows", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
+    // Sections default open → a section header reads expanded:true.
     const section = await waitFor(() => {
       const button = screen
-        .getAllByRole("button", { expanded: false })
+        .getAllByRole("button", { expanded: true })
         .find((b) => b.querySelector("[data-vault-section]"));
       expect(button).toBeTruthy();
       return button!;
     });
+    // Collapse it, then re-expand — the disclosure toggle round-trips.
+    fireEvent.click(section);
+    expect(section.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(section);
     expect(section.getAttribute("aria-expanded")).toBe("true");
 
@@ -145,14 +154,7 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
   it("clicking a document row drives the shared selection (doc:<stem>)", async () => {
     renderBrowser();
     await screen.findByRole("navigation", { name: "vault browser" });
-    const section = await waitFor(() => {
-      const button = screen
-        .getAllByRole("button", { expanded: false })
-        .find((b) => b.querySelector("[data-vault-section]"));
-      expect(button).toBeTruthy();
-      return button!;
-    });
-    fireEvent.click(section);
+    // Sections default open → folder rows are already visible; expand one directly.
     const folder = await waitFor(() => {
       const button = screen
         .getAllByRole("button", { expanded: false })

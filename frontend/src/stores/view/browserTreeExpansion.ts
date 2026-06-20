@@ -197,6 +197,18 @@ export function deriveCodeBrowserTreeRowView(
   };
 }
 
+/**
+ * The default expanded set for a freshly-keyed tree. The binding Vault tab
+ * (Figma 238:600) shows its two top-level sections OPEN, so a vault key seeds
+ * `sec:features` + `sec:documents` open; the code tree has no default-open rows.
+ * Seeded when `setKey` establishes a NEW key (a scope/mode swap), so a deliberate
+ * user collapse persists until the scope changes — figma-is-the-binding-source-of-
+ * truth. Direct reset/toggle keep the empty default.
+ */
+function defaultExpandedKeysForTreeKey(key: string): string[] {
+  return key.endsWith(":vault") ? [...VAULT_BROWSER_TREE_SECTION_KEYS] : [];
+}
+
 interface BrowserTreeExpansionState {
   key: string;
   expandedKeys: string[];
@@ -252,7 +264,11 @@ export const useBrowserTreeExpansionStore = create<BrowserTreeExpansionState>(
         if (normalizedKey === null) return state;
         return state.key === normalizedKey
           ? state
-          : { key: normalizedKey, expandedKeys: [], activeKey: null };
+          : {
+              key: normalizedKey,
+              expandedKeys: defaultExpandedKeysForTreeKey(normalizedKey),
+              activeKey: null,
+            };
       }),
     toggle: (key, id) =>
       set((state) => {

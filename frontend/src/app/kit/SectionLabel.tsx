@@ -12,17 +12,26 @@ export interface SectionLabelProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
   /** Optional trailing count, e.g. the "N" in "OPEN PLANS — N". */
   count?: number;
+  /**
+   * Eyebrow letter-case. The binding design uses UPPERCASE eyebrows in the
+   * activity rail (OPEN PRS / RECENT COMMITS, Figma 599:2099) but Title-case
+   * section headers in the left-rail tree ("Features" / "Documents", Figma
+   * 238:600 SectionHeader 666:2158). Defaults to `uppercase` so the activity
+   * rail is unchanged; the tree passes `none`.
+   */
+  transform?: "uppercase" | "none";
 }
 
 export function SectionLabel({
   children,
   count,
   className = "",
+  transform = "uppercase",
   ...rest
 }: SectionLabelProps) {
   return (
     <div
-      className={`flex items-center gap-fg-1-5 text-caption font-medium uppercase tracking-[0.025rem] text-ink-faint ${className}`.trim()}
+      className={`flex items-center gap-fg-1-5 text-caption font-medium ${transform === "uppercase" ? "uppercase" : "normal-case"} tracking-[0.025rem] text-ink-faint ${className}`.trim()}
       {...rest}
     >
       <span className="truncate">{children}</span>

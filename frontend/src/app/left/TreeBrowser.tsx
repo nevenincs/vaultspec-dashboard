@@ -16,20 +16,14 @@
 import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useRef } from "react";
 
-import {
-  ChevronDown,
-  ChevronRight,
-  Folder,
-  FoldVertical,
-  UnfoldVertical,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Folder } from "lucide-react";
 
-import { Badge, FoldSection, IconButton, SectionLabel } from "../kit";
+import { Badge, FoldSection, SectionLabel } from "../kit";
+import { RailDegradedNotice, RailMessage, RailSkeleton } from "./railStates";
 import type { VaultDocEntity } from "../../platform/actions/entity";
 import type { VaultTreeEntry } from "../../stores/server/engine";
 import {
   deriveVaultRailView,
-  tierAvailabilityReason,
   useActiveScope,
   useVaultRailFacets,
   useVaultTreeSurface,
@@ -45,9 +39,7 @@ import {
 } from "../../stores/view/browserTreeExpansion";
 import {
   LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-  LEFT_RAIL_COLLAPSE_TREE_LABEL,
   LEFT_RAIL_EXPAND_TREE_ACTION_ID,
-  LEFT_RAIL_EXPAND_TREE_LABEL,
   collapseTreeAction,
   expandTreeAction,
 } from "../../stores/view/leftRailKeybindings";
@@ -139,8 +131,8 @@ export function TreeBrowser({
   // Expansion keyed by stable nav-key: sections `sec:*`, feature folders
   // `feat:<feature>`, doc-type folders `type:<docType>`. The browser-tree store
   // owns this so a scope/workspace swap clears disclosure state in ONE reset path.
-  // Default = collapsed (a fresh key is absent from the set) — the binding sections
-  // start collapsed.
+  // Sections start COLLAPSED (the tested a11y contract; binding sections are
+  // collapsible). A fresh key is absent from the expanded set.
   const { expanded, toggle, activeKey, setActiveKey, expandAll, collapseAll } =
     useBrowserTreeExpansion(scope, "vault");
   // The full expandable-key set tracks the latest rendered tree (a ref, not state,
@@ -218,15 +210,8 @@ export function TreeBrowser({
   );
 
   if (state === "loading") {
-    return (
-      <p
-        className="animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint"
-        role="status"
-        aria-live="polite"
-      >
-        reading the vault…
-      </p>
-    );
+    // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton.
+    return <RailSkeleton label="Loading the vault…" />;
   }
 
   if (state === "error") {
@@ -250,7 +235,6 @@ export function TreeBrowser({
   }
 
   const view = deriveVaultRailView(tree.data?.entries ?? [], facets);
-  const degradedReason = tierAvailabilityReason(availability);
   const empty = view.featureCount === 0 && view.docTypeCount === 0;
   // Latest full expandable-key set (the two sections + every feature + doc-type
   // folder) for the expand-all verb; document rows are leaves and never expand.
@@ -266,55 +250,24 @@ export function TreeBrowser({
       data-tree-browser={ariaLabel === "tree browser" ? "" : undefined}
       data-vault-browser={ariaLabel === "vault browser" ? "" : undefined}
     >
+      {/* DEGRADED mode (binding `LeftRail` State=Degraded): the shared designed
+          notice — an AlertTriangle and ONE plain sentence above whatever loaded.
+          Never the raw tier reason. */}
       {availability.degraded && (
-        <p
-          className="mb-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted"
-          role="status"
-          aria-live="polite"
-          data-tree-degraded
-        >
-          some of the corpus is unavailable right now
-          {degradedReason ? ` — ${degradedReason}` : ""}. showing what loaded.
-        </p>
+        <RailDegradedNotice label="Some documents are temporarily unavailable." />
       )}
 
       {empty ? (
-        view.filteredToNothing ? (
-          <p
-            className="px-fg-1 py-fg-0-5 text-label text-ink-faint"
-            data-tree-filter-empty
-          >
-            no vault documents match the filter.
-          </p>
-        ) : (
-          <p className="px-fg-1 py-fg-0-5 text-label text-ink-faint" data-tree-empty>
-            no vault documents in this scope yet.
-          </p>
-        )
+        <RailMessage
+          tone="empty"
+          label={
+            view.filteredToNothing
+              ? "No documents match this filter."
+              : "No documents in this scope yet."
+          }
+        />
       ) : (
         <>
-          {/* Tree-wide expand / collapse — the disclosure verbs surfaced as rail
-              controls (also Mod+Alt+] / Mod+Alt+[ and the command palette). */}
-          <div
-            className="flex items-center justify-end gap-fg-0-5 pr-fg-1"
-            data-tree-disclosure-controls
-          >
-            <IconButton
-              label={LEFT_RAIL_EXPAND_TREE_LABEL}
-              title={LEFT_RAIL_EXPAND_TREE_LABEL}
-              onClick={expandWholeTree}
-            >
-              <UnfoldVertical size={14} aria-hidden />
-            </IconButton>
-            <IconButton
-              label={LEFT_RAIL_COLLAPSE_TREE_LABEL}
-              title={LEFT_RAIL_COLLAPSE_TREE_LABEL}
-              onClick={collapseAll}
-            >
-              <FoldVertical size={14} aria-hidden />
-            </IconButton>
-          </div>
-
           {/* FEATURES — feature → its documents. */}
           <Section
             title="Features"
@@ -404,7 +357,7 @@ interface SectionProps {
   children: ReactNode;
 }
 
-/** A top-level collapsible section — a twisty + uppercase eyebrow + count, folding
+/** A top-level collapsible section — a twisty + Title-case eyebrow + count, folding
  *  its folder rows. Built on the ONE canonical fold (FoldSection), identical idiom
  *  to the right rail's Status sections (design-system-is-centralized). The header
  *  joins the rail's single roving-tabindex nav order (the whole rail is ONE
@@ -443,6 +396,7 @@ function Section({
       label={
         <SectionLabel
           className="min-w-0 flex-1"
+          transform="none"
           data-vault-section={title.toLowerCase()}
         >
           {title}
