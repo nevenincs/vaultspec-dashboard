@@ -90,6 +90,14 @@ const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
 const HOVER_RING_WIDTH = controlNumber("hoverRingWidth");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
+// Hover/focus emphasis (user hover redesign): de-emphasis is COLOUR-ONLY (no opacity
+// fade) and focus is ADDITIVE. NODE_DIM_MIX recedes a non-focus node by colour toward
+// the muted ground (at FULL alpha); NODE_HIGHLIGHT_MIX brightens a focus node toward
+// white so it pops. NODE_HIGHLIGHT_MIX is inline pending the coordinated graphControlSchema
+// edit to add `nodeHighlightMix` (apps-review owns that file now); the retired alpha-dim +
+// edge-dim consts (nodeDimAlpha/edgeDimMix/edgeDimAlpha) drop in that same coordinated edit.
+const NODE_DIM_MIX = controlNumber("nodeDimMix");
+const NODE_HIGHLIGHT_MIX = 0.3;
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -165,10 +173,14 @@ varying float vAA;
 void main() {
   float alpha = 1.0 - smoothstep(1.0 - vAA, 1.0, vEdge);
   if (alpha <= 0.0) discard;
+  // Emphasis is COLOUR-ONLY — alpha is NEVER reduced (no opacity fade; user redesign):
+  //   vDim > 1.5  → FOCUS: brighten toward white (additive pop).
+  //   vDim > 0.5  → de-emphasised: recede by colour toward the muted ground (full alpha).
   vec3 col = vColor;
-  if (vDim > 0.5) {
-    col = mix(vColor, uDimColor, ${glslFloat(controlNumber("nodeDimMix"))});
-    alpha *= ${glslFloat(controlNumber("nodeDimAlpha"))};
+  if (vDim > 1.5) {
+    col = mix(vColor, vec3(1.0), ${glslFloat(NODE_HIGHLIGHT_MIX)});
+  } else if (vDim > 0.5) {
+    col = mix(vColor, uDimColor, ${glslFloat(NODE_DIM_MIX)});
   }
   gl_FragColor = vec4(col, alpha);
 }
@@ -231,13 +243,11 @@ varying float vAlpha;
 varying float vDim;
 
 void main() {
-  vec3 col = vColor;
-  float a = vAlpha;
-  if (vDim > 0.5) {
-    col = mix(vColor, uDimColor, ${glslFloat(controlNumber("edgeDimMix"))});
-    a *= ${glslFloat(controlNumber("edgeDimAlpha"))};
-  }
-  gl_FragColor = vec4(col, a);
+  // Edges ALWAYS render at full opacity + full colour on hover — the structure stays
+  // legible; de-emphasis is node-colour-only, never an edge fade (user hover redesign).
+  // (vAlpha still carries the per-edge confidence opacity + the filter visibility mask —
+  // a FILTERED-OUT edge is still hidden; only the HOVER emphasis no longer touches edges.)
+  gl_FragColor = vec4(vColor, vAlpha);
 }
 `;
 
@@ -886,20 +896,17 @@ export class ThreeField implements SceneFieldRenderer {
   }
 
   private applyEmphasis(): void {
-    if (!this.nodeMesh || !this.edgeMesh) return;
+    if (!this.nodeMesh) return;
     const active = this.emphasisSet();
     const nodeDim = this.nodeMesh.geometry.getAttribute("aDim");
     for (let i = 0; i < this.nodes.length; i++) {
-      nodeDim.setX(i, active && !active.has(this.nodes[i].id) ? 1 : 0);
+      // 0 = neutral (no emphasis), 1 = de-emphasised (colour-receded, FULL alpha),
+      // 2 = focus (brighten). Colour-only + additive — nothing fades (user hover redesign).
+      nodeDim.setX(i, !active ? 0 : active.has(this.nodes[i].id) ? 2 : 1);
     }
     nodeDim.needsUpdate = true;
-
-    const edgeDim = this.edgeMesh.geometry.getAttribute("aDim");
-    this.builtEdges.forEach((e, i) => {
-      const lit = !active || (active.has(e.srcId) && active.has(e.dstId));
-      for (let k = 0; k < 4; k++) edgeDim.setX(i * 4 + k, lit ? 0 : 1);
-    });
-    edgeDim.needsUpdate = true;
+    // Edges carry NO emphasis dim — they render at full opacity + colour always so the
+    // structure stays legible; the focus is conveyed by the brightened nodes + the rings.
   }
 
   private applyVisibility(
