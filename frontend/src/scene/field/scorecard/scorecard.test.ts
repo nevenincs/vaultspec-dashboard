@@ -28,7 +28,6 @@ import { runHierarchyGate } from "../hierarchyGate";
 import { runLineageGate } from "../lineageGate";
 import { runRadialGate } from "../radialGate";
 import { runClusterLfrGate, runClusterSbmGate } from "../clusterGate";
-import { runSemanticScorecardGate } from "../semanticGate";
 
 /** Mean of the metric values — the report-only aggregate that must NEVER gate. */
 function meanValue(metrics: readonly MetricResult[]): number {
@@ -53,7 +52,6 @@ const GATES: { name: string; run: () => ScorecardVector }[] = [
   { name: "radial", run: runRadialGate },
   { name: "cluster-sbm", run: runClusterSbmGate },
   { name: "cluster-lfr", run: runClusterLfrGate },
-  { name: "semantic", run: runSemanticScorecardGate },
 ];
 
 describe("METRIC_VERSION contract", () => {

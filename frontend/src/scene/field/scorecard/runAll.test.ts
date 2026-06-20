@@ -28,7 +28,6 @@ import {
 } from "./runAll";
 
 const EXPECTED_LAYOUTS = [
-  "semantic",
   "lineage",
   "hierarchy",
   "radial",
@@ -142,15 +141,11 @@ describe("runAllGatesOverSlice: W06 live-slice seam (stubbed in W04.P10)", () =>
     expect(runAllGatesOverSlice([], [])).toEqual([]);
   });
 
-  it("accepts a node_id-keyed embeddings map without throwing (seam shape)", () => {
+  it("accepts a node slice without throwing (seam shape)", () => {
     const nodes = [
       { id: "n0", kind: "adr", featureTags: ["alpha"], embedding: [1, 0, 0] },
       { id: "n1", kind: "adr", featureTags: ["beta"], embedding: [0, 1, 0] },
     ];
-    const embeddings = new Map<string, readonly number[]>([
-      ["n0", [1, 0, 0]],
-      ["n1", [0, 1, 0]],
-    ]);
-    expect(runAllGatesOverSlice(nodes, [], embeddings)).toEqual([]);
+    expect(runAllGatesOverSlice(nodes, [])).toEqual([]);
   });
 });

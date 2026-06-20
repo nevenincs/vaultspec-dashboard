@@ -2,19 +2,10 @@ GRAPH-VIZ QUALITY REPORT
 ========================
 
 metricVersion: 1
-layout families scored: 6
+layout families scored: 5
 
 LAYOUT-QUALITY SCORECARD
 ========================
-
-semantic  [PASS]  (seed=7, metricVersion=1)
-  metric                    value    threshold  margin   result
-  trustworthiness           0.973    0.890      +0.083   PASS
-  continuity                0.975    0.900      +0.075   PASS
-  qnx                       0.947    0.770      +0.177   PASS
-  neighborhoodHit           1.000    0.840      +0.160   PASS
-  silhouette                0.974    0.770      +0.204   PASS
-  nearestCentroid           1.000    0.920      +0.080   PASS
 
 lineage  [PASS]  (seed=2, metricVersion=1)
   metric                    value    threshold  margin   result
@@ -60,6 +51,6 @@ cluster-lfr  [PASS]  (seed=6, metricVersion=1)
   detectAri                 1.000    0.390      +0.610   PASS
   detectAmi                 1.000    0.460      +0.540   PASS
 
-SUMMARY: 6/6 layouts passed all per-metric thresholds — ALL PASS
+SUMMARY: 5/5 layouts passed all per-metric thresholds — ALL PASS
 
-QUALITY REPORT SUMMARY: 6/6 layouts passed all per-metric thresholds.
+QUALITY REPORT SUMMARY: 5/5 layouts passed all per-metric thresholds.

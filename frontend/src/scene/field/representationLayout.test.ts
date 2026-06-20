@@ -74,8 +74,7 @@ describe("representationLayout — new catalog modes register and dispatch (D1/D
 
 // W04.P11.S53: degenerate-input + large-graph hardening of the dispatcher. Every
 // seed mode must return finite, bounded positions on an empty slice and on a
-// ceiling-sized slice (no NaN, no throw), and the semantic mode must carry an
-// HONEST downgradeReason on each fallback path it takes.
+// ceiling-sized slice (no NaN, no throw).
 describe("representationLayout — degenerate + ceiling hardening (S53)", () => {
   const SEED_AND_SOLVER: RepresentationMode[] = [
     "connectivity",
@@ -84,7 +83,6 @@ describe("representationLayout — degenerate + ceiling hardening (S53)", () => 
     "radial",
     "community",
     "lineage",
-    "semantic",
   ];
 
   const finite = (m: Map<string, { x: number; y: number }> | null) => {
@@ -122,22 +120,6 @@ describe("representationLayout — degenerate + ceiling hardening (S53)", () => 
     });
   }
 
-  it("downgrades semantic with an HONEST reason when embeddings are absent", () => {
-    // A served slice with NO embeddings: the embedding-presence floor holds the
-    // semantic mode, downgrading to connectivity with a reason that names the
-    // honest absence (never an error). positions is null (the solver takes over).
-    const nodes: SceneNodeData[] = [
-      { id: "a", kind: "doc" },
-      { id: "b", kind: "doc" },
-    ];
-    const result = representationLayout("semantic", nodes, []);
-    expect(result.applied).toBe("connectivity");
-    expect(result.positions).toBeNull();
-    expect(result.downgradeReason).toBeDefined();
-    expect(result.downgradeReason).toMatch(/HELD|held/);
-    expect(result.downgradeReason).toMatch(/embedding|meaning/i);
-  });
-
   it("temporal uses seedPosition and stays static", () => {
     const nodes: SceneNodeData[] = [
       { id: "a", kind: "doc", seedPosition: { x: 10, y: 20 } },
@@ -151,26 +133,6 @@ describe("representationLayout — degenerate + ceiling hardening (S53)", () => 
         ["b", { x: 30, y: 40 }],
       ]),
     );
-  });
-
-  it("applies semantic with finite positions when the slice carries embeddings", () => {
-    // Enough embedded nodes to clear the presence floor: the mode ships and lays a
-    // finite meaning cloud (no NaN), and carries no downgradeReason.
-    const nodes: SceneNodeData[] = Array.from({ length: 20 }, (_, i) => ({
-      id: `m${i}`,
-      kind: "doc",
-      embedding: [Math.sin(i), Math.cos(i), (i % 3) - 1],
-    }));
-    const result = representationLayout("semantic", nodes, []);
-    if (result.applied === "semantic") {
-      expect(result.positions).not.toBeNull();
-      expect(finite(result.positions)).toBe(true);
-      expect(result.downgradeReason).toBeUndefined();
-    } else {
-      // If the synthetic time-gate ever held the mode, the downgrade is honest.
-      expect(result.applied).toBe("connectivity");
-      expect(result.downgradeReason).toBeDefined();
-    }
   });
 });
 

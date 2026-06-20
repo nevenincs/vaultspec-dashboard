@@ -26,8 +26,6 @@ import { runHierarchyGate } from "../hierarchyGate";
 import { runLineageGate } from "../lineageGate";
 import { runRadialGate } from "../radialGate";
 import { runClusterLfrGate, runClusterSbmGate } from "../clusterGate";
-import { runSemanticScorecardGate } from "../semanticGate";
-import { runSemanticGateOnRealData } from "../semanticGate";
 import type { ScorecardVector } from "./scorecard";
 import type { SceneEdgeData, SceneNodeData } from "../../sceneController";
 
@@ -51,7 +49,6 @@ interface GateEntry {
  * in the renderer and no longer runs through this deterministic seed scorecard.
  */
 export const RUN_ALL_GATES: readonly GateEntry[] = [
-  { layout: "semantic", run: runSemanticScorecardGate },
   { layout: "lineage", run: runLineageGate },
   { layout: "hierarchy", run: runHierarchyGate },
   { layout: "radial", run: runRadialGate },
@@ -123,27 +120,12 @@ export function runAllGatesKeyed(): Record<string, ScorecardVector> {
 export function runAllGatesOverSlice(
   nodes: readonly SceneNodeData[],
   edges: readonly SceneEdgeData[],
-  embeddings?: ReadonlyMap<string, readonly number[]>,
 ): ScorecardVector[] {
   // W06 seam: wire the live layouts and fold their scored positions into vectors
-  // here. Until then, exercise the real-data semantic verdict over the provided
-  // slice (when embeddings are present) purely so the seam is type-honest and the
-  // embedding join is referenced, but do NOT emit a CI-gating vector — the live
-  // baseline is W06's committed artifact, not this phase's.
+  // here. Until then this is a no-op-shaped stub — no live layout coordinates are
+  // available to score in this phase.
+  void nodes;
   void edges;
-  if (embeddings && embeddings.size > 0) {
-    const labelOf = new Map<string, number>();
-    let next = 0;
-    const labelIndex = new Map<string, number>();
-    for (const n of nodes) {
-      const key = n.featureTags?.[0] ?? n.kind;
-      if (!labelIndex.has(key)) labelIndex.set(key, next++);
-      labelOf.set(n.id, labelIndex.get(key)!);
-    }
-    // Measured but not yet folded into a ScorecardVector (W06 formalizes the
-    // live-slice vector shape); referencing it keeps the seam honest.
-    void runSemanticGateOnRealData(nodes, labelOf);
-  }
   return [];
 }
 

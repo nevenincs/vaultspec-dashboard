@@ -6,7 +6,7 @@
 // artifact. It proves:
 //   - the report regenerates DETERMINISTICALLY (two calls are byte-identical, and the
 //     materialized `QUALITY_REPORT` equals a fresh `generateQualityReport()`);
-//   - it reports the deterministic layout families (semantic, lineage, hierarchy,
+//   - it reports the deterministic layout families (lineage, hierarchy,
 //     radial, clusters over SBM and LFR);
 //   - EVERY layout is PASS under the current calibrated thresholds + METRIC_VERSION
 //     (a real finding if any were not — the report is read, never masked);
@@ -37,7 +37,6 @@ const FIXTURE_PATH = join(HERE, "__fixtures__", "quality-report.txt");
 // The deterministic layout families. Pinned here so the report cannot silently drop
 // a family.
 const EXPECTED_LAYOUTS = [
-  "semantic",
   "lineage",
   "hierarchy",
   "radial",
@@ -70,7 +69,7 @@ describe("quality report: all layout families scored", () => {
     }
   });
 
-  it("scores exactly the seven gate runs the run-all emits", () => {
+  it("scores exactly the five gate runs the run-all emits", () => {
     const vectors = runAllGates();
     expect(vectors.map((v) => v.layout)).toEqual([...EXPECTED_LAYOUTS]);
   });

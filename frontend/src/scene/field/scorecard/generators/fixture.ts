@@ -42,11 +42,9 @@ export interface LayeredFixture {
 }
 
 /**
- * A high-dimensional Gaussian-mixture fixture for semantic scoring: one vector per
- * point with its known cluster label. `vectors[i]` has `labels[i]` as its planted
- * cluster, so trustworthiness/continuity/silhouette scorers have a ground truth.
- * This generalizes the `buildGateSlice` pattern in `semanticGate.ts` (deterministic
- * Gaussian clouds around distinct centers) onto the seeded PRNG.
+ * A high-dimensional Gaussian-mixture fixture: one vector per point with its known
+ * cluster label. `vectors[i]` has `labels[i]` as its planted cluster, so
+ * label-aware scorers (silhouette / nearest-centroid) have a ground truth.
  */
 export interface BlobFixture {
   /** One row per point; every row has the same dimensionality. */

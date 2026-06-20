@@ -33,7 +33,6 @@ const MODES: RepresentationMode[] = [
   "hierarchical",
   "radial",
   "community",
-  "semantic",
 ];
 
 const COORD_ENVELOPE = 1e6;
@@ -282,7 +281,7 @@ describe("fuzz: every adversarial shape survives every representation mode", () 
   it("covers every adversarial shape against every mode (cardinality guard)", () => {
     // A tripwire so a future edit that drops a shape or a mode from the matrix is
     // caught — the fence is only a fence if it stays exhaustive.
-    expect(MODES).toHaveLength(6);
+    expect(MODES).toHaveLength(5);
     expect(SHAPES.length).toBeGreaterThanOrEqual(15);
   });
 });

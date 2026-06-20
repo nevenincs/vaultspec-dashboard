@@ -552,7 +552,7 @@ export interface GraphFilter {
   doc_types?: string[];
   feature_tags?: string[];
   /** Glob/regex search over feature tags (filter-controls campaign): a node
-   *  passes if any of its feature_tags matches. The topic search graduates to
+   *  passes if any of its feature_tags matches. The feature search graduates to
    *  this for power queries; distinct from exact `feature_tags` membership. */
   feature_query?: { value: string; mode: "glob" | "regex" };
   statuses?: string[];
@@ -588,7 +588,6 @@ export const REPRESENTATION_MODES = [
   "hierarchical",
   "radial",
   "community",
-  "semantic",
 ] as const;
 export type RepresentationMode = (typeof REPRESENTATION_MODES)[number];
 

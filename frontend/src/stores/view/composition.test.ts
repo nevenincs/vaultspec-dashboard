@@ -13,7 +13,7 @@ import {
 } from "./composition";
 
 const LENSES: SalienceLens[] = ["status", "design"];
-const MODES: RepresentationMode[] = ["connectivity", "lineage", "semantic"];
+const MODES: RepresentationMode[] = ["connectivity", "lineage"];
 
 describe("sequenceComposition", () => {
   it("re-queries then re-lays-out on a lens switch", () => {
@@ -38,10 +38,10 @@ describe("sequenceComposition", () => {
   it("re-queries first when BOTH lens and mode change (the new set is laid out)", () => {
     const steps = sequenceComposition(
       { lens: "status", mode: "connectivity" },
-      { lens: "design", mode: "semantic" },
+      { lens: "design", mode: "lineage" },
     );
     expect(steps[0]).toEqual({ kind: "requery", lens: "design" });
-    expect(steps[1]).toEqual({ kind: "relayout", mode: "semantic" });
+    expect(steps[1]).toEqual({ kind: "relayout", mode: "lineage" });
   });
 
   it("produces no steps when nothing changed", () => {
@@ -83,7 +83,7 @@ describe("sequenceComposition", () => {
     expect(
       requiresRequery(
         { lens: "status", mode: "lineage" },
-        { lens: "status", mode: "semantic" },
+        { lens: "status", mode: "connectivity" },
       ),
     ).toBe(false);
   });

@@ -27,7 +27,6 @@
 import { Compass, ScrollText } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useRef } from "react";
 
-import { SEMANTIC_MODE_GATE } from "../../scene/field/semanticGate";
 import { useDashboardStageControlsIntent } from "../../stores/server/dashboardStageControlsIntent";
 import type { DashboardDateRange, SalienceLens } from "../../stores/server/engine";
 import {
@@ -138,9 +137,7 @@ export function LayoutSelector() {
   const stageControlsIntent = useDashboardStageControlsIntent(scope);
   const layoutView = useDashboardLayoutSelectorView(scope);
   const { dateRange, timeline } = layoutView;
-  const layoutPresentation = deriveDashboardLayoutSelectorPresentationView(layoutView, {
-    semanticShipped: SEMANTIC_MODE_GATE.shipped,
-  });
+  const layoutPresentation = deriveDashboardLayoutSelectorPresentationView(layoutView);
   const timeTravelling = timeline.timeTravel;
   const { pxPerMs, scrollOffset, viewportWidth } = useTimelineViewportState();
 

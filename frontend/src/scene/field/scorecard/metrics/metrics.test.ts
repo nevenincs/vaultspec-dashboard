@@ -9,20 +9,11 @@
 import { describe, expect, it } from "vitest";
 
 import { makePrng } from "../prng";
-import { generateBlobs } from "../generators/blobs";
 import { adjustedMutualInformation, adjustedRandIndex } from "./clusterMetrics";
 import { greadability } from "./greadability";
-import { scoreSemanticLayout } from "./semanticMetrics";
 import { scoreRadialLayout } from "./radialMetrics";
 import { type Position, scaleNormalizedStressQuality, spearman } from "./shared";
 import type { SceneEdgeData } from "../../../sceneController";
-
-// A trivial 2D projection of high-dim vectors: take the first two coordinates.
-// For well-separated blobs whose centers differ in the leading dims this preserves
-// the cluster structure, so the rank/label metrics should score high.
-function project2D(vectors: number[][]): Position[] {
-  return vectors.map((v) => ({ x: v[0] ?? 0, y: v[1] ?? 0 }));
-}
 
 describe("greadability crossings", () => {
   it("scores exactly one crossing for a single crossing pair", () => {
@@ -96,42 +87,6 @@ describe("ARI and AMI chance correction", () => {
     expect(ari).toBeLessThan(0.25);
     expect(ami).toBeLessThan(0.25);
     expect(adjustedRandIndex(truth, truth)).toBeGreaterThan(0.99);
-  });
-});
-
-describe("semantic metrics on blobs", () => {
-  it("well-separated blobs score high; shuffled labels score low", () => {
-    const blobs = generateBlobs({
-      count: 60,
-      dims: 6,
-      clusters: 3,
-      clusterStd: 0.2, // tight, well-separated
-      seed: 5,
-      centerSpread: 12,
-    });
-    const positions = project2D(blobs.vectors);
-    const good = scoreSemanticLayout(blobs.vectors, positions, blobs.labels);
-    // True labels: high neighbourhood-hit, silhouette, nearest-centroid,
-    // trustworthiness.
-    expect(good.neighborhoodHit).toBeGreaterThan(0.8);
-    expect(good.silhouette).toBeGreaterThan(0.7);
-    expect(good.nearestCentroid).toBeGreaterThan(0.9);
-    expect(good.trustworthiness).toBeGreaterThan(0.8);
-
-    // Shuffled labels: the geometry is unchanged but the labels no longer match the
-    // clusters, so the label-aware metrics collapse.
-    const prng = makePrng(7);
-    const badLabels = blobs.labels.slice();
-    for (let i = badLabels.length - 1; i > 0; i--) {
-      const j = prng.nextInt(0, i);
-      const t = badLabels[i];
-      badLabels[i] = badLabels[j];
-      badLabels[j] = t;
-    }
-    const bad = scoreSemanticLayout(blobs.vectors, positions, badLabels);
-    expect(bad.neighborhoodHit).toBeLessThan(good.neighborhoodHit);
-    expect(bad.nearestCentroid).toBeLessThan(good.nearestCentroid);
-    expect(bad.silhouette).toBeLessThan(good.silhouette);
   });
 });
 

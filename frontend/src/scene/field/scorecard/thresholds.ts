@@ -35,9 +35,6 @@
 //   cluster/lfr      ari 0.170->0.12  ami 0.274->0.22  compactness 0.271->0.22
 //                    silhouette 0.466->0.42  modularity 0.551->0.50
 //                    detectAri 0.442->0.39  detectAmi 0.510->0.46
-//   semantic/blobs   trustworthiness 0.935->0.89  continuity 0.948->0.90
-//                    qnx 0.818->0.77  neighborhoodHit 0.891->0.84
-//                    silhouette 0.815->0.77  nearestCentroid 0.967->0.92
 
 /** A per-metric threshold record: metric name -> floor in [0,1]. */
 export type ThresholdSet = Readonly<Record<string, number>>;
@@ -108,15 +105,4 @@ export const CLUSTER_LFR_THRESHOLDS: ThresholdSet = {
   modularity: 0.5,
   detectAri: 0.39,
   detectAmi: 0.46,
-};
-
-/** Semantic / Meaning thresholds over the make_blobs mixture, projected by the
- *  real PCA projection. */
-export const SEMANTIC_THRESHOLDS: ThresholdSet = {
-  trustworthiness: 0.89,
-  continuity: 0.9,
-  qnx: 0.77,
-  neighborhoodHit: 0.84,
-  silhouette: 0.77,
-  nearestCentroid: 0.92,
 };

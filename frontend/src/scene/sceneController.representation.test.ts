@@ -52,14 +52,14 @@ describe("set-representation-mode / set-overlays seam commands", () => {
   it("forwards the new commands to the field renderer", () => {
     const { field, commands } = recordingField();
     const controller = new SceneController(field);
-    controller.command({ kind: "set-representation-mode", mode: "semantic" });
+    controller.command({ kind: "set-representation-mode", mode: "lineage" });
     controller.command({
       kind: "set-overlays",
       featureCountries: true,
       featureHulls: false,
     });
     expect(commands).toEqual([
-      { kind: "set-representation-mode", mode: "semantic" },
+      { kind: "set-representation-mode", mode: "lineage" },
       { kind: "set-overlays", featureCountries: true, featureHulls: false },
     ]);
   });
@@ -71,15 +71,15 @@ describe("set-representation-mode / set-overlays seam commands", () => {
     // The field would emit this after applying the mode; simulate the echo.
     controller.emit({
       kind: "representation-mode-changed",
-      requested: "semantic",
+      requested: "radial",
       applied: "connectivity",
-      downgradeReason: "semantic mode HELD",
+      downgradeReason: "radial mode HELD",
     });
     const changed = events.find((e) => e.kind === "representation-mode-changed");
     expect(changed).toBeDefined();
     if (changed?.kind === "representation-mode-changed") {
       // The event reports the APPLIED mode (downgrade), not just the requested.
-      expect(changed.requested).toBe("semantic");
+      expect(changed.requested).toBe("radial");
       expect(changed.applied).toBe("connectivity");
       expect(changed.downgradeReason).toMatch(/HELD/);
     }
@@ -170,12 +170,5 @@ describe("connectivity-only scope fence (Cosmos live layout)", () => {
     expect(a.applied).toBe("lineage");
     expect(a.positions).not.toBeNull();
     expect([...a.positions!.entries()]).toEqual([...b.positions!.entries()]);
-  });
-
-  it("semantic remains gated and resolves to a defined applied mode", () => {
-    // Held or shipped, the dispatcher must echo a concrete applied mode — never
-    // a half-built one — so the connectivity rewrite never destabilizes it.
-    const r = representationLayout("semantic", nodes, edges);
-    expect(["semantic", "connectivity"]).toContain(r.applied);
   });
 });

@@ -1213,7 +1213,7 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
       sectionIconClassName: "text-ink-faint",
       sectionBodyClassName: "pb-2",
       kindSectionLabel: "Kind",
-      topicSectionLabel: "Topic",
+      featureSectionLabel: "Feature",
       editedSectionLabel: "Edited",
       editedWindowAriaLabel: "edited window",
       facetEmptyClassName: "px-fg-3 py-fg-1 text-label italic text-ink-faint",
@@ -1985,9 +1985,7 @@ describe("deriveDashboardLayoutSelectorView (stage layout picker)", () => {
       timeline_mode: { kind: "live" },
     });
 
-    expect(
-      deriveDashboardLayoutSelectorPresentationView(view, { semanticShipped: true }),
-    ).toMatchObject({
+    expect(deriveDashboardLayoutSelectorPresentationView(view)).toMatchObject({
       containerClassName: "flex items-center gap-fg-1",
       spatial: {
         ariaLabel: "spatial layout",
@@ -2028,14 +2026,6 @@ describe("deriveDashboardLayoutSelectorView (stage layout picker)", () => {
             active: false,
             tabIndex: -1,
           },
-          {
-            value: "semantic",
-            label: "Meaning",
-            title: "Nearby = similar in meaning - semantic (UMAP)",
-            available: true,
-            active: false,
-            tabIndex: -1,
-          },
         ],
       },
       temporal: {
@@ -2054,32 +2044,18 @@ describe("deriveDashboardLayoutSelectorView (stage layout picker)", () => {
     });
   });
 
-  it("projects time-travel and unavailable semantic layout states", () => {
+  it("projects time-travel layout states", () => {
     const view = deriveDashboardLayoutSelectorView({
       date_range: {},
-      representation_mode: "semantic",
+      representation_mode: "connectivity",
       timeline_mode: { kind: "time-travel", at: 42 },
     });
-    const presentation = deriveDashboardLayoutSelectorPresentationView(view, {
-      semanticShipped: false,
-    });
+    const presentation = deriveDashboardLayoutSelectorPresentationView(view);
 
     expect(presentation.spatial.segments[0]).toMatchObject({
       value: "connectivity",
       active: false,
       tabIndex: 0,
-    });
-    expect(
-      presentation.spatial.segments[presentation.spatial.segments.length - 1],
-    ).toMatchObject({
-      value: "semantic",
-      available: false,
-      active: false,
-      tabIndex: -1,
-      title:
-        "Nearby = similar in meaning - falls back to Free until the semantic projection ships",
-      className:
-        "flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus text-ink-muted hover:text-ink italic",
     });
     expect(presentation.temporal.segments[0]).toMatchObject({
       value: "timeline",
@@ -2749,27 +2725,45 @@ describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () =
     expect(a.reasons).toEqual({});
   });
 
-  it("treats a tier marked unavailable as degraded and carries its reason", () => {
-    const a = deriveVaultTreeAvailability({
+  it("degrades only on the structural tier; a down semantic/declared/temporal tier does NOT make documents unavailable", () => {
+    // The vault tree LISTS DOCUMENTS — only the STRUCTURAL tier governs whether
+    // they are listable. A down semantic (rag search) or declared ("building") tier
+    // must not make the rail cry "documents unavailable" when every document is
+    // present (structural up). This was the bug: reading all tiers fired the banner
+    // whenever semantic search was off, inconsistent with the global/search surface.
+    const searchDown = deriveVaultTreeAvailability({
       ...allUp,
       semantic: { available: false, reason: "rag service down" },
+      declared: { available: false, reason: "declared tier building" },
     });
-    expect(a.degraded).toBe(true);
-    expect(a.degradedTiers).toEqual(["semantic"]);
-    expect(a.reasons.semantic).toBe("rag service down");
+    expect(searchDown.degraded).toBe(false);
+    expect(searchDown.degradedTiers).toEqual([]);
+
+    // A down STRUCTURAL tier IS a real document-availability degradation.
+    const structuralDown = deriveVaultTreeAvailability({
+      ...allUp,
+      structural: { available: false, reason: "graph rebuilding" },
+    });
+    expect(structuralDown.degraded).toBe(true);
+    expect(structuralDown.degradedTiers).toEqual(["structural"]);
+    expect(structuralDown.reasons.structural).toBe("graph rebuilding");
   });
 
-  it("treats a tier ABSENT from the block as degraded (absence ≠ availability)", () => {
-    // Contract §2: an absent tier is a designed degraded state, never read as
-    // available. A reason-less degradation carries no reason string.
-    const partial: TiersBlock = {
+  it("treats an ABSENT structural tier as degraded, but ignores absent semantic/temporal", () => {
+    // Contract §2: absence of the document-content tier ≠ availability — documents
+    // unknown ⇒ degraded. Absent semantic/temporal do not affect the document list.
+    const structuralAbsent: TiersBlock = {
       declared: { available: true },
-      structural: { available: true },
+      temporal: { available: true },
+      semantic: { available: true },
     };
-    const a = deriveVaultTreeAvailability(partial);
+    const a = deriveVaultTreeAvailability(structuralAbsent);
     expect(a.degraded).toBe(true);
-    expect(a.degradedTiers).toEqual(["temporal", "semantic"]);
-    expect(a.reasons).toEqual({});
+    expect(a.degradedTiers).toEqual(["structural"]);
+
+    // structural present + up, semantic/temporal absent ⇒ NOT degraded.
+    const onlyStructural: TiersBlock = { structural: { available: true } };
+    expect(deriveVaultTreeAvailability(onlyStructural).degraded).toBe(false);
   });
 
   it("returns the no-degradation default for a wholly absent block (transport fault)", () => {
@@ -5088,7 +5082,7 @@ describe("deriveLocationAnchor", () => {
       mainLabel: null,
       mainClassName: "shrink-0 font-medium text-ink",
       branchClassName: "min-w-0 truncate font-medium text-accent-text",
-      pathClassName: "truncate font-mono text-meta text-ink-faint",
+      pathClassName: "truncate font-mono text-caption text-ink-faint",
       dirty: true,
       ahead: 2,
       behind: 1,
@@ -5285,16 +5279,16 @@ describe("deriveChangesOverviewView", () => {
       group: "modified",
       dotColor: "var(--color-state-stale)",
       rowClassName:
-        "flex h-[30px] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+        "flex h-[1.875rem] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
       dotClassName: "size-2 shrink-0 rounded-full",
-      basenameClassName: "min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink",
+      basenameClassName: "min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-ink",
       adds: 4,
       dels: 1,
       addsLabel: "4 added",
       delsLabel: "1 removed",
-      addsClassName: "shrink-0 text-[11px] text-diff-add",
-      delsClassName: "shrink-0 text-[11px] text-diff-remove",
-      openArrowClassName: "shrink-0 text-[13px] text-ink-faint",
+      addsClassName: "shrink-0 text-meta text-diff-add",
+      delsClassName: "shrink-0 text-meta text-diff-remove",
+      openArrowClassName: "shrink-0 text-body text-ink-faint",
     });
     expect(view.documents.map((file) => file.path)).toEqual([
       ".vault/adr/2026-06-18-x.md",
@@ -5305,10 +5299,10 @@ describe("deriveChangesOverviewView", () => {
       nodeId: "doc:2026-06-18-x",
       category: "adr",
       rowClassName:
-        "flex h-[30px] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+        "flex h-[1.875rem] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
       fallbackDotClassName: "size-2 shrink-0 rounded-full bg-ink-faint",
-      titleClassName: "min-w-0 flex-1 truncate text-[12.5px] text-ink",
-      openArrowClassName: "shrink-0 text-[13px] text-ink-faint",
+      titleClassName: "min-w-0 flex-1 truncate text-[0.78125rem] text-ink",
+      openArrowClassName: "shrink-0 text-body text-ink-faint",
     });
     expect(view.summary.total).toBe(2);
     expect(view.summaryLabels).toEqual({
@@ -5325,10 +5319,10 @@ describe("deriveChangesOverviewView", () => {
     expect(view.noScopeClassName).toBe("text-label text-ink-faint");
     expect(view.rootClassName).toBe("space-y-fg-3 text-label");
     expect(view.summaryClassName).toBe("flex flex-wrap items-center gap-fg-1-5");
-    expect(view.summaryPrimaryClassName).toBe("font-medium text-ink");
+    expect(view.summaryPrimaryClassName).toBe("text-label font-medium text-ink-muted");
     expect(view.summaryDividerClassName).toBe("text-ink-faint");
-    expect(view.summaryAdditionsClassName).toBe("text-[11px] text-diff-add");
-    expect(view.summaryDeletionsClassName).toBe("text-[11px] text-diff-remove");
+    expect(view.summaryAdditionsClassName).toBe("text-meta text-diff-add");
+    expect(view.summaryDeletionsClassName).toBe("text-meta text-diff-remove");
     expect(view.loadingClassName).toBe(
       "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
     );
@@ -5651,8 +5645,8 @@ describe("deriveHistoryView", () => {
         "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
       unavailableClassName: "text-label text-ink-muted",
       emptyClassName: "text-label text-ink-faint",
-      listRootClassName: "space-y-fg-0-5",
-      listClassName: "space-y-fg-0-5",
+      listRootClassName: "space-y-fg-1-5",
+      listClassName: "space-y-fg-1-5",
       commitBodyClassName:
         "ml-fg-5 mt-fg-0-5 whitespace-pre-wrap rounded-fg-xs border border-rule bg-paper-raised px-fg-2 py-fg-1-5 text-label text-ink-muted",
       showMoreButtonClassName:
@@ -6067,7 +6061,7 @@ describe("derivePRsView and deriveIssuesView", () => {
         "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
       unavailableClassName: "text-label text-ink-faint",
       emptyClassName: "text-label text-ink-faint",
-      listClassName: "space-y-fg-0-5",
+      listClassName: "space-y-fg-1-5",
     });
     expect(view.rows[0]).toMatchObject({
       numberLabel: "#42",
@@ -6194,7 +6188,7 @@ describe("derivePRsView and deriveIssuesView", () => {
         "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none",
       unavailableClassName: "text-label text-ink-faint",
       emptyClassName: "text-label text-ink-faint",
-      listClassName: "space-y-fg-0-5",
+      listClassName: "space-y-fg-1-5",
     });
     expect(view.rows[0]).toMatchObject({
       numberLabel: "#7",

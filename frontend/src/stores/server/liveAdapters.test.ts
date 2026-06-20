@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { adaptOpsWrite } from "./engine";
-import type { EngineNode, OpsResult, SearchResult } from "./engine";
+import type { OpsResult, SearchResult } from "./engine";
 import {
   adaptFilters,
   adaptFileTree,
@@ -31,12 +31,12 @@ import {
   featureNodeIdFromTag,
   featureTagFromNodeId,
   GIT_CHANGED_FILES_MAX_ROWS,
-    GIT_DIFF_LINE_MAX_CHARS,
-    GIT_DIFF_MAX_HUNKS,
-    GIT_DIFF_MAX_LINES,
-    GIT_OP_OUTPUT_MAX_CHARS,
-    GIT_OP_VERB_MAX_CHARS,
-    GIT_PATH_MAX_CHARS,
+  GIT_DIFF_LINE_MAX_CHARS,
+  GIT_DIFF_MAX_HUNKS,
+  GIT_DIFF_MAX_LINES,
+  GIT_OP_OUTPUT_MAX_CHARS,
+  GIT_OP_VERB_MAX_CHARS,
+  GIT_PATH_MAX_CHARS,
   HISTORY_COMMIT_BODY_MAX_CHARS,
   HISTORY_COMMITS_MAX_ITEMS,
   HISTORY_STRING_MAX_CHARS,
@@ -51,11 +51,6 @@ import {
   SEARCH_RESULTS_MAX_ITEMS,
   unwrapEnvelope,
 } from "./liveAdapters";
-import { engineNodeToScene } from "../../scene/sceneMapping";
-import {
-  SEMANTIC_GATE_DATA_PRESENCE_MIN,
-  runSemanticGateOnRealData,
-} from "../../scene/field/semanticGate";
 import { SCOPE_ID_MAX_CHARS } from "./scopeIdentity";
 
 const TIERS = {
@@ -1445,9 +1440,7 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
     ).join("\n");
     const status = parseGitStatus(statusOutput);
     expect(status).toHaveLength(GIT_CHANGED_FILES_MAX_ROWS);
-    expect(status.at(-1)?.path).toBe(
-      `src/file-${GIT_CHANGED_FILES_MAX_ROWS - 1}.ts`,
-    );
+    expect(status.at(-1)?.path).toBe(`src/file-${GIT_CHANGED_FILES_MAX_ROWS - 1}.ts`);
 
     const numstatOutput = Array.from(
       { length: GIT_CHANGED_FILES_MAX_ROWS + 1 },
@@ -1531,9 +1524,7 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
 
     const longLine = "x".repeat(GIT_DIFF_LINE_MAX_CHARS + 1);
     const textCapped = parseUnifiedDiff(`@@ -1 +1 @@\n+${longLine}`, "diff.md");
-    expect(textCapped.hunks[0].lines[0].text).toHaveLength(
-      GIT_DIFF_LINE_MAX_CHARS,
-    );
+    expect(textCapped.hunks[0].lines[0].text).toHaveLength(GIT_DIFF_LINE_MAX_CHARS);
     expect(textCapped.truncated).toEqual({
       total_hunks: 1,
       returned_hunks: 1,
@@ -1927,127 +1918,10 @@ describe("adaptGitHub work items (status-overview /prs and /issues)", () => {
 });
 
 // graph-semantic-embeddings ADR D6 / W04.P16.S62: a captured-live `/graph/
-// embeddings` sample fed through the REAL adaptGraphEmbeddings -> sceneMapping ->
-// projection path the app uses. The gate is the
-// honesty check the original synthetic-only gate was missing: it must SHIP on a
-// real clustered slice and be HELD on an empty (unserved-embedding) path.
+// embeddings` sample fed through the REAL adaptGraphEmbeddings client path the app
+// uses. The adapter must carry generation/tiers and drop malformed entries.
 
 describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)", () => {
-  const DIM = 8;
-  /** A deterministic feature-clustered dense vector — the SHAPE rag's stored
-   *  vectors take (a per-feature base direction + tiny per-doc jitter), so the
-   *  real-data projection separates feature meaning-clusters.
-   *
-   *  W03.P08.S37: the gate now ships on the FORMALIZED scorecard composite
-   *  (trustworthiness / continuity / Q_NX + neighbourhood-hit + silhouette +
-   *  nearest-centroid) rather than a single separation ratio, so the fixture must
-   *  produce clusters whose 2D PCA projection preserves local RANK structure (a
-   *  high-separation-but-rank-torn sample legitimately fails the composite — the
-   *  honesty the composite adds). Each feature gets a distinct, near-orthogonal
-   *  base direction on its own axis with small per-doc jitter, so the clouds are
-   *  isotropic and linearly separable: the projection preserves neighbourhoods. */
-  function clusterVector(featureIndex: number, docIndex: number): number[] {
-    const v: number[] = [];
-    for (let d = 0; d < DIM; d++) {
-      // Distinct base direction per feature: a strong signal on the feature's own
-      // axis, near-zero elsewhere — well-separated isotropic clouds.
-      const center = d === featureIndex % DIM ? 8 : 0;
-      const jitter = Math.cos((docIndex + 1) * (d + 1) * 0.3) * 0.08;
-      v.push(center + jitter);
-    }
-    return v;
-  }
-
-  /** A CAPTURED live `/graph/embeddings` envelope: the `{data: {embeddings,
-   *  generation, truncated, lens}, tiers}` shape the live engine serves, with
-   *  `featureCount` clusters × `perFeature` documents of real-shaped vectors. */
-  function liveEnvelope(featureCount: number, perFeature: number) {
-    const embeddings: { node_id: string; vector: number[] }[] = [];
-    const labelOf = new Map<string, number>();
-    for (let f = 0; f < featureCount; f++) {
-      for (let d = 0; d < perFeature; d++) {
-        const id = `doc:f${f}-doc${d}`;
-        embeddings.push({ node_id: id, vector: clusterVector(f, d) });
-        labelOf.set(id, f);
-      }
-    }
-    const envelope = {
-      data: { embeddings, generation: 7, truncated: null, lens: "status" },
-      tiers: {
-        declared: { available: true },
-        structural: { available: true },
-        temporal: { available: true },
-        semantic: { available: true },
-      },
-    };
-    return { envelope, labelOf };
-  }
-
-  it("carries generation/tiers and feeds the projection gate to SHIP on real clusters", () => {
-    // 4 features × 24 docs: each cluster comfortably exceeds the rank metrics'
-    // neighbourhood size (SEMANTIC_K = 10), so the composite's neighbourhood-hit /
-    // continuity metrics can clear their floors over a real, well-separated slice.
-    const { envelope, labelOf } = liveEnvelope(4, 24);
-    // The REAL client path: unwrap the live envelope, then adapt.
-    const adapted = adaptGraphEmbeddings(unwrapEnvelope(envelope));
-    expect(adapted.generation).toBe(7);
-    expect(adapted.tiers.semantic.available).toBe(true);
-    expect(adapted.embeddings).toHaveLength(96);
-
-    // Merge the adapted vectors onto the served nodes and map through the REAL
-    // sceneMapping path the app uses (engineNodeToScene maps `embedding`).
-    const byId = new Map(adapted.embeddings.map((e) => [e.node_id, e.vector]));
-    const sceneNodes = [...byId.keys()].map((id) => {
-      const node: EngineNode = { id, kind: "adr", embedding: byId.get(id) };
-      return engineNodeToScene(node);
-    });
-
-    // The real-data SHIPPING gate (W03.P08.S37): presence (no empty path) AND the
-    // FORMALIZED scorecard composite over the REAL projected vectors. The
-    // well-separated, rank-preserving clustered sample clears the composite and
-    // ships; `separation` is retained as a reported diagnostic (still > 0).
-    const verdict = runSemanticGateOnRealData(sceneNodes, labelOf);
-    expect(verdict.presence).toBe(1);
-    expect(verdict.scorecard.passed).toBe(true);
-    expect(verdict.shipped).toBe(true);
-    expect(verdict.separation).toBeGreaterThan(0);
-  });
-
-  it("cannot report shipped on an empty (unserved-embedding) path", () => {
-    // The live engine served an EMPTY embedding set (rag down, or no docs in
-    // Qdrant yet): every node falls into the fallback ring, so the gate's
-    // data-presence floor fails and the mode is HELD — the exact honesty the
-    // synthetic-only gate masked (ADR D6).
-    const adapted = adaptGraphEmbeddings(
-      unwrapEnvelope({
-        data: { embeddings: [], generation: 7, truncated: null, lens: "status" },
-        tiers: {
-          declared: { available: true },
-          structural: { available: true },
-          temporal: { available: true },
-          semantic: { available: false, reason: "rag service down" },
-        },
-      }),
-    );
-    expect(adapted.embeddings).toHaveLength(0);
-    expect(adapted.tiers.semantic.available).toBe(false);
-
-    // Nodes carry NO embedding (none served): all fallback, presence 0.
-    const sceneNodes = ["doc:a", "doc:b", "doc:c"].map((id) =>
-      engineNodeToScene({ id, kind: "adr" }),
-    );
-    const labelOf = new Map([
-      ["doc:a", 0],
-      ["doc:b", 0],
-      ["doc:c", 1],
-    ]);
-    const verdict = runSemanticGateOnRealData(sceneNodes, labelOf);
-    expect(verdict.presence).toBe(0);
-    expect(verdict.presence).toBeLessThan(SEMANTIC_GATE_DATA_PRESENCE_MIN);
-    expect(verdict.shipped).toBe(false);
-    expect(verdict.reason).toMatch(/empty\/fallback path/);
-  });
-
   it("drops a malformed entry and passes internal bodies through unchanged", () => {
     // A NaN-bearing or node_id-less entry never reaches the projection.
     const adapted = adaptGraphEmbeddings({

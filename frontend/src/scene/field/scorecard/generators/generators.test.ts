@@ -12,7 +12,6 @@
 import { describe, expect, it } from "vitest";
 
 import { makePrng, shuffle, stableTieBreak } from "../prng";
-import { generateBlobs } from "./blobs";
 import { generateLfr } from "./lfr";
 import { generateLayeredDag, generateLayeredTree } from "./layered";
 import { generateSbm } from "./sbm";
@@ -36,13 +35,6 @@ const DAG = {
   edgeProb: 0.25,
   maxSpan: 2,
   seed: 17,
-} as const;
-const BLOBS = {
-  count: 120,
-  dims: 8,
-  clusters: 4,
-  clusterStd: 0.6,
-  seed: 19,
 } as const;
 
 describe("prng (mulberry32 + helpers)", () => {
@@ -107,10 +99,6 @@ describe("generator determinism (byte-reproducible across runs)", () => {
 
   it("layered DAG reproduces identically", () => {
     expect(generateLayeredDag({ ...DAG })).toEqual(generateLayeredDag({ ...DAG }));
-  });
-
-  it("blobs reproduce identically", () => {
-    expect(generateBlobs({ ...BLOBS })).toEqual(generateBlobs({ ...BLOBS }));
   });
 
   it("a different seed yields a different SBM graph", () => {
@@ -241,28 +229,6 @@ describe("layered DAG shape sanity", () => {
     for (const node of fixture.nodes) {
       if (fixture.layerOf.get(node.id) === 0) continue;
       expect(hasIncoming.has(node.id)).toBe(true);
-    }
-  });
-});
-
-describe("blobs shape sanity", () => {
-  const fixture = generateBlobs({ ...BLOBS });
-
-  it("emits count vectors of the declared dimensionality with labels", () => {
-    expect(fixture.vectors.length).toBe(BLOBS.count);
-    expect(fixture.labels.length).toBe(BLOBS.count);
-    for (const v of fixture.vectors) {
-      expect(v.length).toBe(BLOBS.dims);
-      for (const x of v) expect(Number.isFinite(x)).toBe(true);
-    }
-  });
-
-  it("labels are valid cluster indices covering every declared cluster", () => {
-    const used = new Set(fixture.labels);
-    expect(used.size).toBe(BLOBS.clusters);
-    for (const l of fixture.labels) {
-      expect(l).toBeGreaterThanOrEqual(0);
-      expect(l).toBeLessThan(BLOBS.clusters);
     }
   });
 });

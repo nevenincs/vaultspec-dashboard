@@ -87,7 +87,11 @@ import {
 } from "./engine";
 import type { SalienceLens } from "./engine";
 import { dispatchOps } from "./opsActions";
-import { sanitizeHeadingText, sanitizeReaderBody } from "./markdownSanitize";
+import {
+  deriveEditorialTitle,
+  sanitizeHeadingText,
+  sanitizeReaderBody,
+} from "./markdownSanitize";
 import { parseDocument, type Frontmatter } from "./parseDocument";
 import { normalizeSearchTarget, type SearchTarget } from "../searchTarget";
 import {
@@ -1042,7 +1046,10 @@ function applyAcceptedWorkspaceSwitch(
   refreshAfterAcceptedWorkspaceSwitch(queryClient);
 }
 
-function seedSessionCache(queryClient: QueryClient, session: SessionState): void {
+export function seedSessionCache(
+  queryClient: QueryClient,
+  session: SessionState,
+): void {
   queryClient.setQueryData(engineKeys.session(), session);
   void queryClient.invalidateQueries({ queryKey: engineKeys.session() });
   void queryClient.invalidateQueries({ queryKey: engineKeys.workspaces() });
@@ -1275,6 +1282,9 @@ export interface VaultTreeBrowserView {
   filteredToNothing: boolean;
 }
 
+// Pipeline reading order (terminology-standardization ADR D2); `index` is never a
+// displayed group (ADR D5), so it is omitted here and the feature projection skips
+// index entries outright.
 const VAULT_TREE_DOC_TYPE_ORDER = [
   "research",
   "adr",
@@ -1282,7 +1292,6 @@ const VAULT_TREE_DOC_TYPE_ORDER = [
   "exec",
   "audit",
   "reference",
-  "index",
 ] as const;
 
 function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
@@ -2123,7 +2132,7 @@ export interface DashboardFilterSidebarPresentationView {
   sectionIconClassName: string;
   sectionBodyClassName: string;
   kindSectionLabel: string;
-  topicSectionLabel: string;
+  featureSectionLabel: string;
   editedSectionLabel: string;
   editedWindowAriaLabel: string;
   facetEmptyClassName: string;
@@ -2160,7 +2169,7 @@ export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresen
     sectionIconClassName: "text-ink-faint",
     sectionBodyClassName: "pb-2",
     kindSectionLabel: "Kind",
-    topicSectionLabel: "Topic",
+    featureSectionLabel: "Feature",
     editedSectionLabel: "Edited",
     editedWindowAriaLabel: "edited window",
     facetEmptyClassName: "px-fg-3 py-fg-1 text-label italic text-ink-faint",
@@ -2555,12 +2564,7 @@ const DASHBOARD_SPATIAL_LAYOUT_OPTIONS: readonly Omit<
   {
     value: "community",
     label: "Clusters",
-    title: "Topics group together - Louvain community",
-  },
-  {
-    value: "semantic",
-    label: "Meaning",
-    title: "Nearby = similar in meaning - semantic (UMAP)",
+    title: "Related nodes group together - Louvain community",
   },
 ];
 
@@ -2608,19 +2612,8 @@ function projectDashboardLayoutSegmentRows<T extends string>(
 
 export function deriveDashboardLayoutSelectorPresentationView(
   view: DashboardLayoutSelectorView,
-  options: { semanticShipped: boolean },
 ): DashboardLayoutSelectorPresentationView {
-  const spatialOptions = DASHBOARD_SPATIAL_LAYOUT_OPTIONS.map((option) =>
-    option.value === "semantic"
-      ? {
-          ...option,
-          title: options.semanticShipped
-            ? option.title
-            : "Nearby = similar in meaning - falls back to Free until the semantic projection ships",
-          available: options.semanticShipped,
-        }
-      : option,
-  );
+  const spatialOptions = DASHBOARD_SPATIAL_LAYOUT_OPTIONS;
   const spatialActive = view.spatialActive === "temporal" ? null : view.spatialActive;
   const temporalActive = view.timeline.timeTravel ? "timeline" : null;
 
@@ -4073,10 +4066,10 @@ function splitMarkdownReaderEditorialBody(body: string): {
   let title: string | null = null;
   const heading = /^#\s+(.+?)\s*$/.exec(lines[index] ?? "");
   if (heading) {
-    // The body is already heading-sanitized upstream; sanitize again so the
-    // editorial title (a raw string rendered as plain text, not through the
-    // markdown pipeline) is plain regardless of the caller's input.
-    title = sanitizeHeadingText(heading[1]);
+    // Reduce the H1 to a clean editorial title: markdown stripped, the
+    // `{feature} {doctype}:` template prefix and `| (status: …)` metadata removed
+    // (both surface elsewhere — the eyebrow and the meta line), capitalized.
+    title = deriveEditorialTitle(heading[1]);
     index += 1;
   }
   while (index < lines.length && lines[index].trim() === "") index += 1;
@@ -7678,6 +7671,15 @@ function fileBasename(path: string): string {
   return path.split(/[/\\]/).pop() ?? path;
 }
 
+/** The repo-relative parent directory of a path, shown dimmed beside the basename
+ *  so a row reads unambiguously even when the basename is opaque (a cache file's
+ *  hash name) or duplicated across directories (the many `index.ts`/`mod.rs`). */
+function fileDirname(path: string): string {
+  const segments = path.split(/[/\\]/);
+  segments.pop();
+  return segments.join("/");
+}
+
 function changedDocumentType(path: string): string | null {
   const match = /(?:^|\/)\.vault\/([^/]+)\//.exec(path);
   return match ? (match[1] ?? null) : null;
@@ -7799,6 +7801,10 @@ export interface GitChangeRow {
   path: string;
   /** Source-file basename, or the readable title for a vault document. */
   label: string;
+  /** The dimmed parent-directory context shown after the basename (empty at repo
+   *  root). Disambiguates opaque/duplicate basenames so a row is always readable. */
+  dirLabel: string;
+  dirClassName: string;
   nodeId: string;
   /** Open target: the code viewer for files, the markdown reader for vault docs. */
   surface: "code" | "markdown";
@@ -7830,9 +7836,13 @@ export interface GitChangeGroupView {
 // sacred diff hues. Deleted strikes the name and dims it to ink-muted.
 const GIT_CHANGE_ROW_CLASS =
   "flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
-const GIT_CHANGE_LABEL_CLASS = "min-w-0 flex-1 truncate text-[0.75rem] text-ink";
+// The basename sizes to content but yields to the dimmed dir context when the row
+// is tight (shrink, not flex-1), so both the name and its location stay legible.
+const GIT_CHANGE_LABEL_CLASS = "shrink truncate text-[0.75rem] text-ink";
 const GIT_CHANGE_LABEL_DELETED_CLASS =
-  "min-w-0 flex-1 truncate text-[0.75rem] text-ink-muted line-through";
+  "shrink truncate text-[0.75rem] text-ink-muted line-through";
+// The dimmed parent-dir context takes the remaining width, truncating first.
+const GIT_CHANGE_DIR_CLASS = "min-w-0 flex-1 truncate text-[0.6875rem] text-ink-faint";
 const GIT_CHANGE_DIFF_CLASS = "flex shrink-0 items-center gap-fg-1 font-mono text-meta";
 const GIT_CHANGE_ADDS_CLASS = "shrink-0 text-diff-add";
 const GIT_CHANGE_DELS_CLASS = "shrink-0 text-diff-remove";
@@ -7844,6 +7854,8 @@ function gitChangeRow(file: ChangedFile, bucket: GitChangeBucket): GitChangeRow 
   return {
     path: file.path,
     label: isDoc ? changedDocumentTitle(file.path) : fileBasename(file.path),
+    dirLabel: fileDirname(file.path),
+    dirClassName: GIT_CHANGE_DIR_CLASS,
     nodeId: isDoc
       ? docNodeIdFromStem(stemFromPath(file.path))
       : codeNodeIdFromPath(file.path),

@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { usePinStore } from "./pins";
-import {
-  shouldSyncAppliedRepresentationMode,
-  stageContextMenuIntent,
-} from "./stageSceneEvents";
+import { stageContextMenuIntent } from "./stageSceneEvents";
 import { useViewStore } from "./viewStore";
 
 beforeEach(() => {
@@ -71,22 +68,5 @@ describe("stage scene-event bridge", () => {
       anchor: { x: 8, y: 13 },
       entity: { kind: "canvas", id: "canvas" },
     });
-  });
-
-  it("syncs renderer-applied representation mode only for scoped downgrades", () => {
-    const event = {
-      kind: "representation-mode-changed" as const,
-      requested: "semantic" as const,
-      applied: "connectivity" as const,
-      downgradeReason: "semantic tier unavailable",
-    };
-
-    expect(shouldSyncAppliedRepresentationMode(event, "semantic", "scope-a")).toBe(
-      true,
-    );
-    expect(shouldSyncAppliedRepresentationMode(event, "connectivity", "scope-a")).toBe(
-      false,
-    );
-    expect(shouldSyncAppliedRepresentationMode(event, "semantic", null)).toBe(false);
   });
 });
