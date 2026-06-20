@@ -53,6 +53,7 @@ import { MinimapWidget } from "./MinimapWidget";
 import { Discover } from "./Discover";
 import { CANVAS_KEYMAP_CONTEXT, useGraphWalkKeybindings } from "./graphWalkKeybindings";
 import { GraphNavControls, GraphSettingsPanel } from "./GraphControls";
+import { useGraphControlsPersistenceSync } from "./graphControlsPersistence";
 import { WorkingSet, mergeSlices } from "./WorkingSet";
 
 // One scene singleton per app lifetime: the object survives route remounts, but
@@ -115,6 +116,9 @@ export function Stage() {
   const pinnedDiscoveries = usePinnedDiscoveries();
   const sceneSelectionOriginatedRef = useRef(false);
   useSceneSelectionBridge(scope, sceneSelectionOriginatedRef);
+  // Persist + restore the graph-control VALUES via the global graph_controls
+  // setting (graph-control-standardisation round-trip; echo-safe /settings channel).
+  useGraphControlsPersistenceSync(scene.controller);
   const scopeRef = useRef(scope);
   const activeRepresentationModeRef = useRef(activeRepresentationMode);
   const stageSceneIntentRef = useRef(stageSceneIntent);
