@@ -89,6 +89,7 @@ const LABEL_BUDGET = controlNumber("labelBudget");
 const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
 const HOVER_RING_WIDTH = controlNumber("hoverRingWidth");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
+const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -166,8 +167,8 @@ void main() {
   if (alpha <= 0.0) discard;
   vec3 col = vColor;
   if (vDim > 0.5) {
-    col = mix(vColor, uDimColor, 0.72);
-    alpha *= 0.4;
+    col = mix(vColor, uDimColor, ${glslFloat(controlNumber("nodeDimMix"))});
+    alpha *= ${glslFloat(controlNumber("nodeDimAlpha"))};
   }
   gl_FragColor = vec4(col, alpha);
 }
@@ -233,8 +234,8 @@ void main() {
   vec3 col = vColor;
   float a = vAlpha;
   if (vDim > 0.5) {
-    col = mix(vColor, uDimColor, 0.6);
-    a *= 0.2;
+    col = mix(vColor, uDimColor, ${glslFloat(controlNumber("edgeDimMix"))});
+    a *= ${glslFloat(controlNumber("edgeDimAlpha"))};
   }
   gl_FragColor = vec4(col, a);
 }
@@ -1205,7 +1206,7 @@ export class ThreeField implements SceneFieldRenderer {
         ctx.arc(p.x, p.y, nodeR + 8 * s, 0, Math.PI * 2);
         ctx.strokeStyle = highlight;
         ctx.lineWidth = PULSE_RING_WIDTH * s;
-        ctx.globalAlpha = 0.85;
+        ctx.globalAlpha = PULSE_RING_ALPHA;
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
