@@ -4,11 +4,15 @@
 // is now a COLLAPSIBLE at the top of the one status surface. Its header is the
 // summary line itself — a twisty + "<N> files · <M> documents" with the sacred
 // "+A −D" diff tallies right-aligned — and its body (revealed on expand) is the
-// two flat lists the pane always carried: "CHANGED FILES — open diff or source"
-// (status dot + mono basename + numstat + open arrow → opens the code viewer) and
-// "CHANGED DOCUMENTS — open reader" (category dot + readable title → opens the
-// markdown reader). Both open through the preserved `openDocTab` intent, never a
-// new fetch. The fold defaults COLLAPSED (the board's GitStatusPill resting state).
+// STATUS TREE the binding GitStatusPill (642:1745) renders: three collapsible
+// groups — MODIFIED / DELETED / NEW — each a twisty + uppercase eyebrow + count
+// over flat filename + numstat rows (GitFileRow 653:1864): no per-row status dot,
+// no open arrow; a deleted name is struck and shows only −D, a new name only +A.
+// A row opens the code viewer (source files) or the markdown reader (vault docs)
+// through the preserved `openDocTab` intent, never a new fetch. The outer fold AND
+// the status groups default COLLAPSED, so the body reads as a clean "▸ Modified /
+// ▸ Deleted / ▸ New" tree (a large Deleted group never floods the rail) — expand a
+// parent to drill into its files.
 //
 // Data is the stores layer's read-only `/ops/git` projection (chrome reads
 // selectors, never the engine, never the raw `tiers` block — dashboard-layer-
@@ -30,9 +34,9 @@
 import {
   useActiveScope,
   useChangesOverview,
-  type ChangedDocumentRow,
-  type ChangedSourceFileRow,
   type ChangesOverviewView,
+  type GitChangeGroupView,
+  type GitChangeRow,
 } from "../../stores/server/queries";
 import {
   deriveStatusSectionChromeView,
@@ -40,90 +44,84 @@ import {
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
 import { openDocTab } from "../../stores/view/tabs";
-import { FoldSection, SectionLabel, StatusDot } from "../kit";
+import { FoldSection, SectionLabel } from "../kit";
 
 // The Changes fold defaults closed — the board's resting GitStatusPill state.
 const CHANGES_SECTION_ID = "changes";
 const CHANGES_DEFAULT_OPEN = false;
 
 // ---------------------------------------------------------------------------
-// Row helpers
+// Change tree (binding GitStatusPill 642:1745): status groups + flat file rows
 // ---------------------------------------------------------------------------
 
-/** The board's open arrow (faint). */
-function OpenArrow({ className }: { className: string }) {
-  return (
-    <span className={className} aria-hidden>
-      →
-    </span>
-  );
-}
-
-/** A changed-FILE row: status dot + mono basename + numstat + open arrow. Opens
- *  the file's source in the code viewer (board "open diff or source"). */
-function ChangedFileRow({
-  file,
-  scope,
-}: {
-  file: ChangedSourceFileRow;
-  scope: unknown;
-}) {
+/** A changed-entry row (binding GitFileRow 653:1864): filename + numstat, no status
+ *  dot and no open arrow — the GROUP conveys the status, a deleted name is struck.
+ *  A click opens the code viewer (source) or the markdown reader (vault doc). */
+function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
   const open = () => {
-    void openDocTab(file.nodeId, "code", scope).catch(() => undefined);
+    void openDocTab(row.nodeId, row.surface, scope).catch(() => undefined);
   };
   return (
     <li>
       <button
         type="button"
         onClick={open}
-        title={file.path}
-        className={file.rowClassName}
+        title={row.path}
+        className={row.rowClassName}
       >
-        <span
-          aria-hidden
-          className={file.dotClassName}
-          style={{ backgroundColor: file.dotColor }}
-        />
-        <span className={file.basenameClassName}>{file.basename}</span>
-        {file.adds !== null && (
-          <span className={file.addsClassName} aria-label={file.addsLabel ?? undefined}>
-            +{file.adds}
+        <span className={row.labelClassName}>{row.label}</span>
+        {(row.showAdds || row.showDels) && (
+          <span className={row.diffClassName}>
+            {row.showAdds && (
+              <span className={row.addsClassName} aria-label={row.addsLabel}>
+                +{row.adds}
+              </span>
+            )}
+            {row.showDels && (
+              <span className={row.delsClassName} aria-label={row.delsLabel}>
+                −{row.dels}
+              </span>
+            )}
           </span>
         )}
-        {file.dels !== null && (
-          <span className={file.delsClassName} aria-label={file.delsLabel ?? undefined}>
-            −{file.dels}
-          </span>
-        )}
-        <OpenArrow className={file.openArrowClassName} />
       </button>
     </li>
   );
 }
 
-/** A changed-DOCUMENT row: category dot + readable title + open arrow. Opens the
- *  markdown reader (board "open reader"). */
-function ChangedDocRow({ file, scope }: { file: ChangedDocumentRow; scope: unknown }) {
-  const open = () => {
-    void openDocTab(file.nodeId, "markdown", scope).catch(() => undefined);
-  };
+/** A collapsible status group (binding GitStatusPill `Section` 655:2031): a twisty +
+ *  uppercase eyebrow + count over its file rows. Reuses the centralized FoldSection
+ *  over the shared status-section chrome — the SAME fold idiom the rail's other
+ *  sections use (design-system-is-centralized). Defaults COLLAPSED so the parents
+ *  read as a clean "▸ Modified / ▸ Deleted / ▸ New" tree (a large Deleted group does
+ *  not flood the rail) — expand a parent to drill into its files; the open state
+ *  persists in `statusTabChrome`. */
+function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unknown }) {
+  const sectionId = `changes:${group.id}`;
+  const open = useStatusSectionOpen(sectionId, false);
+  const chrome = deriveStatusSectionChromeView(sectionId, open);
   return (
-    <li>
-      <button
-        type="button"
-        onClick={open}
-        title={file.path}
-        className={file.rowClassName}
-      >
-        {file.category ? (
-          <StatusDot category={file.category} />
-        ) : (
-          <span aria-hidden className={file.fallbackDotClassName} />
-        )}
-        <span className={file.titleClassName}>{file.title}</span>
-        <OpenArrow className={file.openArrowClassName} />
-      </button>
-    </li>
+    <FoldSection
+      open={open}
+      onToggle={() => toggleStatusSection(sectionId, false)}
+      bodyId={chrome.bodyId}
+      twistyPx={chrome.twistyPx}
+      headerClassName={chrome.headerClassName}
+      bodyClassName={chrome.bodyClassName}
+      label={<SectionLabel className="min-w-0 flex-1">{group.label}</SectionLabel>}
+      trailing={
+        <span className="shrink-0 text-meta text-ink-faint" data-tabular>
+          {group.count}
+        </span>
+      }
+      data-change-group={group.id}
+    >
+      <ul className="flex flex-col gap-fg-0-5" aria-label={group.ariaLabel}>
+        {group.rows.map((row) => (
+          <ChangeRow key={row.path} row={row} scope={scope} />
+        ))}
+      </ul>
+    </FoldSection>
   );
 }
 
@@ -226,38 +224,14 @@ export function ChangesOverview() {
           </div>
         )}
 
-        {/* CHANGED FILES — open diff or source. */}
-        {changes.hasFiles && (
-          <section aria-label={changes.filesListAriaLabel} data-working-changes>
-            <SectionLabel className={changes.sectionLabelClassName}>
-              {changes.filesSectionLabel}
-            </SectionLabel>
-            <ul
-              className={changes.listClassName}
-              aria-label={changes.filesListAriaLabel}
-            >
-              {changes.files.map((file) => (
-                <ChangedFileRow key={file.path} file={file} scope={scope} />
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {/* CHANGED DOCUMENTS — open reader. */}
-        {changes.hasDocuments && (
-          <section aria-label={changes.documentsListAriaLabel} data-changed-documents>
-            <SectionLabel className={changes.sectionLabelClassName}>
-              {changes.documentsSectionLabel}
-            </SectionLabel>
-            <ul
-              className={changes.listClassName}
-              aria-label={changes.documentsListAriaLabel}
-            >
-              {changes.documents.map((file) => (
-                <ChangedDocRow key={file.path} file={file} scope={scope} />
-              ))}
-            </ul>
-          </section>
+        {/* The status tree — MODIFIED / DELETED / NEW collapsible groups, each over
+            its filename + numstat rows (binding GitStatusPill expanded state). */}
+        {changes.changeGroups.length > 0 && (
+          <div className="flex flex-col gap-fg-2" data-change-groups>
+            {changes.changeGroups.map((group) => (
+              <ChangeGroup key={group.id} group={group} scope={scope} />
+            ))}
+          </div>
         )}
 
         {/* Clean working tree — an approachable copy-toned empty state. */}

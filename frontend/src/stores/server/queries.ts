@@ -24,6 +24,7 @@ import { StreamLostError } from "../../platform/policy/failurePolicy";
 import { debounce } from "../../platform/timing";
 import type {
   ChangedFile,
+  GitChangeGroup,
   ContentResponse,
   ContentTruncated,
   DashboardDateRange,
@@ -86,6 +87,7 @@ import {
 } from "./engine";
 import type { SalienceLens } from "./engine";
 import { dispatchOps } from "./opsActions";
+import { sanitizeHeadingText, sanitizeReaderBody } from "./markdownSanitize";
 import { parseDocument, type Frontmatter } from "./parseDocument";
 import { normalizeSearchTarget, type SearchTarget } from "../searchTarget";
 import {
@@ -1196,10 +1198,22 @@ export function useVaultTree(scope: unknown) {
 export type VaultTreeAvailability = TierAvailability;
 export type VaultTreeSurfaceState = "loading" | "error" | "ready";
 
+// The vault tree LISTS DOCUMENTS, so its "are documents available" truth is the
+// STRUCTURAL tier alone — that tier is what carries the document graph. A down
+// `semantic` tier (rag search), a `declared` tier still "building", or an absent
+// `temporal` tier do NOT make documents unavailable: with `structural` up, every
+// document is present and listable. Reading ALL canonical tiers here made the rail
+// cry "Some documents are temporarily unavailable" whenever semantic search was off
+// — a false alarm, and inconsistent with the global/search surface, which correctly
+// treats semantic-offline as a search-tier state, not a documents-gone condition.
+// Semantic/temporal degradation is surfaced by THOSE features (search, timeline),
+// not by the document list.
+const VAULT_TREE_CONTENT_TIERS = ["structural"] as const;
+
 export function deriveVaultTreeAvailability(
   tiers: TiersBlock | undefined,
 ): VaultTreeAvailability {
-  return readTierAvailability(tiers, CANONICAL_TIERS);
+  return readTierAvailability(tiers, VAULT_TREE_CONTENT_TIERS);
 }
 
 export function deriveVaultTreeSurfaceState(
@@ -4059,7 +4073,10 @@ function splitMarkdownReaderEditorialBody(body: string): {
   let title: string | null = null;
   const heading = /^#\s+(.+?)\s*$/.exec(lines[index] ?? "");
   if (heading) {
-    title = heading[1].trim();
+    // The body is already heading-sanitized upstream; sanitize again so the
+    // editorial title (a raw string rendered as plain text, not through the
+    // markdown pipeline) is plain regardless of the caller's input.
+    title = sanitizeHeadingText(heading[1]);
     index += 1;
   }
   while (index < lines.length && lines[index].trim() === "") index += 1;
@@ -4072,7 +4089,9 @@ function splitMarkdownReaderEditorialBody(body: string): {
       dekLines.push(lines[index].trim());
       index += 1;
     }
-    dek = dekLines.join(" ");
+    // The dek is also rendered as a raw string (italic chrome), so strip any
+    // inline markdown from it for the same no-noise plain-text guarantee.
+    dek = sanitizeHeadingText(dekLines.join(" "));
   }
   return { title, dek, rest: lines.slice(index).join("\n").replace(/^\n+/, "") };
 }
@@ -4168,6 +4187,9 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
   const frontmatter = deriveFrontmatterHeaderView(parsed.frontmatter);
   const status = parsed.frontmatter?.status ?? null;
   const stateTone: ViewerStateTone = "faint";
+  // Read-mode sanitization (no-noise editorial directive): strip HTML comments and
+  // reduce every heading to plain text before the reader renders the body.
+  const readerBody = sanitizeReaderBody(parsed.body);
   return {
     state: "ready",
     stateMessage: null,
@@ -4175,8 +4197,8 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
     stateToneClass: viewerStateToneClass(stateTone),
     frontmatter,
     status,
-    body: parsed.body,
-    editorial: deriveMarkdownReaderEditorialView(parsed.body, frontmatter, status),
+    body: readerBody,
+    editorial: deriveMarkdownReaderEditorialView(readerBody, frontmatter, status),
     truncated: content.truncated,
     truncationMessage: markdownReaderTruncationMessage(content.truncated),
   };
@@ -6670,7 +6692,7 @@ export function deriveLocationAnchor(
     mainLabel: isMain ? "main" : null,
     mainClassName: "shrink-0 font-medium text-ink",
     branchClassName: "min-w-0 truncate font-medium text-accent-text",
-    pathClassName: "truncate font-mono text-meta text-ink-faint",
+    pathClassName: "truncate font-mono text-caption text-ink-faint",
     dirty: git.dirty,
     ahead: git.git?.ahead,
     behind: git.git?.behind,
@@ -7687,15 +7709,16 @@ function changedDocumentTitle(path: string): string {
 }
 
 const CHANGES_OVERVIEW_ROW_CLASS =
-  "flex h-[30px] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "flex h-[1.875rem] w-full items-center gap-fg-2 rounded-fg-md border border-rule bg-paper px-fg-2 text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const CHANGED_FILE_DOT_CLASS = "size-2 shrink-0 rounded-full";
 const CHANGED_FILE_BASENAME_CLASS =
-  "min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink";
-const CHANGED_FILE_ADDS_CLASS = "shrink-0 text-[11px] text-diff-add";
-const CHANGED_FILE_DELS_CLASS = "shrink-0 text-[11px] text-diff-remove";
+  "min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-ink";
+const CHANGED_FILE_ADDS_CLASS = "shrink-0 text-meta text-diff-add";
+const CHANGED_FILE_DELS_CLASS = "shrink-0 text-meta text-diff-remove";
 const CHANGED_DOCUMENT_FALLBACK_DOT_CLASS = "size-2 shrink-0 rounded-full bg-ink-faint";
-const CHANGED_DOCUMENT_TITLE_CLASS = "min-w-0 flex-1 truncate text-[12.5px] text-ink";
-const CHANGES_OVERVIEW_OPEN_ARROW_CLASS = "shrink-0 text-[13px] text-ink-faint";
+const CHANGED_DOCUMENT_TITLE_CLASS =
+  "min-w-0 flex-1 truncate text-[0.78125rem] text-ink";
+const CHANGES_OVERVIEW_OPEN_ARROW_CLASS = "shrink-0 text-body text-ink-faint";
 
 function changedFileRow(file: ChangedFile): ChangedSourceFileRow {
   return {
@@ -7736,6 +7759,133 @@ function changedDocumentRow(file: ChangedFile): ChangedDocumentRow {
     openArrowClassName: CHANGES_OVERVIEW_OPEN_ARROW_CLASS,
     ...(category ? { category } : {}),
   };
+}
+
+// --- status-grouped change tree (binding GitStatusPill 642:1745 / GitFileRow 653:1864) -
+//
+// The Changes body groups every working-tree entry under three collapsible status
+// parents — MODIFIED / DELETED / NEW — exactly as the binding GitStatusPill expanded
+// state renders them. A row is the entry's filename + numstat (mono diff tallies):
+// MODIFIED shows +A −D, DELETED shows only −D and strikes the name, NEW shows only
+// +A. No per-row status dot and no open arrow (the GROUP conveys the status); a click
+// still opens the code viewer (source files) or the markdown reader (vault docs).
+
+/** The three status buckets the change tree groups entries into, in render order. */
+export type GitChangeBucket = "modified" | "deleted" | "new";
+
+const GIT_CHANGE_BUCKET_ORDER: readonly GitChangeBucket[] = [
+  "modified",
+  "deleted",
+  "new",
+] as const;
+
+// SectionLabel uppercases the eyebrow, so author Title-case and it renders
+// MODIFIED / DELETED / NEW to match the binding.
+const GIT_CHANGE_BUCKET_LABEL: Record<GitChangeBucket, string> = {
+  modified: "Modified",
+  deleted: "Deleted",
+  new: "New",
+};
+
+/** Map a porcelain status group onto its tree bucket: staged/modified/renamed read
+ *  as MODIFIED, added/untracked as NEW, deleted as DELETED. */
+function gitChangeBucket(group: GitChangeGroup): GitChangeBucket {
+  if (group === "deleted") return "deleted";
+  if (group === "added" || group === "untracked") return "new";
+  return "modified";
+}
+
+export interface GitChangeRow {
+  path: string;
+  /** Source-file basename, or the readable title for a vault document. */
+  label: string;
+  nodeId: string;
+  /** Open target: the code viewer for files, the markdown reader for vault docs. */
+  surface: "code" | "markdown";
+  /** numstat tallies; the bucket decides which side(s) render. */
+  showAdds: boolean;
+  showDels: boolean;
+  adds: number;
+  dels: number;
+  addsLabel: string;
+  delsLabel: string;
+  rowClassName: string;
+  labelClassName: string;
+  diffClassName: string;
+  addsClassName: string;
+  delsClassName: string;
+}
+
+export interface GitChangeGroupView {
+  id: GitChangeBucket;
+  /** Title-case label; the SectionLabel eyebrow renders it uppercase. */
+  label: string;
+  ariaLabel: string;
+  count: number;
+  rows: GitChangeRow[];
+}
+
+// Binding GitFileRow (653:1864): a flat row (no card chrome, no dot, no arrow) — the
+// name rides the 12px body role in ink, the numstat the 11px mono meta role in the
+// sacred diff hues. Deleted strikes the name and dims it to ink-muted.
+const GIT_CHANGE_ROW_CLASS =
+  "flex w-full items-center gap-fg-2 rounded-fg-xs py-fg-0-5 pr-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const GIT_CHANGE_LABEL_CLASS = "min-w-0 flex-1 truncate text-[0.75rem] text-ink";
+const GIT_CHANGE_LABEL_DELETED_CLASS =
+  "min-w-0 flex-1 truncate text-[0.75rem] text-ink-muted line-through";
+const GIT_CHANGE_DIFF_CLASS = "flex shrink-0 items-center gap-fg-1 font-mono text-meta";
+const GIT_CHANGE_ADDS_CLASS = "shrink-0 text-diff-add";
+const GIT_CHANGE_DELS_CLASS = "shrink-0 text-diff-remove";
+
+function gitChangeRow(file: ChangedFile, bucket: GitChangeBucket): GitChangeRow {
+  const isDoc = file.vault;
+  const adds = file.adds ?? 0;
+  const dels = file.dels ?? 0;
+  return {
+    path: file.path,
+    label: isDoc ? changedDocumentTitle(file.path) : fileBasename(file.path),
+    nodeId: isDoc
+      ? docNodeIdFromStem(stemFromPath(file.path))
+      : codeNodeIdFromPath(file.path),
+    surface: isDoc ? "markdown" : "code",
+    // MODIFIED shows both sides; DELETED only deletions; NEW only additions — and
+    // only when the numstat side is present (binary entries carry null).
+    showAdds: bucket !== "deleted" && file.adds !== null,
+    showDels: bucket !== "new" && file.dels !== null,
+    adds,
+    dels,
+    addsLabel: `${adds} added`,
+    delsLabel: `${dels} removed`,
+    rowClassName: GIT_CHANGE_ROW_CLASS,
+    labelClassName:
+      bucket === "deleted" ? GIT_CHANGE_LABEL_DELETED_CLASS : GIT_CHANGE_LABEL_CLASS,
+    diffClassName: GIT_CHANGE_DIFF_CLASS,
+    addsClassName: GIT_CHANGE_ADDS_CLASS,
+    delsClassName: GIT_CHANGE_DELS_CLASS,
+  };
+}
+
+/** Bucket every changed entry into the MODIFIED / DELETED / NEW tree groups, keeping
+ *  only non-empty groups in render order. */
+function deriveGitChangeGroups(files: readonly ChangedFile[]): GitChangeGroupView[] {
+  const byBucket: Record<GitChangeBucket, GitChangeRow[]> = {
+    modified: [],
+    deleted: [],
+    new: [],
+  };
+  for (const file of files) {
+    const bucket = gitChangeBucket(file.group);
+    byBucket[bucket].push(gitChangeRow(file, bucket));
+  }
+  return GIT_CHANGE_BUCKET_ORDER.filter((bucket) => byBucket[bucket].length > 0).map(
+    (bucket) => ({
+      id: bucket,
+      label: GIT_CHANGE_BUCKET_LABEL[bucket],
+      ariaLabel: `${GIT_CHANGE_BUCKET_LABEL[bucket].toLowerCase()} changes`,
+      count: byBucket[bucket].length,
+      rows: byBucket[bucket],
+    }),
+  );
 }
 
 export function deriveChangedFilesView(
@@ -7782,6 +7932,8 @@ export interface ChangesOverviewView {
   hasDocuments: boolean;
   files: ChangedSourceFileRow[];
   documents: ChangedDocumentRow[];
+  /** The status-grouped change tree (MODIFIED / DELETED / NEW) the body renders. */
+  changeGroups: GitChangeGroupView[];
   summary: ChangedFilesView["summary"];
   summaryLabels: {
     files: string;
@@ -7863,6 +8015,7 @@ export function deriveChangesOverviewView(
   const hasChanges = gitAvailable && summary.total > 0;
   const files = gitAvailable ? changed.codeFiles.map(changedFileRow) : [];
   const documents = gitAvailable ? changed.documents.map(changedDocumentRow) : [];
+  const changeGroups = gitAvailable ? deriveGitChangeGroups(changed.files) : [];
   return {
     noScope: scope === null,
     loading: (git.loading || changed.loading) && !hasChanges,
@@ -7875,6 +8028,7 @@ export function deriveChangesOverviewView(
     hasDocuments: documents.length > 0,
     files,
     documents,
+    changeGroups,
     summary,
     summaryLabels: changedSummaryLabels(summary),
     loadingLabel: "reading changes…",
