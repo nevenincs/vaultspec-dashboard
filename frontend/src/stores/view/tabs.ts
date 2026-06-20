@@ -10,7 +10,6 @@
 // double-click / explicit PERMANENT open (or a promotion of the provisional).
 
 import { useMemo, useSyncExternalStore } from "react";
-import { useShallow } from "zustand/react/shallow";
 
 import {
   deriveMarkdownHeaderView,
@@ -413,13 +412,24 @@ export function normalizeDockWorkspaceTabsView(
 
 /** The ordered open document tabs. */
 export function useOpenDocs(): OpenDoc[] {
-  return useViewStore((state) => normalizeOpenDocs(state.openDocs));
+  // Select the RAW, referentially-stable slice and memoize the normalization —
+  // normalizing INSIDE the zustand selector returns a fresh array on every
+  // getSnapshot whenever `openDocs` is not byte-canonical (a duplicate, an over-cap
+  // set, a surface to coerce), which trips React's "getSnapshot should be cached"
+  // infinite loop (stable-selectors). The store writes canonical docs, so the raw
+  // ref is stable between mutations.
+  const raw = useViewStore((state) => state.openDocs);
+  return useMemo(() => normalizeOpenDocs(raw), [raw]);
 }
 
 /** The active tab's node id, or null when no document is open. */
 export function useActiveDocId(): string | null {
-  return useViewStore((state) =>
-    normalizeActiveDocId(normalizeOpenDocs(state.openDocs), state.activeDocId),
+  const openDocs = useViewStore((state) => state.openDocs);
+  const activeDocId = useViewStore((state) => state.activeDocId);
+  // A string|null result is value-stable, so a useMemo is for cheapness, not safety.
+  return useMemo(
+    () => normalizeActiveDocId(openDocs, activeDocId),
+    [openDocs, activeDocId],
   );
 }
 
@@ -427,14 +437,20 @@ export function useDockWorkspaceTabsView(): {
   openDocs: OpenDoc[];
   activeDocId: string | null;
 } {
-  return useViewStore(
-    useShallow((state) =>
-      normalizeDockWorkspaceTabsView(state.openDocs, state.activeDocId),
-    ),
+  // Select raw stable fields and memoize the derivation. useShallow does NOT save
+  // this hook: normalizeDockWorkspaceTabsView nests a freshly-normalized `openDocs`
+  // array, and useShallow's one-level compare sees that nested fresh ref as changed
+  // every getSnapshot -> "getSnapshot should be cached" loop (stable-selectors).
+  const openDocs = useViewStore((state) => state.openDocs);
+  const activeDocId = useViewStore((state) => state.activeDocId);
+  return useMemo(
+    () => normalizeDockWorkspaceTabsView(openDocs, activeDocId),
+    [openDocs, activeDocId],
   );
 }
 
 /** Whether any document tab is open (drives the split-vs-full-graph layout). */
 export function useWorkspaceHasDocs(): boolean {
+  // A boolean result is value-stable inside the selector, so this one is safe as-is.
   return useViewStore((state) => normalizeOpenDocs(state.openDocs).length > 0);
 }

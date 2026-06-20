@@ -11,6 +11,8 @@
 // it fetches nothing (the content query + the write mutations are the sole wire
 // clients) and reads the tiers-derived `ContentView`, never raw `tiers`.
 
+import { useMemo } from "react";
+
 import {
   useRenameDoc,
   useSaveBody,
@@ -49,7 +51,14 @@ export function MarkdownDocView({
   content: ContentView;
   scope: string | null;
 }) {
-  const documentEditor = deriveMarkdownEditorDocumentView(content);
+  // Memoize on the now-stable ContentView (useContentView memoizes its result) so
+  // `documentEditor.properties` is a referentially-stable object — it is passed into
+  // useMarkdownEditorChromeView as a seed-effect dependency, and a fresh object every
+  // render would re-fire that effect each render (stable-selector discipline).
+  const documentEditor = useMemo(
+    () => deriveMarkdownEditorDocumentView(content),
+    [content],
+  );
   const editor = useDocumentEditorView(nodeId);
   const editorChrome = useMarkdownEditorChromeView(nodeId, documentEditor.properties);
 

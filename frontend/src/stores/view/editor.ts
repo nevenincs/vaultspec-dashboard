@@ -2,7 +2,7 @@
 // caller should drive it through these named operations so save-result mapping,
 // draft/status transitions, rename drafts, and advisory display stay centralized.
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 
@@ -293,18 +293,45 @@ export function useMarkdownEditorChromeView(
   const normalizedNodeId = normalizeNodeId(nodeId) ?? "";
   const currentStem = normalizedNodeId ? stemFromNodeId(normalizedNodeId) : "";
   const seed = useMarkdownEditorChromeStore((state) => state.seed);
+  // Select the RAW, referentially-stable store fields and derive the view in a
+  // useMemo — NEVER derive inside the zustand selector. deriveMarkdownEditorChromeView
+  // returns NESTED fresh objects (the `frontmatterDraft` object + the `advisoryRows`
+  // array), so calling it inside a `useShallow` selector returns a new value on every
+  // getSnapshot — useShallow only compares one level deep, so the nested fresh refs
+  // defeat it -> React's "getSnapshot should be cached" -> "Maximum update depth
+  // exceeded", which crashed the stage on every markdown-document open
+  // (stable-selectors / bounded-by-default sibling discipline).
+  const stateNodeId = useMarkdownEditorChromeStore((state) => state.nodeId);
+  const renameDraft = useMarkdownEditorChromeStore((state) => state.renameDraft);
+  const stateFrontmatterDraft = useMarkdownEditorChromeStore(
+    (state) => state.frontmatterDraft,
+  );
+  const advisories = useMarkdownEditorChromeStore((state) => state.advisories);
   useEffect(() => {
     seed(normalizedNodeId, currentStem, frontmatterDraft);
   }, [currentStem, frontmatterDraft, normalizedNodeId, seed]);
-  return useMarkdownEditorChromeStore(
-    useShallow((state) =>
+  return useMemo(
+    () =>
       deriveMarkdownEditorChromeView(
-        state,
+        {
+          nodeId: stateNodeId,
+          renameDraft,
+          frontmatterDraft: stateFrontmatterDraft,
+          advisories,
+        },
         normalizedNodeId,
         currentStem,
         frontmatterDraft,
       ),
-    ),
+    [
+      stateNodeId,
+      renameDraft,
+      stateFrontmatterDraft,
+      advisories,
+      normalizedNodeId,
+      currentStem,
+      frontmatterDraft,
+    ],
   );
 }
 

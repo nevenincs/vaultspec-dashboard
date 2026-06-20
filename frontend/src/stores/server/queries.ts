@@ -602,7 +602,7 @@ const WORKSPACE_MAP_PICKER_ERROR_LABEL_CLASS = "text-label text-state-broken";
 const WORKSPACE_MAP_PICKER_RETRY_BUTTON_CLASS =
   "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 const WORKSPACE_MAP_PICKER_TRIGGER_CLASS =
-  "flex w-full items-center gap-fg-1-5 rounded-fg-md bg-paper-sunken px-[10px] py-[6px] transition-colors duration-ui-fast hover:bg-paper-sunken/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  "flex w-full items-center rounded-fg-xs py-fg-1 text-left transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 const WORKSPACE_MAP_PICKER_TRIGGER_LABEL_BASE_CLASS =
   "min-w-0 flex-1 truncate text-left text-body-strong";
 const WORKSPACE_MAP_PICKER_TRIGGER_ICON_CLASS = "shrink-0 text-ink-faint";
@@ -3676,7 +3676,15 @@ export function useContentView(nodeId: unknown, scope: unknown): ContentView {
   const enabled = request.scope !== null && isAddressableNode(request.nodeId);
   const query = useNodeContent(nodeId, scope);
   const loading = enabled && query.isPending;
-  return deriveContentView(query.data, query.error ?? null, loading);
+  // Memoize the derived view so it is referentially STABLE across renders where the
+  // query state is unchanged. deriveContentView returns a fresh object each call; a
+  // fresh ContentView every render churns every consumer that derives further state
+  // from it (the markdown editor's frontmatter properties) and feeds the
+  // getSnapshot/effect-dependency loops the stable-selector discipline prevents.
+  return useMemo(
+    () => deriveContentView(query.data, query.error ?? null, loading),
+    [query.data, query.error, loading],
+  );
 }
 
 export type ViewerStateTone = "faint" | "muted" | "broken";
@@ -4550,7 +4558,9 @@ const STATUS_BODY_LOADING_CLASS =
   "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none";
 const STATUS_BODY_UNAVAILABLE_CLASS = "text-label text-ink-faint";
 const STATUS_BODY_EMPTY_CLASS = "text-label text-ink-faint";
-const STATUS_BODY_LIST_CLASS = "space-y-fg-0-5";
+// Card-to-card gap inside the status sections (PRs / issues / commits): the rail's
+// items are bordered cards now (binding 599:2099), so they read with a 6px gutter.
+const STATUS_BODY_LIST_CLASS = "space-y-fg-1-5";
 
 interface GitHubWorkItemAvailability<T> {
   loading: boolean;
@@ -6077,6 +6087,97 @@ export function useCreateDoc() {
       if (result.kind === "created") {
         invalidateAfterVaultMutation(queryClient, normalized.scope);
       }
+    },
+  });
+}
+
+/** Args for {@link useArchiveFeature}: the worktree scope and the feature tag to
+ *  archive (`vaultspec-core vault feature archive <tag>`). */
+export interface ArchiveFeatureArgs {
+  scope?: unknown;
+  feature: unknown;
+}
+
+export interface ArchiveFeatureResult {
+  ok: boolean;
+  scope: string | null;
+  feature: string;
+}
+
+/**
+ * Archive a completed feature's documents through the brokered ops seam
+ * (`dispatchOps` → `/ops/core/archive` → `vault feature archive`). FEATURE-SCOPED
+ * (the only archive grain vaultspec-core has). On a non-`failed` envelope the
+ * vault tree + graph are invalidated so the rail and stage drop the archived
+ * documents; the watcher's re-ingest + generation bump corroborate. A `failed`
+ * envelope (e.g. unknown tag) leaves the cache untouched. The mutation reads the
+ * sibling envelope `status`, never the HTTP code (every ops outcome is a 200).
+ */
+export function useArchiveFeature() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: ArchiveFeatureArgs): Promise<ArchiveFeatureResult> => {
+      const scope = normalizeGitDiffArg(args.scope) ?? null;
+      const feature = typeof args.feature === "string" ? args.feature.trim() : "";
+      if (feature.length === 0) return { ok: false, scope, feature };
+      const ops: OpsResult = await dispatchOps({
+        target: "core",
+        verb: "feature-archive",
+        mode: "archive",
+        body: { scope: scope ?? undefined, feature },
+      });
+      const { status } = envelopeData(ops.envelope);
+      return { ok: ops.ok && status !== "failed", scope, feature };
+    },
+    onSuccess: (result) => {
+      if (result.ok) invalidateAfterVaultMutation(queryClient, result.scope);
+    },
+  });
+}
+
+/** Args for {@link useRelateDoc}: the worktree scope and the source/target
+ *  document stems of a `related:` edge (`vaultspec-core vault link add`). */
+export interface RelateDocArgs {
+  scope?: unknown;
+  src: unknown;
+  dst: unknown;
+}
+
+export interface RelateDocResult {
+  ok: boolean;
+  scope: string | null;
+}
+
+/**
+ * Add a `related:` edge between two documents through the brokered ops seam
+ * (`dispatchOps` → `/ops/core/link` → `vault link add <src> <dst>`). Idempotent
+ * (the sibling exits 0 when the edge already exists) and refuses a dangling target.
+ * On a non-`failed` envelope the vault tree + graph are invalidated so the new
+ * edge appears; the watcher's re-ingest + generation bump corroborate. A `failed`
+ * envelope leaves the cache untouched. Reads the sibling envelope `status`, never
+ * the HTTP code.
+ */
+export function useRelateDoc() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: RelateDocArgs): Promise<RelateDocResult> => {
+      const scope = normalizeGitDiffArg(args.scope) ?? null;
+      const src = typeof args.src === "string" ? args.src.trim() : "";
+      const dst = typeof args.dst === "string" ? args.dst.trim() : "";
+      if (src.length === 0 || dst.length === 0 || src === dst) {
+        return { ok: false, scope };
+      }
+      const ops: OpsResult = await dispatchOps({
+        target: "core",
+        verb: "link-add",
+        mode: "link",
+        body: { scope: scope ?? undefined, src, dst },
+      });
+      const { status } = envelopeData(ops.envelope);
+      return { ok: ops.ok && status !== "failed", scope };
+    },
+    onSuccess: (result) => {
+      if (result.ok) invalidateAfterVaultMutation(queryClient, result.scope);
     },
   });
 }
@@ -7734,10 +7835,12 @@ function changedSummaryLabels(
 const CHANGES_OVERVIEW_NO_SCOPE_CLASS = "text-label text-ink-faint";
 const CHANGES_OVERVIEW_ROOT_CLASS = "space-y-fg-3 text-label";
 const CHANGES_OVERVIEW_SUMMARY_CLASS = "flex flex-wrap items-center gap-fg-1-5";
-const CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS = "font-medium text-ink";
+// Binding GitStatusPill `git-head` (642:1721): "N files · M documents" rides the
+// 12px label role in ink/muted; the diff tallies are 11px (meta) in the sacred hues.
+const CHANGES_OVERVIEW_SUMMARY_PRIMARY_CLASS = "text-label font-medium text-ink-muted";
 const CHANGES_OVERVIEW_SUMMARY_DIVIDER_CLASS = "text-ink-faint";
-const CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS = "text-[11px] text-diff-add";
-const CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS = "text-[11px] text-diff-remove";
+const CHANGES_OVERVIEW_SUMMARY_ADDITIONS_CLASS = "text-meta text-diff-add";
+const CHANGES_OVERVIEW_SUMMARY_DELETIONS_CLASS = "text-meta text-diff-remove";
 const CHANGES_OVERVIEW_LOADING_CLASS =
   "animate-pulse-live text-label text-ink-faint motion-reduce:animate-none";
 const CHANGES_OVERVIEW_DEGRADED_CLASS =
