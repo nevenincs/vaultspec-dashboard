@@ -5,15 +5,17 @@
 // (getScene), real dashboard-state, and real view scope — no component-internal
 // doubles.
 //
-// What survives the Cosmos nuke (the Cosmos force sliders, the canvas-bound
-// control, the set-cosmos-config seam, and the retired LayoutSelector /
-// representation-mode picker were all removed; the three-native force controls are
-// rebuilt in W04). The GraphControls surface is now navigation + a collapsed
-// settings popover whose body is the Freeze toggle:
+// Post-Cosmos: the set-cosmos-config seam, the canvas-bound control, and the
+// retired LayoutSelector / representation-mode picker were removed; the force
+// controls are rebuilt THREE-NATIVE against the field's `set-force-params` d3-force
+// seam. The GraphControls surface is navigation + a collapsed settings popover
+// (Freeze toggle + the force sliders):
 //   • Navigate emits the real camera SceneCommands (zoom-in/out, fit, reset);
-//   • the settings popover is COLLAPSED by default and only renders its body (the
-//     Freeze toggle) once opened — so the canvas is never occluded; opening +
-//     closing (toggle / Escape) works;
+//   • the settings popover is COLLAPSED by default and only renders its body once
+//     opened — so the canvas is never occluded; opening + closing (toggle / Escape)
+//     works;
+//   • the force sliders (Repulsion / Link distance / Link spring) emit
+//     set-force-params (repulsion → −charge; distance / spring straight through);
 //   • freezing the scene clears when the active scope changes;
 //   • the controls read + write only stores / the scene seam, never fetch.
 
@@ -142,6 +144,44 @@ describe("GraphControls — non-occluding overlay (collapsed settings popover)",
     expect(screen.getByRole("button", { name: "freeze simulation" })).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("button", { name: "freeze simulation" })).toBeNull();
+  });
+});
+
+describe("GraphControls — force tuning (set-force-params)", () => {
+  it("a Repulsion slider change emits set-force-params with the mapped d3 charge", () => {
+    const spy = vi.spyOn(getScene().controller, "command");
+    renderGraphControls();
+    openSettings();
+    const slider = screen.getByRole("slider", { name: "Repulsion" });
+    fireEvent.change(slider, { target: { value: "200" } });
+    const call = spy.mock.calls.find(
+      (c) => (c[0] as { kind: string }).kind === "set-force-params",
+    );
+    expect(call).toBeTruthy();
+    // Repulsion is a magnitude → a NEGATIVE charge on the d3-force field.
+    expect((call![0] as { params: { charge: number } }).params.charge).toBeCloseTo(
+      -200,
+    );
+  });
+
+  it("Link distance / Link spring map straight through to the field params", () => {
+    const spy = vi.spyOn(getScene().controller, "command");
+    renderGraphControls();
+    openSettings();
+    fireEvent.change(screen.getByRole("slider", { name: "Link distance" }), {
+      target: { value: "120" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Link spring" }), {
+      target: { value: "1.5" },
+    });
+    const params = spy.mock.calls
+      .filter((c) => (c[0] as { kind: string }).kind === "set-force-params")
+      .map(
+        (c) =>
+          (c[0] as { params: { linkDistance?: number; linkStrength?: number } }).params,
+      );
+    expect(params.some((p) => p.linkDistance === 120)).toBe(true);
+    expect(params.some((p) => p.linkStrength === 1.5)).toBe(true);
   });
 });
 
