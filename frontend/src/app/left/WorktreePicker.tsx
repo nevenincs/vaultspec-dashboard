@@ -17,7 +17,7 @@ import { TriangleAlert } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useId, useRef } from "react";
 
-import { IconButton, PanelLeft } from "../kit";
+import { FolderPlus, IconButton, PanelLeft } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
@@ -170,10 +170,9 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     >
       {/* The header row (binding `LeftRail` 238:600 / 686:2519): the project/worktree
           name as a PLAIN Inter-Medium title (no pill, no leading glyph) that opens the
-          chooser, then the SINGLE rail-collapse toggle. The folder-add button is
-          deliberately omitted (per user direction): the title already opens the
-          chooser, so a second control opening the same popup is redundant. The title
-          holds the dropdown a11y wiring; the dropdown list below is unchanged. */}
+          chooser, then the TWO trailing IconButtons the binding frame carries — the
+          folder-add and the rail-collapse toggle. The title holds the dropdown a11y
+          wiring; the dropdown list below is unchanged. */}
       <div
         className="flex items-center justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
@@ -205,6 +204,13 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         >
           {pickerView.triggerLabel}
         </button>
+        <IconButton
+          label="open or add a project"
+          title="open or add a project"
+          onClick={() => toggle(false)}
+        >
+          <FolderPlus size={16} aria-hidden />
+        </IconButton>
         <IconButton
           label="collapse left rail"
           title="collapse left rail"
