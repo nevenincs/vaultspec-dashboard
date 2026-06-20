@@ -4,14 +4,19 @@
 // the right rail's ops pattern - as a reusable hook so surfaces stop
 // reimplementing the two-click guard by hand.
 
-import { useCallback, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
-import type { Action, ActionMeta } from "./dispatch";
-import { appConfirmGuard, appDispatcher, isArmedResult } from "./middleware";
+import type { ActionMeta } from "./dispatch";
+import { appConfirmGuard, appDispatcher } from "./middleware";
 
 /** The raw dispatch bound to the app dispatcher, stable across renders. */
-export function useDispatch(): (action: Action) => unknown {
-  return useCallback((action: Action) => appDispatcher.dispatch(action), []);
+export function useDispatch(): (action: unknown) => unknown {
+  return useCallback((action: unknown) => appDispatcher.dispatch(action), []);
+}
+
+/** Stable handler-availability read for components that degrade unavailable verbs. */
+export function useCanDispatchAction(): (type: unknown) => boolean {
+  return useCallback((type: unknown) => appDispatcher.hasHandler(type), []);
 }
 
 /**
@@ -20,7 +25,7 @@ export function useDispatch(): (action: Action) => unknown {
  * the first call - prefer `useConfirmable` for that flow.
  */
 export function useAction<P = void>(
-  type: string,
+  type: unknown,
 ): (payload?: P, meta?: ActionMeta) => unknown {
   return useCallback(
     (payload?: P, meta?: ActionMeta) => appDispatcher.dispatch({ type, payload, meta }),
@@ -42,22 +47,24 @@ export interface Confirmable<P> {
  * run and `armed` flips true), the second runs the effect (and `armed` flips
  * back). Generalizes the ops rail's two-step guard for any surface.
  */
-export function useConfirmable<P = void>(type: string): Confirmable<P> {
-  const [armed, setArmed] = useState(false);
+export function useConfirmable<P = void>(type: unknown): Confirmable<P> {
+  const armed = useSyncExternalStore(
+    appConfirmGuard.subscribe,
+    () => appConfirmGuard.isArmed(type),
+    () => false,
+  );
   const trigger = useCallback(
     (payload?: P) => {
-      const result = appDispatcher.dispatch({
+      appDispatcher.dispatch({
         type,
         payload,
         meta: { guard: "confirm" },
       });
-      setArmed(isArmedResult(result));
     },
     [type],
   );
   const cancel = useCallback(() => {
     appConfirmGuard.disarm(type);
-    setArmed(false);
   }, [type]);
   return { armed, trigger, cancel };
 }

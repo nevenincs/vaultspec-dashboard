@@ -25,6 +25,7 @@ export interface KeyboardShortcutGroupView {
 
 interface KeyboardShortcutsState {
   open: boolean;
+  setOpen: (open: unknown) => void;
   openDialog: () => void;
   closeDialog: () => void;
   toggleDialog: () => void;
@@ -66,8 +67,19 @@ export function deriveKeyboardShortcutGroups(
   return [...byGroup.entries()].map(([name, shortcuts]) => ({ name, shortcuts }));
 }
 
+export function normalizeKeyboardShortcutsOpen(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set) => ({
   open: false,
+  setOpen: (open) =>
+    set((state) => {
+      const normalized = normalizeKeyboardShortcutsOpen(open);
+      return normalized === null || state.open === normalized
+        ? state
+        : { open: normalized };
+    }),
   openDialog: () => set({ open: true }),
   closeDialog: () => set({ open: false }),
   toggleDialog: () => set((state) => ({ open: !state.open })),
@@ -100,6 +112,10 @@ export function useKeyboardShortcutsGlobalToggle(): void {
       disposeBinding();
     };
   }, []);
+}
+
+export function setKeyboardShortcutsOpen(open: unknown): void {
+  useKeyboardShortcutsStore.getState().setOpen(open);
 }
 
 export function openKeyboardShortcuts(): void {

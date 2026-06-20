@@ -127,16 +127,16 @@ describe("double-fire resolution: canvas context overrides the colliding global"
 describe("the live action descriptors run the walk effect", () => {
   function harness(initial: string | null) {
     let selected = initial;
-    const selectedCalls: (string | null)[] = [];
-    const opened: string[] = [];
-    const expanded: string[] = [];
+    const selectedCalls: unknown[] = [];
+    const opened: unknown[] = [];
+    const expanded: unknown[] = [];
     const calls = {
-      select: (id: string | null) => {
-        selected = id;
+      select: (id: unknown) => {
+        selected = typeof id === "string" || id === null ? id : selected;
         selectedCalls.push(id);
       },
-      open: (id: string) => opened.push(id),
-      expand: (id: string) => expanded.push(id),
+      open: (id: unknown) => opened.push(id),
+      expand: (id: unknown) => expanded.push(id),
     };
     const handlers: GraphWalkHandlers = {
       selectedId: () => selected,

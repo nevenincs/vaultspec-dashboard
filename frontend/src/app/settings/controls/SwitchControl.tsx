@@ -8,30 +8,23 @@
 // the pill track takes rounded-fg-pill and the knob shadow takes shadow-fg-raised
 // in place of the legacy alias shims; the knob stays a perfect circle.
 
-import { decodeBool } from "../../../stores/server/settingsSelectors";
+import { deriveSettingsSwitchControlView } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
 export function SwitchControl({ def, value, onChange, disabled, id }: ControlProps) {
-  const on = decodeBool(value);
+  const view = deriveSettingsSwitchControlView(value);
   return (
     <button
       type="button"
       role="switch"
       id={id}
-      aria-checked={on}
+      aria-checked={view.checked}
       aria-label={def.label}
       disabled={disabled}
-      onClick={() => onChange(on ? "false" : "true")}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-fg-pill border transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
-        on ? "border-accent bg-accent" : "border-rule bg-paper-sunken"
-      }`}
+      onClick={() => onChange(view.nextValue)}
+      className={view.buttonClassName}
     >
-      <span
-        aria-hidden
-        className={`inline-block size-3.5 rounded-full bg-paper shadow-fg-raised transition-transform duration-ui-fast ${
-          on ? "translate-x-4" : "translate-x-0.5"
-        }`}
-      />
+      <span aria-hidden className={view.knobClassName} />
     </button>
   );
 }

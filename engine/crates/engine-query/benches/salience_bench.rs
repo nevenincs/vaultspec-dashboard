@@ -114,6 +114,10 @@ fn main() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(MAX_GRAPH_NODES);
+    assert!(
+        n <= MAX_GRAPH_NODES,
+        "VAULTSPEC_SALIENCE_NODES={n} exceeds the graph query ceiling {MAX_GRAPH_NODES}"
+    );
 
     eprintln!("salience_bench: building synthetic graph of {n} nodes (ceiling {MAX_GRAPH_NODES})");
     let (graph, nodes) = synthetic_graph(n);

@@ -14,11 +14,34 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { useActiveScope } from "../../app/stage/Stage";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
+import { DEFAULT_CHOICES } from "../view/filters";
+import { useLensStore } from "../view/lenses";
+import { usePinStore } from "../view/pins";
 import { useViewStore } from "../view/viewStore";
 import { EngineError } from "./engine";
-import { usePutSession, useSession, useSettings } from "./queries";
+import {
+  deriveAcceptedScopeContextMirror,
+  deriveDurableWorkspaceLayoutView,
+  deriveSessionScopeRestoreIntent,
+  normalizeDurableWorkspaceLayoutWrite,
+  restoredSessionContextSeed,
+} from "./sessionContext";
+import {
+  deriveActiveScope,
+  engineKeys,
+  isSupersededScopeSwitch,
+  isSupersededWorkspaceSwitch,
+  normalizeAcceptedWorkspaceSwitchState,
+  normalizeActiveScopeSwitchScope,
+  normalizeWorkspaceSwitchIntent,
+  switchActiveScope,
+  useActiveScope,
+  usePutSession,
+  useSession,
+  useSettings,
+  useSwapWorkspace,
+} from "./queries";
 
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
@@ -69,6 +92,50 @@ describe("session/settings client (live engine)", () => {
     const reread = await client.session();
     expect(reread.scope_context.folder).toBe("plan");
     expect(reread.scope_context.feature_tags).toEqual([tag]);
+  });
+
+  it("PUT /session merges folder context and durable workspace layout", async () => {
+    const client = createLiveClient();
+    const scope = await liveScope();
+    const tag = mark();
+    const layoutA = JSON.stringify({
+      v: 1,
+      tabs: [{ nodeId: `doc:${tag}-a`, surface: "markdown" }],
+      active: `doc:${tag}-a`,
+    });
+    const layoutB = JSON.stringify({
+      v: 1,
+      tabs: [{ nodeId: `doc:${tag}-b`, surface: "markdown" }],
+      active: `doc:${tag}-b`,
+    });
+
+    await client.putSession({ active_scope: scope });
+    await client.putSession({
+      set_workspace_layout: { scope, layout: layoutA },
+    });
+    const withContext = await client.putSession({
+      scope_context: {
+        scope,
+        folder: "plan",
+        feature_tags: [tag],
+      },
+    });
+
+    expect(withContext.scope_context).toMatchObject({
+      folder: "plan",
+      feature_tags: [tag],
+      workspace_layout: layoutA,
+    });
+
+    const withLayout = await client.putSession({
+      set_workspace_layout: { scope, layout: layoutB },
+    });
+
+    expect(withLayout.scope_context).toMatchObject({
+      folder: "plan",
+      feature_tags: [tag],
+      workspace_layout: layoutB,
+    });
   });
 
   it("PUT /session with an unknown active_scope is a tiered 400, scope unchanged", async () => {
@@ -138,6 +205,245 @@ describe("session/settings client (live engine)", () => {
 
 // --- restore-on-load through stores hooks ---------------------------------------
 
+describe("deriveActiveScope", () => {
+  it("uses one precedence order for global data subscriptions", () => {
+    expect(deriveActiveScope("picked", "persisted", "fallback")).toBe("picked");
+    expect(deriveActiveScope(null, "persisted", "fallback")).toBe("persisted");
+    expect(deriveActiveScope(null, null, "fallback")).toBe("fallback");
+    expect(deriveActiveScope(null, undefined, null)).toBeNull();
+  });
+});
+
+describe("deriveSessionScopeRestoreIntent", () => {
+  const base = {
+    attempted: false,
+    pickedScope: null,
+    sessionReady: true,
+    persistedScope: null,
+    fallbackScope: "fallback",
+    mutationIdle: true,
+  };
+
+  it("persists only the cold-start fallback scope", () => {
+    expect(deriveSessionScopeRestoreIntent(base)).toBe("fallback");
+    expect(deriveSessionScopeRestoreIntent({ ...base, attempted: true })).toBeNull();
+    expect(
+      deriveSessionScopeRestoreIntent({ ...base, pickedScope: "picked" }),
+    ).toBeNull();
+    expect(
+      deriveSessionScopeRestoreIntent({ ...base, sessionReady: false }),
+    ).toBeNull();
+    expect(
+      deriveSessionScopeRestoreIntent({ ...base, persistedScope: "persisted" }),
+    ).toBeNull();
+    expect(
+      deriveSessionScopeRestoreIntent({ ...base, fallbackScope: null }),
+    ).toBeNull();
+    expect(
+      deriveSessionScopeRestoreIntent({ ...base, mutationIdle: false }),
+    ).toBeNull();
+  });
+});
+
+describe("deriveAcceptedScopeContextMirror", () => {
+  const session = {
+    active_scope: "scope-a",
+    scope_context: { folder: "adr", feature_tags: ["ctx"] },
+  };
+
+  it("mirrors only the latest accepted scope-context response", () => {
+    expect(
+      deriveAcceptedScopeContextMirror({
+        writeSeq: 2,
+        currentSeq: 2,
+        writeScope: "scope-a",
+        activeScope: "scope-a",
+        session,
+      }),
+    ).toEqual({ folder: "adr", featureTags: ["ctx"] });
+    expect(
+      deriveAcceptedScopeContextMirror({
+        writeSeq: 1,
+        currentSeq: 2,
+        writeScope: "scope-a",
+        activeScope: "scope-a",
+        session,
+      }),
+    ).toBeNull();
+    expect(
+      deriveAcceptedScopeContextMirror({
+        writeSeq: 2,
+        currentSeq: 2,
+        writeScope: "scope-a",
+        activeScope: "scope-b",
+        session,
+      }),
+    ).toBeNull();
+    expect(
+      deriveAcceptedScopeContextMirror({
+        writeSeq: 2,
+        currentSeq: 2,
+        writeScope: "scope-b",
+        activeScope: "scope-b",
+        session,
+      }),
+    ).toBeNull();
+  });
+
+  it("normalizes accepted scope-context mirror payloads before store ingestion", () => {
+    expect(
+      deriveAcceptedScopeContextMirror({
+        writeSeq: 2,
+        currentSeq: 2,
+        writeScope: " scope-a ",
+        activeScope: "scope-a",
+        session: {
+          active_scope: " scope-a ",
+          scope_context: {
+            folder: " .vault/adr ",
+            feature_tags: [" ctx ", "ctx", "", 7],
+          },
+        },
+      }),
+    ).toEqual({ folder: ".vault/adr", featureTags: ["ctx"] });
+
+    expect(
+      deriveAcceptedScopeContextMirror({
+        writeSeq: 2,
+        currentSeq: 2,
+        writeScope: "   ",
+        activeScope: "scope-a",
+        session: {
+          active_scope: "scope-b",
+          scope_context: {
+            folder: { raw: ".vault/adr" },
+            feature_tags: [" kept "],
+          },
+        },
+      }),
+    ).toEqual({ folder: null, featureTags: ["kept"] });
+  });
+});
+
+describe("restoredSessionContextSeed", () => {
+  it("normalizes restored session context before seeding the view store", () => {
+    expect(
+      restoredSessionContextSeed(null, {
+        workspace: " workspace-a ",
+        active_scope: " scope-a ",
+        active_workspace: " project-a ",
+        scope_context: {
+          folder: " .vault/plan ",
+          feature_tags: [" feature-a ", "feature-a", "", 7],
+          workspace_layout: JSON.stringify({
+            v: 1,
+            tabs: [{ nodeId: " doc:a ", surface: "markdown" }],
+            active: " doc:a ",
+          }),
+        },
+        recents: [],
+        tiers: {},
+      }),
+    ).toMatchObject({
+      workspace: "project-a",
+      scope: "scope-a",
+      folder: ".vault/plan",
+      featureTags: ["feature-a"],
+      openDocs: [{ nodeId: "doc:a", surface: "markdown", provisional: false }],
+      activeDocId: "doc:a",
+    });
+  });
+
+  it("treats malformed picked scope as no picked scope", () => {
+    expect(
+      restoredSessionContextSeed(
+        { scope: "scope-a" },
+        {
+          workspace: "workspace-a",
+          active_scope: "scope-a",
+          active_workspace: null,
+          scope_context: { folder: null, feature_tags: [] },
+          recents: [],
+          tiers: {},
+        },
+      ),
+    ).toMatchObject({
+      workspace: "workspace-a",
+      scope: "scope-a",
+    });
+  });
+});
+
+describe("deriveDurableWorkspaceLayoutView", () => {
+  const session = {
+    active_scope: "scope-a",
+    scope_context: {
+      folder: null,
+      feature_tags: [],
+      workspace_layout: JSON.stringify({
+        v: 1,
+        tabs: [{ nodeId: "doc:a", surface: "markdown" }],
+        active: "doc:a",
+      }),
+    },
+  };
+
+  it("serves the durable dock layout only for the accepted active scope", () => {
+    expect(deriveDurableWorkspaceLayoutView("scope-a", true, session)).toEqual({
+      blob: session.scope_context.workspace_layout,
+      settled: true,
+    });
+    expect(deriveDurableWorkspaceLayoutView("scope-b", true, session)).toEqual({
+      blob: null,
+      settled: false,
+    });
+    expect(deriveDurableWorkspaceLayoutView(null, true, session)).toEqual({
+      blob: null,
+      settled: false,
+    });
+    expect(deriveDurableWorkspaceLayoutView("scope-a", false, session)).toEqual({
+      blob: session.scope_context.workspace_layout,
+      settled: false,
+    });
+  });
+
+  it("normalizes accepted scope and suppresses blank durable layout blobs", () => {
+    expect(
+      deriveDurableWorkspaceLayoutView(" scope-a ", true, {
+        active_scope: "scope-a",
+        scope_context: {
+          folder: null,
+          feature_tags: [],
+          workspace_layout: "   ",
+        },
+      }),
+    ).toEqual({ blob: null, settled: true });
+  });
+});
+
+describe("normalizeDurableWorkspaceLayoutWrite", () => {
+  it("normalizes durable workspace layout write identity", () => {
+    expect(normalizeDurableWorkspaceLayoutWrite(" scope-a ", ' {"v":1} ')).toEqual({
+      scope: "scope-a",
+      blob: '{"v":1}',
+    });
+    expect(normalizeDurableWorkspaceLayoutWrite("", "blob")).toEqual({
+      scope: null,
+      blob: "blob",
+    });
+    expect(normalizeDurableWorkspaceLayoutWrite("scope-a", { blob: "bad" })).toEqual({
+      scope: "scope-a",
+      blob: null,
+    });
+    expect(
+      normalizeDurableWorkspaceLayoutWrite("scope-a", "x".repeat(65 * 1024)),
+    ).toEqual({
+      scope: "scope-a",
+      blob: null,
+    });
+  });
+});
+
 describe("restore-on-load (useActiveScope over the session hook)", () => {
   beforeEach(() => {
     // Reset the shared view store so a previous test's pick does not leak.
@@ -201,17 +507,263 @@ describe("selection persistence (usePutSession)", () => {
   });
 });
 
+// --- active scope switch orchestration ------------------------------------------
+
+describe("active scope switching", () => {
+  afterEach(() => {
+    useViewStore.setState({
+      scope: null,
+      activeFolder: null,
+      featureContexts: [],
+      selection: null,
+      workingSet: [],
+      openedIds: [],
+    });
+    usePinStore.setState({ pinnedIds: [], workspace: "default", scope: "default" });
+    useLensStore.setState({ saved: [], workspace: "default", scope: "default" });
+  });
+
+  it("resets scoped view state and persists active_scope through one stores action", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    const tag = mark();
+    await createLiveClient().putSession({
+      scope_context: { scope, folder: "plan", feature_tags: [tag] },
+    });
+
+    useViewStore.getState().setScope("old-scope");
+    useViewStore.getState().setScopeContext({
+      folder: ".vault/adr",
+      featureTags: ["old-feature"],
+    });
+    useViewStore.getState().addToWorkingSet("doc:old");
+    useViewStore.getState().openNode("doc:old");
+    useViewStore
+      .getState()
+      .selectEntity({ kind: "event", id: "evt-old", nodeIds: ["doc:old"] });
+
+    const session = await switchActiveScope(scope, qc);
+
+    expect(session.active_scope).toBe(scope);
+    expect(qc.getQueryData(engineKeys.session())).toMatchObject({
+      active_scope: scope,
+    });
+    expect(useViewStore.getState()).toMatchObject({
+      scope,
+      activeFolder: "plan",
+      featureContexts: [tag],
+      selection: null,
+      workingSet: [],
+      openedIds: [],
+    });
+    await expect(createLiveClient().session()).resolves.toMatchObject({
+      active_scope: scope,
+      scope_context: {
+        folder: "plan",
+        feature_tags: [tag],
+      },
+    });
+  });
+
+  it("does not advance local scope when the session rejects the switch", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    await createLiveClient().putSession({ active_scope: scope });
+    useViewStore.getState().setScope(scope);
+
+    await expect(switchActiveScope("wt-does-not-exist", qc)).rejects.toBeInstanceOf(
+      EngineError,
+    );
+
+    expect(useViewStore.getState().scope).toBe(scope);
+    await expect(createLiveClient().session()).resolves.toMatchObject({
+      active_scope: scope,
+    });
+  });
+
+  it("rejects blank scope switches before local scope can move", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    useViewStore.getState().setScope(scope);
+
+    expect(normalizeActiveScopeSwitchScope(` ${scope} `)).toBe(scope);
+
+    await expect(switchActiveScope("   ", qc)).rejects.toThrow(
+      "scope switch requires a non-empty scope",
+    );
+    await expect(switchActiveScope({ scope }, qc)).rejects.toThrow(
+      "scope switch requires a non-empty scope",
+    );
+
+    expect(useViewStore.getState().scope).toBe(scope);
+  });
+
+  it("normalizes padded scope switches before session persistence", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    useViewStore.getState().setScope("old-scope");
+
+    const session = await switchActiveScope(` ${scope} `, qc);
+
+    expect(session.active_scope).toBe(scope);
+    expect(useViewStore.getState().scope).toBe(scope);
+    await expect(createLiveClient().session()).resolves.toMatchObject({
+      active_scope: scope,
+    });
+  });
+
+  it("normalizes workspace switch intent and accepted session view state", () => {
+    expect(normalizeWorkspaceSwitchIntent(" workspace-a ", " scope-a ")).toEqual({
+      workspace: "workspace-a",
+      scope: "scope-a",
+    });
+    expect(normalizeWorkspaceSwitchIntent("workspace-a", { scope: "scope-a" })).toEqual({
+      workspace: "workspace-a",
+      scope: null,
+    });
+    expect(() => normalizeWorkspaceSwitchIntent("   ", "scope-a")).toThrow(
+      "workspace switch requires a non-empty workspace",
+    );
+    expect(
+      normalizeAcceptedWorkspaceSwitchState(
+        { active_workspace: " accepted-workspace ", active_scope: " accepted-scope " },
+        { workspace: "fallback-workspace", scope: "fallback-scope" },
+      ),
+    ).toEqual({ workspace: "accepted-workspace", scope: "accepted-scope" });
+    expect(
+      normalizeAcceptedWorkspaceSwitchState(
+        { active_workspace: null, active_scope: "   " },
+        { workspace: "fallback-workspace", scope: "fallback-scope" },
+      ),
+    ).toEqual({ workspace: "fallback-workspace", scope: "fallback-scope" });
+  });
+
+  it("treats an older in-flight scope switch as superseded by newer intent", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    await createLiveClient().putSession({ active_scope: scope });
+    useViewStore.getState().setScope(scope);
+
+    const stale = switchActiveScope("wt-does-not-exist", qc).catch((error) => error);
+    const latest = switchActiveScope(scope, qc);
+
+    const staleError = await stale;
+    expect(isSupersededScopeSwitch(staleError)).toBe(true);
+
+    await expect(latest).resolves.toMatchObject({ active_scope: scope });
+    expect(useViewStore.getState().scope).toBe(scope);
+    await expect(createLiveClient().session()).resolves.toMatchObject({
+      active_scope: scope,
+    });
+  });
+
+  it("does not advance local workspace state when the session rejects the workspace", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    const session = await createLiveClient().session();
+    const workspace = session.active_workspace ?? session.workspace;
+    useViewStore.getState().setScope(scope);
+    usePinStore.setState({ pinnedIds: [], workspace, scope });
+    useLensStore.setState({ saved: [], workspace, scope });
+
+    const { result } = renderHook(() => useSwapWorkspace(), { wrapper: wrapper(qc) });
+
+    await expect(
+      result.current.swap("workspace-does-not-exist", "wt-does-not-exist"),
+    ).rejects.toBeInstanceOf(EngineError);
+
+    expect(useViewStore.getState().scope).toBe(scope);
+    expect(usePinStore.getState()).toMatchObject({ workspace, scope });
+    expect(useLensStore.getState()).toMatchObject({ workspace, scope });
+    await expect(createLiveClient().session()).resolves.toMatchObject({
+      active_scope: scope,
+      active_workspace: session.active_workspace,
+    });
+  });
+
+  it("treats an older in-flight workspace switch as superseded by newer intent", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    const client = createLiveClient();
+    const registry = await client.workspaces();
+    const workspace = registry.active_workspace ?? registry.workspaces[0]?.id;
+    if (!workspace) throw new Error("live fixture has no registered workspace");
+    await client.putSession({ active_workspace: workspace, active_scope: scope });
+    useViewStore.getState().setScope(scope);
+    usePinStore.setState({ pinnedIds: [], workspace, scope });
+    useLensStore.setState({ saved: [], workspace, scope });
+
+    const { result } = renderHook(() => useSwapWorkspace(), { wrapper: wrapper(qc) });
+
+    const stale = result.current
+      .swap("workspace-does-not-exist", "wt-does-not-exist")
+      .catch((error) => error);
+    const latest = result.current.swap(workspace, scope);
+
+    const staleError = await stale;
+    expect(isSupersededWorkspaceSwitch(staleError)).toBe(true);
+
+    await expect(latest).resolves.toMatchObject({
+      active_scope: scope,
+      active_workspace: workspace,
+    });
+    expect(useViewStore.getState().scope).toBe(scope);
+    expect(usePinStore.getState()).toMatchObject({ workspace, scope });
+    expect(useLensStore.getState()).toMatchObject({ workspace, scope });
+    await expect(client.session()).resolves.toMatchObject({
+      active_scope: scope,
+      active_workspace: workspace,
+    });
+  });
+
+  it("mirrors the accepted workspace switch scope context after the reset", async () => {
+    const qc = testQueryClient();
+    const scope = await liveScope();
+    const client = createLiveClient();
+    const session = await client.session();
+    const workspace = session.active_workspace ?? session.workspace;
+    const tag = mark();
+    await client.putSession({
+      scope_context: { scope, folder: "adr", feature_tags: [tag] },
+    });
+    useViewStore.getState().setScope("old-scope");
+    useViewStore.getState().setScopeContext({
+      folder: "plan",
+      featureTags: ["old-feature"],
+    });
+
+    const { result } = renderHook(() => useSwapWorkspace(), { wrapper: wrapper(qc) });
+
+    await expect(result.current.swap(` ${workspace} `, ` ${scope} `)).resolves.toMatchObject({
+      active_scope: scope,
+      active_workspace: workspace,
+      scope_context: {
+        folder: "adr",
+        feature_tags: [tag],
+      },
+    });
+    expect(useViewStore.getState()).toMatchObject({
+      scope,
+      activeFolder: "adr",
+      featureContexts: [tag],
+    });
+  });
+});
+
 // --- view-store seeding + wholesale-reset semantics -----------------------------
 // Pure store logic — no engine surface; unchanged by the live migration.
 
 describe("view store scope-context (seed + wholesale reset)", () => {
   afterEach(() => {
     useViewStore.setState({ scope: null, activeFolder: null, featureContexts: [] });
+    usePinStore.setState({ pinnedIds: [], workspace: "default", scope: "default" });
+    useLensStore.setState({ saved: [], workspace: "default", scope: "default" });
   });
 
   it("seedFromSession mirrors the restored context without the wholesale reset", () => {
     useViewStore.getState().addToWorkingSet("keep-me");
     useViewStore.getState().seedFromSession({
+      workspace: "workspace-a",
       scope: "scope-a",
       folder: "plan",
       featureTags: ["f1", "f2"],
@@ -224,8 +776,40 @@ describe("view store scope-context (seed + wholesale reset)", () => {
     expect(s.workingSet).toContain("keep-me");
   });
 
+  it("seedFromSession rekeys scoped client stores without the wholesale reset", () => {
+    useViewStore.getState().addToWorkingSet("keep-me");
+    usePinStore.setState({
+      pinnedIds: ["source:pinned"],
+      workspace: "source-workspace",
+      scope: "restore-source",
+    });
+    useLensStore.setState({
+      saved: [{ name: "source lens", choices: structuredClone(DEFAULT_CHOICES) }],
+      workspace: "source-workspace",
+      scope: "restore-source",
+    });
+
+    useViewStore.getState().seedFromSession({
+      workspace: "restore-workspace",
+      scope: "restore-target",
+      folder: "plan",
+      featureTags: ["f1"],
+    });
+
+    expect(useViewStore.getState().workingSet).toContain("keep-me");
+    expect(usePinStore.getState()).toMatchObject({
+      workspace: "restore-workspace",
+      scope: "restore-target",
+      pinnedIds: [],
+    });
+    expect(useLensStore.getState().workspace).toBe("restore-workspace");
+    expect(useLensStore.getState().scope).toBe("restore-target");
+    expect(useLensStore.getState().choicesFor("source lens")).toBeNull();
+  });
+
   it("setScope clears the folder context wholesale on a swap", () => {
     useViewStore.getState().seedFromSession({
+      workspace: "workspace-a",
       scope: "scope-a",
       folder: "adr",
       featureTags: ["x"],

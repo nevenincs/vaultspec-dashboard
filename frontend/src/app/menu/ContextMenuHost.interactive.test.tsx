@@ -17,14 +17,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
-import { useViewStore } from "../../stores/view/viewStore";
 import { ContextMenuHost } from "./ContextMenuHost";
 
 const first = vi.fn();
 const second = vi.fn();
 
 beforeEach(() => {
-  useViewStore.getState().setTimelineMode({ kind: "live" });
   registerResolver("node", () => [
     { id: "first", label: "First", section: "navigate", run: first },
     { id: "second", label: "Second", section: "navigate", run: second },

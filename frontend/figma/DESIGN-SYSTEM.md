@@ -1,9 +1,8 @@
 # Vaultspec Dashboard — Figma Design System (rewrite)
 
-**Status:** in-build (2026-06-15). Full UX rewrite. The pre-existing frames in file
-`SlhonORmySdoSMTQgDWw3w` (page "Components") are a **discardable template** — we are not
-tethered to them or to the current React implementation. Every surface is redesigned for a
-modern, cohesive, user-experience-first instrument. Designs drive code, not the reverse.
+**Status:** binding source. The frames in file `SlhonORmySdoSMTQgDWw3w` (page
+"Components") are the dashboard design authority. Code is authored to match them while
+preserving the established stores and scene contracts.
 
 This document is the **build contract**: every element built in Figma must conform to it,
 and every element is reviewed by a no-context UX front-end reviewer before it is "done".
@@ -47,8 +46,10 @@ An element is DONE only when ALL hold:
   - `scene/*` (PENDING create on next write-window): `canvas-bg`, `ink`, `ink-muted`, `rule`,
     `tier-{declared,structural,temporal,semantic}`, `state-{active,complete,archived,stale,
     broken}`, `status-{provisional,graded,tiered}`.
-- Source of truth: `frontend/tokens/figma/tokens.json`. Never invent colours; if a need has
-  no token, that is a palette gap to add upstream, not a raw hex.
+- Source of truth: the live Figma foundation in `SlhonORmySdoSMTQgDWw3w`; the
+  `frontend/tokens/` DTCG files mirror those values through the OKLCH generation pipeline.
+  Never invent colours; if a need has no token, that is a palette gap to close in Figma and
+  tokens together, not a raw hex.
 
 ## 3. Type / spacing / radius / elevation (to formalise as Figma styles/vars)
 

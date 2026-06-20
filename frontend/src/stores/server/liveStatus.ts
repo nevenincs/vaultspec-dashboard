@@ -6,6 +6,7 @@
 // resets it on a wholesale scope swap (findings 022/023), like the view stores.
 
 import { create } from "zustand";
+import { useEffect } from "react";
 
 export interface LiveStatusState {
   /**
@@ -18,10 +19,10 @@ export interface LiveStatusState {
   lastSeq: number | null;
   /** Broken structural edges in the held slice - a degradation input (section 8). */
   brokenLinkCount: number;
-  setStreamConnected: (connected: boolean) => void;
+  setStreamConnected: (connected: unknown) => void;
   /** Advance the resume point; never moves backward. */
-  setLastSeq: (seq: number) => void;
-  setBrokenLinkCount: (count: number) => void;
+  setLastSeq: (seq: unknown) => void;
+  setBrokenLinkCount: (count: unknown) => void;
   /** Reset on scope swap: a new corpus has its own live plane. */
   reset: () => void;
 }
@@ -32,19 +33,92 @@ const INITIAL = {
   brokenLinkCount: 0,
 };
 
+export function normalizeLiveStreamConnected(connected: unknown): boolean | null {
+  return typeof connected === "boolean" ? connected : null;
+}
+
+export function normalizeLiveSeq(seq: unknown): number | null {
+  return typeof seq === "number" && Number.isFinite(seq) && seq >= 0
+    ? Math.floor(seq)
+    : null;
+}
+
+export function normalizeLiveBrokenLinkCount(count: unknown): number | null {
+  return typeof count === "number" && Number.isFinite(count)
+    ? Math.max(0, Math.floor(count))
+    : null;
+}
+
 export const useLiveStatusStore = create<LiveStatusState>((set) => ({
   ...INITIAL,
-  setStreamConnected: (streamConnected) => set({ streamConnected }),
+  setStreamConnected: (streamConnected) =>
+    set((state) => {
+      const connected = normalizeLiveStreamConnected(streamConnected);
+      return connected === null || state.streamConnected === connected
+        ? state
+        : { streamConnected: connected };
+    }),
   setLastSeq: (seq) =>
-    set((state) =>
-      state.lastSeq !== null && seq <= state.lastSeq ? state : { lastSeq: seq },
-    ),
+    set((state) => {
+      const lastSeq = normalizeLiveSeq(seq);
+      return lastSeq === null || (state.lastSeq !== null && lastSeq <= state.lastSeq)
+        ? state
+        : { lastSeq };
+    }),
   setBrokenLinkCount: (brokenLinkCount) =>
-    set((state) =>
-      state.brokenLinkCount === brokenLinkCount ? state : { brokenLinkCount },
-    ),
+    set((state) => {
+      const count = normalizeLiveBrokenLinkCount(brokenLinkCount);
+      return count === null || state.brokenLinkCount === count
+        ? state
+        : { brokenLinkCount: count };
+    }),
   reset: () => set({ ...INITIAL }),
 }));
+
+export function setLiveStreamConnected(connected: unknown): void {
+  useLiveStatusStore.getState().setStreamConnected(connected);
+}
+
+export function markLiveStreamLost(): void {
+  setLiveStreamConnected(false);
+}
+
+export function advanceLiveSeq(seq: unknown): void {
+  useLiveStatusStore.getState().setLastSeq(seq);
+}
+
+export function setLiveBrokenLinkCount(count: unknown): void {
+  useLiveStatusStore.getState().setBrokenLinkCount(count);
+}
+
+export function countBrokenLinks(edges: readonly { state?: string | null }[]): number {
+  return edges.filter((edge) => edge.state === "broken").length;
+}
+
+export function setLiveBrokenLinkCountFromEdges(
+  edges: readonly { state?: string | null }[],
+): void {
+  setLiveBrokenLinkCount(countBrokenLinks(edges));
+}
+
+/**
+ * React seam for graph-derived live degradation state. Producers pass the held
+ * graph edges; liveStatus owns the reduction and store write so app surfaces do
+ * not compose graph-derived degradation state locally.
+ */
+export function useLiveBrokenLinkCountFromEdges(
+  edges: readonly { state?: string | null }[] | null,
+  enabled: boolean,
+): void {
+  useEffect(() => {
+    if (!enabled) return;
+    setLiveBrokenLinkCountFromEdges(edges ?? []);
+  }, [edges, enabled]);
+}
+
+export function resetLiveStatus(): void {
+  useLiveStatusStore.getState().reset();
+}
 
 /** A lost stream is a stream that was connected and is now explicitly down. */
 export function isStreamLost(state: Pick<LiveStatusState, "streamConnected">): boolean {

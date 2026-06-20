@@ -13,7 +13,11 @@ layer. Adding a view means adding a projection in `engine-query` and a
 query/selector in `frontend/src/stores/`, then a dumb view component that
 subscribes and emits intent (select, hover, expand) back; the view never
 `fetch`es the engine, never defines its own node shape, and never reads the raw
-`tiers` block.
+`tiers` block. Shared dashboard intent — selection, hover, filters, date range,
+timeline mode, graph query identity, graph bounds, and shared panel affordances
+— lives in backend dashboard-state and is consumed through TanStack-backed
+stores helpers; local view stores may hold only local chrome or entity metadata
+that is not part of the shared dashboard contract.
 
 ## Why
 
@@ -33,6 +37,14 @@ view growing its own endpoint and its own fetch, re-scattering wire access and
 recreating the [[mock-mirrors-live-wire-shape]] drift across N views instead of
 one.
 
+The `2026-06-17-dashboard-state-centralization-audit` reaffirmed this rule for
+state synchronization: duplicated local selection, filter, date-range, panel,
+and graph-query state produced split-brain behavior across the left panel, right
+panel, timeline, and graph stage. The final review also showed that even the
+canonical state engine must preserve the route's own served ids and merge
+partial backend state atomically, or subscribers can observe stale or reverted
+intent.
+
 ## How
 
 - **Good:** a tree view subscribes to the existing `/vault-tree` store query
@@ -42,17 +54,24 @@ one.
   `engine-query` over the same `LinkageGraph`, surfaced by a stores query; the
   view stays dumb. Generalize the one-off projections into a uniform family only
   when a third or fourth view actually strains them, never speculatively.
+- **Good:** a graph, timeline, or rail interaction writes shared intent through
+  dashboard-state mutation helpers, and every other surface reads the same
+  TanStack dashboard-state snapshot.
 - **Bad:** a new view component calling `fetch` against the engine, defining its
   own node type, or motivating a new model/view abstraction layer "to support the
   view" — the model and its ownership already exist; project over it, do not
   re-author it.
+- **Bad:** a panel, timeline, or graph component keeping its own copy of shared
+  filters, node selection, date range, graph identity, or panel tab state in a
+  local store and expecting other views to infer or mirror it.
 
 ## Status
 
 Active. Affirmed in the 2026-06-14 model/view advisory: the existing layer
 boundaries are sufficient for new views; the discipline is to project over the
 one model rather than author new per-view architecture. Sibling of
-[[dashboard-layer-ownership]].
+[[dashboard-layer-ownership]]. Reaffirmed by the 2026-06-17 dashboard-state
+centralization campaign for shared dashboard intent and TanStack-backed state.
 
 ## Source
 
@@ -63,3 +82,6 @@ Qt model/view analogy resolved onto the existing layers). Sibling rules
 [[graph-queries-are-bounded-by-default]] (projections stay bounded). Model owner:
 `engine-model` / `engine-graph` `LinkageGraph`; projection seam: `engine-query`;
 client model: `frontend/src/stores/`.
+State authority source:
+`2026-06-17-dashboard-state-centralization-audit` (resolved findings
+`dashboard-patch-006` and `feature-selection-007`).

@@ -10,7 +10,7 @@
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { ChangeEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import {
@@ -24,26 +24,29 @@ import {
  * and — only when the descriptor is a hunk rather than a whole file — copy the
  * hunk text.
  */
-export function changeMenu(entity: ChangeEntity): ActionDescriptor[] {
+export function changeMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "change") return [];
+
   const actions: ActionDescriptor[] = [
-    openInEditorAction({ id: "change:open-editor", path: entity.path }),
-    revealAction({ id: "change:reveal", path: entity.path }),
+    openInEditorAction({ id: "change:open-editor", path: normalizedEntity.path }),
+    revealAction({ id: "change:reveal", path: normalizedEntity.path }),
     copyAction({
       id: "change:copy-path",
       label: "Copy path",
-      text: entity.path,
+      text: normalizedEntity.path,
       what: "path",
     }),
   ];
 
   // Copy the hunk text only when this descriptor IS a hunk (a whole-file change
   // carries no hunk, so the action is omitted rather than disabled).
-  if (entity.hunk !== undefined) {
+  if (normalizedEntity.hunk !== undefined) {
     actions.push(
       copyAction({
         id: "change:copy-hunk",
         label: "Copy hunk",
-        text: entity.hunk,
+        text: normalizedEntity.hunk,
       }),
     );
   }
@@ -51,4 +54,4 @@ export function changeMenu(entity: ChangeEntity): ActionDescriptor[] {
   return actions;
 }
 
-registerResolver("change", changeMenu as ActionResolver<ChangeEntity>);
+registerResolver("change", changeMenu as ActionResolver);

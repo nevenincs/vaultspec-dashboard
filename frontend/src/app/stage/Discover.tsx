@@ -22,34 +22,60 @@
 // tiers truth), never guessed from a transport error.
 
 import { HelpCircle, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { TierMark } from "../../scene/field/markComponents";
 import { useDiscover } from "../../stores/server/queries";
-import { selectNode } from "../../stores/view/selection";
-import { useViewStore } from "../../stores/view/viewStore";
+import {
+  closeDiscoveryPanel,
+  openDiscoveryPanel,
+  pinDiscoveryCandidate,
+  useDiscoveryCandidateSelection,
+  useDiscoveryCandidateRows,
+  useDiscoveryPanelOpenView,
+  unpinDiscoveryCandidate,
+} from "../../stores/view/discoveries";
 
-export function Discover() {
-  const selectedId = useViewStore((s) => s.selectedId);
-  const pinned = useViewStore((s) => s.pinnedDiscoveries);
-  const pin = useViewStore((s) => s.pinDiscovery);
-  const unpin = useViewStore((s) => s.unpinDiscovery);
-  const [openFor, setOpenFor] = useState<string | null>(null);
+interface DiscoverProps {
+  selectedId?: string | null;
+  scope?: string | null;
+}
+
+export function Discover({
+  selectedId: canonicalSelectedId,
+  scope = null,
+}: DiscoverProps = {}) {
+  const selectedId = canonicalSelectedId ?? null;
+  const selectCandidate = useDiscoveryCandidateSelection(scope);
+  const openView = useDiscoveryPanelOpenView();
+  const openFor = openView?.id ?? null;
   const panelRef = useRef<HTMLDivElement>(null);
 
   // The wire read lives in the stores layer; the panel consumes the interpreted
   // loading / offline / candidates view (never the raw tiers block).
-  const discovery = useDiscover(openFor);
+  const discovery = useDiscover(openFor, scope);
+  const candidateRows = useDiscoveryCandidateRows(discovery.candidates);
 
   // Close on Escape — this is a non-modal role="dialog" surface, consistent with
   // the filter sidebar and layout panel.
-  useDismissOnEscape(() => setOpenFor(null), { enabled: openFor !== null });
+  useDismissOnEscape(closeDiscoveryPanel, { enabled: openFor !== null });
 
   // Focus the panel on open so keyboard users land inside it.
   useEffect(() => {
     if (openFor !== null) panelRef.current?.focus();
   }, [openFor]);
+
+  // Discovery is scoped to the canonical selected node. If selection moves while
+  // the panel is open, follow it rather than querying/displaying a stale node.
+  useEffect(() => {
+    if (openFor === null) return;
+    if (!selectedId || !scope) {
+      closeDiscoveryPanel();
+      return;
+    }
+    if (openFor !== selectedId) openDiscoveryPanel(selectedId);
+  }, [openFor, selectedId, scope]);
 
   if (!selectedId && openFor === null) return null;
 
@@ -58,7 +84,9 @@ export function Discover() {
       {openFor === null ? (
         <button
           type="button"
-          onClick={() => setOpenFor(selectedId)}
+          onClick={() => {
+            if (selectedId) openDiscoveryPanel(selectedId);
+          }}
           className="flex items-center gap-fg-1 rounded-fg-xs border border-tier-semantic/50 bg-paper-raised/90 px-fg-2 py-fg-1 text-accent-text shadow-fg-raised transition-colors duration-ui-fast ease-settle hover:border-tier-semantic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
           <TierMark tier="semantic" size={14} title="semantic" />
@@ -77,12 +105,12 @@ export function Discover() {
           <div className="flex items-center justify-between gap-fg-2">
             <span className="flex items-center gap-fg-1 font-medium text-ink">
               <TierMark tier="semantic" size={14} title="semantic discovery" />
-              discovery — {openFor.replace(/^(feature|doc):/, "")}
+              discovery — {openView?.label ?? ""}
             </span>
             <button
               type="button"
               aria-label="close discovery"
-              onClick={() => setOpenFor(null)}
+              onClick={closeDiscoveryPanel}
               className="flex items-center rounded-fg-xs text-ink-faint hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               <X size={13} aria-hidden />
@@ -107,8 +135,8 @@ export function Discover() {
               <p className="mt-fg-1 text-ink-faint">no candidates above the floor</p>
             )}
           <ul className="mt-fg-1 space-y-fg-1" role="list">
-            {discovery.candidates.map((candidate) => {
-              const isPinned = pinned.some((e) => e.id === candidate.id);
+            {candidateRows.map((row) => {
+              const { candidate } = row;
               return (
                 <li key={candidate.id} className="flex items-center gap-fg-2">
                   {/* Question-mark-qualified semantic mark: a quarantined
@@ -123,27 +151,29 @@ export function Discover() {
                   <button
                     type="button"
                     className="flex-1 truncate text-left text-ink-muted hover:text-ink hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-                    onClick={() => selectNode(candidate.dst)}
+                    onClick={() => selectCandidate(candidate.dst)}
                     title={candidate.dst}
                   >
-                    {candidate.dst.replace(/^(feature|doc):/, "")}
+                    {row.targetLabel}
                   </button>
                   <span data-tabular className="tabular-nums text-ink-faint">
-                    {Math.round(candidate.confidence * 100)}%
+                    {row.confidenceLabel}
                   </span>
                   <button
                     type="button"
-                    aria-pressed={isPinned}
+                    aria-pressed={row.pinned}
                     onClick={() =>
-                      isPinned ? unpinDiscoveryById(candidate.id) : pin(candidate)
+                      row.pinned
+                        ? unpinDiscoveryCandidate(candidate.id)
+                        : pinDiscoveryCandidate(candidate)
                     }
                     className={`rounded-fg-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                      isPinned
+                      row.pinned
                         ? "text-accent-text"
                         : "text-ink-faint hover:text-ink-muted"
                     }`}
                   >
-                    {isPinned ? "pinned (session)" : "pin"}
+                    {row.pinned ? "pinned (session)" : "pin"}
                   </button>
                 </li>
               );
@@ -153,8 +183,4 @@ export function Discover() {
       )}
     </div>
   );
-
-  function unpinDiscoveryById(id: string) {
-    unpin(id);
-  }
 }

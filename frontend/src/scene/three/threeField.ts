@@ -469,8 +469,8 @@ export class ThreeField implements SceneFieldRenderer {
         // overlay layer, not the field (mirrors CosmosField).
         break;
       case "set-bounds":
-        // No-op: the field uses a free force layout (forceX/Y gravity toward the
-        // origin); bounded containment shapes are not modelled here.
+        // No-op in the current field: graph bounds are preserved as a scene seam
+        // command so the dashboard state can project containment intent centrally.
         break;
       case "begin-interaction":
       case "end-interaction":

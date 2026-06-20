@@ -6,6 +6,10 @@ import { renderHook } from "@testing-library/react";
 import { getKeybinding, resetKeybindings } from "../../platform/keymap/registry";
 import { resetKeyActions, resolveKeyAction } from "../../stores/view/keymapDispatcher";
 import { RIGHT_RAIL_TABS } from "../../stores/view/shellLayout";
+import {
+  normalizeRightRailKeybindingTab,
+  rightRailTabChord,
+} from "../../stores/view/rightRailKeybindings";
 
 // The shell panel intent is the stores-owned dashboard-state write seam; mocked
 // so the tab-switch closures are observable without a query client.
@@ -86,5 +90,15 @@ describe("useRightRailKeybindings", () => {
 
   it("exposes the rail's keymap-context attribute value", () => {
     expect(RIGHT_RAIL_KEYMAP_CONTEXT).toBe("right-rail");
+  });
+
+  it("normalizes runtime right-rail keybinding identity inputs", () => {
+    expect(normalizeRightRailKeybindingTab(" search ")).toBe("search");
+    expect(normalizeRightRailKeybindingTab({ tab: "search" })).toBeNull();
+    expect(rightRailTabActionId(" search ")).toBe("right-rail:show-search");
+    expect(rightRailTabActionId({ tab: "search" })).toBeNull();
+    expect(rightRailTabChord(0)).toBe("Mod+1");
+    expect(rightRailTabChord("0")).toBeNull();
+    expect(rightRailTabChord(RIGHT_RAIL_TABS.length)).toBeNull();
   });
 });

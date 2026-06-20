@@ -1,0 +1,41 @@
+{
+  "figma": {
+    "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\filters-figma-217-633.png",
+    "file": "filters-figma-217-633.png",
+    "width": 276,
+    "height": 935
+  },
+  "live": {
+    "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\filters-live-276x935.png",
+    "file": "filters-live-276x935.png",
+    "width": 276,
+    "height": 935
+  },
+  "compare": {
+    "width": 276,
+    "height": 935
+  },
+  "artifacts": {
+    "split": {
+      "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\filters-split-276x935.png",
+      "file": "filters-split-276x935.png"
+    },
+    "overlay": {
+      "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\filters-overlay-alpha-276x935.png",
+      "file": "filters-overlay-alpha-276x935.png"
+    },
+    "diff": {
+      "path": "Y:\\code\\vaultspec-dashboard-worktrees\\main\\frontend\\output\\visual-compare\\filters-diff-276x935.png",
+      "file": "filters-diff-276x935.png"
+    }
+  },
+  "pixelDelta": {
+    "threshold": 24,
+    "changedPixelsOverThreshold": 38008,
+    "missingInLive": 12986,
+    "extraInLive": 25022,
+    "totalPixels": 258060,
+    "changedRatio": 0.1473,
+    "meanMaxChannelDelta": 22.45
+  }
+}

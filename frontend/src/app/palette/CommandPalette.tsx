@@ -33,7 +33,6 @@ import {
   setCommandPaletteArmedCommandId,
   setCommandPaletteCursor,
   setCommandPaletteQuery,
-  useCommandPaletteEscapeDismiss,
   useCommandPaletteGlobalToggle,
   useCommandPaletteArmedCommandId,
   useCommandPaletteCursor,
@@ -49,6 +48,7 @@ import {
   useCommandPaletteCommandView,
 } from "../../stores/view/commandPaletteCommands";
 import { trapTabFocus } from "../chrome/focusTrap";
+import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { useFocusRestore } from "../chrome/useFocusRestore";
 
 // --- the palette -----------------------------------------------------------------------
@@ -108,7 +108,7 @@ function CommandPaletteSurface() {
     closeCommandPalette();
   }, [reset]);
 
-  useCommandPaletteEscapeDismiss(close);
+  useDismissOnEscape(close, { enabled: open, preventDefault: true });
 
   useFocusRestore(open, {
     onOpen: () => inputRef.current?.focus(),

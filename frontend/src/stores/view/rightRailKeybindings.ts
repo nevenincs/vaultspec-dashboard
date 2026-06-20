@@ -15,23 +15,44 @@ export const RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID = "right-rail:focus-search";
 
 const RIGHT_RAIL_GROUP = "Right rail";
 
-export function rightRailTabActionId(tab: RailTabId): string {
-  return `right-rail:show-${tab}`;
+export function normalizeRightRailKeybindingTab(tab: unknown): RailTabId | null {
+  if (typeof tab !== "string") return null;
+  const normalized = tab.trim();
+  return RIGHT_RAIL_TABS.find((candidate) => candidate.id === normalized)?.id ?? null;
 }
 
-export function rightRailTabChord(index: number): string {
-  return `Mod+${index + 1}`;
+export function rightRailTabActionId(tab: unknown): string | null {
+  const normalizedTab = normalizeRightRailKeybindingTab(tab);
+  return normalizedTab === null ? null : `right-rail:show-${normalizedTab}`;
+}
+
+export function rightRailTabChord(index: unknown): string | null {
+  return Number.isInteger(index) &&
+    typeof index === "number" &&
+    index >= 0 &&
+    index < RIGHT_RAIL_TABS.length
+    ? `Mod+${index + 1}`
+    : null;
 }
 
 export function deriveRightRailKeybindings(): KeybindingDef[] {
+  const tabBindings = RIGHT_RAIL_TABS.flatMap((tab, index) => {
+    const id = rightRailTabActionId(tab.id);
+    const defaultChord = rightRailTabChord(index);
+    return id === null || defaultChord === null
+      ? []
+      : [
+          {
+            id,
+            defaultChord,
+            label: `Show the ${tab.label} tab`,
+            group: RIGHT_RAIL_GROUP,
+            context: "right-rail" as const,
+          },
+        ];
+  });
   return [
-    ...RIGHT_RAIL_TABS.map((tab, index) => ({
-      id: rightRailTabActionId(tab.id),
-      defaultChord: rightRailTabChord(index),
-      label: `Show the ${tab.label} tab`,
-      group: RIGHT_RAIL_GROUP,
-      context: "right-rail" as const,
-    })),
+    ...tabBindings,
     {
       id: RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
       defaultChord: "Mod+Shift+S",
@@ -67,18 +88,23 @@ export function useRightRailKeybindings(): void {
   useEffect(() => {
     const setRightTab = panelIntent.setRightTab;
     const disposeBindings = registerKeybindings(deriveRightRailKeybindings());
-    const disposeTabs = RIGHT_RAIL_TABS.map((tab) =>
-      registerKeyAction(
-        rightRailTabActionId(tab.id),
-        (): ActionDescriptor => ({
-          id: rightRailTabActionId(tab.id),
-          label: `Show the ${tab.label} tab`,
-          run: () => {
-            void setRightTab(tab.id).catch(() => undefined);
-          },
-        }),
-      ),
-    );
+    const disposeTabs = RIGHT_RAIL_TABS.flatMap((tab) => {
+      const id = rightRailTabActionId(tab.id);
+      return id === null
+        ? []
+        : [
+            registerKeyAction(
+              id,
+              (): ActionDescriptor => ({
+                id,
+                label: `Show the ${tab.label} tab`,
+                run: () => {
+                  void setRightTab(tab.id).catch(() => undefined);
+                },
+              }),
+            ),
+          ];
+    });
     const disposeFocusSearch = registerKeyAction(
       RIGHT_RAIL_FOCUS_SEARCH_ACTION_ID,
       (): ActionDescriptor => ({

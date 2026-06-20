@@ -1,11 +1,11 @@
 ---
 tags:
-  - '#research'
-  - '#beta'
-date: '2026-01-04'
-modified: '2026-01-04'
+  - "#research"
+  - "#beta"
+date: "2026-01-04"
+modified: "2026-01-04"
 related:
-  - '[[2026-01-05-beta-adr]]'
+  - "[[2026-01-05-beta-adr]]"
 ---
 
 # `beta` research: scope

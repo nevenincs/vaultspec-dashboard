@@ -39,7 +39,7 @@ Centralize all filtering onto one canonical surface (the left rail), make the gr
 Design the canonical filter (search field plus advanced facet flyout) into the binding left-rail node and update the node bindings, since Figma is the binding source of truth and code mirrors it.
 
 - [x] `P02.S05` - design the canonical filter (search field plus advanced facet flyout) into the binding left-rail node in Figma; `frontend/figma/`.
-- [ ] `P02.S06` - update the node bindings for the relocated filter; `frontend/figma/component-map.json`.
+- [x] `P02.S06` - update the node bindings for the relocated filter; `frontend/figma/component-map.json`.
 
 ### Phase `P03` - coerce code: rail gains the canonical filter, graph retires
 

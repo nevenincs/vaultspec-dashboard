@@ -126,7 +126,7 @@ function SectionCard({
 // Location strip — slim "where are we" (worktree · branch over a faint path).
 // ---------------------------------------------------------------------------
 
-function LocationStrip({ scope }: { scope: string | null }) {
+function LocationStrip({ scope }: { scope: unknown }) {
   const anchor = useLocationAnchor(scope);
   if (!anchor.path) {
     return (
@@ -267,7 +267,7 @@ function PlanPill({
   );
 }
 
-function OpenPlansBody({ scope }: { scope: string | null }) {
+function OpenPlansBody({ scope }: { scope: unknown }) {
   const timeline = useDashboardTimelineModeView(scope);
   const asOf = timeline.asOf;
   const view = usePipelineStatusView(scope, asOf);
@@ -361,7 +361,7 @@ function PrRow({ row }: { row: PullRequestRowView }) {
   );
 }
 
-function OpenPrsBody({ scope }: { scope: string | null }) {
+function OpenPrsBody({ scope }: { scope: unknown }) {
   const view = usePRsView(scope, "open");
   if (view.showLoading) {
     return (
@@ -389,7 +389,7 @@ function OpenPrsBody({ scope }: { scope: string | null }) {
   );
 }
 
-function RecentPrsBody({ scope }: { scope: string | null }) {
+function RecentPrsBody({ scope }: { scope: unknown }) {
   const view = usePRsView(scope, "merged");
   if (view.showLoading) {
     return (
@@ -451,7 +451,7 @@ function IssueRow({ row }: { row: IssueRowView }) {
   );
 }
 
-function OpenIssuesBody({ scope }: { scope: string | null }) {
+function OpenIssuesBody({ scope }: { scope: unknown }) {
   const view = useIssuesView(scope, "open");
   if (view.showLoading) {
     return (
@@ -483,7 +483,7 @@ function OpenIssuesBody({ scope }: { scope: string | null }) {
 // Recent commits — expandable rows revealing the full message body + show-more.
 // ---------------------------------------------------------------------------
 
-function RecentCommitsBody({ scope }: { scope: string | null }) {
+function RecentCommitsBody({ scope }: { scope: unknown }) {
   const chrome = useRecentCommitsChrome(HISTORY_PAGE);
   const view = useHistoryView(scope, chrome.limit);
 

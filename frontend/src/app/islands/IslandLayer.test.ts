@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  pinDiscoveryCandidate,
+  unpinDiscoveryCandidate,
+} from "../../stores/view/discoveries";
+import { setDwelledHoverNodeId, setHoveredNodeId } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
-import { ISLAND_MAX_SCALE, ISLAND_MIN_SCALE, islandStyle } from "./IslandLayer";
+import {
+  ISLAND_MAX_SCALE,
+  ISLAND_MIN_SCALE,
+  islandStyle,
+} from "../../stores/view/islandAnchors";
 
 describe("islandStyle", () => {
   it("hides islands without an anchor (node off stage)", () => {
@@ -34,11 +43,10 @@ describe("viewStore discovery pinning (G3.c, session-only)", () => {
       tier: "semantic" as const,
       confidence: 0.6,
     };
-    const { pinDiscovery, unpinDiscovery } = useViewStore.getState();
-    pinDiscovery(edge);
-    pinDiscovery(edge);
+    pinDiscoveryCandidate(edge);
+    pinDiscoveryCandidate(edge);
     expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(1);
-    unpinDiscovery("cand-1");
+    unpinDiscoveryCandidate("cand-1");
     expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(0);
   });
 });
@@ -53,5 +61,30 @@ describe("viewStore opened nodes", () => {
     closeNode("n1");
     expect(useViewStore.getState().openedIds).toEqual(["n2"]);
     closeNode("n2");
+  });
+});
+
+describe("viewStore hover-card dwell", () => {
+  it("stores hover-card dwell state centrally and clears it with hover-out", () => {
+    setHoveredNodeId("n-hover");
+    setDwelledHoverNodeId("n-hover");
+
+    expect(useViewStore.getState().hoveredId).toBe("n-hover");
+    expect(useViewStore.getState().dwelledHoverId).toBe("n-hover");
+
+    setHoveredNodeId(null);
+
+    expect(useViewStore.getState().hoveredId).toBeNull();
+    expect(useViewStore.getState().dwelledHoverId).toBeNull();
+  });
+
+  it("prunes stale hover-card dwell ids when the graph model drops a node", () => {
+    setHoveredNodeId("n-stale");
+    setDwelledHoverNodeId("n-stale");
+
+    useViewStore.getState().pruneNodeAffordances(["n-other"]);
+
+    expect(useViewStore.getState().hoveredId).toBeNull();
+    expect(useViewStore.getState().dwelledHoverId).toBeNull();
   });
 });

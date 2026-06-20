@@ -9,13 +9,32 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { resetKeybindings } from "../../platform/keymap/registry";
+import {
+  KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
+  useKeyboardShortcutsStore,
+} from "../../stores/view/keyboardShortcuts";
+import {
+  resetKeyActions,
+  useKeymapDispatcher,
+} from "../../stores/view/keymapDispatcher";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 
-afterEach(cleanup);
+function KeyboardShortcutsHarness() {
+  useKeymapDispatcher();
+  return <KeyboardShortcuts />;
+}
+
+afterEach(() => {
+  cleanup();
+  resetKeyActions();
+  resetKeybindings();
+  useKeyboardShortcutsStore.getState().reset();
+});
 
 describe("KeyboardShortcuts", () => {
   it("is closed until the global ? key opens it", () => {
-    render(<KeyboardShortcuts />);
+    render(<KeyboardShortcutsHarness />);
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.keyDown(window, { key: "?" });
     const dialog = screen.getByRole("dialog");
@@ -24,14 +43,11 @@ describe("KeyboardShortcuts", () => {
   });
 
   it("renders the real shortcut groups with keycaps", () => {
-    render(<KeyboardShortcuts />);
+    render(<KeyboardShortcutsHarness />);
     fireEvent.keyDown(window, { key: "?" });
     expect(screen.getByText("General")).toBeTruthy();
-    expect(screen.getByText("Graph & selection")).toBeTruthy();
-    expect(screen.getByText("Timeline")).toBeTruthy();
-    // A known shortcut row + its keycap rendered as a <kbd> element.
-    expect(screen.getByText("Open the command palette")).toBeTruthy();
-    const caps = screen.getAllByText("K");
+    expect(screen.getByText(KEYBOARD_SHORTCUTS_TOGGLE_LABEL)).toBeTruthy();
+    const caps = screen.getAllByText("?");
     expect(caps.some((el) => el.tagName.toLowerCase() === "kbd")).toBe(true);
   });
 
@@ -39,7 +55,7 @@ describe("KeyboardShortcuts", () => {
     render(
       <>
         <input aria-label="query" />
-        <KeyboardShortcuts />
+        <KeyboardShortcutsHarness />
       </>,
     );
     const input = screen.getByLabelText("query");
@@ -49,7 +65,7 @@ describe("KeyboardShortcuts", () => {
   });
 
   it("Escape dismisses the legend", () => {
-    render(<KeyboardShortcuts />);
+    render(<KeyboardShortcutsHarness />);
     fireEvent.keyDown(window, { key: "?" });
     expect(screen.getByRole("dialog")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });

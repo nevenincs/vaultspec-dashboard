@@ -12,20 +12,20 @@
 // the token-bound theme (themes-are-oklch / warmth-lives-in-tokens).
 
 import type { ReactElement, ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 
-import type { ContentView } from "../../stores/server/queries";
+import { deriveCodeViewerView, type ContentView } from "../../stores/server/queries";
+import {
+  deriveCodeLineRowStyle,
+  deriveCodeLineWindow,
+  deriveCodeLineWindowPresentation,
+  setCodeViewerScrollTop,
+  useCodeViewerScrollTop,
+} from "../../stores/view/codeViewer";
+import { useElementHeight } from "../chrome/useElementWidth";
 import { Badge } from "../kit";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
-
-/** Fixed line-row height (px) — a monospace code row. Drives the windowed math:
- *  a fixed height lets the viewer compute the visible range from scrollTop without
- *  measuring each row. */
-const LINE_HEIGHT = 20;
-/** Extra rows rendered above/below the viewport so a fast scroll never flashes
- *  blank before the next window paints. */
-const OVERSCAN = 12;
 
 /** Render one tokenized line's spans, each colored by its theme token (the
  *  `var(--color-*)` foreground the token-bound theme emits). A plain line (no
@@ -60,62 +60,43 @@ function CodeLines({
   rawLines: string[];
   tokenLines: TokenLine[] | null;
 }): ReactElement {
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportH, setViewportH] = useState(600);
+  const scrollTop = useCodeViewerScrollTop();
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-
-  // Measure the viewport height (and re-measure on resize) so the visible-window
-  // math tracks the actual panel size, not a fixed guess.
-  const measure = useCallback((el: HTMLDivElement | null) => {
-    scrollerRef.current = el;
-    if (el) setViewportH(el.clientHeight || 600);
-  }, []);
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setViewportH(el.clientHeight || 600));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const viewportHeight = useElementHeight(scrollerRef) ?? 600;
 
   const total = rawLines.length;
-  const first = Math.max(0, Math.floor(scrollTop / LINE_HEIGHT) - OVERSCAN);
-  const visibleCount = Math.ceil(viewportH / LINE_HEIGHT) + OVERSCAN * 2;
-  const last = Math.min(total, first + visibleCount);
-  const gutterWidth = `${String(total).length + 1}ch`;
+  const lineWindow = deriveCodeLineWindow({
+    totalLines: total,
+    scrollTop,
+    viewportHeight,
+  });
+  const presentation = deriveCodeLineWindowPresentation(lineWindow);
 
   return (
     <div
-      ref={measure}
-      className="min-h-0 flex-1 overflow-auto bg-paper-sunken font-mono text-body"
-      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      ref={scrollerRef}
+      className={presentation.scrollerClassName}
+      onScroll={(e) => setCodeViewerScrollTop(e.currentTarget.scrollTop)}
       role="region"
-      aria-label="file contents"
+      aria-label={presentation.scrollerAriaLabel}
     >
-      <div style={{ height: total * LINE_HEIGHT, position: "relative" }}>
-        {rawLines.slice(first, last).map((raw, i) => {
-          const lineNo = first + i;
+      <div style={presentation.spacerStyle}>
+        {rawLines.slice(lineWindow.first, lineWindow.last).map((raw, i) => {
+          const lineNo = lineWindow.first + i;
           return (
             <div
               key={lineNo}
-              className="flex whitespace-pre"
-              style={{
-                position: "absolute",
-                top: lineNo * LINE_HEIGHT,
-                height: LINE_HEIGHT,
-                lineHeight: `${LINE_HEIGHT}px`,
-                left: 0,
-                right: 0,
-              }}
+              className={presentation.rowClassName}
+              style={deriveCodeLineRowStyle(lineNo, lineWindow)}
             >
               <span
-                className="sticky left-0 select-none pr-fg-2 text-right text-ink-faint"
-                style={{ width: gutterWidth, flex: "0 0 auto" }}
+                className={presentation.gutterClassName}
+                style={presentation.gutterStyle}
                 aria-hidden
               >
                 {lineNo + 1}
               </span>
-              <code className="px-fg-1">
+              <code className={presentation.codeClassName}>
                 {tokenLines && tokenLines[lineNo] ? (
                   <TokenizedLine tokens={tokenLines[lineNo]} />
                 ) : (
@@ -139,28 +120,14 @@ function CodeLines({
 export function CodeViewer({ content }: { content: ContentView }): ReactElement {
   // Hooks run unconditionally (rules-of-hooks): tokenize whatever text is held
   // (empty string while loading/degraded), then branch on the view state below.
-  const text = content.available ? content.text : "";
-  const { lines: tokenLines } = useTokenLines(text, content.languageHint);
+  const view = deriveCodeViewerView(content);
+  const { lines: tokenLines } = useTokenLines(view.text, view.languageHint);
 
-  if (content.loading) {
-    return <ViewerState>Loading file…</ViewerState>;
-  }
-  if (content.errored) {
-    return <ViewerState tone="broken">The file could not be loaded.</ViewerState>;
-  }
-  if (content.degraded) {
-    const reason = content.reasons.structural;
+  if (view.state !== "ready") {
     return (
-      <ViewerState tone="muted">
-        File unavailable{reason ? `: ${reason}` : ""}.
-      </ViewerState>
+      <ViewerState toneClass={view.stateToneClass}>{view.stateMessage}</ViewerState>
     );
   }
-  if (!content.available || text.length === 0) {
-    return <ViewerState>This file is empty.</ViewerState>;
-  }
-
-  const rawLines = text.replace(/\n$/, "").split("\n");
 
   return (
     <div className="flex h-full flex-col">
@@ -168,23 +135,23 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
           and a "read-only" affordance label. */}
       <header className="flex items-center gap-fg-2 border-b border-rule bg-paper px-fg-3 py-fg-1">
         <span className="min-w-0 flex-1 truncate font-mono text-label text-ink-muted">
-          {content.path}
+          {view.path}
         </span>
-        {content.languageHint && (
+        {view.languageHint && (
           <Badge>
-            <span className="capitalize">{content.languageHint}</span>
+            <span className="capitalize">{view.languageHint}</span>
           </Badge>
         )}
-        <span className="shrink-0 text-caption text-ink-faint">read-only</span>
+        <span className="shrink-0 text-caption text-ink-faint">
+          {view.readOnlyLabel}
+        </span>
       </header>
-      {content.truncated && (
+      {view.truncationMessage && (
         <div className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted">
-          Truncated to the first {content.truncated.returned_bytes.toLocaleString()} of{" "}
-          {content.truncated.total_bytes.toLocaleString()} bytes — open the file
-          directly for the full contents.
+          {view.truncationMessage}
         </div>
       )}
-      <CodeLines rawLines={rawLines} tokenLines={tokenLines} />
+      <CodeLines rawLines={view.rawLines} tokenLines={tokenLines} />
     </div>
   );
 }
@@ -193,20 +160,14 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
  *  states. Reads the Reader/Meta role; the tone selects the ink token. */
 function ViewerState({
   children,
-  tone = "faint",
+  toneClass,
 }: {
   children: ReactNode;
-  tone?: "faint" | "muted" | "broken";
+  toneClass: string;
 }): ReactElement {
-  const inkClass =
-    tone === "broken"
-      ? "text-state-broken"
-      : tone === "muted"
-        ? "text-ink-muted"
-        : "text-ink-faint";
   return (
     <div
-      className={`reader-meta flex h-full items-center justify-center p-fg-6 text-center ${inkClass}`}
+      className={`reader-meta flex h-full items-center justify-center p-fg-6 text-center ${toneClass}`}
     >
       <p>{children}</p>
     </div>

@@ -4,10 +4,10 @@
 // `LineageNode` (its derived `phase`, with `doc_type` as the deterministic
 // fallback) to the lane it sits in, and the lane geometry the renderer reads.
 //
-// THIS is the one source of truth for the lane list and its type — `Timeline.tsx`
-// re-exports `PHASE_LANES`/`PhaseLane` from here so the per-lane visibility view
-// state keys off the same list (no duplicated lane vocabulary). The doc-type
-// fallback mirrors the engine's canonical `phase_for_doc_type` mapping
+// The lane list and type live in `stores/view/timelinePhases` so timeline view
+// state and timeline rendering key off the same vocabulary. This module owns the
+// render-facing lane descriptors and pure mapping helpers. The doc-type fallback
+// mirrors the engine's canonical `phase_for_doc_type` mapping
 // (`engine-query/src/pipeline.rs`) exactly: research/reference -> research,
 // adr -> adr, plan -> plan, exec -> exec, audit -> review, rule -> codify;
 // commits are ambient (not a phase lane, off by default per the ADR) and an
@@ -17,23 +17,9 @@
 // its inputs (no time, no DOM, no React) so it is fully unit-testable; W03.P06
 // renders against the geometry these helpers return.
 
-/**
- * The six pipeline-phase lanes the timeline draws, in fixed top-to-bottom
- * pipeline order: research (research + reference ground the work) -> adr -> plan
- * -> exec -> review (audits) -> codify (rules). The index in this array IS the
- * lane's vertical order. These are the engine `LineagePhase` lane tokens.
- */
-export const PHASE_LANES = [
-  "research",
-  "adr",
-  "plan",
-  "exec",
-  "review",
-  "codify",
-] as const;
+import { PHASE_LANES, type PhaseLane } from "../../stores/view/timelinePhases";
 
-/** One phase lane id (a `LineagePhase` wire token). */
-export type PhaseLane = (typeof PHASE_LANES)[number];
+export { PHASE_LANES, type PhaseLane };
 
 /**
  * The presentational descriptor a lane renders with (binding Figma `Timeline`
@@ -213,6 +199,17 @@ export const TIMELINE_LANE_GROUPS: readonly TimelineLaneGroup[] = [
     phases: ["exec", "codify"],
   },
 ] as const;
+
+/**
+ * Figma renders the design group as two stacked rail labels so Plans/Audits are
+ * visible in the narrow gutter. The group label remains one stable identity
+ * string; this helper is only the presentational line break.
+ */
+export function laneGroupLabelLines(group: TimelineLaneGroup): readonly string[] {
+  return group.id === "design"
+    ? ["Research · Decisions", "Plans · Audits"]
+    : [group.label];
+}
 
 const GROUP_OF_PHASE: Record<PhaseLane, TimelineLaneGroupId> = {
   research: "design",

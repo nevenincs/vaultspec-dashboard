@@ -9,16 +9,40 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ContentView } from "../server/queries";
 import {
+  applyRenamedMarkdownDocWorkspace,
+  activateDocTab,
+  closeDocTab,
   deriveDockDocPanelView,
   deriveDockTabHeaderView,
   deriveDockWorkspaceSyncPlan,
   dockTabTitle,
+  normalizeDockWorkspaceTabsView,
+  normalizeWorkspaceLayoutBlob,
+  openDocTab,
+  parseWorkspaceTabs,
+  previewDocTab,
+  reorderDocTabs,
   restoreDocTabsIfEmpty,
+  serializeWorkspaceTabs,
+  WORKSPACE_LAYOUT_BLOB_MAX_CHARS,
 } from "./tabs";
-import { MAX_OPEN_DOCS, useViewStore } from "./viewStore";
+import {
+  MAX_OPEN_DOCS,
+  normalizeOpenDocs,
+  normalizeViewerSurface,
+  useViewStore,
+  type OpenDoc,
+} from "./viewStore";
 
 function reset(): void {
-  useViewStore.setState({ openDocs: [], activeDocId: null });
+  useViewStore.setState({
+    openDocs: [],
+    activeDocId: null,
+    editorTarget: null,
+    draftText: "",
+    baseBlobHash: "",
+    editorStatus: "idle",
+  });
 }
 
 function ids(): string[] {
@@ -75,6 +99,72 @@ describe("provisional (preview) tabs", () => {
       { nodeId: "doc:a", surface: "markdown", provisional: true },
     ]);
     expect(state.activeDocId).toBe("doc:a");
+  });
+
+  it("normalizes tab and editor node ids through the shared graph-id seam", () => {
+    useViewStore.getState().openDoc(" doc:a ", "markdown", false);
+    expect(ids()).toEqual(["doc:a"]);
+    expect(useViewStore.getState().activeDocId).toBe("doc:a");
+
+    useViewStore.getState().openDoc("   ", "markdown", true);
+    expect(ids()).toEqual(["doc:a"]);
+
+    useViewStore.getState().promoteDoc(" doc:a ");
+    expect(useViewStore.getState().openDocs[0]?.provisional).toBe(false);
+
+    useViewStore.getState().openDoc("doc:b", "markdown", true);
+    useViewStore.getState().reorderDocs([" doc:b ", "doc:a"]);
+    expect(ids()).toEqual(["doc:b", "doc:a"]);
+
+    useViewStore.getState().activateDoc(" doc:a ");
+    expect(useViewStore.getState().activeDocId).toBe("doc:a");
+
+    useViewStore.getState().openEditor(" doc:a ", "body", "hash-a");
+    expect(useViewStore.getState().editorTarget).toEqual({ nodeId: "doc:a" });
+
+    useViewStore.getState().closeDoc(" doc:a ");
+    expect(ids()).toEqual(["doc:b"]);
+  });
+
+  it("normalizes public tab intent inputs at the seam", async () => {
+    await expect(previewDocTab(" doc:preview ", "unknown")).resolves.toBe(false);
+    expect(useViewStore.getState()).toMatchObject({
+      openDocs: [{ nodeId: "doc:preview", surface: "markdown", provisional: true }],
+      activeDocId: "doc:preview",
+    });
+
+    await expect(openDocTab(" code:src/app.ts ", "code")).resolves.toBe(false);
+    expect(useViewStore.getState()).toMatchObject({
+      activeDocId: "code:src/app.ts",
+    });
+    expect(useViewStore.getState().openDocs.at(-1)).toMatchObject({
+      nodeId: "code:src/app.ts",
+      surface: "code",
+      provisional: false,
+    });
+
+    activateDocTab(" doc:preview ");
+    expect(useViewStore.getState().activeDocId).toBe("doc:preview");
+
+    reorderDocTabs([" code:src/app.ts ", "doc:preview", "missing"]);
+    expect(ids()).toEqual(["code:src/app.ts", "doc:preview"]);
+    reorderDocTabs(null);
+    expect(ids()).toEqual(["code:src/app.ts", "doc:preview"]);
+
+    closeDocTab(" code:src/app.ts ");
+    expect(ids()).toEqual(["doc:preview"]);
+    expect(await openDocTab("   ", "markdown")).toBe(false);
+    expect(ids()).toEqual(["doc:preview"]);
+  });
+
+  it("normalizes runtime tab state projections before consumption", () => {
+    expect(normalizeViewerSurface("code")).toBe("code");
+    expect(normalizeViewerSurface("unknown")).toBe("markdown");
+    expect(normalizeOpenDocs(null)).toEqual([]);
+    expect(normalizeDockWorkspaceTabsView(null, "doc:a")).toEqual({
+      openDocs: [],
+      activeDocId: null,
+    });
   });
 
   it("replaces the provisional tab in place rather than spawning a new one", () => {
@@ -148,6 +238,33 @@ describe("close and neighbour activation", () => {
   });
 });
 
+describe("rename re-key", () => {
+  it("re-keys the tab and editor through one dock workspace operation", async () => {
+    useViewStore.getState().openDoc("doc:old", "markdown", true);
+    useViewStore.getState().openEditor("doc:old", "edited body", "hash-old");
+
+    await expect(
+      applyRenamedMarkdownDocWorkspace(
+        {
+          oldNodeId: "doc:old",
+          newNodeId: "doc:new",
+          newBlobHash: "hash-new",
+        },
+        "edited body",
+        null,
+      ),
+    ).resolves.toBe(false);
+
+    expect(useViewStore.getState()).toMatchObject({
+      openDocs: [{ nodeId: "doc:new", surface: "markdown", provisional: false }],
+      activeDocId: "doc:new",
+      editorTarget: { nodeId: "doc:new" },
+      draftText: "edited body",
+      baseBlobHash: "hash-new",
+    });
+  });
+});
+
 describe("reorder reconciliation", () => {
   it("reorders open docs to match a dockview order and drops unknown ids", () => {
     useViewStore.getState().openDoc("doc:a", "markdown", true);
@@ -196,6 +313,43 @@ describe("dock workspace projection", () => {
         params: { nodeId: "code:src/app.ts", surface: "code" },
         position: { referencePanel: "doc:a", direction: "within" },
       },
+    ]);
+    expect(plan.activeDocId).toBe("code:src/app.ts");
+  });
+
+  it("normalizes malformed dock tab reads before layout projection", () => {
+    const openDocs = [
+      null,
+      { nodeId: " doc:a ", surface: "markdown", provisional: "yes" },
+      { nodeId: "doc:a", surface: "code", provisional: false },
+      { nodeId: "code:src/app.ts", surface: "code", provisional: true },
+      { nodeId: "   ", surface: "markdown", provisional: false },
+      { nodeId: "doc:b", surface: "unknown", provisional: false },
+    ] as unknown as OpenDoc[];
+
+    const normalized = normalizeDockWorkspaceTabsView(openDocs, " code:src/app.ts ");
+
+    expect(normalized).toEqual({
+      openDocs: [
+        { nodeId: "doc:a", surface: "markdown", provisional: false },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: true },
+        { nodeId: "doc:b", surface: "markdown", provisional: false },
+      ],
+      activeDocId: "code:src/app.ts",
+    });
+
+    const plan = deriveDockWorkspaceSyncPlan(
+      openDocs,
+      " code:src/app.ts ",
+      ["__graph__", "doc:stale"],
+      "__graph__",
+    );
+
+    expect(plan.removeIds).toEqual(["doc:stale"]);
+    expect(plan.addPanels.map((panel) => panel.id)).toEqual([
+      "doc:a",
+      "code:src/app.ts",
+      "doc:b",
     ]);
     expect(plan.activeDocId).toBe("code:src/app.ts");
   });
@@ -260,6 +414,38 @@ describe("dock document panel projection", () => {
       },
     });
   });
+
+  it("normalizes runtime dock panel projection inputs", () => {
+    const view = deriveDockDocPanelView(
+      " doc:2026-06-18-central-state-plan ",
+      "unknown",
+      " scope-a ",
+      content(),
+    );
+
+    expect(view).toMatchObject({
+      state: "markdown",
+      nodeId: "doc:2026-06-18-central-state-plan",
+      scope: "scope-a",
+      header: {
+        title: "central state plan",
+      },
+    });
+
+    const malformed = deriveDockDocPanelView(
+      { id: "doc:bad" },
+      "code",
+      { scope: "scope-a" },
+      content({ path: "frontend/src/main.ts", languageHint: "ts" }),
+    );
+
+    expect(malformed).toMatchObject({
+      state: "code",
+      nodeId: "",
+      scope: null,
+      header: null,
+    });
+  });
 });
 
 describe("scope-swap reset", () => {
@@ -292,5 +478,96 @@ describe("workspace persistence restore", () => {
       ),
     ).toBe(false);
     expect(ids()).toEqual(["doc:restored"]);
+  });
+
+  it("normalizes restored tabs and their active id before seeding the store", () => {
+    expect(
+      restoreDocTabsIfEmpty(
+        [
+          { nodeId: " doc:restored ", surface: "markdown", provisional: false },
+          { nodeId: "doc:restored", surface: "markdown", provisional: false },
+          { nodeId: "   ", surface: "markdown", provisional: false },
+          { nodeId: "code:src/app.ts", surface: "code", provisional: false },
+        ],
+        " code:src/app.ts ",
+      ),
+    ).toBe(true);
+
+    expect(useViewStore.getState()).toMatchObject({
+      openDocs: [
+        { nodeId: "doc:restored", surface: "markdown", provisional: false },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: false },
+      ],
+      activeDocId: "code:src/app.ts",
+    });
+  });
+
+  it("treats malformed current tab state as empty before restore", () => {
+    useViewStore.setState({
+      openDocs: [{ nodeId: "   ", surface: "markdown", provisional: false }],
+      activeDocId: "   ",
+    });
+
+    expect(
+      restoreDocTabsIfEmpty(
+        [{ nodeId: " doc:restored ", surface: "markdown", provisional: false }],
+        " doc:restored ",
+      ),
+    ).toBe(true);
+
+    expect(useViewStore.getState()).toMatchObject({
+      openDocs: [{ nodeId: "doc:restored", surface: "markdown", provisional: false }],
+      activeDocId: "doc:restored",
+    });
+  });
+
+  it("normalizes workspace layout serialization and parsing", () => {
+    const blob = serializeWorkspaceTabs(
+      [
+        { nodeId: " doc:restored ", surface: "markdown", provisional: false },
+        { nodeId: "doc:restored", surface: "markdown", provisional: false },
+        { nodeId: "   ", surface: "markdown", provisional: false },
+        { nodeId: "doc:preview", surface: "markdown", provisional: true },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: false },
+      ],
+      " code:src/app.ts ",
+    );
+
+    expect(JSON.parse(blob)).toEqual({
+      v: 1,
+      tabs: [
+        { nodeId: "doc:restored", surface: "markdown" },
+        { nodeId: "code:src/app.ts", surface: "code" },
+      ],
+      active: "code:src/app.ts",
+    });
+    expect(
+      parseWorkspaceTabs(
+        JSON.stringify({
+          v: 1,
+          tabs: [
+            { nodeId: " doc:restored ", surface: "markdown" },
+            { nodeId: "doc:restored", surface: "markdown" },
+            { nodeId: 42, surface: "markdown" },
+            { nodeId: "code:src/app.ts", surface: "code" },
+          ],
+          active: " code:src/app.ts ",
+        }),
+      ),
+    ).toEqual({
+      openDocs: [
+        { nodeId: "doc:restored", surface: "markdown", provisional: false },
+        { nodeId: "code:src/app.ts", surface: "code", provisional: false },
+      ],
+      activeDocId: "code:src/app.ts",
+    });
+  });
+
+  it("bounds workspace layout blobs before parsing", () => {
+    const oversized = "x".repeat(WORKSPACE_LAYOUT_BLOB_MAX_CHARS + 1);
+
+    expect(normalizeWorkspaceLayoutBlob("  {\"v\":1}  ")).toBe("{\"v\":1}");
+    expect(normalizeWorkspaceLayoutBlob(oversized)).toBeNull();
+    expect(parseWorkspaceTabs(oversized)).toBeNull();
   });
 });

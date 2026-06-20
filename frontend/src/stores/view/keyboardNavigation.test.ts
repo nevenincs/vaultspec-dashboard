@@ -4,12 +4,15 @@ import type { EngineNode } from "../server/engine";
 import {
   KEYBOARD_NAVIGATION_BINDINGS,
   cycleKeyboardList,
+  deriveKeyboardNavigationActionDescriptor,
   deriveKeyboardNavigationKeyIntent,
   deriveKeyboardNavigationView,
   keyboardNavigationKeyForAction,
   keyboardBracketStep,
   steppedKeyboardPlayhead,
 } from "./keyboardNavigation";
+import { selectNode } from "./selection";
+import { setTimelinePlayhead, timelineViewSnapshot } from "./timeline";
 
 const node = (id: string): EngineNode => ({ id, kind: "doc" });
 
@@ -146,5 +149,33 @@ describe("keyboard navigation keybinding catalog", () => {
     expect(keyboardNavigationKeyForAction("nav:neighbor-next")).toBe("ArrowRight");
     expect(keyboardNavigationKeyForAction("timeline:playhead-previous")).toBe("[");
     expect(keyboardNavigationKeyForAction("missing")).toBeNull();
+  });
+});
+
+describe("deriveKeyboardNavigationActionDescriptor", () => {
+  it("does not create local playhead state for malformed runtime scope", () => {
+    setTimelinePlayhead("live");
+    const binding = KEYBOARD_NAVIGATION_BINDINGS.find(
+      (candidate) => candidate.id === "timeline:playhead-previous",
+    );
+    if (!binding) throw new Error("missing timeline playhead keybinding");
+
+    const action = deriveKeyboardNavigationActionDescriptor(
+      binding,
+      {
+        selectedId: null,
+        neighborIds: [],
+        featureIds: [],
+        announcement: "",
+      },
+      { scope: "scope-a" },
+      selectNode,
+      100 * 60_000,
+    );
+    if (!action?.run) throw new Error("missing keyboard playhead action");
+
+    action.run();
+
+    expect(timelineViewSnapshot().playheadT).toBe("live");
   });
 });

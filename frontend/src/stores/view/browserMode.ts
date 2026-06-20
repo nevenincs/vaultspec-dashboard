@@ -35,8 +35,14 @@ export const BROWSER_MODE_OPTIONS: readonly BrowserModeOption[] = [
   { id: "code", label: "Code" },
 ];
 
-export function isBrowserMode(value: string): value is BrowserMode {
-  return BROWSER_MODE_OPTIONS.some((option) => option.id === value);
+export function normalizeBrowserMode(value: unknown): BrowserMode | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return BROWSER_MODE_OPTIONS.find((option) => option.id === normalized)?.id ?? null;
+}
+
+export function isBrowserMode(value: unknown): value is BrowserMode {
+  return normalizeBrowserMode(value) !== null;
 }
 
 /** The default mode for a fresh scope: vault, "the corpus the product is about"
@@ -48,7 +54,7 @@ export interface BrowserModeState {
    *  wholesale scope/workspace swap so it never bleeds across corpora. */
   mode: BrowserMode;
 
-  setMode: (mode: BrowserMode) => void;
+  setMode: (mode: unknown) => void;
   /**
    * Reset the browser-region view state to a fresh-scope baseline: the default
    * (vault) mode. Called by the view store's wholesale reset (`setScope` /
@@ -60,7 +66,13 @@ export interface BrowserModeState {
 
 export const useBrowserModeStore = create<BrowserModeState>((set) => ({
   mode: DEFAULT_BROWSER_MODE,
-  setMode: (mode) => set((state) => (state.mode === mode ? state : { mode })),
+  setMode: (mode) =>
+    set((state) => {
+      const normalizedMode = normalizeBrowserMode(mode);
+      return normalizedMode === null || state.mode === normalizedMode
+        ? state
+        : { mode: normalizedMode };
+    }),
   resetForScope: () => set({ mode: DEFAULT_BROWSER_MODE }),
 }));
 
@@ -68,8 +80,7 @@ export function useBrowserMode(): BrowserMode {
   return useBrowserModeStore((state) => state.mode);
 }
 
-export function setBrowserMode(mode: string): void {
-  if (!isBrowserMode(mode)) return;
+export function setBrowserMode(mode: unknown): void {
   useBrowserModeStore.getState().setMode(mode);
 }
 
@@ -83,8 +94,8 @@ export function cycleBrowserMode(): void {
   useBrowserModeStore.getState().setMode(nextBrowserMode(current));
 }
 
-export function useBrowserModeIntent(): (mode: string) => void {
-  return useCallback((mode: string) => setBrowserMode(mode), []);
+export function useBrowserModeIntent(): (mode: unknown) => void {
+  return useCallback((mode: unknown) => setBrowserMode(mode), []);
 }
 
 /** Imperative reset for the view store's wholesale swap — called from outside a

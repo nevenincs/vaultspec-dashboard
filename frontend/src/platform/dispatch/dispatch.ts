@@ -42,16 +42,54 @@ export class UnknownActionError extends Error {
   }
 }
 
+export function normalizeActionType(type: unknown): string | null {
+  if (typeof type !== "string") return null;
+  const normalized = type.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function actionRecord(action: unknown): Record<string, unknown> | null {
+  return action !== null && typeof action === "object"
+    ? (action as Record<string, unknown>)
+    : null;
+}
+
+function normalizeActionMeta(meta: unknown): ActionMeta | undefined {
+  return meta !== null && typeof meta === "object" && !Array.isArray(meta)
+    ? (meta as ActionMeta)
+    : undefined;
+}
+
+export function normalizeAction(action: unknown): Action | null {
+  const record = actionRecord(action);
+  const type = normalizeActionType(record?.type);
+  if (type === null) return null;
+  const normalized: Action = { type };
+  if (record && "payload" in record) normalized.payload = record.payload;
+  const meta = normalizeActionMeta(record?.meta);
+  if (meta !== undefined) normalized.meta = meta;
+  return normalized;
+}
+
 export class Dispatcher {
   private readonly handlers = new Map<string, ActionHandler>();
   private readonly middleware: Middleware[] = [];
 
   /** Register the effect for an action type; returns a disposer. */
-  register<P>(type: string, handler: ActionHandler<P>): () => void {
+  register<P>(type: unknown, handler: ActionHandler<P>): () => void;
+  register(type: unknown, handler: unknown): () => void;
+  register(type: unknown, handler: unknown): () => void {
+    const normalizedType = normalizeActionType(type);
+    if (normalizedType === null) {
+      throw new UnknownActionError("");
+    }
+    if (typeof handler !== "function") return () => undefined;
     const erased = handler as ActionHandler;
-    this.handlers.set(type, erased);
+    this.handlers.set(normalizedType, erased);
     return () => {
-      if (this.handlers.get(type) === erased) this.handlers.delete(type);
+      if (this.handlers.get(normalizedType) === erased) {
+        this.handlers.delete(normalizedType);
+      }
     };
   }
 
@@ -60,12 +98,15 @@ export class Dispatcher {
     this.middleware.push(middleware);
   }
 
-  hasHandler(type: string): boolean {
-    return this.handlers.has(type);
+  hasHandler(type: unknown): boolean {
+    const normalizedType = normalizeActionType(type);
+    return normalizedType !== null && this.handlers.has(normalizedType);
   }
 
   /** Run an action through the middleware chain into its handler. */
-  dispatch(action: Action): unknown {
+  dispatch(action: unknown): unknown {
+    const normalizedAction = normalizeAction(action);
+    if (normalizedAction === null) throw new UnknownActionError("");
     const terminal: Next = (a) => {
       const handler = this.handlers.get(a.type);
       if (!handler) throw new UnknownActionError(a.type);
@@ -75,6 +116,6 @@ export class Dispatcher {
       (next, middleware) => (a) => middleware(a, next),
       terminal,
     );
-    return chain(action);
+    return chain(normalizedAction);
   }
 }

@@ -110,19 +110,22 @@ test.describe("live-state degradation truth (live)", () => {
     await expect(page.getByText("RECONNECTING")).toHaveCount(0);
 
     // Flip the stores-owned live-connection signal to lost via the dev-exposed
-    // store (a real StreamLostError would do the same through the policy bind).
+    // live-status control (a real StreamLostError would do the same through the
+    // policy bind).
     await page.evaluate(() => {
-      const store = (
+      const controls = (
         globalThis as unknown as {
-          __liveStatusStore?: { getState(): { setStreamConnected(c: boolean): void } };
+          __liveStatusControls?: { markStreamLost(): void };
         }
-      ).__liveStatusStore;
-      store?.getState().setStreamConnected(false);
+      ).__liveStatusControls;
+      controls?.markStreamLost();
     });
 
     // The timeline degrades to the designed reconnecting surface (ADR G8.a /
     // live-state D4) - a truthful degraded state, not a crash or a blank.
-    await expect(page.getByText("RECONNECTING")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "reconnecting to the live stream" }),
+    ).toBeVisible();
     await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
   });
 });

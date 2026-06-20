@@ -1,7 +1,7 @@
 // Automated WCAG contrast check (finding 038): G7.d names AA as the
 // floor; this test backs the claim with math over the S47 token palette.
-// The hex values MIRROR styles.css @theme (the documented convention from
-// the S47 record); if the tokens change, this test changes with them.
+// The hex values mirror the Figma-authored token tier; if the tokens change,
+// this test changes with them.
 
 import { describe, expect, it } from "vitest";
 

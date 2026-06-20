@@ -6,7 +6,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createThemeController, resolveTheme } from "./themeController";
+import {
+  createThemeController,
+  isThemePreference,
+  resolveTheme,
+} from "./themeController";
 
 // A controllable matchMedia stub: one MediaQueryList per query string with a
 // settable `matches` and real add/removeEventListener so the controller's
@@ -125,15 +129,28 @@ describe("createThemeController", () => {
     c.destroy();
   });
 
-  it("notifies subscribers only on an actual resolved-theme change", () => {
+  it("notifies subscribers on preference changes even when the resolved theme is unchanged", () => {
     install({ "(prefers-color-scheme: dark)": false });
     const c = createThemeController();
     const listener = vi.fn();
     c.subscribe(listener);
-    c.setPreference("light"); // already light -> no change -> no notify
+    c.setPreference("system"); // already system -> no change -> no notify
     expect(listener).not.toHaveBeenCalled();
+    c.setPreference("light"); // resolved stays light, but exposed preference changes
+    expect(listener).toHaveBeenCalledWith("light");
     c.setPreference("dark");
     expect(listener).toHaveBeenCalledWith("dark");
     c.destroy();
+  });
+});
+
+describe("isThemePreference", () => {
+  it("owns the platform theme preference vocabulary", () => {
+    expect(isThemePreference("system")).toBe(true);
+    expect(isThemePreference("light")).toBe(true);
+    expect(isThemePreference("dark")).toBe(true);
+    expect(isThemePreference("high-contrast")).toBe(true);
+    expect(isThemePreference("chartreuse")).toBe(false);
+    expect(isThemePreference(undefined)).toBe(false);
   });
 });

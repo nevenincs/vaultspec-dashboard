@@ -1,20 +1,19 @@
 // Timeline selection (W03.P07.S45 lineage-node path).
 //
 // The relational timeline's PRIMARY marks are lineage nodes (the dated document
-// marks). Clicking one selects it through the ONE shared `Selection` concept
-// (`selectNode`, so the inspector shows the document and every region focuses the
-// same node) and pulses the joined nodes on the stage via a BOUNDED `node_ids`
-// set — the node plus its 1-hop lineage-arc neighbors, capped, with any drop
-// surfaced as a truncation count rather than a silent partial pulse (ADR
+// marks). Clicking one selects it through the ONE shared selection seam and
+// pulses the joined nodes on the stage via a BOUNDED `node_ids` set — the node
+// plus its 1-hop lineage-arc neighbors, capped, with any drop surfaced as a
+// truncation count rather than a silent partial pulse (ADR
 // "Interaction": "the stage pulses the joined nodes via the bounded `node_ids`
 // join, with any truncation count carried so it is stated, not silently dropped").
 //
-// Selection is EMITTED here, never owned — the view store holds the one selection;
-// this module only fires intent into it and pushes a bounded cross-highlight pulse
-// through the scene seam.
+// Selection is EMITTED here, never owned — node selection is canonical
+// dashboard-state; this module owns only the bounded timeline join and emits it
+// through the selection seam.
 
 import type { LineageArc, LineageNode } from "../../stores/server/engine";
-import { selectNode } from "../../stores/view/selection";
+import { selectNodeAndPulse } from "../../stores/view/selection";
 import type { SceneController } from "../../scene/sceneController";
 import { getScene } from "../stage/Stage";
 
@@ -58,10 +57,8 @@ export function handleNodeClick(
   node: LineageNode,
   arcs: readonly Pick<LineageArc, "src" | "dst">[] = [],
   scene: SceneController = getScene().controller,
-): void {
-  selectNode(node.id);
+  scope?: unknown,
+): Promise<boolean> {
   const { ids } = joinedNodeIds(node.id, arcs);
-  if (ids.length > 0) {
-    scene.command({ kind: "pulse", ids: new Set(ids) });
-  }
+  return selectNodeAndPulse(scene, node.id, ids, scope).catch(() => false);
 }

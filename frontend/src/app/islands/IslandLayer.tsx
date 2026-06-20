@@ -8,53 +8,23 @@
 // rendered by the open-in-place `NodeInterior` (W02.P06.S24, landed).
 
 import { X } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 
-import type { SceneAnchor, SceneController } from "../../scene/sceneController";
+import type { SceneController } from "../../scene/sceneController";
 import { openContextMenu } from "../../stores/view/contextMenu";
-import { useViewStore } from "../../stores/view/viewStore";
+import { islandStyle, useNodeAnchor } from "../../stores/view/islandAnchors";
+import { closeNodeIsland, useOpenedNodeIslands } from "../../stores/view/selection";
 import { NodeInterior } from "./NodeInterior";
-
-/** Island base size in CSS px at camera scale 1. */
-export const ISLAND_WIDTH_PX = 260;
-/** Islands scale with the field but stay readable: clamp the CSS scale. */
-export const ISLAND_MIN_SCALE = 0.75;
-export const ISLAND_MAX_SCALE = 1.25;
-
-/** Pure style computation from an anchor — unit-testable without DOM. */
-export function islandStyle(anchor: SceneAnchor | null): CSSProperties {
-  if (!anchor) return { display: "none" };
-  const scale = Math.max(ISLAND_MIN_SCALE, Math.min(ISLAND_MAX_SCALE, anchor.scale));
-  return {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: `${ISLAND_WIDTH_PX}px`,
-    transform: `translate(${anchor.x}px, ${anchor.y}px) scale(${scale})`,
-    transformOrigin: "top left",
-  };
-}
-
-/** Subscribe to one node's screen anchor through the seam (RL-4). */
-export function useNodeAnchor(scene: SceneController, id: string): SceneAnchor | null {
-  const [anchor, setAnchor] = useState<SceneAnchor | null>(null);
-  useEffect(() => {
-    setAnchor(null);
-    return scene.trackNode(id, setAnchor);
-  }, [scene, id]);
-  return anchor;
-}
 
 interface IslandProps {
   scene: SceneController;
   id: string;
+  scope: string | null;
   children?: ReactNode;
 }
 
-function Island({ scene, id, children }: IslandProps) {
+function Island({ scene, id, scope, children }: IslandProps) {
   const anchor = useNodeAnchor(scene, id);
-  const closeNode = useViewStore((s) => s.closeNode);
   return (
     <div
       style={islandStyle(anchor)}
@@ -62,7 +32,7 @@ function Island({ scene, id, children }: IslandProps) {
       data-island-for={id}
       onContextMenu={(e) => {
         e.preventDefault();
-        openContextMenu({ kind: "island", id }, { x: e.clientX, y: e.clientY });
+        openContextMenu({ kind: "island", id, scope }, { x: e.clientX, y: e.clientY });
       }}
     >
       <div className="flex items-center justify-between gap-fg-2">
@@ -72,30 +42,31 @@ function Island({ scene, id, children }: IslandProps) {
           type="button"
           aria-label={`Close ${id}`}
           className="shrink-0 text-ink-faint transition-colors duration-ui-fast hover:text-ink"
-          onClick={() => closeNode(id)}
+          onClick={() => closeNodeIsland(id)}
         >
           <X aria-hidden size={14} strokeWidth={1.5} />
         </button>
       </div>
-      {children ?? <NodeInterior id={id} />}
+      {children ?? <NodeInterior id={id} scope={scope} />}
     </div>
   );
 }
 
 export interface IslandLayerProps {
   scene: SceneController;
+  scope?: string | null;
 }
 
 /**
  * The overlay layer: absolutely positioned above the stage canvas,
  * transparent to pointer events except over the islands themselves.
  */
-export function IslandLayer({ scene }: IslandLayerProps) {
-  const openedIds = useViewStore((s) => s.openedIds);
+export function IslandLayer({ scene, scope = null }: IslandLayerProps) {
+  const openedIds = useOpenedNodeIslands();
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {openedIds.map((id) => (
-        <Island key={id} scene={scene} id={id} />
+        <Island key={id} scene={scene} id={id} scope={scope} />
       ))}
     </div>
   );

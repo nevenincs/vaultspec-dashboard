@@ -121,11 +121,11 @@ export interface GraphWalkHandlers {
   /** Read the current shared selection's node id (null when none/non-node). */
   selectedId: () => string | null;
   /** Select a node — INSTANT shared-store state, never an animation. */
-  select: (id: string | null) => void;
+  select: (id: unknown) => void;
   /** Open a node in place (the DOM island interior). */
-  open: (id: string) => void;
+  open: (id: unknown) => void;
   /** Expand a node's ego onto the explicit working set. */
-  expand: (id: string) => void;
+  expand: (id: unknown) => void;
 }
 
 /**

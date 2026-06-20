@@ -108,6 +108,14 @@ async fn graph_query_defaults_to_the_status_lens_and_carries_salience() {
             (0.0..=1.0).contains(&s),
             "salience is normalized to [0,1]: {s}"
         );
+        let node_size = node["node_size"]
+            .as_f64()
+            .expect("document node carries explicit node_size");
+        let expected = engine_query::graph::node_size_from_salience(s);
+        assert!(
+            (node_size - expected).abs() < 1e-9,
+            "node_size follows active-lens salience sizing: {node}"
+        );
     }
 
     // The tiers block rides the success envelope.
@@ -233,13 +241,15 @@ async fn degraded_tier_flags_salience_partial_end_to_end() {
 async fn neighbors_carries_salience_and_the_lens_echo() {
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
+    let scope = served_scope(&state);
     let router = build_router(state);
 
     // GET /nodes/{id}/neighbors with the default lens: the ego nodes carry
     // salience, with the ego center as the DOI focus.
+    let path = format!("/nodes/doc:2026-06-14-x-plan/neighbors?scope={scope}&depth=1");
     let response = router
         .oneshot(
-            Request::get("/nodes/doc:2026-06-14-x-plan/neighbors?depth=1")
+            Request::get(path)
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())

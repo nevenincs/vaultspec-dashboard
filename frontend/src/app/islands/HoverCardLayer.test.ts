@@ -1,64 +1,76 @@
 // Pure-logic tests for the hover-card host (figma-parity-reconciliation
-// W03.P08.S50; binding graph/HoverCard 84:2): the hover-id view slice, the
-// dwell→suppress resolution, and the binding evidence-driven card projection. No
-// DOM — these exercise the host's pure seams and the store slice directly,
-// isolating the three-intent separation, the open-suppression law, and the
-// identity+evidence fold from the timer/render machinery (covered in the
-// .render.test.tsx).
+// W03.P08.S50; binding graph/HoverCard 84:2): the canonical dashboard hover
+// projection, dwell→suppress resolution, and the binding evidence-driven card
+// projection. No DOM — these exercise the host's pure seams directly, isolating
+// the three-intent separation, the open-suppression law, and the identity+evidence
+// fold from the timer/render machinery (covered in the .render.test.tsx).
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type { EngineNode, NodeEvidence } from "../../stores/server/engine";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
+import { openNodeIsland } from "../../stores/view/selection";
 import { useViewStore } from "../../stores/view/viewStore";
-import { cardModelFromEvidence, resolveHoverTarget } from "./HoverCardLayer";
+import {
+  cardModelFromEvidence,
+  deriveHoverCardLayerView,
+  deriveHoverCardView,
+} from "../../stores/view/hoverCard";
 
-afterEach(() => {
-  // Reset the hover slice + opened set between cases (the store is a singleton).
-  useViewStore.setState({ hoveredId: null, openedIds: [] });
+let scope: string;
+let documentNodeId: string;
+
+beforeAll(async () => {
+  scope = await liveScope();
+  const slice = await createLiveClient().graphQuery({ scope, granularity: "document" });
+  const node = slice.nodes.find((entry) => entry.id.startsWith("doc:"));
+  if (!node) {
+    throw new Error("live hover-card test fixture has no document node");
+  }
+  documentNodeId = node.id;
 });
 
-describe("viewStore hover slice (P04.S14)", () => {
-  it("sets the hovered id and clears it on null", () => {
-    const { setHoveredId } = useViewStore.getState();
-    setHoveredId("doc:adr-1");
-    expect(useViewStore.getState().hoveredId).toBe("doc:adr-1");
-    setHoveredId(null);
-    expect(useViewStore.getState().hoveredId).toBeNull();
-  });
-
-  it("short-circuits an identical write (no churn) but does change on a new id", () => {
-    const { setHoveredId } = useViewStore.getState();
-    setHoveredId("doc:adr-1");
-    const first = useViewStore.getState();
-    setHoveredId("doc:adr-1");
-    // Same id → same state object (no re-set, so subscribers do not churn).
-    expect(useViewStore.getState()).toBe(first);
-    setHoveredId("doc:adr-2");
-    expect(useViewStore.getState().hoveredId).toBe("doc:adr-2");
-  });
-
-  it("is a DISTINCT concept from selection and opened (the three intents)", () => {
-    const store = useViewStore.getState();
-    store.setHoveredId("doc:adr-1");
-    // Hovering one node must not select it nor open it.
-    expect(useViewStore.getState().selection).toBeNull();
-    expect(useViewStore.getState().selectedId).toBeNull();
-    expect(useViewStore.getState().openedIds).toEqual([]);
-  });
+afterEach(async () => {
+  // Reset opened islands between cases (the store is a singleton).
+  useViewStore.setState({ openedIds: [] });
+  await createLiveClient()
+    .patchDashboardState({ scope, selected_ids: [], hovered_id: null })
+    .catch(() => undefined);
 });
 
-describe("resolveHoverTarget — dwell gate + open suppression (P04.S15)", () => {
+describe("deriveHoverCardLayerView — dwell gate + open suppression (P04.S15)", () => {
   it("returns null when nothing is dwelled", () => {
-    expect(resolveHoverTarget(null, [])).toBeNull();
+    expect(deriveHoverCardLayerView(null, []).targetId).toBeNull();
   });
 
   it("returns the dwelled id when it is not opened", () => {
-    expect(resolveHoverTarget("doc:adr-1", ["doc:other"])).toBe("doc:adr-1");
+    expect(deriveHoverCardLayerView("doc:adr-1", ["doc:other"]).targetId).toBe(
+      "doc:adr-1",
+    );
   });
 
   it("SUPPRESSES the card when the dwelled id is already opened", () => {
     // The opened interior already shows everything the card would — no coexistence.
-    expect(resolveHoverTarget("doc:adr-1", ["doc:adr-1"])).toBeNull();
+    expect(deriveHoverCardLayerView("doc:adr-1", ["doc:adr-1"]).targetId).toBeNull();
+  });
+
+  it("projects the hover-card host chrome", () => {
+    expect(deriveHoverCardLayerView("doc:adr-1", [])).toMatchObject({
+      rootClassName: "pointer-events-none absolute inset-0 overflow-hidden",
+      cardShellClassName: "pointer-events-none",
+    });
+  });
+});
+
+describe("openNodeIsland — canonical open intent", () => {
+  it("opens the island and writes dashboard-state selection", async () => {
+    await openNodeIsland(documentNodeId, scope);
+
+    expect(useViewStore.getState().openedIds).toContain(documentNodeId);
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [documentNodeId],
+    });
+    expect(useViewStore.getState().selection).toBeNull();
   });
 });
 
@@ -116,5 +128,21 @@ describe("cardModelFromEvidence — binding identity+evidence projection (S50)",
   it("falls back to the id for the title when absent", () => {
     const bare: EngineNode = { id: "doc:research-1", kind: "research" };
     expect(cardModelFromEvidence(bare, undefined).title).toBe("doc:research-1");
+  });
+
+  it("drops a served node payload that does not match the hovered identity", () => {
+    expect(deriveHoverCardView("doc:hovered", adr, evidence)).toEqual({
+      model: null,
+    });
+  });
+
+  it("normalizes runtime hovered identity before matching served node detail", () => {
+    expect(deriveHoverCardView(` ${adr.id} `, adr, evidence).model).toMatchObject({
+      id: adr.id,
+      kind: "adr",
+    });
+    expect(deriveHoverCardView({ id: adr.id }, adr, evidence)).toEqual({
+      model: null,
+    });
   });
 });

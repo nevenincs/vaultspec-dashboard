@@ -9,16 +9,24 @@
 // the per-scope override target for a scope-eligible setting.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
-import { liveScope } from "../../testing/liveClient";
+import { useSettingsDialog } from "../../stores/view/settingsDialog";
+import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import { SettingsDialog } from "./SettingsDialog";
-import { useSettingsDialog } from "./useSettingsDialog";
 
 function renderDialog() {
   return render(
@@ -43,6 +51,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
   afterEach(() => {
     cleanup();
     queryClient.clear();
+    engineClient.useTransport(liveTransport);
     useSettingsDialog.getState().closeDialog();
     useViewStore.getState().setScope(null);
   });
@@ -92,6 +101,15 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     expect(applyToGroups.length).toBe(1);
   });
 
+  it("uses the restored active scope when no explicit view-store scope is picked", async () => {
+    await createLiveClient().putSession({ active_scope: scope });
+    useViewStore.getState().setScope(null);
+    queryClient.clear();
+    renderDialog();
+    await screen.findByText("Default granularity");
+    expect(screen.getAllByRole("radiogroup", { name: "apply to" })).toHaveLength(1);
+  });
+
   it("persists a scope override when the target is 'This scope'", async () => {
     renderDialog();
     await screen.findByText("Default granularity");
@@ -102,6 +120,95 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("radio", { name: "document" }).getAttribute("aria-checked"),
+      ).toBe("true");
+    });
+  });
+
+  it("cancels a pending continuous setting write when the dialog closes", async () => {
+    const settingWrites: string[] = [];
+    engineClient.useTransport((input, init) => {
+      const path = input.replace(/^\/api/, "");
+      if (path === "/settings" && init?.method === "PUT") {
+        settingWrites.push(String(init.body ?? ""));
+      }
+      return liveTransport(input, init);
+    });
+
+    renderDialog();
+    const labelFilter = await screen.findByRole("textbox", { name: "Label filter" });
+    fireEvent.change(labelFilter, { target: { value: "transient label draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(settingWrites.some((body) => JSON.parse(body).key === "label_filter")).toBe(
+      false,
+    );
+  });
+
+  it("canonical setting changes cancel a pending continuous draft write", async () => {
+    const settingWrites: string[] = [];
+    await engineClient.putSettings({ key: "label_filter", value: "" });
+    engineClient.useTransport((input, init) => {
+      const path = input.replace(/^\/api/, "");
+      if (path === "/settings" && init?.method === "PUT") {
+        settingWrites.push(String(init.body ?? ""));
+      }
+      return liveTransport(input, init);
+    });
+
+    renderDialog();
+    const labelFilter = (await screen.findByRole("textbox", {
+      name: "Label filter",
+    })) as HTMLInputElement;
+    fireEvent.change(labelFilter, { target: { value: "stale settings draft" } });
+
+    const canonical = await engineClient.putSettings({
+      key: "label_filter",
+      value: "canonical settings text",
+    });
+    queryClient.setQueryData(engineKeys.settings(), canonical);
+
+    await waitFor(() => expect(labelFilter.value).toBe("canonical settings text"));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(settingWrites.map((body) => JSON.parse(body))).toContainEqual(
+      expect.objectContaining({
+        key: "label_filter",
+        value: "canonical settings text",
+      }),
+    );
+    expect(settingWrites.map((body) => JSON.parse(body))).not.toContainEqual(
+      expect.objectContaining({
+        key: "label_filter",
+        value: "stale settings draft",
+      }),
+    );
+  });
+
+  it("re-baselines the scope edit target when the active scope changes", async () => {
+    const sourceScope = scope;
+    const targetScope = `${scope}:settings-target-${Date.now()}`;
+    await engineClient.putSettings({
+      scope: sourceScope,
+      key: "default_granularity",
+      value: "document",
+    });
+    useViewStore.getState().setScope(sourceScope);
+
+    renderDialog();
+    await screen.findByText("Default granularity");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "This scope" }).getAttribute("aria-checked"),
+      ).toBe("true");
+    });
+
+    act(() => useViewStore.getState().setScope(targetScope));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "Global" }).getAttribute("aria-checked"),
       ).toBe("true");
     });
   });

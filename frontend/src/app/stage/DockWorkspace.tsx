@@ -108,7 +108,7 @@ export function DockWorkspace() {
   // dockview to match the store, its echo events (active/remove) are ignored.
   const syncingRef = useRef(false);
   const tabs = useDockWorkspaceTabsView();
-  // P06: persist + restore the open-tab set per scope through dashboard-state.
+  // P06: persist + restore the open-tab set per scope through the durable session.
   // The restore seeds the tab slice; the reconcile effect below rebuilds panels.
   useWorkspacePersistence(useActiveScope());
 

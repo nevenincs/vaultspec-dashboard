@@ -15,6 +15,7 @@ import {
   resetKeybindings,
 } from "../../../platform/keymap/registry";
 import type { SettingDef } from "../../../stores/server/engine";
+import { resetSettingsKeybindingRecorder } from "../../../stores/view/settingsControls";
 import { KeybindingControl } from "./KeybindingControl";
 
 const def: SettingDef = {
@@ -52,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetSettingsKeybindingRecorder();
   resetKeybindings();
   setIsMacForTesting(null);
 });

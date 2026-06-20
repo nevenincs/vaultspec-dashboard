@@ -1,26 +1,23 @@
-//! The four structural extractors (engine-spec §3): file paths, canonical
-//! step identifiers, wiki-link stems, and code symbols — deterministic,
-//! each mention carrying byte-span provenance into the source document.
+//! Structural extractors (engine-spec §3): canonical step identifiers and
+//! wiki-link stems, each mention carrying byte-span provenance into the source
+//! document.
 //!
-//! v1 scope per the ADR: paths and step ids parse exactly; symbols match
-//! by qualified name; tree-sitter-grade resolution is a v2 upgrade.
+//! Code paths and code symbols are intentionally not structural graph inputs:
+//! vault documents may name files or functions in prose, but that does not
+//! create a graph relationship.
 
 use crate::is_step_identifier;
 
 use serde::{Deserialize, Serialize};
 
-/// What a mention refers to.
+/// What a structural mention refers to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MentionKind {
-    /// A repo-relative file path.
-    Path(String),
     /// A canonical step identifier (`W##.P##.S##` family).
     StepId(String),
     /// An Obsidian wiki-link stem.
     WikiLink(String),
-    /// A code symbol referenced by qualified name.
-    Symbol(String),
 }
 
 /// One extracted mention with byte-span provenance into the document.
@@ -31,12 +28,10 @@ pub struct ExtractedMention {
     pub span: (usize, usize),
 }
 
-/// Run all four extractors over a document body.
+/// Run structural extractors over a document body.
 ///
-/// Deterministic scan: wiki-links from `[[…]]` anywhere; paths, step ids
-/// and symbols from inline backtick code spans (the vault's own LINK RULES
-/// mandate backtick spans for those references, so code spans are the
-/// high-precision channel; bare prose tokens are not extracted in v1).
+/// Deterministic scan: wiki-links from `[[...]]` anywhere, and step ids from
+/// inline backtick code spans. Bare prose tokens are not extracted in v1.
 pub fn extract(text: &str) -> Vec<ExtractedMention> {
     let mut mentions = Vec::new();
     extract_wiki_links(text, &mut mentions);
@@ -98,36 +93,6 @@ fn classify_token(token: &str) -> Option<MentionKind> {
     if is_step_identifier(token) {
         return Some(MentionKind::StepId(token.to_string()));
     }
-    // Qualified symbol: module path (`a::b::c`) or call form (`foo()`).
-    if token.contains("::") && !token.contains('/') {
-        return Some(MentionKind::Symbol(
-            token.trim_end_matches("()").to_string(),
-        ));
-    }
-    if let Some(name) = token.strip_suffix("()")
-        && !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-    {
-        return Some(MentionKind::Symbol(name.to_string()));
-    }
-    // Repo-relative path: has a separator and a file-ish final segment,
-    // and is not an absolute/URL-like token.
-    if token.contains('/')
-        && !token.starts_with('/')
-        && !token.contains("://")
-        && !token.ends_with('/')
-    {
-        let last = token.rsplit('/').next().unwrap_or("");
-        if last.contains('.')
-            || last
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-        {
-            return Some(MentionKind::Path(token.to_string()));
-        }
-    }
     None
 }
 
@@ -146,24 +111,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extracts_all_four_kinds_with_correct_spans() {
+    fn extracts_structural_step_ids_and_wiki_links_with_correct_spans() {
         let text = "Plan `W01.P02.S03` touches `src/lib.rs` via `engine::graph::insert` \
                     and `main()`; see [[2026-06-12-demo-plan]].";
         let mentions = extract(text);
         let kinds: Vec<&MentionKind> = mentions.iter().map(|m| &m.kind).collect();
+        assert_eq!(
+            kinds.len(),
+            2,
+            "code paths and symbols are not graph mentions"
+        );
         assert!(matches!(kinds[0], MentionKind::StepId(s) if s == "W01.P02.S03"));
-        assert!(matches!(kinds[1], MentionKind::Path(p) if p == "src/lib.rs"));
-        assert!(matches!(kinds[2], MentionKind::Symbol(s) if s == "engine::graph::insert"));
-        assert!(matches!(kinds[3], MentionKind::Symbol(s) if s == "main"));
-        assert!(matches!(kinds[4], MentionKind::WikiLink(w) if w == "2026-06-12-demo-plan"));
+        assert!(matches!(kinds[1], MentionKind::WikiLink(w) if w == "2026-06-12-demo-plan"));
         // Spans point at the exact mention text.
         for m in &mentions {
             let slice = &text[m.span.0..m.span.1];
             match &m.kind {
                 MentionKind::WikiLink(w) => assert!(slice.contains(w.as_str())),
                 MentionKind::StepId(s) => assert_eq!(slice, s),
-                MentionKind::Path(p) => assert_eq!(slice, p),
-                MentionKind::Symbol(_) => assert!(!slice.is_empty()),
             }
         }
     }

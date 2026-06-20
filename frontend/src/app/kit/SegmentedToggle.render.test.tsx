@@ -32,6 +32,26 @@ describe("SegmentedToggle + Segment", () => {
     ).toBe("true");
   });
 
+  it("accepts surface-owned placement classes without changing segment state", () => {
+    render(
+      <SegmentedToggle
+        value="vault"
+        onChange={vi.fn()}
+        ariaLabel="browser mode"
+        className="w-full"
+      >
+        <Segment value="vault">Vault</Segment>
+      </SegmentedToggle>,
+    );
+
+    expect(
+      screen.getByRole("radiogroup", { name: "browser mode" }).className,
+    ).toContain("w-full");
+    expect(
+      screen.getByRole("radio", { name: "Vault" }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("puts only the active segment in the Tab order", () => {
     renderToggle("vault");
     const radios = screen.getAllByRole("radio");

@@ -10,7 +10,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { RailTabs, type RailTabId } from "./RailTabs";
+import type { RailTabId } from "../../stores/view/shellLayout";
+import { RailTabs } from "./RailTabs";
 
 function Harness({ initial = "status" as RailTabId }) {
   const [tab, setTab] = useState<RailTabId>(initial);

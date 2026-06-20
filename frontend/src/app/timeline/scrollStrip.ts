@@ -20,22 +20,13 @@
 // its arguments; `now` is always PASSED IN, never read from `Date.now()` inside a
 // helper, so the model is fully unit-testable and the component owns the clock.
 
-/**
- * The canonical strip time origin (t=0 in strip space): the Unix epoch. STRIP x
- * is `(t - originMs) * pxPerMs`, so with the epoch origin a STRIP x is just the
- * absolute epoch-ms position scaled by `pxPerMs`. The whole surface (marks,
- * playhead, range band) shares this one origin so the store's `scrollOffset`
- * means the same thing for every coordinate consumer (S42/S43).
- */
-export const TIMELINE_ORIGIN_MS = 0;
+import {
+  MAX_PX_PER_MS,
+  MIN_PX_PER_MS,
+  TIMELINE_ORIGIN_MS,
+} from "../../stores/view/timeline";
 
-/** Minimum pixels-per-millisecond: the most zoomed-OUT (compressed) the strip
- *  goes. ~5 years across 100px keeps a whole-corpus overview in frame. */
-export const MIN_PX_PER_MS = 100 / (5 * 365 * 24 * 3600_000);
-
-/** Maximum pixels-per-millisecond: the most zoomed-IN (spread out) the strip
- *  goes. ~1 hour across 100px resolves individual same-day marks. */
-export const MAX_PX_PER_MS = 100 / 3600_000;
+export { MAX_PX_PER_MS, MIN_PX_PER_MS, TIMELINE_ORIGIN_MS };
 
 /** Clamp a pixels-per-time scale into the supported zoom band. A non-finite or
  *  non-positive scale collapses the strip, so it falls back to the minimum. */
@@ -122,6 +113,36 @@ export function zoomAt(
   // scale: timeToStripX(anchorT) - offset == cursorX.
   const nextScrollOffset = timeToStripX(anchorT, originMs, nextPxPerMs) - cursorX;
   return { pxPerMs: nextPxPerMs, scrollOffset: nextScrollOffset };
+}
+
+/**
+ * Resolve a requested time range to the viewport state that shows it across the
+ * full viewport width. This is the shared "brush edge" operation: dragging a
+ * minimap edge edits the visible time span, so the scale changes and the left
+ * edge becomes the scroll offset.
+ */
+export function viewportForTimeRange(
+  fromMs: number,
+  toMs: number,
+  viewportWidth: number,
+  originMs = 0,
+): { pxPerMs: number; scrollOffset: number } {
+  const orderedFrom = Math.min(fromMs, toMs);
+  const orderedTo = Math.max(fromMs, toMs);
+  const span = Math.max(1, orderedTo - orderedFrom);
+  const pxPerMs = clampPxPerMs(Math.max(1, viewportWidth) / span);
+  return {
+    pxPerMs,
+    scrollOffset: timeToStripX(orderedFrom, originMs, pxPerMs),
+  };
+}
+
+/**
+ * Pan the viewport by CSS pixels. A positive delta moves the strip right
+ * (toward later instants), and the lower bound keeps the epoch origin reachable.
+ */
+export function panScrollOffset(scrollOffset: number, deltaPx: number): number {
+  return Math.max(0, scrollOffset + deltaPx);
 }
 
 /** A closed time range [fromMs, toMs] (inclusive) to fetch and render. */

@@ -7,11 +7,14 @@
 // each wiki-link occurrence into a `link` node whose URL is the sentinel
 // `vaultspec:doc:<stem>` scheme. The MarkdownReader's anchor component intercepts
 // that scheme and fires the SAME navigation intent the trees use (resolve the stem
-// to `doc:<stem>`, select the node and open the reader) — reusing the `doc:<stem>`
-// identity, never inventing one. A non-wiki link is left untouched.
+// through the shared document-node-id grammar, select the node and open the reader)
+// — reusing the `doc:<stem>` identity, never inventing one. A non-wiki link is left
+// untouched.
 
 import type { Link, Root, Text } from "mdast";
 import { visit } from "unist-util-visit";
+
+import { docNodeIdFromStem } from "../../stores/server/liveAdapters";
 
 /** The sentinel URL scheme a rewritten wiki-link carries; the reader's anchor
  *  component matches this prefix and routes the click to in-app navigation. */
@@ -80,5 +83,5 @@ export function remarkWikiLink() {
 export function wikiLinkNodeId(url: string): string | null {
   if (!url.startsWith(WIKI_LINK_SCHEME)) return null;
   const stem = url.slice(WIKI_LINK_SCHEME.length);
-  return stem.length > 0 ? `doc:${stem}` : null;
+  return stem.length > 0 ? docNodeIdFromStem(stem) : null;
 }

@@ -80,27 +80,27 @@ Add a CI check that regenerates CSS from DTCG and fails when it diverges from th
 
 ## Wave `W02` - Component cross-connect
 
-Stand up a Storybook gallery, a repo-maintained code-to-Figma mapping registry with naming parity, seed Figma with the existing UI, and verify parity through the read-only Figma MCP; depends on Wave W01's canonical tokens. Backed by the figma-design-bridge ADR and research.
+Stand up a retired component gallery, a repo-maintained code-to-Figma mapping registry with naming parity, seed Figma with the existing UI, and verify parity through the read-only Figma MCP; depends on Wave W01's canonical tokens. Backed by the figma-design-bridge ADR and research.
 
-### Phase `W02.P06` - Storybook adoption
+### Phase `W02.P06` - retired component gallery adoption
 
-Stand up Storybook on the Vite builder with token CSS and theme switching as the seeding and parity substrate.
+Stand up retired component gallery on the Vite builder with token CSS and theme switching as the seeding and parity substrate.
 
-- [x] `W02.P06.S24` - Add Storybook with the Vite builder and its core configuration; `frontend/.storybook/main.ts`.
-- [x] `W02.P06.S25` - Configure the Storybook preview to load the token CSS and a light/dark/high-contrast theme switcher; `frontend/.storybook/preview.tsx`.
-- [x] `W02.P06.S26` - Wire just recipes to run and build the Storybook gallery; `justfile`.
+- [x] `W02.P06.S24` - Add retired component gallery with the Vite builder and its core configuration; `removed gallery configuration`.
+- [x] `W02.P06.S25` - Configure the retired component gallery preview to load the token CSS and a light/dark/high-contrast theme switcher; `removed gallery preview`.
+- [x] `W02.P06.S26` - Wire just recipes to run and build the retired component gallery; `justfile`.
 
 ### Phase `W02.P07` - Story coverage of the chrome inventory
 
 Author stories covering the app chrome regions and shared marks so every component has a clean render surface.
 
-- [x] `W02.P07.S27` - Author a foundations story showcasing color tokens, type scale, spacing, shadow, and radius; `frontend/src/app/foundations.stories.tsx`.
-- [x] `W02.P07.S28` - Author stories for the left-rail chrome region components; `frontend/src/app/left/left.stories.tsx`.
-- [x] `W02.P07.S29` - Author stories for the stage region components; `frontend/src/app/stage/stage.stories.tsx`.
-- [x] `W02.P07.S30` - Author stories for the right-rail region components; `frontend/src/app/right/right.stories.tsx`.
-- [x] `W02.P07.S31` - Author stories for the timeline region components; `frontend/src/app/timeline/timeline.stories.tsx`.
-- [x] `W02.P07.S32` - Author stories for the islands, palette, and menu region components; `frontend/src/app/islands/islands.stories.tsx`.
-- [x] `W02.P07.S33` - Author stories for the shared domain marks and iconography; `frontend/src/scene/field/marks.stories.tsx`.
+- [x] `W02.P07.S27` - Author a foundations story showcasing color tokens, type scale, spacing, shadow, and radius; `removed component-gallery file`.
+- [x] `W02.P07.S28` - Author stories for the left-rail chrome region components; `removed component-gallery file`.
+- [x] `W02.P07.S29` - Author stories for the stage region components; `removed component-gallery file`.
+- [x] `W02.P07.S30` - Author stories for the right-rail region components; `removed component-gallery file`.
+- [x] `W02.P07.S31` - Author stories for the timeline region components; `removed component-gallery file`.
+- [x] `W02.P07.S32` - Author stories for the islands, palette, and menu region components; `removed component-gallery file`.
+- [x] `W02.P07.S33` - Author stories for the shared domain marks and iconography; `removed component-gallery file`.
 
 ### Phase `W02.P08` - Code-to-Figma mapping registry
 
@@ -117,7 +117,7 @@ Seed the Figma file: manually rebuild foundations and icons, importer-seed compo
 
 - [x] `W02.P09.S38` - Create the Figma file and the Primitives and Semantic variable collections from the Tokens Studio push; `frontend/figma/FIGMA-SEED.md`.
 - [x] `W02.P09.S39` - Manually rebuild the foundation in Figma: color styles, type scale, and the Lucide/Phosphor icon set; `frontend/figma/FIGMA-SEED.md`.
-- [x] `W02.P09.S40` - Importer-seed the composite screens from the running Storybook gallery using html.to.design or Codia; `frontend/figma/FIGMA-SEED.md`.
+- [x] `W02.P09.S40` - Importer-seed the composite screens from the running retired component gallery using html.to.design or Codia; `frontend/figma/FIGMA-SEED.md`.
 - [x] `W02.P09.S41` - Run the cleanup pass renaming layers and componentizing seeded frames to the naming contract; `frontend/figma/FIGMA-SEED.md`.
 - [x] `W02.P09.S42` - Record the resulting Figma node ids and urls back into the mapping registry; `frontend/figma/component-map.json`.
 
@@ -126,7 +126,7 @@ Seed the Figma file: manually rebuild foundations and icons, importer-seed compo
 Author the read-only MCP parity-check script and wire registry completeness and naming parity into CI.
 
 - [x] `W02.P10.S43` - Author the read-only MCP parity-check script pulling metadata, design context, and screenshots per registry entry; `frontend/scripts/figma-parity.ts`.
-- [x] `W02.P10.S44` - Add the screenshot-diff comparison of the Figma node against the Storybook render; `frontend/scripts/figma-parity.ts`.
+- [x] `W02.P10.S44` - Add the screenshot-diff comparison of the Figma node against the retired component gallery render; `frontend/scripts/figma-parity.ts`.
 - [x] `W02.P10.S45` - Wire registry completeness and naming parity into the CI gate; `justfile`.
 - [x] `W02.P10.S46` - Document the end-to-end Figma parity verification workflow; `frontend/figma/README.md`.
 
@@ -146,7 +146,7 @@ a Style Dictionary pipeline that regenerates the existing CSS token tier, proves
 byte-equivalence against the committed stylesheet before flipping generation
 canonical, pushes the same tokens into Figma Variables via Tokens Studio's
 Plugin-API path, and gates drift in CI. Wave W02 (component cross-connect) stands
-up a Storybook gallery as the seeding and parity substrate, authors stories
+up a retired component gallery as the seeding and parity substrate, authors stories
 across the chrome inventory, defines a repo-maintained code-to-Figma mapping
 registry with a 1:1 naming-parity contract, seeds the Figma file (manual
 foundations and icons, importer-seeded composite screens), and verifies parity
@@ -173,7 +173,7 @@ seeding all depend on a single canonical token surface. Within W01 the phases ar
 strictly sequential (P01 token source, then P02 parity-verified export, then P03
 the canonical flip, then P04 the Figma push, then P05 the drift gate) because each
 consumes the prior phase's output; P04 (Tokens Studio push) and P05 (drift gate)
-may overlap once P03 lands. Within W02, P06 (Storybook) precedes P07 (stories);
+may overlap once P03 lands. Within W02, P06 (retired component gallery) precedes P07 (stories);
 P08 (registry schema and validator) can proceed in parallel with P06/P07 since it
 depends only on the component inventory; P09 (Figma seeding) requires P07 (a
 render surface) and P04 (the variable collections); P10 (parity checks) requires
@@ -193,12 +193,12 @@ The plan is complete when every Step is closed and these criteria hold:
 - The Figma file carries Primitives and Semantic variable collections with
   light/dark/high-contrast modes, populated from the DTCG source via Tokens Studio
   (verified in P04).
-- Storybook builds and renders the chrome inventory (P06/P07).
+- retired component gallery builds and renders the chrome inventory (P06/P07).
 - The mapping registry validates: every entry resolves to a real component under
   the 1:1 naming-parity contract, enforced by the P08 validator and the P10 CI
   gate; the registry carries Figma node references after seeding (P09).
 - The MCP parity-check script runs against the registry and reports each
-  component's Figma-versus-Storybook parity (P10).
+  component's Figma-versus-retired component gallery parity (P10).
 - A vaultspec-code-review pass signs off the code-bearing waves.
 
 Figma desktop operator steps (P09.S38-S41) are verified by the user confirming
@@ -213,7 +213,7 @@ superseded**.
 
 Waves `W01` and `W02` shipped and are green: the DTCG token source, the Style
 Dictionary export proven byte-equivalent to the committed CSS, the canonical flip
-and drift gate, the Tokens Studio push config/runbook, the Storybook gallery and
+and drift gate, the Tokens Studio push config/runbook, the retired component gallery and
 chrome-inventory stories, the code-to-Figma mapping registry with its naming-parity
 validator and CI gate, and the read-only MCP parity-check script.
 
@@ -227,10 +227,10 @@ This supersedes the prior code-canonical token direction." `FIGMA-SYNC.md` and
 
 Consequently:
 
-- `W02.P10.S44` (screenshot-diff of the Figma node against the Storybook render) is
+- `W02.P10.S44` (screenshot-diff of the Figma node against the retired component gallery render) is
   retired: it depends on the auth-gated Figma MCP `get_screenshot` (the
   `figma-code-connect-via-cli` rule documents the MCP plan-gate) and a running
-  Storybook capture, and it served the code→Figma mirror-fidelity goal that the
+  retired component gallery capture, and it served the code→Figma mirror-fidelity goal that the
   binding-Figma direction no longer pursues. The read-only metadata/naming parity
   check (`W02.P10.S43`/`S45`/`S46`) remains as the shipped parity surface.
 - Wave `W03` (editable, variable-bound Figma recreation of all components — a

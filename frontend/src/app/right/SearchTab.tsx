@@ -287,9 +287,7 @@ export function SearchTab() {
                 // disabled null-node_id row cannot receive focus), so Tab always
                 // enters the list on a usable result.
                 tabbable={i === presentation.firstClickableIndex}
-                onActivate={(id) =>
-                  void selectDashboardNode(id).catch(() => undefined)
-                }
+                onActivate={(id) => void selectDashboardNode(id).catch(() => undefined)}
               />
             ))}
           </ul>

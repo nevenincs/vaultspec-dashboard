@@ -15,7 +15,8 @@
 
 import type { ComponentType } from "react";
 
-import type { ActionMeta } from "../dispatch/dispatch";
+import { normalizeAction, type ActionMeta } from "../dispatch/dispatch";
+import { appDispatcher } from "../dispatch/middleware";
 
 /**
  * Item marks come from the two sanctioned families
@@ -44,6 +45,58 @@ export const ACTION_SECTION_ORDER: readonly ActionSection[] = [
   "copy",
   "danger",
 ];
+export const ACTION_DESCRIPTOR_ID_MAX_CHARS = 512;
+export const ACTION_DESCRIPTOR_LABEL_MAX_CHARS = 256;
+export const ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS = 256;
+export const ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS = 64;
+
+export function normalizeActionDescriptorId(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  return normalized.length > 0 &&
+    normalized.length <= ACTION_DESCRIPTOR_ID_MAX_CHARS
+    ? normalized
+    : fallback;
+}
+
+export function normalizeActionDescriptorLabel(
+  value: unknown,
+  fallback: string,
+): string {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  return normalized.length > 0 &&
+    normalized.length <= ACTION_DESCRIPTOR_LABEL_MAX_CHARS
+    ? normalized
+    : fallback;
+}
+
+export function normalizeActionDescriptorText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function actionDescriptorRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeOptionalActionDescriptorText(
+  value: unknown,
+  maxChars: number,
+): string | undefined {
+  const normalized = normalizeActionDescriptorText(value).trim();
+  return normalized.length > 0 && normalized.length <= maxChars
+    ? normalized
+    : undefined;
+}
+
+function normalizeActionDescriptorSection(value: unknown): ActionSection | undefined {
+  return typeof value === "string" &&
+    ACTION_SECTION_ORDER.includes(value.trim() as ActionSection)
+    ? (value.trim() as ActionSection)
+    : undefined;
+}
 
 /** The seam dispatch body a mutating action fires (a wire-level dispatch Action). */
 export interface ActionDispatch {
@@ -52,11 +105,7 @@ export interface ActionDispatch {
   meta?: ActionMeta;
 }
 
-/**
- * One action: a complete, unambiguous intent at the moment it is activated
- * (object-then-action grammar inherited from the palette ADR).
- */
-export interface ActionDescriptor {
+export interface ActionDescriptorBase {
   /** Stable within its surface; used as the menu item key and armed-item id. */
   id: string;
   label: string;
@@ -64,14 +113,6 @@ export interface ActionDescriptor {
   section?: ActionSection;
   /** Leading mark (Lucide structural / Phosphor domain), 14px, grayscale-safe. */
   icon?: ActionIcon;
-  /** Store-only intent (select/pin/filter/open). Mutually exclusive with `dispatch`. */
-  run?: () => void;
-  /**
-   * Mutating verb routed through the appDispatcher seam
-   * (actions-dispatch-through-the-one-seam): the single logged/traced/guardable
-   * engine touch. Mutually exclusive with `run`.
-   */
-  dispatch?: ActionDispatch;
   /** Destructive: arms on first activation, fires on the second. */
   confirm?: boolean;
   /** Exists-but-cannot-run-now: dimmed, reason surfaced (disabled-with-reason). */
@@ -87,9 +128,92 @@ export interface ActionDescriptor {
   accelerator?: string;
 }
 
-/** True when the descriptor carries a runnable effect (not a disabled placeholder). */
-export function isRunnable(action: ActionDescriptor): boolean {
-  return (
-    !action.disabled && (action.run !== undefined || action.dispatch !== undefined)
+/**
+ * One action: a complete, unambiguous intent at the moment it is activated
+ * (object-then-action grammar inherited from the palette ADR).
+ *
+ * The terminal effect has exactly one lane when runnable: either a store-only
+ * `run` intent or an appDispatcher `dispatch` body. Placeholder/disabled rows may
+ * carry neither, but never both.
+ */
+export type ActionDescriptor =
+  | (ActionDescriptorBase & {
+      /** Store-only intent (select/pin/filter/open). */
+      run: () => void;
+      dispatch?: never;
+    })
+  | (ActionDescriptorBase & {
+      /**
+       * Mutating verb routed through the appDispatcher seam
+       * (actions-dispatch-through-the-one-seam): the single logged/traced/guardable
+       * engine touch.
+       */
+      dispatch: ActionDispatch;
+      run?: never;
+    })
+  | (ActionDescriptorBase & {
+      run?: undefined;
+      dispatch?: undefined;
+    });
+
+export function normalizeActionDescriptor(action: unknown): ActionDescriptor | null {
+  const record = actionDescriptorRecord(action);
+  if (record === null) return null;
+
+  const id = normalizeOptionalActionDescriptorText(
+    record.id,
+    ACTION_DESCRIPTOR_ID_MAX_CHARS,
   );
+  const label = normalizeOptionalActionDescriptorText(
+    record.label,
+    ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
+  );
+  if (id === undefined || label === undefined) return null;
+
+  const base: ActionDescriptorBase = { id, label };
+  const section = normalizeActionDescriptorSection(record.section);
+  if (section !== undefined) base.section = section;
+  if (typeof record.icon === "function") base.icon = record.icon as ActionIcon;
+  if (record.confirm === true) base.confirm = true;
+  if (record.disabled === true) base.disabled = true;
+  const disabledReason = normalizeOptionalActionDescriptorText(
+    record.disabledReason,
+    ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
+  );
+  if (disabledReason !== undefined) base.disabledReason = disabledReason;
+  if (record.disabledInTimeTravel === true) base.disabledInTimeTravel = true;
+  const accelerator = normalizeOptionalActionDescriptorText(
+    record.accelerator,
+    ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS,
+  );
+  if (accelerator !== undefined) base.accelerator = accelerator;
+
+  const run = typeof record.run === "function" ? (record.run as () => void) : undefined;
+  const dispatch = normalizeAction(record.dispatch);
+  if (run !== undefined && dispatch === null) return { ...base, run };
+  if (run === undefined && dispatch !== null) return { ...base, dispatch };
+  return base;
+}
+
+/**
+ * True when the descriptor carries exactly one runnable effect.
+ *
+ * `run` and `dispatch` are mutually exclusive lanes: store-only intent vs the
+ * appDispatcher seam. Treating an ambiguous descriptor as inert keeps surfaces
+ * from making different branch-priority choices.
+ */
+export function isRunnable(action: ActionDescriptor): boolean {
+  const hasRun = action.run !== undefined;
+  const hasDispatch = action.dispatch !== undefined;
+  return !action.disabled && hasRun !== hasDispatch;
+}
+
+/** Execute a normalized runnable descriptor through its declared lane. */
+export function fireActionDescriptor(action: unknown): unknown {
+  const normalized = normalizeActionDescriptor(action);
+  if (normalized === null || !isRunnable(normalized)) return undefined;
+  if (normalized.dispatch !== undefined) {
+    return appDispatcher.dispatch(normalized.dispatch);
+  }
+  return normalized.run?.();
 }

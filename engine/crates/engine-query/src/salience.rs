@@ -474,30 +474,59 @@ pub fn brandes_betweenness(backbone: &Backbone) -> Vec<f64> {
 /// Uses unweighted degree for the peeling order (the standard k-core definition).
 pub fn coreness(backbone: &Backbone) -> Vec<usize> {
     let n = backbone.node_count();
-    let mut core = vec![0usize; n];
     if n == 0 {
-        return core;
+        return Vec::new();
     }
     let mut degree: Vec<usize> = (0..n).map(|i| backbone.adjacency[i].len()).collect();
-    let mut removed = vec![false; n];
-    // Repeatedly peel the minimum-degree node; its core number is the current
-    // peel level (the running max of minimum degrees encountered).
-    let mut level = 0usize;
-    for _ in 0..n {
-        // Find the unremoved node of minimum current degree.
-        let Some(v) = (0..n).filter(|&i| !removed[i]).min_by_key(|&i| degree[i]) else {
-            break;
-        };
-        level = level.max(degree[v]);
-        core[v] = level;
-        removed[v] = true;
+    let max_degree = degree.iter().copied().max().unwrap_or(0);
+
+    let mut bin = vec![0usize; max_degree + 1];
+    for &d in &degree {
+        bin[d] += 1;
+    }
+
+    let mut start = 0usize;
+    for count in &mut bin {
+        let next = start + *count;
+        *count = start;
+        start = next;
+    }
+
+    let mut pos = vec![0usize; n];
+    let mut vert = vec![0usize; n];
+    for (v, &d) in degree.iter().enumerate() {
+        pos[v] = bin[d];
+        vert[pos[v]] = v;
+        bin[d] += 1;
+    }
+
+    for d in (1..=max_degree).rev() {
+        bin[d] = bin[d - 1];
+    }
+    bin[0] = 0;
+
+    for i in 0..n {
+        let v = vert[i];
         for &(u, _) in &backbone.adjacency[v] {
-            if !removed[u] && degree[u] > 0 {
+            if degree[u] > degree[v] {
+                let du = degree[u];
+                let pu = pos[u];
+                let pw = bin[du];
+                let w = vert[pw];
+
+                if u != w {
+                    vert[pu] = w;
+                    vert[pw] = u;
+                    pos[u] = pw;
+                    pos[w] = pu;
+                }
+                bin[du] += 1;
                 degree[u] -= 1;
             }
         }
     }
-    core
+
+    degree
 }
 
 // --- Stage 2e: structural role + aggregated-exec features -----------------------
@@ -1630,6 +1659,59 @@ mod tests {
             .unwrap();
         // The exec leaf `e` is a pendant (degree 1): coreness 1, peeled first.
         assert_eq!(core[e], 1, "pendant exec leaf has minimal coreness");
+    }
+
+    #[test]
+    fn coreness_preserves_dense_core_with_many_pendant_leaves() {
+        let mut g = LinkageGraph::new();
+        let mut nodes = Vec::new();
+        for i in 0..20 {
+            nodes.push(doc(&format!("core-{i}"), "plan", "f"));
+        }
+        for i in 0..80 {
+            nodes.push(doc(&format!("leaf-{i}"), "exec", "f"));
+        }
+        for node in &nodes {
+            g.upsert_node(node.clone());
+        }
+
+        for a in 0..20 {
+            for b in (a + 1)..20 {
+                engine_graph::ingest(
+                    &mut g,
+                    edge(&format!("core-{a}"), &format!("core-{b}"), Tier::Structural),
+                    EdgeAttrs::default(),
+                )
+                .unwrap();
+            }
+        }
+        for i in 0..80 {
+            engine_graph::ingest(
+                &mut g,
+                edge("core-0", &format!("leaf-{i}"), Tier::Structural),
+                EdgeAttrs::default(),
+            )
+            .unwrap();
+        }
+
+        let backbone = Backbone::build(&g, &members(&nodes));
+        let core = coreness(&backbone);
+        let dense = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "core-7" }))
+            .unwrap();
+        let connector = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "core-0" }))
+            .unwrap();
+        let leaf = backbone
+            .index_of(&node_id(&CanonicalKey::Document { stem: "leaf-42" }))
+            .unwrap();
+
+        assert_eq!(core[dense], 19, "a 20-node clique has coreness 19");
+        assert_eq!(
+            core[connector], 19,
+            "pendant fan-out does not inflate the dense core"
+        );
+        assert_eq!(core[leaf], 1, "pendant leaves stay in the outer shell");
     }
 
     #[test]

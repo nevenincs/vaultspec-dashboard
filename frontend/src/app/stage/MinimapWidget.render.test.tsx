@@ -23,12 +23,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { resetMinimapChrome } from "../../stores/view/minimapChrome";
 import { getScene } from "./Stage";
 import { MinimapWidget } from "./MinimapWidget";
 
 describe("MinimapWidget surface + a11y + seam (S27)", () => {
   afterEach(() => {
     cleanup();
+    resetMinimapChrome();
     vi.restoreAllMocks();
   });
 

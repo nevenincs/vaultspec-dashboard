@@ -10,9 +10,10 @@
 // rejected-durable-switch, ArrowDown/Up between rows) and the loading / degraded
 // / error states are NOT exercised here: they need either a transport stub (the
 // fakes this codebase is burning down) or a multi-worktree fixture the live
-// engine serves. The switch/reset invariant (022) is owned by setScope and pure-
-// tested; degradation selection is pure-tested via the stores selectors. See
-// FINDINGS R2 (multi-worktree fixture) to restore the multi-scope render tests.
+// engine serves. The switch/reset invariant (022) is owned by the stores-layer
+// activation path (`activateWorktreeScope` -> `switchActiveScope` -> `setScope`)
+// and pure-tested; degradation selection is pure-tested via the stores selectors.
+// See FINDINGS R2 (multi-worktree fixture) to restore the multi-scope render tests.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";

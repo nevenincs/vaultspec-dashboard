@@ -16,12 +16,28 @@
 // `{job_id, status:"queued"}` immediately; `useRagJobProgress` polls `/ops/rag/
 // jobs?job_id=` with backoff to a terminal phase, holding no connection open.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
-import { engineClient, readTierAvailability, type TiersBlock } from "./engine";
-import { engineKeys } from "./queries";
+import {
+  engineClient,
+  readTierAvailability,
+  type OpsResult,
+  type TiersBlock,
+} from "./engine";
+import {
+  engineKeys,
+  invalidateScopedSemanticReads,
+  normalizeGraphSliceScope,
+} from "./queries";
 import { dispatchOps } from "./opsActions";
 
 // --- brokered wire shapes (forwarded verbatim from rag) ------------------------
@@ -95,6 +111,13 @@ export interface RagServiceStateEnvelope {
   [key: string]: unknown;
 }
 
+export type RagServiceIndex = NonNullable<RagServiceStateEnvelope["index"]>;
+
+export interface RagReadinessEnvelope {
+  ready?: boolean;
+  [key: string]: unknown;
+}
+
 /** The unwrapped brokered result: rag's value (or null when degraded) + tiers. */
 export interface BrokeredResult<T> {
   envelope: T | null;
@@ -108,15 +131,76 @@ export interface BrokeredResult<T> {
 // active scope folds into each key — a scope swap re-reads, mirroring the other
 // per-scope read families.
 
+export const normalizeRagControlScope = normalizeGraphSliceScope;
+
+export function normalizeRagControlKeyPart(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+export function normalizeRagProjectRoot(root: unknown): string | null {
+  return normalizeRagControlScope(root);
+}
+
+function normalizeRagProjectNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+export function normalizeRagProjectSlot(slot: unknown): RagProjectSlot | null {
+  if (slot === null || typeof slot !== "object") return null;
+  const candidate = slot as Record<string, unknown>;
+  const root = normalizeRagProjectRoot(candidate.root);
+  if (root === null) return null;
+
+  const ref_count = normalizeRagProjectNumber(candidate.ref_count);
+  const idle_seconds = normalizeRagProjectNumber(candidate.idle_seconds);
+  const last_access = normalizeRagProjectNumber(candidate.last_access);
+  return {
+    root,
+    ...(ref_count !== undefined ? { ref_count } : {}),
+    ...(idle_seconds !== undefined ? { idle_seconds } : {}),
+    ...(last_access !== undefined ? { last_access } : {}),
+  };
+}
+
+export function normalizeRagProjectSlots(slots: unknown): RagProjectSlot[] {
+  if (!Array.isArray(slots)) return [];
+  return slots.flatMap((slot) => {
+    const normalized = normalizeRagProjectSlot(slot);
+    return normalized === null ? [] : [normalized];
+  });
+}
+
+function skippedRagProjectEvictResult(): OpsResult {
+  return {
+    ok: false,
+    envelope: { skipped: true, reason: "missing-project-root" },
+    tiers: {},
+  };
+}
+
 export const ragControlKeys = {
   all: [...engineKeys.all, "ops-rag"] as const,
-  serviceState: (scope: string) =>
-    [...ragControlKeys.all, "service-state", scope] as const,
-  jobs: (scope: string, jobId?: string) =>
-    [...ragControlKeys.all, "jobs", scope, jobId ?? "all"] as const,
-  watcher: (scope: string) => [...ragControlKeys.all, "watcher", scope] as const,
-  projects: (scope: string) => [...ragControlKeys.all, "projects", scope] as const,
-  readiness: (scope: string) => [...ragControlKeys.all, "readiness", scope] as const,
+  serviceState: (scope: unknown) =>
+    [
+      ...ragControlKeys.all,
+      "service-state",
+      normalizeRagControlKeyPart(scope),
+    ] as const,
+  jobs: (scope: unknown, jobId?: unknown) =>
+    [
+      ...ragControlKeys.all,
+      "jobs",
+      normalizeRagControlKeyPart(scope),
+      normalizeRagControlKeyPart(jobId, "all"),
+    ] as const,
+  watcher: (scope: unknown) =>
+    [...ragControlKeys.all, "watcher", normalizeRagControlKeyPart(scope)] as const,
+  projects: (scope: unknown) =>
+    [...ragControlKeys.all, "projects", normalizeRagControlKeyPart(scope)] as const,
+  readiness: (scope: unknown) =>
+    [...ragControlKeys.all, "readiness", normalizeRagControlKeyPart(scope)] as const,
 };
 
 // --- pure interpreters (unit-tested without a render) --------------------------
@@ -126,15 +210,43 @@ export const ragControlKeys = {
  *  is terminal and stops the poll. */
 const LIVE_PHASES = new Set(["queued", "running", "pending"]);
 
+function normalizeRagJobText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeRagJobNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeRagJobId(value: unknown): string | null {
+  return normalizeRagJobText(value) ?? null;
+}
+
+function normalizeRagJobPhase(value: unknown): string | undefined {
+  return normalizeRagJobText(value);
+}
+
+export function normalizeRagRequestSeq(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 export function isJobTerminal(phase: string | undefined): boolean {
-  if (!phase) return false;
-  return !LIVE_PHASES.has(phase.toLowerCase());
+  const normalized = normalizeRagJobPhase(phase);
+  if (!normalized) return false;
+  return !LIVE_PHASES.has(normalized.toLowerCase());
 }
 
 /** Whether a job's terminal phase is a FAILURE (vs a clean completion). */
 export function isJobFailed(phase: string | undefined): boolean {
-  if (!phase) return false;
-  return ["error", "failed", "cancelled", "canceled"].includes(phase.toLowerCase());
+  const normalized = normalizeRagJobPhase(phase);
+  if (!normalized) return false;
+  return ["error", "failed", "cancelled", "canceled"].includes(
+    normalized.toLowerCase(),
+  );
 }
 
 /** The first (newest-first) job in a brokered jobs envelope, or undefined. */
@@ -142,6 +254,72 @@ export function firstJob(
   envelope: RagJobsSnapshot | null | undefined,
 ): RagJob | undefined {
   return envelope?.jobs?.[0];
+}
+
+/** The requested job in a brokered jobs envelope, or undefined when absent. */
+export function requestedJob(
+  envelope: RagJobsSnapshot | null | undefined,
+  jobId: string | null,
+): RagJob | undefined {
+  const requestedId = normalizeRagJobId(jobId);
+  if (requestedId === null) return undefined;
+  return envelope?.jobs?.find((job) => normalizeRagJobId(job.id) === requestedId);
+}
+
+/** The semantic tier is unavailable in a brokered rag response. */
+export function ragSemanticOffline(data: BrokeredResult<unknown> | undefined): boolean {
+  return data !== undefined && readTierAvailability(data.tiers, ["semantic"]).degraded;
+}
+
+/** Whether any brokered rag control read reports the semantic tier unavailable. */
+export function ragControlSemanticOffline(
+  ...reads: Array<BrokeredResult<unknown> | undefined>
+): boolean {
+  return reads.some(ragSemanticOffline);
+}
+
+export interface RagControlView {
+  semanticOffline: boolean;
+  disabled: boolean;
+  index: RagServiceIndex | undefined;
+  watch: RagWatcherState | null;
+  hasWatcherConfig: boolean;
+  ready: boolean | undefined;
+  projects: RagProjectSlot[];
+  hasProjects: boolean;
+}
+
+/**
+ * Interpret the brokered rag control reads for the ops chrome. Envelope drilling
+ * stays here: the panel consumes service/index, watcher, readiness, and resident
+ * projects as one view instead of reading raw brokered query payloads.
+ */
+export function deriveRagControlView(
+  scope: unknown,
+  serviceState: BrokeredResult<RagServiceStateEnvelope> | undefined,
+  watcher: BrokeredResult<RagWatcherState> | undefined,
+  readiness: BrokeredResult<RagReadinessEnvelope> | undefined,
+  projects: BrokeredResult<RagProjectsState> | undefined,
+): RagControlView {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const semanticOffline = ragControlSemanticOffline(
+    serviceState,
+    watcher,
+    readiness,
+    projects,
+  );
+  const watch = watcher?.envelope ?? null;
+  const projectSlots = normalizeRagProjectSlots(projects?.envelope?.projects);
+  return {
+    semanticOffline,
+    disabled: normalizedScope === null || semanticOffline,
+    index: serviceState?.envelope?.index,
+    watch,
+    hasWatcherConfig: watch !== null,
+    ready: readiness?.envelope?.ready,
+    projects: projectSlots,
+    hasProjects: projectSlots.length > 0,
+  };
 }
 
 /**
@@ -167,13 +345,14 @@ export function interpretJobProgress(
   data: BrokeredResult<RagJobsSnapshot> | undefined,
   jobId: string | null,
 ): RagJobProgressView {
-  const semanticOffline = readTierAvailability(data?.tiers, ["semantic"]).degraded;
-  const job = firstJob(data?.envelope);
-  const phase = job?.phase;
-  const total = job?.progress?.total;
-  const completed = job?.progress?.completed;
+  const semanticOffline = ragSemanticOffline(data);
+  const requestedId = normalizeRagJobId(jobId);
+  const job = requestedJob(data?.envelope, requestedId);
+  const phase = normalizeRagJobPhase(job?.phase);
+  const total = normalizeRagJobNumber(job?.progress?.total);
+  const completed = normalizeRagJobNumber(job?.progress?.completed);
   const fraction =
-    typeof total === "number" && total > 0 && typeof completed === "number"
+    total !== undefined && total > 0 && completed !== undefined
       ? Math.max(0, Math.min(1, completed / total))
       : undefined;
   const terminal = isJobTerminal(phase);
@@ -181,12 +360,101 @@ export function interpretJobProgress(
     job,
     phase,
     fraction,
-    step: job?.progress?.step,
+    step: normalizeRagJobText(job?.progress?.step),
     terminal,
     failed: isJobFailed(phase),
-    polling: jobId !== null && !semanticOffline && !terminal,
+    polling: requestedId !== null && !semanticOffline && !terminal,
     semanticOffline,
   };
+}
+
+export function shouldAcceptRagJobReceipt({
+  currentScope,
+  requestScope,
+  currentSeq,
+  requestSeq,
+}: {
+  currentScope: unknown;
+  requestScope: unknown;
+  currentSeq: unknown;
+  requestSeq: unknown;
+}): boolean {
+  const normalizedCurrentScope = normalizeRagControlScope(currentScope);
+  const normalizedRequestScope = normalizeRagControlScope(requestScope);
+  const normalizedCurrentSeq = normalizeRagRequestSeq(currentSeq);
+  const normalizedRequestSeq = normalizeRagRequestSeq(requestSeq);
+  return (
+    normalizedCurrentScope !== null &&
+    normalizedCurrentScope === normalizedRequestScope &&
+    normalizedCurrentSeq !== null &&
+    normalizedCurrentSeq === normalizedRequestSeq
+  );
+}
+
+export interface RagReindexJobState {
+  scope: string | null;
+  jobId: string | null;
+  requestSeq: number;
+  setScope: (scope: unknown) => void;
+  beginRequest: (scope: unknown) => number;
+  acceptReceipt: (requestScope: unknown, requestSeq: unknown, jobId: unknown) => void;
+}
+
+export const useRagReindexJobStore = create<RagReindexJobState>((set, get) => ({
+  scope: null,
+  jobId: null,
+  requestSeq: 0,
+  setScope: (scope) => {
+    const normalizedScope = normalizeRagControlScope(scope);
+    set((state) =>
+      state.scope === normalizedScope
+        ? state
+        : {
+            scope: normalizedScope,
+            jobId: null,
+            requestSeq: state.requestSeq + 1,
+          },
+    );
+  },
+  beginRequest: (scope) => {
+    const normalizedScope = normalizeRagControlScope(scope);
+    const requestSeq = get().requestSeq + 1;
+    set({ scope: normalizedScope, jobId: null, requestSeq });
+    return requestSeq;
+  },
+  acceptReceipt: (requestScope, requestSeq, jobId) => {
+    const normalizedJobId = normalizeRagJobId(jobId);
+    if (normalizedJobId === null) return;
+    set((state) => {
+      const accepted = shouldAcceptRagJobReceipt({
+        currentScope: state.scope,
+        requestScope,
+        currentSeq: state.requestSeq,
+        requestSeq,
+      });
+      return accepted ? { jobId: normalizedJobId } : state;
+    });
+  },
+}));
+
+export function useRagReindexJobIdentity(scope: unknown): {
+  jobId: string | null;
+  beginRequest: (scope: unknown) => number;
+  acceptReceipt: (requestScope: unknown, requestSeq: unknown, jobId: unknown) => void;
+} {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const identity = useRagReindexJobStore(
+    useShallow((state) => ({
+      jobId: state.jobId,
+      beginRequest: state.beginRequest,
+      acceptReceipt: state.acceptReceipt,
+    })),
+  );
+  const setScope = useRagReindexJobStore((state) => state.setScope);
+  useEffect(() => {
+    setScope(normalizedScope);
+  }, [normalizedScope, setScope]);
+  return identity;
 }
 
 // --- read hooks (tier-gated) ---------------------------------------------------
@@ -197,41 +465,162 @@ export function interpretJobProgress(
 // broker degrades to a tiers-bearing 200, not an error.
 
 const READ_GC_MS = 30_000;
+export const RAG_JOBS_LIMIT_CAP = 50;
 
-export function useRagServiceState(scope: string | null) {
-  return useQuery({
-    queryKey: ragControlKeys.serviceState(scope ?? ""),
-    queryFn: () => engineClient.opsRagGet<RagServiceStateEnvelope>("service-state"),
-    enabled: scope !== null,
-    gcTime: READ_GC_MS,
-  });
+export interface RagJobsRequestIdentity {
+  scope: string | null;
+  limit: number;
 }
 
-export function useRagWatcher(scope: string | null) {
-  return useQuery({
-    queryKey: ragControlKeys.watcher(scope ?? ""),
-    queryFn: () => engineClient.opsRagGet<RagWatcherState>("watcher"),
-    enabled: scope !== null,
-    gcTime: READ_GC_MS,
-  });
+export function boundedRagJobsLimit(limit: unknown): number {
+  if (typeof limit === "string" && limit.trim() === "") return 1;
+  if (typeof limit !== "number" && typeof limit !== "string") return 1;
+  const parsed = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(RAG_JOBS_LIMIT_CAP, Math.floor(parsed)));
 }
 
-export function useRagProjects(scope: string | null) {
-  return useQuery({
-    queryKey: ragControlKeys.projects(scope ?? ""),
-    queryFn: () => engineClient.opsRagGet<RagProjectsState>("projects"),
-    enabled: scope !== null,
-    gcTime: READ_GC_MS,
-  });
+export function normalizeRagJobsRequestIdentity(
+  scope: unknown,
+  limit: unknown = 10,
+): RagJobsRequestIdentity {
+  return {
+    scope: normalizeRagControlScope(scope),
+    limit: boundedRagJobsLimit(limit),
+  };
 }
 
-export function useRagReadiness(scope: string | null) {
-  return useQuery({
-    queryKey: ragControlKeys.readiness(scope ?? ""),
-    queryFn: () => engineClient.opsRagGet<Record<string, unknown>>("readiness"),
-    enabled: scope !== null,
+export function invalidateRagWatcherControlQueries(queryClient: QueryClient): void {
+  for (const family of ["watcher", "readiness"] as const) {
+    void queryClient.invalidateQueries({
+      queryKey: [...ragControlKeys.all, family],
+    });
+  }
+}
+
+export function invalidateRagControlQueries(queryClient: QueryClient): void {
+  for (const family of [
+    "service-state",
+    "readiness",
+    "jobs",
+    "projects",
+    "watcher",
+  ] as const) {
+    void queryClient.invalidateQueries({
+      queryKey: [...ragControlKeys.all, family],
+    });
+  }
+}
+
+export function invalidateAfterRagOpsRun(
+  queryClient: QueryClient,
+  scope: unknown,
+  verb: string,
+): void {
+  const normalizedScope = normalizeRagControlScope(scope);
+  void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  invalidateRagControlQueries(queryClient);
+
+  if (normalizedScope === null) return;
+  if (verb !== "service-start" && verb !== "service-stop") return;
+
+  invalidateScopedSemanticReads(queryClient, normalizedScope);
+}
+
+export function useInvalidateAfterRagOpsRun(scope: unknown): (verb: string) => void {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const queryClient = useQueryClient();
+  return useCallback(
+    (verb: string) => invalidateAfterRagOpsRun(queryClient, normalizedScope, verb),
+    [queryClient, normalizedScope],
+  );
+}
+
+export function invalidateRagReindexSettlementQueries(
+  queryClient: QueryClient,
+  scope: unknown,
+  semanticIndexChanged: boolean,
+): void {
+  const normalizedScope = normalizeRagControlScope(scope);
+  void queryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  invalidateRagControlQueries(queryClient);
+  if (normalizedScope === null || !semanticIndexChanged) return;
+  invalidateScopedSemanticReads(queryClient, normalizedScope);
+}
+
+export function useRagServiceState(scope: unknown) {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.serviceState(normalizedScope ?? ""),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagServiceStateEnvelope>(
+        "service-state",
+        undefined,
+        signal,
+      ),
+    enabled,
     gcTime: READ_GC_MS,
   });
+  return enabled ? query : { ...query, data: undefined };
+}
+
+export function useRagWatcher(scope: unknown) {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.watcher(normalizedScope ?? ""),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagWatcherState>("watcher", undefined, signal),
+    enabled,
+    gcTime: READ_GC_MS,
+  });
+  return enabled ? query : { ...query, data: undefined };
+}
+
+export function useRagProjects(scope: unknown) {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.projects(normalizedScope ?? ""),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagProjectsState>("projects", undefined, signal),
+    enabled,
+    gcTime: READ_GC_MS,
+  });
+  return enabled ? query : { ...query, data: undefined };
+}
+
+export function useRagReadiness(scope: unknown) {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const enabled = normalizedScope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.readiness(normalizedScope ?? ""),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagReadinessEnvelope>("readiness", undefined, signal),
+    enabled,
+    gcTime: READ_GC_MS,
+  });
+  return enabled ? query : { ...query, data: undefined };
+}
+
+export function useRagControlView(scope: unknown): RagControlView {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const serviceState = useRagServiceState(normalizedScope);
+  const readiness = useRagReadiness(normalizedScope);
+  const watcher = useRagWatcher(normalizedScope);
+  const projects = useRagProjects(normalizedScope);
+  return useMemo(
+    () =>
+      deriveRagControlView(
+        normalizedScope,
+        serviceState.data,
+        watcher.data,
+        readiness.data,
+        projects.data,
+      ),
+    [projects.data, readiness.data, normalizedScope, serviceState.data, watcher.data],
+  );
 }
 
 /** Poll backoff: 1s, 2s, 4s, capped at 8s — bounded so a long build does not
@@ -247,40 +636,51 @@ function pollBackoff(updateCount: number): number {
  * tiers block, never a transport error. `jobId === null` disables the poll
  * entirely (no job in flight).
  */
-export function useRagJobProgress(jobId: string | null): RagJobProgressView {
+export function useRagJobProgress(scope: unknown, jobId: unknown): RagJobProgressView {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const normalizedJobId = normalizeRagJobId(jobId);
+  const enabled = normalizedScope !== null && normalizedJobId !== null;
   const query = useQuery({
-    queryKey: ragControlKeys.jobs(jobId ?? "", jobId ?? undefined),
-    queryFn: () =>
-      engineClient.opsRagGet<RagJobsSnapshot>("jobs", {
-        job_id: jobId ?? undefined,
-        limit: 1,
-      }),
-    enabled: jobId !== null,
+    queryKey: ragControlKeys.jobs(normalizedScope ?? "", normalizedJobId ?? undefined),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagJobsSnapshot>(
+        "jobs",
+        {
+          job_id: normalizedJobId ?? undefined,
+          limit: 1,
+        },
+        signal,
+      ),
+    enabled,
     gcTime: READ_GC_MS,
     refetchInterval: (q) => {
       const data = q.state.data as BrokeredResult<RagJobsSnapshot> | undefined;
       // Stop when rag is down (tiers-gated) so a dead service is not polled.
-      if (readTierAvailability(data?.tiers, ["semantic"]).degraded) return false;
-      const phase = firstJob(data?.envelope)?.phase;
+      if (ragSemanticOffline(data)) return false;
+      const phase = requestedJob(data?.envelope, normalizedJobId)?.phase;
       if (isJobTerminal(phase)) return false;
       return pollBackoff(q.state.dataUpdateCount);
     },
     refetchIntervalInBackground: false,
   });
   return interpretJobProgress(
-    query.data as BrokeredResult<RagJobsSnapshot> | undefined,
-    jobId,
+    enabled ? (query.data as BrokeredResult<RagJobsSnapshot> | undefined) : undefined,
+    enabled ? normalizedJobId : null,
   );
 }
 
 /** A non-polling read of the recent jobs (for the activity list). */
-export function useRagJobs(scope: string | null, limit = 10) {
-  return useQuery({
-    queryKey: ragControlKeys.jobs(scope ?? "", `recent-${limit}`),
-    queryFn: () => engineClient.opsRagGet<RagJobsSnapshot>("jobs", { limit }),
-    enabled: scope !== null,
+export function useRagJobs(scope: unknown, limit: unknown = 10) {
+  const request = normalizeRagJobsRequestIdentity(scope, limit);
+  const enabled = request.scope !== null;
+  const query = useQuery({
+    queryKey: ragControlKeys.jobs(request.scope ?? "", `recent-${request.limit}`),
+    queryFn: ({ signal }) =>
+      engineClient.opsRagGet<RagJobsSnapshot>("jobs", { limit: request.limit }, signal),
+    enabled,
     gcTime: READ_GC_MS,
   });
+  return enabled ? query : { ...query, data: undefined };
 }
 
 // --- control mutations (dispatched through the platform seam) ------------------
@@ -296,13 +696,35 @@ export interface ReindexArgs {
   clean?: boolean;
 }
 
+function normalizeRagReindexType(value: unknown): ReindexArgs["type"] | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized === "vault" || normalized === "code" ? normalized : undefined;
+}
+
+export function normalizeRagReindexArgs(input: unknown): ReindexArgs {
+  const value: Record<string, unknown> =
+    input !== null && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : {};
+  const args: ReindexArgs = {};
+  const type = normalizeRagReindexType(value.type);
+  if (type !== undefined) args.type = type;
+  if (typeof value.clean === "boolean") args.clean = value.clean;
+  return args;
+}
+
 /** Trigger a reindex; resolves with rag's `{job_id, status}` envelope so the
  *  caller can hand the job id to `useRagJobProgress`. */
 export function useRagReindex() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: ReindexArgs = {}) =>
-      dispatchOps({ target: "rag", verb: "reindex", body: args }),
+    mutationFn: (args: unknown = {}) =>
+      dispatchOps({
+        target: "rag",
+        verb: "reindex",
+        body: normalizeRagReindexArgs(args),
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [...ragControlKeys.all, "jobs"] });
     },
@@ -314,15 +736,64 @@ export interface WatcherReconfigureArgs {
   cooldown_s?: number;
 }
 
+export const WATCHER_DEBOUNCE_MS_MAX = 600_000;
+export const WATCHER_COOLDOWN_S_MAX = 3_600;
+
+function boundedRagWatcherIntegerArg(value: unknown, max: number): number | undefined {
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 0 ||
+    parsed > max ||
+    !Number.isInteger(parsed)
+  ) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function boundedRagWatcherNumberArg(value: unknown, max: number): number | undefined {
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > max) return undefined;
+  return parsed;
+}
+
+export function normalizeWatcherReconfigureArgs(
+  input: unknown,
+): WatcherReconfigureArgs {
+  const value: Record<string, unknown> =
+    input !== null && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : {};
+  const args: WatcherReconfigureArgs = {};
+  const debounceMs = boundedRagWatcherIntegerArg(
+    value.debounce_ms,
+    WATCHER_DEBOUNCE_MS_MAX,
+  );
+  const cooldownS = boundedRagWatcherNumberArg(
+    value.cooldown_s,
+    WATCHER_COOLDOWN_S_MAX,
+  );
+  if (debounceMs !== undefined) args.debounce_ms = debounceMs;
+  if (cooldownS !== undefined) args.cooldown_s = cooldownS;
+  return args;
+}
+
 export function useRagWatcherReconfigure() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: WatcherReconfigureArgs) =>
-      dispatchOps({ target: "rag", verb: "watcher-reconfigure", body: args }),
+    mutationFn: (args: unknown) =>
+      dispatchOps({
+        target: "rag",
+        verb: "watcher-reconfigure",
+        body: normalizeWatcherReconfigureArgs(args),
+      }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: [...ragControlKeys.all, "watcher"],
-      });
+      invalidateRagWatcherControlQueries(queryClient);
     },
   });
 }
@@ -332,9 +803,7 @@ export function useRagWatcherStart() {
   return useMutation({
     mutationFn: () => dispatchOps({ target: "rag", verb: "watcher-start" }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: [...ragControlKeys.all, "watcher"],
-      });
+      invalidateRagWatcherControlQueries(queryClient);
     },
   });
 }
@@ -344,9 +813,7 @@ export function useRagWatcherStop() {
   return useMutation({
     mutationFn: () => dispatchOps({ target: "rag", verb: "watcher-stop" }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: [...ragControlKeys.all, "watcher"],
-      });
+      invalidateRagWatcherControlQueries(queryClient);
     },
   });
 }
@@ -356,8 +823,16 @@ export function useRagWatcherStop() {
 export function useRagProjectEvict() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (root: string) =>
-      dispatchOps({ target: "rag", verb: "project-evict", body: { root } }),
+    mutationFn: (root: unknown) => {
+      const normalizedRoot = normalizeRagProjectRoot(root);
+      return normalizedRoot === null
+        ? Promise.resolve(skippedRagProjectEvictResult())
+        : dispatchOps({
+            target: "rag",
+            verb: "project-evict",
+            body: { root: normalizedRoot },
+          });
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [...ragControlKeys.all, "projects"],
@@ -373,36 +848,47 @@ export function useRagProjectEvict() {
  * the reindex and remembers the returned `job_id`, plus the live `progress` view
  * polled from it. This is the one-call shape the control UI consumes.
  */
-export function useRagReindexWithProgress(): {
-  trigger: (args?: ReindexArgs) => void;
+export function useRagReindexWithProgress(scope: unknown): {
+  trigger: (args?: unknown) => void;
   pending: boolean;
   jobId: string | null;
   progress: RagJobProgressView;
 } {
+  const normalizedScope = normalizeRagControlScope(scope);
+  const queryClient = useQueryClient();
   const reindex = useRagReindex();
-  const [jobId, setJobId] = useState<string | null>(null);
-  const progress = useRagJobProgress(jobId);
+  const { jobId, beginRequest, acceptReceipt } =
+    useRagReindexJobIdentity(normalizedScope);
+  const progress = useRagJobProgress(normalizedScope, jobId);
+  const settledJobRef = useRef<string | null>(null);
 
-  // When the polled job reaches a terminal phase, stop tracking it so a later
-  // re-read does not re-arm the poll on a finished job.
-  const lastTerminal = useRef<string | null>(null);
   useEffect(() => {
-    if (jobId && progress.terminal && lastTerminal.current !== jobId) {
-      lastTerminal.current = jobId;
-    }
-  }, [jobId, progress.terminal]);
+    if (jobId === null || !progress.terminal) return;
+    if (settledJobRef.current === jobId) return;
+    settledJobRef.current = jobId;
+    invalidateRagReindexSettlementQueries(
+      queryClient,
+      normalizedScope,
+      !progress.failed,
+    );
+  }, [jobId, normalizedScope, progress.failed, progress.terminal, queryClient]);
 
   const trigger = useMemo(
-    () => (args?: ReindexArgs) => {
+    () => (args?: unknown) => {
+      if (normalizedScope === null) return;
+      const triggerScope = normalizedScope;
+      const triggerSeq = beginRequest(triggerScope);
       reindex.mutate(args ?? {}, {
         onSuccess: (result) => {
-          const envelope = (result as { envelope?: { job_id?: string } } | undefined)
+          const envelope = (result as { envelope?: { job_id?: unknown } } | undefined)
             ?.envelope;
-          if (envelope?.job_id) setJobId(envelope.job_id);
+          if (envelope?.job_id !== undefined) {
+            acceptReceipt(triggerScope, triggerSeq, envelope.job_id);
+          }
         },
       });
     },
-    [reindex],
+    [acceptReceipt, beginRequest, reindex, normalizedScope],
   );
 
   return { trigger, pending: reindex.isPending, jobId, progress };

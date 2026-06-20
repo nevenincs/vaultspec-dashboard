@@ -5,10 +5,10 @@
 // (computed via `liveEdgeOffset`), drawn in the accent / live-state token.
 // Dragging the playhead off LIVE (outside the right-edge snap zone) puts the
 // product into time-travel mode — unmistakably and from one shared truth: the
-// mode flips in the shared view state (operational verbs disable on it, the stage
-// tint shifts), a "viewing {date} — return to live" chip docks on the stage, and
-// the playhead itself changes character to the stale / non-live token. Returning
-// docks back.
+// mode flips in canonical dashboard-state (operational verbs disable on it, the
+// stage tint shifts), a "viewing {date} — return to live" chip docks on the
+// stage, and the playhead itself changes character to the stale / non-live token.
+// Returning docks back.
 //
 // Scroll-strip coordinates (S42): position maps through `timeToX` / `xToTime` over
 // the SHARED store `pxPerMs` + `scrollOffset` (origin = epoch, t=0 in strip space,
@@ -32,14 +32,30 @@
 import { Play, RotateCcw } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef } from "react";
 
-import { useViewStore } from "../../stores/view/viewStore";
+import {
+  useDashboardPlayheadView,
+  useDashboardTimelineModeView,
+} from "../../stores/server/queries";
+import {
+  normalizeTimelineScope,
+  setTimelinePlayhead,
+  timelineViewSnapshot,
+  useTimelinePlayhead,
+  useTimelineScrollState,
+} from "../../stores/view/timeline";
+import {
+  LIVE_SNAP_PX,
+  dragToPlayhead,
+  keyboardStep,
+  movePlayhead,
+  startPlayheadDragPointerSession,
+} from "../../stores/view/timelineIntent";
 import { useElementWidth } from "../chrome/useElementWidth";
 import { useSurfaceStates } from "../degradation/useDegradation";
-import { humanInstant, isoInstant, useTimelineStore } from "./Timeline";
+import { humanInstant, isoInstant } from "./Timeline";
 import { TIMELINE_ORIGIN_MS, timeToX, xToTime } from "./scrollStrip";
 
-/** Pixels from the right edge within which a drag snaps back to LIVE. */
-export const LIVE_SNAP_PX = 10;
+export { LIVE_SNAP_PX, dragToPlayhead, keyboardStep };
 
 /** The playhead rail width in px — a named geometry constant, applied via
  *  inline style to match the Timeline's MARK_PX / LANE_HEIGHT pattern (no raw
@@ -50,102 +66,33 @@ export const PLAYHEAD_W = 3;
 export const KEY_STEP_FRACTION = 1 / 24;
 export const KEY_NUDGE_FRACTION = 1 / 96;
 
-/**
- * Resolve a drag VIEWPORT x to a playhead position over the scroll-strip model:
- * a drag within `LIVE_SNAP_PX` of the live dock (now's viewport x) snaps to LIVE;
- * otherwise the x maps to its instant via `xToTime` over `pxPerMs` + `scrollOffset`
- * (canonical epoch origin), clamped so it never scrubs past `now`. Pure — the
- * component passes `now` and the live dock so this stays unit-testable.
- */
-export function dragToPlayhead(
-  x: number,
-  pxPerMs: number,
-  scrollOffset: number,
-  liveDockX: number,
-  now: number,
-): number | "live" {
-  // The right-edge snap zone is the live dock (now's viewport x), not a fixed
-  // window end: LIVE docks at the right, scroll-left walks back.
-  if (x >= liveDockX - LIVE_SNAP_PX) return "live";
-  const t = xToTime(x, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
-  return Math.min(now, t);
-}
-
-/**
- * Resolve a keyboard step/nudge to the next playhead position, clamped to `now`.
- * Stepping forward past `now` snaps back to LIVE so the keyboard can reach the
- * live dock; stepping from LIVE backward lands at `now` + delta. A PURE projection
- * (unit-tested) — the keyboard path applies it instantly, never on an animation
- * frame (the motion law).
- */
-export function keyboardStep(
-  current: number | "live",
-  deltaMs: number,
-  now: number,
-): number | "live" {
-  const base = current === "live" ? now : current;
-  const next = base + deltaMs;
-  if (next >= now) return "live";
-  return Math.min(now, next);
-}
-
-/** One mutation for both stores: the playhead IS the mode (ADR). */
-export function movePlayhead(t: number | "live"): void {
-  useTimelineStore.getState().setPlayhead(t);
-  useViewStore
-    .getState()
-    .setTimelineMode(t === "live" ? { kind: "live" } : { kind: "time-travel", at: t });
-}
-
-export function Playhead() {
-  const playheadT = useTimelineStore((s) => s.playheadT);
-  const pxPerMs = useTimelineStore((s) => s.pxPerMs);
-  const scrollOffset = useTimelineStore((s) => s.scrollOffset);
+export function Playhead({ scope }: { scope: unknown }) {
+  const normalizedScope = normalizeTimelineScope(scope);
+  const playheadT = useTimelinePlayhead();
+  const { pxPerMs, scrollOffset } = useTimelineScrollState();
+  const dashboardPlayhead = useDashboardPlayheadView(normalizedScope);
   // The LIVE chip becomes RECONNECTING when the engine stream is lost
   // (degradation matrix §8 — a designed state, not an error).
   const reconnecting = useSurfaceStates().timeline === "reconnecting";
   const hostRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   // Track the real rail width: the live dock sits at the right viewport edge.
   const width = useElementWidth(hostRef, { parent: true }) ?? 800;
 
   useEffect(() => {
+    if (!dashboardPlayhead.loaded) return;
+    const next = dashboardPlayhead.playhead;
+    if (timelineViewSnapshot().playheadT !== next) setTimelinePlayhead(next);
+  }, [dashboardPlayhead.loaded, dashboardPlayhead.playhead]);
+
+  useEffect(() => {
     const host = hostRef.current?.parentElement;
     if (!host) return;
-    const toPlayhead = (e: PointerEvent) => {
-      const rect = host.getBoundingClientRect();
-      const now = Date.now();
-      // Read the scale/offset imperatively at event time (B8, resource-hardening)
-      // so this effect no longer lists them as deps — otherwise it tore down and
-      // re-added the global pointer listeners on every scroll/zoom frame (~60/s
-      // during scrubbing), with a stale-event window mid-drag.
-      const { pxPerMs: px, scrollOffset: off } = useTimelineStore.getState();
-      // LIVE docks at the right viewport edge (`liveEdgeOffset` puts `now` at
-      // viewport x = width); that is the snap zone the drag resolves against.
-      const liveDockX = timeToX(now, TIMELINE_ORIGIN_MS, px, off);
-      return dragToPlayhead(e.clientX - rect.left, px, off, liveDockX, now);
-    };
-    const onDown = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-playhead-grip]")) return;
-      dragging.current = true;
-      e.preventDefault();
-    };
-    const onMove = (e: PointerEvent) => {
-      if (dragging.current) {
-        movePlayhead(toPlayhead(e));
-      }
-    };
-    const onUp = () => {
-      dragging.current = false;
-    };
-    host.addEventListener("pointerdown", onDown);
-    globalThis.addEventListener("pointermove", onMove);
-    globalThis.addEventListener("pointerup", onUp);
-    return () => {
-      host.removeEventListener("pointerdown", onDown);
-      globalThis.removeEventListener("pointermove", onMove);
-      globalThis.removeEventListener("pointerup", onUp);
-    };
+    return startPlayheadDragPointerSession({
+      host,
+      getScope: () => scopeRef.current,
+    });
     // Empty deps (B8): the handlers read pxPerMs/scrollOffset via getState at
     // event time, so the effect references no reactive value and the listeners
     // register ONCE for the component's life.
@@ -184,7 +131,7 @@ export function Playhead() {
         return;
     }
     e.preventDefault();
-    movePlayhead(next);
+    movePlayhead(next, scope);
   };
 
   // ARIA slider value math: min = visible-range start, max = now (LIVE), now =
@@ -220,7 +167,7 @@ export function Playhead() {
       <button
         type="button"
         onClick={() => {
-          movePlayhead("live");
+          movePlayhead("live", scope);
         }}
         aria-label={
           reconnecting
@@ -277,20 +224,24 @@ export function Playhead() {
 }
 
 /** The unmistakable mode chip — docked on the stage while time travelling. */
-export function TimeTravelChip() {
-  const mode = useViewStore((s) => s.timelineMode);
-  if (mode.kind !== "time-travel") return null;
+export function TimeTravelChip({ scope }: { scope: unknown }) {
+  const normalizedScope = normalizeTimelineScope(scope);
+  const timeline = useDashboardTimelineModeView(normalizedScope);
+  if (!timeline.timeTravel || timeline.asOf === undefined) return null;
   return (
-    <div className="pointer-events-auto absolute bottom-2 right-2 z-10 flex items-center gap-fg-1 rounded-fg-pill border border-state-stale/40 bg-paper-raised/95 px-fg-3 py-fg-1 text-label text-state-stale shadow-fg-raised">
+    <div
+      className="pointer-events-auto absolute bottom-2 right-2 z-10 flex items-center gap-fg-1 rounded-fg-pill border border-state-stale/40 bg-paper-raised/95 px-fg-3 py-fg-1 text-label text-state-stale shadow-fg-raised"
+      data-time-travel-chip
+    >
       <Play size={11} aria-hidden className="rotate-180" />
       <span>
-        viewing <time data-tabular>{humanInstant(mode.at)}</time>
+        viewing <time data-tabular>{humanInstant(timeline.asOf)}</time>
       </span>
       <button
         type="button"
         className="inline-flex items-center gap-fg-1 rounded-fg-xs px-fg-1 underline transition-colors duration-ui-fast ease-settle hover:text-state-live focus-visible:no-underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         onClick={() => {
-          movePlayhead("live");
+          movePlayhead("live", scope);
         }}
       >
         <RotateCcw size={10} aria-hidden />

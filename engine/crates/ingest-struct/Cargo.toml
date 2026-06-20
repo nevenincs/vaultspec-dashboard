@@ -1,6 +1,6 @@
 [package]
 name = "ingest-struct"
-description = "Structural-tier ingestion: deterministic extraction of file paths, step identifiers, wiki-link stems, and symbols from document bodies, resolved against a scope's working tree (engine-spec §3)."
+description = "Structural-tier ingestion: deterministic extraction of step identifiers and wiki-link stems from document bodies, resolved against a scope's working tree (engine-spec §3)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

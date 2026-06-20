@@ -11,7 +11,7 @@ import {
   docNodeIdFromStem,
   stemFromPath,
 } from "../../stores/server/liveAdapters";
-import { useDashboardSelectedNodeId } from "../../stores/view/selection";
+import { useDashboardSelectedNodeId } from "../../stores/server/queries";
 import { openDocTab, previewDocTab } from "../../stores/view/tabs";
 
 export {
@@ -138,37 +138,4 @@ export function useHighlightedCodePath(
 ): string | null {
   const selectedId = useDashboardSelectedNodeId(scope);
   return highlightedCodePathFor(entries, selectedId);
-}
-
-// --- current folder + feature-tag contexts (user-state-persistence W04.P09.S32) --
-//
-// "Current folder + contexts" is a PROJECTION over the existing `feature_tags`
-// grouping primitive and the `/vault-tree` subtree — never a new node model
-// (views-are-projections-of-one-model). The active folder is a `.vault/` subtree
-// group (the vault browser's doc-type sections); its contexts are the feature
-// tags of the documents in that folder. The durable home is the session API
-// (`scope_context`), mirrored into the view store for synchronous reads.
-
-/**
- * The distinct feature-tag contexts present in a folder (a `.vault/` doc-type
- * group), in stable first-seen order — the projection over the entries'
- * `feature_tags`. With no folder argument, the contexts span the whole tree. A
- * pure derivation (unit-tested), not a fetch.
- */
-export function featureContextsFor(
-  entries: readonly VaultTreeEntry[] | undefined,
-  folder: string | null,
-): string[] {
-  if (!entries) return [];
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const entry of entries) {
-    if (folder !== null && entry.doc_type !== folder) continue;
-    for (const tag of entry.feature_tags) {
-      if (seen.has(tag)) continue;
-      seen.add(tag);
-      ordered.push(tag);
-    }
-  }
-  return ordered;
 }

@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
-import { useViewStore } from "../../stores/view/viewStore";
 import { ContextMenuHost } from "./ContextMenuHost";
 
 const focus = vi.fn();
@@ -38,7 +37,6 @@ function registerNodeMenu() {
 }
 
 beforeEach(() => {
-  useViewStore.getState().setTimelineMode({ kind: "live" });
   registerNodeMenu();
 });
 afterEach(() => {
@@ -80,10 +78,44 @@ describe("ContextMenuHost", () => {
     openNodeMenu();
     fireEvent.click(await screen.findByText("Remove"));
     expect(remove).not.toHaveBeenCalled();
-    const armed = await screen.findByText("confirm Remove?");
-    fireEvent.click(armed);
+    const armed = (await screen.findAllByText("confirm Remove?"))[0]!.closest(
+      '[role="menuitem"]',
+    );
+    fireEvent.click(armed as HTMLElement);
     expect(remove).toHaveBeenCalledTimes(1);
     expect(useContextMenuStore.getState().open).toBe(false);
+  });
+
+  it("disarms when canonical time-travel state removes the armed action", async () => {
+    resetResolvers();
+    registerResolver("node", () => [
+      {
+        id: "focus",
+        label: "Focus",
+        section: "navigate",
+        run: focus,
+      },
+      {
+        id: "remove",
+        label: "Remove",
+        section: "danger",
+        confirm: true,
+        disabledInTimeTravel: true,
+        run: remove,
+      },
+    ]);
+    const view = render(<ContextMenuHost />);
+    act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 }));
+
+    fireEvent.click(await screen.findByText("Remove"));
+    expect(useContextMenuStore.getState().armedItemId).toBe("remove");
+
+    view.rerender(<ContextMenuHost timeTravel />);
+
+    expect(screen.queryByText("confirm Remove?")).toBeNull();
+    expect(screen.queryByText("Remove")).toBeNull();
+    expect(useContextMenuStore.getState().armedItemId).toBeNull();
+    expect(useContextMenuStore.getState().open).toBe(true);
   });
 
   it("renders a disabled item with its reason and does not run it", async () => {
@@ -101,6 +133,13 @@ describe("ContextMenuHost", () => {
     await screen.findByRole("menu");
     const catcher = document.querySelector(".fixed.inset-0") as HTMLElement;
     fireEvent.mouseDown(catcher);
+    expect(useContextMenuStore.getState().open).toBe(false);
+  });
+
+  it("light-dismisses through the context-menu viewport lifecycle seam", async () => {
+    openNodeMenu();
+    await screen.findByRole("menu");
+    window.dispatchEvent(new Event("resize"));
     expect(useContextMenuStore.getState().open).toBe(false);
   });
 

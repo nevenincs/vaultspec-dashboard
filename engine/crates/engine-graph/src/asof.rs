@@ -230,10 +230,9 @@ pub fn asof_graph_resolved_cached(
             }],
         });
 
-        // Tree-based resolution at T (v1 as-of semantics): paths and wiki
-        // stems against the committed inventory; step ids and symbols mark
-        // STALE — verifying them blob-true needs plan/code blob scans,
-        // a deliberate v1 bound recorded in the step record.
+        // Tree-based resolution at T (v1 as-of semantics): wiki stems against
+        // the committed inventory. Step ids mark STALE because verifying them
+        // blob-true needs plan blob scans.
         let mentions = ingest_struct::extract::extract(&body.text);
         let mut by_id: std::collections::BTreeMap<
             String,
@@ -241,20 +240,6 @@ pub fn asof_graph_resolved_cached(
         > = std::collections::BTreeMap::new();
         for mention in mentions {
             let (state, target) = match &mention.kind {
-                MentionKind::Path(p) => {
-                    if inventory.binary_search(p).is_ok() {
-                        (ResolutionState::Resolved, Some(p.clone()))
-                    } else {
-                        let basename = p.rsplit('/').next().unwrap_or(p);
-                        match inventory
-                            .iter()
-                            .find(|i| i.rsplit('/').next() == Some(basename))
-                        {
-                            Some(found) => (ResolutionState::Stale, Some(found.clone())),
-                            None => (ResolutionState::Broken, None),
-                        }
-                    }
-                }
                 MentionKind::WikiLink(stem) => {
                     let filename = format!("{stem}.md");
                     match inventory
@@ -265,8 +250,8 @@ pub fn asof_graph_resolved_cached(
                         None => (ResolutionState::Broken, None),
                     }
                 }
-                // v1 as-of bound: undecidable without blob scans → stale.
-                MentionKind::StepId(_) | MentionKind::Symbol(_) => (ResolutionState::Stale, None),
+                // v1 as-of bound: undecidable without plan blob scans -> stale.
+                MentionKind::StepId(_) => (ResolutionState::Stale, None),
             };
             let resolved = ingest_struct::resolve::ResolvedMention {
                 mention,
@@ -360,37 +345,37 @@ mod tests {
         let root = dir.path();
         git(root, &["init", "-b", "main", "."]);
         std::fs::create_dir_all(root.join(".vault/plan")).unwrap();
-        std::fs::create_dir_all(root.join("src")).unwrap();
-        std::fs::write(root.join("src/lib.rs"), "// v1\n").unwrap();
+        std::fs::create_dir_all(root.join(".vault/adr")).unwrap();
+        std::fs::write(root.join(".vault/adr/2026-06-12-old-adr.md"), "# old\n").unwrap();
         std::fs::write(
             root.join(".vault/plan/2026-06-12-f-plan.md"),
-            "---\ntags:\n  - '#plan'\n  - '#f'\n---\n\nMentions `src/lib.rs`.\n",
+            "---\ntags:\n  - '#plan'\n  - '#f'\n---\n\nMentions [[2026-06-12-old-adr]].\n",
         )
         .unwrap();
         git(root, &["add", "."]);
         git(root, &["commit", "-m", "T1"]);
         git(root, &["tag", "t1"]);
 
-        // Present tree diverges: lib.rs deleted, doc now mentions a new file.
-        std::fs::remove_file(root.join("src/lib.rs")).unwrap();
+        // Present tree diverges: the old target is deleted, doc now mentions a
+        // different vault document.
+        std::fs::remove_file(root.join(".vault/adr/2026-06-12-old-adr.md")).unwrap();
+        std::fs::write(root.join(".vault/adr/2026-06-12-new-adr.md"), "# new\n").unwrap();
         std::fs::write(
             root.join(".vault/plan/2026-06-12-f-plan.md"),
-            "---\ntags:\n  - '#plan'\n  - '#f'\n---\n\nMentions `src/new.rs`.\n",
+            "---\ntags:\n  - '#plan'\n  - '#f'\n---\n\nMentions [[2026-06-12-new-adr]].\n",
         )
         .unwrap();
 
         let scope = ScopeRef::Ref { name: "t1".into() };
         let graph = asof_graph_resolved(root, "t1", &scope, 0).unwrap().graph;
 
-        // Blob-true: the doc node carries the T1 blob and the T1 mention,
-        // resolved against the T1 tree (where src/lib.rs exists). Target
-        // nodes are not materialized at ingestion (consistent with the
-        // present-tree index path; node materialization is a P08 concern).
-        assert_eq!(graph.node_count(), 1, "the document node");
+        // Blob-true: the plan carries the T1 body and the T1 mention, resolved
+        // against the T1 tree where the old ADR exists.
+        assert_eq!(graph.node_count(), 2, "the plan and old ADR document nodes");
         let edge = graph.edges().next().expect("structural edge at T1");
         assert_eq!(edge.edge.state, Some(ResolutionState::Resolved));
         assert!(
-            edge.edge.dst.0.contains("src/lib.rs"),
+            edge.edge.dst.0.contains("2026-06-12-old-adr"),
             "the T1 mention, not the present one: {}",
             edge.edge.dst.0
         );

@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 //
 // The non-theme settings effects (dashboard-settings W05, review HIGH-1): every
-// declared setting is consumed. reduce_motion applies a document attribute the
-// stylesheet honors; default_granularity seeds the view granularity a scope
-// opens with. Driven against the REAL engine settings store (the app client is
-// bound to the live transport in liveSetup) — no doubles.
+// reduce_motion applies a document attribute the stylesheet honors. Graph and
+// filter defaults are dashboard-state concerns now, so this effect must not
+// seed legacy view/filter stores. Driven against the REAL engine settings store
+// (the app client is bound to the live transport in liveSetup) — no doubles.
 //
 // State note: the engine settings store is shared and persistent across the run,
 // so each test writes the explicit value it then observes (never "the default
@@ -17,19 +17,25 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
 import { queryClient } from "../../stores/server/queryClient";
-import { useFilterStore } from "../../stores/view/filters";
+import { dashboardStateSessionIdentity, engineKeys } from "../../stores/server/queries";
+import { resetSettingsGraphDefaultsInitializationGuard } from "../../stores/server/settingsEffectsIntent";
+import { CONSUMED_SETTING_KEYS } from "../../stores/server/settingsSelectors";
 import { useViewStore } from "../../stores/view/viewStore";
-import { liveScope } from "../../testing/liveClient";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { useSettingsEffects } from "./settingsEffects";
 
-function Harness() {
-  useSettingsEffects();
+function Harness({ scope }: { scope: unknown }) {
+  useSettingsEffects(scope);
   return null;
 }
 
-function renderEffects() {
+function renderEffects(scope: unknown = null) {
   return render(
-    createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)),
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(Harness, { scope }),
+    ),
   );
 }
 
@@ -44,13 +50,16 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
   afterEach(() => {
     cleanup();
     queryClient.clear();
+    resetSettingsGraphDefaultsInitializationGuard();
     useViewStore.getState().setScope(null);
-    useFilterStore.getState().reset();
     document.documentElement.removeAttribute("data-reduce-motion");
   });
 
   it("applies reduce_motion to a document attribute the stylesheet honors", async () => {
-    await engineClient.putSettings({ key: "reduce_motion", value: "true" });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.reduceMotion,
+      value: "true",
+    });
     renderEffects();
     await waitFor(() => {
       expect(document.documentElement.dataset.reduceMotion).toBe("true");
@@ -58,41 +67,140 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
   });
 
   it("applies reduce_motion off when the setting is false", async () => {
-    await engineClient.putSettings({ key: "reduce_motion", value: "false" });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.reduceMotion,
+      value: "false",
+    });
     renderEffects();
     await waitFor(() => {
       expect(document.documentElement.dataset.reduceMotion).toBe("false");
     });
   });
 
-  it("seeds the view granularity from default_granularity for the scope", async () => {
-    // A scope override of the open-with detail level.
-    await engineClient.putSettings({ scope, key: "default_granularity", value: "document" });
-    // Start from the opposite so a real seed is observable.
-    useViewStore.getState().setGranularity("feature");
-    renderEffects();
-    await waitFor(() => {
-      expect(useViewStore.getState().granularity).toBe("document");
+  it("initializes fresh dashboard graph intent from schema settings once", async () => {
+    const client = createLiveClient();
+    await engineClient.putSettings({
+      scope,
+      key: CONSUMED_SETTING_KEYS.defaultGranularity,
+      value: "document",
     });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.confidenceFloor,
+      value: "60",
+    });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.labelFilter,
+      value: "adr",
+    });
+    await client.patchDashboardState({
+      scope,
+      graph_granularity: "feature",
+      filters: {},
+    });
+    queryClient.clear();
+
+    try {
+      renderEffects(` ${scope} `);
+
+      await waitFor(async () => {
+        const state = await client.dashboardState(scope);
+        expect(state.graph_granularity).toBe("document");
+        expect(state.filters.text).toBe("adr");
+        expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
+        expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
+      });
+    } finally {
+      await engineClient.putSettings({
+        scope,
+        key: CONSUMED_SETTING_KEYS.defaultGranularity,
+        value: "feature",
+      });
+      await engineClient.putSettings({
+        key: CONSUMED_SETTING_KEYS.confidenceFloor,
+        value: "0",
+      });
+      await engineClient.putSettings({
+        key: CONSUMED_SETTING_KEYS.labelFilter,
+        value: "",
+      });
+      await client
+        .patchDashboardState({ scope, graph_granularity: "feature", filters: {} })
+        .catch(() => undefined);
+    }
   });
 
-  it("seeds the temporal+semantic confidence floors from confidence_floor (percent -> 0..1)", async () => {
-    // A global confidence floor of 60% must seed both inferred-edge floors at 0.6.
-    await engineClient.putSettings({ key: "confidence_floor", value: "60" });
-    renderEffects();
-    await waitFor(() => {
-      const floors = useFilterStore.getState().minConfidence;
-      expect(floors.temporal).toBeCloseTo(0.6);
-      expect(floors.semantic).toBeCloseTo(0.6);
+  it("does not consume graph-default initialization on an existing dashboard intent", async () => {
+    const client = createLiveClient();
+    const session = await client.session();
+    const sessionIdentity = dashboardStateSessionIdentity(session);
+    await engineClient.putSettings({
+      scope,
+      key: CONSUMED_SETTING_KEYS.defaultGranularity,
+      value: "document",
     });
-  });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.confidenceFloor,
+      value: "60",
+    });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.labelFilter,
+      value: "adr",
+    });
+    const existingIntent = await client.patchDashboardState({
+      scope,
+      graph_granularity: "feature",
+      filters: { text: "user-owned filter" },
+    });
+    queryClient.clear();
+    queryClient.setQueryData(engineKeys.session(), session);
+    queryClient.setQueryData(
+      engineKeys.dashboardState(scope, sessionIdentity),
+      existingIntent,
+    );
 
-  it("seeds the node-stem text match from label_filter for the scope", async () => {
-    await engineClient.putSettings({ key: "label_filter", value: "adr" });
-    expect(useFilterStore.getState().textMatch).toBe("");
-    renderEffects();
-    await waitFor(() => {
-      expect(useFilterStore.getState().textMatch).toBe("adr");
-    });
+    try {
+      renderEffects(scope);
+
+      await waitFor(async () => {
+        const state = await client.dashboardState(scope);
+        expect(state.graph_granularity).toBe("feature");
+        expect(state.filters.text).toBe("user-owned filter");
+      });
+
+      const freshState = await client.patchDashboardState({
+        scope,
+        graph_granularity: "feature",
+        filters: {},
+      });
+      queryClient.setQueryData(
+        engineKeys.dashboardState(scope, sessionIdentity),
+        freshState,
+      );
+
+      await waitFor(async () => {
+        const state = await client.dashboardState(scope);
+        expect(state.graph_granularity).toBe("document");
+        expect(state.filters.text).toBe("adr");
+        expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
+        expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
+      });
+    } finally {
+      await engineClient.putSettings({
+        scope,
+        key: CONSUMED_SETTING_KEYS.defaultGranularity,
+        value: "feature",
+      });
+      await engineClient.putSettings({
+        key: CONSUMED_SETTING_KEYS.confidenceFloor,
+        value: "0",
+      });
+      await engineClient.putSettings({
+        key: CONSUMED_SETTING_KEYS.labelFilter,
+        value: "",
+      });
+      await client
+        .patchDashboardState({ scope, graph_granularity: "feature", filters: {} })
+        .catch(() => undefined);
+    }
   });
 });

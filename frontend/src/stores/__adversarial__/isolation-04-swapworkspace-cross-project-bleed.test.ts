@@ -42,7 +42,6 @@ describe("swapWorkspace must not leave the prior project's pins/lenses active (0
       workingSet: [],
       openedIds: [],
       selection: null,
-      selectedId: null,
     });
     usePinStore.setState({ pinnedIds: [], workspace: WS_A, scope: "/project-a/main" });
     useLensStore.setState({ saved: [], workspace: WS_A, scope: "/project-a/main" });
@@ -54,7 +53,6 @@ describe("swapWorkspace must not leave the prior project's pins/lenses active (0
       workingSet: [],
       openedIds: [],
       selection: null,
-      selectedId: null,
     });
     usePinStore.setState({ pinnedIds: [], workspace: "default", scope: "default" });
     useLensStore.setState({ saved: [], workspace: "default", scope: "default" });
@@ -70,7 +68,9 @@ describe("swapWorkspace must not leave the prior project's pins/lenses active (0
 
     // Dirty some per-scope view state too, so we can prove the wholesale reset.
     useViewStore.getState().addToWorkingSet("a:node");
-    useViewStore.getState().select("a:node");
+    useViewStore
+      .getState()
+      .selectEntity({ kind: "event", id: "evt:a", nodeIds: ["a:node"] });
     expect(useViewStore.getState().workingSet).toEqual(["a:node"]);
 
     // The documented WORKSPACE swap to project B.
@@ -80,7 +80,6 @@ describe("swapWorkspace must not leave the prior project's pins/lenses active (0
     expect(useViewStore.getState().scope).toBe("/project-b/main");
     expect(useViewStore.getState().workingSet).toEqual([]);
     expect(useViewStore.getState().selection).toBeNull();
-    expect(useViewStore.getState().selectedId).toBeNull();
     expect(useViewStore.getState().activeFolder).toBeNull();
     expect(useViewStore.getState().featureContexts).toEqual([]);
 

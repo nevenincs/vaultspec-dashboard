@@ -6,16 +6,10 @@ import {
   entryStem,
   filterVaultEntries,
   freshnessLabel,
-  groupEntries,
+  freshnessToneClass,
   isFresh,
+  projectFeatureGroups,
 } from "./VaultBrowser";
-
-const entry = (path: string, docType: string, modified?: string): VaultTreeEntry => ({
-  path,
-  doc_type: docType,
-  feature_tags: ["demo"],
-  dates: { modified },
-});
 
 const tagged = (path: string, docType: string, tags: string[]): VaultTreeEntry => ({
   path,
@@ -24,23 +18,44 @@ const tagged = (path: string, docType: string, tags: string[]): VaultTreeEntry =
   dates: {},
 });
 
-describe("groupEntries (G2.c)", () => {
-  it("groups by .vault subtree in canonical order, sorted within", () => {
-    const groups = groupEntries([
-      entry(".vault/plan/b-plan.md", "plan"),
-      entry(".vault/research/a-research.md", "research"),
-      entry(".vault/plan/a-plan.md", "plan"),
+describe("projectFeatureGroups (Vault feature → doc_type → document projection)", () => {
+  it("nests entries by feature, then by canonical .vault doc-type order", () => {
+    const groups = projectFeatureGroups([
+      tagged(".vault/plan/2026-01-08-grid-plan.md", "plan", ["grid"]),
+      tagged(".vault/research/2026-01-08-grid-research.md", "research", ["grid"]),
+      tagged(".vault/adr/2026-01-08-grid-adr.md", "adr", ["grid"]),
     ]);
-    expect([...groups.keys()]).toEqual(["research", "plan"]);
-    expect(groups.get("plan")!.map((e) => e.path)).toEqual([
-      ".vault/plan/a-plan.md",
-      ".vault/plan/b-plan.md",
-    ]);
+    expect(groups).toHaveLength(1);
+    const grid = groups[0]!;
+    expect(grid.feature).toBe("grid");
+    expect(grid.count).toBe(3);
+    expect(grid.docTypes.map((d) => d.docType)).toEqual(["research", "adr", "plan"]);
   });
 
-  it("appends unknown groups instead of dropping them", () => {
-    const groups = groupEntries([entry(".vault/notes/x.md", "notes")]);
-    expect([...groups.keys()]).toEqual(["notes"]);
+  it("orders features by first appearance in the entry list", () => {
+    const groups = projectFeatureGroups([
+      tagged(".vault/research/b-research.md", "research", ["beta"]),
+      tagged(".vault/research/a-research.md", "research", ["alpha"]),
+      tagged(".vault/plan/b-plan.md", "plan", ["beta"]),
+    ]);
+    expect(groups.map((g) => g.feature)).toEqual(["beta", "alpha"]);
+    expect(groups.find((g) => g.feature === "beta")!.count).toBe(2);
+  });
+
+  it("places an entry under every one of its feature tags", () => {
+    const groups = projectFeatureGroups([
+      tagged(".vault/adr/shared-adr.md", "adr", ["one", "two"]),
+    ]);
+    expect(groups.map((g) => g.feature).sort()).toEqual(["one", "two"]);
+    expect(groups.every((g) => g.count === 1)).toBe(true);
+  });
+
+  it("collects untagged entries under a single feature bucket rather than dropping them", () => {
+    const groups = projectFeatureGroups([
+      tagged(".vault/index/x.index.md", "index", []),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.feature).toBe("(untagged)");
   });
 });
 
@@ -76,6 +91,9 @@ describe("entry presentation", () => {
     expect(isFresh("9h")).toBe(false);
     expect(isFresh("3d")).toBe(false);
     expect(isFresh("")).toBe(false);
+    expect(freshnessToneClass("now")).toBe("text-state-active");
+    expect(freshnessToneClass("9h")).toBe("text-ink-faint");
+    expect(freshnessToneClass("")).toBe("text-ink-faint");
   });
 
   it("derives the display stem from the path", () => {

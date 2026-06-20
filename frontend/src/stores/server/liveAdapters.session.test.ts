@@ -8,7 +8,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import { adaptSession, adaptSettings, unwrapEnvelope } from "./liveAdapters";
+import {
+  SESSION_STRING_LIST_MAX_ITEMS,
+  adaptSession,
+  adaptSettings,
+  adaptWorkspaces,
+  unwrapEnvelope,
+} from "./liveAdapters";
+import { SCOPE_ID_MAX_CHARS } from "./scopeIdentity";
+import { WORKSPACE_LAYOUT_BLOB_MAX_CHARS } from "../workspaceLayout";
 
 const TIERS = {
   declared: { available: true },
@@ -30,6 +38,8 @@ describe("adaptSession (live session sample)", () => {
       scope_context: {
         folder: "plan",
         feature_tags: ["conf-feature"],
+        workspace_layout:
+          '{"v":1,"tabs":[{"nodeId":"doc:plan","surface":"markdown"}],"active":"doc:plan"}',
       },
       recents: ["Y:/repo"],
     },
@@ -43,9 +53,93 @@ describe("adaptSession (live session sample)", () => {
     expect(session.active_scope).toBe("Y:/repo");
     expect(session.scope_context.folder).toBe("plan");
     expect(session.scope_context.feature_tags).toEqual(["conf-feature"]);
+    expect(session.scope_context.workspace_layout).toBe(
+      liveSessionEnvelope.data.scope_context.workspace_layout,
+    );
     expect(session.recents).toEqual(["Y:/repo"]);
     // Degradation truth rides through on tiers — the chrome never reads it raw.
     expect(session.tiers.semantic.available).toBe(false);
+  });
+
+  it("preserves the optional durable dock workspace layout from scope_context", () => {
+    const layout = `{"v":1,"note":"${"x".repeat(SCOPE_ID_MAX_CHARS + 1)}"}`;
+    const session = adaptSession({
+      workspace: "Y:/repo/.git",
+      active_scope: "Y:/repo",
+      scope_context: {
+        folder: null,
+        feature_tags: [],
+        workspace_layout: layout,
+      },
+      recents: [],
+      tiers: TIERS,
+    });
+
+    expect(session.scope_context).toEqual({
+      folder: null,
+      feature_tags: [],
+      workspace_layout: layout,
+    });
+  });
+
+  it("normalizes session identities and scope context at the adapter boundary", () => {
+    const session = adaptSession({
+      workspace: " Y:/repo/.git ",
+      active_scope: " Y:/repo ",
+      active_workspace: " project-a ",
+      scope_context: {
+        folder: " plan ",
+        feature_tags: [" feature-a ", "feature-a", "", 7, "feature-b"],
+        workspace_layout: "   ",
+      },
+      recents: [" Y:/repo ", "Y:/repo", "", 42, "Y:/other"],
+      tiers: TIERS,
+    });
+
+    expect(session).toMatchObject({
+      workspace: "Y:/repo/.git",
+      active_scope: "Y:/repo",
+      active_workspace: "project-a",
+      scope_context: {
+        folder: "plan",
+        feature_tags: ["feature-a", "feature-b"],
+      },
+      recents: ["Y:/repo", "Y:/other"],
+    });
+    expect(session.scope_context.workspace_layout).toBeUndefined();
+  });
+
+  it("bounds session identities, string lists, and workspace layout blobs separately", () => {
+    const overlongIdentity = "x".repeat(SCOPE_ID_MAX_CHARS + 1);
+    const oversizedLayout = "x".repeat(WORKSPACE_LAYOUT_BLOB_MAX_CHARS + 1);
+    const session = adaptSession({
+      workspace: overlongIdentity,
+      active_scope: overlongIdentity,
+      active_workspace: overlongIdentity,
+      scope_context: {
+        folder: overlongIdentity,
+        feature_tags: Array.from(
+          { length: SESSION_STRING_LIST_MAX_ITEMS + 1 },
+          (_, index) => `feature-${index}`,
+        ),
+        workspace_layout: oversizedLayout,
+      },
+      recents: Array.from(
+        { length: SESSION_STRING_LIST_MAX_ITEMS + 1 },
+        (_, index) => `recent-${index}`,
+      ),
+      tiers: TIERS,
+    });
+
+    expect(session.workspace).toBe("");
+    expect(session.active_scope).toBe("");
+    expect(session.active_workspace).toBeNull();
+    expect(session.scope_context.folder).toBeNull();
+    expect(session.scope_context.feature_tags).toHaveLength(
+      SESSION_STRING_LIST_MAX_ITEMS,
+    );
+    expect(session.scope_context.workspace_layout).toBeUndefined();
+    expect(session.recents).toHaveLength(SESSION_STRING_LIST_MAX_ITEMS);
   });
 
   it("tolerates a fresh-store session: null folder, empty tags + recents", () => {
@@ -88,6 +182,73 @@ describe("adaptSession (live session sample)", () => {
       scope_context: { folder: null, feature_tags: [] },
       recents: [],
       tiers: {},
+    });
+  });
+});
+
+// --- workspace registry parity --------------------------------------------------
+
+describe("adaptWorkspaces (workspace registry sample)", () => {
+  it("normalizes workspace roots and drops malformed registry rows", () => {
+    const workspaces = adaptWorkspaces({
+      workspaces: [
+        {
+          id: " workspace-a ",
+          label: " Main Project ",
+          path: " Y:/repo ",
+          is_launch: true,
+          reachable: false,
+          unreachable_reason: " missing path ",
+        },
+        {
+          id: " workspace-b ",
+          path: " Y:/other ",
+          label: "   ",
+        },
+        {
+          id: "   ",
+          label: "missing id",
+          path: "Y:/bad",
+        },
+        {
+          id: "missing-path",
+          label: "Missing path",
+          path: "   ",
+        },
+        "not a root",
+      ],
+      active_workspace: " workspace-a ",
+      tiers: TIERS,
+    });
+
+    expect(workspaces.workspaces).toEqual([
+      {
+        id: "workspace-a",
+        label: "Main Project",
+        path: "Y:/repo",
+        is_launch: true,
+        reachable: false,
+        unreachable_reason: "missing path",
+      },
+      {
+        id: "workspace-b",
+        label: "workspace-b",
+        path: "Y:/other",
+        is_launch: false,
+        reachable: true,
+        unreachable_reason: null,
+      },
+    ]);
+    expect(workspaces.active_workspace).toBe("workspace-a");
+    expect(workspaces.tiers).toBe(TIERS);
+  });
+
+  it("normalizes a blank active workspace to null", () => {
+    expect(
+      adaptWorkspaces({ workspaces: [], active_workspace: "   ", tiers: TIERS }),
+    ).toMatchObject({
+      workspaces: [],
+      active_workspace: null,
     });
   });
 });

@@ -1,11 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type { SceneCommand, SceneFieldRenderer } from "../../scene/sceneController";
 import { SceneController } from "../../scene/sceneController";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { useViewStore } from "../../stores/view/viewStore";
 import type { LineageNode } from "../../stores/server/engine";
-import { eventTouchSummary } from "../right/Inspector";
+import { eventTouchSummary } from "../../stores/view/inspector";
 import { MAX_PULSE_NODE_IDS, handleNodeClick, joinedNodeIds } from "./eventSelection";
+
+let scope: string;
+let documentNodeId: string;
+
+beforeAll(async () => {
+  scope = await liveScope();
+  const slice = await createLiveClient().graphQuery({ scope, granularity: "document" });
+  const node = slice.nodes.find((entry) => entry.id.startsWith("doc:"));
+  if (!node) {
+    throw new Error("live timeline selection fixture has no document node");
+  }
+  documentNodeId = node.id;
+});
+
+afterEach(async () => {
+  useViewStore.getState().selectEntity(null);
+  useViewStore.getState().setScope(null);
+  await createLiveClient()
+    .patchDashboardState({ scope, selected_ids: [], hovered_id: null })
+    .catch(() => undefined);
+});
 
 function captureScene() {
   const commands: SceneCommand[] = [];
@@ -59,39 +81,66 @@ describe("joinedNodeIds (the bounded node_ids join, S45)", () => {
   });
 });
 
-describe("handleNodeClick (shared Selection + bounded node_ids pulse, S45)", () => {
-  it("selects the lineage node through the ONE shared selection and pulses its ego", () => {
+describe("handleNodeClick (canonical node selection + bounded node_ids pulse, S45)", () => {
+  it("emits node selection through dashboard-state only and pulses its ego", async () => {
     const { scene, commands } = captureScene();
-    handleNodeClick(
-      node("doc:plan-1"),
-      [
-        { src: "doc:plan-1", dst: "doc:adr-1" },
-        { src: "doc:exec-1", dst: "doc:plan-1" },
-      ],
-      scene,
-    );
-    // Selection flows through the shared concept as a node (not a bespoke kind).
-    expect(useViewStore.getState().selection).toEqual({
-      kind: "node",
-      id: "doc:plan-1",
+    await expect(
+      handleNodeClick(
+        node(documentNodeId),
+        [
+          { src: documentNodeId, dst: "doc:adr-1" },
+          { src: "doc:exec-1", dst: documentNodeId },
+        ],
+        scene,
+        scope,
+      ),
+    ).resolves.toBe(true);
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [documentNodeId],
     });
-    // The pulse cross-highlights the node + its 1-hop lineage neighbors.
+    expect(useViewStore.getState().selection).toBeNull();
     expect(commands).toContainEqual({
       kind: "pulse",
-      ids: new Set(["doc:plan-1", "doc:adr-1", "doc:exec-1"]),
+      ids: new Set([documentNodeId, "doc:adr-1", "doc:exec-1"]),
     });
   });
 
-  it("selects and pulses just the node when it has no arcs", () => {
+  it("does not pulse without an accepted dashboard-state selection", async () => {
     const { scene, commands } = captureScene();
-    handleNodeClick(node("doc:lonely"), [], scene);
-    expect(useViewStore.getState().selection).toEqual({
-      kind: "node",
-      id: "doc:lonely",
+    await expect(
+      handleNodeClick(
+        node(documentNodeId),
+        [{ src: documentNodeId, dst: "doc:adr-1" }],
+        scene,
+        { scope },
+      ),
+    ).resolves.toBe(false);
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [],
     });
+    expect(useViewStore.getState().selection).toBeNull();
+    expect(commands).toEqual([]);
+  });
+
+  it("selects and pulses just the node when it has no arcs", async () => {
+    const { scene, commands } = captureScene();
+    await expect(handleNodeClick(node(documentNodeId), [], scene, scope)).resolves.toBe(
+      true,
+    );
+    expect(useViewStore.getState().selection).toBeNull();
     expect(commands).toContainEqual({
       kind: "pulse",
-      ids: new Set(["doc:lonely"]),
+      ids: new Set([documentNodeId]),
     });
+  });
+
+  it("keeps the bounded join pure for arbitrary lineage ids", () => {
+    const { ids } = joinedNodeIds("doc:plan-1", [
+      { src: "doc:plan-1", dst: "doc:adr-1" },
+      { src: "doc:exec-1", dst: "doc:plan-1" },
+    ]);
+    expect(ids).toEqual(["doc:plan-1", "doc:adr-1", "doc:exec-1"]);
   });
 });

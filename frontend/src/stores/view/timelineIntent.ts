@@ -2,11 +2,12 @@ import { patchDashboardTimelineMode } from "../server/dashboardState";
 import {
   dashboardPlayheadForTimelineMode,
   dashboardTimelineModeForPlayhead,
-  type DashboardPlayhead,
 } from "../server/dashboardTimeline";
 import {
   fitTimelineSpan,
   fitTimelineViewportForScope,
+  normalizeTimelinePlayhead,
+  normalizeTimelineScope,
   parseTimelineInstant,
   setTimelinePlayhead,
   setTimelineScrollOffset,
@@ -14,6 +15,7 @@ import {
   timelineJumpToCorpusEdgeOffset,
   timelinePanScrollOffset,
   timelineViewSnapshot,
+  timelineViewportXToTime,
   timelineViewportForInstant,
   timelineZoomViewport,
   timelineZoomViewportAt,
@@ -24,6 +26,73 @@ import {
 
 export const TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH = 800;
 export const TIMELINE_NAV_EVENT_SPAN_MS = 24 * 3600 * 1000;
+export const LIVE_SNAP_PX = 10;
+
+export function dragToPlayhead(
+  x: number,
+  pxPerMs: number,
+  scrollOffset: number,
+  liveDockX: number,
+  now: number,
+): number | "live" {
+  if (x >= liveDockX - LIVE_SNAP_PX) return "live";
+  return Math.min(now, timelineViewportXToTime(x, pxPerMs, scrollOffset));
+}
+
+export function keyboardStep(
+  current: number | "live",
+  deltaMs: number,
+  now: number,
+): number | "live" {
+  const base = current === "live" ? now : current;
+  const next = base + deltaMs;
+  if (next >= now) return "live";
+  return Math.min(now, next);
+}
+
+export interface PlayheadDragPointerSessionInput {
+  host: HTMLElement;
+  getScope: () => unknown;
+  moveTarget?: Pick<typeof globalThis, "addEventListener" | "removeEventListener">;
+}
+
+export function startPlayheadDragPointerSession({
+  host,
+  getScope,
+  moveTarget = globalThis,
+}: PlayheadDragPointerSessionInput): () => void {
+  let dragging = false;
+  const toPlayhead = (event: PointerEvent) => {
+    const rect = host.getBoundingClientRect();
+    const { pxPerMs, scrollOffset } = timelineViewSnapshot();
+    return dragToPlayhead(
+      event.clientX - rect.left,
+      pxPerMs,
+      scrollOffset,
+      rect.width,
+      Date.now(),
+    );
+  };
+  const onDown = (event: PointerEvent) => {
+    if (!(event.target as HTMLElement).closest("[data-playhead-grip]")) return;
+    dragging = true;
+    event.preventDefault();
+  };
+  const onMove = (event: PointerEvent) => {
+    if (dragging) movePlayhead(toPlayhead(event), getScope());
+  };
+  const onUp = () => {
+    dragging = false;
+  };
+  host.addEventListener("pointerdown", onDown);
+  moveTarget.addEventListener("pointermove", onMove);
+  moveTarget.addEventListener("pointerup", onUp);
+  return () => {
+    host.removeEventListener("pointerdown", onDown);
+    moveTarget.removeEventListener("pointermove", onMove);
+    moveTarget.removeEventListener("pointerup", onUp);
+  };
+}
 
 export function timelineNavigationViewportWidth(viewportWidth: number): number {
   return viewportWidth > 0 ? viewportWidth : TIMELINE_NAV_DEFAULT_VIEWPORT_WIDTH;
@@ -56,10 +125,7 @@ export function zoomTimelineNavigationAt(
   return next;
 }
 
-export function panTimelineNavigation(
-  scrollOffset: number,
-  deltaPx: number,
-): number {
+export function panTimelineNavigation(scrollOffset: number, deltaPx: number): number {
   const next = timelinePanScrollOffset(scrollOffset, deltaPx);
   setTimelineScrollOffset(next);
   return next;
@@ -179,9 +245,14 @@ export function zoomTimelineNavigationToInstant(
  * accepted dashboard-state response; without one, isolated renders/tests can
  * move the view-local affordance only.
  */
-export function movePlayhead(t: DashboardPlayhead, scope: string | null): void {
-  if (scope) {
-    void patchDashboardTimelineMode(scope, dashboardTimelineModeForPlayhead(t))
+export function movePlayhead(t: unknown, scope: unknown): void {
+  const playhead = normalizeTimelinePlayhead(t);
+  const normalizedScope = normalizeTimelineScope(scope);
+  if (normalizedScope !== null) {
+    void patchDashboardTimelineMode(
+      normalizedScope,
+      dashboardTimelineModeForPlayhead(playhead),
+    )
       .then((state) => {
         if (!state) return;
         setTimelinePlayhead(dashboardPlayheadForTimelineMode(state.timeline_mode));
@@ -189,5 +260,7 @@ export function movePlayhead(t: DashboardPlayhead, scope: string | null): void {
       .catch(() => undefined);
     return;
   }
-  setTimelinePlayhead(t);
+  if (scope == null) {
+    setTimelinePlayhead(playhead);
+  }
 }

@@ -3,11 +3,12 @@
  *
  * Default (CI gate): discover the React chrome components, load `figma/component-map.json`,
  * and fail if the registry is missing entries, carries stale ones, has source drift, or an
- * invalid Figma binding — the naming-parity contract that stands in for Code Connect.
+ * invalid Figma binding. Alias metadata is preserved so the registry and Code Connect CLI
+ * mappings share the same live-node targets without renaming local components.
  *
  *   node scripts/figma-registry-check.ts            # validate (exit 1 on problems)
- *   node scripts/figma-registry-check.ts --write     # (re)generate the registry, keeping
- *                                                     # any existing Figma bindings
+ *   node scripts/figma-registry-check.ts --write     # (re)generate the registry directly
+ *   npm run figma:registry -- -- --write             # same through npm in this workspace
  */
 
 import { fileURLToPath } from "node:url";
@@ -44,7 +45,9 @@ function main(): void {
   }
 
   if (!existsSync(registryPath)) {
-    console.error("figma-registry: figma/component-map.json missing. Run with --write.");
+    console.error(
+      "figma-registry: figma/component-map.json missing. Run with --write.",
+    );
     process.exit(1);
     return;
   }
@@ -65,7 +68,7 @@ function main(): void {
   }
   console.error(`figma-registry: ${problems.length} problem(s):`);
   for (const p of problems) console.error("  " + p);
-  console.error("\nRun `npm run figma:registry -- --write` to sync the registry.");
+  console.error("\nRun `npm run figma:registry -- -- --write` to sync the registry.");
   process.exit(1);
 }
 

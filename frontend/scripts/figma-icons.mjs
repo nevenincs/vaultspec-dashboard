@@ -2,7 +2,8 @@
 // glyphs the dashboard actually imports, as flat SVG strings, into
 // `figma/icons.json`. This completes the Lucide/Phosphor side of the Figma
 // foundation seed (the in-house domain marks live in src/scene/field/marks.ts
-// and are seeded separately). One-way, code → Figma; Figma is never canonical.
+// and are seeded separately). This is the mechanical icon projection used to verify and
+// refresh the binding Figma file; it is not a separate design authority.
 //
 // Lucide: each icon module exports `__iconNode` = [[tag, attrs], …] on a 24 grid,
 //   stroked (fill none, width 2, round caps/joins).

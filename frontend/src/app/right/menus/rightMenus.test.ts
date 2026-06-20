@@ -7,11 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type {
-  ChangeEntity,
-  EdgeEntity,
-  SearchResultEntity,
-} from "../../../platform/actions/entity";
+import type { ChangeEntity } from "../../../platform/actions/entity";
 import { changeMenu } from "./changeMenu";
 import { edgeMenu } from "./edgeMenu";
 import { searchResultMenu } from "./searchResultMenu";
@@ -24,11 +20,11 @@ const find = <T extends { id: string }>(actions: T[], id: string): T => {
 };
 
 describe("edgeMenu", () => {
-  const full: EdgeEntity = {
+  const full = {
     kind: "edge",
-    id: "e1",
-    relation: "references",
-    dst: "doc:beta",
+    id: " e1 ",
+    relation: " references ",
+    dst: " doc:beta ",
     tier: "structural",
   };
 
@@ -47,6 +43,11 @@ describe("edgeMenu", () => {
     expect(highlight.disabledInTimeTravel).toBeUndefined();
   });
 
+  it("rejects non-edge entities at the resolver ingress", () => {
+    expect(edgeMenu({ kind: "node", id: "doc:a" })).toEqual([]);
+    expect(edgeMenu(null)).toEqual([]);
+  });
+
   it("disables copy-relation / copy-destination with reasons when absent", () => {
     const bare = edgeMenu({ kind: "edge", id: "e1" });
     const rel = find(bare, "edge:copy-relation");
@@ -61,11 +62,11 @@ describe("edgeMenu", () => {
 });
 
 describe("searchResultMenu", () => {
-  const code: SearchResultEntity = {
+  const code = {
     kind: "search-result",
-    id: "code:src/x.ts",
-    source: "src/x.ts",
-    nodeId: "code:src/x.ts",
+    id: " code:src/x.ts ",
+    source: " src/x.ts ",
+    nodeId: " code:src/x.ts ",
     score: 0.91,
     isCode: true,
   };
@@ -84,6 +85,23 @@ describe("searchResultMenu", () => {
     const focus = find(searchResultMenu(code), "search-result:focus");
     expect(focus.section).toBe("navigate");
     expect(focus.disabledInTimeTravel).toBeUndefined();
+  });
+
+  it("normalizes runtime search-result descriptors before building actions", () => {
+    const actions = searchResultMenu(code);
+
+    expect(find(actions, "search-result:open-editor")).toMatchObject({
+      dispatch: { payload: { path: "src/x.ts" } },
+    });
+    expect(find(actions, "search-result:reveal")).toMatchObject({
+      dispatch: { payload: { path: "src/x.ts" } },
+    });
+    expect(find(actions, "search-result:copy-source")).toMatchObject({
+      dispatch: { payload: { text: "src/x.ts", what: "path" } },
+    });
+    expect(find(actions, "search-result:copy-score")).toMatchObject({
+      dispatch: { payload: { text: "0.91" } },
+    });
   });
 
   it("disables focus with a reason when there is no node id", () => {
@@ -123,6 +141,14 @@ describe("searchResultMenu", () => {
     expect(score.disabled).toBe(true);
     expect(score.disabledReason).toBe("no score");
   });
+
+  it("rejects malformed and non-search-result entities at resolver ingress", () => {
+    expect(
+      searchResultMenu({ kind: "search-result", id: "r1", source: "   " }),
+    ).toEqual([]);
+    expect(searchResultMenu({ kind: "node", id: "doc:a" })).toEqual([]);
+    expect(searchResultMenu(null)).toEqual([]);
+  });
 });
 
 describe("changeMenu", () => {
@@ -145,6 +171,33 @@ describe("changeMenu", () => {
   it("omits copy-hunk for a whole-file change (no hunk)", () => {
     const file: ChangeEntity = { kind: "change", id: "src/x.ts", path: "src/x.ts" };
     expect(byId(changeMenu(file))).not.toContain("change:copy-hunk");
+  });
+
+  it("normalizes runtime change descriptors before building actions", () => {
+    const actions = changeMenu({
+      kind: "change",
+      id: " change-1 ",
+      path: " src/x.ts ",
+      hunk: " @@ -1 +1 @@\n-old\n+new ",
+    });
+
+    expect(find(actions, "change:open-editor")).toMatchObject({
+      dispatch: { payload: { path: "src/x.ts" } },
+    });
+    expect(find(actions, "change:reveal")).toMatchObject({
+      dispatch: { payload: { path: "src/x.ts" } },
+    });
+    expect(find(actions, "change:copy-path")).toMatchObject({
+      section: "copy",
+      dispatch: { payload: { text: "src/x.ts", what: "path" } },
+    });
+    expect(find(actions, "change:copy-hunk")).toMatchObject({
+      dispatch: { payload: { text: "@@ -1 +1 @@\n-old\n+new" } },
+    });
+    expect(byId(changeMenu({ kind: "change", id: "x", path: "   " }))).toEqual([]);
+    expect(byId(changeMenu({ kind: "node", id: "doc:x", path: "src/x.ts" }))).toEqual(
+      [],
+    );
   });
 
   it("writes NO git verb (read-and-infer): only navigate/copy actions exist", () => {

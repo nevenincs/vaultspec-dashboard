@@ -13,6 +13,7 @@ import {
 } from "../server/dashboardState";
 import { featureTagFromNodeId } from "../server/liveAdapters";
 import { useDashboardSelectedNodeId } from "../server/queries";
+import { normalizeStoreScope } from "../server/scopeIdentity";
 import type { Selection } from "./viewStore";
 import { OPENED_IDS_CAP, useViewStore } from "./viewStore";
 
@@ -90,19 +91,37 @@ export function setDwelledHoverNodeId(id: unknown): void {
   useViewStore.getState().setDwelledHover(id);
 }
 
+export const normalizeSelectionScope = normalizeStoreScope;
+
+export const SELECTION_METADATA_ID_MAX_CHARS = 512;
+
+export function normalizeSelectionMetadataId(id: unknown): string | null {
+  if (typeof id !== "string") return null;
+  const normalized = id.trim();
+  return normalized.length > 0 && normalized.length <= SELECTION_METADATA_ID_MAX_CHARS
+    ? normalized
+    : null;
+}
+
+export function normalizeSelectionTruncatedNodeCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : undefined;
+}
+
 /** Resolve the inspector selection from canonical dashboard-state plus local metadata. */
-export function useDashboardResolvedSelection(scope: string | null): ResolvedSelection {
-  const selectedNodeId = useDashboardSelectedNodeId(scope);
+export function useDashboardResolvedSelection(scope: unknown): ResolvedSelection {
+  const selectedNodeId = useDashboardSelectedNodeId(normalizeSelectionScope(scope));
   return useResolvedSelection(selectedNodeId);
 }
 
 /** Select one or more graph nodes from any non-scene region. */
 export function selectNodes(
   ids: readonly unknown[],
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
   clearLocalSelectionMetadata();
-  return patchDashboardState(scope, selectionPatch(ids)).then(
+  return patchDashboardState(normalizeSelectionScope(scope), selectionPatch(ids)).then(
     (state) => state !== null,
   );
 }
@@ -110,7 +129,7 @@ export function selectNodes(
 /** Select a node from any non-scene region (browser row, search hit, palette). */
 export function selectNode(
   id: unknown,
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
   if (id === null) return selectNodes([], scope);
   const nodeId = normalizeNodeId(id);
@@ -120,14 +139,18 @@ export function selectNode(
 /** Select the first carried node from an event/menu node list, if present. */
 export function selectFirstNode(
   ids: readonly unknown[],
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
   return selectNode(ids[0] ?? null, scope);
 }
 
 /** Hook form for components that need a stable node-selection callback. */
-export function useDashboardNodeSelection(scope: string | null) {
-  return useCallback((id: unknown) => selectNode(id, scope), [scope]);
+export function useDashboardNodeSelection(scope: unknown) {
+  const normalizedScope = normalizeSelectionScope(scope);
+  return useCallback(
+    (id: unknown) => selectNode(id, normalizedScope),
+    [normalizedScope],
+  );
 }
 
 export function normalizeOpenedNodeIslandIds(ids: readonly unknown[]): string[] {
@@ -175,7 +198,7 @@ function markSceneOriginated(mark?: SceneOriginMarker, originated = true): void 
 /** The stage's own event path: select without bouncing focus back. */
 export function selectFromScene(
   id: unknown,
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
   mark?: SceneOriginMarker,
 ): Promise<boolean> {
   markSceneOriginated(mark);
@@ -193,7 +216,7 @@ export function selectFromScene(
 /** Open a node island and select the same node through the canonical dashboard seam. */
 export async function openNodeIsland(
   id: unknown,
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
   mark?: SceneOriginMarker,
 ): Promise<boolean> {
   const nodeId = normalizeNodeId(id);
@@ -207,7 +230,7 @@ export async function openNodeIsland(
 }
 
 interface FeatureDescentIntent {
-  descendFeatureTag: (featureTag: string) => Promise<unknown>;
+  descendFeatureTag: (featureTag: unknown) => Promise<unknown>;
 }
 
 /**
@@ -216,19 +239,20 @@ interface FeatureDescentIntent {
  */
 export async function openGraphNodeFromScene(
   id: unknown,
-  scope: string | null,
+  scope: unknown,
   featureDescentIntent: FeatureDescentIntent,
   mark?: SceneOriginMarker,
 ): Promise<boolean> {
   const nodeId = normalizeNodeId(id);
   if (nodeId === null) return false;
+  const normalizedScope = normalizeSelectionScope(scope);
   const featureTag = featureTagFromNodeId(nodeId);
   if (featureTag !== null) {
-    if (scope === null) return false;
+    if (normalizedScope === null) return false;
     await featureDescentIntent.descendFeatureTag(featureTag);
     return true;
   }
-  return openNodeIsland(nodeId, scope, mark);
+  return openNodeIsland(nodeId, normalizedScope, mark);
 }
 
 /** Close a node island through the named island intent seam. */
@@ -246,7 +270,7 @@ export function closeNodeIsland(id: unknown): void {
 export async function openNodeIslandFromWalk(
   scene: SceneController,
   id: unknown,
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
   mark?: SceneOriginMarker,
 ): Promise<boolean> {
   const nodeId = normalizeNodeId(id);
@@ -278,17 +302,19 @@ export async function openNodeIslandFromWalk(
 export async function focusFromWalk(
   scene: SceneController,
   id: unknown,
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
   mark?: SceneOriginMarker,
 ): Promise<boolean> {
   const nodeId = normalizeNodeId(id);
   if (id !== null && nodeId === null) return false;
+  const normalizedScope = normalizeSelectionScope(scope);
+  if (nodeId !== null && normalizedScope === null) return false;
   markSceneOriginated(mark);
   if (nodeId !== null) {
     scene.command({ kind: "focus-node", id: nodeId, animate: false });
   }
   try {
-    const accepted = await selectNode(nodeId, scope);
+    const accepted = await selectNode(nodeId, normalizedScope);
     if (!accepted) {
       markSceneOriginated(mark, false);
       return false;
@@ -302,18 +328,22 @@ export async function focusFromWalk(
 
 /** Select a timeline event; its node ids drive the stage cross-highlight. */
 export function selectEvent(
-  id: string,
+  id: unknown,
   nodeIds: readonly unknown[],
-  truncatedNodeIds?: number,
+  truncatedNodeIds?: unknown,
 ): void {
-  useViewStore
-    .getState()
-    .selectEntity({
-      kind: "event",
-      id,
-      nodeIds: normalizeDashboardSelectedIds(nodeIds),
-      truncatedNodeIds,
-    });
+  const eventId = normalizeSelectionMetadataId(id);
+  if (eventId === null) return;
+  const normalizedTruncatedNodeIds =
+    normalizeSelectionTruncatedNodeCount(truncatedNodeIds);
+  useViewStore.getState().selectEntity({
+    kind: "event",
+    id: eventId,
+    nodeIds: normalizeDashboardSelectedIds(nodeIds),
+    ...(normalizedTruncatedNodeIds === undefined
+      ? {}
+      : { truncatedNodeIds: normalizedTruncatedNodeIds }),
+  });
 }
 
 /**
@@ -322,22 +352,26 @@ export function selectEvent(
  * metadata remains local until the backend schema carries non-node entities.
  */
 export function selectEventNodes(
-  id: string,
+  id: unknown,
   nodeIds: readonly unknown[],
-  scope: string | null = useViewStore.getState().scope,
-  truncatedNodeIds?: number,
+  scope: unknown = useViewStore.getState().scope,
+  truncatedNodeIds?: unknown,
 ): Promise<boolean> {
+  const eventId = normalizeSelectionMetadataId(id);
+  if (eventId === null) return Promise.resolve(false);
   const selectedNodeIds = normalizeDashboardSelectedIds(nodeIds);
   return selectNodes(selectedNodeIds, scope).then((selected) => {
     if (!selected) return false;
-    selectEvent(id, selectedNodeIds, truncatedNodeIds);
+    selectEvent(eventId, selectedNodeIds, truncatedNodeIds);
     return true;
   });
 }
 
 /** Select an edge (inspector's per-tier edge list). */
-export function selectEdge(id: string): void {
-  useViewStore.getState().selectEntity({ kind: "edge", id });
+export function selectEdge(id: unknown): void {
+  const edgeId = normalizeSelectionMetadataId(id);
+  if (edgeId === null) return;
+  useViewStore.getState().selectEntity({ kind: "edge", id: edgeId });
 }
 
 /**
@@ -388,11 +422,12 @@ export function selectNodeAndPulse(
   scene: SceneController,
   nodeId: unknown,
   pulseIds: readonly unknown[],
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
-  const selected = selectNode(nodeId, scope);
-  pulseSelectionNodes(scene, pulseIds);
-  return selected;
+  return selectNode(nodeId, scope).then((selected) => {
+    if (selected) pulseSelectionNodes(scene, pulseIds);
+    return selected;
+  });
 }
 
 /**

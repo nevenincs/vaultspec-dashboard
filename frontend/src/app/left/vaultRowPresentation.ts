@@ -1,11 +1,8 @@
-// Shared vault-row presentation helpers (Figma `LeftRail_vault` / `LeftRail_tree`):
-// the doc-type marks, the compact freshness label, and the plan-status mark are
-// consumed identically by the VAULT browser (grouped by `.vault/` subtree) and the
-// TREE browser (the same `/vault-tree` projection nested feature → doc_type →
-// document). They live here, in ONE place, so the two surfaces never drift — the
-// tree mode is a pure client-side projection of the SAME model the vault mode reads
-// (views-are-projections-of-one-model), so it must paint each row with the SAME
-// marks, the SAME freshness buckets, and the SAME accent-bar selection cue.
+// Shared vault-row presentation helpers (Figma `LeftRail` Vault mode): doc-type
+// marks, compact freshness labels, and plan-status marks. The Vault tree is a
+// pure client-side projection of the SAME `/vault-tree` model the former grouped
+// listing read (views-are-projections-of-one-model), so presentation tokens stay
+// centralized here instead of drifting across row surfaces.
 //
 // No wire access, no node identity minted here — pure derivation over the entries
 // the `/vault-tree` stores query already returned (dashboard-layer-ownership).
@@ -26,6 +23,15 @@ import {
 } from "@phosphor-icons/react";
 
 import type { Category } from "../kit";
+import { freshnessLabel, isFresh } from "../presentation/freshness";
+
+export { freshnessLabel, isFresh };
+
+/** The token class for a compact freshness label. Only the truly live `now`
+ * bucket receives active ink; older buckets stay quiet. */
+export function freshnessToneClass(label: string): string {
+  return isFresh(label) ? "text-state-active" : "text-ink-faint";
+}
 
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
 // 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure
@@ -130,8 +136,8 @@ export function docMarkName(docType: string): string {
 // HONESTY NOTE (the one place this projection cannot fully reach the design): plan
 // progress (`lifecycle.progress.done/total`) is a GRAPH-NODE / pipeline facet, NOT
 // carried on the `/vault-tree` `VaultTreeEntry` this projection reads. Deriving a
-// ✓/◐ from data the projection does not hold would be a guess — and the tree mode
-// is bound to be a PURE projection of `/vault-tree` with no engine work. So when no
+// ✓/◐ from data the projection does not hold would be a guess — and Vault mode is
+// bound to be a PURE projection of `/vault-tree` with no engine work. So when no
 // progress is known the row reads the honest NOT-STARTED baseline (the empty ring),
 // matching the design's neutral plan pip; a caller that DOES hold progress (a future
 // surface that joins the pipeline projection) passes it and the mark lights up.
@@ -223,24 +229,4 @@ export function docDisplayTitle(path: string): string {
 function pathStemLocal(path: string): string {
   const base = path.split("/").pop() ?? path;
   return base.replace(/\.md$/i, "");
-}
-
-// --- freshness label (Figma right-aligned recency) -------------------------------
-
-/** Compact freshness label: <1h "now", then h/d/w buckets; cooled = "". */
-export function freshnessLabel(modified: string | undefined, now: number): string {
-  if (!modified) return "";
-  const at = Date.parse(modified);
-  if (!Number.isFinite(at)) return "";
-  const age = now - at;
-  if (age < 3600_000) return "now";
-  if (age < 24 * 3600_000) return `${Math.floor(age / 3600_000)}h`;
-  if (age < 7 * 24 * 3600_000) return `${Math.floor(age / (24 * 3600_000))}d`;
-  if (age < 30 * 24 * 3600_000) return `${Math.floor(age / (7 * 24 * 3600_000))}w`;
-  return "";
-}
-
-/** True only for genuinely fresh items (<1h) — the accent tints these alone. */
-export function isFresh(label: string): boolean {
-  return label === "now";
 }

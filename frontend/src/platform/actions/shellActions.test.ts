@@ -11,6 +11,8 @@ import {
   OPEN_IN_EDITOR_ACTION,
   REVEAL_ACTION,
   isHostShellAvailable,
+  normalizeShellPath,
+  normalizeShellPayload,
   openInEditorAction,
   revealAction,
   type ShellResult,
@@ -26,6 +28,13 @@ describe("host-shell verbs without a bridge (pure web)", () => {
     expect(isHostShellAvailable()).toBe(false);
   });
 
+  it("normalizes shell payloads without trimming paths", () => {
+    expect(normalizeShellPath(" /a/b ")).toBe(" /a/b ");
+    expect(normalizeShellPath(42)).toBe("");
+    expect(normalizeShellPayload({ path: " /a/b " })).toEqual({ path: " /a/b " });
+    expect(normalizeShellPayload({ path: null })).toEqual({ path: "" });
+  });
+
   it("builds disabled-with-reason descriptors", () => {
     const reveal = revealAction({ id: "reveal", path: "/a/b" });
     expect(reveal.disabled).toBe(true);
@@ -34,10 +43,28 @@ describe("host-shell verbs without a bridge (pure web)", () => {
     expect(open.disabled).toBe(true);
   });
 
+  it("normalizes descriptor ids and payload paths at construction", () => {
+    const reveal = revealAction({ id: " reveal ", path: " /a/b " });
+    expect(reveal.id).toBe("reveal");
+    expect(reveal.dispatch?.payload).toEqual({ path: " /a/b " });
+
+    const open = openInEditorAction({ id: "   ", path: 42 });
+    expect(open.id).toBe("open-in-editor");
+    expect(open.dispatch?.payload).toEqual({ path: "" });
+  });
+
   it("the handler returns a degraded result rather than throwing", async () => {
     const result = (await appDispatcher.dispatch({
       type: REVEAL_ACTION,
       payload: { path: "/a/b" },
+    })) as ShellResult;
+    expect(result).toEqual({ ok: false, degraded: true });
+  });
+
+  it("the handler normalizes malformed runtime payloads", async () => {
+    const result = (await appDispatcher.dispatch({
+      type: REVEAL_ACTION,
+      payload: { path: 42 },
     })) as ShellResult;
     expect(result).toEqual({ ok: false, degraded: true });
   });

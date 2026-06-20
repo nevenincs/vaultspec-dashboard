@@ -8,15 +8,21 @@ import {
   deriveFilterSidebarVisualStateKey,
   expandFilterSidebarList,
   FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS,
+  FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES,
+  FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS,
   filterSidebarDocTypeLabel,
   filterSidebarTopicOptions,
   filterSidebarHealthDot,
   filterSidebarHealthLabel,
   filterSidebarStatusDot,
   normalizeFilterSidebarListKey,
+  normalizeFilterSidebarFacetLimit,
+  normalizeFilterSidebarFacetValues,
   normalizeFilterSidebarOpen,
   normalizeFilterSidebarSectionKey,
+  normalizeFilterSidebarScope,
   normalizeFilterSidebarTopicSearch,
+  normalizeFilterSidebarVocabularyPart,
   normalizeFilterSidebarVisualStateKey,
   setFilterSidebarSectionOpen,
   setFilterSidebarOpen,
@@ -47,10 +53,60 @@ describe("filter sidebar view store", () => {
     expect(normalizeFilterSidebarOpen("true")).toBeNull();
     expect(normalizeFilterSidebarVisualStateKey("scope-a")).toBe("scope-a");
     expect(normalizeFilterSidebarVisualStateKey("")).toBeNull();
+    expect(normalizeFilterSidebarScope(" scope-a ")).toBe("scope-a");
+    expect(normalizeFilterSidebarScope("   ")).toBeNull();
+    expect(normalizeFilterSidebarScope({ scope: "scope-a" })).toBeNull();
     expect(normalizeFilterSidebarSectionKey("topic")).toBe("topic");
     expect(normalizeFilterSidebarSectionKey("unknown")).toBeNull();
     expect(normalizeFilterSidebarListKey("feature-tags")).toBe("feature-tags");
     expect(normalizeFilterSidebarListKey(null)).toBeNull();
+    expect(
+      normalizeFilterSidebarVocabularyPart([
+        " plan ",
+        "",
+        "adr",
+        "plan",
+        null,
+        { value: "feature" },
+      ]),
+    ).toEqual(["adr", "plan"]);
+    expect(
+      normalizeFilterSidebarVocabularyPart([
+        "adr",
+        "x".repeat(FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS + 1),
+      ]),
+    ).toEqual(["adr"]);
+    expect(
+      normalizeFilterSidebarVocabularyPart(
+        Array.from(
+          { length: FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES + 2 },
+          (_, index) => `tag:${String(index).padStart(4, "0")}`,
+        ),
+      ),
+    ).toHaveLength(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES);
+    expect(normalizeFilterSidebarVocabularyPart("adr")).toEqual([]);
+    expect(
+      normalizeFilterSidebarFacetValues([
+        " plan ",
+        "adr",
+        "plan",
+        "",
+        null,
+        "x".repeat(FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS + 1),
+      ]),
+    ).toEqual(["plan", "adr"]);
+    expect(
+      normalizeFilterSidebarFacetValues(
+        Array.from(
+          { length: FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES + 2 },
+          (_, index) => `tag:${index}`,
+        ),
+      ),
+    ).toHaveLength(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES);
+    expect(normalizeFilterSidebarFacetValues("adr")).toEqual([]);
+    expect(normalizeFilterSidebarFacetLimit(2.8)).toBe(2);
+    expect(normalizeFilterSidebarFacetLimit(0)).toBeUndefined();
+    expect(normalizeFilterSidebarFacetLimit("2")).toBeUndefined();
 
     setFilterSidebarOpen(true);
     setFilterSidebarOpen("false");
@@ -120,6 +176,35 @@ describe("filter sidebar view store", () => {
     ).toBe('["scope-a",["adr","plan"],["core"],["accepted"],["dangling"]]');
   });
 
+  it("normalizes runtime scope before deriving visual vocabulary identity", () => {
+    const canonical = deriveFilterSidebarVisualStateKey(
+      "scope-a",
+      ["adr"],
+      ["core"],
+      ["accepted"],
+      ["dangling"],
+    );
+
+    expect(
+      deriveFilterSidebarVisualStateKey(
+        " scope-a ",
+        ["adr"],
+        ["core"],
+        ["accepted"],
+        ["dangling"],
+      ),
+    ).toBe(canonical);
+    expect(
+      deriveFilterSidebarVisualStateKey(
+        { scope: "scope-a" },
+        ["adr"],
+        ["core"],
+        ["accepted"],
+        ["dangling"],
+      ),
+    ).not.toBe(canonical);
+  });
+
   it("keeps visual vocabulary identity stable across order and duplicate noise", () => {
     const canonical = deriveFilterSidebarVisualStateKey(
       "scope-a",
@@ -138,6 +223,68 @@ describe("filter sidebar view store", () => {
         ["orphaned", "dangling", "dangling"],
       ),
     ).toBe(canonical);
+  });
+
+  it("normalizes malformed visual vocabulary before deriving identity", () => {
+    const canonical = deriveFilterSidebarVisualStateKey(
+      "scope-a",
+      ["adr", "plan"],
+      ["core", "state"],
+      ["accepted"],
+      ["dangling"],
+    );
+
+    expect(
+      deriveFilterSidebarVisualStateKey(
+        "scope-a",
+        [" plan ", "", null, "adr", "plan"],
+        ["state", { tag: "core" }, " core "],
+        [" accepted ", undefined],
+        ["dangling", 42],
+      ),
+    ).toBe(canonical);
+    expect(
+      deriveFilterSidebarVisualStateKey(
+        "scope-a",
+        "adr",
+        null,
+        undefined,
+        { health: ["dangling"] },
+      ),
+    ).toBe('["scope-a",[],[],[],[]]');
+  });
+
+  it("bounds visual vocabulary identity parts before serialization", () => {
+    const overlong = "x".repeat(FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS + 1);
+    const key = deriveFilterSidebarVisualStateKey(
+      "scope-a",
+      [],
+      [
+        overlong,
+        ...Array.from(
+          { length: FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES + 3 },
+          (_, index) => `tag:${String(index).padStart(4, "0")}`,
+        ),
+      ],
+      [],
+      [],
+    );
+    const [, , featureTags] = JSON.parse(key) as [
+      string,
+      string[],
+      string[],
+      string[],
+      string[],
+    ];
+
+    expect(featureTags).toHaveLength(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES);
+    expect(featureTags).not.toContain(overlong);
+    expect(featureTags.at(-1)).toBe(
+      `tag:${String(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES - 1).padStart(
+        4,
+        "0",
+      )}`,
+    );
   });
 
   it("changes visual vocabulary identity when membership or scope changes", () => {
@@ -207,16 +354,26 @@ describe("filter sidebar view store", () => {
       "delta-sync",
       "timeline",
     ]);
+    expect(
+      filterSidebarTopicOptions(
+        [" design-system ", "timeline", "design-system", null],
+        "design",
+      ),
+    ).toEqual(["design-system"]);
+    expect(filterSidebarTopicOptions("design-system", "design")).toEqual([]);
   });
 
   it("normalizes topic search before visual state or projection consumption", () => {
     expect(normalizeFilterSidebarTopicSearch(null)).toBe("");
-    expect(normalizeFilterSidebarTopicSearch(" design ")).toBe(" design ");
+    expect(normalizeFilterSidebarTopicSearch(" design ")).toBe("design");
     expect(
       normalizeFilterSidebarTopicSearch(
         "x".repeat(FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS + 1),
       ),
     ).toHaveLength(FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS);
+
+    setFilterSidebarTopicSearch("  design  ");
+    expect(useFilterSidebarStore.getState().topicSearch).toBe("design");
 
     setFilterSidebarTopicSearch("state".repeat(FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS));
 
@@ -336,6 +493,86 @@ describe("filter sidebar view store", () => {
     expect(toggles).toEqual([["doc_types", "adr"]]);
   });
 
+  it("normalizes malformed facet rows before menu projection", () => {
+    const toggles: Array<[string, string]> = [];
+    const sections = deriveFilterSidebarMenuSections({
+      vocabulary: {
+        vocabulary: undefined,
+        loading: false,
+        facetsLoading: false,
+        docTypes: [" adr ", "adr", "", null] as unknown as string[],
+        featureTags: [" state ", { value: "bad" }, "design"] as unknown as string[],
+        statuses: [" accepted ", "accepted"] as unknown as string[],
+        health: [" dangling ", 42] as unknown as string[],
+        dateBounds: undefined,
+      },
+      filterView: {
+        filters: {},
+        dateRange: {},
+        docTypes: [" adr "] as unknown as string[],
+        featureTags: [" state "] as unknown as string[],
+        statuses: [" accepted "] as unknown as string[],
+        health: [" dangling "] as unknown as string[],
+        editedWindow: "any",
+        editedWindowRows: [],
+        dateActive: false,
+        anyActive: true,
+        presentation: {
+          panelAriaLabel: "filter panel",
+          panelClassName: "",
+          headerClassName: "",
+          titleClassName: "",
+          headerActionsClassName: "",
+          titleLabel: "Filter documents",
+          clearAllClassName: "",
+          clearAllLabel: "Clear all",
+          clearAllAriaLabel: "clear all filters",
+          closeButtonClassName: "",
+          closeAriaLabel: "close filter panel",
+          sectionClassName: "",
+          sectionButtonClassName: "",
+          sectionMetaClassName: "",
+          sectionBadgeClassName: "",
+          sectionIconClassName: "",
+          sectionBodyClassName: "",
+          kindSectionLabel: "Kind",
+          topicSectionLabel: "Topic",
+          editedSectionLabel: "Edited",
+          editedWindowAriaLabel: "edited window",
+          facetEmptyClassName: "",
+          facetListClassName: "",
+          facetOverflowButtonClassName: "",
+          footerClassName: "",
+          footerTextClassName: "",
+          editedWindows: [],
+        },
+      },
+      topicSearch: "state",
+      onTopicSearchChange: () => undefined,
+      onToggleFacet: (facet, value) => toggles.push([facet, value]),
+    });
+
+    expect(sections[0]).toMatchObject({
+      selected: ["adr"],
+      options: [{ value: "adr", label: "Decisions" }],
+    });
+    expect(sections[1]).toMatchObject({
+      selected: ["state"],
+      options: [{ value: "state", label: "state" }],
+    });
+    expect(sections[2]).toMatchObject({
+      selected: ["accepted"],
+      options: [{ value: "accepted", dot: "complete" }],
+    });
+    expect(sections[3]).toMatchObject({
+      selected: ["dangling"],
+      options: [{ value: "dangling", label: "dangling links", dot: "broken" }],
+    });
+
+    if (sections[0]?.type === "checkbox") sections[0].onToggle("adr");
+    expect(toggles).toEqual([["doc_types", "adr"]]);
+  });
+
   it("exposes named chrome intent helpers for app-layer consumers", () => {
     setFilterSidebarOpen(true);
     expect(useFilterSidebarStore.getState().open).toBe(true);
@@ -421,6 +658,25 @@ describe("filter sidebar view store", () => {
       ],
       overflow: 1,
       overflowLabel: null,
+    });
+
+    expect(
+      deriveFilterSidebarFacetListView(
+        [" a ", "b", "a", "", null],
+        [" a "],
+        2.8,
+        "yes",
+        "loading",
+      ),
+    ).toMatchObject({
+      shown: ["a", "b"],
+      rows: [
+        { value: "a", checked: true, valueClassName: "text-ink" },
+        { value: "b", checked: false, valueClassName: "text-ink-muted" },
+      ],
+      overflow: 0,
+      overflowLabel: null,
+      ariaBusy: undefined,
     });
   });
 });

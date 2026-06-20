@@ -6,6 +6,8 @@ import type {
   DashboardFilterSidebarView,
   FiltersVocabularyView,
 } from "../server/queries";
+import { normalizeSearchQuery } from "../searchQuery";
+import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
 // Stage filter-sidebar chrome state. Filter VALUES are canonical dashboard-state;
 // this store owns only whether the data-driven filter instrument is visible and
@@ -93,11 +95,11 @@ export type FilterSidebarFacetDotTone =
   | "danger";
 
 export const FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS = 128;
+export const FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS = 256;
+export const FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES = 512;
 
 export function normalizeFilterSidebarTopicSearch(value: unknown): string {
-  return typeof value === "string"
-    ? value.slice(0, FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS)
-    : "";
+  return normalizeSearchQuery(value).slice(0, FILTER_SIDEBAR_TOPIC_SEARCH_MAX_CHARS);
 }
 
 export function normalizeFilterSidebarOpen(value: unknown): boolean | null {
@@ -107,6 +109,8 @@ export function normalizeFilterSidebarOpen(value: unknown): boolean | null {
 export function normalizeFilterSidebarVisualStateKey(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
+
+export const normalizeFilterSidebarScope = normalizeViewStoreSessionString;
 
 export function normalizeFilterSidebarSectionKey(
   value: unknown,
@@ -250,19 +254,60 @@ export function useFilterSidebarVisualStateKey(key: string): void {
   }, [key]);
 }
 
-function visualStateVocabularyPart(values: readonly string[]): string[] {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+function normalizeFilterSidebarVocabularyValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 &&
+    normalized.length <= FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS
+    ? normalized
+    : null;
+}
+
+export function normalizeFilterSidebarVocabularyPart(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const normalizedValues = new Set<string>();
+  for (const value of values) {
+    const normalized = normalizeFilterSidebarVocabularyValue(value);
+    if (normalized === null) continue;
+    normalizedValues.add(normalized);
+    if (normalizedValues.size >= FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES) break;
+  }
+  return [...normalizedValues].sort((a, b) => a.localeCompare(b));
+}
+
+export function normalizeFilterSidebarFacetValues(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  const normalizedValues: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeFilterSidebarVocabularyValue(value);
+    if (normalized === null || seen.has(normalized)) continue;
+    seen.add(normalized);
+    normalizedValues.push(normalized);
+    if (normalizedValues.length >= FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES) break;
+  }
+  return normalizedValues;
+}
+
+export function normalizeFilterSidebarFacetLimit(max: unknown): number | undefined {
+  return typeof max === "number" && Number.isFinite(max) && max > 0
+    ? Math.trunc(max)
+    : undefined;
+}
+
+function visualStateVocabularyPart(values: unknown): string[] {
+  return normalizeFilterSidebarVocabularyPart(values);
 }
 
 export function deriveFilterSidebarVisualStateKey(
-  scope: string | null,
-  docTypes: readonly string[],
-  featureTags: readonly string[],
-  statuses: readonly string[],
-  health: readonly string[],
+  scope: unknown,
+  docTypes: unknown,
+  featureTags: unknown,
+  statuses: unknown,
+  health: unknown,
 ): string {
   return JSON.stringify([
-    scope,
+    normalizeFilterSidebarScope(scope),
     visualStateVocabularyPart(docTypes),
     visualStateVocabularyPart(featureTags),
     visualStateVocabularyPart(statuses),
@@ -271,11 +316,11 @@ export function deriveFilterSidebarVisualStateKey(
 }
 
 export function useFilterSidebarVisualState(
-  scope: string | null,
-  docTypes: readonly string[],
-  featureTags: readonly string[],
-  statuses: readonly string[],
-  health: readonly string[],
+  scope: unknown,
+  docTypes: unknown,
+  featureTags: unknown,
+  statuses: unknown,
+  health: unknown,
 ): string {
   const key = useMemo(
     () =>
@@ -302,41 +347,53 @@ export function useFilterSidebarListExpanded(key: FilterSidebarListKey): boolean
 }
 
 export function deriveFilterSidebarFacetListView(
-  values: readonly string[],
-  selected: readonly string[],
-  max: number | undefined,
-  showAll: boolean,
-  loading: boolean | undefined,
+  values: unknown,
+  selected: unknown,
+  max: unknown,
+  showAll: unknown,
+  loading: unknown,
 ): FilterSidebarFacetListView {
-  const shown = !max || showAll ? [...values] : values.slice(0, max);
-  const overflow = max ? Math.max(0, values.length - max) : 0;
-  const selectedValues = new Set(selected);
+  const normalizedValues = normalizeFilterSidebarFacetValues(values);
+  const normalizedSelected = new Set(normalizeFilterSidebarFacetValues(selected));
+  const limit = normalizeFilterSidebarFacetLimit(max);
+  const showAllValues = showAll === true;
+  const loadingValue = loading === true;
+  const shown =
+    limit === undefined || showAllValues
+      ? [...normalizedValues]
+      : normalizedValues.slice(0, limit);
+  const overflow = limit === undefined ? 0 : Math.max(0, normalizedValues.length - limit);
   return {
     shown,
     rows: shown.map((value) => ({
       value,
-      checked: selectedValues.has(value),
+      checked: normalizedSelected.has(value),
       inputClassName: "accent-accent",
       labelClassName:
         "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-      valueClassName: selectedValues.has(value) ? "text-ink" : "text-ink-muted",
+      valueClassName: normalizedSelected.has(value) ? "text-ink" : "text-ink-muted",
     })),
     overflow,
-    overflowLabel: overflow > 0 && !showAll ? `+${overflow} more` : null,
+    overflowLabel: overflow > 0 && !showAllValues ? `+${overflow} more` : null,
     emptyMessage:
-      values.length === 0 ? (loading ? "loading..." : "none in corpus") : null,
-    ariaBusy: loading || undefined,
+      normalizedValues.length === 0
+        ? loadingValue
+          ? "loading..."
+          : "none in corpus"
+        : null,
+    ariaBusy: loadingValue || undefined,
   };
 }
 
 export function filterSidebarTopicOptions(
-  featureTags: readonly string[],
-  topicSearch: string,
+  featureTags: unknown,
+  topicSearch: unknown,
 ): string[] {
   const query = normalizeFilterSidebarTopicSearch(topicSearch).trim().toLowerCase();
+  const normalizedFeatureTags = normalizeFilterSidebarFacetValues(featureTags);
   return query
-    ? featureTags.filter((tag) => tag.toLowerCase().includes(query))
-    : [...featureTags];
+    ? normalizedFeatureTags.filter((tag) => tag.toLowerCase().includes(query))
+    : normalizedFeatureTags;
 }
 
 export function deriveFilterSidebarMenuSections({
@@ -353,15 +410,23 @@ export function deriveFilterSidebarMenuSections({
   onToggleFacet: (facet: DashboardFilterFacet, value: string) => void;
 }): FilterSidebarMenuSectionView[] {
   const presentation = filterView.presentation;
+  const docTypes = normalizeFilterSidebarFacetValues(vocabulary.docTypes);
+  const featureTags = normalizeFilterSidebarFacetValues(vocabulary.featureTags);
+  const statuses = normalizeFilterSidebarFacetValues(vocabulary.statuses);
+  const health = normalizeFilterSidebarFacetValues(vocabulary.health);
+  const selectedDocTypes = normalizeFilterSidebarFacetValues(filterView.docTypes);
+  const selectedFeatureTags = normalizeFilterSidebarFacetValues(filterView.featureTags);
+  const selectedStatuses = normalizeFilterSidebarFacetValues(filterView.statuses);
+  const selectedHealth = normalizeFilterSidebarFacetValues(filterView.health);
   return [
     {
       type: "checkbox",
       key: "kind",
       label: presentation.kindSectionLabel,
-      selected: filterView.docTypes,
+      selected: selectedDocTypes,
       onToggle: (value) => onToggleFacet("doc_types", value),
       loading: vocabulary.facetsLoading,
-      options: vocabulary.docTypes.map((value) => ({
+      options: docTypes.map((value) => ({
         value,
         label: filterSidebarDocTypeLabel(value),
       })),
@@ -370,7 +435,7 @@ export function deriveFilterSidebarMenuSections({
       type: "checkbox",
       key: "topic",
       label: presentation.topicSectionLabel,
-      selected: filterView.featureTags,
+      selected: selectedFeatureTags,
       onToggle: (value) => onToggleFacet("feature_tags", value),
       loading: vocabulary.facetsLoading,
       search: {
@@ -378,19 +443,19 @@ export function deriveFilterSidebarMenuSections({
         onChange: onTopicSearchChange,
         placeholder: "Search topics…",
       },
-      options: filterSidebarTopicOptions(vocabulary.featureTags, topicSearch).map(
+      options: filterSidebarTopicOptions(featureTags, topicSearch).map(
         (value) => ({ value, label: value }),
       ),
     },
-    ...(vocabulary.statuses.length > 0
+    ...(statuses.length > 0
       ? [
           {
             type: "checkbox" as const,
             key: "status",
             label: "STATUS",
-            selected: filterView.statuses,
+            selected: selectedStatuses,
             onToggle: (value: string) => onToggleFacet("statuses", value),
-            options: vocabulary.statuses.map((value) => ({
+            options: statuses.map((value) => ({
               value,
               label: value,
               dot: filterSidebarStatusDot(value),
@@ -398,15 +463,15 @@ export function deriveFilterSidebarMenuSections({
           },
         ]
       : []),
-    ...(vocabulary.health.length > 0
+    ...(health.length > 0
       ? [
           {
             type: "checkbox" as const,
             key: "health",
             label: "HEALTH",
-            selected: filterView.health,
+            selected: selectedHealth,
             onToggle: (value: string) => onToggleFacet("health", value),
-            options: vocabulary.health.map((value) => ({
+            options: health.map((value) => ({
               value,
               label: filterSidebarHealthLabel(value),
               dot: filterSidebarHealthDot(value),

@@ -9,9 +9,14 @@
 // rose/white Tailwind palette is replaced by the paper/ink/state and accent
 // tokens, so the switch reads correctly under every theme.
 
-import { useState } from "react";
-
-import { useDegradationStore } from "./matrix";
+import {
+  clearDegradationOverrides,
+  closeDegradationDebug,
+  openDegradationDebug,
+  setDegradationOverride,
+  useDegradationDebugOpen,
+  useDegradationOverrides,
+} from "../../stores/view/degradationDebug";
 
 const CONDITIONS = [
   { key: "ragDown", label: "rag down" },
@@ -21,10 +26,8 @@ const CONDITIONS = [
 ] as const;
 
 export function DegradationDebugSwitch() {
-  const overrides = useDegradationStore((s) => s.overrides);
-  const setOverride = useDegradationStore((s) => s.setOverride);
-  const clearOverrides = useDegradationStore((s) => s.clearOverrides);
-  const [open, setOpen] = useState(false);
+  const overrides = useDegradationOverrides();
+  const open = useDegradationDebugOpen();
 
   if (!import.meta.env.DEV) return null;
 
@@ -38,7 +41,7 @@ export function DegradationDebugSwitch() {
             </span>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={closeDegradationDebug}
               className="text-ink-faint transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             >
               ×
@@ -54,7 +57,7 @@ export function DegradationDebugSwitch() {
                       type="checkbox"
                       checked={on}
                       onChange={(e) => {
-                        setOverride(key, e.target.checked ? true : null);
+                        setDegradationOverride(key, e.target.checked ? true : null);
                       }}
                       className="accent-[var(--color-accent)]"
                     />
@@ -68,7 +71,7 @@ export function DegradationDebugSwitch() {
             type="button"
             className="mt-fg-1 text-ink-faint underline-offset-2 transition-colors hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             onClick={() => {
-              clearOverrides();
+              clearDegradationOverrides();
             }}
           >
             clear all
@@ -77,7 +80,7 @@ export function DegradationDebugSwitch() {
       ) : (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={openDegradationDebug}
           className="rounded-fg-xs border border-rule bg-paper-raised/80 px-fg-1-5 py-fg-0-5 text-state-stale transition-colors hover:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           title="degradation debug switch (dev only, G8.a)"
         >

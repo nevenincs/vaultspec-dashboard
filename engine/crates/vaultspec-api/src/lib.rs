@@ -162,6 +162,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // 200, the client branching on `envelope.status`. The static `create`
         // segment is registered after `/ops/core/{verb}` so matchit prefers it.
         .route("/ops/core/create", post(routes::ops::ops_core_create))
+        // Feature-scoped conformance autofix (W04.P06.S15): forwards
+        // `vault check all --fix --feature <tag>` so the editor's fixable
+        // advisories can be repaired through the broker; watcher re-ingests.
+        .route("/ops/core/autofix", post(routes::ops::ops_core_autofix))
         // The brokered rag control plane (rag-control-plane ADR D2): GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher

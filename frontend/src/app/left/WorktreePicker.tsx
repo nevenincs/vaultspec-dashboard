@@ -15,28 +15,16 @@
 
 import { ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useEffect, useId, useMemo, useRef } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
-import {
-  deriveWorkspaceMapPickerPresentationView,
-  type WorkspaceMapPickerRowView,
-  useActiveScope,
-  useActivateWorktreeScope,
-  isSessionMutationRejected,
-  isSupersededScopeSwitch,
-  useWorkspaceMapSurface,
-} from "../../stores/server/queries";
+import type { WorkspaceMapPickerRowView } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import {
-  beginWorktreeSwitch,
-  cancelWorktreeSwitch,
-  completeWorktreeSwitch,
-  failWorktreeSwitch,
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
-  useWorktreePickerChrome,
+  useWorktreePickerView,
 } from "../../stores/view/worktreePickerChrome";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 // Self-registering left-rail context-menu resolver (W03.P07): importing the
@@ -68,21 +56,16 @@ export interface WorktreePickerProps {
 }
 
 export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps = {}) {
-  const { map, availability, state } = useWorkspaceMapSurface();
-  const active = useActiveScope();
-  const activateWorktreeScope = useActivateWorktreeScope();
-  const { expanded, listClassName, pendingId, switchError, switchErrorClassName } =
-    useWorktreePickerChrome();
-  const pickerView = useMemo(
-    () =>
-      deriveWorkspaceMapPickerPresentationView({
-        map: map.data,
-        activeScope: active,
-        pendingId,
-        availability,
-      }),
-    [active, availability, map.data, pendingId],
-  );
+  const {
+    state,
+    pickerView,
+    retry,
+    activateRow,
+    expanded,
+    listClassName,
+    switchError,
+    switchErrorClassName,
+  } = useWorktreePickerView();
 
   // Roving focus across the expanded list (ADR keyboard contract): arrow keys
   // move between rows following the corpus-first order, Enter/Space activates the
@@ -129,7 +112,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         <p className={pickerView.errorLabelClassName}>{pickerView.errorLabel}</p>
         <button
           type="button"
-          onClick={map.retry}
+          onClick={retry}
           aria-label={pickerView.retryAriaLabel}
           className={pickerView.retryButtonClassName}
         >
@@ -150,29 +133,7 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   };
 
   const selectWorktree = (row: WorkspaceMapPickerRowView) => {
-    if (!row.selectable) return; // bare/degraded rows are not stage scopes
-    const { worktree } = row;
-    // Durable first: the stores-layer switch writes active_scope, then applies
-    // the accepted scope locally. Dock timeline only after acceptance so a
-    // rejected switch cannot write dashboard-state for an unaccepted corpus.
-    const switchPromise = activateWorktreeScope(worktree.id);
-    beginWorktreeSwitch(worktree.id);
-    triggerRef.current?.focus();
-    void switchPromise
-      .then(() => {
-        completeWorktreeSwitch(worktree.id);
-      })
-      .catch((err: unknown) => {
-        if (isSupersededScopeSwitch(err)) {
-          cancelWorktreeSwitch(worktree.id);
-          return;
-        }
-        failWorktreeSwitch(
-          worktree.id,
-          worktree.branch,
-          isSessionMutationRejected(err) ? "selection-rejected" : "persist-failed",
-        );
-      });
+    activateRow(row, () => triggerRef.current?.focus());
   };
 
   const onRowKeyDown =

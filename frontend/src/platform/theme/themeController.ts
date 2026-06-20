@@ -28,7 +28,7 @@ function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as readonly string[]).includes(value);
 }
 
-function isPreference(value: unknown): value is ThemePreference {
+export function isThemePreference(value: unknown): value is ThemePreference {
   return value === "system" || isTheme(value);
 }
 
@@ -52,7 +52,7 @@ export function readStoredPreference(): ThemePreference {
   if (typeof localStorage === "undefined") return "system";
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return isPreference(raw) ? raw : "system";
+    return isThemePreference(raw) ? raw : "system";
   } catch {
     return "system";
   }
@@ -107,12 +107,13 @@ export function createThemeController(): ThemeController {
       ? window.matchMedia("(prefers-contrast: more)")
       : null;
 
-  const recompute = (): void => {
+  const recompute = (): boolean => {
     const next = resolveTheme(preference);
-    if (next === resolved) return;
+    if (next === resolved) return false;
     resolved = next;
     applyTheme(resolved);
     for (const l of listeners) l(resolved);
+    return true;
   };
 
   // Only "system" follows the OS; an explicit override ignores media flips.
@@ -129,9 +130,13 @@ export function createThemeController(): ThemeController {
     getPreference: () => preference,
     getResolvedTheme: () => resolved,
     setPreference(next: ThemePreference) {
+      const previousPreference = preference;
       preference = next;
       writeStoredPreference(next);
-      recompute();
+      const resolvedChanged = recompute();
+      if (!resolvedChanged && next !== previousPreference) {
+        for (const l of listeners) l(resolved);
+      }
     },
     subscribe(listener) {
       listeners.add(listener);

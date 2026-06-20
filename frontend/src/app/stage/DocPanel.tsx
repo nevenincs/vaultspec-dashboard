@@ -9,15 +9,9 @@
 // by id. Close routes through the tab seam; the dockview tab's own close button
 // also removes the panel, which the workspace maps back to `closeDocTab`.
 
-import { useMemo } from "react";
 import type { IDockviewPanelProps } from "dockview";
 
-import {
-  deriveMarkdownHeaderView,
-  useActiveScope,
-  useContentView,
-} from "../../stores/server/queries";
-import { closeDocTab } from "../../stores/view/tabs";
+import { closeDocTab, useDockDocPanelView } from "../../stores/view/tabs";
 import type { ViewerSurface } from "../../stores/view/viewStore";
 import { DocHeader } from "../right/DocHeader";
 import { CodeViewer } from "../viewer/CodeViewer";
@@ -32,18 +26,13 @@ export interface DocPanelParams {
 
 export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
   const { nodeId, surface } = props.params;
-  const scope = useActiveScope();
-  const content = useContentView(nodeId, scope);
-  const headerProps = useMemo(
-    () => (surface !== "code" ? deriveMarkdownHeaderView(nodeId, content) : null),
-    [surface, nodeId, content],
-  );
+  const view = useDockDocPanelView(nodeId, surface);
 
-  if (surface === "code") {
+  if (view.state === "code") {
     return (
       <section className="flex h-full flex-col bg-paper" aria-label="code viewer">
         <div className="min-h-0 flex-1">
-          <CodeViewer content={content} />
+          <CodeViewer content={view.content} />
         </div>
       </section>
     );
@@ -51,11 +40,13 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
 
   return (
     <section className="flex h-full flex-col bg-paper" aria-label="document viewer">
-      {headerProps && (
-        <DocHeader {...headerProps} onClose={() => closeDocTab(nodeId)} />
-      )}
+      <DocHeader {...view.header} onClose={() => closeDocTab(view.nodeId)} />
       <div className="min-h-0 flex-1">
-        <MarkdownDocView nodeId={nodeId} content={content} scope={scope} />
+        <MarkdownDocView
+          nodeId={view.nodeId}
+          content={view.content}
+          scope={view.scope}
+        />
       </div>
     </section>
   );

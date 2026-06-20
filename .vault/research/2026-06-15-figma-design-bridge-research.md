@@ -62,7 +62,7 @@ Our design system is already a disciplined, single-source token pipeline; it is
 - **~126 React components** across `frontend/src/app/` (left rail, stage, right
   rail, timeline, islands, palette, menus), styled **100% with Tailwind utilities
   + semantic tokens** — no CSS modules, no inline color, no styled-components.
-- **No component catalog exists** — no Storybook, Ladle, or Histoire. The only
+- **No component catalog exists** — no retired component gallery, Ladle, or Histoire. The only
   visual harness is the dev-only `frontend/src/prototype/` (StatusGallery), a
   narrow status-stamp matrix, not a component gallery.
 - The design intent is already captured in three ADRs (design-language,
@@ -201,8 +201,8 @@ Since Code Connect is Enterprise-only, cross-connection on Pro must be a
   / `get_screenshot` let an agent pull the Figma side for a node and diff it
   against the rendered component (e.g. against a future component gallery) to catch
   drift — read-only, tier-agnostic.
-- **The component gallery we lack:** because there is no Storybook today, building
-  a **component catalog** (Storybook/Ladle) is a strong prerequisite for both
+- **The component gallery we lack:** because there is no retired component gallery today, building
+  a **component catalog** (Ladle) is a strong prerequisite for both
   seeding Figma (a clean per-component render to import) and parity-checking it
   afterward. This is likely the first concrete build step of the component half.
 - **Honest ceiling:** even with all this, Dev Mode on Pro will show **generated**
@@ -254,7 +254,7 @@ Synthesizing F1–F7 with the user's chosen direction:
 - **Seeding strategy per layer:** which surfaces are manually rebuilt in Figma
   (token styles, primitives, icon set) vs importer-seeded (composite screens), and
   who owns the cleanup budget.
-- **Component gallery:** adopt Storybook/Ladle now as the seeding + parity
+- **Component gallery:** adopt Ladle now as the seeding + parity
   substrate? (Strongly implied prerequisite.)
 - **Mapping registry format & CI:** where the code↔Figma registry lives, its
   schema, and what the drift-detecting CI check asserts.

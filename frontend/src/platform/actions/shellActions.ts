@@ -11,7 +11,11 @@ import { ExternalLink, FolderOpen } from "lucide-react";
 
 import { logger } from "../logger/logger";
 import { appDispatcher } from "../dispatch/middleware";
-import type { ActionDescriptor } from "./action";
+import {
+  normalizeActionDescriptorId,
+  normalizeActionDescriptorText,
+  type ActionDescriptor,
+} from "./action";
 
 const shellLog = logger.child("shell");
 
@@ -51,6 +55,20 @@ export interface ShellResult {
 
 const UNAVAILABLE_REASON = "not available in the browser";
 
+function shellActionRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+export function normalizeShellPath(value: unknown): string {
+  return normalizeActionDescriptorText(value);
+}
+
+export function normalizeShellPayload(payload: unknown): ShellPayload {
+  return { path: normalizeShellPath(shellActionRecord(payload).path) };
+}
+
 function runShell(verb: "reveal" | "openInEditor", path: string): Promise<ShellResult> {
   const host = getHostShell();
   if (!host) {
@@ -67,38 +85,37 @@ function runShell(verb: "reveal" | "openInEditor", path: string): Promise<ShellR
 }
 
 appDispatcher.register<ShellPayload>(REVEAL_ACTION, (action) =>
-  runShell("reveal", action.payload?.path ?? ""),
+  runShell("reveal", normalizeShellPayload(action.payload).path),
 );
 appDispatcher.register<ShellPayload>(OPEN_IN_EDITOR_ACTION, (action) =>
-  runShell("openInEditor", action.payload?.path ?? ""),
+  runShell("openInEditor", normalizeShellPayload(action.payload).path),
 );
 
 /** Build a "reveal in file manager" action; disabled-with-reason when no host. */
-export function revealAction(opts: { id: string; path: string }): ActionDescriptor {
+export function revealAction(opts: unknown): ActionDescriptor {
+  const record = shellActionRecord(opts);
   const available = isHostShellAvailable();
   return {
-    id: opts.id,
+    id: normalizeActionDescriptorId(record.id, "reveal"),
     label: "Reveal in file manager",
     section: "navigate",
     icon: FolderOpen,
-    dispatch: { type: REVEAL_ACTION, payload: { path: opts.path } },
+    dispatch: { type: REVEAL_ACTION, payload: normalizeShellPayload(record) },
     disabled: !available,
     disabledReason: available ? undefined : UNAVAILABLE_REASON,
   };
 }
 
 /** Build an "open in editor" action; disabled-with-reason when no host. */
-export function openInEditorAction(opts: {
-  id: string;
-  path: string;
-}): ActionDescriptor {
+export function openInEditorAction(opts: unknown): ActionDescriptor {
+  const record = shellActionRecord(opts);
   const available = isHostShellAvailable();
   return {
-    id: opts.id,
+    id: normalizeActionDescriptorId(record.id, "open-in-editor"),
     label: "Open in editor",
     section: "navigate",
     icon: ExternalLink,
-    dispatch: { type: OPEN_IN_EDITOR_ACTION, payload: { path: opts.path } },
+    dispatch: { type: OPEN_IN_EDITOR_ACTION, payload: normalizeShellPayload(record) },
     disabled: !available,
     disabledReason: available ? undefined : UNAVAILABLE_REASON,
   };

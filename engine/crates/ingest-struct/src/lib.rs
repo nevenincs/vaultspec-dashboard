@@ -1,10 +1,10 @@
 //! Structural-tier ingestion: deterministic extraction from document bodies
 //! (engine-spec §3).
 //!
-//! v1 resolves file paths and canonical step identifiers (`W##.P##.S##`)
-//! exactly, and symbols by qualified-name match; tree-sitter-grade symbol
-//! resolution is a v2 upgrade, not a v1 gate. Resolution state is signal:
-//! stale/broken edges are kept and surfaced, not dropped (D3.3).
+//! v1 extracts structural vault relationships only: canonical step identifiers
+//! (`W##.P##.S##`) and Obsidian wiki-link stems. Code paths and code symbols
+//! are prose, not graph relationships. Resolution state is signal: stale/broken
+//! edges are kept and surfaced, not dropped (D3.3).
 
 pub mod extract;
 pub mod plan_structure;
@@ -15,20 +15,14 @@ pub mod resolve;
 pub const CONFIDENCE_RESOLVED: f32 = 0.9;
 pub const CONFIDENCE_STALE: f32 = 0.5;
 
-/// A structural mention extracted from a document body — the closed vocabulary
-/// the extraction pipeline emits (paths, canonical step ids, wiki-links, and
-/// code symbols).
+/// A structural mention extracted from a document body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mention {
-    /// A repo-relative file path mentioned in prose.
-    Path(String),
     /// A canonical step identifier (`W##.P##.S##` — parse-stable by core's
     /// exec-record filename schema).
     StepId(String),
     /// An Obsidian-style wiki-link stem.
     WikiLink(String),
-    /// A code symbol, matched by qualified name in v1.
-    Symbol(String),
 }
 
 /// Recognize a canonical step identifier of the form `W##.P##.S##`,

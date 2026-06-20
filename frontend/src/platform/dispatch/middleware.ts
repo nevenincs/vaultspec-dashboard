@@ -6,7 +6,7 @@
 
 import { logger } from "../logger/logger";
 import type { Action, Middleware } from "./dispatch";
-import { Dispatcher } from "./dispatch";
+import { Dispatcher, normalizeActionType } from "./dispatch";
 
 const dispatchLog = logger.child("dispatch");
 
@@ -55,9 +55,10 @@ export function isArmedResult(value: unknown): value is ArmedResult {
 
 export interface ConfirmGuard {
   middleware: Middleware;
-  isArmed(type: string): boolean;
+  isArmed(type: unknown): boolean;
+  subscribe(listener: () => void): () => void;
   /** Disarm one type without firing it (the cancel affordance). */
-  disarm(type: string): void;
+  disarm(type: unknown): void;
   reset(): void;
 }
 
@@ -70,20 +71,42 @@ export interface ConfirmGuard {
  */
 export function createConfirmGuard(): ConfirmGuard {
   const armed = new Set<string>();
+  const listeners = new Set<() => void>();
+  const emit = () => {
+    for (const listener of listeners) listener();
+  };
   const middleware: Middleware = (action, next) => {
     if (action.meta?.guard !== "confirm") return next(action);
     if (armed.has(action.type)) {
       armed.delete(action.type);
+      emit();
       return next(action);
     }
     armed.add(action.type);
+    emit();
     return { status: "armed", type: action.type } satisfies ArmedResult;
   };
   return {
     middleware,
-    isArmed: (type) => armed.has(type),
-    disarm: (type) => armed.delete(type),
-    reset: () => armed.clear(),
+    isArmed: (type) => {
+      const normalizedType = normalizeActionType(type);
+      return normalizedType !== null && armed.has(normalizedType);
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    disarm: (type) => {
+      const normalizedType = normalizeActionType(type);
+      if (normalizedType !== null && armed.delete(normalizedType)) emit();
+    },
+    reset: () => {
+      if (armed.size === 0) return;
+      armed.clear();
+      emit();
+    },
   };
 }
 

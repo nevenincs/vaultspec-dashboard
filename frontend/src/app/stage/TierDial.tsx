@@ -12,11 +12,13 @@
 // availability selector, never the raw tiers block. The dial never errors.
 
 import { TierMark } from "../../scene/field/markComponents";
-import { useGraphSliceAvailability } from "../../stores/server/queries";
+import { useDashboardTierDialIntent } from "../../stores/server/dashboardTierDialIntent";
+import {
+  isDashboardTierInapplicable,
+  useActiveScope,
+  useDashboardTierDialView,
+} from "../../stores/server/queries";
 import type { TierName } from "../../stores/view/filters";
-import { useFilterStore } from "../../stores/view/filters";
-import { useViewStore } from "../../stores/view/viewStore";
-import { useActiveScope } from "./Stage";
 
 /** Fixed tier order — the product-wide encoding. Marks come from the shared
  *  registry (`TierMark`); identity is carried by mark SHAPE first, hue is
@@ -29,102 +31,67 @@ export const TIER_ORDER: { tier: TierName; label: string }[] = [
 ];
 
 /** Semantic is present-only by design: inapplicable while time travelling. */
-export function isTierInapplicable(
-  tier: TierName,
-  mode: { kind: "live" } | { kind: "time-travel"; at: number },
-): boolean {
-  return tier === "semantic" && mode.kind === "time-travel";
+export function isTierInapplicable(tier: TierName, timeTravel: boolean): boolean {
+  return isDashboardTierInapplicable(tier, timeTravel);
 }
 
 export function TierDial() {
-  const tiers = useFilterStore((s) => s.tiers);
-  const minConfidence = useFilterStore((s) => s.minConfidence);
-  const setTier = useFilterStore((s) => s.setTier);
-  const setMinConfidence = useFilterStore((s) => s.setMinConfidence);
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const granularity = useViewStore((s) => s.granularity);
   const scope = useActiveScope();
-  // Degradation truth (rag down → semantic offline) reaches the dial only as a
-  // derived stores selector, never by parsing a wire envelope.
-  const availability = useGraphSliceAvailability(scope, granularity);
-  const semanticDegraded = availability.degradedTiers.includes("semantic");
+  const tierDialIntent = useDashboardTierDialIntent(scope);
+  const view = useDashboardTierDialView(scope);
 
   return (
-    <fieldset
-      className="flex items-center gap-fg-2 text-label"
-      aria-label="tier dial"
-      data-tier-dial
-    >
-      {TIER_ORDER.map(({ tier, label }) => {
-        const inapplicable = isTierInapplicable(tier, timelineMode);
-        // Semantic offline (rag down) is a designed degraded state: the toggle
-        // disables and reads "offline", never an error.
-        const offline = tier === "semantic" && semanticDegraded && !inapplicable;
-        const blocked = inapplicable || offline;
-        const on = tiers[tier] && !blocked;
-        const stateLabel = inapplicable
-          ? "inapplicable while time travelling"
-          : offline
-            ? "offline — rag is not available"
-            : on
-              ? "on"
-              : "off";
+    <fieldset className={view.rootClassName} aria-label={view.ariaLabel} data-tier-dial>
+      {view.rows.map((row) => {
+        const { tier, label } = row;
         return (
-          <span key={tier} className="flex items-center gap-fg-1">
+          <span key={tier} className={row.rowClassName}>
             <button
               type="button"
               role="switch"
-              aria-checked={on}
-              aria-label={`${label} tier`}
-              aria-disabled={blocked || undefined}
-              disabled={blocked}
+              aria-checked={row.on}
+              aria-label={row.buttonAriaLabel}
+              aria-disabled={row.blocked || undefined}
+              disabled={row.blocked}
               data-tier={tier}
-              data-state={
-                inapplicable ? "inapplicable" : offline ? "offline" : on ? "on" : "off"
-              }
-              title={
-                inapplicable
-                  ? "semantic is about now — inapplicable while time travelling"
-                  : offline
-                    ? "semantic is offline — rag is not available"
-                    : `${label} tier ${stateLabel}`
-              }
-              onClick={() => setTier(tier, !tiers[tier])}
-              className={`flex items-center gap-fg-1 rounded-fg-xs border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                blocked
-                  ? "cursor-not-allowed border-dashed border-rule text-ink-faint"
-                  : on
-                    ? "border-rule-strong bg-paper-sunken text-ink"
-                    : "border-rule text-ink-faint hover:border-rule-strong hover:text-ink-muted"
-              }`}
+              data-state={row.state}
+              title={row.title}
+              onClick={() => {
+                void tierDialIntent
+                  .setTierEnabled(tier, !row.on)
+                  .catch(() => undefined);
+              }}
+              className={row.buttonClassName}
             >
               {/* Mark shape carries the tier identity (grayscale-safe); the
                   on/off ring below is the non-color active cue. */}
-              <TierMark tier={tier} size={14} title={`${label} tier mark`} />
+              <TierMark tier={tier} size={14} title={row.markTitle} />
               <span>{label}</span>
-              {offline && (
-                <span className="text-caption text-state-stale">offline</span>
+              {row.offlineLabel && (
+                <span className={row.offlineLabelClassName}>{row.offlineLabel}</span>
               )}
             </button>
-            {(tier === "temporal" || tier === "semantic") && !blocked && on && (
-              <span className="flex items-center gap-fg-1">
+            {row.showConfidence && (
+              <span className={row.confidenceGroupClassName}>
                 <input
                   type="range"
                   min={0}
                   max={1}
                   step={0.05}
-                  value={minConfidence[tier] ?? 0}
-                  aria-label={`${label} confidence floor`}
-                  aria-valuetext={`${Math.round((minConfidence[tier] ?? 0) * 100)} percent`}
-                  title={`min confidence ${Math.round((minConfidence[tier] ?? 0) * 100)}%`}
-                  onChange={(e) => setMinConfidence(tier, Number(e.target.value))}
-                  className="h-1 w-14 accent-accent"
+                  value={row.confidenceValue}
+                  aria-label={row.confidenceAriaLabel}
+                  aria-valuetext={row.confidenceAriaValueText}
+                  title={row.confidenceTitle}
+                  onChange={(e) => {
+                    if (row.confidenceTier === null) return;
+                    void tierDialIntent
+                      .setMinConfidence(row.confidenceTier, Number(e.target.value))
+                      .catch(() => undefined);
+                  }}
+                  className={row.confidenceSliderClassName}
                 />
-                <span
-                  data-tabular
-                  className="w-7 text-right text-caption tabular-nums text-ink-faint"
-                >
-                  {Math.round((minConfidence[tier] ?? 0) * 100)}%
+                <span data-tabular className={row.confidenceReadoutClassName}>
+                  {row.confidenceReadoutLabel}
                 </span>
               </span>
             )}

@@ -10,8 +10,13 @@
 // the app layer and read stores themselves; the central time-travel gate
 // (W02.P06) is the one cross-cutting concern this pipeline applies.
 
-import type { ActionDescriptor } from "./action";
-import type { EntityDescriptor, EntityKind } from "./entity";
+import { normalizeActionDescriptor, type ActionDescriptor } from "./action";
+import {
+  normalizeEntityDescriptor,
+  normalizeEntityKind,
+  type EntityDescriptor,
+  type EntityKind,
+} from "./entity";
 
 /** App state a resolver may read; the central gate reads `timeTravel`. */
 export interface ActionContext {
@@ -27,6 +32,12 @@ export type ActionResolver<E extends EntityDescriptor = EntityDescriptor> = (
 
 const resolvers = new Map<EntityKind, ActionResolver>();
 
+export { normalizeEntityKind };
+
+export function normalizeActionEntity(entity: unknown): EntityDescriptor | null {
+  return normalizeEntityDescriptor(entity);
+}
+
 /** Narrow an entity descriptor to the variant for a given kind. */
 type EntityOfKind<K extends EntityKind> = Extract<EntityDescriptor, { kind: K }>;
 
@@ -34,16 +45,24 @@ type EntityOfKind<K extends EntityKind> = Extract<EntityDescriptor, { kind: K }>
 export function registerResolver<K extends EntityKind>(
   kind: K,
   resolver: ActionResolver<EntityOfKind<K>>,
-): () => void {
+): () => void;
+export function registerResolver(kind: unknown, resolver: unknown): () => void;
+export function registerResolver(kind: unknown, resolver: unknown): () => void {
+  const normalizedKind = normalizeEntityKind(kind);
+  if (normalizedKind === null) {
+    throw new Error("action resolver has a malformed entity kind");
+  }
+  if (typeof resolver !== "function") return () => undefined;
   const erased = resolver as ActionResolver;
-  resolvers.set(kind, erased);
+  resolvers.set(normalizedKind, erased);
   return () => {
-    if (resolvers.get(kind) === erased) resolvers.delete(kind);
+    if (resolvers.get(normalizedKind) === erased) resolvers.delete(normalizedKind);
   };
 }
 
-export function hasResolver(kind: EntityKind): boolean {
-  return resolvers.has(kind);
+export function hasResolver(kind: unknown): boolean {
+  const normalizedKind = normalizeEntityKind(kind);
+  return normalizedKind === null ? false : resolvers.has(normalizedKind);
 }
 
 /**
@@ -55,12 +74,16 @@ export function hasResolver(kind: EntityKind): boolean {
  * any menu (actions-dispatch-through-the-one-seam).
  */
 export function resolveActions(
-  entity: EntityDescriptor,
+  entity: unknown,
   ctx: ActionContext,
 ): ActionDescriptor[] {
-  const resolver = resolvers.get(entity.kind);
+  const normalizedEntity = normalizeActionEntity(entity);
+  if (normalizedEntity === null) return [];
+  const resolver = resolvers.get(normalizedEntity.kind);
   if (!resolver) return [];
-  const actions = resolver(entity, ctx);
+  const actions = resolver(normalizedEntity, ctx)
+    .map((action) => normalizeActionDescriptor(action))
+    .filter((action): action is ActionDescriptor => action !== null);
   if (!ctx.timeTravel) return actions;
   return actions.filter((action) => action.disabledInTimeTravel !== true);
 }

@@ -7,12 +7,14 @@ import type {
 import {
   buildCommands,
   buildWindowCommands,
+  commandPaletteRightRailCommandId,
   commandPaletteOptionDomIdPart,
   commandPaletteRowLabel,
   deriveCommandPalettePresentationView,
   filterCommands,
   gateCommandsForTimeTravel,
   groupByFamily,
+  normalizeCommandPaletteRightRailTab,
 } from "../../stores/view/commandPaletteCommands";
 import {
   COMMAND_PALETTE_ACTION_ID,
@@ -191,7 +193,7 @@ describe("buildWindowCommands (window-management parity)", () => {
 
   it("routes each command to its intent callback", () => {
     const fired: string[] = [];
-    const tabs: string[] = [];
+    const tabs: unknown[] = [];
     const commands = buildWindowCommands(
       windowSources({
         toggleLeftRail: () => fired.push("left-rail"),
@@ -206,6 +208,13 @@ describe("buildWindowCommands (window-management parity)", () => {
     commands.find((c) => c.id === "window:rail-search")?.run();
     expect(fired).toEqual(["left-rail", "timeline", "reset"]);
     expect(tabs).toEqual(["search"]);
+  });
+
+  it("normalizes runtime right-rail tab command identity", () => {
+    expect(normalizeCommandPaletteRightRailTab(" search ")).toBe("search");
+    expect(normalizeCommandPaletteRightRailTab({ tab: "search" })).toBeNull();
+    expect(commandPaletteRightRailCommandId(" search ")).toBe("window:rail-search");
+    expect(commandPaletteRightRailCommandId({ tab: "search" })).toBeNull();
   });
 });
 

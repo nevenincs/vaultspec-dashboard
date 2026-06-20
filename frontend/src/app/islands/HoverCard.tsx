@@ -1,9 +1,8 @@
 // Hover-bloom card (node-visual-richness prototype) — the rich hover affordance
 // that blooms over a node on hover, showing its kind, title, status, rollout,
-// and a provenance microline. SELF-CONTAINED: it takes a typed StatusCardModel
-// prop and renders; it does NOT fetch, read the raw tiers block, or wire itself
-// into IslandLayer (the prototype mounts it directly, and a post-merge
-// integration would feed it from a stores selector — dashboard-layer-ownership).
+// and a provenance microline. DUMB RENDERER: it takes a stores-owned
+// StatusCardModel and renders; it does NOT fetch, read the raw tiers block, or
+// derive per-type content locally (dashboard-layer-ownership).
 //
 // Instrument register (warmth-lives-in-tokens-not-decoration): no gradients, no
 // textures, no second accent. Color comes only from the semantic token layer —
@@ -20,9 +19,8 @@
 // `MarkById`), so the card icon reads as one hand with the canvas silhouettes.
 
 import { ExternalLink } from "lucide-react";
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode } from "react";
 
-import { type NodeCategory } from "../../scene/field/categoryColor";
 import { DocTypeMark, MarkById } from "../../scene/field/markComponents";
 import {
   type NodeStatus,
@@ -30,30 +28,19 @@ import {
   stampFor,
   stampToken,
 } from "../../scene/field/statusStamp";
-import { categoryTokenVar, type TypeCardContent } from "./hoverCardContent";
+import { useReducedMotion } from "../chrome/useReducedMotion";
+import {
+  deriveStatusCardPresentationView,
+  type StatusCardModel,
+  useStatusCardBloomMotionView,
+} from "../../stores/view/statusCard";
+import {
+  categoryTokenVar,
+  type TypeCardContent,
+} from "../../stores/view/hoverCardContent";
+export type { StatusCardModel } from "../../stores/view/statusCard";
 
-/** The card's view model — a projection a stores selector would supply. */
-export interface StatusCardModel {
-  /** Stable node id (identity-bearing; rendered monospace). */
-  readonly id: string;
-  /** GLYPH_KINDS species (adr / plan / audit / rule / feature / …). */
-  readonly kind: string;
-  readonly title: string;
-  readonly status?: NodeStatus;
-  /** A coarse authority label for the microline (e.g. "accepted decision"). */
-  readonly authorityClass?: string;
-  /** Rollout progress (plan/feature) — the SEPARATE channel, a bar not a stamp. */
-  readonly progress?: { done: number; total: number };
-  /** The scene category the node belongs to — drives the accent strip + header
-   *  hue (themes-are-oklch-generated-from-a-token-tier; the token is a per-theme
-   *  `var()` on :root). When absent, the card falls back to the status tint. */
-  readonly category?: NodeCategory;
-  /** The type-specific content block. When absent (or `generic`), the card
-   *  renders only the shared header/chip/rollout. */
-  readonly typeContent?: TypeCardContent;
-}
-
-export interface HoverCardProps {
+export interface StatusHoverCardProps {
   readonly model: StatusCardModel;
   /** Force the reduced-motion path (else the OS media query decides). */
   readonly reducedMotion?: boolean;
@@ -61,35 +48,14 @@ export interface HoverCardProps {
   readonly onOpen?: (id: string) => void;
 }
 
-/** True when the OS asks for reduced motion (the base motion-law floor). */
-function osPrefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-/** A 0..1 rollout fraction from done/total, clamped; null when absent. */
-function rolloutFraction(progress: StatusCardModel["progress"]): number | null {
-  if (!progress || progress.total <= 0) return null;
-  return Math.max(0, Math.min(1, progress.done / progress.total));
-}
-
-/** The severity grade / tier rank line for the microline, by descriptor. */
-function magnitudeLabel(status: NodeStatus | undefined): string | null {
-  if (!status) return null;
-  const stamp = stampFor(status);
-  if (stamp.severityDot) return `severity ${stamp.severityDot}/4`;
-  if (stamp.tierNotch) return `tier ${stamp.tierNotch}/4`;
-  return null;
-}
-
-export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
+export function StatusHoverCard({
+  model,
+  reducedMotion,
+  onOpen,
+}: StatusHoverCardProps) {
   const cls: StatusClass | undefined = model.status?.class;
   const tintVar = stampToken(cls);
-  const fraction = rolloutFraction(model.progress);
-  const magnitude = magnitudeLabel(model.status);
+  const presentation = deriveStatusCardPresentationView(model);
   // The per-category accent (a `var()` on :root, per theme): drives the left
   // strip and the header glyph hue when a category is known; the status tint is
   // the fallback so the existing cardless prototype still reads.
@@ -97,33 +63,12 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
   const accentVar = categoryVar ?? tintVar;
 
   // Resolve the motion path once on mount: the explicit prop overrides, else the
-  // OS media query. A ref + state lets the bloom class be applied after the
-  // first paint so the grow animation actually runs (not skipped as initial).
-  const reduce = reducedMotion ?? osPrefersReducedMotion();
-  const [bloomed, setBloomed] = useState(false);
-  const rafRef = useRef<number | null>(null);
-  useEffect(() => {
-    rafRef.current = requestAnimationFrame(() => setBloomed(true));
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  // The bloom: an ease-out grow from the card's transform-origin (top-left,
-  // where the node sits) plus a fade, ~180ms. Reduced motion drops the transform
-  // travel entirely — an instant crossfade, no scale.
-  const motionStyle: CSSProperties = reduce
-    ? {
-        opacity: bloomed ? 1 : 0,
-        transition: "opacity var(--duration-ui-fast, 150ms) var(--ease-settle)",
-      }
-    : {
-        opacity: bloomed ? 1 : 0,
-        transform: bloomed ? "scale(1)" : "scale(0.92)",
-        transformOrigin: "top left",
-        transition:
-          "opacity 180ms var(--ease-settle, ease-out), transform 180ms var(--ease-settle, ease-out)",
-      };
+  // shared reduced-motion hook. A ref + state lets the bloom class be applied
+  // after the first paint so the grow animation actually runs (not skipped as
+  // initial).
+  const sharedReducedMotion = useReducedMotion();
+  const reduce = reducedMotion ?? sharedReducedMotion;
+  const motion = useStatusCardBloomMotionView(reduce);
 
   return (
     <div
@@ -131,10 +76,10 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       aria-label={`${model.kind} ${model.title}`}
       data-hover-card
       data-category={model.category}
-      data-reduced-motion={reduce ? "" : undefined}
-      data-motion={reduce ? "crossfade" : "bloom"}
+      data-reduced-motion={motion.reducedMotion ? "" : undefined}
+      data-motion={motion.motion}
       className="relative flex w-64 flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper-raised p-fg-2 pl-fg-3 text-ink shadow-fg-overlay"
-      style={motionStyle}
+      style={motion.style}
     >
       {/* Category-accent strip: a single-token vertical rule that names the
           node's category by hue. Warmth lives in this one token, never a
@@ -193,34 +138,34 @@ export function HoverCard({ model, reducedMotion, onOpen }: HoverCardProps) {
       {model.typeContent && <TypeContentBlock content={model.typeContent} />}
 
       {/* Rollout bar: the SEPARATE progress channel (plan/feature), accent fill. */}
-      {fraction !== null && model.progress && (
+      {presentation.rollout !== null && (
         <div data-rollout>
           <div className="mb-fg-0-5 flex items-center justify-between text-caption text-ink-muted">
             <span>rollout</span>
             <span data-tabular className="tabular-nums">
-              {model.progress.done}/{model.progress.total}
+              {presentation.rollout.label}
             </span>
           </div>
           <div
             className="h-fg-1-5 w-full overflow-hidden rounded-fg-xs bg-paper-sunken"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={model.progress.total}
-            aria-valuenow={model.progress.done}
+            aria-valuemax={presentation.rollout.total}
+            aria-valuenow={presentation.rollout.done}
           >
             <div
               data-rollout-fill
               className="h-full rounded-fg-xs bg-accent"
-              style={{ width: `${Math.round(fraction * 100)}%` }}
+              style={{ width: presentation.rollout.width }}
             />
           </div>
         </div>
       )}
 
       {/* Microline: authority class + severity/tier magnitude (provenance tail). */}
-      {(model.authorityClass || magnitude) && (
+      {presentation.microline && (
         <p className="text-caption text-ink-faint" data-microline>
-          {[model.authorityClass, magnitude].filter(Boolean).join(" · ")}
+          {presentation.microline}
         </p>
       )}
 
@@ -263,7 +208,7 @@ function InfoLine({ children }: { children: ReactNode }) {
 /**
  * The type-specific content plane (Figma 110:2). Each document type renders the
  * facts its register carries — sourced PURELY from the wire projection
- * (hoverCardContent.deriveTypeContent); a datum genuinely absent from the wire is
+ * (stores/view/hoverCardContent.deriveTypeContent); a datum genuinely absent from the wire is
  * simply not rendered, never fabricated. The block stays inside the instrument
  * register: copy + the muted ink token carry meaning, no new color.
  */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
+import type { EngineEdge, EngineNode } from "../stores/server/engine";
 import {
   engineEdgeToScene,
   engineNodeToScene,
@@ -81,6 +81,23 @@ describe("sceneMapping (pure wire→seam transforms)", () => {
     expect(mapped.nodes.length).toBe(2);
     expect(mapped.edges.every((e) => e.meta !== undefined)).toBe(true);
   });
+
+  it("drops malformed keyframe rows at the scene slice boundary", () => {
+    expect(sliceToScene(null)).toEqual({ nodes: [], edges: [] });
+    expect(
+      sliceToScene({
+        nodes: ["bad", { id: " feature:ok ", kind: "feature" }, { id: "   " }],
+        edges: [
+          { id: " e1 ", src: " feature:ok ", dst: " doc:target " },
+          { id: "bad", src: "", dst: "doc:target" },
+          null,
+        ],
+      }),
+    ).toMatchObject({
+      nodes: [{ id: "feature:ok" }],
+      edges: [{ id: "e1", src: "feature:ok", dst: "doc:target" }],
+    });
+  });
 });
 
 // graphDeltaToScene — spliceLive bridge (constellation-live-delta S07).
@@ -88,8 +105,37 @@ describe("sceneMapping (pure wire→seam transforms)", () => {
 // function before pushing them via SceneController.command("apply-deltas").
 describe("graphDeltaToScene", () => {
   it("returns null when neither node nor edge is present", () => {
-    const entry = { op: "add", t: 100, seq: 1 } as unknown as GraphDeltaEntry;
+    const entry = { op: "add", t: 100, seq: 1 };
     expect(graphDeltaToScene(entry)).toBeNull();
+  });
+
+  it("drops malformed runtime delta payloads at the scene boundary", () => {
+    expect(graphDeltaToScene(null)).toBeNull();
+    expect(graphDeltaToScene("delta")).toBeNull();
+    expect(
+      graphDeltaToScene({
+        op: "invalid",
+        node: { id: "feature:auth" },
+        t: 100,
+        seq: 1,
+      }),
+    ).toBeNull();
+    expect(
+      graphDeltaToScene({
+        op: "add",
+        node: { id: "feature:auth" },
+        t: Number.POSITIVE_INFINITY,
+        seq: 1,
+      }),
+    ).toBeNull();
+    expect(
+      graphDeltaToScene({
+        op: "add",
+        node: { id: "   " },
+        t: 100,
+        seq: 1,
+      }),
+    ).toBeNull();
   });
 
   it("maps a feature-node add delta to a SceneDelta", () => {
@@ -190,7 +236,7 @@ describe("graphDeltaToScene", () => {
 
     expect(
       graphDeltasToApplyCommand([
-        { op: "add", t: 100, seq: 1 } as unknown as GraphDeltaEntry,
+        { op: "add", t: 100, seq: 1 },
         { op: "add", node, t: 200, seq: 2, granularity: "feature" },
         { op: "change", edge, t: 300, seq: 3, granularity: "feature" },
       ]),
@@ -205,10 +251,7 @@ describe("graphDeltaToScene", () => {
   });
 
   it("returns null for a batch with no scene-bearing deltas", () => {
-    expect(
-      graphDeltasToApplyCommand([
-        { op: "add", t: 100, seq: 1 } as unknown as GraphDeltaEntry,
-      ]),
-    ).toBeNull();
+    expect(graphDeltasToApplyCommand([{ op: "add", t: 100, seq: 1 }])).toBeNull();
+    expect(graphDeltasToApplyCommand(null)).toBeNull();
   });
 });

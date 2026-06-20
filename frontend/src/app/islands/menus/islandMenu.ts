@@ -7,31 +7,38 @@ import { Crosshair, Minimize2 } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { IslandEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
-import { selectNode } from "../../../stores/view/selection";
-import { useViewStore } from "../../../stores/view/viewStore";
+import { closeMenuNodeIsland, focusMenuNode } from "../../../stores/view/menuActions";
 
-export function islandMenu(entity: IslandEntity): ActionDescriptor[] {
+export function islandMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "island") return [];
+
   return [
     {
       id: "island:focus",
       label: "Focus on stage",
       section: "navigate",
       icon: Crosshair,
-      run: () => selectNode(entity.id),
+      run: () => focusMenuNode(normalizedEntity.id, normalizedEntity),
     },
     {
       id: "island:close",
       label: "Close island",
       section: "navigate",
       icon: Minimize2,
-      run: () => useViewStore.getState().closeNode(entity.id),
+      run: () => closeMenuNodeIsland(normalizedEntity.id),
       disabledInTimeTravel: true,
     },
-    copyAction({ id: "island:copy-id", label: "Copy id", text: entity.id, what: "id" }),
+    copyAction({
+      id: "island:copy-id",
+      label: "Copy id",
+      text: normalizedEntity.id,
+      what: "id",
+    }),
   ];
 }
 
-registerResolver("island", islandMenu as ActionResolver<IslandEntity>);
+registerResolver("island", islandMenu as ActionResolver);

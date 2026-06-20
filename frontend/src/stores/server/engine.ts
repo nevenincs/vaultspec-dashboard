@@ -595,14 +595,14 @@ export type RepresentationMode = (typeof REPRESENTATION_MODES)[number];
 export const DASHBOARD_PANEL_TABS = ["status", "changes", "search"] as const;
 export type DashboardPanelTab = (typeof DASHBOARD_PANEL_TABS)[number];
 
-export const DASHBOARD_BOUND_SHAPES = ["free", "circle", "rect"] as const;
-export type DashboardBoundShape = (typeof DASHBOARD_BOUND_SHAPES)[number];
-
 export interface DashboardPanelState {
   left_collapsed: boolean;
   right_collapsed: boolean;
   right_tab: DashboardPanelTab;
 }
+
+export const DASHBOARD_BOUND_SHAPES = ["free", "circle", "rect"] as const;
+export type DashboardBoundShape = (typeof DASHBOARD_BOUND_SHAPES)[number];
 
 export interface DashboardGraphBounds {
   shape: DashboardBoundShape;
@@ -618,8 +618,8 @@ export interface DashboardState extends DashboardSelection {
   salience_lens: SalienceLens;
   salience_focus: string | null;
   representation_mode: RepresentationMode;
-  panel_state: DashboardPanelState;
   graph_bounds: DashboardGraphBounds;
+  panel_state: DashboardPanelState;
   tiers: TiersBlock;
 }
 
@@ -634,8 +634,8 @@ export interface DashboardStatePatch {
   salience_lens?: SalienceLens;
   salience_focus?: string | null;
   representation_mode?: RepresentationMode;
-  panel_state?: DashboardPanelState;
   graph_bounds?: DashboardGraphBounds;
+  panel_state?: DashboardPanelState;
 }
 
 export interface GraphSlice {
@@ -1047,13 +1047,13 @@ export interface OpsResult {
 // forwards vaultspec-core's sibling `{schema, status, data}` envelope VERBATIM
 // under `data.envelope` with the tiers block (engine-read-and-infer: the engine
 // owns no vault-write semantics — it forwards core's verb result). Writes hit
-// `POST /ops/core/{verb}/write` (verb ∈ set-body | set-frontmatter | edit); create
-// hits `POST /ops/core/create`. BOTH success and business-refusal return HTTP 200
-// — the client branches on the sibling envelope's `status` + the inner
+// `POST /ops/core/{verb}/write` (verb ∈ set-body | set-frontmatter | edit |
+// rename); create hits `POST /ops/core/create`. BOTH success and business-refusal
+// return HTTP 200 — the client branches on the sibling envelope's `status` + the inner
 // `conflict`/`refused`/`checks` fields, NEVER on the HTTP code (a transport error
 // is a tiers-bearing EngineError, distinct from a refusal).
 
-/** The body of a write op (`set-body` | `set-frontmatter` | `edit`). `ref` is the
+/** The body of a write op (`set-body` | `set-frontmatter` | `edit` | `rename`). `ref` is the
  *  doc STEM (the `doc:` prefix stripped from the node id). `body` carries the new
  *  document text for `set-body`/`edit`; the frontmatter fields carry the new
  *  metadata for `set-frontmatter`. `expected_blob_hash` is the optimistic-
@@ -1654,7 +1654,10 @@ export class EngineClient {
   }
 
   async patchDashboardState(body: DashboardStatePatch): Promise<DashboardState> {
-    return adaptDashboardState(await this.patch("/dashboard-state", body));
+    const state = adaptDashboardState(await this.patch("/dashboard-state", body));
+    return body.graph_bounds === undefined
+      ? state
+      : { ...state, graph_bounds: body.graph_bounds };
   }
 
   /** The in-flight pipeline projection (dashboard-pipeline-wire W02): active
@@ -1806,7 +1809,7 @@ export class EngineClient {
   }
 
   /** A document WRITE op (document-editor backend): `set-body` | `set-frontmatter`
-   *  | `edit` against `POST /ops/core/{verb}/write`. The engine forwards core's
+   *  | `edit` | `rename` against `POST /ops/core/{verb}/write`. The engine forwards core's
    *  `{schema, status, data}` envelope VERBATIM under `data.envelope` with the
    *  tiers block (engine-read-and-infer), HTTP 200 for both success and business-
    *  refusal; the caller interprets the outcome via `adaptOpsWrite`, branching on

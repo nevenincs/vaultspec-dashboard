@@ -170,13 +170,7 @@ export function AppShell() {
             <ResizeHandle
               side="right"
               onPointerDown={(event) => startResize("left", leftRailWidth, event)}
-              onKeyDown={(event) =>
-                resizeByKey(
-                  event,
-                  leftRailWidth,
-                  "left",
-                )
-              }
+              onKeyDown={(event) => resizeByKey(event, leftRailWidth, "left")}
             />
           </ErrorBoundary>
         )}
@@ -213,16 +207,8 @@ export function AppShell() {
           >
             <ResizeHandle
               side="top"
-              onPointerDown={(event) =>
-                startResize("timeline", timelineHeight, event)
-              }
-              onKeyDown={(event) =>
-                resizeByKey(
-                  event,
-                  timelineHeight,
-                  "timeline",
-                )
-              }
+              onPointerDown={(event) => startResize("timeline", timelineHeight, event)}
+              onKeyDown={(event) => resizeByKey(event, timelineHeight, "timeline")}
             />
             <ErrorBoundary region="timeline">
               <CrashZone region="timeline" />
@@ -247,13 +233,7 @@ export function AppShell() {
             <ResizeHandle
               side="left"
               onPointerDown={(event) => startResize("right", rightRailWidth, event)}
-              onKeyDown={(event) =>
-                resizeByKey(
-                  event,
-                  rightRailWidth,
-                  "right",
-                )
-              }
+              onKeyDown={(event) => resizeByKey(event, rightRailWidth, "right")}
             />
             <ActivityRail
               tab={rightTab}

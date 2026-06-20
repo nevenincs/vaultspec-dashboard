@@ -58,11 +58,8 @@ fn cold_index_baseline() {
         engine_graph::index::index_worktree(dir.path(), &scope, &store, 0).unwrap();
     let warm_ms = started.elapsed().as_millis();
 
-    // Code-artifact node minting (code-artifact-nodes ADR D5/D6, W05.P14.S64):
-    // each doc mentions `src/module_{i%20}.rs` (a RESOLVED Path — the file
-    // exists, so it mints) and `src/missing_{i}.rs` (a BROKEN Path — no file, so
-    // it mints NOTHING per D1). The 20 distinct resolved paths dedup across the
-    // 200 mentioning docs to exactly 20 code nodes (idempotent upsert by id, D3).
+    // Source-path prose remains in the corpus as extraction noise, but graph
+    // indexing no longer mints code-artifact nodes from vault document mentions.
     let code_nodes = graph
         .nodes()
         .filter(|n| n.kind == NodeKind::CodeArtifact)
@@ -83,23 +80,17 @@ fn cold_index_baseline() {
     assert_eq!(stats.documents, DOCS);
     assert_eq!(warm_stats.cache_hits, DOCS, "warm run is fully cached");
 
-    // The added Pass-2 upserts landed: exactly the 20 distinct resolved module
-    // paths, deduplicated across the 200 docs that mention them — broken
-    // `src/missing_*.rs` targets fabricate no node (code-artifact-nodes ADR D1).
     assert_eq!(
-        code_nodes, 20,
-        "20 distinct resolved Path mentions mint 20 deduplicated code nodes; \
-         200 broken targets mint none (ADR D1)"
+        code_nodes, 0,
+        "vault document mentions of source paths must not mint graph code nodes"
     );
-    // Re-derivability (ADR D3/D5): the warm re-index converges to the identical
-    // code-node set — idempotent upsert by id re-keys nothing.
     assert_eq!(
         warm_graph
             .nodes()
             .filter(|n| n.kind == NodeKind::CodeArtifact)
             .count(),
         code_nodes,
-        "re-index converges to the identical code-node set (idempotent upsert)"
+        "re-index keeps the code-node set empty"
     );
     // Wall-clock ceilings are STRICT-MODE only (audit backlog item): on
     // shared CI runners and under parallel test load they flake without

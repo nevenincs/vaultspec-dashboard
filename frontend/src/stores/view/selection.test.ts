@@ -8,6 +8,9 @@ import {
   closeNodeIsland,
   isNodeIslandOpen,
   normalizeOpenedNodeIslandIds,
+  normalizeSelectionMetadataId,
+  normalizeSelectionScope,
+  openGraphNodeFromScene,
   openNodeIsland,
   openNodeIslandFromWalk,
   projectDashboardSelectionToScene,
@@ -21,6 +24,7 @@ import {
   selectFromScene,
   selectNode,
   selectNodes,
+  SELECTION_METADATA_ID_MAX_CHARS,
   setHoveredNodeId,
 } from "./selection";
 import { useViewStore } from "./viewStore";
@@ -73,6 +77,23 @@ describe("selection seam", () => {
   it("keeps node selection out of local viewStore when no scope is active", async () => {
     await expect(selectNode("feature:a")).resolves.toBe(false);
     expect(useViewStore.getState().selection).toBeNull();
+  });
+
+  it("normalizes runtime scope before dashboard selection writes", async () => {
+    expect(normalizeSelectionScope(" scope-a ")).toBe("scope-a");
+    expect(normalizeSelectionScope("   ")).toBeNull();
+    expect(normalizeSelectionScope({ scope: "scope-a" })).toBeNull();
+
+    useViewStore.getState().setScope(null);
+    await createLiveClient().patchDashboardState({
+      scope,
+      selected_ids: [documentNodeId],
+    });
+
+    await expect(selectNode(null, { scope })).resolves.toBe(false);
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [documentNodeId],
+    });
   });
 
   it("writes explicit-scope node selection when the view store has no scope", async () => {
@@ -166,6 +187,18 @@ describe("selection seam", () => {
     expect(useViewStore.getState().selection).toBeNull();
   });
 
+  it("does not open local island chrome for malformed runtime scope values", async () => {
+    useViewStore.getState().setScope(null);
+    await createLiveClient().patchDashboardState({ scope, selected_ids: [] });
+
+    await expect(openNodeIsland(documentNodeId, { scope })).resolves.toBe(false);
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [],
+    });
+    expect(useViewStore.getState().openedIds).toEqual([]);
+  });
+
   it("normalizes public island open/close ids at the seam", async () => {
     useViewStore.getState().setScope(null);
     await createLiveClient().patchDashboardState({ scope, selected_ids: [] });
@@ -208,9 +241,14 @@ describe("selection seam", () => {
     let markedSceneOrigin = false;
 
     await expect(
-      openNodeIslandFromWalk(scene, ` ${documentNodeId} `, scope, (originated = true) => {
-        markedSceneOrigin = originated;
-      }),
+      openNodeIslandFromWalk(
+        scene,
+        ` ${documentNodeId} `,
+        scope,
+        (originated = true) => {
+          markedSceneOrigin = originated;
+        },
+      ),
     ).resolves.toBe(true);
 
     await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
@@ -251,15 +289,73 @@ describe("selection seam", () => {
     expect(commands).toEqual([]);
   });
 
-  it("stores event and edge metadata locally", () => {
-    selectEvent("evt-1", [" doc:x ", "", "doc:x", "doc:y"]);
+  it("does not descend feature nodes for malformed runtime scope values", async () => {
+    const descended: string[] = [];
+
+    await expect(
+      openGraphNodeFromScene(
+        "feature:state-management",
+        { scope },
+        {
+          descendFeatureTag: (featureTag) => {
+            if (typeof featureTag === "string") descended.push(featureTag);
+            return Promise.resolve(null);
+          },
+        },
+      ),
+    ).resolves.toBe(false);
+
+    expect(descended).toEqual([]);
+  });
+
+  it("normalizes event and edge metadata locally", () => {
+    selectEvent(" evt-1 ", [" doc:x ", "", "doc:x", "doc:y"], 2.9);
     expect(useViewStore.getState().selection).toEqual({
       kind: "event",
       id: "evt-1",
       nodeIds: ["doc:x", "doc:y"],
+      truncatedNodeIds: 2,
     });
-    selectEdge("e1");
+    selectEvent("   ", ["doc:z"]);
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "event",
+      id: "evt-1",
+      nodeIds: ["doc:x", "doc:y"],
+      truncatedNodeIds: 2,
+    });
+    selectEdge(" e1 ");
     expect(useViewStore.getState().selection).toEqual({ kind: "edge", id: "e1" });
+    selectEdge("   ");
+    expect(useViewStore.getState().selection).toEqual({ kind: "edge", id: "e1" });
+  });
+
+  it("rejects overlong local selection metadata ids", () => {
+    const accepted = "e".repeat(SELECTION_METADATA_ID_MAX_CHARS);
+    const rejected = `${accepted}x`;
+
+    expect(normalizeSelectionMetadataId(` ${accepted} `)).toBe(accepted);
+    expect(normalizeSelectionMetadataId(rejected)).toBeNull();
+
+    selectEvent(accepted, ["doc:x"]);
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "event",
+      id: accepted,
+      nodeIds: ["doc:x"],
+    });
+
+    selectEvent(rejected, ["doc:y"]);
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "event",
+      id: accepted,
+      nodeIds: ["doc:x"],
+    });
+
+    selectEdge(rejected);
+    expect(useViewStore.getState().selection).toEqual({
+      kind: "event",
+      id: accepted,
+      nodeIds: ["doc:x"],
+    });
   });
 
   it("clears local event metadata when node selection takes over", async () => {
@@ -304,17 +400,28 @@ describe("selection seam", () => {
       kind: "event",
       id: "commit:selection-test",
       nodeIds: [documentNodeId],
-      truncatedNodeIds: undefined,
     });
+  });
+
+  it("rejects malformed event metadata before dashboard node selection", async () => {
+    useViewStore.getState().setScope(null);
+    await createLiveClient().patchDashboardState({ scope, selected_ids: [] });
+
+    await expect(selectEventNodes("   ", [documentNodeId], scope)).resolves.toBe(false);
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [],
+    });
+    expect(useViewStore.getState().selection).toBeNull();
   });
 
   it("does not retain event metadata without accepted dashboard node selection", async () => {
     useViewStore.getState().setScope(null);
     selectEvent("evt-stale", ["doc:old"]);
 
-    await expect(
-      selectEventNodes("commit:rejected", [documentNodeId]),
-    ).resolves.toBe(false);
+    await expect(selectEventNodes("commit:rejected", [documentNodeId])).resolves.toBe(
+      false,
+    );
 
     expect(useViewStore.getState().selection).toBeNull();
   });
@@ -429,5 +536,23 @@ describe("selection seam", () => {
       kind: "pulse",
       ids: new Set([documentNodeId, "doc:neighbor"]),
     });
+  });
+
+  it("does not pulse when the canonical dashboard selection is rejected", async () => {
+    const { scene, commands } = captureScene();
+    useViewStore.getState().setScope(null);
+    await createLiveClient().patchDashboardState({ scope, selected_ids: [] });
+
+    await expect(
+      selectNodeAndPulse(scene, documentNodeId, [documentNodeId, "doc:neighbor"], {
+        scope,
+      }),
+    ).resolves.toBe(false);
+
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      selected_ids: [],
+    });
+    expect(useViewStore.getState().selection).toBeNull();
+    expect(commands).toEqual([]);
   });
 });

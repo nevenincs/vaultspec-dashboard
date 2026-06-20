@@ -31,7 +31,7 @@ import {
   openDocumentEditor,
   updateEditorDraft,
 } from "../view/editor";
-import { useViewStore } from "../view/viewStore";
+import { normalizeEditorTextValue, useViewStore } from "../view/viewStore";
 import type { ContentView } from "./queries";
 import {
   deriveDocType,
@@ -93,6 +93,36 @@ describe("editor-state slice (bounded, single-value)", () => {
     expect(s.draftText).toBe("initial body");
     expect(s.baseBlobHash).toBe("hash-1");
     expect(s.editorStatus).toBe("idle");
+  });
+
+  it("normalizes malformed editor lifecycle payloads at the store seam", () => {
+    expect(normalizeEditorTextValue("body")).toBe("body");
+    expect(normalizeEditorTextValue(null)).toBe("");
+
+    openDocumentEditor(` ${DOC_ID} `, 42, null);
+    expect(useViewStore.getState()).toMatchObject({
+      editorTarget: { nodeId: DOC_ID },
+      draftText: "",
+      baseBlobHash: "",
+      editorStatus: "idle",
+    });
+
+    updateEditorDraft({ text: "bad" });
+    expect(useViewStore.getState()).toMatchObject({
+      draftText: "",
+      editorStatus: "idle",
+    });
+
+    updateEditorDraft("changed");
+    markEditorSaved({ blobHash: "bad" });
+    expect(useViewStore.getState()).toMatchObject({
+      editorStatus: "saved",
+      baseBlobHash: "",
+    });
+
+    closeDocumentEditor();
+    openDocumentEditor({ id: DOC_ID }, "ignored", "hash");
+    expect(useViewStore.getState().editorTarget).toBeNull();
   });
 
   it("setDraft marks dirty; an identical write is a no-op (no churn)", () => {
@@ -183,6 +213,7 @@ describe("editor-state slice (bounded, single-value)", () => {
       status: "idle",
       statusLabel: "Saved",
       statusTone: "muted",
+      statusToneClass: "text-ink-muted",
       canSave: false,
     });
 
@@ -193,6 +224,7 @@ describe("editor-state slice (bounded, single-value)", () => {
       status: "dirty",
       statusLabel: "Unsaved changes",
       statusTone: "ink",
+      statusToneClass: "text-ink",
       canSave: true,
     });
 
@@ -202,6 +234,7 @@ describe("editor-state slice (bounded, single-value)", () => {
       status: "conflict",
       statusLabel: "Conflict — the file changed on disk",
       statusTone: "broken",
+      statusToneClass: "text-state-broken",
       canSave: false,
     });
 
@@ -212,6 +245,16 @@ describe("editor-state slice (bounded, single-value)", () => {
       draftText: "changed",
       baseBlobHash: "hash-1",
     });
+    expect(
+      deriveDocumentEditorView(useViewStore.getState(), ` ${DOC_ID} `),
+    ).toMatchObject({
+      isEditing: true,
+    });
+    expect(deriveDocumentEditorView(useViewStore.getState(), { id: DOC_ID })).toMatchObject(
+      {
+        isEditing: false,
+      },
+    );
   });
 
   it("projects markdown editor seed fields from the content view", () => {

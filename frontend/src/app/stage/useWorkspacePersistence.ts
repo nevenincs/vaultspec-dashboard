@@ -30,27 +30,23 @@ import {
   parseWorkspaceTabs,
   restoreDocTabsIfEmpty,
   serializeWorkspaceTabs,
+  shouldPersistWorkspaceTabsLayout,
   useDockWorkspaceTabsView,
+  type PersistedWorkspaceTabsLayout,
 } from "../../stores/view/tabs";
+import { normalizeViewStoreSessionString } from "../../stores/view/viewStore";
 
 const PERSIST_DEBOUNCE_MS = 800;
 
-export { parseWorkspaceTabs, serializeWorkspaceTabs };
+export {
+  isSamePersistedWorkspaceLayout,
+  parseWorkspaceTabs,
+  serializeWorkspaceTabs,
+  shouldPersistWorkspaceTabsLayout,
+} from "../../stores/view/tabs";
 
-interface LastPersistedWorkspaceLayout {
-  scope: string;
-  blob: string;
-}
-
-export function isSamePersistedWorkspaceLayout(
-  previous: LastPersistedWorkspaceLayout | null,
-  scope: string,
-  blob: string,
-): boolean {
-  return previous?.scope === scope && previous.blob === blob;
-}
-
-export function useWorkspacePersistence(scope: string | null): void {
+export function useWorkspacePersistence(scope: unknown): void {
+  const normalizedScope = normalizeViewStoreSessionString(scope);
   // The DURABLE per-scope workspace layout lives in the session's scope_context
   // (SQLite-backed), read through the stores session seam (the app layer never
   // touches `useSession`/`usePutSession` raw — dashboard-layer-ownership). The
@@ -60,7 +56,7 @@ export function useWorkspacePersistence(scope: string | null): void {
   // tabs are cleared by a scope settle after the seed), reading the durable blob
   // through the seam.
   const { blob: persistedBlob, settled: stateSettled } =
-    useDurableWorkspaceLayout(scope);
+    useDurableWorkspaceLayout(normalizedScope);
   // Hold the persist callback in a ref so it is NOT a persist-effect dependency:
   // it changes identity every render, so depending on it would re-run the
   // debounced persist effect every render — and under the app's live-streaming
@@ -79,13 +75,13 @@ export function useWorkspacePersistence(scope: string | null): void {
   // settle clears the seeded tabs (the one-shot seed alone would miss that). Safe
   // because the persist below never writes empty, so re-seeding cannot loop.
   useEffect(() => {
-    if (!scope) return;
+    if (normalizedScope === null) return;
     if (!stateSettled) return;
     const restored = parseWorkspaceTabs(persistedBlob);
     if (restored && restored.openDocs.length > 0) {
       restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
     }
-  }, [scope, stateSettled, persistedBlob, tabs.openDocs.length]);
+  }, [normalizedScope, stateSettled, persistedBlob, tabs.openDocs.length]);
 
   // This hook also PERSISTS the open-tab set + active tab, coalesced.
   //
@@ -98,21 +94,26 @@ export function useWorkspacePersistence(scope: string | null): void {
   // only ever updates with a NON-EMPTY tab set; a user "close all" leaves the last
   // non-empty set saved (the workspace remembers your last open documents) — an
   // explicit clear-on-close path can persist empty in the future if wanted.
-  const lastPersistedRef = useRef<LastPersistedWorkspaceLayout | null>(null);
+  const lastPersistedRef = useRef<PersistedWorkspaceTabsLayout | null>(null);
   useEffect(() => {
-    if (!scope) return;
+    if (normalizedScope === null) return;
     if (!stateSettled) return;
     const next = serializeWorkspaceTabs(tabs.openDocs, tabs.activeDocId);
-    if ((parseWorkspaceTabs(next)?.openDocs.length ?? 0) === 0) return;
-    if (isSamePersistedWorkspaceLayout(lastPersistedRef.current, scope, next)) {
+    if (
+      !shouldPersistWorkspaceTabsLayout(
+        lastPersistedRef.current,
+        normalizedScope,
+        next,
+      )
+    ) {
       return;
     }
     const handle = setTimeout(() => {
-      lastPersistedRef.current = { scope, blob: next };
+      lastPersistedRef.current = { scope: normalizedScope, blob: next };
       // Persist to the DURABLE per-scope session context through the stores seam
       // (merged engine-side so it preserves the folder/feature-tag context).
-      persistLayoutRef.current(scope, next);
+      persistLayoutRef.current(normalizedScope, next);
     }, PERSIST_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [scope, stateSettled, tabs.openDocs, tabs.activeDocId]);
+  }, [normalizedScope, stateSettled, tabs.openDocs, tabs.activeDocId]);
 }

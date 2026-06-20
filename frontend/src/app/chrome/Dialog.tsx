@@ -10,21 +10,10 @@
 
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useId, useRef } from "react";
-
-/** The focusable descendants of `root`, in DOM order — the focus-trap cycle.
- *  Mirrors the command palette's helper so trap behavior is identical. */
-function focusablesOf(root: HTMLElement): HTMLElement[] {
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(
-      "a[href], button, input, select, textarea, [tabindex]",
-    ),
-  ).filter((el) => {
-    if (el.hasAttribute("disabled")) return false;
-    if (el.getAttribute("tabindex") === "-1") return false;
-    return true;
-  });
-}
+import { useCallback, useId, useRef } from "react";
+import { focusableDescendants, trapTabFocus } from "./focusTrap";
+import { useDismissOnEscape } from "./useDismissOnEscape";
+import { useFocusRestore } from "./useFocusRestore";
 
 export interface DialogProps {
   /** Whether the dialog is mounted/visible. When false, nothing renders. */
@@ -46,37 +35,24 @@ export interface DialogProps {
  */
 export function Dialog({ open, onClose, title, description, children }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descId = useId();
 
-  // Escape closes (document-level so it fires regardless of focus position).
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useDismissOnEscape(onClose, {
+    enabled: open,
+    target: document,
+    preventDefault: true,
+  });
 
-  // Focus management: remember the previously-focused element on open, move
-  // focus into the dialog, and restore it on close so the trigger regains focus.
-  useEffect(() => {
-    if (!open) return;
-    restoreRef.current = (document.activeElement as HTMLElement | null) ?? null;
+  const focusPanel = useCallback(() => {
     const panel = panelRef.current;
     if (panel) {
-      const focusables = focusablesOf(panel);
+      const focusables = focusableDescendants(panel);
       (focusables[0] ?? panel).focus();
     }
-    return () => {
-      restoreRef.current?.focus?.();
-    };
-  }, [open]);
+  }, []);
+
+  useFocusRestore(open, { onOpen: focusPanel });
 
   if (!open) return null;
 
@@ -98,26 +74,7 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         tabIndex={-1}
         className="flex max-h-[80vh] w-[34rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover outline-none animate-slide-in-down"
         onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          // Real focus trap: Tab / Shift+Tab cycle within the dialog so focus
-          // can never escape to the chrome behind the scrim while open.
-          if (e.key !== "Tab" || !panelRef.current) return;
-          const focusables = focusablesOf(panelRef.current);
-          if (focusables.length === 0) {
-            e.preventDefault();
-            return;
-          }
-          const first = focusables[0];
-          const last = focusables[focusables.length - 1];
-          const activeEl = document.activeElement;
-          if (e.shiftKey && activeEl === first) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && activeEl === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }}
+        onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
       >
         <header className="flex shrink-0 items-start justify-between gap-fg-2 border-b border-rule px-fg-4 py-fg-3">
           <div className="min-w-0">

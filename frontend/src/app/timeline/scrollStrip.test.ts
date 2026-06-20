@@ -5,13 +5,16 @@ import {
   MAX_TIMELINE_ARCS,
   MAX_TIMELINE_MARKS,
   MIN_PX_PER_MS,
+  TIMELINE_ORIGIN_MS,
   capItems,
   clampPxPerMs,
   isInVisibleRange,
   liveEdgeOffset,
+  panScrollOffset,
   stripXToTime,
   timeToStripX,
   timeToX,
+  viewportForTimeRange,
   visibleRange,
   xToTime,
   zoomAt,
@@ -123,6 +126,28 @@ describe("zoom-anchor invariance: the instant under the cursor stays put (S28)",
     expect(xToTime(cursorX, origin, z.pxPerMs, z.scrollOffset)).toBeCloseTo(
       anchorBefore,
     );
+  });
+});
+
+describe("viewportForTimeRange + panScrollOffset", () => {
+  it("resolves a time range to the scale and offset that shows it in the viewport", () => {
+    const viewport = viewportForTimeRange(10 * DAY, 18 * DAY, 800);
+    expect(viewport.pxPerMs).toBeCloseTo(100 / DAY);
+    expect(
+      stripXToTime(viewport.scrollOffset, TIMELINE_ORIGIN_MS, viewport.pxPerMs),
+    ).toBeCloseTo(10 * DAY);
+    expect(
+      stripXToTime(viewport.scrollOffset + 800, TIMELINE_ORIGIN_MS, viewport.pxPerMs),
+    ).toBeCloseTo(18 * DAY);
+  });
+
+  it("orders reversed ranges and clamps panning at the strip origin", () => {
+    const viewport = viewportForTimeRange(18 * DAY, 10 * DAY, 800);
+    expect(
+      stripXToTime(viewport.scrollOffset, TIMELINE_ORIGIN_MS, viewport.pxPerMs),
+    ).toBeCloseTo(10 * DAY);
+    expect(panScrollOffset(20, -50)).toBe(0);
+    expect(panScrollOffset(20, 50)).toBe(70);
   });
 });
 

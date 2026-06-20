@@ -1,10 +1,20 @@
-import { canonicalizeChord, chordToKeycaps } from "../../platform/keymap/chord";
+import { useEffect } from "react";
+import { create } from "zustand";
+
+import type { ChordEvent } from "../../platform/keymap/chord";
+import {
+  canonicalizeChord,
+  chordStringFromEvent,
+  chordToKeycaps,
+} from "../../platform/keymap/chord";
 import {
   type KeybindingDef,
   type KeybindingOverrides,
   conflictsForCandidate,
   effectiveChord,
   listKeybindings,
+  normalizeKeybindingId,
+  normalizeKeybindingOverrides,
 } from "../../platform/keymap/registry";
 import type { SettingDef } from "../server/engine";
 import {
@@ -201,19 +211,23 @@ export function deriveSettingsKeybindingControlView(
  */
 export function nextKeybindingOverrides(
   current: KeybindingOverrides,
-  id: string,
-  rawChord: string,
+  id: unknown,
+  rawChord: unknown,
   defs: readonly KeybindingDef[] = listKeybindings(),
 ): KeybindingOverrides {
-  const def = defs.find((d) => d.id === id);
-  if (!def) return current;
+  const normalizedId = normalizeSettingsKeybindingId(id);
+  if (normalizedId === null) return current;
+  const def = defs.find((d) => d.id === normalizedId);
+  if (!def || typeof rawChord !== "string") return current;
   const canonical = canonicalizeChord(rawChord);
   if (canonical === null) return current;
-  const next: Record<string, string> = { ...current };
+  const next: Record<string, string> = {
+    ...normalizeKeybindingOverrides(current),
+  };
   if (canonical === def.defaultChord) {
-    delete next[id];
+    delete next[normalizedId];
   } else {
-    next[id] = canonical;
+    next[normalizedId] = canonical;
   }
   return next;
 }
@@ -221,30 +235,118 @@ export function nextKeybindingOverrides(
 /** The next sparse map with `id`'s override removed (reset to default). */
 export function clearKeybindingOverride(
   current: KeybindingOverrides,
-  id: string,
+  id: unknown,
 ): KeybindingOverrides {
-  if (!(id in current)) return current;
-  const next: Record<string, string> = { ...current };
-  delete next[id];
+  const normalizedId = normalizeSettingsKeybindingId(id);
+  const normalizedCurrent = normalizeKeybindingOverrides(current);
+  if (normalizedId === null || !(normalizedId in normalizedCurrent)) {
+    return normalizedCurrent;
+  }
+  const next: Record<string, string> = { ...normalizedCurrent };
+  delete next[normalizedId];
   return next;
 }
 
 /** Serialize a sparse override map back to the wire JSON object string. */
 export function serializeKeybindingOverrides(overrides: KeybindingOverrides): string {
-  return JSON.stringify(overrides);
+  return JSON.stringify(normalizeKeybindingOverrides(overrides));
 }
 
 /** The ids a candidate chord would collide with for `id` (the recorder's
  *  pre-commit warning), under the current overrides. Empty when no conflict. */
 export function keybindingConflictIds(
   current: KeybindingOverrides,
-  id: string,
-  rawChord: string,
+  id: unknown,
+  rawChord: unknown,
   defs: readonly KeybindingDef[] = listKeybindings(),
 ): string[] {
-  const canonical = canonicalizeChord(rawChord);
-  if (canonical === null) return [];
-  return conflictsForCandidate(defs, current, id, canonical);
+  const normalizedId = normalizeSettingsKeybindingId(id);
+  const canonical = typeof rawChord === "string" ? canonicalizeChord(rawChord) : null;
+  if (normalizedId === null || canonical === null) return [];
+  return conflictsForCandidate(
+    defs,
+    normalizeKeybindingOverrides(current),
+    normalizedId,
+    canonical,
+  );
+}
+
+export function normalizeSettingsKeybindingId(id: unknown): string | null {
+  return normalizeKeybindingId(id);
+}
+
+interface SettingsKeybindingRecorderState {
+  recordingId: string | null;
+  setRecordingId: (id: unknown) => void;
+  toggleRecordingId: (id: unknown) => void;
+  reset: () => void;
+}
+
+export const useSettingsKeybindingRecorderStore =
+  create<SettingsKeybindingRecorderState>((set) => ({
+    recordingId: null,
+    setRecordingId: (id) => set({ recordingId: normalizeSettingsKeybindingId(id) }),
+    toggleRecordingId: (id) =>
+      set((state) => {
+        const normalizedId = normalizeSettingsKeybindingId(id);
+        if (normalizedId === null) return state;
+        return {
+          recordingId: state.recordingId === normalizedId ? null : normalizedId,
+        };
+      }),
+    reset: () => set({ recordingId: null }),
+  }));
+
+export function useSettingsKeybindingRecordingId(): string | null {
+  return useSettingsKeybindingRecorderStore((state) => state.recordingId);
+}
+
+export function toggleSettingsKeybindingRecording(id: unknown): void {
+  useSettingsKeybindingRecorderStore.getState().toggleRecordingId(id);
+}
+
+export function stopSettingsKeybindingRecording(): void {
+  useSettingsKeybindingRecorderStore.getState().setRecordingId(null);
+}
+
+export function resetSettingsKeybindingRecorder(): void {
+  useSettingsKeybindingRecorderStore.getState().reset();
+}
+
+export function settingsKeybindingChordFromEvent(event: ChordEvent): string | null {
+  return chordStringFromEvent(event);
+}
+
+export interface SettingsKeybindingRecorderInput {
+  overrides: KeybindingOverrides;
+  commit: (next: KeybindingOverrides) => void;
+}
+
+export function useSettingsKeybindingRecorder({
+  overrides,
+  commit,
+}: SettingsKeybindingRecorderInput): string | null {
+  const recordingId = useSettingsKeybindingRecordingId();
+
+  useEffect(() => {
+    if (recordingId === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        stopSettingsKeybindingRecording();
+        return;
+      }
+      const raw = settingsKeybindingChordFromEvent(event);
+      if (raw === null) return;
+      event.preventDefault();
+      commit(nextKeybindingOverrides(overrides, recordingId, raw));
+      stopSettingsKeybindingRecording();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [commit, overrides, recordingId]);
+
+  return recordingId;
 }
 
 export interface SettingsTextControlView {

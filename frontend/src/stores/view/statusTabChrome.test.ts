@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   OPEN_RECENT_COMMIT_HASHES_CAP,
+  RECENT_COMMIT_HASH_MAX_CHARS,
   RECENT_COMMITS_LIMIT_CAP,
   deriveRecentCommitsChromeView,
   deriveRecentCommitChromeRows,
   deriveStatusSectionChromeView,
+  normalizeStatusSectionId,
+  normalizeStatusSectionOpen,
   resetStatusTabChrome,
   showMoreRecentCommits,
   toggleRecentCommit,
@@ -30,7 +33,13 @@ describe("statusTabChrome store", () => {
   });
 
   it("rejects malformed section ids at the store boundary", () => {
-    toggleStatusSection("unexpected-section" as never, true);
+    expect(normalizeStatusSectionId("open-issues")).toBe("open-issues");
+    expect(normalizeStatusSectionId("unexpected-section")).toBeNull();
+    expect(normalizeStatusSectionOpen(true)).toBe(true);
+    expect(normalizeStatusSectionOpen("true")).toBe(false);
+
+    toggleStatusSection("unexpected-section", true);
+    toggleStatusSection(null, true);
 
     expect(useStatusTabChromeStore.getState().sections).toEqual({});
 
@@ -50,6 +59,10 @@ describe("statusTabChrome store", () => {
       bodyVisible: true,
     });
     expect(deriveStatusSectionChromeView("open-plans", false)).toMatchObject({
+      bodyVisible: false,
+    });
+    expect(deriveStatusSectionChromeView({ id: "bad" }, "open")).toMatchObject({
+      bodyId: "status-section-open-plans",
       bodyVisible: false,
     });
   });
@@ -91,7 +104,10 @@ describe("statusTabChrome store", () => {
   it("rejects empty recent commit expansion keys at the store boundary", () => {
     toggleRecentCommit("");
     toggleRecentCommit("   ");
+    toggleRecentCommit(null);
+    toggleRecentCommit({ hash: "abc123" });
     toggleRecentCommit(" abc123 ");
+    toggleRecentCommit("x".repeat(RECENT_COMMIT_HASH_MAX_CHARS + 1));
 
     expect(useStatusTabChromeStore.getState().openRecentCommitHashes).toEqual([
       "abc123",
@@ -108,6 +124,9 @@ describe("statusTabChrome store", () => {
     showMoreRecentCommits(-10, -5);
     expect(useStatusTabChromeStore.getState().recentCommitsLimit).toBe(41);
 
+    showMoreRecentCommits(null, { defaultLimit: 20 });
+    expect(useStatusTabChromeStore.getState().recentCommitsLimit).toBe(42);
+
     resetStatusTabChrome();
     showMoreRecentCommits(0, 0);
     expect(useStatusTabChromeStore.getState().recentCommitsLimit).toBe(2);
@@ -120,6 +139,7 @@ describe("statusTabChrome store", () => {
         "",
         "abc123",
         " abc123 ",
+        "x".repeat(RECENT_COMMIT_HASH_MAX_CHARS + 1),
         ...Array.from(
           { length: OPEN_RECENT_COMMIT_HASHES_CAP + 2 },
           (_, i) => `commit-${i}`,
@@ -131,10 +151,17 @@ describe("statusTabChrome store", () => {
     expect(view.limit).toBe(RECENT_COMMITS_LIMIT_CAP);
     expect(view.openHashes).toHaveLength(OPEN_RECENT_COMMIT_HASHES_CAP);
     expect(view.openHashes).not.toContain("");
+    expect(view.openHashes).not.toContain(
+      "x".repeat(RECENT_COMMIT_HASH_MAX_CHARS + 1),
+    );
     expect(view.openHashes[0]).toBe("commit-2");
     expect(view.openHashes[view.openHashes.length - 1]).toBe(
       `commit-${OPEN_RECENT_COMMIT_HASHES_CAP + 1}`,
     );
+    expect(deriveRecentCommitsChromeView(20, null, 20)).toEqual({
+      limit: 20,
+      openHashes: [],
+    });
   });
 
   it("resets right-rail status chrome for a fresh corpus", () => {
@@ -201,6 +228,18 @@ describe("statusTabChrome store", () => {
         subjectClassName: "min-w-0 flex-1 truncate text-label text-ink-muted",
         ageClassName: "shrink-0 text-meta text-ink-faint",
       },
+    ]);
+  });
+
+  it("normalizes recent commit row hashes before expansion matching", () => {
+    const rows = [
+      { commit: { hash: " abc123 " }, hasBody: true, label: "trimmed" },
+      { commit: { hash: "" }, hasBody: true, label: "missing" },
+    ];
+
+    expect(deriveRecentCommitChromeRows(rows, ["abc123", ""])).toMatchObject([
+      { expanded: true, showBody: true },
+      { expanded: false, showBody: false },
     ]);
   });
 });

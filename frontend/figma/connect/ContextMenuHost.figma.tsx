@@ -3,6 +3,6 @@ import figma from "@figma/code-connect";
 
 import { ContextMenuHost } from "../../src/app/menu/ContextMenuHost";
 
-figma.connect(ContextMenuHost, "<MIRROR>?node-id=157-120", {
+figma.connect(ContextMenuHost, "<MIRROR>?node-id=319-960", {
   example: () => <ContextMenuHost />,
 });

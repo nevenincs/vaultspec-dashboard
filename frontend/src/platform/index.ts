@@ -19,7 +19,6 @@ export * from "./errors/CrashInjector";
 
 // Dispatch seam (P03)
 export * from "./dispatch/dispatch";
-export * from "./dispatch/middleware";
 export * from "./dispatch/useAction";
 
 // Shared action descriptor + resolver registry (dashboard-context-menus W01)

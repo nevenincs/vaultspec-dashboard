@@ -168,6 +168,33 @@ export function canonicalizeChord(input: string): string | null {
   return chord === null ? null : formatChord(chord);
 }
 
+/** Modifier-only DOM keys that never finish a chord on their own. */
+const MODIFIER_ONLY_EVENT_KEYS = new Set([
+  "Control",
+  "Meta",
+  "Alt",
+  "Shift",
+  "AltGraph",
+  "OS",
+]);
+
+/**
+ * Build the canonical chord string represented by a keyboard event, or `null`
+ * when the event is only a modifier key press. Used by recorder seams so event
+ * capture, persisted overrides, conflict checks, and dispatch all share one
+ * parse/format identity.
+ */
+export function chordStringFromEvent(event: ChordEvent): string | null {
+  if (MODIFIER_ONLY_EVENT_KEYS.has(event.key)) return null;
+  const tokens: string[] = [];
+  if (event.metaKey) tokens.push("Mod");
+  if (event.ctrlKey) tokens.push("Ctrl");
+  if (event.altKey) tokens.push("Alt");
+  if (event.shiftKey) tokens.push("Shift");
+  tokens.push(event.key);
+  return canonicalizeChord(tokens.join("+"));
+}
+
 /**
  * Split a canonical chord string into ordered display keycaps for the legend and
  * the settings recorder (e.g. `"Mod+Shift+K"` -> `["Mod","Shift","K"]`). The

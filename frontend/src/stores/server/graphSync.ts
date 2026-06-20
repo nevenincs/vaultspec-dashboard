@@ -5,18 +5,133 @@
 // detection falls back to invalidation. Connection signal drives the live-state
 // degradation truth.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
 import { debounce } from "../../platform/timing";
 import type { GraphDeltaEntry } from "./engine";
-import { useLiveStatusStore } from "./liveStatus";
+import { advanceLiveSeq, setLiveStreamConnected } from "./liveStatus";
 import type { StreamChunk } from "./queries";
-import { engineKeys, engineStreamOptions } from "./queries";
+import {
+  engineKeys,
+  engineStreamOptions,
+  invalidateGraphGenerationReads,
+  normalizeGraphSliceScope,
+} from "./queries";
 
 /** Collapse a delta burst into one trailing constellation refetch (P-HIGH-1). */
 const GRAPH_INVALIDATE_DEBOUNCE_MS = 150;
+export const GRAPH_FEATURE_DELTAS_CAP = 128;
+
+export function normalizeGraphFeatureDeltas(
+  deltas: readonly GraphDeltaEntry[],
+): GraphDeltaEntry[] {
+  let changed = deltas.length > GRAPH_FEATURE_DELTAS_CAP;
+  const start = Math.max(0, deltas.length - GRAPH_FEATURE_DELTAS_CAP);
+  const normalized: GraphDeltaEntry[] = [];
+  for (let index = start; index < deltas.length; index += 1) {
+    const delta = deltas[index];
+    if (
+      delta?.granularity === "feature" &&
+      typeof delta.seq === "number" &&
+      Number.isFinite(delta.seq)
+    ) {
+      normalized.push(delta);
+    } else {
+      changed = true;
+    }
+  }
+  if (!changed && normalized.length === deltas.length) {
+    return deltas as GraphDeltaEntry[];
+  }
+  return normalized.length > GRAPH_FEATURE_DELTAS_CAP
+    ? normalized.slice(normalized.length - GRAPH_FEATURE_DELTAS_CAP)
+    : normalized;
+}
+
+export const normalizeGraphLiveScope = normalizeGraphSliceScope;
+
+export function normalizeGraphLiveKeyframeSeq(seq: unknown): number | null {
+  return typeof seq === "number" && Number.isFinite(seq) ? seq : null;
+}
+
+export function normalizeGraphLiveEnabled(enabled: unknown): boolean {
+  return enabled === true;
+}
+
+export interface GraphLiveDeltaState {
+  scope: string | null;
+  keyframeSeq: number | null;
+  featureDeltas: GraphDeltaEntry[];
+  gapCount: number;
+  setLifecycle: (scope: unknown, keyframeSeq: unknown) => void;
+  setFeatureDeltas: (deltas: GraphDeltaEntry[]) => void;
+  clearFeatureDeltas: () => void;
+  incrementGap: () => void;
+}
+
+export const useGraphLiveDeltaStore = create<GraphLiveDeltaState>((set) => ({
+  scope: null,
+  keyframeSeq: null,
+  featureDeltas: [],
+  gapCount: 0,
+  setLifecycle: (scope, keyframeSeq) => {
+    const normalizedScope = normalizeGraphLiveScope(scope);
+    const normalizedKeyframeSeq =
+      normalizedScope === null ? null : normalizeGraphLiveKeyframeSeq(keyframeSeq);
+    set((state) =>
+      state.scope === normalizedScope && state.keyframeSeq === normalizedKeyframeSeq
+        ? state
+        : {
+            scope: normalizedScope,
+            keyframeSeq: normalizedKeyframeSeq,
+            featureDeltas: [],
+            gapCount: 0,
+          },
+    );
+  },
+  setFeatureDeltas: (featureDeltas) =>
+    set({ featureDeltas: [...normalizeGraphFeatureDeltas(featureDeltas)] }),
+  clearFeatureDeltas: () => set({ featureDeltas: [] }),
+  incrementGap: () =>
+    set((state) => ({ featureDeltas: [], gapCount: state.gapCount + 1 })),
+}));
+
+const EMPTY_GRAPH_LIVE_DELTA_VIEW = {
+  featureDeltas: [] as GraphDeltaEntry[],
+  gapCount: 0,
+};
+
+export function resetGraphLiveDeltaState(): void {
+  useGraphLiveDeltaStore.setState({
+    scope: null,
+    keyframeSeq: null,
+    featureDeltas: [],
+    gapCount: 0,
+  });
+}
+
+export function useGraphLiveDeltaView(
+  scope: unknown,
+  keyframeSeq: unknown,
+): { featureDeltas: GraphDeltaEntry[]; gapCount: number } {
+  const normalizedScope = normalizeGraphLiveScope(scope);
+  const normalizedKeyframeSeq =
+    normalizedScope === null ? null : normalizeGraphLiveKeyframeSeq(keyframeSeq);
+  return useGraphLiveDeltaStore(
+    useShallow((state) =>
+      state.scope === normalizedScope && state.keyframeSeq === normalizedKeyframeSeq
+        ? {
+            featureDeltas: normalizeGraphFeatureDeltas(state.featureDeltas),
+            gapCount: state.gapCount,
+          }
+        : EMPTY_GRAPH_LIVE_DELTA_VIEW,
+    ),
+  );
+}
 
 /** Highest seq across a batch of stream chunks, or null if none carry one. */
 export function maxSeq(chunks: readonly StreamChunk[] | undefined): number | null {
@@ -37,60 +152,52 @@ export function maxSeq(chunks: readonly StreamChunk[] | undefined): number | nul
  * the subscription anchors at `since=keyframeSeq` so only new deltas arrive;
  * the hook extracts `granularity=feature` entries and returns them as
  * `featureDeltas` for direct `apply-deltas` splicing. A seq discontinuity
- * increments `gapCount` so Stage can trigger a targeted `invalidateQueries`
- * re-keyframe (the resilient floor). Document-granularity deltas still drive
- * debounced constellation invalidation. Connection state updates the
+ * increments `gapCount` and triggers the same stores-owned targeted
+ * re-keyframe invalidation as document-granularity deltas (the resilient
+ * floor). Connection state updates the
  * live-connection degradation slice.
  *
  * Return shape:
  * - `featureDeltas`: the freshest batch of feature-granularity entries; a new
  *   array reference on every batch so Stage's `useEffect` fires exactly once
  *   per arrival. Empty on reset or when only document deltas arrived.
- * - `gapCount`: starts at 0, increments once per detected seq gap. Stage's
- *   `useEffect([gapCount])` fires once per increment and re-keyframes.
+ * - `gapCount`: starts at 0, increments once per detected seq gap for tests and
+ *   observability; the hook itself owns the re-keyframe invalidation.
  */
 export function useGraphLiveSync(
-  scope: string | null,
-  enabled: boolean,
-  keyframeSeq: number | null = null,
+  scope: unknown,
+  enabled: unknown,
+  keyframeSeq: unknown = null,
 ): { featureDeltas: GraphDeltaEntry[]; gapCount: number } {
   const queryClient = useQueryClient();
-  const active = enabled && scope !== null;
+  const normalizedScope = normalizeGraphLiveScope(scope);
+  const normalizedKeyframeSeq =
+    normalizedScope === null ? null : normalizeGraphLiveKeyframeSeq(keyframeSeq);
+  const active = normalizeGraphLiveEnabled(enabled) && normalizedScope !== null;
 
   // When a keyframe seq anchor is available, subscribe with `since=` so only
   // deltas after the keyframe arrive. The since value folds into the queryKey
   // (stream-01 adversarial property: different `since` values must not share
   // cached data). Stable during the session — TanStack retries on error ride
   // the same key; the streamReducer dedup handles any replay overlap.
-  const sinceArg = typeof keyframeSeq === "number" ? keyframeSeq : undefined;
+  const sinceArg = normalizedKeyframeSeq === null ? undefined : normalizedKeyframeSeq;
   // Subscribe against THIS scope's own clock (W02.P04.S14 per-scope stream):
   // pass the active scope so `since=` resume stays correct and independent per
   // worktree, and so two scopes' streams never share a cache entry.
-  const scopeArg = scope ?? undefined;
+  const scopeArg = normalizedScope ?? undefined;
   const stream = useQuery({
     ...engineStreamOptions(["graph"], sinceArg, scopeArg),
     enabled: active,
   });
   const { data: chunks, isError, isSuccess, fetchStatus } = stream;
+  const liveDeltas = useGraphLiveDeltaView(normalizedScope, normalizedKeyframeSeq);
 
   // Debounced, scope-keyed invalidation: a burst of deltas collapses to one
   // trailing constellation refetch instead of one refetch per delta (P-HIGH-1).
   const invalidateConstellation = useMemo(
     () =>
       debounce((scopeArg: string) => {
-        void queryClient.invalidateQueries({
-          queryKey: [...engineKeys.all, "graph", scopeArg],
-          exact: false,
-        });
-        // The semantic embeddings are cached per generation (graph-semantic-
-        // embeddings ADR D8): a graph delta means a new generation, so invalidate
-        // the lazy per-scope embedding read too. When semantic mode is active this
-        // re-fetches fresh vectors; when it is not, the disabled query is left
-        // untouched until the mode is re-entered (the lazy-fetch contract, D2).
-        void queryClient.invalidateQueries({
-          queryKey: [...engineKeys.all, "graph-embeddings", scopeArg],
-          exact: false,
-        });
+        invalidateGraphGenerationReads(queryClient, scopeArg);
       }, GRAPH_INVALIDATE_DEBOUNCE_MS),
     [queryClient],
   );
@@ -101,26 +208,27 @@ export function useGraphLiveSync(
   // leave the signal untouched (null/last value) - "not expected", not "lost".
   useEffect(() => {
     if (!active) return;
-    const { setStreamConnected } = useLiveStatusStore.getState();
-    if (isError) setStreamConnected(false);
-    else if (isSuccess || fetchStatus === "fetching") setStreamConnected(true);
+    if (isError) setLiveStreamConnected(false);
+    else if (isSuccess || fetchStatus === "fetching") setLiveStreamConnected(true);
   }, [active, isError, isSuccess, fetchStatus]);
 
   // spliceLive state: the freshest feature-delta batch and a gap counter.
-  const [featureDeltas, setFeatureDeltas] = useState<GraphDeltaEntry[]>([]);
-  const [gapCount, setGapCount] = useState(0);
+  // Stored centrally so the live graph splice output is a single server-store
+  // projection, not hook-local state hidden inside the Stage subscription.
   // How many entries from `chunks[]` we have already processed. The ring-cap
   // (STREAM_RETENTION=256) bounds the array length so this index stays bounded.
   const processedRef = useRef(0);
   // Last seq confirmed gaplessly; seeded from the keyframe anchor so the first
   // delta after the keyframe is not falsely flagged as a gap.
-  const lastSeqRef = useRef<number | null>(keyframeSeq);
+  const lastSeqRef = useRef<number | null>(normalizedKeyframeSeq);
 
   // Reset on scope or keyframe change (new lifecycle).
   useEffect(() => {
-    setFeatureDeltas([]);
+    useGraphLiveDeltaStore
+      .getState()
+      .setLifecycle(normalizedScope, normalizedKeyframeSeq);
     processedRef.current = 0;
-    lastSeqRef.current = keyframeSeq;
+    lastSeqRef.current = normalizedKeyframeSeq;
     // Drop the prior since-keyed stream entry promptly (B7, resource-hardening):
     // each keyframe advance mints a new ["engine","stream","graph",<since>,scope]
     // key; the live subscription has already switched, so the old one is an
@@ -132,12 +240,12 @@ export function useGraphLiveSync(
         exact: true,
       });
     };
-  }, [scope, keyframeSeq, sinceArg, scopeArg, queryClient]);
+  }, [normalizedScope, normalizedKeyframeSeq, sinceArg, scopeArg, queryClient]);
 
   // Process newly arrived chunks: advance lastSeq, extract feature-granularity
   // deltas with gap detection, and trigger debounced invalidation for all.
   useEffect(() => {
-    if (!active || scope === null || !chunks || chunks.length === 0) return;
+    if (!active || normalizedScope === null || !chunks || chunks.length === 0) return;
 
     // Stream reconnect: the streamed query's reducer empties `chunks` back to
     // [] on a refetch, so an array shorter than what we have already consumed
@@ -146,7 +254,7 @@ export function useGraphLiveSync(
     // invalidation never fires, and the re-keyframe fallback dies (review HIGH-1).
     if (chunks.length < processedRef.current) {
       processedRef.current = 0;
-      lastSeqRef.current = keyframeSeq;
+      lastSeqRef.current = normalizedKeyframeSeq;
     }
 
     const newChunks = chunks.slice(processedRef.current);
@@ -155,7 +263,7 @@ export function useGraphLiveSync(
 
     // Advance the global resume point for reconnect anchoring.
     const topSeq = maxSeq(newChunks);
-    if (topSeq !== null) useLiveStatusStore.getState().setLastSeq(topSeq);
+    if (topSeq !== null) advanceLiveSeq(topSeq);
 
     // Extract feature-granularity deltas with sequential gap detection.
     const batch: GraphDeltaEntry[] = [];
@@ -183,11 +291,12 @@ export function useGraphLiveSync(
     }
 
     if (gapDetected) {
-      // Discard the partial batch; Stage's gapCount effect will re-keyframe.
-      setFeatureDeltas([]);
-      setGapCount((n) => n + 1);
+      // Discard the partial batch; the stores-owned fallback will re-keyframe.
+      useGraphLiveDeltaStore.getState().incrementGap();
     } else if (batch.length > 0) {
-      setFeatureDeltas(batch);
+      useGraphLiveDeltaStore
+        .getState()
+        .setFeatureDeltas(normalizeGraphFeatureDeltas(batch));
     }
 
     // Realize the no-refetch path (review MED-1): only invalidate the
@@ -196,9 +305,9 @@ export function useGraphLiveSync(
     // was applied. A clean feature-only batch animates via `apply-deltas` with
     // no refetch (that is the whole point of the spliceLive path).
     if (sawDocumentDelta || gapDetected || batch.length === 0) {
-      invalidateConstellation(scope);
+      invalidateConstellation(normalizedScope);
     }
-  }, [active, scope, chunks, keyframeSeq, invalidateConstellation]);
+  }, [active, normalizedScope, chunks, normalizedKeyframeSeq, invalidateConstellation]);
 
-  return { featureDeltas, gapCount };
+  return liveDeltas;
 }

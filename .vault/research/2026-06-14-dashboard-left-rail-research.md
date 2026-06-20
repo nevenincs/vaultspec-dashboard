@@ -145,7 +145,7 @@ already sanctioned by the `user-state-persistence` decision.
 
 ### F6 — The design grounding is settled; new UI is authored against it
 
-There is no Figma or Storybook. The authoritative UI grounding is the
+There is no Figma or retired component gallery. The authoritative UI grounding is the
 `dashboard-design-language` ADR (attenuated chrome that cedes attention to the
 stage; OKLCH token tiers on `:root`; one muted accent; soft 1px borders;
 keyboard-first; tabular numerals on data; monospace for true identity; warmth only

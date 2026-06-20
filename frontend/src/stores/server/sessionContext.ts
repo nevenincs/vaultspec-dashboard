@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { parseWorkspaceTabs } from "../view/tabs";
+import { normalizeWorkspaceLayoutBlob, parseWorkspaceTabs } from "../view/tabs";
 import type { OpenDoc } from "../view/viewStore";
-import { useViewStore } from "../view/viewStore";
-import type { SessionState } from "./engine";
+import {
+  normalizeViewStoreSessionString,
+  normalizeViewStoreSessionStringList,
+  useViewStore,
+} from "../view/viewStore";
 import {
   mapDefaultScope,
   useActiveScope,
@@ -81,12 +84,27 @@ export interface SessionContextSeed {
   activeDocId: string | null;
 }
 
+interface SessionScopeContextRuntime {
+  folder?: unknown;
+  feature_tags?: unknown;
+  workspace_layout?: unknown;
+}
+
+interface SessionContextRuntime {
+  workspace?: unknown;
+  active_scope?: unknown;
+  active_workspace?: unknown;
+  scope_context?: SessionScopeContextRuntime | null;
+  recents?: unknown;
+  tiers?: unknown;
+}
+
 export interface ScopeContextMirrorInput {
   writeSeq: number;
   currentSeq: number;
-  writeScope: string | null;
-  activeScope: string | null;
-  session: Pick<SessionState, "active_scope" | "scope_context">;
+  writeScope: unknown;
+  activeScope: unknown;
+  session: SessionContextRuntime;
 }
 
 export function deriveAcceptedScopeContextMirror({
@@ -96,31 +114,81 @@ export function deriveAcceptedScopeContextMirror({
   activeScope,
   session,
 }: ScopeContextMirrorInput): Pick<SessionContextSeed, "folder" | "featureTags"> | null {
+  const context = session.scope_context ?? {};
+  const normalizedWriteScope = normalizeViewStoreSessionString(writeScope);
+  const normalizedActiveScope = normalizeViewStoreSessionString(activeScope);
+  const normalizedSessionScope = normalizeViewStoreSessionString(session.active_scope);
   if (writeSeq !== currentSeq) return null;
-  if (writeScope !== null && activeScope !== writeScope) return null;
-  if (writeScope !== null && session.active_scope !== writeScope) return null;
+  if (normalizedWriteScope !== null && normalizedActiveScope !== normalizedWriteScope) {
+    return null;
+  }
+  if (
+    normalizedWriteScope !== null &&
+    normalizedSessionScope !== normalizedWriteScope
+  ) {
+    return null;
+  }
   return {
-    folder: session.scope_context.folder,
-    featureTags: session.scope_context.feature_tags,
+    folder: normalizeViewStoreSessionString(context.folder),
+    featureTags: normalizeViewStoreSessionStringList(context.feature_tags),
   };
 }
 
 export function restoredSessionContextSeed(
-  pickedScope: string | null,
-  session: SessionState | undefined,
+  pickedScope: unknown,
+  session: SessionContextRuntime | undefined,
 ): SessionContextSeed | null {
-  if (pickedScope) return null;
+  if (normalizeViewStoreSessionString(pickedScope) !== null) return null;
   if (!session) return null;
-  const restoredTabs = parseWorkspaceTabs(
-    session.scope_context.workspace_layout ?? null,
-  );
+  const context = session.scope_context ?? {};
+  const restoredTabs = parseWorkspaceTabs(context.workspace_layout ?? null);
   return {
-    workspace: session.active_workspace ?? session.workspace,
-    scope: session.active_scope || null,
-    folder: session.scope_context.folder,
-    featureTags: session.scope_context.feature_tags,
+    workspace:
+      normalizeViewStoreSessionString(session.active_workspace) ??
+      normalizeViewStoreSessionString(session.workspace) ??
+      "",
+    scope: normalizeViewStoreSessionString(session.active_scope),
+    folder: normalizeViewStoreSessionString(context.folder),
+    featureTags: normalizeViewStoreSessionStringList(context.feature_tags),
     openDocs: restoredTabs?.openDocs ?? [],
     activeDocId: restoredTabs?.activeDocId ?? null,
+  };
+}
+
+export interface DurableWorkspaceLayoutView {
+  blob: string | null;
+  settled: boolean;
+}
+
+export interface DurableWorkspaceLayoutWrite {
+  scope: string | null;
+  blob: string | null;
+}
+
+export function normalizeDurableWorkspaceLayoutWrite(
+  scope: unknown,
+  blob: unknown,
+): DurableWorkspaceLayoutWrite {
+  return {
+    scope: normalizeViewStoreSessionString(scope),
+    blob: normalizeWorkspaceLayoutBlob(blob),
+  };
+}
+
+export function deriveDurableWorkspaceLayoutView(
+  scope: unknown,
+  sessionReady: boolean,
+  session: SessionContextRuntime | undefined,
+): DurableWorkspaceLayoutView {
+  const normalizedScope = normalizeViewStoreSessionString(scope);
+  const activeScope = normalizeViewStoreSessionString(session?.active_scope);
+  const context = session?.scope_context ?? {};
+  const scopeAccepted = normalizedScope !== null && activeScope === normalizedScope;
+  return {
+    blob: scopeAccepted
+      ? normalizeWorkspaceLayoutBlob(context.workspace_layout)
+      : null,
+    settled: sessionReady && scopeAccepted,
   };
 }
 
@@ -213,31 +281,24 @@ export function useSelectFolderContext() {
  *  serves the ACTIVE scope's context, so the blob is returned only when the asked
  *  scope IS the active scope (a context for another scope must never seed this
  *  one); `settled` is true once the session query has resolved for that scope. */
-export function useDurableWorkspaceLayout(scope: string | null): {
-  blob: string | null;
-  settled: boolean;
-} {
+export function useDurableWorkspaceLayout(scope: unknown): DurableWorkspaceLayoutView {
   const session = useSession();
-  // The session ALWAYS serves the ACTIVE scope's context, and the dock workspace
-  // shows the active scope, so return its layout blob once the session has loaded
-  // and a scope is set. (An earlier strict `session.active_scope === scope` gate
-  // blocked restore during the load window, where the view-store `scope` had not
-  // yet settled to the session's active scope — the live-verified restore miss.)
-  return {
-    blob: scope ? (session.data?.scope_context.workspace_layout ?? null) : null,
-    settled: session.isSuccess && !!scope,
-  };
+  return deriveDurableWorkspaceLayoutView(scope, session.isSuccess, session.data);
 }
 
 /** A stable callback that durably persists a scope's workspace-layout blob through
  *  the session API (`PUT /session set_workspace_layout`), merged engine-side so it
  *  preserves the folder/feature-tag context. The workspace coalesces calls. */
-export function usePersistWorkspaceLayout(): (scope: string, blob: string) => void {
+export function usePersistWorkspaceLayout(): (scope: unknown, blob: unknown) => void {
   const putSession = usePutSession();
   return useCallback(
-    (scope: string, blob: string) => {
+    (scope: unknown, blob: unknown) => {
+      const write = normalizeDurableWorkspaceLayoutWrite(scope, blob);
+      if (write.scope === null || write.blob === null) return;
       void putSession
-        .mutateAsync({ set_workspace_layout: { scope, layout: blob } })
+        .mutateAsync({
+          set_workspace_layout: { scope: write.scope, layout: write.blob },
+        })
         .catch(() => undefined);
     },
     [putSession],

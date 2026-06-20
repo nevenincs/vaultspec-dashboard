@@ -13,7 +13,7 @@
 // (highlighterTheme.ts), so a theme switch repaints with no re-tokenization —
 // the `var(--color-*)` foregrounds resolve against the active [data-theme].
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { Root } from "hast";
 import type { HighlighterCore, ThemedToken } from "shiki/core";
 import { createHighlighterCore } from "shiki/core";
@@ -30,6 +30,7 @@ let highlighterPromise: Promise<HighlighterCore> | null = null;
 // In-flight per-language load promises, so concurrent requests for the same
 // grammar share ONE dynamic import + registration rather than racing.
 const langLoads = new Map<string, Promise<void>>();
+const TOKENIZATION_CACHE_CAP = 48;
 
 function getHighlighter(): Promise<HighlighterCore> {
   highlighterPromise ??= createHighlighterCore({
@@ -76,6 +77,97 @@ export interface HighlightResult {
   languageId: string | null;
 }
 
+const INITIAL_HIGHLIGHT_RESULT: HighlightResult = {
+  hast: null,
+  loading: true,
+  languageId: null,
+};
+
+interface HighlightCacheEntry {
+  result: HighlightResult;
+  promise: Promise<void> | null;
+}
+
+const hastCache = new Map<string, HighlightCacheEntry>();
+const highlighterListeners = new Set<() => void>();
+
+function emitHighlighterChange(): void {
+  for (const listener of highlighterListeners) listener();
+}
+
+function subscribeHighlighter(listener: () => void): () => void {
+  highlighterListeners.add(listener);
+  return () => {
+    highlighterListeners.delete(listener);
+  };
+}
+
+function tokenizationCacheKey(
+  kind: "hast" | "lines",
+  code: string,
+  languageHint: string | null | undefined,
+): string {
+  return `${kind}\u0000${languageHint ?? ""}\u0000${code}`;
+}
+
+function capCache<T>(cache: Map<string, T>): void {
+  while (cache.size > TOKENIZATION_CACHE_CAP) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (oldest === undefined) return;
+    cache.delete(oldest);
+  }
+}
+
+function getHighlightSnapshot(key: string): HighlightResult {
+  const entry = hastCache.get(key);
+  if (!entry) return INITIAL_HIGHLIGHT_RESULT;
+  return entry.result;
+}
+
+function ensureHighlightedHast(
+  key: string,
+  code: string,
+  languageHint: string | null | undefined,
+): void {
+  const existing = hastCache.get(key);
+  if (existing) {
+    hastCache.delete(key);
+    hastCache.set(key, existing);
+    return;
+  }
+
+  const entry: HighlightCacheEntry = {
+    result: INITIAL_HIGHLIGHT_RESULT,
+    promise: null,
+  };
+  hastCache.set(key, entry);
+  capCache(hastCache);
+  entry.promise = (async () => {
+    try {
+      const highlighter = await getHighlighter();
+      const languageId = await ensureLanguage(highlighter, languageHint);
+      const hast = await highlighter.codeToHast(code, {
+        // A resolved grammar, or the plain "text" language for an unknown hint
+        // (Shiki's built-in no-op grammar: a plain, un-tokenized render).
+        lang: languageId ?? "text",
+        theme: VAULTSPEC_SHIKI_THEME_NAME,
+      });
+      entry.result = { hast, loading: false, languageId };
+      entry.promise = null;
+    } catch {
+      // Tokenization failed (a grammar that would not load): degrade to plain
+      // text, never throw into the viewer. The consumer renders `code` raw.
+      entry.result = {
+        hast: null,
+        loading: false,
+        languageId: null,
+      };
+      entry.promise = null;
+    }
+    emitHighlighterChange();
+  })();
+}
+
 /**
  * Tokenize `code` to HAST through the shared singleton highlighter, loading the
  * grammar for `languageHint` lazily. Returns the HAST tree the consumer renders
@@ -92,40 +184,17 @@ export function useHighlightedHast(
   code: string,
   languageHint: string | null | undefined,
 ): HighlightResult {
-  const [result, setResult] = useState<HighlightResult>({
-    hast: null,
-    loading: true,
-    languageId: null,
-  });
+  const key = tokenizationCacheKey("hast", code, languageHint);
 
   useEffect(() => {
-    let cancelled = false;
-    setResult((prev) => ({ ...prev, loading: true }));
-    void (async () => {
-      try {
-        const highlighter = await getHighlighter();
-        const languageId = await ensureLanguage(highlighter, languageHint);
-        if (cancelled) return;
-        const hast = await highlighter.codeToHast(code, {
-          // A resolved grammar, or the plain "text" language for an unknown hint
-          // (Shiki's built-in no-op grammar — a plain, un-tokenized render).
-          lang: languageId ?? "text",
-          theme: VAULTSPEC_SHIKI_THEME_NAME,
-        });
-        if (cancelled) return;
-        setResult({ hast, loading: false, languageId });
-      } catch {
-        // Tokenization failed (a grammar that would not load): degrade to plain
-        // text, never throw into the viewer. The consumer renders `code` raw.
-        if (!cancelled) setResult({ hast: null, loading: false, languageId: null });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [code, languageHint]);
+    ensureHighlightedHast(key, code, languageHint);
+  }, [code, key, languageHint]);
 
-  return result;
+  return useSyncExternalStore(
+    subscribeHighlighter,
+    () => getHighlightSnapshot(key),
+    () => INITIAL_HIGHLIGHT_RESULT,
+  );
 }
 
 /** The per-line tokenization the code viewer renders: each line is an array of
@@ -143,6 +212,65 @@ export interface TokenLinesResult {
   languageId: string | null;
 }
 
+const INITIAL_TOKEN_LINES_RESULT: TokenLinesResult = {
+  lines: null,
+  loading: true,
+  languageId: null,
+};
+
+interface TokenLinesCacheEntry {
+  result: TokenLinesResult;
+  promise: Promise<void> | null;
+}
+
+const tokenLinesCache = new Map<string, TokenLinesCacheEntry>();
+
+function getTokenLinesSnapshot(key: string): TokenLinesResult {
+  const entry = tokenLinesCache.get(key);
+  if (!entry) return INITIAL_TOKEN_LINES_RESULT;
+  return entry.result;
+}
+
+function ensureTokenLines(
+  key: string,
+  code: string,
+  languageHint: string | null | undefined,
+): void {
+  const existing = tokenLinesCache.get(key);
+  if (existing) {
+    tokenLinesCache.delete(key);
+    tokenLinesCache.set(key, existing);
+    return;
+  }
+
+  const entry: TokenLinesCacheEntry = {
+    result: INITIAL_TOKEN_LINES_RESULT,
+    promise: null,
+  };
+  tokenLinesCache.set(key, entry);
+  capCache(tokenLinesCache);
+  entry.promise = (async () => {
+    try {
+      const highlighter = await getHighlighter();
+      const languageId = await ensureLanguage(highlighter, languageHint);
+      const lines = await highlighter.codeToTokensBase(code, {
+        lang: languageId ?? "text",
+        theme: VAULTSPEC_SHIKI_THEME_NAME,
+      });
+      entry.result = { lines, loading: false, languageId };
+      entry.promise = null;
+    } catch {
+      entry.result = {
+        lines: null,
+        loading: false,
+        languageId: null,
+      };
+      entry.promise = null;
+    }
+    emitHighlighterChange();
+  })();
+}
+
 /**
  * Tokenize `code` into per-line token arrays through the shared singleton
  * highlighter (the same instance + grammar registration the reader fences use),
@@ -155,36 +283,17 @@ export function useTokenLines(
   code: string,
   languageHint: string | null | undefined,
 ): TokenLinesResult {
-  const [result, setResult] = useState<TokenLinesResult>({
-    lines: null,
-    loading: true,
-    languageId: null,
-  });
+  const key = tokenizationCacheKey("lines", code, languageHint);
 
   useEffect(() => {
-    let cancelled = false;
-    setResult((prev) => ({ ...prev, loading: true }));
-    void (async () => {
-      try {
-        const highlighter = await getHighlighter();
-        const languageId = await ensureLanguage(highlighter, languageHint);
-        if (cancelled) return;
-        const lines = await highlighter.codeToTokensBase(code, {
-          lang: languageId ?? "text",
-          theme: VAULTSPEC_SHIKI_THEME_NAME,
-        });
-        if (cancelled) return;
-        setResult({ lines, loading: false, languageId });
-      } catch {
-        if (!cancelled) setResult({ lines: null, loading: false, languageId: null });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [code, languageHint]);
+    ensureTokenLines(key, code, languageHint);
+  }, [code, key, languageHint]);
 
-  return result;
+  return useSyncExternalStore(
+    subscribeHighlighter,
+    () => getTokenLinesSnapshot(key),
+    () => INITIAL_TOKEN_LINES_RESULT,
+  );
 }
 
 /** Test seam: reset the singleton + lazy-load caches between tests so each test
@@ -192,4 +301,7 @@ export function useTokenLines(
 export function __resetHighlighterForTests(): void {
   highlighterPromise = null;
   langLoads.clear();
+  hastCache.clear();
+  tokenLinesCache.clear();
+  emitHighlighterChange();
 }

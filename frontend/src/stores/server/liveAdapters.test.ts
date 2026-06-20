@@ -1,41 +1,57 @@
 // Adapter tests against samples CAPTURED from the live serve origin
 // (vaultspec serve, 2026-06-13) — the S49 contract-shape verification in
-// executable form. Tolerance is tested too: internal-shape (mock) bodies
+// executable form. Tolerance is tested too: already-adapted internal bodies
 // pass through unchanged.
 
 import { describe, expect, it } from "vitest";
 
-import { EngineClient, adaptOpsWrite } from "./engine";
+import { adaptOpsWrite } from "./engine";
 import type { EngineNode, OpsResult, SearchResult } from "./engine";
 import {
   adaptFilters,
+  adaptFileTree,
   adaptGitOp,
   adaptGraphEmbeddings,
+  adaptDashboardState,
   adaptGraphSlice,
   adaptHistory,
+  adaptIssues,
   adaptLineageSlice,
   adaptMap,
   adaptPipeline,
   adaptPlanInterior,
+  adaptPrs,
   adaptSearch,
   adaptStatus,
   adaptVaultTree,
+  codeNodeIdFromPath,
   deriveSearchNodeId,
   docTypeFromStem,
   embeddingsByNodeId,
+  featureNodeIdFromTag,
+  featureTagFromNodeId,
+  GIT_CHANGED_FILES_MAX_ROWS,
+  GIT_DIFF_LINE_MAX_CHARS,
+  GIT_DIFF_MAX_HUNKS,
+  GIT_DIFF_MAX_LINES,
+  GIT_PATH_MAX_CHARS,
+  HISTORY_COMMIT_BODY_MAX_CHARS,
+  HISTORY_COMMITS_MAX_ITEMS,
+  HISTORY_STRING_MAX_CHARS,
   mergeNumstat,
   metaEdgeToEdge,
+  normalizeGitDiffStatus,
   parseGitNumstat,
   parseGitStatus,
   parseUnifiedDiff,
   unwrapEnvelope,
 } from "./liveAdapters";
-import { MOCK_SCOPE, MockEngine } from "../../testing/mockEngine";
 import { engineNodeToScene } from "../../scene/sceneMapping";
 import {
   SEMANTIC_GATE_DATA_PRESENCE_MIN,
   runSemanticGateOnRealData,
 } from "../../scene/field/semanticGate";
+import { SCOPE_ID_MAX_CHARS } from "./scopeIdentity";
 
 const TIERS = {
   declared: { available: true },
@@ -64,7 +80,7 @@ describe("unwrapEnvelope", () => {
     expect(flat.buckets).toEqual([1]);
   });
 
-  it("passes flat (mock) bodies through unchanged", () => {
+  it("passes already-adapted flat bodies through unchanged", () => {
     const body = { entries: [], tiers: TIERS };
     expect(unwrapEnvelope(body)).toBe(body);
   });
@@ -76,7 +92,7 @@ describe("unwrapEnvelope", () => {
 // envelope VERBATIM under `data.envelope` with the tiers block, HTTP 200 for BOTH
 // success and business-refusal. Feeding each through the SAME `unwrapEnvelope` +
 // `adaptOpsWrite` path the client uses proves the adapter interprets the live
-// shape, not just the mock (mock-mirrors-live-wire-shape): the unwrap flattens
+// shape, not just a copied fixture: the unwrap flattens
 // `{data:{envelope}, tiers}` onto the `OpsResult`, and `adaptOpsWrite` discriminates
 // on the envelope `status` + inner `data` fields, NEVER on an HTTP code.
 
@@ -195,6 +211,8 @@ describe("adaptMap (live workspace sample)", () => {
     workspace: "Y:/repo/.git",
     worktrees: [
       {
+        ahead: 2,
+        behind: 1,
         dirty: true,
         has_vault: true,
         head_ref: "refs/heads/main",
@@ -212,15 +230,138 @@ describe("adaptMap (live workspace sample)", () => {
     expect(wt.branch).toBe("main");
     expect(wt.has_vault).toBe(true);
     expect(wt.is_default).toBe(true);
+    expect(wt.dirty).toBe(true);
+    expect(wt.ahead).toBe(2);
+    expect(wt.behind).toBe(1);
     expect(adapted.repositories[0].branches[0]).toEqual({
       name: "main",
       kind: "default",
     });
   });
 
+  it("normalizes workspace-map rows before they reach the worktree picker", () => {
+    const adapted = adaptMap({
+      workspace: " Y:/repo/.git ",
+      branches: [
+        { class: "default", name: " main " },
+        { class: "feature", name: " feature/a " },
+        { class: "other", name: "   " },
+      ],
+      worktrees: [
+        {
+          ahead: 2.9,
+          behind: Number.NaN,
+          dirty: true,
+          degraded: [" structural ", "structural", "", 7],
+          has_vault: "false",
+          head_ref: " refs/heads/feature/a ",
+          is_main: true,
+          path: " Y:/repo ",
+        },
+        {
+          has_vault: true,
+          path: "   ",
+        },
+        "not a worktree",
+      ],
+      tiers: TIERS,
+    });
+
+    expect(adapted.repositories[0].path).toBe("Y:/repo/.git");
+    expect(adapted.repositories[0].branches).toEqual([
+      { name: "main", kind: "default" },
+      { name: "feature/a", kind: "feature" },
+    ]);
+    expect(adapted.repositories[0].worktrees).toEqual([
+      {
+        id: "Y:/repo",
+        path: "Y:/repo",
+        branch: "feature/a",
+        has_vault: false,
+        is_default: true,
+        degraded: ["structural"],
+        dirty: true,
+        ahead: 2,
+      },
+    ]);
+  });
+
   it("passes the internal repositories shape through", () => {
     const internal = { repositories: [], tiers: TIERS };
     expect(adaptMap(internal)).toBe(internal);
+  });
+});
+
+describe("adaptFileTree (code tree listing)", () => {
+  it("normalizes file-tree rows before code-browser selection", () => {
+    const adapted = adaptFileTree({
+      path: " src ",
+      entries: [
+        {
+          path: " src/main.ts ",
+          kind: "file",
+          has_children: true,
+          node_id: " code:src/main.ts ",
+        },
+        {
+          path: " src/components ",
+          kind: "dir",
+          has_children: true,
+          node_id: "   ",
+        },
+        {
+          path: "   ",
+          kind: "dir",
+          node_id: "code:blank",
+        },
+        "not an entry",
+      ],
+      truncated: {
+        total_children: 10.8,
+        returned_children: 3,
+        reason: " capped ",
+      },
+      next_cursor: " next-page ",
+      tiers: TIERS,
+    });
+
+    expect(adapted.path).toBe("src");
+    expect(adapted.entries).toEqual([
+      {
+        path: "src/main.ts",
+        kind: "file",
+        has_children: false,
+        node_id: "code:src/main.ts",
+      },
+      {
+        path: "src/components",
+        kind: "dir",
+        has_children: true,
+        node_id: "code:src/components",
+      },
+    ]);
+    expect(adapted.truncated).toEqual({
+      total_children: 10,
+      returned_children: 3,
+      reason: "capped",
+    });
+    expect(adapted.next_cursor).toBe("next-page");
+  });
+
+  it("drops malformed file-tree truncation and blank cursors", () => {
+    const adapted = adaptFileTree({
+      entries: [],
+      truncated: {
+        total_children: Number.NaN,
+        returned_children: 3,
+        reason: "bad total",
+      },
+      next_cursor: "   ",
+      tiers: TIERS,
+    });
+
+    expect(adapted.truncated).toBeNull();
+    expect(adapted.next_cursor).toBeUndefined();
   });
 });
 
@@ -243,7 +384,88 @@ describe("adaptStatus (live rollup sample)", () => {
     expect(adapted.degradations).toEqual(["semantic"]);
     expect(adapted.core?.reachable).toBe(true);
     expect(adapted.rag?.service).toBe("stopped");
-    expect(adapted.git).toBeUndefined(); // not served — flagged divergence
+    expect(adapted.git).toBeUndefined(); // this captured sample carried no git block
+  });
+});
+
+describe("adaptDashboardState", () => {
+  it("keeps date intent canonical at top-level date_range", () => {
+    const adapted = adaptDashboardState({
+      scope: " wt-1 ",
+      selected_ids: [],
+      filters: {
+        text: "auth",
+        date_range: { from: "2025-01-01", to: "2025-01-31" },
+      },
+      date_range: { from: "2026-06-01", to: "2026-06-30" },
+      tiers: TIERS,
+    });
+
+    expect(adapted.filters.text).toBe("auth");
+    expect(adapted.filters.date_range).toBeUndefined();
+    expect(adapted.date_range).toEqual({
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+  });
+
+  it("uses canonical dashboard-state normalization for live dashboard payloads", () => {
+    const adapted = adaptDashboardState({
+      scope: "wt-1",
+      selected_ids: [" doc:a ", "doc:a", "", { id: "doc:b" }],
+      hovered_id: " doc:hover ",
+      filters: {
+        relations: [" references ", "references"],
+        structural_state: [" broken ", "invalid"],
+        doc_types: [" adr ", "adr"],
+        feature_tags: [" state ", "state"],
+        feature_query: { value: " state-* ", mode: " glob " },
+        text: " centralize ",
+      },
+      date_range: { from: "2026-06-30", to: "2026-06-01" },
+      graph_granularity: " document ",
+      salience_lens: " design ",
+      salience_focus: { id: "doc:focus" },
+      representation_mode: " radial ",
+      panel_state: {
+        left_collapsed: true,
+        right_collapsed: "no",
+        right_tab: " search ",
+      },
+      graph_bounds: { shape: " circle ", size: 12.7 },
+      tiers: TIERS,
+    });
+
+    expect(adapted.scope).toBe("wt-1");
+    expect(adapted.selected_ids).toEqual(["doc:a"]);
+    expect(adapted.hovered_id).toBe("doc:hover");
+    expect(adapted.filters).toEqual({
+      relations: ["references"],
+      structural_state: ["broken"],
+      doc_types: ["adr"],
+      feature_tags: ["state"],
+      feature_query: { value: "state-*", mode: "glob" },
+      text: "centralize",
+    });
+    expect(adapted.date_range).toEqual({
+      from: "2026-06-01",
+      to: "2026-06-30",
+    });
+    expect(adapted.graph_granularity).toBe("document");
+    expect(adapted.salience_lens).toBe("design");
+    expect(adapted.salience_focus).toBeNull();
+    expect(adapted.representation_mode).toBe("radial");
+    expect(adapted.panel_state).toEqual({
+      left_collapsed: true,
+      right_collapsed: false,
+      right_tab: "search",
+    });
+    expect(adapted.graph_bounds).toEqual({ shape: "circle", size: 13 });
+
+    expect(
+      adaptDashboardState({ scope: "x".repeat(SCOPE_ID_MAX_CHARS + 1) }).scope,
+    ).toBe("");
+    expect(adaptDashboardState({ scope: { id: "wt-1" } }).scope).toBe("");
   });
 });
 
@@ -268,7 +490,7 @@ describe("adaptFilters (live vocabulary sample)", () => {
     // The live engine serves the corpus span as `{min, max}` (inclusive ISO);
     // the timeline's fit-all / fit-feature / minimap consume `{from, to}`. The
     // adapter reconciles the field names so the corpus-span controls work against
-    // the live origin, not only the mock (mock-mirrors-live-wire-shape).
+    // the live origin, not only a copied fixture.
     const adapted = adaptFilters({
       vocabulary: {
         relations: ["mentions"],
@@ -521,7 +743,7 @@ describe("adaptGraphSlice ontology fields (graph-node-semantics)", () => {
   // and the `aggregate` hint; edges carry the additive `derivation` label
   // alongside the §4 `relation`/`tier`. Fed through the SAME client path the app
   // uses (adaptGraphSlice), proving the ontology survives the adapter intact
-  // (mock-mirrors-live-wire-shape: one code path serves both origins).
+  // one code path serves both captured and already-adapted origins.
   const liveOntologySlice = {
     nodes: [
       {
@@ -600,7 +822,7 @@ describe("adaptGraphSlice salience conformance (live sample, graph-node-salience
   // node, the active `lens` echo, `salience_partial`, and the bounded-query
   // metadata. Feeding it through the SAME client path the app uses
   // (unwrapEnvelope -> adaptGraphSlice) and asserting salience fidelity is the
-  // mock-mirrors-live-wire-shape verification for the salience field.
+  // live-shaped verification for the salience field.
   const liveSalienceEnvelope = {
     data: {
       nodes: [
@@ -699,7 +921,7 @@ describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
     expect(adapted.tiers.semantic.available).toBe(false);
   });
 
-  it("passes a flat (mock/internal) body through unchanged — the one-code-path property", () => {
+  it("passes a flat internal body through unchanged - the one-code-path property", () => {
     const body = { results: [], tiers: TIERS };
     expect(adaptSearch(body)).toBe(body);
   });
@@ -715,6 +937,43 @@ describe("adaptSearch (live nested rag envelope, W02.P16.S32)", () => {
     }) as { results: SearchResult[] };
     expect(adapted.results[0].source).toBe("src/lib/auth.rs");
     expect(adapted.results[0].excerpt).toBe("fn authenticate");
+  });
+
+  it("normalizes search result rows before controller interpretation", () => {
+    const adapted = adaptSearch({
+      envelope: {
+        data: {
+          results: [
+            {
+              path: " src/lib/auth.rs ",
+              score: 1.4,
+              text: " fn authenticate ",
+            },
+            {
+              source: "  ",
+              score: 0.3,
+              excerpt: "blank source is malformed",
+            },
+            {
+              stem: "2026-06-12-auth-flow-adr",
+              score: Number.NaN,
+              excerpt: "bad score is malformed",
+            },
+            "not a row",
+          ],
+        },
+      },
+      tiers: TIERS,
+    });
+
+    expect(adapted.results).toEqual([
+      {
+        score: 1,
+        source: "src/lib/auth.rs",
+        excerpt: "fn authenticate",
+        node_id: "code:src/lib/auth.rs",
+      },
+    ]);
   });
 });
 
@@ -751,6 +1010,20 @@ describe("deriveSearchNodeId (node-id grammar, null floor — search ADR)", () =
   });
 });
 
+describe("codeNodeIdFromPath (shared code identity grammar)", () => {
+  it("derives the contract code-artifact node id from a repo path", () => {
+    expect(codeNodeIdFromPath("src/lib/auth.rs")).toBe("code:src/lib/auth.rs");
+  });
+});
+
+describe("feature node identity grammar", () => {
+  it("derives and parses synthesized feature node ids through one helper pair", () => {
+    expect(featureNodeIdFromTag("auth-flow")).toBe("feature:auth-flow");
+    expect(featureTagFromNodeId("feature:auth-flow")).toBe("auth-flow");
+    expect(featureTagFromNodeId("doc:auth-flow")).toBeNull();
+  });
+});
+
 describe("adaptVaultTree (live stem entries)", () => {
   it("derives paths and doc types from stems", () => {
     const adapted = adaptVaultTree({
@@ -775,6 +1048,52 @@ describe("adaptVaultTree (live stem entries)", () => {
     expect(adapted.entries[1].doc_type).toBe("exec");
   });
 
+  it("normalizes vault-tree rows before browser grouping", () => {
+    const adapted = adaptVaultTree({
+      entries: [
+        {
+          stem: " 2026-06-12-dashboard-gui-plan ",
+          feature_tags: [" dashboard-gui ", "dashboard-gui", "", 42],
+          dates: { created: " 2026-06-12 ", modified: "   " },
+          status: " proposed ",
+          tier: " L2 ",
+          progress: { done: 2.9, total: 5.1 },
+        },
+        {
+          path: " .vault/adr/2026-06-12-dashboard-gui-adr.md ",
+          doc_type: " adr ",
+          feature_tags: [" design "],
+          dates: { modified: " 2026-06-13 " },
+          progress: { done: 5, total: 2 },
+        },
+        {
+          stem: "   ",
+          feature_tags: ["bad"],
+        },
+        "not a row",
+      ],
+      tiers: TIERS,
+    });
+
+    expect(adapted.entries).toEqual([
+      {
+        path: ".vault/plan/2026-06-12-dashboard-gui-plan.md",
+        doc_type: "plan",
+        feature_tags: ["dashboard-gui"],
+        dates: { created: "2026-06-12" },
+        status: "proposed",
+        tier: "L2",
+        progress: { done: 2, total: 5 },
+      },
+      {
+        path: ".vault/adr/2026-06-12-dashboard-gui-adr.md",
+        doc_type: "adr",
+        feature_tags: ["design"],
+        dates: { modified: "2026-06-13" },
+      },
+    ]);
+  });
+
   it("derives the full stem-suffix vocabulary", () => {
     expect(docTypeFromStem("2026-06-12-x-plan")).toBe("plan");
     expect(docTypeFromStem("2026-06-12-x-research")).toBe("research");
@@ -785,19 +1104,6 @@ describe("adaptVaultTree (live stem entries)", () => {
 });
 
 // --- dashboard-pipeline-wire W05.P12: consumer fidelity ----------------------------
-//
-// Each test feeds a sample CAPTURED from the live serve wire shape (the
-// `{data, tiers}` envelope the routes serve) through the SAME client path the app
-// uses (unwrapEnvelope + the adapter), then drives the MockEngine through that same
-// EngineClient and asserts the two shapes match — the mock-mirrors-live-wire-shape
-// verification in executable form. A divergence is a test-fidelity defect to fix
-// in the mock, never papered over by adapting only the live side.
-
-function clientOn(mock: MockEngine): EngineClient {
-  const client = new EngineClient({ baseUrl: "" });
-  client.useTransport(mock.fetchImpl);
-  return client;
-}
 
 describe("adaptPipeline + /pipeline consumer fidelity (W05.P12.S62)", () => {
   // A live `/pipeline` envelope: an active L3 plan (work started → execute) and a
@@ -843,27 +1149,38 @@ describe("adaptPipeline + /pipeline consumer fidelity (W05.P12.S62)", () => {
     expect(adapted.tiers.semantic.available).toBe(false);
   });
 
-  it("the mock serves the same pipeline shape through the client path", async () => {
-    const mock = new MockEngine();
-    const result = await clientOn(mock).pipeline(MOCK_SCOPE);
-    // The mock excludes complete plans and rejected/deprecated ADRs, includes
-    // active plans + proposed/accepted ADRs — same projection as the live engine.
-    expect(result.artifacts.length).toBeGreaterThan(0);
-    for (const a of result.artifacts) {
-      if (a.doc_type === "adr") {
-        expect(["proposed", "accepted"]).toContain(a.status);
-        expect(a.phase).toBe("adr");
-        expect(a.progress).toBeUndefined();
-      } else {
-        expect(a.doc_type).toBe("plan");
-        expect(["plan", "execute"]).toContain(a.phase);
-        // An active plan carries progress + tier, never a status.
-        expect(a.status).toBeUndefined();
-      }
-    }
-    // Sorted by node id (deterministic ordering), same as the live projection.
-    const ids = result.artifacts.map((a) => a.node_id);
-    expect([...ids].sort()).toEqual(ids);
+  it("drops malformed pipeline artifacts and normalizes metadata", () => {
+    const adapted = adaptPipeline({
+      artifacts: [
+        {
+          node_id: " doc:2026-06-14-x-plan ",
+          stem: " 2026-06-14-x-plan ",
+          title: " x plan ",
+          doc_type: " plan ",
+          tier: " L3 ",
+          progress: { done: 2, total: Number.NaN },
+          phase: " execute ",
+          feature_tags: [" work ", "work", "", 7],
+          dates: { created: " 2026-06-14 ", modified: " " },
+        },
+        { stem: "missing-node-id", phase: "adr" },
+        null,
+      ],
+      tiers: TIERS,
+    });
+
+    expect(adapted.artifacts).toHaveLength(1);
+    expect(adapted.artifacts[0]).toMatchObject({
+      node_id: "doc:2026-06-14-x-plan",
+      stem: "2026-06-14-x-plan",
+      title: "x plan",
+      doc_type: "plan",
+      tier: "L3",
+      feature_tags: ["work"],
+      dates: { created: "2026-06-14", modified: undefined },
+      phase: "execute",
+    });
+    expect(adapted.artifacts[0].progress).toBeUndefined();
   });
 });
 
@@ -934,32 +1251,70 @@ describe("adaptPlanInterior + plan-interior consumer fidelity (W05.P12.S63)", ()
     });
   });
 
-  it("the mock serves the same plan-interior shape through the client path", async () => {
-    const mock = new MockEngine();
-    // Find a plan node id from the corpus.
-    const planNode = mock.corpus.nodes.find((n) => n.doc_type === "plan");
-    expect(planNode).toBeDefined();
-    const result = await clientOn(mock).planInterior(planNode!.id);
-    expect(result.interior.plan_node_id).toBe(planNode!.id);
-    // The interior carries steps with the completion + canonical id shape, at
-    // whatever depth the plan's tier declares (flat L1, phases L2, waves L3/L4).
-    const allSteps = [
-      ...result.interior.steps,
-      ...result.interior.phases.flatMap((p) => p.steps),
-      ...result.interior.waves.flatMap((w) => w.phases.flatMap((p) => p.steps)),
-    ];
-    expect(allSteps.length).toBeGreaterThan(0);
-    for (const s of allSteps) {
-      expect(typeof s.id).toBe("string");
-      expect(s.id).toMatch(/^S\d+$/);
-      expect(typeof s.done).toBe("boolean");
-    }
-    expect(result.interior.truncated).toBeNull();
+  it("drops malformed plan-interior rows and normalizes renderable ids", () => {
+    const adapted = adaptPlanInterior({
+      interior: {
+        plan_node_id: " doc:plan ",
+        waves: [
+          {
+            node_id: " plan:wave ",
+            id: " W01 ",
+            heading: " Wave ",
+            phases: [
+              {
+                node_id: " plan:phase ",
+                id: " P01 ",
+                heading: " Phase ",
+                steps: [
+                  {
+                    node_id: " plan:step ",
+                    id: " S01 ",
+                    action: " Do work ",
+                    exec_node_id: " doc:exec ",
+                    done: true,
+                  },
+                  { id: "S02", done: false },
+                ],
+              },
+              { node_id: "   ", id: "P02", steps: [] },
+            ],
+          },
+          { id: "W02", phases: [] },
+        ],
+        phases: [{ node_id: " plan:flat-phase ", id: " P99 ", steps: [null] }],
+        steps: [{ node_id: " plan:flat-step ", id: " S99 ", action: " Flat " }, null],
+      },
+      tiers: TIERS,
+    });
 
-    // A non-plan node has no interior — the client throws a tiered 404, exactly
-    // like the live route's truthful-None path.
-    const codeNode = mock.corpus.nodes.find((n) => n.kind === "code");
-    await expect(clientOn(mock).planInterior(codeNode!.id)).rejects.toThrow();
+    expect(adapted.interior.plan_node_id).toBe("doc:plan");
+    expect(adapted.interior.waves).toHaveLength(1);
+    expect(adapted.interior.waves[0]).toMatchObject({
+      node_id: "plan:wave",
+      id: "W01",
+      heading: "Wave",
+    });
+    expect(adapted.interior.waves[0].phases).toHaveLength(1);
+    expect(adapted.interior.waves[0].phases[0]).toMatchObject({
+      node_id: "plan:phase",
+      id: "P01",
+      heading: "Phase",
+    });
+    expect(adapted.interior.waves[0].phases[0].steps).toEqual([
+      {
+        node_id: "plan:step",
+        id: "S01",
+        action: "Do work",
+        exec_node_id: "doc:exec",
+        done: true,
+      },
+    ]);
+    expect(adapted.interior.phases).toEqual([
+      { node_id: "plan:flat-phase", id: "P99", steps: [] },
+    ]);
+    expect(adapted.interior.steps).toEqual([
+      { node_id: "plan:flat-step", id: "S99", action: "Flat", done: false },
+    ]);
   });
 });
 
@@ -992,32 +1347,6 @@ describe("adaptGitOp + /ops/git consumer fidelity (W05.P12.S64)", () => {
     expect(diff.output).toContain("@@ -1,1 +1,1 @@");
     expect(diff.output).toContain("+new");
   });
-
-  it("the mock serves the same git status + diff shapes through the client path", async () => {
-    const mock = new MockEngine();
-    mock.setGitDirty(true);
-    const client = clientOn(mock);
-
-    const status = await client.opsGit("status");
-    expect(status.verb).toBe("status");
-    // The mock emits the same porcelain per-file `XY path` shape the live engine
-    // forwards (a branch header line, then per-file status).
-    expect(status.output).toMatch(/^## main\n/);
-    expect(status.output).toMatch(/ M .+\.md\n/);
-
-    const numstat = await client.opsGit("numstat");
-    expect(numstat.output).toMatch(/^\d+\t\d+\t.+\.md\n/);
-
-    const diff = await client.opsGit("diff", { path: ".vault/plan/x.md" });
-    expect(diff.verb).toBe("diff");
-    expect(diff.output).toContain("@@ ");
-    expect(diff.output).toContain("+new line");
-
-    // A non-whitelisted verb is a tiered 403 (read-only whitelist), and diff
-    // without a path is a 400 — same as the live route.
-    await expect(client.opsGit("commit" as "status")).rejects.toThrow();
-    await expect(client.opsGit("diff")).rejects.toThrow();
-  });
 });
 
 describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
@@ -1044,6 +1373,42 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
     expect(files.find((f) => f.path === "src/a.ts")!.vault).toBe(false);
   });
 
+  it("drops malformed porcelain status rows before they reach changed-files state", () => {
+    const overlongPath = "x".repeat(GIT_PATH_MAX_CHARS + 1);
+    const output =
+      "## main\n" +
+      "   \n" +
+      " M    \n" +
+      "ZZ src/bad-code.ts\n" +
+      "M\tsrc/bad-separator.ts\n" +
+      "!! ignored.tmp\n" +
+      "R  src/old.ts ->    \n" +
+      ` M ${overlongPath}\n` +
+      " M src/ok.ts\n";
+
+    expect(parseGitStatus(output).map((f) => f.path)).toEqual(["src/ok.ts"]);
+  });
+
+  it("bounds changed-file status and numstat accumulators", () => {
+    const statusOutput = Array.from(
+      { length: GIT_CHANGED_FILES_MAX_ROWS + 1 },
+      (_, index) => ` M src/file-${index}.ts`,
+    ).join("\n");
+    const status = parseGitStatus(statusOutput);
+    expect(status).toHaveLength(GIT_CHANGED_FILES_MAX_ROWS);
+    expect(status.at(-1)?.path).toBe(
+      `src/file-${GIT_CHANGED_FILES_MAX_ROWS - 1}.ts`,
+    );
+
+    const numstatOutput = Array.from(
+      { length: GIT_CHANGED_FILES_MAX_ROWS + 1 },
+      (_, index) => `1\t0\tsrc/file-${index}.ts`,
+    ).join("\n");
+    const tallies = parseGitNumstat(numstatOutput);
+    expect(tallies.size).toBe(GIT_CHANGED_FILES_MAX_ROWS);
+    expect(tallies.has(`src/file-${GIT_CHANGED_FILES_MAX_ROWS}.ts`)).toBe(false);
+  });
+
   it("parses numstat tallies and reconciles them onto status entries (binary → null)", () => {
     const numstat = "3\t1\tsrc/a.ts\n-\t-\timg/logo.png\n";
     const tallies = parseGitNumstat(numstat);
@@ -1051,6 +1416,18 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
     expect(tallies.get("img/logo.png")).toEqual({ adds: null, dels: null });
     const merged = mergeNumstat(parseGitStatus("## main\n M src/a.ts\n"), tallies);
     expect(merged[0]).toMatchObject({ path: "src/a.ts", adds: 3, dels: 1 });
+  });
+
+  it("drops malformed numstat rows before reconciliation", () => {
+    const tallies = parseGitNumstat(
+      "abc\t1\tsrc/bad-adds.ts\n" +
+        "1\tNaN\tsrc/bad-dels.ts\n" +
+        "2\t0\t   \n" +
+        "4\t2\tsrc/ok.ts\n",
+    );
+
+    expect([...tallies.keys()]).toEqual(["src/ok.ts"]);
+    expect(tallies.get("src/ok.ts")).toEqual({ adds: 4, dels: 2 });
   });
 
   it("parses a unified diff into hunks with twin line numbers and per-line kinds", () => {
@@ -1075,6 +1452,62 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
     ]);
   });
 
+  it("bounds parsed unified diff hunks, lines, line text, and path identity", () => {
+    const manyHunks = Array.from(
+      { length: GIT_DIFF_MAX_HUNKS + 1 },
+      (_, index) => `@@ -${index + 1} +${index + 1} @@\n line-${index}`,
+    ).join("\n");
+    const hunkCapped = parseUnifiedDiff(manyHunks, " diff.md ");
+    expect(hunkCapped.path).toBe("diff.md");
+    expect(hunkCapped.hunks).toHaveLength(GIT_DIFF_MAX_HUNKS);
+    expect(hunkCapped.truncated).toEqual({
+      total_hunks: GIT_DIFF_MAX_HUNKS + 1,
+      returned_hunks: GIT_DIFF_MAX_HUNKS,
+      reason: "hunk ceiling",
+    });
+
+    const lineCapped = parseUnifiedDiff(
+      `@@ -1 +1 @@\n${Array.from(
+        { length: GIT_DIFF_MAX_LINES + 1 },
+        (_, index) => ` line-${index}`,
+      ).join("\n")}`,
+      "diff.md",
+    );
+    expect(lineCapped.hunks[0].lines).toHaveLength(GIT_DIFF_MAX_LINES);
+    expect(lineCapped.truncated).toEqual({
+      total_hunks: 1,
+      returned_hunks: 1,
+      reason: "line ceiling",
+    });
+
+    const longLine = "x".repeat(GIT_DIFF_LINE_MAX_CHARS + 1);
+    const textCapped = parseUnifiedDiff(`@@ -1 +1 @@\n+${longLine}`, "diff.md");
+    expect(textCapped.hunks[0].lines[0].text).toHaveLength(
+      GIT_DIFF_LINE_MAX_CHARS,
+    );
+    expect(textCapped.truncated).toEqual({
+      total_hunks: 1,
+      returned_hunks: 1,
+      reason: "line length ceiling",
+    });
+
+    expect(parseUnifiedDiff("@@ -1 +1 @@\n same", "   ").path).toBe("");
+  });
+
+  it("normalizes optional git diff status letters at the adapter boundary", () => {
+    const diff =
+      "diff --git a/x.md b/x.md\n" +
+      "--- a/x.md\n+++ b/x.md\n" +
+      "@@ -1 +1 @@\n" +
+      "-old\n+new\n";
+
+    expect(normalizeGitDiffStatus(" m ")).toBe("M");
+    expect(normalizeGitDiffStatus("??")).toBeUndefined();
+    expect(normalizeGitDiffStatus({ status: "M" })).toBeUndefined();
+    expect(parseUnifiedDiff(diff, "x.md", " r ").status).toBe("R");
+    expect(parseUnifiedDiff(diff, "x.md", "renamed").status).toBeUndefined();
+  });
+
   it("reports a binary file as binary with no hunks", () => {
     const diff =
       "diff --git a/logo.png b/logo.png\n" +
@@ -1085,7 +1518,7 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
   });
 });
 
-describe("status + tier facets carried identically by mock and live (W05.P12.S65)", () => {
+describe("status + tier facets carried by live-shaped vault tree samples (W05.P12.S65)", () => {
   // A live `/vault-tree` sample carrying status/tier on its ADR and plan entries
   // — the stem-keyed live shape the adapter maps, now with the new facets.
   const liveTree = {
@@ -1142,65 +1575,15 @@ describe("status + tier facets carried identically by mock and live (W05.P12.S65
     const plan = adapted.entries.find((e) => e.doc_type === "plan");
     expect(plan?.progress).toBeUndefined();
   });
-
-  it("the mock vault-tree and graph-query nodes carry status and tier identically", async () => {
-    const mock = new MockEngine();
-    const client = clientOn(mock);
-
-    // vault-tree: ADR entries carry status, plan entries carry tier + progress.
-    const tree = await client.vaultTree(MOCK_SCOPE);
-    const adrEntry = tree.entries.find((e) => e.doc_type === "adr");
-    const planEntry = tree.entries.find((e) => e.doc_type === "plan");
-    expect(adrEntry?.status).toBeDefined();
-    expect(["proposed", "accepted", "rejected", "deprecated"]).toContain(
-      adrEntry?.status,
-    );
-    expect(planEntry?.tier).toBeDefined();
-    expect(["L1", "L2", "L3", "L4"]).toContain(planEntry?.tier);
-    // Every plan row carries a well-formed checkbox progress pair, and the
-    // corpus spreads them across ALL THREE design states (✓ complete / ◐
-    // in-progress / ○ not-started) so the rail's status pip is exercised end to
-    // end against the mock that mirrors the new live shape.
-    const planEntries = tree.entries.filter((e) => e.doc_type === "plan");
-    expect(planEntries.length).toBeGreaterThan(0);
-    for (const p of planEntries) {
-      expect(typeof p.progress?.done).toBe("number");
-      expect(typeof p.progress?.total).toBe("number");
-    }
-    const planState = (p?: { done: number; total: number }) =>
-      !p || p.total <= 0
-        ? "not-started"
-        : p.done >= p.total
-          ? "complete"
-          : p.done > 0
-            ? "in-progress"
-            : "not-started";
-    const statuses = new Set(planEntries.map((p) => planState(p.progress)));
-    expect(statuses).toEqual(new Set(["complete", "in-progress", "not-started"]));
-    // A non-ADR/non-plan entry carries no plan facets (truthful absence).
-    const research = tree.entries.find((e) => e.doc_type === "research");
-    expect(research?.status).toBeUndefined();
-    expect(research?.tier).toBeUndefined();
-    expect(research?.progress).toBeUndefined();
-
-    // graph-query: the same facets ride on the doc nodes.
-    const slice = await client.graphQuery({ scope: MOCK_SCOPE });
-    const adrNode = slice.nodes.find((n) => n.doc_type === "adr");
-    const planNode = slice.nodes.find((n) => n.doc_type === "plan");
-    expect(adrNode?.status).toBeDefined();
-    expect(planNode?.tier).toBeDefined();
-  });
 });
 
 describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation S18)", () => {
   // A sample CAPTURED from the live `/nodes/{id}/evidence` wire under the S13
   // enrichment: the `{data, tiers}` envelope carrying the GUI `NodeEvidence`
-  // shape — documents as `{ path, doc_type }`, code_locations keyed on `path`
-  // (with the optional `symbol` and the additive `resolved_target`/
-  // `bridge_node_id` value-adds), and commits carrying the `subject`. Feeding it
-  // through the SAME client path the app uses (unwrapEnvelope) and then driving
-  // the mock through the EngineClient is the mock-mirrors-live-wire-shape
-  // verification for the enriched evidence shape.
+  // shape — documents as `{ path, doc_type }`, code locations as
+  // `{ path, symbol?, line?, state? }`, and commits carrying the `subject`.
+  // Feeding it through the SAME unwrap path the app uses verifies the enriched
+  // evidence shape.
   const liveEvidence = {
     data: {
       documents: [
@@ -1208,19 +1591,7 @@ describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation 
         { path: ".vault/plan/2026-06-14-x-plan.md", doc_type: "plan" },
       ],
       code_locations: [
-        {
-          path: "src/x/mod.rs",
-          state: "resolved",
-          resolved_target: "src/x/mod.rs",
-          bridge_node_id: "code:src/x/mod.rs",
-        },
-        {
-          path: "src/x/mod.rs",
-          symbol: "handle",
-          state: "resolved",
-          resolved_target: "src/x/mod.rs#handle",
-          bridge_node_id: "code:src/x/mod.rs",
-        },
+        { path: "src/lib.rs", symbol: "build", line: 42, state: "resolved" },
       ],
       commits: [
         {
@@ -1240,7 +1611,12 @@ describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation 
   it("unwraps the live enriched evidence envelope onto the GUI NodeEvidence shape", () => {
     const ev = unwrapEnvelope(liveEvidence) as {
       documents: { path: string; doc_type: string }[];
-      code_locations: { path: string; symbol?: string; state: string }[];
+      code_locations: {
+        path: string;
+        symbol?: string;
+        line?: number;
+        state?: string;
+      }[];
       commits: { sha: string; subject: string; rule?: string }[];
       tiers: typeof TIERS;
     };
@@ -1249,57 +1625,22 @@ describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation 
       path: ".vault/adr/2026-06-14-x-adr.md",
       doc_type: "adr",
     });
-    // Code locations are keyed on `path` (the corrected field name), and the
-    // symbol mention surfaces its unqualified symbol.
-    expect(ev.code_locations[0].path).toBe("src/x/mod.rs");
-    expect(ev.code_locations[1].symbol).toBe("handle");
+    expect(ev.code_locations[0]).toEqual({
+      path: "src/lib.rs",
+      symbol: "build",
+      line: 42,
+      state: "resolved",
+    });
     // Commits carry the subject (the previously-missing git lookup datum).
     expect(ev.commits[0].subject).toBe("feat: the enriched commit");
     expect(ev.tiers.semantic.available).toBe(false);
-  });
-
-  it("the mock serves the same enriched evidence shape through the client path", async () => {
-    const mock = new MockEngine();
-    const client = clientOn(mock);
-    // A node with a feature tag so the mock evidence projection populates.
-    const node = mock.corpus.nodes.find((n) => (n.feature_tags?.length ?? 0) > 0);
-    expect(node).toBeDefined();
-    const ev = (await client.nodeEvidence(node!.id)) as unknown as {
-      documents: { path: string; doc_type: string }[];
-      code_locations: { path: string; symbol?: string; state: string }[];
-      commits: { sha: string; subject: string; rule?: string }[];
-    };
-    // Documents: every item carries a vault path and a doc_type, never a bare stem.
-    expect(ev.documents.length).toBeGreaterThan(0);
-    for (const d of ev.documents) {
-      expect(typeof d.path).toBe("string");
-      expect(d.path.startsWith(".vault/")).toBe(true);
-      expect(typeof d.doc_type).toBe("string");
-    }
-    // Code locations are keyed on `path` (never the legacy `target`), and the
-    // mock exercises the optional `symbol` field the GUI consumes.
-    expect(ev.code_locations.length).toBeGreaterThan(0);
-    for (const loc of ev.code_locations) {
-      expect(typeof loc.path).toBe("string");
-      expect((loc as Record<string, unknown>).target).toBeUndefined();
-    }
-    expect(ev.code_locations.some((loc) => loc.symbol === "handle")).toBe(true);
-    // Commits carry the subject.
-    expect(ev.commits.length).toBeGreaterThan(0);
-    for (const c of ev.commits) {
-      expect(typeof c.subject).toBe("string");
-      expect(c.subject.length).toBeGreaterThan(0);
-    }
   });
 });
 
 describe("historical text-diff consumer fidelity (figma-parity-reconciliation S18)", () => {
   // A sample CAPTURED from the live `/ops/git/histdiff` wire: a two-rev unified
   // diff forwarded VERBATIM inside `{data: {verb, output}, tiers}`. Fed through
-  // the SAME client path the app uses (unwrapEnvelope + adaptGitOp), then the
-  // mock is driven through the EngineClient and the two shapes are asserted to
-  // match — the mock-mirrors-live-wire-shape verification for the historical
-  // diff route.
+  // the SAME unwrap + adapter path the app uses verifies the historical diff route.
   const liveHistDiff = {
     data: {
       verb: "histdiff",
@@ -1321,27 +1662,6 @@ describe("historical text-diff consumer fidelity (figma-parity-reconciliation S1
     expect(diff.output).toContain("-original line");
     expect(diff.output).toContain("+rewritten line");
     expect(diff.tiers.semantic.available).toBe(false);
-  });
-
-  it("the mock serves the same historical-diff shape through the client path", async () => {
-    const mock = new MockEngine();
-    const client = clientOn(mock);
-    const diff = await client.opsGit("histdiff", {
-      path: ".vault/plan/x.md",
-      from: "HEAD~1",
-      to: "HEAD",
-    });
-    expect(diff.verb).toBe("histdiff");
-    expect(diff.output).toContain("@@ ");
-    expect(diff.output).toContain("-original line");
-    expect(diff.output).toContain("+rewritten line");
-
-    // The same validation the live route enforces: a histdiff missing a rev is a
-    // 400, and a non-whitelisted verb is a 403 — before any work, exactly as live.
-    await expect(
-      client.opsGit("histdiff", { path: ".vault/plan/x.md", from: "HEAD~1" }),
-    ).rejects.toThrow();
-    await expect(client.opsGit("commit" as "histdiff")).rejects.toThrow();
   });
 });
 
@@ -1382,6 +1702,75 @@ describe("adaptHistory (status-overview /history)", () => {
     expect(res.tiers).toBe(TIERS);
   });
 
+  it("normalizes history identities at the live adapter boundary", () => {
+    const res = adaptHistory({
+      commits: [
+        {
+          hash: " abcdef0123456789abcdef0123456789abcdef01 ",
+          short_hash: " abcdef01 ",
+          subject: " fix: trim presentation identity ",
+          body: "\n\nbody text\n",
+          ts: Number.NaN,
+          node_ids: [
+            " doc:a ",
+            "doc:a",
+            "",
+            "commit:abcdef0123456789abcdef0123456789abcdef01",
+            42,
+          ],
+        },
+        { hash: "   ", subject: "blank hash is malformed" },
+      ],
+      next_cursor: " cursor:2 ",
+      tiers: TIERS,
+    });
+
+    expect(res.commits).toHaveLength(1);
+    expect(res.commits[0]).toMatchObject({
+      hash: "abcdef0123456789abcdef0123456789abcdef01",
+      short_hash: "abcdef01",
+      subject: "fix: trim presentation identity",
+      body: "\n\nbody text\n",
+      ts: 0,
+      node_ids: ["doc:a", "commit:abcdef0123456789abcdef0123456789abcdef01"],
+    });
+    expect(res.next_cursor).toBe("cursor:2");
+  });
+
+  it("bounds history commit rows and string payloads at the adapter boundary", () => {
+    const overlongString = "x".repeat(HISTORY_STRING_MAX_CHARS + 1);
+    const overlongBody = "b".repeat(HISTORY_COMMIT_BODY_MAX_CHARS + 1);
+    const commits = Array.from(
+      { length: HISTORY_COMMITS_MAX_ITEMS + 1 },
+      (_, index) => ({
+        hash: `abcdef0123456789abcdef0123456789abcdef${String(index % 10).padStart(
+          2,
+          "0",
+        )}`,
+        short_hash: `short-${index}`,
+        subject: index === 0 ? overlongString : `commit ${index}`,
+        body: index === 0 ? overlongBody : "",
+        ts: index,
+      }),
+    );
+
+    const res = adaptHistory({
+      commits,
+      next_cursor: overlongString,
+      tiers: TIERS,
+    });
+
+    expect(res.commits).toHaveLength(HISTORY_COMMITS_MAX_ITEMS);
+    expect(res.commits[0].subject).toBe("");
+    expect(res.commits[0].body).toHaveLength(HISTORY_COMMIT_BODY_MAX_CHARS);
+    expect(res.next_cursor).toBeNull();
+    expect(res.truncated).toEqual({
+      requested: HISTORY_COMMITS_MAX_ITEMS + 1,
+      returned: HISTORY_COMMITS_MAX_ITEMS,
+      reason: "adapter commit ceiling",
+    });
+  });
+
   it("tolerates an absent body with an empty list + empty tiers (degraded read)", () => {
     const res = adaptHistory(undefined);
     expect(res.commits).toEqual([]);
@@ -1403,9 +1792,94 @@ describe("adaptHistory (status-overview /history)", () => {
   });
 });
 
+describe("adaptGitHub work items (status-overview /prs and /issues)", () => {
+  it("normalizes PR identities, text, dates, checks, and unavailable reason", () => {
+    const res = adaptPrs({
+      prs: [
+        {
+          number: 42,
+          title: " Centralize status rows ",
+          author: " octo ",
+          state: " OPEN ",
+          is_draft: true,
+          url: " https://example.test/pr/42 ",
+          created_at: " 2026-06-18T00:00:00Z ",
+          updated_at: "   ",
+          merged_at: " 2026-06-19T00:00:00Z ",
+          review_decision: " APPROVED ",
+          checks: { total: 3.8, passed: 3, failing: -1, pending: Number.NaN },
+        },
+        { number: 0, title: "invalid number" },
+      ],
+      available: false,
+      reason: " gh not authenticated ",
+      tiers: TIERS,
+    });
+
+    expect(res.prs).toHaveLength(1);
+    expect(res.prs[0]).toMatchObject({
+      number: 42,
+      title: "Centralize status rows",
+      author: "octo",
+      state: "OPEN",
+      is_draft: true,
+      url: "https://example.test/pr/42",
+      created_at: "2026-06-18T00:00:00Z",
+      updated_at: null,
+      merged_at: "2026-06-19T00:00:00Z",
+      review_decision: "APPROVED",
+      checks: { total: 3, passed: 3, failing: 0, pending: 0 },
+    });
+    expect(res.available).toBe(false);
+    expect(res.reason).toBe("gh not authenticated");
+    expect(res.tiers).toBe(TIERS);
+  });
+
+  it("normalizes issue rows and bounds labels at the adapter boundary", () => {
+    const labels = Array.from({ length: 40 }, (_, i) => ` label-${i} `);
+    const res = adaptIssues({
+      issues: [
+        {
+          number: 7,
+          title: " Harden state boundary ",
+          author: " octo ",
+          state: " OPEN ",
+          url: " https://example.test/issues/7 ",
+          created_at: " 2026-06-18T00:00:00Z ",
+          updated_at: "   ",
+          labels: [" state ", "ui", "state", "", 42, ...labels],
+        },
+        { number: Number.NaN, title: "invalid number" },
+      ],
+      available: true,
+      reason: "   ",
+      tiers: TIERS,
+    });
+
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0]).toMatchObject({
+      number: 7,
+      title: "Harden state boundary",
+      author: "octo",
+      state: "OPEN",
+      url: "https://example.test/issues/7",
+      created_at: "2026-06-18T00:00:00Z",
+      updated_at: null,
+    });
+    expect(res.issues[0].labels).toHaveLength(32);
+    expect(res.issues[0].labels.slice(0, 4)).toEqual([
+      "state",
+      "ui",
+      "label-0",
+      "label-1",
+    ]);
+    expect(res.reason).toBeNull();
+  });
+});
+
 // graph-semantic-embeddings ADR D6 / W04.P16.S62: a captured-live `/graph/
 // embeddings` sample fed through the REAL adaptGraphEmbeddings -> sceneMapping ->
-// projection path the app uses (mock-mirrors-live-wire-shape). The gate is the
+// projection path the app uses. The gate is the
 // honesty check the original synthetic-only gate was missing: it must SHIP on a
 // real clustered slice and be HELD on an empty (unserved-embedding) path.
 
@@ -1525,7 +1999,7 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
     expect(verdict.reason).toMatch(/empty\/fallback path/);
   });
 
-  it("drops a malformed entry and passes mock (internal) bodies through unchanged", () => {
+  it("drops a malformed entry and passes internal bodies through unchanged", () => {
     // A NaN-bearing or node_id-less entry never reaches the projection.
     const adapted = adaptGraphEmbeddings({
       embeddings: [
@@ -1541,25 +2015,6 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
     // doc:nan keeps its one finite element; the id-less and all-NaN/empty drop.
     expect(adapted.embeddings.map((e) => e.node_id)).toEqual(["doc:ok", "doc:nan"]);
     expect(adapted.embeddings[1].vector).toEqual([1]);
-  });
-
-  it("feeds a CAPTURED mock /graph/embeddings sample through the same path", async () => {
-    // The mock serves the live-shape `/graph/embeddings` byte-for-byte: drive a
-    // real client read through the mock transport and assert the vectors flow.
-    const engine = new MockEngine();
-    const client = new EngineClient();
-    client.useTransport(engine.fetchImpl);
-    const res = await client.graphEmbeddings({ scope: MOCK_SCOPE });
-    expect(res.generation).toBe(0);
-    expect(res.tiers.semantic.available).toBe(true);
-    expect(res.embeddings.length).toBeGreaterThan(0);
-    // Every served vector keys a real served document node; map through the scene
-    // path and confirm the projection runs over the real mock corpus.
-    const sceneNodes = res.embeddings.map((e) =>
-      engineNodeToScene({ id: e.node_id, kind: "adr", embedding: e.vector }),
-    );
-    const verdict = runSemanticGateOnRealData(sceneNodes, new Map());
-    expect(verdict.presence).toBe(1);
   });
 });
 
@@ -1663,45 +2118,5 @@ describe("embeddingsByNodeId (node_id join contract, ADR D1)", () => {
     const byId = embeddingsByNodeId(dup);
     expect(byId.size).toBe(1);
     expect(byId.get("doc:x")).toEqual(vectorFor(2));
-  });
-
-  it("the mock serves a node_id-keyed SUBSET through the real client path", async () => {
-    // The mock mirrors the live wire: it serves a genuine `node_id`-keyed subset
-    // (omitting at least one served document node's vector), so the by-id join and
-    // the absence path are exercised against the mock that mirrors the live shape
-    // (mock-mirrors-live-wire-shape).
-    const mock = new MockEngine();
-    const client = clientOn(mock);
-
-    // The full served document node set from /graph/query (document granularity).
-    const slice = await client.graphQuery({ scope: MOCK_SCOPE });
-    const servedDocIds = new Set(
-      slice.nodes.filter((n) => n.kind !== "feature").map((n) => n.id),
-    );
-    expect(servedDocIds.size).toBeGreaterThan(0);
-
-    const res = await client.graphEmbeddings({ scope: MOCK_SCOPE });
-    const byId = embeddingsByNodeId(res);
-
-    // Every served vector keys a REAL served document node (no orphan vectors).
-    for (const id of byId.keys()) {
-      expect(servedDocIds.has(id)).toBe(true);
-    }
-    // The embeddings are a strict SUBSET: at least one served doc node carries no
-    // vector — the honest-absence path the live route also exercises.
-    expect(byId.size).toBeLessThan(servedDocIds.size);
-    const absent = [...servedDocIds].filter((id) => !byId.has(id));
-    expect(absent.length).toBeGreaterThan(0);
-
-    // Each present node's vector is its OWN (the mock keys by id, never by order):
-    // build scene nodes by the join and confirm every embedded node maps to a
-    // served id, with the absent nodes left embeddingless.
-    const sceneNodes = [...servedDocIds].map((id) =>
-      engineNodeToScene({ id, kind: "adr", embedding: byId.get(id) }),
-    );
-    const embedded = sceneNodes.filter(
-      (n) => Array.isArray(n.embedding) && n.embedding.length > 0,
-    );
-    expect(embedded).toHaveLength(byId.size);
   });
 });

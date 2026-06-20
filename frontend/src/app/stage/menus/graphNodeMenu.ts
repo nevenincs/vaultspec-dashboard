@@ -15,29 +15,37 @@ import { Crosshair, Maximize2, Minimize2, Network, Pin, PinOff } from "lucide-re
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { NodeEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
-import { selectNode } from "../../../stores/view/selection";
-import { usePinStore } from "../../../stores/view/pins";
-import { useViewStore } from "../../../stores/view/viewStore";
+import {
+  closeMenuNodeIsland,
+  collapseMenuWorkingSet,
+  expandMenuWorkingSet,
+  focusMenuNode,
+  openMenuNodeIsland,
+  toggleMenuPinnedNode,
+} from "../../../stores/view/menuActions";
 
-export function graphNodeMenu(entity: NodeEntity): ActionDescriptor[] {
+export function graphNodeMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "node") return [];
+
   const actions: ActionDescriptor[] = [
     {
       id: "node:focus",
       label: "Focus on stage",
       section: "navigate",
       icon: Crosshair,
-      run: () => selectNode(entity.id),
+      run: () => focusMenuNode(normalizedEntity.id, normalizedEntity),
     },
-    entity.isOpen
+    normalizedEntity.isOpen
       ? {
           id: "node:close-island",
           label: "Close island",
           section: "navigate",
           icon: Minimize2,
-          run: () => useViewStore.getState().closeNode(entity.id),
+          run: () => closeMenuNodeIsland(normalizedEntity.id),
           disabledInTimeTravel: true,
         }
       : {
@@ -45,16 +53,16 @@ export function graphNodeMenu(entity: NodeEntity): ActionDescriptor[] {
           label: "Open island",
           section: "navigate",
           icon: Maximize2,
-          run: () => useViewStore.getState().openNode(entity.id),
+          run: () => openMenuNodeIsland(normalizedEntity.id, normalizedEntity),
           disabledInTimeTravel: true,
         },
-    entity.isPinned
+    normalizedEntity.isPinned
       ? {
           id: "node:unpin",
           label: "Unpin",
           section: "transform",
           icon: PinOff,
-          run: () => usePinStore.getState().togglePin(entity.id),
+          run: () => toggleMenuPinnedNode(normalizedEntity.id),
           disabledInTimeTravel: true,
         }
       : {
@@ -62,16 +70,16 @@ export function graphNodeMenu(entity: NodeEntity): ActionDescriptor[] {
           label: "Pin",
           section: "transform",
           icon: Pin,
-          run: () => usePinStore.getState().togglePin(entity.id),
+          run: () => toggleMenuPinnedNode(normalizedEntity.id),
           disabledInTimeTravel: true,
         },
-    entity.inWorkingSet
+    normalizedEntity.inWorkingSet
       ? {
           id: "node:collapse-ego",
           label: "Collapse ego",
           section: "transform",
           icon: Network,
-          run: () => useViewStore.getState().removeFromWorkingSet(entity.id),
+          run: () => collapseMenuWorkingSet(normalizedEntity.id),
           disabledInTimeTravel: true,
         }
       : {
@@ -79,17 +87,22 @@ export function graphNodeMenu(entity: NodeEntity): ActionDescriptor[] {
           label: "Expand ego",
           section: "transform",
           icon: Network,
-          run: () => useViewStore.getState().addToWorkingSet(entity.id),
+          run: () => expandMenuWorkingSet(normalizedEntity.id),
           disabledInTimeTravel: true,
         },
-    copyAction({ id: "node:copy-id", label: "Copy id", text: entity.id, what: "id" }),
+    copyAction({
+      id: "node:copy-id",
+      label: "Copy id",
+      text: normalizedEntity.id,
+      what: "id",
+    }),
   ];
   actions.push(
-    entity.title
+    normalizedEntity.title
       ? copyAction({
           id: "node:copy-title",
           label: "Copy title",
-          text: entity.title,
+          text: normalizedEntity.title,
           what: "title",
         })
       : {
@@ -103,4 +116,4 @@ export function graphNodeMenu(entity: NodeEntity): ActionDescriptor[] {
   return actions;
 }
 
-registerResolver("node", graphNodeMenu as ActionResolver<NodeEntity>);
+registerResolver("node", graphNodeMenu as ActionResolver);

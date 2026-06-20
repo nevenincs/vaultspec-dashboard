@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  SCOPED_STORAGE_KEY_PART_MAX_CHARS,
+  normalizeScopedStorageKeyPart,
+  scopedStorageKey,
+} from "../../platform/storage/scopedKeys";
 import type { KeyValueStore } from "../../scene/positionCache";
-import { createScopedStore } from "./scopedStore";
+import { createScopedStore, normalizeScopedStoreKeyPart } from "./scopedStore";
 
 class MemoryStore implements KeyValueStore {
   map = new Map<string, string>();
@@ -31,7 +36,55 @@ const factory = () =>
 describe("createScopedStore: scope-keyed persistence scaffold", () => {
   it("composes the prefix:workspace:scope storage key", () => {
     const s = factory();
-    expect(s.storageKey("ws", "scope-a")).toBe("test:scoped:ws:scope-a");
+    expect(s.storageKey("ws", "scope-a")).toBe(
+      "test:scoped:workspace:ws:scope:scope-a",
+    );
+    expect(s.storageKey("Y:/repo/.git", "Y:/repo")).toBe(
+      "test:scoped:workspace:Y%3A%2Frepo%2F.git:scope:Y%3A%2Frepo",
+    );
+    expect(s.storageKey("ws", "scope-a")).toBe(
+      scopedStorageKey("test:scoped", "ws", "scope-a"),
+    );
+  });
+
+  it("normalizes scoped key parts before composing or persisting", () => {
+    const s = factory();
+    const store = new MemoryStore();
+
+    expect(normalizeScopedStoreKeyPart(" ws ")).toBe("ws");
+    expect(normalizeScopedStoreKeyPart(" ws ")).toBe(
+      normalizeScopedStorageKeyPart(" ws "),
+    );
+    expect(normalizeScopedStoreKeyPart("   ")).toBe("default");
+    expect(normalizeScopedStoreKeyPart(null)).toBe("default");
+    expect(
+      normalizeScopedStoreKeyPart(
+        "x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1),
+      ),
+    ).toBe("default");
+    expect(s.storageKey(" ws ", " scope-a ")).toBe(
+      "test:scoped:workspace:ws:scope:scope-a",
+    );
+    expect(
+      s.storageKey("x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1), "scope-a"),
+    ).toBe("test:scoped:workspace:default:scope:scope-a");
+    expect(s.storageKey(null, undefined)).toBe(
+      "test:scoped:workspace:default:scope:default",
+    );
+
+    s.save(store, " ws ", " scope-a ", ["trimmed"]);
+    expect(s.load(store, "ws", "scope-a")).toEqual(["trimmed"]);
+    s.save(store, null, undefined, ["fallback"]);
+    expect(s.load(store, "default", "default")).toEqual(["fallback"]);
+  });
+
+  it("encodes key parts so workspace/scope separator collisions are impossible", () => {
+    const s = factory();
+
+    expect(s.storageKey("a:b", "c")).not.toBe(s.storageKey("a", "b:c"));
+    expect(s.storageKey("workspace:a", "scope:b")).not.toBe(
+      s.storageKey("a", "scope:workspace:b"),
+    );
   });
 
   it("round-trips a value and isolates per workspace and scope", () => {
@@ -56,6 +109,35 @@ describe("createScopedStore: scope-keyed persistence scaffold", () => {
     store.map.set(s.storageKey("ws", "s"), "{not json");
     expect(s.load(store, "ws", "s")).toEqual([]);
     expect(store.map.has(s.storageKey("ws", "s"))).toBe(false);
+  });
+
+  it("loads legacy raw keys so existing saved state survives the key hardening", () => {
+    const store = new MemoryStore();
+    const s = factory();
+    store.map.set("test:scoped:Y:/repo/.git:Y:/repo", JSON.stringify(["legacy"]));
+
+    expect(s.load(store, "Y:/repo/.git", "Y:/repo")).toEqual(["legacy"]);
+  });
+
+  it("loads legacy encoded keys from the pre role-tagged key shape", () => {
+    const store = new MemoryStore();
+    const s = factory();
+    store.map.set(
+      "test:scoped:Y%3A%2Frepo%2F.git:Y%3A%2Frepo",
+      JSON.stringify(["encoded legacy"]),
+    );
+
+    expect(s.load(store, "Y:/repo/.git", "Y:/repo")).toEqual(["encoded legacy"]);
+  });
+
+  it("clears corrupt legacy blobs when falling back from an encoded miss", () => {
+    const store = new MemoryStore();
+    const s = factory();
+    const legacy = "test:scoped:Y:/repo/.git:Y:/repo";
+    store.map.set(legacy, "{not json");
+
+    expect(s.load(store, "Y:/repo/.git", "Y:/repo")).toEqual([]);
+    expect(store.map.has(legacy)).toBe(false);
   });
 
   it("coerces an unrecognised (non-empty, valid-JSON) blob to empty without clearing", () => {

@@ -1,19 +1,17 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { useViewStore } from "../../stores/view/viewStore";
-import { movePlayhead } from "./Playhead";
+import { movePlayhead } from "../../stores/view/timelineIntent";
 import {
   PLAY_DURATION_MS,
   playPosition,
-  prefersReducedMotion,
   rangeFromDrag,
   startRangePlay,
   stopRangePlay,
 } from "./RangeSelect";
 import { TIMELINE_ORIGIN_MS, xToTime } from "./scrollStrip";
-import { useTimelineStore } from "./Timeline";
+import { useTimelineStore } from "../../stores/view/timeline";
 
 const DAY = 24 * 3600_000;
 const px = 100 / DAY; // 100px per day
@@ -27,20 +25,20 @@ describe("rangeFromDrag (scroll-strip model)", () => {
     const tHigh = xToTime(600, TIMELINE_ORIGIN_MS, px, scrollOffset);
     // Dragging right-to-left still yields an ordered [from, to] range.
     expect(rangeFromDrag(600, 200, px, scrollOffset)).toEqual({
-      from: tLow,
-      to: tHigh,
+      fromMs: tLow,
+      toMs: tHigh,
     });
     expect(rangeFromDrag(200, 600, px, scrollOffset)).toEqual({
-      from: tLow,
-      to: tHigh,
+      fromMs: tLow,
+      toMs: tHigh,
     });
   });
 
   it("tracks the scroll offset: a later offset selects a later range", () => {
     const at0 = rangeFromDrag(100, 300, px, 0);
     const at500 = rangeFromDrag(100, 300, px, 500);
-    expect(at500.from).toBeGreaterThan(at0.from);
-    expect(at500.to).toBeGreaterThan(at0.to);
+    expect(at500.fromMs).toBeGreaterThan(at0.fromMs);
+    expect(at500.toMs).toBeGreaterThan(at0.toMs);
   });
 });
 
@@ -55,36 +53,22 @@ describe("playPosition (play-the-range growth)", () => {
 describe("reduced-motion floor (base motion law)", () => {
   afterEach(() => {
     stopRangePlay();
-    movePlayhead("live");
-    vi.unstubAllGlobals();
-  });
-
-  function stubReducedMotion(reduced: boolean) {
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: query.includes("prefers-reduced-motion") ? reduced : false,
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }));
-  }
-
-  it("reads the prefers-reduced-motion media query", () => {
-    stubReducedMotion(true);
-    expect(prefersReducedMotion()).toBe(true);
-    stubReducedMotion(false);
-    expect(prefersReducedMotion()).toBe(false);
+    movePlayhead("live", null);
   });
 
   it("swaps the animated sweep for an instant jump to the range end when reduced", () => {
     // Under reduced motion, starting a play must NOT schedule an animation — it
     // jumps the playhead straight to the range end (the network shown grown).
-    stubReducedMotion(true);
-    startRangePlay(1200, 1800, 0);
+    startRangePlay(1200, 1800, 0, null, true);
     // The playhead is at the END instantly, with no active play state to tick.
     expect(useTimelineStore.getState().playheadT).toBe(1800);
-    expect(useViewStore.getState().timelineMode).toEqual({
-      kind: "time-travel",
-      at: 1800,
-    });
+  });
+
+  it("does not create local playhead state for malformed runtime scope", () => {
+    movePlayhead("live", null);
+
+    startRangePlay(1200, 1800, 0, { scope: "scope-a" }, true);
+
+    expect(useTimelineStore.getState().playheadT).toBe("live");
   });
 });

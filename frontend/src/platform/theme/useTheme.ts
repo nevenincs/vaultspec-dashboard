@@ -20,16 +20,17 @@ export interface UseThemeResult {
   setPreference: (preference: ThemePreference) => void;
 }
 
-/** Subscribe to the controller's resolved-theme changes (Strict-Mode safe). */
+/** Subscribe to the controller's preference + resolved-theme state (Strict-Mode safe). */
 export function useTheme(): UseThemeResult {
   const controller = getThemeController();
-  const theme = useSyncExternalStore(
+  const snapshot = useSyncExternalStore(
     controller.subscribe,
-    controller.getResolvedTheme,
-    controller.getResolvedTheme,
+    () => `${controller.getPreference()}:${controller.getResolvedTheme()}`,
+    () => `${controller.getPreference()}:${controller.getResolvedTheme()}`,
   );
+  const [preference, theme] = snapshot.split(":") as [ThemePreference, Theme];
   return {
-    preference: controller.getPreference(),
+    preference,
     theme,
     setPreference: controller.setPreference,
   };

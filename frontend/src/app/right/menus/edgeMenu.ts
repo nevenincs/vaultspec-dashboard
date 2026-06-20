@@ -11,7 +11,7 @@ import { Highlighter } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { EdgeEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { selectEdge } from "../../../stores/view/selection";
@@ -22,7 +22,9 @@ import { selectEdge } from "../../../stores/view/selection";
  * Relation and destination are optional on the descriptor, so their copy actions
  * are rendered disabled-with-reason when absent rather than omitted.
  */
-export function edgeMenu(entity: EdgeEntity): ActionDescriptor[] {
+export function edgeMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "edge") return [];
   const actions: ActionDescriptor[] = [];
 
   actions.push({
@@ -30,24 +32,24 @@ export function edgeMenu(entity: EdgeEntity): ActionDescriptor[] {
     label: "Highlight on stage",
     section: "navigate",
     icon: Highlighter,
-    run: () => selectEdge(entity.id),
+    run: () => selectEdge(normalizedEntity.id),
   });
 
   actions.push(
     copyAction({
       id: "edge:copy-id",
       label: "Copy id",
-      text: entity.id,
+      text: normalizedEntity.id,
       what: "id",
     }),
   );
 
-  if (entity.relation) {
+  if (normalizedEntity.relation) {
     actions.push(
       copyAction({
         id: "edge:copy-relation",
         label: "Copy relation",
-        text: entity.relation,
+        text: normalizedEntity.relation,
       }),
     );
   } else {
@@ -60,12 +62,12 @@ export function edgeMenu(entity: EdgeEntity): ActionDescriptor[] {
     });
   }
 
-  if (entity.dst) {
+  if (normalizedEntity.dst) {
     actions.push(
       copyAction({
         id: "edge:copy-destination",
         label: "Copy destination",
-        text: entity.dst,
+        text: normalizedEntity.dst,
       }),
     );
   } else {
@@ -81,4 +83,4 @@ export function edgeMenu(entity: EdgeEntity): ActionDescriptor[] {
   return actions;
 }
 
-registerResolver("edge", edgeMenu as ActionResolver<EdgeEntity>);
+registerResolver("edge", edgeMenu as ActionResolver);

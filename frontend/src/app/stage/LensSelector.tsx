@@ -4,10 +4,10 @@
 // This module owns the binding `graph/Layout picker` 216:633 LAYOUT control — the
 // plain-language Free / Lineage / Hierarchy / Radial / Clusters / Meaning picker
 // (plus the distinct Timeline temporal entry) — and the distinct salience LENS
-// selector (status / design). Both are dumb projections over the
-// preserved view store (the stores layer is the sole wire client): switching the
-// layout writes the representation mode, switching the lens writes the active
-// salience lens (a wire re-query, folded into the graph-slice cache key).
+// selector (status / design). Both are dumb projections over canonical dashboard
+// state (the stores layer is the sole wire client): switching the layout writes
+// the representation mode, switching the lens writes the active salience lens (a
+// wire re-query, folded into the graph-slice cache key).
 //
 // W03.P09.S53 — the Layout control is consolidated HERE so the canonical picker
 // has one home; `GraphControls` renders `<LayoutSelector />` rather than carrying
@@ -19,57 +19,43 @@
 // framing, with Timeline kept DISTINCT as the temporal time-travel seam (it is
 // not a spatial layout). No catalog mode is orphaned and no dead control ships.
 //
-// Layer ownership (dashboard-layer-ownership): app chrome reads + writes the view
-// store; it never fetches the engine and never reads the raw tiers block. Icons
-// are Lucide structural marks (the sanctioned chrome family). Tokens only — no
-// raw hex; the type usages read the Figma role-named scale.
+// Layer ownership (dashboard-layer-ownership): app chrome reads + writes the
+// dashboard-state surface; it never fetches the engine and never reads the raw
+// tiers block. Icons are Lucide structural marks (the sanctioned chrome family).
+// Tokens only — no raw hex; the type usages read the Figma role-named scale.
 
 import { Compass, ScrollText } from "lucide-react";
 import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useRef } from "react";
 
-import type { RepresentationMode } from "../../scene/field/representationLayout";
 import { SEMANTIC_MODE_GATE } from "../../scene/field/semanticGate";
-import type { SalienceLens } from "../../stores/server/engine";
-import { useViewStore } from "../../stores/view/viewStore";
-import { movePlayhead } from "../timeline/Playhead";
-import { useTimelineStore } from "../timeline/Timeline";
+import { useDashboardStageControlsIntent } from "../../stores/server/dashboardStageControlsIntent";
+import type { DashboardDateRange, SalienceLens } from "../../stores/server/engine";
+import {
+  deriveDashboardLayoutSelectorPresentationView,
+  deriveDashboardLensSelectorPresentationView,
+  type DashboardLayoutSegmentGroupView,
+  type DashboardSpatialRepresentationMode,
+  useActiveScope,
+  useDashboardLayoutSelectorView,
+  useDashboardLensSelectorView,
+} from "../../stores/server/queries";
+import { useTimelineViewportState } from "../../stores/view/timeline";
+import { movePlayhead } from "../../stores/view/timelineIntent";
+import { visibleRange } from "../timeline/scrollStrip";
 
 // ---------------------------------------------------------------------------
-// Segmented control — a roving-tabstop group: one Tab-stop, arrow keys walk the
+// Segmented control - a roving-tabstop group: one Tab-stop, arrow keys walk the
 // segments. Shared by the Layout picker (the Spatial group and the distinct
 // Timeline entry are each a Segmented).
 // ---------------------------------------------------------------------------
 
-interface Segment<T extends string> {
-  value: T;
-  label: string;
-  title: string;
-  /** When false, the segment is shown but reflects an unavailable state. */
-  available?: boolean;
-}
-
 interface SegmentedProps<T extends string> {
-  label: string;
-  segments: Segment<T>[];
-  /** The active segment value, or null when no segment in this group is active
-   *  (e.g. the Spatial group while time-travel owns the highlight). */
-  active: T | null;
+  group: DashboardLayoutSegmentGroupView<T>;
   onSelect: (value: T) => void;
 }
 
-function Segmented<T extends string>({
-  label,
-  segments,
-  active,
-  onSelect,
-}: SegmentedProps<T>) {
+function Segmented<T extends string>({ group, onSelect }: SegmentedProps<T>) {
   const groupRef = useRef<HTMLDivElement>(null);
-
-  // Roving tabstop: the active segment owns the Tab-stop; when nothing in this
-  // group is active (the Spatial group while Timeline owns the highlight), the
-  // FIRST segment owns it so the group stays keyboard-reachable.
-  const tabStopValue: T | null =
-    active ?? (segments.length > 0 ? segments[0].value : null);
 
   const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLButtonElement>) => {
     const buttons = Array.from(
@@ -96,27 +82,22 @@ function Segmented<T extends string>({
     <div
       ref={groupRef}
       role="group"
-      aria-label={label}
-      className="flex gap-fg-0-5 rounded-fg-md bg-paper-sunken p-fg-0-5"
+      aria-label={group.ariaLabel}
+      className={group.className}
     >
-      {segments.map((seg) => {
-        const isActive = seg.value === active;
+      {group.segments.map((seg) => {
         return (
           <button
             key={seg.value}
             type="button"
             data-seg
-            aria-pressed={isActive}
+            aria-pressed={seg.active}
             aria-label={seg.label}
             title={seg.title}
-            tabIndex={seg.value === tabStopValue ? 0 : -1}
+            tabIndex={seg.tabIndex}
             onKeyDown={onKeyDown}
             onClick={() => onSelect(seg.value)}
-            className={`flex items-center justify-center rounded-fg-xs px-fg-2 py-fg-1 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-focus ${
-              isActive
-                ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
-                : "text-ink-muted hover:text-ink"
-            } ${seg.available === false ? "italic" : ""}`}
+            className={seg.className}
           >
             {seg.label}
           </button>
@@ -130,106 +111,70 @@ function Segmented<T extends string>({
 // The binding Layout control — the plain-language graph/Controls 88:2 picker.
 // ---------------------------------------------------------------------------
 
-/** The Spatial group: the preserved layout catalog (graph-layout-catalog D11),
- *  surfaced under the binding plain-language framing. The three catalog modes
- *  (Layered/Radial/Communities) ship UN-GATED (D10) — no `available` flag. Only
- *  Grouped-by-meaning (semantic) carries the gate, reusing the existing
- *  `available` flag for the held mode. */
-const SPATIAL_SEGMENTS = (semanticShipped: boolean): Segment<RepresentationMode>[] => [
-  {
-    value: "connectivity",
-    label: "Free",
-    title: "Connections pull related items together — force-directed",
-  },
-  {
-    value: "lineage",
-    label: "Lineage",
-    title: "What came from what — top to bottom (derivation DAG)",
-  },
-  {
-    value: "hierarchical",
-    label: "Hierarchy",
-    title: "Ranked in tiers, fewest crossings — Sugiyama layered",
-  },
-  {
-    value: "radial",
-    label: "Radial",
-    title: "Rings around a chosen root — concentric tree",
-  },
-  {
-    value: "community",
-    label: "Clusters",
-    title: "Topics group together — Louvain community",
-  },
-  {
-    value: "semantic",
-    label: "Meaning",
-    title: semanticShipped
-      ? "Nearby = similar in meaning — semantic (UMAP)"
-      : "Nearby = similar in meaning — falls back to Free until the semantic projection ships",
-    available: semanticShipped,
-  },
-];
-
-/** The Timeline entry, kept DISTINCT from the spatial modes (D11): it enters the
- *  temporal time-travel seam, not a spatial layout. */
-const TIMELINE_SEGMENT: Segment<"timeline">[] = [
-  {
-    value: "timeline",
-    label: "Timeline",
-    title: "Arrange along time — enter the temporal view (time-travel)",
-  },
-];
+export function timelineEntryInstant(
+  dateRange: DashboardDateRange | undefined,
+  scrollOffset: number,
+  pxPerMs: number,
+  viewportWidth: number,
+  now: number,
+): number {
+  const dateRangeTo = dateRange?.to ? Date.parse(dateRange.to) : NaN;
+  const fallback = visibleRange(scrollOffset, viewportWidth, pxPerMs, 0).toMs;
+  const finiteFallback = Number.isFinite(fallback) ? fallback : now;
+  const target = Number.isFinite(dateRangeTo) ? dateRangeTo : finiteFallback;
+  return Math.trunc(Math.min(now, target));
+}
 
 /**
  * The binding Layout control (graph/Controls 88:2): the plain-language Network /
  * Tree / Grouped / Timeline picker over the PRESERVED representation-mode catalog.
- * Writes the representation mode into the view store (a stores write that Stage's
- * single scene-owner effect turns into a scene command); Timeline enters the
- * temporal time-travel seam (movePlayhead). Reflects time-travel as the active
- * Timeline segment and downgrades the held semantic mode honestly.
+ * Writes the representation mode into dashboard-state (Stage's single
+ * scene-owner effect turns the subscribed value into a scene command); Timeline
+ * enters the temporal time-travel seam (movePlayhead). Reflects time-travel as
+ * the active Timeline segment and downgrades the held semantic mode honestly.
  */
 export function LayoutSelector() {
-  const representationMode = useViewStore((s) => s.activeRepresentationMode);
-  const setRepresentationMode = useViewStore((s) => s.setRepresentationMode);
-  const timelineMode = useViewStore((s) => s.timelineMode);
-  const timeTravelling = timelineMode.kind === "time-travel";
-  const corpusTo = useTimelineStore((s) => s.window.to);
+  const scope = useActiveScope();
+  const stageControlsIntent = useDashboardStageControlsIntent(scope);
+  const layoutView = useDashboardLayoutSelectorView(scope);
+  const { dateRange, timeline } = layoutView;
+  const layoutPresentation = deriveDashboardLayoutSelectorPresentationView(layoutView, {
+    semanticShipped: SEMANTIC_MODE_GATE.shipped,
+  });
+  const timeTravelling = timeline.timeTravel;
+  const { pxPerMs, scrollOffset, viewportWidth } = useTimelineViewportState();
 
-  // The active spatial segment reflects the representation mode UNLESS time-travel
-  // is active (then no spatial mode is active and Timeline owns the highlight).
-  const spatialActive: RepresentationMode | null = timeTravelling
-    ? null
-    : representationMode;
-
-  function onSpatial(value: RepresentationMode) {
+  function onSpatial(value: DashboardSpatialRepresentationMode) {
     // Selecting a spatial mode returns to LIVE (leaving the temporal view) and
     // sets the representation mode.
-    if (timeTravelling) movePlayhead("live");
-    setRepresentationMode(value);
+    if (timeTravelling) {
+      movePlayhead("live", scope);
+    }
+    if (scope) {
+      void stageControlsIntent.setRepresentationMode(value).catch(() => undefined);
+    }
   }
 
   function onTimeline() {
-    // Enter the temporal view at the corpus's latest instant (the real
-    // time-travel seam — `movePlayhead`). This is the temporal mode, not a
-    // spatial representation layout.
-    movePlayhead(corpusTo);
+    // Enter the temporal view at the canonical date-range end when one is set,
+    // otherwise at the scroll-strip viewport's visible right edge.
+    const at = timelineEntryInstant(
+      dateRange,
+      scrollOffset,
+      pxPerMs,
+      viewportWidth,
+      Date.now(),
+    );
+    movePlayhead(at, scope);
+    if (scope) {
+      void stageControlsIntent.setRepresentationMode("temporal").catch(() => undefined);
+    }
   }
 
   return (
-    <div className="flex items-center gap-fg-1" data-layout-picker>
-      <Segmented
-        label="spatial layout"
-        segments={SPATIAL_SEGMENTS(SEMANTIC_MODE_GATE.shipped)}
-        active={spatialActive}
-        onSelect={onSpatial}
-      />
-      <Segmented
-        label="temporal view"
-        segments={TIMELINE_SEGMENT}
-        active={timeTravelling ? "timeline" : null}
-        onSelect={onTimeline}
-      />
+    <div className={layoutPresentation.containerClassName} data-layout-picker>
+      <Segmented group={layoutPresentation.spatial} onSelect={onSpatial} />
+      <Segmented group={layoutPresentation.temporal} onSelect={onTimeline} />
     </div>
   );
 }
@@ -248,59 +193,43 @@ export function LayoutSelector() {
 // real, consumed capability.
 // ---------------------------------------------------------------------------
 
-interface LensOption {
-  lens: SalienceLens;
-  label: string;
-  hint: string;
-  Icon: typeof Compass;
-}
-
-/** The two launch lenses, in selector order (status is the default/first). */
-export const LENS_OPTIONS: LensOption[] = [
-  {
-    lens: "status",
-    label: "Status",
-    hint: "What is in-flight: plans, progress, the pivotal bridges that gate work",
-    Icon: Compass,
-  },
-  {
-    lens: "design",
-    label: "Design",
-    hint: "Why the system is this way: the binding decisions and their grounding",
-    Icon: ScrollText,
-  },
-];
+const LENS_ICONS: Record<SalienceLens, typeof Compass> = {
+  status: Compass,
+  design: ScrollText,
+};
 
 export function LensSelector() {
-  const lens = useViewStore((s) => s.activeLens);
-  const setLens = useViewStore((s) => s.setActiveLens);
+  const scope = useActiveScope();
+  const stageControlsIntent = useDashboardStageControlsIntent(scope);
+  const lensView = useDashboardLensSelectorView(scope);
+  const lensPresentation = deriveDashboardLensSelectorPresentationView(lensView, {
+    disabled: !scope || stageControlsIntent.pending,
+  });
 
   return (
     <div
       role="group"
-      aria-label="salience lens"
-      className="flex items-center gap-fg-0-5 rounded-fg-md border border-rule bg-paper-raised/95 p-fg-0-5 shadow-fg-raised backdrop-blur-sm"
+      aria-label={lensPresentation.containerAriaLabel}
+      className={lensPresentation.containerClassName}
     >
-      {LENS_OPTIONS.map(({ lens: l, label, hint, Icon }) => {
-        const active = lens === l;
+      {lensPresentation.rows.map((row) => {
+        const Icon = LENS_ICONS[row.lens];
         return (
           <button
-            key={l}
+            key={row.lens}
             type="button"
             role="switch"
-            aria-checked={active}
-            aria-label={`${label} lens`}
-            title={hint}
-            onClick={() => setLens(l)}
-            className={[
-              "flex items-center gap-fg-1 rounded-fg-xs px-fg-1-5 py-fg-0-5 text-label transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-              active
-                ? "border border-accent bg-accent-subtle text-ink"
-                : "border border-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink",
-            ].join(" ")}
+            aria-checked={row.active}
+            aria-label={row.ariaLabel}
+            title={row.hint}
+            disabled={row.disabled}
+            onClick={() => {
+              void stageControlsIntent.setLens(row.lens);
+            }}
+            className={row.className}
           >
             <Icon size={14} aria-hidden />
-            <span>{label}</span>
+            <span>{row.label}</span>
           </button>
         );
       })}

@@ -1,153 +1,123 @@
-// Unit tests for FilterSidebar (task-6 graph workspace chrome).
-//
-// F6-02 coverage (reviewer requirement):
-//   • Facet toggle logic: adding a value to an active facet set and removing
-//     it (the add-if-absent / remove-if-present pattern the sidebar drives).
-//   • Text-match update: the textMatch field responds correctly to updates
-//     and resets cleanly.
-//
-// The sidebar component is a thin stateless UI layer over useFilterStore;
-// testing the store actions that the sidebar drives IS testing the sidebar's
-// logic — the same path that every user interaction traverses. We test the
-// store at this level to avoid a full DOM render with QueryClientProvider
-// (the sidebar also calls useFiltersVocabulary which is a TanStack hook).
+// @vitest-environment happy-dom
 
+import { QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { DEFAULT_CHOICES, useFilterStore } from "../../stores/view/filters";
+import { dashboardFiltersWithFacetToggled } from "../../stores/server/dashboardState";
+import type { FiltersVocabulary } from "../../stores/server/engine";
+import { dashboardStateSessionIdentity, engineKeys } from "../../stores/server/queries";
+import { queryClient } from "../../stores/server/queryClient";
+import { DEFAULT_CHOICES } from "../../stores/view/filters";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
+import { FilterSidebar } from "./FilterSidebar";
 
-function fresh() {
-  useFilterStore.getState().reset();
-  return useFilterStore.getState;
+function vocabularyWithFeatureTags(featureTags: string[]): FiltersVocabulary {
+  return {
+    relations: [],
+    tiers: [],
+    doc_types: ["adr"],
+    feature_tags: featureTags,
+    kinds: [],
+  };
 }
 
-afterEach(() => {
-  useFilterStore.getState().reset();
-});
+function renderSidebar(scope: string) {
+  return createElement(
+    QueryClientProvider,
+    { client: queryClient },
+    createElement(FilterSidebar, {
+      open: true,
+      onClose: () => undefined,
+      scope,
+      hidden: { nodes: 0, edges: 0 },
+    }),
+  );
+}
 
-// ---------------------------------------------------------------------------
-// Facet toggle logic — the sidebar's onToggle drives setFacet
-// ---------------------------------------------------------------------------
-//
-// The sidebar calls:
-//   const next = selected.includes(value)
-//     ? selected.filter((v) => v !== value)  // remove
-//     : [...selected, value];                // add
-//   store.setFacet(facet, next);
-//
-// We test the resulting store state for each path.
+async function seedSidebarQueries(
+  scope: string,
+  vocabulary: FiltersVocabulary,
+): Promise<void> {
+  const client = createLiveClient();
+  const session = await client.session();
+  const sessionIdentity = dashboardStateSessionIdentity(session);
+  const dashboardState = await client.dashboardState(scope);
 
-describe("FilterSidebar facet toggle logic (via setFacet)", () => {
-  it("adding a relation to an empty set produces a singleton list", () => {
-    fresh()().setFacet("relations", ["implements"]);
-    expect(useFilterStore.getState().relations).toEqual(["implements"]);
+  queryClient.setQueryData(engineKeys.session(), session);
+  queryClient.setQueryData(
+    engineKeys.dashboardState(scope, sessionIdentity),
+    dashboardState,
+  );
+  queryClient.setQueryData(engineKeys.filters(scope), vocabulary);
+}
+
+describe("FilterSidebar facet toggle logic", () => {
+  afterEach(() => {
+    cleanup();
+    queryClient.clear();
   });
 
-  it("adding a second relation appends it", () => {
-    fresh()().setFacet("relations", ["implements"]);
-    const current = useFilterStore.getState().relations;
-    useFilterStore.getState().setFacet("relations", [...current, "extends"]);
-    expect(useFilterStore.getState().relations).toEqual(["implements", "extends"]);
+  it("uses the canonical dashboard-state facet toggle helper", () => {
+    const added = dashboardFiltersWithFacetToggled(
+      { doc_types: ["adr"] },
+      "feature_tags",
+      "state",
+    );
+    expect(added).toEqual({
+      doc_types: ["adr"],
+      feature_tags: ["state"],
+    });
+
+    expect(dashboardFiltersWithFacetToggled(added, "feature_tags", "state")).toEqual({
+      doc_types: ["adr"],
+    });
   });
 
-  it("toggling an active relation off removes it (filter pattern)", () => {
-    fresh()().setFacet("relations", ["implements", "extends"]);
-    const current = useFilterStore.getState().relations;
-    const toggled = current.filter((r) => r !== "implements");
-    useFilterStore.getState().setFacet("relations", toggled);
-    expect(useFilterStore.getState().relations).toEqual(["extends"]);
+  it("keeps independent facet defaults empty", () => {
+    const choices = structuredClone(DEFAULT_CHOICES);
+    const filters = dashboardFiltersWithFacetToggled({}, "doc_types", "adr");
+    expect(filters.doc_types).toEqual(["adr"]);
+    expect(choices.docTypes).toEqual([]);
+    expect(choices.featureTags).toEqual([]);
   });
 
-  it("toggling the only active relation off yields an empty list", () => {
-    fresh()().setFacet("relations", ["implements"]);
-    useFilterStore.getState().setFacet("relations", []);
-    expect(useFilterStore.getState().relations).toEqual([]);
-  });
-
-  it("toggling a value that is not present adds it", () => {
-    fresh()().setFacet("docTypes", ["plan"]);
-    const current = useFilterStore.getState().docTypes;
-    const value = "adr";
-    const toggled = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    useFilterStore.getState().setFacet("docTypes", toggled);
-    expect(useFilterStore.getState().docTypes).toEqual(["plan", "adr"]);
-  });
-
-  it("toggling a value that is already present removes it", () => {
-    fresh()().setFacet("docTypes", ["plan", "adr"]);
-    const current = useFilterStore.getState().docTypes;
-    const value = "plan";
-    const toggled = current.filter((v) => v !== value);
-    useFilterStore.getState().setFacet("docTypes", toggled);
-    expect(useFilterStore.getState().docTypes).toEqual(["adr"]);
-  });
-
-  it("setFacet on different facets are independent — no cross-contamination", () => {
-    fresh();
-    useFilterStore.getState().setFacet("relations", ["implements"]);
-    useFilterStore.getState().setFacet("docTypes", ["plan"]);
-    const s = useFilterStore.getState();
-    expect(s.relations).toEqual(["implements"]);
-    expect(s.docTypes).toEqual(["plan"]);
-    expect(s.featureTags).toEqual([]);
-  });
-
-  it("structural states (resolved/stale/broken) follow the same toggle pattern", () => {
-    fresh()().setFacet("structuralStates", ["stale", "broken"]);
-    expect(useFilterStore.getState().structuralStates).toEqual(["stale", "broken"]);
-    useFilterStore.getState().setFacet("structuralStates", ["broken"]);
-    expect(useFilterStore.getState().structuralStates).toEqual(["broken"]);
+  it("DEFAULT_CHOICES is the clear-all baseline", () => {
+    expect(DEFAULT_CHOICES.relations).toEqual([]);
+    expect(DEFAULT_CHOICES.docTypes).toEqual([]);
+    expect(DEFAULT_CHOICES.featureTags).toEqual([]);
+    expect(DEFAULT_CHOICES.textMatch).toBe("");
   });
 });
 
-// ---------------------------------------------------------------------------
-// Text-match update — the sidebar's text input drives setTextMatch
-// ---------------------------------------------------------------------------
-
-describe("FilterSidebar text-match update (via setTextMatch)", () => {
-  it("updates the textMatch field", () => {
-    fresh()().setTextMatch("auth");
-    expect(useFilterStore.getState().textMatch).toBe("auth");
+describe("FilterSidebar topic search", () => {
+  afterEach(() => {
+    cleanup();
+    queryClient.clear();
   });
 
-  it("overwrites a previous value", () => {
-    fresh()().setTextMatch("auth");
-    useFilterStore.getState().setTextMatch("session");
-    expect(useFilterStore.getState().textMatch).toBe("session");
-  });
+  it("narrows the TOPIC facet list client-side as the topic search filters", async () => {
+    const scope = await liveScope();
+    await seedSidebarQueries(
+      scope,
+      vocabularyWithFeatureTags(["delta-sync", "design-system", "timeline"]),
+    );
 
-  it("clearing the text input sets textMatch to empty string", () => {
-    fresh()().setTextMatch("auth");
-    useFilterStore.getState().setTextMatch("");
-    expect(useFilterStore.getState().textMatch).toBe("");
-  });
+    render(renderSidebar(scope));
 
-  it("does not affect other filter facets", () => {
-    fresh();
-    useFilterStore.getState().setFacet("relations", ["implements"]);
-    useFilterStore.getState().setTextMatch("auth");
-    // Relations must be unaffected
-    expect(useFilterStore.getState().relations).toEqual(["implements"]);
-  });
-});
+    // The unified flyout renders every topic flat (no collapse, no "+N more").
+    expect(await screen.findByText("delta-sync")).toBeTruthy();
+    expect(screen.getByText("design-system")).toBeTruthy();
+    expect(screen.getByText("timeline")).toBeTruthy();
 
-// ---------------------------------------------------------------------------
-// Reset — clears facets and text match back to the default empty state
-// ---------------------------------------------------------------------------
+    // Typing in the in-section topic search narrows the list to matches only.
+    fireEvent.change(screen.getByPlaceholderText("Search topics…"), {
+      target: { value: "design" },
+    });
 
-describe("filter reset (sidebar clear-all)", () => {
-  it("reset restores DEFAULT_CHOICES exactly", () => {
-    fresh();
-    useFilterStore.getState().setFacet("relations", ["implements"]);
-    useFilterStore.getState().setFacet("docTypes", ["plan"]);
-    useFilterStore.getState().setTextMatch("auth");
-    useFilterStore.getState().reset();
-    const s = useFilterStore.getState();
-    expect(s.relations).toEqual(DEFAULT_CHOICES.relations);
-    expect(s.docTypes).toEqual(DEFAULT_CHOICES.docTypes);
-    expect(s.textMatch).toEqual(DEFAULT_CHOICES.textMatch);
-    expect(s.featureTags).toEqual(DEFAULT_CHOICES.featureTags);
+    await waitFor(() => expect(screen.queryByText("delta-sync")).toBeNull());
+    expect(screen.getByText("design-system")).toBeTruthy();
+    expect(screen.queryByText("timeline")).toBeNull();
   });
 });

@@ -7,9 +7,12 @@
 // without selecting the tab.
 
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export interface TabProps {
+export interface TabProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "onClick" | "children" | "className" | "type" | "role" | "aria-selected"
+> {
   /** Whether this tab is the active one. */
   active: boolean;
   /** Selects this tab. */
@@ -30,6 +33,7 @@ export function Tab({
   onClose,
   closeLabel = "Close tab",
   id,
+  ...rest
 }: TabProps) {
   return (
     <div
@@ -43,6 +47,10 @@ export function Tab({
         id={id}
         aria-selected={active}
         onClick={onSelect}
+        // Roving-tablist passthrough (tabIndex / onKeyDown / aria-controls /
+        // data-*) so a tablist container (the activity rail) drives one shared Tab
+        // rather than hand-building its own button (design-system-is-centralized).
+        {...rest}
         className={`inline-flex items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1-5 text-label font-medium transition-colors duration-ui-fast ease-settle outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
           active ? "text-ink" : "text-ink-faint hover:text-ink-muted"
         }`}

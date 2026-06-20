@@ -11,12 +11,13 @@
  * A `$themes` array binds each mode so Tokens Studio's "Create Variables" produces the
  * Semantic collection with Light/Dark/High Contrast modes.
  *
- * The non-color foundation families (figma-parity-reconciliation W01.P01.S06) are mirrored
+ * The non-color foundation families (figma-parity-reconciliation W01.P01.S06) are exported
  * alongside color as a single `foundation` set (active as source across all modes): the
  * Figma role-named type scale as Tokens Studio `typography` composites plus a `fontFamily`
  * set, radius as `borderRadius`, elevation as `boxShadow`, and spacing as `spacing`.
  *
- * Run: `node scripts/figma-export.ts` (npm run tokens:figma). One-way, code -> Figma.
+ * Run: `node scripts/figma-export.ts` (npm run tokens:figma). This is the mechanical
+ * code-side projection of the binding Figma foundation, not a separate authority source.
  */
 
 import { fileURLToPath } from "node:url";
@@ -159,8 +160,8 @@ async function build(): Promise<void> {
   const dark = await tokensFor([PRIMITIVES, SEMANTIC, DARK]);
   const hc = await tokensFor([PRIMITIVES, SEMANTIC, HC]);
 
-  // Non-color foundation families (figma-parity-reconciliation W01.P01.S06): mirrored
-  // to Figma as Tokens Studio borderRadius / boxShadow / spacing / typography sets.
+  // Non-color foundation families (figma-parity-reconciliation W01.P01.S06): exported
+  // for Figma verification as Tokens Studio borderRadius / boxShadow / spacing / typography sets.
   const { typography, fontFamilies } = buildType();
   const radius = nestNonColor(flatLeaves(readJson(RADIUS).radius), "borderRadius");
   const elevation = nestNonColor(flatLeaves(readJson(ELEVATION).elevation), "boxShadow");

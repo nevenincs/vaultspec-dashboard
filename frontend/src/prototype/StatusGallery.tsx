@@ -27,7 +27,7 @@ import {
   stampFor,
   stampToken,
 } from "../scene/field/statusStamp";
-import { HoverCard, type StatusCardModel } from "../app/islands/HoverCard";
+import { StatusHoverCard, type StatusCardModel } from "../app/islands/HoverCard";
 
 // --- the matrix axes ----------------------------------------------------------
 
@@ -351,7 +351,7 @@ export function StatusGallery() {
               </button>
               {hovered === sample.id && (
                 <div className="absolute left-full top-0 z-10 ml-fg-2">
-                  <HoverCard
+                  <StatusHoverCard
                     key={`${sample.id}-${reducedMotion}`}
                     model={sample}
                     reducedMotion={reducedMotion}

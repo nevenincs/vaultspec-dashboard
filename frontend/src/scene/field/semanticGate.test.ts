@@ -172,6 +172,22 @@ describe("deriveSemanticEmbeddingsView — held is read from tiers, availability
     expect(view.embeddings.size).toBe(0);
   });
 
+  it("HOLDS when a served tiers block omits semantic, even with an array present", () => {
+    const view = deriveSemanticEmbeddingsView(
+      embeddingsResponse(8, {
+        declared: { available: true },
+        structural: { available: true },
+        temporal: { available: true },
+      }),
+      null,
+      false,
+      true,
+    );
+    expect(view.unavailable).toBe(true);
+    expect(view.available).toBe(false);
+    expect(view.embeddings.size).toBe(0);
+  });
+
   it("HOLDS from the FRESH error envelope's tiers over a stale held-success block", () => {
     // A previously held success block reported the tier UP; the latest request
     // errored with a tiers-bearing envelope reporting it DOWN. The fresh error

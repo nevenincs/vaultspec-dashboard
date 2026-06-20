@@ -1,6 +1,6 @@
 // Left-rail context menu: a registered project root (W03.P07). A pure resolver
-// over the WorkspaceEntity descriptor — it reads only the descriptor's own
-// fields (path, isLaunchDefault), never global state, so it is unit-testable in
+// over the normalized descriptor — it reads only the descriptor's own fields
+// (path, isLaunchDefault), never global state, so it is unit-testable in
 // isolation. The host calls it through the registry; the registration below
 // contributes it for the "workspace" entity kind at module load.
 //
@@ -13,7 +13,7 @@ import { Star } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { WorkspaceEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { revealAction } from "../../../platform/actions/shellActions";
@@ -32,7 +32,10 @@ import { revealAction } from "../../../platform/actions/shellActions";
  * disabled-with-reason until a terminal handler for the verb exists, rather than
  * shipping a no-op closure that silently does nothing.
  */
-export function workspaceMenu(entity: WorkspaceEntity): ActionDescriptor[] {
+export function workspaceMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "workspace") return [];
+
   const actions: ActionDescriptor[] = [];
 
   // Transform (mutating, non-destructive): set this root as the launch default.
@@ -45,25 +48,25 @@ export function workspaceMenu(entity: WorkspaceEntity): ActionDescriptor[] {
     section: "transform",
     icon: Star,
     disabled: true,
-    disabledReason: entity.isLaunchDefault
+    disabledReason: normalizedEntity.isLaunchDefault
       ? "already the launch default"
       : "no-op pending host",
     disabledInTimeTravel: true,
   });
 
-  if (entity.path) {
+  if (normalizedEntity.path) {
     actions.push(
       copyAction({
         id: "workspace:copy-path",
         label: "Copy path",
-        text: entity.path,
+        text: normalizedEntity.path,
         what: "path",
       }),
     );
-    actions.push(revealAction({ id: "workspace:reveal", path: entity.path }));
+    actions.push(revealAction({ id: "workspace:reveal", path: normalizedEntity.path }));
   }
 
   return actions;
 }
 
-registerResolver("workspace", workspaceMenu as ActionResolver<WorkspaceEntity>);
+registerResolver("workspace", workspaceMenu as ActionResolver);

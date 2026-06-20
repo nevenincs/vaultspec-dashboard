@@ -11,24 +11,12 @@
 // are NOT absorbed here; they are flagged in the S49 record and to the
 // engine owners (loose-scoping stance).
 
-import {
-  CANONICAL_TIERS,
-  DASHBOARD_BOUND_SHAPES,
-  DASHBOARD_PANEL_TABS,
-  DEFAULT_SALIENCE_LENS,
-  GRAPH_GRANULARITIES,
-  REPRESENTATION_MODES,
-} from "./engine";
+import { CANONICAL_TIERS } from "./engine";
 import type {
   ChangedFile,
   ContentResponse,
   ContentTruncated,
-  DashboardDateRange,
-  DashboardFilters,
-  DashboardGraphBounds,
-  DashboardPanelState,
   DashboardState,
-  DashboardTimelineMode,
   EmbeddingsResponse,
   EngineEdge,
   EngineStatus,
@@ -65,6 +53,7 @@ import type {
   PRsResponse,
   PullRequest,
   ScopeContextWire,
+  SearchResponse,
   SessionState,
   SettingControlKind,
   SettingDef,
@@ -72,11 +61,27 @@ import type {
   SettingsState,
   SettingValueType,
   TiersBlock,
+  VaultTreeEntry,
   VaultTreeResponse,
   WireMetaEdge,
   WorkspaceRoot,
   WorkspacesState,
 } from "./engine";
+import { normalizeDashboardDateRange } from "./dashboardDateRange";
+import { normalizeStoreScope, SCOPE_ID_MAX_CHARS } from "./scopeIdentity";
+import { normalizeWorkspaceLayoutBlob } from "../workspaceLayout";
+import {
+  cloneDashboardFilters,
+  normalizeDashboardGraphBounds,
+  normalizeDashboardGraphGranularity,
+  normalizeDashboardNodeId,
+  normalizeDashboardPanelState,
+  normalizeDashboardRepresentationMode,
+  normalizeDashboardSalienceLens,
+  normalizeDashboardSelectedIds,
+  normalizeDashboardTimelineMode,
+} from "./dashboardStateNormalization";
+import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 
 type Rec = Record<string, unknown>;
 
@@ -186,108 +191,11 @@ export function adaptGraphSlice(body: unknown): GraphSlice {
 
 // --- §3 dashboard state (dashboard-state-centralization W02) --------------------
 
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
-
-function maybeString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function isStringMember<T extends string>(
-  value: unknown,
-  members: readonly T[],
-): value is T {
-  return typeof value === "string" && (members as readonly string[]).includes(value);
-}
-
-function adaptDashboardDateRange(value: unknown): DashboardDateRange {
-  if (!isRec(value)) return {};
-  const range: DashboardDateRange = {};
-  if (typeof value.from === "string") range.from = value.from;
-  if (typeof value.to === "string") range.to = value.to;
-  return range;
-}
-
-function adaptDashboardFilters(value: unknown): DashboardFilters {
-  if (!isRec(value)) return {};
-  const filters: DashboardFilters = {};
-  if (isRec(value.tiers)) {
-    const tiers: DashboardFilters["tiers"] = {};
-    for (const tier of CANONICAL_TIERS) {
-      if (typeof value.tiers[tier] === "boolean") tiers[tier] = value.tiers[tier];
-    }
-    if (Object.keys(tiers).length > 0) filters.tiers = tiers;
-  }
-  if (isRec(value.min_confidence)) {
-    const floors: DashboardFilters["min_confidence"] = {};
-    for (const tier of ["temporal", "semantic"] as const) {
-      const floor = value.min_confidence[tier];
-      if (typeof floor === "number" && Number.isFinite(floor)) floors[tier] = floor;
-    }
-    if (Object.keys(floors).length > 0) filters.min_confidence = floors;
-  }
-  const relations = stringArray(value.relations);
-  const structuralState = stringArray(value.structural_state).filter(
-    (state): state is "resolved" | "stale" | "broken" =>
-      state === "resolved" || state === "stale" || state === "broken",
-  );
-  const kinds = stringArray(value.kinds);
-  const docTypes = stringArray(value.doc_types);
-  const featureTags = stringArray(value.feature_tags);
-  const statuses = stringArray(value.statuses);
-  const planTiers = stringArray(value.plan_tiers);
-  if (relations.length > 0) filters.relations = relations;
-  if (structuralState.length > 0) filters.structural_state = structuralState;
-  if (kinds.length > 0) filters.kinds = kinds;
-  if (docTypes.length > 0) filters.doc_types = docTypes;
-  if (featureTags.length > 0) filters.feature_tags = featureTags;
-  if (statuses.length > 0) filters.statuses = statuses;
-  if (planTiers.length > 0) filters.plan_tiers = planTiers;
-  if (typeof value.text === "string") filters.text = value.text;
-  return filters;
-}
-
-function adaptDashboardTimelineMode(value: unknown): DashboardTimelineMode {
-  if (!isRec(value)) return { kind: "live" };
-  if (value.kind === "time-travel" && typeof value.at === "number") {
-    return { kind: "time-travel", at: value.at };
-  }
-  return { kind: "live" };
-}
-
-function adaptDashboardPanelState(value: unknown): DashboardPanelState {
-  if (!isRec(value)) {
-    return { left_collapsed: false, right_collapsed: false, right_tab: "status" };
-  }
-  const rightTab = isStringMember(value.right_tab, DASHBOARD_PANEL_TABS)
-    ? value.right_tab
-    : "status";
-  return {
-    left_collapsed: value.left_collapsed === true,
-    right_collapsed: value.right_collapsed === true,
-    right_tab: rightTab,
-  };
-}
-
-function adaptDashboardGraphBounds(value: unknown): DashboardGraphBounds {
-  if (!isRec(value)) return { shape: "free", size: 0 };
-  const shape = isStringMember(value.shape, DASHBOARD_BOUND_SHAPES)
-    ? value.shape
-    : "free";
-  return {
-    shape,
-    size:
-      typeof value.size === "number" && Number.isFinite(value.size) ? value.size : 0,
-  };
-}
-
 /**
  * Live `/dashboard-state` -> the canonical stores-layer state. The route is
- * identity-bearing, so string IDs are preserved exactly and malformed IDs are
- * dropped/cleared rather than coerced into new identities.
+ * identity-bearing, so node ids pass through the same trim/dedupe/cap rules as
+ * dashboard-state writes, and malformed IDs are dropped/cleared rather than
+ * coerced into new identities.
  */
 export function adaptDashboardState(body: unknown): DashboardState {
   if (!isRec(body)) {
@@ -299,41 +207,27 @@ export function adaptDashboardState(body: unknown): DashboardState {
       date_range: {},
       timeline_mode: { kind: "live" },
       graph_granularity: "feature",
-      salience_lens: DEFAULT_SALIENCE_LENS,
+      salience_lens: normalizeDashboardSalienceLens(undefined),
       salience_focus: null,
       representation_mode: "connectivity",
-      panel_state: {
-        left_collapsed: false,
-        right_collapsed: false,
-        right_tab: "status",
-      },
-      graph_bounds: { shape: "free", size: 0 },
+      graph_bounds: normalizeDashboardGraphBounds(undefined),
+      panel_state: normalizeDashboardPanelState(undefined),
       tiers: {},
     };
   }
-  const granularity = isStringMember(body.graph_granularity, GRAPH_GRANULARITIES)
-    ? body.graph_granularity
-    : "feature";
-  const lens = body.salience_lens === "design" ? "design" : DEFAULT_SALIENCE_LENS;
-  const representationMode = isStringMember(
-    body.representation_mode,
-    REPRESENTATION_MODES,
-  )
-    ? body.representation_mode
-    : "connectivity";
   return {
-    scope: typeof body.scope === "string" ? body.scope : "",
-    selected_ids: stringArray(body.selected_ids),
-    hovered_id: maybeString(body.hovered_id),
-    filters: adaptDashboardFilters(body.filters),
-    date_range: adaptDashboardDateRange(body.date_range),
-    timeline_mode: adaptDashboardTimelineMode(body.timeline_mode),
-    graph_granularity: granularity,
-    salience_lens: lens,
-    salience_focus: maybeString(body.salience_focus),
-    representation_mode: representationMode,
-    panel_state: adaptDashboardPanelState(body.panel_state),
-    graph_bounds: adaptDashboardGraphBounds(body.graph_bounds),
+    scope: normalizeStoreScope(body.scope) ?? "",
+    selected_ids: normalizeDashboardSelectedIds(body.selected_ids),
+    hovered_id: normalizeDashboardNodeId(body.hovered_id),
+    filters: cloneDashboardFilters(body.filters),
+    date_range: normalizeDashboardDateRange(body.date_range),
+    timeline_mode: normalizeDashboardTimelineMode(body.timeline_mode),
+    graph_granularity: normalizeDashboardGraphGranularity(body.graph_granularity),
+    salience_lens: normalizeDashboardSalienceLens(body.salience_lens),
+    salience_focus: normalizeDashboardNodeId(body.salience_focus),
+    representation_mode: normalizeDashboardRepresentationMode(body.representation_mode),
+    graph_bounds: normalizeDashboardGraphBounds(body.graph_bounds),
+    panel_state: normalizeDashboardPanelState(body.panel_state),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -555,38 +449,104 @@ export function adaptLineageSlice(body: unknown): LineageSlice {
   };
 }
 
+function normalizeMapString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeMapStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const normalized = normalizeMapString(entry);
+    if (normalized === undefined || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function normalizeMapCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+function adaptMapBranch(
+  value: unknown,
+): MapResponse["repositories"][number]["branches"][number] | null {
+  if (!isRec(value)) return null;
+  const name = normalizeMapString(value.name);
+  if (name === undefined) return null;
+  return {
+    name,
+    kind:
+      value.class === "default"
+        ? "default"
+        : value.class === "feature"
+          ? "feature"
+          : "other",
+  };
+}
+
+function adaptMapWorktree(
+  value: unknown,
+): MapResponse["repositories"][number]["worktrees"][number] | null {
+  if (!isRec(value)) return null;
+  const path = normalizeMapString(value.path);
+  if (path === undefined) return null;
+  const branch = (normalizeMapString(value.head_ref) ?? "").replace(
+    /^refs\/heads\//,
+    "",
+  );
+  const degraded = normalizeMapStringList(value.degraded);
+  const ahead = normalizeMapCount(value.ahead);
+  const behind = normalizeMapCount(value.behind);
+  return {
+    // Scope tokens are normalized worktree paths on the live origin.
+    id: path,
+    path,
+    branch,
+    has_vault: value.has_vault === true,
+    is_default: value.is_main === true,
+    ...(degraded !== undefined ? { degraded } : {}),
+    ...(typeof value.dirty === "boolean" ? { dirty: value.dirty } : {}),
+    // ahead/behind are null when no upstream is configured — map to
+    // undefined so callers can distinguish "unknown" from "0 ahead".
+    ...(ahead !== undefined ? { ahead } : {}),
+    ...(behind !== undefined ? { behind } : {}),
+  };
+}
+
 /** Live workspace map → the internal repositories shape. */
 export function adaptMap(body: unknown): MapResponse {
   if (!isRec(body)) return body as MapResponse;
   if ("repositories" in body) return body as unknown as MapResponse;
-  const worktrees = Array.isArray(body.worktrees) ? (body.worktrees as Rec[]) : [];
-  const branches = Array.isArray(body.branches) ? (body.branches as Rec[]) : [];
+  const worktrees = Array.isArray(body.worktrees) ? body.worktrees : [];
+  const branches = Array.isArray(body.branches) ? body.branches : [];
   return {
     repositories: [
       {
-        path: String(body.workspace ?? ""),
-        branches: branches.map((b) => ({
-          name: String(b.name ?? ""),
-          kind: (b.class === "default"
-            ? "default"
-            : b.class === "feature"
-              ? "feature"
-              : "other") as "default" | "feature" | "other",
-        })),
-        worktrees: worktrees.map((w) => ({
-          // Scope tokens are normalized worktree paths on the live origin.
-          id: String(w.path ?? ""),
-          path: String(w.path ?? ""),
-          branch: String(w.head_ref ?? "").replace(/^refs\/heads\//, ""),
-          has_vault: Boolean(w.has_vault),
-          is_default: Boolean(w.is_main),
-          degraded: Array.isArray(w.degraded) ? (w.degraded as string[]) : undefined,
-          dirty: typeof w.dirty === "boolean" ? w.dirty : undefined,
-          // ahead/behind are null when no upstream is configured — map to
-          // undefined so callers can distinguish "unknown" from "0 ahead".
-          ahead: w.ahead != null ? Number(w.ahead) : undefined,
-          behind: w.behind != null ? Number(w.behind) : undefined,
-        })),
+        path: normalizeMapString(body.workspace) ?? "",
+        branches: branches
+          .map(adaptMapBranch)
+          .filter(
+            (
+              branch,
+            ): branch is MapResponse["repositories"][number]["branches"][number] =>
+              branch !== null,
+          ),
+        worktrees: worktrees
+          .map(adaptMapWorktree)
+          .filter(
+            (
+              worktree,
+            ): worktree is MapResponse["repositories"][number]["worktrees"][number] =>
+              worktree !== null,
+          ),
       },
     ],
     tiers: (body.tiers ?? {}) as TiersBlock,
@@ -728,24 +688,54 @@ export function adaptFilters(body: unknown): FiltersVocabulary {
  * the graph node id from a stem when the engine annotation is absent —
  * the annotation gap is a flagged divergence, not silently papered.
  */
-export function adaptSearch(body: unknown): { results: unknown[]; tiers: TiersBlock } {
+function normalizeSearchResultString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeSearchResultScore(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(1, value));
+}
+
+function adaptSearchResult(item: unknown): SearchResponse["results"][number] | null {
+  if (!isRec(item)) return null;
+  const score = normalizeSearchResultScore(item.score);
+  if (score === null) return null;
+  const nodeId = normalizeNodeId(item.node_id) ?? undefined;
+  const sourceValue = normalizeSearchResultString(item.source);
+  const pathValue = normalizeSearchResultString(item.path);
+  const stemValue = normalizeSearchResultString(item.stem);
+  const source = sourceValue ?? pathValue ?? stemValue;
+  if (source === undefined) return null;
+  const excerpt =
+    normalizeSearchResultString(item.excerpt) ?? normalizeSearchResultString(item.text);
+  const normalizedItem: Record<string, unknown> = {
+    ...item,
+    ...(nodeId !== undefined ? { node_id: nodeId } : { node_id: undefined }),
+    ...(sourceValue !== undefined ? { source: sourceValue } : { source: undefined }),
+    ...(pathValue !== undefined ? { path: pathValue } : { path: undefined }),
+    ...(stemValue !== undefined ? { stem: stemValue } : { stem: undefined }),
+  };
+  return {
+    score,
+    source,
+    ...(excerpt !== undefined ? { excerpt } : {}),
+    node_id: deriveSearchNodeId(normalizedItem),
+  };
+}
+
+export function adaptSearch(body: unknown): SearchResponse {
   if (!isRec(body)) return body as never;
   if (Array.isArray(body.results)) return body as never; // internal/mock shape
   const envelope = isRec(body.envelope) ? body.envelope : {};
   const data = isRec(envelope.data) ? envelope.data : {};
-  const rawResults = Array.isArray(data.results) ? (data.results as Rec[]) : [];
+  const rawResults = Array.isArray(data.results) ? data.results : [];
   return {
-    results: rawResults.map((item) => ({
-      score: Number(item.score ?? 0),
-      source: String(item.source ?? item.path ?? item.stem ?? "result"),
-      excerpt:
-        typeof item.excerpt === "string"
-          ? item.excerpt
-          : typeof item.text === "string"
-            ? item.text
-            : undefined,
-      node_id: deriveSearchNodeId(item),
-    })),
+    results: rawResults
+      .map(adaptSearchResult)
+      .filter((result): result is SearchResponse["results"][number] => result !== null),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -759,38 +749,86 @@ export function docTypeFromStem(stem: string): string {
   return "document";
 }
 
+function normalizeVaultTreeString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeVaultTreeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const normalized = normalizeVaultTreeString(entry);
+    if (normalized === undefined || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function adaptVaultTreeDates(value: unknown): VaultTreeEntry["dates"] {
+  if (!isRec(value)) return {};
+  return {
+    ...(normalizeVaultTreeString(value.created) !== undefined
+      ? { created: normalizeVaultTreeString(value.created) }
+      : {}),
+    ...(normalizeVaultTreeString(value.modified) !== undefined
+      ? { modified: normalizeVaultTreeString(value.modified) }
+      : {}),
+  };
+}
+
+function normalizeVaultTreeProgress(
+  value: unknown,
+): VaultTreeEntry["progress"] | undefined {
+  if (!isRec(value)) return undefined;
+  if (
+    typeof value.done !== "number" ||
+    typeof value.total !== "number" ||
+    !Number.isFinite(value.done) ||
+    !Number.isFinite(value.total)
+  ) {
+    return undefined;
+  }
+  const done = Math.floor(value.done);
+  const total = Math.floor(value.total);
+  if (done < 0 || total <= 0 || done > total) return undefined;
+  return { done, total };
+}
+
+function adaptVaultTreeEntry(value: unknown): VaultTreeEntry | null {
+  if (!isRec(value)) return null;
+  const path = normalizeVaultTreeString(value.path);
+  const stem =
+    normalizeVaultTreeString(value.stem) ?? (path ? stemFromPath(path) : undefined);
+  if (stem === undefined) return null;
+  const docType = normalizeVaultTreeString(value.doc_type) ?? docTypeFromStem(stem);
+  const entryPath =
+    path ?? `.vault/${docType === "document" ? "doc" : docType}/${stem}.md`;
+  const status = normalizeVaultTreeString(value.status);
+  const tier = normalizeVaultTreeString(value.tier);
+  const progress = normalizeVaultTreeProgress(value.progress);
+  return {
+    path: entryPath,
+    doc_type: docType,
+    feature_tags: normalizeVaultTreeStringList(value.feature_tags),
+    dates: adaptVaultTreeDates(value.dates),
+    ...(status !== undefined ? { status } : {}),
+    ...(tier !== undefined ? { tier } : {}),
+    ...(progress !== undefined ? { progress } : {}),
+  };
+}
+
 /** Live stem/node_id tree entries → the internal path-bearing entries. */
 export function adaptVaultTree(body: unknown): VaultTreeResponse {
   if (!isRec(body) || !Array.isArray(body.entries)) {
     return body as VaultTreeResponse;
   }
-  const entries = (body.entries as Rec[]).map((entry) => {
-    if (typeof entry.path === "string") return entry as never;
-    const stem = String(entry.stem ?? "");
-    const docType = docTypeFromStem(stem);
-    return {
-      path: `.vault/${docType === "document" ? "doc" : docType}/${stem}.md`,
-      doc_type: docType,
-      feature_tags: Array.isArray(entry.feature_tags)
-        ? (entry.feature_tags as string[])
-        : [],
-      // Status/tier query-time facets (dashboard-pipeline-wire W01): forwarded
-      // when present so an ADR carries its status and a plan its tier; absent
-      // everywhere else (truthful absence).
-      ...(typeof entry.status === "string" ? { status: entry.status } : {}),
-      ...(typeof entry.tier === "string" ? { tier: entry.tier } : {}),
-      // Plan checkbox progress (dashboard-pipeline-wire): forwarded only when
-      // the wire carries a well-formed {done,total} pair so the plan-status pip
-      // (✓/◐/○) lights up from real lifecycle truth; absent (and so honest
-      // not-started) on every non-plan row and progress-less plan.
-      ...(isRec(entry.progress) &&
-      typeof entry.progress.done === "number" &&
-      typeof entry.progress.total === "number"
-        ? { progress: { done: entry.progress.done, total: entry.progress.total } }
-        : {}),
-      dates: {},
-    };
-  });
+  const entries = body.entries
+    .map(adaptVaultTreeEntry)
+    .filter((entry): entry is VaultTreeEntry => entry !== null);
   return { entries, tiers: (body.tiers ?? {}) as TiersBlock };
 }
 
@@ -804,35 +842,56 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
 // shape NEVER throws and the chrome never reads the raw tiers block (the
 // degradation truth rides on `tiers`, defaulted to an empty block when absent).
 
-/** Default one child wire row, tolerating an absent or partial object: an
- *  unknown/absent `kind` defaults to `file` (never wrongly shown expandable),
- *  `has_children` to false, and an absent `node_id` to the empty string (the
- *  code mode treats it as the quiet absent-interlink state). */
-function adaptFileTreeEntry(value: unknown): FileTreeEntry {
-  if (!isRec(value)) {
-    return { path: "", kind: "file", has_children: false, node_id: "" };
+function normalizeFileTreeString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeFileTreeCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
   }
+  return Math.floor(value);
+}
+
+/** Default one child wire row, tolerating an absent or partial object: a missing
+ *  path is malformed and dropped; an unknown/absent `kind` defaults to `file`
+ *  (never wrongly shown expandable); `has_children` is true only for directories;
+ *  and a missing `node_id` is derived from the canonical `code:{path}` rule. */
+function adaptFileTreeEntry(value: unknown): FileTreeEntry | null {
+  if (!isRec(value)) return null;
+  const path = normalizeFileTreeString(value.path);
+  if (path === undefined) return null;
+  const kind = value.kind === "dir" ? "dir" : "file";
+  const nodeId = normalizeNodeId(value.node_id) ?? codeNodeIdFromPath(path);
   return {
-    path: typeof value.path === "string" ? value.path : "",
-    kind: value.kind === "dir" ? "dir" : "file",
-    has_children: value.has_children === true,
-    node_id: typeof value.node_id === "string" ? value.node_id : "",
+    path,
+    kind,
+    has_children: kind === "dir" && value.has_children === true,
+    node_id: nodeId,
   };
 }
 
 /** Default the truncated honesty block: forwarded only when the engine capped the
  *  level (a real object with the three fields); null/absent stays null. */
 function adaptFileTreeTruncated(value: unknown): FileTreeTruncated | null {
+  const totalChildren = isRec(value)
+    ? normalizeFileTreeCount(value.total_children)
+    : undefined;
+  const returnedChildren = isRec(value)
+    ? normalizeFileTreeCount(value.returned_children)
+    : undefined;
+  const reason = isRec(value) ? normalizeFileTreeString(value.reason) : undefined;
   if (
-    isRec(value) &&
-    typeof value.total_children === "number" &&
-    typeof value.returned_children === "number" &&
-    typeof value.reason === "string"
+    totalChildren !== undefined &&
+    returnedChildren !== undefined &&
+    reason !== undefined
   ) {
     return {
-      total_children: value.total_children,
-      returned_children: value.returned_children,
-      reason: value.reason,
+      total_children: totalChildren,
+      returned_children: returnedChildren,
+      reason,
     };
   }
   return null;
@@ -847,10 +906,14 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
     return { entries: [], path: "", truncated: null, tiers: {} };
   }
   return {
-    entries: Array.isArray(body.entries) ? body.entries.map(adaptFileTreeEntry) : [],
-    path: typeof body.path === "string" ? body.path : "",
+    entries: Array.isArray(body.entries)
+      ? body.entries
+          .map(adaptFileTreeEntry)
+          .filter((entry): entry is FileTreeEntry => entry !== null)
+      : [],
+    path: normalizeFileTreeString(body.path) ?? "",
     truncated: adaptFileTreeTruncated(body.truncated),
-    next_cursor: typeof body.next_cursor === "string" ? body.next_cursor : undefined,
+    next_cursor: normalizeFileTreeString(body.next_cursor),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -938,20 +1001,41 @@ function adaptHistoryTruncated(value: unknown): HistoryTruncated | null {
   return null;
 }
 
+export const HISTORY_COMMITS_MAX_ITEMS = 200;
+export const HISTORY_COMMIT_NODE_IDS_CAP = 256;
+export const HISTORY_STRING_MAX_CHARS = 4096;
+export const HISTORY_COMMIT_BODY_MAX_CHARS = 4097;
+
+function normalizeHistoryString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= HISTORY_STRING_MAX_CHARS
+    ? trimmed
+    : null;
+}
+
+function normalizeHistoryBody(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.length <= HISTORY_COMMIT_BODY_MAX_CHARS
+    ? value
+    : value.slice(0, HISTORY_COMMIT_BODY_MAX_CHARS);
+}
+
 /** One commit row → the internal shape, or null when the entry is malformed
  *  (missing its hash) so a single bad row never crashes the list. */
 function adaptHistoryCommit(value: unknown): HistoryCommit | null {
-  if (!isRec(value) || typeof value.hash !== "string") return null;
-  const hash = value.hash;
+  if (!isRec(value)) return null;
+  const hash = normalizeHistoryString(value.hash);
+  if (hash === null) return null;
+  const shortHash = normalizeHistoryString(value.short_hash) ?? hash.slice(0, 8);
   return {
     hash,
-    short_hash:
-      typeof value.short_hash === "string" ? value.short_hash : hash.slice(0, 8),
-    subject: typeof value.subject === "string" ? value.subject : "",
-    body: typeof value.body === "string" ? value.body : "",
-    ts: typeof value.ts === "number" ? value.ts : 0,
+    short_hash: shortHash,
+    subject: normalizeHistoryString(value.subject) ?? "",
+    body: normalizeHistoryBody(value.body),
+    ts: typeof value.ts === "number" && Number.isFinite(value.ts) ? value.ts : 0,
     node_ids: Array.isArray(value.node_ids)
-      ? value.node_ids.filter((id): id is string => typeof id === "string")
+      ? normalizeNodeIds(value.node_ids, HISTORY_COMMIT_NODE_IDS_CAP)
       : [],
   };
 }
@@ -963,13 +1047,28 @@ export function adaptHistory(body: unknown): HistoryResponse {
   if (!isRec(body)) {
     return { commits: [], truncated: null, next_cursor: null, tiers: {} };
   }
-  const commits = Array.isArray(body.commits)
-    ? body.commits.map(adaptHistoryCommit).filter((c): c is HistoryCommit => c !== null)
-    : [];
+  const commits: HistoryCommit[] = [];
+  if (Array.isArray(body.commits)) {
+    for (const row of body.commits) {
+      const commit = adaptHistoryCommit(row);
+      if (commit === null) continue;
+      commits.push(commit);
+      if (commits.length >= HISTORY_COMMITS_MAX_ITEMS) break;
+    }
+  }
+  const truncated =
+    adaptHistoryTruncated(body.truncated) ??
+    (Array.isArray(body.commits) && commits.length >= HISTORY_COMMITS_MAX_ITEMS
+      ? {
+          requested: body.commits.length,
+          returned: commits.length,
+          reason: "adapter commit ceiling",
+        }
+      : null);
   return {
     commits,
-    truncated: adaptHistoryTruncated(body.truncated),
-    next_cursor: typeof body.next_cursor === "string" ? body.next_cursor : null,
+    truncated,
+    next_cursor: normalizeHistoryString(body.next_cursor),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -981,56 +1080,86 @@ export function adaptHistory(body: unknown): HistoryResponse {
 // dropped, so one bad row never crashes the rail. `available`/`reason` carry the
 // capability-local degradation the engine reports explicitly (never guessed).
 
+const GITHUB_WORK_ITEM_LABELS_CAP = 32;
+
+function normalizeGitHubWorkItemNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function normalizeGitHubWorkItemString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeGitHubWorkItemNullableString(value: unknown): string | null {
+  return normalizeGitHubWorkItemString(value) ?? null;
+}
+
+function normalizeGitHubWorkItemLabels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const label of value) {
+    const normalized = normalizeGitHubWorkItemString(label);
+    if (normalized === undefined || seen.has(normalized)) continue;
+    seen.add(normalized);
+    labels.push(normalized);
+    if (labels.length >= GITHUB_WORK_ITEM_LABELS_CAP) break;
+  }
+  return labels;
+}
+
+function normalizeGitHubWorkItemCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : 0;
+}
+
 function adaptPrChecks(value: unknown): PrChecks | null {
   if (!isRec(value)) return null;
-  const n = (k: string): number =>
-    typeof value[k] === "number" ? (value[k] as number) : 0;
   return {
-    total: n("total"),
-    passed: n("passed"),
-    failing: n("failing"),
-    pending: n("pending"),
+    total: normalizeGitHubWorkItemCount(value.total),
+    passed: normalizeGitHubWorkItemCount(value.passed),
+    failing: normalizeGitHubWorkItemCount(value.failing),
+    pending: normalizeGitHubWorkItemCount(value.pending),
   };
 }
 
 function adaptPullRequest(value: unknown): PullRequest | null {
-  if (!isRec(value) || typeof value.number !== "number") return null;
-  const s = (k: string): string =>
-    typeof value[k] === "string" ? (value[k] as string) : "";
-  const ns = (k: string): string | null =>
-    typeof value[k] === "string" ? (value[k] as string) : null;
+  if (!isRec(value)) return null;
+  const number = normalizeGitHubWorkItemNumber(value.number);
+  if (number === null) return null;
   return {
-    number: value.number,
-    title: s("title"),
-    author: s("author"),
-    state: s("state"),
+    number,
+    title: normalizeGitHubWorkItemString(value.title) ?? "",
+    author: normalizeGitHubWorkItemString(value.author) ?? "",
+    state: normalizeGitHubWorkItemString(value.state) ?? "",
     is_draft: value.is_draft === true,
-    url: s("url"),
-    created_at: ns("created_at"),
-    updated_at: ns("updated_at"),
-    merged_at: ns("merged_at"),
-    review_decision: s("review_decision"),
+    url: normalizeGitHubWorkItemString(value.url) ?? "",
+    created_at: normalizeGitHubWorkItemNullableString(value.created_at),
+    updated_at: normalizeGitHubWorkItemNullableString(value.updated_at),
+    merged_at: normalizeGitHubWorkItemNullableString(value.merged_at),
+    review_decision: normalizeGitHubWorkItemString(value.review_decision) ?? "",
     checks: adaptPrChecks(value.checks),
   };
 }
 
 function adaptIssue(value: unknown): Issue | null {
-  if (!isRec(value) || typeof value.number !== "number") return null;
-  const s = (k: string): string =>
-    typeof value[k] === "string" ? (value[k] as string) : "";
-  const ns = (k: string): string | null =>
-    typeof value[k] === "string" ? (value[k] as string) : null;
+  if (!isRec(value)) return null;
+  const number = normalizeGitHubWorkItemNumber(value.number);
+  if (number === null) return null;
   return {
-    number: value.number,
-    title: s("title"),
-    author: s("author"),
-    state: s("state"),
-    url: s("url"),
-    created_at: ns("created_at"),
-    updated_at: ns("updated_at"),
-    labels: Array.isArray(value.labels)
-      ? value.labels.filter((l): l is string => typeof l === "string")
-      : [],
+    number,
+    title: normalizeGitHubWorkItemString(value.title) ?? "",
+    author: normalizeGitHubWorkItemString(value.author) ?? "",
+    state: normalizeGitHubWorkItemString(value.state) ?? "",
+    url: normalizeGitHubWorkItemString(value.url) ?? "",
+    created_at: normalizeGitHubWorkItemNullableString(value.created_at),
+    updated_at: normalizeGitHubWorkItemNullableString(value.updated_at),
+    labels: normalizeGitHubWorkItemLabels(value.labels),
   };
 }
 
@@ -1047,7 +1176,7 @@ export function adaptPrs(body: unknown): PRsResponse {
   return {
     prs,
     available: body.available === true,
-    reason: typeof body.reason === "string" ? body.reason : null,
+    reason: normalizeGitHubWorkItemNullableString(body.reason),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -1064,7 +1193,7 @@ export function adaptIssues(body: unknown): IssuesResponse {
   return {
     issues,
     available: body.available === true,
-    reason: typeof body.reason === "string" ? body.reason : null,
+    reason: normalizeGitHubWorkItemNullableString(body.reason),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -1136,19 +1265,41 @@ export function deriveSearchNodeId(item: Record<string, unknown>): string | null
 // and the chrome never has to read the raw tiers block (the degradation truth
 // still rides through on `tiers`, defaulted to an empty block when absent).
 
+function normalizeSessionString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= SCOPE_ID_MAX_CHARS
+    ? normalized
+    : undefined;
+}
+
+export const SESSION_STRING_LIST_MAX_ITEMS = 512;
+
+function normalizeSessionStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const normalized = normalizeSessionString(entry);
+    if (normalized === undefined || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= SESSION_STRING_LIST_MAX_ITEMS) break;
+  }
+  return out;
+}
+
 /** Default a scope-context wire shape, tolerating an absent or partial object:
  *  an absent `folder` becomes null (no folder selected), absent `feature_tags`
  *  becomes []. */
 function adaptScopeContext(value: unknown): ScopeContextWire {
   if (!isRec(value)) return { folder: null, feature_tags: [] };
+  const folder = normalizeSessionString(value.folder) ?? null;
+  const workspaceLayout = normalizeWorkspaceLayoutBlob(value.workspace_layout);
   return {
-    folder: typeof value.folder === "string" ? value.folder : null,
-    feature_tags: Array.isArray(value.feature_tags)
-      ? (value.feature_tags as string[])
-      : [],
-    ...(typeof value.workspace_layout === "string"
-      ? { workspace_layout: value.workspace_layout }
-      : {}),
+    folder,
+    feature_tags: normalizeSessionStringList(value.feature_tags),
+    ...(workspaceLayout !== null ? { workspace_layout: workspaceLayout } : {}),
   };
 }
 
@@ -1170,14 +1321,13 @@ export function adaptSession(body: unknown): SessionState {
     };
   }
   return {
-    workspace: typeof body.workspace === "string" ? body.workspace : "",
-    active_scope: typeof body.active_scope === "string" ? body.active_scope : "",
+    workspace: normalizeSessionString(body.workspace) ?? "",
+    active_scope: normalizeSessionString(body.active_scope) ?? "",
     // The active WORKSPACE id (dashboard-workspace-registry ADR); null when
     // absent (a sparse or older session shape) so the rail marks none current.
-    active_workspace:
-      typeof body.active_workspace === "string" ? body.active_workspace : null,
+    active_workspace: normalizeSessionString(body.active_workspace) ?? null,
     scope_context: adaptScopeContext(body.scope_context),
-    recents: Array.isArray(body.recents) ? (body.recents as string[]) : [],
+    recents: normalizeSessionStringList(body.recents),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -1195,27 +1345,27 @@ export function adaptSession(body: unknown): SessionState {
  *  missing id/label/path become empty strings, `is_launch`/`reachable` default
  *  conservatively (false / true — an unmarked root is treated as reachable so it
  *  is never wrongly hidden as degraded), and an absent reason is null. */
-function adaptWorkspaceRoot(value: unknown): WorkspaceRoot {
-  if (!isRec(value)) {
-    return {
-      id: "",
-      label: "",
-      path: "",
-      is_launch: false,
-      reachable: true,
-      unreachable_reason: null,
-    };
-  }
+function normalizeWorkspaceString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function adaptWorkspaceRoot(value: unknown): WorkspaceRoot | null {
+  if (!isRec(value)) return null;
+  const id = normalizeWorkspaceString(value.id);
+  const path = normalizeWorkspaceString(value.path);
+  if (id === undefined || path === undefined) return null;
+  const label = normalizeWorkspaceString(value.label) ?? id;
   return {
-    id: typeof value.id === "string" ? value.id : "",
-    label: typeof value.label === "string" ? value.label : "",
-    path: typeof value.path === "string" ? value.path : "",
+    id,
+    label,
+    path,
     is_launch: value.is_launch === true,
     // Absent reachability is treated as reachable (do not hide a root as
     // degraded on a missing field); only an explicit `false` degrades.
     reachable: value.reachable !== false,
-    unreachable_reason:
-      typeof value.unreachable_reason === "string" ? value.unreachable_reason : null,
+    unreachable_reason: normalizeWorkspaceString(value.unreachable_reason) ?? null,
   };
 }
 
@@ -1226,10 +1376,11 @@ export function adaptWorkspaces(body: unknown): WorkspacesState {
   if (!isRec(body)) return { workspaces: [], active_workspace: null, tiers: {} };
   return {
     workspaces: Array.isArray(body.workspaces)
-      ? (body.workspaces as unknown[]).map(adaptWorkspaceRoot)
+      ? body.workspaces
+          .map(adaptWorkspaceRoot)
+          .filter((root): root is WorkspaceRoot => root !== null)
       : [],
-    active_workspace:
-      typeof body.active_workspace === "string" ? body.active_workspace : null,
+    active_workspace: normalizeWorkspaceString(body.active_workspace) ?? null,
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
 }
@@ -1272,6 +1423,39 @@ const CONTROL_KINDS: SettingControlKind[] = [
   "keybinding",
 ];
 
+function normalizeSchemaString(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
+function normalizeOptionalSchemaString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeSchemaStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const normalized = entry.trim();
+    if (normalized.length === 0 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function normalizeSettingControlKind(value: unknown): SettingControlKind {
+  const normalized = normalizeOptionalSchemaString(value);
+  return normalized !== undefined && (CONTROL_KINDS as string[]).includes(normalized)
+    ? (normalized as SettingControlKind)
+    : "text";
+}
+
 /** Decode one `value_type` tagged union from the wire, defaulting unknown or
  *  malformed shapes to a permissive `string` so a sparse or newer wire never
  *  throws (the tolerant-adapter property). */
@@ -1283,9 +1467,7 @@ function adaptValueType(value: unknown): SettingValueType {
     case "enum":
       return {
         type: "enum",
-        members: Array.isArray(value.members)
-          ? value.members.filter((m): m is string => typeof m === "string")
-          : [],
+        members: normalizeSchemaStringList(value.members),
       };
     case "bool":
       return { type: "bool" };
@@ -1313,24 +1495,23 @@ function adaptValueType(value: unknown): SettingValueType {
  *  a safe value. An unknown control kind falls back to `text` (the most generic
  *  renderer), so a newer engine-declared control never crashes an older client. */
 function adaptSettingDef(value: unknown): SettingDef | null {
-  if (!isRec(value) || typeof value.key !== "string") return null;
-  const controlRaw = typeof value.control === "string" ? value.control : "";
-  const control = (CONTROL_KINDS as string[]).includes(controlRaw)
-    ? (controlRaw as SettingControlKind)
-    : "text";
+  if (!isRec(value)) return null;
+  const key = normalizeOptionalSchemaString(value.key);
+  if (key === undefined) return null;
+  const control = normalizeSettingControlKind(value.control);
   return {
-    key: value.key,
+    key,
     value_type: adaptValueType(value.value_type),
     default: typeof value.default === "string" ? value.default : "",
     scope_eligible: value.scope_eligible === true,
     control,
-    label: typeof value.label === "string" ? value.label : value.key,
-    description: typeof value.description === "string" ? value.description : "",
-    group: typeof value.group === "string" ? value.group : "General",
+    label: normalizeSchemaString(value.label, key),
+    description: normalizeSchemaString(value.description, ""),
+    group: normalizeSchemaString(value.group, "General"),
     order: typeof value.order === "number" ? value.order : 0,
     step: typeof value.step === "number" ? value.step : undefined,
-    unit: typeof value.unit === "string" ? value.unit : undefined,
-    placeholder: typeof value.placeholder === "string" ? value.placeholder : undefined,
+    unit: normalizeOptionalSchemaString(value.unit),
+    placeholder: normalizeOptionalSchemaString(value.placeholder),
   };
 }
 
@@ -1342,9 +1523,7 @@ export function adaptSettingsSchema(body: unknown): SettingsSchema {
   const settings = Array.isArray(body.settings)
     ? body.settings.map(adaptSettingDef).filter((d): d is SettingDef => d !== null)
     : [];
-  const groups = Array.isArray(body.groups)
-    ? body.groups.filter((g): g is string => typeof g === "string")
-    : [];
+  const groups = normalizeSchemaStringList(body.groups);
   return { settings, groups, tiers: (body.tiers ?? {}) as TiersBlock };
 }
 
@@ -1365,44 +1544,65 @@ const PIPELINE_PHASES: PipelinePhase[] = [
   "review",
 ];
 
+function normalizePipelineString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizePipelineStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const normalized = normalizePipelineString(entry);
+    if (normalized === undefined || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function normalizePipelinePhase(value: unknown): PipelinePhase {
+  const normalized = normalizePipelineString(value);
+  return normalized !== undefined && (PIPELINE_PHASES as string[]).includes(normalized)
+    ? (normalized as PipelinePhase)
+    : "plan";
+}
+
 /** Default one in-flight artifact wire row, tolerating an absent or partial
  *  object. An unknown phase falls back to `plan` (the safe neutral phase); the
  *  optional status/tier/progress are forwarded only when present. */
-function adaptPipelineArtifact(value: unknown): PipelineArtifact {
-  if (!isRec(value)) {
-    return { node_id: "", stem: "", phase: "plan" };
-  }
-  const phaseRaw = typeof value.phase === "string" ? value.phase : "";
-  const phase = (PIPELINE_PHASES as string[]).includes(phaseRaw)
-    ? (phaseRaw as PipelinePhase)
-    : "plan";
+function adaptPipelineArtifact(value: unknown): PipelineArtifact | null {
+  if (!isRec(value)) return null;
+  const nodeId = normalizeNodeId(value.node_id);
+  if (nodeId === null) return null;
+  const phase = normalizePipelinePhase(value.phase);
   const progress =
     isRec(value.progress) &&
     typeof value.progress.done === "number" &&
-    typeof value.progress.total === "number"
+    Number.isFinite(value.progress.done) &&
+    typeof value.progress.total === "number" &&
+    Number.isFinite(value.progress.total)
       ? { done: value.progress.done, total: value.progress.total }
       : undefined;
   // Dates (dashboard-pipeline-status W01): forwarded only when a dates object is
   // present, so the row's freshness stamp is hidden on truthful absence.
   const dates = isRec(value.dates)
     ? {
-        created:
-          typeof value.dates.created === "string" ? value.dates.created : undefined,
-        modified:
-          typeof value.dates.modified === "string" ? value.dates.modified : undefined,
+        created: normalizePipelineString(value.dates.created),
+        modified: normalizePipelineString(value.dates.modified),
       }
     : undefined;
   return {
-    node_id: typeof value.node_id === "string" ? value.node_id : "",
-    stem: typeof value.stem === "string" ? value.stem : "",
-    title: typeof value.title === "string" ? value.title : undefined,
-    doc_type: typeof value.doc_type === "string" ? value.doc_type : undefined,
-    status: typeof value.status === "string" ? value.status : undefined,
-    tier: typeof value.tier === "string" ? value.tier : undefined,
+    node_id: nodeId,
+    stem: normalizePipelineString(value.stem) ?? "",
+    title: normalizePipelineString(value.title),
+    doc_type: normalizePipelineString(value.doc_type),
+    status: normalizePipelineString(value.status),
+    tier: normalizePipelineString(value.tier),
     progress,
-    feature_tags: Array.isArray(value.feature_tags)
-      ? (value.feature_tags as string[])
-      : undefined,
+    feature_tags: normalizePipelineStringList(value.feature_tags),
     dates,
     phase,
   };
@@ -1414,7 +1614,9 @@ export function adaptPipeline(body: unknown): PipelineResponse {
   if (!isRec(body)) return { artifacts: [], tiers: {} };
   return {
     artifacts: Array.isArray(body.artifacts)
-      ? body.artifacts.map(adaptPipelineArtifact)
+      ? body.artifacts
+          .map(adaptPipelineArtifact)
+          .filter((artifact): artifact is PipelineArtifact => artifact !== null)
       : [],
     tiers: (body.tiers ?? {}) as TiersBlock,
   };
@@ -1423,35 +1625,52 @@ export function adaptPipeline(body: unknown): PipelineResponse {
 /** Default one interior step wire row. `done` defaults to false (an unmarked
  *  step is open, never wrongly shown complete); the optional action and exec
  *  binding are forwarded only when present. */
-function adaptInteriorStep(value: unknown): InteriorStep {
-  if (!isRec(value)) return { node_id: "", id: "", done: false };
+function adaptInteriorStep(value: unknown): InteriorStep | null {
+  if (!isRec(value)) return null;
+  const nodeId = normalizeNodeId(value.node_id);
+  const id = normalizePipelineString(value.id);
+  if (nodeId === null || id === undefined) return null;
+  const execNodeId = normalizeNodeId(value.exec_node_id);
   return {
-    node_id: typeof value.node_id === "string" ? value.node_id : "",
-    id: typeof value.id === "string" ? value.id : "",
-    action: typeof value.action === "string" ? value.action : undefined,
+    node_id: nodeId,
+    id,
+    action: normalizePipelineString(value.action),
     done: value.done === true,
-    exec_node_id:
-      typeof value.exec_node_id === "string" ? value.exec_node_id : undefined,
+    exec_node_id: execNodeId ?? undefined,
   };
 }
 
-function adaptInteriorPhase(value: unknown): InteriorPhase {
-  if (!isRec(value)) return { node_id: "", id: "", steps: [] };
+function adaptInteriorPhase(value: unknown): InteriorPhase | null {
+  if (!isRec(value)) return null;
+  const nodeId = normalizeNodeId(value.node_id);
+  const id = normalizePipelineString(value.id);
+  if (nodeId === null || id === undefined) return null;
   return {
-    node_id: typeof value.node_id === "string" ? value.node_id : "",
-    id: typeof value.id === "string" ? value.id : "",
-    heading: typeof value.heading === "string" ? value.heading : undefined,
-    steps: Array.isArray(value.steps) ? value.steps.map(adaptInteriorStep) : [],
+    node_id: nodeId,
+    id,
+    heading: normalizePipelineString(value.heading),
+    steps: Array.isArray(value.steps)
+      ? value.steps
+          .map(adaptInteriorStep)
+          .filter((step): step is InteriorStep => step !== null)
+      : [],
   };
 }
 
-function adaptInteriorWave(value: unknown): InteriorWave {
-  if (!isRec(value)) return { node_id: "", id: "", phases: [] };
+function adaptInteriorWave(value: unknown): InteriorWave | null {
+  if (!isRec(value)) return null;
+  const nodeId = normalizeNodeId(value.node_id);
+  const id = normalizePipelineString(value.id);
+  if (nodeId === null || id === undefined) return null;
   return {
-    node_id: typeof value.node_id === "string" ? value.node_id : "",
-    id: typeof value.id === "string" ? value.id : "",
-    heading: typeof value.heading === "string" ? value.heading : undefined,
-    phases: Array.isArray(value.phases) ? value.phases.map(adaptInteriorPhase) : [],
+    node_id: nodeId,
+    id,
+    heading: normalizePipelineString(value.heading),
+    phases: Array.isArray(value.phases)
+      ? value.phases
+          .map(adaptInteriorPhase)
+          .filter((phase): phase is InteriorPhase => phase !== null)
+      : [],
   };
 }
 
@@ -1488,10 +1707,22 @@ export function adaptPlanInterior(body: unknown): PlanInteriorResponse {
   const raw = isRec(body.interior) ? body.interior : body;
   return {
     interior: {
-      plan_node_id: typeof raw.plan_node_id === "string" ? raw.plan_node_id : "",
-      waves: Array.isArray(raw.waves) ? raw.waves.map(adaptInteriorWave) : [],
-      phases: Array.isArray(raw.phases) ? raw.phases.map(adaptInteriorPhase) : [],
-      steps: Array.isArray(raw.steps) ? raw.steps.map(adaptInteriorStep) : [],
+      plan_node_id: normalizeNodeId(raw.plan_node_id) ?? "",
+      waves: Array.isArray(raw.waves)
+        ? raw.waves
+            .map(adaptInteriorWave)
+            .filter((wave): wave is InteriorWave => wave !== null)
+        : [],
+      phases: Array.isArray(raw.phases)
+        ? raw.phases
+            .map(adaptInteriorPhase)
+            .filter((phase): phase is InteriorPhase => phase !== null)
+        : [],
+      steps: Array.isArray(raw.steps)
+        ? raw.steps
+            .map(adaptInteriorStep)
+            .filter((step): step is InteriorStep => step !== null)
+        : [],
       truncated: adaptInteriorTruncated(raw.truncated),
     },
     tiers: (body.tiers ?? {}) as TiersBlock,
@@ -1523,9 +1754,27 @@ export function adaptGitOp(body: unknown): GitOpResponse {
 //   • diff   : `git diff --no-color -- <path>`        → a standard unified diff.
 
 const VAULT_RE = /(^|\/)\.vault\//;
+const PORCELAIN_CODES = new Set([" ", "M", "A", "D", "R", "C", "?", "U"]);
+export const GIT_CHANGED_FILES_MAX_ROWS = 512;
+export const GIT_PATH_MAX_CHARS = 4096;
 
 function isVaultEntry(path: string): boolean {
   return VAULT_RE.test(path);
+}
+
+function normalizeGitPath(value: string): string | null {
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.length <= GIT_PATH_MAX_CHARS
+    ? normalized
+    : null;
+}
+
+function isPorcelainCode(code: string): boolean {
+  return (
+    code.length === 2 &&
+    PORCELAIN_CODES.has(code.charAt(0)) &&
+    PORCELAIN_CODES.has(code.charAt(1))
+  );
 }
 
 /** Bucket a porcelain `XY` status into a render group + a grayscale-safe letter.
@@ -1555,26 +1804,36 @@ function classifyPorcelain(code: string): { group: GitChangeGroup; letter: strin
 export function parseGitStatus(output: string): ChangedFile[] {
   const entries: ChangedFile[] = [];
   for (const raw of output.split("\n")) {
-    if (raw === "" || raw.startsWith("## ")) continue;
+    if (raw.trim().length === 0 || raw.startsWith("## ")) continue;
     // Porcelain v1: two status chars, a separator space, then the path.
-    if (raw.length < 4) continue;
+    if (raw.length < 4 || raw.charAt(2) !== " ") continue;
     const code = raw.slice(0, 2);
+    if (!isPorcelainCode(code)) continue;
     let path = raw.slice(3);
     // Rename/copy: `old -> new` — track the new path.
     const arrow = path.indexOf(" -> ");
     if (arrow !== -1) path = path.slice(arrow + 4);
+    const normalizedPath = normalizeGitPath(path);
+    if (normalizedPath === null) continue;
     const { group, letter } = classifyPorcelain(code);
     entries.push({
-      path,
+      path: normalizedPath,
       code,
       letter,
       group,
       adds: null,
       dels: null,
-      vault: isVaultEntry(path),
+      vault: isVaultEntry(normalizedPath),
     });
+    if (entries.length >= GIT_CHANGED_FILES_MAX_ROWS) break;
   }
   return entries;
+}
+
+function normalizeGitNumstatCount(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 /** Parse `git diff --numstat` output into a path → {adds, dels} map. A binary
@@ -1597,12 +1856,18 @@ export function parseGitNumstat(
     } else if (path.includes(" => ")) {
       path = path.split(" => ").pop() ?? path;
     }
-    const adds = addsStr === "-" ? null : Number(addsStr);
-    const dels = delsStr === "-" ? null : Number(delsStr);
-    tallies.set(path, {
-      adds: adds === null || Number.isNaN(adds) ? null : adds,
-      dels: dels === null || Number.isNaN(dels) ? null : dels,
+    const normalizedPath = normalizeGitPath(path);
+    if (normalizedPath === null) continue;
+    const adds = addsStr === "-" ? null : normalizeGitNumstatCount(addsStr);
+    const dels = delsStr === "-" ? null : normalizeGitNumstatCount(delsStr);
+    if ((addsStr !== "-" && adds === null) || (delsStr !== "-" && dels === null)) {
+      continue;
+    }
+    tallies.set(normalizedPath, {
+      adds,
+      dels,
     });
+    if (tallies.size >= GIT_CHANGED_FILES_MAX_ROWS) break;
   }
   return tallies;
 }
@@ -1620,6 +1885,25 @@ export function mergeNumstat(
 }
 
 const HUNK_HEADER_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+const GIT_DIFF_STATUS_LETTERS = new Set(["M", "A", "D", "R", "?"]);
+export const GIT_DIFF_MAX_HUNKS = 256;
+export const GIT_DIFF_MAX_LINES = 5_000;
+export const GIT_DIFF_LINE_MAX_CHARS = 8_192;
+
+export function normalizeGitDiffStatus(status: unknown): string | undefined {
+  if (typeof status !== "string") return undefined;
+  const normalized = status.trim().toUpperCase();
+  return GIT_DIFF_STATUS_LETTERS.has(normalized) ? normalized : undefined;
+}
+
+function normalizeGitDiffLineText(text: string): {
+  text: string;
+  truncated: boolean;
+} {
+  return text.length <= GIT_DIFF_LINE_MAX_CHARS
+    ? { text, truncated: false }
+    : { text: text.slice(0, GIT_DIFF_LINE_MAX_CHARS), truncated: true };
+}
 
 /** Parse a single file's `git diff --no-color` output into the structured
  *  `GitFileDiff` the `DiffView` renders: hunk-per-entry with twin (old/new) line
@@ -1628,9 +1912,15 @@ const HUNK_HEADER_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 export function parseUnifiedDiff(
   output: string,
   path: string,
-  status?: string,
+  status?: unknown,
 ): GitFileDiff {
+  const normalizedStatus = normalizeGitDiffStatus(status);
+  const normalizedPath = normalizeGitPath(path) ?? "";
   const lines = output.split("\n");
+  const totalHunks = lines.reduce(
+    (count, line) => count + (HUNK_HEADER_RE.test(line) ? 1 : 0),
+    0,
+  );
   const binary = lines.some(
     (l) => l.startsWith("Binary files ") && l.endsWith(" differ"),
   );
@@ -1638,9 +1928,15 @@ export function parseUnifiedDiff(
   let current: GitDiffHunk | null = null;
   let oldNo = 0;
   let newNo = 0;
+  let returnedLines = 0;
+  let truncatedReason: string | null = null;
   for (const line of lines) {
     const m = HUNK_HEADER_RE.exec(line);
     if (m) {
+      if (hunks.length >= GIT_DIFF_MAX_HUNKS) {
+        truncatedReason = "hunk ceiling";
+        break;
+      }
       current = { header: line, lines: [] };
       hunks.push(current);
       oldNo = Number(m[1]);
@@ -1648,37 +1944,64 @@ export function parseUnifiedDiff(
       continue;
     }
     if (!current) continue; // pre-hunk preamble (diff --git, index, ---, +++)
+    if (returnedLines >= GIT_DIFF_MAX_LINES) {
+      truncatedReason = "line ceiling";
+      break;
+    }
     const marker = line.charAt(0);
     if (marker === "+") {
+      const normalizedText = normalizeGitDiffLineText(line.slice(1));
+      if (normalizedText.truncated) truncatedReason = "line length ceiling";
       const diffLine: GitDiffLine = {
         kind: "add",
         old: null,
         new: newNo,
-        text: line.slice(1),
+        text: normalizedText.text,
       };
       current.lines.push(diffLine);
+      returnedLines += 1;
       newNo += 1;
     } else if (marker === "-") {
+      const normalizedText = normalizeGitDiffLineText(line.slice(1));
+      if (normalizedText.truncated) truncatedReason = "line length ceiling";
       const diffLine: GitDiffLine = {
         kind: "remove",
         old: oldNo,
         new: null,
-        text: line.slice(1),
+        text: normalizedText.text,
       };
       current.lines.push(diffLine);
+      returnedLines += 1;
       oldNo += 1;
     } else if (marker === " ") {
+      const normalizedText = normalizeGitDiffLineText(line.slice(1));
+      if (normalizedText.truncated) truncatedReason = "line length ceiling";
       const diffLine: GitDiffLine = {
         kind: "context",
         old: oldNo,
         new: newNo,
-        text: line.slice(1),
+        text: normalizedText.text,
       };
       current.lines.push(diffLine);
+      returnedLines += 1;
       oldNo += 1;
       newNo += 1;
     }
     // `\ No newline at end of file` and any other line is ignored.
   }
-  return { path, status, hunks, binary: binary && hunks.length === 0 };
+  return {
+    path: normalizedPath,
+    ...(normalizedStatus === undefined ? {} : { status: normalizedStatus }),
+    hunks,
+    binary: binary && hunks.length === 0,
+    ...(truncatedReason === null
+      ? {}
+      : {
+          truncated: {
+            total_hunks: totalHunks,
+            returned_hunks: hunks.length,
+            reason: truncatedReason,
+          },
+        }),
+  };
 }

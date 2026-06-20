@@ -7,10 +7,9 @@
 // the stores layer (the sole wire client); the dialog consumes the resolved
 // shape and never composes precedence itself or reads raw value maps.
 
-import type { KeybindingOverrides } from "../../platform/keymap/registry";
 import {
-  MAX_KEYBINDING_CHORD_LEN,
-  MAX_KEYBINDING_OVERRIDES,
+  normalizeKeybindingOverrides,
+  type KeybindingOverrides,
 } from "../../platform/keymap/registry";
 import type {
   GraphGranularity,
@@ -18,6 +17,7 @@ import type {
   SettingsSchema,
   SettingsState,
 } from "./engine";
+import { normalizeStoreScope } from "./scopeIdentity";
 
 /** Settings with app-level consumers beyond the generic schema-rendered dialog. */
 export const CONSUMED_SETTING_KEYS = {
@@ -37,6 +37,18 @@ export type SettingProvenance = "default" | "global" | "scope";
 
 /** Where a settings row edit is targeted. */
 export type SettingsEditTarget = "global" | "scope";
+
+const SETTINGS_EDIT_TARGETS = ["global", "scope"] as const;
+
+export function normalizeSettingsEditTarget(value: unknown): SettingsEditTarget | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return SETTINGS_EDIT_TARGETS.find((target) => target === normalized) ?? null;
+}
+
+export function isSettingsEditTarget(value: unknown): value is SettingsEditTarget {
+  return normalizeSettingsEditTarget(value) !== null;
+}
 
 /** One declared setting resolved to its effective value for the active scope. */
 export interface EffectiveSetting {
@@ -58,6 +70,8 @@ export interface SettingsGroup {
   settings: EffectiveSetting[];
 }
 
+export const normalizeSettingsScope = normalizeStoreScope;
+
 /**
  * Resolve one setting's effective value for `activeScope`. Precedence:
  * a scope override (only when the setting is scope-eligible and a value is
@@ -68,12 +82,13 @@ export interface SettingsGroup {
 export function resolveEffective(
   def: SettingDef,
   settings: SettingsState | undefined,
-  activeScope: string | null,
+  activeScope: unknown,
 ): EffectiveSetting {
+  const normalizedScope = normalizeSettingsScope(activeScope);
   const globalValue = settings?.global?.[def.key];
   const scopeValue =
-    def.scope_eligible && activeScope
-      ? settings?.scoped?.[activeScope]?.[def.key]
+    def.scope_eligible && normalizedScope !== null
+      ? settings?.scoped?.[normalizedScope]?.[def.key]
       : undefined;
 
   if (scopeValue !== undefined) {
@@ -100,7 +115,7 @@ export function settingDefByKey(
 export function resolveEffectiveSetting(
   schema: SettingsSchema | undefined,
   settings: SettingsState | undefined,
-  activeScope: string | null,
+  activeScope: unknown,
   key: ConsumedSettingKey,
 ): EffectiveSetting | null {
   const def = settingDefByKey(schema, key);
@@ -129,9 +144,9 @@ export function resolveReduceMotionSetting(
 /** Whether a setting row can target the active scope. */
 export function settingCanTargetScope(
   eff: EffectiveSetting,
-  activeScope: string | null,
+  activeScope: unknown,
 ): boolean {
-  return eff.def.scope_eligible && activeScope !== null;
+  return eff.def.scope_eligible && normalizeSettingsScope(activeScope) !== null;
 }
 
 /** Default row edit target: scope override when present, otherwise global. */
@@ -142,7 +157,7 @@ export function defaultSettingsEditTarget(eff: EffectiveSetting): SettingsEditTa
 /** The target that can actually be written for the current active scope. */
 export function effectiveSettingsEditTarget(
   eff: EffectiveSetting,
-  activeScope: string | null,
+  activeScope: unknown,
   target: SettingsEditTarget,
 ): SettingsEditTarget {
   return settingCanTargetScope(eff, activeScope) ? target : "global";
@@ -207,7 +222,7 @@ function isGraphGranularity(value: string): value is GraphGranularity {
 export function resolveGraphSettingsDefaults(
   schema: SettingsSchema | undefined,
   settings: SettingsState | undefined,
-  activeScope: string | null,
+  activeScope: unknown,
 ): GraphSettingsDefaults | null {
   const granularity = resolveEffectiveSetting(
     schema,
@@ -248,7 +263,7 @@ export function resolveGraphSettingsDefaults(
 export function resolveSettings(
   schema: SettingsSchema | undefined,
   settings: SettingsState | undefined,
-  activeScope: string | null,
+  activeScope: unknown,
 ): SettingsGroup[] {
   if (!schema) return [];
   const byGroup = new Map<string, EffectiveSetting[]>();
@@ -312,19 +327,7 @@ export function parseKeybindingOverrides(raw: string | undefined): KeybindingOve
     return {};
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-  const out: Record<string, string> = {};
-  let count = 0;
-  for (const [id, chord] of Object.entries(parsed as Record<string, unknown>)) {
-    if (count >= MAX_KEYBINDING_OVERRIDES) break;
-    if (typeof id !== "string" || id === "") continue;
-    if (typeof chord !== "string" || chord === "") continue;
-    // M3: mirror the engine's per-chord byte ceiling so a value that bypassed the
-    // engine cannot feed an unbounded string into the matcher or the legend.
-    if (chord.length > MAX_KEYBINDING_CHORD_LEN) continue;
-    out[id] = chord;
-    count += 1;
-  }
-  return out;
+  return normalizeKeybindingOverrides(parsed);
 }
 
 /**

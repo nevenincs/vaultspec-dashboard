@@ -50,6 +50,7 @@ import {
   deriveDashboardFilterSummaryView,
   deriveDashboardGraphControlsView,
   deriveDashboardGraphDefaultsInitializationView,
+  dashboardGraphDefaultsInitializationIdentity,
   deriveDashboardLayoutSelectorPresentationView,
   deriveDashboardLayoutSelectorView,
   deriveDashboardLensSelectorPresentationView,
@@ -93,16 +94,49 @@ import {
   deriveWorkspaceMapSurfaceState,
   canReadGitFileDiff,
   canReadGitHistoricalFileDiff,
+  GIT_QUERY_KEY_PART_MAX_CHARS,
   orderWorkspaceMapWorktrees,
   engineKeys,
   dashboardEditedWindowRange,
   invalidateAfterVaultMutation,
   invalidateGraphGenerationReads,
   invalidateGitRecoveryReads,
+  invalidateScopedSemanticReads,
   isAddressableNode,
   latestBackendSignalSignature,
+  normalizeEngineStreamChannel,
+  normalizeEngineStreamChannels,
+  normalizeEngineStreamIdentity,
+  normalizeEngineStreamScope,
+  normalizeEngineStreamSince,
+  normalizeBackendSignalChannel,
+  normalizeHistoryCommitForView,
+  normalizeHistoryCommitsForView,
   normalizeHistoryLimit,
   normalizeGitDiffRequest,
+  normalizeGitQueryKeyPart,
+  normalizeEngineEventsRequestIdentity,
+  normalizeDashboardStateRequestIdentity,
+  normalizeFileTreeRequestIdentity,
+  normalizeFiltersVocabularyRequestIdentity,
+  normalizeGraphEmbeddingsRequestIdentity,
+  normalizeGraphDiffRequestIdentity,
+  normalizeGraphSliceRequestIdentity,
+  normalizeHistoryRequestIdentity,
+  normalizeNodeNeighborDepth,
+  normalizeNodeScopedRequestIdentity,
+  normalizePipelineStatusRequestIdentity,
+  normalizePlanInteriorRequestIdentity,
+  normalizePullRequestsRequestIdentity,
+  normalizeIssuesRequestIdentity,
+  normalizeSearchRequestIdentity,
+  normalizeCreateDocArgs,
+  normalizeSettingUpdate,
+  normalizeTimelineLineageRequestIdentity,
+  normalizeRenameDocArgs,
+  normalizeSaveBodyArgs,
+  normalizeSetFrontmatterArgs,
+  normalizeVaultTreeRequestIdentity,
   parseSseFrames,
   refreshAfterAcceptedScopeSwitch,
   refreshAfterAcceptedWorkspaceSwitch,
@@ -111,12 +145,25 @@ import {
   streamReducer,
   tierAvailabilityReason,
   useDashboardState,
+  useDashboardFilterChoicesView,
+  useDashboardFilterSidebarView,
+  useDashboardGraphControlsView,
+  useDashboardLayoutSelectorView,
+  useDashboardLensSelectorView,
+  useDashboardStageSceneView,
+  useDashboardTierDialView,
+  useDashboardTimelineModeView,
+  useDashboardShellChromeView,
   useChangedFiles,
   useChangesOverview,
+  useContentView,
   useEngineEvents,
   useEngineSearch,
   useFileTree,
+  useFiltersVocabulary,
+  useFiltersVocabularyView,
   useGraphDiff,
+  useGraphEmbeddings,
   useGraphSlice,
   useGraphSliceAvailability,
   useGitFileDiff,
@@ -124,6 +171,7 @@ import {
   useHistoryView,
   useIssuesView,
   useLinkResolution,
+  useDiscover,
   useNodeContent,
   useNodeDetail,
   useNodeEvidence,
@@ -133,8 +181,11 @@ import {
   usePipelineStatus,
   usePlanInterior,
   usePRsView,
+  useReadTime,
+  useSalienceSliceView,
   useTimelineLineage,
   useVaultTree,
+  useVaultTreeSurface,
   dashboardStateSessionIdentity,
 } from "./queries";
 
@@ -309,10 +360,29 @@ describe("node-scoped query cache boundaries", () => {
     tiers: {},
   };
 
+  it("normalizes node-scoped query identity before keying node-family reads", () => {
+    expect(normalizeNodeScopedRequestIdentity(" scope-a ", " doc:ready ", 2.8)).toEqual(
+      {
+        scope: "scope-a",
+        nodeId: "doc:ready",
+        depth: 2,
+      },
+    );
+    expect(
+      normalizeNodeScopedRequestIdentity({ scope: "scope-a" }, { id: "doc:ready" }, 0),
+    ).toEqual({
+      scope: null,
+      nodeId: null,
+      depth: 1,
+    });
+    expect(normalizeNodeNeighborDepth(Number.POSITIVE_INFINITY)).toBe(1);
+  });
+
   it("does not expose cached node detail when no scope or no addressable node is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.node("", "doc:ready"), detail);
     client.setQueryData(engineKeys.node("scope-a", "feature:state"), detail);
+    client.setQueryData(engineKeys.node("scope-a", "doc:ready"), detail);
 
     const noScope = renderHook(() => useNodeDetail("doc:ready", null), {
       wrapper: wrapper(client),
@@ -320,9 +390,16 @@ describe("node-scoped query cache boundaries", () => {
     const featureNode = renderHook(() => useNodeDetail("feature:state", "scope-a"), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(
+      () => useNodeDetail("doc:ready", { scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(featureNode.result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
   });
 
   it("does not expose cached node neighbors when no scope or no addressable node is selected", () => {
@@ -332,6 +409,7 @@ describe("node-scoped query cache boundaries", () => {
       engineKeys.neighbors("scope-a", "feature:state", 1),
       graphSlice(),
     );
+    client.setQueryData(engineKeys.neighbors("scope-a", "doc:ready", 1), graphSlice());
 
     const noScope = renderHook(() => useNodeNeighbors("doc:ready", null), {
       wrapper: wrapper(client),
@@ -339,9 +417,16 @@ describe("node-scoped query cache boundaries", () => {
     const featureNode = renderHook(() => useNodeNeighbors("feature:state", "scope-a"), {
       wrapper: wrapper(client),
     });
+    const malformedNode = renderHook(
+      () => useNodeNeighbors({ id: "doc:ready" }, "scope-a"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(featureNode.result.current.data).toBeUndefined();
+    expect(malformedNode.result.current.data).toBeUndefined();
   });
 
   it("does not expose cached bulk node neighbors when entries are disabled", () => {
@@ -351,6 +436,7 @@ describe("node-scoped query cache boundaries", () => {
       engineKeys.neighbors("scope-a", "feature:state", 1),
       graphSlice(),
     );
+    client.setQueryData(engineKeys.neighbors("scope-a", "doc:ready", 1), graphSlice());
 
     const noScope = renderHook(() => useNodeNeighborsBulk(["doc:ready"], null), {
       wrapper: wrapper(client),
@@ -361,9 +447,16 @@ describe("node-scoped query cache boundaries", () => {
         wrapper: wrapper(client),
       },
     );
+    const malformedNode = renderHook(
+      () => useNodeNeighborsBulk([{ id: "doc:ready" }], "scope-a"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(noScope.result.current[0]?.data).toBeUndefined();
     expect(featureNode.result.current[0]?.data).toBeUndefined();
+    expect(malformedNode.result.current[0]?.data).toBeUndefined();
   });
 
   it("does not expose cached node evidence when no scope or no addressable node is selected", () => {
@@ -372,6 +465,7 @@ describe("node-scoped query cache boundaries", () => {
     client.setQueryData(engineKeys.evidence("scope-a", "feature:state"), {
       commits: [],
     });
+    client.setQueryData(engineKeys.evidence("scope-a", "doc:ready"), { commits: [] });
 
     const noScope = renderHook(() => useNodeEvidence("doc:ready", null), {
       wrapper: wrapper(client),
@@ -379,15 +473,28 @@ describe("node-scoped query cache boundaries", () => {
     const featureNode = renderHook(() => useNodeEvidence("feature:state", "scope-a"), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(
+      () => useNodeEvidence("doc:ready", { scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(featureNode.result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
   });
 
-  it("does not expose cached node content when no node or no scope is selected", () => {
+  it("does not expose cached node content when no node, no scope, or no addressable node is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.content("", "doc:ready"), { text: "cached" });
     client.setQueryData(engineKeys.content("scope-a", ""), { text: "cached" });
+    client.setQueryData(engineKeys.content("scope-a", "feature:state"), {
+      text: "cached",
+    });
+    client.setQueryData(engineKeys.content("scope-a", "doc:ready"), {
+      text: "cached",
+    });
 
     const noScope = renderHook(() => useNodeContent("doc:ready", null), {
       wrapper: wrapper(client),
@@ -395,9 +502,121 @@ describe("node-scoped query cache boundaries", () => {
     const noNode = renderHook(() => useNodeContent(null, "scope-a"), {
       wrapper: wrapper(client),
     });
+    const featureNode = renderHook(() => useNodeContent("feature:state", "scope-a"), {
+      wrapper: wrapper(client),
+    });
+    const malformedNode = renderHook(
+      () => useNodeContent({ id: "doc:ready" }, "scope-a"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(noNode.result.current.data).toBeUndefined();
+    expect(featureNode.result.current.data).toBeUndefined();
+    expect(malformedNode.result.current.data).toBeUndefined();
+  });
+
+  it("normalizes content-view identity before deriving viewer loading state", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.content("scope-a", "doc:ready"), {
+      path: ".vault/plan/ready.md",
+      blob_hash: "hash-ready",
+      language_hint: "markdown",
+      text: "cached reader text",
+      truncated: null,
+      tiers: { structural: { available: true } },
+    });
+
+    const trimmed = renderHook(() => useContentView(" doc:ready ", " scope-a "), {
+      wrapper: wrapper(client),
+    });
+    const malformedNode = renderHook(
+      () => useContentView({ id: "doc:ready" }, "scope-a"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+    const malformedScope = renderHook(
+      () => useContentView("doc:ready", { scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+
+    expect(trimmed.result.current).toMatchObject({
+      loading: false,
+      available: true,
+      path: ".vault/plan/ready.md",
+      text: "cached reader text",
+    });
+    expect(malformedNode.result.current).toMatchObject({
+      loading: false,
+      available: false,
+      text: "",
+    });
+    expect(malformedScope.result.current).toMatchObject({
+      loading: false,
+      available: false,
+      text: "",
+    });
+  });
+
+  it("derives read time through the normalized content-view seam", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.content("scope-a", "doc:ready"), {
+      text: "one two three",
+      truncated: null,
+      tiers: { structural: { available: true } },
+    });
+
+    const trimmed = renderHook(() => useReadTime(" doc:ready ", " scope-a "), {
+      wrapper: wrapper(client),
+    });
+    const malformed = renderHook(() => useReadTime({ id: "doc:ready" }, "scope-a"), {
+      wrapper: wrapper(client),
+    });
+
+    expect(trimmed.result.current).toEqual({
+      minutes: 1,
+      atLeast: false,
+      words: 3,
+    });
+    expect(malformed.result.current).toEqual({
+      minutes: 0,
+      atLeast: false,
+      words: 0,
+    });
+  });
+
+  it("does not expose cached discover candidates when no addressable node or no scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.discover("scope-a", "feature:state"), {
+      candidates: [{ id: "cached", src: "doc:a", dst: "doc:b", relation: "related" }],
+      tiers: {},
+    });
+    client.setQueryData(engineKeys.discover("scope-a", "doc:ready"), {
+      candidates: [{ id: "cached", src: "doc:a", dst: "doc:b", relation: "related" }],
+      tiers: {},
+    });
+
+    const noScope = renderHook(() => useDiscover("doc:ready", null), {
+      wrapper: wrapper(client),
+    });
+    const featureNode = renderHook(() => useDiscover("feature:state", "scope-a"), {
+      wrapper: wrapper(client),
+    });
+    const malformedScope = renderHook(
+      () => useDiscover("doc:ready", { scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+
+    expect(noScope.result.current.candidates).toEqual([]);
+    expect(featureNode.result.current.candidates).toEqual([]);
+    expect(malformedScope.result.current.candidates).toEqual([]);
   });
 });
 
@@ -420,6 +639,16 @@ describe("remaining scoped query cache boundaries", () => {
       tiers: { structural: { available: true } },
     };
     client.setQueryData(engineKeys.history("", DEFAULT_HISTORY_LIMIT), history);
+    client.setQueryData(engineKeys.history("scope-a", DEFAULT_HISTORY_LIMIT), history);
+
+    expect(normalizeHistoryRequestIdentity(" scope-a ", 24.7)).toEqual({
+      scope: "scope-a",
+      limit: 24,
+    });
+    expect(normalizeHistoryRequestIdentity({ scope: "scope-a" }, "50")).toEqual({
+      scope: null,
+      limit: DEFAULT_HISTORY_LIMIT,
+    });
 
     const raw = renderHook(() => useNodeHistory(null), {
       wrapper: wrapper(client),
@@ -427,10 +656,25 @@ describe("remaining scoped query cache boundaries", () => {
     const view = renderHook(() => useHistoryView(null), {
       wrapper: wrapper(client),
     });
+    const malformedRaw = renderHook(
+      () => useNodeHistory({ scope: "scope-a" }, DEFAULT_HISTORY_LIMIT),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+    const malformedView = renderHook(
+      () => useHistoryView({ scope: "scope-a" }, DEFAULT_HISTORY_LIMIT),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(raw.result.current.data).toBeUndefined();
     expect(view.result.current.showList).toBe(false);
     expect(view.result.current.commits).toEqual([]);
+    expect(malformedRaw.result.current.data).toBeUndefined();
+    expect(malformedView.result.current.showList).toBe(false);
+    expect(malformedView.result.current.commits).toEqual([]);
   });
 
   it("does not expose cached PR or issue data when no scope is selected", () => {
@@ -449,6 +693,27 @@ describe("remaining scoped query cache boundaries", () => {
     };
     client.setQueryData(engineKeys.prs("", "open"), prs);
     client.setQueryData(engineKeys.issues("", "open"), issues);
+    client.setQueryData(engineKeys.prs("scope-a", "open"), prs);
+    client.setQueryData(engineKeys.issues("scope-a", "open"), issues);
+
+    expect(normalizePullRequestsRequestIdentity(" scope-a ", "merged")).toEqual({
+      scope: "scope-a",
+      state: "merged",
+    });
+    expect(normalizePullRequestsRequestIdentity({ scope: "scope-a" }, "draft")).toEqual(
+      {
+        scope: null,
+        state: "open",
+      },
+    );
+    expect(normalizeIssuesRequestIdentity(" scope-a ", "closed")).toEqual({
+      scope: "scope-a",
+      state: "closed",
+    });
+    expect(normalizeIssuesRequestIdentity({ scope: "scope-a" }, "merged")).toEqual({
+      scope: null,
+      state: "open",
+    });
 
     const prView = renderHook(() => usePRsView(null), {
       wrapper: wrapper(client),
@@ -456,11 +721,21 @@ describe("remaining scoped query cache boundaries", () => {
     const issueView = renderHook(() => useIssuesView(null), {
       wrapper: wrapper(client),
     });
+    const malformedPrView = renderHook(() => usePRsView({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+    const malformedIssueView = renderHook(() => useIssuesView({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
 
     expect(prView.result.current.available).toBe(false);
     expect(prView.result.current.showList).toBe(false);
     expect(issueView.result.current.available).toBe(false);
     expect(issueView.result.current.showList).toBe(false);
+    expect(malformedPrView.result.current.available).toBe(false);
+    expect(malformedPrView.result.current.showList).toBe(false);
+    expect(malformedIssueView.result.current.available).toBe(false);
+    expect(malformedIssueView.result.current.showList).toBe(false);
   });
 
   it("does not expose cached event data when no scope is selected", () => {
@@ -477,18 +752,93 @@ describe("remaining scoped query cache boundaries", () => {
       ],
       tiers: {},
     });
+    client.setQueryData(
+      engineKeys.events("scope-a", { from: "2026-06-01", to: "2026-06-30" }, "day"),
+      {
+        events: [
+          {
+            id: "evt:cached",
+            ts: "2026-06-19",
+            kind: "commit",
+            ref: "abc",
+            node_ids: [],
+          },
+        ],
+        tiers: {},
+      },
+    );
+
+    expect(
+      normalizeEngineEventsRequestIdentity(
+        " scope-a ",
+        { from: " 2026-06-01 ", to: " 2026-06-30 " },
+        " day ",
+      ),
+    ).toEqual({
+      scope: "scope-a",
+      range: { from: "2026-06-01", to: "2026-06-30" },
+      bucket: "day",
+    });
+    expect(
+      normalizeEngineEventsRequestIdentity(
+        { scope: "scope-a" },
+        { from: 1, to: { value: "2026-06-30" } },
+        { bucket: "day" },
+      ),
+    ).toEqual({
+      scope: null,
+      range: { from: undefined, to: undefined },
+      bucket: undefined,
+    });
 
     const { result } = renderHook(() => useEngineEvents(null), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(
+      () =>
+        useEngineEvents(
+          { scope: "scope-a" },
+          { from: "2026-06-01", to: "2026-06-30" },
+          "day",
+        ),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
   });
 
   it("does not expose cached graph diff data when no scope or no window is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.diff("", 1, 2), { ops: [], tiers: {} });
     client.setQueryData(engineKeys.diff("scope-a", 1, 1), { ops: [], tiers: {} });
+    client.setQueryData(engineKeys.diff("scope-a", 1, 2), { ops: [], tiers: {} });
+
+    expect(
+      normalizeGraphDiffRequestIdentity(
+        " scope-a ",
+        " 1 ",
+        2,
+        ' {"feature_tags":["state"]} ',
+      ),
+    ).toEqual({
+      scope: "scope-a",
+      from: "1",
+      to: 2,
+      filter: '{"feature_tags":["state"]}',
+    });
+    expect(
+      normalizeGraphDiffRequestIdentity({ scope: "scope-a" }, Number.NaN, "", {
+        filter: "ignored",
+      }),
+    ).toEqual({
+      scope: null,
+      from: null,
+      to: null,
+      filter: undefined,
+    });
 
     const noScope = renderHook(() => useGraphDiff(null, 1, 2), {
       wrapper: wrapper(client),
@@ -496,9 +846,17 @@ describe("remaining scoped query cache boundaries", () => {
     const emptyWindow = renderHook(() => useGraphDiff("scope-a", 1, 1), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(() => useGraphDiff({ scope: "scope-a" }, 1, 2), {
+      wrapper: wrapper(client),
+    });
+    const malformedWindow = renderHook(() => useGraphDiff("scope-a", { from: 1 }, 2), {
+      wrapper: wrapper(client),
+    });
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(emptyWindow.result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
+    expect(malformedWindow.result.current.data).toBeUndefined();
   });
 
   it("does not expose cached search data when no scope or no query is selected", () => {
@@ -511,6 +869,29 @@ describe("remaining scoped query cache boundaries", () => {
       results: [{ id: "doc:cached" }],
       tiers: {},
     });
+    client.setQueryData(engineKeys.search("scope-a", "cached", "vault"), {
+      results: [{ id: "doc:cached" }],
+      tiers: {},
+    });
+
+    expect(normalizeSearchRequestIdentity(" cached ", "code", " scope-a ")).toEqual({
+      scope: "scope-a",
+      query: "cached",
+      target: "code",
+    });
+    expect(
+      normalizeSearchRequestIdentity(
+        { query: "cached" },
+        { target: "code" },
+        {
+          scope: "scope-a",
+        },
+      ),
+    ).toEqual({
+      scope: null,
+      query: "",
+      target: "vault",
+    });
 
     const noScope = renderHook(() => useEngineSearch(null, "cached"), {
       wrapper: wrapper(client),
@@ -518,9 +899,51 @@ describe("remaining scoped query cache boundaries", () => {
     const emptyQuery = renderHook(() => useEngineSearch("scope-a", ""), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(
+      () => useEngineSearch({ scope: "scope-a" }, "cached"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+    const malformedQuery = renderHook(
+      () => useEngineSearch("scope-a", { query: "cached" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(emptyQuery.result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
+    expect(malformedQuery.result.current.data).toBeUndefined();
+  });
+
+  it("normalizes settings update payloads before the settings mutation", () => {
+    expect(
+      normalizeSettingUpdate({
+        key: " theme ",
+        value: "dark",
+        scope: " scope-a ",
+      }),
+    ).toEqual({
+      key: "theme",
+      value: "dark",
+      scope: "scope-a",
+    });
+    expect(
+      normalizeSettingUpdate({
+        key: "label_filter",
+        value: "  semantic only  ",
+        scope: "   ",
+      }),
+    ).toEqual({
+      key: "label_filter",
+      value: "  semantic only  ",
+      scope: undefined,
+    });
+    expect(normalizeSettingUpdate({ key: "   ", value: "dark" })).toBeNull();
+    expect(normalizeSettingUpdate({ key: "theme", value: 42 })).toBeNull();
+    expect(normalizeSettingUpdate("theme")).toBeNull();
   });
 });
 
@@ -1748,34 +2171,75 @@ describe("deriveDashboardRangeSelectView (timeline range selector)", () => {
 describe("deriveDashboardGraphDefaultsInitializationView (settings effects)", () => {
   it("marks a loaded fresh dashboard-state scope as eligible for graph defaults", () => {
     expect(
-      deriveDashboardGraphDefaultsInitializationView({
-        graph_granularity: "feature",
-        filters: {},
-      }),
-    ).toEqual({ loaded: true, fresh: true });
+      deriveDashboardGraphDefaultsInitializationView(
+        {
+          graph_granularity: "feature",
+          filters: {},
+        },
+        "scope-session",
+      ),
+    ).toEqual({ loaded: true, fresh: true, identity: "scope-session" });
   });
 
   it("rejects unloaded or user-owned dashboard graph/filter intent", () => {
     expect(deriveDashboardGraphDefaultsInitializationView(undefined)).toEqual({
       loaded: false,
       fresh: false,
+      identity: null,
     });
     expect(
       deriveDashboardGraphDefaultsInitializationView({
         graph_granularity: "document",
         filters: {},
       }),
-    ).toEqual({ loaded: true, fresh: false });
+    ).toEqual({ loaded: true, fresh: false, identity: null });
     expect(
       deriveDashboardGraphDefaultsInitializationView({
         graph_granularity: "feature",
         filters: { text: "user-owned" },
       }),
-    ).toEqual({ loaded: true, fresh: false });
+    ).toEqual({ loaded: true, fresh: false, identity: null });
+  });
+
+  it("keys graph-default initialization by scope plus session identity", () => {
+    const sessionA = sessionState("scope-a");
+    const sessionB: SessionState = {
+      ...sessionA,
+      active_workspace: "workspace-b",
+      workspace: "workspace-b",
+    };
+
+    expect(
+      dashboardGraphDefaultsInitializationIdentity("scope-a", sessionA),
+    ).not.toEqual(dashboardGraphDefaultsInitializationIdentity("scope-a", sessionB));
+    expect(dashboardGraphDefaultsInitializationIdentity(null, sessionA)).toBeNull();
+    expect(
+      dashboardGraphDefaultsInitializationIdentity("scope-a", undefined),
+    ).toBeNull();
+    expect(dashboardGraphDefaultsInitializationIdentity(" scope-a ", sessionA)).toEqual(
+      dashboardGraphDefaultsInitializationIdentity("scope-a", sessionA),
+    );
+    expect(
+      dashboardGraphDefaultsInitializationIdentity({ scope: "scope-a" }, sessionA),
+    ).toBeNull();
   });
 });
 
 describe("useDashboardState cache boundaries", () => {
+  it("normalizes dashboard-state request identity at the stores boundary", () => {
+    const session = sessionState("scope-a");
+
+    expect(normalizeDashboardStateRequestIdentity(" scope-a ", session)).toEqual({
+      scope: "scope-a",
+      sessionIdentity: dashboardStateSessionIdentity(session),
+    });
+    expect(normalizeDashboardStateRequestIdentity("", session).scope).toBeNull();
+    expect(
+      normalizeDashboardStateRequestIdentity({ scope: "scope-a" } as unknown, session)
+        .scope,
+    ).toBeNull();
+  });
+
   it("does not expose cached dashboard intent when no scope is selected", () => {
     const client = testQueryClient();
     const session = sessionState("scope-a");
@@ -1791,6 +2255,128 @@ describe("useDashboardState cache boundaries", () => {
     });
 
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached dashboard intent for malformed runtime scope", () => {
+    const client = testQueryClient();
+    const session = sessionState("scope-a");
+    const sessionIdentity = dashboardStateSessionIdentity(session);
+    client.setQueryData(engineKeys.session(), session);
+    client.setQueryData(
+      engineKeys.dashboardState("", sessionIdentity),
+      dashboardState(""),
+    );
+
+    const { result } = renderHook(() => useDashboardState({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached dashboard intent through derived selectors for malformed runtime scope", () => {
+    const client = testQueryClient();
+    const session = sessionState("scope-a");
+    const sessionIdentity = dashboardStateSessionIdentity(session);
+    client.setQueryData(engineKeys.session(), session);
+    client.setQueryData(engineKeys.dashboardState("", sessionIdentity), {
+      ...dashboardState(""),
+      selected_ids: ["doc:cached"],
+      filters: { text: "cached-filter", feature_tags: ["cached"] },
+      date_range: { from: "2026-06-01", to: "2026-06-18" },
+      timeline_mode: { kind: "time-travel", at: 42 },
+      graph_bounds: { shape: "circle", size: 900 },
+      representation_mode: "radial",
+      salience_lens: "design",
+    });
+
+    const stage = renderHook(() => useDashboardStageSceneView({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+    expect(stage.result.current).toMatchObject({
+      selectedIds: [],
+      selectedNodeId: null,
+      graphQuery: null,
+      granularity: "feature",
+      activeRepresentationMode: "connectivity",
+      graphBounds: undefined,
+      liveTimeline: true,
+    });
+
+    const graphControls = renderHook(
+      () => useDashboardGraphControlsView({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+    expect(graphControls.result.current).toMatchObject({
+      graphBounds: { shape: "free", size: 0 },
+      representationMode: "connectivity",
+      freezeAvailable: true,
+      timeline: { timeTravel: false },
+    });
+
+    const layout = renderHook(
+      () => useDashboardLayoutSelectorView({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+    expect(layout.result.current).toMatchObject({
+      dateRange: {},
+      representationMode: "connectivity",
+      spatialActive: "connectivity",
+      timeline: { timeTravel: false },
+    });
+
+    const lens = renderHook(() => useDashboardLensSelectorView({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+    expect(lens.result.current).toEqual({ lens: "status" });
+
+    const filterChoices = renderHook(
+      () => useDashboardFilterChoicesView({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+    expect(filterChoices.result.current).toMatchObject({
+      loaded: false,
+      choices: {
+        featureTags: [],
+        textMatch: "",
+        dateRange: {},
+      },
+    });
+
+    const sidebar = renderHook(
+      () => useDashboardFilterSidebarView({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+    expect(sidebar.result.current).toMatchObject({
+      filters: {},
+      dateRange: {},
+      anyActive: false,
+    });
+
+    const timeline = renderHook(
+      () => useDashboardTimelineModeView({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+    expect(timeline.result.current).toEqual({
+      mode: { kind: "live" },
+      timeTravel: false,
+      opsDisabled: false,
+      asOf: undefined,
+    });
+
+    const tierDial = renderHook(() => useDashboardTierDialView({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+    expect(tierDial.result.current).toMatchObject({
+      filters: {},
+      tiers: {
+        declared: true,
+        structural: true,
+        temporal: true,
+        semantic: true,
+      },
+      timeline: { timeTravel: false },
+    });
   });
 
   it("does not expose cached dashboard intent while session identity is pending", () => {
@@ -1889,6 +2475,32 @@ describe("deriveDashboardShellChromeView (AppShell chrome)", () => {
         right_collapsed: true,
         right_tab: "status",
       },
+    });
+  });
+
+  it("normalizes runtime scope before shell chrome subscribes to dashboard state", () => {
+    const client = testQueryClient();
+    const session = sessionState("scope-a");
+    const sessionIdentity = dashboardStateSessionIdentity(session);
+    client.setQueryData(engineKeys.session(), session);
+    client.setQueryData(engineKeys.dashboardState("", sessionIdentity), {
+      ...dashboardState(""),
+      panel_state: {
+        left_collapsed: true,
+        right_collapsed: true,
+        right_tab: "search",
+      },
+    });
+
+    const { result } = renderHook(
+      () => useDashboardShellChromeView({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current.panelState).toEqual({
+      left_collapsed: false,
+      right_collapsed: false,
+      right_tab: "status",
     });
   });
 });
@@ -2081,6 +2693,33 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         confidenceFloor: 60,
         labelFilter: "adr",
       },
+    });
+  });
+
+  it("normalizes runtime settings scope before resolving scoped graph defaults", () => {
+    const settings: SettingsState = {
+      global: {
+        default_granularity: "document",
+        confidence_floor: "60",
+        label_filter: "adr",
+      },
+      scoped: { "scope-a": { default_granularity: "feature" } },
+      tiers: {},
+    };
+
+    expect(deriveSettingsEffectsView(schema, settings, " scope-a ")).toMatchObject({
+      graphDefaults: {
+        defaultGranularity: "feature",
+        confidenceFloor: 60,
+        labelFilter: "adr",
+      },
+    });
+    expect(
+      deriveSettingsEffectsView(schema, settings, { scope: "scope-a" }).graphDefaults,
+    ).toMatchObject({
+      defaultGranularity: "document",
+      confidenceFloor: 60,
+      labelFilter: "adr",
     });
   });
 
@@ -2393,6 +3032,45 @@ describe("left-rail root surface states", () => {
     expect(result.current.data).toBeUndefined();
   });
 
+  it("normalizes vault-tree and filters vocabulary request identity", () => {
+    expect(normalizeVaultTreeRequestIdentity(" scope-a ")).toEqual({
+      scope: "scope-a",
+    });
+    expect(normalizeVaultTreeRequestIdentity(["scope-a"] as unknown).scope).toBeNull();
+    expect(normalizeFiltersVocabularyRequestIdentity(" scope-a ")).toEqual({
+      scope: "scope-a",
+    });
+    expect(
+      normalizeFiltersVocabularyRequestIdentity({ scope: "scope-a" } as unknown).scope,
+    ).toBeNull();
+  });
+
+  it("does not expose cached vault-tree data for malformed runtime scope", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.vaultTree(""), {
+      entries: [
+        {
+          path: ".vault/plan/cached.md",
+          kind: "file",
+          doc_type: "plan",
+          feature_tags: ["cached"],
+        },
+      ],
+      tiers: {},
+    });
+
+    const tree = renderHook(() => useVaultTree({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+    const surface = renderHook(() => useVaultTreeSurface({ scope: "scope-a" }), {
+      wrapper: wrapper(client),
+    });
+
+    expect(tree.result.current.data).toBeUndefined();
+    expect(surface.result.current.tree.data).toBeUndefined();
+    expect(surface.result.current.state).toBe("ready");
+  });
+
   it("does not expose cached file-tree data when no scope or level is disabled", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.fileTree(""), {
@@ -2417,6 +3095,114 @@ describe("left-rail root surface states", () => {
 
     expect(noScope.result.current.data).toBeUndefined();
     expect(disabledLevel.result.current.data).toBeUndefined();
+  });
+
+  it("normalizes file-tree request identity", () => {
+    expect(normalizeFileTreeRequestIdentity(" scope-a ", "src", true)).toEqual({
+      scope: "scope-a",
+      path: "src",
+      enabled: true,
+    });
+    expect(normalizeFileTreeRequestIdentity(" scope-a ", " src ", true)).toEqual({
+      scope: "scope-a",
+      path: "src",
+      enabled: true,
+    });
+    expect(normalizeFileTreeRequestIdentity("scope-a", "   ", true)).toEqual({
+      scope: "scope-a",
+      path: undefined,
+      enabled: true,
+    });
+    expect(normalizeFileTreeRequestIdentity("scope-a", undefined, true)).toEqual({
+      scope: "scope-a",
+      path: undefined,
+      enabled: true,
+    });
+    expect(
+      normalizeFileTreeRequestIdentity("scope-a", { path: "src" } as unknown, true),
+    ).toEqual({
+      scope: "scope-a",
+      path: undefined,
+      enabled: false,
+    });
+    expect(normalizeFileTreeRequestIdentity("scope-a", "src", 1 as unknown)).toEqual({
+      scope: "scope-a",
+      path: "src",
+      enabled: false,
+    });
+  });
+
+  it("does not expose cached file-tree data for malformed runtime path", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.fileTree("scope-a"), {
+      path: "",
+      entries: [],
+      truncated: null,
+      tiers: {},
+    });
+    client.setQueryData(engineKeys.fileTree("scope-a", "src"), {
+      path: "src",
+      entries: [
+        {
+          path: "src/app.ts",
+          node_id: "code:src/app.ts",
+          kind: "file",
+        },
+      ],
+      truncated: null,
+      tiers: {},
+    });
+
+    const { result } = renderHook(
+      () => useFileTree("scope-a", { path: "src" } as unknown as string),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+    const trimmed = renderHook(() => useFileTree(" scope-a ", " src "), {
+      wrapper: wrapper(client),
+    });
+
+    expect(result.current.data).toBeUndefined();
+    expect(trimmed.result.current.data?.path).toBe("src");
+    expect(trimmed.result.current.data?.entries[0]?.path).toBe("src/app.ts");
+  });
+
+  it("does not expose cached filters vocabulary when no valid scope is selected", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.filters(""), {
+      relations: [],
+      tiers: [],
+      doc_types: ["cached"],
+      feature_tags: [],
+      kinds: [],
+      date_bounds: undefined,
+    } satisfies FiltersVocabulary);
+
+    const noScope = renderHook(() => useFiltersVocabulary(null), {
+      wrapper: wrapper(client),
+    });
+    const malformedScope = renderHook(
+      () => useFiltersVocabulary({ scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+    const malformedView = renderHook(
+      () => useFiltersVocabularyView({ scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+
+    expect(noScope.result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
+    expect(malformedView.result.current).toMatchObject({
+      vocabulary: undefined,
+      facetsLoading: true,
+      docTypes: [],
+      featureTags: [],
+    });
   });
 
   it("treats file-tree structural degradation as the terminal code-mode state", () => {
@@ -2700,6 +3486,10 @@ describe("useChangedFiles git availability boundary", () => {
       structural: { available: true },
     },
   };
+  const statusWithGit: EngineStatus = {
+    ...statusWithoutGit,
+    git: { branch: "main", dirty: true },
+  };
   const cachedChangedFile: ChangedFile = {
     path: "src/stale.ts",
     code: " M",
@@ -2746,6 +3536,35 @@ describe("useChangedFiles git availability boundary", () => {
     unmount();
   });
 
+  it("does not issue changed-file reads for malformed scopes even when git is available", async () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.status(), statusWithGit);
+    client.setQueryData(engineKeys.gitChanges(""), [cachedChangedFile]);
+    const gitRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.includes("/ops/git/status") || input.includes("/ops/git/numstat")) {
+        gitRequests.push(input);
+      }
+      return liveTransport(input, init);
+    });
+
+    const { result, unmount } = renderHook(
+      () => useChangedFiles({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toMatchObject({
+      loading: false,
+      errored: false,
+      files: [],
+      codeFiles: [],
+      documents: [],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gitRequests).toEqual([]);
+    unmount();
+  });
+
   it("keeps the changes overview on the degraded empty state with cached changed rows", () => {
     const client = testQueryClient();
     const scope = "scope-without-git";
@@ -2773,6 +3592,26 @@ describe("useChangedFiles git availability boundary", () => {
     });
     unmount();
   });
+
+  it("normalizes malformed changes overview scope to the no-scope state", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.status(), statusWithGit);
+    client.setQueryData(engineKeys.gitChanges(""), [cachedChangedFile]);
+
+    const { result, unmount } = renderHook(
+      () => useChangesOverview({ scope: "scope-a" }),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toMatchObject({
+      noScope: true,
+      clean: false,
+      hasChanges: false,
+      files: [],
+      documents: [],
+    });
+    unmount();
+  });
 });
 
 describe("git diff selector argument normalization", () => {
@@ -2792,16 +3631,69 @@ describe("git diff selector argument normalization", () => {
       from: "HEAD~1",
       to: "HEAD",
     });
+
+    expect(
+      normalizeGitDiffRequest({ scope: "wt-1" }, ["src/app.ts"], 1, Number.NaN),
+    ).toEqual({
+      scope: null,
+      path: null,
+      from: null,
+      to: null,
+    });
+  });
+
+  it("bounds git diff cache and wire identities before reads", () => {
+    const oversized = "x".repeat(GIT_QUERY_KEY_PART_MAX_CHARS + 1);
+
+    expect(normalizeGitQueryKeyPart(` ${"x".repeat(GIT_QUERY_KEY_PART_MAX_CHARS)} `))
+      .toHaveLength(GIT_QUERY_KEY_PART_MAX_CHARS);
+    expect(normalizeGitQueryKeyPart(oversized)).toBe("");
+    expect(
+      normalizeGitDiffRequest("wt-1", oversized, "HEAD~1", "HEAD"),
+    ).toEqual({
+      scope: "wt-1",
+      path: null,
+      from: "HEAD~1",
+      to: "HEAD",
+    });
+    expect(canReadGitFileDiff("wt-1", oversized, availableGit)).toBe(false);
+    expect(
+      canReadGitHistoricalFileDiff(
+        "wt-1",
+        ".vault/plan.md",
+        oversized,
+        "HEAD",
+        availableGit,
+      ),
+    ).toBe(false);
+    expect(engineKeys.gitDiff("wt-1", oversized)).toEqual([
+      ...engineKeys.all,
+      "git-diff",
+      "wt-1",
+      "",
+    ]);
   });
 
   it("disables live and historical diff reads for blank presentation values", () => {
     expect(canReadGitFileDiff("wt-1", "   ", availableGit)).toBe(false);
+    expect(canReadGitFileDiff({ scope: "wt-1" }, ".vault/plan.md", availableGit)).toBe(
+      false,
+    );
     expect(
       canReadGitHistoricalFileDiff(
         "wt-1",
         ".vault/plan.md",
         "HEAD~1",
         "  ",
+        availableGit,
+      ),
+    ).toBe(false);
+    expect(
+      canReadGitHistoricalFileDiff(
+        "wt-1",
+        ".vault/plan.md",
+        "HEAD~1",
+        { rev: "HEAD" },
         availableGit,
       ),
     ).toBe(false);
@@ -3204,6 +4096,51 @@ describe("engineKeys", () => {
     expect(new Set(GRAPH_GENERATION_QUERY_SUBTREES)).toEqual(graphGenerationFamilies);
   });
 
+  it("normalizes graph embedding query identity before keying semantic vectors", () => {
+    expect(
+      normalizeGraphEmbeddingsRequestIdentity(" wt-1 ", "design", " doc:plan "),
+    ).toEqual({
+      scope: "wt-1",
+      lens: "design",
+      focus: "doc:plan",
+    });
+    expect(
+      normalizeGraphEmbeddingsRequestIdentity({ scope: "wt-1" }, "unknown", {
+        id: "doc:plan",
+      }),
+    ).toEqual({
+      scope: null,
+      lens: "status",
+      focus: null,
+    });
+  });
+
+  it("does not expose cached semantic embeddings for malformed runtime scope", () => {
+    const client = testQueryClient();
+    client.setQueryData(engineKeys.graphEmbeddings("wt-1", "status", null), {
+      embeddings: [{ node_id: "doc:cached", vector: [0.1, 0.2] }],
+      generation: 7,
+      tiers: { semantic: { available: true } },
+      truncated: null,
+      lens: "status",
+    });
+
+    const { result } = renderHook(
+      () => useGraphEmbeddings({ scope: "wt-1" }, true, "status", null),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toMatchObject({
+      loading: false,
+      unavailable: false,
+      available: false,
+      embeddingCount: 0,
+      generation: 0,
+    });
+    expect(result.current.embeddings.size).toBe(0);
+    client.clear();
+  });
+
   it("refreshes every scoped read family after an accepted active-scope switch", () => {
     const client = testQueryClient();
     const scopedKeys = [
@@ -3363,6 +4300,46 @@ describe("engineKeys", () => {
     }
   });
 
+  it("normalizes git query key parts before cache identity construction", () => {
+    expect(normalizeGitQueryKeyPart(" wt-1 ")).toBe("wt-1");
+    expect(normalizeGitQueryKeyPart(null)).toBe("");
+    expect(engineKeys.gitChanges(" wt-1 ")).toEqual(engineKeys.gitChanges("wt-1"));
+    expect(engineKeys.gitDiff(" wt-1 ", " .vault/plan.md ")).toEqual(
+      engineKeys.gitDiff("wt-1", ".vault/plan.md"),
+    );
+    expect(
+      engineKeys.gitHistoricalDiff(" wt-1 ", " .vault/plan.md ", " HEAD~1 ", " HEAD "),
+    ).toEqual(engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"));
+  });
+
+  it("normalizes vault mutation invalidation scope and node identity", () => {
+    const client = testQueryClient();
+    const affectedKeys = [
+      engineKeys.content("wt-1", "doc:plan"),
+      engineKeys.gitChanges("wt-1"),
+      engineKeys.gitDiff("wt-1", ".vault/plan.md"),
+      engineKeys.gitHistoricalDiff("wt-1", ".vault/plan.md", "HEAD~1", "HEAD"),
+      engineKeys.history("wt-1", 20),
+    ];
+    const unaffectedKeys = [
+      engineKeys.content(" wt-1 ", " doc:plan "),
+      engineKeys.gitChanges("wt-2"),
+      engineKeys.gitDiff("wt-2", ".vault/plan.md"),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateAfterVaultMutation(client, " wt-1 ", " doc:plan ");
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
   it("invalidates scoped generation reads after a vault mutation without a node id", () => {
     const client = testQueryClient();
     const scope = "wt-create";
@@ -3435,6 +4412,89 @@ describe("engineKeys", () => {
     }
   });
 
+  it("normalizes editor body write intent before ops dispatch", () => {
+    expect(
+      normalizeSaveBodyArgs({
+        nodeId: " doc:2026-06-18-plan ",
+        scope: " wt-1 ",
+        text: 42,
+        baseBlobHash: null,
+      }),
+    ).toEqual({
+      scope: "wt-1",
+      nodeId: "doc:2026-06-18-plan",
+      ref: "2026-06-18-plan",
+      text: "",
+      baseBlobHash: "",
+    });
+    expect(normalizeSaveBodyArgs({ nodeId: { id: "doc:bad" } })).toMatchObject({
+      scope: null,
+      nodeId: null,
+      ref: null,
+    });
+  });
+
+  it("normalizes frontmatter write intent before ops dispatch", () => {
+    expect(
+      normalizeSetFrontmatterArgs({
+        nodeId: " doc:alpha ",
+        scope: " wt-1 ",
+        date: " 2026-06-20 ",
+        tags: [" #plan ", "", 42, "#state"],
+        related: [" [[a]] ", null, " [[b]] "],
+        baseBlobHash: " hash-a ",
+      }),
+    ).toEqual({
+      scope: "wt-1",
+      nodeId: "doc:alpha",
+      ref: "alpha",
+      date: "2026-06-20",
+      tags: ["#plan", "#state"],
+      related: ["[[a]]", "[[b]]"],
+      baseBlobHash: " hash-a ",
+    });
+  });
+
+  it("normalizes create and rename write intent before ops dispatch", () => {
+    expect(
+      normalizeCreateDocArgs({
+        scope: " wt-1 ",
+        docType: " plan ",
+        feature: " git-state ",
+        title: " Boundary Audit ",
+        related: [" alpha ", "", { stem: "bad" }],
+      }),
+    ).toEqual({
+      scope: "wt-1",
+      docType: "plan",
+      feature: "git-state",
+      title: "Boundary Audit",
+      related: ["alpha"],
+    });
+
+    expect(
+      normalizeRenameDocArgs({
+        scope: " wt-1 ",
+        nodeId: " doc:old-plan ",
+        to: " new-plan ",
+        expectedBlobHash: " hash-1 ",
+      }),
+    ).toEqual({
+      scope: "wt-1",
+      nodeId: "doc:old-plan",
+      ref: "old-plan",
+      to: "new-plan",
+      expectedBlobHash: "hash-1",
+    });
+    expect(normalizeRenameDocArgs(null)).toEqual({
+      scope: null,
+      nodeId: null,
+      ref: null,
+      to: "",
+      expectedBlobHash: undefined,
+    });
+  });
+
   it("invalidates status, history, and per-file git projections after a git recovery signal", () => {
     const client = testQueryClient();
     const affectedKeys = [
@@ -3459,6 +4519,36 @@ describe("engineKeys", () => {
     for (const key of unaffectedKeys) seedQuery(client, key);
 
     invalidateGitRecoveryReads(client);
+
+    for (const key of affectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unaffectedKeys) {
+      expect(isInvalidated(client, key), JSON.stringify(key)).toBe(false);
+    }
+  });
+
+  it("invalidates scoped semantic consumers from one helper", () => {
+    const client = testQueryClient();
+    const scope = "wt-1";
+    const otherScope = "wt-2";
+    const affectedKeys = [
+      engineKeys.search(scope, "alpha", "vault"),
+      engineKeys.search(scope, "beta", "code"),
+      engineKeys.graphEmbeddings(scope, "status", null),
+      engineKeys.graphEmbeddings(scope, "design", "doc:focus"),
+    ];
+    const unaffectedKeys = [
+      engineKeys.status(),
+      engineKeys.search(otherScope, "alpha", "vault"),
+      engineKeys.graphEmbeddings(otherScope, "status", null),
+      engineKeys.graph(scope, undefined, undefined, "document", "status", null),
+    ];
+
+    for (const key of affectedKeys) seedQuery(client, key);
+    for (const key of unaffectedKeys) seedQuery(client, key);
+
+    invalidateScopedSemanticReads(client, " wt-1 ");
 
     for (const key of affectedKeys) {
       expect(isInvalidated(client, key), JSON.stringify(key)).toBe(true);
@@ -3523,6 +4613,53 @@ describe("engineKeys", () => {
 });
 
 describe("backend-signal status refresh identity", () => {
+  it("normalizes engine stream identity before query keys or subscriptions", () => {
+    expect(normalizeEngineStreamChannel(" graph ")).toBe("graph");
+    expect(normalizeEngineStreamChannel("fs")).toBeNull();
+    expect(normalizeEngineStreamChannel(null)).toBeNull();
+    expect(
+      normalizeEngineStreamChannels([
+        " git ",
+        "graph",
+        "backends",
+        "git",
+        "message",
+      ]),
+    ).toEqual(["backends", "git", "graph"]);
+    expect(normalizeEngineStreamSince(42.9)).toBe(42);
+    expect(normalizeEngineStreamSince(-1)).toBeUndefined();
+    expect(normalizeEngineStreamSince(Number.POSITIVE_INFINITY)).toBeUndefined();
+    expect(normalizeEngineStreamScope(" wt-1 ")).toBe("wt-1");
+    expect(normalizeEngineStreamScope("   ")).toBeUndefined();
+    expect(
+      normalizeEngineStreamIdentity([" git ", "backends", "git"], 10.2, " wt-1 "),
+    ).toEqual({
+      channels: ["backends", "git"],
+      since: 10,
+      scope: "wt-1",
+    });
+  });
+
+  it("coalesces semantically identical stream query keys", () => {
+    expect(engineKeys.stream(["git", "backends"], 10.8, " wt-1 ")).toEqual(
+      engineKeys.stream([" backends ", "git", "git"], 10, "wt-1"),
+    );
+    expect(engineKeys.stream(["graph"], undefined, " wt-1 ")).toEqual([
+      ...engineKeys.all,
+      "stream",
+      "graph",
+      "live",
+      "wt-1",
+    ]);
+    expect(engineKeys.stream(["fs", "message"], -1, "   ")).toEqual([
+      ...engineKeys.all,
+      "stream",
+      "",
+      "live",
+      "active",
+    ]);
+  });
+
   it("uses the latest backend/git values rather than accumulator length", () => {
     const saturated = Array.from({ length: STREAM_RETENTION }, (_, i) => ({
       channel: i % 2 === 0 ? "backends" : "git",
@@ -3536,6 +4673,21 @@ describe("backend-signal status refresh identity", () => {
     expect(latestBackendSignalSignature(saturated)).not.toEqual(
       latestBackendSignalSignature(sameLengthDifferentValue),
     );
+  });
+
+  it("normalizes backend-signal channels before deriving the refresh signature", () => {
+    expect(normalizeBackendSignalChannel(" git ")).toBe("git");
+    expect(normalizeBackendSignalChannel("backends")).toBe("backends");
+    expect(normalizeBackendSignalChannel("graph")).toBeNull();
+    expect(normalizeBackendSignalChannel(null)).toBeNull();
+
+    expect(
+      latestBackendSignalSignature([
+        { channel: "graph", data: { generation: 2 } },
+        { channel: " git ", data: { dirty: true } },
+        { channel: "message", data: { ignored: true } },
+      ]),
+    ).toBe('backends:|git:{"dirty":true}');
   });
 });
 
@@ -3582,6 +4734,52 @@ describe("the lens-keyed graph query cache", () => {
     expect(omitted).toEqual(explicit);
   });
 
+  it("normalizes graph slice query identity before keying the central graph read", () => {
+    expect(
+      normalizeGraphSliceRequestIdentity(
+        " wt-1 ",
+        {
+          tiers: { semantic: false },
+          date_range: { from: "2026-06-01", to: "2026-06-30" },
+          text: " graph ",
+        },
+        " HEAD ",
+        "feature",
+        "design",
+        " doc:plan ",
+      ),
+    ).toEqual({
+      scope: "wt-1",
+      filter: {
+        tiers: { semantic: false },
+        date_range: { from: "2026-06-01", to: "2026-06-30" },
+        text: "graph",
+      },
+      asOf: "HEAD",
+      granularity: "feature",
+      lens: "design",
+      focus: "doc:plan",
+    });
+
+    expect(
+      normalizeGraphSliceRequestIdentity(
+        { scope: "wt-1" },
+        { text: { value: "ignored" }, date_range: { from: "" } },
+        Number.NaN,
+        "unknown",
+        "unknown",
+        { id: "doc:plan" },
+      ),
+    ).toEqual({
+      scope: null,
+      filter: {},
+      asOf: undefined,
+      granularity: "document",
+      lens: "status",
+      focus: null,
+    });
+  });
+
   it("does not expose cached graph data when no scope is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.graph(""), graphSlice());
@@ -3591,6 +4789,24 @@ describe("the lens-keyed graph query cache", () => {
     });
 
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("does not expose cached graph data for malformed runtime scope", () => {
+    const client = testQueryClient();
+    client.setQueryData(
+      engineKeys.graph("wt-1", {}, undefined, "document", "status", null),
+      graphSlice(),
+    );
+
+    const { result } = renderHook(
+      () => useGraphSlice({ scope: "wt-1" }, {}, undefined, "document", "status", null),
+      {
+        wrapper: wrapper(client),
+      },
+    );
+
+    expect(result.current.data).toBeUndefined();
+    client.clear();
   });
 });
 
@@ -3690,6 +4906,40 @@ describe("the salience slice view (loading + degradation from tiers)", () => {
     );
     expect(view.partial).toBe(false);
     expect(view.degradedTiers).toEqual([]);
+  });
+
+  it("does not expose cached salience graph data for malformed runtime scope", () => {
+    const client = testQueryClient();
+    const session = sessionState("scope-a");
+    const sessionIdentity = dashboardStateSessionIdentity(session);
+    client.setQueryData(engineKeys.session(), session);
+    client.setQueryData(
+      engineKeys.dashboardState("", sessionIdentity),
+      dashboardState(""),
+    );
+    client.setQueryData(
+      engineKeys.graph("", {}, undefined, "document", "status", null),
+      {
+        nodes: [],
+        edges: [],
+        tiers: okTiers,
+        lens: "design",
+        salience_partial: true,
+      } satisfies GraphSlice,
+    );
+
+    const { result } = renderHook(
+      () => useSalienceSliceView({ scope: "scope-a" }, { text: "cached" }),
+      { wrapper: wrapper(client) },
+    );
+
+    expect(result.current).toEqual({
+      lens: "status",
+      loading: false,
+      partial: false,
+      degradedTiers: [],
+      reasons: {},
+    });
   });
 });
 
@@ -3853,7 +5103,7 @@ describe("deriveLocationAnchor", () => {
 
     expect(
       deriveLocationAnchor(
-        "scope-a",
+        " scope-a ",
         {
           repositories: [
             {
@@ -3881,6 +5131,26 @@ describe("deriveLocationAnchor", () => {
       isMain: true,
       mainLabel: "main",
       dirty: true,
+    });
+  });
+
+  it("normalizes malformed location scopes to the no-scope anchor state", () => {
+    const git = deriveGitStatusView(
+      statusWith({ branch: "git-main", dirty: true, ahead: 2, behind: 1 }),
+      undefined,
+      false,
+    );
+
+    expect(
+      deriveLocationAnchor({ scope: "scope-a" }, { repositories: [], tiers: {} }, git),
+    ).toMatchObject({
+      path: null,
+      emptyLabel: "no scope — pick a worktree first",
+      branch: "git-main",
+      isMain: false,
+      dirty: true,
+      ahead: 2,
+      behind: 1,
     });
   });
 });
@@ -4320,6 +5590,36 @@ describe("history selector limit normalization", () => {
     expect(normalizeHistoryLimit(20.9)).toBe(20);
     expect(normalizeHistoryLimit(MAX_HISTORY_LIMIT + 50)).toBe(MAX_HISTORY_LIMIT);
   });
+
+  it("normalizes history commit rows before stores projections consume them", () => {
+    expect(
+      normalizeHistoryCommitForView({
+        hash: "  abc12345  ",
+        short_hash: "",
+        subject: "  feat: normalize history  ",
+        body: 42,
+        ts: Number.NaN,
+        node_ids: [" commit:abc12345 ", " doc:x ", "", "doc:x", 7],
+      }),
+    ).toEqual({
+      hash: "abc12345",
+      short_hash: "abc12345",
+      subject: "feat: normalize history",
+      body: "",
+      ts: 0,
+      node_ids: ["commit:abc12345", "doc:x"],
+    });
+    expect(normalizeHistoryCommitForView({ short_hash: "abc" })).toBeNull();
+    expect(
+      normalizeHistoryCommitsForView([
+        null,
+        { hash: " kept ", short_hash: " k ", subject: "", body: "", ts: 1, node_ids: [] },
+      ]),
+    ).toEqual([
+      { hash: "kept", short_hash: "k", subject: "", body: "", ts: 1, node_ids: [] },
+    ]);
+    expect(normalizeHistoryCommitsForView(null)).toEqual([]);
+  });
 });
 
 describe("deriveHistoryView", () => {
@@ -4401,6 +5701,55 @@ describe("deriveHistoryView", () => {
     expect(view.recentCommitRows[0]).toMatchObject({
       subjectLabel: "(no subject)",
       rowAriaLabel: "commit empty: (no subject)",
+    });
+  });
+
+  it("normalizes malformed cached history rows before deriving recent rows", () => {
+    const commits = [
+      {
+        hash: "  abcdef12  ",
+        short_hash: "",
+        subject: "  subject  ",
+        body: 17,
+        ts: Number.POSITIVE_INFINITY,
+        node_ids: [" commit:abcdef12 ", " doc:x ", "doc:x", "", { id: "doc:y" }],
+      },
+      {
+        hash: "",
+        short_hash: "drop",
+        subject: "dropped",
+        body: "",
+        ts: 1,
+        node_ids: ["doc:dropped"],
+      },
+    ] as unknown as HistoryResponse["commits"];
+
+    const view = deriveHistoryView(
+      historyWith({ structural: { available: true } }, commits),
+      undefined,
+      false,
+      1_000_000,
+    );
+
+    expect(view.commits).toEqual([
+      {
+        hash: "abcdef12",
+        short_hash: "abcdef12",
+        subject: "subject",
+        body: "",
+        ts: 0,
+        node_ids: ["commit:abcdef12", "doc:x"],
+      },
+    ]);
+    expect(view.recentCommitRows).toHaveLength(1);
+    expect(view.recentCommitRows[0]).toMatchObject({
+      eventId: "commit:abcdef12",
+      touchedNodeIds: ["doc:x"],
+      selectable: true,
+      hasBody: false,
+      subjectLabel: "subject",
+      rowAriaLabel: "commit abcdef12: subject",
+      ageLabel: "",
     });
   });
 
@@ -5279,12 +6628,34 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
       artifacts,
       tiers: structuralUp,
     });
+    client.setQueryData(engineKeys.pipeline("scope-a", "HEAD"), {
+      artifacts,
+      tiers: structuralUp,
+    });
+
+    expect(normalizePipelineStatusRequestIdentity(" scope-a ", " HEAD ")).toEqual({
+      scope: "scope-a",
+      asOf: "HEAD",
+    });
+    expect(
+      normalizePipelineStatusRequestIdentity({ scope: "scope-a" }, Number.NaN),
+    ).toEqual({
+      scope: null,
+      asOf: undefined,
+    });
 
     const { result } = renderHook(() => usePipelineStatus(null), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(
+      () => usePipelineStatus({ scope: "scope-a" }, "HEAD"),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
   });
 });
 
@@ -5396,12 +6767,46 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
       interior: planInterior(),
       tiers: {},
     });
+    client.setQueryData(engineKeys.planInterior("scope-a", "feature:state"), {
+      interior: planInterior(),
+      tiers: {},
+    });
+    client.setQueryData(engineKeys.planInterior("scope-a", "doc:plan"), {
+      interior: planInterior(),
+      tiers: {},
+    });
+
+    expect(normalizePlanInteriorRequestIdentity(" doc:plan ", " scope-a ")).toEqual({
+      scope: "scope-a",
+      planId: "doc:plan",
+    });
+    expect(
+      normalizePlanInteriorRequestIdentity({ id: "doc:plan" }, { scope: "scope-a" }),
+    ).toEqual({
+      scope: null,
+      planId: null,
+    });
+    expect(normalizePlanInteriorRequestIdentity("feature:state", "scope-a")).toEqual({
+      scope: "scope-a",
+      planId: null,
+    });
 
     const { result } = renderHook(() => usePlanInterior(null, "scope-a"), {
       wrapper: wrapper(client),
     });
+    const featureNode = renderHook(() => usePlanInterior("feature:state", "scope-a"), {
+      wrapper: wrapper(client),
+    });
+    const malformedScope = renderHook(
+      () => usePlanInterior("doc:plan", { scope: "scope-a" }),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(result.current.data).toBeUndefined();
+    expect(featureNode.result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
   });
 });
 
@@ -5471,12 +6876,61 @@ describe("deriveTimelineLineageView (timeline lineage read model)", () => {
   it("does not expose cached lineage data when no scope is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.lineage("", {}), lineageSlice());
+    client.setQueryData(
+      engineKeys.lineage(
+        "scope-a",
+        { from: "2026-06-01", to: "2026-06-30" },
+        "filter",
+        "HEAD",
+      ),
+      lineageSlice(),
+    );
+
+    expect(
+      normalizeTimelineLineageRequestIdentity(
+        " scope-a ",
+        { from: " 2026-06-01 ", to: " 2026-06-30 " },
+        " filter ",
+        " HEAD ",
+      ),
+    ).toEqual({
+      scope: "scope-a",
+      range: { from: "2026-06-01", to: "2026-06-30" },
+      filter: "filter",
+      asOf: "HEAD",
+    });
+    expect(
+      normalizeTimelineLineageRequestIdentity(
+        { scope: "scope-a" },
+        { from: 1, to: { value: "2026-06-30" } },
+        { filter: "ignored" },
+        Number.NaN,
+      ),
+    ).toEqual({
+      scope: null,
+      range: { from: undefined, to: undefined },
+      filter: undefined,
+      asOf: undefined,
+    });
 
     const { result } = renderHook(() => useTimelineLineage(null), {
       wrapper: wrapper(client),
     });
+    const malformedScope = renderHook(
+      () =>
+        useTimelineLineage(
+          { scope: "scope-a" },
+          { from: "2026-06-01", to: "2026-06-30" },
+          "filter",
+          "HEAD",
+        ),
+      {
+        wrapper: wrapper(client),
+      },
+    );
 
     expect(result.current.data).toBeUndefined();
+    expect(malformedScope.result.current.data).toBeUndefined();
   });
 });
 

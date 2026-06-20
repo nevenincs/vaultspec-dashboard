@@ -2,8 +2,11 @@ import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { normalizeNodeId } from "../nodeIds";
+import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
 export const PIPELINE_EXPANDED_IDS_CAP = 64;
+export const PIPELINE_EXPANSION_AS_OF_MAX_CHARS = 512;
+export const PIPELINE_EXPANSION_KEY_MAX_CHARS = 2048;
 
 const EMPTY_EXPANDED_IDS: readonly string[] = [];
 
@@ -17,26 +20,54 @@ export interface PipelineExpansionRowView<T extends PipelineExpansionRowInput> {
   statusPlanSelectedValue: "" | undefined;
 }
 
-export function pipelineExpansionKey(
-  scope: string | null,
-  asOf?: string | number,
-): string {
+export const normalizePipelineExpansionScope = normalizeViewStoreSessionString;
+
+export function normalizePipelineExpansionAsOf(
+  asOf: unknown,
+): string | number | undefined {
+  if (typeof asOf === "number") return Number.isFinite(asOf) ? asOf : undefined;
+  if (typeof asOf !== "string") return undefined;
+  const normalized = asOf.trim();
+  return normalized.length > 0 &&
+    normalized.length <= PIPELINE_EXPANSION_AS_OF_MAX_CHARS
+    ? normalized
+    : undefined;
+}
+
+export function pipelineExpansionKey(scope: unknown, asOf?: unknown): string {
+  const normalizedScope = normalizePipelineExpansionScope(scope);
+  const normalizedAsOf = normalizePipelineExpansionAsOf(asOf);
   const scopePart =
-    scope === null ? "scope:null" : `scope:${encodeURIComponent(scope)}`;
+    normalizedScope === null
+      ? "scope:null"
+      : `scope:value:${encodeURIComponent(normalizedScope)}`;
   const playheadPart =
-    asOf === undefined
+    normalizedAsOf === undefined
       ? "playhead:live"
-      : `playhead:${encodeURIComponent(String(asOf))}`;
-  return `pipeline-expansion:${scopePart}:${playheadPart}`;
+      : `playhead:value:${encodeURIComponent(String(normalizedAsOf))}`;
+  const key = `pipeline-expansion:${scopePart}:${playheadPart}`;
+  return key.length <= PIPELINE_EXPANSION_KEY_MAX_CHARS
+    ? key
+    : pipelineExpansionKey(null);
 }
 
 const DEFAULT_PIPELINE_EXPANSION_KEY = pipelineExpansionKey(null);
+
+export function normalizePipelineExpansionKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 &&
+    normalized.length <= PIPELINE_EXPANSION_KEY_MAX_CHARS
+    ? normalized
+    : null;
+}
 
 function pipelineExpansionRowId(row: PipelineExpansionRowInput): string {
   return normalizeNodeId("nodeId" in row ? row.nodeId : row.node_id) ?? "";
 }
 
-export function normalizePipelineExpandedIds(ids: readonly unknown[]): string[] {
+export function normalizePipelineExpandedIds(ids: unknown): string[] {
+  if (!Array.isArray(ids)) return [];
   const seen = new Set<string>();
   const normalized: string[] = [];
   for (let i = ids.length - 1; i >= 0; i -= 1) {
@@ -75,9 +106,9 @@ export function derivePipelineExpansionRows<T extends PipelineExpansionRowInput>
 interface PipelineExpansionState {
   key: string;
   expandedIds: string[];
-  setKey: (key: string) => void;
-  toggle: (key: string, id: string) => void;
-  pruneVisible: (key: string, visibleIds: readonly string[]) => void;
+  setKey: (key: unknown) => void;
+  toggle: (key: unknown, id: unknown) => void;
+  pruneVisible: (key: unknown, visibleIds: unknown) => void;
   reset: () => void;
 }
 
@@ -85,24 +116,40 @@ export const usePipelineExpansionStore = create<PipelineExpansionState>((set) =>
   key: DEFAULT_PIPELINE_EXPANSION_KEY,
   expandedIds: [],
   setKey: (key) =>
-    set((state) => (state.key === key ? state : { key, expandedIds: [] })),
+    set((state) => {
+      const normalizedKey = normalizePipelineExpansionKey(key);
+      if (normalizedKey === null) return state;
+      return state.key === normalizedKey
+        ? state
+        : { key: normalizedKey, expandedIds: [] };
+    }),
   toggle: (key, id) =>
     set((state) => {
+      const normalizedKey = normalizePipelineExpansionKey(key);
       const normalizedId = normalizeNodeId(id);
-      if (normalizedId === null) return state;
+      if (normalizedKey === null || normalizedId === null) return state;
       const current =
-        state.key === key ? normalizePipelineExpandedIds(state.expandedIds) : [];
+        state.key === normalizedKey
+          ? normalizePipelineExpandedIds(state.expandedIds)
+          : [];
       const next = current.includes(normalizedId)
         ? current.filter((entry) => entry !== normalizedId)
         : normalizePipelineExpandedIds([...current, normalizedId]);
       return {
-        key,
+        key: normalizedKey,
         expandedIds: next,
       };
     }),
   pruneVisible: (key, visibleIds) =>
     set((state) => {
-      if (state.key !== key || state.expandedIds.length === 0) return state;
+      const normalizedKey = normalizePipelineExpansionKey(key);
+      if (
+        normalizedKey === null ||
+        state.key !== normalizedKey ||
+        state.expandedIds.length === 0
+      ) {
+        return state;
+      }
       const visible = new Set(normalizePipelineExpandedIds(visibleIds));
       const next = normalizePipelineExpandedIds(state.expandedIds).filter((id) =>
         visible.has(id),
@@ -124,10 +171,10 @@ export function resetPipelineExpansion(): void {
 }
 
 export function usePipelineExpansion(
-  scope: string | null,
-  asOf: string | number | undefined,
-  visiblePlanIds: readonly string[],
-): { expanded: ReadonlySet<string>; toggle: (id: string) => void } {
+  scope: unknown,
+  asOf: unknown,
+  visiblePlanIds: readonly unknown[],
+): { expanded: ReadonlySet<string>; toggle: (id: unknown) => void } {
   const key = useMemo(() => pipelineExpansionKey(scope, asOf), [scope, asOf]);
   const storeKey = usePipelineExpansionStore((state) => state.key);
   const expandedIds = usePipelineExpansionStore((state) => state.expandedIds);
@@ -144,7 +191,7 @@ export function usePipelineExpansion(
   const activeIds = storeKey === key ? expandedIds : EMPTY_EXPANDED_IDS;
   const expanded = useMemo(() => new Set(activeIds), [activeIds]);
   const toggle = useMemo(
-    () => (id: string) => toggleStored(key, id),
+    () => (id: unknown) => toggleStored(key, id),
     [key, toggleStored],
   );
 

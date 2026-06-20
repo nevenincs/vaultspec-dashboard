@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { SCOPED_STORAGE_KEY_PART_MAX_CHARS } from "../platform/storage/scopedKeys";
 import type { KeyValueStore } from "./positionCache";
-import { PositionCache } from "./positionCache";
+import {
+  normalizePositionCacheKeyPart,
+  PositionCache,
+} from "./positionCache";
 
 class MemoryStore implements KeyValueStore {
   map = new Map<string, string>();
@@ -30,11 +34,44 @@ describe("PositionCache", () => {
     cache.save("Y:/repo/.git", "Y:/repo", new Map([["n1", pos(1, 2)]]), 1);
 
     expect(
-      store.map.has("vaultspec-dashboard:positions:Y%3A%2Frepo%2F.git:Y%3A%2Frepo"),
+      store.map.has(
+        "vaultspec-dashboard:positions:workspace:Y%3A%2Frepo%2F.git:scope:Y%3A%2Frepo",
+      ),
     ).toBe(true);
     expect(store.map.has("vaultspec-dashboard:positions:Y:/repo/.git:Y:/repo")).toBe(
       false,
     );
+  });
+
+  it("normalizes workspace and scope key parts before load, save, and clear", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+
+    expect(normalizePositionCacheKeyPart(" ws ")).toBe("ws");
+    expect(normalizePositionCacheKeyPart("   ")).toBe("default");
+    expect(normalizePositionCacheKeyPart(null)).toBe("default");
+    expect(
+      normalizePositionCacheKeyPart(
+        "x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1),
+      ),
+    ).toBe("default");
+
+    cache.save(" ws ", " scope-a ", new Map([["n1", pos(1, 2)]]), 1);
+    expect(cache.load("ws", "scope-a").get("n1")).toEqual({ x: 1, y: 2 });
+
+    cache.save(
+      "x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1),
+      "scope-a",
+      new Map([["n-over", pos(5, 6)]]),
+      3,
+    );
+    expect(cache.load("default", "scope-a").get("n-over")).toEqual({ x: 5, y: 6 });
+
+    cache.save(null, undefined, new Map([["n2", pos(3, 4)]]), 2);
+    expect(cache.load("default", "default").get("n2")).toEqual({ x: 3, y: 4 });
+
+    cache.clear(" ws ", " scope-a ");
+    expect(cache.load("ws", "scope-a").size).toBe(0);
   });
 
   it("encodes key parts so workspace and scope separator collisions are impossible", () => {
@@ -140,6 +177,35 @@ describe("PositionCache", () => {
     expect(store.map.has("vaultspec-dashboard:positions:Y:/repo/.git:scope-0")).toBe(
       false,
     );
+    expect(cache.load("Y:/repo/.git", "scope-new").get("n2")).toEqual({
+      x: 9,
+      y: 9,
+    });
+  });
+
+  it("loads legacy encoded index keys from the pre role-tagged key shape", () => {
+    const store = new MemoryStore();
+    const cache = new PositionCache(store);
+    for (let i = 0; i < 12; i++) {
+      store.map.set(
+        `vaultspec-dashboard:positions:Y%3A%2Frepo%2F.git:scope-${i}`,
+        JSON.stringify({ v: 1, updatedAt: i, positions: { n1: [i, i] } }),
+      );
+    }
+    store.map.set(
+      "vaultspec-dashboard:positions:Y%3A%2Frepo%2F.git::index",
+      JSON.stringify(
+        Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`scope-${i}`, i])),
+      ),
+    );
+
+    expect(cache.scopes("Y:/repo/.git")[0]).toBe("scope-0");
+    cache.save("Y:/repo/.git", "scope-new", new Map([["n2", pos(9, 9)]]), 13);
+
+    expect(cache.load("Y:/repo/.git", "scope-0").size).toBe(0);
+    expect(
+      store.map.has("vaultspec-dashboard:positions:Y%3A%2Frepo%2F.git:scope-0"),
+    ).toBe(false);
     expect(cache.load("Y:/repo/.git", "scope-new").get("n2")).toEqual({
       x: 9,
       y: 9,

@@ -12,6 +12,16 @@
 // framework-free by design. Storage is injectable (localStorage in the
 // browser, a Map-backed stub in tests).
 
+import {
+  legacyEncodedScopedStorageKey,
+  legacyEncodedStorageIndexKey,
+  legacyScopedStorageKey,
+  legacyStorageIndexKey,
+  normalizeScopedStorageKeyPart,
+  scopedStorageIndexKey,
+  scopedStorageKey,
+} from "../platform/storage/scopedKeys";
+
 export interface NodePosition {
   x: number;
   y: number;
@@ -35,15 +45,20 @@ const PREFIX = "vaultspec-dashboard:positions";
 /** Most scopes a workspace keeps warm; least-recently-updated evict first. */
 const MAX_SCOPES = 12;
 
-const keyPart = (value: string): string => encodeURIComponent(value);
+export const normalizePositionCacheKeyPart = normalizeScopedStorageKeyPart;
 
-const legacyScopeKey = (workspace: string, scope: string): string =>
-  `${PREFIX}:${workspace}:${scope}`;
-const scopeKey = (workspace: string, scope: string): string =>
-  `${PREFIX}:${keyPart(workspace)}:${keyPart(scope)}`;
-const legacyIndexKey = (workspace: string): string => `${PREFIX}:${workspace}::index`;
-const indexKey = (workspace: string): string =>
-  `${PREFIX}:${keyPart(workspace)}::index`;
+const legacyScopeKey = (workspace: unknown, scope: unknown): string =>
+  legacyScopedStorageKey(PREFIX, workspace, scope);
+const legacyEncodedScopeKey = (workspace: unknown, scope: unknown): string =>
+  legacyEncodedScopedStorageKey(PREFIX, workspace, scope);
+const scopeKey = (workspace: unknown, scope: unknown): string =>
+  scopedStorageKey(PREFIX, workspace, scope);
+const legacyIndexKey = (workspace: unknown): string =>
+  legacyStorageIndexKey(PREFIX, workspace);
+const legacyEncodedIndexKey = (workspace: unknown): string =>
+  legacyEncodedStorageIndexKey(PREFIX, workspace);
+const indexKey = (workspace: unknown): string =>
+  scopedStorageIndexKey(PREFIX, workspace);
 
 export class PositionCache {
   private store: KeyValueStore;
@@ -53,12 +68,24 @@ export class PositionCache {
   }
 
   /** Restore the remembered positions for a workspace + scope, if any. */
-  load(workspace: string, scope: string): Map<string, NodePosition> {
+  load(workspace: unknown, scope: unknown): Map<string, NodePosition> {
     const key = scopeKey(workspace, scope);
-    const legacyKey = legacyScopeKey(workspace, scope);
     const primaryRaw = this.store.getItem(key);
-    const usingLegacy = primaryRaw === null && legacyKey !== key;
-    const raw = primaryRaw ?? (usingLegacy ? this.store.getItem(legacyKey) : null);
+    let raw = primaryRaw;
+    let rawKey = key;
+    if (raw === null) {
+      for (const fallbackKey of [
+        legacyEncodedScopeKey(workspace, scope),
+        legacyScopeKey(workspace, scope),
+      ]) {
+        if (fallbackKey === key) continue;
+        raw = this.store.getItem(fallbackKey);
+        if (raw !== null) {
+          rawKey = fallbackKey;
+          break;
+        }
+      }
+    }
     const out = new Map<string, NodePosition>();
     if (!raw) return out;
     try {
@@ -69,7 +96,7 @@ export class PositionCache {
       }
     } catch {
       // Corrupt blob: a cache miss, never an error surface.
-      this.store.removeItem(usingLegacy ? legacyKey : key);
+      this.store.removeItem(rawKey);
     }
     return out;
   }
@@ -81,11 +108,12 @@ export class PositionCache {
    * evict until the write fits; persistence is best-effort by design.
    */
   save(
-    workspace: string,
-    scope: string,
+    workspace: unknown,
+    scope: unknown,
     positions: ReadonlyMap<string, NodePosition>,
     now: number,
   ): void {
+    const normalizedScope = normalizePositionCacheKeyPart(scope);
     const blob: CacheBlob = { v: 1, updatedAt: now, positions: {} };
     for (const [id, p] of positions) {
       blob.positions[id] = [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
@@ -95,7 +123,7 @@ export class PositionCache {
     for (let attempt = 0; attempt <= MAX_SCOPES; attempt++) {
       try {
         this.store.setItem(key, value);
-        this.evictBeyondLimit(workspace, scope);
+        this.evictBeyondLimit(workspace, normalizedScope);
         return;
       } catch {
         if (!this.evictOldest(workspace, key)) return;
@@ -104,14 +132,15 @@ export class PositionCache {
   }
 
   /** Drop one scope's cache (e.g. on a corrupt or stale layout). */
-  clear(workspace: string, scope: string): void {
-    this.removeScopeBlob(workspace, scope);
-    this.index(workspace).delete(scope);
+  clear(workspace: unknown, scope: unknown): void {
+    const normalizedScope = normalizePositionCacheKeyPart(scope);
+    this.removeScopeBlob(workspace, normalizedScope);
+    this.index(workspace).delete(normalizedScope);
     this.writeIndex(workspace);
   }
 
   /** All scopes currently cached for a workspace, oldest first. */
-  scopes(workspace: string): readonly string[] {
+  scopes(workspace: unknown): readonly string[] {
     return [...this.index(workspace).entries()]
       .sort((a, b) => a[1] - b[1])
       .map(([scope]) => scope);
@@ -121,15 +150,24 @@ export class PositionCache {
 
   private indexCache = new Map<string, Map<string, number>>();
 
-  private index(workspace: string): Map<string, number> {
-    let idx = this.indexCache.get(workspace);
+  private index(workspace: unknown): Map<string, number> {
+    const normalizedWorkspace = normalizePositionCacheKeyPart(workspace);
+    let idx = this.indexCache.get(normalizedWorkspace);
     if (idx) return idx;
     idx = new Map();
     const key = indexKey(workspace);
-    const legacyKey = legacyIndexKey(workspace);
     const primaryRaw = this.store.getItem(key);
-    const usingLegacy = primaryRaw === null && legacyKey !== key;
-    const raw = primaryRaw ?? (usingLegacy ? this.store.getItem(legacyKey) : null);
+    let raw = primaryRaw;
+    if (raw === null) {
+      for (const fallbackKey of [
+        legacyEncodedIndexKey(workspace),
+        legacyIndexKey(workspace),
+      ]) {
+        if (fallbackKey === key) continue;
+        raw = this.store.getItem(fallbackKey);
+        if (raw !== null) break;
+      }
+    }
     if (raw) {
       try {
         for (const [scope, at] of Object.entries(
@@ -141,11 +179,11 @@ export class PositionCache {
         // Corrupt index: rebuilt as scopes save.
       }
     }
-    this.indexCache.set(workspace, idx);
+    this.indexCache.set(normalizedWorkspace, idx);
     return idx;
   }
 
-  private writeIndex(workspace: string): void {
+  private writeIndex(workspace: unknown): void {
     try {
       this.store.setItem(
         indexKey(workspace),
@@ -156,7 +194,7 @@ export class PositionCache {
     }
   }
 
-  private evictBeyondLimit(workspace: string, justSaved: string): void {
+  private evictBeyondLimit(workspace: unknown, justSaved: string): void {
     const idx = this.index(workspace);
     idx.set(justSaved, Math.max(...[0, ...idx.values()]) + 1);
     while (idx.size > MAX_SCOPES) {
@@ -167,7 +205,7 @@ export class PositionCache {
     this.writeIndex(workspace);
   }
 
-  private evictOldest(workspace: string, excludeKey: string): boolean {
+  private evictOldest(workspace: unknown, excludeKey: string): boolean {
     const idx = this.index(workspace);
     for (const [scope] of [...idx.entries()].sort((a, b) => a[1] - b[1])) {
       if (scopeKey(workspace, scope) === excludeKey) continue;
@@ -179,11 +217,15 @@ export class PositionCache {
     return false;
   }
 
-  private removeScopeBlob(workspace: string, scope: string): void {
+  private removeScopeBlob(workspace: unknown, scope: unknown): void {
     this.store.removeItem(scopeKey(workspace, scope));
-    const legacyKey = legacyScopeKey(workspace, scope);
-    if (legacyKey !== scopeKey(workspace, scope)) {
-      this.store.removeItem(legacyKey);
+    for (const legacyKey of [
+      legacyEncodedScopeKey(workspace, scope),
+      legacyScopeKey(workspace, scope),
+    ]) {
+      if (legacyKey !== scopeKey(workspace, scope)) {
+        this.store.removeItem(legacyKey);
+      }
     }
   }
 }

@@ -4,6 +4,8 @@ import type { SettingDef, SettingsState } from "./engine";
 import {
   defaultSettingsEditTarget,
   effectiveSettingsEditTarget,
+  isSettingsEditTarget,
+  normalizeSettingsEditTarget,
   parseKeybindingOverrides,
   resolveEffective,
   resolveKeybindingOverrides,
@@ -46,6 +48,16 @@ function settings(
 }
 
 describe("settings row derivations", () => {
+  it("normalizes settings edit targets beside the target type", () => {
+    expect(isSettingsEditTarget("global")).toBe(true);
+    expect(isSettingsEditTarget("scope")).toBe(true);
+    expect(isSettingsEditTarget(" scope ")).toBe(true);
+    expect(isSettingsEditTarget("workspace")).toBe(false);
+    expect(isSettingsEditTarget(null)).toBe(false);
+    expect(normalizeSettingsEditTarget(" scope ")).toBe("scope");
+    expect(normalizeSettingsEditTarget("   ")).toBeNull();
+  });
+
   it("derives global/default row facts from schema and settings state", () => {
     const eff = resolveEffective(def, settings(), "scope-a");
 
@@ -121,7 +133,7 @@ describe("app-consumed settings", () => {
 describe("keybinding override decode", () => {
   it("parses a well-formed sparse override map", () => {
     expect(
-      parseKeybindingOverrides('{"command.palette":"Mod+P","help.legend":"F1"}'),
+      parseKeybindingOverrides('{" command.palette ":" Mod+P ","help.legend":"F1"}'),
     ).toEqual({ "command.palette": "Mod+P", "help.legend": "F1" });
   });
 

@@ -121,6 +121,56 @@ export function formatGraphControlsTuneValue(
   return key === "linkSpring" ? value.toFixed(1) : String(Math.round(value));
 }
 
+export type GraphControlsBoundShape = "free" | "circle" | "rect";
+
+export interface GraphControlsBoundPresentationView {
+  containerClassName: string;
+  groupClassName: string;
+  labelClassName: string;
+  label: string;
+  shapeAriaLabel: string;
+  freeLabel: string;
+  circleLabel: string;
+  rectLabel: string;
+  showSizeControl: boolean;
+  sizeLabel: string;
+  sizeTitle: string;
+  sizeMin: number;
+  sizeMax: number;
+  sizeStep: number;
+}
+
+export function deriveGraphControlsBoundPresentationView(
+  shape: unknown,
+): GraphControlsBoundPresentationView {
+  const normalizedShape: GraphControlsBoundShape =
+    shape === "circle" || shape === "rect" ? shape : "free";
+  return {
+    containerClassName: "flex w-48 flex-col gap-fg-2",
+    groupClassName: "flex flex-col gap-fg-1",
+    labelClassName: "text-label text-ink-muted",
+    label: "Canvas bound",
+    shapeAriaLabel: "Canvas bound shape",
+    freeLabel: "Free",
+    circleLabel: "Circle",
+    rectLabel: "Rect",
+    showSizeControl: normalizedShape !== "free",
+    sizeLabel: "Bound size",
+    sizeTitle:
+      normalizedShape === "circle"
+        ? "Circle radius in world units; 0 = auto-fit"
+        : "Rectangle half-extent in world units; 0 = auto-fit",
+    sizeMin: 0,
+    sizeMax: 4000,
+    sizeStep: 100,
+  };
+}
+
+export function formatGraphControlsBoundSize(value: unknown): string {
+  const normalized = finiteOrDefault(value, 0);
+  return normalized <= 0 ? "auto" : String(Math.round(normalized));
+}
+
 // --- appearance / "look" controls (graph-backend-unification ADR D3) -----------
 // The node-size + edge-look knobs the GraphControls appearance section tunes on the
 // active field, mapped onto `set-appearance-params`. The store carries the full
@@ -268,8 +318,6 @@ export function formatGraphControlsAppearanceValue(
   return key === "edgeOpacityMax" ? value.toFixed(2) : value.toFixed(1);
 }
 
-export type GraphControlsBoundShape = "free" | "circle" | "rect";
-
 export interface GraphControlsSettingsPopoverView {
   active: boolean;
   ariaExpanded: boolean;
@@ -290,51 +338,6 @@ export function deriveGraphControlsSettingsPopoverView(
     panelClassName:
       "absolute bottom-full right-0 z-30 mb-fg-2 flex flex-col gap-fg-2 bg-paper-raised/95 p-fg-3 backdrop-blur-sm",
   };
-}
-
-export interface GraphControlsBoundPresentationView {
-  containerClassName: string;
-  groupClassName: string;
-  labelClassName: string;
-  label: string;
-  shapeAriaLabel: string;
-  freeLabel: string;
-  circleLabel: string;
-  rectLabel: string;
-  showSizeControl: boolean;
-  sizeLabel: string;
-  sizeTitle: string;
-  sizeMin: number;
-  sizeMax: number;
-  sizeStep: number;
-}
-
-export function deriveGraphControlsBoundPresentationView(
-  shape: GraphControlsBoundShape,
-): GraphControlsBoundPresentationView {
-  return {
-    containerClassName: "flex w-48 flex-col gap-fg-2",
-    groupClassName: "flex flex-col gap-fg-1",
-    labelClassName: "text-label text-ink-muted",
-    label: "Canvas bound",
-    shapeAriaLabel: "Canvas bound shape",
-    freeLabel: "Free",
-    circleLabel: "Circle",
-    rectLabel: "Rect",
-    showSizeControl: shape !== "free",
-    sizeLabel: "Bound size",
-    sizeTitle:
-      shape === "circle"
-        ? "Circle radius in world units; 0 = auto-fit"
-        : "Rectangle half-extent in world units; 0 = auto-fit",
-    sizeMin: 0,
-    sizeMax: 4000,
-    sizeStep: 100,
-  };
-}
-
-export function formatGraphControlsBoundSize(value: number): string {
-  return value === 0 ? "auto" : String(Math.round(value));
 }
 
 export interface GraphControlsFreezeToggleView {

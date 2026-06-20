@@ -38,11 +38,7 @@ const NON_WHOLESALE_VIEW_RESETS = new Set([
   "commandPalette.ts:resetCommandPaletteSurfaceState",
   "opsReceipt.ts:resetOpsReceipt",
 ]);
-const ALLOWED_PRODUCTION_USE_STATE = new Map<string, number>([
-  ["app/chrome/useElementWidth.ts:height:setHeight", 1],
-  ["app/chrome/useElementWidth.ts:width:setWidth", 1],
-  ["app/chrome/useReducedMotion.ts:reduced:setReduced", 1],
-]);
+const ALLOWED_PRODUCTION_USE_STATE = new Map<string, number>([]);
 const ALLOWED_PRODUCTION_STORE_HOOK_CALLS = new Map<string, number>([
   ["platform/errors/CrashInjector.tsx:useCrashStore", 3],
 ]);
@@ -169,6 +165,52 @@ describe("dashboard layer ownership", () => {
           violations.push(`${rel}: direct stream transport call`);
         }
       }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps engine stream cache identity normalized at the stores seam", () => {
+    const rel = "stores/server/queries.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeEngineStreamChannel",
+      "normalizeEngineStreamChannels",
+      "normalizeEngineStreamSince",
+      "normalizeEngineStreamScope",
+      "normalizeEngineStreamIdentity",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam}`);
+      }
+    }
+    if (!/\bENGINE_STREAM_CHANNELS\s*=\s*\[\s*["']backends["']\s*,\s*["']git["']\s*,\s*["']graph["']\s*\]/.test(stripped)) {
+      violations.push(`${rel}: stream channel domain is not canonical`);
+    }
+    if (
+      !/\bstream:\s*\(\s*channels:\s*readonly\s+unknown\[\]\s*,\s*since\?:\s*unknown,\s*scope\?:\s*unknown\s*\)\s*=>\s*\{[\s\S]*\bnormalizeEngineStreamIdentity\s*\(\s*channels\s*,\s*since\s*,\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: engine stream key bypasses normalized identity`);
+    }
+    if (
+      !/\bengineStreamOptions\s*\(\s*channels:\s*readonly\s+unknown\[\]\s*,[\s\S]*\bconst\s+identity\s*=\s*normalizeEngineStreamIdentity\s*\(\s*channels\s*,\s*since\s*,\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: stream options bypass normalized identity`);
+    }
+    if (/\bengineKeys\.stream\s*\(\s*channels\s*,\s*since\s*,\s*scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: stream options pass raw identity to query key`);
+    }
+    if (/\bopenStream\s*\(\s*\[\s*\.\.\.channels\s*\]/.test(stripped)) {
+      violations.push(`${rel}: stream options pass raw channels to transport`);
+    }
+    if (!/\bnormalizeBackendSignalChannel[\s\S]*\bnormalizeEngineStreamChannel\s*\(\s*channel\s*\)/.test(stripped)) {
+      violations.push(`${rel}: backend-signal channel normalization is forked`);
     }
 
     expect(violations).toEqual([]);
@@ -328,6 +370,35 @@ describe("dashboard layer ownership", () => {
     if (!/\bsetTimelinePlayhead\b/.test(intent)) {
       violations.push(`${TIMELINE_INTENT}: missing local playhead projection`);
     }
+    if (
+      /\bmovePlayhead\s*\(\s*t:\s*DashboardPlayhead,\s*scope:\s*string\s*\|\s*null/.test(
+        intent,
+      )
+    ) {
+      violations.push(`${TIMELINE_INTENT}: movePlayhead trusts typed-only scope`);
+    }
+    if (!/\bmovePlayhead\s*\(\s*t:\s*unknown,\s*scope:\s*unknown/.test(intent)) {
+      violations.push(`${TIMELINE_INTENT}: movePlayhead lacks runtime input seam`);
+    }
+    if (
+      !/\bconst\s+playhead\s*=\s*normalizeTimelinePlayhead\s*\(\s*t\s*\)[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeTimelineScope\s*\(\s*scope\s*\)/.test(
+        intent,
+      )
+    ) {
+      violations.push(`${TIMELINE_INTENT}: movePlayhead bypasses input normalizers`);
+    }
+    if (
+      !/\bnormalizedScope\s*!==\s*null[\s\S]*patchDashboardTimelineMode\s*\([\s\S]*normalizedScope[\s\S]*dashboardTimelineModeForPlayhead\s*\(\s*playhead\s*\)/.test(
+        intent,
+      )
+    ) {
+      violations.push(`${TIMELINE_INTENT}: dashboard playhead write uses raw identity`);
+    }
+    if (
+      !/\bscope\s*==\s*null[\s\S]*setTimelinePlayhead\s*\(\s*playhead\s*\)/.test(intent)
+    ) {
+      violations.push(`${TIMELINE_INTENT}: local playhead fallback is not explicit`);
+    }
     for (const seam of [
       "startPlayheadDragPointerSession",
       "dragToPlayhead",
@@ -345,13 +416,296 @@ describe("dashboard layer ownership", () => {
 
   it("keeps hook timeline-mode writes on the guarded playhead seam", () => {
     const stripped = stripComments(readFileSync(DASHBOARD_STATE_STORE, "utf8"));
+    const normalization = stripComments(
+      readFileSync(
+        join(SRC_ROOT, "stores/server/dashboardStateNormalization.ts"),
+        "utf8",
+      ),
+    );
+    const adapter = stripComments(
+      readFileSync(join(SRC_ROOT, "stores/server/liveAdapters.ts"), "utf8"),
+    );
+    const violations: string[] = [];
 
-    expect(stripped).toMatch(
-      /setTimelineMode:\s*\([^)]*\)\s*=>\s*patchDashboardTimelineMode\s*\(/,
+    if (
+      !/\bexport\s+function\s+normalizeDashboardTimelineMode\s*\(\s*mode:\s*unknown[\s\S]*Number\.isFinite\s*\(\s*mode\.at\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardStateNormalization.ts: missing timeline-mode normalizer",
+      );
+    }
+    if (
+      !/\btimelineModePatch\s*\(\s*timeline_mode:\s*unknown\s*,?\s*\)[\s\S]*?:\s*DashboardStateMutationPatch\s*\{[\s\S]*normalizeDashboardTimelineMode\s*\(\s*timeline_mode\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: timeline-mode patch trusts typed input",
+      );
+    }
+    if (
+      !/\bpatchDashboardTimelineMode\s*\([\s\S]*mode:\s*unknown[\s\S]*timelineModePatch\s*\(\s*mode\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: timeline-mode write bypasses runtime normalizer",
+      );
+    }
+    if (
+      !/setTimelineMode:\s*\([^)]*\)\s*=>\s*patchDashboardTimelineMode\s*\(/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: timeline-mode mutation bypasses guarded write",
+      );
+    }
+    if (
+      /setTimelineMode:\s*\([^)]*\)\s*=>\s*mutation\.mutateAsync\s*\(\s*timelineModePatch\s*\(/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: timeline-mode mutation bypasses guarded playhead seam",
+      );
+    }
+    for (const typedOnly of [
+      "timelineModePatch(\n  timeline_mode: DashboardTimelineMode",
+      "patchDashboardTimelineMode(\n  scope: string | null,\n  mode: DashboardTimelineMode",
+      "patchDashboardTimelineMode(\n  scope: string | null,\n  mode: unknown",
+      "setTimelineMode: (mode: DashboardTimelineMode)",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(
+          `stores/server/dashboardState.ts: typed-only timeline-mode seam ${typedOnly}`,
+        );
+      }
+    }
+    for (const [required, pattern] of [
+      [
+        "timelineModePatch(timeline_mode: unknown)",
+        /\btimelineModePatch\s*\(\s*timeline_mode:\s*unknown\s*\)/,
+      ],
+      [
+        "patchDashboardTimelineMode(scope: unknown, mode: unknown)",
+        /\bpatchDashboardTimelineMode\s*\(\s*scope:\s*unknown,\s*mode:\s*unknown/,
+      ],
+      ["setTimelineMode: (mode: unknown)", /setTimelineMode:\s*\(mode:\s*unknown\)/],
+    ] as const) {
+      if (!pattern.test(stripped)) {
+        violations.push(
+          `stores/server/dashboardState.ts: missing runtime timeline-mode seam ${required}`,
+        );
+      }
+    }
+    if (
+      !/\bnormalizeDashboardTimelineMode\s*\(\s*body\.timeline_mode\s*\)/.test(adapter)
+    ) {
+      violations.push(
+        "stores/server/liveAdapters.ts: dashboard adapter bypasses timeline-mode normalizer",
+      );
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeDashboardStateWriteScope\s*\(\s*scope\s*\)[\s\S]*beginDashboardTimelineModeWrite\s*\(\s*normalizedScope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: timeline-mode write bypasses scope normalizer",
+      );
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps visual dashboard mutation payloads normalized at the store seam", () => {
+    const stripped = stripComments(readFileSync(DASHBOARD_STATE_STORE, "utf8"));
+    const normalization = stripComments(
+      readFileSync(join(SRC_ROOT, "stores/server/dashboardStateNormalization.ts"), "utf8"),
     );
-    expect(stripped).not.toMatch(
-      /setTimelineMode:\s*\([^)]*\)\s*=>\s*mutation\.mutateAsync\s*\(\s*timelineModePatch\s*\(/,
+    const adapter = stripComments(
+      readFileSync(join(SRC_ROOT, "stores/server/liveAdapters.ts"), "utf8"),
     );
+    const violations: string[] = [];
+
+    for (const typedOnly of [
+      "patchDashboardState(\n  scope: string | null",
+      "usePatchDashboardState(scope: string | null",
+      "useDashboardStateMutations(scope: string | null",
+      "setSelection: (selectedIds: string[])",
+      "setFilters: (filters: DashboardFilters)",
+      "setDateRange: (dateRange: DashboardDateRange)",
+      "setLens: (lens: SalienceLens)",
+      "setFocus: (focus: string | null)",
+      "setPanelState: (panelState: DashboardPanelState)",
+      "updatePanelState: (panelState: DashboardPanelStateUpdate)",
+      "toggleFilterFacet: (facet: DashboardFilterFacet, value: string)",
+      'descendFeature: (state: Pick<DashboardState, "filters">, featureTag: string)',
+      "descendFeatureTag: (featureTag: string)",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(
+          `stores/server/dashboardState.ts: typed-only visual mutation ${typedOnly}`,
+        );
+      }
+    }
+    for (const requiredScopeSeam of [
+      "patchDashboardState(\n  scope: unknown",
+      "usePatchDashboardState(scope: unknown",
+      "useDashboardStateMutations(scope: unknown",
+    ]) {
+      if (!stripped.includes(requiredScopeSeam)) {
+        violations.push(
+          `stores/server/dashboardState.ts: missing runtime write scope seam ${requiredScopeSeam}`,
+        );
+      }
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeDashboardStateWriteScope\s*=\s*normalizeStoreScope\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: missing shared dashboard write-scope normalizer",
+      );
+    }
+    if (
+      !/\bexport\s+function\s+useDashboardStateMutations\s*\(\s*scope:\s*unknown\s*\)[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeDashboardStateWriteScope\s*\(\s*scope\s*\)[\s\S]*\busePatchDashboardState\s*\(\s*normalizedScope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: dashboard mutations bypass write-scope normalizer",
+      );
+    }
+    for (const required of [
+      "setSelection: (selectedIds: unknown)",
+      "setFilters: (filters: unknown)",
+      "setDateRange: (dateRange: unknown)",
+      "setLens: (lens: unknown)",
+      "setFocus: (focus: unknown)",
+      "setPanelState: (panelState: unknown)",
+      "updatePanelState: (panelState: unknown)",
+      "toggleFilterFacet: (facet: unknown, value: unknown)",
+      "descendFeature: (state: unknown, featureTag: unknown)",
+      "descendFeatureTag: (featureTag: unknown)",
+    ]) {
+      if (!stripped.includes(required)) {
+        violations.push(
+          `stores/server/dashboardState.ts: missing runtime visual mutation ${required}`,
+        );
+      }
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDashboardSelectedIds\s*\(\s*ids:\s*unknown\s*\)[\s\S]*Array\.isArray\s*\(\s*ids\s*\)[\s\S]*normalizeNodeIds\s*\(\s*ids\s*,\s*MAX_DASHBOARD_SELECTED_IDS\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardStateNormalization.ts: selection normalizer trusts typed ids",
+      );
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(
+        adapter,
+      ) ||
+      !/\badaptDashboardState\b[\s\S]*\bscope:\s*normalizeStoreScope\s*\(\s*body\.scope\s*\)\s*\?\?\s*["']["']/.test(
+        adapter,
+      ) ||
+      !/\badaptDashboardState\b[\s\S]*\bselected_ids:\s*normalizeDashboardSelectedIds\s*\(\s*body\.selected_ids\s*\)[\s\S]*\bhovered_id:\s*normalizeDashboardNodeId\s*\(\s*body\.hovered_id\s*\)[\s\S]*\bsalience_focus:\s*normalizeDashboardNodeId\s*\(\s*body\.salience_focus\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(
+        "stores/server/liveAdapters.ts: dashboard adapter bypasses dashboard identity normalizers",
+      );
+    }
+    if (
+      !/\bexport\s+function\s+filtersPatch\s*\(\s*filters:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: filters patch trusts typed filters",
+      );
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDashboardFilterFacet\s*\(\s*facet:\s*unknown[\s\S]*DASHBOARD_FILTER_FACETS[\s\S]*includes\s*\(\s*normalized\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+function\s+normalizeDashboardFilterFacetValue\s*\(\s*value:\s*unknown[\s\S]*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: missing bounded runtime filter-facet normalizers",
+      );
+    }
+    if (
+      !/\bdashboardFiltersWithFacetToggled\s*\([\s\S]*filters:\s*unknown[\s\S]*facet:\s*unknown[\s\S]*value:\s*unknown[\s\S]*normalizeDashboardFilterFacet\s*\(\s*facet\s*\)[\s\S]*normalizeDashboardFilterFacetValue\s*\(\s*value\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: facet toggler trusts typed facet/value",
+      );
+    }
+    if (
+      !/\bdashboardFeatureDescentPatch\s*\([\s\S]*state:\s*unknown[\s\S]*featureTag:\s*unknown[\s\S]*normalizeDashboardFeatureTag\s*\(\s*featureTag\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: feature descent trusts typed feature tag",
+      );
+    }
+    if (
+      !/\bexport\s+function\s+dateRangePatch\s*\([\s\S]*date_range:\s*unknown/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: date-range patch trusts typed range",
+      );
+    }
+    if (
+      !/\bexport\s+function\s+focusPatch\s*\(\s*salience_focus:\s*unknown\s*\)[\s\S]*normalizeDashboardNodeId\s*\(\s*salience_focus\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: focus patch bypasses node id normalizer",
+      );
+    }
+    if (
+      !/\bexport\s+function\s+panelStatePatch\s*\([\s\S]*panel_state:\s*unknown[\s\S]*normalizeDashboardPanelState\s*\(\s*panel_state\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: panel-state patch trusts typed state",
+      );
+    }
+    if (
+      !/\bconst\s+commitPanelState\s*=\s*\(\s*panelState:\s*unknown\s*\)[\s\S]*const\s+normalizedPanelState\s*=\s*normalizeDashboardPanelState\s*\(\s*panelState\s*\)[\s\S]*pendingPanelStatesByScope\.set\s*\(\s*normalizedScope\s*,\s*normalizedPanelState\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        "stores/server/dashboardState.ts: panel-state queue stores raw panel state",
+      );
+    }
+
+    expect(violations).toEqual([]);
   });
 
   it("keeps playhead dashboard reads behind the playhead view selector", () => {
@@ -367,8 +721,37 @@ describe("dashboard layer ownership", () => {
     if (/\bdashboardState\.data\b/.test(stripped)) {
       violations.push(`${rel}: local dashboard timeline-mode playhead projection`);
     }
-    if (!/\buseDashboardPlayheadView\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (
+      /\bfunction\s+Playhead\s*\(\s*\{\s*scope\s*\}\s*:\s*\{\s*scope:\s*string\s*\|\s*null\s*\}\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: Playhead trusts typed-only scope`);
+    }
+    if (
+      /\bfunction\s+TimeTravelChip\s*\(\s*\{\s*scope\s*\}\s*:\s*\{\s*scope:\s*string\s*\|\s*null\s*\}\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: TimeTravelChip trusts typed-only scope`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeTimelineScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing runtime timeline scope normalization`);
+    }
+    if (!/\buseDashboardPlayheadView\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing dashboard playhead view seam`);
+    }
+    if (!/\buseDashboardTimelineModeView\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing dashboard timeline-mode chip seam`);
+    }
+    if (/\bmovePlayhead\s*\([^,\n]+,\s*normalizedScope\s*\)/.test(stripped)) {
+      violations.push(
+        `${rel}: playhead write passes normalized scope instead of raw runtime scope`,
+      );
     }
 
     expect(violations).toEqual([]);
@@ -387,8 +770,78 @@ describe("dashboard layer ownership", () => {
     if (/\bdashboardState\.data\b|\btimeline_mode\b/.test(stripped)) {
       violations.push(`${rel}: local dashboard timeline-mode read`);
     }
-    if (!/\buseDashboardTimelineModeView\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (/\buseTimeTravel\s*\(\s*scope:\s*string\s*\|\s*null/.test(stripped)) {
+      violations.push(`${rel}: useTimeTravel trusts typed-only scope`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeTimelineScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing runtime timeline scope normalization`);
+    }
+    if (!/\buseDashboardTimelineModeView\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing dashboard timeline view seam`);
+    }
+    if (
+      !/\bnew\s+TimeTravelDriver\s*\(\s*timeTravelSource\s*,\s*normalizedScope\s*,\s*sceneTarget\s*\(\s*scene\s*\)\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: time-travel driver uses raw scope identity`);
+    }
+    if (
+      /\bfrom\s+["']\.\.\/\.\.\/scene\/sceneMapping["'][\s\S]*\bengineNodeToScene\b/.test(
+        stripped,
+      ) ||
+      /\bfrom\s+["']\.\.\/\.\.\/scene\/sceneMapping["'][\s\S]*\bengineEdgeToScene\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: time-travel imports local graph row mappers`);
+    }
+    if (
+      !/\bmapDelta\s*\(\s*entry:\s*unknown\s*\):\s*SceneDelta\s*\|\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: time-travel delta mapper accepts typed-only input`);
+    }
+    if (!/\breturn\s+graphDeltaToScene\s*\(\s*entry\s*\)/.test(stripped)) {
+      violations.push(`${rel}: time-travel delta mapper bypasses graph seam`);
+    }
+    if (
+      !/\bconst\s+keyframe\s*=\s*sliceToScene\s*\(\s*asof\s*\)[\s\S]*nodes:\s*keyframe\.nodes[\s\S]*edges:\s*keyframe\.edges/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: time-travel keyframe bypasses slice mapper`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps timeline range playback scope as a runtime playhead input", () => {
+    const rel = "app/timeline/RangeSelect.tsx";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (/\bscope:\s*string\s*\|\s*null\b/.test(stripped)) {
+      violations.push(`${rel}: range playback stores typed-only scope`);
+    }
+    if (
+      !/\binterface\s+PlayState\s*\{[\s\S]*\bscope:\s*unknown[\s\S]*\}/.test(stripped)
+    ) {
+      violations.push(`${rel}: play state does not preserve runtime scope input`);
+    }
+    if (!/\bstartRangePlay\s*\([\s\S]*\bscope:\s*unknown\s*=\s*null/.test(stripped)) {
+      violations.push(`${rel}: startRangePlay trusts typed-only scope`);
+    }
+    if (!/\bmovePlayhead\s*\(\s*to\s*,\s*scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: reduced-motion range play bypasses playhead seam`);
+    }
+    if (!/\bmovePlayhead\s*\([\s\S]*playState\.scope[\s\S]*\)/.test(stripped)) {
+      violations.push(`${rel}: animated range play bypasses runtime scope`);
     }
 
     expect(violations).toEqual([]);
@@ -421,11 +874,84 @@ describe("dashboard layer ownership", () => {
     const violations: string[] = [];
 
     if (
-      !/const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*session\.isSuccess/.test(
+      !/\bexport\s+function\s+normalizeDashboardStateRequestIdentity\b[\s\S]*\bnormalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*\bdashboardStateSessionIdentity\s*\(\s*session\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: dashboard-state query lacks session/scope enabled gate`);
+      violations.push(`${rel}: dashboard-state request identity trusts typed inputs`);
+    }
+    if (
+      !/\bexport\s+function\s+useDashboardState\s*\(\s*scope:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: dashboard-state hook exposes typed-only scope`);
+    }
+    if (/\buseDashboardState\s*\(\s*scope:\s*string\s*\|\s*null\s*\)/.test(stripped)) {
+      violations.push(`${rel}: dashboard-state hook trusts string|null scope`);
+    }
+    for (const selector of [
+      "useDashboardSelectedNodeId",
+      "useDashboardDateRangeView",
+      "useDashboardRangeSelectView",
+      "useDashboardGraphDefaultsInitializationView",
+      "useDashboardFilterSummaryView",
+      "useDashboardFilterChoicesView",
+      "useDashboardFilterChoices",
+      "useDashboardFilterSidebarView",
+      "useDashboardTimelineModeView",
+      "useDashboardPlayheadView",
+      "useDashboardStageSceneView",
+      "useDashboardGraphControlsView",
+      "useDashboardLayoutSelectorView",
+      "useDashboardLensSelectorView",
+      "useDashboardShellChromeView",
+      "useDashboardTierDialView",
+    ]) {
+      if (
+        !new RegExp(
+          `\\bexport\\s+function\\s+${selector}\\s*\\(\\s*scope:\\s*unknown`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: ${selector} exposes typed-only scope`);
+      }
+    }
+    if (
+      !/\bexport\s+function\s+dashboardGraphDefaultsInitializationIdentity\s*\(\s*scope:\s*unknown[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*scope:\s*normalizedScope/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: dashboard graph-default initialization identity trusts raw scope`,
+      );
+    }
+    if (
+      !/const\s+request\s*=\s*normalizeDashboardStateRequestIdentity\s*\(\s*scope\s*,\s*session\.data\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: dashboard-state hook bypasses request identity normalizer`,
+      );
+    }
+    if (
+      !/const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*session\.isSuccess/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: dashboard-state query lacks normalized session/scope enabled gate`,
+      );
+    }
+    if (
+      !/queryKey:\s*engineKeys\.dashboardState\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*,\s*request\.sessionIdentity\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: dashboard-state query key bypasses normalized identity`);
+    }
+    if (!/engineClient\.dashboardState\s*\(\s*request\.scope!\s*\)/.test(stripped)) {
+      violations.push(`${rel}: dashboard-state wire call bypasses normalized identity`);
     }
     if (
       !/return\s+enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}/.test(
@@ -441,16 +967,67 @@ describe("dashboard layer ownership", () => {
   it("keeps disabled graph-slice reads from exposing cached query data", () => {
     const rel = "stores/server/queries.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const scopeIdentityRel = "stores/server/scopeIdentity.ts";
+    const scopeIdentity = stripComments(
+      readFileSync(join(SRC_ROOT, scopeIdentityRel), "utf8"),
+    );
     const graphSliceHook = stripped.match(
       /export function useGraphSlice[\s\S]*?export function useSalienceGraphSlice/,
+    )?.[0];
+    const salienceHook = stripped.match(
+      /export function useSalienceGraphSlice[\s\S]*?export interface SemanticEmbeddingsView/,
     )?.[0];
     const violations: string[] = [];
 
     if (!graphSliceHook) {
       violations.push(`${rel}: missing useGraphSlice hook`);
     } else {
-      if (!/const\s+enabled\s*=\s*scope\s*!==\s*null/.test(graphSliceHook)) {
+      if (
+        !/export\s*\{[\s\S]*\bnormalizeScopeId\s+as\s+normalizeStoreScope\b[\s\S]*\}\s*from\s+["']\.\.\/\.\.\/platform\/scope\/scopeIdentity["']/.test(
+          scopeIdentity,
+        ) ||
+        !/export\s*\{[\s\S]*\bSCOPE_ID_MAX_CHARS\b[\s\S]*\}\s*from\s+["']\.\.\/\.\.\/platform\/scope\/scopeIdentity["']/.test(
+          scopeIdentity,
+        ) ||
+        !/\bfrom\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(
+          stripped,
+        ) ||
+        !/\bexport\s+const\s+normalizeGraphSliceScope\s*=\s*normalizeStoreScope\b/.test(
+          stripped,
+        ) ||
+        !/\bnormalizeGraphSliceRequestIdentity\s*\(\s*scope:\s*unknown,\s*filter:\s*unknown,\s*asOf:\s*unknown,\s*granularity:\s*unknown,\s*lens:\s*unknown,\s*focus:\s*unknown/.test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: graph-slice request identity trusts typed inputs`);
+      }
+      if (
+        !/\bconst\s+request\s*=\s*normalizeGraphSliceRequestIdentity\s*\(\s*scope\s*,[\s\S]*filter\s*,[\s\S]*asOf\s*,[\s\S]*granularity\s*,[\s\S]*lens\s*,[\s\S]*focus\s*,?\s*\)/.test(
+          graphSliceHook,
+        )
+      ) {
+        violations.push(
+          `${rel}: graph-slice hook bypasses request identity normalizer`,
+        );
+      }
+      if (!/const\s+enabled\s*=\s*request\.scope\s*!==\s*null/.test(graphSliceHook)) {
         violations.push(`${rel}: graph-slice query lacks scope enabled gate`);
+      }
+      if (
+        !/queryKey:\s*engineKeys\.graph\s*\(\s*request\.scope\s*\?\?\s*["']["'][\s\S]*request\.filter[\s\S]*request\.asOf[\s\S]*request\.granularity[\s\S]*request\.lens[\s\S]*request\.focus/.test(
+          graphSliceHook,
+        )
+      ) {
+        violations.push(`${rel}: graph-slice query key bypasses normalized identity`);
+      }
+      if (
+        !/engineClient\.graphQuery\s*\(\s*\{[\s\S]*scope:\s*request\.scope![\s\S]*filter:\s*request\.filter[\s\S]*as_of:\s*request\.asOf[\s\S]*granularity:\s*request\.granularity[\s\S]*lens:\s*request\.lens[\s\S]*focus:\s*request\.focus/.test(
+          graphSliceHook,
+        )
+      ) {
+        violations.push(
+          `${rel}: graph-slice request body bypasses normalized identity`,
+        );
       }
       if (
         !/return\s+enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}/.test(
@@ -458,6 +1035,37 @@ describe("dashboard layer ownership", () => {
         )
       ) {
         violations.push(`${rel}: disabled graph-slice read can expose cached data`);
+      }
+    }
+
+    if (!salienceHook) {
+      violations.push(`${rel}: missing salience graph-slice hook`);
+    } else {
+      for (const typedOnly of [
+        "useSalienceGraphSlice(\n  scope: string | null",
+        "useSalienceSliceView(\n  scope: string | null",
+      ]) {
+        if (stripped.includes(typedOnly)) {
+          violations.push(`${rel}: salience graph selector trusts typed-only input`);
+        }
+      }
+      for (const required of [
+        "useSalienceGraphSlice(\n  scope: unknown",
+        "useSalienceSliceView(\n  scope: unknown",
+      ]) {
+        if (!stripped.includes(required)) {
+          violations.push(`${rel}: salience graph selector lacks runtime input seam`);
+        }
+      }
+      if (
+        !/\bconst\s+normalizedScope\s*=\s*normalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*useDashboardState\s*\(\s*normalizedScope\s*\)[\s\S]*useGraphSlice\s*\(\s*[\s\S]*state\s*\?\s*normalizedScope\s*:\s*null/.test(
+          salienceHook,
+        )
+      ) {
+        violations.push(`${rel}: salience graph selector bypasses normalized scope`);
+      }
+      if (/\bscope\s*!==\s*null\b/.test(salienceHook)) {
+        violations.push(`${rel}: salience graph selector gates raw scope`);
       }
     }
 
@@ -475,8 +1083,56 @@ describe("dashboard layer ownership", () => {
     if (!vaultTreeHook) {
       violations.push(`${rel}: missing useVaultTree hook`);
     } else {
-      if (!/const\s+enabled\s*=\s*scope\s*!==\s*null/.test(vaultTreeHook)) {
-        violations.push(`${rel}: vault-tree query lacks scope enabled gate`);
+      for (const typedOnly of [
+        "useVaultTree(scope: string | null",
+        "useVaultTreeAvailability(scope: string | null",
+        "useVaultTreeSurface(scope: string | null",
+        "useFiltersVocabulary(scope: string | null",
+        "useFiltersVocabularyView(scope: string | null",
+      ]) {
+        if (stripped.includes(typedOnly)) {
+          violations.push(
+            `${rel}: query hook still trusts typed-only scope ${typedOnly}`,
+          );
+        }
+      }
+      for (const required of [
+        "useVaultTree(scope: unknown",
+        "useVaultTreeAvailability(scope: unknown",
+        "useVaultTreeSurface(scope: unknown",
+        "useFiltersVocabulary(scope: unknown",
+        "useFiltersVocabularyView(scope: unknown",
+      ]) {
+        if (!stripped.includes(required)) {
+          violations.push(`${rel}: query hook lacks runtime scope seam ${required}`);
+        }
+      }
+      if (
+        !/\bexport\s+function\s+normalizeVaultTreeRequestIdentity\b[\s\S]*\bnormalizeGraphSliceScope\s*\(\s*scope\s*\)/.test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: vault-tree request identity trusts typed inputs`);
+      }
+      if (
+        !/const\s+request\s*=\s*normalizeVaultTreeRequestIdentity\s*\(\s*scope\s*\)/.test(
+          vaultTreeHook,
+        )
+      ) {
+        violations.push(`${rel}: vault-tree hook bypasses request identity normalizer`);
+      }
+      if (!/const\s+enabled\s*=\s*request\.scope\s*!==\s*null/.test(vaultTreeHook)) {
+        violations.push(`${rel}: vault-tree query lacks normalized scope enabled gate`);
+      }
+      if (
+        !/queryKey:\s*engineKeys\.vaultTree\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*\)/.test(
+          vaultTreeHook,
+        )
+      ) {
+        violations.push(`${rel}: vault-tree query key bypasses normalized identity`);
+      }
+      if (!/engineClient\.vaultTree\s*\(\s*request\.scope!\s*\)/.test(vaultTreeHook)) {
+        violations.push(`${rel}: vault-tree wire call bypasses normalized identity`);
       }
       if (
         !/withManualRetry\s*\(\s*enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}\s*\)/.test(
@@ -501,8 +1157,44 @@ describe("dashboard layer ownership", () => {
     if (!lineageHook) {
       violations.push(`${rel}: missing useTimelineLineage hook`);
     } else {
-      if (!/const\s+enabled\s*=\s*scope\s*!==\s*null/.test(lineageHook)) {
+      if (
+        !/\bexport\s+function\s+normalizeTimelineLineageRequestIdentity\b[\s\S]*\bnormalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*\bnormalizeTemporalRange\s*\(\s*range\s*\)[\s\S]*\bnormalizeTemporalText\s*\(\s*filter\s*\)[\s\S]*\bnormalizeGraphSliceAsOf\s*\(\s*asOf\s*\)/.test(
+          stripped,
+        )
+      ) {
+        violations.push(
+          `${rel}: timeline-lineage request identity trusts typed inputs`,
+        );
+      }
+      if (
+        !/const\s+request\s*=\s*normalizeTimelineLineageRequestIdentity\s*\(\s*scope\s*,[\s\S]*range\s*,[\s\S]*filter\s*,[\s\S]*asOf\s*,?\s*\)/.test(
+          lineageHook,
+        )
+      ) {
+        violations.push(
+          `${rel}: timeline-lineage hook bypasses request identity normalizer`,
+        );
+      }
+      if (!/const\s+enabled\s*=\s*request\.scope\s*!==\s*null/.test(lineageHook)) {
         violations.push(`${rel}: timeline-lineage query lacks scope enabled gate`);
+      }
+      if (
+        !/queryKey:\s*engineKeys\.lineage\s*\(\s*request\.scope\s*\?\?\s*["']["'][\s\S]*request\.range[\s\S]*request\.filter[\s\S]*request\.asOf/.test(
+          lineageHook,
+        )
+      ) {
+        violations.push(
+          `${rel}: timeline-lineage query key bypasses normalized identity`,
+        );
+      }
+      if (
+        !/engineClient\.lineage\s*\(\s*\{[\s\S]*scope:\s*request\.scope![\s\S]*\.\.\.request\.range[\s\S]*filter:\s*request\.filter[\s\S]*t:\s*request\.asOf\s*==\s*null\s*\?\s*undefined\s*:\s*String\s*\(\s*request\.asOf\s*\)/.test(
+          lineageHook,
+        )
+      ) {
+        violations.push(
+          `${rel}: timeline-lineage wire body bypasses normalized identity`,
+        );
       }
       if (
         !/withManualRetry\s*\(\s*enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}\s*\)/.test(
@@ -529,10 +1221,67 @@ describe("dashboard layer ownership", () => {
     if (!fileTreeHook) {
       violations.push(`${rel}: missing useFileTree hook`);
     } else {
+      for (const typedOnly of [
+        "useFileTree(scope: string | null",
+        "useFileTreeLevel(\n  scope: string | null",
+        "useFileTreeAvailability(scope: string | null",
+        "useFileTreeRootSurface(scope: string | null",
+      ]) {
+        if (stripped.includes(typedOnly)) {
+          violations.push(`${rel}: file-tree hook still trusts typed-only input`);
+        }
+      }
+      for (const required of [
+        "useFileTree(scope: unknown",
+        "useFileTreeLevel(\n  scope: unknown",
+        "useFileTreeAvailability(scope: unknown",
+        "useFileTreeRootSurface(scope: unknown",
+      ]) {
+        if (!stripped.includes(required)) {
+          violations.push(`${rel}: file-tree hook lacks runtime input seam`);
+        }
+      }
       if (
-        !/const\s+active\s*=\s*scope\s*!==\s*null\s*&&\s*enabled/.test(fileTreeHook)
+        !/\bexport\s+function\s+normalizeFileTreeRequestIdentity\b[\s\S]*\bnormalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*\benabled\s*===\s*true/.test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: file-tree request identity trusts typed inputs`);
+      }
+      if (
+        !/\btypeof\s+path\s*===\s*["']string["'][\s\S]*path\.trim\s*\(\s*\)\s*\|\|\s*undefined/.test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: file-tree request identity preserves raw path`);
+      }
+      if (
+        !/const\s+request\s*=\s*normalizeFileTreeRequestIdentity\s*\(\s*scope\s*,\s*path\s*,\s*enabled\s*\)/.test(
+          fileTreeHook,
+        )
+      ) {
+        violations.push(`${rel}: file-tree hook bypasses request identity normalizer`);
+      }
+      if (
+        !/const\s+active\s*=\s*request\.scope\s*!==\s*null\s*&&\s*request\.enabled/.test(
+          fileTreeHook,
+        )
       ) {
         violations.push(`${rel}: file-tree query lacks scope/enabled gate`);
+      }
+      if (
+        !/queryKey:\s*engineKeys\.fileTree\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*,\s*request\.path\s*\)/.test(
+          fileTreeHook,
+        )
+      ) {
+        violations.push(`${rel}: file-tree query key bypasses normalized identity`);
+      }
+      if (
+        !/engineClient\.fileTree\s*\(\s*\{\s*scope:\s*request\.scope![\s\S]*path:\s*request\.path\s*\}\s*\)/.test(
+          fileTreeHook,
+        )
+      ) {
+        violations.push(`${rel}: file-tree wire body bypasses normalized identity`);
       }
       if (
         !/withManualRetry\s*\(\s*active\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}\s*\)/.test(
@@ -541,6 +1290,61 @@ describe("dashboard layer ownership", () => {
       ) {
         violations.push(`${rel}: disabled file-tree read can expose cached data`);
       }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps file-tree entry normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeFileTreeString",
+      "normalizeFileTreeCount",
+      "adaptFileTreeEntry",
+      "adaptFileTreeTruncated",
+      "adaptFileTree",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} file-tree adapter seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+adaptFileTreeEntry[\s\S]*\bconst\s+path\s*=\s*normalizeFileTreeString\s*\(\s*value\.path\s*\)[\s\S]*\bif\s*\(\s*path\s*===\s*undefined\s*\)\s*return\s+null[\s\S]*\bconst\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*value\.node_id\s*\)\s*\?\?\s*codeNodeIdFromPath\s*\(\s*path\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: file-tree entry adapter fabricates malformed rows`);
+    }
+    if (
+      !/\bhas_children:\s*kind\s*===\s*["']dir["']\s*&&\s*value\.has_children\s*===\s*true/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: file-tree has_children bypasses kind gate`);
+    }
+    if (
+      !/\bfunction\s+adaptFileTreeTruncated[\s\S]*normalizeFileTreeCount\s*\(\s*value\.total_children\s*\)[\s\S]*normalizeFileTreeCount\s*\(\s*value\.returned_children\s*\)[\s\S]*normalizeFileTreeString\s*\(\s*value\.reason\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: file-tree truncated block bypasses normalizers`);
+    }
+    if (
+      !/entries:\s*Array\.isArray\s*\(\s*body\.entries\s*\)[\s\S]*\.map\s*\(\s*adaptFileTreeEntry\s*\)[\s\S]*\.filter\s*\(\s*\(\s*entry\s*\):\s*entry\s+is\s+FileTreeEntry\s*=>\s*entry\s*!==\s*null\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: file-tree adapter does not drop malformed entries`);
+    }
+    if (
+      !/\bnext_cursor:\s*normalizeFileTreeString\s*\(\s*body\.next_cursor\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: file-tree cursor bypasses normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -560,8 +1364,36 @@ describe("dashboard layer ownership", () => {
     if (!pipelineHook) {
       violations.push(`${rel}: missing usePipelineStatus hook`);
     } else {
-      if (!/const\s+enabled\s*=\s*scope\s*!==\s*null/.test(pipelineHook)) {
+      if (
+        !/\bexport\s+function\s+normalizePipelineStatusRequestIdentity\b[\s\S]*\bnormalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*\bnormalizeGraphSliceAsOf\s*\(\s*asOf\s*\)/.test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: pipeline request identity trusts typed inputs`);
+      }
+      if (
+        !/const\s+request\s*=\s*normalizePipelineStatusRequestIdentity\s*\(\s*scope\s*,\s*asOf\s*\)/.test(
+          pipelineHook,
+        )
+      ) {
+        violations.push(`${rel}: pipeline hook bypasses request identity normalizer`);
+      }
+      if (!/const\s+enabled\s*=\s*request\.scope\s*!==\s*null/.test(pipelineHook)) {
         violations.push(`${rel}: pipeline query lacks scope enabled gate`);
+      }
+      if (
+        !/queryKey:\s*engineKeys\.pipeline\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*,\s*request\.asOf\s*\)/.test(
+          pipelineHook,
+        )
+      ) {
+        violations.push(`${rel}: pipeline query key bypasses normalized identity`);
+      }
+      if (
+        !/queryFn:\s*\(\)\s*=>\s*engineClient\.pipeline\s*\(\s*request\.scope!\s*\)/.test(
+          pipelineHook,
+        )
+      ) {
+        violations.push(`${rel}: pipeline wire call bypasses normalized scope`);
       }
       if (
         !/return\s+enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}/.test(
@@ -576,11 +1408,41 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: missing usePlanInterior hook`);
     } else {
       if (
-        !/const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*planId\s*!==\s*null/.test(
+        !/\bexport\s+function\s+normalizePlanInteriorRequestIdentity\b[\s\S]*\bnormalizeNodeId\s*\(\s*planId\s*\)[\s\S]*\bnormalizeNodeScopedScope\s*\(\s*scope\s*\)[\s\S]*\bisAddressableNode\s*\(\s*nodeId\s*\)/.test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: plan-interior request identity trusts typed inputs`);
+      }
+      if (
+        !/const\s+request\s*=\s*normalizePlanInteriorRequestIdentity\s*\(\s*planId\s*,\s*scope\s*\)/.test(
+          planInteriorHook,
+        )
+      ) {
+        violations.push(
+          `${rel}: plan-interior hook bypasses request identity normalizer`,
+        );
+      }
+      if (
+        !/const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*request\.planId\s*!==\s*null/.test(
           planInteriorHook,
         )
       ) {
         violations.push(`${rel}: plan-interior query lacks scope/plan gate`);
+      }
+      if (
+        !/queryKey:\s*engineKeys\.planInterior\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*,\s*request\.planId\s*\?\?\s*["']["']\s*\)/.test(
+          planInteriorHook,
+        )
+      ) {
+        violations.push(`${rel}: plan-interior query key bypasses normalized identity`);
+      }
+      if (
+        !/queryFn:\s*\(\)\s*=>\s*engineClient\.planInterior\s*\(\s*request\.planId!\s*,\s*request\.scope!\s*\)/.test(
+          planInteriorHook,
+        )
+      ) {
+        violations.push(`${rel}: plan-interior wire call bypasses normalized identity`);
       }
       if (
         !/return\s+enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}/.test(
@@ -601,35 +1463,47 @@ describe("dashboard layer ownership", () => {
       {
         name: "useNodeHistory",
         pattern: /export function useNodeHistory[\s\S]*?export interface HistoryView/,
-        enabled: /const\s+enabled\s*=\s*scope\s*!==\s*null/,
+        enabled: /const\s+enabled\s*=\s*request\.scope\s*!==\s*null/,
+        identity:
+          /const\s+request\s*=\s*normalizeHistoryRequestIdentity\s*\(\s*scope\s*,\s*limit\s*\)/,
       },
       {
         name: "useNodePrs",
         pattern: /function useNodePrs[\s\S]*?function useNodeIssues/,
-        enabled: /const\s+enabled\s*=\s*scope\s*!==\s*null/,
+        enabled: /const\s+enabled\s*=\s*request\.scope\s*!==\s*null/,
+        identity:
+          /const\s+request\s*=\s*normalizePullRequestsRequestIdentity\s*\(\s*scope\s*,\s*state\s*\)/,
       },
       {
         name: "useNodeIssues",
         pattern: /function useNodeIssues[\s\S]*?export function usePRsView/,
-        enabled: /const\s+enabled\s*=\s*scope\s*!==\s*null/,
+        enabled: /const\s+enabled\s*=\s*request\.scope\s*!==\s*null/,
+        identity:
+          /const\s+request\s*=\s*normalizeIssuesRequestIdentity\s*\(\s*scope\s*,\s*state\s*\)/,
       },
       {
         name: "useEngineEvents",
         pattern:
           /export function useEngineEvents[\s\S]*?export function useTimelineLineage/,
-        enabled: /const\s+enabled\s*=\s*scope\s*!==\s*null/,
+        enabled: /const\s+enabled\s*=\s*request\.scope\s*!==\s*null/,
+        identity:
+          /const\s+request\s*=\s*normalizeEngineEventsRequestIdentity\s*\(\s*scope\s*,\s*range\s*,\s*bucket\s*\)/,
       },
       {
         name: "useGraphDiff",
         pattern: /export function useGraphDiff[\s\S]*?export function useEngineSearch/,
         enabled:
-          /const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*String\s*\(\s*from\s*\)\s*!==\s*String\s*\(\s*to\s*\)/,
+          /const\s+enabled\s*=[\s\S]*request\.scope\s*!==\s*null[\s\S]*request\.from\s*!==\s*null[\s\S]*request\.to\s*!==\s*null[\s\S]*String\s*\(\s*request\.from\s*\)\s*!==\s*String\s*\(\s*request\.to\s*\)/,
+        identity:
+          /const\s+request\s*=\s*normalizeGraphDiffRequestIdentity\s*\(\s*scope\s*,\s*from\s*,\s*to\s*,\s*filter\s*\)/,
       },
       {
         name: "useEngineSearch",
         pattern: /export function useEngineSearch[\s\S]*?const SEARCH_QUERY_TIMEOUT_MS/,
         enabled:
-          /const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*query\.length\s*>\s*0/,
+          /const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*request\.query\.length\s*>\s*0/,
+        identity:
+          /const\s+request\s*=\s*normalizeSearchRequestIdentity\s*\(\s*query\s*,\s*target\s*,\s*scope\s*\)/,
         resultName: "result",
       },
     ];
@@ -644,12 +1518,52 @@ describe("dashboard layer ownership", () => {
       if (!hook.enabled.test(body)) {
         violations.push(`${rel}: ${hook.name} lacks its disabled-state gate`);
       }
+      if (hook.identity && !hook.identity.test(body)) {
+        violations.push(`${rel}: ${hook.name} bypasses normalized request identity`);
+      }
       const queryName = hook.resultName ?? "query";
       const mask = new RegExp(
         `return\\s+enabled\\s*\\?\\s*${queryName}\\s*:\\s*\\{\\s*\\.\\.\\.${queryName},\\s*data:\\s*undefined\\s*\\}`,
       );
       if (!mask.test(body)) {
         violations.push(`${rel}: ${hook.name} can expose cached data while disabled`);
+      }
+    }
+
+    for (const typedOnly of [
+      "useContentView(\n  nodeId: string | null",
+      "useReadTime(\n  nodeId: string | null",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only content projection ${typedOnly}`);
+      }
+    }
+    const contentView = stripped.match(
+      /export function useContentView[\s\S]*?export type ViewerStateTone/,
+    )?.[0];
+    if (!contentView) {
+      violations.push(`${rel}: missing useContentView hook`);
+    } else {
+      if (
+        !/const\s+request\s*=\s*normalizeNodeScopedRequestIdentity\s*\(\s*scope\s*,\s*nodeId\s*\)/.test(
+          contentView,
+        )
+      ) {
+        violations.push(`${rel}: content view bypasses normalized request identity`);
+      }
+      if (
+        !/const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*request\.nodeId\s*\)/.test(
+          contentView,
+        )
+      ) {
+        violations.push(`${rel}: content view derives loading from raw identity`);
+      }
+      if (
+        /nodeId\s*!==\s*null\s*&&\s*scope\s*!==\s*null\s*&&\s*query\.isPending/.test(
+          contentView,
+        )
+      ) {
+        violations.push(`${rel}: content view keeps raw loading gate`);
       }
     }
 
@@ -707,6 +1621,45 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\buseBackendSignalSubscription\s*\(\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing backend signal subscription seam`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps backend-signal recovery identity normalized in the stores seam", () => {
+    const rel = "stores/server/queries.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (
+      !/\bexport\s+function\s+normalizeBackendSignalChannel\s*\([\s\S]*channel:\s*unknown/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing backend-signal channel normalizer`);
+    }
+    if (
+      !/\bnormalizeBackendSignalChannel[\s\S]*\bconst\s+normalized\s*=\s*normalizeEngineStreamChannel\s*\(\s*channel\s*\)[\s\S]*normalized\s*===\s*["']backends["']\s*\|\|\s*normalized\s*===\s*["']git["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: backend-signal channel normalizer bypasses stream channel domain`,
+      );
+    }
+    if (
+      !/\blatestBackendSignalSignature[\s\S]*\bconst\s+channel\s*=\s*normalizeBackendSignalChannel\s*\(\s*chunk\.channel\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: backend-signal signature reads raw channel names`);
+    }
+    if (
+      /\blatestBackendSignalSignature[\s\S]*chunk\.channel\s*===\s*["'](?:backends|git)["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: backend-signal signature compares raw channels`);
     }
 
     expect(violations).toEqual([]);
@@ -896,20 +1849,290 @@ describe("dashboard layer ownership", () => {
     if (!/\bRAG_JOBS_LIMIT_CAP\b/.test(ragControl)) {
       violations.push("stores/server/ragControl.ts: missing rag jobs limit cap");
     }
+    for (const seam of [
+      "normalizeRagControlScope",
+      "normalizeRagControlKeyPart",
+      "normalizeRagProjectRoot",
+      "normalizeRagJobText",
+      "normalizeRagJobNumber",
+      "normalizeRagJobId",
+      "normalizeRagJobPhase",
+      "normalizeRagRequestSeq",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(ragControl)) {
+        violations.push(`stores/server/ragControl.ts: missing ${seam} seam`);
+      }
+    }
+    for (const typedOnlyJobIdentity of [
+      "beginRequest: (scope: string)",
+      "acceptReceipt: (requestScope: string, requestSeq: number, jobId: string)",
+      "setScope: (scope: string | null)",
+    ]) {
+      if (ragControl.includes(typedOnlyJobIdentity)) {
+        violations.push(
+          `stores/server/ragControl.ts: typed-only job identity seam ${typedOnlyJobIdentity}`,
+        );
+      }
+    }
+    for (const requiredJobIdentity of [
+      "beginRequest: (scope: unknown)",
+      "acceptReceipt: (requestScope: unknown, requestSeq: unknown, jobId: unknown)",
+      "setScope: (scope: unknown)",
+    ]) {
+      if (!ragControl.includes(requiredJobIdentity)) {
+        violations.push(
+          `stores/server/ragControl.ts: missing runtime job identity seam ${requiredJobIdentity}`,
+        );
+      }
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeGraphSliceScope\b[\s\S]*\}\s*from\s+["']\.\/queries["']/.test(
+        ragControl,
+      ) ||
+      !/\bexport\s+const\s+normalizeRagControlScope\s*=\s*normalizeGraphSliceScope\b/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag control scope duplicates graph-slice scope policy",
+      );
+    }
+    if (
+      !/\bexport function normalizeRagControlKeyPart\s*\(\s*[\s\S]*value:\s*unknown[\s\S]*fallback\s*=\s*["']["'][\s\S]*typeof\s+value\s*!==\s*["']string["'][\s\S]*value\.trim\s*\(\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag control keys bypass runtime normalizer",
+      );
+    }
+    if (
+      !/\bexport function normalizeRagRequestSeq\s*\(\s*value:\s*unknown\s*\):\s*number\s*\|\s*null[\s\S]*Number\.isSafeInteger\s*\(\s*value\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag reindex request sequence bypasses runtime normalizer",
+      );
+    }
+    if (
+      !/\bshouldAcceptRagJobReceipt[\s\S]*\bconst\s+normalizedCurrentScope\s*=\s*normalizeRagControlScope\s*\(\s*currentScope\s*\)[\s\S]*\bconst\s+normalizedRequestScope\s*=\s*normalizeRagControlScope\s*\(\s*requestScope\s*\)[\s\S]*\bconst\s+normalizedCurrentSeq\s*=\s*normalizeRagRequestSeq\s*\(\s*currentSeq\s*\)[\s\S]*\bconst\s+normalizedRequestSeq\s*=\s*normalizeRagRequestSeq\s*\(\s*requestSeq\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag receipt acceptance bypasses normalized scope/seq",
+      );
+    }
+    if (
+      !/\bacceptReceipt:\s*\(requestScope,\s*requestSeq,\s*jobId\)\s*=>\s*\{[\s\S]*\bconst\s+normalizedJobId\s*=\s*normalizeRagJobId\s*\(\s*jobId\s*\)[\s\S]*normalizedJobId\s*===\s*null[\s\S]*jobId:\s*normalizedJobId/.test(
+        ragControl,
+      )
+    ) {
+      violations.push("stores/server/ragControl.ts: rag job receipt stores raw job id");
+    }
+    if (
+      !/\bexport function normalizeRagProjectRoot\s*\(\s*root:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*normalizeRagControlScope\s*\(\s*root\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag project root bypasses normalizer",
+      );
+    }
+    if (
+      !/\bexport function normalizeRagProjectSlot\s*\(\s*slot:\s*unknown\s*\):\s*RagProjectSlot\s*\|\s*null[\s\S]*normalizeRagProjectRoot\s*\(\s*candidate\.root\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag project slot bypasses root normalizer",
+      );
+    }
+    if (
+      !/\bexport function normalizeRagProjectSlots\s*\(\s*slots:\s*unknown\s*\):\s*RagProjectSlot\[\][\s\S]*Array\.isArray\s*\(\s*slots\s*\)[\s\S]*normalizeRagProjectSlot\s*\(\s*slot\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag project slots bypass runtime list normalizer",
+      );
+    }
+    if (
+      !/\bconst\s+projectSlots\s*=\s*normalizeRagProjectSlots\s*\(\s*projects\?\.envelope\?\.projects\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag control view exposes raw resident projects",
+      );
+    }
+    for (const keyHelper of [
+      "serviceState",
+      "jobs",
+      "watcher",
+      "projects",
+      "readiness",
+    ]) {
+      if (
+        !new RegExp(
+          `${keyHelper}:\\s*\\([\\s\\S]*?\\)\\s*=>[\\s\\S]*?normalizeRagControlKeyPart`,
+        ).test(ragControl)
+      ) {
+        violations.push(
+          `stores/server/ragControl.ts: ${keyHelper} key bypasses key-part normalizer`,
+        );
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeRagJobNumber\s*\(\s*value:\s*unknown\s*\):\s*number\s*\|\s*undefined[\s\S]*Number\.isFinite\s*\(\s*value\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: rag job numbers bypass finite guard",
+      );
+    }
+    if (
+      !/\bexport function isJobTerminal\b[\s\S]*\bconst\s+normalized\s*=\s*normalizeRagJobPhase\s*\(\s*phase\s*\)[\s\S]*LIVE_PHASES\.has\s*\(\s*normalized\.toLowerCase\s*\(\s*\)\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: job terminal state bypasses phase normalizer",
+      );
+    }
+    if (
+      !/\bexport function requestedJob\b[\s\S]*\bconst\s+requestedId\s*=\s*normalizeRagJobId\s*\(\s*jobId\s*\)[\s\S]*normalizeRagJobId\s*\(\s*job\.id\s*\)\s*===\s*requestedId/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: requested job lookup bypasses id normalizer",
+      );
+    }
+    if (
+      !/\bexport function interpretJobProgress\b[\s\S]*\bconst\s+requestedId\s*=\s*normalizeRagJobId\s*\(\s*jobId\s*\)[\s\S]*\bconst\s+phase\s*=\s*normalizeRagJobPhase\s*\(\s*job\?\.phase\s*\)[\s\S]*\bconst\s+total\s*=\s*normalizeRagJobNumber\s*\(\s*job\?\.progress\?\.total\s*\)[\s\S]*\bstep:\s*normalizeRagJobText\s*\(\s*job\?\.progress\?\.step\s*\)[\s\S]*polling:\s*requestedId\s*!==\s*null/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: job progress view bypasses job normalizers",
+      );
+    }
     if (!/\bboundedRagJobsLimit\s*\(/.test(ragControl)) {
       violations.push("stores/server/ragControl.ts: missing bounded rag jobs helper");
     }
     if (
-      !/queryKey:\s*ragControlKeys\.jobs\s*\([^)]*`recent-\$\{boundedLimit\}`/.test(
+      !/\bexport function boundedRagJobsLimit\s*\(\s*limit:\s*unknown\s*\)[\s\S]*const\s+parsed\s*=[\s\S]*Number\.isFinite\s*\(\s*parsed\s*\)/.test(
         ragControl,
       )
     ) {
-      violations.push("stores/server/ragControl.ts: rag jobs key uses unbounded limit");
-    }
-    if (!/\{\s*limit:\s*boundedLimit\s*\}/.test(ragControl)) {
       violations.push(
-        "stores/server/ragControl.ts: rag jobs body uses unbounded limit",
+        "stores/server/ragControl.ts: rag jobs limit bypasses finite guard",
       );
+    }
+    if (
+      !/\bexport function normalizeRagJobsRequestIdentity\s*\([\s\S]*scope:\s*unknown[\s\S]*limit:\s*unknown\s*=\s*10[\s\S]*scope:\s*normalizeRagControlScope\s*\(\s*scope\s*\)[\s\S]*limit:\s*boundedRagJobsLimit\s*\(\s*limit\s*\)/.test(
+        ragControl,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: missing normalized rag jobs request identity",
+      );
+    }
+    const reindex =
+      ragControl.match(
+        /export function useRagReindex[\s\S]*?export interface WatcherReconfigureArgs/,
+      )?.[0] ?? "";
+    if (
+      !/\bexport function normalizeRagReindexArgs\s*\(\s*input:\s*unknown\s*\):\s*ReindexArgs/.test(
+        ragControl,
+      )
+    ) {
+      violations.push("stores/server/ragControl.ts: missing reindex args normalizer");
+    }
+    if (
+      !/\bconst\s+type\s*=\s*normalizeRagReindexType\s*\(\s*value\.type\s*\)[\s\S]*typeof\s+value\.clean\s*===\s*["']boolean["']/.test(
+        ragControl,
+      )
+    ) {
+      violations.push("stores/server/ragControl.ts: reindex args are not runtime-normalized");
+    }
+    if (
+      !/\bmutationFn:\s*\(\s*args:\s*unknown\s*=\s*\{\}\s*\)[\s\S]*body:\s*normalizeRagReindexArgs\s*\(\s*args\s*\)/.test(
+        reindex,
+      )
+    ) {
+      violations.push("stores/server/ragControl.ts: reindex dispatches raw args");
+    }
+    if (/\bmutationFn:\s*\(\s*args:\s*ReindexArgs/.test(reindex)) {
+      violations.push("stores/server/ragControl.ts: reindex mutation is typed-only");
+    }
+    const projectEvict =
+      ragControl.match(
+        /export function useRagProjectEvict[\s\S]*?\/\/ --- a small convenience/,
+      )?.[0] ?? "";
+    if (
+      !/\bconst\s+normalizedRoot\s*=\s*normalizeRagProjectRoot\s*\(\s*root\s*\)/.test(
+        projectEvict,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: project evict bypasses root normalizer",
+      );
+    }
+    if (!/\bbody:\s*\{\s*root:\s*normalizedRoot\s*\}/.test(projectEvict)) {
+      violations.push("stores/server/ragControl.ts: project evict dispatches raw root");
+    }
+    if (/\bmutationFn:\s*\(\s*root:\s*string\s*\)/.test(projectEvict)) {
+      violations.push("stores/server/ragControl.ts: project evict is typed-only");
+    }
+    const opsRunInvalidation = ragControl.match(
+      /export function invalidateAfterRagOpsRun[\s\S]*?export function useInvalidateAfterRagOpsRun/,
+    )?.[0];
+    if (!opsRunInvalidation) {
+      violations.push("stores/server/ragControl.ts: missing rag ops invalidation seam");
+    } else {
+      if (
+        !/\binvalidateRagControlQueries\s*\(\s*queryClient\s*\)/.test(
+          opsRunInvalidation,
+        )
+      ) {
+        violations.push(
+          "stores/server/ragControl.ts: ops run bypasses shared rag control invalidation",
+        );
+      }
+      if (!/\bengineKeys\.status\s*\(\s*\)/.test(opsRunInvalidation)) {
+        violations.push("stores/server/ragControl.ts: ops run misses status");
+      }
+      if (
+        !/\binvalidateScopedSemanticReads\s*\(\s*queryClient\s*,\s*normalizedScope\s*\)/.test(
+          opsRunInvalidation,
+        )
+      ) {
+        violations.push(
+          "stores/server/ragControl.ts: lifecycle ops bypass scoped semantic invalidation",
+        );
+      }
+      if (
+        /\[\s*\.\.\.engineKeys\.all\s*,\s*["'](?:search|graph-embeddings)["']\s*,\s*normalizedScope\s*\]/.test(
+          opsRunInvalidation,
+        )
+      ) {
+        violations.push(
+          "stores/server/ragControl.ts: lifecycle ops hand-compose semantic invalidation",
+        );
+      }
+      if (
+        !/if\s*\(\s*verb\s*!==\s*["']service-start["']\s*&&\s*verb\s*!==\s*["']service-stop["']\s*\)\s*return/.test(
+          opsRunInvalidation,
+        )
+      ) {
+        violations.push(
+          "stores/server/ragControl.ts: semantic invalidation is not scoped to lifecycle ops",
+        );
+      }
     }
     const reindexInvalidation = ragControl.match(
       /export function invalidateRagReindexSettlementQueries[\s\S]*?export function useRagServiceState/,
@@ -934,25 +2157,25 @@ describe("dashboard layer ownership", () => {
         );
       }
       if (
-        !/\[\s*\.\.\.engineKeys\.all\s*,\s*["']search["']\s*,\s*scope\s*\]/.test(
+        !/\binvalidateScopedSemanticReads\s*\(\s*queryClient\s*,\s*normalizedScope\s*\)/.test(
           reindexInvalidation,
         )
       ) {
         violations.push(
-          "stores/server/ragControl.ts: reindex settlement misses scoped search invalidation",
+          "stores/server/ragControl.ts: reindex settlement bypasses scoped semantic invalidation",
         );
       }
       if (
-        !/\[\s*\.\.\.engineKeys\.all\s*,\s*["']graph-embeddings["']\s*,\s*scope\s*\]/.test(
+        /\[\s*\.\.\.engineKeys\.all\s*,\s*["'](?:search|graph-embeddings)["']\s*,\s*normalizedScope\s*\]/.test(
           reindexInvalidation,
         )
       ) {
         violations.push(
-          "stores/server/ragControl.ts: reindex settlement misses scoped embedding invalidation",
+          "stores/server/ragControl.ts: reindex settlement hand-composes semantic invalidation",
         );
       }
       if (
-        !/if\s*\(\s*scope\s*===\s*null\s*\|\|\s*!\s*semanticIndexChanged\s*\)\s*return/.test(
+        !/if\s*\(\s*normalizedScope\s*===\s*null\s*\|\|\s*!\s*semanticIndexChanged\s*\)\s*return/.test(
           reindexInvalidation,
         )
       ) {
@@ -978,20 +2201,49 @@ describe("dashboard layer ownership", () => {
         "useRagReadiness",
         /export function useRagReadiness[\s\S]*?export function useRagControlView/,
       ],
-      ["useRagJobs", /export function useRagJobs[\s\S]*?export function useRagReindex/],
     ] as const) {
       const body = ragControl.match(pattern)?.[0];
       if (!body) {
         violations.push(`stores/server/ragControl.ts: missing ${name}`);
       } else if (
+        !/\bconst\s+normalizedScope\s*=\s*normalizeRagControlScope\s*\(\s*scope\s*\)/.test(
+          body,
+        ) ||
+        !/queryKey:\s*ragControlKeys\.\w+\s*\(\s*normalizedScope\s*\?\?\s*["']["']/.test(
+          body,
+        ) ||
         !/return\s+enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}/.test(
           body,
         )
       ) {
         violations.push(
-          `stores/server/ragControl.ts: ${name} can expose cached data while disabled`,
+          `stores/server/ragControl.ts: ${name} bypasses normalized disabled cache boundary`,
         );
       }
+    }
+    const jobsRead = ragControl.match(
+      /export function useRagJobs[\s\S]*?export function useRagReindex/,
+    )?.[0];
+    if (!jobsRead) {
+      violations.push("stores/server/ragControl.ts: missing useRagJobs");
+    } else if (
+      !/\bconst\s+request\s*=\s*normalizeRagJobsRequestIdentity\s*\(\s*scope\s*,\s*limit\s*\)/.test(
+        jobsRead,
+      ) ||
+      !/\bconst\s+enabled\s*=\s*request\.scope\s*!==\s*null/.test(jobsRead) ||
+      !/queryKey:\s*ragControlKeys\.jobs\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*,\s*`recent-\$\{request\.limit\}`\s*\)/.test(
+        jobsRead,
+      ) ||
+      !/engineClient\.opsRagGet<RagJobsSnapshot>\s*\(\s*["']jobs["']\s*,\s*\{\s*limit:\s*request\.limit\s*\}/.test(
+        jobsRead,
+      ) ||
+      !/return\s+enabled\s*\?\s*query\s*:\s*\{\s*\.\.\.query,\s*data:\s*undefined\s*\}/.test(
+        jobsRead,
+      )
+    ) {
+      violations.push(
+        "stores/server/ragControl.ts: useRagJobs bypasses normalized request identity",
+      );
     }
     const jobProgress = ragControl.match(
       /export function useRagJobProgress[\s\S]*?export function useRagJobs/,
@@ -1000,7 +2252,13 @@ describe("dashboard layer ownership", () => {
       violations.push("stores/server/ragControl.ts: missing useRagJobProgress");
     } else {
       if (
-        !/const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*jobId\s*!==\s*null/.test(
+        !/\bconst\s+normalizedScope\s*=\s*normalizeRagControlScope\s*\(\s*scope\s*\)/.test(
+          jobProgress,
+        ) ||
+        !/\bconst\s+normalizedJobId\s*=\s*normalizeRagJobId\s*\(\s*jobId\s*\)/.test(
+          jobProgress,
+        ) ||
+        !/const\s+enabled\s*=\s*normalizedScope\s*!==\s*null\s*&&\s*normalizedJobId\s*!==\s*null/.test(
           jobProgress,
         )
       ) {
@@ -1012,7 +2270,7 @@ describe("dashboard layer ownership", () => {
         !/enabled\s*\?\s*\(\s*query\.data\s+as\s+BrokeredResult<RagJobsSnapshot>\s*\|\s*undefined\s*\)\s*:\s*undefined/.test(
           jobProgress,
         ) ||
-        !/enabled\s*\?\s*jobId\s*:\s*null/.test(jobProgress)
+        !/enabled\s*\?\s*normalizedJobId\s*:\s*null/.test(jobProgress)
       ) {
         violations.push(
           "stores/server/ragControl.ts: rag job progress can expose cached data while disabled",
@@ -1276,6 +2534,12 @@ describe("dashboard layer ownership", () => {
     const start = stripped.indexOf("export function deriveSemanticEmbeddingsView");
     const end = stripped.indexOf("export function useGraphEmbeddings", start);
     const body = start >= 0 && end > start ? stripped.slice(start, end) : "";
+    const hookStart = stripped.indexOf("export function useGraphEmbeddings");
+    const hookEnd = stripped.indexOf("\n/**", hookStart + 1);
+    const hook =
+      hookStart >= 0
+        ? stripped.slice(hookStart, hookEnd > hookStart ? hookEnd : undefined)
+        : "";
 
     if (body.length === 0) {
       violations.push(`${rel}: missing semantic embeddings view derivation`);
@@ -1303,6 +2567,43 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(
         `${rel}: semantic embeddings uses local available:false held read`,
+      );
+    }
+    if (
+      !/\bexport\s+const\s+normalizeGraphEmbeddingsScope\s*=\s*normalizeGraphSliceScope\b/.test(
+        stripped,
+      ) ||
+      !/\bnormalizeGraphEmbeddingsRequestIdentity\s*\(\s*scope:\s*unknown,\s*lens:\s*unknown,\s*focus:\s*unknown/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph embeddings request identity trusts typed inputs`);
+    }
+    if (
+      !/\bconst\s+request\s*=\s*normalizeGraphEmbeddingsRequestIdentity\s*\(\s*scope\s*,\s*lens\s*,\s*focus\s*\)/.test(
+        hook,
+      )
+    ) {
+      violations.push(
+        `${rel}: graph embeddings hook bypasses request identity normalizer`,
+      );
+    }
+    if (
+      !/queryKey:\s*engineKeys\.graphEmbeddings\s*\([\s\S]*request\.scope\s*\?\?\s*["']["'][\s\S]*request\.lens[\s\S]*request\.focus/.test(
+        hook,
+      )
+    ) {
+      violations.push(
+        `${rel}: graph embeddings query key bypasses normalized identity`,
+      );
+    }
+    if (
+      !/engineClient\.graphEmbeddings\s*\(\s*\{[\s\S]*scope:\s*request\.scope![\s\S]*lens:\s*request\.lens[\s\S]*focus:\s*request\.focus/.test(
+        hook,
+      )
+    ) {
+      violations.push(
+        `${rel}: graph embeddings request body bypasses normalized identity`,
       );
     }
 
@@ -1567,41 +2868,77 @@ describe("dashboard layer ownership", () => {
   it("keeps disabled node-scoped reads from exposing cached query data", () => {
     const rel = "stores/server/queries.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    if (
+      !/\bexport\s+function\s+normalizeNodeScopedRequestIdentity\b[\s\S]*\bnormalizeNodeId\s*\(\s*nodeId\s*\)/.test(
+        stripped,
+      )
+    ) {
+      expect([
+        `${rel}: node-scoped reads lack a shared normalized request identity`,
+      ]).toEqual([]);
+    }
     const hooks = [
       {
         name: "useNodeDetail",
         pattern:
           /export function useNodeDetail[\s\S]*?export type NodeDetailSurfaceState/,
+        identity:
+          /const\s+request\s*=\s*normalizeNodeScopedRequestIdentity\s*\(\s*scope\s*,\s*id\s*\)/,
         enabled:
-          /const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*id\s*\)/,
+          /const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*request\.nodeId\s*\)/,
       },
       {
         name: "useNodeNeighbors",
         pattern: /export function useNodeNeighbors[\s\S]*?const CONTENT_GC_TIME/,
+        identity:
+          /const\s+request\s*=\s*normalizeNodeScopedRequestIdentity\s*\(\s*scope\s*,\s*id\s*,\s*depth\s*\)/,
         enabled:
-          /const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*id\s*\)/,
+          /const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*request\.nodeId\s*\)/,
       },
       {
         name: "useNodeContent",
         pattern: /export function useNodeContent[\s\S]*?export interface ContentView/,
-        enabled: /const\s+enabled\s*=\s*nodeId\s*!==\s*null\s*&&\s*scope\s*!==\s*null/,
+        identity:
+          /const\s+request\s*=\s*normalizeNodeScopedRequestIdentity\s*\(\s*scope\s*,\s*nodeId\s*\)/,
+        enabled:
+          /const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*request\.nodeId\s*\)/,
       },
       {
         name: "useNodeNeighborsBulk",
         pattern:
           /export function useNodeNeighborsBulk[\s\S]*?export function useNodeEvidence/,
+        identity:
+          /const\s+normalizedScope\s*=\s*normalizeNodeScopedScope\s*\(\s*scope\s*\)[\s\S]*const\s+normalizedDepth\s*=\s*normalizeNodeNeighborDepth\s*\(\s*depth\s*\)[\s\S]*const\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*id\s*\)/,
         enabled:
-          /const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*id\s*\)/,
+          /const\s+enabled\s*=\s*normalizedScope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*nodeId\s*\)/,
         mask: /queries\s*\[\s*index\s*\]\?\.enabled\s*\?\s*result\s*:\s*\{\s*\.\.\.result,\s*data:\s*undefined\s*\}/,
       },
       {
         name: "useNodeEvidence",
         pattern: /export function useNodeEvidence[\s\S]*?export interface DiscoverView/,
+        identity:
+          /const\s+request\s*=\s*normalizeNodeScopedRequestIdentity\s*\(\s*scope\s*,\s*id\s*\)/,
         enabled:
-          /const\s+enabled\s*=\s*scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*id\s*\)/,
+          /const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*request\.nodeId\s*\)/,
+      },
+      {
+        name: "useDiscover",
+        pattern: /export function useDiscover[\s\S]*?export function useEngineEvents/,
+        identity:
+          /const\s+request\s*=\s*normalizeNodeScopedRequestIdentity\s*\(\s*scope\s*,\s*nodeId\s*\)/,
+        enabled:
+          /const\s+enabled\s*=\s*request\.scope\s*!==\s*null\s*&&\s*isAddressableNode\s*\(\s*request\.nodeId\s*\)/,
+        mask: /deriveDiscoverView\s*\([\s\S]*enabled\s*&&\s*query\.isPending[\s\S]*enabled\s*,?\s*\)/,
       },
     ];
     const violations: string[] = [];
+    if (
+      !/\bexport\s+const\s+normalizeNodeScopedScope\s*=\s*normalizeGraphSliceScope\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: node-scoped request identity duplicates scope policy`);
+    }
 
     for (const hook of hooks) {
       const body = stripped.match(hook.pattern)?.[0];
@@ -1611,6 +2948,9 @@ describe("dashboard layer ownership", () => {
       }
       if (!hook.enabled.test(body)) {
         violations.push(`${rel}: ${hook.name} lacks its disabled-state gate`);
+      }
+      if (!hook.identity.test(body)) {
+        violations.push(`${rel}: ${hook.name} does not normalize request identity`);
       }
       const mask =
         hook.mask ??
@@ -1665,6 +3005,8 @@ describe("dashboard layer ownership", () => {
   it("keeps hover-card evidence reads behind the stores hover-card view", () => {
     const rel = "app/islands/HoverCardLayer.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const seamRel = "stores/view/hoverCard.ts";
+    const seam = stripComments(readFileSync(join(SRC_ROOT, seamRel), "utf8"));
     const violations: string[] = [];
     const menuEvidenceAlias = "app/right/menus/hoverCardEvidence.ts";
     const menuFiles = sourceFiles(join(SRC_ROOT, "app/right/menus")).map((file) =>
@@ -1688,6 +3030,36 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\buseHoverCardView\s*\(\s*id\s*,\s*scope\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing stores hover-card view seam`);
+    }
+    if (/\bscope\??:\s*string\s*\|\s*null\b/.test(stripped)) {
+      violations.push(`${rel}: hover-card layer exposes typed-only scope`);
+    }
+    if (!/\bscope\??:\s*unknown\b/.test(stripped)) {
+      violations.push(`${rel}: hover-card layer lacks runtime scope seam`);
+    }
+    if (
+      /\bderiveHoverCardView\s*\(\s*requestedId:\s*string/.test(seam) ||
+      /\buseHoverCardView\s*\(\s*id:\s*string\s*,\s*scope:\s*string\s*\|\s*null/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: hover-card view selector is typed-only`);
+    }
+    if (
+      !/\bderiveHoverCardView\s*\(\s*requestedId:\s*unknown[\s\S]*\bconst\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*requestedId\s*\)[\s\S]*node\.id\s*!==\s*nodeId/.test(
+        seam,
+      )
+    ) {
+      violations.push(
+        `${seamRel}: hover-card model matching bypasses node-id normalizer`,
+      );
+    }
+    if (
+      !/\buseHoverCardView\s*\(\s*id:\s*unknown,\s*scope:\s*unknown[\s\S]*\bconst\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*id\s*\)[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeSelectionScope\s*\(\s*scope\s*\)[\s\S]*useNodeDetailView\s*\(\s*nodeId\s*,\s*normalizedScope\s*\)[\s\S]*useNodeEvidence\s*\(\s*nodeId\s*,\s*normalizedScope\s*\)/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: hover-card query seam bypasses input normalizers`);
     }
 
     expect(violations).toEqual([]);
@@ -1881,7 +3253,11 @@ describe("dashboard layer ownership", () => {
     const selection = stripComments(
       readFileSync(join(SRC_ROOT, "stores/view/selection.ts"), "utf8"),
     );
-    if (!/\bfeatureTagFromNodeId\s*\(\s*id\s*\)/.test(selection)) {
+    if (
+      !/\bconst\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*id\s*\)[\s\S]*\bfeatureTagFromNodeId\s*\(\s*nodeId\s*\)/.test(
+        selection,
+      )
+    ) {
       violations.push("stores/view/selection.ts: missing feature tag parser");
     }
 
@@ -1962,6 +3338,59 @@ describe("dashboard layer ownership", () => {
           violations.push(`${rel}: raw workspace registry title composition`);
         }
       }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps workspace registry normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeWorkspaceString",
+      "adaptWorkspaceRoot",
+      "adaptWorkspaces",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} workspace adapter seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+adaptWorkspaceRoot\s*\(\s*value:\s*unknown\s*\):\s*WorkspaceRoot\s*\|\s*null[\s\S]*\bconst\s+id\s*=\s*normalizeWorkspaceString\s*\(\s*value\.id\s*\)[\s\S]*\bconst\s+path\s*=\s*normalizeWorkspaceString\s*\(\s*value\.path\s*\)[\s\S]*\bif\s*\(\s*id\s*===\s*undefined\s*\|\|\s*path\s*===\s*undefined\s*\)\s*return\s+null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace root adapter fabricates malformed roots`);
+    }
+    if (
+      !/\blabel\s*=\s*normalizeWorkspaceString\s*\(\s*value\.label\s*\)\s*\?\?\s*id/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace root label bypasses canonical fallback`);
+    }
+    if (
+      !/\bunreachable_reason:\s*normalizeWorkspaceString\s*\(\s*value\.unreachable_reason\s*\)\s*\?\?\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace reachability reason bypasses normalizer`);
+    }
+    if (
+      !/\.map\s*\(\s*adaptWorkspaceRoot\s*\)[\s\S]*\.filter\s*\(\s*\(\s*root\s*\):\s*root\s+is\s+WorkspaceRoot\s*=>\s*root\s*!==\s*null\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace adapter does not drop malformed roots`);
+    }
+    if (
+      !/\bactive_workspace:\s*normalizeWorkspaceString\s*\(\s*body\.active_workspace\s*\)\s*\?\?\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: active workspace bypasses workspace normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -2101,6 +3530,22 @@ describe("dashboard layer ownership", () => {
     if (!/\buseSettingsRowController\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing settings row controller seam`);
     }
+    if (/\bactiveScope:\s*string\s*\|\s*null\b/.test(stripped)) {
+      violations.push(`${rel}: settings row prop trusts typed-only scope`);
+    }
+    if (
+      !/\binterface\s+SettingRowProps\s*\{[\s\S]*\bactiveScope:\s*unknown[\s\S]*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings row prop lacks runtime scope seam`);
+    }
+    if (/\bonTarget:\s*\(\s*target:\s*string\s*\)\s*=>\s*void/.test(stripped)) {
+      violations.push(`${rel}: settings target callback trusts typed-only target`);
+    }
+    if (!/\bonTarget:\s*\(\s*target:\s*unknown\s*\)\s*=>\s*void/.test(stripped)) {
+      violations.push(`${rel}: settings target callback lacks runtime target seam`);
+    }
     const rowStart = stripped.indexOf("function SettingRow");
     const rowEnd = stripped.indexOf("function ScopeTargetToggle");
     const rowBlock =
@@ -2212,6 +3657,173 @@ describe("dashboard layer ownership", () => {
           violations.push(`${rel}: hardcoded consumed settings key`);
         }
       }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps settings scope identity normalized before schema resolution", () => {
+    const selectorsRel = "stores/server/settingsSelectors.ts";
+    const selectors = stripComments(readFileSync(join(SRC_ROOT, selectorsRel), "utf8"));
+    const scopeIdentityRel = "stores/server/scopeIdentity.ts";
+    const scopeIdentity = stripComments(
+      readFileSync(join(SRC_ROOT, scopeIdentityRel), "utf8"),
+    );
+    const queriesRel = "stores/server/queries.ts";
+    const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
+    const violations: string[] = [];
+
+    if (
+      !/export\s*\{[\s\S]*\bnormalizeScopeId\s+as\s+normalizeStoreScope\b[\s\S]*\}\s*from\s+["']\.\.\/\.\.\/platform\/scope\/scopeIdentity["']/.test(
+        scopeIdentity,
+      ) ||
+      !/export\s*\{[\s\S]*\bSCOPE_ID_MAX_CHARS\b[\s\S]*\}\s*from\s+["']\.\.\/\.\.\/platform\/scope\/scopeIdentity["']/.test(
+        scopeIdentity,
+      ) ||
+      !/\bfrom\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(
+        selectors,
+      ) ||
+      !/\bexport\s+const\s+normalizeSettingsScope\s*=\s*normalizeStoreScope\b/.test(
+        selectors,
+      )
+    ) {
+      violations.push(`${selectorsRel}: missing runtime settings scope normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+resolveEffective\s*\([\s\S]*activeScope:\s*unknown[\s\S]*const\s+normalizedScope\s*=\s*normalizeSettingsScope\s*\(\s*activeScope\s*\)[\s\S]*def\.scope_eligible\s*&&\s*normalizedScope\s*!==\s*null[\s\S]*settings\?\.scoped\?\.\[\s*normalizedScope\s*\]\?\.\[\s*def\.key\s*\]/.test(
+        selectors,
+      )
+    ) {
+      violations.push(
+        `${selectorsRel}: effective settings resolution bypasses normalized scope`,
+      );
+    }
+    if (
+      /\bdef\.scope_eligible\s*&&\s*activeScope\b/.test(selectors) ||
+      /\bsettings\?\.scoped\?\.\[\s*activeScope\s*\]/.test(selectors)
+    ) {
+      violations.push(`${selectorsRel}: raw activeScope used for scoped settings`);
+    }
+    if (
+      !/\bexport\s+function\s+settingCanTargetScope\s*\([\s\S]*activeScope:\s*unknown[\s\S]*normalizeSettingsScope\s*\(\s*activeScope\s*\)\s*!==\s*null/.test(
+        selectors,
+      )
+    ) {
+      violations.push(
+        `${selectorsRel}: settings scope targetability trusts typed scope`,
+      );
+    }
+    for (const seam of [
+      "deriveSettingsDialogView",
+      "deriveSettingsEffectsView",
+      "useSettingsDialogView",
+      "useSettingsEffectsView",
+    ]) {
+      if (
+        !new RegExp(
+          `\\bexport\\s+function\\s+${seam}\\s*\\([\\s\\S]*activeScope:\\s*unknown`,
+        ).test(queries)
+      ) {
+        violations.push(`${queriesRel}: ${seam} trusts typed active scope`);
+      }
+    }
+    for (const seam of ["useSettingsDialogView", "useSettingsEffectsView"]) {
+      if (
+        !new RegExp(
+          `\\bexport\\s+function\\s+${seam}\\s*\\([\\s\\S]*const\\s+normalizedScope\\s*=\\s*normalizeSettingsScope\\s*\\(\\s*activeScope\\s*\\)[\\s\\S]*settings\\.data,\\s*normalizedScope`,
+        ).test(queries)
+      ) {
+        violations.push(`${queriesRel}: ${seam} bypasses settings scope normalizer`);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps settings mutation payloads normalized at the server seam", () => {
+    const rel = "stores/server/queries.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (
+      !/\bexport\s+function\s+normalizeSettingUpdate\s*\(\s*update:\s*unknown\s*\):\s*SettingUpdate\s*\|\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing settings update normalizer`);
+    }
+    if (
+      !/\bconst\s+key\s*=\s*record\.key\.trim\s*\(\s*\)[\s\S]*const\s+scope\s*=\s*normalizeSettingsScope\s*\(\s*record\.scope\s*\)\s*\?\?\s*undefined[\s\S]*return\s*\{\s*key,\s*value:\s*record\.value,\s*scope\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings update identity is not normalized`);
+    }
+    const mutation =
+      stripped.match(
+        /export function usePutSettings[\s\S]*?export interface SaveBodyArgs/,
+      )?.[0] ?? "";
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeSettingUpdate\s*\(\s*body\s*\)/.test(
+        mutation,
+      )
+    ) {
+      violations.push(`${rel}: settings mutation bypasses update normalizer`);
+    }
+    if (!/\bengineClient\.putSettings\s*\(\s*normalized\s*\)/.test(mutation)) {
+      violations.push(`${rel}: settings mutation sends raw body`);
+    }
+    if (/\bmutationFn:\s*\(\s*body:\s*SettingUpdate\s*\)/.test(mutation)) {
+      violations.push(`${rel}: settings mutation is typed-only`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps settings schema metadata normalized in the live adapter", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeSchemaString",
+      "normalizeOptionalSchemaString",
+      "normalizeSchemaStringList",
+      "normalizeSettingControlKind",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} settings schema seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeSchemaStringList\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*entry\.trim\s*\(\s*\)[\s\S]*\bseen\.has\s*\(\s*normalized\s*\)[\s\S]*\bout\.push\s*\(\s*normalized\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings schema list normalizer preserves raw spacing`);
+    }
+    if (
+      !/\bfunction\s+adaptValueType\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bmembers:\s*normalizeSchemaStringList\s*\(\s*value\.members\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: enum value type bypasses schema member normalizer`);
+    }
+    if (
+      !/\bfunction\s+adaptSettingDef\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+key\s*=\s*normalizeOptionalSchemaString\s*\(\s*value\.key\s*\)[\s\S]*\bcontrol\s*=\s*normalizeSettingControlKind\s*\(\s*value\.control\s*\)[\s\S]*\bgroup:\s*normalizeSchemaString\s*\(\s*value\.group,\s*["']General["']\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: setting def adapter bypasses schema metadata normalizers`,
+      );
+    }
+    if (
+      !/\bfunction\s+adaptSettingsSchema\s*\(\s*body:\s*unknown\s*\)[\s\S]*\bconst\s+groups\s*=\s*normalizeSchemaStringList\s*\(\s*body\.groups\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings schema groups bypass normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -2331,12 +3943,100 @@ describe("dashboard layer ownership", () => {
     }
     for (const seam of [
       "useSettingsKeybindingRecorderStore",
+      "normalizeSettingsKeybindingId",
       "settingsKeybindingChordFromEvent",
       "useSettingsKeybindingRecorder",
+      "normalizeKeybindingOverrides",
+      "chordStringFromEvent",
     ]) {
       if (!new RegExp(`\\b${seam}\\b`).test(settingsControlView)) {
         violations.push(`${viewRel}: missing ${seam} keybinding recorder seam`);
       }
+    }
+    if (
+      !/\bexport\s+function\s+settingsKeybindingChordFromEvent[\s\S]*\{\s*return\s+chordStringFromEvent\s*\(\s*event\s*\)\s*;\s*\}/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(
+        `${viewRel}: keybinding recorder event parsing bypasses chord primitive`,
+      );
+    }
+    if (
+      /\bSETTINGS_KEYBINDING_MODIFIER_KEYS\b|\bconst\s+tokens:\s*string\[\]/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(`${viewRel}: keybinding recorder owns local chord parsing`);
+    }
+    if (
+      !/from\s+["']\.\.\/\.\.\/platform\/keymap\/registry["'][\s\S]*\bnormalizeKeybindingId\b/.test(
+        settingsControlView,
+      ) ||
+      !/\bexport\s+function\s+normalizeSettingsKeybindingId\s*\(\s*id:\s*unknown\s*\):\s*string\s*\|\s*null\s*\{\s*return\s+normalizeKeybindingId\s*\(\s*id\s*\)\s*;?\s*\}/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(`${viewRel}: keybinding recorder id bypasses runtime normalizer`);
+    }
+    if (
+      !/\bsetRecordingId:\s*\(id\)\s*=>\s*set\s*\(\s*\{\s*recordingId:\s*normalizeSettingsKeybindingId\s*\(\s*id\s*\)\s*\}/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(`${viewRel}: keybinding recorder setter bypasses normalizer`);
+    }
+    if (
+      !/\btoggleRecordingId:\s*\(id\)\s*=>[\s\S]*\bconst\s+normalizedId\s*=\s*normalizeSettingsKeybindingId\s*\(\s*id\s*\)[\s\S]*recordingId:\s*state\.recordingId\s*===\s*normalizedId\s*\?\s*null\s*:\s*normalizedId/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(`${viewRel}: keybinding recorder toggle bypasses normalizer`);
+    }
+    for (const seam of [
+      "nextKeybindingOverrides",
+      "clearKeybindingOverride",
+      "keybindingConflictIds",
+    ]) {
+      if (
+        !new RegExp(
+          `\\bexport\\s+function\\s+${seam}[\\s\\S]*normalizeSettingsKeybindingId\\s*\\(\\s*id\\s*\\)`,
+        ).test(settingsControlView)
+      ) {
+        violations.push(`${viewRel}: ${seam} bypasses keybinding id normalizer`);
+      }
+    }
+    if (
+      !/\bnextKeybindingOverrides[\s\S]*\bnormalizeKeybindingOverrides\s*\(\s*current\s*\)/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(`${viewRel}: nextKeybindingOverrides preserves raw override map`);
+    }
+    if (
+      !/\bclearKeybindingOverride[\s\S]*\bconst\s+normalizedCurrent\s*=\s*normalizeKeybindingOverrides\s*\(\s*current\s*\)/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(`${viewRel}: clearKeybindingOverride preserves raw override map`);
+    }
+    if (
+      !/\bserializeKeybindingOverrides[\s\S]*JSON\.stringify\s*\(\s*normalizeKeybindingOverrides\s*\(\s*overrides\s*\)\s*\)/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(
+        `${viewRel}: keybinding override serialization bypasses normalizer`,
+      );
+    }
+    if (
+      !/\bkeybindingConflictIds[\s\S]*conflictsForCandidate\s*\([\s\S]*normalizeKeybindingOverrides\s*\(\s*current\s*\)/.test(
+        settingsControlView,
+      )
+    ) {
+      violations.push(
+        `${viewRel}: keybinding conflict check preserves raw override map`,
+      );
     }
 
     expect(violations).toEqual([]);
@@ -2677,6 +4377,58 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps vault-tree entry normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeVaultTreeString",
+      "normalizeVaultTreeStringList",
+      "adaptVaultTreeDates",
+      "normalizeVaultTreeProgress",
+      "adaptVaultTreeEntry",
+      "adaptVaultTree",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} vault-tree adapter seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+adaptVaultTreeEntry[\s\S]*\bconst\s+path\s*=\s*normalizeVaultTreeString\s*\(\s*value\.path\s*\)[\s\S]*\bconst\s+stem\s*=\s*normalizeVaultTreeString\s*\(\s*value\.stem\s*\)[\s\S]*\bif\s*\(\s*stem\s*===\s*undefined\s*\)\s*return\s+null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: vault-tree adapter fabricates malformed document rows`);
+    }
+    if (
+      !/\bfeature_tags:\s*normalizeVaultTreeStringList\s*\(\s*value\.feature_tags\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: vault-tree feature tags bypass normalizer`);
+    }
+    if (!/\bdates:\s*adaptVaultTreeDates\s*\(\s*value\.dates\s*\)/.test(stripped)) {
+      violations.push(`${rel}: vault-tree dates bypass adapter`);
+    }
+    if (
+      !/\bfunction\s+normalizeVaultTreeProgress[\s\S]*Number\.isFinite\s*\(\s*value\.done\s*\)[\s\S]*Number\.isFinite\s*\(\s*value\.total\s*\)[\s\S]*done\s*<\s*0\s*\|\|\s*total\s*<=\s*0\s*\|\|\s*done\s*>\s*total/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: vault-tree progress bypasses finite bounded guard`);
+    }
+    if (
+      !/body\.entries[\s\S]*\.map\s*\(\s*adaptVaultTreeEntry\s*\)[\s\S]*\.filter\s*\(\s*\(\s*entry\s*\):\s*entry\s+is\s+VaultTreeEntry\s*=>\s*entry\s*!==\s*null\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: vault-tree adapter does not drop malformed rows`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps vault tree disclosure and roving state behind the browser-tree seam", () => {
     const rel = "app/left/TreeBrowser.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -2745,11 +4497,44 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bencodeURIComponent\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (!/\bencodeURIComponent\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: scoped browser-tree key does not encode scope`);
     }
-    if (!/\bscope\s*===\s*null\s*\?\s*["']scope:null["']/.test(stripped)) {
+    if (
+      !/\bnormalizedScope\s*===\s*null[\s\S]*\?\s*["']scope:null["']/.test(stripped)
+    ) {
       violations.push(`${rel}: null scope lacks an explicit key sentinel`);
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeBrowserTreeScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: browser-tree scope key bypasses shared view scope normalizer`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+normalizeBrowserTreeMode\b[\s\S]*mode\s*===\s*["']code["']\s*\?\s*["']code["']\s*:\s*["']vault["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: browser-tree mode key bypasses runtime normalizer`);
+    }
+    if (
+      !/const\s+normalizedScope\s*=\s*normalizeBrowserTreeScope\s*\(\s*scope\s*\)[\s\S]*const\s+normalizedMode\s*=\s*normalizeBrowserTreeMode\s*\(\s*mode\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: browser-tree key factory bypasses normalized identity`);
+    }
+    if (
+      !/scope:value:\$\{encodeURIComponent\s*\(\s*normalizedScope\s*\)\}/.test(stripped)
+    ) {
+      violations.push(`${rel}: real scopes lack a value-tagged key namespace`);
     }
     if (/\$\{scope\s*\?\?\s*["']none["']\}::\$\{mode\}/.test(stripped)) {
       violations.push(`${rel}: browser-tree key can collide with literal none scope`);
@@ -2762,6 +4547,45 @@ describe("dashboard layer ownership", () => {
       if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${seam} seam`);
       }
+    }
+    for (const normalizer of [
+      "normalizeBrowserTreeExpansionKey",
+      "normalizeBrowserTreeItemKey",
+    ]) {
+      if (
+        !new RegExp(`\\b${normalizer}\\b[\\s\\S]*\\bvalue\\.trim\\s*\\(\\s*\\)`).test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: ${normalizer} preserves whitespace-only keys`);
+      }
+    }
+    if (
+      !/\bBROWSER_TREE_KEY_MAX_CHARS\b/.test(stripped) ||
+      !/\bBROWSER_TREE_ITEM_KEY_MAX_CHARS\b/.test(stripped)
+    ) {
+      violations.push(`${rel}: browser-tree key caps are not explicit`);
+    }
+    if (
+      !/\bnormalizeBrowserTreeExpansionKey\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+key\s*=\s*value\.trim\s*\(\s*\)[\s\S]*key\.length\s*<=\s*BROWSER_TREE_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: browser-tree expansion key is not bounded`);
+    }
+    if (
+      !/\bnormalizeBrowserTreeItemKey\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+key\s*=\s*value\.trim\s*\(\s*\)[\s\S]*key\.length\s*<=\s*BROWSER_TREE_ITEM_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: browser-tree item key is not bounded`);
+    }
+    if (
+      !/\bbrowserTreeExpansionKey\s*\(\s*scope:\s*unknown,\s*mode:\s*unknown\s*\)[\s\S]*\bkey\.length\s*<=\s*BROWSER_TREE_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: browser-tree derived key is not bounded`);
     }
     for (const typedOnly of [
       "setKey: (key: string)",
@@ -2811,6 +4635,24 @@ describe("dashboard layer ownership", () => {
         "app/settings/settingsEffects.ts: missing stores freshness selector",
       );
     }
+    if (!/\bgraphDefaultsInitialization\.identity\b/.test(stripped)) {
+      violations.push(
+        "app/settings/settingsEffects.ts: missing stores initialization identity",
+      );
+    }
+    if (/\buseRef\b/.test(stripped)) {
+      violations.push(
+        "app/settings/settingsEffects.ts: app-layer graph-default guard state",
+      );
+    }
+    if (
+      /\binitializedGraphDefaults\.current\.has\s*\(\s*scope\s*\)/.test(stripped) ||
+      /\bpendingGraphDefaults\.current\.has\s*\(\s*scope\s*\)/.test(stripped)
+    ) {
+      violations.push(
+        "app/settings/settingsEffects.ts: graph-default guard is scope-only",
+      );
+    }
     if (/\bdashboardState\.data\b/.test(stripped)) {
       violations.push("app/settings/settingsEffects.ts: raw dashboard freshness read");
     }
@@ -2847,6 +4689,16 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bdecodeBool\s*\(/.test(stripped)) {
       violations.push("app/settings/settingsEffects.ts: local reduce-motion decode");
+    }
+    if (/\buseSettingsEffects\s*\(\s*scope:\s*string\s*\|\s*null/.test(stripped)) {
+      violations.push(
+        "app/settings/settingsEffects.ts: settings effects bridge trusts typed-only scope",
+      );
+    }
+    if (!/\buseSettingsEffects\s*\(\s*scope:\s*unknown\s*=\s*null/.test(stripped)) {
+      violations.push(
+        "app/settings/settingsEffects.ts: settings effects bridge lacks runtime scope seam",
+      );
     }
     if (!/\buseSettingsEffectsView\s*\(\s*scope\s*\)/.test(stripped)) {
       violations.push("app/settings/settingsEffects.ts: missing settings-effects view");
@@ -3370,7 +5222,7 @@ describe("dashboard layer ownership", () => {
     const seam = stripComments(
       readFileSync(join(SRC_ROOT, "stores/server/dateRangeIntent.ts"), "utf8"),
     );
-    if (!/\buseDashboardStateMutations\s*\(\s*scope\s*\)/.test(seam)) {
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(seam)) {
       violations.push(
         "stores/server/dateRangeIntent.ts: missing dashboard mutation bridge",
       );
@@ -3379,13 +5231,27 @@ describe("dashboard layer ownership", () => {
       violations.push("stores/server/dateRangeIntent.ts: missing date normalizer");
     }
     if (
+      /\buseDateRangeIntent\s*\(\s*scope:\s*string\s*\|\s*null/.test(seam) ||
       /\bsetRange:\s*\(range:\s*DashboardDateRange\)/.test(seam) ||
       /import\s+type\s+\{\s*DashboardDateRange\s*\}/.test(seam)
     ) {
       violations.push("stores/server/dateRangeIntent.ts: typed-only setRange seam");
     }
     if (
-      !/\bsetRange:\s*\([^)]*range[^)]*\)\s*=>[\s\S]*mutations\.setDateRange\s*\(\s*normalizeDashboardDateRange\s*\(\s*range\s*\)/.test(
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        seam,
+      ) ||
+      !/\bexport\s+const\s+normalizeDateRangeIntentScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        seam,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeDateRangeIntentScope\s*\(\s*scope\s*\)/.test(
+        seam,
+      )
+    ) {
+      violations.push("stores/server/dateRangeIntent.ts: missing scope normalizer");
+    }
+    if (
+      !/\bsetRange:\s*\([^)]*range[^)]*\)\s*=>[\s\S]*normalizedScope\s*===\s*null[\s\S]*mutations\.setDateRange\s*\(\s*normalizeDashboardDateRange\s*\(\s*range\s*\)/.test(
         seam,
       )
     ) {
@@ -3394,7 +5260,7 @@ describe("dashboard layer ownership", () => {
       );
     }
     if (
-      !/\bclearRange:\s*\(\)\s*=>[\s\S]*mutations\.setDateRange\s*\(\s*\{\s*\}\s*\)/.test(
+      !/\bclearRange:\s*\(\)\s*=>[\s\S]*normalizedScope\s*===\s*null[\s\S]*mutations\.setDateRange\s*\(\s*\{\s*\}\s*\)/.test(
         seam,
       )
     ) {
@@ -3513,12 +5379,12 @@ describe("dashboard layer ownership", () => {
       violations.push(`${filtersRel}: filter choices do not read top-level date_range`);
     }
     if (
-      !/\badaptDashboardState\b[\s\S]*\bdate_range:\s*adaptDashboardDateRange\s*\(\s*body\.date_range\s*\)/.test(
+      !/\badaptDashboardState\b[\s\S]*\bdate_range:\s*normalizeDashboardDateRange\s*\(\s*body\.date_range\s*\)/.test(
         adapter,
       )
     ) {
       violations.push(
-        `${adapterRel}: dashboard adapter does not read top-level date_range`,
+        `${adapterRel}: dashboard adapter does not normalize top-level date_range`,
       );
     }
 
@@ -3527,30 +5393,111 @@ describe("dashboard layer ownership", () => {
 
   it("keeps dashboard graph filters normalized at the canonical state seam", () => {
     const rel = "stores/server/dashboardState.ts";
+    const normalizationRel = "stores/server/dashboardStateNormalization.ts";
+    const adapterRel = "stores/server/liveAdapters.ts";
+    const filtersRel = "stores/view/filters.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const normalization = stripComments(
+      readFileSync(join(SRC_ROOT, normalizationRel), "utf8"),
+    );
+    const adapter = stripComments(readFileSync(join(SRC_ROOT, adapterRel), "utf8"));
+    const filters = stripComments(readFileSync(join(SRC_ROOT, filtersRel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bexport\s+function\s+normalizeDashboardFilterTiers\b/.test(stripped)) {
-      violations.push(`${rel}: missing dashboard tier-filter normalizer`);
+    if (!/\bexport\s+function\s+normalizeDashboardFilterTiers\b/.test(normalization)) {
+      violations.push(`${normalizationRel}: missing dashboard tier-filter normalizer`);
     }
-    if (!/\bexport\s+function\s+normalizeDashboardMinConfidence\b/.test(stripped)) {
-      violations.push(`${rel}: missing dashboard confidence-floor normalizer`);
+    if (
+      !/\bexport\s+function\s+normalizeDashboardMinConfidence\b/.test(normalization)
+    ) {
+      violations.push(
+        `${normalizationRel}: missing dashboard confidence-floor normalizer`,
+      );
     }
     if (
       !/\bcloneDashboardFilters\b[\s\S]*\bnormalizeDashboardFilterTiers\s*\(/.test(
-        stripped,
-      )
-    ) {
-      violations.push(`${rel}: cloneDashboardFilters bypasses tier normalizer`);
-    }
-    if (
-      !/\bcloneDashboardFilters\b[\s\S]*\bnormalizeDashboardMinConfidence\s*\(/.test(
-        stripped,
+        normalization,
       )
     ) {
       violations.push(
-        `${rel}: cloneDashboardFilters bypasses confidence-floor normalizer`,
+        `${normalizationRel}: cloneDashboardFilters bypasses tier normalizer`,
       );
+    }
+    if (
+      !/\bcloneDashboardFilters\b[\s\S]*\bnormalizeDashboardMinConfidence\s*\(/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: cloneDashboardFilters bypasses confidence-floor normalizer`,
+      );
+    }
+    if (
+      !/\bfunction\s+cloneStringArray\s*\(\s*values:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*\bseen\.has\s*\(\s*normalized\s*\)[\s\S]*\bnext\.push\s*\(\s*normalized\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: dashboard filter array normalizer preserves raw spacing`,
+      );
+    }
+    if (
+      !/\bfunction\s+normalizeDashboardFeatureQuery\s*\(\s*value:\s*unknown\s*,?\s*\)[\s\S]*\bnormalizeStringMember\s*\(\s*value\.mode\s*,\s*DASHBOARD_FEATURE_QUERY_MODES\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: feature-query mode bypasses string-member normalizer`,
+      );
+    }
+    if (
+      !/\bFILTER_CHOICE_VALUE_MAX_CHARS\b/.test(filters) ||
+      !/\bFILTER_CHOICE_LIST_MAX_ITEMS\b/.test(filters) ||
+      !/\bfunction\s+normalizeFilterChoiceValue\s*\(\s*value:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*\bvalue\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*FILTER_CHOICE_VALUE_MAX_CHARS/.test(
+        filters,
+      ) ||
+      !/\bfunction\s+arrayOrEmpty\s*\(\s*values:\s*unknown[\s\S]*FILTER_CHOICE_LIST_MAX_ITEMS[\s\S]*normalizeFilterChoiceValue\s*\(\s*value\s*\)[\s\S]*\bseen\.has\s*\(\s*normalized\s*\)[\s\S]*\bnext\.push\s*\(\s*normalized\s*\)[\s\S]*\bnext\.length\s*>=\s*maxItems/.test(
+        filters,
+      )
+    ) {
+      violations.push(
+        `${filtersRel}: filter-choice array normalizer is unbounded`,
+      );
+    }
+    if (
+      !/from\s+["']\.\.\/searchQuery["'][\s\S]*\bnormalizeSearchQuery\b/.test(
+        filters,
+      ) ||
+      !/\bfunction\s+normalizeFilterChoiceText\s*\(\s*value:\s*unknown\s*\):\s*string[\s\S]*\bnormalizeSearchQuery\s*\(\s*value\s*\)/.test(
+        filters,
+      ) ||
+      !/\btextMatch:\s*normalizeFilterChoiceText\s*\(\s*raw\.textMatch\s*\)/.test(
+        filters,
+      ) ||
+      !/\btextMatch:\s*normalizeFilterChoiceText\s*\(\s*filters\.text\s*\)/.test(
+        filters,
+      )
+    ) {
+      violations.push(`${filtersRel}: filter-choice text bypasses search normalizer`);
+    }
+    if (
+      !/\bfunction\s+structuralStatesOrEmpty\s*\([\s\S]*normalizeFilterChoiceValue\s*\(\s*value\s*\)[\s\S]*STRUCTURAL_STATES\.includes[\s\S]*next\.push\s*\(\s*structuralState\s*\)[\s\S]*next\.length\s*>=\s*STRUCTURAL_STATES\.length/.test(
+        filters,
+      )
+    ) {
+      violations.push(`${filtersRel}: structural state choices are not bounded`);
+    }
+    if (!/\bdashboardFiltersFromChoices\s*\(\s*choices:\s*unknown\s*\)/.test(filters)) {
+      violations.push(
+        `${filtersRel}: dashboard filter choices accept typed-only input`,
+      );
+    }
+    if (
+      !/\badaptDashboardState\b[\s\S]*\bfilters:\s*cloneDashboardFilters\s*\(\s*body\.filters\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: dashboard adapter bypasses filter normalizer`);
     }
     if (
       !/\bdashboardFiltersWithTier\b[\s\S]*\bisDashboardTierName\s*\(/.test(stripped)
@@ -3558,11 +5505,38 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: tier filter setter accepts non-canonical tier names`);
     }
     if (
+      !/\bexport\s+function\s+normalizeDashboardTierName\s*\(\s*tier:\s*unknown[\s\S]*tier\.trim\s*\(\s*\)[\s\S]*isDashboardTierName\s*\(\s*normalized\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+function\s+normalizeDashboardTierEnabled\s*\(\s*enabled:\s*unknown[\s\S]*typeof\s+enabled\s*===\s*["']boolean["']/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+function\s+normalizeDashboardConfidenceTier\s*\(\s*tier:\s*unknown[\s\S]*normalizeDashboardTierName\s*\(\s*tier\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing runtime tier filter normalizers`);
+    }
+    if (
+      !/\bdashboardFiltersWithTier\s*\([\s\S]*filters:\s*unknown[\s\S]*tier:\s*unknown[\s\S]*on:\s*unknown[\s\S]*normalizeDashboardTierName\s*\(\s*tier\s*\)[\s\S]*normalizeDashboardTierEnabled\s*\(\s*on\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: tier filter setter trusts typed tier/enabled inputs`);
+    }
+    if (
       !/\bdashboardFiltersWithMinConfidence\b[\s\S]*\bnormalizeDashboardConfidenceFloor\s*\(/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: confidence filter setter bypasses floor normalizer`);
+    }
+    if (
+      !/\bdashboardFiltersWithMinConfidence\s*\([\s\S]*filters:\s*unknown[\s\S]*tier:\s*unknown[\s\S]*floor:\s*unknown[\s\S]*normalizeDashboardConfidenceTier\s*\(\s*tier\s*\)[\s\S]*normalizeDashboardConfidenceFloor\s*\(\s*floor\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: confidence floor setter trusts typed tier/floor inputs`);
     }
 
     expect(violations).toEqual([]);
@@ -3710,10 +5684,16 @@ describe("dashboard layer ownership", () => {
 
   it("keeps dashboard layout and lens enums normalized at read and write seams", () => {
     const dashboardRel = "stores/server/dashboardState.ts";
+    const normalizationRel = "stores/server/dashboardStateNormalization.ts";
+    const adapterRel = "stores/server/liveAdapters.ts";
     const queriesRel = "stores/server/queries.ts";
     const controlsIntentRel = "stores/server/dashboardStageControlsIntent.ts";
     const sceneIntentRel = "stores/server/dashboardStageSceneIntent.ts";
     const dashboard = stripComments(readFileSync(join(SRC_ROOT, dashboardRel), "utf8"));
+    const normalization = stripComments(
+      readFileSync(join(SRC_ROOT, normalizationRel), "utf8"),
+    );
+    const adapter = stripComments(readFileSync(join(SRC_ROOT, adapterRel), "utf8"));
     const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
     const controlsIntent = stripComments(
       readFileSync(join(SRC_ROOT, controlsIntentRel), "utf8"),
@@ -3724,12 +5704,47 @@ describe("dashboard layer ownership", () => {
     const violations: string[] = [];
 
     if (
-      !/\bexport\s+function\s+normalizeDashboardRepresentationMode\b/.test(dashboard)
+      !/\bexport\s+function\s+normalizeDashboardRepresentationMode\b/.test(
+        normalization,
+      )
     ) {
-      violations.push(`${dashboardRel}: missing representation-mode normalizer`);
+      violations.push(`${normalizationRel}: missing representation-mode normalizer`);
     }
-    if (!/\bexport\s+function\s+normalizeDashboardSalienceLens\b/.test(dashboard)) {
-      violations.push(`${dashboardRel}: missing salience-lens normalizer`);
+    if (
+      !/\bexport\s+function\s+normalizeDashboardGraphGranularity\s*\(\s*granularity:\s*unknown\s*,?\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: missing runtime graph-granularity normalizer`,
+      );
+    }
+    if (!/\bexport\s+function\s+normalizeDashboardSalienceLens\b/.test(normalization)) {
+      violations.push(`${normalizationRel}: missing salience-lens normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeStringMember\s*(?:<[^>]+>)?\s*\(\s*value:\s*unknown\s*,[\s\S]*members:\s*readonly\s+\w+\[\]\s*,?\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*\bisStringMember\s*\(\s*normalized\s*,\s*members\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: string member normalizer preserves raw spacing`,
+      );
+    }
+    for (const [name, member] of [
+      ["normalizeDashboardRepresentationMode", "REPRESENTATION_MODES"],
+      ["normalizeDashboardGraphGranularity", "GRAPH_GRANULARITIES"],
+      ["normalizeDashboardSalienceLens", "SALIENCE_LENSES"],
+    ] as const) {
+      if (
+        !new RegExp(
+          `\\b${name}\\b[\\s\\S]*\\bnormalizeStringMember\\s*\\([^,]+,\\s*${member}\\s*\\)`,
+        ).test(normalization)
+      ) {
+        violations.push(
+          `${normalizationRel}: ${name} bypasses string-member normalizer`,
+        );
+      }
     }
     if (
       !/\brepresentationModePatch\b[\s\S]*\bnormalizeDashboardRepresentationMode\s*\(/.test(
@@ -3740,6 +5755,84 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\blensPatch\b[\s\S]*\bnormalizeDashboardSalienceLens\s*\(/.test(dashboard)) {
       violations.push(`${dashboardRel}: salience-lens patch bypasses normalizer`);
+    }
+    if (
+      !/\bgranularityPatch\s*\(\s*graph_granularity:\s*unknown\s*,?\s*\)[\s\S]*\bnormalizeDashboardGraphGranularity\s*\(\s*graph_granularity\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: graph-granularity patch bypasses normalizer`);
+    }
+    if (
+      !/\bdashboardGraphDefaultsPatch\s*\(\s*graph_granularity:\s*unknown[\s\S]*\bnormalizeDashboardGraphGranularity\s*\(\s*graph_granularity\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: graph defaults bypass granularity normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDashboardGraphSettingsDefaults\s*\(\s*defaults:\s*unknown[\s\S]*normalizeDashboardGraphGranularity\s*\(\s*record\.defaultGranularity\s*\)[\s\S]*Number\.isFinite\s*\(\s*record\.confidenceFloor\s*\)[\s\S]*normalizeDashboardTextFilter\s*\(\s*record\.labelFilter\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(
+        `${dashboardRel}: graph settings defaults bypass runtime normalizer`,
+      );
+    }
+    if (
+      !/\bdashboardGraphSettingsDefaultsPatch\s*\(\s*defaults:\s*unknown[\s\S]*normalizeDashboardGraphSettingsDefaults\s*\(\s*defaults\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: graph settings defaults trust typed input`);
+    }
+    if (
+      /dashboardGraphSettingsDefaultsPatch\s*\(\s*defaults:\s*GraphSettingsDefaults/.test(
+        dashboard,
+      ) ||
+      /applyGraphSettingsDefaults:\s*\(defaults:\s*GraphSettingsDefaults/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: typed-only graph settings defaults seam`);
+    }
+    if (/\bdefaults\.labelFilter\.trim\s*\(\s*\)/.test(dashboard)) {
+      violations.push(`${dashboardRel}: graph settings defaults trim raw label`);
+    }
+    for (const [field, normalizer] of [
+      ["graph_granularity", "normalizeDashboardGraphGranularity"],
+      ["salience_lens", "normalizeDashboardSalienceLens"],
+      ["representation_mode", "normalizeDashboardRepresentationMode"],
+    ] as const) {
+      if (
+        !new RegExp(
+          `\\b${field}:\\s*${normalizer}\\s*\\(\\s*body\\.${field}\\s*\\)`,
+        ).test(adapter)
+      ) {
+        violations.push(`${adapterRel}: dashboard adapter bypasses ${normalizer}`);
+      }
+    }
+    for (const typedOnly of [
+      "setRepresentationMode: (mode: RepresentationMode)",
+      "setGranularity: (granularity: GraphGranularity)",
+      "applyGraphDefaults: (granularity: GraphGranularity",
+      "applyGraphSettingsDefaults: (defaults: GraphSettingsDefaults)",
+    ]) {
+      if (dashboard.includes(typedOnly)) {
+        violations.push(`${dashboardRel}: typed-only graph visual seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "setRepresentationMode: (mode: unknown)",
+      "setGranularity: (granularity: unknown)",
+      "applyGraphDefaults: (granularity: unknown",
+      "applyGraphSettingsDefaults: (defaults: unknown)",
+    ]) {
+      if (!dashboard.includes(required)) {
+        violations.push(
+          `${dashboardRel}: missing runtime graph visual seam ${required}`,
+        );
+      }
     }
     if (
       !/\bdashboardDocumentStateSeed\b[\s\S]*\bnormalizeDashboardRepresentationMode\s*\(/.test(
@@ -3786,6 +5879,50 @@ describe("dashboard layer ownership", () => {
         `${controlsIntentRel}: representation intent bypasses normalizer`,
       );
     }
+    for (const typedOnly of [
+      "useDashboardStageControlsIntent(\n  scope: string | null",
+      "setRepresentationMode: (mode: RepresentationMode)",
+      "setLens: (lens: SalienceLens)",
+    ]) {
+      if (controlsIntent.includes(typedOnly)) {
+        violations.push(`${controlsIntentRel}: typed-only control seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "setRepresentationMode: (mode: unknown)",
+      "setLens: (lens: unknown)",
+    ]) {
+      if (!controlsIntent.includes(required)) {
+        violations.push(
+          `${controlsIntentRel}: missing runtime control seam ${required}`,
+        );
+      }
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        controlsIntent,
+      ) ||
+      !/\bexport\s+const\s+normalizeDashboardStageControlsScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        controlsIntent,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeDashboardStageControlsScope\s*\(\s*scope\s*\)/.test(
+        controlsIntent,
+      )
+    ) {
+      violations.push(`${controlsIntentRel}: stage controls bypass scope normalizer`);
+    }
+    if (
+      !/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(controlsIntent)
+    ) {
+      violations.push(`${controlsIntentRel}: stage controls mutations use raw scope`);
+    }
+    if (
+      !/\bnormalizedScope\s*===\s*null[\s\S]*\?\s*inert\s*\(\s*\)/.test(controlsIntent)
+    ) {
+      violations.push(
+        `${controlsIntentRel}: stage controls do not gate normalized scope`,
+      );
+    }
     if (
       !/\bsetLens:\s*\([^)]*\)\s*=>[\s\S]*\bnormalizeDashboardSalienceLens\s*\(/.test(
         controlsIntent,
@@ -3801,6 +5938,55 @@ describe("dashboard layer ownership", () => {
       violations.push(
         `${sceneIntentRel}: scene representation intent bypasses normalizer`,
       );
+    }
+    if (sceneIntent.includes("useDashboardStageSceneIntent(\n  scope: string | null")) {
+      violations.push(`${sceneIntentRel}: typed-only scene scope seam`);
+    }
+    if (sceneIntent.includes("setRepresentationMode: (mode: RepresentationMode)")) {
+      violations.push(`${sceneIntentRel}: typed-only scene representation seam`);
+    }
+    if (sceneIntent.includes("descendFeatureTag: (featureTag: string)")) {
+      violations.push(`${sceneIntentRel}: typed-only scene feature-descent seam`);
+    }
+    if (!sceneIntent.includes("setRepresentationMode: (mode: unknown)")) {
+      violations.push(`${sceneIntentRel}: missing runtime scene representation seam`);
+    }
+    if (!sceneIntent.includes("descendFeatureTag: (featureTag: unknown)")) {
+      violations.push(`${sceneIntentRel}: missing runtime scene feature-descent seam`);
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        sceneIntent,
+      ) ||
+      !/\bexport\s+const\s+normalizeDashboardStageSceneScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        sceneIntent,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeDashboardStageSceneScope\s*\(\s*scope\s*\)/.test(
+        sceneIntent,
+      )
+    ) {
+      violations.push(`${sceneIntentRel}: scene intent bypasses scope normalizer`);
+    }
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(sceneIntent)) {
+      violations.push(`${sceneIntentRel}: scene intent mutations use raw scope`);
+    }
+    if (
+      !/\bnormalizeDashboardStageSceneFeatureTag\s*\(\s*[\s\S]*featureTag:\s*unknown[\s\S]*\):\s*string\s*\|\s*null/.test(
+        sceneIntent,
+      ) ||
+      !/\bnormalizeDashboardStageSceneFeatureTag\s*\([\s\S]*\breturn\s+normalizeDashboardFeatureTag\s*\(\s*featureTag\s*\)/.test(
+        sceneIntent,
+      ) ||
+      !/\bconst\s+normalizedFeatureTag\s*=\s*normalizeDashboardStageSceneFeatureTag\s*\(\s*featureTag\s*\)/.test(
+        sceneIntent,
+      )
+    ) {
+      violations.push(`${sceneIntentRel}: scene feature descent bypasses normalizer`);
+    }
+    if (
+      !/\bnormalizedScope\s*===\s*null[\s\S]*\?\s*inert\s*\(\s*\)/.test(sceneIntent)
+    ) {
+      violations.push(`${sceneIntentRel}: scene intent does not gate normalized scope`);
     }
 
     expect(violations).toEqual([]);
@@ -3901,6 +6087,75 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bTIER_ORDER\.map\s*\(/.test(stripped)) {
       violations.push(`${rel}: local tier order projection`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps tier-dial dashboard intent scoped through a runtime normalizer", () => {
+    const rel = "stores/server/dashboardTierDialIntent.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (
+      /\buseDashboardTierDialIntent\s*\(\s*scope:\s*string\s*\|\s*null/.test(stripped)
+    ) {
+      violations.push(`${rel}: tier-dial intent trusts typed-only scope`);
+    }
+    for (const typedOnly of [
+      "setTierEnabled: (tier: TierName, enabled: boolean)",
+      "setMinConfidence: (tier: ConfidenceTierName, value: number)",
+      "import type { TierName }",
+      "type ConfidenceTierName",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only tier intent seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "setTierEnabled: (tier: unknown, enabled: unknown)",
+      "setMinConfidence: (tier: unknown, value: unknown)",
+    ]) {
+      if (!stripped.includes(required)) {
+        violations.push(`${rel}: missing runtime tier intent seam ${required}`);
+      }
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeDashboardTierDialScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing runtime scope normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeDashboardTierDialScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: tier intent bypasses normalized scope`);
+    }
+    if (!/\buseDashboardState\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: tier view reads raw scope`);
+    }
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: tier mutations receive raw scope`);
+    }
+    if (
+      !/\bconst\s+normalizedTier\s*=\s*normalizeDashboardTierName\s*\(\s*tier\s*\)[\s\S]*const\s+normalizedEnabled\s*=\s*normalizeDashboardTierEnabled\s*\(\s*enabled\s*\)[\s\S]*normalizedScope\s*===\s*null\s*\|\|[\s\S]*normalizedTier\s*===\s*null\s*\|\|[\s\S]*normalizedEnabled\s*===\s*null[\s\S]*mutations\.setFilters\s*\([\s\S]*dashboardFiltersWithTier/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: tier toggle does not gate normalized inputs`);
+    }
+    if (
+      !/\bconst\s+normalizedTier\s*=\s*normalizeDashboardConfidenceTier\s*\(\s*tier\s*\)[\s\S]*normalizedScope\s*===\s*null\s*\|\|[\s\S]*normalizedTier\s*===\s*null[\s\S]*mutations\.setFilters\s*\([\s\S]*dashboardFiltersWithMinConfidence/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: tier confidence does not gate normalized inputs`);
     }
 
     expect(violations).toEqual([]);
@@ -4107,8 +6362,24 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\buseDashboardStateMutations\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing dashboard mutation bridge`);
+    }
+    if (stripped.includes("useShellPanelIntent(scope: string | null")) {
+      violations.push(`${rel}: panel-state intent trusts typed-only scope`);
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeShellPanelIntentScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeShellPanelIntentScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: panel-state intent bypasses scope normalizer`);
     }
     if (!/\bnormalizeDashboardPanelStateUpdate\b/.test(stripped)) {
       violations.push(`${rel}: panel-state intent bypasses update normalizer`);
@@ -4123,21 +6394,21 @@ describe("dashboard layer ownership", () => {
       }
     }
     if (
-      !/\bsetLeftCollapsed:\s*\([^)]*leftCollapsed[^)]*\)\s*=>[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*left_collapsed:\s*leftCollapsed\s*\}/.test(
+      !/\bsetLeftCollapsed:\s*\([^)]*leftCollapsed[^)]*\)\s*=>[\s\S]*normalizedScope\s*===\s*null[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*left_collapsed:\s*leftCollapsed\s*\}/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: missing left-collapse dispatch`);
     }
     if (
-      !/\bsetRightCollapsed:\s*\([^)]*rightCollapsed[^)]*\)\s*=>[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*right_collapsed:\s*rightCollapsed\s*\}/.test(
+      !/\bsetRightCollapsed:\s*\([^)]*rightCollapsed[^)]*\)\s*=>[\s\S]*normalizedScope\s*===\s*null[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*right_collapsed:\s*rightCollapsed\s*\}/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: missing right-collapse dispatch`);
     }
     if (
-      !/\bsetRightTab:\s*\([^)]*rightTab[^)]*\)\s*=>[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*right_tab:\s*rightTab\s*\}/.test(
+      !/\bsetRightTab:\s*\([^)]*rightTab[^)]*\)\s*=>[\s\S]*normalizedScope\s*===\s*null[\s\S]*updatePanelState\s*\(\s*normalizeDashboardPanelStateUpdate\s*\(\s*\{\s*right_tab:\s*rightTab\s*\}/.test(
         stripped,
       )
     ) {
@@ -4149,34 +6420,54 @@ describe("dashboard layer ownership", () => {
 
   it("keeps dashboard panel state normalized at read and write seams", () => {
     const dashboardRel = "stores/server/dashboardState.ts";
+    const normalizationRel = "stores/server/dashboardStateNormalization.ts";
+    const adapterRel = "stores/server/liveAdapters.ts";
     const queriesRel = "stores/server/queries.ts";
     const dashboard = stripComments(readFileSync(join(SRC_ROOT, dashboardRel), "utf8"));
+    const normalization = stripComments(
+      readFileSync(join(SRC_ROOT, normalizationRel), "utf8"),
+    );
+    const adapter = stripComments(readFileSync(join(SRC_ROOT, adapterRel), "utf8"));
     const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bexport\s+function\s+normalizeDashboardPanelState\b/.test(dashboard)) {
-      violations.push(`${dashboardRel}: missing panel-state normalizer`);
+    if (!/\bexport\s+function\s+normalizeDashboardPanelState\b/.test(normalization)) {
+      violations.push(`${normalizationRel}: missing panel-state normalizer`);
     }
     if (
       !/\bfunction\s+dashboardPanelStateRecord\s*\(\s*state:\s*unknown\s*\)/.test(
-        dashboard,
+        normalization,
       )
     ) {
-      violations.push(`${dashboardRel}: missing panel-state unknown input reader`);
-    }
-    if (!/\bexport\s+function\s+normalizeDashboardPanelStateUpdate\b/.test(dashboard)) {
-      violations.push(`${dashboardRel}: missing panel-state update normalizer`);
+      violations.push(`${normalizationRel}: missing panel-state unknown input reader`);
     }
     if (
-      /\bnormalizeDashboardPanelState\s*\(\s*state:\s*Partial<DashboardPanelState>/.test(
-        dashboard,
-      ) ||
-      /\bnormalizeDashboardPanelStateUpdate\s*\(\s*update:\s*Partial<DashboardPanelState>/.test(
-        dashboard,
+      !/\bexport\s+function\s+normalizeDashboardPanelStateUpdate\b/.test(normalization)
+    ) {
+      violations.push(`${normalizationRel}: missing panel-state update normalizer`);
+    }
+    if (!/\bexport\s+function\s+normalizeDashboardPanelTab\b/.test(normalization)) {
+      violations.push(`${normalizationRel}: missing panel-tab normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeDashboardPanelTab\s*\(\s*tab:\s*unknown\s*,?\s*\)[\s\S]*\bnormalizeStringMember\s*\(\s*tab\s*,\s*DASHBOARD_PANEL_TABS\s*\)/.test(
+        normalization,
       )
     ) {
       violations.push(
-        `${dashboardRel}: panel-state normalizer exposes typed-only input`,
+        `${normalizationRel}: panel-tab normalizer bypasses string-member normalizer`,
+      );
+    }
+    if (
+      /\bnormalizeDashboardPanelState\s*\(\s*state:\s*Partial<DashboardPanelState>/.test(
+        normalization,
+      ) ||
+      /\bnormalizeDashboardPanelStateUpdate\s*\(\s*update:\s*Partial<DashboardPanelState>/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: panel-state normalizer exposes typed-only input`,
       );
     }
     if (
@@ -4192,12 +6483,30 @@ describe("dashboard layer ownership", () => {
       violations.push(`${dashboardRel}: panel-state merge bypasses update normalizer`);
     }
     if (
+      !/\bnormalizeDashboardPanelStateUpdate\b[\s\S]*\bnormalizeDashboardPanelTab\s*\(\s*panelState\.right_tab\s*\)[\s\S]*\bright_tab\s*=\s*rightTab/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: panel-state update bypasses panel-tab normalizer`,
+      );
+    }
+    if (
       !/\bdashboardDocumentStateSeed\b[\s\S]*\bnormalizeDashboardPanelState\s*\(/.test(
         dashboard,
       )
     ) {
       violations.push(
         `${dashboardRel}: dashboard seed bypasses panel-state normalizer`,
+      );
+    }
+    if (
+      !/\badaptDashboardState\b[\s\S]*\bpanel_state:\s*normalizeDashboardPanelState\s*\(\s*body\.panel_state\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(
+        `${adapterRel}: dashboard adapter bypasses panel-state normalizer`,
       );
     }
     if (
@@ -4209,12 +6518,33 @@ describe("dashboard layer ownership", () => {
         `${queriesRel}: shell chrome view bypasses panel-state normalizer`,
       );
     }
+    if (
+      !/\bexport\s+function\s+useDashboardShellChromeView\s*\(\s*scope:\s*unknown\s*,?\s*\)/.test(
+        queries,
+      ) ||
+      !/\buseDashboardState\s*\(\s*scope\s*\)/.test(queries)
+    ) {
+      violations.push(
+        `${queriesRel}: shell chrome hook bypasses dashboard-state scope normalizer`,
+      );
+    }
+    if (
+      /\buseDashboardShellChromeView\s*\(\s*scope:\s*string\s*\|\s*null\s*\)/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: shell chrome hook exposes typed-only scope`);
+    }
 
     expect(violations).toEqual([]);
   });
 
   it("keeps right-rail tab options behind the shell-layout seam", () => {
     const rels = ["app/right/RailTabs.tsx", "stores/view/commandPaletteCommands.ts"];
+    const shellLayoutRel = "stores/view/shellLayout.ts";
+    const shellLayout = stripComments(
+      readFileSync(join(SRC_ROOT, shellLayoutRel), "utf8"),
+    );
     const violations: string[] = [];
 
     for (const rel of rels) {
@@ -4275,6 +6605,100 @@ describe("dashboard layer ownership", () => {
     if (/\bpanelIntent\./.test(palette)) {
       violations.push(`${paletteRel}: local shell panel intent dispatch`);
     }
+    if (
+      !/\bexport\s+function\s+normalizeRightRailTab\s*\(\s*tab:\s*unknown\s*\)/.test(
+        shellLayout,
+      )
+    ) {
+      violations.push(`${shellLayoutRel}: missing right-rail tab normalizer`);
+    }
+    if (
+      !/\bnormalizeRightRailTab\s*\(\s*tab:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*tab\.trim\s*\(\s*\)[\s\S]*\bDASHBOARD_PANEL_TABS[\s\S]*\.includes\s*\(\s*normalized\s*\)/.test(
+        shellLayout,
+      )
+    ) {
+      violations.push(
+        `${shellLayoutRel}: right-rail tab normalizer preserves raw spacing`,
+      );
+    }
+    if (
+      !/\brightRailAdjacentTab\s*\(\s*[\s\S]*?current:\s*unknown[\s\S]*?direction:\s*unknown/.test(
+        shellLayout,
+      )
+    ) {
+      violations.push(`${shellLayoutRel}: right-rail roving seam is typed-only`);
+    }
+    if (/\brightRailAdjacentTab\s*\(\s*current:\s*RailTabId/.test(shellLayout)) {
+      violations.push(`${shellLayoutRel}: right-rail roving current is typed-only`);
+    }
+    if (/\bsetRightTab:\s*\(tab:\s*RailTabId\)/.test(shellLayout)) {
+      violations.push(`${shellLayoutRel}: shell window action tab is typed-only`);
+    }
+    for (const typedOnly of [
+      "useShellFrameView(scope: string | null)",
+      "useShellWindowActions(\n  scope: string | null",
+    ]) {
+      if (shellLayout.includes(typedOnly)) {
+        violations.push(`${shellLayoutRel}: typed-only shell scope seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bexport\s+function\s+useShellFrameView\s*\(\s*scope:\s*unknown\s*\)/.test(
+        shellLayout,
+      ) ||
+      !/\buseDashboardShellChromeView\s*\(\s*scope\s*\)/.test(shellLayout)
+    ) {
+      violations.push(
+        `${shellLayoutRel}: shell frame view bypasses normalized scope seam`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+useShellWindowActions\s*\(\s*scope:\s*unknown[\s\S]*\buseShellPanelIntent\s*\(\s*scope\s*\)/.test(
+        shellLayout,
+      )
+    ) {
+      violations.push(
+        `${shellLayoutRel}: shell window actions bypass normalized scope seam`,
+      );
+    }
+    if (
+      !/\bsetRightTab:\s*\(tab\)\s*=>[\s\S]*\bpanelIntent\.setRightTab\s*\(\s*normalizeRightRailTab\s*\(\s*tab\s*\)\s*\)/.test(
+        shellLayout,
+      )
+    ) {
+      violations.push(`${shellLayoutRel}: right-tab action bypasses tab normalizer`);
+    }
+    if (
+      /\bsetRightTab:\s*\(tab:\s*DashboardPanelState\["right_tab"\]\)/.test(palette)
+    ) {
+      violations.push(`${paletteRel}: window command tab writer is typed-only`);
+    }
+    if (/\bid:\s*`window:rail-\$\{id\}`/.test(palette)) {
+      violations.push(`${paletteRel}: right-rail command id uses raw tab id`);
+    }
+    if (
+      !/\bnormalizeCommandPaletteRightRailTab\s*\(\s*tab:\s*unknown\s*\):\s*RailTabId\s*\|\s*null[\s\S]*\btab\.trim\s*\(\s*\)[\s\S]*\bRIGHT_RAIL_TABS\.find\b/.test(
+        palette,
+      )
+    ) {
+      violations.push(`${paletteRel}: missing palette right-rail tab normalizer`);
+    }
+    if (
+      !/\bcommandPaletteRightRailCommandId\s*\(\s*tab:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*\bnormalizeCommandPaletteRightRailTab\s*\(\s*tab\s*\)/.test(
+        palette,
+      )
+    ) {
+      violations.push(`${paletteRel}: right-rail command id bypasses normalizer`);
+    }
+    if (
+      !/\bconst\s+commandId\s*=\s*commandPaletteRightRailCommandId\s*\(\s*id\s*\)[\s\S]*\bconst\s+tab\s*=\s*normalizeCommandPaletteRightRailTab\s*\(\s*id\s*\)[\s\S]*commandId\s*===\s*null\s*\|\|\s*tab\s*===\s*null/.test(
+        palette,
+      )
+    ) {
+      violations.push(
+        `${paletteRel}: right-rail commands do not filter bad tab identity`,
+      );
+    }
 
     expect(violations).toEqual([]);
   });
@@ -4322,6 +6746,42 @@ describe("dashboard layer ownership", () => {
       if (!new RegExp(`\\b${required}\\b`).test(seam)) {
         violations.push(`${seamRel}: missing ${required}`);
       }
+    }
+    if (
+      /\brightRailTabActionId\s*\(\s*tab:\s*RailTabId\s*\)/.test(seam) ||
+      /\brightRailTabChord\s*\(\s*index:\s*number\s*\)/.test(seam)
+    ) {
+      violations.push(
+        `${seamRel}: right-rail keybinding identity trusts typed-only input`,
+      );
+    }
+    if (
+      !/\bnormalizeRightRailKeybindingTab\s*\(\s*tab:\s*unknown\s*\):\s*RailTabId\s*\|\s*null[\s\S]*\btab\.trim\s*\(\s*\)[\s\S]*\bRIGHT_RAIL_TABS\.find\b/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: missing right-rail keybinding tab normalizer`);
+    }
+    if (
+      !/\brightRailTabActionId\s*\(\s*tab:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*\bnormalizeRightRailKeybindingTab\s*\(\s*tab\s*\)/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: tab action id bypasses runtime normalizer`);
+    }
+    if (
+      !/\brightRailTabChord\s*\(\s*index:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*Number\.isInteger\s*\(\s*index\s*\)[\s\S]*index\s*<\s*RIGHT_RAIL_TABS\.length/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: tab chord bypasses bounded index validation`);
+    }
+    if (
+      !/\bconst\s+id\s*=\s*rightRailTabActionId\s*\(\s*tab\.id\s*\)[\s\S]*\bconst\s+defaultChord\s*=\s*rightRailTabChord\s*\(\s*index\s*\)[\s\S]*id\s*===\s*null\s*\|\|\s*defaultChord\s*===\s*null/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: tab bindings do not filter malformed identities`);
     }
     if (!/\buseShellPanelIntent\s*\(\s*scope\s*\)/.test(seam)) {
       violations.push(`${seamRel}: panel intent is not scoped from active scope`);
@@ -4403,7 +6863,7 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: missing settings effects intent seam`);
     }
     if (
-      !/\bsettingsIntent\s*\.\s*applyGraphDefaults\s*\(\s*graphDefaults\s*\)/.test(
+      !/\bsettingsIntent\s*\.\s*applyFreshGraphDefaults\s*\(\s*graphDefaults\s*,\s*graphDefaultsInitialization\s*\)/.test(
         stripped,
       )
     ) {
@@ -4418,11 +6878,89 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\buseDashboardStateMutations\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing dashboard mutation bridge`);
     }
     if (
-      !/\bapplyGraphDefaults:\s*\([^)]*defaults[^)]*\)\s*=>[\s\S]*applyGraphSettingsDefaults\s*\(\s*defaults\s*\)/.test(
+      /\buseSettingsEffectsIntent\s*\(\s*scope:\s*string\s*\|\s*null/.test(stripped)
+    ) {
+      violations.push(`${rel}: settings effects intent trusts typed-only scope`);
+    }
+    if (/\bGraphSettingsDefaults\b/.test(stripped)) {
+      violations.push(`${rel}: settings effects intent imports graph-defaults shape`);
+    }
+    if (
+      /\bapplyGraphDefaults:\s*\(\s*defaults:\s*GraphSettingsDefaults\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph-defaults intent trusts typed-only defaults`);
+    }
+    if (!/\bapplyGraphDefaults:\s*\(\s*defaults:\s*unknown\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing runtime graph-defaults intent`);
+    }
+    if (
+      !/\bapplyFreshGraphDefaults:\s*\([\s\S]*defaults:\s*unknown[\s\S]*initialization:\s*unknown[\s\S]*\)\s*=>\s*Promise<unknown>/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing one-shot graph-defaults intent`);
+    }
+    if (!/\binitializedGraphDefaultsByIdentity\s*=\s*new\s+Set/.test(stripped)) {
+      violations.push(`${rel}: missing initialized graph-default identity guard`);
+    }
+    if (!/\bpendingGraphDefaultsByIdentity\s*=\s*new\s+Set/.test(stripped)) {
+      violations.push(`${rel}: missing pending graph-default identity guard`);
+    }
+    if (!/\bSETTINGS_GRAPH_DEFAULTS_IDENTITY_GUARD_CAP\b/.test(stripped)) {
+      violations.push(`${rel}: graph-default identity guard is not bounded`);
+    }
+    if (!/\bSETTINGS_GRAPH_DEFAULTS_IDENTITY_MAX_CHARS\b/.test(stripped)) {
+      violations.push(`${rel}: graph-default identity values are not length-bounded`);
+    }
+    if (
+      !/\brememberSettingsGraphDefaultsInitializedIdentity\b[\s\S]*\binitializedGraphDefaultsByIdentity\.size\s*>\s*SETTINGS_GRAPH_DEFAULTS_IDENTITY_GUARD_CAP/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: initialized graph-default guard has no eviction cap`);
+    }
+    if (
+      !/\breserveSettingsGraphDefaultsPendingIdentity\b[\s\S]*\bpendingGraphDefaultsByIdentity\.size\s*>=\s*SETTINGS_GRAPH_DEFAULTS_IDENTITY_GUARD_CAP/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pending graph-default guard has no admission cap`);
+    }
+    if (
+      !/\bnormalizeSettingsGraphDefaultsInitializationIdentity\s*\(\s*[\s\S]*identity/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing initialization identity normalizer`);
+    }
+    if (
+      !/\bisFreshSettingsGraphDefaultsInitialization\s*\(\s*initialization\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: fresh initialization check bypassed`);
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeSettingsEffectsScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeSettingsEffectsScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings effects intent bypasses scope normalizer`);
+    }
+    if (
+      !/\bapplyGraphDefaults:\s*\([^)]*defaults[^)]*\)\s*=>[\s\S]*normalizedScope\s*===\s*null[\s\S]*applyGraphSettingsDefaults\s*\(\s*defaults\s*\)/.test(
         stripped,
       )
     ) {
@@ -4459,6 +6997,8 @@ describe("dashboard layer ownership", () => {
   it("keeps settings row controller writes behind the settings row intent", () => {
     const rel = "stores/view/settingsControlRow.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const selectorsRel = "stores/server/settingsSelectors.ts";
+    const selectors = stripComments(readFileSync(join(SRC_ROOT, selectorsRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -4482,19 +7022,67 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: missing settings row write dispatch`);
     }
     if (
-      !/\bexport\s+function\s+isSettingsEditTarget\s*\(\s*value:\s*unknown\s*\)/.test(
-        stripped,
+      !/\bexport\s+function\s+normalizeSettingsEditTarget\s*\([\s\S]*value:\s*unknown[\s\S]*\):\s*SettingsEditTarget\s*\|\s*null/.test(
+        selectors,
+      )
+    ) {
+      violations.push(`${selectorsRel}: missing settings edit-target normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeSettingsEditTarget\s*\([\s\S]*value:\s*unknown[\s\S]*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*\bSETTINGS_EDIT_TARGETS\.find\s*\(\s*\(\s*target\s*\)\s*=>\s*target\s*===\s*normalized\s*\)/.test(
+        selectors,
       )
     ) {
       violations.push(
-        `${rel}: settings edit-target validator accepts typed-only input`,
+        `${selectorsRel}: settings edit-target normalizer preserves raw spacing`,
       );
     }
-    if (!/\bisSettingsEditTarget\s*\(\s*nextTarget\s*\)/.test(stripped)) {
+    if (
+      !/\bexport\s+function\s+isSettingsEditTarget\s*\(\s*value:\s*unknown\s*\)/.test(
+        selectors,
+      )
+    ) {
+      violations.push(
+        `${selectorsRel}: settings edit-target validator accepts typed-only input`,
+      );
+    }
+    if (
+      !/from\s+["']\.\.\/server\/settingsSelectors["'][\s\S]*\bnormalizeSettingsEditTarget\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: view row owns settings edit-target normalizer`);
+    }
+    if (
+      !/from\s+["']\.\.\/server\/settingsSelectors["'][\s\S]*\bnormalizeSettingsScope\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: view row owns settings scope normalizer`);
+    }
+    if (!/\bnormalizeSettingsEditTarget\s*\(\s*nextTarget\s*\)/.test(stripped)) {
       violations.push(`${rel}: missing settings edit-target runtime validation`);
     }
-    if (!/\bsetRawTarget\s*\(\s*nextTarget\s*\)/.test(stripped)) {
-      violations.push(`${rel}: settings edit-target setter bypasses validated seam`);
+    if (
+      !/\buseSettingsRowController\s*\(\s*[\s\S]*activeScope:\s*unknown[\s\S]*\)/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+normalizedActiveScope\s*=\s*normalizeSettingsScope\s*\(\s*activeScope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings row controller trusts typed-only scope`);
+    }
+    if (
+      !/\bderiveSettingsRowStaticView\s*\(\s*eff,\s*normalizedActiveScope,\s*target\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bactiveScope:\s*normalizedActiveScope\b/.test(stripped)
+    ) {
+      violations.push(`${rel}: settings row controller uses raw scope identity`);
+    }
+    if (!/\bsetRawTarget\s*\(\s*normalizedTarget\s*\)/.test(stripped)) {
+      violations.push(`${rel}: settings edit-target setter bypasses normalized seam`);
     }
     if (/\bsetTarget\s*=\s*useState/.test(stripped)) {
       violations.push(`${rel}: raw settings edit-target state setter is exposed`);
@@ -4514,12 +7102,21 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizeSettingsRowWrite\b/.test(stripped)) {
       violations.push(`${rel}: missing settings row write normalizer`);
     }
+    if (!/\bnormalizeSettingUpdate\b/.test(stripped)) {
+      violations.push(`${rel}: settings row write bypasses shared mutation normalizer`);
+    }
+    if (!/from\s+["']\.\/queries["'][\s\S]*\bnormalizeSettingUpdate\b/.test(stripped)) {
+      violations.push(`${rel}: missing shared settings update normalizer import`);
+    }
     if (
       !/\bfunction\s+settingsRowWriteRecord\s*\(\s*update:\s*unknown\s*\)/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: missing settings row unknown input reader`);
+    }
+    if (/\bfunction\s+normalizeSettingsWrite(?:Key|Scope)\b/.test(stripped)) {
+      violations.push(`${rel}: settings row owns duplicate write normalizer`);
     }
     if (
       /\bnormalizeSettingsRowWrite\s*\(\s*update:\s*Partial<SettingsRowWrite>/.test(
@@ -4529,12 +7126,27 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: settings row write exposes typed-only input seam`);
     }
+    if (/\bactiveScope:\s*string\s*\|\s*null\b/.test(stripped)) {
+      violations.push(`${rel}: settings row write active scope is typed-only`);
+    }
+    if (!/\bactiveScope:\s*unknown\b/.test(stripped)) {
+      violations.push(`${rel}: settings row write missing runtime active scope seam`);
+    }
+    if (
+      !/\breturn\s+normalizeSettingUpdate\s*\(\s*\{[\s\S]*key:\s*row\.key[\s\S]*value:\s*row\.value[\s\S]*scope:\s*row\.target\s*===\s*["']scope["']\s*\?\s*row\.activeScope\s*:\s*undefined[\s\S]*\}\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: settings row write does not delegate payload normalization`,
+      );
+    }
     if (
       !/\bconst\s+normalized\s*=\s*normalizeSettingsRowWrite\s*\(\s*update\s*\)/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: settings write dispatch bypasses normalizer`);
+      violations.push(`${rel}: settings write dispatch bypasses row normalizer`);
     }
     if (!/\bif\s*\(\s*normalized\s*===\s*null\s*\)\s*return\b/.test(stripped)) {
       violations.push(`${rel}: malformed settings row write is not dropped`);
@@ -4547,6 +7159,23 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bDEFAULT_SETTINGS_WRITE_ERROR\b/.test(stripped)) {
       violations.push(`${rel}: missing settings write fallback error message`);
+    }
+    if (!/\bSETTINGS_WRITE_ERROR_MESSAGE_CAP\b/.test(stripped)) {
+      violations.push(`${rel}: missing bounded settings write error cap`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeSettingsWriteErrorText\s*\(\s*message:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing settings write error text normalizer`);
+    }
+    if (
+      !/\bsettingsWriteErrorMessage[\s\S]*\bnormalizeSettingsWriteErrorText\s*\(\s*error\.errorMessage\s*\)[\s\S]*\bnormalizeSettingsWriteErrorText\s*\(\s*record\.errorMessage\s*\)[\s\S]*\bnormalizeSettingsWriteErrorText\s*\(\s*error\.message\s*\)[\s\S]*\bnormalizeSettingsWriteErrorText\s*\(\s*record\.message\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: settings write error extraction bypasses normalizer`);
     }
     if (/\bconst\s+err\s*=\s*error\s+as\s+EngineError\b/.test(stripped)) {
       violations.push(`${rel}: settings write error uses typed-only cast`);
@@ -4785,17 +7414,58 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bscope\s*===\s*null\s*\?\s*["']scope:null["']/.test(stripped)) {
+    if (
+      !/\bnormalizedScope\s*===\s*null[\s\S]*\?\s*["']scope:null["']/.test(stripped)
+    ) {
       violations.push(`${rel}: null scope lacks an explicit key sentinel`);
     }
-    if (!/\bnodeId\s*===\s*null\s*\?\s*["']node:null["']/.test(stripped)) {
+    if (
+      !/\bnormalizedNodeId\s*===\s*null[\s\S]*\?\s*["']node:null["']/.test(stripped)
+    ) {
       violations.push(`${rel}: null inspected node lacks an explicit key sentinel`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (!/\bencodeURIComponent\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: scoped inspector key does not encode scope`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*nodeId\s*\)/.test(stripped)) {
+    if (!/\bencodeURIComponent\s*\(\s*normalizedNodeId\s*\)/.test(stripped)) {
       violations.push(`${rel}: scoped inspector key does not encode node id`);
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeInspectorExpansionScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: inspector scope key bypasses shared view scope normalizer`,
+      );
+    }
+    if (
+      !/from\s+["']\.\.\/nodeIds["']/.test(stripped) ||
+      !/\bexport\s+function\s+normalizeInspectorExpansionNodeId\b[\s\S]*\bnormalizeNodeId\s*\(\s*nodeId\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: inspector node key bypasses node-id normalizer`);
+    }
+    if (
+      !/const\s+normalizedScope\s*=\s*normalizeInspectorExpansionScope\s*\(\s*scope\s*\)[\s\S]*const\s+normalizedNodeId\s*=\s*normalizeInspectorExpansionNodeId\s*\(\s*nodeId\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: inspector key factory bypasses normalized identity`);
+    }
+    if (
+      !/scope:value:\$\{encodeURIComponent\s*\(\s*normalizedScope\s*\)\}/.test(stripped)
+    ) {
+      violations.push(`${rel}: real scopes lack a value-tagged key namespace`);
+    }
+    if (
+      !/node:value:\$\{encodeURIComponent\s*\(\s*normalizedNodeId\s*\)\}/.test(stripped)
+    ) {
+      violations.push(`${rel}: real nodes lack a value-tagged key namespace`);
     }
     if (
       /\$\{scope\s*\?\?\s*["']none["']\}::\$\{nodeId\s*\?\?\s*["']none["']\}/.test(
@@ -4809,6 +7479,23 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bexport\s+function\s+normalizeInspectorExpansionKey\b/.test(stripped)) {
       violations.push(`${rel}: missing inspector expansion key normalizer`);
+    }
+    if (!/\bINSPECTOR_EXPANSION_KEY_MAX_CHARS\b/.test(stripped)) {
+      violations.push(`${rel}: inspector expansion key cap is not explicit`);
+    }
+    if (
+      !/\bnormalizeInspectorExpansionKey\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*>\s*0[\s\S]*normalized\.length\s*<=\s*INSPECTOR_EXPANSION_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: inspector expansion key is not trimmed and bounded`);
+    }
+    if (
+      !/\binspectorExpansionKey\s*\(\s*scope:\s*unknown,\s*nodeId:\s*unknown\s*\)[\s\S]*\bkey\.length\s*<=\s*INSPECTOR_EXPANSION_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: inspector expansion derived key is not bounded`);
     }
     if (!/\bexport\s+function\s+normalizeInspectorExpansionTier\b/.test(stripped)) {
       violations.push(`${rel}: missing inspector expansion tier normalizer`);
@@ -4867,8 +7554,12 @@ describe("dashboard layer ownership", () => {
 
   it("keeps node context-menu descriptors behind the stores node-entity view", () => {
     const rels = ["app/stage/Stage.tsx", "app/right/Inspector.tsx"];
+    const nodeEntityRel = "stores/view/nodeEntity.ts";
     const bridge = stripComments(
       readFileSync(join(SRC_ROOT, "stores/view/stageSceneEvents.ts"), "utf8"),
+    );
+    const nodeEntity = stripComments(
+      readFileSync(join(SRC_ROOT, nodeEntityRel), "utf8"),
     );
     const violations: string[] = [];
 
@@ -4887,6 +7578,40 @@ describe("dashboard layer ownership", () => {
       const seamOwner = rel === "app/stage/Stage.tsx" ? bridge : stripped;
       if (!/\bnodeEntityView\s*\(/.test(seamOwner)) {
         violations.push(`${rel}: missing node entity view seam`);
+      }
+    }
+    for (const typedOnly of [
+      "id: string",
+      "scope?: string | null",
+      "title?: string",
+      "nodeEntityView({ id, scope, title }: NodeEntityViewInput): NodeEntity",
+    ]) {
+      if (nodeEntity.includes(typedOnly)) {
+        violations.push(`${nodeEntityRel}: node entity view input is typed-only`);
+      }
+    }
+    if (
+      !/\bexport\s+function\s+nodeEntityView\s*\(\s*input:\s*unknown\s*\):\s*NodeEntity\s*\|\s*null/.test(
+        nodeEntity,
+      )
+    ) {
+      violations.push(`${nodeEntityRel}: node entity view lacks runtime input seam`);
+    }
+    if (
+      !/\bconst\s+id\s*=\s*normalizeNodeId\s*\(\s*input\.id\s*\)[\s\S]*\bid\s*===\s*null/.test(
+        nodeEntity,
+      )
+    ) {
+      violations.push(`${nodeEntityRel}: node entity view bypasses node-id normalizer`);
+    }
+    if (!/\bnormalizeSelectionScope\s*\(\s*input\.scope\s*\)/.test(nodeEntity)) {
+      violations.push(`${nodeEntityRel}: node entity view bypasses scope normalizer`);
+    }
+    for (const membership of ["isNodeIslandOpen", "isPinnedNode", "isInWorkingSet"]) {
+      if (!new RegExp(`\\b${membership}\\s*\\(\\s*id\\s*\\)`).test(nodeEntity)) {
+        violations.push(
+          `${nodeEntityRel}: node entity membership bypasses normalized id for ${membership}`,
+        );
       }
     }
 
@@ -4993,7 +7718,7 @@ describe("dashboard layer ownership", () => {
     if (/\buseDashboardNodeSelection\s*\(/.test(stripped)) {
       violations.push(`${rel}: app-layer dashboard node-selection seam`);
     }
-    if (!/\buseDashboardNodeSelection\s*\(\s*scope\s*\)/.test(seam)) {
+    if (!/\buseDashboardNodeSelection\s*\(\s*normalizedScope\s*\)/.test(seam)) {
       violations.push(`${seamRel}: missing dashboard node-selection seam`);
     }
 
@@ -5080,12 +7805,43 @@ describe("dashboard layer ownership", () => {
         violations.push(`${seamRel}: missing ${required} keymap seam`);
       }
     }
+    for (const typedOnly of [
+      "deriveKeyboardNavigationActionDescriptor(\n  binding: KeyboardNavigationBinding,\n  navigation: KeyboardNavigationView,\n  scope: string | null",
+      "useKeyboardNavigationView(\n  scope: string | null",
+      "useKeyboardNavigationKeybindings(\n  scope: string | null",
+    ]) {
+      if (seam.includes(typedOnly)) {
+        violations.push(`${seamRel}: typed-only keyboard scope seam ${typedOnly}`);
+      }
+    }
     if (
-      !/\bconst\s+navigation\s*=\s*useKeyboardNavigationView\s*\(\s*scope\s*\)/.test(
+      !/\bnormalizeSelectionScope\b[\s\S]*\bfrom\s+["']\.\/selection["']/.test(seam)
+    ) {
+      violations.push(`${seamRel}: keyboard scope bypasses selection normalizer`);
+    }
+    if (!/\buseKeyboardNavigationView\s*\(\s*scope:\s*unknown\s*,?\s*\)/.test(seam)) {
+      violations.push(`${seamRel}: keyboard navigation view lacks runtime scope seam`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeSelectionScope\s*\(\s*scope\s*\)[\s\S]*\buseDashboardSelectedNodeId\s*\(\s*normalizedScope\s*\)[\s\S]*\buseFiltersVocabularyView\s*\(\s*normalizedScope\s*\)[\s\S]*\buseNodeNeighbors\s*\(\s*selectedId\s*,\s*normalizedScope\s*\)/.test(
         seam,
       )
     ) {
-      violations.push(`${seamRel}: missing canonical keyboard navigation view`);
+      violations.push(`${seamRel}: keyboard navigation view reads raw scope`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeSelectionScope\s*\(\s*scope\s*\)[\s\S]*\bconst\s+navigation\s*=\s*useKeyboardNavigationView\s*\(\s*normalizedScope\s*\)[\s\S]*\bconst\s+selectDashboardNode\s*=\s*useDashboardNodeSelection\s*\(\s*normalizedScope\s*\)/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: keyboard surface bypasses normalized scope`);
+    }
+    if (
+      !/\bderiveKeyboardNavigationActionDescriptor\s*\([\s\S]*scope:\s*unknown\s*,/.test(
+        seam,
+      )
+    ) {
+      violations.push(`${seamRel}: keyboard action descriptor trusts typed-only scope`);
     }
     if (!/\bconst\s+intent\s*=\s*deriveKeyboardNavigationKeyIntent\s*\(/.test(seam)) {
       violations.push(`${seamRel}: missing keyboard intent dispatch seam`);
@@ -5095,6 +7851,13 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bmovePlayhead\s*\(\s*intent\.playhead\s*,\s*scope\s*\)/.test(seam)) {
       violations.push(`${seamRel}: missing playhead keyboard intent dispatch`);
+    }
+    if (
+      /\bmovePlayhead\s*\(\s*intent\.playhead\s*,\s*normalizedScope\s*\)/.test(seam)
+    ) {
+      violations.push(
+        `${seamRel}: playhead keyboard dispatch normalizes malformed scope into local state`,
+      );
     }
     if (!/\btimelineVisibleRange\s*\(/.test(seam)) {
       violations.push(`${seamRel}: missing stores timeline visible-range projection`);
@@ -5301,28 +8064,84 @@ describe("dashboard layer ownership", () => {
     const opsActions = stripComments(
       readFileSync(join(SRC_ROOT, opsActionsRel), "utf8"),
     );
-    if (!/\bisOpsWhitelistIntent\b/.test(opsRun)) {
+    if (!/\bnormalizeOpsWhitelistIntent\b/.test(opsRun)) {
       violations.push(`${opsRunOwner}: missing app-exposed ops whitelist guard`);
     }
     if (
-      !/\bisOpsWhitelistIntent\s*\(\s*\{\s*target\s*,\s*verb\s*\}\s*\)/.test(opsRun)
+      !/from\s+["']\.\.\/server\/opsActions["'][\s\S]*\bnormalizeOpsWhitelistIntent\b/.test(
+        opsRun,
+      )
     ) {
-      violations.push(`${opsRunOwner}: ops mutation does not validate target+verb`);
+      violations.push(`${opsRunOwner}: ops run owns local target/verb parsing`);
+    }
+    if (/\bnormalizeOpsVerb\b/.test(opsRun)) {
+      violations.push(`${opsRunOwner}: ops run parses non-whitelisted receipt verbs`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeOpsRunVariables\s*\(\s*variables:\s*unknown[\s\S]*return\s+normalizeOpsWhitelistIntent\s*\(\s*variables\s*\)/.test(
+        opsRun,
+      )
+    ) {
+      violations.push(`${opsRunOwner}: ops mutation does not normalize target+verb`);
+    }
+    if (/\bfunction\s+normalizeOpsRun(?:Target|Verb)\b/.test(opsRun)) {
+      violations.push(`${opsRunOwner}: local ops run target/verb normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+opsRunReceiptVerb\s*\(\s*variables:\s*unknown/.test(
+        opsRun,
+      )
+    ) {
+      violations.push(`${opsRunOwner}: missing safe ops receipt verb seam`);
+    }
+    if (
+      !/\bopsRunReceiptVerb\s*\(\s*variables:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*normalizeOpsRunVariables\s*\(\s*variables\s*\)[\s\S]*return\s+normalized\?\.verb\s*\?\?\s*["']operation["']/.test(
+        opsRun,
+      )
+    ) {
+      violations.push(`${opsRunOwner}: receipt verb bypasses whitelisted intent`);
+    }
+    if (/\bString\s*\(\s*variables\.(?:target|verb)\s*\)/.test(opsRun)) {
+      violations.push(`${opsRunOwner}: invalid ops receipt formats raw variables`);
     }
     if (!/\buseInvalidateAfterRagOpsRun\s*\(\s*scope\s*\)/.test(opsRun)) {
       violations.push(`${opsRunOwner}: missing rag ops cache invalidation seam`);
     }
-    if (!/\bvars\.target\s*===\s*["']rag["']/.test(opsRun)) {
+    if (!/\bintent\.target\s*===\s*["']rag["']/.test(opsRun)) {
       violations.push(`${opsRunOwner}: rag ops success is not branched separately`);
     }
-    if (!/\binvalidateRagOpsRun\s*\(\s*vars\.verb\s*\)/.test(opsRun)) {
+    if (!/\binvalidateRagOpsRun\s*\(\s*intent\.verb\s*\)/.test(opsRun)) {
       violations.push(`${opsRunOwner}: rag ops success misses rag cache invalidation`);
+    }
+    if (/\bvars\.(?:target|verb)\b/.test(opsRun)) {
+      violations.push(`${opsRunOwner}: raw ops mutation vars used after normalization`);
     }
     if (/\buseQueryClient\b/.test(opsRun)) {
       violations.push(`${opsRunOwner}: query-client mutation outside server seam`);
     }
     if (!/\bexport\s+function\s+isOpsDispatchIntent\b/.test(opsActions)) {
       violations.push(`${opsActionsRel}: missing terminal ops dispatch predicate`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeOpsTarget\s*\(\s*value:\s*unknown\s*\)[\s\S]*value\.trim\s*\(\s*\)[\s\S]*normalized\s*===\s*["']core["'][\s\S]*normalized\s*===\s*["']rag["']/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: missing shared ops target normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeOpsVerb\s*\(\s*value:\s*unknown\s*\)[\s\S]*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*>\s*0/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: missing shared ops verb normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeOpsWhitelistIntent\s*\(\s*payload:\s*unknown[\s\S]*\bnormalizeOpsTarget\s*\(\s*payload\.target\s*\)[\s\S]*\bnormalizeOpsVerb\s*\(\s*payload\.verb\s*\)[\s\S]*\bisOpsWhitelistIntent\s*\(\s*intent\s*\)/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: missing shared app-exposed ops normalizer`);
     }
     if (!/\bfunction\s+isRecord\s*\(\s*value:\s*unknown\s*\)/.test(opsActions)) {
       violations.push(`${opsActionsRel}: missing runtime payload record guard`);
@@ -5337,13 +8156,82 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${opsActionsRel}: dispatch predicate does not validate target`);
     }
-    if (!/\btypeof\s+payload\.verb\s*!==\s*["']string["']/.test(opsActions)) {
-      violations.push(`${opsActionsRel}: dispatch predicate does not validate verb`);
+    if (
+      !/\bconst\s+normalizedVerb\s*=\s*normalizeOpsVerb\s*\(\s*payload\.verb\s*\)[\s\S]*normalizedVerb\s*===\s*null\s*\|\|\s*normalizedVerb\s*!==\s*payload\.verb/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(
+        `${opsActionsRel}: dispatch predicate does not validate normalized verb`,
+      );
     }
-    if (!/\bif\s*\(\s*!isOpsDispatchIntent\s*\(\s*payload\s*\)\s*\)/.test(opsActions)) {
+    if (
+      !/\bconst\s+OPS_CORE_WRITE_VERBS\s*=\s*new\s+Set\s*\(\s*\[[\s\S]*["']set-body["'][\s\S]*["']set-frontmatter["'][\s\S]*["']edit["'][\s\S]*["']rename["'][\s\S]*\]\s*\)/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: core write dispatch verbs drift from editor mutations`);
+    }
+    if (
+      !/\bfunction\s+isOpsWriteBodyForVerb\s*\(\s*verb:\s*string,\s*body:\s*unknown\s*\):\s*body\s+is\s+OpsWriteBody[\s\S]*\bisRecord\s*\(\s*body\s*\)[\s\S]*\bbody\.ref[\s\S]*\bverb\s*===\s*["']rename["'][\s\S]*\bbody\.to/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: core write dispatch does not validate body shape`);
+    }
+    if (
+      !/\bfunction\s+isOpsCreateBody\s*\(\s*body:\s*unknown\s*\):\s*body\s+is\s+OpsCreateBody[\s\S]*\bbody\.doc_type[\s\S]*\bbody\.feature/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: core create dispatch does not validate body shape`);
+    }
+    if (
+      !/\bOPS_CORE_WRITE_VERBS\.has\s*\(\s*verb\s*\)\s*&&\s*isOpsWriteBodyForVerb\s*\(\s*verb\s*,\s*payload\.body\s*\)/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: core write dispatch predicate bypasses body validator`);
+    }
+    if (
+      !/\bverb\s*===\s*OPS_CORE_CREATE_VERB\s*&&\s*isOpsCreateBody\s*\(\s*payload\.body\s*\)/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: core create dispatch predicate bypasses body validator`);
+    }
+    if (
+      !/\bfunction\s+isOpsRagControlBodyForVerb\s*\(\s*verb:\s*string,\s*body:\s*unknown\s*\):\s*boolean[\s\S]*verb\s*===\s*["']reindex["'][\s\S]*body\.type[\s\S]*body\.clean[\s\S]*verb\s*===\s*["']watcher-reconfigure["'][\s\S]*body\.debounce_ms[\s\S]*body\.cooldown_s[\s\S]*verb\s*===\s*["']project-evict["'][\s\S]*body\.root/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: rag control dispatch does not validate body shape`);
+    }
+    if (
+      !/\bOPS_RAG_CONTROL_VERBS\.has\s*\(\s*verb\s*\)\s*&&\s*isOpsRagControlBodyForVerb\s*\(\s*verb\s*,\s*payload\.body\s*\)/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: rag dispatch predicate bypasses body validator`);
+    }
+    if (!/\bassertOpsDispatchIntent\s*\(\s*payload\s*\)/.test(opsActions)) {
       violations.push(
         `${opsActionsRel}: terminal ops handler bypasses dispatch predicate`,
       );
+    }
+    if (
+      !/\bfunction\s+assertOpsDispatchIntent\s*\(\s*payload:\s*unknown\s*\):\s*asserts\s+payload\s+is\s+OpsPayload[\s\S]*\bisOpsDispatchIntent\s*\(\s*payload\s*\)/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: missing reusable ops dispatch assertion`);
+    }
+    if (
+      !/\bexport\s+function\s+dispatchOps\s*\(\s*payload:\s*unknown\s*\)[\s\S]*\bassertOpsDispatchIntent\s*\(\s*payload\s*\)[\s\S]*\bappDispatcher\.dispatch/.test(
+        opsActions,
+      )
+    ) {
+      violations.push(`${opsActionsRel}: public ops dispatch is typed-only`);
     }
     if (!/\bOPS_CORE_WRITE_VERBS\b/.test(opsActions)) {
       violations.push(`${opsActionsRel}: missing core write verb vocabulary`);
@@ -5394,6 +8282,104 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps action type normalization at the platform dispatch seam", () => {
+    const violations: string[] = [];
+    const dispatchRel = "platform/dispatch/dispatch.ts";
+    const useActionRel = "platform/dispatch/useAction.ts";
+    const middlewareRel = "platform/dispatch/middleware.ts";
+    const dispatch = stripComments(readFileSync(join(SRC_ROOT, dispatchRel), "utf8"));
+    const useAction = stripComments(readFileSync(join(SRC_ROOT, useActionRel), "utf8"));
+    const middleware = stripComments(
+      readFileSync(join(SRC_ROOT, middlewareRel), "utf8"),
+    );
+
+    if (
+      !/\bexport\s+function\s+normalizeActionType\s*\(\s*type:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*typeof\s+type\s*!==\s*["']string["'][\s\S]*type\.trim\s*\(\s*\)/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: missing runtime action-type normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeAction\s*\(\s*action:\s*unknown\s*\):\s*Action\s*\|\s*null[\s\S]*normalizeActionType\s*\(\s*record\?\.type\s*\)/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: action object bypasses type normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeActionMeta\s*\(\s*meta:\s*unknown\s*\):\s*ActionMeta\s*\|\s*undefined[\s\S]*typeof\s+meta\s*===\s*["']object["'][\s\S]*!\s*Array\.isArray\s*\(\s*meta\s*\)/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: action meta bypasses runtime shape guard`);
+    }
+    if (
+      !/\bconst\s+normalized:\s*Action\s*=\s*\{\s*type\s*\}[\s\S]*["']payload["']\s+in\s+record[\s\S]*normalized\.payload\s*=\s*record\.payload[\s\S]*normalizeActionMeta\s*\(\s*record\?\.meta\s*\)[\s\S]*normalized\.meta\s*=\s*meta[\s\S]*return\s+normalized/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: normalized action leaks raw record fields`);
+    }
+    if (/\{\s*\.\.\.record\s*,\s*type\s*\}/.test(dispatch)) {
+      violations.push(`${dispatchRel}: normalized action spreads raw record fields`);
+    }
+    for (const seam of [
+      "register<P>(type: unknown",
+      "register(type: unknown, handler: unknown",
+      "hasHandler(type: unknown",
+      "dispatch(action: unknown",
+    ]) {
+      if (!dispatch.includes(seam)) {
+        violations.push(`${dispatchRel}: typed-only dispatcher seam ${seam}`);
+      }
+    }
+    if (
+      !/\bregister[\s\S]*const\s+normalizedType\s*=\s*normalizeActionType\s*\(\s*type\s*\)[\s\S]*typeof\s+handler\s*!==\s*["']function["'][\s\S]*const\s+erased\s*=\s*handler\s+as\s+ActionHandler[\s\S]*this\.handlers\.set\s*\(\s*normalizedType,\s*erased\s*\)/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: handler registry bypasses normalized runtime seam`);
+    }
+    if (
+      !/\bhasHandler[\s\S]*const\s+normalizedType\s*=\s*normalizeActionType\s*\(\s*type\s*\)[\s\S]*this\.handlers\.has\s*\(\s*normalizedType\s*\)/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: handler availability bypasses normalized type`);
+    }
+    if (
+      !/\bdispatch[\s\S]*const\s+normalizedAction\s*=\s*normalizeAction\s*\(\s*action\s*\)[\s\S]*return\s+chain\s*\(\s*normalizedAction\s*\)/.test(
+        dispatch,
+      )
+    ) {
+      violations.push(`${dispatchRel}: dispatch bypasses normalized action`);
+    }
+    for (const typedOnly of [
+      "useDispatch(): (action: Action)",
+      "useCanDispatchAction(): (type: string)",
+      "useAction<P = void>(\n  type: string",
+      "useConfirmable<P = void>(type: string)",
+    ]) {
+      if (useAction.includes(typedOnly)) {
+        violations.push(`${useActionRel}: typed-only React dispatch seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/from\s+["']\.\/dispatch["'][\s\S]*\bnormalizeActionType\b/.test(middleware) ||
+      !/\bisArmed:\s*\(type\)\s*=>\s*\{[\s\S]*normalizeActionType\s*\(\s*type\s*\)/.test(
+        middleware,
+      ) ||
+      !/\bdisarm:\s*\(type\)\s*=>\s*\{[\s\S]*normalizeActionType\s*\(\s*type\s*\)/.test(
+        middleware,
+      )
+    ) {
+      violations.push(`${middlewareRel}: confirm guard bypasses normalized type`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps context-menu state and resolution behind the view seam", () => {
     const violations: string[] = [];
     const viewOwner = "stores/view/contextMenu.ts";
@@ -5436,6 +8422,330 @@ describe("dashboard layer ownership", () => {
         ) {
           violations.push(`${rel}: context-menu resolved view outside host`);
         }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps action resolver registry entity ingress normalized", () => {
+    const registryRel = "platform/actions/registry.ts";
+    const entityRel = "platform/actions/entity.ts";
+    const registry = stripComments(readFileSync(join(SRC_ROOT, registryRel), "utf8"));
+    const entity = stripComments(readFileSync(join(SRC_ROOT, entityRel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/\bexport\s+const\s+ENTITY_KINDS\b/.test(entity)) {
+      violations.push(`${entityRel}: missing runtime entity-kind catalog`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeEntityKind\s*\(\s*kind:\s*unknown\s*\):\s*EntityKind\s*\|\s*null[\s\S]*\bkind\.trim\s*\(\s*\)/.test(
+        entity,
+      )
+    ) {
+      violations.push(`${entityRel}: missing entity-kind normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeEntityDescriptor\s*\(\s*entity:\s*unknown\s*\):\s*EntityDescriptor\s*\|\s*null[\s\S]*\bswitch\s*\(\s*kind\s*\)/.test(
+        entity,
+      )
+    ) {
+      violations.push(`${entityRel}: missing shape-aware entity descriptor normalizer`);
+    }
+    for (const cap of [
+      "ENTITY_DESCRIPTOR_ID_MAX_CHARS",
+      "ENTITY_DESCRIPTOR_PATH_MAX_CHARS",
+      "ENTITY_DESCRIPTOR_TEXT_MAX_CHARS",
+      "ENTITY_DESCRIPTOR_HUNK_MAX_CHARS",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+const\\s+${cap}\\b`).test(entity)) {
+        violations.push(`${entityRel}: missing entity descriptor cap ${cap}`);
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeRequiredString\s*\(\s*value:\s*unknown,\s*maxChars:\s*number\s*\)[\s\S]*normalized\.length\s*<=\s*maxChars/.test(
+        entity,
+      ) ||
+      !/\bfunction\s+normalizeRequiredEntityId\s*\(\s*value:\s*unknown\s*\)[\s\S]*ENTITY_DESCRIPTOR_ID_MAX_CHARS/.test(
+        entity,
+      ) ||
+      !/\bfunction\s+normalizeRequiredPath\s*\(\s*value:\s*unknown\s*\)[\s\S]*ENTITY_DESCRIPTOR_PATH_MAX_CHARS/.test(
+        entity,
+      ) ||
+      !/\bfunction\s+normalizeOptionalHunk\s*\(\s*value:\s*unknown\s*\)[\s\S]*ENTITY_DESCRIPTOR_HUNK_MAX_CHARS/.test(
+        entity,
+      )
+    ) {
+      violations.push(`${entityRel}: entity descriptor strings are unbounded`);
+    }
+    if (!/from\s+["']\.\.\/graph\/nodeIds["']/.test(entity)) {
+      violations.push(`${entityRel}: graph identities bypass platform node-id seam`);
+    }
+    if (!/from\s+["']\.\.\/scope\/scopeIdentity["']/.test(entity)) {
+      violations.push(`${entityRel}: scope identities bypass platform scope seam`);
+    }
+    if (
+      !/\bnormalizeOptionalNullableScopeId\s*\(\s*entity\.scope\s*\)/.test(entity)
+    ) {
+      violations.push(`${entityRel}: descriptor scope bypasses scope normalizer`);
+    }
+    if (
+      /assignDefined\(normalized,\s*["']scope["'],\s*normalizeOptionalNullableString\(/.test(
+        entity,
+      )
+    ) {
+      violations.push(`${entityRel}: descriptor scope is normalized as plain string`);
+    }
+    if (
+      !/\bfunction\s+normalizeOptionalNodeId\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bnormalizeNodeId\s*\(\s*value\s*\)/.test(
+        entity,
+      )
+    ) {
+      violations.push(`${entityRel}: missing optional node-id normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeNodeIdList\s*\(\s*value:\s*unknown\s*\)[\s\S]*Array\.isArray\s*\(\s*value\s*\)[\s\S]*\bnormalizeNodeIds\s*\(\s*value\s*,\s*value\.length\s*\)/.test(
+        entity,
+      )
+    ) {
+      violations.push(`${entityRel}: event node ids bypass shared node-id list`);
+    }
+    for (const nodeField of [
+      "nodeId",
+      "dst",
+      "src",
+    ]) {
+      if (
+        new RegExp(
+          `assignDefined\\(normalized,\\s*["']${nodeField}["'],\\s*normalizeOptionalString\\(`,
+        ).test(entity)
+      ) {
+        violations.push(`${entityRel}: ${nodeField} is normalized as a plain string`);
+      }
+    }
+    if (/\bconst\s+nodeIds\s*=\s*normalizeStringList\s*\(\s*entity\.nodeIds\s*\)/.test(entity)) {
+      violations.push(`${entityRel}: event nodeIds use generic string list`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeActionEntity\s*\(\s*entity:\s*unknown\s*\):\s*EntityDescriptor\s*\|\s*null\s*\{\s*return\s+normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(
+        `${registryRel}: action entity normalizer bypasses descriptor seam`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+registerResolver\s*\([\s\S]*\bkind:\s*unknown[\s\S]*\bresolver:\s*unknown[\s\S]*\bconst\s+normalizedKind\s*=\s*normalizeEntityKind\s*\(\s*kind\s*\)[\s\S]*typeof\s+resolver\s*!==\s*["']function["'][\s\S]*\bconst\s+erased\s*=\s*resolver\s+as\s+ActionResolver[\s\S]*\bresolvers\.set\s*\(\s*normalizedKind\s*,\s*erased\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(
+        `${registryRel}: resolver registration bypasses normalized runtime seam`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+hasResolver\s*\(\s*kind:\s*unknown\s*\)[\s\S]*\bnormalizeEntityKind\s*\(\s*kind\s*\)[\s\S]*\bresolvers\.has\s*\(\s*normalizedKind\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: resolver lookup bypasses normalized kind`);
+    }
+    if (
+      !/\bexport\s+function\s+resolveActions\s*\(\s*entity:\s*unknown[\s\S]*\bconst\s+normalizedEntity\s*=\s*normalizeActionEntity\s*\(\s*entity\s*\)[\s\S]*\bresolvers\.get\s*\(\s*normalizedEntity\.kind\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: action resolution bypasses normalized entity`);
+    }
+    if (
+      !/\bimport\s*\{\s*normalizeActionDescriptor,\s*type\s+ActionDescriptor\s*\}\s*from\s+["']\.\/action["']/.test(
+        registry,
+      ) ||
+      !/\bresolver\s*\(\s*normalizedEntity\s*,\s*ctx\s*\)[\s\S]*\.map\s*\(\s*\(\s*action\s*\)\s*=>\s*normalizeActionDescriptor\s*\(\s*action\s*\)\s*\)[\s\S]*\.filter\s*\(\s*\(\s*action\s*\):\s*action\s+is\s+ActionDescriptor\s*=>\s*action\s*!==\s*null\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(
+        `${registryRel}: action resolution bypasses descriptor normalizer`,
+      );
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps change-menu entity ingress normalized before action construction", () => {
+    const violations: string[] = [];
+
+    for (const [menuRel, functionName, kind, rawFields, typedImport] of [
+      [
+        "app/right/menus/changeMenu.ts",
+        "changeMenu",
+        "change",
+        /\bentity\.(?:path|hunk)\b/,
+        /\bimport\s+type\s*\{\s*ChangeEntity\b/,
+      ],
+      [
+        "app/right/menus/edgeMenu.ts",
+        "edgeMenu",
+        "edge",
+        /\bentity\.(?:id|relation|dst|tier)\b/,
+        /\bimport\s+type\s*\{\s*EdgeEntity\b/,
+      ],
+      [
+        "app/stage/menus/metaEdgeMenu.ts",
+        "metaEdgeMenu",
+        "meta-edge",
+        /\bentity\.(?:id|summary)\b/,
+        /\bimport\s+type\s*\{\s*MetaEdgeEntity\b/,
+      ],
+    ] as const) {
+      const menu = stripComments(readFileSync(join(SRC_ROOT, menuRel), "utf8"));
+      if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(menu)) {
+        violations.push(`${menuRel}: missing entity descriptor normalizer`);
+      }
+      if (
+        !new RegExp(
+          `\\bexport\\s+function\\s+${functionName}\\s*\\(\\s*entity:\\s*unknown\\s*\\)`,
+        ).test(menu)
+      ) {
+        violations.push(`${menuRel}: ${functionName} is a typed-only runtime seam`);
+      }
+      if (
+        !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+          menu,
+        ) ||
+        !new RegExp(`\\bnormalizedEntity\\?\\.\\s*kind\\s*!==\\s*["']${kind}["']`).test(
+          menu,
+        )
+      ) {
+        violations.push(`${menuRel}: ${functionName} bypasses normalized entity`);
+      }
+      if (rawFields.test(menu)) {
+        violations.push(`${menuRel}: ${functionName} reads raw entity fields`);
+      }
+      if (typedImport.test(menu)) {
+        violations.push(`${menuRel}: ${functionName} imports typed-only entity`);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps platform action descriptor helpers normalized at runtime ingress", () => {
+    const actionRel = "platform/actions/action.ts";
+    const clipboardRel = "platform/actions/clipboardActions.ts";
+    const shellRel = "platform/actions/shellActions.ts";
+    const action = stripComments(readFileSync(join(SRC_ROOT, actionRel), "utf8"));
+    const clipboard = stripComments(readFileSync(join(SRC_ROOT, clipboardRel), "utf8"));
+    const shell = stripComments(readFileSync(join(SRC_ROOT, shellRel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeActionDescriptorId",
+      "normalizeActionDescriptorLabel",
+      "normalizeActionDescriptorText",
+      "normalizeActionDescriptor",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(action)) {
+        violations.push(`${actionRel}: missing descriptor normalizer ${seam}`);
+      }
+    }
+    for (const cap of [
+      "ACTION_DESCRIPTOR_ID_MAX_CHARS",
+      "ACTION_DESCRIPTOR_LABEL_MAX_CHARS",
+      "ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS",
+      "ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+const\\s+${cap}\\b`).test(action)) {
+        violations.push(`${actionRel}: missing descriptor cap ${cap}`);
+      }
+    }
+    if (
+      !/\bnormalizeActionDescriptorId\s*\(\s*value:\s*unknown,\s*fallback:\s*string\s*\)[\s\S]*normalized\.length\s*<=\s*ACTION_DESCRIPTOR_ID_MAX_CHARS/.test(
+        action,
+      ) ||
+      !/\bnormalizeActionDescriptorLabel\s*\([\s\S]*value:\s*unknown[\s\S]*fallback:\s*string[\s\S]*\)[\s\S]*normalized\.length\s*<=\s*ACTION_DESCRIPTOR_LABEL_MAX_CHARS/.test(
+        action,
+      )
+    ) {
+      violations.push(`${actionRel}: descriptor id/label normalizers are unbounded`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeActionDescriptor\s*\(\s*action:\s*unknown\s*,?\s*\):\s*ActionDescriptor\s*\|\s*null[\s\S]*ACTION_DESCRIPTOR_ID_MAX_CHARS[\s\S]*ACTION_DESCRIPTOR_LABEL_MAX_CHARS[\s\S]*\bnormalizeActionDescriptorSection\s*\(\s*record\.section\s*\)[\s\S]*ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS[\s\S]*ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS[\s\S]*\bnormalizeAction\s*\(\s*record\.dispatch\s*\)/.test(
+        action,
+      )
+    ) {
+      violations.push(
+        `${actionRel}: runtime descriptor normalizer trusts resolver output`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+fireActionDescriptor\s*\(\s*action:\s*unknown\s*\):\s*unknown[\s\S]*\bconst\s+normalized\s*=\s*normalizeActionDescriptor\s*\(\s*action\s*\)[\s\S]*!isRunnable\s*\(\s*normalized\s*\)[\s\S]*appDispatcher\.dispatch\s*\(\s*normalized\.dispatch\s*\)/.test(
+        action,
+      )
+    ) {
+      violations.push(`${actionRel}: direct descriptor execution bypasses normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+copyAction\s*\(\s*opts:\s*unknown\s*\)/.test(clipboard) ||
+      !/\bnormalizeActionDescriptorId\s*\(\s*record\.id\s*,\s*["']copy["']\s*\)/.test(
+        clipboard,
+      ) ||
+      !/\bnormalizeCopyPayload\s*\(\s*record\s*\)/.test(clipboard)
+    ) {
+      violations.push(`${clipboardRel}: copy descriptor helper bypasses normalizers`);
+    }
+    if (
+      !/\bexport\s+function\s+dispatchCopy\s*\(\s*payload:\s*unknown\s*\)/.test(
+        clipboard,
+      ) ||
+      !/\bnormalizeCopyPayload\s*\(\s*payload\s*\)/.test(clipboard)
+    ) {
+      violations.push(
+        `${clipboardRel}: direct copy dispatch bypasses payload normalizer`,
+      );
+    }
+    if (
+      /\bcopyAction\s*\(\s*opts:\s*\{[\s\S]*\bid:\s*string[\s\S]*\btext:\s*string/.test(
+        clipboard,
+      )
+    ) {
+      violations.push(`${clipboardRel}: typed-only copy action helper`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeShellPayload\s*\(\s*payload:\s*unknown\s*\)/.test(
+        shell,
+      )
+    ) {
+      violations.push(`${shellRel}: missing shell payload normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+revealAction\s*\(\s*opts:\s*unknown\s*\)/.test(shell) ||
+      !/\bnormalizeActionDescriptorId\s*\(\s*record\.id\s*,\s*["']reveal["']\s*\)/.test(
+        shell,
+      ) ||
+      !/\bnormalizeShellPayload\s*\(\s*record\s*\)/.test(shell)
+    ) {
+      violations.push(`${shellRel}: reveal descriptor helper bypasses normalizers`);
+    }
+    if (
+      !/\bexport\s+function\s+openInEditorAction\s*\(\s*opts:\s*unknown\s*\)/.test(
+        shell,
+      ) ||
+      !/\bnormalizeActionDescriptorId\s*\(\s*record\.id\s*,\s*["']open-in-editor["']\s*\)/.test(
+        shell,
+      ) ||
+      !/\bnormalizeShellPayload\s*\(\s*record\s*\)/.test(shell)
+    ) {
+      violations.push(`${shellRel}: open-in-editor helper bypasses normalizers`);
+    }
+    for (const typedOnly of [
+      "revealAction(opts: { id: string; path: string })",
+      "openInEditorAction(opts: {\n  id: string;\n  path: string;",
+    ]) {
+      if (shell.includes(typedOnly)) {
+        violations.push(`${shellRel}: typed-only shell action helper ${typedOnly}`);
       }
     }
 
@@ -5604,18 +8914,42 @@ describe("dashboard layer ownership", () => {
 
   it("keeps dashboard graph bounds normalized at read and write seams", () => {
     const dashboardRel = "stores/server/dashboardState.ts";
+    const normalizationRel = "stores/server/dashboardStateNormalization.ts";
+    const adapterRel = "stores/server/liveAdapters.ts";
     const queriesRel = "stores/server/queries.ts";
-    const intentRel = "stores/server/dashboardGraphControlsIntent.ts";
     const dashboard = stripComments(readFileSync(join(SRC_ROOT, dashboardRel), "utf8"));
+    const normalization = stripComments(
+      readFileSync(join(SRC_ROOT, normalizationRel), "utf8"),
+    );
+    const adapter = stripComments(readFileSync(join(SRC_ROOT, adapterRel), "utf8"));
     const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
-    const intent = stripComments(readFileSync(join(SRC_ROOT, intentRel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bexport\s+function\s+normalizeDashboardGraphBounds\b/.test(dashboard)) {
-      violations.push(`${dashboardRel}: missing graph-bounds normalizer`);
+    if (!/\bexport\s+function\s+normalizeDashboardGraphBounds\b/.test(normalization)) {
+      violations.push(`${normalizationRel}: missing graph-bounds normalizer`);
     }
     if (
-      !/\bgraphBoundsPatch\b[\s\S]*\bnormalizeDashboardGraphBounds\s*\(/.test(dashboard)
+      !/\bexport\s+function\s+normalizeDashboardGraphBounds\s*\(\s*bounds:\s*unknown\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: graph-bounds normalizer accepts typed-only input`,
+      );
+    }
+    if (
+      !/\bfunction\s+normalizeDashboardBoundShape\s*\(\s*shape:\s*unknown\s*\)[\s\S]*\bnormalizeStringMember\s*\(\s*shape\s*,\s*DASHBOARD_BOUND_SHAPES\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(
+        `${normalizationRel}: bound-shape normalizer bypasses string-member normalizer`,
+      );
+    }
+    if (
+      !/\bgraphBoundsPatch\s*\(\s*graph_bounds:\s*unknown\s*\)[\s\S]*\bnormalizeDashboardGraphBounds\s*\(\s*graph_bounds\s*\)/.test(
+        dashboard,
+      )
     ) {
       violations.push(`${dashboardRel}: graph-bounds patch bypasses normalizer`);
     }
@@ -5626,6 +8960,15 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(
         `${dashboardRel}: dashboard seed bypasses graph-bounds normalizer`,
+      );
+    }
+    if (
+      !/\badaptDashboardState\b[\s\S]*\bgraph_bounds:\s*normalizeDashboardGraphBounds\s*\(\s*body\.graph_bounds\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(
+        `${adapterRel}: dashboard adapter bypasses graph-bounds normalizer`,
       );
     }
     if (
@@ -5646,13 +8989,19 @@ describe("dashboard layer ownership", () => {
         `${queriesRel}: stage scene view bypasses graph-bounds normalizer`,
       );
     }
+    if (dashboard.includes("setGraphBounds: (bounds: DashboardGraphBounds)")) {
+      violations.push(`${dashboardRel}: typed-only graph-bounds mutation seam`);
+    }
+    if (!dashboard.includes("setGraphBounds: (bounds: unknown)")) {
+      violations.push(`${dashboardRel}: missing runtime graph-bounds mutation seam`);
+    }
     if (
-      !/\bsetGraphBounds:\s*\([^)]*\)\s*=>[\s\S]*\bnormalizeDashboardGraphBounds\s*\(/.test(
-        intent,
+      !/\bsetGraphBounds:\s*\(bounds:\s*unknown\)\s*=>\s*mutation\.mutateAsync\s*\(\s*graphBoundsPatch\s*\(\s*bounds\s*\)\s*\)/.test(
+        dashboard,
       )
     ) {
       violations.push(
-        `${intentRel}: graph-controls intent bypasses graph-bounds normalizer`,
+        `${dashboardRel}: graph-bounds mutation bypasses patch normalizer`,
       );
     }
 
@@ -5661,7 +9010,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps GraphControls popover chrome behind the graph-controls chrome seam", () => {
     const rel = "app/stage/GraphControls.tsx";
+    const storeRel = "stores/view/graphControlsChrome.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -5730,6 +9081,78 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: missing ${helper} seam`);
       }
     }
+    for (const normalizer of [
+      "normalizeGraphControlsOpen",
+      "normalizeGraphControlsFrozen",
+      "normalizeGraphControlsTuneParams",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${normalizer}\\b`).test(store)) {
+        violations.push(`${storeRel}: missing ${normalizer}`);
+      }
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString\b/.test(
+        store,
+      ) ||
+      !/\bexport\s+const\s+normalizeGraphControlsFrozenScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        store,
+      )
+    ) {
+      violations.push(
+        `${storeRel}: frozen scope bypasses shared view scope normalizer`,
+      );
+    }
+    for (const typedOnly of [
+      "setSettingsOpen: (open: boolean)",
+      "setFrozen: (frozen: boolean, scope: string | null)",
+      "setTuneParams: (params: GraphControlsTuneParams)",
+      "patchTuneParams: (patch: Partial<GraphControlsTuneParams>)",
+      "setGraphControlsSettingsOpen(open: boolean)",
+      "setGraphControlsFrozen(frozen: boolean, scope: string | null)",
+      "setGraphControlsTuneParams(params: GraphControlsTuneParams)",
+      "patchGraphControlsTuneParams(\n  patch: Partial<GraphControlsTuneParams>",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(
+          `${storeRel}: typed-only graph-controls chrome seam ${typedOnly}`,
+        );
+      }
+    }
+    for (const required of [
+      "setSettingsOpen: (open: unknown)",
+      "setFrozen: (frozen: unknown, scope: unknown)",
+      "setTuneParams: (params: unknown)",
+      "patchTuneParams: (patch: unknown)",
+      "setGraphControlsSettingsOpen(open: unknown)",
+      "setGraphControlsFrozen(frozen: unknown, scope: unknown)",
+      "setGraphControlsTuneParams(params: unknown)",
+      "patchGraphControlsTuneParams(patch: unknown)",
+    ]) {
+      if (!store.includes(required)) {
+        violations.push(`${storeRel}: missing runtime chrome seam ${required}`);
+      }
+    }
+    if (
+      !/\bsetSettingsOpen:\s*\(settingsOpen\)\s*=>[\s\S]*\bnormalizeGraphControlsOpen\s*\(\s*settingsOpen\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: settings-open setter bypasses normalizer`);
+    }
+    if (
+      !/\bsetFrozen:\s*\(frozen,\s*frozenScope\)\s*=>[\s\S]*\bnormalizeGraphControlsFrozen\s*\(\s*frozen\s*\)[\s\S]*\bnormalizeGraphControlsFrozenScope\s*\(\s*frozenScope\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: frozen setter bypasses normalizers`);
+    }
+    if (
+      !/\bsetTuneParams:\s*\(tuneParams\)\s*=>[\s\S]*\bnormalizeGraphControlsTuneParams\s*\(\s*tuneParams\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: tune setter bypasses normalizer`);
+    }
 
     expect(violations).toEqual([]);
   });
@@ -5792,6 +9215,10 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const popoverRel = "app/kit/Popover.tsx";
     const popover = stripComments(readFileSync(join(SRC_ROOT, popoverRel), "utf8"));
+    const outsideHookRel = "app/chrome/useDismissOnOutsidePointer.ts";
+    const outsideHook = stripComments(
+      readFileSync(join(SRC_ROOT, outsideHookRel), "utf8"),
+    );
     const violations: string[] = [];
 
     if (/document\.addEventListener\s*\(\s*["']pointerdown["']/.test(stripped)) {
@@ -5808,6 +9235,52 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\buseDismissOnOutsidePointer\s*\(/.test(popover)) {
       violations.push(`${popoverRel}: missing shared outside-pointer dismiss hook`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDismissOnOutsidePointerEnabled\b/.test(
+        outsideHook,
+      )
+    ) {
+      violations.push(`${outsideHookRel}: missing outside-pointer enabled normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDismissOnOutsidePointerIgnoreSelector\b/.test(
+        outsideHook,
+      )
+    ) {
+      violations.push(
+        `${outsideHookRel}: missing outside-pointer ignore-selector normalizer`,
+      );
+    }
+    if (!/\bexport\s+function\s+isInsideIgnoredDismissTarget\b/.test(outsideHook)) {
+      violations.push(`${outsideHookRel}: missing safe ignored-target matcher`);
+    }
+    if (/\benabled\?:\s*boolean\b/.test(outsideHook)) {
+      violations.push(`${outsideHookRel}: outside-pointer gate trusts typed boolean`);
+    }
+    if (/\bignoreSelector\?:\s*string\b/.test(outsideHook)) {
+      violations.push(
+        `${outsideHookRel}: outside-pointer ignore selector trusts typed string`,
+      );
+    }
+    if (
+      !/\bconst\s+normalizedEnabled\s*=\s*normalizeDismissOnOutsidePointerEnabled\s*\(\s*enabled\s*\)/.test(
+        outsideHook,
+      )
+    ) {
+      violations.push(`${outsideHookRel}: outside-pointer bypasses enabled normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedIgnoreSelector\s*=\s*[\s\S]*normalizeDismissOnOutsidePointerIgnoreSelector\s*\(\s*ignoreSelector\s*\)/.test(
+        outsideHook,
+      )
+    ) {
+      violations.push(
+        `${outsideHookRel}: outside-pointer bypasses ignore-selector normalizer`,
+      );
+    }
+    if (/\bnode\?\.closest\?\.\(\s*ignoreSelector\s*\)/.test(outsideHook)) {
+      violations.push(`${outsideHookRel}: outside-pointer uses raw selector match`);
     }
 
     expect(violations).toEqual([]);
@@ -5839,11 +9312,45 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: missing tab-store workspace_layout codec seam`);
     }
     if (
-      !/\bshouldPersistWorkspaceTabsLayout\s*\(\s*lastPersistedRef\.current\s*,\s*scope\s*,\s*next\s*\)/.test(
+      !/from\s+["']\.\.\/\.\.\/stores\/view\/viewStore["']/.test(imports) ||
+      !/\bnormalizeViewStoreSessionString\b/.test(imports)
+    ) {
+      violations.push(`${rel}: missing workspace persistence scope normalizer`);
+    }
+    if (
+      /\buseWorkspacePersistence\s*\(\s*scope:\s*string\s*\|\s*null\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: workspace persistence trusts typed-only scope`);
+    }
+    if (!/\buseWorkspacePersistence\s*\(\s*scope:\s*unknown\s*\)/.test(stripped)) {
+      violations.push(`${rel}: workspace persistence missing runtime scope seam`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace persistence bypasses scope normalizer`);
+    }
+    if (
+      !/\bshouldPersistWorkspaceTabsLayout\s*\(\s*[\s\S]*lastPersistedRef\.current\s*,[\s\S]*normalizedScope\s*,[\s\S]*next[\s\S]*\)/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: missing tab-store workspace_layout persist decision`);
+    }
+    if (/\bif\s*\(\s*!\s*scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: workspace persistence gates raw scope truthiness`);
+    }
+    if (
+      !/\buseDurableWorkspaceLayout\s*\(\s*normalizedScope\s*\)/.test(stripped) ||
+      !/\bnormalizedScope\s*===\s*null/.test(stripped) ||
+      !/\blastPersistedRef\.current\s*=\s*\{\s*scope:\s*normalizedScope,\s*blob:\s*next\s*\}/.test(
+        stripped,
+      ) ||
+      !/\bpersistLayoutRef\.current\s*\(\s*normalizedScope,\s*next\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: workspace persistence uses raw scope identity`);
     }
     if (/\bparseWorkspaceTabs\s*\(\s*next\s*\)\?\.openDocs\.length/.test(stripped)) {
       violations.push(`${rel}: app-layer workspace_layout empty-persist decision`);
@@ -5877,25 +9384,52 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: missing durable workspace layout selector`);
     }
     if (
-      !/\bconst\s+activeScope\s*=\s*session\?\.active_scope\s*\|\|\s*null\b/.test(
+      !/\bexport\s+function\s+normalizeDurableWorkspaceLayoutWrite\s*\(\s*scope:\s*unknown,\s*blob:\s*unknown/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing durable workspace layout write normalizer`);
+    }
+    if (
+      /\busePersistWorkspaceLayout\s*\(\s*\):\s*\(\s*scope:\s*string,\s*blob:\s*string\s*\)\s*=>\s*void/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: durable workspace layout persist is typed-only`);
+    }
+    if (
+      !/\bconst\s+write\s*=\s*normalizeDurableWorkspaceLayoutWrite\s*\(\s*scope\s*,\s*blob\s*\)[\s\S]*write\.scope\s*===\s*null\s*\|\|\s*write\.blob\s*===\s*null[\s\S]*set_workspace_layout:\s*\{\s*scope:\s*write\.scope,\s*layout:\s*write\.blob\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: durable workspace layout persist bypasses normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*scope\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+activeScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*session\?\.active_scope\s*\)/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: missing accepted active-scope normalization`);
     }
     if (
-      !/\bconst\s+scopeAccepted\s*=\s*scope\s*!==\s*null\s*&&\s*activeScope\s*===\s*scope\b/.test(
+      !/\bconst\s+scopeAccepted\s*=\s*normalizedScope\s*!==\s*null\s*&&\s*activeScope\s*===\s*normalizedScope\b/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: durable layout is not gated by accepted scope`);
     }
     if (
-      !/\bscopeAccepted\s*\?\s*\(session\?\.scope_context\.workspace_layout\s*\?\?\s*null\)/.test(
+      !/\bscopeAccepted\s*\?\s*normalizeWorkspaceLayoutBlob\s*\(\s*context\.workspace_layout\s*\)/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: durable layout blob bypasses accepted-scope gate`);
+    }
+    if (!/\bnormalizeWorkspaceLayoutBlob\b/.test(stripped)) {
+      violations.push(`${rel}: durable layout blob bypasses workspace-layout normalizer`);
     }
     if (!/\bsettled:\s*sessionReady\s*&&\s*scopeAccepted\b/.test(stripped)) {
       violations.push(`${rel}: durable layout settled flag is not scope-gated`);
@@ -5907,11 +9441,91 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: hook bypasses durable layout selector`);
     }
+    for (const seam of [
+      "normalizeViewStoreSessionString",
+      "normalizeViewStoreSessionStringList",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} session projection normalizer`);
+      }
+    }
+    if (
+      !/\bfunction\s+deriveAcceptedScopeContextMirror[\s\S]*\bconst\s+normalizedWriteScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*writeScope\s*\)[\s\S]*\bconst\s+normalizedActiveScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*activeScope\s*\)[\s\S]*\bconst\s+normalizedSessionScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*session\.active_scope\s*\)[\s\S]*folder:\s*normalizeViewStoreSessionString\s*\(\s*context\.folder\s*\)[\s\S]*featureTags:\s*normalizeViewStoreSessionStringList\s*\(\s*context\.feature_tags\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: accepted scope-context mirror trusts session fields`);
+    }
+    if (
+      !/\bfunction\s+restoredSessionContextSeed[\s\S]*normalizeViewStoreSessionString\s*\(\s*pickedScope\s*\)[\s\S]*workspace:\s*[\s\S]*normalizeViewStoreSessionString\s*\(\s*session\.active_workspace\s*\)[\s\S]*normalizeViewStoreSessionString\s*\(\s*session\.workspace\s*\)[\s\S]*scope:\s*normalizeViewStoreSessionString\s*\(\s*session\.active_scope\s*\)[\s\S]*folder:\s*normalizeViewStoreSessionString\s*\(\s*context\.folder\s*\)[\s\S]*featureTags:\s*normalizeViewStoreSessionStringList\s*\(\s*context\.feature_tags\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: restored session seed trusts session fields`);
+    }
+    if (
+      /\bfolder:\s*session\.scope_context\.folder\b/.test(stripped) ||
+      /\bfeatureTags:\s*session\.scope_context\.feature_tags\b/.test(stripped) ||
+      /\bscope:\s*session\.active_scope\s*\|\|\s*null\b/.test(stripped)
+    ) {
+      violations.push(`${rel}: raw session context projection`);
+    }
     if (!/\bfunction\s+adaptScopeContext\b[\s\S]*\bworkspace_layout\b/.test(adapter)) {
       violations.push(`${adapterRel}: session adapter drops workspace_layout`);
     }
-    if (!/\btypeof\s+value\.workspace_layout\s*===\s*["']string["']/.test(adapter)) {
-      violations.push(`${adapterRel}: workspace_layout adapter is not string-gated`);
+    if (
+      !/from\s+["']\.\.\/workspaceLayout["'][\s\S]*\bnormalizeWorkspaceLayoutBlob\b/.test(
+        adapter,
+      ) ||
+      !/\bconst\s+workspaceLayout\s*=\s*normalizeWorkspaceLayoutBlob\s*\(\s*value\.workspace_layout\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: workspace_layout adapter is not normalized`);
+    }
+    for (const seam of ["normalizeSessionString", "normalizeSessionStringList"]) {
+      if (!new RegExp(`\\bfunction\\s+${seam}\\b`).test(adapter)) {
+        violations.push(`${adapterRel}: missing ${seam} session adapter seam`);
+      }
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bSCOPE_ID_MAX_CHARS\b/.test(
+        adapter,
+      ) ||
+      !/\bfunction\s+normalizeSessionString\s*\(\s*value:\s*unknown\s*\):\s*string\s*\|\s*undefined[\s\S]*\bvalue\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*SCOPE_ID_MAX_CHARS/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: session string normalizer is unbounded`);
+    }
+    if (
+      !/\bfunction\s+normalizeSessionStringList\s*\(\s*value:\s*unknown\s*\):\s*string\[\][\s\S]*\bconst\s+normalized\s*=\s*normalizeSessionString\s*\(\s*entry\s*\)[\s\S]*\bseen\.has\s*\(\s*normalized\s*\)[\s\S]*out\.push\s*\(\s*normalized\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(
+        `${adapterRel}: session string-list normalizer preserves raw entries`,
+      );
+    }
+    if (
+      !/\bSESSION_STRING_LIST_MAX_ITEMS\b/.test(adapter) ||
+      !/\bout\.length\s*>=\s*SESSION_STRING_LIST_MAX_ITEMS/.test(adapter)
+    ) {
+      violations.push(`${adapterRel}: session string-list accumulator is unbounded`);
+    }
+    if (
+      !/\bfunction\s+adaptScopeContext\b[\s\S]*\bfolder\s*=\s*normalizeSessionString\s*\(\s*value\.folder\s*\)\s*\?\?\s*null[\s\S]*feature_tags:\s*normalizeSessionStringList\s*\(\s*value\.feature_tags\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: scope context bypasses session normalizers`);
+    }
+    if (
+      !/\bexport function adaptSession\b[\s\S]*workspace:\s*normalizeSessionString\s*\(\s*body\.workspace\s*\)\s*\?\?\s*["'][\s\S]*active_scope:\s*normalizeSessionString\s*\(\s*body\.active_scope\s*\)\s*\?\?\s*["'][\s\S]*active_workspace:\s*normalizeSessionString\s*\(\s*body\.active_workspace\s*\)\s*\?\?\s*null[\s\S]*recents:\s*normalizeSessionStringList\s*\(\s*body\.recents\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: session adapter bypasses session normalizers`);
     }
 
     expect(violations).toEqual([]);
@@ -6046,7 +9660,11 @@ describe("dashboard layer ownership", () => {
 
   it("keeps Stage scene command payloads behind stage-scene command helpers", () => {
     const rel = "app/stage/Stage.tsx";
+    const commandsRel = "stores/view/stageSceneCommands.ts";
+    const mappingRel = "scene/sceneMapping.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const commands = stripComments(readFileSync(join(SRC_ROOT, commandsRel), "utf8"));
+    const mapping = stripComments(readFileSync(join(SRC_ROOT, mappingRel), "utf8"));
     const violations: string[] = [];
 
     for (const helper of [
@@ -6077,6 +9695,53 @@ describe("dashboard layer ownership", () => {
     }
     if (/overlays\.featureCountries|overlays\.featureHulls/.test(stripped)) {
       violations.push(`${rel}: local overlay command payload projection`);
+    }
+    for (const typedOnly of [
+      "stageSetDataCommand(slice: {\n  nodes: EngineNode[]",
+      "stageRepresentationCommand(mode: RepresentationMode)",
+      "stageBoundsCommand(\n  bounds: DashboardGraphBounds | undefined",
+    ]) {
+      if (commands.includes(typedOnly)) {
+        violations.push(`${commandsRel}: typed-only scene command seam ${typedOnly}`);
+      }
+    }
+    if (!/\bstageSetDataCommand\s*\(\s*slice:\s*unknown\s*\)/.test(commands)) {
+      violations.push(`${commandsRel}: set-data command accepts typed-only input`);
+    }
+    if (!/\bstageRepresentationCommand\s*\(\s*mode:\s*unknown\s*\)/.test(commands)) {
+      violations.push(
+        `${commandsRel}: representation command accepts typed-only input`,
+      );
+    }
+    if (!/\bstageBoundsCommand\s*\(\s*bounds:\s*unknown\s*\)/.test(commands)) {
+      violations.push(`${commandsRel}: bounds command accepts typed-only input`);
+    }
+    if (
+      !/\bstageRepresentationCommand\b[\s\S]*\bnormalizeDashboardRepresentationMode\s*\(\s*mode\s*\)/.test(
+        commands,
+      )
+    ) {
+      violations.push(`${commandsRel}: representation command bypasses normalizer`);
+    }
+    if (
+      !/\bstageBoundsCommand\b[\s\S]*\bnormalizeDashboardGraphBounds\s*\(\s*bounds\s*\)/.test(
+        commands,
+      )
+    ) {
+      violations.push(`${commandsRel}: bounds command bypasses normalizer`);
+    }
+    if (mapping.includes("sliceToScene(slice: { nodes: EngineNode[]")) {
+      violations.push(`${mappingRel}: slice mapper accepts typed-only input`);
+    }
+    if (!/\bsliceToScene\s*\(\s*slice:\s*unknown\s*\)/.test(mapping)) {
+      violations.push(`${mappingRel}: slice mapper lacks runtime input seam`);
+    }
+    if (
+      !/\bsliceToScene\b[\s\S]*Array\.isArray\s*\(\s*record\.nodes\s*\)[\s\S]*normalizeGraphDeltaNode\s*\(\s*node\s*\)[\s\S]*Array\.isArray\s*\(\s*record\.edges\s*\)[\s\S]*normalizeGraphDeltaEdge\s*\(\s*edge\s*\)/.test(
+        mapping,
+      )
+    ) {
+      violations.push(`${mappingRel}: slice mapper bypasses graph row normalizers`);
     }
 
     expect(violations).toEqual([]);
@@ -6111,6 +9776,22 @@ describe("dashboard layer ownership", () => {
     }
     if (!/\bstageSceneIntent\b/.test(bridge)) {
       violations.push("stores/view/stageSceneEvents.ts: missing stage scene intent");
+    }
+    if (
+      /descendFeatureTag:\s*\(featureTag:\s*string\)/.test(bridge) ||
+      /setRepresentationMode:\s*\(mode:\s*RepresentationMode\)/.test(bridge)
+    ) {
+      violations.push(
+        "stores/view/stageSceneEvents.ts: typed-only scene intent bridge",
+      );
+    }
+    if (
+      !/descendFeatureTag:\s*\(featureTag:\s*unknown\)/.test(bridge) ||
+      !/setRepresentationMode:\s*\(mode:\s*unknown\)/.test(bridge)
+    ) {
+      violations.push(
+        "stores/view/stageSceneEvents.ts: missing runtime scene intent bridge",
+      );
     }
     for (const localIntent of [
       "setHoveredNodeId",
@@ -6221,7 +9902,9 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${viewRel}: graph overlay normalizer accepts typed-only input`);
     }
-    if (!/\bfunction\s+graphOverlayInputRecord\s*\(\s*value:\s*unknown\s*\)/.test(view)) {
+    if (
+      !/\bfunction\s+graphOverlayInputRecord\s*\(\s*value:\s*unknown\s*\)/.test(view)
+    ) {
       violations.push(`${viewRel}: missing unknown graph overlay record reader`);
     }
     if (
@@ -6232,25 +9915,37 @@ describe("dashboard layer ownership", () => {
       violations.push(`${viewRel}: setOverlays bypasses graph overlay normalizer`);
     }
     if (
-      !/\buseGraphOverlays\b[\s\S]*\bnormalizeGraphOverlays\s*\(\s*state\.overlays\s*\)/.test(
+      !/\buseGraphOverlays\b[\s\S]*\buseViewStore\s*\(\s*\(\s*state\s*\)\s*=>\s*state\.overlays\s*\)[\s\S]*\bnormalizeGraphOverlays\s*\(/.test(
         graphOverlays,
       )
     ) {
       violations.push(`${graphOverlaysRel}: graph overlay read bypasses normalizer`);
     }
-    if (
-      !/\bsetGraphOverlays\s*\(\s*overlays:\s*unknown\s*\)/.test(graphOverlays)
-    ) {
-      violations.push(`${graphOverlaysRel}: graph overlay write accepts typed-only input`);
+    if (!/\bsetGraphOverlays\s*\(\s*overlays:\s*unknown\s*\)/.test(graphOverlays)) {
+      violations.push(
+        `${graphOverlaysRel}: graph overlay write accepts typed-only input`,
+      );
     }
     for (const typedOnly of [
       "setOverlays: (overlays: GraphOverlayState)",
       "setGraphOverlays(overlays: GraphOverlayState)",
       "normalizeGraphOverlays(\n  overlays: GraphOverlayInput",
+      "stageOverlaysCommand(overlays: GraphOverlayState)",
     ]) {
-      if (view.includes(typedOnly) || graphOverlays.includes(typedOnly)) {
-        violations.push(`${graphOverlaysRel}: typed-only graph overlay seam ${typedOnly}`);
+      if (
+        view.includes(typedOnly) ||
+        graphOverlays.includes(typedOnly) ||
+        stageCommands.includes(typedOnly)
+      ) {
+        violations.push(
+          `${graphOverlaysRel}: typed-only graph overlay seam ${typedOnly}`,
+        );
       }
+    }
+    if (!/\bstageOverlaysCommand\s*\(\s*overlays:\s*unknown\s*\)/.test(stageCommands)) {
+      violations.push(
+        `${stageCommandsRel}: overlay scene command accepts typed-only input`,
+      );
     }
     if (
       !/\bstageOverlaysCommand\b[\s\S]*\bnormalizeGraphOverlays\s*\(\s*overlays\s*\)/.test(
@@ -6358,13 +10053,18 @@ describe("dashboard layer ownership", () => {
     const seam = stripComments(
       readFileSync(join(SRC_ROOT, "stores/view/graphAffordances.ts"), "utf8"),
     );
+    if (!/\bnormalizeNodeIds\b/.test(seam)) {
+      violations.push(
+        "stores/view/graphAffordances.ts: graph-affordance ids bypass node-id normalizer",
+      );
+    }
     if (
-      !/\bgraphAffordanceNodeIds\b[\s\S]*\.nodes\.map\s*\(\s*\(\s*node\s*\)\s*=>\s*node\.id\s*\)/.test(
+      !/\bgraphAffordanceNodeIds\b[\s\S]*Array\.isArray\s*\(\s*graph\.nodes\s*\)[\s\S]*normalizeNodeIds\s*\([\s\S]*\.nodes\.map\s*\(\s*\(\s*node\s*\)\s*=>\s*node\?\.id\s*\)[\s\S]*graph\.nodes\.length/.test(
         seam,
       )
     ) {
       violations.push(
-        "stores/view/graphAffordances.ts: missing graph-owned node-id projection",
+        "stores/view/graphAffordances.ts: missing normalized graph-owned node-id projection",
       );
     }
 
@@ -6409,12 +10109,24 @@ describe("dashboard layer ownership", () => {
   });
 
   it("keeps selected-id normalization centralized at dashboard and scene seams", () => {
-    const nodeIdsRel = "stores/nodeIds.ts";
+    const nodeIdsRel = "platform/graph/nodeIds.ts";
+    const storeNodeIdsRel = "stores/nodeIds.ts";
     const dashboardRel = "stores/server/dashboardState.ts";
+    const dashboardNormalizationRel = "stores/server/dashboardStateNormalization.ts";
     const selectionRel = "stores/view/selection.ts";
+    const graphWalkRel = "app/stage/graphWalk.ts";
+    const stageRel = "app/stage/Stage.tsx";
     const nodeIds = stripComments(readFileSync(join(SRC_ROOT, nodeIdsRel), "utf8"));
+    const storeNodeIds = stripComments(
+      readFileSync(join(SRC_ROOT, storeNodeIdsRel), "utf8"),
+    );
     const dashboard = stripComments(readFileSync(join(SRC_ROOT, dashboardRel), "utf8"));
+    const dashboardNormalization = stripComments(
+      readFileSync(join(SRC_ROOT, dashboardNormalizationRel), "utf8"),
+    );
     const selection = stripComments(readFileSync(join(SRC_ROOT, selectionRel), "utf8"));
+    const graphWalk = stripComments(readFileSync(join(SRC_ROOT, graphWalkRel), "utf8"));
+    const stage = stripComments(readFileSync(join(SRC_ROOT, stageRel), "utf8"));
     const violations: string[] = [];
 
     if (!/\bexport\s+function\s+normalizeNodeId\b/.test(nodeIds)) {
@@ -6423,14 +10135,54 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizeNodeIds\b/.test(nodeIds)) {
       violations.push(`${nodeIdsRel}: missing node-id list normalizer`);
     }
-    if (!/from\s+["']\.\.\/nodeIds["']/.test(dashboard)) {
-      violations.push(`${dashboardRel}: selected ids do not use shared node-id helper`);
+    if (
+      !/\bexport\s+const\s+NODE_ID_MAX_CHARS\b/.test(nodeIds) ||
+      !/\bexport\s+function\s+normalizeNodeId\s*\(\s*raw:\s*unknown\s*\)[\s\S]*\bconst\s+id\s*=\s*raw\.trim\s*\(\s*\)[\s\S]*id\.length\s*<=\s*NODE_ID_MAX_CHARS/.test(
+        nodeIds,
+      )
+    ) {
+      violations.push(`${nodeIdsRel}: node id normalizer is unbounded`);
     }
-    if (!/\bexport\s+const\s+MAX_DASHBOARD_SELECTED_IDS\s*=\s*256\b/.test(dashboard)) {
-      violations.push(`${dashboardRel}: missing selected-id cap mirror`);
+    if (!/from\s+["']\.\.\/platform\/graph\/nodeIds["']/.test(storeNodeIds)) {
+      violations.push(`${storeNodeIdsRel}: stores node-id facade bypasses platform seam`);
     }
-    if (!/\bexport\s+function\s+normalizeDashboardSelectedIds\b/.test(dashboard)) {
-      violations.push(`${dashboardRel}: missing selected-id normalizer`);
+    if (!/\bNODE_ID_MAX_CHARS\b/.test(storeNodeIds)) {
+      violations.push(`${storeNodeIdsRel}: stores node-id facade hides id cap`);
+    }
+    if (!/from\s+["']\.\.\/nodeIds["']/.test(dashboardNormalization)) {
+      violations.push(
+        `${dashboardNormalizationRel}: selected ids do not use shared node-id helper`,
+      );
+    }
+    if (
+      !/\bexport\s+const\s+MAX_DASHBOARD_SELECTED_IDS\s*=\s*256\b/.test(
+        dashboardNormalization,
+      )
+    ) {
+      violations.push(`${dashboardNormalizationRel}: missing selected-id cap mirror`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDashboardSelectedIds\b/.test(
+        dashboardNormalization,
+      )
+    ) {
+      violations.push(`${dashboardNormalizationRel}: missing selected-id normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDashboardSelectedIds\s*\(\s*ids:\s*unknown\s*\)[\s\S]*Array\.isArray\s*\(\s*ids\s*\)[\s\S]*normalizeNodeIds\s*\(\s*ids\s*,\s*MAX_DASHBOARD_SELECTED_IDS\s*\)/.test(
+        dashboardNormalization,
+      )
+    ) {
+      violations.push(
+        `${dashboardNormalizationRel}: selected-id normalizer accepts typed-only ids`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+selectionPatch\s*\(\s*selected_ids:\s*unknown\s*,?\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: selectionPatch accepts typed-only ids`);
     }
     if (
       !/\bselectionPatch\b[\s\S]*\bnormalizeDashboardSelectedIds\s*\(\s*selected_ids\s*\)/.test(
@@ -6472,18 +10224,25 @@ describe("dashboard layer ownership", () => {
           )
         : "";
     if (
-      !/\bconst\s+selected\s*=\s*selectNode\s*\(\s*nodeId\s*,\s*scope\s*\)/.test(
-        selectNodeAndPulse,
-      )
+      !/\bselectNode\s*\(\s*nodeId\s*,\s*scope\s*\)\.then\s*\(/.test(selectNodeAndPulse)
     ) {
       violations.push(
         `${selectionRel}: selectNodeAndPulse bypasses dashboard selection seam`,
       );
     }
     if (
-      !/\bpulseSelectionNodes\s*\(\s*scene\s*,\s*pulseIds\s*\)/.test(selectNodeAndPulse)
+      !/\bif\s*\(\s*selected\s*\)\s*pulseSelectionNodes\s*\(\s*scene\s*,\s*pulseIds\s*\)/.test(
+        selectNodeAndPulse,
+      )
     ) {
-      violations.push(`${selectionRel}: selectNodeAndPulse bypasses pulse seam`);
+      violations.push(
+        `${selectionRel}: selectNodeAndPulse pulses before accepted dashboard selection`,
+      );
+    }
+    if (!/\breturn\s+selected\s*;/.test(selectNodeAndPulse)) {
+      violations.push(
+        `${selectionRel}: selectNodeAndPulse does not return dashboard selection result`,
+      );
     }
     for (const seam of ["openNodeIslandFromWalk", "focusFromWalk"]) {
       const start = selection.indexOf(`export async function ${seam}`);
@@ -6499,6 +10258,54 @@ describe("dashboard layer ownership", () => {
         violations.push(`${selectionRel}: ${seam} does not focus normalized walked id`);
       }
     }
+    for (const typedOnly of [
+      "select: (id: string | null) => void",
+      "open: (id: string) => void",
+      "expand: (id: string) => void",
+    ]) {
+      if (graphWalk.includes(typedOnly)) {
+        violations.push(`${graphWalkRel}: graph-walk handler input is typed-only`);
+      }
+    }
+    for (const required of [
+      "select: (id: unknown) => void",
+      "open: (id: unknown) => void",
+      "expand: (id: unknown) => void",
+    ]) {
+      if (!graphWalk.includes(required)) {
+        violations.push(`${graphWalkRel}: graph-walk handler lacks runtime id seam`);
+      }
+    }
+    for (const typedOnly of [
+      "select: (id: string | null) =>",
+      "open: (id: string) =>",
+      "expand: (id: string) =>",
+    ]) {
+      if (stage.includes(typedOnly)) {
+        violations.push(`${stageRel}: stage graph-walk callback is typed-only`);
+      }
+    }
+    if (
+      !/\bselect:\s*\(id:\s*unknown\)\s*=>[\s\S]*\bfocusFromWalk\s*\(\s*scene\.controller,\s*id,\s*scope/.test(
+        stage,
+      )
+    ) {
+      violations.push(`${stageRel}: stage walk select bypasses normalized seam`);
+    }
+    if (
+      !/\bopen:\s*\(id:\s*unknown\)\s*=>[\s\S]*\bopenNodeIslandFromWalk\s*\(\s*scene\.controller,\s*id,\s*scope/.test(
+        stage,
+      )
+    ) {
+      violations.push(`${stageRel}: stage walk open bypasses normalized seam`);
+    }
+    if (
+      !/\bexpand:\s*\(id:\s*unknown\)\s*=>\s*expandWorkingSet\s*\(\s*id\s*\)/.test(
+        stage,
+      )
+    ) {
+      violations.push(`${stageRel}: stage walk expand bypasses working-set seam`);
+    }
 
     expect(violations).toEqual([]);
   });
@@ -6508,12 +10315,16 @@ describe("dashboard layer ownership", () => {
     const viewRel = "stores/view/viewStore.ts";
     const workingRel = "stores/view/workingSet.ts";
     const discoveriesRel = "stores/view/discoveries.ts";
+    const discoveryEdgesRel = "stores/view/discoveryEdges.ts";
     const selectionRel = "stores/view/selection.ts";
     const pins = stripComments(readFileSync(join(SRC_ROOT, pinsRel), "utf8"));
     const view = stripComments(readFileSync(join(SRC_ROOT, viewRel), "utf8"));
     const working = stripComments(readFileSync(join(SRC_ROOT, workingRel), "utf8"));
     const discoveries = stripComments(
       readFileSync(join(SRC_ROOT, discoveriesRel), "utf8"),
+    );
+    const discoveryEdges = stripComments(
+      readFileSync(join(SRC_ROOT, discoveryEdgesRel), "utf8"),
     );
     const selection = stripComments(readFileSync(join(SRC_ROOT, selectionRel), "utf8"));
     const violations: string[] = [];
@@ -6532,6 +10343,11 @@ describe("dashboard layer ownership", () => {
     if (!/from\s+["']\.\.\/nodeIds["']/.test(discoveries)) {
       violations.push(
         `${discoveriesRel}: discovery panel bypasses shared node-id helper`,
+      );
+    }
+    if (!/from\s+["']\.\.\/nodeIds["']/.test(discoveryEdges)) {
+      violations.push(
+        `${discoveryEdgesRel}: discovery edge normalizer bypasses shared node-id helper`,
       );
     }
     if (
@@ -6615,12 +10431,162 @@ describe("dashboard layer ownership", () => {
         violations.push(`${workingRel}: ${seam} bypasses working-set read normalizer`);
       }
     }
+    for (const typedOnly of [
+      "workingSetKeyAction(\n  actionId: string,\n  selectedId: string | null",
+      "useWorkingSetKeybindings(selectedId: string | null)",
+      "expandWorkingSet(id: string)",
+      "collapseWorkingSet(id: string)",
+      "isInWorkingSet(id: string)",
+    ]) {
+      if (working.includes(typedOnly)) {
+        violations.push(`${workingRel}: typed-only working-set seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "workingSetKeyAction(\n  actionId: unknown,\n  selectedId: unknown",
+      "useWorkingSetKeybindings(selectedId: unknown)",
+      "expandWorkingSet(id: unknown)",
+      "collapseWorkingSet(id: unknown)",
+      "isInWorkingSet(id: unknown)",
+    ]) {
+      if (!working.includes(required)) {
+        violations.push(`${workingRel}: missing runtime working-set seam ${required}`);
+      }
+    }
     if (
       !/\bexport\s+function\s+normalizeOpenedNodeIslandIds\b[\s\S]*\bnormalizeNodeId\s*\(/.test(
         selection,
       )
     ) {
       violations.push(`${selectionRel}: missing opened-island read normalizer`);
+    }
+    for (const typedOnly of [
+      "setHovered: (id: string | null)",
+      "setDwelledHover: (id: string | null)",
+      "openNode: (id: string)",
+      "closeNode: (id: string)",
+      "addToWorkingSet: (id: string)",
+      "removeFromWorkingSet: (id: string)",
+      "selectNodes(\n  ids: readonly string[]",
+      "selectNode(\n  id: string | null",
+      "selectFirstNode(\n  ids: readonly string[]",
+      "setHoveredNodeId(id: string | null)",
+      "setDwelledHoverNodeId(id: string | null)",
+      "openNodeIsland(\n  id: string",
+      "openGraphNodeFromScene(\n  id: string",
+      "closeNodeIsland(id: string)",
+      "openNodeIslandFromWalk(\n  scene: SceneController,\n  id: string",
+      "focusFromWalk(\n  scene: SceneController,\n  id: string | null",
+      "selectEvent(\n  id: string,\n  nodeIds: string[]",
+      "selectEventNodes(\n  id: string,\n  nodeIds: readonly string[]",
+      "selectEdge(id: string)",
+      "pulseSelectionNodes(\n  scene: SceneController,\n  ids: readonly string[]",
+      "selectNodeAndPulse(\n  scene: SceneController,\n  nodeId: string",
+    ]) {
+      if (selection.includes(typedOnly) || view.includes(typedOnly)) {
+        violations.push(`${selectionRel}: typed-only selection seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bexport\s+function\s+selectNode\s*\(\s*id:\s*unknown[\s\S]*?\bnormalizeNodeId\s*\(\s*id\s*\)/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: selectNode bypasses runtime id normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeSelectionMetadataId\s*\(\s*id:\s*unknown\s*\)[\s\S]*\.trim\s*\(\s*\)/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: missing local selection metadata id normalizer`);
+    }
+    if (
+      !/\bexport\s+const\s+SELECTION_METADATA_ID_MAX_CHARS\s*=\s*512\b/.test(
+        selection,
+      ) ||
+      !/\bexport\s+function\s+normalizeSelectionMetadataId\s*\(\s*id:\s*unknown\s*\)[\s\S]*normalized\.length\s*<=\s*SELECTION_METADATA_ID_MAX_CHARS/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: local selection metadata ids are unbounded`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeSelectionTruncatedNodeCount\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bMath\.trunc\s*\(/.test(
+        selection,
+      )
+    ) {
+      violations.push(
+        `${selectionRel}: missing local selection truncated-count normalizer`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+selectEvent\s*\(\s*id:\s*unknown[\s\S]*?\bconst\s+eventId\s*=\s*normalizeSelectionMetadataId\s*\(\s*id\s*\)[\s\S]*?\bid:\s*eventId\b[\s\S]*?\bnormalizeDashboardSelectedIds\s*\(\s*nodeIds\s*\)/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: selectEvent bypasses metadata normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+selectEventNodes\s*\(\s*id:\s*unknown[\s\S]*?\bconst\s+eventId\s*=\s*normalizeSelectionMetadataId\s*\(\s*id\s*\)[\s\S]*?\beventId\s*===\s*null[\s\S]*?\bPromise\.resolve\s*\(\s*false\s*\)[\s\S]*?\bselectEvent\s*\(\s*eventId\b/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: selectEventNodes is not metadata-atomic`);
+    }
+    if (
+      !/\bexport\s+function\s+selectEdge\s*\(\s*id:\s*unknown\s*\)[\s\S]*?\bconst\s+edgeId\s*=\s*normalizeSelectionMetadataId\s*\(\s*id\s*\)[\s\S]*?\bid:\s*edgeId\b/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: selectEdge bypasses metadata normalizer`);
+    }
+    if (
+      !/\bexport\s+async\s+function\s+openNodeIsland\s*\(\s*id:\s*unknown[\s\S]*?\bconst\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*id\s*\)/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: openNodeIsland bypasses runtime id normalizer`);
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeStoreScope\b[\s\S]*\}\s*from\s+["']\.\.\/server\/scopeIdentity["']/.test(
+        selection,
+      ) ||
+      !/\bexport\s+const\s+normalizeSelectionScope\s*=\s*normalizeStoreScope\b/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: missing selection scope normalizer`);
+    }
+    if (
+      !/\bselectNodes\b[\s\S]*\bpatchDashboardState\s*\(\s*normalizeSelectionScope\s*\(\s*scope\s*\)/.test(
+        selection,
+      )
+    ) {
+      violations.push(`${selectionRel}: selection write bypasses scope normalizer`);
+    }
+    if (
+      !/\bopenGraphNodeFromScene\b[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeSelectionScope\s*\(\s*scope\s*\)[\s\S]*\bnormalizedScope\s*===\s*null/.test(
+        selection,
+      )
+    ) {
+      violations.push(
+        `${selectionRel}: scene-open feature descent bypasses scope normalizer`,
+      );
+    }
+    for (const typedScope of [
+      "selectNodes(\n  ids: readonly unknown[],\n  scope: string | null",
+      "selectNode(\n  id: unknown,\n  scope: string | null",
+      "openNodeIsland(\n  id: unknown,\n  scope: string | null",
+      "openGraphNodeFromScene(\n  id: unknown,\n  scope: string | null",
+      "selectEventNodes(\n  id: string,\n  nodeIds: readonly unknown[],\n  scope: string | null",
+      "selectNodeAndPulse(\n  scene: SceneController,\n  nodeId: unknown,\n  pulseIds: readonly unknown[],\n  scope: string | null",
+    ]) {
+      if (selection.includes(typedScope)) {
+        violations.push(
+          `${selectionRel}: typed-only selection scope seam ${typedScope}`,
+        );
+      }
     }
     for (const seam of ["useOpenedNodeIslands", "isNodeIslandOpen"]) {
       if (
@@ -6634,11 +10600,20 @@ describe("dashboard layer ownership", () => {
       }
     }
     if (
-      !/\bopen:\s*\([^)]*\)\s*=>\s*set\s*\(\s*\{\s*openFor:\s*normalizeNodeId\s*\(/.test(
+      !/\bexport\s+function\s+normalizeDiscoveryPanelTarget\s*\(\s*nodeId:\s*unknown\s*\)[\s\S]*\bnormalizeNodeId\s*\(\s*nodeId\s*\)/.test(
         discoveries,
       )
     ) {
-      violations.push(`${discoveriesRel}: discovery panel open target is raw`);
+      violations.push(`${discoveriesRel}: missing discovery panel target normalizer`);
+    }
+    if (
+      !/\bopen:\s*\(nodeId\)\s*=>\s*set\s*\(\s*\(state\)\s*=>\s*\{[\s\S]*\bconst\s+openFor\s*=\s*normalizeDiscoveryPanelTarget\s*\(\s*nodeId\s*\)[\s\S]*\bopenFor\s*===\s*null[\s\S]*\?\s*state\s*:\s*\{\s*openFor\s*\}/.test(
+        discoveries,
+      )
+    ) {
+      violations.push(
+        `${discoveriesRel}: discovery panel open target is raw or nullable`,
+      );
     }
     if (!/\bopen:\s*\(\s*nodeId:\s*unknown\s*\)\s*=>\s*void\b/.test(discoveries)) {
       violations.push(
@@ -6651,39 +10626,42 @@ describe("dashboard layer ownership", () => {
       );
     }
     if (
-      !/\buseDiscoveryPanelOpenFor\b[\s\S]*\bnormalizeNodeId\s*\(\s*state\.openFor\s*\)/.test(
+      !/\buseDiscoveryPanelOpenFor\b[\s\S]*\bnormalizeDiscoveryPanelTarget\s*\(\s*state\.openFor\s*\)/.test(
         discoveries,
       )
     ) {
       violations.push(`${discoveriesRel}: discovery panel open read is raw`);
     }
     if (
-      !/\bexport\s+function\s+normalizeDiscoveryEdges\b[\s\S]*\bnormalizeNodeId\s*\(/.test(
-        discoveries,
+      !/\bexport\s+function\s+normalizeDiscoveryEdge\b[\s\S]*\bnormalizeNodeId\s*\(/.test(
+        discoveryEdges,
       )
     ) {
       violations.push(
-        `${discoveriesRel}: discovery edges bypass shared node-id helper`,
+        `${discoveryEdgesRel}: discovery edges bypass shared node-id helper`,
       );
     }
     if (
-      !/\bfunction\s+normalizeDiscoveryEdgeId\b[\s\S]*\.trim\s*\(\s*\)/.test(
-        discoveries,
+      !/\bexport\s+const\s+DISCOVERY_EDGE_ID_MAX_CHARS\s*=\s*512\b/.test(
+        discoveryEdges,
+      ) ||
+      !/\bexport\s+function\s+normalizeDiscoveryEdgeId\b[\s\S]*\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*DISCOVERY_EDGE_ID_MAX_CHARS/.test(
+        discoveryEdges,
       )
     ) {
-      violations.push(`${discoveriesRel}: discovery edge id normalizer is missing`);
+      violations.push(`${discoveryEdgesRel}: discovery edge ids are unbounded`);
     }
     if (
-      !/\bfunction\s+normalizeDiscoveryEdge\b[\s\S]*\bconst\s+id\s*=\s*normalizeDiscoveryEdgeId\s*\(\s*candidate\.id\s*\)[\s\S]*\bid,\s*[\s\S]*\bsrc,\s*[\s\S]*\bdst,/.test(
-        discoveries,
+      !/\bexport\s+function\s+normalizeDiscoveryEdge\b[\s\S]*\bconst\s+id\s*=\s*normalizeDiscoveryEdgeId\s*\(\s*candidate\.id\s*\)[\s\S]*\bid,\s*[\s\S]*\bsrc,\s*[\s\S]*\bdst,[\s\S]*\brelation:\s*candidate\.relation\.trim\s*\(\s*\)[\s\S]*\bconfidence:\s*normalizeDiscoveryConfidence\s*\(/.test(
+        discoveryEdges,
       )
     ) {
       violations.push(
-        `${discoveriesRel}: discovery edge normalizer does not own id/src/dst`,
+        `${discoveryEdgesRel}: discovery edge normalizer does not own id/src/dst/relation/confidence`,
       );
     }
     if (
-      !/\bexport\s+function\s+normalizePinnedDiscoveries\b[\s\S]*\bnormalizeDiscoveryEdges\s*\(/.test(
+      !/\bexport\s+function\s+normalizePinnedDiscoveries\b[\s\S]*\bnormalizePinnedDiscoveryEdges\s*\(/.test(
         discoveries,
       )
     ) {
@@ -6709,6 +10687,42 @@ describe("dashboard layer ownership", () => {
       }
     }
     if (
+      /\bselectDiscoveryCandidate\s*\(\s*nodeId:\s*unknown,\s*scope:\s*string\s*\|\s*null/.test(
+        discoveries,
+      )
+    ) {
+      violations.push(
+        `${discoveriesRel}: discovery candidate selection accepts typed-only scope`,
+      );
+    }
+    if (
+      /\buseDiscoveryCandidateSelection\s*\(\s*scope:\s*string\s*\|\s*null/.test(
+        discoveries,
+      )
+    ) {
+      violations.push(
+        `${discoveriesRel}: discovery candidate hook accepts typed-only scope`,
+      );
+    }
+    if (
+      !/\bselectDiscoveryCandidate\s*\(\s*nodeId:\s*unknown,\s*scope:\s*unknown\b[\s\S]*?\bconst\s+normalizedScope\s*=\s*normalizeSelectionScope\s*\(\s*scope\s*\)[\s\S]*?\bselectNode\s*\(\s*id,\s*normalizedScope\s*\)/.test(
+        discoveries,
+      )
+    ) {
+      violations.push(
+        `${discoveriesRel}: discovery candidate selection bypasses scope normalizer`,
+      );
+    }
+    if (
+      !/\buseDiscoveryCandidateSelection\s*\(\s*scope:\s*unknown\s*\)[\s\S]*?\bconst\s+normalizedScope\s*=\s*normalizeSelectionScope\s*\(\s*scope\s*\)[\s\S]*?\bselectDiscoveryCandidate\s*\(\s*nodeId,\s*normalizedScope\s*\)[\s\S]*?\[\s*normalizedScope\s*\]/.test(
+        discoveries,
+      )
+    ) {
+      violations.push(
+        `${discoveriesRel}: discovery candidate hook bypasses normalized scope`,
+      );
+    }
+    if (
       !/\bpinDiscoveryCandidate\b[\s\S]*\bconst\s+normalizedEdge\s*=\s*normalizeDiscoveryEdge\s*\(\s*edge\s*\)[\s\S]*\bpinDiscovery\s*\(\s*normalizedEdge\s*\)/.test(
         discoveries,
       )
@@ -6718,12 +10732,21 @@ describe("dashboard layer ownership", () => {
       );
     }
     if (
-      !/\bpinDiscovery:\s*\(edge\)\s*=>[\s\S]*\bconst\s+id\s*=[\s\S]*edge\.id[\s\S]*\.trim\s*\(\s*\)[\s\S]*\bconst\s+normalizedEdge\s*=\s*\{\s*\.\.\.edge,\s*id,\s*src,\s*dst\s*\}/.test(
+      !/\bpinDiscovery:\s*\(edge\)\s*=>[\s\S]*\bconst\s+normalizedEdge\s*=\s*normalizeDiscoveryEdge\s*\(\s*edge\s*\)[\s\S]*normalizedEdge\s*===\s*null/.test(
         view,
       )
     ) {
       violations.push(
-        `${viewRel}: view-store discovery pins bypass edge-id normalization`,
+        `${viewRel}: view-store discovery pins bypass shared edge normalization`,
+      );
+    }
+    if (
+      !/\bunpinDiscovery:\s*\(edgeId\)\s*=>[\s\S]*\bconst\s+id\s*=\s*normalizeDiscoveryEdgeId\s*\(\s*edgeId\s*\)/.test(
+        view,
+      )
+    ) {
+      violations.push(
+        `${viewRel}: view-store discovery unpin bypasses edge-id normalization`,
       );
     }
 
@@ -6867,18 +10890,16 @@ describe("dashboard layer ownership", () => {
     if (!/\bdwelledHoverId:\s*string\s*\|\s*null\b/.test(viewStore)) {
       violations.push("viewStore.ts: missing view-local hover dwell id");
     }
-    if (!/\bsetHovered:\s*\(id:\s*string\s*\|\s*null\)\s*=>\s*void\b/.test(viewStore)) {
+    if (!/\bsetHovered:\s*\(id:\s*unknown\)\s*=>\s*void\b/.test(viewStore)) {
       violations.push("viewStore.ts: missing view-local hover writer");
     }
-    if (
-      !/\bsetDwelledHover:\s*\(id:\s*string\s*\|\s*null\)\s*=>\s*void\b/.test(viewStore)
-    ) {
+    if (!/\bsetDwelledHover:\s*\(id:\s*unknown\)\s*=>\s*void\b/.test(viewStore)) {
       violations.push("viewStore.ts: missing view-local hover dwell writer");
     }
     if (!/\buseHoveredNodeId\s*\(\s*\)/.test(selection)) {
       violations.push("selection.ts: missing hovered-node read seam");
     }
-    if (!/\bsetHoveredNodeId\s*\(\s*id:\s*string\s*\|\s*null\s*\)/.test(selection)) {
+    if (!/\bsetHoveredNodeId\s*\(\s*id:\s*unknown\s*\)/.test(selection)) {
       violations.push("selection.ts: missing hovered-node write seam");
     }
     if (
@@ -6888,10 +10909,18 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push("selection.ts: missing hovered-node dwell seam");
     }
-    if (
-      !/\bsetDwelledHoverNodeId\s*\(\s*id:\s*string\s*\|\s*null\s*\)/.test(selection)
-    ) {
+    if (!/\bsetDwelledHoverNodeId\s*\(\s*id:\s*unknown\s*\)/.test(selection)) {
       violations.push("selection.ts: missing hovered-node dwell write seam");
+    }
+    for (const typedOnly of [
+      "setHovered: (id: string | null)",
+      "setDwelledHover: (id: string | null)",
+      "setHoveredNodeId(id: string | null)",
+      "setDwelledHoverNodeId(id: string | null)",
+    ]) {
+      if (viewStore.includes(typedOnly) || selection.includes(typedOnly)) {
+        violations.push(`typed-only hover seam ${typedOnly}`);
+      }
     }
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
@@ -7125,6 +11154,40 @@ describe("dashboard layer ownership", () => {
       }
     }
 
+    const islandAnchors = stripComments(
+      readFileSync(join(SRC_ROOT, "stores/view/islandAnchors.ts"), "utf8"),
+    );
+    if (!/\bexport function normalizeSceneAnchor\s*\(/.test(islandAnchors)) {
+      violations.push("stores/view/islandAnchors.ts: missing anchor normalizer");
+    }
+    if (
+      !/\bnormalizeSceneAnchor\b[\s\S]*Number\.isFinite\s*\(\s*value\.x\s*\)[\s\S]*Number\.isFinite\s*\(\s*value\.y\s*\)[\s\S]*Number\.isFinite\s*\(\s*value\.scale\s*\)/.test(
+        islandAnchors,
+      )
+    ) {
+      violations.push(
+        "stores/view/islandAnchors.ts: anchor normalizer trusts scene payloads",
+      );
+    }
+    if (
+      !/\bsetAnchor:\s*\([^)]*id[^)]*anchor[^)]*\)\s*=>\s*\{[\s\S]*\bconst\s+normalizedAnchor\s*=\s*normalizeSceneAnchor\s*\(\s*anchor\s*\)[\s\S]*withAnchor\s*\(\s*state\.anchors\s*,\s*nodeId\s*,\s*normalizedAnchor\s*\)/.test(
+        islandAnchors,
+      )
+    ) {
+      violations.push(
+        "stores/view/islandAnchors.ts: setAnchor bypasses normalized anchor payload",
+      );
+    }
+    if (
+      !/\bexport function islandStyle\s*\(\s*anchor:\s*unknown\s*\)[\s\S]*normalizeSceneAnchor\s*\(\s*anchor\s*\)/.test(
+        islandAnchors,
+      )
+    ) {
+      violations.push(
+        "stores/view/islandAnchors.ts: island style bypasses anchor normalizer",
+      );
+    }
+
     expect(violations).toEqual([]);
   });
 
@@ -7266,13 +11329,37 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: local graph menu membership lookup`);
     }
-    if (!/\bentity\.isOpen\b/.test(stripped)) {
+    if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+      violations.push(`${rel}: missing entity descriptor normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+graphNodeMenu\s*\(\s*entity:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph node menu is a typed-only runtime seam`);
+    }
+    if (
+      !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']node["']/.test(stripped)
+    ) {
+      violations.push(`${rel}: graph node menu bypasses normalized entity`);
+    }
+    if (/\bentity\.(?:id|scope|title|isOpen|isPinned|inWorkingSet)\b/.test(stripped)) {
+      violations.push(`${rel}: graph node menu reads raw entity fields`);
+    }
+    if (/\bimport\s+type\s*\{\s*NodeEntity\b/.test(stripped)) {
+      violations.push(`${rel}: graph node menu imports typed-only NodeEntity`);
+    }
+    if (!/\bnormalizedEntity\.isOpen\b/.test(stripped)) {
       violations.push(`${rel}: missing descriptor-driven island membership`);
     }
-    if (!/\bentity\.isPinned\b/.test(stripped)) {
+    if (!/\bnormalizedEntity\.isPinned\b/.test(stripped)) {
       violations.push(`${rel}: missing descriptor-driven pin membership`);
     }
-    if (!/\bentity\.inWorkingSet\b/.test(stripped)) {
+    if (!/\bnormalizedEntity\.inWorkingSet\b/.test(stripped)) {
       violations.push(`${rel}: missing descriptor-driven working-set membership`);
     }
     if (
@@ -7297,6 +11384,28 @@ describe("dashboard layer ownership", () => {
         violations.push(`${menuActionsRel}: missing ${helper}`);
       }
     }
+    if (/openNodeIsland\s*\(\s*id\s*,\s*scope\s*\?\?\s*null\s*\)/.test(menuActions)) {
+      violations.push(`${menuActionsRel}: menu open coerces absent scope to null`);
+    }
+    if (
+      !/from\s+["']\.\.\/server\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(
+        menuActions,
+      ) ||
+      !/\bmenuEntityScope\s*\([\s\S]*\breturn\s+["']scope["']\s+in\s+entity\s*\?\s*normalizeStoreScope\s*\(\s*entity\.scope\s*\)\s*:\s*undefined/.test(
+        menuActions,
+      )
+    ) {
+      violations.push(`${menuActionsRel}: menu entity scope bypasses scope normalizer`);
+    }
+    if (
+      !/\bconst\s+request\s*=\s*scope\s*===\s*undefined\s*\?\s*openNodeIsland\s*\(\s*id\s*\)\s*:\s*openNodeIsland\s*\(\s*id\s*,\s*scope\s*\)/.test(
+        menuActions,
+      )
+    ) {
+      violations.push(
+        `${menuActionsRel}: menu open does not preserve active-scope default`,
+      );
+    }
 
     expect(violations).toEqual([]);
   });
@@ -7306,8 +11415,11 @@ describe("dashboard layer ownership", () => {
     const resolverRels = [
       "app/stage/menus/graphNodeMenu.ts",
       "app/stage/menus/canvasMenu.ts",
+      "app/islands/menus/islandMenu.ts",
       "app/left/menus/codeFileMenu.ts",
       "app/left/menus/vaultDocMenu.ts",
+      "app/right/menus/searchResultMenu.ts",
+      "app/timeline/menus/eventMarkMenu.ts",
     ];
 
     for (const rel of resolverRels) {
@@ -7330,6 +11442,145 @@ describe("dashboard layer ownership", () => {
       }
       if (!/\.\.\/\.\.\/\.\.\/stores\/view\/menuActions/.test(stripped)) {
         violations.push(`${rel}: missing menu action seam import`);
+      }
+      if (/\bfunction\s+entityScope\s*\(/.test(stripped)) {
+        violations.push(`${rel}: local entity scope helper`);
+      }
+      if (
+        /menus\/(?:searchResultMenu|eventMarkMenu)\.ts$/.test(rel) &&
+        !/\bmenuEntityScope\b|\bfocusMenuNode\b/.test(stripped)
+      ) {
+        violations.push(`${rel}: resolver bypasses shared entity scope seam`);
+      }
+      if (rel === "app/left/menus/codeFileMenu.ts") {
+        if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+          violations.push(`${rel}: missing entity descriptor normalizer`);
+        }
+        if (
+          !/\bexport\s+function\s+codeFileMenu\s*\(\s*entity:\s*unknown\s*\)/.test(
+            stripped,
+          )
+        ) {
+          violations.push(`${rel}: code-file menu is a typed-only runtime seam`);
+        }
+        if (
+          !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+            stripped,
+          ) ||
+          !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']code-file["']/.test(stripped)
+        ) {
+          violations.push(`${rel}: code-file menu bypasses normalized entity`);
+        }
+        if (/\bentity\.(?:id|path|isDir|nodeId|scope)\b/.test(stripped)) {
+          violations.push(`${rel}: code-file menu reads raw entity fields`);
+        }
+        if (/\bimport\s+type\s*\{\s*CodeFileEntity\b/.test(stripped)) {
+          violations.push(`${rel}: code-file menu imports typed-only CodeFileEntity`);
+        }
+      }
+      if (rel === "app/left/menus/vaultDocMenu.ts") {
+        if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+          violations.push(`${rel}: missing entity descriptor normalizer`);
+        }
+        if (
+          !/\bexport\s+function\s+vaultDocMenu\s*\(\s*entity:\s*unknown\s*\)/.test(
+            stripped,
+          )
+        ) {
+          violations.push(`${rel}: vault-doc menu is a typed-only runtime seam`);
+        }
+        if (
+          !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+            stripped,
+          ) ||
+          !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']vault-doc["']/.test(stripped)
+        ) {
+          violations.push(`${rel}: vault-doc menu bypasses normalized entity`);
+        }
+        if (/\bentity\.(?:id|path|stem|nodeId|scope)\b/.test(stripped)) {
+          violations.push(`${rel}: vault-doc menu reads raw entity fields`);
+        }
+        if (/\bimport\s+type\s*\{\s*VaultDocEntity\b/.test(stripped)) {
+          violations.push(`${rel}: vault-doc menu imports typed-only VaultDocEntity`);
+        }
+      }
+      if (rel === "app/islands/menus/islandMenu.ts") {
+        if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+          violations.push(`${rel}: missing entity descriptor normalizer`);
+        }
+        if (
+          !/\bexport\s+function\s+islandMenu\s*\(\s*entity:\s*unknown\s*\)/.test(
+            stripped,
+          )
+        ) {
+          violations.push(`${rel}: island menu is a typed-only runtime seam`);
+        }
+        if (
+          !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+            stripped,
+          ) ||
+          !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']island["']/.test(stripped)
+        ) {
+          violations.push(`${rel}: island menu bypasses normalized entity`);
+        }
+        if (/\bentity\.(?:id|scope)\b/.test(stripped)) {
+          violations.push(`${rel}: island menu reads raw entity fields`);
+        }
+        if (/\bimport\s+type\s*\{\s*IslandEntity\b/.test(stripped)) {
+          violations.push(`${rel}: island menu imports typed-only IslandEntity`);
+        }
+      }
+      if (rel === "app/right/menus/searchResultMenu.ts") {
+        if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+          violations.push(`${rel}: missing entity descriptor normalizer`);
+        }
+        if (
+          !/\bexport\s+function\s+searchResultMenu\s*\(\s*entity:\s*unknown\s*\)/.test(
+            stripped,
+          )
+        ) {
+          violations.push(`${rel}: search-result menu is a typed-only runtime seam`);
+        }
+        if (
+          !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+            stripped,
+          ) ||
+          !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']search-result["']/.test(stripped)
+        ) {
+          violations.push(`${rel}: search-result menu bypasses normalized entity`);
+        }
+        if (/\bentity\.(?:id|source|nodeId|score|isCode|scope)\b/.test(stripped)) {
+          violations.push(`${rel}: search-result menu reads raw entity fields`);
+        }
+        if (/\bimport\s+type\s*\{\s*SearchResultEntity\b/.test(stripped)) {
+          violations.push(
+            `${rel}: search-result menu imports typed-only SearchResultEntity`,
+          );
+        }
+      }
+      if (rel === "app/timeline/menus/eventMarkMenu.ts") {
+        if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+          violations.push(`${rel}: missing entity descriptor normalizer`);
+        }
+        if (
+          !/\bexport\s+function\s+eventMarkMenu\s*\(\s*entity:\s*unknown/.test(stripped)
+        ) {
+          violations.push(`${rel}: event mark menu is a typed-only runtime seam`);
+        }
+        if (
+          !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+            stripped,
+          ) ||
+          !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']event["']/.test(stripped)
+        ) {
+          violations.push(`${rel}: event mark menu bypasses normalized entity`);
+        }
+        if (/\bentity\.(?:id|nodeIds|scope|ts|truncatedNodeIds)\b/.test(stripped)) {
+          violations.push(`${rel}: event mark menu reads raw entity fields`);
+        }
+        if (/\bimport\s+type\s*\{\s*EventEntity\b/.test(stripped)) {
+          violations.push(`${rel}: event mark menu imports typed-only EventEntity`);
+        }
       }
     }
 
@@ -7452,10 +11703,13 @@ describe("dashboard layer ownership", () => {
       "reorderDocs: (orderedIds: string[])",
       "previewDocTab(\n  nodeId: string",
       "openDocTab(\n  nodeId: string",
+      "scope: string | null = useViewStore.getState().scope",
       "promoteDocTab(nodeId: string)",
       "activateDocTab(nodeId: string)",
       "closeDocTab(nodeId: string)",
       "reorderDocTabs(orderedIds: string[])",
+      "deriveDockDocPanelView(\n  nodeId: string",
+      "useDockDocPanelView(\n  nodeId: string",
     ]) {
       if (view.includes(typedOnly) || tabs.includes(typedOnly)) {
         violations.push(`${tabsRel}: typed-only dock-tab seam ${typedOnly}`);
@@ -7470,6 +11724,9 @@ describe("dashboard layer ownership", () => {
       }
       if (!/\bnormalizeViewerSurface\s*\(\s*surface\s*\)/.test(body)) {
         violations.push(`${tabsRel}: ${helper} bypasses viewer-surface normalizer`);
+      }
+      if (!/\bnormalizeSelectionScope\s*\(\s*scope\s*\)/.test(body)) {
+        violations.push(`${tabsRel}: ${helper} bypasses selection-scope normalizer`);
       }
     }
     for (const helper of [
@@ -7511,7 +11768,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps dock document panel composition behind the tab read model", () => {
     const rel = "app/stage/DocPanel.tsx";
+    const storeRel = "stores/view/tabs.ts";
     const stripped = stripComments(readFileSync(DOC_PANEL, "utf8"));
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
     const violations: string[] = [];
 
     for (const statement of importStatements(stripped)) {
@@ -7530,6 +11789,45 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bheaderProps\b/.test(stripped)) {
       violations.push(`${rel}: local header props projection`);
+    }
+    if (
+      !/\bderiveDockDocPanelView\s*\([\s\S]*nodeId:\s*unknown[\s\S]*surface:\s*unknown[\s\S]*scope:\s*unknown/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: dock doc panel view trusts typed inputs`);
+    }
+    if (
+      !/\bconst\s+normalizedNodeId\s*=\s*normalizeNodeId\s*\(\s*nodeId\s*\)/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedSurface\s*=\s*normalizeViewerSurface\s*\(\s*surface\s*\)/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*scope\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: dock doc panel view bypasses normalizers`);
+    }
+    if (
+      !/\buseDockDocPanelView\s*\([\s\S]*nodeId:\s*unknown[\s\S]*surface:\s*unknown/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: dock doc panel hook exposes typed-only inputs`);
+    }
+    if (
+      !/\buseContentView\s*\(\s*normalizedNodeId\s*,\s*scope\s*\)/.test(store)
+    ) {
+      violations.push(`${storeRel}: dock doc panel hook reads content with raw node id`);
+    }
+    if (
+      !/\bderiveMarkdownHeaderView\s*\(\s*normalizedNodeId\s*,\s*content\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: dock doc panel header uses raw node id`);
     }
 
     expect(violations).toEqual([]);
@@ -7641,16 +11939,31 @@ describe("dashboard layer ownership", () => {
     if (/\[\s*scrollTop\s*,\s*setScrollTop\s*\]\s*=\s*useState/.test(stripped)) {
       violations.push("app/viewer/CodeViewer.tsx: local code viewer scroll state");
     }
-    if (!/\buseCodeViewerScrollState\s*\(\s*\)/.test(stripped)) {
+    if (!/\buseCodeViewerScrollTop\s*\(\s*\)/.test(stripped)) {
       violations.push("app/viewer/CodeViewer.tsx: missing code viewer scroll seam");
+    }
+    if (/\buseCodeViewerScrollState\s*\(\s*\)/.test(stripped)) {
+      violations.push("app/viewer/CodeViewer.tsx: broad code viewer scroll state read");
     }
     if (!/\bsetCodeViewerScrollTop\s*\(/.test(stripped)) {
       violations.push("app/viewer/CodeViewer.tsx: missing code viewer scroll setter");
     }
     const storeRel = "stores/view/codeViewer.ts";
     const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
-    if (!/\bexport\s+function\s+boundedScrollTop\s*\(\s*scrollTop:\s*unknown\s*\)/.test(store)) {
+    if (
+      !/\bexport\s+function\s+boundedScrollTop\s*\(\s*scrollTop:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
       violations.push(`${storeRel}: missing runtime scroll-top normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+useCodeViewerScrollTop\s*\(\s*\)\s*:\s*number/.test(store)
+    ) {
+      violations.push(`${storeRel}: missing narrow scroll-top read seam`);
+    }
+    if (/\bexport\s+function\s+useCodeViewerScrollState\s*\(/.test(store)) {
+      violations.push(`${storeRel}: exposes broad scroll state hook`);
     }
     if (/\bsetScrollTop:\s*\(scrollTop:\s*number\)/.test(store)) {
       violations.push(`${storeRel}: typed-only scroll setter`);
@@ -7927,6 +12240,10 @@ describe("dashboard layer ownership", () => {
 
   it("keeps editor lifecycle writes behind the editor intent seam", () => {
     const violations: string[] = [];
+    const viewRel = "stores/view/viewStore.ts";
+    const editorRel = "stores/view/editor.ts";
+    const view = stripComments(readFileSync(join(SRC_ROOT, viewRel), "utf8"));
+    const editor = stripComments(readFileSync(join(SRC_ROOT, editorRel), "utf8"));
     const rawEditorWrite =
       /\.(?:openEditor|setDraft|markSaving|markSaved|markConflict|markFailed|closeEditor)\s*\(/;
 
@@ -7938,6 +12255,59 @@ describe("dashboard layer ownership", () => {
       if (rawEditorWrite.test(stripped)) {
         violations.push(`${rel}: raw editor lifecycle write`);
       }
+    }
+
+    for (const seam of [
+      "normalizeEditorTextValue",
+      "openEditor: (nodeId: unknown, text: unknown, baseBlobHash: unknown)",
+      "setDraft: (text: unknown)",
+      "markSaved: (blobHash: unknown)",
+    ]) {
+      if (!view.includes(seam)) {
+        violations.push(`${viewRel}: missing editor lifecycle seam ${seam}`);
+      }
+    }
+    for (const seam of [
+      "openDocumentEditor(\n  nodeId: unknown,\n  text: unknown,\n  baseBlobHash: unknown",
+      "updateEditorDraft(text: unknown)",
+      "markEditorSaved(blobHash: unknown)",
+    ]) {
+      if (!editor.includes(seam)) {
+        violations.push(`${editorRel}: missing editor intent seam ${seam}`);
+      }
+    }
+    for (const typedOnly of [
+      "openEditor: (nodeId: string, text: string, baseBlobHash: string)",
+      "setDraft: (text: string)",
+      "markSaved: (blobHash: string)",
+      "openDocumentEditor(\n  nodeId: string,\n  text: string,\n  baseBlobHash: string",
+      "updateEditorDraft(text: string)",
+      "markEditorSaved(blobHash: string)",
+    ]) {
+      if (view.includes(typedOnly) || editor.includes(typedOnly)) {
+        violations.push(`editor lifecycle typed-only seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bopenEditor:\s*\(nodeId,\s*text,\s*baseBlobHash\)\s*=>[\s\S]*\bnormalizeEditorTextValue\s*\(\s*text\s*\)[\s\S]*\bnormalizeEditorTextValue\s*\(\s*baseBlobHash\s*\)/.test(
+        view,
+      )
+    ) {
+      violations.push(`${viewRel}: openEditor bypasses text/blob normalizer`);
+    }
+    if (
+      !/\bsetDraft:\s*\(text\)\s*=>[\s\S]*\bnormalizeEditorTextValue\s*\(\s*text\s*\)/.test(
+        view,
+      )
+    ) {
+      violations.push(`${viewRel}: setDraft bypasses text normalizer`);
+    }
+    if (
+      !/\bmarkSaved:\s*\(blobHash\)\s*=>[\s\S]*\bnormalizeEditorTextValue\s*\(\s*blobHash\s*\)/.test(
+        view,
+      )
+    ) {
+      violations.push(`${viewRel}: markSaved bypasses blob normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -7984,9 +12354,39 @@ describe("dashboard layer ownership", () => {
       violations.push(`${storeRel}: missing frontmatter draft runtime normalizer`);
     }
     if (
+      !/\bexport\s+function\s+normalizeMarkdownEditorFrontmatterDraftState\s*\([\s\S]*?\bdraft:\s*unknown[\s\S]*?\):\s*MarkdownEditorFrontmatterDraft/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing full frontmatter draft state normalizer`);
+    }
+    if (
       !/\bfunction\s+normalizeEditorDraftText\s*\(\s*value:\s*unknown\s*\)/.test(store)
     ) {
       violations.push(`${storeRel}: missing editor draft text normalizer`);
+    }
+    if (
+      /\bseed:\s*\(\s*nodeId:\s*string,\s*currentStem:\s*string,\s*frontmatterDraft:\s*MarkdownEditorFrontmatterDraft/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: editor chrome seed exposes typed-only inputs`);
+    }
+    if (
+      !/\bseed:\s*\([\s\S]*nodeId:\s*unknown[\s\S]*currentStem:\s*unknown[\s\S]*frontmatterDraft:\s*unknown/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedNodeId\s*=\s*normalizeNodeId\s*\(\s*nodeId\s*\)/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedStem\s*=\s*normalizeEditorDraftText\s*\(\s*currentStem\s*\)/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedFrontmatter\s*=\s*normalizeMarkdownEditorFrontmatterDraftState\s*\(\s*frontmatterDraft\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: editor chrome seed bypasses normalizers`);
     }
     if (
       !/\bsetRenameDraft:\s*\(draft\)\s*=>\s*set\s*\(\s*\{\s*renameDraft:\s*normalizeEditorDraftText\s*\(\s*draft\s*\)/.test(
@@ -8001,6 +12401,33 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${storeRel}: frontmatter draft setter bypasses normalizer`);
+    }
+    if (
+      !/\bderiveMarkdownEditorChromeView\s*\([\s\S]*nodeId:\s*unknown[\s\S]*currentStem:\s*unknown[\s\S]*sourceFrontmatterDraft:\s*unknown/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: editor chrome projection trusts typed inputs`);
+    }
+    if (
+      /\bderiveDocumentEditorView\s*\([\s\S]*nodeId:\s*string[\s\S]*\)/.test(store) ||
+      /\buseDocumentEditorView\s*\(\s*nodeId:\s*string\s*\)/.test(store)
+    ) {
+      violations.push(`${storeRel}: document editor read model trusts typed node id`);
+    }
+    if (
+      !/\bderiveDocumentEditorView\s*\([\s\S]*nodeId:\s*unknown[\s\S]*\bconst\s+normalizedNodeId\s*=\s*normalizeNodeId\s*\(\s*nodeId\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: document editor view bypasses node-id normalizer`);
+    }
+    if (
+      !/\bisEditing:\s*[\s\S]*normalizedNodeId\s*!==\s*null[\s\S]*state\.editorTarget\?\.nodeId\s*===\s*normalizedNodeId/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: document editor view uses raw target identity`);
     }
     if (/\bSTATUS_LABEL\b/.test(stripped)) {
       violations.push(`${rel}: local editor status labels`);
@@ -8128,6 +12555,144 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps document write mutation args normalized before ops dispatch", () => {
+    const rel = "stores/server/queries.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const normalizer of [
+      "normalizeSaveBodyArgs",
+      "normalizeSetFrontmatterArgs",
+      "normalizeCreateDocArgs",
+      "normalizeRenameDocArgs",
+    ]) {
+      if (
+        !new RegExp(
+          `\\bexport\\s+function\\s+${normalizer}\\s*\\(\\s*args:\\s*unknown`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: missing runtime write normalizer ${normalizer}`);
+      }
+    }
+
+    const saveBody =
+      stripped.match(
+        /export function useSaveBody[\s\S]*?export interface SetFrontmatterArgs/,
+      )?.[0] ?? "";
+    const frontmatter =
+      stripped.match(
+        /export function useSetFrontmatter[\s\S]*?export interface CreateDocArgs/,
+      )?.[0] ?? "";
+    const create =
+      stripped.match(
+        /export function useCreateDoc[\s\S]*?export interface RenameDocArgs/,
+      )?.[0] ?? "";
+    const rename =
+      stripped.match(
+        /export function useRenameDoc[\s\S]*?export function deriveDocType/,
+      )?.[0] ?? "";
+
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeSaveBodyArgs\s*\(\s*args\s*\)/.test(
+        saveBody,
+      )
+    ) {
+      violations.push(`${rel}: save-body mutation bypasses normalized args`);
+    }
+    if (
+      !/\bref:\s*normalized\.ref\b[\s\S]*\bbody:\s*normalized\.text\b[\s\S]*\bexpected_blob_hash:\s*normalized\.baseBlobHash\b/.test(
+        saveBody,
+      )
+    ) {
+      violations.push(`${rel}: save-body dispatch uses raw body args`);
+    }
+    if (
+      !/\binvalidateAfterVaultMutation\s*\(\s*queryClient\s*,\s*normalized\.scope\s*,\s*normalized\.nodeId\s*\)/.test(
+        saveBody,
+      )
+    ) {
+      violations.push(`${rel}: save-body invalidation uses raw identity`);
+    }
+
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeSetFrontmatterArgs\s*\(\s*args\s*\)/.test(
+        frontmatter,
+      )
+    ) {
+      violations.push(`${rel}: frontmatter mutation bypasses normalized args`);
+    }
+    if (
+      !/\bref:\s*normalized\.ref\b[\s\S]*\bdate:\s*normalized\.date\b[\s\S]*\btags:\s*normalized\.tags\b[\s\S]*\brelated:\s*normalized\.related\b/.test(
+        frontmatter,
+      )
+    ) {
+      violations.push(`${rel}: frontmatter dispatch uses raw metadata args`);
+    }
+    if (
+      !/\binvalidateAfterVaultMutation\s*\(\s*queryClient\s*,\s*normalized\.scope\s*,\s*normalized\.nodeId\s*\)/.test(
+        frontmatter,
+      )
+    ) {
+      violations.push(`${rel}: frontmatter invalidation uses raw identity`);
+    }
+
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeCreateDocArgs\s*\(\s*args\s*\)/.test(create)
+    ) {
+      violations.push(`${rel}: create mutation bypasses normalized args`);
+    }
+    if (
+      !/\bscope:\s*normalized\.scope\s*\?\?\s*undefined\b[\s\S]*\bdoc_type:\s*normalized\.docType\b[\s\S]*\bfeature:\s*normalized\.feature\b[\s\S]*\btitle:\s*normalized\.title\b[\s\S]*\brelated:\s*normalized\.related\b/.test(
+        create,
+      )
+    ) {
+      violations.push(`${rel}: create dispatch uses raw args`);
+    }
+    if (
+      !/\binvalidateAfterVaultMutation\s*\(\s*queryClient\s*,\s*normalized\.scope\s*\)/.test(
+        create,
+      )
+    ) {
+      violations.push(`${rel}: create invalidation uses raw scope`);
+    }
+
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeRenameDocArgs\s*\(\s*args\s*\)/.test(rename)
+    ) {
+      violations.push(`${rel}: rename mutation bypasses normalized args`);
+    }
+    if (
+      !/\bref:\s*normalized\.ref\b[\s\S]*\bto:\s*normalized\.to\b[\s\S]*\bexpected_blob_hash:\s*normalized\.expectedBlobHash\b/.test(
+        rename,
+      )
+    ) {
+      violations.push(`${rel}: rename dispatch uses raw args`);
+    }
+    if (
+      !/\boldNodeId:\s*normalized\.nodeId\b[\s\S]*\bnewNodeId:\s*docNodeIdFromStem\s*\(\s*normalized\.to\s*\)/.test(
+        rename,
+      )
+    ) {
+      violations.push(`${rel}: rename result derives identity from raw args`);
+    }
+    if (
+      !/\binvalidateAfterVaultMutation\s*\(\s*queryClient\s*,\s*normalized\.scope\s*\)/.test(
+        rename,
+      )
+    ) {
+      violations.push(`${rel}: rename invalidation uses raw scope`);
+    }
+    if (
+      /\bstemFromNodeId\s*\(\s*args\.nodeId\s*\)|\bscope:\s*args\.scope\s*\?\?\s*undefined\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: document write seam still dispatches raw args`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps vault-mutation invalidation enrolled across graph, git, and history reads", () => {
     const rel = "stores/server/queries.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -8165,7 +12730,21 @@ describe("dashboard layer ownership", () => {
       }
     }
     if (
-      !/\binvalidateGraphGenerationSubtrees\s*\(\s*queryClient\s*,\s*scope\s*\)/.test(
+      !/\bconst\s+normalizedScope\s*=\s*normalizeGitDiffArg\s*\(\s*scope\s*\)/.test(
+        invalidationBlock,
+      )
+    ) {
+      violations.push(`${rel}: vault mutation invalidation bypasses scope normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedNodeId\s*=\s*normalizeNodeId\s*\(\s*nodeId\s*\)/.test(
+        invalidationBlock,
+      )
+    ) {
+      violations.push(`${rel}: vault mutation invalidation bypasses node normalizer`);
+    }
+    if (
+      !/\binvalidateGraphGenerationSubtrees\s*\(\s*queryClient\s*,\s*normalizedScope\s*\)/.test(
         invalidationBlock,
       )
     ) {
@@ -8177,25 +12756,27 @@ describe("dashboard layer ownership", () => {
     if (!/\bengineKeys\.map\s*\(\s*\)/.test(invalidationBlock)) {
       violations.push(`${rel}: vault mutation misses map invalidation`);
     }
-    if (!/\bengineKeys\.gitChanges\s*\(\s*scope\s*\)/.test(invalidationBlock)) {
+    if (
+      !/\bengineKeys\.gitChanges\s*\(\s*normalizedScope\s*\)/.test(invalidationBlock)
+    ) {
       violations.push(`${rel}: vault mutation misses git-changes invalidation`);
     }
     if (
-      !/\[\s*\.\.\.engineKeys\.all\s*,\s*["']git-diff["']\s*,\s*scope\s*\]/.test(
+      !/\[\s*\.\.\.engineKeys\.all\s*,\s*["']git-diff["']\s*,\s*normalizedScope\s*\]/.test(
         invalidationBlock,
       )
     ) {
       violations.push(`${rel}: vault mutation misses scoped git-diff invalidation`);
     }
     if (
-      !/\[\s*\.\.\.engineKeys\.all\s*,\s*["']git-histdiff["']\s*,\s*scope\s*\]/.test(
+      !/\[\s*\.\.\.engineKeys\.all\s*,\s*["']git-histdiff["']\s*,\s*normalizedScope\s*,?\s*\]/.test(
         invalidationBlock,
       )
     ) {
       violations.push(`${rel}: vault mutation misses scoped git-histdiff invalidation`);
     }
     if (
-      !/if\s*\(\s*scope\s*===\s*null\s*\)\s*\{[\s\S]*\[\s*\.\.\.engineKeys\.all\s*,\s*["']search["']\s*\][\s\S]*return\s*;[\s\S]*\}/.test(
+      !/if\s*\(\s*normalizedScope\s*===\s*null\s*\)\s*\{[\s\S]*\[\s*\.\.\.engineKeys\.all\s*,\s*["']search["']\s*\][\s\S]*return\s*;[\s\S]*\}/.test(
         invalidationBlock,
       )
     ) {
@@ -8204,7 +12785,7 @@ describe("dashboard layer ownership", () => {
       );
     }
     if (
-      /invalidateQueryPrefix\s*\(\s*queryClient\s*,\s*\[\s*\.\.\.engineKeys\.all\s*,\s*["']search["']\s*\]\s*\)\s*;[\s\S]*if\s*\(\s*scope\s*===\s*null\s*\)/.test(
+      /invalidateQueryPrefix\s*\(\s*queryClient\s*,\s*\[\s*\.\.\.engineKeys\.all\s*,\s*["']search["']\s*\]\s*\)\s*;[\s\S]*if\s*\(\s*normalizedScope\s*===\s*null\s*\)/.test(
         invalidationBlock,
       )
     ) {
@@ -8230,7 +12811,7 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: rename mutation bypasses core write dispatch seam`);
     }
     if (
-      !/if\s*\(\s*result\.kind\s*===\s*["']renamed["']\s*\)\s*\{[\s\S]*\binvalidateAfterVaultMutation\s*\(\s*queryClient\s*,\s*args\.scope\s*\?\?\s*null\s*\)/.test(
+      !/if\s*\(\s*result\.kind\s*===\s*["']renamed["']\s*\)\s*\{[\s\S]*\binvalidateAfterVaultMutation\s*\(\s*queryClient\s*,\s*normalized\.scope\s*\)/.test(
         renameBlock,
       )
     ) {
@@ -8470,6 +13051,70 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps workspace map normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeMapString",
+      "normalizeMapStringList",
+      "normalizeMapCount",
+      "adaptMapBranch",
+      "adaptMapWorktree",
+      "adaptMap",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} workspace-map adapter seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+adaptMapWorktree[\s\S]*\bconst\s+path\s*=\s*normalizeMapString\s*\(\s*value\.path\s*\)[\s\S]*\bif\s*\(\s*path\s*===\s*undefined\s*\)\s*return\s+null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace-map adapter fabricates malformed worktrees`);
+    }
+    if (
+      !/\bhas_vault:\s*value\.has_vault\s*===\s*true/.test(stripped) ||
+      !/\bis_default:\s*value\.is_main\s*===\s*true/.test(stripped)
+    ) {
+      violations.push(`${rel}: workspace-map booleans bypass strict normalization`);
+    }
+    if (
+      !/\bconst\s+degraded\s*=\s*normalizeMapStringList\s*\(\s*value\.degraded\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace-map degraded reasons bypass normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeMapCount\s*\(\s*value:\s*unknown\s*\):\s*number\s*\|\s*undefined[\s\S]*Number\.isFinite\s*\(\s*value\s*\)[\s\S]*value\s*<\s*0[\s\S]*Math\.floor\s*\(\s*value\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace-map ahead/behind counts bypass finite guard`);
+    }
+    if (
+      !/branches:\s*branches[\s\S]*\.map\s*\(\s*adaptMapBranch\s*\)[\s\S]*\.filter\s*\([\s\S]*branch\s*!==\s*null[\s\S]*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace-map adapter does not drop malformed branches`);
+    }
+    if (
+      !/worktrees:\s*worktrees[\s\S]*\.map\s*\(\s*adaptMapWorktree\s*\)[\s\S]*\.filter\s*\([\s\S]*worktree\s*!==\s*null[\s\S]*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: workspace-map adapter does not drop malformed worktrees`,
+      );
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps worktree picker chrome behind the worktree picker chrome seam", () => {
     const rel = "app/left/WorktreePicker.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -8637,11 +13282,58 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizeWorktreePickerSwitchId\b/.test(chrome)) {
       violations.push(`${chromeRel}: missing worktree switch id normalizer`);
     }
+    if (!/\bWORKTREE_SWITCH_ID_CAP\b/.test(chrome)) {
+      violations.push(`${chromeRel}: missing bounded worktree switch id cap`);
+    }
     if (!/\bexport\s+function\s+normalizeWorktreePickerBoolean\b/.test(chrome)) {
       violations.push(`${chromeRel}: missing worktree picker boolean normalizer`);
     }
     if (!/\bexport\s+function\s+normalizeWorktreePickerSwitchError\b/.test(chrome)) {
       violations.push(`${chromeRel}: missing worktree switch error normalizer`);
+    }
+    if (!/\bWORKTREE_SWITCH_ERROR_CAP\b/.test(chrome)) {
+      violations.push(`${chromeRel}: missing bounded worktree switch error cap`);
+    }
+    if (!/\bWORKTREE_SWITCH_LABEL_CAP\b/.test(chrome)) {
+      violations.push(`${chromeRel}: missing bounded worktree switch label cap`);
+    }
+    if (!/\bexport\s+function\s+normalizeWorktreePickerSwitchLabel\b/.test(chrome)) {
+      violations.push(`${chromeRel}: missing worktree switch label normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeWorktreePickerActivationIntent\s*\([\s\S]*row:\s*unknown[\s\S]*\):\s*WorktreePickerActivationIntent\s*\|\s*null/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: missing worktree activation intent normalizer`);
+    }
+    if (
+      !/\bnormalizeWorktreePickerActivationIntent[\s\S]*\bnormalizeWorktreePickerSwitchId\s*\(\s*worktree\.id\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: activation intent bypasses switch-id normalizer`);
+    }
+    if (
+      !/\bnormalizeWorktreePickerSwitchId\s*\(\s*id:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*id\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*WORKTREE_SWITCH_ID_CAP/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: switch id normalizer is unbounded`);
+    }
+    if (
+      !/\bnormalizeWorktreePickerSwitchError\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*WORKTREE_SWITCH_ERROR_CAP/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: switch error normalizer is unbounded`);
+    }
+    if (
+      !/\bnormalizeWorktreePickerSwitchLabel\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*WORKTREE_SWITCH_LABEL_CAP/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: switch label normalizer is unbounded`);
     }
     for (const typedOnly of [
       "setExpanded: (expanded: boolean, viaKeyboard: boolean)",
@@ -8698,6 +13390,27 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${chromeRel}: fail switch bypasses error normalizer`);
     }
+    if (
+      !/\bworktreeSwitchFailureMessage[\s\S]*\bnormalizeWorktreePickerSwitchLabel\s*\(\s*branch\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: failure copy bypasses branch label normalizer`);
+    }
+    if (
+      !/\bactivateRow\s*=\s*useCallback\(\s*\(\s*row:\s*unknown[\s\S]*\bconst\s+intent\s*=\s*normalizeWorktreePickerActivationIntent\s*\(\s*row\s*\)[\s\S]*\bactivateWorktreeScope\s*\(\s*intent\.id\s*\)[\s\S]*\bbeginWorktreeSwitch\s*\(\s*intent\.id\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: activateRow bypasses normalized activation intent`);
+    }
+    if (
+      /\bactivateWorktreeScope\s*\(\s*worktree\.id\s*\)|\bbeginWorktreeSwitch\s*\(\s*worktree\.id\s*\)|\bcompleteWorktreeSwitch\s*\(\s*worktree\.id\s*\)|\bcancelWorktreeSwitch\s*\(\s*worktree\.id\s*\)|\bfailWorktreeSwitch\s*\(\s*worktree\.id/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: activateRow uses raw worktree id`);
+    }
 
     expect(violations).toEqual([]);
   });
@@ -8722,18 +13435,73 @@ describe("dashboard layer ownership", () => {
     if (/\bWORKTREE_ACTIVATE_SCOPE_ACTION\b/.test(stripped)) {
       violations.push(`${rel}: app-layer worktree action type import`);
     }
+    if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+      violations.push(`${rel}: missing entity descriptor normalizer`);
+    }
     if (
-      !/switchable\s*\?\s*\{[\s\S]*?dispatch:\s*worktreeActivateScopeDispatch\s*\(\s*entity\.id\s*\)/.test(
+      !/\bexport\s+function\s+worktreeMenu\s*\(\s*entity:\s*unknown\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: worktree menu is a typed-only runtime seam`);
+    }
+    if (
+      !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']worktree["']/.test(stripped)
+    ) {
+      violations.push(`${rel}: worktree menu bypasses normalized worktree entity`);
+    }
+    if (
+      !/switchable\s*\?\s*\{[\s\S]*?dispatch:\s*worktreeActivateScopeDispatch\s*\(\s*normalizedEntity\.id\s*\)/.test(
         stripped,
       )
     ) {
       violations.push(`${rel}: missing stores-owned worktree activation dispatch seam`);
+    }
+    if (/\bentity\.(?:id|branch|path|hasVault)\b/.test(stripped)) {
+      violations.push(`${rel}: worktree menu reads raw entity fields`);
+    }
+    if (/\bimport\s+type\s*\{\s*WorktreeEntity\b/.test(stripped)) {
+      violations.push(`${rel}: worktree menu imports typed-only WorktreeEntity`);
     }
     if (/payload:\s*\{\s*scope:\s*entity\.id\s*\}/.test(stripped)) {
       violations.push(`${rel}: app-layer worktree activation payload shape`);
     }
     if (/dispatch:\s*switchable\s*\?/.test(stripped)) {
       violations.push(`${rel}: disabled worktree action carries undefined dispatch`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps workspace menu entity ingress normalized before action construction", () => {
+    const rel = "app/left/menus/workspaceMenu.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/\bimport\s*\{\s*normalizeEntityDescriptor\s*\}/.test(stripped)) {
+      violations.push(`${rel}: missing entity descriptor normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+workspaceMenu\s*\(\s*entity:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace menu is a typed-only runtime seam`);
+    }
+    if (
+      !/\bconst\s+normalizedEntity\s*=\s*normalizeEntityDescriptor\s*\(\s*entity\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bnormalizedEntity\?\.\s*kind\s*!==\s*["']workspace["']/.test(stripped)
+    ) {
+      violations.push(`${rel}: workspace menu bypasses normalized workspace entity`);
+    }
+    if (/\bentity\.(?:id|path|isLaunchDefault)\b/.test(stripped)) {
+      violations.push(`${rel}: workspace menu reads raw entity fields`);
+    }
+    if (/\bimport\s+type\s*\{\s*WorkspaceEntity\b/.test(stripped)) {
+      violations.push(`${rel}: workspace menu imports typed-only WorkspaceEntity`);
     }
 
     expect(violations).toEqual([]);
@@ -8799,11 +13567,77 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: active scope switch drops accepted scope context`);
     }
     if (
-      !/assertNonEmptyScope\s*\(\s*scope\s*\)[\s\S]*requestedActiveScope\s*=\s*scope/.test(
+      !/\bexport\s+function\s+normalizeActiveScopeSwitchScope\s*\(\s*scope:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing active scope switch input normalizer`);
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+normalized\s*=\s*normalizeStoreScope\s*\(\s*scope\s*\)[\s\S]*normalized\s*===\s*null[\s\S]*scope switch requires a non-empty scope/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: active scope switch bypasses shared scope normalizer`);
+    }
+    if (
+      !/\bconst\s+acceptedScope\s*=\s*normalizeActiveScopeSwitchScope\s*\(\s*scope\s*\)[\s\S]*requestedActiveScope\s*=\s*acceptedScope/.test(
         scopeSwitch,
       )
     ) {
       violations.push(`${rel}: active scope switch validates after mutating intent`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeWorkspaceSwitchIntent\s*\(\s*[\s\S]*workspace:\s*unknown[\s\S]*scope:\s*unknown\s*=\s*null[\s\S]*const\s+normalizedWorkspace\s*=\s*normalizeStoreScope\s*\(\s*workspace\s*\)[\s\S]*workspace switch requires a non-empty workspace[\s\S]*scope:\s*normalizeStoreScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing workspace switch intent normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeAcceptedWorkspaceSwitchState\s*\([\s\S]*active_workspace[\s\S]*active_scope[\s\S]*workspace:\s*normalizeStoreScope\s*\(\s*session\.active_workspace\s*\)\s*\?\?\s*intent\.workspace[\s\S]*scope:\s*normalizeStoreScope\s*\(\s*session\.active_scope\s*\)\s*\?\?\s*intent\.scope/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: accepted workspace switch state bypasses normalizer`);
+    }
+    if (
+      !/\bconst\s+swap\s*=\s*\(\s*workspace:\s*unknown,\s*scope:\s*unknown\s*=\s*null\s*\)[\s\S]*\bconst\s+intent\s*=\s*normalizeWorkspaceSwitchIntent\s*\(\s*workspace\s*,\s*scope\s*\)[\s\S]*active_workspace:\s*intent\.workspace[\s\S]*active_scope:\s*intent\.scope/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: workspace switch mutates from raw intent`);
+    }
+    if (
+      !/\bconst\s+accepted\s*=\s*normalizeAcceptedWorkspaceSwitchState\s*\(\s*session\s*,\s*intent\s*\)[\s\S]*swapWorkspace\s*\(\s*accepted\.workspace\s*,\s*accepted\.scope\s*\)/.test(
+        workspaceSwitch,
+      )
+    ) {
+      violations.push(`${rel}: workspace switch applies raw accepted session`);
+    }
+    for (const typedOnly of [
+      "switchActiveScope(\n  scope: string",
+      "useSwitchActiveScope(): (scope: string)",
+      "activateWorktreeScope(\n  scope: string",
+      "useActivateWorktreeScope(): (scope: string)",
+      "const swap = (workspace: string, scope: string | null)",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only active scope seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "switchActiveScope(\n  scope: unknown",
+      "useSwitchActiveScope(): (scope: unknown)",
+      "activateWorktreeScope(\n  scope: unknown",
+      "useActivateWorktreeScope(): (scope: unknown)",
+    ]) {
+      if (!stripped.includes(required)) {
+        violations.push(`${rel}: missing runtime active scope seam ${required}`);
+      }
     }
     if (activation.length === 0) {
       violations.push(`${rel}: missing worktree activation seam`);
@@ -8837,20 +13671,37 @@ describe("dashboard layer ownership", () => {
     if (!/\bfunction\s+isWorktreeActivateScopePayload\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing worktree activation payload validator`);
     }
+    if (!/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeStoreScope\b/.test(stripped)) {
+      violations.push(
+        `${rel}: worktree activation payload bypasses shared scope normalizer`,
+      );
+    }
+    if (
+      !/\bfunction\s+normalizeWorktreeActivateScopePayload\s*\(\s*[\s\S]*value:\s*unknown[\s\S]*\):\s*WorktreeActivateScopePayload\s*\|\s*null[\s\S]*\bconst\s+scope\s*=\s*normalizeStoreScope\s*\(\s*\(value\s+as\s+\{\s*scope\?:\s*unknown\s*\}\)\.scope\s*\)[\s\S]*\bscope\s*===\s*null\s*\?\s*null\s*:\s*\{\s*scope\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing normalized worktree activation payload seam`);
+    }
     if (!/\bfunction\s+worktreeActivateScopeDispatch\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing worktree activation dispatch factory`);
     }
     if (
-      !/worktreeActivateScopeDispatch\s*\(\s*scope:\s*string\s*\)[\s\S]*payload:\s*\{\s*scope\s*\}/.test(
+      !/worktreeActivateScopeDispatch\s*\(\s*scope:\s*unknown\s*\)[\s\S]*const\s+normalizedScope\s*=\s*normalizeStoreScope\s*\(\s*scope\s*\)[\s\S]*payload:\s*\{\s*scope:\s*normalizedScope\s*\}/.test(
         stripped,
       )
     ) {
-      violations.push(`${rel}: dispatch factory does not own scope payload shape`);
+      violations.push(`${rel}: dispatch factory does not own normalized scope payload`);
     }
     if (
-      !/\bisWorktreeActivateScopePayload\s*\(\s*action\.payload\s*\)/.test(stripped)
+      !/\bconst\s+payload\s*=\s*normalizeWorktreeActivateScopePayload\s*\(\s*action\.payload\s*\)/.test(
+        stripped,
+      )
     ) {
-      violations.push(`${rel}: activation dispatch does not validate payload`);
+      violations.push(`${rel}: activation dispatch does not normalize payload`);
+    }
+    if (!/activateWorktreeScope\s*\(\s*payload\.scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: activation dispatch mutates with raw payload scope`);
     }
     if (/activateWorktreeScope\s*\(\s*action\.payload\?\.scope\s*\?\?/.test(stripped)) {
       violations.push(`${rel}: activation dispatch falls back to empty scope`);
@@ -9036,6 +13887,13 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizeCreateDocType\b/.test(store)) {
       violations.push(`${storeRel}: missing create-doc type normalizer`);
     }
+    if (
+      !/\bnormalizeCreateDocType\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*\bisCreateDocType\s*\(\s*normalized\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: create-doc type normalizer preserves raw spacing`);
+    }
     if (!/\bexport\s+function\s+normalizeCreateDocDraftText\b/.test(store)) {
       violations.push(`${storeRel}: missing create-doc draft text normalizer`);
     }
@@ -9079,11 +13937,47 @@ describe("dashboard layer ownership", () => {
       violations.push(`${storeRel}: create-doc setters expose typed-only input seams`);
     }
     if (
-      !/\bderiveCreateDocSubmission[\s\S]*\bnormalizeCreateDocType\s*\(\s*draft\.docType\s*\)/.test(
+      !/\bexport\s+function\s+deriveCreateDocSubmission\s*\(\s*draft:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: create-doc submission accepts typed-only draft`);
+    }
+    if (
+      !/\bfunction\s+createDocSubmissionDraftRecord\s*\(\s*draft:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing submission draft record reader`);
+    }
+    if (
+      !/\bderiveCreateDocSubmission[\s\S]*\bconst\s+value\s*=\s*createDocSubmissionDraftRecord\s*\(\s*draft\s*\)[\s\S]*\bnormalizeCreateDocType\s*\(\s*value\.docType\s*\)/.test(
         store,
       )
     ) {
       violations.push(`${storeRel}: submission bypasses type normalizer`);
+    }
+    if (
+      !/\bconst\s+feature\s*=\s*normalizeCreateDocDraftText\s*\(\s*value\.feature\s*\)\.trim\s*\(\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: submission feature bypasses draft normalizer`);
+    }
+    if (
+      !/\bconst\s+title\s*=\s*normalizeCreateDocDraftText\s*\(\s*value\.title\s*\)\.trim\s*\(\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: submission title bypasses draft normalizer`);
+    }
+    if (
+      /\bderiveCreateDocSubmission\s*\(\s*draft:\s*Pick<CreateDocChromeView/.test(
+        store,
+      ) ||
+      /\bdraft\.(?:feature|title)\.trim\s*\(\s*\)/.test(store)
+    ) {
+      violations.push(`${storeRel}: create-doc submission trusts typed draft fields`);
     }
 
     expect(violations).toEqual([]);
@@ -9114,6 +14008,10 @@ describe("dashboard layer ownership", () => {
     const scopedStore = stripComments(
       readFileSync(join(SRC_ROOT, scopedStoreRel), "utf8"),
     );
+    const scopedKeysRel = "platform/storage/scopedKeys.ts";
+    const scopedKeys = stripComments(
+      readFileSync(join(SRC_ROOT, scopedKeysRel), "utf8"),
+    );
 
     if (!/\bfunction\s+rekeyScopedClientStores\s*\(/.test(viewStore)) {
       violations.push(
@@ -9127,27 +14025,126 @@ describe("dashboard layer ownership", () => {
       violations.push("stores/view/viewStore.ts: missing lens store re-key");
     }
     if (
-      !/\bsetScope:\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\brekeyScopedClientStores\s*\(\s*scope\s*\)/.test(
+      !/\bsetScope:\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\bconst\s+normalizedScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*scope\s*\)[\s\S]*?\brekeyScopedClientStores\s*\(\s*normalizedScope\s*\)/.test(
         viewStore,
       )
     ) {
       violations.push(
-        "stores/view/viewStore.ts: setScope does not re-key scoped stores",
+        "stores/view/viewStore.ts: setScope does not normalize and re-key scoped stores",
       );
     }
     if (
-      !/\bswapWorkspace:\s*\([^)]*workspace[^)]*scope[^)]*\)\s*=>\s*\{[\s\S]*?\brekeyScopedClientStores\s*\(\s*scope\s*,\s*workspace\s*\)/.test(
+      !/\bswapWorkspace:\s*\([^)]*workspace[^)]*scope[^)]*\)\s*=>\s*\{[\s\S]*?\bconst\s+normalizedWorkspace\s*=\s*normalizeViewStoreSessionString\s*\(\s*workspace\s*\)[\s\S]*?\bconst\s+normalizedScope\s*=\s*normalizeViewStoreSessionString\s*\(\s*scope\s*\)[\s\S]*?\brekeyScopedClientStores\s*\(\s*normalizedScope\s*,\s*normalizedWorkspace\s*\)/.test(
         viewStore,
       )
     ) {
       violations.push(
-        "stores/view/viewStore.ts: swapWorkspace does not re-key scoped stores",
+        "stores/view/viewStore.ts: swapWorkspace does not normalize and re-key scoped stores",
       );
     }
-    if (!/\bencodeURIComponent\s*\(\s*value\s*\)/.test(scopedStore)) {
-      violations.push(`${scopedStoreRel}: scoped persistence keys are not encoded`);
+    const viewScopeIdentityRel = "stores/view/scopeIdentity.ts";
+    const viewScopeIdentity = stripComments(
+      readFileSync(join(SRC_ROOT, viewScopeIdentityRel), "utf8"),
+    );
+    if (
+      !/import\s*\{[\s\S]*\bnormalizeScopeId\b[\s\S]*\}\s*from\s+["']\.\.\/\.\.\/platform\/scope\/scopeIdentity["']/.test(
+        viewScopeIdentity,
+      ) ||
+      !/import\s*\{[\s\S]*\bSCOPE_ID_MAX_CHARS\b[\s\S]*\}\s*from\s+["']\.\.\/\.\.\/platform\/scope\/scopeIdentity["']/.test(
+        viewScopeIdentity,
+      ) ||
+      !/\bexport\s+function\s+normalizeViewStoreSessionString\s*\(\s*value:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*\breturn\s+normalizeScopeId\s*\(\s*value\s*\)/.test(
+        viewScopeIdentity,
+      )
+    ) {
+      violations.push(
+        `${viewScopeIdentityRel}: view session-string normalizer bypasses platform scope identity`,
+      );
     }
-    if (!/\blegacyStorageKey\b/.test(scopedStore)) {
+    if (
+      !/\bexport\s+function\s+normalizeViewStoreSessionStringList\s*\(\s*value:\s*unknown\s*\):\s*string\[\][\s\S]*Array\.isArray\s*\(\s*value\s*\)[\s\S]*normalizeViewStoreSessionString\s*\(\s*entry\s*\)/.test(
+        viewScopeIdentity,
+      )
+    ) {
+      violations.push(
+        `${viewScopeIdentityRel}: missing shared view session-string list normalizer`,
+      );
+    }
+    if (
+      !/\bVIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS\b/.test(viewScopeIdentity) ||
+      !/\bnormalized\.length\s*>=\s*VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS/.test(
+        viewScopeIdentity,
+      )
+    ) {
+      violations.push(
+        `${viewScopeIdentityRel}: view session-string lists are unbounded`,
+      );
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString/.test(
+        viewStore,
+      ) ||
+      !/\bexport\s+const\s+normalizeViewStoreSessionString\s*=\s*normalizeViewStoreSessionStringIdentity\b/.test(
+        viewStore,
+      ) ||
+      !/\bexport\s+const\s+normalizeViewStoreSessionStringList\s*=\s*normalizeViewStoreSessionStringListIdentity\b/.test(
+        viewStore,
+      )
+    ) {
+      violations.push(
+        "stores/view/viewStore.ts: view session normalizers bypass shared scope identity",
+      );
+    }
+    for (const typedOnly of [
+      "setScope: (scope: string | null)",
+      "swapWorkspace: (workspace: string, scope: string | null)",
+      "folder: string | null;",
+      "featureTags: string[];",
+    ]) {
+      if (viewStore.includes(typedOnly)) {
+        violations.push(
+          `stores/view/viewStore.ts: typed-only session seam ${typedOnly}`,
+        );
+      }
+    }
+    if (
+      /\bscope:\s*scope\b/.test(viewStore) ||
+      /\bactiveFolder:\s*folder\b/.test(viewStore) ||
+      /\bfeatureContexts:\s*featureTags\b/.test(viewStore)
+    ) {
+      violations.push("stores/view/viewStore.ts: raw session context stored");
+    }
+    if (
+      !/from\s+["']\.\.\/\.\.\/platform\/storage\/scopedKeys["'][\s\S]*\bnormalizeScopedStorageKeyPart\b/.test(
+        scopedStore,
+      ) ||
+      !/\bexport\s+const\s+normalizeScopedStoreKeyPart\s*=\s*normalizeScopedStorageKeyPart\b/.test(
+        scopedStore,
+      )
+    ) {
+      violations.push(
+        `${scopedStoreRel}: scoped key-part normalizer bypasses platform storage helper`,
+      );
+    }
+    if (
+      !/\bexport\s+const\s+SCOPED_STORAGE_KEY_PART_MAX_CHARS\b/.test(scopedKeys) ||
+      !/\bexport\s+function\s+normalizeScopedStorageKeyPart\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*SCOPED_STORAGE_KEY_PART_MAX_CHARS/.test(
+        scopedKeys,
+      )
+    ) {
+      violations.push(`${scopedKeysRel}: scoped storage key parts are unbounded`);
+    }
+    if (
+      !/\bscopedStorageKey\s*\(\s*prefix\s*,\s*workspace\s*,\s*scope\s*\)/.test(
+        scopedStore,
+      )
+    ) {
+      violations.push(`${scopedStoreRel}: active key is not role-tagged`);
+    }
+    if (
+      !/\blegacyEncodedScopedStorageKey\b/.test(scopedStore) ||
+      !/\blegacyScopedStorageKey\b/.test(scopedStore)
+    ) {
       violations.push(`${scopedStoreRel}: missing legacy scoped key fallback`);
     }
     if (
@@ -9203,14 +14200,30 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bencodeURIComponent\s*\(\s*value\s*\)/.test(stripped)) {
-      violations.push(`${rel}: position persistence key parts are not encoded`);
+    if (
+      !/from\s+["']\.\.\/platform\/storage\/scopedKeys["'][\s\S]*\bscopedStorageKey\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizePositionCacheKeyPart\s*=\s*normalizeScopedStorageKeyPart\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: position cache bypasses platform scoped-key helper`);
     }
     if (!/\blegacyScopeKey\b/.test(stripped)) {
       violations.push(`${rel}: missing legacy position blob fallback`);
     }
+    if (!/\blegacyEncodedScopeKey\b/.test(stripped)) {
+      violations.push(`${rel}: missing encoded legacy position blob fallback`);
+    }
     if (!/\blegacyIndexKey\b/.test(stripped)) {
       violations.push(`${rel}: missing legacy position index fallback`);
+    }
+    if (!/\blegacyEncodedIndexKey\b/.test(stripped)) {
+      violations.push(`${rel}: missing encoded legacy position index fallback`);
+    }
+    if (!/\bscopedStorageKey\s*\(\s*PREFIX\s*,\s*workspace\s*,\s*scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: active position key is not role-tagged`);
     }
     if (
       /\bconst\s+scopeKey\s*=\s*\([^)]*workspace[^)]*scope[^)]*\)\s*:\s*string\s*=>\s*`[^`]*\$\{workspace\}[^`]*\$\{scope\}/.test(
@@ -9264,6 +14277,13 @@ describe("dashboard layer ownership", () => {
       if (/\bsetScopeContext\s*\(/.test(stripped)) {
         violations.push(`${rel}: raw session folder-context mirror write`);
       }
+      if (
+        rel.startsWith("app/left/") &&
+        (/\bfeatureContextsFor\b/.test(stripped) ||
+          /\bentry\.(?:feature_tags|doc_type)\b/.test(stripped))
+      ) {
+        violations.push(`${rel}: app-layer folder-context projection`);
+      }
     }
 
     expect(violations).toEqual([]);
@@ -9288,7 +14308,11 @@ describe("dashboard layer ownership", () => {
 
   it("keeps browser-mode app access behind the browser-mode seam", () => {
     const violations: string[] = [];
+    const browserModeRel = "stores/view/browserMode.ts";
     const leftRailActionsRel = "stores/view/leftRailKeybindings.ts";
+    const browserMode = stripComments(
+      readFileSync(join(SRC_ROOT, browserModeRel), "utf8"),
+    );
     const leftRailActions = stripComments(
       readFileSync(join(SRC_ROOT, leftRailActionsRel), "utf8"),
     );
@@ -9316,6 +14340,48 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bBROWSER_MODE_OPTIONS\b[\s\S]*\.findIndex\s*\(/.test(leftRailActions)) {
       violations.push(`${leftRailActionsRel}: local browser-mode cycle projection`);
+    }
+    for (const typedOnly of [
+      "isBrowserMode(value: string)",
+      "setMode: (mode: BrowserMode)",
+      "setBrowserMode(mode: string)",
+      "useBrowserModeIntent(): (mode: string) => void",
+    ]) {
+      if (browserMode.includes(typedOnly)) {
+        violations.push(`${browserModeRel}: typed-only browser-mode seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeBrowserMode(value: unknown)",
+      "isBrowserMode(value: unknown)",
+      "setMode: (mode: unknown)",
+      "setBrowserMode(mode: unknown)",
+      "useBrowserModeIntent(): (mode: unknown) => void",
+    ]) {
+      if (!browserMode.includes(required)) {
+        violations.push(
+          `${browserModeRel}: missing runtime browser-mode seam ${required}`,
+        );
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeBrowserMode\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*\bBROWSER_MODE_OPTIONS\.find\s*\(\s*\(\s*option\s*\)\s*=>\s*option\.id\s*===\s*normalized\s*\)/.test(
+        browserMode,
+      )
+    ) {
+      violations.push(
+        `${browserModeRel}: browser-mode normalizer preserves raw spacing`,
+      );
+    }
+    if (
+      !/\bsetMode:\s*\(mode\)\s*=>[\s\S]*\bnormalizeBrowserMode\s*\(\s*mode\s*\)/.test(
+        browserMode,
+      )
+    ) {
+      violations.push(`${browserModeRel}: store mode setter bypasses mode normalizer`);
+    }
+    if (!/\bmode:\s*normalizedMode\b/.test(browserMode)) {
+      violations.push(`${browserModeRel}: store mode setter preserves raw mode input`);
     }
 
     expect(violations).toEqual([]);
@@ -9387,6 +14453,57 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps settings dialog chrome state normalized behind its store seam", () => {
+    const storeRel = "stores/view/settingsDialog.ts";
+    const bridgeRel = "app/settings/useSettingsDialog.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
+    const bridge = stripComments(readFileSync(join(SRC_ROOT, bridgeRel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeSettingsDialogOpen",
+      "setOpen: (open: unknown)",
+      "setSettingsDialogOpen(open: unknown)",
+      "useSettingsDialogOpen",
+      "openSettingsDialog",
+      "closeSettingsDialog",
+      "toggleSettingsDialog",
+    ]) {
+      if (!store.includes(seam)) {
+        violations.push(`${storeRel}: missing settings dialog seam ${seam}`);
+      }
+    }
+    for (const seam of [
+      "normalizeSettingsDialogOpen",
+      "setSettingsDialogOpen",
+      "useSettingsDialogOpen",
+      "openSettingsDialog",
+      "closeSettingsDialog",
+      "toggleSettingsDialog",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(bridge)) {
+        violations.push(`${bridgeRel}: missing settings dialog bridge ${seam}`);
+      }
+    }
+    for (const typedOnly of [
+      "setOpen: (open: boolean)",
+      "setSettingsDialogOpen(open: boolean)",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only settings dialog seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bsetOpen:\s*\(open\)\s*=>[\s\S]*\bnormalizeSettingsDialogOpen\s*\(\s*open\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: open-state setter bypasses normalizer`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps keyboard-shortcut legend rows behind the keyboard-shortcuts seam", () => {
     const rel = "app/menu/KeyboardShortcuts.tsx";
     const storeRel = "stores/view/keyboardShortcuts.ts";
@@ -9423,12 +14540,27 @@ describe("dashboard layer ownership", () => {
     }
     for (const seam of [
       "KEYBOARD_SHORTCUTS_TOGGLE_BINDING",
+      "normalizeKeyboardShortcutsOpen",
+      "useKeyboardShortcutsOpen",
+      "openKeyboardShortcuts",
+      "closeKeyboardShortcuts",
+      "toggleKeyboardShortcuts",
       "registerKeybindings",
       "registerKeyAction",
     ]) {
       if (!new RegExp(`\\b${seam}\\b`).test(store)) {
         violations.push(`${storeRel}: missing ${seam} keymap seam`);
       }
+    }
+    if (!/\bsetOpen:\s*\(open:\s*unknown\)\s*=>/.test(store)) {
+      violations.push(`${storeRel}: missing runtime shortcut open setter`);
+    }
+    if (
+      !/\bexport\s+function\s+setKeyboardShortcutsOpen\s*\(\s*open:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing runtime shortcut open helper`);
     }
     if (/\bshouldToggleKeyboardShortcuts\b/.test(store)) {
       violations.push(`${storeRel}: local shortcut toggle key parser`);
@@ -9442,6 +14574,21 @@ describe("dashboard layer ownership", () => {
     }
     if (/\b(?:event|e)\.(?:ctrlKey|metaKey|altKey)\b/.test(store)) {
       violations.push(`${storeRel}: local shortcut modifier inspection`);
+    }
+    for (const typedOnly of [
+      "setOpen: (open: boolean)",
+      "setKeyboardShortcutsOpen(open: boolean)",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only shortcut legend seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bsetOpen:\s*\(open\)\s*=>[\s\S]*\bnormalizeKeyboardShortcutsOpen\s*\(\s*open\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: open-state setter bypasses normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -9470,6 +14617,8 @@ describe("dashboard layer ownership", () => {
   it("keeps modal Escape dismissal behind the shared chrome hook", () => {
     const rel = "app/chrome/Dialog.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const hookRel = "app/chrome/useDismissOnEscape.ts";
+    const hook = stripComments(readFileSync(join(SRC_ROOT, hookRel), "utf8"));
     const violations: string[] = [];
 
     if (/\baddEventListener\s*\(\s*["']keydown["']/.test(stripped)) {
@@ -9487,11 +14636,41 @@ describe("dashboard layer ownership", () => {
     if (!/\bpreventDefault:\s*true\b/.test(stripped)) {
       violations.push(`${rel}: modal Escape does not prevent default`);
     }
+    if (!/\bexport\s+function\s+normalizeDismissOnEscapeEnabled\b/.test(hook)) {
+      violations.push(`${hookRel}: missing Escape-dismiss enabled normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeDismissOnEscapePreventDefault\b/.test(hook)
+    ) {
+      violations.push(`${hookRel}: missing Escape-dismiss preventDefault normalizer`);
+    }
+    if (/\benabled\?:\s*boolean\b/.test(hook)) {
+      violations.push(`${hookRel}: Escape-dismiss gate trusts typed-only boolean`);
+    }
+    if (/\bpreventDefault\?:\s*boolean\b/.test(hook)) {
+      violations.push(`${hookRel}: Escape-dismiss preventDefault trusts typed-only boolean`);
+    }
+    if (
+      !/\bconst\s+normalizedEnabled\s*=\s*normalizeDismissOnEscapeEnabled\s*\(\s*enabled\s*\)/.test(
+        hook,
+      )
+    ) {
+      violations.push(`${hookRel}: Escape-dismiss bypasses normalized enabled gate`);
+    }
+    if (
+      !/\bnormalizeDismissOnEscapePreventDefault\s*\(\s*preventDefault\s*\)/.test(
+        hook,
+      )
+    ) {
+      violations.push(`${hookRel}: Escape-dismiss bypasses normalized preventDefault`);
+    }
 
     expect(violations).toEqual([]);
   });
 
   it("keeps focus restore lifecycle behind the shared chrome hook", () => {
+    const hookRel = "app/chrome/useFocusRestore.ts";
+    const hook = stripComments(readFileSync(join(SRC_ROOT, hookRel), "utf8"));
     const rels = [
       "app/chrome/Dialog.tsx",
       "app/palette/CommandPalette.tsx",
@@ -9510,6 +14689,19 @@ describe("dashboard layer ownership", () => {
       if (!/\buseFocusRestore\s*\(/.test(stripped)) {
         violations.push(`${rel}: missing shared focus-restore hook`);
       }
+    }
+    if (!/\bexport\s+function\s+normalizeFocusRestoreOpen\b/.test(hook)) {
+      violations.push(`${hookRel}: missing focus restore open normalizer`);
+    }
+    if (/\buseFocusRestore\s*\(\s*open:\s*boolean\b/.test(hook)) {
+      violations.push(`${hookRel}: focus restore trusts typed-only open state`);
+    }
+    if (
+      !/\bconst\s+normalizedOpen\s*=\s*normalizeFocusRestoreOpen\s*\(\s*open\s*\)/.test(
+        hook,
+      )
+    ) {
+      violations.push(`${hookRel}: focus restore bypasses normalized open state`);
     }
 
     expect(violations).toEqual([]);
@@ -9574,11 +14766,35 @@ describe("dashboard layer ownership", () => {
       }
     }
     if (
-      !/\bsetTarget:\s*\(target\)\s*=>\s*\{[\s\S]*\bisSearchTarget\s*\(\s*target\s*\)/.test(
+      !/\bexport\s+function\s+normalizeSearchIntentTarget\s*\(\s*value:\s*unknown\s*\):\s*SearchTarget\s*\|\s*null/.test(
         store,
       )
     ) {
-      violations.push(`${storeRel}: search target action lacks runtime validation`);
+      violations.push(`${storeRel}: missing search target normalizer`);
+    }
+    if (!/from\s+["']\.\.\/searchTarget["']/.test(store)) {
+      violations.push(`${storeRel}: search target domain is not shared`);
+    }
+    if (
+      !/\bfunction\s+normalizeSearchIntentTarget\s*\(\s*value:\s*unknown\s*\):\s*SearchTarget\s*\|\s*null[\s\S]*return\s+normalizeOptionalSearchTarget\s*\(\s*value\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: search target normalizer bypasses shared seam`);
+    }
+    if (
+      !/\bexport\s+function\s+isSearchTarget\s*\(\s*value:\s*unknown\s*\):\s*value\s+is\s+SearchTarget\s*\{[\s\S]*normalizeSearchIntentTarget\s*\(\s*value\s*\)\s*!==\s*null/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: search target predicate bypasses normalizer`);
+    }
+    if (
+      !/\bsetTarget:\s*\(target\)\s*=>\s*\{[\s\S]*\bconst\s+normalizedTarget\s*=\s*normalizeSearchIntentTarget\s*\(\s*target\s*\)[\s\S]*set\s*\(\s*\{\s*target:\s*normalizedTarget\s*\}/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: search target action bypasses normalizer`);
     }
     if (
       !/\bexport\s+function\s+normalizeSearchIntentQuery\s*\(\s*query:\s*unknown\s*\)/.test(
@@ -9618,9 +14834,22 @@ describe("dashboard layer ownership", () => {
     const rawSearchHelpers =
       /\b(?:useEngineSearch|engineKeys\.search|engineClient\.search|buildFallbackResults|isSemanticOffline|isTransportError|latestBackendsRagAvailable)\b/;
     const controllerRel = "stores/server/searchController.ts";
+    const queriesRel = "stores/server/queries.ts";
     const controller = stripComments(
       readFileSync(join(SRC_ROOT, controllerRel), "utf8"),
     );
+    const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
+    const presentationStart = controller.indexOf(
+      "export function deriveSearchPresentationView",
+    );
+    const presentationEnd = controller.indexOf(
+      "export function interpretSearch",
+      presentationStart,
+    );
+    const presentation =
+      presentationStart >= 0 && presentationEnd > presentationStart
+        ? controller.slice(presentationStart, presentationEnd)
+        : "";
 
     for (const root of ["app", "scene", "platform", "stores/view"] as const) {
       for (const file of sourceFiles(join(SRC_ROOT, root))) {
@@ -9641,19 +14870,107 @@ describe("dashboard layer ownership", () => {
       violations.push(`${controllerRel}: missing controller enabled state input`);
     }
     if (
-      !/from\s+["']\.\.\/searchQuery["']/.test(controller) ||
-      !/\bquery:\s*normalizeSearchQuery\s*\(\s*rawQuery\s*\)/.test(controller)
+      !/normalizeSearchRequestIdentity/.test(importStatements(controller).join("\n")) ||
+      !/\bnormalizeSearchRequestIdentity\s*\(\s*rawQuery\s*,\s*target\s*,\s*scope\s*\)/.test(
+        controller,
+      )
     ) {
       violations.push(
         `${controllerRel}: search request identity bypasses shared query normalizer`,
       );
     }
+    if (
+      !/from\s+["']\.\.\/searchQuery["']/.test(controller) ||
+      !/\bexport\s+function\s+buildFallbackResults\s*\([\s\S]*query:\s*unknown/.test(
+        controller,
+      ) ||
+      !/\bconst\s+needle\s*=\s*normalizeSearchQuery\s*\(\s*query\s*\)\.toLowerCase\s*\(\s*\)/.test(
+        controller,
+      )
+    ) {
+      violations.push(
+        `${controllerRel}: fallback search bypasses shared query normalizer`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+normalizeSearchRagLifecycleWord\s*\(\s*word:\s*unknown\s*\)/.test(
+        controller,
+      )
+    ) {
+      violations.push(`${controllerRel}: missing stream rag lifecycle normalizer`);
+    }
+    if (
+      !/\bfunction\s+ragWordOf\b[\s\S]*\bnormalizeSearchRagLifecycleWord\s*\(\s*\(data\s+as\s+\{\s*rag\?:\s*unknown\s*\}\)\.rag\s*\)/.test(
+        controller,
+      )
+    ) {
+      violations.push(`${controllerRel}: rag health detector reads raw stream word`);
+    }
+    if (/\btypeof\s+word\s*===\s*["']string["'][\s\S]*\breturn\s+word\b/.test(controller)) {
+      violations.push(`${controllerRel}: rag lifecycle word bypasses normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+deriveSearchPresentationView\s*\(\s*query:\s*unknown/.test(
+        controller,
+      )
+    ) {
+      violations.push(`${controllerRel}: search presentation trusts typed query`);
+    }
+    if (
+      !/\bconst\s+trimmedQuery\s*=\s*normalizeSearchQuery\s*\(\s*query\s*\)/.test(
+        presentation,
+      )
+    ) {
+      violations.push(
+        `${controllerRel}: search presentation bypasses shared query normalizer`,
+      );
+    }
+    if (/\bquery\.trim\s*\(/.test(presentation)) {
+      violations.push(`${controllerRel}: search presentation trims raw query`);
+    }
+    if (
+      !/\bfunction\s+normalizeSearchTarget\s*\(\s*target:\s*unknown\s*\):\s*SearchTarget/.test(
+        readFileSync(join(SRC_ROOT, "stores/searchTarget.ts"), "utf8"),
+      ) ||
+      !/from\s+["']\.\.\/searchTarget["']/.test(queries) ||
+      !/\bconst\s+normalizeSearchScope\s*=\s*normalizeGraphSliceScope\b/.test(
+        queries,
+      ) ||
+      !/from\s+["']\.\.\/searchQuery["']/.test(queries) ||
+      !/\bnormalizeSearchRequestIdentity\s*\([\s\S]*\bquery:\s*normalizeSearchQuery\s*\(\s*rawQuery\s*\)[\s\S]*\btarget:\s*normalizeSearchTarget\s*\(\s*target\s*\)[\s\S]*\bscope:\s*normalizeSearchScope\s*\(\s*scope\s*\)/.test(
+        queries,
+      )
+    ) {
+      violations.push(
+        `${queriesRel}: search request identity trusts typed query/target/scope`,
+      );
+    }
     if (!/\bif\s*\(\s*!enabled\s*\|\|\s*!hasQuery\s*\)/.test(controller)) {
       violations.push(`${controllerRel}: scope-less search is not interpreted as idle`);
     }
-    if (!/\benabled:\s*scope\s*!==\s*null\b/.test(controller)) {
+    if (!/\benabled:\s*requestedSearch\.scope\s*!==\s*null\b/.test(controller)) {
       violations.push(
         `${controllerRel}: search controller enabled truth bypasses scope`,
+      );
+    }
+    if (
+      !/normalizeBackendSignalChannel/.test(importStatements(controller).join("\n")) ||
+      !/\bragWordOf[\s\S]*\bnormalizeBackendSignalChannel\s*\(\s*chunk\.channel\s*\)\s*!==\s*["']backends["']/.test(
+        controller,
+      )
+    ) {
+      violations.push(
+        `${controllerRel}: rag health detector bypasses backend-signal channel normalizer`,
+      );
+    }
+    if (
+      /\bragWordOf[\s\S]*\b"rag"\s+in\s+data[\s\S]*\breturn\s+word/.test(controller) &&
+      !/\bragWordOf[\s\S]*\bnormalizeBackendSignalChannel\s*\(\s*chunk\.channel\s*\)/.test(
+        controller,
+      )
+    ) {
+      violations.push(
+        `${controllerRel}: rag health detector trusts payload shape only`,
       );
     }
 
@@ -9756,6 +15073,63 @@ describe("dashboard layer ownership", () => {
       violations.push(
         `${controllerRel}: search vocabulary is not gated by settled identity`,
       );
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps search result normalization at the live adapter boundary", () => {
+    const adapterRel = "stores/server/liveAdapters.ts";
+    const searchRel = "app/right/SearchTab.tsx";
+    const adapter = stripComments(readFileSync(join(SRC_ROOT, adapterRel), "utf8"));
+    const searchTab = stripComments(readFileSync(join(SRC_ROOT, searchRel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizeSearchResultString",
+      "normalizeSearchResultScore",
+      "adaptSearchResult",
+      "adaptSearch",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(adapter)) {
+        violations.push(`${adapterRel}: missing ${seam} search adapter seam`);
+      }
+    }
+    if (!/\bSearchResponse\b/.test(adapter)) {
+      violations.push(`${adapterRel}: search adapter does not use SearchResponse`);
+    }
+    if (
+      !/\bfunction\s+normalizeSearchResultScore\s*\(\s*value:\s*unknown\s*\):\s*number\s*\|\s*null[\s\S]*Number\.isFinite\s*\(\s*value\s*\)[\s\S]*Math\.max\s*\(\s*0\s*,\s*Math\.min\s*\(\s*1\s*,\s*value\s*\)\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: search score normalizer accepts invalid scores`);
+    }
+    if (
+      !/\bfunction\s+adaptSearchResult\s*\(\s*item:\s*unknown\s*\):\s*SearchResponse\["results"\]\[number\]\s*\|\s*null[\s\S]*\bconst\s+score\s*=\s*normalizeSearchResultScore\s*\(\s*item\.score\s*\)[\s\S]*\bif\s*\(\s*score\s*===\s*null\s*\)\s*return\s+null[\s\S]*\bif\s*\(\s*source\s*===\s*undefined\s*\)\s*return\s+null/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: search adapter fabricates malformed results`);
+    }
+    if (
+      !/\bconst\s+normalizedItem:\s*Record<string,\s*unknown>\s*=[\s\S]*\bnode_id:\s*deriveSearchNodeId\s*\(\s*normalizedItem\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(
+        `${adapterRel}: search node-id derivation bypasses normalized row`,
+      );
+    }
+    if (
+      !/\.map\s*\(\s*adaptSearchResult\s*\)[\s\S]*\.filter\s*\(\s*\(\s*result\s*\):\s*result\s+is\s+SearchResponse\["results"\]\[number\]\s*=>\s*result\s*!==\s*null\s*\)/.test(
+        adapter,
+      )
+    ) {
+      violations.push(`${adapterRel}: search adapter does not drop malformed rows`);
+    }
+    if (/\badaptSearch\b|\bderiveSearchNodeId\b|\bSearchResponse\b/.test(searchTab)) {
+      violations.push(`${searchRel}: app-layer search result adaptation`);
     }
 
     expect(violations).toEqual([]);
@@ -9992,6 +15366,9 @@ describe("dashboard layer ownership", () => {
     if (!/\bOPEN_RECENT_COMMIT_HASHES_CAP\b/.test(store)) {
       violations.push(`${storeRel}: missing bounded open commit accumulator cap`);
     }
+    if (!/\bRECENT_COMMIT_HASH_MAX_CHARS\b/.test(store)) {
+      violations.push(`${storeRel}: missing bounded recent commit hash identity cap`);
+    }
     if (!/\bRECENT_COMMITS_LIMIT_CAP\b/.test(store)) {
       violations.push(`${storeRel}: missing bounded recent commits limit cap`);
     }
@@ -10016,15 +15393,29 @@ describe("dashboard layer ownership", () => {
     if (!/\bnormalizeStatusSectionId\b/.test(store)) {
       violations.push(`${storeRel}: missing status section id normalizer`);
     }
+    if (!/\bnormalizeStatusSectionOpen\b/.test(store)) {
+      violations.push(`${storeRel}: missing status section open normalizer`);
+    }
     if (
       !/\bfunction\s+normalizeRecentCommitHash\s*\(\s*hash:\s*unknown\s*\)/.test(store)
     ) {
       violations.push(`${storeRel}: missing recent commit hash input normalizer`);
     }
+    if (
+      !/\bfunction\s+normalizeRecentCommitHash\s*\(\s*hash:\s*unknown\s*\)[\s\S]*normalized\.length\s*<=\s*RECENT_COMMIT_HASH_MAX_CHARS/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: recent commit hash identity is unbounded`);
+    }
     for (const typedOnly of [
       "toggleSection: (id: StatusSectionId, defaultOpen: boolean)",
       "toggleRecentCommit: (hash: string)",
       "showMoreRecentCommits: (page: number, defaultLimit: number)",
+      "useStatusSectionOpen(\n  id: StatusSectionId,\n  defaultOpen: boolean",
+      "deriveStatusSectionChromeView(\n  id: StatusSectionId,\n  open: boolean",
+      "deriveRecentCommitsChromeView(\n  recentCommitsLimit: number | null",
+      "useRecentCommitsChrome(defaultLimit: number)",
       "toggleStatusSection(id: StatusSectionId, defaultOpen: boolean)",
       "toggleRecentCommit(hash: string)",
       "showMoreRecentCommits(page: number, defaultLimit: number)",
@@ -10037,6 +15428,29 @@ describe("dashboard layer ownership", () => {
       !/\btoggleSection\b[\s\S]*\bnormalizeStatusSectionId\s*\(\s*id\s*\)/.test(store)
     ) {
       violations.push(`${storeRel}: section disclosure bypasses id normalizer`);
+    }
+    if (
+      !/\btoggleSection\b[\s\S]*\bnormalizeStatusSectionOpen\s*\(\s*defaultOpen\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: section disclosure bypasses open normalizer`);
+    }
+    if (
+      !/\buseStatusSectionOpen\b[\s\S]*\bnormalizeStatusSectionId\s*\(\s*id\s*\)[\s\S]*\bnormalizeStatusSectionOpen\s*\(\s*defaultOpen\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: status section hook bypasses read normalizers`);
+    }
+    if (
+      !/\bderiveStatusSectionChromeView\b[\s\S]*\bnormalizeStatusSectionId\s*\(\s*id\s*\)[\s\S]*\bnormalizeStatusSectionOpen\s*\(\s*open\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(
+        `${storeRel}: status section chrome projection bypasses read normalizers`,
+      );
     }
     if (
       !/\bconst\s+normalizedHash\s*=\s*normalizeRecentCommitHash\s*\(\s*hash\s*\)/.test(
@@ -10056,6 +15470,13 @@ describe("dashboard layer ownership", () => {
       !/\bcappedOpenRecentCommitHashes\s*\(\s*openRecentCommitHashes\s*\)/.test(store)
     ) {
       violations.push(`${storeRel}: recent commits selector does not normalize hashes`);
+    }
+    if (
+      !/\bderiveRecentCommitChromeRows[\s\S]*\bconst\s+rowHash\s*=\s*normalizeRecentCommitHash\s*\(\s*row\.commit\.hash\s*\)[\s\S]*\bopen\.has\s*\(\s*rowHash\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: recent commit row expansion uses raw commit hash`);
     }
     if (!/\bhash\.trim\s*\(/.test(store)) {
       violations.push(`${storeRel}: missing recent commit hash normalization`);
@@ -10099,7 +15520,11 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: local location presentation class "${localClass}"`);
       }
     }
-    if (!/\bemptyLabel:\s*scope\s*\?\s*null\s*:/.test(server)) {
+    if (
+      !/\bemptyLabel:\s*normalizedScope\s*===\s*null\s*\?[\s\S]*no scope\s+—\s+pick a worktree first[\s\S]*:\s*null/.test(
+        server,
+      )
+    ) {
       violations.push(
         "stores/server/queries.ts: missing location empty-label projection",
       );
@@ -10273,6 +15698,9 @@ describe("dashboard layer ownership", () => {
       "normalizeContextMenuCursor",
       "normalizeContextMenuItemId",
       "normalizeContextMenuEntity",
+      "normalizeContextMenuTimeTravel",
+      "normalizeContextMenuPanelSize",
+      "normalizeContextMenuViewport",
     ]) {
       if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(store)) {
         violations.push(`${storeRel}: missing ${seam} seam`);
@@ -10283,6 +15711,9 @@ describe("dashboard layer ownership", () => {
       "arm: (itemId: string)",
       "setCursor: (cursor: number)",
       "setPosition: (position: MenuAnchor | null)",
+      "deriveContextMenuPanelPosition(\n  anchor: MenuAnchor,\n  size: ContextMenuPanelSize,\n  viewport: ContextMenuViewport",
+      "deriveContextMenuResolvedView(\n  snapshot: ContextMenuSnapshot,\n  timeTravel: boolean",
+      "useContextMenuResolvedView(\n  timeTravel: boolean",
       "openContextMenu(entity: EntityDescriptor, anchor: MenuAnchor)",
       "armContextMenuItem(itemId: string)",
       "setContextMenuCursor(cursor: number)",
@@ -10298,10 +15729,44 @@ describe("dashboard layer ownership", () => {
       "normalizeContextMenuItemId(itemId)",
       "normalizeContextMenuCursor(cursor)",
       "normalizeContextMenuAnchor(position)",
+      "normalizeContextMenuPanelSize(size)",
+      "normalizeContextMenuViewport(viewport)",
     ]) {
       if (!store.includes(required)) {
         violations.push(`${storeRel}: context-menu update bypasses ${required}`);
       }
+    }
+    if (
+      !/from\s+["']\.\.\/\.\.\/platform\/actions\/action["'][\s\S]*\bACTION_DESCRIPTOR_ID_MAX_CHARS\b/.test(
+        store,
+      ) ||
+      !/\bnormalizeContextMenuItemId\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*ACTION_DESCRIPTOR_ID_MAX_CHARS/.test(
+        store,
+      )
+    ) {
+      violations.push(
+        `${storeRel}: context-menu item identity does not share action descriptor cap`,
+      );
+    }
+    if (!/\bnormalizeEntityDescriptor\s*\(\s*value\s*\)/.test(store)) {
+      violations.push(`${storeRel}: context-menu entity seam bypasses descriptor seam`);
+    }
+    if (
+      !/\bconst\s+normalizedTimeTravel\s*=\s*normalizeContextMenuTimeTravel\s*\(\s*timeTravel\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: context-menu time-travel gate bypasses normalizer`);
+    }
+    if (
+      !/\bresolveActions\s*\(\s*snapshot\.entity\s*,\s*\{\s*timeTravel:\s*normalizedTimeTravel\s*\}\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: context-menu resolver uses raw time-travel gate`);
+    }
+    if (/\{\s*\.\.\.\s*value\s*,\s*kind/.test(store)) {
+      violations.push(`${storeRel}: context-menu entity seam preserves raw payload`);
     }
 
     const hostRel = "app/menu/ContextMenuHost.tsx";
@@ -10373,6 +15838,12 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bconst\s+liveMessage\b/.test(host)) {
       violations.push(`${hostRel}: local context-menu live-region derivation`);
+    }
+    if (/\btimeTravel\?:\s*boolean\b/.test(host)) {
+      violations.push(`${hostRel}: typed-only context-menu time-travel prop`);
+    }
+    if (!/\btimeTravel\?:\s*unknown\b/.test(host)) {
+      violations.push(`${hostRel}: missing runtime context-menu time-travel prop seam`);
     }
     for (const localCopy of ["no actions", "entity actions"]) {
       if (host.includes(localCopy)) {
@@ -10593,6 +16064,8 @@ describe("dashboard layer ownership", () => {
 
   it("keeps degradation debug state behind the degradation-debug seam", () => {
     const violations: string[] = [];
+    const storeRel = "stores/view/degradationDebug.ts";
+    const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
       const source = readFileSync(file, "utf8");
@@ -10602,6 +16075,42 @@ describe("dashboard layer ownership", () => {
       if (/\buseDegradationStore\b/.test(stripped)) {
         violations.push(`${rel}: raw degradation-debug store access`);
       }
+    }
+
+    for (const seam of [
+      "normalizeDegradationDebugOpen",
+      "normalizeDegradationOverrideKey",
+      "normalizeDegradationOverrideValue",
+      "setOpen: (open: unknown)",
+      "setOverride: (key: unknown, value: unknown)",
+      "setDegradationOverride(\n  key: unknown,\n  value: unknown",
+    ]) {
+      if (!store.includes(seam)) {
+        violations.push(`${storeRel}: missing degradation-debug seam ${seam}`);
+      }
+    }
+    for (const typedOnly of [
+      "setOpen: (open: boolean)",
+      "setOverride: (key: keyof DegradationInputs, value: boolean | number | null)",
+      "setDegradationOverride(\n  key: keyof DegradationInputs,\n  value: boolean | number | null",
+    ]) {
+      if (store.includes(typedOnly)) {
+        violations.push(`${storeRel}: typed-only degradation-debug seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bsetOpen:\s*\(open\)\s*=>[\s\S]*\bnormalizeDegradationDebugOpen\s*\(\s*open\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: open setter bypasses degradation normalizer`);
+    }
+    if (
+      !/\bsetOverride:\s*\(key,\s*value\)\s*=>[\s\S]*\bnormalizeDegradationOverrideKey\s*\(\s*key\s*\)[\s\S]*\bnormalizeDegradationOverrideValue\s*\(\s*overrideKey,\s*value\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: override setter bypasses degradation normalizers`);
     }
 
     expect(violations).toEqual([]);
@@ -10635,6 +16144,8 @@ describe("dashboard layer ownership", () => {
 
   it("keeps reduced-motion media-query state behind the shared visual seam", () => {
     const violations: string[] = [];
+    const hookRel = "app/chrome/useReducedMotion.ts";
+    const hook = stripComments(readFileSync(join(SRC_ROOT, hookRel), "utf8"));
 
     for (const root of ["app", "scene"] as const) {
       for (const file of sourceFiles(join(SRC_ROOT, root))) {
@@ -10660,12 +16171,57 @@ describe("dashboard layer ownership", () => {
         }
       }
     }
+    if (!/\bdataset\.reduceMotion\s*===\s*["']true["']/.test(hook)) {
+      violations.push(`${hookRel}: missing setting-owned reduced-motion source`);
+    }
+    if (!/\bMutationObserver\b[\s\S]*data-reduce-motion/.test(hook)) {
+      violations.push(`${hookRel}: does not observe setting reduced-motion updates`);
+    }
+    if (!/\buseSyncExternalStore\s*\(/.test(hook)) {
+      violations.push(`${hookRel}: reduced-motion source is not an external store`);
+    }
+    if (/\buseState\s*\(/.test(hook)) {
+      violations.push(`${hookRel}: reduced-motion source is mirrored in local state`);
+    }
+    if (
+      !/\bprefersReducedMotion\s*\(\s*\)\s*\|\|\s*settingReducedMotion\s*\(\s*\)/.test(
+        hook,
+      )
+    ) {
+      violations.push(`${hookRel}: OS and setting reduced-motion floors drift`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps element measurement behind the shared external-store seam", () => {
+    const violations: string[] = [];
+    const rel = "app/chrome/useElementWidth.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+
+    if (/\buseState\s*\(/.test(stripped)) {
+      violations.push(`${rel}: element measurement is mirrored in local state`);
+    }
+    if (!/\buseSyncExternalStore\s*\(/.test(stripped)) {
+      violations.push(`${rel}: missing external-store measurement subscription`);
+    }
+    if (!/\bcreateElementMeasurementStore\b/.test(stripped)) {
+      violations.push(`${rel}: missing centralized element measurement store`);
+    }
+    if (!/\bResizeObserver\b[\s\S]*observer\.observe\s*\(\s*el\s*\)/.test(stripped)) {
+      violations.push(`${rel}: measurement seam bypasses ResizeObserver`);
+    }
+    if (!/\braw\s*&&\s*raw\s*>\s*0\s*\?\s*raw\s*:\s*null\b/.test(stripped)) {
+      violations.push(`${rel}: measurement seam does not preserve zero-as-null`);
+    }
 
     expect(violations).toEqual([]);
   });
 
   it("keeps timeline view state behind the timeline seam", () => {
     const violations: string[] = [];
+    const timelineRel = "stores/view/timeline.ts";
+    const timeline = stripComments(readFileSync(join(SRC_ROOT, timelineRel), "utf8"));
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
       const source = readFileSync(file, "utf8");
@@ -10674,6 +16230,98 @@ describe("dashboard layer ownership", () => {
 
       if (/\buseTimelineStore\b/.test(stripped)) {
         violations.push(`${rel}: raw timeline store access`);
+      }
+    }
+
+    for (const seam of [
+      "normalizeTimelinePlayhead",
+      "normalizeTimelineViewportWidth",
+      "normalizeTimelineScope",
+      "normalizeTimelineCorpusKey",
+      "normalizeTimelineLane",
+      "normalizeTimelineLaneVisibility",
+      "normalizeTimelineDraftText",
+      "normalizeTimelineViewportX",
+      "normalizeTimelineMinimapDragState",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(timeline)) {
+        violations.push(`${timelineRel}: missing ${seam}`);
+      }
+    }
+    for (const normalizer of ["normalizeTimelineScope", "normalizeTimelineCorpusKey"]) {
+      if (
+        !new RegExp(
+          `\\b${normalizer}\\s*\\(\\s*value:\\s*unknown\\s*\\)[\\s\\S]*\\bconst\\s+normalized\\s*=\\s*value\\.trim\\s*\\(\\s*\\)[\\s\\S]*normalized\\.length\\s*>\\s*0[\\s\\S]*normalized\\.length\\s*<=\\s*TIMELINE_(?:SCOPE|CORPUS_KEY)_MAX_CHARS`,
+        ).test(timeline)
+      ) {
+        violations.push(`${timelineRel}: ${normalizer} is not length-bounded`);
+      }
+    }
+    if (
+      !/\bTIMELINE_SCOPE_MAX_CHARS\b/.test(timeline) ||
+      !/\bTIMELINE_CORPUS_KEY_MAX_CHARS\b/.test(timeline) ||
+      !/\bTIMELINE_DRAFT_TEXT_MAX_CHARS\b/.test(timeline)
+    ) {
+      violations.push(`${timelineRel}: missing timeline string identity bounds`);
+    }
+    if (
+      !/\bnormalizeTimelineDraftText\s*\(\s*value:\s*unknown\s*\)[\s\S]*normalized\.length\s*<=\s*TIMELINE_DRAFT_TEXT_MAX_CHARS/.test(
+        timeline,
+      )
+    ) {
+      violations.push(`${timelineRel}: timeline date drafts are unbounded`);
+    }
+    if (
+      !/\btimelineCorpusFitKey\b[\s\S]*\bconst\s+from\s*=\s*normalizeTimelineDraftText\s*\(\s*source\.from\s*\)[\s\S]*\bconst\s+normalizedTo\s*=\s*normalizeTimelineDraftText\s*\(\s*source\.to\s*\)/.test(
+        timeline,
+      )
+    ) {
+      violations.push(`${timelineRel}: timeline corpus-fit key uses raw date bounds`);
+    }
+    for (const typedOnly of [
+      'setPlayhead: (t: number | "live")',
+      "setScrollOffset: (scrollOffset: number)",
+      "setPxPerMs: (pxPerMs: number)",
+      "setViewportWidth: (viewportWidth: number)",
+      "scope: string,\n    pxPerMs: number,\n    scrollOffset: number",
+      "toggleLane: (lane: PhaseLane, visible?: boolean)",
+      'setTimelinePlayhead(playheadT: number | "live")',
+      "setTimelineScrollOffset(scrollOffset: number)",
+      "setTimelinePxPerMs(pxPerMs: number)",
+      "setTimelineViewportWidth(viewportWidth: number)",
+      "setTimelineViewport(pxPerMs: number, scrollOffset: number)",
+      "fitTimelineViewportForScope(\n  scope: string,\n  pxPerMs: number",
+      "toggleTimelineLane(lane: PhaseLane, visible?: boolean)",
+      "openTimelineDatePicker(draftFrom: string, draftTo: string)",
+      "setTimelineDatePickerDraftFrom(draftFrom: string)",
+      "setTimelineDatePickerDraftTo(draftTo: string)",
+      "startTimelineRangeDrag(x: number)",
+      "updateTimelineRangeDrag(x2: number)",
+      "setTimelineMinimapDrag(drag: TimelineMinimapDragState)",
+      "clearTimelineMinimapDrag(pointerId?: number)",
+    ]) {
+      if (timeline.includes(typedOnly)) {
+        violations.push(`${timelineRel}: typed-only timeline seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeTimelinePlayhead(playheadT)",
+      "boundedScrollOffset(scrollOffset)",
+      "boundedPxPerMs(pxPerMs)",
+      "normalizeTimelineViewportWidth(viewportWidth)",
+      "normalizeTimelineScope(scope)",
+      "normalizeTimelineCorpusKey(corpusKey)",
+      "normalizeTimelineLane(lane)",
+      "normalizeTimelineLaneVisibility(visible)",
+      "normalizeTimelineDraftText(draftFrom)",
+      "normalizeTimelineDraftText(draftTo)",
+      "normalizeTimelineViewportX(x)",
+      "normalizeTimelineViewportX(x2)",
+      "normalizeTimelineMinimapDragState(drag)",
+      "normalizeTimelinePointerId(pointerId)",
+    ]) {
+      if (!timeline.includes(required)) {
+        violations.push(`${timelineRel}: timeline update bypasses ${required}`);
       }
     }
 
@@ -10739,6 +16387,10 @@ describe("dashboard layer ownership", () => {
 
   it("keeps app live-status writes behind the live-status seam", () => {
     const violations: string[] = [];
+    const liveStatusRel = "stores/server/liveStatus.ts";
+    const liveStatus = stripComments(
+      readFileSync(join(SRC_ROOT, liveStatusRel), "utf8"),
+    );
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
       const source = readFileSync(file, "utf8");
@@ -10747,6 +16399,43 @@ describe("dashboard layer ownership", () => {
 
       if (/\buseLiveStatusStore\b/.test(stripped)) {
         violations.push(`${rel}: raw live-status store access`);
+      }
+    }
+
+    for (const seam of [
+      "normalizeLiveStreamConnected",
+      "normalizeLiveSeq",
+      "normalizeLiveBrokenLinkCount",
+      "setStreamConnected: (connected: unknown)",
+      "setLastSeq: (seq: unknown)",
+      "setBrokenLinkCount: (count: unknown)",
+      "setLiveStreamConnected(connected: unknown)",
+      "advanceLiveSeq(seq: unknown)",
+      "setLiveBrokenLinkCount(count: unknown)",
+    ]) {
+      if (!liveStatus.includes(seam)) {
+        violations.push(`${liveStatusRel}: missing live-status runtime seam ${seam}`);
+      }
+    }
+    for (const typedOnly of [
+      "setStreamConnected: (connected: boolean)",
+      "setLastSeq: (seq: number)",
+      "setBrokenLinkCount: (count: number)",
+      "setLiveStreamConnected(connected: boolean)",
+      "advanceLiveSeq(seq: number)",
+      "setLiveBrokenLinkCount(count: number)",
+    ]) {
+      if (liveStatus.includes(typedOnly)) {
+        violations.push(`${liveStatusRel}: typed-only live-status seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "normalizeLiveStreamConnected(streamConnected)",
+      "normalizeLiveSeq(seq)",
+      "normalizeLiveBrokenLinkCount(brokenLinkCount)",
+    ]) {
+      if (!liveStatus.includes(required)) {
+        violations.push(`${liveStatusRel}: live-status update bypasses ${required}`);
       }
     }
 
@@ -10769,8 +16458,73 @@ describe("dashboard layer ownership", () => {
     if (!/\buseGraphLiveDeltaStore\b/.test(stripped)) {
       violations.push(`${rel}: missing graph live-delta store seam`);
     }
-    if (!/\buseGraphLiveDeltaView\s*\(\s*scope\s*,\s*keyframeSeq\s*\)/.test(stripped)) {
+    for (const typedOnly of [
+      "setLifecycle: (scope: string | null, keyframeSeq: number | null)",
+      "useGraphLiveDeltaView(\n  scope: string | null",
+      "useGraphLiveSync(\n  scope: string | null",
+      "enabled: boolean",
+      "keyframeSeq: number | null = null",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: graph live sync trusts typed-only input ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "setLifecycle: (scope: unknown, keyframeSeq: unknown)",
+      "useGraphLiveDeltaView(\n  scope: unknown",
+      "useGraphLiveSync(\n  scope: unknown",
+      "enabled: unknown",
+      "keyframeSeq: unknown = null",
+    ]) {
+      if (!stripped.includes(required)) {
+        violations.push(`${rel}: graph live sync lacks runtime input seam ${required}`);
+      }
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeGraphSliceScope\b[\s\S]*\}\s*from\s+["']\.\/queries["']/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeGraphLiveScope\s*=\s*normalizeGraphSliceScope\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph live scope duplicates graph-slice scope policy`);
+    }
+    for (const normalizer of [
+      "normalizeGraphLiveKeyframeSeq",
+      "normalizeGraphLiveEnabled",
+    ]) {
+      if (!new RegExp(`\\bexport\\s+function\\s+${normalizer}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${normalizer}`);
+      }
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeGraphLiveScope\s*\(\s*scope\s*\)[\s\S]*const\s+normalizedKeyframeSeq\s*=[\s\S]*normalizedScope\s*===\s*null\s*\?\s*null\s*:\s*normalizeGraphLiveKeyframeSeq\s*\(\s*keyframeSeq\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph live sync bypasses normalized lifecycle identity`);
+    }
+    if (
+      !/\bconst\s+active\s*=\s*normalizeGraphLiveEnabled\s*\(\s*enabled\s*\)\s*&&\s*normalizedScope\s*!==\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph live sync gates raw enabled/scope`);
+    }
+    if (
+      !/\buseGraphLiveDeltaView\s*\(\s*normalizedScope\s*,\s*normalizedKeyframeSeq\s*\)/.test(
+        stripped,
+      )
+    ) {
       violations.push(`${rel}: missing graph live-delta view seam`);
+    }
+    if (
+      !/\bsetLifecycle\s*\(\s*normalizedScope\s*,\s*normalizedKeyframeSeq\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: graph live lifecycle stores raw identity`);
     }
     if (!/\bGRAPH_FEATURE_DELTAS_CAP\b/.test(stripped)) {
       violations.push(`${rel}: missing bounded feature-delta batch cap`);
@@ -10798,7 +16552,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps Stage live-delta scene command projection behind sceneMapping", () => {
     const rel = "app/stage/Stage.tsx";
+    const mappingRel = "scene/sceneMapping.ts";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const mapping = stripComments(readFileSync(join(SRC_ROOT, mappingRel), "utf8"));
     const violations: string[] = [];
 
     if (!/\bgraphDeltasToApplyCommand\s*\(\s*featureDeltas\s*\)/.test(stripped)) {
@@ -10812,6 +16568,45 @@ describe("dashboard layer ownership", () => {
     }
     if (/deltas\s*\[\s*deltas\.length\s*-\s*1\s*\]/.test(stripped)) {
       violations.push(`${rel}: local graph-delta seq projection`);
+    }
+    for (const typedOnly of [
+      "graphDeltaToScene(delta: GraphDeltaEntry)",
+      "graphDeltasToApplyCommand(\n  deltas: readonly GraphDeltaEntry[]",
+    ]) {
+      if (mapping.includes(typedOnly)) {
+        violations.push(`${mappingRel}: typed-only live-delta seam ${typedOnly}`);
+      }
+    }
+    if (!/\bgraphDeltaToScene\s*\(\s*delta:\s*unknown\s*\)/.test(mapping)) {
+      violations.push(`${mappingRel}: graph delta mapper accepts typed-only input`);
+    }
+    if (!/\bgraphDeltasToApplyCommand\s*\(\s*deltas:\s*unknown\s*\)/.test(mapping)) {
+      violations.push(`${mappingRel}: graph delta command accepts typed-only input`);
+    }
+    if (
+      !/\bfunction\s+isObjectRecord\s*\(\s*value:\s*unknown\s*\)/.test(mapping) ||
+      !/\bfunction\s+normalizeGraphDeltaOp\s*\(\s*value:\s*unknown\s*\)/.test(
+        mapping,
+      ) ||
+      !/\bfunction\s+normalizeGraphDeltaNumber\s*\(\s*value:\s*unknown\s*\)/.test(
+        mapping,
+      )
+    ) {
+      violations.push(`${mappingRel}: graph delta mapper lacks runtime normalizers`);
+    }
+    if (
+      !/\bgraphDeltaToScene\b[\s\S]*\bnormalizeGraphDeltaOp\s*\(\s*delta\.op\s*\)[\s\S]*\bnormalizeGraphDeltaNumber\s*\(\s*delta\.t\s*\)[\s\S]*\bnormalizeGraphDeltaNumber\s*\(\s*delta\.seq\s*\)/.test(
+        mapping,
+      )
+    ) {
+      violations.push(`${mappingRel}: graph delta mapper bypasses runtime clocks/op`);
+    }
+    if (
+      !/\bgraphDeltasToApplyCommand\b[\s\S]*Array\.isArray\s*\(\s*deltas\s*\)[\s\S]*\bgraphDeltaToScene\s*\(\s*entry\s*\)/.test(
+        mapping,
+      )
+    ) {
+      violations.push(`${mappingRel}: graph delta command trusts raw batch shape`);
     }
 
     expect(violations).toEqual([]);
@@ -10838,7 +16633,9 @@ describe("dashboard layer ownership", () => {
 
   it("keeps rag watcher config drafts behind the watcher draft seam", () => {
     const violations: string[] = [];
+    const controlRel = "stores/server/ragControl.ts";
     const draftRel = "stores/view/ragWatcherConfigDraft.ts";
+    const control = stripComments(readFileSync(join(SRC_ROOT, controlRel), "utf8"));
     const draft = stripComments(readFileSync(join(SRC_ROOT, draftRel), "utf8"));
 
     for (const file of sourceFiles(join(SRC_ROOT, "app/right"))) {
@@ -10858,11 +16655,11 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: local rag watcher bounds`);
       }
     }
-    if (!/\bWATCHER_DEBOUNCE_MS_MAX\b/.test(draft)) {
-      violations.push(`${draftRel}: missing debounce upper bound`);
+    if (!/\bWATCHER_DEBOUNCE_MS_MAX\b/.test(control)) {
+      violations.push(`${controlRel}: missing debounce upper bound`);
     }
-    if (!/\bWATCHER_COOLDOWN_S_MAX\b/.test(draft)) {
-      violations.push(`${draftRel}: missing cooldown upper bound`);
+    if (!/\bWATCHER_COOLDOWN_S_MAX\b/.test(control)) {
+      violations.push(`${controlRel}: missing cooldown upper bound`);
     }
     if (
       !/\bexport\s+function\s+normalizeRagWatcherConfigDraftValue\s*\(\s*value:\s*unknown\s*\)/.test(
@@ -10871,11 +16668,44 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${draftRel}: missing watcher draft input normalizer`);
     }
-    if (!/\bboundedIntegerDraft\s*\(/.test(draft)) {
-      violations.push(`${draftRel}: missing bounded integer draft parser`);
+    if (
+      !/\bexport\s+function\s+normalizeWatcherReconfigureArgs\s*\([\s\S]*input:\s*unknown[\s\S]*\):\s*WatcherReconfigureArgs/.test(
+        control,
+      )
+    ) {
+      violations.push(`${controlRel}: missing watcher reconfigure args normalizer`);
     }
-    if (!/\bboundedNumberDraft\s*\(/.test(draft)) {
-      violations.push(`${draftRel}: missing bounded number draft parser`);
+    if (!/\bboundedRagWatcherIntegerArg\s*\(/.test(control)) {
+      violations.push(`${controlRel}: missing bounded integer arg parser`);
+    }
+    if (!/\bboundedRagWatcherNumberArg\s*\(/.test(control)) {
+      violations.push(`${controlRel}: missing bounded number arg parser`);
+    }
+    if (
+      !/from\s+["']\.\.\/server\/ragControl["'][\s\S]*\bnormalizeWatcherReconfigureArgs\b/.test(
+        draft,
+      )
+    ) {
+      violations.push(`${draftRel}: watcher draft bypasses rag control normalizer`);
+    }
+    if (
+      !/\bwatcherReconfigureArgsFromDraft[\s\S]*return\s+normalizeWatcherReconfigureArgs\s*\(\s*\{[\s\S]*debounce_ms:\s*normalizeRagWatcherConfigDraftValue\s*\(\s*debounce\s*\)[\s\S]*cooldown_s:\s*normalizeRagWatcherConfigDraftValue\s*\(\s*cooldown\s*\)/.test(
+        draft,
+      )
+    ) {
+      violations.push(
+        `${draftRel}: watcher draft owns wire args instead of delegating`,
+      );
+    }
+    for (const forbidden of [
+      "WATCHER_DEBOUNCE_MS_MAX",
+      "WATCHER_COOLDOWN_S_MAX",
+      "boundedIntegerDraft",
+      "boundedNumberDraft",
+    ]) {
+      if (draft.includes(forbidden)) {
+        violations.push(`${draftRel}: local watcher broker parser ${forbidden}`);
+      }
     }
     if (!/\bsourceKey\s*:\s*string\s*\|\s*null\b/.test(draft)) {
       violations.push(`${draftRel}: missing watcher source identity key`);
@@ -10973,24 +16803,100 @@ describe("dashboard layer ownership", () => {
   it("keeps continuous settings drafts behind the settings draft seam", () => {
     const violations: string[] = [];
     const storeRel = "stores/view/settingsControlDraft.ts";
+    const rowRel = "stores/view/settingsControlRow.ts";
     const store = stripComments(readFileSync(join(SRC_ROOT, storeRel), "utf8"));
+    const row = stripComments(readFileSync(join(SRC_ROOT, rowRel), "utf8"));
 
     if (
-      !/\bexport\s+function\s+normalizeSettingsControlDraftValue\s*\(\s*value:\s*unknown\s*\)/.test(
+      !/\bexport\s+function\s+normalizeSettingsControlDraftValue\s*\(\s*[\s\S]*value:\s*unknown[\s\S]*maxLength\?:\s*unknown/.test(
         store,
       )
     ) {
       violations.push(`${storeRel}: missing settings draft input normalizer`);
     }
     if (
-      !/\bconst\s+normalized\s*=\s*normalizeSettingsControlDraftValue\s*\(\s*next\s*\)/.test(
+      !/\bexport\s+function\s+normalizeSettingsControlDraftMaxLength\s*\(\s*value:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing settings draft max-length normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeSettingsControlDraftContinuous\s*\(\s*value:\s*unknown\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: missing settings draft continuous normalizer`);
+    }
+    if (
+      /\bcontrolValue:\s*string\b/.test(store) ||
+      /\bcontinuous:\s*boolean\b/.test(store) ||
+      /\bmaxLength:\s*number\b/.test(store)
+    ) {
+      violations.push(`${storeRel}: settings draft options trust typed-only input`);
+    }
+    if (
+      !/\bconst\s+normalizedMaxLength\s*=\s*normalizeSettingsControlDraftMaxLength\s*\(\s*maxLength\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: settings draft max length bypasses normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedControlValue\s*=\s*normalizeSettingsControlDraftValue\s*\(\s*[\s\S]*controlValue\s*,[\s\S]*normalizedMaxLength/.test(
+        store,
+      )
+    ) {
+      violations.push(
+        `${storeRel}: settings draft canonical value bypasses normalizer`,
+      );
+    }
+    if (
+      !/\bconst\s+isContinuous\s*=\s*normalizeSettingsControlDraftContinuous\s*\(\s*continuous\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(
+        `${storeRel}: settings draft continuous flag bypasses normalizer`,
+      );
+    }
+    if (
+      !/\bconst\s+normalized\s*=\s*normalizeSettingsControlDraftValue\s*\(\s*next\s*,\s*normalizedMaxLength\s*\)/.test(
         store,
       )
     ) {
       violations.push(`${storeRel}: settings draft change bypasses normalizer`);
     }
+    if (
+      !/\bcontrolMaxLength:\s*eff\.def\.value_type\.type\s*===\s*["']string["']\s*\?\s*eff\.def\.value_type\.max_len\s*:\s*undefined/.test(
+        row,
+      ) ||
+      !/\bmaxLength:\s*view\.controlMaxLength\b/.test(row)
+    ) {
+      violations.push(`${rowRel}: settings row does not pass schema max length`);
+    }
     if (/\bchange:\s*\(\s*next:\s*string\s*\)\s*=>\s*void\b/.test(store)) {
       violations.push(`${storeRel}: settings draft change accepts typed-only input`);
+    }
+    if (/\bcommit:\s*\(\s*next:\s*string\s*\)\s*=>\s*void\b/.test(store)) {
+      violations.push(`${storeRel}: settings draft commit accepts typed-only input`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeSettingsRowCommitValue\s*\(\s*[\s\S]*value:\s*unknown[\s\S]*controlMaxLength/.test(
+        row,
+      )
+    ) {
+      violations.push(`${rowRel}: missing settings row commit normalizer`);
+    }
+    if (/\bcommit:\s*\(\s*next:\s*string\s*\)\s*=>\s*void\b/.test(row)) {
+      violations.push(`${rowRel}: settings row commit accepts typed-only input`);
+    }
+    if (
+      !/\bconst\s+normalizedValue\s*=\s*normalizeSettingsRowCommitValue\s*\(\s*next\s*,[\s\S]*controlMaxLength[\s\S]*\)[\s\S]*value:\s*normalizedValue/.test(
+        row,
+      )
+    ) {
+      violations.push(`${rowRel}: settings row write bypasses commit normalizer`);
     }
 
     for (const file of sourceFiles(join(SRC_ROOT, "app/settings"))) {
@@ -11036,7 +16942,15 @@ describe("dashboard layer ownership", () => {
   it("keeps dashboard text-filter drafts behind the shared text-filter seam", () => {
     const violations: string[] = [];
     const draftRel = "stores/view/dashboardTextFilter.ts";
+    const intentRel = "stores/server/dashboardTextFilterIntent.ts";
+    const dashboardRel = "stores/server/dashboardState.ts";
+    const normalizationRel = "stores/server/dashboardStateNormalization.ts";
     const draft = stripComments(readFileSync(join(SRC_ROOT, draftRel), "utf8"));
+    const intent = stripComments(readFileSync(join(SRC_ROOT, intentRel), "utf8"));
+    const dashboard = stripComments(readFileSync(join(SRC_ROOT, dashboardRel), "utf8"));
+    const normalization = stripComments(
+      readFileSync(join(SRC_ROOT, normalizationRel), "utf8"),
+    );
 
     for (const file of sourceFiles(join(SRC_ROOT, "app"))) {
       const source = readFileSync(file, "utf8");
@@ -11061,9 +16975,7 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: direct dashboard text-filter write`);
       }
       if (/\bfilters\.text\b/.test(stripped)) {
-        const allowedTextFilterReaders = new Set([
-          "app/left/BrowserRegion.tsx",
-        ]);
+        const allowedTextFilterReaders = new Set(["app/left/BrowserRegion.tsx"]);
         if (!allowedTextFilterReaders.has(rel)) {
           violations.push(`${rel}: local dashboard text-filter read`);
         }
@@ -11083,8 +16995,25 @@ describe("dashboard layer ownership", () => {
     if (/\bsetTextFilterRef\b|\.setTextFilter\s*\(/.test(draft)) {
       violations.push(`${draftRel}: local dashboard text-filter mutation ref`);
     }
-    if (!/\buseDashboardTextFilterIntent\s*\(\s*scope\s*\)/.test(draft)) {
+    if (!/\buseDashboardTextFilterIntent\s*\(\s*normalizedScope\s*\)/.test(draft)) {
       violations.push(`${draftRel}: missing server text-filter intent seam`);
+    }
+    if (
+      /\buseDashboardTextFilterDraft\s*\(\s*scope:\s*string\s*\|\s*null/.test(draft) ||
+      /\buseDashboardTextFilterIntent\s*\(\s*scope:\s*string\s*\|\s*null/.test(intent)
+    ) {
+      violations.push(`${draftRel}: text-filter scope seam trusts typed inputs`);
+    }
+    if (
+      !/\bnormalizeDashboardTextFilterScope\s*\(\s*scope\s*\)/.test(draft) ||
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        intent,
+      ) ||
+      !/\bexport\s+const\s+normalizeDashboardTextFilterScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        intent,
+      )
+    ) {
+      violations.push(`${draftRel}: missing text-filter scope normalizer`);
     }
     if (
       !/\bexport\s+function\s+normalizeDashboardTextFilterDraftValue\s*\(\s*value:\s*unknown\s*\)/.test(
@@ -11092,6 +17021,13 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${draftRel}: missing text-filter draft input normalizer`);
+    }
+    if (
+      !/\bnormalizeDashboardTextFilterDraftValue[\s\S]*\bnormalizeSearchQuery\s*\(\s*value\s*\)/.test(
+        draft,
+      )
+    ) {
+      violations.push(`${draftRel}: text-filter draft is not query-normalized`);
     }
     if (
       !/\bconst\s+normalized\s*=\s*normalizeDashboardTextFilterDraftValue\s*\(\s*next\s*\)/.test(
@@ -11103,12 +17039,50 @@ describe("dashboard layer ownership", () => {
     if (/\bsetValue:\s*\(\s*value:\s*string\s*\)\s*=>\s*void\b/.test(draft)) {
       violations.push(`${draftRel}: text-filter draft setter accepts typed-only input`);
     }
+    if (/\bwriteTextFilter:\s*\(\s*value:\s*string\s*\)/.test(intent)) {
+      violations.push(`${intentRel}: text-filter intent accepts typed-only input`);
+    }
+    if (/\bsetTextFilter:\s*\(\s*text:\s*string\s*\)/.test(dashboard)) {
+      violations.push(`${dashboardRel}: text-filter mutation accepts typed-only input`);
+    }
+    if (/\bdashboardFiltersWithText\s*\(\s*[\s\S]*?text:\s*string/.test(dashboard)) {
+      violations.push(`${dashboardRel}: text-filter helper accepts typed-only input`);
+    }
+    if (!/\bwriteTextFilter:\s*\(\s*value:\s*unknown\s*\)/.test(intent)) {
+      violations.push(`${intentRel}: missing runtime-safe text-filter intent`);
+    }
+    if (!/\bsourceIdentity:\s*string\b/.test(intent)) {
+      violations.push(`${intentRel}: missing text-filter source identity`);
+    }
+    if (!/\bdashboardStateSessionIdentity\s*\(\s*session\.data\s*\)/.test(intent)) {
+      violations.push(`${intentRel}: source identity bypasses dashboard session key`);
+    }
+    if (!/\bsetTextFilter:\s*\(\s*text:\s*unknown\s*\)/.test(dashboard)) {
+      violations.push(`${dashboardRel}: missing runtime-safe text-filter mutation`);
+    }
+    if (!/\bdashboardFiltersWithText\s*\(\s*[\s\S]*?text:\s*unknown/.test(dashboard)) {
+      violations.push(`${dashboardRel}: missing runtime-safe text-filter helper`);
+    }
     if (
-      !/\buseEffect\s*\(\s*\(\)\s*=>\s*\{[\s\S]*\bdebouncedSetTextFilter\.cancel\s*\(\s*\)[\s\S]*\bsetLocalValue\s*\(\s*canonicalText\s*\)[\s\S]*\}\s*,\s*\[\s*canonicalText\s*,\s*debouncedSetTextFilter\s*,\s*scope\s*\]\s*\)/.test(
+      !/\bdashboardFiltersWithText[\s\S]*\bnormalizeDashboardTextFilter\s*\(\s*text\s*\)/.test(
+        dashboard,
+      )
+    ) {
+      violations.push(`${dashboardRel}: text-filter helper bypasses normalizer`);
+    }
+    if (
+      !/\bnormalizeDashboardTextFilter[\s\S]*\bnormalizeSearchQuery\s*\(\s*value\s*\)/.test(
+        normalization,
+      )
+    ) {
+      violations.push(`${normalizationRel}: dashboard text filter is not bounded`);
+    }
+    if (
+      !/\buseEffect\s*\(\s*\(\)\s*=>\s*\{[\s\S]*\bdebouncedSetTextFilter\.cancel\s*\(\s*\)[\s\S]*\bsetLocalValue\s*\(\s*canonicalText\s*\)[\s\S]*\}\s*,\s*\[\s*canonicalText\s*,\s*debouncedSetTextFilter\s*,\s*normalizedScope\s*,\s*sourceIdentity\s*\]\s*\)/.test(
         draft,
       )
     ) {
-      violations.push(`${draftRel}: scope changes do not reset text-filter draft`);
+      violations.push(`${draftRel}: source changes do not reset text-filter draft`);
     }
 
     expect(violations).toEqual([]);
@@ -11142,6 +17116,77 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${rel}: app-layer dashboard filter payload projection`);
+    }
+    if (/\bscope:\s*string\s*\|\s*null\b/.test(stripped)) {
+      violations.push(`${rel}: typed-only filter sidebar scope boundary`);
+    }
+    if (!/\bscope:\s*unknown\b/.test(stripped)) {
+      violations.push(`${rel}: missing runtime-safe filter sidebar scope boundary`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps filter-sidebar dashboard intent scoped through a runtime normalizer", () => {
+    const rel = "stores/server/dashboardFilterSidebarIntent.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (
+      /\buseDashboardFilterSidebarIntent\s*\(\s*scope:\s*string\s*\|\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: filter-sidebar intent trusts typed-only scope`);
+    }
+    if (
+      /\btoggleFacet:\s*\(\s*facet:\s*DashboardFilterFacet,\s*value:\s*string\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: filter-sidebar facet intent trusts typed-only inputs`);
+    }
+    if (
+      !/\btoggleFacet:\s*\(\s*facet:\s*unknown,\s*value:\s*unknown\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: missing runtime-safe facet intent inputs`);
+    }
+    if (/\btype\s+DashboardFilterFacet\b/.test(stripped)) {
+      violations.push(`${rel}: imports typed-only dashboard facet`);
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeDashboardFilterSidebarScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing runtime scope normalizer`);
+    }
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeDashboardFilterSidebarScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: dashboard intent bypasses normalized scope`);
+    }
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: dashboard mutations receive raw filter-sidebar scope`);
+    }
+    if (
+      !/\bnormalizedScope\s*===\s*null\s*\?\s*inert\s*\(\s*\)\s*:\s*mutations\.toggleFilterFacet/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: facet intent does not gate normalized scope`);
+    }
+    if (
+      !/\bnormalizedScope\s*===\s*null\s*\?\s*inert\s*\(\s*\)\s*:\s*mutations\.setFilters\s*\(\s*\{\s*\}\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: clear intent does not gate normalized scope`);
     }
 
     expect(violations).toEqual([]);
@@ -11213,8 +17258,38 @@ describe("dashboard layer ownership", () => {
     if (!/\bvisualStateVocabularyPart\b/.test(stripped)) {
       violations.push(`${rel}: missing visual-state vocabulary normalizer`);
     }
-    if (!/\bnew\s+Set\s*\(\s*values\s*\)/.test(stripped)) {
+    if (
+      !/\bexport\s+function\s+normalizeFilterSidebarVocabularyPart\s*\(\s*values:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing runtime visual-state vocabulary normalizer`);
+    }
+    if (
+      !/\bFILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS\b/.test(stripped) ||
+      !/\bFILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES\b/.test(stripped)
+    ) {
+      violations.push(`${rel}: visual-state vocabulary identity is unbounded`);
+    }
+    if (
+      !/\bnormalizeFilterSidebarVocabularyValue\b[\s\S]*normalized\.length\s*<=\s*FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: visual-state vocabulary values are unbounded`);
+    }
+    if (!/\bArray\.isArray\s*\(\s*values\s*\)/.test(stripped)) {
+      violations.push(`${rel}: visual-state vocabulary normalizer trusts typed arrays`);
+    }
+    if (!/\bconst\s+normalizedValues\s*=\s*new\s+Set\s*<\s*string\s*>\s*\(\s*\)/.test(stripped)) {
       violations.push(`${rel}: visual-state identity does not dedupe vocabulary`);
+    }
+    if (
+      !/\bnormalizedValues\.size\s*>=\s*FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: visual-state vocabulary accumulator is unbounded`);
     }
     if (
       !/\.sort\s*\(\s*\(\s*a\s*,\s*b\s*\)\s*=>\s*a\.localeCompare\s*\(\s*b\s*\)\s*\)/.test(
@@ -11224,13 +17299,33 @@ describe("dashboard layer ownership", () => {
       violations.push(`${rel}: visual-state identity does not sort vocabulary`);
     }
     if (
-      !/\bderiveFilterSidebarVisualStateKey\s*\(\s*scope\s*:\s*string\s*\|\s*null\s*,\s*docTypes\s*:\s*readonly\s+string\[\]\s*,\s*featureTags\s*:\s*readonly\s+string\[\]\s*,\s*statuses\s*:\s*readonly\s+string\[\]\s*,\s*health\s*:\s*readonly\s+string\[\]\s*,?\s*\)/.test(
+      /\bderiveFilterSidebarVisualStateKey\s*\(\s*scope\s*:\s*unknown\s*,\s*docTypes\s*:\s*readonly\s+string\[\]\s*,\s*featureTags\s*:\s*readonly\s+string\[\]\s*,\s*statuses\s*:\s*readonly\s+string\[\]\s*,\s*health\s*:\s*readonly\s+string\[\]\s*,?\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: visual-state identity trusts typed vocabulary arrays`);
+    }
+    if (
+      !/\bderiveFilterSidebarVisualStateKey\s*\(\s*scope\s*:\s*unknown\s*,\s*docTypes\s*:\s*unknown\s*,\s*featureTags\s*:\s*unknown\s*,\s*statuses\s*:\s*unknown\s*,\s*health\s*:\s*unknown\s*,?\s*\)/.test(
         stripped,
       )
     ) {
       violations.push(
         `${rel}: visual-state identity does not include full sidebar vocabulary`,
       );
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizeFilterSidebarScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing shared visual-state scope normalizer`);
+    }
+    if (!/\bnormalizeFilterSidebarScope\s*\(\s*scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: visual-state identity uses raw scope`);
     }
     for (const vocabularyPart of ["docTypes", "featureTags", "statuses", "health"]) {
       if (
@@ -11240,6 +17335,13 @@ describe("dashboard layer ownership", () => {
       ) {
         violations.push(`${rel}: visual-state identity omits ${vocabularyPart}`);
       }
+    }
+    if (
+      !/\bvisualStateVocabularyPart\s*\(\s*values:\s*unknown\s*\)[\s\S]*\bnormalizeFilterSidebarVocabularyPart\s*\(\s*values\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: visual-state identity bypasses vocabulary normalizer`);
     }
     if (
       /JSON\.stringify\s*\(\s*\[\s*scope\s*,\s*docTypes\s*,\s*featureTags\s*\]\s*\)/.test(
@@ -11266,6 +17368,13 @@ describe("dashboard layer ownership", () => {
       if (!new RegExp(`\\bexport\\s+function\\s+${seam}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${seam} seam`);
       }
+    }
+    if (
+      !/\bexport\s+const\s+normalizeFilterSidebarScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing normalizeFilterSidebarScope seam`);
     }
     for (const typedOnly of [
       "setOpen: (open: boolean)",
@@ -11311,6 +17420,14 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${rel}: missing topic-search normalizer`);
+    }
+    if (
+      !/from\s+["']\.\.\/searchQuery["']/.test(stripped) ||
+      !/\bnormalizeFilterSidebarTopicSearch\b[\s\S]*\bnormalizeSearchQuery\s*\(\s*value\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: topic-search bypasses shared query normalizer`);
     }
     if (
       !/\bconst\s+topicSearch\s*=\s*normalizeFilterSidebarTopicSearch\s*\(\s*value\s*\)/.test(
@@ -11447,6 +17564,34 @@ describe("dashboard layer ownership", () => {
     if (!/\bderiveFilterSidebarFacetListView\s*\(/.test(chrome)) {
       violations.push(`${chromeRel}: missing facet-list presentation derivation`);
     }
+    if (
+      !/\bexport\s+function\s+normalizeFilterSidebarFacetValues\s*\(\s*values:\s*unknown\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: missing facet presentation value normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeFilterSidebarFacetLimit\s*\(\s*max:\s*unknown\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: missing facet-list limit normalizer`);
+    }
+    if (
+      !/\bderiveFilterSidebarFacetListView\s*\(\s*values:\s*unknown,\s*selected:\s*unknown,\s*max:\s*unknown,\s*showAll:\s*unknown,\s*loading:\s*unknown/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: facet-list projection trusts typed inputs`);
+    }
+    if (
+      !/\bderiveFilterSidebarFacetListView[\s\S]*\bnormalizeFilterSidebarFacetValues\s*\(\s*values\s*\)[\s\S]*\bnormalizeFilterSidebarFacetValues\s*\(\s*selected\s*\)[\s\S]*\bnormalizeFilterSidebarFacetLimit\s*\(\s*max\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: facet-list projection bypasses normalizers`);
+    }
     if (!/\bderiveFilterSidebarMenuSections\s*\(/.test(stripped)) {
       violations.push(`${rel}: missing stores filter-sidebar menu section seam`);
     }
@@ -11479,6 +17624,23 @@ describe("dashboard layer ownership", () => {
       if (!new RegExp(`\\bexport\\s+function\\s+${helper}\\b`).test(chrome)) {
         violations.push(`${chromeRel}: missing ${helper} helper`);
       }
+    }
+    if (
+      !/\bfilterSidebarTopicOptions\s*\(\s*featureTags:\s*unknown,\s*topicSearch:\s*unknown/.test(
+        chrome,
+      ) ||
+      !/\bfilterSidebarTopicOptions[\s\S]*\bnormalizeFilterSidebarFacetValues\s*\(\s*featureTags\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: topic projection trusts typed vocabulary`);
+    }
+    if (
+      !/\bderiveFilterSidebarMenuSections[\s\S]*\bconst\s+docTypes\s*=\s*normalizeFilterSidebarFacetValues\s*\(\s*vocabulary\.docTypes\s*\)[\s\S]*\bconst\s+selectedDocTypes\s*=\s*normalizeFilterSidebarFacetValues\s*\(\s*filterView\.docTypes\s*\)/.test(
+        chrome,
+      )
+    ) {
+      violations.push(`${chromeRel}: menu-section projection bypasses facet normalizer`);
     }
     for (const internalProjection of [
       "filterSidebarDocTypeLabel",
@@ -11521,6 +17683,254 @@ describe("dashboard layer ownership", () => {
       }
       if (/\bconst\s+(?:plans|adrs|planIds|occupied)\b/.test(stripped)) {
         violations.push(`${rel}: local pipeline artifact projection`);
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps pipeline artifact normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "normalizePipelineString",
+      "normalizePipelineStringList",
+      "normalizePipelinePhase",
+      "adaptPipelineArtifact",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} pipeline adapter seam`);
+      }
+    }
+    if (!/from\s+["']\.\.\/nodeIds["']/.test(stripped)) {
+      violations.push(`${rel}: pipeline adapter does not import node id normalizer`);
+    }
+    if (
+      !/\bfunction\s+adaptPipelineArtifact\s*\(\s*value:\s*unknown\s*\):\s*PipelineArtifact\s*\|\s*null[\s\S]*\bconst\s+nodeId\s*=\s*normalizeNodeId\s*\(\s*value\.node_id\s*\)[\s\S]*\bif\s*\(\s*nodeId\s*===\s*null\s*\)\s*return\s+null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline adapter fabricates malformed artifact ids`);
+    }
+    if (
+      !/\bconst\s+phase\s*=\s*normalizePipelinePhase\s*\(\s*value\.phase\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline phase bypasses normalizer`);
+    }
+    if (
+      !/\bfeature_tags:\s*normalizePipelineStringList\s*\(\s*value\.feature_tags\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline feature tags bypass normalizer`);
+    }
+    if (
+      !/\bmap\s*\(\s*adaptPipelineArtifact\s*\)[\s\S]*\.filter\s*\(\s*\(\s*artifact\s*\):\s*artifact\s+is\s+PipelineArtifact\s*=>\s*artifact\s*!==\s*null\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline adapter does not drop malformed artifacts`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps history commit normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "HISTORY_COMMITS_MAX_ITEMS",
+      "HISTORY_COMMIT_NODE_IDS_CAP",
+      "HISTORY_STRING_MAX_CHARS",
+      "HISTORY_COMMIT_BODY_MAX_CHARS",
+      "normalizeHistoryString",
+      "normalizeHistoryBody",
+      "adaptHistoryCommit",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} history adapter seam`);
+      }
+    }
+    if (!/from\s+["']\.\.\/nodeIds["']/.test(stripped)) {
+      violations.push(`${rel}: history adapter does not import node id normalizer`);
+    }
+    if (
+      !/\bfunction\s+normalizeHistoryString\s*\(\s*value:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*value\.trim\s*\(\s*\)[\s\S]*trimmed\.length\s*<=\s*HISTORY_STRING_MAX_CHARS/.test(
+        stripped,
+      ) ||
+      !/\bfunction\s+normalizeHistoryBody\s*\(\s*value:\s*unknown\s*\):\s*string[\s\S]*value\.length\s*<=\s*HISTORY_COMMIT_BODY_MAX_CHARS[\s\S]*value\.slice\s*\(\s*0\s*,\s*HISTORY_COMMIT_BODY_MAX_CHARS\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: history string payloads are unbounded`);
+    }
+    if (
+      !/\bfunction\s+adaptHistoryCommit\s*\(\s*value:\s*unknown\s*\):\s*HistoryCommit\s*\|\s*null[\s\S]*\bconst\s+hash\s*=\s*normalizeHistoryString\s*\(\s*value\.hash\s*\)[\s\S]*\bif\s*\(\s*hash\s*===\s*null\s*\)\s*return\s+null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: history adapter fabricates malformed hashes`);
+    }
+    if (
+      !/\bconst\s+shortHash\s*=\s*normalizeHistoryString\s*\(\s*value\.short_hash\s*\)\s*\?\?\s*hash\.slice\s*\(\s*0\s*,\s*8\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: history short hash bypasses canonical fallback`);
+    }
+    if (
+      !/\bnode_ids:\s*Array\.isArray\s*\(\s*value\.node_ids\s*\)[\s\S]*normalizeNodeIds\s*\(\s*value\.node_ids\s*,\s*HISTORY_COMMIT_NODE_IDS_CAP\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: history node ids bypass bounded normalizer`);
+    }
+    if (
+      !/\bexport function adaptHistory[\s\S]*const\s+commits:\s*HistoryCommit\[\]\s*=\s*\[\][\s\S]*for\s*\(\s*const\s+row\s+of\s+body\.commits\s*\)[\s\S]*commits\.push\s*\(\s*commit\s*\)[\s\S]*commits\.length\s*>=\s*HISTORY_COMMITS_MAX_ITEMS[\s\S]*reason:\s*["']adapter commit ceiling["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: history commit accumulator is unbounded`);
+    }
+    if (
+      !/\bnext_cursor:\s*normalizeHistoryString\s*\(\s*body\.next_cursor\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: history cursor bypasses normalizer`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps GitHub work-item normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "GITHUB_WORK_ITEM_LABELS_CAP",
+      "normalizeGitHubWorkItemNumber",
+      "normalizeGitHubWorkItemString",
+      "normalizeGitHubWorkItemNullableString",
+      "normalizeGitHubWorkItemLabels",
+      "normalizeGitHubWorkItemCount",
+      "adaptPullRequest",
+      "adaptIssue",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} GitHub work-item seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeGitHubWorkItemNumber\s*\(\s*value:\s*unknown\s*\):\s*number\s*\|\s*null[\s\S]*Number\.isSafeInteger\s*\(\s*value\s*\)[\s\S]*value\s*>\s*0/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: GitHub work-item numbers are not identity-normalized`);
+    }
+    if (
+      !/\bfunction\s+normalizeGitHubWorkItemLabels\s*\(\s*value:\s*unknown\s*\):\s*string\[\][\s\S]*\bconst\s+normalized\s*=\s*normalizeGitHubWorkItemString\s*\(\s*label\s*\)[\s\S]*\bseen\.has\s*\(\s*normalized\s*\)[\s\S]*labels\.length\s*>=\s*GITHUB_WORK_ITEM_LABELS_CAP/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: GitHub label array bypasses bounded normalizer`);
+    }
+    for (const [fn, typeName] of [
+      ["adaptPullRequest", "PullRequest"],
+      ["adaptIssue", "Issue"],
+    ] as const) {
+      if (
+        !new RegExp(
+          `\\bfunction\\s+${fn}\\s*\\(\\s*value:\\s*unknown\\s*\\):\\s*${typeName}\\s*\\|\\s*null[\\s\\S]*\\bconst\\s+number\\s*=\\s*normalizeGitHubWorkItemNumber\\s*\\(\\s*value\\.number\\s*\\)[\\s\\S]*\\bif\\s*\\(\\s*number\\s*===\\s*null\\s*\\)\\s*return\\s+null`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: ${fn} fabricates malformed work-item numbers`);
+      }
+    }
+    if (
+      !/\bchecks:\s*adaptPrChecks\s*\(\s*value\.checks\s*\)/.test(stripped) ||
+      !/\btotal:\s*normalizeGitHubWorkItemCount\s*\(\s*value\.total\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: PR checks bypass finite count normalizer`);
+    }
+    if (
+      !/\blabels:\s*normalizeGitHubWorkItemLabels\s*\(\s*value\.labels\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: issue labels bypass GitHub label normalizer`);
+    }
+    if (
+      !/\breason:\s*normalizeGitHubWorkItemNullableString\s*\(\s*body\.reason\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: GitHub availability reason bypasses normalizer`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps plan-interior normalization at the live adapter boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "adaptInteriorStep",
+      "adaptInteriorPhase",
+      "adaptInteriorWave",
+      "adaptPlanInterior",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} plan-interior adapter seam`);
+      }
+    }
+    for (const [fn, typeName, idField] of [
+      ["adaptInteriorStep", "InteriorStep", "step"],
+      ["adaptInteriorPhase", "InteriorPhase", "phase"],
+      ["adaptInteriorWave", "InteriorWave", "wave"],
+    ] as const) {
+      if (
+        !new RegExp(
+          `\\bfunction\\s+${fn}\\s*\\(\\s*value:\\s*unknown\\s*\\):\\s*${typeName}\\s*\\|\\s*null[\\s\\S]*\\bconst\\s+nodeId\\s*=\\s*normalizeNodeId\\s*\\(\\s*value\\.node_id\\s*\\)[\\s\\S]*\\bif\\s*\\(\\s*nodeId\\s*===\\s*null\\s*\\|\\|\\s*id\\s*===\\s*undefined\\s*\\)\\s*return\\s+null`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: ${idField} adapter fabricates malformed ids`);
+      }
+    }
+    if (
+      !/\badaptInteriorPhase[\s\S]*\.map\s*\(\s*adaptInteriorStep\s*\)[\s\S]*\.filter\s*\(\s*\(\s*step\s*\):\s*step\s+is\s+InteriorStep\s*=>\s*step\s*!==\s*null\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: phase adapter does not drop malformed steps`);
+    }
+    if (
+      !/\badaptInteriorWave[\s\S]*\.map\s*\(\s*adaptInteriorPhase\s*\)[\s\S]*\.filter\s*\(\s*\(\s*phase\s*\):\s*phase\s+is\s+InteriorPhase\s*=>\s*phase\s*!==\s*null\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: wave adapter does not drop malformed phases`);
+    }
+    for (const [field, mapper, typeName] of [
+      ["waves", "adaptInteriorWave", "InteriorWave"],
+      ["phases", "adaptInteriorPhase", "InteriorPhase"],
+      ["steps", "adaptInteriorStep", "InteriorStep"],
+    ] as const) {
+      if (
+        !new RegExp(
+          `${field}:\\s*Array\\.isArray\\(raw\\.${field}\\)[\\s\\S]*\\.map\\s*\\(\\s*${mapper}\\s*\\)[\\s\\S]*\\.filter\\s*\\(\\s*\\(\\s*\\w+\\s*\\):\\s*\\w+\\s+is\\s+${typeName}\\s*=>\\s*\\w+\\s*!==\\s*null\\s*\\)`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: plan interior ${field} bypass malformed-row drop`);
       }
     }
 
@@ -11789,17 +18199,67 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bscope\s*===\s*null\s*\?\s*["']scope:null["']/.test(stripped)) {
+    if (
+      !/\bnormalizedScope\s*===\s*null[\s\S]*\?\s*["']scope:null["']/.test(stripped)
+    ) {
       violations.push(`${rel}: null scope lacks an explicit key sentinel`);
     }
-    if (!/\basOf\s*===\s*undefined\s*\?\s*["']playhead:live["']/.test(stripped)) {
+    if (
+      !/\bnormalizedAsOf\s*===\s*undefined[\s\S]*\?\s*["']playhead:live["']/.test(
+        stripped,
+      )
+    ) {
       violations.push(`${rel}: live playhead lacks an explicit key sentinel`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (!/\bencodeURIComponent\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: scoped pipeline key does not encode scope`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*String\s*\(\s*asOf\s*\)\s*\)/.test(stripped)) {
+    if (
+      !/\bencodeURIComponent\s*\(\s*String\s*\(\s*normalizedAsOf\s*\)\s*\)/.test(
+        stripped,
+      )
+    ) {
       violations.push(`${rel}: scoped pipeline key does not encode playhead`);
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString\b/.test(
+        stripped,
+      ) ||
+      !/\bexport\s+const\s+normalizePipelineExpansionScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: pipeline expansion scope bypasses shared view scope normalizer`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+normalizePipelineExpansionAsOf\b[\s\S]*Number\.isFinite\s*\(\s*asOf\s*\)[\s\S]*asOf\.trim\s*\(\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(
+        `${rel}: pipeline expansion playhead bypasses runtime normalizer`,
+      );
+    }
+    if (
+      !/const\s+normalizedScope\s*=\s*normalizePipelineExpansionScope\s*\(\s*scope\s*\)[\s\S]*const\s+normalizedAsOf\s*=\s*normalizePipelineExpansionAsOf\s*\(\s*asOf\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline expansion key bypasses normalized identity`);
+    }
+    if (
+      !/scope:value:\$\{encodeURIComponent\s*\(\s*normalizedScope\s*\)\}/.test(stripped)
+    ) {
+      violations.push(`${rel}: real scopes lack a value-tagged key namespace`);
+    }
+    if (
+      !/playhead:value:\$\{encodeURIComponent\s*\(\s*String\s*\(\s*normalizedAsOf\s*\)\s*\)\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: real playheads lack a value-tagged key namespace`);
     }
     if (
       /\$\{scope\s*\?\?\s*["']none["']\}::\$\{asOf\s*\?\?\s*["']live["']\}/.test(
@@ -11827,8 +18287,35 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport\s+function\s+normalizePipelineExpandedIds\b/.test(stripped)) {
       violations.push(`${rel}: missing bounded expanded-id normalizer`);
     }
+    if (
+      !/\bPIPELINE_EXPANSION_AS_OF_MAX_CHARS\b/.test(stripped) ||
+      !/\bPIPELINE_EXPANSION_KEY_MAX_CHARS\b/.test(stripped)
+    ) {
+      violations.push(`${rel}: missing bounded pipeline expansion identity caps`);
+    }
     if (!/\bexport\s+function\s+normalizePipelineExpansionKey\b/.test(stripped)) {
       violations.push(`${rel}: missing pipeline expansion key normalizer`);
+    }
+    if (
+      !/\bnormalizePipelineExpansionKey\s*\(\s*value:\s*unknown\s*\)[\s\S]*\bconst\s+normalized\s*=\s*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*PIPELINE_EXPANSION_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline expansion key is unbounded`);
+    }
+    if (
+      !/\bnormalizePipelineExpansionAsOf\s*\(\s*[\s\S]*asOf:\s*unknown[\s\S]*\)[\s\S]*normalized\.length\s*<=\s*PIPELINE_EXPANSION_AS_OF_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: pipeline expansion as-of identity is unbounded`);
+    }
+    if (
+      !/\bpipelineExpansionKey\s*\(\s*scope:\s*unknown,\s*asOf\?:\s*unknown[\s\S]*\bkey\.length\s*<=\s*PIPELINE_EXPANSION_KEY_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: derived pipeline expansion key is unbounded`);
     }
     if (!/\bArray\.isArray\s*\(\s*ids\s*\)/.test(stripped)) {
       violations.push(`${rel}: expanded-id normalizer assumes array input`);
@@ -12028,6 +18515,58 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps the status location anchor behind a runtime stores projection", () => {
+    const rel = "app/right/StatusTab.tsx";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const queriesRel = "stores/server/queries.ts";
+    const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/\buseLocationAnchor\s*\(\s*scope\s*\)/.test(stripped)) {
+      violations.push(`${rel}: missing stores-owned location anchor selector`);
+    }
+    if (
+      /\bfunction\s+LocationStrip\s*\(\s*\{\s*scope\s*\}\s*:\s*\{\s*scope:\s*string\s*\|\s*null\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: location strip exposes typed-only scope`);
+    }
+    if (
+      !/\bfunction\s+LocationStrip\s*\(\s*\{\s*scope\s*\}\s*:\s*\{\s*scope:\s*unknown\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: location strip lacks runtime scope seam`);
+    }
+    if (
+      /\bderiveLocationAnchor\b|\buseWorkspaceMap\b|\buseGitStatus\b/.test(stripped)
+    ) {
+      violations.push(`${rel}: app-layer location anchor composition`);
+    }
+    if (/\brepositories\b|\bworktrees\b|\bis_default\b|\bgit\.git\b/.test(stripped)) {
+      violations.push(`${rel}: app-layer location anchor state parsing`);
+    }
+    if (
+      /\bderiveLocationAnchor\s*\(\s*scope:\s*string\s*\|\s*null/.test(queries) ||
+      /\buseLocationAnchor\s*\(\s*scope:\s*string\s*\|\s*null/.test(queries)
+    ) {
+      violations.push(`${queriesRel}: location anchor exposes typed-only scope`);
+    }
+    if (
+      !/\bderiveLocationAnchor\s*\(\s*scope:\s*unknown[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*\bw\.path\s*===\s*normalizedScope[\s\S]*\bw\.id\s*===\s*normalizedScope[\s\S]*path:\s*normalizedScope/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: location anchor bypasses scope normalizer`);
+    }
+    if (!/\buseLocationAnchor\s*\(\s*scope:\s*unknown\s*\)/.test(queries)) {
+      violations.push(`${queriesRel}: location hook lacks runtime scope seam`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps recent-commit row projection behind the history view", () => {
     const rel = "app/right/StatusTab.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -12144,11 +18683,31 @@ describe("dashboard layer ownership", () => {
         violations.push(`${rel}: local recent-history chrome "${localClass}"`);
       }
     }
-    if (!/\bexport\s+function\s+normalizeHistoryLimit\b/.test(queries)) {
+    if (
+      !/\bexport\s+function\s+normalizeHistoryLimit\b/.test(queries) ||
+      !/\bexport\s+function\s+normalizeHistoryRequestIdentity\b[\s\S]*\bnormalizeGraphSliceScope\s*\(\s*scope\s*\)[\s\S]*\bnormalizeHistoryLimit\s*\(\s*limit\s*\)/.test(
+        queries,
+      )
+    ) {
       violations.push(`${queriesRel}: missing shared history limit normalizer`);
     }
     if (
-      !/\bfunction\s+useNodeHistory\b[\s\S]*\bconst\s+normalizedLimit\s*=\s*normalizeHistoryLimit\s*\(\s*limit\s*\)[\s\S]*\bengineKeys\.history\s*\(\s*scope\s*\?\?\s*["']["']\s*,\s*normalizedLimit\s*\)[\s\S]*\bengineClient\.history\s*\(\s*\{\s*scope:\s*scope!\s*,\s*limit:\s*normalizedLimit\s*\}/.test(
+      !/\bexport\s+function\s+normalizeHistoryCommitForView\b/.test(queries) ||
+      !/\bexport\s+function\s+normalizeHistoryCommitsForView\b[\s\S]*\bnormalizeHistoryCommitForView\b/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: missing shared history commit row normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+deriveHistoryView\b[\s\S]*\bnormalizeHistoryCommitsForView\s*\(\s*data\?\.commits\s*\)/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: history view derives from raw commit rows`);
+    }
+    if (
+      !/\bexport\s+function\s+useNodeHistory\b[\s\S]*\bconst\s+request\s*=\s*normalizeHistoryRequestIdentity\s*\(\s*scope\s*,\s*limit\s*\)[\s\S]*\bengineKeys\.history\s*\(\s*request\.scope\s*\?\?\s*["']["']\s*,\s*request\.limit\s*\)[\s\S]*\bengineClient\.history\s*\(\s*\{\s*scope:\s*request\.scope!\s*,\s*limit:\s*request\.limit\s*\}/.test(
         queries,
       )
     ) {
@@ -12166,6 +18725,29 @@ describe("dashboard layer ownership", () => {
     const queriesRel = "stores/server/queries.ts";
     const queries = stripComments(readFileSync(join(SRC_ROOT, queriesRel), "utf8"));
     const violations: string[] = [];
+
+    for (const bodyName of [
+      "OpenPlansBody",
+      "OpenPrsBody",
+      "RecentPrsBody",
+      "OpenIssuesBody",
+      "RecentCommitsBody",
+    ]) {
+      if (
+        new RegExp(
+          `\\bfunction\\s+${bodyName}\\s*\\(\\s*\\{\\s*scope\\s*\\}\\s*:\\s*\\{\\s*scope:\\s*string\\s*\\|\\s*null\\s*\\}`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: ${bodyName} exposes typed-only scope`);
+      }
+      if (
+        !new RegExp(
+          `\\bfunction\\s+${bodyName}\\s*\\(\\s*\\{\\s*scope\\s*\\}\\s*:\\s*\\{\\s*scope:\\s*unknown\\s*\\}`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: ${bodyName} lacks runtime scope seam`);
+      }
+    }
 
     for (const localCopy of [
       "reading open PRs...",
@@ -12360,6 +18942,108 @@ describe("dashboard layer ownership", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps changed-files git output normalization at the stores parser boundary", () => {
+    const rel = "stores/server/liveAdapters.ts";
+    const changesRel = "app/right/ChangesOverview.tsx";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const changes = stripComments(readFileSync(join(SRC_ROOT, changesRel), "utf8"));
+    const violations: string[] = [];
+
+    for (const seam of [
+      "GIT_CHANGED_FILES_MAX_ROWS",
+      "GIT_PATH_MAX_CHARS",
+      "GIT_DIFF_MAX_HUNKS",
+      "GIT_DIFF_MAX_LINES",
+      "GIT_DIFF_LINE_MAX_CHARS",
+      "normalizeGitPath",
+      "isPorcelainCode",
+      "normalizeGitNumstatCount",
+      "normalizeGitDiffStatus",
+      "parseGitStatus",
+      "parseGitNumstat",
+      "parseUnifiedDiff",
+    ]) {
+      if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
+        violations.push(`${rel}: missing ${seam} git parser seam`);
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeGitPath\s*\(\s*value:\s*string\s*\):\s*string\s*\|\s*null[\s\S]*value\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*GIT_PATH_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: git path normalizer is unbounded`);
+    }
+    if (
+      !/\bexport\s+function\s+parseGitStatus\s*\(\s*output:\s*string\s*\):\s*ChangedFile\[\][\s\S]*raw\.trim\s*\(\s*\)\.length\s*===\s*0[\s\S]*raw\.charAt\s*\(\s*2\s*\)\s*!==\s*["'] ["'][\s\S]*!isPorcelainCode\s*\(\s*code\s*\)[\s\S]*const\s+normalizedPath\s*=\s*normalizeGitPath\s*\(\s*path\s*\)[\s\S]*normalizedPath\s*===\s*null/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: porcelain parser accepts malformed changed-file rows`);
+    }
+    if (
+      !/\bparseGitStatus[\s\S]*entries\.length\s*>=\s*GIT_CHANGED_FILES_MAX_ROWS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: porcelain parser changed-file accumulator is unbounded`);
+    }
+    if (
+      !/\bfunction\s+normalizeGitNumstatCount\s*\(\s*value:\s*string\s*\):\s*number\s*\|\s*null[\s\S]*\/\^\\d\+\$\/\.test\s*\(\s*value\s*\)[\s\S]*Number\.isSafeInteger\s*\(\s*parsed\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: numstat count normalizer accepts unsafe counts`);
+    }
+    if (
+      !/\bexport\s+function\s+parseGitNumstat\s*\(\s*output:\s*string[\s\S]*const\s+normalizedPath\s*=\s*normalizeGitPath\s*\(\s*path\s*\)[\s\S]*addsStr\s*!==\s*["']-["']\s*&&\s*adds\s*===\s*null[\s\S]*continue/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: numstat parser accepts malformed tally rows`);
+    }
+    if (
+      !/\bparseGitNumstat[\s\S]*tallies\.size\s*>=\s*GIT_CHANGED_FILES_MAX_ROWS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: numstat parser tally accumulator is unbounded`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeGitDiffStatus\s*\(\s*status:\s*unknown\s*\):\s*string\s*\|\s*undefined[\s\S]*typeof\s+status\s*!==\s*["']string["'][\s\S]*status\.trim\s*\(\s*\)\.toUpperCase\s*\(\s*\)[\s\S]*GIT_DIFF_STATUS_LETTERS\.has\s*\(\s*normalized\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: diff status parser trusts typed status`);
+    }
+    if (
+      !/\bexport\s+function\s+parseUnifiedDiff\s*\([\s\S]*status\?:\s*unknown[\s\S]*const\s+normalizedStatus\s*=\s*normalizeGitDiffStatus\s*\(\s*status\s*\)[\s\S]*normalizedStatus\s*===\s*undefined\s*\?\s*\{\}\s*:\s*\{\s*status:\s*normalizedStatus\s*\}/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: unified diff parser writes raw status`);
+    }
+    if (
+      !/\bfunction\s+normalizeGitDiffLineText\s*\(\s*text:\s*string\s*\)[\s\S]*text\.length\s*<=\s*GIT_DIFF_LINE_MAX_CHARS[\s\S]*text\.slice\s*\(\s*0\s*,\s*GIT_DIFF_LINE_MAX_CHARS\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: unified diff line text is unbounded`);
+    }
+    if (
+      !/\bparseUnifiedDiff[\s\S]*const\s+normalizedPath\s*=\s*normalizeGitPath\s*\(\s*path\s*\)\s*\?\?\s*["']["'][\s\S]*const\s+totalHunks\s*=[\s\S]*HUNK_HEADER_RE\.test\s*\(\s*line\s*\)[\s\S]*hunks\.length\s*>=\s*GIT_DIFF_MAX_HUNKS[\s\S]*returnedLines\s*>=\s*GIT_DIFF_MAX_LINES[\s\S]*truncated:\s*\{[\s\S]*total_hunks:\s*totalHunks[\s\S]*returned_hunks:\s*hunks\.length[\s\S]*reason:\s*truncatedReason/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: unified diff parser accumulator is unbounded`);
+    }
+    if (/\bparseGit(?:Status|Numstat|UnifiedDiff)\b/.test(changes)) {
+      violations.push(`${changesRel}: changes overview imports git parser`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps changes overview state composition behind the stores overview view", () => {
     const rel = "app/right/ChangesOverview.tsx";
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
@@ -12378,6 +19062,22 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bif\s*\(\s*!\s*scope\s*\)/.test(stripped)) {
       violations.push(`${rel}: local changes overview no-scope projection`);
+    }
+    for (const rowName of ["ChangedFileRow", "ChangedDocRow"]) {
+      if (
+        new RegExp(
+          `\\bfunction\\s+${rowName}\\s*\\([\\s\\S]*?scope:\\s*string\\s*\\|\\s*null`,
+        ).test(stripped)
+      ) {
+        violations.push(`${rel}: ${rowName} exposes typed-only scope`);
+      }
+      if (
+        !new RegExp(`\\bfunction\\s+${rowName}\\s*\\([\\s\\S]*?scope:\\s*unknown`).test(
+          stripped,
+        )
+      ) {
+        violations.push(`${rel}: ${rowName} lacks runtime scope seam`);
+      }
     }
     if (/\bchanges\.(?:files|documents)\.length\s*>\s*0\b/.test(stripped)) {
       violations.push(`${rel}: local changes overview section visibility`);
@@ -12602,6 +19302,74 @@ describe("dashboard layer ownership", () => {
     if (!/\bexport function normalizeGitDiffRequest\b/.test(queries)) {
       violations.push(`${queriesRel}: missing shared git diff argument normalizer`);
     }
+    for (const typedOnly of [
+      "useChangedFiles(scope: string | null",
+      "useChangesOverview(scope: string | null",
+      "normalizeGitDiffRequest(\n  scope: string | null",
+      "canReadGitFileDiff(\n  scope: string | null",
+      "canReadGitHistoricalFileDiff(\n  scope: string | null",
+      "useGitFileDiff(\n  scope: string | null",
+      "useGitHistoricalFileDiff(\n  scope: string | null",
+      "status?: string",
+    ]) {
+      if (queries.includes(typedOnly)) {
+        violations.push(`${queriesRel}: typed-only git diff seam ${typedOnly}`);
+      }
+    }
+    for (const required of [
+      "useChangedFiles(scope: unknown",
+      "useChangesOverview(scope: unknown",
+      "normalizeGitDiffRequest(\n  scope: unknown,\n  path: unknown",
+      "canReadGitFileDiff(\n  scope: unknown,\n  path: unknown",
+      "canReadGitHistoricalFileDiff(\n  scope: unknown,\n  path: unknown",
+      "useGitFileDiff(\n  scope: unknown,\n  path: unknown",
+      "useGitHistoricalFileDiff(\n  scope: unknown,\n  path: unknown",
+      "status?: unknown",
+    ]) {
+      if (!queries.includes(required)) {
+        violations.push(`${queriesRel}: missing runtime git diff seam ${required}`);
+      }
+    }
+    if (
+      !/\bfunction\s+normalizeGitDiffArg\s*\(\s*value:\s*unknown\s*\):\s*string\s*\|\s*null\s*\{[\s\S]*\bnormalizeGitQueryKeyPart\s*\(\s*value\s*\)/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: git diff arg bypasses capped key normalizer`);
+    }
+    if (!/\bGIT_QUERY_KEY_PART_MAX_CHARS\b/.test(queries)) {
+      violations.push(`${queriesRel}: git query key parts are not length-bounded`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeGitQueryKeyPart\s*\(\s*value:\s*unknown\s*\):\s*string[\s\S]*typeof\s+value\s*!==\s*["']string["'][\s\S]*\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*GIT_QUERY_KEY_PART_MAX_CHARS/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: git query key normalizer trusts typed inputs`);
+    }
+    for (const keyHelper of ["gitChanges", "gitDiff", "gitHistoricalDiff"]) {
+      if (
+        !new RegExp(
+          `${keyHelper}:\\s*\\([\\s\\S]*?\\)\\s*=>[\\s\\S]*?normalizeGitQueryKeyPart`,
+        ).test(queries)
+      ) {
+        violations.push(`${queriesRel}: ${keyHelper} bypasses git key normalizer`);
+      }
+    }
+    if (
+      !/\bfunction useChangedFilesForGit\s*\(\s*scope:\s*unknown[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeGitDiffArg\s*\(\s*scope\s*\)[\s\S]*\bengineKeys\.gitChanges\s*\(\s*normalizedScope\s*\?\?\s*["']["']\s*\)[\s\S]*\bengineClient\.opsGit\s*\(\s*["']status["']\s*,\s*\{\s*scope:\s*normalizedScope!/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: changed-files read bypasses scope normalizer`);
+    }
+    if (
+      !/\bexport function useChangesOverview\s*\(\s*scope:\s*unknown[\s\S]*\bconst\s+normalizedScope\s*=\s*normalizeGitDiffArg\s*\(\s*scope\s*\)[\s\S]*deriveChangesOverviewView\s*\(\s*git\s*,\s*changed\s*,\s*normalizedScope\s*\)/.test(
+        queries,
+      )
+    ) {
+      violations.push(`${queriesRel}: changes overview bypasses normalized scope`);
+    }
     if (
       !/\bfunction canReadGitFileDiff\b[\s\S]*\bconst\s+request\s*=\s*normalizeGitDiffRequest\s*\(\s*scope\s*,\s*path\s*\)[\s\S]*\brequest\.scope\s*!==\s*null[\s\S]*\brequest\.path\s*!==\s*null/.test(
         queries,
@@ -12777,6 +19545,30 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
+    if (!/\bnormalizeActionDescriptor\b/.test(stripped)) {
+      violations.push(`${rel}: palette commands bypass shared action normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeCommandFamily\s*\(\s*value:\s*unknown\s*\):\s*CommandFamily\s*\|\s*null[\s\S]*\bvalue\.trim\s*\(\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing palette family normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizePaletteCommand\s*\(\s*command:\s*unknown\s*\):\s*PaletteCommand\s*\|\s*null[\s\S]*\bnormalizeCommandFamily\s*\(\s*command\.family\s*\)[\s\S]*\bnormalizeActionDescriptor\s*\(\s*command\s*\)[\s\S]*typeof\s+action\.run\s*!==\s*["']function["']/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: palette command normalizer trusts raw command shape`);
+    }
+    if (
+      !/\bfunction\s+normalizedPaletteCommands\s*\([\s\S]*\bnormalizePaletteCommand\s*\(\s*command\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: palette command builders bypass normalized list seam`);
+    }
     if (/id\.startsWith\s*\(\s*["']ops:/.test(stripped)) {
       violations.push(`${rel}: command-id time-travel gate`);
     }
@@ -12791,6 +19583,122 @@ describe("dashboard layer ownership", () => {
       !/\bgateCommandsForTimeTravel\s*\(\s*all\s*,\s*timeTravel\s*\)/.test(stripped)
     ) {
       violations.push(`${rel}: palette gate does not use disabledInTimeTravel`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps palette command query normalization at the command-view seam", () => {
+    const rel = "stores/view/commandPaletteCommands.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/from\s+["']\.\/commandPalette["']/.test(stripped)) {
+      violations.push(`${rel}: command assembly bypasses palette store seams`);
+    }
+    if (!/\bnormalizeCommandPaletteQuery\b/.test(stripped)) {
+      violations.push(`${rel}: command assembly bypasses query normalizer`);
+    }
+    for (const typedOnly of [
+      "query: string",
+      "featureTags: readonly string[]",
+      "lensNames: readonly string[]",
+      "filterCommands(\n  commands: readonly PaletteCommand[],\n  query: string",
+      "useCommandPaletteCommandView(query: string)",
+    ]) {
+      if (stripped.includes(typedOnly)) {
+        violations.push(`${rel}: typed-only palette query seam ${typedOnly}`);
+      }
+    }
+    if (
+      !/\bconst\s+normalizedQuery\s*=\s*normalizeCommandPaletteQuery\s*\(\s*sources\.query\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: buildCommands uses raw query`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeCommandPaletteSourceItems\s*\(\s*items:\s*unknown\s*\):\s*string\[\][\s\S]*Array\.isArray\s*\(\s*items\s*\)[\s\S]*item\.trim\s*\(\s*\)[\s\S]*COMMAND_PALETTE_SOURCE_ITEMS_CAP/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: missing bounded command source normalizer`);
+    }
+    if (
+      !/\bCOMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS\b/.test(stripped) ||
+      !/\bnormalizeCommandPaletteSourceItems\b[\s\S]*normalized\.length\s*>\s*COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: command source item identities are unbounded`);
+    }
+    if (
+      !/\bconst\s+featureTags\s*=\s*normalizeCommandPaletteSourceItems\s*\(\s*sources\.featureTags\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+lensNames\s*=\s*normalizeCommandPaletteSourceItems\s*\(\s*sources\.lensNames\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: command assembly trusts raw source arrays`);
+    }
+    if (
+      /\bfor\s*\(\s*const\s+feature\s+of\s+sources\.featureTags\s*\)/.test(stripped) ||
+      /\bfor\s*\(\s*const\s+name\s+of\s+sources\.lensNames\s*\)/.test(stripped)
+    ) {
+      violations.push(`${rel}: command assembly iterates raw source arrays`);
+    }
+    if (
+      !/\bconst\s+needle\s*=\s*normalizeCommandPaletteQuery\s*\(\s*query\s*\)\.toLowerCase\s*\(\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: filterCommands uses raw query`);
+    }
+    if (
+      !/\bexport\s+function\s+useCommandPaletteCommandView\s*\(\s*query:\s*unknown\s*,?\s*\)/.test(
+        stripped,
+      ) ||
+      !/\bconst\s+normalizedQuery\s*=\s*normalizeCommandPaletteQuery\s*\(\s*query\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: command view hook trusts typed query`);
+    }
+    if (
+      /\bsources\.query\.trim\s*\(/.test(stripped) ||
+      /\bquery\.trim\s*\(/.test(stripped)
+    ) {
+      violations.push(`${rel}: command query is trimmed outside the normalizer`);
+    }
+    if (!/\bfilterCommands\s*\(\s*gated\s*,\s*normalizedQuery\s*\)/.test(stripped)) {
+      violations.push(`${rel}: command view filters with raw query`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps command-palette armed command identity bounded in the store seam", () => {
+    const rel = "stores/view/commandPalette.ts";
+    const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
+    const violations: string[] = [];
+
+    if (!/\bCOMMAND_PALETTE_ARMED_COMMAND_ID_MAX_CHARS\b/.test(stripped)) {
+      violations.push(`${rel}: missing armed command-id cap`);
+    }
+    if (
+      !/\bnormalizeCommandPaletteArmedCommandId\s*\(\s*[\s\S]*commandId:\s*unknown[\s\S]*\)[\s\S]*\bconst\s+normalized\s*=\s*commandId\.trim\s*\(\s*\)[\s\S]*normalized\.length\s*<=\s*COMMAND_PALETTE_ARMED_COMMAND_ID_MAX_CHARS/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: armed command-id normalizer is unbounded`);
+    }
+    if (
+      !/\bsetArmedCommandId:\s*\(commandId\)\s*=>[\s\S]*normalizeCommandPaletteArmedCommandId\s*\(\s*commandId\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: armed command-id setter bypasses normalizer`);
     }
 
     expect(violations).toEqual([]);
@@ -12864,6 +19772,32 @@ describe("dashboard layer ownership", () => {
       violations.push(`${intentRel}: lens intent does not accept runtime payloads`);
     }
     if (
+      /\buseCommandPaletteLensIntent\s*\(\s*scope:\s*string\s*\|\s*null/.test(intent)
+    ) {
+      violations.push(`${intentRel}: lens intent accepts typed-only scope`);
+    }
+    if (
+      !/\bimport\s*\{[\s\S]*\bnormalizeDashboardStateWriteScope\b[\s\S]*\}\s*from\s+["']\.\/dashboardState["']/.test(
+        intent,
+      ) ||
+      !/\bexport\s+const\s+normalizeCommandPaletteLensScope\s*=\s*normalizeDashboardStateWriteScope\b/.test(
+        intent,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeCommandPaletteLensScope\s*\(\s*scope\s*\)/.test(
+        intent,
+      )
+    ) {
+      violations.push(`${intentRel}: lens intent bypasses scope normalizer`);
+    }
+    if (!/\buseDashboardStateMutations\s*\(\s*normalizedScope\s*\)/.test(intent)) {
+      violations.push(`${intentRel}: lens intent mutations use raw scope`);
+    }
+    if (
+      !/\bnormalizedScope\s*===\s*null\s*\|\|\s*normalized\s*===\s*null/.test(intent)
+    ) {
+      violations.push(`${intentRel}: lens intent does not gate normalized scope`);
+    }
+    if (
       !/\bconst\s+normalized\s*=\s*normalizeFilterChoices\s*\(\s*choices\s*\)/.test(
         intent,
       )
@@ -12908,7 +19842,7 @@ describe("dashboard layer ownership", () => {
       "resetCommandPaletteOpsFeedback",
       "useCommandPaletteOpsMessage",
       "useCommandPaletteGlobalToggle",
-      "useCommandPaletteEscapeDismiss",
+      "useDismissOnEscape",
     ]) {
       if (!new RegExp(`\\b${seam}\\b`).test(stripped)) {
         violations.push(`${rel}: missing ${seam} seam`);
@@ -12927,6 +19861,26 @@ describe("dashboard layer ownership", () => {
     ) {
       violations.push(`${rel}: local command-palette Escape classification`);
     }
+    if (
+      !/\buseDismissOnEscape\s*\(\s*close\s*,\s*\{\s*enabled:\s*open,\s*preventDefault:\s*true\s*\}\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: command-palette Escape dismissal bypasses chrome hook`);
+    }
+    if (/\bwindow\.addEventListener\s*\(\s*["']keydown["']/.test(store)) {
+      violations.push(`${storeRel}: store owns command-palette keydown listener`);
+    }
+    if (/\bwindow\.removeEventListener\s*\(\s*["']keydown["']/.test(store)) {
+      violations.push(`${storeRel}: store owns command-palette keydown cleanup`);
+    }
+    if (
+      /\bevent\.key\s*!==\s*["']Escape["']|\be\.key\s*===\s*["']Escape["']/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: store owns command-palette Escape classification`);
+    }
     for (const localOwner of [
       "registerKeybindings",
       "registerKeyAction",
@@ -12943,7 +19897,6 @@ describe("dashboard layer ownership", () => {
       "COMMAND_PALETTE_SHORTCUT_LABEL",
       "COMMAND_PALETTE_KEYBINDING",
       "useCommandPaletteGlobalToggle",
-      "useCommandPaletteEscapeDismiss",
       "registerKeybindings",
       "registerKeyAction",
       "openCommandPalette",
@@ -12959,6 +19912,8 @@ describe("dashboard layer ownership", () => {
       "normalizeCommandPaletteQuery",
       "normalizeCommandPaletteCursor",
       "normalizeCommandPaletteArmedCommandId",
+      "normalizeCommandPaletteFeedbackScope",
+      "normalizeCommandPaletteFeedbackTimeTravel",
       "query: string",
       "cursor: number",
       "armedCommandId: string | null",
@@ -12984,6 +19939,14 @@ describe("dashboard layer ownership", () => {
       }
     }
     if (
+      !/from\s+["']\.\.\/searchQuery["']/.test(store) ||
+      !/\bnormalizeCommandPaletteQuery\b[\s\S]*\bnormalizeSearchQuery\s*\(\s*query\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: palette query bypasses shared query normalizer`);
+    }
+    if (
       !/\bsetQuery:\s*\(query\)\s*=>[\s\S]*\bnormalizeCommandPaletteQuery\s*\(\s*query\s*\)/.test(
         store,
       )
@@ -13003,6 +19966,38 @@ describe("dashboard layer ownership", () => {
       )
     ) {
       violations.push(`${storeRel}: armed command setter bypasses normalizer`);
+    }
+    if (
+      !/\buseCommandPaletteOpsFeedbackBoundary\s*\(\s*scope:\s*unknown,\s*timeTravel:\s*unknown/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedScope\s*=\s*normalizeCommandPaletteFeedbackScope\s*\(\s*scope\s*\)/.test(
+        store,
+      ) ||
+      !/\bconst\s+normalizedTimeTravel\s*=\s*normalizeCommandPaletteFeedbackTimeTravel\s*\(\s*timeTravel\s*\)/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: ops feedback boundary trusts raw context`);
+    }
+    if (
+      !/from\s+["']\.\/scopeIdentity["'][\s\S]*\bnormalizeViewStoreSessionString\b/.test(
+        store,
+      ) ||
+      !/\bexport\s+const\s+normalizeCommandPaletteFeedbackScope\s*=\s*normalizeViewStoreSessionString\b/.test(
+        store,
+      )
+    ) {
+      violations.push(
+        `${storeRel}: command-palette feedback scope bypasses shared view scope normalizer`,
+      );
+    }
+    if (
+      /\buseCommandPaletteOpsFeedbackBoundary\s*\(\s*scope:\s*string\s*\|\s*null,\s*timeTravel:\s*boolean/.test(
+        store,
+      )
+    ) {
+      violations.push(`${storeRel}: ops feedback boundary exposes typed-only context`);
     }
     if (/\bdefaultChord\s*:\s*["']Mod\+K["']/.test(stripped)) {
       violations.push(`${rel}: local command-palette keybinding default`);
@@ -13042,6 +20037,179 @@ describe("dashboard layer ownership", () => {
       /cursor\s*<\s*0\s*\?\s*0\s*:\s*cursor/.test(stripped)
     ) {
       violations.push(`${rel}: local command-palette cursor boundary math`);
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps keymap enrollment and live action resolver ids normalized", () => {
+    const registryRel = "platform/keymap/registry.ts";
+    const dispatcherRel = "stores/view/keymapDispatcher.ts";
+    const settingsRel = "stores/server/settingsSelectors.ts";
+    const registry = stripComments(readFileSync(join(SRC_ROOT, registryRel), "utf8"));
+    const dispatcher = stripComments(
+      readFileSync(join(SRC_ROOT, dispatcherRel), "utf8"),
+    );
+    const settings = stripComments(readFileSync(join(SRC_ROOT, settingsRel), "utf8"));
+    const violations: string[] = [];
+
+    if (
+      !/\bexport\s+function\s+normalizeKeybindingId\s*\(\s*id:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*\bid\.trim\s*\(\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: missing keybinding id normalizer`);
+    }
+    if (!/\bMAX_KEYBINDING_ID_LEN\b/.test(registry)) {
+      violations.push(`${registryRel}: missing bounded keybinding id cap`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeKeybindingId\s*\(\s*id:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*normalized\.length\s*<=\s*MAX_KEYBINDING_ID_LEN/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: keybinding ids are unbounded`);
+    }
+    if (
+      !/\bfunction\s+normalizeKeybindingText\s*\(\s*value:\s*unknown\s*\):\s*string\s*\|\s*null[\s\S]*\bvalue\.trim\s*\(\s*\)/.test(
+        registry,
+      ) ||
+      !/\bexport\s+function\s+normalizeBindingContext\s*\(\s*value:\s*unknown\s*\):\s*BindingContext\s*\|\s*null[\s\S]*\bSURFACE_CONTEXTS\b/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: missing keybinding metadata normalizers`);
+    }
+    if (
+      !/\bexport\s+function\s+normalizeKeybindingOverrides\s*\(\s*overrides:\s*unknown\s*,?\s*\):\s*KeybindingOverrides[\s\S]*\bMAX_KEYBINDING_OVERRIDES\b[\s\S]*\bnormalizeKeybindingId\s*\(\s*id\s*\)[\s\S]*\bMAX_KEYBINDING_CHORD_LEN\b/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: missing bounded override-map normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+effectiveChord\s*\([\s\S]*\bconst\s+normalizedOverrides\s*=\s*normalizeKeybindingOverrides\s*\(\s*overrides\s*\)[\s\S]*normalizedOverrides\s*\[\s*normalizedId\s*\]/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: effective chord trusts raw override map`);
+    }
+    if (
+      !/from\s+["']\.\.\/\.\.\/platform\/keymap\/registry["'][\s\S]*\bnormalizeKeybindingOverrides\b/.test(
+        settings,
+      ) ||
+      !/\breturn\s+normalizeKeybindingOverrides\s*\(\s*parsed\s*\)/.test(settings)
+    ) {
+      violations.push(
+        `${settingsRel}: keybinding setting parser bypasses platform normalizer`,
+      );
+    }
+    if (
+      !/\bnormalizedKeybindingDef\s*\(\s*rawDef\s*\)/.test(registry) ||
+      !/\bfunction\s+normalizedKeybindingDef\s*\(\s*def:\s*KeybindingDef\s*\):\s*KeybindingDef\s*\|\s*null[\s\S]*normalizeKeybindingId\s*\(\s*def\.id\s*\)[\s\S]*normalizeKeybindingText\s*\(\s*def\.defaultChord\s*\)[\s\S]*normalizeKeybindingText\s*\(\s*def\.label\s*\)[\s\S]*normalizeKeybindingText\s*\(\s*def\.group\s*\)[\s\S]*normalizeBindingContext\s*\(\s*def\.context\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: registration bypasses normalized def`);
+    }
+    if (
+      !/\bexport\s+function\s+getKeybinding\s*\(\s*id:\s*unknown\s*\)/.test(registry) ||
+      !/\bconst\s+normalizedId\s*=\s*normalizeKeybindingId\s*\(\s*id\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: lookup bypasses normalized id`);
+    }
+    if (
+      !/\bconst\s+normalizedId\s*=\s*normalizeKeybindingId\s*\(\s*def\.id\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: effective override lookup uses raw id`);
+    }
+    if (
+      !/\btargetId:\s*unknown\b/.test(registry) ||
+      !/\bconst\s+normalizedTargetId\s*=\s*normalizeKeybindingId\s*\(\s*targetId\s*\)/.test(
+        registry,
+      )
+    ) {
+      violations.push(`${registryRel}: candidate conflict lookup uses raw target id`);
+    }
+    if (!/normalizeKeybindingId/.test(dispatcher)) {
+      violations.push(`${dispatcherRel}: dispatcher does not import id normalizer`);
+    }
+    if (!/normalizeBindingContext/.test(dispatcher)) {
+      violations.push(
+        `${dispatcherRel}: dispatcher does not import context normalizer`,
+      );
+    }
+    if (
+      !/\bexport\s+function\s+normalizeActiveKeymapContexts\s*\([\s\S]*contexts:\s*Iterable<unknown>[\s\S]*\):\s*Set<BindingContext>[\s\S]*normalizeBindingContext\s*\(\s*context\s*\)/.test(
+        dispatcher,
+      )
+    ) {
+      violations.push(`${dispatcherRel}: missing active-context normalizer`);
+    }
+    if (
+      !/\bactiveContextsFromElement[\s\S]*normalizeBindingContext\s*\(\s*host\?\.getAttribute\s*\(\s*["']data-keymap-context["']\s*\)\s*\)/.test(
+        dispatcher,
+      )
+    ) {
+      violations.push(
+        `${dispatcherRel}: DOM active context bypasses context normalizer`,
+      );
+    }
+    if (
+      !/\bresolveKeybinding\s*\([\s\S]*normalizeActiveKeymapContexts\s*\(\s*deps\.getActiveContexts\s*\(\s*\)\s*\)/.test(
+        dispatcher,
+      )
+    ) {
+      violations.push(
+        `${dispatcherRel}: key event handling trusts raw active contexts`,
+      );
+    }
+    if (/SURFACE_CONTEXTS/.test(dispatcher)) {
+      violations.push(`${dispatcherRel}: dispatcher owns raw surface context catalog`);
+    }
+    if (!/\bnormalizeActionDescriptor\b/.test(dispatcher)) {
+      violations.push(`${dispatcherRel}: dispatcher does not import action normalizer`);
+    }
+    if (
+      !/\bexport\s+function\s+registerKeyAction\s*\(\s*id:\s*unknown/.test(
+        dispatcher,
+      ) ||
+      !/\bresolver:\s*unknown\b/.test(dispatcher) ||
+      !/\btypeof\s+resolver\s*!==\s*["']function["']/.test(dispatcher) ||
+      !/\bconst\s+normalizedId\s*=\s*normalizeKeybindingId\s*\(\s*id\s*\)/.test(
+        dispatcher,
+      ) ||
+      !/\bconst\s+normalizedResolver\s*=\s*resolver\s+as\s*\(\s*\)\s*=>\s*unknown\b/.test(
+        dispatcher,
+      ) ||
+      !/\bkeyActions\.set\s*\(\s*normalizedId\s*,\s*normalizedResolver\s*\)/.test(
+        dispatcher,
+      )
+    ) {
+      violations.push(`${dispatcherRel}: action registration uses raw id`);
+    }
+    if (
+      !/\bexport\s+function\s+resolveKeyAction\s*\(\s*id:\s*unknown\s*\)/.test(
+        dispatcher,
+      ) ||
+      !/\bkeyActions\.get\s*\(\s*normalizedId\s*\)/.test(dispatcher) ||
+      !/\bnormalizeActionDescriptor\s*\(\s*keyActions\.get\s*\(\s*normalizedId\s*\)\?\.\(\s*\)\s*\)/.test(
+        dispatcher,
+      )
+    ) {
+      violations.push(`${dispatcherRel}: action resolution bypasses normalized seam`);
+    }
+    if (
+      !/\bresolveAction:\s*\(\s*id:\s*unknown\s*\)\s*=>\s*unknown\b/.test(dispatcher) ||
+      !/\bconst\s+action\s*=\s*normalizeActionDescriptor\s*\(\s*deps\.resolveAction\s*\(\s*def\.id\s*\)\s*\)/.test(
+        dispatcher,
+      )
+    ) {
+      violations.push(`${dispatcherRel}: key event handling trusts raw action`);
     }
 
     expect(violations).toEqual([]);
@@ -13099,6 +20267,14 @@ describe("dashboard layer ownership", () => {
     }
     if (/\bfilterChoicesFromDashboardState\s*\(/.test(view)) {
       violations.push(`${viewRel}: view-layer dashboard filter-choice projection`);
+    }
+    if (
+      /\buseDashboardVisibilityCommand\s*\(\s*scope:\s*string\s*\|\s*null/.test(view)
+    ) {
+      violations.push(`${viewRel}: visibility command trusts typed-only scope`);
+    }
+    if (!/\buseDashboardVisibilityCommand\s*\(\s*scope:\s*unknown/.test(view)) {
+      violations.push(`${viewRel}: visibility command lacks runtime scope seam`);
     }
     if (
       !/\buseDashboardFilterChoicesView\b[\s\S]*\buseDashboardState\s*\(/.test(queries)
@@ -13244,17 +20420,51 @@ describe("dashboard layer ownership", () => {
     const stripped = stripComments(readFileSync(join(SRC_ROOT, rel), "utf8"));
     const violations: string[] = [];
 
-    if (!/\bscope\s*===\s*null\s*\|\|\s*!\s*bounds\?\.from/.test(stripped)) {
-      violations.push(`${rel}: timeline fit key treats non-null scope imprecisely`);
+    if (
+      !/\bconst\s+normalizedScope\s*=\s*normalizeTimelineScope\s*\(\s*scope\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: timeline fit key bypasses scope normalizer`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*scope\s*\)/.test(stripped)) {
+    if (
+      !/\bnormalizedScope\s*===\s*null\s*\|\|\s*from\.length\s*===\s*0/.test(stripped)
+    ) {
+      violations.push(`${rel}: timeline fit key accepts invalid scope/from identity`);
+    }
+    if (!/\bencodeURIComponent\s*\(\s*normalizedScope\s*\)/.test(stripped)) {
       violations.push(`${rel}: timeline fit key does not encode scope`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*bounds\.from\s*\)/.test(stripped)) {
+    if (!/\bencodeURIComponent\s*\(\s*from\s*\)/.test(stripped)) {
       violations.push(`${rel}: timeline fit key does not encode from bound`);
     }
-    if (!/\bencodeURIComponent\s*\(\s*bounds\.to\s*\)/.test(stripped)) {
+    if (!/\bencodeURIComponent\s*\(\s*to\s*\)/.test(stripped)) {
       violations.push(`${rel}: timeline fit key does not encode to bound`);
+    }
+    if (
+      !/\btimelineCorpusFitKey\s*\(\s*scope:\s*unknown\s*,\s*bounds:\s*unknown\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: timeline fit key accepts typed-only identity inputs`);
+    }
+    if (
+      !/bounds\s*!==\s*null\s*&&\s*typeof\s+bounds\s*===\s*["']object["'][\s\S]*!\s*Array\.isArray\s*\(\s*bounds\s*\)/.test(
+        stripped,
+      )
+    ) {
+      violations.push(`${rel}: timeline fit key trusts raw bounds shape`);
+    }
+    if (
+      !/scope:value:\$\{encodeURIComponent\s*\(\s*normalizedScope\s*\)\}/.test(stripped)
+    ) {
+      violations.push(`${rel}: real scopes lack a value-tagged key namespace`);
+    }
+    if (!/from:value:\$\{encodeURIComponent\s*\(\s*from\s*\)\}/.test(stripped)) {
+      violations.push(`${rel}: real from bounds lack a value-tagged key namespace`);
+    }
+    if (!/to:value:\$\{encodeURIComponent\s*\(\s*to\s*\)\}/.test(stripped)) {
+      violations.push(`${rel}: real to bounds lack a value-tagged key namespace`);
     }
     if (/JSON\.stringify\s*\(\s*\[\s*scope\s*,\s*bounds\.from/.test(stripped)) {
       violations.push(`${rel}: timeline fit key uses raw array identity`);

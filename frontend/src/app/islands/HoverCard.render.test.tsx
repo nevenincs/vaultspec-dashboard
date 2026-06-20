@@ -11,7 +11,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HoverCard, type StatusCardModel } from "./HoverCard";
+import { StatusHoverCard, type StatusCardModel } from "./HoverCard";
 
 const acceptedAdr: StatusCardModel = {
   id: "doc:2026-06-14-some-decision-adr",
@@ -45,14 +45,14 @@ afterEach(() => {
 
 describe("HoverCard — status chip, rollout, open affordance, reduced motion", () => {
   it("shows the status chip with the raw status value", () => {
-    render(<HoverCard model={acceptedAdr} />);
+    render(<StatusHoverCard model={acceptedAdr} />);
     const chip = document.querySelector("[data-status-chip]");
     expect(chip).toBeTruthy();
     expect(chip?.textContent).toContain("accepted");
   });
 
   it("renders the rollout bar reflecting the progress fraction (7/12 ≈ 58%)", () => {
-    render(<HoverCard model={planAt7of12} />);
+    render(<StatusHoverCard model={planAt7of12} />);
     const rollout = document.querySelector("[data-rollout]");
     expect(rollout).toBeTruthy();
     // The tabular receipt shows the raw counts.
@@ -68,20 +68,20 @@ describe("HoverCard — status chip, rollout, open affordance, reduced motion", 
   });
 
   it("does NOT render a rollout bar when there is no progress channel", () => {
-    render(<HoverCard model={acceptedAdr} />);
+    render(<StatusHoverCard model={acceptedAdr} />);
     expect(document.querySelector("[data-rollout]")).toBeNull();
   });
 
   it("fires onOpen with the node id when the open affordance is clicked", () => {
     const onOpen = vi.fn();
-    render(<HoverCard model={acceptedAdr} onOpen={onOpen} />);
+    render(<StatusHoverCard model={acceptedAdr} onOpen={onOpen} />);
     fireEvent.click(screen.getByRole("button", { name: /open Some decision/i }));
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen).toHaveBeenCalledWith(acceptedAdr.id);
   });
 
   it("carries a severity glyph in the chip for a graded status", () => {
-    render(<HoverCard model={criticalAudit} />);
+    render(<StatusHoverCard model={criticalAudit} />);
     const chip = document.querySelector("[data-status-chip]");
     // The severity gauge glyph (status-severity-4) renders as an inline svg.
     expect(chip?.querySelector("svg")).toBeTruthy();
@@ -93,7 +93,7 @@ describe("HoverCard — status chip, rollout, open affordance, reduced motion", 
   });
 
   it("uses the bloom (transform-travel) path by default", () => {
-    render(<HoverCard model={acceptedAdr} />);
+    render(<StatusHoverCard model={acceptedAdr} />);
     const card = document.querySelector("[data-hover-card]") as HTMLElement | null;
     expect(card?.getAttribute("data-motion")).toBe("bloom");
     // The bloom path animates transform; the inline style declares a transform.
@@ -101,7 +101,7 @@ describe("HoverCard — status chip, rollout, open affordance, reduced motion", 
   });
 
   it("under reducedMotion renders an instant crossfade WITHOUT transform travel", async () => {
-    render(<HoverCard model={acceptedAdr} reducedMotion />);
+    render(<StatusHoverCard model={acceptedAdr} reducedMotion />);
     const card = document.querySelector("[data-hover-card]") as HTMLElement | null;
     expect(card?.getAttribute("data-motion")).toBe("crossfade");
     expect(card?.hasAttribute("data-reduced-motion")).toBe(true);

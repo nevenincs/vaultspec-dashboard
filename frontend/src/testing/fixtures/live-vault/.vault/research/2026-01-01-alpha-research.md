@@ -1,11 +1,11 @@
 ---
 tags:
-  - '#research'
-  - '#alpha'
-date: '2026-01-01'
-modified: '2026-01-01'
+  - "#research"
+  - "#alpha"
+date: "2026-01-01"
+modified: "2026-01-01"
 related:
-  - '[[2026-01-02-alpha-adr]]'
+  - "[[2026-01-02-alpha-adr]]"
 ---
 
 # `alpha` research: scope

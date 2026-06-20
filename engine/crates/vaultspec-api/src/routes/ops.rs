@@ -9,6 +9,7 @@
 //! reindex, watcher status/tuning.
 
 use std::collections::HashMap;
+use std::path::Path as FsPath;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,6 +37,22 @@ const SIBLING_STDOUT_CAP: u64 = 8 * 1024 * 1024;
 /// timeout the child is killed and a 504 degraded envelope is returned.
 const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Interactive search budget: `/search` is a degradable, user-facing read. A
+/// hung or cold rag sibling should return a semantic-tier degradation quickly
+/// instead of pinning the dashboard or its live conformance gate behind the
+/// generic lifecycle/reindex subprocess ceiling.
+const SEARCH_SIBLING_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Search request query ceiling. The frontend intent store clips at the same
+/// user-facing size, but the API is a public boundary and must reject unbounded
+/// external callers before building rag argv.
+const MAX_SEARCH_QUERY_CHARS: usize = 512;
+
+/// Search result ceiling forwarded to rag. Absent `max_results` lets rag use its
+/// own default; an explicit request above this API ceiling is rejected before the
+/// sibling process is spawned.
+const MAX_SEARCH_RESULTS: u32 = 50;
+
 /// The R1 core whitelist: vault check + stats. Anything else is a sibling
 /// filing, not whitelist growth.
 const CORE_WHITELIST: &[(&str, &[&str])] = &[
@@ -55,6 +72,7 @@ const CORE_WRITE_WHITELIST: &[(&str, &[&str])] = &[
     ("set-body", &["vault", "set-body"]),
     ("set-frontmatter", &["vault", "set-frontmatter"]),
     ("edit", &["vault", "edit"]),
+    ("rename", &["vault", "rename"]),
 ];
 
 /// The rag CLI whitelist is now PROCESS LIFECYCLE ONLY (rag-control-plane ADR
@@ -91,20 +109,29 @@ async fn run_sibling_bounded(
     timeout: Duration,
     cap: u64,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
+    let cwd = state.active_cell().root.clone();
+    run_sibling_bounded_in_dir(state, &cwd, program, args, timeout, cap).await
+}
+
+async fn run_sibling_bounded_in_dir(
+    state: &AppState,
+    cwd: &FsPath,
+    program: &[String],
+    args: &[&str],
+    timeout: Duration,
+    cap: u64,
+) -> Result<Value, (StatusCode, Json<Value>)> {
     // tokio::process so the spawn + bounded-read + timeout never blocks the
     // async worker (robustness H1): a hung sibling no longer pins a runtime
     // thread, and stdout is read through a ceiling rather than buffered whole.
-    // The sibling runs in the ACTIVE scope's worktree (the target for the
-    // subprocess working dir, W02.P05.S18): the ops routes carry no scope
-    // param, so they forward to core/rag in the currently-selected scope. The
-    // read-and-infer fence holds — the engine only FORWARDS to the sibling; it
-    // grows no sibling semantics.
-    let cwd = state.active_cell().root.clone();
+    // The sibling runs in the caller-resolved worktree. Most ops routes pass the
+    // active cell; scoped routes such as `/search` pass their validated scope
+    // cell so the subprocess cwd matches the cache key/request body.
     let mut child = tokio::process::Command::new(&program[0])
         .args(&program[1..])
         .args(args)
         .arg("--json")
-        .current_dir(&cwd)
+        .current_dir(cwd)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -207,18 +234,25 @@ async fn run_sibling_bounded(
 /// pins the 120s / 8 MiB production constants.
 async fn run_sibling_write_bounded(
     state: &AppState,
+    cell: &ScopeCell,
     program: &[String],
     args: &[&str],
     body: Option<&str>,
     timeout: Duration,
     cap: u64,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
-    let cwd = state.active_cell().root.clone();
+    let cwd = cell.root.clone();
     let mut child = tokio::process::Command::new(&program[0])
         .args(&program[1..])
         .args(args)
         .arg("--json")
         .current_dir(&cwd)
+        // Force the sibling's Python into UTF-8 mode so it reads the streamed body
+        // from stdin (and writes its stdout envelope) as UTF-8 rather than the
+        // host locale (cp1252 on Windows) — otherwise non-ASCII body bytes
+        // (em-dash, curly quotes, accents, CJK, emoji) are mojibake'd on write.
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -490,12 +524,13 @@ fn git_args_for(
 /// git degrades the same way a sibling does.
 async fn run_git_bounded(
     state: &AppState,
+    cell: &ScopeCell,
     program: &[String],
     args: &[String],
     timeout: Duration,
     cap: u64,
 ) -> Result<String, (StatusCode, Json<Value>)> {
-    let cwd = state.active_cell().root.clone();
+    let cwd = cell.root.clone();
     let mut child = tokio::process::Command::new(&program[0])
         .args(&program[1..])
         .args(args)
@@ -608,6 +643,10 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
 /// surface, mirroring the git proxy's `validate_*` discipline).
 #[derive(serde::Deserialize, Default)]
 pub struct CoreWriteBody {
+    /// Optional explicit worktree scope. Absent preserves the active-scope
+    /// fallback for legacy callers; frontend scoped mutations always send it.
+    #[serde(default)]
+    pub scope: Option<String>,
     #[serde(rename = "ref")]
     pub doc_ref: String,
     #[serde(default)]
@@ -620,6 +659,21 @@ pub struct CoreWriteBody {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub related: Option<Vec<String>>,
+    /// The new identity-bearing stem for the `rename` verb (forwarded as `--to`).
+    /// Absent for non-rename verbs; a bare stem (no path separator, no `.md`).
+    #[serde(default, rename = "to")]
+    pub new_stem: Option<String>,
+}
+
+fn resolve_core_ops_cell(
+    state: &AppState,
+    scope: Option<&str>,
+) -> Result<Arc<ScopeCell>, (StatusCode, Json<Value>)> {
+    match scope {
+        Some(scope) => crate::registry::get_or_build(state, scope)
+            .map_err(|reason| super::api_error(state, StatusCode::BAD_REQUEST, reason)),
+        None => Ok(state.active_cell()),
+    }
 }
 
 /// Validate the document `ref` (W02): the write target is a doc stem or a
@@ -717,6 +771,7 @@ pub async fn ops_core_write(
             format!("write verb `{verb}` is not whitelisted (W02)"),
         ));
     };
+    let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
 
     // Validate every field BEFORE spawning (the injection-guard surface): the
     // ref, the optional blob hash, and each frontmatter list entry. A bad value
@@ -751,6 +806,28 @@ pub async fn ops_core_write(
             related.push(validate_list_entry(&state, "related", entry)?);
         }
     }
+    // The rename target stem (`--to`): a bare identity-bearing stem, validated at
+    // the boundary so it can never escape the doc's directory or inject a flag.
+    let new_stem = match body.new_stem.as_deref() {
+        Some(s)
+            if s.is_empty()
+                || s.starts_with('-')
+                || s.contains('/')
+                || s.contains('\\')
+                || s.contains("..")
+                || s.ends_with(".md") =>
+        {
+            return Err(super::api_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "`to` `{s}` must be a bare stem (no path separator, no leading `-`, no `.md`)"
+                ),
+            ));
+        }
+        Some(s) => Some(s.to_string()),
+        None => None,
+    };
 
     // Assemble the sibling argv: the whitelist fixed args + REF + the typed flags
     // + `--body-stdin` (only when a body is present) + `--json` (appended by the
@@ -758,6 +835,10 @@ pub async fn ops_core_write(
     // arg or a validated input; no client string is ever read as a flag.
     let mut args: Vec<String> = fixed.iter().map(|s| s.to_string()).collect();
     args.push(doc_ref);
+    if let Some(s) = &new_stem {
+        args.push("--to".into());
+        args.push(s.clone());
+    }
     if let Some(h) = &expected {
         args.push("--expected-blob-hash".into());
         args.push(h.clone());
@@ -782,6 +863,7 @@ pub async fn ops_core_write(
     let runner = ingest_core::runner::CoreRunner::detect();
     let envelope = run_sibling_write_bounded(
         &state,
+        &cell,
         &runner.invocation,
         &arg_refs,
         body.body.as_deref(),
@@ -796,7 +878,56 @@ pub async fn ops_core_write(
     // `data.conflict`/`data.refused`/`data.checks`.
     Ok(super::envelope(
         json!({ "envelope": envelope }),
-        super::query_tiers(&state.active_cell()),
+        super::query_tiers(&cell),
+        None,
+    ))
+}
+
+/// The typed request body for `POST /ops/core/autofix` (W04.P06.S15): the optional
+/// worktree `scope` and the `feature` tag whose documents are repaired. The feature
+/// is validated/bounded BEFORE the subprocess spawns (the injection-guard surface).
+#[derive(serde::Deserialize, Default)]
+pub struct CoreAutofixBody {
+    #[serde(default)]
+    pub scope: Option<String>,
+    pub feature: String,
+}
+
+/// POST `/ops/core/autofix` — forward `vault check all --fix --feature <tag>`
+/// through the engine broker so the editor's `fixable` conformance advisories can be
+/// repaired without exposing the frontend to vaultspec-core. FEATURE-SCOPED (never
+/// the whole vault) to bound the blast radius; the watcher re-ingests the fixed docs
+/// and the generation bump signals the frontend. The forwarded envelope rides the
+/// shared tiers helper like every other op (read-and-infer preserved: the engine
+/// invents no fix semantics — it forwards the sibling's repair verb verbatim).
+pub async fn ops_core_autofix(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CoreAutofixBody>,
+) -> ApiResult {
+    let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
+    let feature = validate_token(&state, "feature", &body.feature)?;
+    let args = [
+        "vault",
+        "check",
+        "all",
+        "--fix",
+        "--feature",
+        feature.as_str(),
+    ];
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let envelope = run_sibling_write_bounded(
+        &state,
+        &cell,
+        &runner.invocation,
+        &args,
+        None,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
+        super::query_tiers(&cell),
         None,
     ))
 }
@@ -809,6 +940,10 @@ pub async fn ops_core_write(
 /// body).
 #[derive(serde::Deserialize, Default)]
 pub struct CoreCreateBody {
+    /// Optional explicit worktree scope. Absent preserves the active-scope
+    /// fallback for legacy callers; frontend scoped mutations always send it.
+    #[serde(default)]
+    pub scope: Option<String>,
     pub doc_type: String,
     pub feature: String,
     #[serde(default)]
@@ -863,6 +998,7 @@ pub async fn ops_core_create(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CoreCreateBody>,
 ) -> ApiResult {
+    let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
     // Validate every field BEFORE spawning (the injection-guard surface): the
     // required doc_type and feature tokens, the optional title (flag-injection
     // guard only — the title is free prose the sibling stores verbatim), and each
@@ -910,6 +1046,7 @@ pub async fn ops_core_create(
     let runner = ingest_core::runner::CoreRunner::detect();
     let envelope = run_sibling_write_bounded(
         &state,
+        &cell,
         &runner.invocation,
         &arg_refs,
         None,
@@ -920,7 +1057,7 @@ pub async fn ops_core_create(
 
     Ok(super::envelope(
         json!({ "envelope": envelope }),
-        super::query_tiers(&state.active_cell()),
+        super::query_tiers(&cell),
         None,
     ))
 }
@@ -964,6 +1101,17 @@ pub struct RagControlBody {
 const MAX_WATCH_DEBOUNCE_MS: u64 = 600_000;
 /// Watcher cooldown ceiling: 1 hour.
 const MAX_WATCH_COOLDOWN_S: f64 = 3_600.0;
+/// Brokered rag job snapshots are an activity strip, not an unbounded audit log.
+const MAX_RAG_JOBS_LIMIT: u32 = 50;
+/// Brokered rag log reads are diagnostic snippets, never an unbounded log stream.
+const MAX_RAG_LOG_LINES: u32 = 500;
+
+fn bounded_rag_read_u32(params: &HashMap<String, String>, key: &str, max: u32) -> Option<u32> {
+    params
+        .get(key)
+        .and_then(|value| value.parse::<u32>().ok())
+        .map(|value| value.min(max))
+}
 
 /// Discover rag and build a bounded control transport to its SERVICE port with
 /// `budget` as the per-verb wall-clock, or the truthful "rag unavailable"
@@ -1054,8 +1202,8 @@ pub async fn ops_rag_get(
     };
 
     let job_id = params.get("job_id").map(String::as_str);
-    let limit = params.get("limit").and_then(|v| v.parse::<u32>().ok());
-    let lines = params.get("lines").and_then(|v| v.parse::<u32>().ok());
+    let limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_JOBS_LIMIT);
+    let lines = bounded_rag_read_u32(&params, "lines", MAX_RAG_LOG_LINES);
 
     use rag_client::control;
     let result = match verb.as_str() {
@@ -1225,6 +1373,10 @@ pub async fn ops_rag(
 /// optional so a GET-shaped status call need not carry one.
 #[derive(serde::Deserialize, Default)]
 pub struct GitOpBody {
+    /// Optional explicit worktree scope. Absent preserves the active-scope fallback
+    /// for legacy callers; frontend scoped caches always send it.
+    #[serde(default)]
+    pub scope: Option<String>,
     #[serde(default)]
     pub path: Option<String>,
     /// The `from` revision for the two-rev historical diff (`histdiff`).
@@ -1256,7 +1408,17 @@ pub async fn ops_git(
             format!("git verb `{verb}` is not whitelisted (read-only ops/git)"),
         ));
     };
-    let GitOpBody { path, from, to } = body.map(|Json(b)| b).unwrap_or_default();
+    let GitOpBody {
+        scope,
+        path,
+        from,
+        to,
+    } = body.map(|Json(b)| b).unwrap_or_default();
+    let cell = match scope.as_deref() {
+        Some(scope) => crate::registry::get_or_build(&state, scope)
+            .map_err(|reason| super::api_error(&state, StatusCode::BAD_REQUEST, reason))?,
+        None => state.active_cell(),
+    };
     // A two-rev historical diff carries both revs; either alone is a 400 before
     // any subprocess. `git_args_for` rejects revs handed to a non-rev verb.
     let revs = match (from.as_deref(), to.as_deref()) {
@@ -1273,6 +1435,7 @@ pub async fn ops_git(
     let args = git_args_for(&state, name, fixed, path.as_deref(), revs)?;
     let output = run_git_bounded(
         &state,
+        &cell,
         &git_invocation(),
         &args,
         SIBLING_TIMEOUT,
@@ -1287,13 +1450,15 @@ pub async fn ops_git(
     // hand-built; the histdiff verb shares this single envelope construction.
     Ok(super::envelope(
         json!({"verb": name, "output": output}),
-        super::query_tiers(&state.active_cell()),
+        super::query_tiers(&cell),
         None,
     ))
 }
 
 #[derive(serde::Deserialize)]
 pub struct SearchBody {
+    #[serde(default)]
+    pub scope: Option<String>,
     pub query: String,
     /// `vault` or `code` (rag's vocabulary, forwarded intact).
     #[serde(default, rename = "type")]
@@ -1302,24 +1467,70 @@ pub struct SearchBody {
     pub max_results: Option<u32>,
 }
 
-pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchBody>) -> ApiResult {
-    // Search runs against the ACTIVE scope (no scope param, W02.P05.S18): rag
-    // discovery and the tiers block both read that cell's root.
-    let cell = state.active_cell();
-    // Validate the search target against rag's vocabulary BEFORE anything else
-    // (B10, resource-hardening): an unknown or dash-prefixed `--type` value is a
-    // client error (400), never forwarded to the sibling. Argv passing already
-    // blocks shell injection; this closes the value-validation gap and mirrors
-    // the whitelist discipline the ops proxy applies to every sibling verb.
+fn search_args_for(
+    state: &AppState,
+    body: &SearchBody,
+) -> Result<Vec<String>, (StatusCode, Json<Value>)> {
+    let query = body.query.trim();
+    if query.is_empty() {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            "search query must not be empty".to_string(),
+        ));
+    }
+    if query.chars().count() > MAX_SEARCH_QUERY_CHARS {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!("search query exceeds the {MAX_SEARCH_QUERY_CHARS} character ceiling"),
+        ));
+    }
     if let Some(target) = &body.target
         && !matches!(target.as_str(), "vault" | "code")
     {
         return Err(super::api_error(
-            &state,
+            state,
             StatusCode::BAD_REQUEST,
             format!("search target `{target}` must be `vault` or `code`"),
         ));
     }
+    if let Some(max_results) = body.max_results
+        && max_results > MAX_SEARCH_RESULTS
+    {
+        return Err(super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "search `max_results` {max_results} exceeds the {MAX_SEARCH_RESULTS} result ceiling"
+            ),
+        ));
+    }
+
+    let mut args: Vec<String> = vec!["search".into(), query.to_string()];
+    if let Some(target) = &body.target {
+        args.push("--type".into());
+        args.push(target.clone());
+    }
+    if let Some(n) = body.max_results {
+        args.push("--max-results".into());
+        args.push(n.to_string());
+    }
+    Ok(args)
+}
+
+pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchBody>) -> ApiResult {
+    // Search is scoped by the frontend query key/body; absent scope preserves the
+    // older active-cell behavior for external callers.
+    let cell = match body.scope.as_deref() {
+        Some(scope) => crate::registry::get_or_build(&state, scope)
+            .map_err(|reason| super::api_error(&state, StatusCode::BAD_REQUEST, reason))?,
+        None => state.active_cell(),
+    };
+    // Validate and bound every user-controlled search argument BEFORE anything
+    // reaches rag. Argv passing already blocks shell injection; these guards keep
+    // query size, result count, and target vocabulary inside the API contract.
+    let args = search_args_for(&state, &body)?;
     // Degrade to the tier block when rag is absent — never a dead control
     // (contract §8).
     if let rag_client::RagAvailability::Unavailable { reason } =
@@ -1333,21 +1544,21 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     }
 
     // rag's CLI search with --json, vocabulary forwarded intact.
-    let mut args: Vec<String> = vec!["search".into(), body.query.clone()];
-    if let Some(target) = &body.target {
-        args.push("--type".into());
-        args.push(target.clone());
-    }
-    if let Some(n) = body.max_results {
-        args.push("--max-results".into());
-        args.push(n.to_string());
-    }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     // A sibling fault (crash, timeout, capped runaway — now surfaced as a
     // run_sibling Err per H1/M4) must DEGRADE the semantic tier here, never a
     // hard 502/504: search is a degradable surface (contract §8), the rest of
     // the engine is fully available. The error message rides the tier reason.
-    let rag_envelope = match run_sibling(&state, &rag_invocation(), &arg_refs).await {
+    let rag_envelope = match run_sibling_bounded_in_dir(
+        &state,
+        &cell.root,
+        &rag_invocation(),
+        &arg_refs,
+        SEARCH_SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await
+    {
         Ok(envelope) => envelope,
         Err((_, body)) => {
             let reason = body.0["error"].as_str().unwrap_or("rag search failed");
@@ -1561,6 +1772,83 @@ mod tests {
             flatten_and_annotate(&json!({"raw": "not json", "exit": 1})).unwrap_err(),
             SearchShapeMiss::NoResults
         ));
+    }
+
+    #[test]
+    fn search_args_are_bounded_before_rag_spawn() {
+        let (_dir, state) = sibling_state();
+        let args = search_args_for(
+            &state,
+            &SearchBody {
+                scope: None,
+                query: "  graph state  ".to_string(),
+                target: Some("vault".to_string()),
+                max_results: Some(7),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "search",
+                "graph state",
+                "--type",
+                "vault",
+                "--max-results",
+                "7"
+            ]
+        );
+
+        for body in [
+            SearchBody {
+                scope: None,
+                query: "   ".to_string(),
+                target: Some("vault".to_string()),
+                max_results: None,
+            },
+            SearchBody {
+                scope: None,
+                query: "x".repeat(MAX_SEARCH_QUERY_CHARS + 1),
+                target: Some("vault".to_string()),
+                max_results: None,
+            },
+            SearchBody {
+                scope: None,
+                query: "graph".to_string(),
+                target: Some("--code".to_string()),
+                max_results: None,
+            },
+            SearchBody {
+                scope: None,
+                query: "graph".to_string(),
+                target: Some("code".to_string()),
+                max_results: Some(MAX_SEARCH_RESULTS + 1),
+            },
+        ] {
+            assert!(
+                search_args_for(&state, &body).is_err(),
+                "invalid search body must be rejected before rag spawn"
+            );
+        }
+    }
+
+    #[test]
+    fn brokered_rag_read_numbers_are_clamped_before_forwarding() {
+        let mut params = HashMap::new();
+        params.insert("limit".to_string(), (MAX_RAG_JOBS_LIMIT + 500).to_string());
+        params.insert("lines".to_string(), (MAX_RAG_LOG_LINES + 500).to_string());
+        params.insert("bad".to_string(), "not-a-number".to_string());
+
+        assert_eq!(
+            bounded_rag_read_u32(&params, "limit", MAX_RAG_JOBS_LIMIT),
+            Some(MAX_RAG_JOBS_LIMIT)
+        );
+        assert_eq!(
+            bounded_rag_read_u32(&params, "lines", MAX_RAG_LOG_LINES),
+            Some(MAX_RAG_LOG_LINES)
+        );
+        assert_eq!(bounded_rag_read_u32(&params, "bad", 10), None);
+        assert_eq!(bounded_rag_read_u32(&params, "missing", 10), None);
     }
 
     // --- W04: read-only /ops/git pass-through -------------------------------
@@ -1790,6 +2078,11 @@ mod tests {
         // W04.P10.S55: a whitelisted status verb forwards git output verbatim
         // inside the envelope with the tiers block.
         let (_dir, state) = git_repo_state();
+        let scope = state
+            .active_scope
+            .read()
+            .map(|s| s.clone())
+            .unwrap_or_else(|e| e.into_inner().clone());
         let result = ops_git(State(state.clone()), Path("status".to_string()), None)
             .await
             .expect("status forwards");
@@ -1811,6 +2104,7 @@ mod tests {
             State(state),
             Path("diff".to_string()),
             Some(Json(GitOpBody {
+                scope: Some(scope),
                 path: Some(".vault/plan/2026-06-14-g-plan.md".into()),
                 ..Default::default()
             })),
@@ -1869,6 +2163,7 @@ mod tests {
                 path: Some(file.into()),
                 from: Some("HEAD~1".into()),
                 to: Some("HEAD".into()),
+                ..Default::default()
             })),
         )
         .await
@@ -1895,6 +2190,7 @@ mod tests {
                 path: Some(file.into()),
                 from: Some("HEAD~1".into()),
                 to: Some("HEAD".into()),
+                ..Default::default()
             })),
         )
         .await
@@ -1914,6 +2210,7 @@ mod tests {
                 path: Some(file.into()),
                 from: Some("HEAD~1".into()),
                 to: None,
+                ..Default::default()
             })),
         )
         .await
@@ -2302,12 +2599,14 @@ mod tests {
         ];
         for case in cases {
             let body = CoreWriteBody {
+                scope: case.scope.clone(),
                 doc_ref: case.doc_ref.clone(),
                 body: case.body.clone(),
                 expected_blob_hash: case.expected_blob_hash.clone(),
                 date: case.date.clone(),
                 tags: case.tags.clone(),
                 related: case.related.clone(),
+                new_stem: case.new_stem.clone(),
             };
             let bad_ref = body.doc_ref.clone();
             let err = ops_core_write(
@@ -2369,9 +2668,11 @@ mod tests {
         // sibling reads it. The stub echoes stdin back under data.stdin; the
         // route forwards the envelope verbatim under data.envelope.
         let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
         let marker = "ROUND_TRIP_BODY_MARKER";
         let value = run_sibling_write_bounded(
             &state,
+            &cell,
             &stdin_echo_updated(),
             &[],
             Some(marker),
@@ -2414,8 +2715,10 @@ mod tests {
         // is a VALID business response forwarded VERBATIM under data.envelope on a
         // 200, never a 502. The client branches on envelope.status + data.conflict.
         let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
         let value = run_sibling_write_bounded(
             &state,
+            &cell,
             &conflict_failed_exit1(),
             &[],
             None,
@@ -2436,8 +2739,10 @@ mod tests {
         // never a forged success. This is the boundary the conflict case must not
         // cross.
         let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
         let err = run_sibling_write_bounded(
             &state,
+            &cell,
             &shell("echo not-an-envelope 1>&2; exit 9"),
             &[],
             None,
@@ -2478,8 +2783,10 @@ mod tests {
         // runner directly (the route's verb whitelist + validation are covered
         // above) and assert the verbatim-forward shape the route emits.
         let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
         let value = run_sibling_write_bounded(
             &state,
+            &cell,
             &success_updated(),
             &[],
             Some("# new body\n"),
@@ -2521,8 +2828,10 @@ mod tests {
         } else {
             shell("sleep 5")
         };
+        let cell = state.active_cell();
         let err = run_sibling_write_bounded(
             &state,
+            &cell,
             &prog,
             &[],
             None,
@@ -2619,6 +2928,7 @@ mod tests {
         ];
         for case in cases {
             let body = CoreCreateBody {
+                scope: case.scope.clone(),
                 doc_type: case.doc_type.clone(),
                 feature: case.feature.clone(),
                 title: case.title.clone(),
@@ -2671,8 +2981,10 @@ mod tests {
         // the runner directly (the route's field validation is covered above) and
         // assert the verbatim-forward shape the route emits.
         let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
         let value = run_sibling_write_bounded(
             &state,
+            &cell,
             &create_success(),
             &[],
             None,
@@ -2722,8 +3034,10 @@ mod tests {
         // a VALID business refusal forwarded VERBATIM under data.envelope on a 200,
         // never a 502. The client branches on envelope.status + data.refused.
         let (_dir, state) = sibling_state();
+        let cell = state.active_cell();
         let value = run_sibling_write_bounded(
             &state,
+            &cell,
             &create_failed_exit1(),
             &[],
             None,

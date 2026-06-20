@@ -60,6 +60,7 @@ export const MAX_KEYBINDING_OVERRIDES = 256;
  * can never feed an unbounded string into the per-keystroke matcher or the legend.
  */
 export const MAX_KEYBINDING_CHORD_LEN = 64;
+export const MAX_KEYBINDING_ID_LEN = 128;
 
 /** One bindable command action. Construct in a surface's action module. */
 export interface KeybindingDef {
@@ -80,6 +81,79 @@ export type KeybindingOverrides = Readonly<Record<string, string>>;
 
 const bindings = new Map<string, KeybindingDef>();
 
+export function normalizeKeybindingId(id: unknown): string | null {
+  if (typeof id !== "string") return null;
+  const normalized = id.trim();
+  return normalized.length > 0 && normalized.length <= MAX_KEYBINDING_ID_LEN
+    ? normalized
+    : null;
+}
+
+function normalizeKeybindingText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function normalizeBindingContext(value: unknown): BindingContext | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (normalized === "global") return "global";
+  return (SURFACE_CONTEXTS as readonly string[]).includes(normalized)
+    ? (normalized as BindingContext)
+    : null;
+}
+
+function isKeybindingOverrideRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function normalizeKeybindingOverrides(overrides: unknown): KeybindingOverrides {
+  if (!isKeybindingOverrideRecord(overrides)) return {};
+  const normalized: Record<string, string> = {};
+  let count = 0;
+  for (const [id, chord] of Object.entries(overrides)) {
+    if (count >= MAX_KEYBINDING_OVERRIDES) break;
+    const normalizedId = normalizeKeybindingId(id);
+    if (normalizedId === null) continue;
+    if (typeof chord !== "string") continue;
+    const normalizedChord = chord.trim();
+    if (
+      normalizedChord.length === 0 ||
+      normalizedChord.length > MAX_KEYBINDING_CHORD_LEN
+    ) {
+      continue;
+    }
+    normalized[normalizedId] = normalizedChord;
+    count += 1;
+  }
+  return normalized;
+}
+
+function normalizedKeybindingDef(def: KeybindingDef): KeybindingDef | null {
+  const normalizedId = normalizeKeybindingId(def.id);
+  const defaultChord = normalizeKeybindingText(def.defaultChord);
+  const label = normalizeKeybindingText(def.label);
+  const group = normalizeKeybindingText(def.group);
+  const context = normalizeBindingContext(def.context);
+  if (
+    normalizedId === null ||
+    defaultChord === null ||
+    label === null ||
+    group === null ||
+    context === null
+  ) {
+    return null;
+  }
+  return {
+    id: normalizedId,
+    defaultChord,
+    label,
+    group,
+    context,
+  };
+}
+
 /**
  * Register a batch of bindings; returns a disposer that removes exactly the
  * entries it added (only if they have not since been replaced). Throws on a
@@ -87,16 +161,20 @@ const bindings = new Map<string, KeybindingDef>();
  * runtime degradation.
  */
 export function registerKeybindings(defs: readonly KeybindingDef[]): () => void {
-  for (const def of defs) {
+  const registered: KeybindingDef[] = [];
+  for (const rawDef of defs) {
+    const def = normalizedKeybindingDef(rawDef);
+    if (def === null) {
+      throw new Error("keybinding has a malformed id");
+    }
     if (canonicalizeChord(def.defaultChord) === null) {
-      throw new Error(
-        `keybinding "${def.id}" has a malformed default chord: "${def.defaultChord}"`,
-      );
+      throw new Error(`keybinding "${def.id}" has a malformed definition`);
     }
     bindings.set(def.id, def);
+    registered.push(def);
   }
   return () => {
-    for (const def of defs) {
+    for (const def of registered) {
       if (bindings.get(def.id) === def) bindings.delete(def.id);
     }
   };
@@ -108,8 +186,9 @@ export function listKeybindings(): KeybindingDef[] {
 }
 
 /** Look up one binding by id. */
-export function getKeybinding(id: string): KeybindingDef | undefined {
-  return bindings.get(id);
+export function getKeybinding(id: unknown): KeybindingDef | undefined {
+  const normalizedId = normalizeKeybindingId(id);
+  return normalizedId === null ? undefined : bindings.get(normalizedId);
 }
 
 /** Test-only: drop all registered bindings. */
@@ -126,7 +205,10 @@ export function effectiveChord(
   def: KeybindingDef,
   overrides: KeybindingOverrides,
 ): string {
-  const override = overrides[def.id];
+  const normalizedId = normalizeKeybindingId(def.id);
+  const normalizedOverrides = normalizeKeybindingOverrides(overrides);
+  const override =
+    normalizedId === null ? undefined : normalizedOverrides[normalizedId];
   if (typeof override === "string" && canonicalizeChord(override) !== null) {
     return override;
   }
@@ -157,7 +239,9 @@ export function resolveKeybinding(
   isMac?: boolean,
 ): KeybindingDef | null {
   let best: KeybindingDef | null = null;
-  for (const def of defs) {
+  for (const rawDef of defs) {
+    const def = normalizedKeybindingDef(rawDef);
+    if (def === null) continue;
     if (!activeContexts.has(def.context)) continue;
     const chord = parseChord(effectiveChord(def, overrides));
     if (chord === null || !matchesChord(chord, event, isMac)) continue;
@@ -190,14 +274,18 @@ export function findConflicts(
   overrides: KeybindingOverrides = {},
 ): KeybindingConflict[] {
   const conflicts: KeybindingConflict[] = [];
-  const sorted = [...defs].sort((a, b) => a.id.localeCompare(b.id));
+  const normalizedOverrides = normalizeKeybindingOverrides(overrides);
+  const sorted = defs
+    .map(normalizedKeybindingDef)
+    .filter((def): def is KeybindingDef => def !== null)
+    .sort((a, b) => a.id.localeCompare(b.id));
   for (let i = 0; i < sorted.length; i++) {
     for (let j = i + 1; j < sorted.length; j++) {
       const a = sorted[i];
       const b = sorted[j];
       if (!contextsOverlap(a.context, b.context)) continue;
-      const ca = canonicalizeChord(effectiveChord(a, overrides));
-      const cb = canonicalizeChord(effectiveChord(b, overrides));
+      const ca = canonicalizeChord(effectiveChord(a, normalizedOverrides));
+      const cb = canonicalizeChord(effectiveChord(b, normalizedOverrides));
       if (ca !== null && ca === cb) {
         conflicts.push({ chord: ca, ids: [a.id, b.id] });
       }
@@ -215,17 +303,22 @@ export function findConflicts(
 export function conflictsForCandidate(
   defs: readonly KeybindingDef[],
   overrides: KeybindingOverrides,
-  targetId: string,
+  targetId: unknown,
   candidateChord: string,
 ): string[] {
-  const target = defs.find((d) => d.id === targetId);
+  const normalizedTargetId = normalizeKeybindingId(targetId);
+  const normalizedDefs = defs
+    .map(normalizedKeybindingDef)
+    .filter((def): def is KeybindingDef => def !== null);
+  const target = normalizedDefs.find((d) => d.id === normalizedTargetId);
   const candidate = canonicalizeChord(candidateChord);
   if (!target || candidate === null) return [];
+  const normalizedOverrides = normalizeKeybindingOverrides(overrides);
   const hits: string[] = [];
-  for (const def of defs) {
-    if (def.id === targetId) continue;
+  for (const def of normalizedDefs) {
+    if (def.id === normalizedTargetId) continue;
     if (!contextsOverlap(def.context, target.context)) continue;
-    if (canonicalizeChord(effectiveChord(def, overrides)) === candidate) {
+    if (canonicalizeChord(effectiveChord(def, normalizedOverrides)) === candidate) {
       hits.push(def.id);
     }
   }

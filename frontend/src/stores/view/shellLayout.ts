@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import {
@@ -5,11 +6,20 @@ import {
   type DashboardPanelState,
   type DashboardPanelTab,
 } from "../server/engine";
+import { useShellPanelIntent } from "../server/panelStateIntent";
 import {
   type DashboardShellChromeView,
   useDashboardShellChromeView,
 } from "../server/queries";
-import { useViewStore } from "./viewStore";
+import {
+  LEFT_RAIL_MAX_WIDTH,
+  LEFT_RAIL_MIN_WIDTH,
+  RIGHT_RAIL_MAX_WIDTH,
+  RIGHT_RAIL_MIN_WIDTH,
+  TIMELINE_MAX_HEIGHT,
+  TIMELINE_MIN_HEIGHT,
+  useViewStore,
+} from "./viewStore";
 
 export {
   LEFT_RAIL_MAX_WIDTH,
@@ -53,6 +63,28 @@ export const RIGHT_RAIL_TABS: readonly RightRailTabOption[] = DASHBOARD_PANEL_TA
     label: RIGHT_RAIL_TAB_LABELS[id],
   }),
 );
+export const DEFAULT_RIGHT_RAIL_TAB: RailTabId = DASHBOARD_PANEL_TABS[0]!;
+
+export function normalizeRightRailTab(tab: unknown): RailTabId {
+  if (typeof tab !== "string") return DEFAULT_RIGHT_RAIL_TAB;
+  const normalized = tab.trim();
+  return (DASHBOARD_PANEL_TABS as readonly string[]).includes(normalized)
+    ? (normalized as RailTabId)
+    : DEFAULT_RIGHT_RAIL_TAB;
+}
+
+function normalizeRightRailTabDirection(direction: unknown): "previous" | "next" {
+  return direction === "previous" ? "previous" : "next";
+}
+
+export function rightRailAdjacentTab(current: unknown, direction: unknown): RailTabId {
+  const normalizedCurrent = normalizeRightRailTab(current);
+  const normalizedDirection = normalizeRightRailTabDirection(direction);
+  const currentIndex = RIGHT_RAIL_TABS.findIndex((tab) => tab.id === normalizedCurrent);
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const offset = normalizedDirection === "next" ? 1 : RIGHT_RAIL_TABS.length - 1;
+  return RIGHT_RAIL_TABS[(safeIndex + offset) % RIGHT_RAIL_TABS.length]!.id;
+}
 
 export function boundedShellPanelSize(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
@@ -61,6 +93,18 @@ export function boundedShellPanelSize(value: number, min: number, max: number): 
 
 export type ShellResizeAxis = "left" | "right" | "timeline";
 export type ShellResizeKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
+
+export interface ShellResizeBounds {
+  min: number;
+  max: number;
+}
+
+export const SHELL_RESIZE_BOUNDS: Readonly<Record<ShellResizeAxis, ShellResizeBounds>> =
+  {
+    left: { min: LEFT_RAIL_MIN_WIDTH, max: LEFT_RAIL_MAX_WIDTH },
+    right: { min: RIGHT_RAIL_MIN_WIDTH, max: RIGHT_RAIL_MAX_WIDTH },
+    timeline: { min: TIMELINE_MIN_HEIGHT, max: TIMELINE_MAX_HEIGHT },
+  };
 
 export interface ShellResizePointerInput {
   axis: ShellResizeAxis;
@@ -92,6 +136,10 @@ export function shellResizePointerSize({
   return boundedShellPanelSize(startSize + delta, min, max);
 }
 
+export function shellResizeBounds(axis: ShellResizeAxis): ShellResizeBounds {
+  return SHELL_RESIZE_BOUNDS[axis];
+}
+
 export interface ShellResizeKeyInput {
   axis: ShellResizeAxis;
   current: number;
@@ -121,6 +169,97 @@ export function shellResizeKeySize({
     min,
     max,
   );
+}
+
+interface ShellResizePointerEventLike {
+  clientX: number;
+  clientY: number;
+}
+
+export interface ShellResizePointerTarget {
+  addEventListener(
+    type: "pointermove" | "pointerup",
+    listener: (event: ShellResizePointerEventLike) => void,
+    options?: AddEventListenerOptions,
+  ): void;
+  removeEventListener(
+    type: "pointermove" | "pointerup",
+    listener: (event: ShellResizePointerEventLike) => void,
+  ): void;
+}
+
+export interface ShellResizePointerSessionInput {
+  axis: ShellResizeAxis;
+  startSize: number;
+  startClientX: number;
+  startClientY: number;
+  target?: ShellResizePointerTarget;
+}
+
+export interface ShellResizeKeyIntentInput {
+  axis: ShellResizeAxis;
+  current: number;
+  key: string;
+  preventDefault?: () => void;
+}
+
+export function setShellResizeSize(axis: ShellResizeAxis, size: number): void {
+  if (axis === "left") {
+    setShellLeftRailWidth(size);
+    return;
+  }
+  if (axis === "right") {
+    setShellRightRailWidth(size);
+    return;
+  }
+  setShellTimelineHeight(size);
+}
+
+export function startShellResizePointerSession({
+  axis,
+  startSize,
+  startClientX,
+  startClientY,
+  target = typeof document === "undefined" ? undefined : document,
+}: ShellResizePointerSessionInput): () => void {
+  if (target === undefined) return () => undefined;
+  const { min, max } = shellResizeBounds(axis);
+  const onMove = (move: ShellResizePointerEventLike) => {
+    setShellResizeSize(
+      axis,
+      shellResizePointerSize({
+        axis,
+        startSize,
+        startClientX,
+        startClientY,
+        clientX: move.clientX,
+        clientY: move.clientY,
+        min,
+        max,
+      }),
+    );
+  };
+  const stop = () => {
+    target.removeEventListener("pointermove", onMove);
+    target.removeEventListener("pointerup", stop);
+  };
+  target.addEventListener("pointermove", onMove);
+  target.addEventListener("pointerup", stop, { once: true });
+  return stop;
+}
+
+export function resizeShellPanelByKey({
+  axis,
+  current,
+  key,
+  preventDefault,
+}: ShellResizeKeyIntentInput): boolean {
+  const { min, max } = shellResizeBounds(axis);
+  const next = shellResizeKeySize({ axis, current, key, min, max });
+  if (next === null) return false;
+  preventDefault?.();
+  setShellResizeSize(axis, next);
+  return true;
 }
 
 export interface ShellGridColumnsInput {
@@ -164,11 +303,11 @@ export interface ShellFrameView extends ShellLayoutState {
   showTimeline: boolean;
   timelineClassName: string;
   timelineStyle: { height: string };
-  timelineControlsClassName: string;
   timelineBodyClassName: string;
   rightRailClassName: string;
   showRightRail: boolean;
   panelFlyoutRootClassName: string;
+  panelFlyoutRootStyle: { left: number };
   panelFlyoutButtonWrapperClassName: string;
   panelControls: ShellPanelControlsView;
   activityRailClassName: string;
@@ -187,6 +326,17 @@ export interface ShellPanelControlsView {
   timelineVisibilityLabel: string;
 }
 
+export interface ShellWindowActions {
+  toggleLeftRail: () => void;
+  toggleLeftCollapsed: () => void;
+  toggleRightRail: () => void;
+  toggleTimeline: () => void;
+  setRightTab: (tab: unknown) => void;
+  resetLayout: () => void;
+  closePanelFlyout: () => void;
+  runPanelAction: (action: () => void) => void;
+}
+
 export type ShellResizeHandleSide = "left" | "right" | "top";
 
 export interface ShellResizeHandleView {
@@ -203,11 +353,10 @@ const SHELL_STAGE_COLUMN_CLASS = "flex min-h-0 min-w-0 flex-col";
 const SHELL_STAGE_BODY_CLASS = "relative min-h-0 min-w-0 flex-1";
 const SHELL_TIMELINE_CLASS =
   "relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-t border-rule";
-const SHELL_TIMELINE_CONTROLS_CLASS = "min-w-0 shrink-0";
 const SHELL_TIMELINE_BODY_CLASS = "relative min-h-0 min-w-0 flex-1";
 const SHELL_RIGHT_RAIL_BASE_CLASS = "relative flex min-h-0 flex-col overflow-hidden";
 const SHELL_RIGHT_RAIL_OPEN_CLASS = `${SHELL_RIGHT_RAIL_BASE_CLASS} border-l border-rule`;
-const SHELL_PANEL_FLYOUT_ROOT_CLASS = "pointer-events-none absolute left-2 top-2 z-20";
+const SHELL_PANEL_FLYOUT_ROOT_CLASS = "pointer-events-none absolute top-2 z-20";
 const SHELL_PANEL_FLYOUT_BUTTON_WRAPPER_CLASS = "pointer-events-auto";
 const SHELL_PANEL_FLYOUT_MENU_CLASS =
   "pointer-events-auto mt-fg-2 w-52 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-raised";
@@ -302,13 +451,18 @@ export function deriveShellFrameView(
     showTimeline,
     timelineClassName: SHELL_TIMELINE_CLASS,
     timelineStyle: { height: `${shellLayout.timelineHeight}px` },
-    timelineControlsClassName: SHELL_TIMELINE_CONTROLS_CLASS,
     timelineBodyClassName: SHELL_TIMELINE_BODY_CLASS,
     rightRailClassName: rightCollapsed
       ? SHELL_RIGHT_RAIL_BASE_CLASS
       : SHELL_RIGHT_RAIL_OPEN_CLASS,
     showRightRail: !rightCollapsed,
     panelFlyoutRootClassName: SHELL_PANEL_FLYOUT_ROOT_CLASS,
+    panelFlyoutRootStyle: {
+      left:
+        shellLayout.leftRailVisible && !leftCollapsed
+          ? Math.max(8, shellLayout.leftRailWidth - 38)
+          : 8,
+    },
     panelFlyoutButtonWrapperClassName: SHELL_PANEL_FLYOUT_BUTTON_WRAPPER_CLASS,
     activityRailClassName: SHELL_ACTIVITY_RAIL_CLASS,
     activityPanelClassName: SHELL_ACTIVITY_PANEL_CLASS,
@@ -332,33 +486,97 @@ export function useShellLayoutState(): ShellLayoutState {
   );
 }
 
-export function useShellFrameView(scope: string | null): ShellFrameView {
+export function useShellFrameView(scope: unknown): ShellFrameView {
   const shellChrome = useDashboardShellChromeView(scope);
   const shellLayout = useShellLayoutState();
   return deriveShellFrameView(shellLayout, shellChrome);
 }
 
-export function setShellLeftRailVisible(visible: boolean): void {
+export function useShellWindowActions(
+  scope: unknown,
+  shellFrame: Pick<
+    ShellFrameView,
+    "leftRailVisible" | "leftCollapsed" | "rightCollapsed" | "timelineVisible"
+  >,
+): ShellWindowActions {
+  const panelIntent = useShellPanelIntent(scope);
+  const ignore = () => undefined;
+  const setLeftCollapsed = useCallback(
+    (leftCollapsed: boolean) => {
+      void panelIntent.setLeftCollapsed(leftCollapsed).catch(ignore);
+    },
+    [panelIntent],
+  );
+  const setRightCollapsed = useCallback(
+    (rightCollapsed: boolean) => {
+      void panelIntent.setRightCollapsed(rightCollapsed).catch(ignore);
+    },
+    [panelIntent],
+  );
+  const closePanelFlyout = useCallback(() => {
+    setShellPanelFlyoutOpen(false);
+  }, []);
+  const runPanelAction = useCallback(
+    (action: () => void) => {
+      action();
+      closePanelFlyout();
+    },
+    [closePanelFlyout],
+  );
+  return useMemo(
+    () => ({
+      toggleLeftRail: () => setShellLeftRailVisible(!shellFrame.leftRailVisible),
+      toggleLeftCollapsed: () => setLeftCollapsed(!shellFrame.leftCollapsed),
+      toggleRightRail: () => setRightCollapsed(!shellFrame.rightCollapsed),
+      toggleTimeline: () => setShellTimelineVisible(!shellFrame.timelineVisible),
+      setRightTab: (tab) => {
+        void panelIntent.setRightTab(normalizeRightRailTab(tab)).catch(ignore);
+        void panelIntent.setRightCollapsed(false).catch(ignore);
+      },
+      resetLayout: () => {
+        resetShellLayout();
+        void panelIntent.setLeftCollapsed(false).catch(ignore);
+        void panelIntent.setRightCollapsed(false).catch(ignore);
+        void panelIntent.setRightTab(DEFAULT_RIGHT_RAIL_TAB).catch(ignore);
+      },
+      closePanelFlyout,
+      runPanelAction,
+    }),
+    [
+      closePanelFlyout,
+      panelIntent,
+      runPanelAction,
+      setLeftCollapsed,
+      setRightCollapsed,
+      shellFrame.leftCollapsed,
+      shellFrame.leftRailVisible,
+      shellFrame.rightCollapsed,
+      shellFrame.timelineVisible,
+    ],
+  );
+}
+
+export function setShellLeftRailVisible(visible: unknown): void {
   useViewStore.getState().setLeftRailVisible(visible);
 }
 
-export function setShellLeftRailWidth(width: number): void {
+export function setShellLeftRailWidth(width: unknown): void {
   useViewStore.getState().setLeftRailWidth(width);
 }
 
-export function setShellRightRailWidth(width: number): void {
+export function setShellRightRailWidth(width: unknown): void {
   useViewStore.getState().setRightRailWidth(width);
 }
 
-export function setShellTimelineVisible(visible: boolean): void {
+export function setShellTimelineVisible(visible: unknown): void {
   useViewStore.getState().setTimelineVisible(visible);
 }
 
-export function setShellTimelineHeight(height: number): void {
+export function setShellTimelineHeight(height: unknown): void {
   useViewStore.getState().setTimelineHeight(height);
 }
 
-export function setShellPanelFlyoutOpen(open: boolean): void {
+export function setShellPanelFlyoutOpen(open: unknown): void {
   useViewStore.getState().setPanelFlyoutOpen(open);
 }
 

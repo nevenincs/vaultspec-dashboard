@@ -1,14 +1,15 @@
 ---
 tags:
-  - '#audit'
-  - '#editor-dock-workspace'
+  - "#audit"
+  - "#editor-dock-workspace"
 date: '2026-06-18'
-modified: '2026-06-18'
 related:
-  - '[[2026-06-18-editor-dock-workspace-plan]]'
-  - '[[2026-06-18-editor-dock-workspace-adr]]'
+  - "[[2026-06-18-editor-dock-workspace-plan]]"
+  - "[[2026-06-18-editor-dock-workspace-adr]]"
+promoted_to:
+  - 'rule:graph-canvas-is-portal-pinned-never-reparented'
+modified: '2026-06-18'
 ---
-
 <!-- FRONTMATTER RULES:
      tags: one directory tag (hardcoded #audit) and one feature tag.
      Replace editor-dock-workspace with a kebab-case feature tag, e.g. #foo-bar.

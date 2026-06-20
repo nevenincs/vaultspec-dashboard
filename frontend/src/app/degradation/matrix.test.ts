@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { EngineStatus } from "../../stores/server/engine";
-import { HEALTHY, deriveInputs, matrixFor, useDegradationStore } from "./matrix";
+import {
+  clearDegradationOverrides,
+  resolveDegradationInputs,
+  setDegradationOverride,
+  useDegradationStore,
+} from "../../stores/view/degradationDebug";
+import { HEALTHY, deriveInputs, matrixFor } from "./matrix";
 
 const inputs = (over: Partial<typeof HEALTHY>) => ({ ...HEALTHY, ...over });
 
@@ -70,6 +76,7 @@ describe("deriveInputs", () => {
     expect(
       deriveInputs(status({ tiers: { semantic: { available: false } } })).ragDown,
     ).toBe(true);
+    expect(deriveInputs(status({ tiers: {} })).ragDown).toBe(true);
     expect(deriveInputs(status({ rag: { service: "stopped" } })).ragDown).toBe(true);
     expect(deriveInputs(undefined).ragDown).toBe(true);
   });
@@ -100,16 +107,13 @@ describe("deriveInputs", () => {
 });
 
 describe("debug overrides (every state reachable, G8.a)", () => {
-  beforeEach(() => useDegradationStore.getState().clearOverrides());
+  beforeEach(() => clearDegradationOverrides());
 
   it("overrides combine with real inputs and clear cleanly", () => {
-    const store = useDegradationStore.getState();
-    store.setOverride("streamLost", true);
-    expect(useDegradationStore.getState().resolve(HEALTHY).streamLost).toBe(true);
-    expect(matrixFor(useDegradationStore.getState().resolve(HEALTHY)).timeline).toBe(
-      "reconnecting",
-    );
-    useDegradationStore.getState().setOverride("streamLost", null);
+    setDegradationOverride("streamLost", true);
+    expect(resolveDegradationInputs(HEALTHY).streamLost).toBe(true);
+    expect(matrixFor(resolveDegradationInputs(HEALTHY)).timeline).toBe("reconnecting");
+    setDegradationOverride("streamLost", null);
     expect(useDegradationStore.getState().overrides).toBeNull();
   });
 });

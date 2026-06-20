@@ -1,11 +1,11 @@
 //! Node queries (contract §4): detail with interior structure, lazy ego
 //! neighbors with depth and tier filters, and evidence (documents,
-//! resolved code locations, correlated commits).
+//! correlated commits).
 
 use std::collections::BTreeSet;
 
 use engine_graph::{ContextBundle, LinkageGraph, context};
-use engine_model::{Edge, Node, NodeId, Provenance, ResolutionState, Tier};
+use engine_model::{Edge, Node, NodeId, Provenance, Tier};
 use serde::Serialize;
 
 /// Node detail: the context bundle is the interior-structure carrier in
@@ -343,17 +343,13 @@ pub fn neighbors(
 ///
 /// The item shapes are ENRICHED to the GUI `NodeEvidence` type
 /// (figma-parity-reconciliation S13): `documents` carry `{ path, doc_type }`
-/// (not bare stems), `code_locations` are keyed on `path` (the corrected field
-/// name) with an optional `symbol`/`line`, and `commits` carry the `subject`.
-/// The engine self-flagged this divergence; this aligns the projection. The
-/// subject is filled by the route from a read-only git lookup (the pure graph
-/// projection has no git access), defaulting to empty until then.
+/// (not bare stems), and `commits` carry the `subject`. The subject is filled
+/// by the route from a read-only git lookup (the pure graph projection has no
+/// git access), defaulting to empty until then.
 #[derive(Debug, Clone, Serialize)]
 pub struct Evidence {
     /// Attached documents with their repo-relative path and vault doc type.
     pub documents: Vec<EvidenceDocument>,
-    /// Resolved code locations with live resolution state.
-    pub code_locations: Vec<CodeLocation>,
     /// Correlated commits, each with the rule that correlated it.
     pub commits: Vec<CorrelatedCommit>,
 }
@@ -368,57 +364,6 @@ pub struct EvidenceDocument {
     pub path: String,
     /// The vault document type (the `.vault/` subdirectory).
     pub doc_type: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct CodeLocation {
-    /// The mention target path (GUI `NodeEvidence` code-location `path`; was
-    /// `target` — the corrected field name). A path or unqualified symbol.
-    #[serde(rename = "path")]
-    pub target: String,
-    /// The unqualified symbol the mention names, when the resolved target
-    /// carries a `#symbol` qualifier (GUI `NodeEvidence` `symbol?`). Absent
-    /// for a bare path mention.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub symbol: Option<String>,
-    /// The 1-based source line the mention resolves to, when known (GUI
-    /// `NodeEvidence` `line?`). Absent when the resolver carries no line.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub line: Option<u32>,
-    pub state: Option<ResolutionState>,
-    /// What the mention resolved to in the live tree, if anything.
-    pub resolved_target: Option<String>,
-    /// The navigable bridge (audit W02P06-301 consequence): mention-target
-    /// ids are disjoint from real container/file node ids by design, so
-    /// the resolved target is surfaced as the real node's id — without it
-    /// step/symbol mentions are dead ends on the stage.
-    pub bridge_node_id: Option<String>,
-}
-
-/// Map a resolved target path to the real node it bridges to — but ONLY when
-/// that node actually exists in the graph. A computed id for a target the graph
-/// never minted would be a dead-end click-through that 404s on `/nodes/{id}`
-/// (M-B5, finding LENSB-001), so the bridge is surfaced only when navigable;
-/// otherwise None, and the human-readable `resolved_target` still rides along.
-/// Code-artifact nodes for resolved/stale Path and Symbol mentions ARE now
-/// minted (`mint_code_artifact`, engine-graph index Pass 2), so those bridges
-/// resolve here; the gate on node existence remains correct (a Broken target
-/// mints no node and still yields None).
-fn bridge_node_id(graph: &LinkageGraph, resolved_target: &str) -> Option<String> {
-    use engine_model::{CanonicalKey, node_id};
-    let nid = if let Some(stem) = resolved_target
-        .strip_prefix(".vault/")
-        .and_then(|rest| rest.split('/').next_back())
-        .and_then(|file| file.strip_suffix(".md"))
-    {
-        node_id(&CanonicalKey::Document { stem })
-    } else {
-        node_id(&CanonicalKey::CodeArtifact {
-            path: resolved_target,
-            symbol: None,
-        })
-    };
-    graph.node(&nid).map(|_| nid.0)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -438,7 +383,6 @@ pub fn evidence(graph: &LinkageGraph, id: &NodeId) -> Option<Evidence> {
     graph.node(id)?;
     let mut documents: Vec<EvidenceDocument> = Vec::new();
     let mut seen_documents: BTreeSet<String> = BTreeSet::new();
-    let mut code_locations = Vec::new();
     let mut commits = Vec::new();
 
     for stored in graph.edges_of(id) {
@@ -463,31 +407,6 @@ pub fn evidence(graph: &LinkageGraph, id: &NodeId) -> Option<Evidence> {
             let path = document_path(&doc_type, stem);
             documents.push(EvidenceDocument { path, doc_type });
         }
-        if (other.0.starts_with("code:") || other.0.starts_with("plan:"))
-            && let Provenance::DocumentBody { target, .. } = &edge.provenance
-        {
-            // Surface the unqualified symbol when the resolved target carries a
-            // `path#symbol` qualifier (GUI `symbol?`), keeping the bare path in
-            // `path`. The mention itself never carries a source line, so `line`
-            // stays absent until a resolver supplies one.
-            let symbol = stored
-                .attrs
-                .resolved_target
-                .as_deref()
-                .and_then(|t| t.rsplit_once('#').map(|(_, sym)| sym.to_string()));
-            code_locations.push(CodeLocation {
-                target: target.clone(),
-                symbol,
-                line: None,
-                state: edge.state,
-                resolved_target: stored.attrs.resolved_target.clone(),
-                bridge_node_id: stored
-                    .attrs
-                    .resolved_target
-                    .as_deref()
-                    .and_then(|t| bridge_node_id(graph, t)),
-            });
-        }
         if let Provenance::CommitCorrelation { sha, rule } = &edge.provenance {
             commits.push(CorrelatedCommit {
                 sha: sha.clone(),
@@ -500,13 +419,8 @@ pub fn evidence(graph: &LinkageGraph, id: &NodeId) -> Option<Evidence> {
         }
     }
     documents.sort_by(|a, b| a.path.cmp(&b.path));
-    code_locations.sort_by(|a, b| a.target.cmp(&b.target));
     commits.sort_by(|a, b| a.sha.cmp(&b.sha));
-    Some(Evidence {
-        documents,
-        code_locations,
-        commits,
-    })
+    Some(Evidence { documents, commits })
 }
 
 /// The repo-relative path for a vault document, `.vault/<doc_type>/<stem>.md`.
@@ -522,7 +436,8 @@ mod tests {
     use super::*;
     use engine_graph::EdgeAttrs;
     use engine_model::{
-        CanonicalKey, Facet, NodeKind, Presence, RelationKind, ScopeRef, edge_id, node_id,
+        CanonicalKey, Facet, NodeKind, Presence, RelationKind, ResolutionState, ScopeRef, edge_id,
+        node_id,
     };
 
     fn scope() -> ScopeRef {
@@ -581,30 +496,9 @@ mod tests {
         let a = node_id(&CanonicalKey::Document { stem: "a-plan" });
         let b = node_id(&CanonicalKey::Document { stem: "b-adr" });
         let c = node_id(&CanonicalKey::Document { stem: "c-far" });
-        let code = node_id(&CanonicalKey::CodeArtifact {
-            path: "src/lib.rs",
-            symbol: None,
-        });
         let commit = node_id(&CanonicalKey::Commit { sha: "abc123" });
 
-        // a —structural→ code, a —structural→ b, b —structural→ c (2 hops),
-        // commit —temporal→ a.
-        engine_graph::ingest(
-            &mut g,
-            edge(
-                &a,
-                &code,
-                Tier::Structural,
-                Provenance::DocumentBody {
-                    blob_hash: "h".into(),
-                    span: (0, 1),
-                    target: "src/lib.rs".into(),
-                },
-                0.9,
-            ),
-            EdgeAttrs::default(),
-        )
-        .unwrap();
+        // a —structural→ b, b —structural→ c (2 hops), commit —temporal→ a.
         engine_graph::ingest(
             &mut g,
             edge(
@@ -659,7 +553,7 @@ mod tests {
     fn neighbors_respect_depth_and_tier_filters() {
         let (g, a) = fixture();
         let one_hop = neighbors(&g, &a, 1, &[]).unwrap();
-        assert_eq!(one_hop.edges.len(), 3, "a's direct edges");
+        assert_eq!(one_hop.edges.len(), 2, "a's direct edges");
         assert!(!one_hop.nodes.iter().any(|n| n.key == "c-far"));
 
         let two_hops = neighbors(&g, &a, 2, &[]).unwrap();
@@ -672,13 +566,13 @@ mod tests {
                 .iter()
                 .all(|e| e.tier == Tier::Structural)
         );
-        assert_eq!(structural_only.edges.len(), 2);
+        assert_eq!(structural_only.edges.len(), 1);
 
         assert!(neighbors(&g, &NodeId("doc:nope".into()), 1, &[]).is_none());
     }
 
     #[test]
-    fn evidence_separates_documents_code_and_commits() {
+    fn evidence_separates_documents_from_commits() {
         let (g, a) = fixture();
         let ev = evidence(&g, &a).unwrap();
         // Documents are the GUI shape `{ path, doc_type }`, resolved from the
@@ -686,9 +580,6 @@ mod tests {
         assert_eq!(ev.documents.len(), 1);
         assert_eq!(ev.documents[0].doc_type, "adr");
         assert_eq!(ev.documents[0].path, ".vault/adr/b-adr.md");
-        assert_eq!(ev.code_locations.len(), 1);
-        assert_eq!(ev.code_locations[0].target, "src/lib.rs");
-        assert_eq!(ev.code_locations[0].state, Some(ResolutionState::Resolved));
         assert_eq!(ev.commits.len(), 1);
         assert_eq!(ev.commits[0].rule, "doc-and-code-in-one-commit");
         // Subject is empty in the pure graph projection (the route fills it).
@@ -697,19 +588,14 @@ mod tests {
 
     #[test]
     fn evidence_serializes_to_the_gui_node_evidence_shape() {
-        // S13: the wire item shapes align to the GUI `NodeEvidence` type —
-        // documents carry `{ path, doc_type }`, code_locations are keyed on
-        // `path` (not `target`), and commits carry `subject`.
+        // S13: the wire item shapes align to the GUI `NodeEvidence` type:
+        // documents carry `{ path, doc_type }`, and commits carry `subject`.
         let (g, a) = fixture();
         let ev = evidence(&g, &a).unwrap();
         let value = serde_json::to_value(&ev).unwrap();
         let doc0 = &value["documents"][0];
         assert_eq!(doc0["path"], ".vault/adr/b-adr.md");
         assert_eq!(doc0["doc_type"], "adr");
-        let loc0 = &value["code_locations"][0];
-        // The serialized field is `path`, never `target`.
-        assert_eq!(loc0["path"], "src/lib.rs");
-        assert!(loc0.get("target").is_none(), "no legacy `target` field");
         let commit0 = &value["commits"][0];
         assert!(commit0.get("subject").is_some(), "commit carries subject");
         assert_eq!(commit0["rule"], "doc-and-code-in-one-commit");
@@ -906,6 +792,6 @@ mod tests {
         let (g, a) = fixture();
         let detail = node_detail(&g, &a).unwrap();
         assert_eq!(detail.bundle.node.id, a);
-        assert!(detail.bundle.degree_by_tier["structural"] >= 2);
+        assert_eq!(detail.bundle.degree_by_tier["structural"], 1);
     }
 }

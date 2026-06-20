@@ -12,14 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
 import { appDispatcher } from "../../platform/dispatch/middleware";
 import { openContextMenu, useContextMenuStore } from "../../stores/view/contextMenu";
-import { useViewStore } from "../../stores/view/viewStore";
 import { ContextMenuHost } from "./ContextMenuHost";
 
 const TEST_VERB = "test:mutate";
 const handler = vi.fn();
 
 beforeEach(() => {
-  useViewStore.getState().setTimelineMode({ kind: "live" });
   handler.mockReset();
   appDispatcher.register(TEST_VERB, handler);
   registerResolver("node", (entity) => [

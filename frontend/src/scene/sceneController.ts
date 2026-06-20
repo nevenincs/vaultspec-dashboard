@@ -49,6 +49,8 @@ export interface GraphAppearanceParams {
   edgeColorMode?: "solid" | "gradient";
 }
 
+export type GraphBoundsShape = "free" | "circle" | "rect";
+
 /**
  * Graph data for one node — visual-anatomy inputs only (RL-1).
  *
@@ -239,14 +241,6 @@ export type SceneCommand =
   // Three-native appearance tuning (graph-backend-unification ADR D3): the
   // graph-controls appearance sliders patch the field's node-size + edge look.
   | { kind: "set-appearance-params"; params: GraphAppearanceParams }
-  // --- node-graph-rework addendum (ADR D3) -----------------------------------
-  // Configurable canvas/sim containment: free (default, unbounded) | circle |
-  // rect, with an optional size (radius for circle, half-extent for rect; omitted
-  // or 0 = auto-fit non-overlapping). Rect remains a compatibility command value;
-  // the default and chrome path are free unless the user explicitly chooses a
-  // compact circle. ADR-flagged additive redline per the W01.P01.S04 lock
-  // discipline - additive to the locked union, nothing renamed.
-  | { kind: "set-bounds"; shape: "free" | "circle" | "rect"; size?: number }
   // --- live interaction addenda ----------------------------------------------
   // Chrome brackets a slider/drag interaction so the field can bracket an
   // interaction decay/alpha (a light no-op on the three.js field today).
@@ -255,6 +249,7 @@ export type SceneCommand =
   // Freeze toggle: `frozen:true` pauses the field's simulation where it is;
   // `frozen:false` resumes without injecting new alpha.
   | { kind: "set-frozen"; frozen: boolean }
+  | { kind: "set-bounds"; shape: GraphBoundsShape; size?: number }
   // --- graph-representation addenda (W03.P08) -------------------------------
   // Representation-mode switch (graph-representation ADR): connectivity (FA2,
   // default) | lineage (derivation-DAG axis) | semantic (UMAP over embeddings).
@@ -358,11 +353,6 @@ export class SceneController {
   private edges: SceneEdgeData[] = [];
   private field: SceneFieldRenderer | null;
 
-  // --- node-graph-rework: canvas/sim containment (ADR D3) -----------------------
-  private _bounds: { shape: "free" | "circle" | "rect"; size: number } = {
-    shape: "free",
-    size: 0,
-  };
   // --- graph-representation: representation-mode + overlay state (W03.P08) ------
   private _representationMode: RepresentationMode = "connectivity";
   private _overlays: { featureCountries: boolean; featureHulls: boolean } = {
@@ -404,9 +394,6 @@ export class SceneController {
         break;
       case "set-simulation-active":
         break;
-      case "set-bounds":
-        this._bounds = { shape: cmd.shape, size: cmd.size ?? 0 };
-        break;
       case "set-representation-mode":
         this._representationMode = cmd.mode;
         break;
@@ -432,6 +419,7 @@ export class SceneController {
       case "begin-interaction":
       case "end-interaction":
       case "set-frozen":
+      case "set-bounds":
       case "set-force-params":
       case "set-appearance-params":
         // Renderer concerns — forwarded below.
@@ -510,12 +498,6 @@ export class SceneController {
         this.field as { setMinimapCanvas(c: HTMLCanvasElement | null): void }
       ).setMinimapCanvas(canvas);
     }
-  }
-
-  /** Synchronous snapshot of the active canvas/sim containment (node-graph-rework
-   *  ADR D3). The GraphControls bound control reads its initial truth from here. */
-  getBoundsState(): { shape: "free" | "circle" | "rect"; size: number } {
-    return { ...this._bounds };
   }
 
   // --- graph-representation: representation-mode + overlay reads (W03.P08) ------

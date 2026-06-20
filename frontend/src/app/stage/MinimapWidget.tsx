@@ -34,7 +34,7 @@
 // grayscale (it is the only stroked outline on the overview), so position is
 // never carried by hue alone.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import {
   Card,
@@ -44,14 +44,11 @@ import {
   IconButton,
   SectionLabel,
 } from "../kit";
+import {
+  toggleMinimapCollapsed,
+  useMinimapChromeView,
+} from "../../stores/view/minimapChrome";
 import { getScene } from "./Stage";
-
-const MINIMAP_W = 192;
-const MINIMAP_H = 128;
-
-// The id the collapse button's aria-controls points at, so assistive tech ties
-// the toggle to the canvas region it shows/hides.
-const CANVAS_REGION_ID = "minimap-canvas-region";
 
 // Lucide chrome marks render at the widget's small instrument size in single
 // currentColor ink drawn from the token layer, so they are theme-correct across
@@ -65,7 +62,7 @@ interface MinimapWidgetProps {
 }
 
 export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
-  const [collapsed, setCollapsed] = useState(false);
+  const view = useMinimapChromeView(embedded);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Register the canvas with the scene seam. Called once on mount (and again if
@@ -74,7 +71,7 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
   // unregistered so the scene stops spending frames on it; the element stays in
   // the DOM (hidden) so its ref survives the round-trip and re-registers cleanly.
   useEffect(() => {
-    if (collapsed) {
+    if (view.collapsed) {
       getScene().controller.setMinimapCanvas(null);
       return;
     }
@@ -82,7 +79,7 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
     return () => {
       getScene().controller.setMinimapCanvas(null);
     };
-  }, [collapsed]);
+  }, [view.collapsed]);
 
   // The keyboard recenter affordance issues the canonical fit-to-view camera
   // command — the SAME channel the nav cluster's fit uses — so keyboard
@@ -95,26 +92,22 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
     <Card
       elevation={embedded ? "flat" : "raised"}
       padded={false}
-      className={
-        embedded
-          ? "overflow-hidden"
-          : "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden backdrop-blur-sm"
-      }
-      style={{ width: collapsed ? "auto" : MINIMAP_W + 2 }}
+      className={view.rootClassName}
+      style={view.rootStyle}
       role="group"
-      aria-label="graph minimap navigator"
+      aria-label={view.groupAriaLabel}
       data-minimap-widget
     >
       {/* Header strip — a quiet "Map" eyebrow (SectionLabel) plus the recenter +
           collapse controls as kit IconButtons in the Lucide chrome family.
           Attenuated supporting chrome: the field leads. */}
-      <div className="flex items-center justify-between gap-fg-1 border-b border-rule pr-fg-1">
-        <SectionLabel>Map</SectionLabel>
-        <div className="flex items-center gap-fg-0-5">
-          {!collapsed && (
+      <div className={view.headerClassName}>
+        <SectionLabel>{view.titleLabel}</SectionLabel>
+        <div className={view.actionsClassName}>
+          {view.showRecenter && (
             <IconButton
-              label="recenter the field in view"
-              title="recenter the field in view"
+              label={view.recenterLabel}
+              title={view.recenterLabel}
               onClick={recenter}
               data-minimap-recenter
             >
@@ -122,15 +115,15 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
             </IconButton>
           )}
           <IconButton
-            label={collapsed ? "expand minimap" : "collapse minimap"}
-            title={collapsed ? "expand minimap" : "collapse minimap"}
-            active={!collapsed}
-            aria-expanded={!collapsed}
-            aria-controls={CANVAS_REGION_ID}
-            onClick={() => setCollapsed((v) => !v)}
+            label={view.collapseLabel}
+            title={view.collapseLabel}
+            active={view.collapseActive}
+            aria-expanded={view.collapseAriaExpanded}
+            aria-controls={view.canvasRegionId}
+            onClick={toggleMinimapCollapsed}
             data-minimap-collapse
           >
-            {collapsed ? (
+            {view.collapseIcon === "expand" ? (
               <ChevronRight size={ICON_PX} aria-hidden />
             ) : (
               <ChevronDown size={ICON_PX} aria-hidden />
@@ -145,18 +138,18 @@ export function MinimapWidget({ embedded = false }: MinimapWidgetProps = {}) {
           drawing API. role=img + an accessible name name it as the overview;
           click/drag inside it navigate the camera via the scene's seam. */}
       <div
-        id={CANVAS_REGION_ID}
-        aria-hidden={collapsed}
-        style={{ display: collapsed ? "none" : "block" }}
+        id={view.canvasRegionId}
+        aria-hidden={view.canvasRegionAriaHidden}
+        style={view.canvasRegionStyle}
       >
         <canvas
           ref={canvasRef}
-          width={MINIMAP_W}
-          height={MINIMAP_H}
+          width={view.canvasWidth}
+          height={view.canvasHeight}
           role="img"
-          aria-label="graph minimap — click or drag to move the field; the outlined rectangle marks the current viewport"
-          className="block cursor-pointer touch-none"
-          style={{ width: MINIMAP_W, height: MINIMAP_H }}
+          aria-label={view.canvasAriaLabel}
+          className={view.canvasClassName}
+          style={view.canvasStyle}
           data-minimap-canvas
         />
       </div>

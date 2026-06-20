@@ -73,6 +73,20 @@ until implementation.
   responses are cacheable by `(scope, filter, as_of)`.
 - `GET /vault-tree?scope=` — vault-scoped file tree: paths + doc type +
   feature tag(s) + dates. Metadata only, no content.
+- `GET /dashboard-state?scope=` and `PATCH /dashboard-state` — bounded,
+  transient dashboard intent session state, keyed by canonical scope. This is
+  not scope activation and does not mutate `.vault`, git, or graph semantics.
+  It exists so the GUI has one backend-backed authority for cross-surface user
+  intent while still validating `scope` per request. The success and validation
+  error bodies use the shared `{data, tiers}` envelope. The snapshot carries:
+  `scope`, `selected_ids[]`, `hovered_id?`, `filters`, `date_range`,
+  `timeline_mode`, `graph_granularity`, `salience_lens`, `salience_focus?`,
+  `representation_mode`, `panel_state`, and `graph_bounds`. PATCH accepts the
+  same fields as a sparse update; nullable identity fields clear the current
+  value. Route validation bounds selected ids, validates stable ids against the
+  live graph, checks ISO date ordering, accepts only known lens and mode values,
+  and keeps graph bounds finite and capped. The stores layer owns all reads and
+  writes through TanStack Query; views subscribe and emit typed intents.
 
 ## 4. Graph queries (center stage)
 

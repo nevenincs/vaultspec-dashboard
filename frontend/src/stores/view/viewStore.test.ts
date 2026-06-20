@@ -14,6 +14,7 @@ import {
   useCreateDocChromeStore,
 } from "./createDocChrome";
 import { openDiscoveryPanel, useDiscoveryPanelStore } from "./discoveries";
+import { DISCOVERY_EDGE_ID_MAX_CHARS } from "./discoveryEdges";
 import { useFilterSidebarStore } from "./filterSidebar";
 import {
   setGraphControlsSettingsOpen,
@@ -23,8 +24,11 @@ import {
   inspectorExpansionKey,
   useInspectorExpansionStore,
 } from "./inspectorExpansion";
+import { setIslandAnchor, useIslandAnchorStore } from "./islandAnchors";
 import { useKeyboardShortcutsStore } from "./keyboardShortcuts";
+import { useLensStore } from "./lenses";
 import { setMinimapCollapsed, useMinimapChromeStore } from "./minimapChrome";
+import { usePinStore } from "./pins";
 import { pipelineExpansionKey, usePipelineExpansionStore } from "./pipelineExpansion";
 import { useSearchIntentStore } from "./searchIntent";
 import {
@@ -33,7 +37,13 @@ import {
   toggleStatusSection,
   useStatusTabChromeStore,
 } from "./statusTabChrome";
-import { DEFAULT_PX_PER_MS, useTimelineStore } from "./timeline";
+import {
+  DEFAULT_PX_PER_MS,
+  openTimelineDatePicker,
+  setTimelineMinimapDrag,
+  startTimelineRangeDrag,
+  useTimelineStore,
+} from "./timeline";
 import {
   LEFT_RAIL_DEFAULT_WIDTH,
   LEFT_RAIL_MAX_WIDTH,
@@ -43,11 +53,17 @@ import {
   RIGHT_RAIL_DEFAULT_WIDTH,
   RIGHT_RAIL_MAX_WIDTH,
   RIGHT_RAIL_MIN_WIDTH,
+  SCOPE_ID_MAX_CHARS,
   TIMELINE_DEFAULT_HEIGHT,
   TIMELINE_MAX_HEIGHT,
   TIMELINE_MIN_HEIGHT,
+  VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS,
   WORKING_SET_CAP,
   DEFAULT_GRAPH_OVERLAYS,
+  normalizeViewStoreSessionString,
+  normalizeViewStoreSessionStringList,
+  normalizeShellLayoutPanelSize,
+  normalizeShellLayoutVisible,
   useViewStore,
 } from "./viewStore";
 import {
@@ -76,11 +92,12 @@ describe("view store", () => {
   it("keeps the working set explicit and deduplicated", () => {
     const store = useViewStore.getState();
     store.clearWorkingSet();
+    store.addToWorkingSet(" a ");
     store.addToWorkingSet("a");
-    store.addToWorkingSet("a");
+    store.addToWorkingSet("   ");
     store.addToWorkingSet("b");
     expect(useViewStore.getState().workingSet).toEqual(["a", "b"]);
-    useViewStore.getState().removeFromWorkingSet("a");
+    useViewStore.getState().removeFromWorkingSet(" a ");
     expect(useViewStore.getState().workingSet).toEqual(["b"]);
   });
 
@@ -117,6 +134,31 @@ describe("view store", () => {
     expect(after[after.length - 1]).toBe(oldest);
   });
 
+  it("normalizes opened island ids and hover ids at the store boundary", () => {
+    const store = useViewStore.getState();
+    useViewStore.setState({ openedIds: [], hoveredId: null, dwelledHoverId: null });
+
+    store.openNode(" doc:a ");
+    store.openNode("doc:a");
+    store.openNode("   ");
+    expect(useViewStore.getState().openedIds).toEqual(["doc:a"]);
+
+    store.closeNode(" doc:a ");
+    expect(useViewStore.getState().openedIds).toEqual([]);
+
+    store.setHovered(" doc:hover ");
+    store.setDwelledHover(" doc:hover ");
+    expect(useViewStore.getState()).toMatchObject({
+      hoveredId: "doc:hover",
+      dwelledHoverId: "doc:hover",
+    });
+    store.setHovered("   ");
+    expect(useViewStore.getState()).toMatchObject({
+      hoveredId: null,
+      dwelledHoverId: null,
+    });
+  });
+
   it("caps session-pinned discoveries to the most-recent entries (P-LOW-10)", () => {
     const edge = (id: string): EngineEdge => ({
       id,
@@ -132,6 +174,87 @@ describe("view store", () => {
     const pins = useViewStore.getState().pinnedDiscoveries;
     expect(pins).toHaveLength(PINNED_DISCOVERIES_CAP);
     expect(pins.some((e) => e.id === "p0")).toBe(false);
+  });
+
+  it("normalizes pinned discovery endpoints and ignores invalid endpoint ids", () => {
+    const store = useViewStore.getState();
+    useViewStore.setState({ pinnedDiscoveries: [] });
+
+    store.pinDiscovery({
+      id: "pin-valid",
+      src: " doc:a ",
+      dst: " doc:b ",
+      relation: "similar-to",
+      tier: "semantic",
+      confidence: 0.7,
+    });
+    store.pinDiscovery({
+      id: "pin-invalid",
+      src: "",
+      dst: "doc:c",
+      relation: "similar-to",
+      tier: "semantic",
+      confidence: 0.7,
+    });
+
+    expect(useViewStore.getState().pinnedDiscoveries).toEqual([
+      expect.objectContaining({ id: "pin-valid", src: "doc:a", dst: "doc:b" }),
+    ]);
+  });
+
+  it("normalizes full pinned discovery edges at the store boundary", () => {
+    const store = useViewStore.getState();
+    useViewStore.setState({ pinnedDiscoveries: [] });
+    const overlongId = "p".repeat(DISCOVERY_EDGE_ID_MAX_CHARS + 1);
+
+    store.pinDiscovery({
+      id: " pin-valid ",
+      src: " doc:a ",
+      dst: " doc:b ",
+      relation: " similar-to ",
+      tier: "semantic",
+      confidence: 7,
+    });
+    store.pinDiscovery({
+      id: "pin-invalid-relation",
+      src: "doc:a",
+      dst: "doc:b",
+      relation: "   ",
+      tier: "semantic",
+      confidence: 0.5,
+    });
+    store.pinDiscovery({
+      id: "pin-invalid-tier",
+      src: "doc:a",
+      dst: "doc:b",
+      relation: "similar-to",
+      tier: "runtime-invalid",
+      confidence: 0.5,
+    } as unknown as EngineEdge);
+    store.pinDiscovery({
+      id: overlongId,
+      src: "doc:a",
+      dst: "doc:b",
+      relation: "similar-to",
+      tier: "semantic",
+      confidence: 0.5,
+    });
+
+    expect(useViewStore.getState().pinnedDiscoveries).toEqual([
+      expect.objectContaining({
+        id: "pin-valid",
+        src: "doc:a",
+        dst: "doc:b",
+        relation: "similar-to",
+        confidence: 1,
+      }),
+    ]);
+
+    store.unpinDiscovery({ id: "pin-valid" });
+    expect(useViewStore.getState().pinnedDiscoveries).toHaveLength(1);
+
+    store.unpinDiscovery(" pin-valid ");
+    expect(useViewStore.getState().pinnedDiscoveries).toEqual([]);
   });
 
   it("prunes visual node affordances against the held graph model", () => {
@@ -225,6 +348,15 @@ describe("view store", () => {
     timeline.setPxPerMs(DEFAULT_PX_PER_MS * 8);
     timeline.setScrollOffset(999);
     timeline.toggleLane("exec", false);
+    openTimelineDatePicker("2026-06-01", "2026-06-30");
+    startTimelineRangeDrag(22);
+    setTimelineMinimapDrag({
+      pointerId: 7,
+      mode: "move",
+      initialFromMs: 10,
+      initialToMs: 20,
+      grabOffsetMs: 5,
+    });
 
     useViewStore.getState().setScope("timeline-reset-scope");
 
@@ -232,6 +364,9 @@ describe("view store", () => {
       playheadT: "live",
       pxPerMs: DEFAULT_PX_PER_MS,
       scrollOffset: 0,
+      datePicker: { open: false, draftFrom: "", draftTo: "" },
+      rangeDrag: null,
+      minimapDrag: null,
     });
     expect(useTimelineStore.getState().laneVisibility.exec).toBe(true);
   });
@@ -261,6 +396,14 @@ describe("view store", () => {
     useViewStore.getState().setScope("inspector-reset-scope");
 
     expect(useInspectorExpansionStore.getState().expandedTiers).toEqual([]);
+  });
+
+  it("resets DOM island anchors on a wholesale scope swap", () => {
+    setIslandAnchor("doc:previous", { x: 8, y: 13, scale: 1 });
+
+    useViewStore.getState().setScope("island-anchor-reset-scope");
+
+    expect(useIslandAnchorStore.getState().anchors).toEqual({});
   });
 
   it("resets right-rail search intent on a wholesale scope swap", () => {
@@ -359,6 +502,112 @@ describe("view store", () => {
     expect(useViewStore.getState().leftRailWidth).toBe(LEFT_RAIL_MAX_WIDTH);
     expect(useViewStore.getState().rightRailWidth).toBe(RIGHT_RAIL_MAX_WIDTH);
     expect(useViewStore.getState().timelineHeight).toBe(TIMELINE_MAX_HEIGHT);
+  });
+
+  it("normalizes malformed shell layout writes at the view-store boundary", () => {
+    const store = useViewStore.getState();
+    store.resetShellLayout();
+
+    expect(normalizeShellLayoutVisible(true)).toBe(true);
+    expect(normalizeShellLayoutVisible("true")).toBe(false);
+    expect(
+      normalizeShellLayoutPanelSize(
+        Number.NaN,
+        LEFT_RAIL_MIN_WIDTH,
+        LEFT_RAIL_MAX_WIDTH,
+      ),
+    ).toBe(LEFT_RAIL_MIN_WIDTH);
+    expect(
+      normalizeShellLayoutPanelSize(
+        LEFT_RAIL_MIN_WIDTH + 0.7,
+        LEFT_RAIL_MIN_WIDTH,
+        LEFT_RAIL_MAX_WIDTH,
+      ),
+    ).toBe(LEFT_RAIL_MIN_WIDTH + 1);
+
+    store.setLeftRailVisible("false");
+    store.setTimelineVisible({ visible: true });
+    store.setPanelFlyoutOpen("open");
+    store.setLeftRailWidth(Number.NaN);
+    store.setRightRailWidth("320");
+    store.setTimelineHeight(Number.POSITIVE_INFINITY);
+
+    expect(useViewStore.getState()).toMatchObject({
+      leftRailVisible: false,
+      timelineVisible: false,
+      panelFlyoutOpen: false,
+      leftRailWidth: LEFT_RAIL_MIN_WIDTH,
+      rightRailWidth: RIGHT_RAIL_MIN_WIDTH,
+      timelineHeight: TIMELINE_MIN_HEIGHT,
+    });
+  });
+
+  it("normalizes session scope-context runtime inputs at the view-store boundary", () => {
+    expect(normalizeViewStoreSessionString(" scope-a ")).toBe("scope-a");
+    expect(normalizeViewStoreSessionString("   ")).toBeNull();
+    expect(normalizeViewStoreSessionString({ value: "scope-a" })).toBeNull();
+    expect(
+      normalizeViewStoreSessionString("x".repeat(SCOPE_ID_MAX_CHARS + 1)),
+    ).toBeNull();
+    expect(
+      normalizeViewStoreSessionStringList([" feature-a ", "feature-a", "", 7]),
+    ).toEqual(["feature-a"]);
+    expect(
+      normalizeViewStoreSessionStringList(
+        Array.from(
+          { length: VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS + 1 },
+          (_, index) => `feature-${index}`,
+        ),
+      ),
+    ).toHaveLength(VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS);
+
+    usePinStore.setState({
+      pinnedIds: [],
+      workspace: "source-workspace",
+      scope: "source-scope",
+    });
+    useLensStore.setState({
+      saved: [],
+      workspace: "source-workspace",
+      scope: "source-scope",
+    });
+
+    useViewStore.getState().seedFromSession({
+      workspace: " workspace-a ",
+      scope: " scope-a ",
+      folder: " .vault/adr ",
+      featureTags: [" feature-a ", "feature-a", "", 7],
+    });
+
+    expect(useViewStore.getState()).toMatchObject({
+      scope: "scope-a",
+      activeFolder: ".vault/adr",
+      featureContexts: ["feature-a"],
+    });
+    expect(usePinStore.getState()).toMatchObject({
+      workspace: "workspace-a",
+      scope: "scope-a",
+    });
+    expect(useLensStore.getState()).toMatchObject({
+      workspace: "workspace-a",
+      scope: "scope-a",
+    });
+
+    useViewStore.getState().setScopeContext({
+      folder: { value: ".vault/plan" },
+      featureTags: [" plan ", "plan", null],
+    });
+    expect(useViewStore.getState()).toMatchObject({
+      activeFolder: null,
+      featureContexts: ["plan"],
+    });
+
+    useViewStore.getState().swapWorkspace({ bad: "workspace" }, "   ");
+    expect(useViewStore.getState().scope).toBeNull();
+    expect(usePinStore.getState()).toMatchObject({
+      workspace: "workspace-a",
+      scope: "default",
+    });
   });
 
   it("stores shell panel visibility without resetting scoped corpus state", () => {

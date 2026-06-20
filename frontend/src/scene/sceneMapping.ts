@@ -2,7 +2,7 @@
 // contract shapes; the scene speaks the locked seam types. This is the
 // only place the two vocabularies meet. Scene-layer module: framework-free.
 
-import type { EngineEdge, EngineNode, GraphDeltaEntry } from "../stores/server/engine";
+import type { EngineEdge, EngineNode } from "../stores/server/engine";
 import { nodeStatusFromWire } from "./field/statusStamp";
 import type {
   SceneCommand,
@@ -10,6 +10,35 @@ import type {
   SceneEdgeData,
   SceneNodeData,
 } from "./sceneController";
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeGraphDeltaOp(value: unknown): SceneDelta["op"] | null {
+  return value === "add" || value === "remove" || value === "change" ? value : null;
+}
+
+function normalizeGraphDeltaNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeGraphDeltaNode(value: unknown): EngineNode | null {
+  if (!isObjectRecord(value)) return null;
+  return typeof value.id === "string" && value.id.trim().length > 0
+    ? ({ ...value, id: value.id.trim() } as EngineNode)
+    : null;
+}
+
+function normalizeGraphDeltaEdge(value: unknown): EngineEdge | null {
+  if (!isObjectRecord(value)) return null;
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const src = typeof value.src === "string" ? value.src.trim() : "";
+  const dst = typeof value.dst === "string" ? value.dst.trim() : "";
+  return id.length > 0 && src.length > 0 && dst.length > 0
+    ? ({ ...value, id, src, dst } as EngineEdge)
+    : null;
+}
 
 export function engineNodeToScene(node: EngineNode): SceneNodeData {
   return {
@@ -60,13 +89,24 @@ export function engineEdgeToScene(edge: EngineEdge): SceneEdgeData {
   };
 }
 
-export function sliceToScene(slice: { nodes: EngineNode[]; edges: EngineEdge[] }): {
+export function sliceToScene(slice: unknown): {
   nodes: SceneNodeData[];
   edges: SceneEdgeData[];
 } {
+  const record = isObjectRecord(slice) ? slice : {};
+  const nodes = Array.isArray(record.nodes)
+    ? record.nodes
+        .map((node) => normalizeGraphDeltaNode(node))
+        .filter((node): node is EngineNode => node !== null)
+    : [];
+  const edges = Array.isArray(record.edges)
+    ? record.edges
+        .map((edge) => normalizeGraphDeltaEdge(edge))
+        .filter((edge): edge is EngineEdge => edge !== null)
+    : [];
   return {
-    nodes: slice.nodes.map(engineNodeToScene),
-    edges: slice.edges.map(engineEdgeToScene),
+    nodes: nodes.map(engineNodeToScene),
+    edges: edges.map(engineEdgeToScene),
   };
 }
 
@@ -79,20 +119,27 @@ export function sliceToScene(slice: { nodes: EngineNode[]; edges: EngineEdge[] }
  * feature-granularity delta entries to SceneDeltas and pushes them via
  * `SceneController.command({ kind: "apply-deltas", ... })`.
  */
-export function graphDeltaToScene(delta: GraphDeltaEntry): SceneDelta | null {
-  if (!delta.node && !delta.edge) return null;
+export function graphDeltaToScene(delta: unknown): SceneDelta | null {
+  if (!isObjectRecord(delta)) return null;
+  const op = normalizeGraphDeltaOp(delta.op);
+  const t = normalizeGraphDeltaNumber(delta.t);
+  const seq = normalizeGraphDeltaNumber(delta.seq);
+  const node = normalizeGraphDeltaNode(delta.node);
+  const edge = normalizeGraphDeltaEdge(delta.edge);
+  if (op === null || t === null || seq === null || (node === null && edge === null)) {
+    return null;
+  }
   return {
-    op: delta.op,
-    node: delta.node ? engineNodeToScene(delta.node) : undefined,
-    edge: delta.edge ? engineEdgeToScene(delta.edge) : undefined,
-    t: delta.t,
-    seq: delta.seq,
+    op,
+    node: node ? engineNodeToScene(node) : undefined,
+    edge: edge ? engineEdgeToScene(edge) : undefined,
+    t,
+    seq,
   };
 }
 
-export function graphDeltasToApplyCommand(
-  deltas: readonly GraphDeltaEntry[],
-): SceneCommand | null {
+export function graphDeltasToApplyCommand(deltas: unknown): SceneCommand | null {
+  if (!Array.isArray(deltas)) return null;
   const sceneDeltas = deltas
     .map((entry) => graphDeltaToScene(entry))
     .filter((delta): delta is SceneDelta => delta !== null);

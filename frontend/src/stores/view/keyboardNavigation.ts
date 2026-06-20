@@ -12,7 +12,7 @@ import {
   useNodeNeighbors,
 } from "../server/queries";
 import { registerKeyAction, useKeymapDispatcher } from "./keymapDispatcher";
-import { useDashboardNodeSelection } from "./selection";
+import { normalizeSelectionScope, useDashboardNodeSelection } from "./selection";
 import { timelineViewSnapshot, timelineVisibleRange } from "./timeline";
 import { movePlayhead } from "./timelineIntent";
 
@@ -165,7 +165,7 @@ export type KeyboardNodeSelectionIntent = (id: string) => Promise<unknown>;
 export function deriveKeyboardNavigationActionDescriptor(
   binding: KeyboardNavigationBinding,
   navigation: KeyboardNavigationView,
-  scope: string | null,
+  scope: unknown,
   selectDashboardNode: KeyboardNodeSelectionIntent,
   now = Date.now(),
 ): ActionDescriptor | null {
@@ -216,11 +216,12 @@ export function deriveKeyboardNavigationView(
  * reading query payloads and vocabulary fields locally.
  */
 export function useKeyboardNavigationView(
-  scope: string | null,
+  scope: unknown,
 ): KeyboardNavigationView {
-  const selectedId = useDashboardSelectedNodeId(scope);
-  const vocabulary = useFiltersVocabularyView(scope);
-  const neighbors = useNodeNeighbors(selectedId, scope);
+  const normalizedScope = normalizeSelectionScope(scope);
+  const selectedId = useDashboardSelectedNodeId(normalizedScope);
+  const vocabulary = useFiltersVocabularyView(normalizedScope);
+  const neighbors = useNodeNeighbors(selectedId, normalizedScope);
   return useMemo(
     () =>
       deriveKeyboardNavigationView(
@@ -233,7 +234,7 @@ export function useKeyboardNavigationView(
 }
 
 export function useKeyboardNavigationKeybindings(
-  scope: string | null,
+  scope: unknown,
   navigation: KeyboardNavigationView,
   selectDashboardNode: KeyboardNodeSelectionIntent,
 ): void {
@@ -258,8 +259,9 @@ export function useKeyboardNavigationKeybindings(
 
 export function useKeyboardNavigationSurface(): KeyboardNavigationView {
   const scope = useActiveScope();
-  const navigation = useKeyboardNavigationView(scope);
-  const selectDashboardNode = useDashboardNodeSelection(scope);
+  const normalizedScope = normalizeSelectionScope(scope);
+  const navigation = useKeyboardNavigationView(normalizedScope);
+  const selectDashboardNode = useDashboardNodeSelection(normalizedScope);
   useKeymapDispatcher();
   useKeyboardNavigationKeybindings(scope, navigation, selectDashboardNode);
   return navigation;

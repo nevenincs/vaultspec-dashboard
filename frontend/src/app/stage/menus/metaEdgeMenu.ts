@@ -5,17 +5,20 @@
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { MetaEdgeEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 
-export function metaEdgeMenu(entity: MetaEdgeEntity): ActionDescriptor[] {
+export function metaEdgeMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "meta-edge") return [];
+
   return [
-    entity.summary
+    normalizedEntity.summary
       ? copyAction({
           id: "meta-edge:copy-summary",
           label: "Copy summary",
-          text: entity.summary,
+          text: normalizedEntity.summary,
           what: "summary",
         })
       : {
@@ -28,10 +31,10 @@ export function metaEdgeMenu(entity: MetaEdgeEntity): ActionDescriptor[] {
     copyAction({
       id: "meta-edge:copy-id",
       label: "Copy id",
-      text: entity.id,
+      text: normalizedEntity.id,
       what: "id",
     }),
   ];
 }
 
-registerResolver("meta-edge", metaEdgeMenu as ActionResolver<MetaEdgeEntity>);
+registerResolver("meta-edge", metaEdgeMenu as ActionResolver);

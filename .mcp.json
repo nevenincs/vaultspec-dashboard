@@ -9,13 +9,6 @@
         "vaultspec_core.mcp_server.app"
       ]
     },
-    "vaultspec-rag": {
-      "command": "uv",
-      "args": [
-        "run",
-        "vaultspec-search-mcp"
-      ]
-    },
     "chrome-devtools": {
       "command": "npx",
       "args": [
@@ -30,6 +23,13 @@
       "command": "npx",
       "args": [
         "@playwright/mcp@latest"
+      ]
+    },
+    "vaultspec-rag": {
+      "command": "uv",
+      "args": [
+        "run",
+        "vaultspec-search-mcp"
       ]
     }
   },

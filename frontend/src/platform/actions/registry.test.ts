@@ -5,10 +5,30 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { isRunnable, type ActionDescriptor } from "./action";
+import {
+  ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS,
+  ACTION_DESCRIPTOR_ID_MAX_CHARS,
+  ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
+  ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
+  fireActionDescriptor,
+  isRunnable,
+  normalizeActionDescriptorId,
+  normalizeActionDescriptorLabel,
+  normalizeActionDescriptorText,
+  normalizeActionDescriptor,
+  type ActionDescriptor,
+} from "./action";
+import {
+  ENTITY_DESCRIPTOR_HUNK_MAX_CHARS,
+  ENTITY_DESCRIPTOR_ID_MAX_CHARS,
+  ENTITY_DESCRIPTOR_PATH_MAX_CHARS,
+  ENTITY_DESCRIPTOR_TEXT_MAX_CHARS,
+} from "./entity";
 import type { NodeEntity } from "./entity";
 import {
   hasResolver,
+  normalizeActionEntity,
+  normalizeEntityKind,
   registerResolver,
   resetResolvers,
   resolveActions,
@@ -20,6 +40,113 @@ const LIVE: ActionContext = { timeTravel: false };
 afterEach(() => resetResolvers());
 
 describe("resolver registry", () => {
+  it("normalizes entity kinds and descriptors at the registry seam", () => {
+    expect(normalizeEntityKind(" node ")).toBe("node");
+    expect(normalizeEntityKind("unknown")).toBeNull();
+    expect(
+      normalizeActionEntity({
+        kind: " node ",
+        id: " doc:n1 ",
+        title: " Alpha ",
+        scope: " scope-a ",
+        rogue: "local payload",
+      }),
+    ).toEqual({
+      kind: "node",
+      id: "doc:n1",
+      scope: "scope-a",
+      title: "Alpha",
+    });
+    expect(normalizeActionEntity({ kind: "canvas", id: "ignored" })).toEqual({
+      kind: "canvas",
+      id: "canvas",
+    });
+    expect(normalizeActionEntity({ kind: "node", id: "   " })).toBeNull();
+    expect(
+      normalizeActionEntity({
+        kind: "vault-doc",
+        id: "doc:1",
+        path: "   ",
+        stem: "ADR",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeActionEntity({
+        kind: "event",
+        id: "evt:1",
+        nodeIds: [" doc:a ", "", "doc:a", 5, "doc:b"],
+        truncatedNodeIds: 2.8,
+        rogue: "local payload",
+      }),
+    ).toEqual({
+      kind: "event",
+      id: "evt:1",
+      nodeIds: ["doc:a", "doc:b"],
+      truncatedNodeIds: 2,
+    });
+    expect(
+      normalizeActionEntity({
+        kind: "search-result",
+        id: "result:1",
+        source: "search",
+        nodeId: { id: "doc:a" },
+      }),
+    ).toEqual({
+      kind: "search-result",
+      id: "result:1",
+      source: "search",
+    });
+    expect(
+      normalizeActionEntity({
+        kind: "edge",
+        id: "edge:1",
+        relation: "links",
+        dst: " doc:target ",
+      }),
+    ).toEqual({
+      kind: "edge",
+      id: "edge:1",
+      relation: "links",
+      dst: "doc:target",
+    });
+    expect(
+      normalizeActionEntity({
+        kind: "workspace",
+        id: "x".repeat(ENTITY_DESCRIPTOR_ID_MAX_CHARS + 1),
+      }),
+    ).toBeNull();
+    expect(
+      normalizeActionEntity({
+        kind: "vault-doc",
+        id: "doc:1",
+        path: "x".repeat(ENTITY_DESCRIPTOR_PATH_MAX_CHARS + 1),
+        stem: "ADR",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeActionEntity({
+        kind: "node",
+        id: "doc:n1",
+        title: "x".repeat(ENTITY_DESCRIPTOR_TEXT_MAX_CHARS + 1),
+      }),
+    ).toEqual({
+      kind: "node",
+      id: "doc:n1",
+    });
+    expect(
+      normalizeActionEntity({
+        kind: "change",
+        id: "change:1",
+        path: "src/app.ts",
+        hunk: "x".repeat(ENTITY_DESCRIPTOR_HUNK_MAX_CHARS + 1),
+      }),
+    ).toEqual({
+      kind: "change",
+      id: "change:1",
+      path: "src/app.ts",
+    });
+  });
+
   it("resolves a kind through its registered resolver", () => {
     registerResolver("node", (entity) => [
       { id: `focus:${entity.id}`, label: `focus ${entity.title ?? entity.id}` },
@@ -30,9 +157,46 @@ describe("resolver registry", () => {
     expect(actions[0].label).toBe("focus Alpha");
   });
 
+  it("uses normalized kinds for registration, lookup, resolution, and disposal", () => {
+    const dispose = registerResolver(" node " as unknown, (entity: NodeEntity) => [
+      { id: `focus:${entity.id}`, label: `focus ${entity.id}` },
+    ]);
+
+    expect(hasResolver(" node ")).toBe(true);
+    expect(
+      resolveActions({ kind: " node ", id: " n1 " }, LIVE).map((a) => a.id),
+    ).toEqual(["focus:n1"]);
+
+    dispose();
+    expect(hasResolver("node")).toBe(false);
+  });
+
   it("returns an empty list for an unregistered kind (quiet, not an error)", () => {
     expect(resolveActions({ kind: "canvas", id: "canvas" }, LIVE)).toEqual([]);
     expect(hasResolver("canvas")).toBe(false);
+  });
+
+  it("quietly ignores malformed runtime entities during resolution", () => {
+    registerResolver("node", () => [{ id: "focus", label: "Focus" }]);
+
+    expect(resolveActions({ kind: "unknown", id: "n1" }, LIVE)).toEqual([]);
+    expect(resolveActions({ kind: "node", id: "   " }, LIVE)).toEqual([]);
+    expect(resolveActions(null, LIVE)).toEqual([]);
+  });
+
+  it("throws on malformed resolver registration kinds", () => {
+    expect(() => registerResolver(" unknown " as unknown, () => [])).toThrow(
+      /malformed entity kind/,
+    );
+  });
+
+  it("ignores malformed resolver registrations at the registry seam", () => {
+    const dispose = registerResolver("node", { resolve: () => [] });
+
+    expect(hasResolver("node")).toBe(false);
+    expect(resolveActions({ kind: "node", id: "n1" }, LIVE)).toEqual([]);
+
+    dispose();
   });
 
   it("passes the action context through to the resolver", () => {
@@ -58,6 +222,50 @@ describe("resolver registry", () => {
     registerResolver("node", () => [{ id: "b", label: "second" }]);
     const actions = resolveActions({ kind: "node", id: "n1" }, LIVE);
     expect(actions.map((a) => a.label)).toEqual(["second"]);
+  });
+
+  it("normalizes resolver-produced descriptors before consumers see them", () => {
+    const run = () => undefined;
+    registerResolver(
+      "node",
+      () =>
+        [
+          {
+            id: " focus ",
+            label: " Focus ",
+            section: " copy ",
+            disabledReason: " no target ",
+            accelerator: " F ",
+            run,
+            rogue: "local payload",
+          },
+          { id: "bad", label: "   ", run },
+          { id: "dispatch", label: " Dispatch ", dispatch: { type: " host:reveal " } },
+          { id: "ambiguous", label: " Ambiguous ", run, dispatch: { type: "noop" } },
+        ] as unknown as ActionDescriptor[],
+    );
+
+    const actions = resolveActions({ kind: "node", id: "n1" }, LIVE);
+
+    expect(actions).toEqual([
+      {
+        id: "focus",
+        label: "Focus",
+        section: "copy",
+        disabledReason: "no target",
+        accelerator: "F",
+        run,
+      },
+      {
+        id: "dispatch",
+        label: "Dispatch",
+        dispatch: { type: "host:reveal" },
+      },
+      {
+        id: "ambiguous",
+        label: "Ambiguous",
+      },
+    ]);
   });
 });
 
@@ -85,6 +293,81 @@ describe("time-travel gate (W02.P06.S26)", () => {
 
 describe("isRunnable", () => {
   const base: ActionDescriptor = { id: "i", label: "l" };
+  it("normalizes raw action descriptor presentation and execution lanes", () => {
+    const run = () => {};
+
+    expect(
+      normalizeActionDescriptor({
+        id: " x ",
+        label: " X ",
+        section: " danger ",
+        confirm: true,
+        disabled: true,
+        disabledReason: " wait ",
+        disabledInTimeTravel: true,
+        accelerator: " Mod+X ",
+        run,
+      }),
+    ).toEqual({
+      id: "x",
+      label: "X",
+      section: "danger",
+      confirm: true,
+      disabled: true,
+      disabledReason: "wait",
+      disabledInTimeTravel: true,
+      accelerator: "Mod+X",
+      run,
+    });
+
+    expect(normalizeActionDescriptor({ id: "x", label: "   " })).toBeNull();
+    expect(
+      normalizeActionDescriptor({
+        id: "x".repeat(ACTION_DESCRIPTOR_ID_MAX_CHARS + 1),
+        label: "X",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeActionDescriptor({
+        id: "x",
+        label: "x".repeat(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1),
+      }),
+    ).toBeNull();
+    expect(
+      normalizeActionDescriptor({
+        id: "x",
+        label: "X",
+        disabledReason: "x".repeat(ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS + 1),
+        accelerator: "x".repeat(ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS + 1),
+      }),
+    ).toEqual({ id: "x", label: "X" });
+    expect(
+      normalizeActionDescriptorId(
+        "x".repeat(ACTION_DESCRIPTOR_ID_MAX_CHARS + 1),
+        "fallback",
+      ),
+    ).toBe("fallback");
+    expect(
+      normalizeActionDescriptorLabel(
+        "x".repeat(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1),
+        "Fallback",
+      ),
+    ).toBe("Fallback");
+    expect(
+      normalizeActionDescriptorText(
+        "x".repeat(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1),
+      ),
+    ).toHaveLength(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1);
+    expect(
+      normalizeActionDescriptor({
+        id: "ambiguous",
+        label: "Ambiguous",
+        run,
+        dispatch: { type: "noop" },
+      }),
+    ).toEqual({ id: "ambiguous", label: "Ambiguous" });
+  });
+
   it("is true for a run action", () => {
     expect(isRunnable({ ...base, run: () => {} })).toBe(true);
   });
@@ -96,5 +379,37 @@ describe("isRunnable", () => {
   });
   it("is false for a bare placeholder", () => {
     expect(isRunnable(base)).toBe(false);
+  });
+  it("is false for an ambiguous run-plus-dispatch descriptor", () => {
+    const ambiguous = {
+      ...base,
+      run: () => {},
+      dispatch: { type: "t" },
+    } as unknown as ActionDescriptor;
+
+    expect(isRunnable(ambiguous)).toBe(false);
+  });
+
+  it("normalizes and gates direct descriptor execution", () => {
+    const calls: string[] = [];
+    const run = () => calls.push("run");
+
+    expect(
+      fireActionDescriptor({
+        id: " x ",
+        label: " X ",
+        run,
+      }),
+    ).toBe(1);
+    fireActionDescriptor({ id: "disabled", label: "Disabled", disabled: true, run });
+    fireActionDescriptor({ id: "bad", label: "   ", run });
+    fireActionDescriptor({
+      id: "ambiguous",
+      label: "Ambiguous",
+      run,
+      dispatch: { type: "noop" },
+    });
+
+    expect(calls).toEqual(["run"]);
   });
 });

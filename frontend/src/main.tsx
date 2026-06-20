@@ -8,7 +8,7 @@ import { installGlobalTraps } from "./platform/logger/globalTraps";
 import { ringBuffer } from "./platform/logger/logger";
 import { failurePolicy } from "./platform/policy/failurePolicy";
 import { getThemeController } from "./platform/theme/themeController";
-import { useLiveStatusStore } from "./stores/server/liveStatus";
+import { markLiveStreamLost, setLiveStreamConnected } from "./stores/server/liveStatus";
 import { queryClient } from "./stores/server/queryClient";
 import { router } from "./router";
 import "./styles.css";
@@ -32,7 +32,7 @@ installGlobalTraps();
 // platform's); the live signal is the vocabulary binding (ours).
 failurePolicy.setDegradationHandler((classification) => {
   if (classification.signal === "stream-lost") {
-    useLiveStatusStore.getState().setStreamConnected(false);
+    markLiveStreamLost();
   }
 });
 
@@ -41,14 +41,19 @@ failurePolicy.setDegradationHandler((classification) => {
 if (import.meta.env.DEV) {
   const devGlobals = globalThis as typeof globalThis & {
     __platformRingBuffer?: typeof ringBuffer;
-    __liveStatusStore?: typeof useLiveStatusStore;
+    __liveStatusControls?: {
+      markStreamLost: () => void;
+      setStreamConnected: (connected: boolean) => void;
+    };
     __viewStore?: unknown;
   };
   devGlobals.__platformRingBuffer = ringBuffer;
-  devGlobals.__liveStatusStore = useLiveStatusStore;
-  // The view store drives granularity / representation-mode / overlays — exposed
-  // so the graph visual + behaviour harness can switch to the document graph and
-  // exercise representation modes without clicking through chrome.
+  devGlobals.__liveStatusControls = {
+    markStreamLost: markLiveStreamLost,
+    setStreamConnected: setLiveStreamConnected,
+  };
+  // The view store exposes local graph overlay chrome for the visual harness; graph
+  // granularity and representation mode live in dashboard-state.
   void import("./stores/view/viewStore").then((m) => {
     devGlobals.__viewStore = m.useViewStore;
   });

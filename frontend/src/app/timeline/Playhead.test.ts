@@ -1,9 +1,13 @@
+// @vitest-environment happy-dom
+
+import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useViewStore } from "../../stores/view/viewStore";
-import { LIVE_SNAP_PX, dragToPlayhead, keyboardStep, movePlayhead } from "./Playhead";
+import { LIVE_SNAP_PX, dragToPlayhead, keyboardStep } from "./Playhead";
 import { TIMELINE_ORIGIN_MS, timeToX } from "./scrollStrip";
-import { useTimelineStore } from "./Timeline";
+import { useTimelineStore } from "../../stores/view/timeline";
+import { movePlayhead } from "../../stores/view/timelineIntent";
+import { createLiveClient, liveScope } from "../../testing/liveClient";
 
 const DAY = 24 * 3600_000;
 const px = 100 / DAY; // 100px per day
@@ -53,18 +57,65 @@ describe("keyboardStep (keyboard scrub is an instant pure projection)", () => {
   });
 });
 
-describe("movePlayhead (the playhead IS the mode, G4.b)", () => {
-  beforeEach(() => movePlayhead("live"));
+describe("movePlayhead (local playhead projection)", () => {
+  beforeEach(() => movePlayhead("live", null));
 
-  it("enters time-travel mode off LIVE and exits when docked back", () => {
-    movePlayhead(1500);
+  it("moves the local playhead off LIVE and exits when docked back", () => {
+    movePlayhead(1500, null);
     expect(useTimelineStore.getState().playheadT).toBe(1500);
-    expect(useViewStore.getState().timelineMode).toEqual({
-      kind: "time-travel",
-      at: 1500,
-    });
-    movePlayhead("live");
+    movePlayhead("not-a-playhead", null);
     expect(useTimelineStore.getState().playheadT).toBe("live");
-    expect(useViewStore.getState().timelineMode).toEqual({ kind: "live" });
+    movePlayhead(1500, null);
+    movePlayhead("live", null);
+    expect(useTimelineStore.getState().playheadT).toBe("live");
+  });
+
+  it("mirrors accepted dashboard timeline mode for explicit scopes", async () => {
+    const scope = await liveScope();
+    await createLiveClient().patchDashboardState({
+      scope,
+      timeline_mode: { kind: "live" },
+    });
+    useTimelineStore.getState().setPlayhead("live");
+
+    movePlayhead(1500, scope);
+
+    expect(useTimelineStore.getState().playheadT).toBe("live");
+    await waitFor(() => expect(useTimelineStore.getState().playheadT).toBe(1500));
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      timeline_mode: { kind: "time-travel", at: 1500 },
+    });
+  });
+
+  it("normalizes runtime scope before writing dashboard timeline mode", async () => {
+    const scope = await liveScope();
+    await createLiveClient().patchDashboardState({
+      scope,
+      timeline_mode: { kind: "live" },
+    });
+    useTimelineStore.getState().setPlayhead("live");
+
+    movePlayhead(1600, ` ${scope} `);
+
+    await waitFor(() => expect(useTimelineStore.getState().playheadT).toBe(1600));
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      timeline_mode: { kind: "time-travel", at: 1600 },
+    });
+  });
+
+  it("does not create local playhead state for malformed runtime scope", async () => {
+    const scope = await liveScope();
+    await createLiveClient().patchDashboardState({
+      scope,
+      timeline_mode: { kind: "live" },
+    });
+    useTimelineStore.getState().setPlayhead("live");
+
+    movePlayhead(1700, { scope });
+
+    expect(useTimelineStore.getState().playheadT).toBe("live");
+    await expect(createLiveClient().dashboardState(scope)).resolves.toMatchObject({
+      timeline_mode: { kind: "live" },
+    });
   });
 });

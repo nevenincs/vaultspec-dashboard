@@ -19,15 +19,24 @@ import {
   type ContentView,
   type MarkdownHeaderView,
 } from "../server/queries";
-import { selectNode } from "./selection";
+import { normalizeNodeId } from "../nodeIds";
+import { normalizeSelectionScope, selectNode } from "./selection";
 import {
-  MAX_OPEN_DOCS,
+  normalizeActiveDocId,
+  normalizeOpenDocs,
+  normalizeViewStoreSessionString,
+  normalizeViewerSurface,
   useViewStore,
   type OpenDoc,
   type ViewerSurface,
 } from "./viewStore";
+import { normalizeWorkspaceLayoutBlob } from "../workspaceLayout";
 
 const WORKSPACE_PERSIST_VERSION = 1;
+export {
+  WORKSPACE_LAYOUT_BLOB_MAX_CHARS,
+  normalizeWorkspaceLayoutBlob,
+} from "../workspaceLayout";
 
 export interface DockWorkspacePanelSpec {
   id: string;
@@ -77,6 +86,12 @@ export type DockDocPanelView =
       header: MarkdownHeaderView;
     };
 
+export interface RenamedMarkdownDocWorkspaceResult {
+  oldNodeId: string;
+  newNodeId: string;
+  newBlobHash: string;
+}
+
 /** A short display title for a dock tab from its stable node id. */
 export function dockTabTitle(nodeId: string): string {
   if (nodeId.startsWith("doc:")) return nodeId.slice(4);
@@ -93,7 +108,9 @@ export function deriveDockWorkspaceSyncPlan(
   panelIds: readonly string[],
   graphPanelId: string,
 ): DockWorkspaceSyncPlan {
-  const wanted = new Set(openDocs.map((doc) => doc.nodeId));
+  const normalizedOpenDocs = normalizeOpenDocs(openDocs);
+  const normalizedActiveDocId = normalizeActiveDocId(normalizedOpenDocs, activeDocId);
+  const wanted = new Set(normalizedOpenDocs.map((doc) => doc.nodeId));
   const docPanelIds = panelIds.filter((id) => id !== graphPanelId);
   const removeIds = docPanelIds.filter((id) => !wanted.has(id));
   const removed = new Set(removeIds);
@@ -101,7 +118,7 @@ export function deriveDockWorkspaceSyncPlan(
   const availableDocPanels = docPanelIds.filter((id) => !removed.has(id));
   const addPanels: DockWorkspacePanelSpec[] = [];
 
-  for (const doc of openDocs) {
+  for (const doc of normalizedOpenDocs) {
     if (present.has(doc.nodeId)) continue;
     const referencePanel = availableDocPanels[0] ?? graphPanelId;
     const direction = referencePanel === graphPanelId ? "left" : "within";
@@ -116,7 +133,7 @@ export function deriveDockWorkspaceSyncPlan(
     availableDocPanels.push(doc.nodeId);
   }
 
-  return { removeIds, addPanels, activeDocId };
+  return { removeIds, addPanels, activeDocId: normalizedActiveDocId };
 }
 
 const DOCK_TAB_ROOT_BASE_CLASS =
@@ -167,38 +184,43 @@ export function useDockTabHeaderView(api: DockTabHeaderApi): DockTabHeaderView {
 }
 
 export function deriveDockDocPanelView(
-  nodeId: string,
-  surface: ViewerSurface,
-  scope: string | null,
+  nodeId: unknown,
+  surface: unknown,
+  scope: unknown,
   content: ContentView,
 ): DockDocPanelView {
-  if (surface === "code") {
+  const normalizedNodeId = normalizeNodeId(nodeId) ?? "";
+  const normalizedSurface = normalizeViewerSurface(surface);
+  const normalizedScope = normalizeViewStoreSessionString(scope);
+  if (normalizedSurface === "code") {
     return {
       state: "code",
-      nodeId,
-      scope,
+      nodeId: normalizedNodeId,
+      scope: normalizedScope,
       content,
       header: null,
     };
   }
   return {
     state: "markdown",
-    nodeId,
-    scope,
+    nodeId: normalizedNodeId,
+    scope: normalizedScope,
     content,
-    header: deriveMarkdownHeaderView(nodeId, content),
+    header: deriveMarkdownHeaderView(normalizedNodeId, content),
   };
 }
 
 export function useDockDocPanelView(
-  nodeId: string,
-  surface: ViewerSurface,
+  nodeId: unknown,
+  surface: unknown,
 ): DockDocPanelView {
   const scope = useActiveScope();
-  const content = useContentView(nodeId, scope);
+  const normalizedNodeId = normalizeNodeId(nodeId);
+  const normalizedSurface = normalizeViewerSurface(surface);
+  const content = useContentView(normalizedNodeId, scope);
   return useMemo(
-    () => deriveDockDocPanelView(nodeId, surface, scope, content),
-    [nodeId, surface, scope, content],
+    () => deriveDockDocPanelView(normalizedNodeId, normalizedSurface, scope, content),
+    [normalizedNodeId, normalizedSurface, scope, content],
   );
 }
 
@@ -209,12 +231,16 @@ export function useDockDocPanelView(
  * code).
  */
 export function previewDocTab(
-  nodeId: string,
-  surface: ViewerSurface,
-  scope: string | null = useViewStore.getState().scope,
+  nodeId: unknown,
+  surface: unknown,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
-  const selected = selectNode(nodeId, scope).catch(() => false);
-  useViewStore.getState().openDoc(nodeId, surface, false);
+  const docNodeId = normalizeNodeId(nodeId);
+  if (docNodeId === null) return Promise.resolve(false);
+  const selected = selectNode(docNodeId, normalizeSelectionScope(scope)).catch(
+    () => false,
+  );
+  useViewStore.getState().openDoc(docNodeId, normalizeViewerSurface(surface), false);
   return selected;
 }
 
@@ -224,60 +250,85 @@ export function previewDocTab(
  * added. Focuses the node on the graph.
  */
 export function openDocTab(
-  nodeId: string,
-  surface: ViewerSurface,
-  scope: string | null = useViewStore.getState().scope,
+  nodeId: unknown,
+  surface: unknown,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
-  const selected = selectNode(nodeId, scope).catch(() => false);
-  useViewStore.getState().openDoc(nodeId, surface, true);
+  const docNodeId = normalizeNodeId(nodeId);
+  if (docNodeId === null) return Promise.resolve(false);
+  const selected = selectNode(docNodeId, normalizeSelectionScope(scope)).catch(
+    () => false,
+  );
+  useViewStore.getState().openDoc(docNodeId, normalizeViewerSurface(surface), true);
   return selected;
 }
 
 /** Promote the provisional tab to permanent (on first edit, or a tab drag). */
-export function promoteDocTab(nodeId: string): void {
+export function promoteDocTab(nodeId: unknown): void {
   useViewStore.getState().promoteDoc(nodeId);
 }
 
 /** Activate a tab (a tab click or a dockview activation echo). */
-export function activateDocTab(nodeId: string): void {
+export function activateDocTab(nodeId: unknown): void {
   useViewStore.getState().activateDoc(nodeId);
 }
 
 /** Close a tab (a tab-close gesture or a dockview panel removal). */
-export function closeDocTab(nodeId: string): void {
+export function closeDocTab(nodeId: unknown): void {
   useViewStore.getState().closeDoc(nodeId);
 }
 
+/**
+ * Re-key the dock tab and editor after a core rename changes the identity-bearing
+ * document id. Dockview panel ids are node ids, so a rename must route through
+ * close/open instead of mutating an id in place.
+ */
+export function applyRenamedMarkdownDocWorkspace(
+  result: RenamedMarkdownDocWorkspaceResult,
+  draftText: string,
+  scope: unknown = useViewStore.getState().scope,
+): Promise<boolean> {
+  closeDocTab(result.oldNodeId);
+  const selected = openDocTab(result.newNodeId, "markdown", scope);
+  useViewStore.getState().openEditor(result.newNodeId, draftText, result.newBlobHash);
+  return selected;
+}
+
 /** Reorder the open docs to match dockview's geometry after a tab drag. */
-export function reorderDocTabs(orderedIds: string[]): void {
+export function reorderDocTabs(orderedIds: unknown): void {
   useViewStore.getState().reorderDocs(orderedIds);
 }
 
-/** Serialize the open-tab set + active tab into the dashboard panel-state blob. */
+/** Serialize the open-tab set + active tab into the durable session layout blob. */
 export function serializeWorkspaceTabs(
   openDocs: readonly OpenDoc[],
   activeDocId: string | null,
 ): string {
+  const normalizedOpenDocs = normalizeOpenDocs(openDocs).filter(
+    (doc) => !doc.provisional,
+  );
   return JSON.stringify({
     v: WORKSPACE_PERSIST_VERSION,
-    tabs: openDocs
-      .filter((doc) => !doc.provisional)
-      .map((doc) => ({ nodeId: doc.nodeId, surface: doc.surface })),
-    active: activeDocId,
+    tabs: normalizedOpenDocs.map((doc) => ({
+      nodeId: doc.nodeId,
+      surface: doc.surface,
+    })),
+    active: normalizeActiveDocId(normalizedOpenDocs, activeDocId),
   });
 }
 
 /**
- * Parse the dashboard panel-state workspace blob back into the tab store shape.
+ * Parse the durable session workspace-layout blob back into the tab store shape.
  * Malformed, duplicate, and over-cap entries degrade into the same bounded
  * one-tab-per-node invariant enforced by the live tab operations.
  */
 export function parseWorkspaceTabs(
-  blob: string | null,
+  blob: unknown,
 ): { openDocs: OpenDoc[]; activeDocId: string | null } | null {
-  if (!blob) return null;
+  const normalizedBlob = normalizeWorkspaceLayoutBlob(blob);
+  if (normalizedBlob === null) return null;
   try {
-    const parsed = JSON.parse(blob) as {
+    const parsed = JSON.parse(normalizedBlob) as {
       v?: number;
       tabs?: Array<{ nodeId?: unknown; surface?: unknown }>;
       active?: unknown;
@@ -286,46 +337,90 @@ export function parseWorkspaceTabs(
       return null;
     }
     const openDocs: OpenDoc[] = [];
-    const seen = new Set<string>();
     for (const entry of parsed.tabs) {
-      if (openDocs.length >= MAX_OPEN_DOCS) break;
-      if (typeof entry?.nodeId !== "string" || seen.has(entry.nodeId)) continue;
-      seen.add(entry.nodeId);
+      if (typeof entry?.nodeId !== "string") continue;
       const surface = entry.surface === "code" ? "code" : "markdown";
       openDocs.push({ nodeId: entry.nodeId, surface, provisional: false });
     }
-    const activeDocId =
-      typeof parsed.active === "string" &&
-      openDocs.some((doc) => doc.nodeId === parsed.active)
-        ? parsed.active
-        : (openDocs[0]?.nodeId ?? null);
-    return { openDocs, activeDocId };
+    const normalizedOpenDocs = normalizeOpenDocs(openDocs);
+    return {
+      openDocs: normalizedOpenDocs,
+      activeDocId: normalizeActiveDocId(
+        normalizedOpenDocs,
+        typeof parsed.active === "string" ? parsed.active : null,
+      ),
+    };
   } catch {
     return null;
   }
 }
 
+export interface PersistedWorkspaceTabsLayout {
+  scope: string;
+  blob: string;
+}
+
+export function isSamePersistedWorkspaceLayout(
+  previous: PersistedWorkspaceTabsLayout | null,
+  scope: unknown,
+  blob: string,
+): boolean {
+  const normalizedScope = normalizeViewStoreSessionString(scope);
+  return (
+    normalizedScope !== null &&
+    previous?.scope === normalizedScope &&
+    previous.blob === blob
+  );
+}
+
+export function shouldPersistWorkspaceTabsLayout(
+  previous: PersistedWorkspaceTabsLayout | null,
+  scope: unknown,
+  blob: string,
+): boolean {
+  const normalizedScope = normalizeViewStoreSessionString(scope);
+  if (normalizedScope === null) return false;
+  const parsed = parseWorkspaceTabs(blob);
+  if ((parsed?.openDocs.length ?? 0) === 0) return false;
+  return !isSamePersistedWorkspaceLayout(previous, normalizedScope, blob);
+}
+
 export function restoreDocTabsIfEmpty(
-  openDocs: readonly OpenDoc[],
-  activeDocId: string | null,
+  openDocs: unknown,
+  activeDocId: unknown,
 ): boolean {
   const store = useViewStore.getState();
-  if (store.openDocs.length > 0) return false;
+  if (normalizeOpenDocs(store.openDocs).length > 0) return false;
+  const normalizedOpenDocs = normalizeOpenDocs(openDocs);
+  if (normalizedOpenDocs.length === 0) return false;
   useViewStore.setState({
-    openDocs: [...openDocs],
-    activeDocId,
+    openDocs: normalizedOpenDocs,
+    activeDocId: normalizeActiveDocId(normalizedOpenDocs, activeDocId),
   });
   return true;
 }
 
+export function normalizeDockWorkspaceTabsView(
+  openDocs: unknown,
+  activeDocId: unknown,
+): { openDocs: OpenDoc[]; activeDocId: string | null } {
+  const normalizedOpenDocs = normalizeOpenDocs(openDocs);
+  return {
+    openDocs: normalizedOpenDocs,
+    activeDocId: normalizeActiveDocId(normalizedOpenDocs, activeDocId),
+  };
+}
+
 /** The ordered open document tabs. */
 export function useOpenDocs(): OpenDoc[] {
-  return useViewStore((state) => state.openDocs);
+  return useViewStore((state) => normalizeOpenDocs(state.openDocs));
 }
 
 /** The active tab's node id, or null when no document is open. */
 export function useActiveDocId(): string | null {
-  return useViewStore((state) => state.activeDocId);
+  return useViewStore((state) =>
+    normalizeActiveDocId(normalizeOpenDocs(state.openDocs), state.activeDocId),
+  );
 }
 
 export function useDockWorkspaceTabsView(): {
@@ -333,14 +428,13 @@ export function useDockWorkspaceTabsView(): {
   activeDocId: string | null;
 } {
   return useViewStore(
-    useShallow((state) => ({
-      openDocs: state.openDocs,
-      activeDocId: state.activeDocId,
-    })),
+    useShallow((state) =>
+      normalizeDockWorkspaceTabsView(state.openDocs, state.activeDocId),
+    ),
   );
 }
 
 /** Whether any document tab is open (drives the split-vs-full-graph layout). */
 export function useWorkspaceHasDocs(): boolean {
-  return useViewStore((state) => state.openDocs.length > 0);
+  return useViewStore((state) => normalizeOpenDocs(state.openDocs).length > 0);
 }

@@ -4,7 +4,6 @@
 // rail/dialog state. It reads settings through stores hooks and never fetches.
 
 import { useEffect } from "react";
-import { useRef } from "react";
 
 import {
   useDashboardGraphDefaultsInitializationView,
@@ -13,7 +12,7 @@ import {
 } from "../../stores/server/queries";
 import { useSettingsEffectsIntent } from "../../stores/server/settingsEffectsIntent";
 
-export function useSettingsEffects(scope: string | null = null) {
+export function useSettingsEffects(scope: unknown = null) {
   const { loading, reduceMotion, graphDefaults } = useSettingsEffectsView(scope);
   // Bridge persisted keybinding overrides into the global keymap dispatcher
   // (keyboard-action-system W02). Stores owns the wire read; this only mounts.
@@ -21,8 +20,6 @@ export function useSettingsEffects(scope: string | null = null) {
   const graphDefaultsInitialization =
     useDashboardGraphDefaultsInitializationView(scope);
   const settingsIntent = useSettingsEffectsIntent(scope);
-  const initializedGraphDefaults = useRef<Set<string>>(new Set());
-  const pendingGraphDefaults = useRef<Set<string>>(new Set());
 
   // reduce_motion -> a document attribute the stylesheet honors (parallel to the
   // OS prefers-reduced-motion media query): animations/transitions collapse when
@@ -36,19 +33,14 @@ export function useSettingsEffects(scope: string | null = null) {
   // that, dashboard-state is the live owner; settings must not keep overwriting
   // user graph intent as a hidden second writer.
   useEffect(() => {
-    if (!scope || !graphDefaults || !graphDefaultsInitialization.fresh) return;
-    if (initializedGraphDefaults.current.has(scope)) return;
-    if (pendingGraphDefaults.current.has(scope)) return;
-
-    pendingGraphDefaults.current.add(scope);
+    if (!graphDefaults) return;
     void settingsIntent
-      .applyGraphDefaults(graphDefaults)
-      .then(() => {
-        initializedGraphDefaults.current.add(scope);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        pendingGraphDefaults.current.delete(scope);
-      });
-  }, [graphDefaults, graphDefaultsInitialization.fresh, scope, settingsIntent]);
+      .applyFreshGraphDefaults(graphDefaults, graphDefaultsInitialization)
+      .catch(() => undefined);
+  }, [
+    graphDefaults,
+    graphDefaultsInitialization.fresh,
+    graphDefaultsInitialization.identity,
+    settingsIntent,
+  ]);
 }

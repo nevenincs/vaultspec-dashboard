@@ -8,11 +8,12 @@
 // test closes the seam the Rust suite cannot reach.
 //
 // Activation: set `ENGINE_BASE_URL` (and `ENGINE_TOKEN`) in the environment.
-// When unset the entire suite skips — the file is harmless in the normal vitest
-// run. CI activates it via the `engine-conformance` job in `quality-gates.yml`.
+// When unset the suite fails loudly so a green run cannot omit live engine
+// conformance by accident. CI activates it via the `engine-conformance` job in
+// `quality-gates.yml`.
 //
 // Reads: `EngineClient`, `FetchLike`, `GraphAsofResponse`, `GraphSlice`.
-// Does NOT import mocks, stubs, or the mock engine — only the live types.
+// Imports only live client types and production transport contracts.
 
 import { beforeAll, describe, expect, test } from "vitest";
 
@@ -45,14 +46,16 @@ function assertTiers(tiers: TiersBlock): void {
   }
 }
 
-// Skip the whole suite when not pointing at a live engine.
-describe.skipIf(!BASE_URL)("live engine wire conformance (consumer-typed)", () => {
-  const client = new EngineClient({ baseUrl: BASE_URL!, fetchImpl: transport });
+describe("live engine wire conformance (consumer-typed)", () => {
+  const client = new EngineClient({ baseUrl: BASE_URL ?? "", fetchImpl: transport });
 
   let scope: string;
   let corpusTs: number;
 
   beforeAll(async () => {
+    if (!BASE_URL) {
+      throw new Error("ENGINE_BASE_URL is required for live engine conformance");
+    }
     const map: MapResponse = await client.map();
     const wt = map.repositories.flatMap((r) => r.worktrees).find((w) => w.has_vault);
     if (!wt) throw new Error("fixture has no vault-bearing worktree");

@@ -2,33 +2,25 @@
 // inspector pane, Figma node 17:618 in frame 17:563): where "node as a live lens"
 // pays off in prose form — the stage shows the shape, the inspector shows the
 // evidence. Renders the selected node's metadata, the ENRICHED node-evidence
-// projection (documents with path + doc_type, resolved code locations keyed on
-// path with state, correlated commits with subject), and the per-tier edge list,
-// collapsed by default and unfolding on selection (the Unfolding Edges pattern).
+// projection (documents with path + doc_type, correlated commits with subject),
+// and the per-tier edge list, collapsed by default and unfolding on selection
+// (the Unfolding Edges pattern).
 //
 // Rebuilt as a DUMB projection (dashboard-layer-ownership / views-are-projections)
-// over the PRESERVED stores hooks: `useNodeDetail`, `useNodeEvidence` (the S13
-// enriched shape), and `useNodeNeighbors`, plus the selection view store. It
-// fetches nothing, reads no raw tiers block, mints no model, and routes only
-// selection intent back through the view store. Rebuilt onto the NEW Figma
+// over the stores-owned `useInspectorView` model. It fetches nothing, reads no
+// raw query payload, and mints no wire shape. Rebuilt onto the NEW Figma
 // role-named token foundation: canonical radius (`rounded-fg-xs`) and the
 // `caption` type role for dense counts, no retired radius or px-purpose type.
 
-import { useState } from "react";
-
 import { openContextMenu } from "../../stores/view/contextMenu";
-import type { EngineEdge } from "../../stores/server/engine";
-import {
-  useNodeDetail,
-  useNodeEvidence,
-  useNodeNeighbors,
-} from "../../stores/server/queries";
-import { usePinStore } from "../../stores/view/pins";
+import { useInspectorView } from "../../stores/view/inspector";
+import { useInspectorTierExpansion } from "../../stores/view/inspectorExpansion";
+import { nodeEntityView } from "../../stores/view/nodeEntity";
 import { selectEdge } from "../../stores/view/selection";
-import { useViewStore } from "../../stores/view/viewStore";
 // Centralized kit primitives (design-system-is-centralized): the section
 // eyebrows, the key/value property rows for the node metadata, the edge-count
 // badge, and the chrome chevrons all resolve to one shared definition.
+import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { Badge, ChevronDown, ChevronRight, PropertyRow, SectionLabel } from "../kit";
 
 // The edge resolver self-registers at module load. The "node" kind is served by
@@ -36,161 +28,117 @@ import { Badge, ChevronDown, ChevronRight, PropertyRow, SectionLabel } from "../
 // the inspector node and the stage node are the same entity - one resolver.
 import "./menus/edgeMenu";
 
-/** Bounded-list summary (contract §5): never silently partial. */
-export function eventTouchSummary(nodeIds: string[], truncated?: number): string {
-  const base = `touches ${nodeIds.join(", ")}`;
-  return truncated && truncated > 0 ? `${base} +${truncated} more` : base;
-}
-
-// --- pure tier grouping (unit-tested) -----------------------------------------------
-
-export const TIER_LIST_ORDER = [
-  "declared",
-  "structural",
-  "temporal",
-  "semantic",
-] as const;
-
-export function edgesByTier(
-  edges: readonly EngineEdge[] | undefined,
-): Map<string, EngineEdge[]> {
-  const groups = new Map<string, EngineEdge[]>();
-  for (const tier of TIER_LIST_ORDER) {
-    const members = (edges ?? []).filter((e) => e.tier === tier && !e.meta);
-    if (members.length > 0) groups.set(tier, members);
-  }
-  return groups;
-}
-
 // --- the inspector --------------------------------------------------------------------
 
 export function Inspector() {
-  const selection = useViewStore((s) => s.selection);
-  const nodeId = selection?.kind === "node" ? selection.id : null;
-  const detail = useNodeDetail(nodeId);
-  const evidence = useNodeEvidence(nodeId);
-  const neighbors = useNodeNeighbors(nodeId);
-  const [unfolded, setUnfolded] = useState<Set<string>>(new Set());
+  const { scope, view } = useInspectorView();
+  const { expanded: unfolded, toggle: toggleTier } = useInspectorTierExpansion(
+    scope,
+    view.nodeId,
+    view.tierKeys,
+  );
 
-  if (!selection) {
-    return <p className="text-body text-ink-faint">select something to inspect</p>;
+  if (view.state === "empty") {
+    return <p className={view.messageClassName}>{view.message}</p>;
   }
-  if (selection.kind === "event") {
+  if (view.state === "event") {
     return (
-      <div className="text-body" data-inspector>
-        <div className="font-medium text-ink">event {selection.id}</div>
-        <p className="text-ink-muted">
-          {eventTouchSummary(selection.nodeIds, selection.truncatedNodeIds)}
-        </p>
+      <div className={view.rootClassName} data-inspector>
+        <div className={view.headerClassName}>{view.headerLabel}</div>
+        <p className={view.summaryClassName}>{view.summaryLabel}</p>
       </div>
     );
   }
-  if (selection.kind === "edge") {
+  if (view.state === "edge") {
     return (
-      <div className="text-body" data-inspector>
-        <div className="font-medium text-ink">edge {selection.id}</div>
+      <div className={view.rootClassName} data-inspector>
+        <div className={view.headerClassName}>{view.headerLabel}</div>
       </div>
     );
   }
-  if (detail.isPending) return <p className="text-body text-ink-faint">inspecting…</p>;
-  // Guard the node payload itself, not just the envelope: a resolved detail
-  // response can carry no `node` (e.g. an id the engine no longer resolves), so
-  // render the same designed "unavailable" state rather than throwing on a
-  // missing field.
-  if (detail.isError || !detail.data?.node) {
-    return <p className="text-body text-state-broken">node unavailable</p>;
+  if (view.state === "loading") {
+    return <p className={view.messageClassName}>{view.message}</p>;
+  }
+  if (view.state !== "ready") {
+    return <p className={view.messageClassName}>{view.message}</p>;
   }
 
-  const node = detail.data.node;
-  const tiers = edgesByTier(neighbors.data?.edges);
-
-  // The NodeEntity the header region publishes to the context-menu host. Built
-  // from the inspected node plus the view-store membership flags (open / pinned /
-  // working-set) so the resolver can offer the right pin/unpin and omit a
-  // redundant open-island. Read at event time, not render time.
+  const { node } = view;
+  // The NodeEntity the header region publishes to the context-menu host. Read at
+  // event time so the membership flags match the current local visual state.
   const nodeEntity = () => {
-    const view = useViewStore.getState();
-    return {
-      kind: "node" as const,
-      id: node.id,
-      title: node.title ?? undefined,
-      isOpen: view.openedIds.includes(node.id),
-      isPinned: usePinStore.getState().isPinned(node.id),
-      inWorkingSet: view.workingSet.includes(node.id),
-    };
+    return nodeEntityView({ id: node.id, scope, title: view.nodeEntityTitle });
   };
 
   return (
-    <div className="space-y-fg-2 text-body" data-inspector>
+    <div className={view.rootClassName} data-inspector>
       <div
         tabIndex={0}
-        aria-label={`node ${node.title ?? node.id}`}
-        className="rounded-fg-xs focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        aria-label={view.nodeAriaLabel}
+        className={view.nodePanelClassName}
         onContextMenu={(e) => {
           e.preventDefault();
           openContextMenu(nodeEntity(), { x: e.clientX, y: e.clientY });
         }}
         onKeyDown={(e) => {
-          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-            e.preventDefault();
-            const r = e.currentTarget.getBoundingClientRect();
-            openContextMenu(nodeEntity(), { x: r.left, y: r.bottom });
-          }
+          handleKeyboardContextMenu(e, (anchor) =>
+            openContextMenu(nodeEntity(), anchor),
+          );
         }}
       >
         {/* Title: serif by the binding Reader/Title role over a key/value property
             block — the binding design's inspector header (node 17:618). The
             metadata reads as kit PropertyRows so a label/value line is the one
             shared definition (design-system-is-centralized). */}
-        <div className="truncate font-serif text-title text-ink" title={node.id}>
-          {node.title ?? node.id}
+        <div className={view.nodeTitleClassName} title={view.nodeTitleAttribute}>
+          {view.nodeTitle}
         </div>
-        <dl className="mt-fg-1">
-          <PropertyRow label="kind" value={node.kind} />
-          {node.lifecycle && <PropertyRow label="state" value={node.lifecycle.state} />}
-          {node.lifecycle?.progress && (
+        <dl className={view.propertyListClassName}>
+          {view.propertyRows.map((row) => (
             <PropertyRow
-              label="progress"
+              key={row.label}
+              label={row.label}
               value={
-                <span data-tabular className="tabular-nums">
-                  {node.lifecycle.progress.done}/{node.lifecycle.progress.total}
-                </span>
+                row.tabular ? (
+                  <span data-tabular className="tabular-nums">
+                    {row.value}
+                  </span>
+                ) : (
+                  row.value
+                )
               }
             />
-          )}
-          {node.dates?.modified && (
-            <PropertyRow label="modified" value={node.dates.modified.slice(0, 10)} />
-          )}
+          ))}
         </dl>
       </div>
 
-      {evidence.data && (
-        <section className="text-label">
-          <SectionLabel className="mb-fg-0-5">Evidence</SectionLabel>
-          <ul className="space-y-fg-0-5 text-ink-muted">
-            {evidence.data.documents.slice(0, 5).map((doc) => (
-              <li key={doc.path} className="truncate" title={doc.path}>
-                {doc.doc_type}: {doc.path.replace(/^.*\//, "")}
+      {view.evidence && (
+        <section className={view.evidenceSectionClassName}>
+          <SectionLabel className={view.sectionLabelClassName}>
+            {view.evidenceSectionLabel}
+          </SectionLabel>
+          <ul className={view.evidenceListClassName}>
+            {view.evidence.documents.map((doc) => (
+              <li
+                key={doc.key}
+                className={view.evidenceItemClassName}
+                title={doc.title}
+              >
+                {doc.label}
               </li>
             ))}
-            {evidence.data.code_locations.map((loc) => (
-              <li key={loc.path} className="truncate">
-                code: {loc.path}
-                <span
-                  className={
-                    loc.state === "resolved" ? "text-state-active" : "text-state-broken"
-                  }
-                >
-                  {" "}
-                  ({loc.state})
-                </span>
-              </li>
-            ))}
-            {evidence.data.commits.map((commit) => (
-              <li key={commit.sha} className="truncate" title={commit.subject}>
-                commit {commit.sha.slice(0, 7)}: {commit.subject}
+            {view.evidence.commits.map((commit) => (
+              <li
+                key={commit.key}
+                className={view.evidenceItemClassName}
+                title={commit.title}
+              >
+                {commit.label}
                 {commit.rule && (
-                  <span className="text-ink-faint"> · via {commit.rule}</span>
+                  <span className={view.evidenceRuleClassName}>
+                    {" "}
+                    · via {commit.rule}
+                  </span>
                 )}
               </li>
             ))}
@@ -198,24 +146,19 @@ export function Inspector() {
         </section>
       )}
 
-      <section className="text-label">
-        <SectionLabel className="mb-fg-0-5">Edges by tier</SectionLabel>
-        {[...tiers.entries()].map(([tier, edges]) => {
+      <section className={view.edgeSectionClassName}>
+        <SectionLabel className={view.sectionLabelClassName}>
+          {view.edgeSectionLabel}
+        </SectionLabel>
+        {[...view.tiers.entries()].map(([tier, edges]) => {
           const open = unfolded.has(tier);
           return (
-            <div key={tier} className="mb-fg-0-5">
+            <div key={tier} className={view.tierGroupClassName}>
               <button
                 type="button"
                 aria-expanded={open}
-                onClick={() =>
-                  setUnfolded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(tier)) next.delete(tier);
-                    else next.add(tier);
-                    return next;
-                  })
-                }
-                className="flex items-center gap-fg-1 rounded-fg-xs text-ink-muted transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                onClick={() => toggleTier(tier)}
+                className={view.tierButtonClassName}
               >
                 {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 <span>{tier}</span>
@@ -224,12 +167,12 @@ export function Inspector() {
                 </span>
               </button>
               {open && (
-                <ul className="ml-fg-3 mt-fg-0-5 space-y-fg-0-5 text-ink-muted">
+                <ul className={view.tierListClassName}>
                   {edges.map((edge) => (
                     <li key={edge.id}>
                       <button
                         type="button"
-                        className="truncate text-left hover:underline"
+                        className={view.tierEdgeButtonClassName}
                         title={edge.id}
                         onClick={() => selectEdge(edge.id)}
                         onContextMenu={(e) => {
@@ -246,12 +189,7 @@ export function Inspector() {
                           );
                         }}
                         onKeyDown={(e) => {
-                          if (
-                            e.key === "ContextMenu" ||
-                            (e.shiftKey && e.key === "F10")
-                          ) {
-                            e.preventDefault();
-                            const r = e.currentTarget.getBoundingClientRect();
+                          handleKeyboardContextMenu(e, (anchor) =>
                             openContextMenu(
                               {
                                 kind: "edge",
@@ -260,17 +198,12 @@ export function Inspector() {
                                 dst: edge.dst,
                                 tier: edge.tier,
                               },
-                              { x: r.left, y: r.bottom },
-                            );
-                          }
+                              anchor,
+                            ),
+                          );
                         }}
                       >
-                        {edge.relation} →{" "}
-                        {edge.dst.replace(/^(doc|feature|code|commit):/, "")}
-                        {edge.state ? ` (${edge.state})` : ""}
-                        {edge.tier !== "declared"
-                          ? ` · ${Math.round(edge.confidence * 100)}%`
-                          : ""}
+                        {edge.displayLabel}
                       </button>
                     </li>
                   ))}

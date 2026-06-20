@@ -1,21 +1,20 @@
-# Figma mirror — seed record (real buildout, 2026-06-15)
+# Retired Figma seed record (2026-06-15)
 
-The Figma mirror was built **code → Figma** directly through the claude.ai Figma MCP
-(`use_figma`, Plugin API), from the real React component source. Figma is a **mirror**,
-never canonical (see the design-tokens-are-code-canonical principle and the
-`figma-design-bridge` ADR).
+This file records the retired seed buildout. It is useful history, not the current
+authority. The current binding design file is `SlhonORmySdoSMTQgDWw3w`, and code is
+authored to match that file.
 
-> Supersedes earlier drafts of this file. An initial pass created 50 name-only
+> Historical note: an initial pass created 50 name-only
 > placeholder stub frames (still present as Figma frame `4:2`, retained only as
 > scaffolding) that did not reflect a real design; a second concurrent session was
-> authoring the same file in parallel. The live, canonical mirror is the single
-> `MIRROR` container described below — all real, faithful, variable-bound regions.
+> authoring the same file in parallel.
 
 ## The file
 
-- File: **Vaultspec Dashboard — Design System (code mirror)**
+- Retired file: **Vaultspec Dashboard — Design System (seed mirror)**
 - URL: https://www.figma.com/design/8WDmXNOURdRQwdefWNGsBb
 - fileKey: `8WDmXNOURdRQwdefWNGsBb`
+- Current binding file: https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w
 
 ## What is seeded (all inside the `MIRROR` container, node `23:2`, Page 1)
 
@@ -46,13 +45,13 @@ Surfaces that render over the canvas show a neutral `canvas-bg` ground with a
 - `npm run figma:registry` → 50 components mapped, 43/43 design surfaces bound.
 - `npm run figma:parity` → 49/49 bound components match their Figma node by name.
 - `get_variable_defs` resolves bound tokens on component nodes per theme mode.
-- **Code Connect** remains unavailable (Org/Enterprise-only at the Pro tier); the
-  repo-maintained `component-map.json` registry is the sanctioned substitute.
+- **Superseded:** Code Connect is now driven through the `@figma/code-connect` CLI
+  against `SlhonORmySdoSMTQgDWw3w`; `component-map.json` remains the local live-node
+  registry.
 
 ## Re-seeding / extending
 
 - Re-extract icons: `node scripts/figma-icons.mjs` (from `frontend/`) — add an
   import-name → kebab/def entry to the `LUCIDE`/`PHOSPHOR` maps for a new glyph.
-- Rebuild a component frame via `use_figma`; then refresh its node id in
-  `component-map.json` and the snapshot, and re-run the registry + parity gates.
+- For current work, use `FIGMA-WORKFLOW.md`; this file is not the active runbook.
 - See `FIGMA-WORKFLOW.md` for the day-to-day code ↔ Figma workflow.

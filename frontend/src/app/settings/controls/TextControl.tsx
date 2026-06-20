@@ -3,22 +3,22 @@
 // the dialog surfaces a typed rejection. `maxLength` is a courtesy mirror of the
 // declared constraint so the common case never round-trips a rejection.
 
+import { deriveSettingsTextControlView } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
 export function TextControl({ def, value, onChange, disabled, id }: ControlProps) {
-  const maxLength =
-    def.value_type.type === "string" ? def.value_type.max_len : undefined;
+  const view = deriveSettingsTextControlView(def);
   return (
     <input
       type="text"
       id={id}
       value={value}
       disabled={disabled}
-      maxLength={maxLength}
+      maxLength={view.maxLength}
       placeholder={def.placeholder}
       aria-label={def.label}
       onChange={(e) => onChange(e.target.value)}
-      className="w-48 rounded-fg-xs border border-rule bg-paper-sunken px-fg-2 py-fg-1 text-body text-ink outline-none transition-colors duration-ui-fast focus-within:border-rule-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 placeholder:text-ink-faint"
+      className={view.className}
     />
   );
 }

@@ -1,11 +1,11 @@
 ---
 tags:
-  - '#plan'
-  - '#alpha'
-date: '2026-01-03'
-modified: '2026-01-03'
+  - "#plan"
+  - "#alpha"
+date: "2026-01-03"
+modified: "2026-01-03"
 related:
-  - '[[2026-01-02-alpha-adr]]'
+  - "[[2026-01-02-alpha-adr]]"
 ---
 
 # `alpha` plan

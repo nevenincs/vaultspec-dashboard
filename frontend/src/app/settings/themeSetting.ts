@@ -7,20 +7,19 @@
 
 import { useEffect } from "react";
 
-import type { ThemePreference } from "../../platform/theme/themeController";
+import {
+  isThemePreference,
+  type ThemePreference,
+} from "../../platform/theme/themeController";
 import { useTheme } from "../../platform/theme/useTheme";
-import { usePutSettings, useSettings } from "../../stores/server/queries";
+import { useThemeSettingView } from "../../stores/server/queries";
+import { useThemeSettingIntent } from "../../stores/server/themeSettingIntent";
 
-const THEME_KEY = "theme";
-const THEME_VALUES: readonly ThemePreference[] = [
-  "system",
-  "light",
-  "dark",
-  "high-contrast",
-];
-
-function isThemePreference(v: string | undefined): v is ThemePreference {
-  return v !== undefined && (THEME_VALUES as readonly string[]).includes(v);
+function schemaAllowsThemePreference(
+  value: string | undefined,
+  members: readonly string[],
+): value is ThemePreference {
+  return isThemePreference(value) && members.includes(value);
 }
 
 export interface UseThemeSettingResult {
@@ -42,26 +41,38 @@ export interface UseThemeSettingResult {
  */
 export function useThemeSetting(): UseThemeSettingResult {
   const { preference, setPreference: applyLocal } = useTheme();
-  const settings = useSettings();
-  const putSettings = usePutSettings();
-  const serverTheme = settings.data?.global?.[THEME_KEY];
+  const { loading, serverTheme, themeMembers } = useThemeSettingView();
+  const themeIntent = useThemeSettingIntent();
 
   // Reconcile the server value onto the controller, but NEVER while a theme
   // write is in flight: an optimistic change updates `preference` immediately,
   // and reconciling against the still-stale server value would flash the old
   // theme back for a frame (the FOUC-class revert this design exists to prevent,
-  // review MEDIUM). usePutSettings seeds the cache on success, so once the write
-  // settles `serverTheme` already equals `preference` and this is a no-op.
+  // review MEDIUM). The stores intent seeds the cache on success, so once the
+  // write settles `serverTheme` already equals `preference` and this is a no-op.
   useEffect(() => {
-    if (putSettings.isPending) return;
-    if (isThemePreference(serverTheme) && serverTheme !== preference) {
+    if (loading) return;
+    if (themeIntent.writePending) return;
+    if (
+      schemaAllowsThemePreference(serverTheme, themeMembers) &&
+      serverTheme !== preference
+    ) {
       applyLocal(serverTheme);
     }
-  }, [serverTheme, preference, applyLocal, putSettings.isPending]);
+  }, [
+    loading,
+    serverTheme,
+    themeMembers,
+    preference,
+    applyLocal,
+    themeIntent.writePending,
+  ]);
 
   const setPreference = (next: ThemePreference) => {
+    if (loading) return;
+    if (!schemaAllowsThemePreference(next, themeMembers)) return;
     applyLocal(next); // optimistic apply + localStorage cache (no FOUC, instant)
-    putSettings.mutate({ key: THEME_KEY, value: next });
+    themeIntent.setThemePreference(next);
   };
 
   return { preference, setPreference };

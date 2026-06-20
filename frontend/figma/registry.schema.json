@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://vaultspec.dev/figma/registry.schema.json",
   "title": "Code-to-Figma component mapping registry",
-  "description": "Pro-tier stand-in for Figma Code Connect: a 1:1 mapping from each React chrome component to its Figma node, enforced by scripts/figma-registry-check.ts. Authored by the generator (--write); Figma bindings filled after seeding (plan W01.P09).",
+  "description": "Live Figma binding registry: a mapping from each React chrome component to its live Figma node, enforced by scripts/figma-registry-check.ts. Authored by the generator (--write); bindings point at SlhonORmySdoSMTQgDWw3w, with explicit aliases when the Figma node name intentionally differs from the local component identity.",
   "type": "object",
   "required": ["components"],
   "properties": {
@@ -11,13 +11,21 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "source", "designSurface", "figmaNodeId", "figmaUrl"],
+        "required": [
+          "name",
+          "source",
+          "designSurface",
+          "figmaNodeId",
+          "figmaUrl",
+          "figmaNodeName",
+          "bindingKind"
+        ],
         "additionalProperties": false,
         "properties": {
           "name": {
             "type": "string",
             "pattern": "^[A-Z][A-Za-z0-9]*$",
-            "description": "The exported React component name; the Figma main-component name must match it verbatim (naming-parity contract)."
+            "description": "The exported React component name; this remains the local code identity even when the Figma node uses a canonical primitive name."
           },
           "source": {
             "type": "string",
@@ -35,6 +43,16 @@
           "figmaUrl": {
             "type": ["string", "null"],
             "description": "The Figma URL of the bound node, or null until seeded."
+          },
+          "figmaNodeName": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "The live Figma node name when it intentionally differs from the local component name. Null means the bound node is expected to match `name`."
+          },
+          "bindingKind": {
+            "type": ["string", "null"],
+            "enum": ["surface", "primitive", "composite-state", "needs-review", null],
+            "description": "Classifies the binding so primitive aliases and suspect live-node matches are explicit and reviewable."
           }
         }
       }

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>filters — visual parity</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 24px; background: #fdfaf6; color: #312d28; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.meta { color: #6b6258; margin: 0 0 20px; }
+  section { margin: 0 0 32px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #8a8175; margin: 0 0 10px; }
+  img { display: block; max-width: 100%; border: 1px solid #d8d0c7; background: #fff; image-rendering: pixelated; }
+  .overlay-stage { position: relative; width: 276px; max-width: 100%; }
+  .overlay-stage img { position: absolute; inset: 0; max-width: none; }
+  .overlay-stage { height: 935px; }
+  .controls { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+  input[type="range"] { width: 280px; }
+  output { font-variant-numeric: tabular-nums; }
+  .caption { color: #6b6258; font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+  <h1>filters — visual parity</h1>
+  <p class="meta">Figma reference vs Live implementation · 276x935 · open the JSON report for pixel-delta stats.</p>
+
+  <section>
+    <h2>Direct overlay</h2>
+    <div class="controls">
+      <label for="opacity">Live implementation opacity</label>
+      <input id="opacity" type="range" min="0" max="1" step="0.01" value="0.5" />
+      <output id="opacityValue">0.50</output>
+    </div>
+    <div class="overlay-stage">
+      <img id="figma" src="filters-figma-217-633.png" alt="Figma reference" />
+      <img id="live" src="filters-live-276x935.png" alt="Live implementation" style="opacity:.5" />
+    </div>
+    <p class="caption">Drag the slider to scrub between Figma reference (under) and Live implementation (over).</p>
+  </section>
+
+  <section>
+    <h2>Split view</h2>
+    <img src="filters-split-276x935.png" alt="split view: Figma reference | Live implementation" />
+  </section>
+
+  <section>
+    <h2>Pixel difference</h2>
+    <img src="filters-diff-276x935.png" alt="pixel difference" />
+    <p class="caption"><span style="color:#00a651">Green</span> = content in the design
+       the live build is missing; <span style="color:#e0218a">magenta</span> = content
+       the live build added that the design lacks; faint gray = unchanged.</p>
+  </section>
+
+  <script>
+    const opacity = document.querySelector("#opacity");
+    const opacityValue = document.querySelector("#opacityValue");
+    const live = document.querySelector("#live");
+    opacity.addEventListener("input", () => {
+      live.style.opacity = opacity.value;
+      opacityValue.value = Number(opacity.value).toFixed(2);
+    });
+  </script>
+</body>
+</html>

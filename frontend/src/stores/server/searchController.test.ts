@@ -27,19 +27,30 @@ import { createElement } from "react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { liveScope, liveTransport } from "../../testing/liveClient";
+import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
 import type { SearchResult, TiersBlock, VaultTreeEntry } from "./engine";
 import { EngineError, engineClient } from "./engine";
 import type { StreamChunk } from "./queries";
-import { STREAM_RETENTION, streamReducer } from "./queries";
+import {
+  engineKeys,
+  normalizeSearchRequestIdentity,
+  normalizeSearchScope,
+  normalizeSearchTarget,
+  STREAM_RETENTION,
+  streamReducer,
+} from "./queries";
 import { queryClient } from "./queryClient";
 import {
   buildFallbackResults,
+  deriveSearchPresentationView,
   interpretSearch,
   isSemanticOffline,
   isTransportError,
   latestBackendsRagAvailable,
+  normalizeSearchRagLifecycleWord,
   pathStem,
   pathToDocNodeId,
+  SEARCH_DEBOUNCE_MS,
   useSearchController,
 } from "./searchController";
 
@@ -51,6 +62,36 @@ const entry = (path: string, tags: string[] = []): VaultTreeEntry => ({
 });
 
 const noop = () => undefined;
+
+describe("normalizeSearchQuery (shared search request identity)", () => {
+  it("trims, bounds, and rejects non-string search input before query keys or wire reads", () => {
+    expect(normalizeSearchQuery(null)).toBe("");
+    expect(normalizeSearchQuery("  graph state  ")).toBe("graph state");
+    expect(normalizeSearchQuery(" x ".repeat(SEARCH_QUERY_MAX_CHARS))).toHaveLength(
+      SEARCH_QUERY_MAX_CHARS,
+    );
+  });
+
+  it("normalizes target and scope before query keys or wire reads", () => {
+    expect(normalizeSearchTarget("code")).toBe("code");
+    expect(normalizeSearchTarget(" code ")).toBe("code");
+    expect(normalizeSearchTarget("vault")).toBe("vault");
+    expect(normalizeSearchTarget("history")).toBe("vault");
+    expect(normalizeSearchTarget(null)).toBe("vault");
+
+    expect(normalizeSearchScope(" scope-a ")).toBe("scope-a");
+    expect(normalizeSearchScope("   ")).toBeNull();
+    expect(normalizeSearchScope({ scope: "scope-a" })).toBeNull();
+
+    expect(
+      normalizeSearchRequestIdentity("  graph state  ", " code ", " scope-a "),
+    ).toEqual({
+      query: "graph state",
+      target: "code",
+      scope: "scope-a",
+    });
+  });
+});
 
 // --- pure fallback matching (relocated from the chrome layer) ----------------------
 
@@ -80,6 +121,13 @@ describe("buildFallbackResults (text-match fallback, search ADR)", () => {
     expect(buildFallbackResults(entries, "  ")).toEqual([]);
     expect(buildFallbackResults(undefined, "auth")).toEqual([]);
     expect(buildFallbackResults(entries, "no-such-thing")).toEqual([]);
+    expect(buildFallbackResults(entries, { query: "auth" })).toEqual([]);
+  });
+
+  it("uses the shared bounded search-query normalizer before fallback matching", () => {
+    const longQuery = ` auth ${"x".repeat(SEARCH_QUERY_MAX_CHARS)}`;
+    expect(buildFallbackResults(entries, " AUTH ")).toHaveLength(1);
+    expect(buildFallbackResults(entries, longQuery)).toEqual([]);
   });
 });
 
@@ -156,6 +204,12 @@ describe("isTransportError (error vs degradation, the tiers contract)", () => {
 const frame = (rag: string): StreamChunk => ({ channel: "backends", data: { rag } });
 
 describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring cap)", () => {
+  it("normalizes rag lifecycle words at the stream seam", () => {
+    expect(normalizeSearchRagLifecycleWord(" running ")).toBe("running");
+    expect(normalizeSearchRagLifecycleWord("   ")).toBeUndefined();
+    expect(normalizeSearchRagLifecycleWord({ rag: "running" })).toBeUndefined();
+  });
+
   it("is undefined when no rag-bearing backends frame has arrived yet", () => {
     expect(latestBackendsRagAvailable(undefined)).toBeUndefined();
     expect(latestBackendsRagAvailable([])).toBeUndefined();
@@ -163,8 +217,28 @@ describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring c
     expect(latestBackendsRagAvailable([noRagFrame])).toBeUndefined();
   });
 
+  it("ignores rag-looking payloads from non-backend channels", () => {
+    expect(
+      latestBackendsRagAvailable([
+        { channel: "git", data: { rag: "running" } },
+        { channel: "message", data: { rag: "running" } },
+      ]),
+    ).toBeUndefined();
+    expect(
+      latestBackendsRagAvailable([
+        { channel: "git", data: { rag: "running" } },
+        { channel: " backends ", data: { rag: " stopped " } },
+      ]),
+    ).toBe(false);
+  });
+
   it("reads availability from the MOST-RECENT rag frame (running ⇒ available)", () => {
     expect(latestBackendsRagAvailable([frame("running")])).toBe(true);
+    expect(
+      latestBackendsRagAvailable([
+        { channel: "backends", data: { rag: " running " } },
+      ]),
+    ).toBe(true);
     expect(latestBackendsRagAvailable([frame("stopped")])).toBe(false);
     // Latest frame wins over earlier ones.
     expect(
@@ -328,6 +402,271 @@ describe("interpretSearch (the explicit state machine)", () => {
   });
 });
 
+describe("deriveSearchPresentationView (SearchTab display facts)", () => {
+  it("derives the live region and first selectable row from served results", () => {
+    expect(
+      deriveSearchPresentationView(
+        "alpha",
+        {
+          state: "results",
+          results: [hit(null), hit("doc:selectable")],
+          semanticOffline: false,
+          error: false,
+        },
+        { target: "code", scope: "scope-a" },
+      ),
+    ).toEqual({
+      rootClassName: "space-y-fg-2 text-body",
+      hasQuery: true,
+      resultRows: [
+        expect.objectContaining({
+          key: "x:0",
+          nodeId: null,
+          species: "unknown",
+          source: "x",
+          buttonClassName:
+            "w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-default opacity-70",
+          excerptClassName: "mt-fg-0-5 block truncate text-ink-muted",
+          scoreLabel: "80%",
+          scoreToneClass: "text-ink-muted",
+          fallbackBadgeLabel: null,
+          selectable: false,
+          ariaLabel: "x, relevance 80%, no graph node - not selectable",
+          entity: expect.objectContaining({
+            kind: "search-result",
+            id: "x",
+            scope: "scope-a",
+            source: "x",
+            nodeId: undefined,
+            score: 0.8,
+            isCode: true,
+          }),
+        }),
+        expect.objectContaining({
+          key: "doc:selectable",
+          nodeId: "doc:selectable",
+          species: "doc",
+          source: "x",
+          buttonClassName:
+            "w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus hover:border-rule-strong hover:bg-paper-sunken",
+          excerptClassName: "mt-fg-0-5 block truncate text-ink-muted",
+          scoreLabel: "80%",
+          scoreToneClass: "text-ink-muted",
+          fallbackBadgeLabel: null,
+          selectable: true,
+          ariaLabel: "x, relevance 80%",
+          entity: expect.objectContaining({
+            kind: "search-result",
+            id: "doc:selectable",
+            scope: "scope-a",
+            source: "x",
+            nodeId: "doc:selectable",
+            score: 0.8,
+            isCode: true,
+          }),
+        }),
+      ],
+      showResults: true,
+      showLoading: false,
+      showSemanticOffline: false,
+      showError: false,
+      firstClickableIndex: 1,
+      noResults: false,
+      noResultsMessage: "",
+      idleMessage:
+        "search semantically across the vault and code. select a result to focus it on the stage.",
+      loadingMessage: "searching…",
+      semanticOfflineMessage: "",
+      errorTitle: "search request failed",
+      retryLabel: "try again",
+      inputPlaceholder: "Search documents and code…",
+      inputAriaLabel: "search query",
+      targetGroupAriaLabel: "search target",
+      resultsListAriaLabel: "search results",
+      resultSummaryLabel: "Ranked by meaning · 2 results",
+      liveMessage: "2 results",
+      targetGroupClassName: "flex gap-fg-1",
+      idleClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
+      loadingClassName:
+        "animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint",
+      semanticOfflineClassName:
+        "flex items-start gap-fg-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted",
+      semanticOfflineIconClassName: "mt-px shrink-0 text-state-stale",
+      errorClassName:
+        "space-y-fg-1 rounded-fg-xs border border-state-broken/40 px-fg-2 py-fg-1",
+      errorTitleClassName: "text-label text-state-broken",
+      retryButtonClassName:
+        "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+      noResultsClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
+      resultCountClassName: "px-fg-1 text-caption text-ink-faint",
+      resultsListClassName: "space-y-fg-1",
+    });
+  });
+
+  it("derives result species from stable node ids for chrome icons", () => {
+    const rows = deriveSearchPresentationView(
+      "alpha",
+      {
+        state: "results",
+        results: [
+          hit("doc:a"),
+          hit("code:src/app.ts"),
+          hit("commit:abc"),
+          hit("feature:auth"),
+          hit(null),
+        ],
+        semanticOffline: false,
+        error: false,
+      },
+      { target: "vault", scope: "scope-a" },
+    ).resultRows;
+
+    expect(rows.map((row) => row.species)).toEqual([
+      "doc",
+      "code",
+      "commit",
+      "unknown",
+      "unknown",
+    ]);
+  });
+
+  it("announces semantic-offline and no-results as controller-owned outcomes", () => {
+    const offline = deriveSearchPresentationView("alpha", {
+      state: "semantic-offline",
+      results: [hit("doc:fallback")],
+      semanticOffline: true,
+      error: false,
+    });
+
+    expect(offline).toMatchObject({
+      showLoading: false,
+      showSemanticOffline: true,
+      showError: false,
+      semanticOfflineMessage:
+        "semantic search offline — showing title and text matches",
+      resultSummaryLabel: "Ranked by text match · 1 result",
+      liveMessage: "semantic search offline — showing title and text matches",
+    });
+    expect(offline.resultRows[0]).toMatchObject({
+      scoreToneClass: "text-ink-faint",
+      fallbackBadgeLabel: "text match",
+    });
+
+    expect(
+      deriveSearchPresentationView("alpha", {
+        state: "semantic-offline",
+        results: [],
+        semanticOffline: true,
+        noCodeFallback: true,
+        error: false,
+      }).semanticOfflineMessage,
+    ).toBe(
+      "semantic search offline — showing title and text matches (vault only; no code fallback available)",
+    );
+
+    expect(
+      deriveSearchPresentationView("  zzz  ", {
+        state: "no-results",
+        results: [],
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      showResults: false,
+      showLoading: false,
+      showSemanticOffline: false,
+      showError: false,
+      resultRows: [],
+      firstClickableIndex: -1,
+      noResults: true,
+      noResultsMessage:
+        "no matches for “zzz”. try broadening the query or switching target.",
+      resultSummaryLabel: "",
+      liveMessage: "no results",
+    });
+  });
+
+  it("keeps transport failure live copy distinct from degraded semantic search", () => {
+    expect(
+      deriveSearchPresentationView("alpha", {
+        state: "error",
+        results: [hit()],
+        semanticOffline: false,
+        error: true,
+      }),
+    ).toMatchObject({
+      showResults: true,
+      showLoading: false,
+      showSemanticOffline: false,
+      showError: true,
+      firstClickableIndex: 0,
+      noResults: false,
+      errorTitle: "search request failed",
+      retryLabel: "try again",
+      resultSummaryLabel: "Ranked by meaning · 1 result",
+      liveMessage: "search request failed",
+    });
+  });
+
+  it("normalizes runtime query input at the presentation seam", () => {
+    expect(
+      deriveSearchPresentationView("   ", {
+        state: "idle",
+        results: [],
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      hasQuery: false,
+      resultRows: [],
+      showLoading: false,
+      showSemanticOffline: false,
+      showError: false,
+      noResults: false,
+      noResultsMessage: "",
+      idleMessage:
+        "search semantically across the vault and code. select a result to focus it on the stage.",
+      loadingMessage: "searching…",
+      liveMessage: "",
+    });
+
+    expect(
+      deriveSearchPresentationView(
+        { query: "zzz" },
+        {
+          state: "no-results",
+          results: [],
+          semanticOffline: false,
+          error: false,
+        },
+      ),
+    ).toMatchObject({
+      hasQuery: false,
+      noResultsMessage:
+        "no matches for “”. try broadening the query or switching target.",
+    });
+  });
+
+  it("derives loading state copy for the chrome surface", () => {
+    expect(
+      deriveSearchPresentationView("alpha", {
+        state: "loading",
+        results: [],
+        semanticOffline: false,
+        error: false,
+      }),
+    ).toMatchObject({
+      hasQuery: true,
+      showLoading: true,
+      showSemanticOffline: false,
+      showError: false,
+      loadingMessage: "searching…",
+      resultSummaryLabel: "",
+      liveMessage: "",
+    });
+  });
+});
+
 // --- the live controller hook (real engine transport) ------------------------------
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -343,11 +682,63 @@ describe("useSearchController (real engine, live wiring)", () => {
   afterEach(() => {
     cleanup();
     queryClient.clear();
+    engineClient.useTransport(liveTransport);
   });
 
   it("idle for an empty query — disabled, no request", () => {
-    const { result } = renderHook(() => useSearchController("", "vault", scope), { wrapper });
+    const { result } = renderHook(() => useSearchController("", "vault", scope), {
+      wrapper,
+    });
     expect(result.current.state).toBe("idle");
+  });
+
+  it("treats whitespace-only input as idle and does not issue a search request", async () => {
+    let searchRequests = 0;
+    engineClient.useTransport((input, init) => {
+      if (input.replace(/^\/api/, "").startsWith("/search")) searchRequests += 1;
+      return liveTransport(input, init);
+    });
+
+    const { result } = renderHook(() => useSearchController("   ", "vault", scope), {
+      wrapper,
+    });
+
+    expect(result.current.state).toBe("idle");
+    await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 50));
+    expect(searchRequests).toBe(0);
+  });
+
+  it("treats a non-empty query without an active scope as idle and does not issue a search request", async () => {
+    let searchRequests = 0;
+    engineClient.useTransport((input, init) => {
+      if (input.replace(/^\/api/, "").startsWith("/search")) searchRequests += 1;
+      return liveTransport(input, init);
+    });
+
+    const { result } = renderHook(() => useSearchController("alpha", "vault", null), {
+      wrapper,
+    });
+
+    expect(result.current.state).toBe("idle");
+    await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 50));
+    expect(searchRequests).toBe(0);
+  });
+
+  it("normalizes malformed request identity inputs before issuing a search", async () => {
+    let searchRequests = 0;
+    engineClient.useTransport((input, init) => {
+      if (input.replace(/^\/api/, "").startsWith("/search")) searchRequests += 1;
+      return liveTransport(input, init);
+    });
+
+    const { result } = renderHook(
+      () => useSearchController("alpha", { target: "code" }, { scope }),
+      { wrapper },
+    );
+
+    expect(result.current.state).toBe("idle");
+    await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 50));
+    expect(searchRequests).toBe(0);
   });
 
   it("debounces the keystroke stream: a fast burst issues ONE request for the settled term", async () => {
@@ -359,7 +750,7 @@ describe("useSearchController (real engine, live wiring)", () => {
       return liveTransport(input, init);
     });
 
-    const { result, rerender } = renderHook(
+    const { rerender } = renderHook(
       ({ q }: { q: string }) => useSearchController(q, "vault", scope),
       { wrapper, initialProps: { q: "" } },
     );
@@ -377,6 +768,95 @@ describe("useSearchController (real engine, live wiring)", () => {
       timeout: 6000,
     });
     expect(searchRequests).toBe(1);
+
+    engineClient.useTransport(liveTransport);
+  });
+
+  it("debounces target switches with the query so stale terms do not cross targets", async () => {
+    const searchBodies: string[] = [];
+    engineClient.useTransport((input, init) => {
+      if (input.replace(/^\/api/, "").startsWith("/search")) {
+        searchBodies.push(String(init?.body ?? ""));
+      }
+      return liveTransport(input, init);
+    });
+
+    const { rerender } = renderHook(
+      ({ q, target }: { q: string; target: "vault" | "code" }) =>
+        useSearchController(q, target, scope),
+      { wrapper, initialProps: { q: "", target: "vault" } },
+    );
+
+    rerender({ q: "a", target: "vault" });
+    rerender({ q: "al", target: "vault" });
+    rerender({ q: "alpha", target: "vault" });
+    rerender({ q: "alpha", target: "code" });
+    expect(searchBodies).toEqual([]);
+
+    await waitFor(() => expect(searchBodies).toHaveLength(1), { timeout: 6000 });
+    expect(JSON.parse(searchBodies[0])).toMatchObject({
+      query: "alpha",
+      target: "code",
+      scope,
+    });
+
+    engineClient.useTransport(liveTransport);
+  });
+
+  it("does not expose cached disabled-key results while a new request is debouncing", async () => {
+    queryClient.setQueryData(engineKeys.search("", "alphabet", "vault"), {
+      results: [hit("doc:disabled-cache")],
+      tiers: { semantic: { available: true } },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useSearchController(q, "vault", scope),
+      { wrapper, initialProps: { q: "alpha" } },
+    );
+
+    await waitFor(
+      () =>
+        expect(["results", "no-results", "semantic-offline", "error"]).toContain(
+          result.current.state,
+        ),
+      { timeout: 6000 },
+    );
+
+    rerender({ q: "alphabet" });
+
+    expect(result.current).toMatchObject({
+      state: "loading",
+      results: [],
+      filterVocabulary: undefined,
+    });
+  });
+
+  it("keeps filter vocabulary scoped to the settled search identity during debounce", async () => {
+    const filterRequests: string[] = [];
+    engineClient.useTransport((input, init) => {
+      const path = input.replace(/^\/api/, "");
+      if (path.startsWith("/filters")) filterRequests.push(path);
+      return liveTransport(input, init);
+    });
+
+    const { rerender } = renderHook(
+      ({ q, activeScope }: { q: string; activeScope: string }) =>
+        useSearchController(q, "vault", activeScope),
+      { wrapper, initialProps: { q: "alpha", activeScope: scope } },
+    );
+
+    await waitFor(() => expect(filterRequests.length).toBeGreaterThan(0), {
+      timeout: 6000,
+    });
+    filterRequests.length = 0;
+
+    const nextScope = `${scope}-not-yet-settled`;
+    rerender({ q: "alphabet", activeScope: nextScope });
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.floor(SEARCH_DEBOUNCE_MS / 2)),
+    );
+
+    expect(filterRequests).toEqual([]);
 
     engineClient.useTransport(liveTransport);
   });

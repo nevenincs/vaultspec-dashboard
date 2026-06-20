@@ -80,6 +80,52 @@ fn wire_name<T: Serialize>(value: &T) -> String {
         .unwrap_or_default()
 }
 
+/// Base node radius used by the graph wire's explicit sizing projection.
+pub const NODE_SIZE_BASE: f64 = 6.0;
+/// Maximum salience multiplier for active-lens document nodes.
+pub const NODE_SIZE_SALIENCE_MAX: f64 = 2.6;
+
+fn round_node_size(value: f64) -> f64 {
+    (value * 1e6).round() / 1e6
+}
+
+/// World-space node body radius for the graph wire. This mirrors the current
+/// scene fallback so the backend can expose the size contract before the canvas
+/// switches to consuming it directly.
+pub fn node_size_from_salience(salience: f64) -> f64 {
+    let s = salience.clamp(0.0, 1.0);
+    round_node_size(NODE_SIZE_BASE * (1.0 + s * (NODE_SIZE_SALIENCE_MAX - 1.0)))
+}
+
+fn node_size_from_member_count(member_count: usize) -> f64 {
+    round_node_size(NODE_SIZE_BASE * (1.4 + ((1 + member_count) as f64).log2() * 0.5))
+}
+
+fn node_size_for_view(node: &Value) -> f64 {
+    if let Some(salience) = node.get("salience").and_then(Value::as_f64) {
+        return node_size_from_salience(salience);
+    }
+    if node.get("kind").and_then(Value::as_str) == Some("feature")
+        && let Some(member_count) = node.get("member_count").and_then(Value::as_u64)
+        && member_count > 0
+    {
+        return node_size_from_member_count(member_count as usize);
+    }
+    NODE_SIZE_BASE
+}
+
+/// Attach or refresh the explicit graph-wire `node_size` projection. Document
+/// nodes use salience when present; feature-convergence nodes use member count;
+/// every other node gets the base radius.
+pub fn annotate_node_sizes(nodes: &mut [Value]) {
+    for node in nodes {
+        let size = node_size_for_view(node);
+        if let Some(obj) = node.as_object_mut() {
+            obj.insert("node_size".to_string(), Value::from(size));
+        }
+    }
+}
+
 fn union_index_values(index: &HashMap<String, Vec<String>>, values: &[String]) -> Vec<String> {
     let mut ids = Vec::new();
     for value in values {
@@ -210,6 +256,7 @@ fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
     view["aggregate"] = Value::Bool(crate::ontology::is_aggregate_species(
         node.doc_type.as_deref(),
     ));
+    view["node_size"] = Value::from(NODE_SIZE_BASE);
     // Per-type lifecycle status (node-visual-richness ADR P01): TWO additive
     // fields — `status_value` (the literal type-specific status token) and
     // `status_class` (the closed treatment-family enum) — projected from the
@@ -404,6 +451,7 @@ fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> V
                 "title": tag,
                 "feature_tags": [tag],
                 "member_count": docs.len(),
+                "node_size": node_size_from_member_count(docs.len()),
                 "degree_by_tier": degrees,
                 "lifecycle": lifecycle,
                 // Facet projection: the convergence exists in the queried
@@ -638,6 +686,12 @@ fn graph_query_inner(
             .filter(|n| filter.matches_node(n))
             .collect(),
     };
+    // Health facet (filter-controls campaign): orphaned/dangling are graph-context
+    // (they read a node's incident edges), so they are applied here after the
+    // per-node `matches_node` pass rather than inside it.
+    if !filter.health.is_empty() {
+        matched.retain(|n| filter.matches_health(graph, n));
+    }
     matched.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
     let (nodes, edges, meta) = match granularity {
@@ -654,12 +708,12 @@ fn graph_query_inner(
             //
             // FILE-BROWSER SCOPE: this is the `.vault/` document browser's graph, so
             // it must contain ONLY authored `.vault/` DOCUMENTS - one node per
-            // document. The plan-container (wave/phase/step) explosion, code-artifact
-            // (source files), and rule (`.vaultspec/` FIRMWARE) nodes are not `.vault/`
-            // content and are excluded from the document slice. The rich LinkageGraph
-            // still carries them for lineage / code-link / plan-status views; this
-            // slice is documents only. Edges to the excluded nodes drop out via the
-            // `endpoint_ok` check below (their endpoints are no longer in `kept`).
+            // document. The plan-container (wave/phase/step) explosion and rule
+            // (`.vaultspec/` FIRMWARE) nodes are not `.vault/` content and are
+            // excluded from the document slice. The rich LinkageGraph still carries
+            // them for lineage / plan-status views; this slice is documents only.
+            // Edges to the excluded nodes drop out via the `endpoint_ok` check below
+            // (their endpoints are no longer in `kept`).
             let doc_nodes: Vec<&Node> = matched
                 .iter()
                 .copied()
@@ -943,6 +997,78 @@ mod tests {
     }
 
     #[test]
+    fn health_filter_selects_dangling_and_orphaned_nodes() {
+        // filter-controls campaign: the health facet narrows by graph-derived
+        // conditions — `dangling` (a broken outgoing edge) and `orphaned` (no
+        // incoming edge) — applied in graph_query (graph context), and an
+        // out-of-set condition 400s.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan", "f")); // → b (resolved) and → gone (broken)
+        g.upsert_node(doc("b-adr", "f")); // has incoming from a-plan: healthy
+        g.upsert_node(doc("c-research", "f")); // no edges: orphaned, not dangling
+        engine_graph::ingest(
+            &mut g,
+            structural("a-plan", "b-adr", ResolutionState::Resolved, 0.9),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            structural("a-plan", "gone", ResolutionState::Broken, 0.0),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+
+        let a = node_id(&CanonicalKey::Document { stem: "a-plan" }).0;
+        let c = node_id(&CanonicalKey::Document { stem: "c-research" }).0;
+        let ids = |slice: GraphSlice| {
+            let mut v: Vec<String> = slice
+                .nodes
+                .iter()
+                .map(|n| n["id"].as_str().unwrap().to_string())
+                .collect();
+            v.sort();
+            v
+        };
+
+        // dangling → only a-plan (it owns the broken outgoing edge).
+        let dangling = Filter {
+            health: vec!["dangling".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            ids(graph_query(&g, &scope(), dangling, Granularity::Document).unwrap()),
+            vec![a.clone()]
+        );
+
+        // orphaned → a-plan and c-research (nothing links to them); b-adr is
+        // excluded because a-plan links to it.
+        let orphaned = Filter {
+            health: vec!["orphaned".into()],
+            ..Default::default()
+        };
+        let mut want = vec![a.clone(), c.clone()];
+        want.sort();
+        assert_eq!(
+            ids(graph_query(&g, &scope(), orphaned, Granularity::Document).unwrap()),
+            want
+        );
+
+        // The vocabulary enumerates the conditions actually present, canonical order.
+        assert_eq!(
+            crate::filter::vocabulary(&g).health,
+            vec!["dangling".to_string(), "orphaned".to_string()]
+        );
+
+        // An out-of-set health condition 400s loud.
+        let bad: Filter = serde_json::from_str(r#"{"health": ["rotten"]}"#).unwrap();
+        assert!(matches!(
+            bad.validated(),
+            Err(crate::filter::FilterError::UnknownHealth(_))
+        ));
+    }
+
+    #[test]
     fn cached_document_query_is_byte_identical_to_uncached() {
         // A1 correctness invariant: reusing the per-generation enriched views via
         // graph_query_cached must produce exactly the same slice as recomputing
@@ -1067,6 +1193,7 @@ mod tests {
             .find(|n| n["id"] == "feature:feature-a")
             .expect("feature-a synthesized");
         assert_eq!(a["member_count"], 1);
+        assert_eq!(a["node_size"], 11.4);
         assert!(a["degree_by_tier"].is_object());
     }
 
@@ -1082,6 +1209,10 @@ mod tests {
             .expect("a-plan listed");
         assert!(a["degree_by_tier"]["structural"].as_u64().unwrap() >= 1);
         assert!(a.get("lifecycle").is_some(), "lifecycle key present");
+        assert_eq!(
+            a["node_size"], NODE_SIZE_BASE,
+            "document node views expose the base size before salience enrichment"
+        );
         // Ontology projection (graph-node-semantics ADR): authority_class and
         // aggregate ride additively on the document list shape.
         assert_eq!(
@@ -1460,74 +1591,6 @@ mod tests {
                     && e["edge"]["dst"] == "feature:feature-b"
             }),
             "the new cross-feature meta-edge appears as a tagged add: {entries:?}"
-        );
-    }
-
-    /// An inferred code-artifact node exactly as `engine-graph` mints it
-    /// (code-artifact-nodes ADR D2/D6): `NodeKind::CodeArtifact`, `doc_type`
-    /// `code`, a per-scope `Exists` facet, and crucially NO `feature_tags`.
-    fn code_node(path: &str) -> Node {
-        Node {
-            id: node_id(&CanonicalKey::CodeArtifact { path, symbol: None }),
-            kind: NodeKind::CodeArtifact,
-            key: path.into(),
-            title: None,
-            doc_type: Some("code".into()),
-            dates: None,
-            feature_tags: vec![],
-            status: None,
-            tier: None,
-            facets: vec![Facet {
-                scope: scope(),
-                presence: Presence::Exists,
-                content_hash: None,
-                lifecycle: None,
-            }],
-        }
-    }
-
-    #[test]
-    fn code_nodes_are_excluded_from_the_constellation_but_join_the_document_pool() {
-        // code-artifact-nodes ADR D6: a minted `code:` node carries no
-        // feature_tags, so the feature-granularity projection (which groups by
-        // feature_tags) NEVER includes it — the unbounded-safe constellation LOD
-        // is untouched. At document granularity it joins the scope-faceted pool
-        // that MAX_GRAPH_NODES already bounds.
-        let mut g = fixture();
-        g.upsert_node(code_node("src/graph.rs"));
-
-        // Feature granularity: only the two feature-convergence nodes; the code
-        // node contributes to NO convergence and appears nowhere.
-        let constellation =
-            graph_query(&g, &scope(), Filter::default(), Granularity::Feature).unwrap();
-        assert!(
-            constellation.nodes.iter().all(|n| n["kind"] == "feature"),
-            "the constellation carries only feature-convergence nodes"
-        );
-        assert!(
-            !constellation
-                .nodes
-                .iter()
-                .any(|n| n["id"] == "code:src/graph.rs"),
-            "a tagless code node never enters the feature constellation (D6)"
-        );
-
-        // Document granularity: the code node is a first-class member of the
-        // bounded pool, addressable by its stable `code:` id.
-        let document = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
-        let code = document
-            .nodes
-            .iter()
-            .find(|n| n["id"] == "code:src/graph.rs")
-            .expect("the code node is served at document granularity");
-        assert_eq!(code["kind"], "code-artifact");
-        assert_eq!(code["doc_type"], "code");
-        // No fabricated feature tags, no lifecycle, no per-type status (D2/D6).
-        assert!(
-            code["feature_tags"]
-                .as_array()
-                .is_some_and(|t| t.is_empty()),
-            "code nodes carry no feature_tags (D6)"
         );
     }
 }

@@ -8,6 +8,12 @@
 // is owned here once and configured per value shape.
 
 import type { KeyValueStore } from "../../scene/positionCache";
+import {
+  legacyEncodedScopedStorageKey,
+  legacyScopedStorageKey,
+  normalizeScopedStorageKeyPart,
+  scopedStorageKey,
+} from "../../platform/storage/scopedKeys";
 
 export interface ScopedStoreConfig<T> {
   /** Storage-key namespace, e.g. `vaultspec-dashboard:pins`. */
@@ -23,15 +29,19 @@ export interface ScopedStoreConfig<T> {
 }
 
 export interface ScopedStore<T> {
-  /** Compose the `prefix:workspace:scope` storage key. */
-  storageKey: (workspace: string, scope: string) => string;
+  /** Compose the encoded, role-tagged scoped storage key. */
+  storageKey: (workspace: unknown, scope: unknown) => string;
   /** Load the persisted value for a scope (corrupt blobs read as empty). */
-  load: (store: KeyValueStore, workspace: string, scope: string) => T;
+  load: (store: KeyValueStore, workspace: unknown, scope: unknown) => T;
   /** Best-effort persist; a full store loses the value, never crashes. */
-  save: (store: KeyValueStore, workspace: string, scope: string, value: T) => void;
+  save: (store: KeyValueStore, workspace: unknown, scope: unknown, value: T) => void;
   /** The backing localStorage, or null when storage is unavailable (node). */
   backingStore: () => KeyValueStore | null;
 }
+
+export { SCOPED_STORAGE_DEFAULT_KEY_PART as SCOPED_STORE_DEFAULT_KEY_PART } from "../../platform/storage/scopedKeys";
+
+export const normalizeScopedStoreKeyPart = normalizeScopedStorageKeyPart;
 
 /**
  * Build the load/save/storageKey/backingStore trio for one scope-keyed
@@ -42,25 +52,40 @@ export interface ScopedStore<T> {
 export function createScopedStore<T>(config: ScopedStoreConfig<T>): ScopedStore<T> {
   const { prefix, parse, serialize } = config;
 
-  const storageKey = (workspace: string, scope: string) =>
-    `${prefix}:${workspace}:${scope}`;
+  const storageKey = (workspace: unknown, scope: unknown) =>
+    scopedStorageKey(prefix, workspace, scope);
 
-  const load = (store: KeyValueStore, workspace: string, scope: string): T => {
+  const load = (store: KeyValueStore, workspace: unknown, scope: unknown): T => {
     const key = storageKey(workspace, scope);
-    const raw = store.getItem(key);
+    const primaryRaw = store.getItem(key);
+    let raw = primaryRaw;
+    let rawKey = key;
+    if (raw === null) {
+      for (const fallbackKey of [
+        legacyEncodedScopedStorageKey(prefix, workspace, scope),
+        legacyScopedStorageKey(prefix, workspace, scope),
+      ]) {
+        if (fallbackKey === key) continue;
+        raw = store.getItem(fallbackKey);
+        if (raw !== null) {
+          rawKey = fallbackKey;
+          break;
+        }
+      }
+    }
     if (!raw) return parse(undefined);
     try {
       return parse(JSON.parse(raw) as unknown);
     } catch {
-      store.removeItem(key);
+      store.removeItem(rawKey);
       return parse(undefined);
     }
   };
 
   const save = (
     store: KeyValueStore,
-    workspace: string,
-    scope: string,
+    workspace: unknown,
+    scope: unknown,
     value: T,
   ): void => {
     try {

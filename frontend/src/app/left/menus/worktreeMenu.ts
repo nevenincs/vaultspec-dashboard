@@ -8,65 +8,62 @@ import { GitBranch } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
-import type { WorktreeEntity } from "../../../platform/actions/entity";
+import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { revealAction } from "../../../platform/actions/shellActions";
-import { useViewStore } from "../../../stores/view/viewStore";
-import { movePlayhead } from "../../timeline/Playhead";
+import { worktreeActivateScopeDispatch } from "../../../stores/server/worktreeActions";
 
 /**
- * The menu for a worktree row. "Switch to this scope" fires the same imperative
- * scope swap the row click uses (the stores' `setScope`, which owns the single
- * 022 cross-store reset, plus docking the playhead back to LIVE); copy the
- * branch name, and reveal the worktree path in the file manager.
- *
- * The row click also issues a durable `PUT /session active_scope` write through
- * `usePutSession` (a React hook) so the selection survives a reload. That hook
- * cannot be invoked from a pure resolver, so the menu's switch mirrors only the
- * synchronous optimistic half of the row click; the durable write is the click
- * path's responsibility, not the menu's. The switch is a MUTATION, so it carries
+ * The menu for a worktree row. "Switch to this scope" dispatches the same
+ * stores-layer active-scope transition the row click uses, then docks the
+ * playhead back to LIVE; copy the branch name, and reveal the worktree path in
+ * the file manager. The switch is a MUTATION, so it carries
  * `disabledInTimeTravel`; a bare/non-corpus worktree is not a stage scope, so it
  * renders disabled-with-reason there.
  */
-export function worktreeMenu(entity: WorktreeEntity): ActionDescriptor[] {
+export function worktreeMenu(entity: unknown): ActionDescriptor[] {
+  const normalizedEntity = normalizeEntityDescriptor(entity);
+  if (normalizedEntity?.kind !== "worktree") return [];
   const actions: ActionDescriptor[] = [];
 
-  const switchable = entity.hasVault !== false;
-  actions.push({
-    id: "worktree:switch-scope",
-    label: "Switch to this scope",
-    section: "navigate",
-    icon: GitBranch,
-    disabled: !switchable,
-    disabledReason: switchable ? undefined : "no vault corpus to switch to",
-    disabledInTimeTravel: true,
-    run: switchable
-      ? () => {
-          // The same synchronous swap the row click runs: the stores' setScope
-          // performs the single cross-store reset, then the playhead docks back
-          // to LIVE (the store also resets the mode to live).
-          useViewStore.getState().setScope(entity.id);
-          movePlayhead("live");
+  const switchable = normalizedEntity.hasVault !== false;
+  actions.push(
+    switchable
+      ? {
+          id: "worktree:switch-scope",
+          label: "Switch to this scope",
+          section: "navigate",
+          icon: GitBranch,
+          disabledInTimeTravel: true,
+          dispatch: worktreeActivateScopeDispatch(normalizedEntity.id),
         }
-      : undefined,
-  });
+      : {
+          id: "worktree:switch-scope",
+          label: "Switch to this scope",
+          section: "navigate",
+          icon: GitBranch,
+          disabled: true,
+          disabledReason: "no vault corpus to switch to",
+          disabledInTimeTravel: true,
+        },
+  );
 
-  if (entity.branch) {
+  if (normalizedEntity.branch) {
     actions.push(
       copyAction({
         id: "worktree:copy-branch",
         label: "Copy branch",
-        text: entity.branch,
+        text: normalizedEntity.branch,
       }),
     );
   }
 
-  if (entity.path) {
-    actions.push(revealAction({ id: "worktree:reveal", path: entity.path }));
+  if (normalizedEntity.path) {
+    actions.push(revealAction({ id: "worktree:reveal", path: normalizedEntity.path }));
   }
 
   return actions;
 }
 
-registerResolver("worktree", worktreeMenu as ActionResolver<WorktreeEntity>);
+registerResolver("worktree", worktreeMenu as ActionResolver);

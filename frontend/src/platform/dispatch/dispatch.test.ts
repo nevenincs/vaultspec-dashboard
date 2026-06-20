@@ -1,24 +1,63 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Action, Middleware } from "./dispatch";
-import { Dispatcher, UnknownActionError } from "./dispatch";
+import {
+  Dispatcher,
+  UnknownActionError,
+  normalizeAction,
+  normalizeActionType,
+} from "./dispatch";
+
+describe("action normalization", () => {
+  it("normalizes action types before registry lookup or middleware", () => {
+    expect(normalizeActionType(" inc ")).toBe("inc");
+    expect(normalizeActionType("   ")).toBeNull();
+    expect(normalizeActionType(null)).toBeNull();
+    expect(normalizeAction({ type: " inc ", payload: 1 })).toEqual({
+      type: "inc",
+      payload: 1,
+    });
+    expect(
+      normalizeAction({
+        type: " inc ",
+        payload: 1,
+        meta: { guard: "confirm" },
+        rogue: "local payload",
+      }),
+    ).toEqual({
+      type: "inc",
+      payload: 1,
+      meta: { guard: "confirm" },
+    });
+    expect(normalizeAction({ type: "inc", meta: "confirm" })).toEqual({
+      type: "inc",
+    });
+    expect(normalizeAction({ type: "inc", meta: ["confirm"] })).toEqual({
+      type: "inc",
+    });
+    expect(normalizeAction({ type: "   " })).toBeNull();
+  });
+});
 
 describe("Dispatcher handler registry", () => {
   it("routes an action to its registered handler and returns the result", () => {
     const d = new Dispatcher();
-    d.register<number>("inc", (a) => (a.payload ?? 0) + 1);
+    d.register<number>(" inc ", (a) => (a.payload ?? 0) + 1);
     expect(d.dispatch({ type: "inc", payload: 41 })).toBe(42);
+    expect(d.dispatch({ type: " inc ", payload: 1 })).toBe(2);
   });
 
   it("throws UnknownActionError for an unregistered type", () => {
     const d = new Dispatcher();
     expect(() => d.dispatch({ type: "ghost" })).toThrowError(UnknownActionError);
+    expect(() => d.dispatch({ type: "   " })).toThrowError(UnknownActionError);
   });
 
   it("unregisters via the returned disposer", () => {
     const d = new Dispatcher();
     const off = d.register("x", () => "ok");
     expect(d.hasHandler("x")).toBe(true);
+    expect(d.hasHandler(" x ")).toBe(true);
     off();
     expect(d.hasHandler("x")).toBe(false);
   });
@@ -30,6 +69,16 @@ describe("Dispatcher handler registry", () => {
     off();
     expect(d.hasHandler("x")).toBe(true);
     expect(d.dispatch({ type: "x" })).toBe("second");
+  });
+
+  it("ignores malformed handlers at the registry seam", () => {
+    const d = new Dispatcher();
+    const off = d.register("x", { run: () => "bad" });
+
+    expect(d.hasHandler("x")).toBe(false);
+    expect(() => d.dispatch({ type: "x" })).toThrowError(UnknownActionError);
+
+    off();
   });
 });
 

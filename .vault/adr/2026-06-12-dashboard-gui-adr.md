@@ -416,7 +416,7 @@ Reasoning (validation, not just deference):
   polish, single-window feel. None is on the v1 critical path; all are
   additive later. The one real cost of browser-tab delivery — no native
   window identity — is acceptable for a local-first developer tool (the
-  Jupyter/Storybook precedent).
+  Jupyter/retired component gallery precedent).
 - Boundary discipline: the GUI speaks **only** the engine's HTTP/SSE API.
   No CLI subprocesses from the frontend, no direct rag calls. One origin, one
   degradation model, one contract (contract §6).
@@ -759,7 +759,7 @@ Findings this spec is built on:
 ### 11.3 Frontend stack and delivery (verified mid-2026)
 
 - **Localhost-SPA is the dominant CLI-tool delivery pattern** (Jupyter,
-  Storybook, Open WebUI, pgAdmin). **Tauri 2.0** stable Oct 2024;
+  retired component gallery, Open WebUI, pgAdmin). **Tauri 2.0** stable Oct 2024;
   frontend-agnostic (`devPath`/`distDir`), so "shell later" is real and
   low-friction; hard-to-retrofit pieces (tray, deep links) are out of our v1
   scope. Basis of §5.1.

@@ -3,11 +3,20 @@
 // "Settings" command; this pins the store transitions and proves the palette
 // command opens the same dialog.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { buildCommands } from "../palette/CommandPalette";
-import type { PaletteSources } from "../palette/CommandPalette";
-import { useSettingsDialog } from "./useSettingsDialog";
+import {
+  buildCommands,
+  type PaletteSources,
+} from "../../stores/view/commandPaletteCommands";
+import {
+  closeSettingsDialog,
+  normalizeSettingsDialogOpen,
+  openSettingsDialog,
+  setSettingsDialogOpen,
+  toggleSettingsDialog,
+  useSettingsDialog,
+} from "../../stores/view/settingsDialog";
 
 afterEach(() => useSettingsDialog.getState().closeDialog());
 
@@ -21,6 +30,34 @@ describe("useSettingsDialog store", () => {
     useSettingsDialog.getState().toggle();
     expect(useSettingsDialog.getState().open).toBe(true);
     useSettingsDialog.getState().toggle();
+    expect(useSettingsDialog.getState().open).toBe(false);
+  });
+
+  it("exposes named settings-dialog helpers for app-layer consumers", () => {
+    openSettingsDialog();
+    expect(useSettingsDialog.getState().open).toBe(true);
+
+    toggleSettingsDialog();
+    expect(useSettingsDialog.getState().open).toBe(false);
+
+    toggleSettingsDialog();
+    closeSettingsDialog();
+    expect(useSettingsDialog.getState().open).toBe(false);
+  });
+
+  it("normalizes explicit open-state writes at the store seam", () => {
+    expect(normalizeSettingsDialogOpen(true)).toBe(true);
+    expect(normalizeSettingsDialogOpen(false)).toBe(false);
+    expect(normalizeSettingsDialogOpen("true")).toBeNull();
+    expect(normalizeSettingsDialogOpen(1)).toBeNull();
+
+    setSettingsDialogOpen(true);
+    expect(useSettingsDialog.getState().open).toBe(true);
+
+    setSettingsDialogOpen("false");
+    expect(useSettingsDialog.getState().open).toBe(true);
+
+    setSettingsDialogOpen(false);
     expect(useSettingsDialog.getState().open).toBe(false);
   });
 });
@@ -39,13 +76,17 @@ describe("command-palette Settings entry point", () => {
   });
 
   it("builds an 'open settings' command in the app family that calls openSettings", () => {
-    const openSettings = vi.fn();
+    let openSettingsCalls = 0;
+    function openSettings(): void {
+      openSettingsCalls += 1;
+    }
+
     const commands = buildCommands(sources({ openSettings }));
     const settings = commands.find((c) => c.id === "app:settings");
     expect(settings).toBeDefined();
     expect(settings?.family).toBe("app");
     expect(settings?.label).toBe("open settings");
     settings?.run();
-    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(openSettingsCalls).toBe(1);
   });
 });

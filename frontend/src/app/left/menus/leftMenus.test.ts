@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
+import { WORKTREE_ACTIVATE_SCOPE_ACTION } from "../../../stores/server/worktreeActions";
 import { codeFileMenu } from "./codeFileMenu";
 import { vaultDocMenu } from "./vaultDocMenu";
 import { workspaceMenu } from "./workspaceMenu";
@@ -21,8 +22,8 @@ describe("workspaceMenu", () => {
   it("offers set-launch-default (transform), copy path, and reveal", () => {
     const actions = workspaceMenu({
       kind: "workspace",
-      id: "ws1",
-      path: "/abs/project",
+      id: " ws1 ",
+      path: " /abs/project ",
       isLaunchDefault: false,
     });
     expect(ids(actions)).toEqual([
@@ -32,6 +33,10 @@ describe("workspaceMenu", () => {
     ]);
     expect(byId(actions, "workspace:set-launch-default")?.section).toBe("transform");
     expect(byId(actions, "workspace:copy-path")?.section).toBe("copy");
+    expect(byId(actions, "workspace:copy-path")?.dispatch?.payload).toEqual({
+      text: "/abs/project",
+      what: "path",
+    });
   });
 
   it("set-launch-default is mutating: it carries disabledInTimeTravel", () => {
@@ -70,15 +75,20 @@ describe("workspaceMenu", () => {
       "workspace:set-launch-default",
     ]);
   });
+
+  it("rejects non-workspace entities at resolver ingress", () => {
+    expect(workspaceMenu({ kind: "worktree", id: "wt1" })).toEqual([]);
+    expect(workspaceMenu(null)).toEqual([]);
+  });
 });
 
 describe("worktreeMenu", () => {
   it("offers switch-scope (navigate), copy branch, and reveal", () => {
     const actions = worktreeMenu({
       kind: "worktree",
-      id: "wt1",
-      branch: "feature/x",
-      path: "/abs/wt",
+      id: " wt1 ",
+      branch: " feature/x ",
+      path: " /abs/wt ",
       hasVault: true,
     });
     expect(ids(actions)).toEqual([
@@ -89,13 +99,22 @@ describe("worktreeMenu", () => {
     expect(byId(actions, "worktree:switch-scope")?.section).toBe("navigate");
   });
 
-  it("switch-scope is mutating: it carries disabledInTimeTravel and a run", () => {
+  it("switch-scope is mutating: it carries disabledInTimeTravel and dispatches through the seam", () => {
     const action = byId(
       worktreeMenu({ kind: "worktree", id: "wt1", branch: "b", hasVault: true }),
       "worktree:switch-scope",
     );
     expect(action?.disabledInTimeTravel).toBe(true);
-    expect(typeof action?.run).toBe("function");
+    expect(action?.run).toBeUndefined();
+    expect(action?.dispatch).toEqual({
+      type: WORKTREE_ACTIVATE_SCOPE_ACTION,
+      payload: { scope: "wt1" },
+    });
+  });
+
+  it("rejects non-worktree entities at resolver ingress", () => {
+    expect(worktreeMenu({ kind: "workspace", id: "ws1" })).toEqual([]);
+    expect(worktreeMenu(null)).toEqual([]);
   });
 
   it("switch-scope is disabled-with-reason on a bare (no-vault) worktree", () => {
@@ -106,6 +125,7 @@ describe("worktreeMenu", () => {
     expect(action?.disabled).toBe(true);
     expect(action?.disabledReason).toBe("no vault corpus to switch to");
     expect(action?.run).toBeUndefined();
+    expect(action?.dispatch).toBeUndefined();
   });
 });
 
@@ -113,10 +133,10 @@ describe("vaultDocMenu", () => {
   it("offers focus, reveal, open-in-editor, copy path, and copy stem", () => {
     const actions = vaultDocMenu({
       kind: "vault-doc",
-      id: "doc:my-stem",
-      path: ".vault/adr/my-stem.md",
-      stem: "my-stem",
-      nodeId: "doc:my-stem",
+      id: " doc:my-stem ",
+      path: " .vault/adr/my-stem.md ",
+      stem: " my-stem ",
+      nodeId: " doc:my-stem ",
     });
     expect(ids(actions)).toEqual([
       "vault-doc:focus",
@@ -127,6 +147,11 @@ describe("vaultDocMenu", () => {
     ]);
     expect(byId(actions, "vault-doc:focus")?.section).toBe("navigate");
     expect(byId(actions, "vault-doc:copy-stem")?.section).toBe("copy");
+  });
+
+  it("rejects non-vault-doc entities at resolver ingress", () => {
+    expect(vaultDocMenu({ kind: "workspace", id: "ws1" })).toEqual([]);
+    expect(vaultDocMenu(null)).toEqual([]);
   });
 
   it("focus is navigation, not mutating: no disabledInTimeTravel", () => {
@@ -148,10 +173,10 @@ describe("codeFileMenu", () => {
   it("a file offers focus, reveal, open-in-editor, and copy path", () => {
     const actions = codeFileMenu({
       kind: "code-file",
-      id: "code:src/main.rs",
-      path: "src/main.rs",
+      id: " code:src/main.rs ",
+      path: " src/main.rs ",
       isDir: false,
-      nodeId: "code:src/main.rs",
+      nodeId: " code:src/main.rs ",
     });
     expect(ids(actions)).toEqual([
       "code-file:focus",
@@ -160,6 +185,11 @@ describe("codeFileMenu", () => {
       "code-file:copy-path",
     ]);
     expect(byId(actions, "code-file:focus")?.run).toBeTypeOf("function");
+  });
+
+  it("rejects non-code-file entities at resolver ingress", () => {
+    expect(codeFileMenu({ kind: "workspace", id: "ws1" })).toEqual([]);
+    expect(codeFileMenu(null)).toEqual([]);
   });
 
   it("a file with no linked node disables focus with a reason", () => {

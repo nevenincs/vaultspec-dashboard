@@ -11,11 +11,18 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { THEMES } from "../../platform/theme/themeController";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { EngineError } from "./engine";
 import type { SettingsSchema, SettingsState } from "./engine";
 import { adaptSettingsSchema } from "./liveAdapters";
-import { resolveEffective, resolveSettings } from "./settingsSelectors";
+import {
+  CONSUMED_SETTING_KEYS,
+  resolveEffective,
+  resolveEffectiveSetting,
+  resolveSettings,
+  settingDefByKey,
+} from "./settingsSelectors";
 
 let schema: SettingsSchema;
 let scope: string;
@@ -32,7 +39,7 @@ describe("settings schema (live engine GET /settings/schema)", () => {
     // adding more settings (we check membership, not an exact list).
     const byKey = new Map(schema.settings.map((s) => [s.key, s]));
 
-    const theme = byKey.get("theme");
+    const theme = byKey.get(CONSUMED_SETTING_KEYS.theme);
     expect(theme).toBeDefined();
     expect(theme!.value_type).toEqual({
       type: "enum",
@@ -49,7 +56,7 @@ describe("settings schema (live engine GET /settings/schema)", () => {
     });
     expect(granularity!.scope_eligible).toBe(true);
 
-    const reduceMotion = byKey.get("reduce_motion");
+    const reduceMotion = byKey.get(CONSUMED_SETTING_KEYS.reduceMotion);
     expect(reduceMotion).toBeDefined();
     expect(reduceMotion!.value_type).toEqual({ type: "bool" });
     expect(reduceMotion!.control).toBe("switch");
@@ -87,6 +94,50 @@ describe("settings schema (live engine GET /settings/schema)", () => {
     expect(s.control).toBe("slider");
     expect(s.step).toBe(10);
     expect(s.unit).toBe("%");
+  });
+
+  it("normalizes schema metadata at the adapter boundary", () => {
+    const decoded = adaptSettingsSchema({
+      settings: [
+        {
+          key: "  theme  ",
+          value_type: {
+            type: "enum",
+            members: [" system ", "system", "", " dark ", 42],
+          },
+          default: "system",
+          scope_eligible: false,
+          control: " segmented ",
+          label: " Theme ",
+          description: " Color mode ",
+          group: " Appearance ",
+          order: 1,
+          unit: " px ",
+          placeholder: " Choose ",
+        },
+        {
+          key: "   ",
+          value_type: { type: "string" },
+        },
+      ],
+      groups: [" Appearance ", "Appearance", "", 7, " Graph "],
+      tiers: {},
+    });
+
+    expect(decoded.groups).toEqual(["Appearance", "Graph"]);
+    expect(decoded.settings).toHaveLength(1);
+    expect(decoded.settings[0]).toEqual(
+      expect.objectContaining({
+        key: "theme",
+        value_type: { type: "enum", members: ["system", "dark"] },
+        control: "segmented",
+        label: "Theme",
+        description: "Color mode",
+        group: "Appearance",
+        unit: "px",
+        placeholder: "Choose",
+      }),
+    );
   });
 
   it("tolerates a sparse / malformed body without throwing (tolerant adapter)", () => {
@@ -153,17 +204,50 @@ describe("settings validation (live engine typed error_kind)", () => {
 // --- effective-value selector (pure logic over the live-declared schema) --------
 
 describe("settings effective-value resolution", () => {
+  it("declares every app-consumed key in the live engine schema", () => {
+    for (const key of Object.values(CONSUMED_SETTING_KEYS)) {
+      expect(settingDefByKey(schema, key), key).toBeDefined();
+    }
+  });
+
+  it("keeps the engine theme enum aligned with the platform theme preferences", () => {
+    const theme = settingDefByKey(schema, CONSUMED_SETTING_KEYS.theme);
+    expect(theme?.value_type).toEqual({
+      type: "enum",
+      members: ["system", ...THEMES],
+    });
+  });
+
+  it("resolves app-consumed settings by key through the served schema", () => {
+    const eff = resolveEffectiveSetting(
+      schema,
+      {
+        global: { [CONSUMED_SETTING_KEYS.reduceMotion]: "true" },
+        scoped: {},
+        tiers: {},
+      },
+      scope,
+      CONSUMED_SETTING_KEYS.reduceMotion,
+    );
+    expect(eff?.value).toBe("true");
+    expect(eff?.def.key).toBe(CONSUMED_SETTING_KEYS.reduceMotion);
+  });
+
   it("falls back to the schema default when nothing is persisted", () => {
-    const themeDef = schema.settings.find((s) => s.key === "theme")!;
+    const themeDef = schema.settings.find(
+      (s) => s.key === CONSUMED_SETTING_KEYS.theme,
+    )!;
     const eff = resolveEffective(themeDef, undefined, scope);
     expect(eff.value).toBe(themeDef.default);
     expect(eff.provenance).toBe("default");
   });
 
   it("prefers the global value over the default", () => {
-    const themeDef = schema.settings.find((s) => s.key === "theme")!;
+    const themeDef = schema.settings.find(
+      (s) => s.key === CONSUMED_SETTING_KEYS.theme,
+    )!;
     const settings: SettingsState = {
-      global: { theme: "dark" },
+      global: { [CONSUMED_SETTING_KEYS.theme]: "dark" },
       scoped: {},
       tiers: {},
     };
@@ -186,10 +270,12 @@ describe("settings effective-value resolution", () => {
   });
 
   it("ignores a scope override for a global-only setting", () => {
-    const themeDef = schema.settings.find((s) => s.key === "theme")!;
+    const themeDef = schema.settings.find(
+      (s) => s.key === CONSUMED_SETTING_KEYS.theme,
+    )!;
     const settings: SettingsState = {
-      global: { theme: "dark" },
-      scoped: { [scope]: { theme: "light" } },
+      global: { [CONSUMED_SETTING_KEYS.theme]: "dark" },
+      scoped: { [scope]: { [CONSUMED_SETTING_KEYS.theme]: "light" } },
       tiers: {},
     };
     const eff = resolveEffective(themeDef, settings, scope);
@@ -205,8 +291,8 @@ describe("settings effective-value resolution", () => {
     );
     const appearance = groups.find((g) => g.name === "Appearance")!;
     expect(appearance.settings.map((s) => s.def.key).slice(0, 2)).toEqual([
-      "theme",
-      "reduce_motion",
+      CONSUMED_SETTING_KEYS.theme,
+      CONSUMED_SETTING_KEYS.reduceMotion,
     ]);
   });
 });

@@ -6,7 +6,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { OpenDoc } from "../../stores/view/viewStore";
-import { parseWorkspaceTabs, serializeWorkspaceTabs } from "./useWorkspacePersistence";
+import {
+  isSamePersistedWorkspaceLayout,
+  parseWorkspaceTabs,
+  serializeWorkspaceTabs,
+  shouldPersistWorkspaceTabsLayout,
+} from "./useWorkspacePersistence";
 
 const PERMANENT: OpenDoc[] = [
   { nodeId: "doc:a-plan", surface: "markdown", provisional: false },
@@ -63,5 +68,60 @@ describe("degradation", () => {
       { nodeId: "doc:ok", surface: "markdown", provisional: false },
     ]);
     expect(restored?.activeDocId).toBe("doc:ok");
+  });
+});
+
+describe("workspace layout persistence identity", () => {
+  it("treats identical tab blobs in different scopes as distinct writes", () => {
+    const blob = JSON.stringify({
+      v: 1,
+      tabs: [{ nodeId: "doc:shared", surface: "markdown" }],
+      active: "doc:shared",
+    });
+
+    expect(
+      isSamePersistedWorkspaceLayout({ scope: "scope-a", blob }, "scope-a", blob),
+    ).toBe(true);
+    expect(
+      isSamePersistedWorkspaceLayout({ scope: "scope-a", blob }, "scope-b", blob),
+    ).toBe(false);
+    expect(
+      isSamePersistedWorkspaceLayout({ scope: "scope-a", blob }, " scope-a ", blob),
+    ).toBe(true);
+    expect(
+      isSamePersistedWorkspaceLayout(
+        { scope: "scope-a", blob },
+        { scope: "scope-a" },
+        blob,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the no-clobber persist decision behind the tab codec seam", () => {
+    const emptyBlob = serializeWorkspaceTabs([], null);
+    const populatedBlob = serializeWorkspaceTabs(PERMANENT, "doc:a-plan");
+
+    expect(shouldPersistWorkspaceTabsLayout(null, "scope-a", emptyBlob)).toBe(false);
+    expect(shouldPersistWorkspaceTabsLayout(null, "scope-a", populatedBlob)).toBe(true);
+    expect(
+      shouldPersistWorkspaceTabsLayout(null, { scope: "scope-a" }, populatedBlob),
+    ).toBe(false);
+    expect(shouldPersistWorkspaceTabsLayout(null, " scope-a ", populatedBlob)).toBe(
+      true,
+    );
+    expect(
+      shouldPersistWorkspaceTabsLayout(
+        { scope: "scope-a", blob: populatedBlob },
+        "scope-a",
+        populatedBlob,
+      ),
+    ).toBe(false);
+    expect(
+      shouldPersistWorkspaceTabsLayout(
+        { scope: "scope-a", blob: populatedBlob },
+        "scope-b",
+        populatedBlob,
+      ),
+    ).toBe(true);
   });
 });

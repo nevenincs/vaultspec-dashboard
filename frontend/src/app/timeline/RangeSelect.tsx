@@ -28,36 +28,30 @@
 // through the stores setter and fetches nothing; no other surface may set it.
 
 import { Play, X } from "lucide-react";
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef } from "react";
 
-import { useFilterStore } from "../../stores/view/filters";
-import { movePlayhead } from "./Playhead";
-import { humanInstant, useTimelineStore } from "./Timeline";
-import { TIMELINE_ORIGIN_MS, timeToX, xToTime } from "./scrollStrip";
+import { useDateRangeIntent } from "../../stores/server/dateRangeIntent";
+import {
+  clearTimelineRangeDrag,
+  startTimelineRangeDragPointerSession,
+  timelineDashboardDateString,
+  timelineRangeFromDrag,
+  useTimelineRangeDragState,
+  useTimelineScrollState,
+} from "../../stores/view/timeline";
+import {
+  useActiveScope,
+  useDashboardRangeSelectView,
+} from "../../stores/server/queries";
+import { useReducedMotion } from "../chrome/useReducedMotion";
+import { movePlayhead } from "../../stores/view/timelineIntent";
+import { humanInstant } from "./Timeline";
+import { TIMELINE_ORIGIN_MS, timeToX } from "./scrollStrip";
 
 // --- pure helpers (unit-tested) -------------------------------------------------
 
-/**
- * Resolve a drag span (two VIEWPORT x) to an ordered time range over the
- * scroll-strip model: each x maps to its instant via `xToTime` over the shared
- * `pxPerMs` + `scrollOffset` (canonical epoch origin), then ordered. Pure — the
- * component passes the live scale/offset so this stays unit-testable.
- */
-export function rangeFromDrag(
-  x1: number,
-  x2: number,
-  pxPerMs: number,
-  scrollOffset: number,
-): { from: number; to: number } {
-  const a = xToTime(x1, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
-  const b = xToTime(x2, TIMELINE_ORIGIN_MS, pxPerMs, scrollOffset);
-  return { from: Math.min(a, b), to: Math.max(a, b) };
-}
+export const rangeFromDrag = timelineRangeFromDrag;
+export const dashboardDateString = timelineDashboardDateString;
 
 export const PLAY_DURATION_MS = 4000;
 
@@ -72,36 +66,34 @@ export function playPosition(
   return from + (to - from) * ratio;
 }
 
-/** True when the OS asks for reduced motion (the base motion law floor). */
-export function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
 // --- play-the-range ----------------------------------------------------------------
 
 interface PlayState {
   from: number;
   to: number;
   startedAt: number;
+  scope: unknown;
 }
 
 let playState: PlayState | null = null;
 /** Set by the mounted player; lets `startRangePlay` wake the RAF loop. */
 let kickRangePlay: (() => void) | null = null;
 
-export function startRangePlay(from: number, to: number, now: number): void {
+export function startRangePlay(
+  from: number,
+  to: number,
+  now: number,
+  scope: unknown = null,
+  reducedMotion = false,
+): void {
   // Reduced-motion floor (ADR): swap the animated sweep for an instant jump to
   // the range end — the network is shown grown, with no per-frame animation.
-  if (prefersReducedMotion()) {
+  if (reducedMotion) {
     playState = null;
-    movePlayhead(to);
+    movePlayhead(to, scope);
     return;
   }
-  playState = { from, to, startedAt: now };
+  playState = { from, to, startedAt: now, scope };
   kickRangePlay?.();
 }
 
@@ -124,7 +116,10 @@ export function useRangePlayer(): void {
         return;
       }
       const elapsed = performance.now() - playState.startedAt;
-      movePlayhead(playPosition(playState.from, playState.to, elapsed));
+      movePlayhead(
+        playPosition(playState.from, playState.to, elapsed),
+        playState.scope,
+      );
       if (elapsed >= PLAY_DURATION_MS) {
         playState = null;
         running = false;
@@ -148,60 +143,45 @@ export function useRangePlayer(): void {
 // --- the overlay ---------------------------------------------------------------------
 
 export function RangeSelect() {
-  const pxPerMs = useTimelineStore((s) => s.pxPerMs);
-  const scrollOffset = useTimelineStore((s) => s.scrollOffset);
-  const dateRange = useFilterStore((s) => s.dateRange);
-  const setDateRange = useFilterStore((s) => s.setDateRange);
+  const scope = useActiveScope();
+  const reducedMotion = useReducedMotion();
+  const { pxPerMs, scrollOffset } = useTimelineScrollState();
+  const rangeSelect = useDashboardRangeSelectView(scope);
+  const rangeIntent = useDateRangeIntent(scope);
+  const rangeIntentRef = useRef(rangeIntent);
+  rangeIntentRef.current = rangeIntent;
+  const commitRangeRef = useRef<(range: { from: string; to: string }) => void>(
+    () => undefined,
+  );
+  commitRangeRef.current = (range) => {
+    if (scope) void rangeIntentRef.current.setRange(range);
+  };
+  const dateRange = rangeSelect.dateRange;
   const hostRef = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<{ x1: number; x2: number } | null>(null);
+  const drag = useTimelineRangeDragState();
   useRangePlayer();
+
+  useEffect(() => {
+    clearTimelineRangeDrag();
+    stopRangePlay();
+  }, [scope]);
 
   useEffect(() => {
     const host = hostRef.current?.parentElement;
     if (!host) return;
-    let active = false;
-    let startX = 0;
-    const localX = (e: PointerEvent) => e.clientX - host.getBoundingClientRect().left;
-    const onDown = (e: PointerEvent) => {
-      if (!e.shiftKey) return;
-      active = true;
-      startX = localX(e);
-      setDrag({ x1: startX, x2: startX });
-      e.preventDefault();
-    };
-    const onMove = (e: PointerEvent) => {
-      if (active) setDrag({ x1: startX, x2: localX(e) });
-    };
-    const onUp = (e: PointerEvent) => {
-      if (!active) return;
-      active = false;
-      // Read scale/offset imperatively at event time (B8, resource-hardening):
-      // keeps them out of the effect deps so the global pointer listeners stop
-      // re-registering on every scroll/zoom frame during a range drag/play.
-      const { pxPerMs: px, scrollOffset: off } = useTimelineStore.getState();
-      const range = rangeFromDrag(startX, localX(e), px, off);
-      setDrag(null);
-      setDateRange({
-        from: new Date(range.from).toISOString(),
-        to: new Date(range.to).toISOString(),
-      });
-    };
-    host.addEventListener("pointerdown", onDown);
-    globalThis.addEventListener("pointermove", onMove);
-    globalThis.addEventListener("pointerup", onUp);
-    return () => {
-      host.removeEventListener("pointerdown", onDown);
-      globalThis.removeEventListener("pointermove", onMove);
-      globalThis.removeEventListener("pointerup", onUp);
-    };
-    // Only the stable setDateRange action remains a dep (B8); pxPerMs/scrollOffset
-    // are read via getState, so scroll/zoom no longer re-registers the listeners.
-  }, [setDateRange]);
+    return startTimelineRangeDragPointerSession({
+      host,
+      commitRange: (range) => commitRangeRef.current(range),
+    });
+    // Only scope remains a dep (B8); mutation and pxPerMs/scrollOffset are read
+    // imperatively, so scroll/zoom and mutation-object churn do not re-register
+    // the listeners.
+  }, [scope]);
 
   const clearRange = () => {
     stopRangePlay();
-    setDateRange({});
-    movePlayhead("live");
+    if (scope) void rangeIntentRef.current.clearRange();
+    movePlayhead("live", scope);
   };
 
   const committed =
@@ -278,6 +258,8 @@ export function RangeSelect() {
                 Date.parse(dateRange.from!),
                 Date.parse(dateRange.to!),
                 performance.now(),
+                scope,
+                reducedMotion,
               )
             }
           >

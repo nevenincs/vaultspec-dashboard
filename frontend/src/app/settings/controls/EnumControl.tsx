@@ -12,26 +12,22 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRef } from "react";
 
+import {
+  deriveSettingsEnumControlView,
+  settingsEnumKeyboardTarget,
+} from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
 export function EnumControl({ def, value, onChange, disabled, id }: ControlProps) {
-  const members = def.value_type.type === "enum" ? def.value_type.members : [];
+  const view = deriveSettingsEnumControlView(def, value);
   const segEls = useRef(new Map<string, HTMLButtonElement>());
 
   const onKeyDown = (index: number) => (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (
-      e.key === "ArrowRight" ||
-      e.key === "ArrowDown" ||
-      e.key === "ArrowLeft" ||
-      e.key === "ArrowUp"
-    ) {
-      e.preventDefault();
-      const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
-      const next = (index + (forward ? 1 : members.length - 1)) % members.length;
-      const target = members[next]!;
-      onChange(target);
-      segEls.current.get(target)?.focus();
-    }
+    const target = settingsEnumKeyboardTarget(view.options, index, e.key);
+    if (target === null) return;
+    e.preventDefault();
+    onChange(target);
+    segEls.current.get(target)?.focus();
   };
 
   return (
@@ -39,33 +35,28 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
       role="radiogroup"
       aria-label={def.label}
       id={id}
-      className="flex shrink-0 flex-wrap gap-fg-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-fg-0-5"
+      className={view.rootClassName}
     >
-      {members.map((member, index) => {
-        const active = member === value;
+      {view.options.map((option, index) => {
         return (
           <button
-            key={member}
+            key={option.value}
             ref={(el) => {
-              if (el) segEls.current.set(member, el);
-              else segEls.current.delete(member);
+              if (el) segEls.current.set(option.value, el);
+              else segEls.current.delete(option.value);
             }}
             type="button"
             role="radio"
-            aria-checked={active}
+            aria-checked={option.active}
             disabled={disabled}
             // Roving tabindex: only the active segment is in the Tab order; arrows
             // move between them (the segmented-control a11y pattern).
-            tabIndex={active ? 0 : -1}
-            onClick={() => onChange(member)}
+            tabIndex={option.tabIndex}
+            onClick={() => onChange(option.value)}
             onKeyDown={onKeyDown(index)}
-            className={`rounded-fg-xs px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
-              active
-                ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
-                : "text-ink-faint hover:text-ink-muted"
-            }`}
+            className={option.className}
           >
-            {member}
+            {option.value}
           </button>
         );
       })}

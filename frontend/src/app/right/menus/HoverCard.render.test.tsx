@@ -11,7 +11,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { HoverCard, type HoverCardModel } from "./HoverCard";
-import { deriveEvidenceGroups } from "./hoverCardEvidence";
+import { deriveEvidenceGroups } from "../../../stores/view/hoverCardEvidence";
 import type { NodeEvidence } from "../../../stores/server/engine";
 
 afterEach(cleanup);
@@ -45,7 +45,7 @@ describe("HoverCard (binding graph/HoverCard 84:2)", () => {
     expect(screen.getByText("doc:2026-foo-adr")).toBeTruthy();
   });
 
-  it("renders the three evidence groups with their lines", () => {
+  it("renders the evidence groups with their lines", () => {
     render(<HoverCard model={model()} />);
     expect(screen.getByText("documents")).toBeTruthy();
     expect(screen.getByText("code")).toBeTruthy();

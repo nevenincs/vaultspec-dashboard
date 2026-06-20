@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setIsMacForTesting } from "../../platform/keymap/chord";
 import { registerKeybindings, resetKeybindings } from "../../platform/keymap/registry";
 import {
+  KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
+  KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
   closeKeyboardShortcuts,
   deriveKeyboardShortcutGroups,
+  normalizeKeyboardShortcutsOpen,
   openKeyboardShortcuts,
-  shouldToggleKeyboardShortcuts,
+  setKeyboardShortcutsOpen,
   toggleKeyboardShortcuts,
   useKeyboardShortcutsStore,
 } from "./keyboardShortcuts";
@@ -40,6 +43,22 @@ describe("keyboard shortcuts store", () => {
 
     toggleKeyboardShortcuts();
     closeKeyboardShortcuts();
+    expect(useKeyboardShortcutsStore.getState().open).toBe(false);
+  });
+
+  it("normalizes explicit open-state writes at the shortcut-legend seam", () => {
+    expect(normalizeKeyboardShortcutsOpen(true)).toBe(true);
+    expect(normalizeKeyboardShortcutsOpen(false)).toBe(false);
+    expect(normalizeKeyboardShortcutsOpen("true")).toBeNull();
+    expect(normalizeKeyboardShortcutsOpen(1)).toBeNull();
+
+    setKeyboardShortcutsOpen(true);
+    expect(useKeyboardShortcutsStore.getState().open).toBe(true);
+
+    setKeyboardShortcutsOpen("false");
+    expect(useKeyboardShortcutsStore.getState().open).toBe(true);
+
+    setKeyboardShortcutsOpen(false);
     expect(useKeyboardShortcutsStore.getState().open).toBe(false);
   });
 
@@ -96,33 +115,12 @@ describe("keyboard shortcuts store", () => {
     });
   });
 
-  it("derives the global shortcut toggle intent without modifiers", () => {
-    expect(
-      shouldToggleKeyboardShortcuts({
-        key: "?",
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-        target: null,
-      }),
-    ).toBe(true);
-    expect(
-      shouldToggleKeyboardShortcuts({
-        key: "?",
-        ctrlKey: true,
-        metaKey: false,
-        altKey: false,
-        target: null,
-      }),
-    ).toBe(false);
-    expect(
-      shouldToggleKeyboardShortcuts({
-        key: "/",
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-        target: null,
-      }),
-    ).toBe(false);
+  it("declares the shortcut legend toggle as a bindable keymap command", () => {
+    expect(KEYBOARD_SHORTCUTS_TOGGLE_BINDING).toMatchObject({
+      defaultChord: "?",
+      label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
+      group: "General",
+      context: "global",
+    });
   });
 });

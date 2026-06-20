@@ -1,6 +1,6 @@
-//! Fixture-document pipeline test (W01.P04.S18): reader → extractors →
-//! resolver, end to end, covering all four mention kinds and all three
-//! resolution states.
+//! Fixture-document pipeline test (W01.P04.S18): reader -> extractors ->
+//! resolver, end to end, covering structural mention kinds and resolution
+//! states.
 
 use engine_model::ResolutionState;
 use ingest_struct::extract::{MentionKind, extract};
@@ -31,15 +31,10 @@ fn document_pipeline_extracts_and_resolves_against_the_fixture_tree() {
             .any(|m| matches!(&m.kind, MentionKind::StepId(s) if s == "S01")),
         mentions
             .iter()
-            .any(|m| matches!(&m.kind, MentionKind::Path(p) if p == "src/main.rs")),
-        mentions
-            .iter()
-            .any(|m| matches!(&m.kind, MentionKind::Symbol(s) if s == "main")),
-        mentions
-            .iter()
             .any(|m| matches!(&m.kind, MentionKind::WikiLink(w) if w == "2026-06-12-f-adr")),
     ];
-    assert!(kinds.iter().all(|k| *k), "all four extractors fired");
+    assert!(kinds.iter().all(|k| *k), "structural extractors fired");
+    assert_eq!(mentions.len(), 2, "code paths and symbols are prose only");
 
     let resolved = resolve(root, mentions);
     let states: Vec<ResolutionState> = resolved.iter().map(|r| r.state).collect();
@@ -51,6 +46,6 @@ fn document_pipeline_extracts_and_resolves_against_the_fixture_tree() {
             .iter()
             .filter(|r| r.state == ResolutionState::Broken)
             .count(),
-        2
+        1
     );
 }

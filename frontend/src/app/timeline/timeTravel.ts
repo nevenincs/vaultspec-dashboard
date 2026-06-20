@@ -13,38 +13,40 @@
 // invariants are re-affirmed unchanged: the keyframe-plus-diff replay runs on the
 // ONE shared delta clock (no second clock — the LIVE splice stays in
 // `useGraphLiveSync`), the local DeltaLog replays when the range is loaded, an
-// out-of-range jump re-keyframes, and `timelineMode` binds to the scene seam.
+// out-of-range jump re-keyframes, and dashboard `timeline_mode` binds to the
+// scene seam.
 
 import { useEffect, useRef } from "react";
 
-import type { TimelineMode } from "../../stores/view/viewStore";
 import type { SceneGraphModel } from "../../scene/graphModel";
 import { DeltaLog } from "../../scene/deltaLog";
+import { useDashboardTimelineModeView } from "../../stores/server/queries";
+import { normalizeTimelineScope } from "../../stores/view/timeline";
 import {
   timeTravelSource,
   type TimeTravelSource,
 } from "../../stores/server/timeTravelSource";
-import { useViewStore } from "../../stores/view/viewStore";
+import { setLiveBrokenLinkCountFromEdges } from "../../stores/server/liveStatus";
 import type {
   SceneController,
   SceneDelta,
   SceneEdgeData,
   SceneNodeData,
 } from "../../scene/sceneController";
-import type { GraphDeltaEntry } from "../../stores/server/engine";
-import { engineEdgeToScene, engineNodeToScene } from "../../scene/sceneMapping";
+import type { DashboardTimelineMode } from "../../stores/server/engine";
+import { graphDeltaToScene, sliceToScene } from "../../scene/sceneMapping";
 
 /** Loaded-range margin behind the requested T (local backward scrub room). */
 export const KEYFRAME_BACK_MARGIN_MS = 14 * 24 * 3600_000;
 
 // --- time-travel honesty: read off the ONE shared mode (S61) -------------------
 //
-// Time-travel honesty (ADR "Time-travel mode") is driven from a SINGLE truth: the
-// shared `timelineMode` in the view store, written ONLY through `movePlayhead`
+// Time-travel honesty (ADR "Time-travel mode") is driven from a SINGLE truth:
+// canonical dashboard `timeline_mode`, written through `movePlayhead`
 // (Playhead.tsx). Every honesty cue reads that one mode and never re-derives the
 // state per-surface:
 //   - the stage warm tint + the "viewing {date} — return to live" chip
-//     (TimeTravelChip) render off `useViewStore(s => s.timelineMode)`;
+//     (TimeTravelChip) render off dashboard state;
 //   - operational verbs disable off the same mode (OpsPanel);
 //   - the semantic tier renders INAPPLICABLE off the same mode (TierDial,
 //     `isTierInapplicable`);
@@ -60,9 +62,16 @@ export const KEYFRAME_BACK_MARGIN_MS = 14 * 24 * 3600_000;
  * reading rather than re-testing `mode.kind`.
  */
 export function isTimeTravel(
-  mode: TimelineMode,
-): mode is Extract<TimelineMode, { kind: "time-travel" }> {
+  mode: DashboardTimelineMode,
+): mode is Extract<DashboardTimelineMode, { kind: "time-travel" }> {
   return mode.kind === "time-travel";
+}
+
+/** True when the live keyframe/delta path owns the scene. */
+export function isLiveTimelineMode(
+  mode: DashboardTimelineMode,
+): mode is Extract<DashboardTimelineMode, { kind: "live" }> {
+  return !isTimeTravel(mode);
 }
 
 /**
@@ -70,19 +79,18 @@ export function isTimeTravel(
  * any time-travel mode disables ops. A single reading of the shared mode — the
  * disable is never guessed from an error or re-derived per panel.
  */
-export function opsDisabledFor(mode: TimelineMode): boolean {
+export function opsDisabledFor(mode: DashboardTimelineMode): boolean {
   return isTimeTravel(mode);
 }
 
+/** The historical instant for selectors that re-query in time-travel; live is undefined. */
+export function timeTravelAsOf(mode: DashboardTimelineMode): number | undefined {
+  return isTimeTravel(mode) ? mode.at : undefined;
+}
+
 /** Map one wire diff entry onto the seam's delta shape. */
-export function mapDelta(entry: GraphDeltaEntry): SceneDelta {
-  return {
-    op: entry.op,
-    node: entry.node ? engineNodeToScene(entry.node) : undefined,
-    edge: entry.edge ? engineEdgeToScene(entry.edge) : undefined,
-    t: entry.t,
-    seq: entry.seq,
-  };
+export function mapDelta(entry: unknown): SceneDelta | null {
+  return graphDeltaToScene(entry);
 }
 
 export interface TimeTravelTarget {
@@ -94,6 +102,7 @@ export interface TimeTravelTarget {
 export function sceneTarget(scene: SceneController): TimeTravelTarget {
   return {
     pushSlice(nodes, edges, at) {
+      setLiveBrokenLinkCountFromEdges(edges);
       scene.command({ kind: "set-data", nodes, edges });
       scene.command({ kind: "set-time", at });
     },
@@ -138,7 +147,9 @@ export class TimeTravelDriver {
     const diff = await this.source.diff(this.scope, anchor, now);
     // A newer scrub superseded this load; let it win.
     if (this.loadingFor !== t) return;
-    const diffDeltas = diff.deltas.map(mapDelta);
+    const diffDeltas = diff.deltas
+      .map(mapDelta)
+      .filter((delta): delta is SceneDelta => delta !== null);
     // Normalize wire fields: `t` is echoed as a string when the caller passed
     // a ms-timestamp; `last_seq` is null on historical views (engine does not
     // yet carry the seq position at the snapshot — S50 gap). Derive a
@@ -147,9 +158,10 @@ export class TimeTravelDriver {
     // asof snapshot ends on the shared clock).
     const keyframeSeq =
       asof.last_seq != null ? asof.last_seq : (diffDeltas[0]?.seq ?? 1) - 1;
+    const keyframe = sliceToScene(asof);
     this.log.setKeyframe({
-      nodes: asof.nodes.map(engineNodeToScene),
-      edges: asof.edges.map(engineEdgeToScene),
+      nodes: keyframe.nodes,
+      edges: keyframe.edges,
       t: Number(asof.t),
       seq: keyframeSeq,
     });
@@ -174,15 +186,17 @@ export class TimeTravelDriver {
  * historical slices through the driver; returning to live hands the stage
  * back to the live keyframe path (the Stage's own data effect).
  */
-export function useTimeTravel(scope: string | null, scene: SceneController): void {
-  const mode = useViewStore((s) => s.timelineMode);
+export function useTimeTravel(scope: unknown, scene: SceneController): void {
+  const normalizedScope = normalizeTimelineScope(scope);
+  const timeline = useDashboardTimelineModeView(normalizedScope);
+  const mode = timeline.mode;
   const driver = useRef<TimeTravelDriver | null>(null);
 
   useEffect(() => {
-    driver.current = scope
-      ? new TimeTravelDriver(timeTravelSource, scope, sceneTarget(scene))
+    driver.current = normalizedScope
+      ? new TimeTravelDriver(timeTravelSource, normalizedScope, sceneTarget(scene))
       : null;
-  }, [scope, scene]);
+  }, [normalizedScope, scene]);
 
   useEffect(() => {
     if (isTimeTravel(mode)) {

@@ -40,7 +40,7 @@ export interface FilterSidebarProps {
   /** Close the flyout. */
   onClose: () => void;
   /** Scope for vocabulary + dashboard-state queries. */
-  scope: string | null;
+  scope: unknown;
   /** Hidden count — owned by Stage's visibility reduction (the toolbar already
    *  surfaces the recoverable cost; reserved for a future footer). */
   hidden: { nodes: number; edges: number };

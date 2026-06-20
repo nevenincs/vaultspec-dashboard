@@ -17,7 +17,7 @@ import { useEffect } from "react";
 
 export interface DismissOnEscapeOptions {
   /** Gate the listener — when false, no listener is attached (default true). */
-  enabled?: boolean;
+  enabled?: unknown;
   /**
    * The element the listener attaches to. Defaults to `window`, matching the
    * convention of the surfaces this consolidates; the modal Dialog passes
@@ -25,7 +25,15 @@ export interface DismissOnEscapeOptions {
    */
   target?: Window | Document;
   /** Call `preventDefault()` on the Escape event before dismissing (default false). */
-  preventDefault?: boolean;
+  preventDefault?: unknown;
+}
+
+export function normalizeDismissOnEscapeEnabled(value: unknown): boolean {
+  return value === undefined ? true : value === true;
+}
+
+export function normalizeDismissOnEscapePreventDefault(value: unknown): boolean {
+  return value === true;
 }
 
 /**
@@ -39,15 +47,19 @@ export function useDismissOnEscape(
   options: DismissOnEscapeOptions = {},
 ): void {
   const { enabled = true, target = window, preventDefault = false } = options;
+  const normalizedEnabled = normalizeDismissOnEscapeEnabled(enabled);
+  const normalizedPreventDefault =
+    normalizeDismissOnEscapePreventDefault(preventDefault);
+
   useEffect(() => {
-    if (!enabled) return;
+    if (!normalizedEnabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (preventDefault) e.preventDefault();
+        if (normalizedPreventDefault) e.preventDefault();
         onDismiss();
       }
     };
     target.addEventListener("keydown", onKey as EventListener);
     return () => target.removeEventListener("keydown", onKey as EventListener);
-  }, [enabled, target, preventDefault, onDismiss]);
+  }, [normalizedEnabled, target, normalizedPreventDefault, onDismiss]);
 }

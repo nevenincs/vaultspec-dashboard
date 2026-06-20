@@ -61,13 +61,12 @@ describe("CodeViewer", () => {
     });
     const { container } = render(<CodeViewer content={view} />);
     // The notice text is interpolated across nodes (two toLocaleString numbers),
-    // so assert on the full rendered text. Derive the expected numbers through the
-    // same toLocaleString so the assertion is locale-agnostic (the runtime locale
-    // chooses the thousands separator).
+    // so assert on the full rendered text using the store projection's explicit
+    // `en-US` byte-count contract.
     const text = container.textContent ?? "";
     expect(text).toContain("Truncated to the first");
-    expect(text).toContain((1_048_576).toLocaleString());
-    expect(text).toContain((2_000_000).toLocaleString());
+    expect(text).toContain((1_048_576).toLocaleString("en-US"));
+    expect(text).toContain((2_000_000).toLocaleString("en-US"));
   });
 
   it("renders the degraded state from the structural tier", () => {

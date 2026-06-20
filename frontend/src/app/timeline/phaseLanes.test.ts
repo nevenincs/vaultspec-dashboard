@@ -10,6 +10,7 @@ import {
   groupIndexOfId,
   groupLaneCenterY,
   groupLanesHeight,
+  laneGroupLabelLines,
   laneCenterY,
   laneDescriptor,
   laneIndex,
@@ -156,6 +157,16 @@ describe("two-lane grouping (figma-frontend-rewrite W03.P08.S11, AppShell 117:2)
     // Every phase token lands in exactly one group; no phase is dropped.
     const grouped = TIMELINE_LANE_GROUPS.flatMap((g) => g.phases);
     expect([...grouped].sort()).toEqual([...PHASE_LANES].sort());
+  });
+
+  it("renders the design rail label on the same two lines as Figma", () => {
+    expect(laneGroupLabelLines(TIMELINE_LANE_GROUPS[0])).toEqual([
+      "Research · Decisions",
+      "Plans · Audits",
+    ]);
+    expect(laneGroupLabelLines(TIMELINE_LANE_GROUPS[1])).toEqual([
+      "Execution · Summaries",
+    ]);
   });
 
   it("maps each phase token to its visual lane group", () => {

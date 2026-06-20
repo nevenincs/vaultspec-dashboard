@@ -19,97 +19,49 @@
 import { FileWarning } from "lucide-react";
 
 import type { EngineNode, NodeDetail } from "../../stores/server/engine";
-import { useGraphSlice, useNodeDetail, useSession } from "../../stores/server/queries";
+import {
+  useFeatureLifecycleView,
+  useNodeDetailView,
+} from "../../stores/server/queries";
 import { DocTypeMark, StateMark } from "../../scene/field/markComponents";
-import type { StateKey } from "../../scene/field/marks";
-import { selectNode } from "../../stores/view/selection";
-import { useViewStore } from "../../stores/view/viewStore";
-
-// --- canonical layout helpers (pure, unit-tested) -------------------------------
-
-/** The lifecycle axis: every opened feature has the same internal grammar. */
-export const LIFECYCLE_AXIS = ["research", "adr", "plan", "exec", "audit"] as const;
-
-export function lifecycleRank(kind: string): number {
-  const i = (LIFECYCLE_AXIS as readonly string[]).indexOf(kind);
-  return i === -1 ? LIFECYCLE_AXIS.length : i;
-}
-
-/** Order a feature's documents along the lifecycle axis (stable by title). */
-export function arrangeLifecycleAxis(nodes: readonly EngineNode[]): EngineNode[] {
-  return nodes
-    .filter((n) => lifecycleRank(n.kind) < LIFECYCLE_AXIS.length)
-    .sort(
-      (a, b) =>
-        lifecycleRank(a.kind) - lifecycleRank(b.kind) ||
-        (a.title ?? a.id).localeCompare(b.title ?? b.id),
-    );
-}
-
-export interface InteriorStep {
-  id: string;
-  title: string;
-  done: boolean;
-}
-
-/** The plan interior's tiered rows, in canonical identifier order. */
-export function interiorSteps(interior: NodeDetail["interior"]): InteriorStep[] {
-  if (!interior) return [];
-  return interior.nodes
-    .filter((n) => n.kind === "step")
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((n) => ({
-      id: n.id,
-      title: n.title ?? n.id,
-      done: n.lifecycle?.state === "complete",
-    }));
-}
-
-/** The five canonical lifecycle states that carry a StateMark, else null. */
-const STATE_KEYS = new Set<StateKey>([
-  "active",
-  "complete",
-  "archived",
-  "broken",
-  "stale",
-]);
-
-export function stateMarkKey(state: string | undefined): StateKey | null {
-  return state && STATE_KEYS.has(state as StateKey) ? (state as StateKey) : null;
-}
+import { useDashboardNodeSelection } from "../../stores/view/selection";
+import {
+  deriveNodeInteriorView,
+  interiorSteps,
+  stateMarkKey,
+} from "../../stores/view/nodeInterior";
 
 // --- the interior component --------------------------------------------------------
 
-export function NodeInterior({ id }: { id: string }) {
-  const isFeature = id.startsWith("feature:");
-  const detail = useNodeDetail(id);
-  const kind = detail.data?.node.kind;
+export function NodeInterior({ id, scope }: { id: string; scope: string | null }) {
+  const detail = useNodeDetailView(id, scope);
+  const interior = deriveNodeInteriorView(id, detail);
+  const selectNode = useDashboardNodeSelection(scope);
   // A feature is a SYNTHESIZED constellation aggregate — the `/nodes/{id}` family
   // 404s it (its detail/neighbors queries are gated off, so `detail` would hang on
   // "unfolding…" forever). Its interior unfolds from the feature-filtered DOCUMENT
   // slice instead — the addressable, bounded, mirror-live path — so route there
   // before the detail gate.
-  if (isFeature) return <FeatureLifecycle id={id} />;
-  if (detail.isPending) {
-    return <p className="mt-fg-1 text-label text-ink-faint">unfolding…</p>;
+  if (interior.state === "feature") {
+    return <FeatureLifecycle id={id} scope={scope} selectNode={selectNode} />;
+  }
+  if (interior.state === "loading") {
+    return <p className={interior.messageClassName}>{interior.message}</p>;
   }
   // Contained per-island failure (ADR "States"): an interior/detail fetch
   // failure is rendered on THIS island, never as a canvas-wide error. A
   // non-color icon cue carries the state so it reads without color perception.
-  if (detail.isError || !detail.data) {
+  if (interior.state === "unavailable") {
     return (
-      <p
-        className="mt-fg-1 flex items-center gap-fg-1 text-label text-state-broken"
-        role="status"
-        data-interior-error
-      >
-        <FileWarning aria-hidden size={14} strokeWidth={1.5} />
-        interior unavailable
+      <p className={interior.messageClassName} role="status" data-interior-error>
+        <FileWarning aria-hidden size={interior.iconSize} strokeWidth={1.5} />
+        {interior.message}
       </p>
     );
   }
-  if (kind === "plan") return <PlanInterior detail={detail.data} />;
-  return <NodeSummary node={detail.data.node} />;
+  if (interior.state === "plan")
+    return <PlanInterior detail={interior.detail} selectNode={selectNode} />;
+  return <NodeSummary node={interior.node} />;
 }
 
 /**
@@ -121,19 +73,22 @@ export function NodeInterior({ id }: { id: string }) {
  * persisted session) — read from the stores layer directly, never fetched here
  * (dashboard-layer-ownership).
  */
-function FeatureLifecycle({ id }: { id: string }) {
-  const tag = id.slice("feature:".length);
-  const picked = useViewStore((s) => s.scope);
-  const session = useSession();
-  const scope = picked ?? session.data?.active_scope ?? null;
-  const slice = useGraphSlice(scope, { feature_tags: [tag] }, undefined, "document");
-  if (!slice.data) {
+function FeatureLifecycle({
+  id,
+  scope,
+  selectNode,
+}: {
+  id: string;
+  scope: string | null;
+  selectNode: (id: string | null) => Promise<boolean>;
+}) {
+  const lifecycle = useFeatureLifecycleView(id, scope);
+  if (lifecycle.state === "loading") {
     return <p className="mt-fg-1 text-label text-ink-faint">unfolding lifecycle…</p>;
   }
-  const docs = arrangeLifecycleAxis(slice.data.nodes);
   return (
     <ol className="mt-fg-1 flex items-center gap-fg-1" data-lifecycle-axis>
-      {docs.map((doc, i) => (
+      {lifecycle.docs.map((doc, i) => (
         <li key={doc.id} className="flex items-center gap-fg-1">
           {i > 0 && (
             <span className="text-ink-faint" aria-hidden>
@@ -142,7 +97,7 @@ function FeatureLifecycle({ id }: { id: string }) {
           )}
           <button
             type="button"
-            onClick={() => selectNode(doc.id)}
+            onClick={() => void selectNode(doc.id)}
             className="flex items-center gap-fg-1 rounded-fg-xs border border-rule px-fg-1 py-fg-0-5 text-caption text-ink-muted transition-colors duration-ui-fast ease-settle hover:border-rule-strong hover:bg-paper-sunken"
             title={doc.title ?? doc.kind}
           >
@@ -156,7 +111,13 @@ function FeatureLifecycle({ id }: { id: string }) {
 }
 
 /** Plan → tiered interior with check state (canonical order, never force-laid). */
-function PlanInterior({ detail }: { detail: NodeDetail }) {
+function PlanInterior({
+  detail,
+  selectNode,
+}: {
+  detail: NodeDetail;
+  selectNode: (id: string | null) => Promise<boolean>;
+}) {
   const steps = interiorSteps(detail.interior);
   const progress = detail.node.lifecycle?.progress;
   return (
@@ -179,7 +140,7 @@ function PlanInterior({ detail }: { detail: NodeDetail }) {
           <li key={step.id}>
             <button
               type="button"
-              onClick={() => selectNode(step.id)}
+              onClick={() => void selectNode(step.id)}
               // Done state is carried by a check glyph + fill + border, not hue
               // alone — grayscale-safe (ADR a11y). The accent token reinforces.
               aria-pressed={step.done}

@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+//
 // Probe tests for the shared Shiki highlighter (review-rail-viewers P03).
 //
 // These exercise the REAL Shiki fine-grained core + JS regex engine (no mock):
@@ -6,9 +8,20 @@
 // tokenizer is the core tenet the viewers depend on, so it is probed directly
 // rather than through a brittle component mock.
 
-import { describe, expect, it } from "vitest";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveGrammar, supportedLanguageIds } from "./languages";
+import {
+  __resetHighlighterForTests,
+  useHighlightedHast,
+  useTokenLines,
+} from "./useHighlighter";
+
+afterEach(() => {
+  cleanup();
+  __resetHighlighterForTests();
+});
 
 describe("language resolver", () => {
   it("resolves the full required language set", () => {
@@ -79,5 +92,37 @@ describe("Shiki core tokenization (real engine)", () => {
     // The keyword `fn` tokenizes (a non-trivial grammar match, not plain text).
     expect(serialized).toContain("fn");
     hl.dispose?.();
+  });
+});
+
+describe("shared highlighter hooks", () => {
+  it("tokenizes HAST through the shared external-store cache", async () => {
+    const first = renderHook(() => useHighlightedHast("fn main() {}", "rust"));
+    const second = renderHook(() => useHighlightedHast("fn main() {}", "rust"));
+
+    expect(first.result.current.loading).toBe(true);
+    expect(second.result.current.loading).toBe(true);
+
+    await waitFor(() => {
+      expect(first.result.current.loading).toBe(false);
+      expect(second.result.current.loading).toBe(false);
+    });
+
+    expect(first.result.current.languageId).toBe("rust");
+    expect(second.result.current.hast).toBe(first.result.current.hast);
+  });
+
+  it("tokenizes line arrays through the same highlighter singleton", async () => {
+    const { result } = renderHook(() => useTokenLines("const x: number = 1", "ts"));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.languageId).toBe("typescript");
+    expect(
+      result.current.lines
+        ?.flat()
+        .map((token) => token.content)
+        .join(""),
+    ).toBe("const x: number = 1");
   });
 });

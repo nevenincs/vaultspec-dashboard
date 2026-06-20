@@ -24,17 +24,13 @@
 // active-tab id its parent owns.
 
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useCallback, useRef } from "react";
 
-export type RailTabId = "status" | "changes" | "search";
-
-// Status · Changes · Search, left to right — the binding board's three label-only
-// tabs (no leading marks). Status is the primary, leading tab.
-export const RAIL_TABS: { id: RailTabId; label: string }[] = [
-  { id: "status", label: "Status" },
-  { id: "changes", label: "Changes" },
-  { id: "search", label: "Search" },
-];
+import { Tab } from "../kit";
+import {
+  RIGHT_RAIL_TABS,
+  rightRailAdjacentTab,
+  type RailTabId,
+} from "../../stores/view/shellLayout";
 
 export interface RailTabsProps {
   active: RailTabId;
@@ -42,19 +38,12 @@ export interface RailTabsProps {
 }
 
 export function RailTabs({ active, onChange }: RailTabsProps) {
-  const tabEls = useRef(new Map<RailTabId, HTMLButtonElement>());
-  const registerTab = useCallback(
-    (id: RailTabId) => (el: HTMLButtonElement | null) => {
-      if (el) tabEls.current.set(id, el);
-      else tabEls.current.delete(id);
-    },
-    [],
-  );
-
   // Roving arrow-key movement across the tab row: ArrowLeft/Right (and Up/Down)
   // move and activate, so the active pane is reachable and switchable from the
-  // keyboard alone (the tablist a11y pattern).
+  // keyboard alone (the tablist a11y pattern). Focus follows the kit Tab's id.
   const onKeyDown = (index: number) => (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const current = RIGHT_RAIL_TABS[index]?.id;
+    if (!current) return;
     if (
       e.key === "ArrowRight" ||
       e.key === "ArrowDown" ||
@@ -63,10 +52,9 @@ export function RailTabs({ active, onChange }: RailTabsProps) {
     ) {
       e.preventDefault();
       const forward = e.key === "ArrowRight" || e.key === "ArrowDown";
-      const next = (index + (forward ? 1 : RAIL_TABS.length - 1)) % RAIL_TABS.length;
-      const target = RAIL_TABS[next]!;
-      onChange(target.id);
-      tabEls.current.get(target.id)?.focus();
+      const target = rightRailAdjacentTab(current, forward ? "next" : "previous");
+      onChange(target);
+      document.getElementById(`rail-tab-${target}`)?.focus();
     }
   };
 
@@ -78,45 +66,24 @@ export function RailTabs({ active, onChange }: RailTabsProps) {
       data-rail-tabs
       className="flex shrink-0 items-start gap-fg-1-5"
     >
-      {RAIL_TABS.map(({ id, label }, index) => {
+      {RIGHT_RAIL_TABS.map(({ id, label }, index) => {
         const isActive = active === id;
         return (
-          <button
+          // The centralized kit Tab (accent-underline + ink-weight active cue);
+          // the rail keeps the roving-tablist focus model around it.
+          <Tab
             key={id}
-            ref={registerTab(id)}
-            type="button"
-            role="tab"
             id={`rail-tab-${id}`}
-            aria-selected={isActive}
+            active={isActive}
+            onSelect={() => onChange(id)}
             aria-controls={`rail-panel-${id}`}
-            // Roving tabindex: only the active tab is in the Tab order; arrows
-            // move between the tabs.
             tabIndex={isActive ? 0 : -1}
+            onKeyDown={onKeyDown(index)}
             data-rail-tab={id}
             data-rail-tab-active={isActive ? "" : undefined}
-            onClick={() => onChange(id)}
-            onKeyDown={onKeyDown(index)}
-            className="flex shrink-0 flex-col items-center gap-fg-1-5 rounded-fg-xs px-fg-2 py-fg-1 transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
-            <span
-              className={`text-body ${
-                isActive
-                  ? "font-medium text-ink"
-                  : "font-normal text-ink-faint hover:text-ink-muted"
-              }`}
-            >
-              {label}
-            </span>
-            {/* 2px × 24px underline bar — accent when active, transparent
-                otherwise so the row height never reflows. */}
-            <span
-              aria-hidden
-              data-rail-tab-bar
-              className={`h-0.5 w-6 rounded-fg-xs ${
-                isActive ? "bg-accent" : "bg-transparent"
-              }`}
-            />
-          </button>
+            {label}
+          </Tab>
         );
       })}
     </div>

@@ -9,6 +9,15 @@ related:
   - '[[2026-06-18-document-edit-hardening-adr]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `document-edit-hardening` plan
 
@@ -42,8 +51,8 @@ Author and release a conformant vault document-rename verb in the core repositor
 
 Add the rename verb to the engine core write whitelist with full per-field injection-guard validation and verbatim envelope forwarding.
 
-- [ ] `W02.P03.S07` - Add rename to the engine core write whitelist with per-field injection-guard validation of the target stem and a collision pre-check; `engine/crates/vaultspec-api/src/routes/ops.rs`.
-- [ ] `W02.P03.S08` - Live-verify the brokered rename POST returns old and new id and path and refuses a non-conformant target with advisories; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W02.P03.S07` - Add rename to the engine core write whitelist with per-field injection-guard validation of the target stem and a collision pre-check; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W02.P03.S08` - Live-verify the brokered rename POST returns old and new id and path and refuses a non-conformant target with advisories; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
 ## Wave `W03` - Stores bidirectional coupling, re-keying, fidelity
 
@@ -53,16 +62,16 @@ Harden the frontend state coupling: rename re-keying across tab/editor/selection
 
 Re-key the open tab, editor slice, and shared selection on rename, and guarantee the open editor and dependent views refresh after re-ingest.
 
-- [ ] `W03.P04.S09` - Add a useRenameDoc mutation routing through ops that re-keys the open tab, editor slice, and shared selection atomically from the old to the new doc id; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P04.S09` - Add a useRenameDoc mutation routing through ops that re-keys the open tab, editor slice, and shared selection atomically from the old to the new doc id; `frontend/src/stores/server/queries.ts`.
 - [x] `W03.P04.S10` - Extend post-write invalidation so the open editor content view re-reads after backend re-ingest; `frontend/src/stores/server/queries.ts`.
-- [ ] `W03.P04.S11` - Live-verify the SSE generation-bump heals the write-then-refetch timing race so dependent views are never left stale; `frontend/src/stores/server/queries.ts`.
+- [x] `W03.P04.S11` - Live-verify the SSE generation-bump heals the write-then-refetch timing race so dependent views are never left stale; `frontend/src/stores/server/queries.ts`.
 
 ### Phase `W03.P05` - Frontmatter merge and UTF-8 fidelity
 
 Send merged canonical frontmatter so a partial edit is never refused, and verify and fix arbitrary-Unicode round-trip fidelity end to end.
 
-- [ ] `W03.P05.S12` - Send merged canonical frontmatter on a frontmatter write so a partial edit preserves the directory and feature tags and is never refused; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `W03.P05.S13` - Verify and fix UTF-8 round-trip fidelity across the engine-to-core stdin path with a controlled Unicode payload through the real stores client; `engine/crates/vaultspec-api/src/routes/ops.rs`.
+- [x] `W03.P05.S12` - Send merged canonical frontmatter on a frontmatter write so a partial edit preserves the directory and feature tags and is never refused; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W03.P05.S13` - Verify and fix UTF-8 round-trip fidelity across the engine-to-core stdin path with a controlled Unicode payload through the real stores client; `engine/crates/vaultspec-api/src/routes/ops.rs`.
 
 ## Wave `W04` - App advisories, action-mapping, full-text edit
 
@@ -72,15 +81,15 @@ Surface conformance advisories and autofix in the editor, map UI create/edit act
 
 Surface the field-level conformance checks as per-issue advisories with an autofix action, replacing the generic failure state.
 
-- [ ] `W04.P06.S14` - Surface field-level conformance checks as per-issue advisories with severity message and fixable in the editor replacing the generic failure state; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `W04.P06.S15` - Add an autofix action that forwards vault check fix through the engine broker; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W04.P06.S14` - Surface field-level conformance checks as per-issue advisories with severity message and fixable in the editor replacing the generic failure state; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W04.P06.S15` - Add an autofix action that forwards vault check fix through the engine broker; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 
 ### Phase `W04.P07` - Action-mapping and full-text edit
 
 Map the UI create and edit actions onto the engine create and write brokers and complete full body and frontmatter editing in managed state.
 
-- [ ] `W04.P07.S16` - Map the UI create actions onto the engine create broker via a typed action registry covering the vault doc types; `frontend/src/app/menus/registerAll.ts`.
-- [ ] `W04.P07.S17` - Complete full body and frontmatter editing enrolled in the bounded managed editor state; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W04.P07.S16` - Map the UI create actions onto the engine create broker via a typed action registry covering the vault doc types; `frontend/src/app/menus/registerAll.ts`.
+- [x] `W04.P07.S17` - Complete full body and frontmatter editing enrolled in the bounded managed editor state; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 
 ## Wave `W05` - End-to-end live verification and review
 
@@ -90,7 +99,7 @@ Prove the whole feature live against real vault documents (save, rename, create,
 
 Drive the live interface and brokered APIs against real vault documents, run the full gate, and route to code review.
 
-- [ ] `W05.P08.S18` - Drive the live interface and brokered POST APIs against real vault docs for save rename create conflict refusal-with-advisory and dependent-view refresh and record evidence; `frontend/src/app/viewer/MarkdownDocView.tsx`.
+- [x] `W05.P08.S18` - Drive the live interface and brokered POST APIs against real vault docs for save rename create conflict refusal-with-advisory and dependent-view refresh and record evidence; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 - [ ] `W05.P08.S19` - Run the full engine and frontend lint and test gate and route to code review; `frontend/src/app/viewer/MarkdownDocView.tsx`.
 
 ## Description

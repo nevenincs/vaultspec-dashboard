@@ -12,199 +12,136 @@
 // two-step over the slice's armedItemId, so it owns one disarm path.
 
 import { CornerDownLeft } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useShallow } from "zustand/react/shallow";
 
-import {
-  ACTION_SECTION_ORDER,
-  isRunnable,
-  type ActionDescriptor,
-  type ActionSection,
-} from "../../platform/actions/action";
-import { resolveActions } from "../../platform/actions/registry";
-import { appDispatcher } from "../../platform/dispatch/middleware";
-import { useDispatch } from "../../platform/dispatch/useAction";
+import type { ActionDescriptor } from "../../platform/actions/action";
+import { useCanDispatchAction, useDispatch } from "../../platform/dispatch/useAction";
 import { logger } from "../../platform/logger/logger";
-import { useContextMenuStore } from "../../stores/view/contextMenu";
-import { useViewStore } from "../../stores/view/viewStore";
-import { computeMenuPosition } from "./position";
-
-/** Default section for an item a resolver left ungrouped. */
-const DEFAULT_SECTION: ActionSection = "navigate";
+import {
+  armContextMenuItem,
+  closeContextMenu,
+  deriveContextMenuActivation,
+  deriveContextMenuPanelPosition,
+  deriveContextMenuCursorEdge,
+  deriveContextMenuCursorMove,
+  deriveContextMenuCursorRepair,
+  disarmContextMenu,
+  setContextMenuCursor,
+  setContextMenuPosition,
+  useContextMenuResolvedView,
+  useContextMenuViewportDismiss,
+} from "../../stores/view/contextMenu";
+import { useFocusRestore } from "../chrome/useFocusRestore";
 
 const menuLog = logger.child("context-menu");
 
-function sectionOf(action: ActionDescriptor): ActionSection {
-  return action.section ?? DEFAULT_SECTION;
-}
-
-/** Group resolved actions into the canonical section order, dropping empty groups. */
-function groupBySection(
-  actions: readonly ActionDescriptor[],
-): { section: ActionSection; actions: ActionDescriptor[] }[] {
-  return ACTION_SECTION_ORDER.map((section) => ({
-    section,
-    actions: actions.filter((a) => sectionOf(a) === section),
-  })).filter((group) => group.actions.length > 0);
-}
-
-export function ContextMenuHost() {
-  // One shallow-compared subscription (B8, resource-hardening) instead of seven
-  // independent ones: the host re-renders once per menu-state change, not once
-  // per subscribed field.
-  const { open, entity, anchor, armedItemId, closeMenu, arm, disarm } =
-    useContextMenuStore(
-      useShallow((s) => ({
-        open: s.open,
-        entity: s.entity,
-        anchor: s.anchor,
-        armedItemId: s.armedItemId,
-        closeMenu: s.closeMenu,
-        arm: s.arm,
-        disarm: s.disarm,
-      })),
-    );
-  const timeTravel = useViewStore((s) => s.timelineMode.kind === "time-travel");
+export function ContextMenuHost({
+  timeTravel = false,
+}: {
+  timeTravel?: unknown;
+} = {}) {
+  const menu = useContextMenuResolvedView(timeTravel);
+  const {
+    open,
+    entity,
+    anchor,
+    armedItemId,
+    actions,
+    rowGroups,
+    ordered,
+    activeRow,
+    runnableIndices,
+    cursor,
+    position,
+    menuAriaLabel,
+    emptyMessage,
+    liveMessage,
+  } = menu;
   const dispatch = useDispatch();
+  const canDispatch = useCanDispatchAction();
 
   const panelRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const [cursor, setCursor] = useState(0);
 
   const baseId = useId();
   const liveRegionId = `${baseId}-live`;
   const itemId = (id: string) => `${baseId}-item-${id}`;
 
-  // Items are a pure function of the entity + time-travel state (never stored).
-  const items = useMemo(
-    () => (entity ? resolveActions(entity, { timeTravel }) : []),
-    [entity, timeTravel],
-  );
-  const groups = useMemo(() => groupBySection(items), [items]);
-  // The cursor walks DISPLAY (grouped) order so the highlighted row and the
-  // keyboard cursor index the same flattened sequence.
-  const ordered = useMemo(() => groups.flatMap((g) => g.actions), [groups]);
-  const runnableIndices = useMemo(
-    () => ordered.map((a, i) => (isRunnable(a) ? i : -1)).filter((i) => i >= 0),
-    [ordered],
-  );
+  useContextMenuViewportDismiss();
 
-  // Capture/restore focus across the open lifecycle (the palette's contract).
+  // The menu projection can change while open when canonical app state changes
+  // underneath it (notably dashboard time-travel removing mutating actions). Keep
+  // cursor and arm state attached to the CURRENT derived item set, not a stale row.
   useEffect(() => {
-    if (open) {
-      previousFocus.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      // Start the cursor on the first runnable item.
-      setCursor(runnableIndices[0] ?? 0);
-    } else {
-      previousFocus.current?.focus();
-      previousFocus.current = null;
-      setPos(null);
-    }
-    // Only re-run on open/close; the first runnable index is read at that edge.
-  }, [open]);
+    if (!open) return;
+    const repair = deriveContextMenuCursorRepair(menu);
+    if (repair.changed) setContextMenuCursor(repair.cursor);
+    if (repair.disarm) disarmContextMenu();
+  }, [open, menu]);
 
-  // Restore focus if the host unmounts while a menu is open: the [open] effect
-  // above only fires on an open -> closed transition, so an unmount (AppShell
-  // teardown, ErrorBoundary swap) would otherwise strand focus on a removed
-  // menuitem (M1).
-  useEffect(() => () => previousFocus.current?.focus(), []);
+  useFocusRestore(open, {
+    onOpen: () =>
+      setContextMenuCursor(deriveContextMenuCursorEdge(runnableIndices, "first") ?? 0),
+  });
 
   // Measure then flip/clamp into the viewport once the panel is laid out.
   useLayoutEffect(() => {
     if (!open || !anchor || !panelRef.current) return;
     const rect = panelRef.current.getBoundingClientRect();
-    setPos(
-      computeMenuPosition(
+    setContextMenuPosition(
+      deriveContextMenuPanelPosition(
         anchor,
         { width: rect.width, height: rect.height },
         { width: window.innerWidth, height: window.innerHeight },
       ),
     );
-  }, [open, anchor, items]);
+  }, [open, anchor, actions]);
 
   // Move DOM focus to the active item so the role=menu reads correctly.
-  const activeId = ordered[cursor]?.id;
+  const activeId = activeRow?.id;
   useEffect(() => {
-    if (!open || pos === null || !activeId) return;
+    if (!open || position === null || !activeId) return;
     document.getElementById(`${baseId}-item-${activeId}`)?.focus();
-  }, [open, pos, activeId, baseId]);
-
-  // Light-dismiss on scroll / resize / window blur (outside-click and Escape are
-  // handled on the rendered nodes). Capture scroll so a scroll inside any
-  // container dismisses rather than leaving a stale anchor.
-  useEffect(() => {
-    if (!open) return;
-    const onScrollOrResize = () => closeMenu();
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
-    window.addEventListener("blur", onScrollOrResize);
-    return () => {
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      window.removeEventListener("resize", onScrollOrResize);
-      window.removeEventListener("blur", onScrollOrResize);
-    };
-  }, [open, closeMenu]);
+  }, [open, position, activeId, baseId]);
 
   const moveCursor = useCallback(
     (delta: 1 | -1) => {
-      if (runnableIndices.length === 0) return;
+      const nextCursor = deriveContextMenuCursorMove(cursor, runnableIndices, delta);
+      if (nextCursor === null) return;
       // Disarm any pending confirm when the cursor leaves the armed row.
-      disarm();
-      const here = runnableIndices.indexOf(cursor);
-      const nextPos =
-        here < 0
-          ? delta === 1
-            ? 0
-            : runnableIndices.length - 1
-          : Math.min(runnableIndices.length - 1, Math.max(0, here + delta));
-      setCursor(runnableIndices[nextPos]);
+      disarmContextMenu();
+      setContextMenuCursor(nextCursor);
     },
-    [cursor, runnableIndices, disarm],
+    [cursor, runnableIndices],
   );
 
   const activate = useCallback(
     (action: ActionDescriptor) => {
-      if (!isRunnable(action)) return;
-      if (action.confirm) {
-        if (armedItemId !== action.id) {
-          arm(action.id);
-          return;
-        }
-        // Second activation on the armed item: fire then close.
+      const activation = deriveContextMenuActivation(action, armedItemId, canDispatch);
+      if (activation.kind === "ignore") return;
+      if (activation.kind === "arm") {
+        armContextMenuItem(activation.itemId);
+        return;
       }
-      if (action.dispatch) {
-        // Degrade honestly (M2): a verb whose terminal handler is not registered
-        // (e.g. a host-shell verb unavailable in this context) must not throw
+      if (activation.kind === "missing-dispatch") {
+        // Degrade honestly (M2): an unregistered terminal handler must not throw
         // inside a React event handler. Log and close rather than crash.
-        if (appDispatcher.hasHandler(action.dispatch.type)) {
-          dispatch(action.dispatch);
-        } else {
-          menuLog.warn(`no handler for menu action "${action.dispatch.type}"`);
-        }
+        menuLog.warn(`no handler for menu action "${activation.type}"`);
+      } else if (activation.kind === "dispatch") {
+        dispatch(activation.dispatch);
       } else {
-        action.run?.();
+        activation.action.run?.();
       }
-      closeMenu();
+      closeContextMenu();
     },
-    [armedItemId, arm, dispatch, closeMenu],
+    [armedItemId, canDispatch, dispatch],
   );
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        closeMenu();
+        closeContextMenu();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         moveCursor(1);
@@ -213,13 +150,14 @@ export function ContextMenuHost() {
         moveCursor(-1);
       } else if (e.key === "Home") {
         e.preventDefault();
-        disarm();
-        if (runnableIndices.length) setCursor(runnableIndices[0]);
+        disarmContextMenu();
+        const edgeCursor = deriveContextMenuCursorEdge(runnableIndices, "first");
+        if (edgeCursor !== null) setContextMenuCursor(edgeCursor);
       } else if (e.key === "End") {
         e.preventDefault();
-        disarm();
-        if (runnableIndices.length)
-          setCursor(runnableIndices[runnableIndices.length - 1]);
+        disarmContextMenu();
+        const edgeCursor = deriveContextMenuCursorEdge(runnableIndices, "last");
+        if (edgeCursor !== null) setContextMenuCursor(edgeCursor);
       } else if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         const action = ordered[cursor];
@@ -227,26 +165,16 @@ export function ContextMenuHost() {
       } else if (e.key === "Tab") {
         // A context menu is not a tab surface; Tab closes it (cohort convention).
         e.preventDefault();
-        closeMenu();
+        closeContextMenu();
       }
     },
-    [closeMenu, moveCursor, disarm, runnableIndices, ordered, cursor, activate],
+    [moveCursor, runnableIndices, ordered, cursor, activate],
   );
-
-  // Polite announcement: the menu's entity, the focused item, and the arm prompt.
-  const liveMessage = useMemo(() => {
-    if (!open || !entity) return "";
-    const active = ordered[cursor];
-    const kindLabel = entity.kind.replace(/-/g, " ");
-    if (!active) return `${kindLabel} actions: no actions`;
-    if (armedItemId === active.id) return `confirm ${active.label}?`;
-    return `${kindLabel} actions. ${active.label}`;
-  }, [open, entity, ordered, cursor, armedItemId]);
 
   if (!open || !entity || !anchor) return null;
 
   // Hidden until measured so the first paint never flashes at the wrong spot.
-  const placed = pos !== null;
+  const placed = position !== null;
 
   return createPortal(
     <div
@@ -254,20 +182,20 @@ export function ContextMenuHost() {
       // dismisses (light-dismiss, not a modal scrim).
       className="fixed inset-0 z-50"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) closeMenu();
+        if (e.target === e.currentTarget) closeContextMenu();
       }}
       onContextMenu={(e) => {
         // A right-click on the catcher (outside the panel) closes the menu and
         // suppresses the native menu, matching cohort behaviour.
         e.preventDefault();
-        closeMenu();
+        closeContextMenu();
       }}
     >
       <div
         ref={panelRef}
         role="menu"
-        aria-label={`${entity.kind.replace(/-/g, " ")} actions`}
-        aria-activedescendant={ordered[cursor] ? itemId(ordered[cursor].id) : undefined}
+        aria-label={menuAriaLabel}
+        aria-activedescendant={activeRow ? itemId(activeRow.id) : undefined}
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onMouseDown={(e) => e.stopPropagation()}
@@ -279,18 +207,18 @@ export function ContextMenuHost() {
         }}
         style={{
           position: "fixed",
-          left: placed ? pos.x : anchor.x,
-          top: placed ? pos.y : anchor.y,
+          left: position ? position.x : anchor.x,
+          top: position ? position.y : anchor.y,
           visibility: placed ? "visible" : "hidden",
         }}
         className="flex max-h-[min(24rem,calc(100vh-1rem))] w-56 max-w-[calc(100vw-1rem)] flex-col overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised py-fg-1 text-body shadow-fg-popover animate-fade-in"
       >
         {ordered.length === 0 && (
           <div className="px-fg-3 py-fg-2 text-center text-label text-ink-faint">
-            no actions
+            {emptyMessage}
           </div>
         )}
-        {groups.map((group, gi) => (
+        {rowGroups.map((group, gi) => (
           <div key={group.section} role="presentation">
             {gi > 0 && (
               // Inset divider (figma 17:1306): a left-padded hairline, not a
@@ -299,61 +227,52 @@ export function ContextMenuHost() {
                 <div className="h-px bg-rule" />
               </div>
             )}
-            {group.actions.map((action) => {
-              const index = ordered.indexOf(action);
-              const selected = index === cursor;
-              const armed = armedItemId === action.id;
-              const Mark = action.icon;
-              const disabled = action.disabled === true;
+            {group.rows.map((row) => {
+              const Mark = row.icon;
+              const action = row.action;
               return (
                 <button
-                  key={action.id}
+                  key={row.id}
                   type="button"
-                  id={itemId(action.id)}
+                  id={itemId(row.id)}
                   role="menuitem"
-                  tabIndex={selected ? 0 : -1}
-                  aria-disabled={disabled || undefined}
-                  title={disabled ? action.disabledReason : undefined}
+                  tabIndex={row.selected ? 0 : -1}
+                  aria-disabled={row.disabled || undefined}
+                  title={row.disabledReason}
                   onMouseEnter={() => {
-                    if (!disabled) {
-                      disarm();
-                      setCursor(index);
+                    if (!row.disabled) {
+                      disarmContextMenu();
+                      setContextMenuCursor(row.index);
                     }
                   }}
-                  onClick={() => activate(action)}
-                  className={`flex w-full items-center gap-fg-2 border-l-2 px-fg-3 py-fg-1-5 text-left transition-colors duration-ui-fast ${
-                    disabled
-                      ? "cursor-default border-l-transparent text-ink-faint"
-                      : selected
-                        ? "border-l-accent bg-accent-subtle text-ink"
-                        : "border-l-transparent text-ink-muted hover:bg-paper-sunken hover:text-ink"
-                  }`}
+                  onClick={() => {
+                    if (!row.disabled) setContextMenuCursor(row.index);
+                    activate(action);
+                  }}
+                  className={`flex w-full items-center gap-fg-2 border-l-2 px-fg-3 py-fg-1-5 text-left transition-colors duration-ui-fast ${row.className}`}
                 >
                   {Mark ? (
-                    <Mark aria-hidden size={14} className="shrink-0 text-ink-faint" />
+                    <Mark aria-hidden size={14} className={row.iconClassName} />
                   ) : (
-                    <span aria-hidden className="size-3.5 shrink-0" />
+                    <span aria-hidden className={row.iconSpacerClassName} />
                   )}
-                  <span
-                    className={`flex-1 truncate ${armed ? "text-state-stale" : ""}`}
-                  >
-                    {armed ? `confirm ${action.label}?` : action.label}
-                  </span>
-                  {action.confirm && (
-                    <span
+                  <span className={row.labelClassName}>{row.label}</span>
+                  {row.confirmShortcutLabel && (
+                    <span aria-hidden className={row.confirmShortcutClassName}>
+                      {row.confirmShortcutLabel}
+                    </span>
+                  )}
+                  {row.acceleratorLabel && (
+                    <span className={row.acceleratorClassName}>
+                      {row.acceleratorLabel}
+                    </span>
+                  )}
+                  {row.selectionHintVisible && (
+                    <CornerDownLeft
                       aria-hidden
-                      className="rounded-fg-xs border border-rule px-fg-1 font-mono text-caption text-ink-faint"
-                    >
-                      ⏎⏎
-                    </span>
-                  )}
-                  {action.accelerator && !action.confirm && (
-                    <span className="font-mono text-caption text-ink-faint">
-                      {action.accelerator}
-                    </span>
-                  )}
-                  {selected && !action.confirm && !action.accelerator && (
-                    <CornerDownLeft aria-hidden size={12} className="text-ink-faint" />
+                      size={12}
+                      className={row.selectionHintClassName}
+                    />
                   )}
                 </button>
               );

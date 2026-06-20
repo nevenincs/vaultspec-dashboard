@@ -2,11 +2,10 @@
 // drivers to REPRODUCE request/render storms and unbounded growth before they
 // are fixed, and to keep them fixed (regression nets) as features expand. This
 // module is vitest-free on purpose so it imports cleanly anywhere; tests own the
-// assertions and the fake timers. `assertBounded` throws a plain Error (which a
+// assertions and timer control. `assertBounded` throws a plain Error (which a
 // test runner reports as a failure) so it needs no test framework either.
 
 import type { GraphDeltaEntry } from "../stores/server/engine";
-import type { MockEngine } from "./mockEngine";
 
 /**
  * N synthetic graph deltas with monotonic seq (and timestamp), for storm and
@@ -27,12 +26,7 @@ export function syntheticGraphDeltas(count: number, startSeq = 1): GraphDeltaEnt
   return deltas;
 }
 
-/** Push a burst of frames onto a mock SSE channel - a live storm. */
-export function pushStorm(mock: MockEngine, channel: string, frames: unknown[]): void {
-  for (const frame of frames) mock.push(channel, frame);
-}
-
-/** Run `op` `count` times - a generic storm driver (pair with fake timers). */
+/** Run `op` `count` times - a generic storm driver. */
 export function storm(count: number, op: (index: number) => void): void {
   for (let i = 0; i < count; i += 1) op(i);
 }

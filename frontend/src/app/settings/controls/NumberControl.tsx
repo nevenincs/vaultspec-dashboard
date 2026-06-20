@@ -8,25 +8,23 @@
 // from the semantic accent token and the readout from the canonical text-label
 // role utility, so no legacy alias shim remained to migrate.
 
-import { decodeInt } from "../../../stores/server/settingsSelectors";
+import { deriveSettingsNumberControlView } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
 export function NumberControl({ def, value, onChange, disabled, id }: ControlProps) {
-  const range =
-    def.value_type.type === "integer" ? def.value_type : { min: 0, max: 100 };
-  const current = decodeInt(value, range.min);
+  const view = deriveSettingsNumberControlView(def, value);
   return (
     <div className="flex shrink-0 items-center gap-fg-2">
       <input
         type="range"
         id={id}
-        min={range.min}
-        max={range.max}
-        step={def.step ?? 1}
-        value={current}
+        min={view.min}
+        max={view.max}
+        step={view.step}
+        value={view.current}
         disabled={disabled}
         aria-label={def.label}
-        aria-valuetext={`${current}${def.unit ?? ""}`}
+        aria-valuetext={view.ariaValueText}
         onChange={(e) => onChange(String(e.target.valueAsNumber))}
         className="w-40 accent-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
       />
@@ -34,8 +32,7 @@ export function NumberControl({ def, value, onChange, disabled, id }: ControlPro
         className="w-12 text-right text-label tabular-nums text-ink-muted"
         data-tabular
       >
-        {current}
-        {def.unit ?? ""}
+        {view.readout}
       </span>
     </div>
   );

@@ -4,8 +4,6 @@
 // switch makes every condition reachable in development regardless of the
 // real backends, and the matrix rows are tested against the ADR table.
 
-import { create } from "zustand";
-
 // The degradation condition inputs and their wire-reading derivation live in the
 // stores layer (F-M3): `deriveInputs` reads the raw `tiers` block, which only the
 // stores layer may touch. Re-exported here so the degradation module's public
@@ -67,27 +65,3 @@ export function matrixFor(inputs: DegradationInputs): SurfaceStates {
     search: inputs.ragDown ? "text-fallback" : "normal",
   };
 }
-
-// --- the debug switch store ------------------------------------------------------------
-
-interface DegradationState {
-  /** Dev overrides — null means "use the real condition". */
-  overrides: Partial<DegradationInputs> | null;
-  setOverride: (key: keyof DegradationInputs, value: boolean | number | null) => void;
-  clearOverrides: () => void;
-  /** Combine real inputs with any debug overrides. */
-  resolve: (real: DegradationInputs) => DegradationInputs;
-}
-
-export const useDegradationStore = create<DegradationState>((set, get) => ({
-  overrides: null,
-  setOverride: (key, value) =>
-    set((state) => {
-      const overrides = { ...(state.overrides ?? {}) };
-      if (value === null) delete overrides[key];
-      else (overrides as Record<string, boolean | number>)[key] = value;
-      return { overrides: Object.keys(overrides).length > 0 ? overrides : null };
-    }),
-  clearOverrides: () => set({ overrides: null }),
-  resolve: (real) => ({ ...real, ...(get().overrides ?? {}) }),
-}));

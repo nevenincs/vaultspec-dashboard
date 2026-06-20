@@ -3,10 +3,15 @@
 // branches (no nodes / not truncated / no timestamp) — never the imperative
 // effects (those route through the shared selection + timeline store).
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import type { EventEntity } from "../../../platform/actions/entity";
 import type { ActionContext } from "../../../platform/actions/registry";
+import {
+  resetTimelineViewState,
+  setTimelineViewportWidth,
+  timelineViewSnapshot,
+  timelineViewportForInstant,
+} from "../../../stores/view/timeline";
 import { eventMarkMenu } from "./eventMarkMenu";
 
 const LIVE: ActionContext = { timeTravel: false };
@@ -17,14 +22,16 @@ function byId(actions: ReturnType<typeof eventMarkMenu>, suffix: string) {
   return found;
 }
 
-const FULL: EventEntity = {
+const FULL = {
   kind: "event",
-  id: "evt-1",
-  nodeIds: ["n1", "n2", "n3"],
+  id: " evt-1 ",
+  nodeIds: [" n1 ", "n2", " n3 "],
   ts: 1_700_000_000_000,
 };
 
 describe("eventMarkMenu", () => {
+  beforeEach(() => resetTimelineViewState());
+
   it("offers the full action set with the expected ids and sections", () => {
     const actions = eventMarkMenu(FULL, LIVE);
     const ids = actions.map((a) => a.id);
@@ -94,11 +101,27 @@ describe("eventMarkMenu", () => {
   });
 
   it("disables 'Zoom timeline to event' with reason when there is no ts", () => {
-    const noTs: EventEntity = { kind: "event", id: "evt-2", nodeIds: ["n1"] };
+    const noTs = { kind: "event", id: "evt-2", nodeIds: ["n1"] };
     const zoom = byId(eventMarkMenu(noTs, LIVE), "zoom");
     expect(zoom.disabled).toBe(true);
     expect(zoom.disabledReason).toBe("zoom unavailable");
     expect(zoom.run).toBeUndefined();
+  });
+
+  it("zooms by writing scroll-strip scale and offset, not legacy window state", () => {
+    const viewportWidth = 800;
+    const ts = FULL.ts!;
+    const now = ts + 10 * 24 * 3600_000;
+    const viewport = timelineViewportForInstant(ts, viewportWidth, 24 * 3600_000, now);
+    const center = (viewportWidth / 2 + viewport.scrollOffset) / viewport.pxPerMs;
+    expect(center).toBeCloseTo(ts, 0);
+
+    setTimelineViewportWidth(viewportWidth);
+    const zoom = byId(eventMarkMenu(FULL, LIVE), "zoom");
+    zoom.run?.();
+    expect(timelineViewSnapshot()).not.toHaveProperty("window");
+    expect(timelineViewSnapshot().pxPerMs).toBeGreaterThan(0);
+    expect(timelineViewSnapshot().scrollOffset).toBeGreaterThanOrEqual(0);
   });
 
   it("carries the timestamp text on 'Copy timestamp' when ts is present", () => {
@@ -110,7 +133,7 @@ describe("eventMarkMenu", () => {
   });
 
   it("disables 'Copy timestamp' with reason when ts is absent", () => {
-    const noTs: EventEntity = { kind: "event", id: "evt-3", nodeIds: [] };
+    const noTs = { kind: "event", id: "evt-3", nodeIds: [] };
     const copy = byId(eventMarkMenu(noTs, LIVE), "copy-ts");
     expect(copy.disabled).toBe(true);
     expect(copy.disabledReason).toBe("no timestamp");
@@ -120,5 +143,15 @@ describe("eventMarkMenu", () => {
   it("copies the event id with the 'id' shape", () => {
     const copy = byId(eventMarkMenu(FULL, LIVE), "copy-id");
     expect(copy.dispatch?.payload).toMatchObject({ text: "evt-1", what: "id" });
+  });
+
+  it("rejects malformed and non-event entities at resolver ingress", () => {
+    expect(
+      eventMarkMenu({ kind: "event", id: "evt-empty", nodeIds: "n1" }, LIVE),
+    ).toEqual([]);
+    expect(
+      eventMarkMenu({ kind: "node", id: "doc:a", nodeIds: ["doc:a"] }, LIVE),
+    ).toEqual([]);
+    expect(eventMarkMenu(null, LIVE)).toEqual([]);
   });
 });

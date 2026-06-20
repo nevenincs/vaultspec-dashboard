@@ -2,10 +2,12 @@
 //! normalized, and echoed back; the filter vocabulary is server-enumerated
 //! — clients render it, never define it.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use engine_graph::{LinkageGraph, StoredEdge};
 use engine_model::{Node, ResolutionState};
+use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -18,8 +20,95 @@ pub enum FilterError {
     UnknownStatus(String),
     #[error("unknown plan tier `{0}`")]
     UnknownPlanTier(String),
+    #[error("unknown health condition `{0}`")]
+    UnknownHealth(String),
     #[error("min_confidence for `{tier}` must be 0..=1, found {found}")]
     ConfidenceRange { tier: String, found: f32 },
+    #[error("invalid feature query `{value}`: {reason}")]
+    InvalidFeatureQuery { value: String, reason: String },
+}
+
+/// How a [`FeatureQuery`] pattern is interpreted: a shell-style glob (anchored
+/// full-match, `*`→any, `?`→one) or a regular expression (unanchored search).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FeatureQueryMode {
+    Glob,
+    Regex,
+}
+
+/// A glob or regex search over a node's feature tags (filter-controls campaign):
+/// a node passes if ANY of its `feature_tags` matches. Distinct from the exact
+/// `feature_tags` membership facet — this is the power-search the topic field
+/// graduates to. Case-insensitive. The compiled program is size-bounded
+/// (`bounded-by-default-for-every-accumulator`) and validated at parse time, so a
+/// malformed pattern 400s rather than silently matching nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FeatureQuery {
+    pub value: String,
+    pub mode: FeatureQueryMode,
+}
+
+/// Translate a shell-style glob to an anchored regex source. `*`→`.*`, `?`→`.`;
+/// every other regex metacharacter is escaped so the glob stays literal.
+fn glob_to_regex(glob: &str) -> String {
+    let mut re = String::with_capacity(glob.len() + 4);
+    re.push('^');
+    for ch in glob.chars() {
+        match ch {
+            '*' => re.push_str(".*"),
+            '?' => re.push('.'),
+            '.' | '+' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '\\' => {
+                re.push('\\');
+                re.push(ch);
+            }
+            _ => re.push(ch),
+        }
+    }
+    re.push('$');
+    re
+}
+
+fn feature_regex_source(query: &FeatureQuery) -> String {
+    match query.mode {
+        FeatureQueryMode::Glob => glob_to_regex(&query.value),
+        FeatureQueryMode::Regex => query.value.clone(),
+    }
+}
+
+fn compile_feature_regex(query: &FeatureQuery) -> Result<Regex, regex::Error> {
+    RegexBuilder::new(&feature_regex_source(query))
+        .case_insensitive(true)
+        // Bound the compiled program (≈1 MiB) so a pathological pattern cannot
+        // blow the heap — the subprocess/accumulator-bounding discipline.
+        .size_limit(1 << 20)
+        .build()
+}
+
+thread_local! {
+    // Per-thread one-entry cache of the last compiled feature pattern, keyed by
+    // its regex source. matches_node runs per-node (and in parallel under rayon),
+    // so this compiles once per worker per query instead of once per node.
+    static FEATURE_RE_CACHE: RefCell<Option<(String, Regex)>> = const { RefCell::new(None) };
+}
+
+fn feature_query_matches(query: &FeatureQuery, tags: &[String]) -> bool {
+    let source = feature_regex_source(query);
+    FEATURE_RE_CACHE.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let stale = slot.as_ref().map(|(s, _)| s != &source).unwrap_or(true);
+        if stale {
+            match compile_feature_regex(query) {
+                // validated() already rejected non-compiling patterns; a miss here
+                // (cache cold) recompiles the validated source.
+                Ok(re) => *slot = Some((source.clone(), re)),
+                Err(_) => return false,
+            }
+        }
+        let re = &slot.as_ref().expect("just populated").1;
+        tags.iter().any(|tag| re.is_match(tag))
+    })
 }
 
 /// A blob-true creation-date window (`from`/`to` inclusive, ISO `yyyy-mm-dd`).
@@ -54,8 +143,12 @@ pub struct Filter {
     /// the grammar must accept them: a node passes if its `doc_type` is in this
     /// set. Open, data-driven vocabulary (like `feature_tags`) — not enum-checked.
     pub doc_types: Vec<String>,
-    /// Feature tags.
+    /// Feature tags (exact membership).
     pub feature_tags: Vec<String>,
+    /// Glob/regex search over feature tags (filter-controls campaign): a node
+    /// passes if any of its `feature_tags` matches the compiled pattern. The
+    /// topic search field graduates to this for power queries.
+    pub feature_query: Option<FeatureQuery>,
     /// ADR statuses (dashboard-pipeline-wire W01.P03.S12): one of
     /// `proposed`/`accepted`/`rejected`/`deprecated`. A node passes if it
     /// carries a status in this set; non-ADR nodes (no status) are excluded
@@ -64,6 +157,12 @@ pub struct Filter {
     /// Plan tiers (dashboard-pipeline-wire W01.P03.S13): one of `L1`-`L4`. A
     /// node passes if it carries a tier in this set.
     pub plan_tiers: Vec<String>,
+    /// Document health/validity conditions (filter-controls campaign): a node
+    /// passes if it carries ANY requested condition. Engine-derivable subset:
+    /// `dangling` (has a broken outgoing structural edge) and `orphaned` (no
+    /// incoming edge). Graph-context — applied in `graph_query`, not `matches_node`.
+    /// (`invalid`/`empty-scaffold` arrive with the vaultspec-core check ingestion.)
+    pub health: Vec<String>,
     /// Case-insensitive text match over node key/title.
     pub text: Option<String>,
     /// Blob-true creation-date window: a node passes if its `created` date falls
@@ -84,6 +183,48 @@ const STATUS_NAMES: &[&str] = &["proposed", "accepted", "rejected", "deprecated"
 /// The plan tier enum (dashboard-pipeline-wire W01): the known tier set a
 /// plan-tier facet is validated against.
 const PLAN_TIER_NAMES: &[&str] = &["L1", "L2", "L3", "L4"];
+/// The document-health conditions the engine derives from its own graph
+/// (filter-controls campaign): `dangling` = a node with a broken outgoing
+/// structural edge; `orphaned` = a node nothing links to. The schema-dependent
+/// `invalid`/`empty-scaffold` conditions join this set with the vaultspec-core
+/// check ingestion.
+const HEALTH_NAMES: &[&str] = &["dangling", "orphaned"];
+
+/// The health conditions a node carries, derived from the graph it lives in.
+/// `dangling` when it has at least one broken outgoing structural edge (a link
+/// that resolves to nothing); `orphaned` when no edge points at it. Reads the
+/// node's incident edges via `edges_of` — graph context, not a stored field.
+pub fn node_health(graph: &LinkageGraph, node: &Node) -> Vec<&'static str> {
+    let mut has_incoming = false;
+    let mut has_dangling = false;
+    for stored in graph.edges_of(&node.id) {
+        let edge = &stored.edge;
+        if edge.dst == node.id {
+            has_incoming = true;
+        }
+        if edge.src == node.id && edge.state == Some(ResolutionState::Broken) {
+            has_dangling = true;
+        }
+    }
+    let mut conditions = Vec::new();
+    if has_dangling {
+        conditions.push("dangling");
+    }
+    if !has_incoming {
+        conditions.push("orphaned");
+    }
+    conditions
+}
+
+fn sorted_contains(values: &[String], needle: &str) -> bool {
+    debug_assert!(
+        values.windows(2).all(|pair| pair[0] <= pair[1]),
+        "filter facets should be sorted by Filter::validated before matching"
+    );
+    values
+        .binary_search_by(|candidate| candidate.as_str().cmp(needle))
+        .is_ok()
+}
 
 impl Filter {
     /// Validate and normalize (sort lists, lowercase names). The
@@ -117,6 +258,11 @@ impl Filter {
                 return Err(FilterError::UnknownPlanTier(tier.clone()));
             }
         }
+        for condition in &self.health {
+            if !HEALTH_NAMES.contains(&condition.as_str()) {
+                return Err(FilterError::UnknownHealth(condition.clone()));
+            }
+        }
         self.relations.sort();
         self.relations.dedup();
         self.structural_state.sort();
@@ -131,6 +277,22 @@ impl Filter {
         self.statuses.dedup();
         self.plan_tiers.sort();
         self.plan_tiers.dedup();
+        self.health.sort();
+        self.health.dedup();
+        self.text = self.text.map(|text| text.to_lowercase());
+        // Feature query: drop an empty pattern (no constraint), else validate it
+        // compiles so a malformed pattern 400s loud instead of silently matching
+        // nothing.
+        if let Some(query) = &self.feature_query {
+            if query.value.trim().is_empty() {
+                self.feature_query = None;
+            } else {
+                compile_feature_regex(query).map_err(|err| FilterError::InvalidFeatureQuery {
+                    value: query.value.clone(),
+                    reason: err.to_string(),
+                })?;
+            }
+        }
         Ok(self)
     }
 
@@ -147,13 +309,12 @@ impl Filter {
             // W02P05-201): when the state facet explicitly asks for
             // broken, the floor does not apply to them.
             let explicitly_broken = edge.state == Some(ResolutionState::Broken)
-                && self.structural_state.iter().any(|s| s == "broken");
+                && sorted_contains(&self.structural_state, "broken");
             if !explicitly_broken && edge.confidence < *min {
                 return false;
             }
         }
-        if !self.relations.is_empty() && !self.relations.iter().any(|r| r == edge.relation.as_str())
-        {
+        if !self.relations.is_empty() && !sorted_contains(&self.relations, edge.relation.as_str()) {
             return false;
         }
         if !self.structural_state.is_empty() {
@@ -166,7 +327,7 @@ impl Filter {
                 None => None,
             };
             if let Some(name) = state_name
-                && !self.structural_state.iter().any(|s| s == name)
+                && !sorted_contains(&self.structural_state, name)
             {
                 return false;
             }
@@ -181,7 +342,7 @@ impl Filter {
                 .ok()
                 .and_then(|v| v.as_str().map(str::to_string))
                 .unwrap_or_default();
-            if !self.kinds.contains(&kind) {
+            if !sorted_contains(&self.kinds, &kind) {
                 return false;
             }
         }
@@ -189,7 +350,14 @@ impl Filter {
             && !node
                 .feature_tags
                 .iter()
-                .any(|t| self.feature_tags.contains(t))
+                .any(|t| sorted_contains(&self.feature_tags, t))
+        {
+            return false;
+        }
+        // Feature glob/regex search: a node passes if any feature tag matches the
+        // compiled pattern (validated at parse time, compiled once per worker).
+        if let Some(query) = &self.feature_query
+            && !feature_query_matches(query, &node.feature_tags)
         {
             return false;
         }
@@ -202,7 +370,7 @@ impl Filter {
             && !node
                 .doc_type
                 .as_deref()
-                .is_some_and(|t| self.doc_types.iter().any(|f| f == t))
+                .is_some_and(|t| sorted_contains(&self.doc_types, t))
         {
             return false;
         }
@@ -213,7 +381,7 @@ impl Filter {
             && !node
                 .status
                 .as_deref()
-                .is_some_and(|s| self.statuses.iter().any(|f| f == s))
+                .is_some_and(|s| sorted_contains(&self.statuses, s))
         {
             return false;
         }
@@ -223,17 +391,16 @@ impl Filter {
             && !node
                 .tier
                 .as_deref()
-                .is_some_and(|t| self.plan_tiers.iter().any(|f| f == t))
+                .is_some_and(|t| sorted_contains(&self.plan_tiers, t))
         {
             return false;
         }
         if let Some(text) = &self.text {
-            let needle = text.to_lowercase();
-            let hit = node.key.to_lowercase().contains(&needle)
+            let hit = node.key.to_lowercase().contains(text)
                 || node
                     .title
                     .as_deref()
-                    .is_some_and(|t| t.to_lowercase().contains(&needle));
+                    .is_some_and(|t| t.to_lowercase().contains(text));
             if !hit {
                 return false;
             }
@@ -259,6 +426,20 @@ impl Filter {
             }
         }
         true
+    }
+
+    /// Does a node pass the health facet? Graph-context (orphaned/dangling need
+    /// the node's incident edges), so it is applied in `graph_query` after the
+    /// `matches_node` pass — a node passes if it carries ANY requested condition.
+    /// An empty health facet is no constraint.
+    pub fn matches_health(&self, graph: &LinkageGraph, node: &Node) -> bool {
+        if self.health.is_empty() {
+            return true;
+        }
+        let conditions = node_health(graph, node);
+        self.health
+            .iter()
+            .any(|wanted| conditions.iter().any(|have| have == wanted))
     }
 }
 
@@ -293,6 +474,10 @@ pub struct Vocabulary {
     /// W01.P03.S11): the data-driven tier facet, sorted and deduped.
     pub plan_tiers: Vec<String>,
     pub structural_states: Vec<&'static str>,
+    /// Document-health conditions actually present in the graph (filter-controls
+    /// campaign): the `dangling`/`orphaned` facet a client renders, sorted, never
+    /// hardcoded — empty when the corpus is clean.
+    pub health: Vec<String>,
     /// Inclusive corpus date span; `null` when no node carries a created date.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date_bounds: Option<DateBounds>,
@@ -358,6 +543,26 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     refs.sort();
     refs.dedup();
+    // Document-health conditions actually present (filter-controls campaign):
+    // scan each node's incident edges once (O(E) total) and collect the derived
+    // conditions in canonical order — `null`/empty when the corpus is clean.
+    let mut health_present: Vec<&'static str> = Vec::new();
+    for node in graph.nodes() {
+        for condition in node_health(graph, node) {
+            if !health_present.contains(&condition) {
+                health_present.push(condition);
+            }
+        }
+        if health_present.len() == HEALTH_NAMES.len() {
+            break;
+        }
+    }
+    // Canonical order (dangling, orphaned) for a stable echo.
+    let health: Vec<String> = HEALTH_NAMES
+        .iter()
+        .filter(|name| health_present.contains(name))
+        .map(|name| name.to_string())
+        .collect();
     Vocabulary {
         tiers: TIER_NAMES.to_vec(),
         relations,
@@ -367,6 +572,7 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         statuses,
         plan_tiers,
         structural_states: STATE_NAMES.to_vec(),
+        health,
         date_bounds,
         refs,
     }
@@ -673,13 +879,15 @@ mod tests {
             }],
         };
         // `date_range` is an accepted field (no deny_unknown_fields rejection).
-        let f: Filter = serde_json::from_str(
-            r#"{"date_range": {"from": "2026-06-01", "to": "2026-06-15"}}"#,
-        )
-        .unwrap();
+        let f: Filter =
+            serde_json::from_str(r#"{"date_range": {"from": "2026-06-01", "to": "2026-06-15"}}"#)
+                .unwrap();
         let f = f.validated().unwrap();
         assert!(f.matches_node(&node(Some("2026-06-10"))), "in range");
-        assert!(f.matches_node(&node(Some("2026-06-01"))), "from is inclusive");
+        assert!(
+            f.matches_node(&node(Some("2026-06-01"))),
+            "from is inclusive"
+        );
         assert!(f.matches_node(&node(Some("2026-06-15"))), "to is inclusive");
         assert!(!f.matches_node(&node(Some("2026-05-31"))), "before from");
         assert!(!f.matches_node(&node(Some("2026-06-16"))), "after to");
@@ -692,6 +900,68 @@ mod tests {
             serde_json::from_str(r#"{"date_range": {"from": "2026-06-10"}}"#).unwrap();
         assert!(open.matches_node(&node(Some("2026-12-31"))));
         assert!(!open.matches_node(&node(Some("2026-06-09"))));
+    }
+
+    #[test]
+    fn feature_query_glob_and_regex_search_over_feature_tags() {
+        // filter-controls campaign: the feature query narrows by glob or regex
+        // over a node's feature_tags (any-match), case-insensitive; an empty
+        // pattern is dropped; a malformed regex 400s.
+        use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
+        let node = |tags: &[&str]| Node {
+            id: node_id(&CanonicalKey::Document { stem: "x" }),
+            kind: NodeKind::Document,
+            key: "x".into(),
+            title: None,
+            doc_type: None,
+            dates: None,
+            feature_tags: tags.iter().map(|t| t.to_string()).collect(),
+            status: None,
+            tier: None,
+            facets: vec![engine_model::Facet {
+                scope: ScopeRef::Ref {
+                    name: "main".into(),
+                },
+                presence: Presence::Exists,
+                content_hash: None,
+                lifecycle: None,
+            }],
+        };
+
+        // Glob: anchored full-match, `*` wildcard, case-insensitive.
+        let glob: Filter =
+            serde_json::from_str(r#"{"feature_query": {"value": "dashboard-*", "mode": "glob"}}"#)
+                .unwrap();
+        let glob = glob.validated().unwrap();
+        assert!(glob.matches_node(&node(&["dashboard-gui"])));
+        assert!(glob.matches_node(&node(&["unrelated", "Dashboard-Settings"])));
+        assert!(!glob.matches_node(&node(&["engine-hardening"])));
+        // Anchored: a glob must match the whole tag, not a substring.
+        assert!(!glob.matches_node(&node(&["my-dashboard-gui"])));
+
+        // Regex: unanchored search.
+        let regex: Filter =
+            serde_json::from_str(r#"{"feature_query": {"value": "sync$", "mode": "regex"}}"#)
+                .unwrap();
+        let regex = regex.validated().unwrap();
+        assert!(regex.matches_node(&node(&["delta-sync"])));
+        assert!(!regex.matches_node(&node(&["sync-engine"])));
+
+        // An empty pattern is normalized away (no constraint).
+        let empty: Filter =
+            serde_json::from_str(r#"{"feature_query": {"value": "   ", "mode": "glob"}}"#).unwrap();
+        let empty = empty.validated().unwrap();
+        assert_eq!(empty.feature_query, None);
+        assert!(empty.matches_node(&node(&["anything"])));
+
+        // A malformed regex 400s loud rather than silently matching nothing.
+        let bad: Filter =
+            serde_json::from_str(r#"{"feature_query": {"value": "(unclosed", "mode": "regex"}}"#)
+                .unwrap();
+        assert!(matches!(
+            bad.validated(),
+            Err(FilterError::InvalidFeatureQuery { .. })
+        ));
     }
 
     #[test]

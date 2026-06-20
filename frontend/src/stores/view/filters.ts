@@ -1,72 +1,37 @@
-// The single filter model (W02.P07.S28, ADR G3.f; contract redline R3).
+// Pure filter projections (W02.P07.S28, ADR G3.f; contract redline R3).
 //
-// One filter model, two views (stage + timeline). The legal vocabulary is
-// engine-enumerated (the filters endpoint) — nothing hardcoded; this store
-// holds the user's current choices and compiles them two ways: into the
-// engine's wire filter object (min-confidence as per-tier floats 0..1, per
-// R3) and into the scene's visibility membership (RL-5a: filter SEMANTICS
-// live view-side, the scene only animates the membership diff).
+// The legal vocabulary is engine-enumerated (the filters endpoint) and the
+// active choices live in canonical dashboard-state. This module only projects
+// dashboard-state into view helper shapes and compiles those choices into graph
+// filters and scene visibility membership.
 
-import { create } from "zustand";
-
-import type { EngineEdge, EngineNode, GraphFilter } from "../server/engine";
+import type {
+  DashboardDateRange,
+  DashboardFilters,
+  DashboardState,
+  EngineEdge,
+  EngineNode,
+  GraphFilter,
+} from "../server/engine";
+import { normalizeDashboardDateRange } from "../server/dashboardDateRange";
+import {
+  SEARCH_QUERY_MAX_CHARS,
+  normalizeSearchQuery,
+} from "../searchQuery";
+import type { SceneCommand } from "../../scene/sceneController";
 
 export type TierName = "declared" | "structural" | "temporal" | "semantic";
 
-export interface FilterState {
-  /**
-   * The tier dial: per-tier visibility TOGGLES (view state, G3.f). NOTE (F-L2):
-   * this is NOT the wire `TiersBlock` degradation/availability block — the two
-   * share the word "tiers" but differ in type and meaning (`Record<TierName,
-   * boolean>` here vs the per-tier availability block in `stores/server`) and
-   * never interchange. A rename to `enabledTiers` was declined: this field is
-   * part of the persisted `FilterChoices`/lens shape, so renaming would force a
-   * lens-persistence migration disproportionate to the cosmetic gain.
-   */
+export interface FilterChoices {
   tiers: Record<TierName, boolean>;
   minConfidence: Partial<Record<"temporal" | "semantic", number>>;
-  /** Facet chips — values come from the engine vocabulary. */
   docTypes: string[];
   featureTags: string[];
   relations: string[];
   structuralStates: ("resolved" | "stale" | "broken")[];
   textMatch: string;
-  /** The single date-range filter — OWNED by the timeline (G4.c). */
   dateRange: { from?: string; to?: string };
-
-  setTier: (tier: TierName, on: boolean) => void;
-  setMinConfidence: (tier: "temporal" | "semantic", floor: number) => void;
-  setFacet: (
-    facet: "docTypes" | "featureTags" | "relations" | "structuralStates",
-    values: string[],
-  ) => void;
-  /**
-   * Toggle one value in a facet array: remove it if present, append it
-   * otherwise. The store owns the arrays, so callers pass only the facet and
-   * the value — no `current` need be threaded through the chrome (M5).
-   */
-  toggleFacet: (
-    facet: "docTypes" | "featureTags" | "relations" | "structuralStates",
-    value: string,
-  ) => void;
-  setTextMatch: (text: string) => void;
-  setDateRange: (range: { from?: string; to?: string }) => void;
-  reset: () => void;
-  /** Replace the whole choice set (lens application, S31). */
-  apply: (state: FilterChoices) => void;
 }
-
-export type FilterChoices = Pick<
-  FilterState,
-  | "tiers"
-  | "minConfidence"
-  | "docTypes"
-  | "featureTags"
-  | "relations"
-  | "structuralStates"
-  | "textMatch"
-  | "dateRange"
->;
 
 export const DEFAULT_CHOICES: FilterChoices = {
   tiers: { declared: true, structural: true, temporal: true, semantic: true },
@@ -79,28 +44,18 @@ export const DEFAULT_CHOICES: FilterChoices = {
   dateRange: {},
 };
 
-export const useFilterStore = create<FilterState>((set) => ({
-  ...structuredClone(DEFAULT_CHOICES),
-  setTier: (tier, on) => set((s) => ({ tiers: { ...s.tiers, [tier]: on } })),
-  setMinConfidence: (tier, floor) =>
-    set((s) => ({ minConfidence: { ...s.minConfidence, [tier]: floor } })),
-  setFacet: (facet, values) => set({ [facet]: values }),
-  toggleFacet: (facet, value) =>
-    set((s) => {
-      const current = s[facet] as string[];
-      return {
-        [facet]: current.includes(value)
-          ? current.filter((v) => v !== value)
-          : [...current, value],
-      };
-    }),
-  setTextMatch: (textMatch) => set({ textMatch }),
-  setDateRange: (dateRange) => set({ dateRange }),
-  reset: () => set(structuredClone(DEFAULT_CHOICES)),
-  apply: (choices) => set(structuredClone(choices)),
-}));
+const TIER_NAMES = ["declared", "structural", "temporal", "semantic"] as const;
+const CONFIDENCE_TIERS = ["temporal", "semantic"] as const;
+const STRUCTURAL_STATES = ["resolved", "stale", "broken"] as const;
+export const FILTER_CHOICE_VALUE_MAX_CHARS = 256;
+export const FILTER_CHOICE_LIST_MAX_ITEMS = 256;
+export const FILTER_CHOICE_TEXT_MAX_CHARS = SEARCH_QUERY_MAX_CHARS;
 
 // --- wire compilation (R3) ----------------------------------------------------------
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 /**
  * Normalize a per-tier confidence floor to the R3 wire grammar: a finite 0..1
@@ -119,7 +74,7 @@ function clampFloors(
   raw: Partial<Record<"temporal" | "semantic", number>>,
 ): Partial<Record<"temporal" | "semantic", number>> {
   const out: Partial<Record<"temporal" | "semantic", number>> = {};
-  for (const tier of ["temporal", "semantic"] as const) {
+  for (const tier of CONFIDENCE_TIERS) {
     const value = raw[tier];
     if (value === undefined) continue;
     const floor = clampFloor(value);
@@ -128,23 +83,155 @@ function clampFloors(
   return out;
 }
 
+function confidenceFloorsOrEmpty(
+  raw: unknown,
+): Partial<Record<"temporal" | "semantic", number>> {
+  if (!isObjectRecord(raw)) return {};
+  const floors: Partial<Record<"temporal" | "semantic", number>> = {};
+  for (const tier of CONFIDENCE_TIERS) {
+    const value = raw[tier];
+    if (typeof value === "number") floors[tier] = value;
+  }
+  return clampFloors(floors);
+}
+
+function tiersOrDefault(raw: unknown): Record<TierName, boolean> {
+  const tiers = { ...DEFAULT_CHOICES.tiers };
+  if (!isObjectRecord(raw)) return tiers;
+  for (const tier of TIER_NAMES) {
+    const value = raw[tier];
+    if (typeof value === "boolean") tiers[tier] = value;
+  }
+  return tiers;
+}
+
+function normalizeFilterChoiceValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 &&
+    normalized.length <= FILTER_CHOICE_VALUE_MAX_CHARS
+    ? normalized
+    : null;
+}
+
+function normalizeFilterChoiceText(value: unknown): string {
+  return normalizeSearchQuery(value);
+}
+
+function arrayOrEmpty(values: unknown, maxItems = FILTER_CHOICE_LIST_MAX_ITEMS): string[] {
+  if (!Array.isArray(values) || maxItems <= 0) return [];
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeFilterChoiceValue(value);
+    if (normalized === null || seen.has(normalized)) continue;
+    seen.add(normalized);
+    next.push(normalized);
+    if (next.length >= maxItems) break;
+  }
+  return next;
+}
+
+function structuralStatesOrEmpty(
+  values: DashboardFilters["structural_state"] | unknown,
+): FilterChoices["structuralStates"] {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<FilterChoices["structuralStates"][number]>();
+  const next: FilterChoices["structuralStates"] = [];
+  for (const value of values) {
+    const normalized = normalizeFilterChoiceValue(value);
+    if (
+      normalized === null ||
+      !STRUCTURAL_STATES.includes(
+        normalized as FilterChoices["structuralStates"][number],
+      )
+    ) {
+      continue;
+    }
+    const structuralState =
+      normalized as FilterChoices["structuralStates"][number];
+    if (seen.has(structuralState)) continue;
+    seen.add(structuralState);
+    next.push(structuralState);
+    if (next.length >= STRUCTURAL_STATES.length) break;
+  }
+  return next;
+}
+
+function dateRangeOrEmpty(range: DashboardDateRange | unknown): DashboardDateRange {
+  return normalizeDashboardDateRange(range);
+}
+
+export function normalizeFilterChoices(raw: unknown): FilterChoices | null {
+  if (!isObjectRecord(raw)) return null;
+  return {
+    tiers: tiersOrDefault(raw.tiers),
+    minConfidence: confidenceFloorsOrEmpty(raw.minConfidence),
+    docTypes: arrayOrEmpty(raw.docTypes),
+    featureTags: arrayOrEmpty(raw.featureTags),
+    relations: arrayOrEmpty(raw.relations),
+    structuralStates: structuralStatesOrEmpty(raw.structuralStates),
+    textMatch: normalizeFilterChoiceText(raw.textMatch),
+    dateRange: dateRangeOrEmpty(raw.dateRange),
+  };
+}
+
+/**
+ * Project the canonical dashboard-state filter snapshot into the visibility
+ * helper shape. Once dashboard state is loaded, no cross-surface filter field
+ * falls back to local Zustand state; the graph query and scene visibility must
+ * read the same authority.
+ */
+export function filterChoicesFromDashboardState(
+  state: Pick<DashboardState, "filters" | "date_range"> | undefined,
+  localChoices: FilterChoices = DEFAULT_CHOICES,
+): FilterChoices {
+  if (!state) return structuredClone(localChoices);
+  const filters = state.filters;
+  return {
+    tiers: filters.tiers
+      ? { ...DEFAULT_CHOICES.tiers, ...filters.tiers }
+      : { ...DEFAULT_CHOICES.tiers },
+    minConfidence: filters.min_confidence ? clampFloors(filters.min_confidence) : {},
+    docTypes: arrayOrEmpty(filters.doc_types),
+    featureTags: arrayOrEmpty(filters.feature_tags),
+    relations: arrayOrEmpty(filters.relations),
+    structuralStates: filters.structural_state
+      ? structuralStatesOrEmpty(filters.structural_state)
+      : [],
+    textMatch: normalizeFilterChoiceText(filters.text),
+    dateRange: dateRangeOrEmpty(state.date_range),
+  };
+}
+
+export function dashboardFiltersFromChoices(choices: unknown): DashboardFilters {
+  const normalized =
+    normalizeFilterChoices(choices) ?? structuredClone(DEFAULT_CHOICES);
+  const filter: DashboardFilters = {};
+  if (Object.values(normalized.tiers).some((on) => !on)) {
+    filter.tiers = { ...normalized.tiers };
+  }
+  const floors = clampFloors(normalized.minConfidence);
+  if (Object.keys(floors).length > 0) filter.min_confidence = floors;
+  if (normalized.relations.length > 0) filter.relations = [...normalized.relations];
+  if (normalized.structuralStates.length > 0) {
+    filter.structural_state = [...normalized.structuralStates];
+  }
+  if (normalized.docTypes.length > 0) filter.doc_types = [...normalized.docTypes];
+  if (normalized.featureTags.length > 0) {
+    filter.feature_tags = [...normalized.featureTags];
+  }
+  if (normalized.textMatch) filter.text = normalized.textMatch;
+  return filter;
+}
+
 /** Compile choices into the engine-owned filter object (snake_case wire). */
 export function toGraphFilter(choices: FilterChoices): GraphFilter {
-  const filter: GraphFilter = {};
-  if (Object.values(choices.tiers).some((on) => !on)) {
-    filter.tiers = { ...choices.tiers };
-  }
-  const floors = clampFloors(choices.minConfidence);
-  if (Object.keys(floors).length > 0) filter.min_confidence = floors;
-  if (choices.relations.length > 0) filter.relations = [...choices.relations];
-  if (choices.structuralStates.length > 0) {
-    filter.structural_state = [...choices.structuralStates];
-  }
-  if (choices.docTypes.length > 0) filter.doc_types = [...choices.docTypes];
-  if (choices.featureTags.length > 0) filter.feature_tags = [...choices.featureTags];
-  if (choices.textMatch) filter.text = choices.textMatch;
-  if (choices.dateRange.from || choices.dateRange.to) {
-    filter.date_range = { ...choices.dateRange };
+  const normalized =
+    normalizeFilterChoices(choices) ?? structuredClone(DEFAULT_CHOICES);
+  const filter: GraphFilter = dashboardFiltersFromChoices(normalized);
+  if (normalized.dateRange.from || normalized.dateRange.to) {
+    filter.date_range = { ...normalized.dateRange };
   }
   return filter;
 }
@@ -156,6 +243,16 @@ export interface VisibilityMembership {
   visibleEdgeIds: Set<string>;
   hiddenNodeCount: number;
   hiddenEdgeCount: number;
+}
+
+export interface VisibilityHiddenCounts {
+  nodes: number;
+  edges: number;
+}
+
+export interface VisibilityNodeCounts {
+  visible: number;
+  total: number;
 }
 
 function nodeMatches(node: EngineNode, choices: FilterChoices): boolean {
@@ -237,5 +334,32 @@ export function computeVisibility(
     visibleEdgeIds,
     hiddenNodeCount: nodes.length - visibleNodeIds.size,
     hiddenEdgeCount: edges.length - visibleEdgeIds.size,
+  };
+}
+
+export function visibilitySceneCommand(membership: VisibilityMembership): SceneCommand {
+  return {
+    kind: "set-visibility",
+    visibleNodeIds: membership.visibleNodeIds,
+    visibleEdgeIds: membership.visibleEdgeIds,
+  };
+}
+
+export function visibilityHiddenCounts(
+  membership: VisibilityMembership | null,
+): VisibilityHiddenCounts {
+  return {
+    nodes: membership?.hiddenNodeCount ?? 0,
+    edges: membership?.hiddenEdgeCount ?? 0,
+  };
+}
+
+export function visibilityNodeCounts(
+  totalNodes: number,
+  membership: VisibilityMembership | null,
+): VisibilityNodeCounts {
+  return {
+    visible: totalNodes - (membership?.hiddenNodeCount ?? 0),
+    total: totalNodes,
   };
 }

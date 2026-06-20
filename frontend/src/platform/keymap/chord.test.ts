@@ -4,6 +4,7 @@ import {
   type Chord,
   type ChordEvent,
   canonicalizeChord,
+  chordStringFromEvent,
   formatChord,
   matchesChord,
   normalizeKey,
@@ -91,6 +92,23 @@ describe("formatChord / canonicalizeChord", () => {
   it("canonicalize rejects keyless or empty-segment input", () => {
     expect(canonicalizeChord("Mod+")).toBeNull();
     expect(canonicalizeChord("Mod+Ctrl")).toBeNull();
+  });
+});
+
+describe("chordStringFromEvent", () => {
+  it("records key events as canonical chord strings", () => {
+    expect(chordStringFromEvent(ev({ key: "p", metaKey: true, shiftKey: true }))).toBe(
+      "Mod+Shift+P",
+    );
+  });
+
+  it("ignores modifier-only key presses", () => {
+    expect(chordStringFromEvent(ev({ key: "Control", ctrlKey: true }))).toBeNull();
+    expect(chordStringFromEvent(ev({ key: "Shift", shiftKey: true }))).toBeNull();
+  });
+
+  it("uses the same shifted-symbol identity as parsing and matching", () => {
+    expect(chordStringFromEvent(ev({ key: "?", shiftKey: true }))).toBe("?");
   });
 });
 

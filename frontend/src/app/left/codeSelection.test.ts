@@ -1,16 +1,14 @@
 // Code-tree row ↔ stage selection join (dashboard-code-tree plan P04.S15): the
 // `code:<path>` bidirectional join, mirroring the vault browser's `doc:<stem>`
-// join — selecting a file row selects its `code:` node, and the active stage
-// selection resolves the matching row. Pure derivations + the shared view store;
-// no component render here (the render test covers the four honest states).
+// join — the active canonical selection resolves the matching row. Pure
+// derivations; no component render here (the render test covers the four honest
+// states).
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { FileTreeEntry } from "../../stores/server/engine";
-import { useViewStore } from "../../stores/view/viewStore";
 import {
   codePathToNodeId,
-  handleCodeEntryClick,
   highlightedCodePathFor,
   nodeIdToCodePath,
 } from "./browserSelection";
@@ -32,30 +30,6 @@ describe("code id derivation (contract identity guarantees)", () => {
 });
 
 describe("bidirectional code selection (mirrors the doc:<stem> join)", () => {
-  beforeEach(() => useViewStore.getState().select(null));
-
-  it("code-tree row click selects the code: node via its carried node_id", () => {
-    handleCodeEntryClick(fileEntry("src/main.rs"));
-    expect(useViewStore.getState().selection).toEqual({
-      kind: "node",
-      id: "code:src/main.rs",
-    });
-  });
-
-  it("falls back to deriving the id from the path when node_id is absent", () => {
-    // A sparse entry (empty node_id) still joins by deriving code:<path>.
-    handleCodeEntryClick({
-      path: "src/lib.rs",
-      kind: "file",
-      has_children: false,
-      node_id: "",
-    });
-    expect(useViewStore.getState().selection).toEqual({
-      kind: "node",
-      id: "code:src/lib.rs",
-    });
-  });
-
   it("the active selection resolves the matching code row, code nodes only", () => {
     const entries = [fileEntry("src/main.rs"), fileEntry("src/lib.rs")];
     expect(highlightedCodePathFor(entries, "code:src/lib.rs")).toBe("src/lib.rs");

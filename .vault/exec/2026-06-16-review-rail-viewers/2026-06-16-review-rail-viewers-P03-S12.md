@@ -26,7 +26,7 @@ related:
 
 ## Outcome
 
-The viewer runtime deps are present, rag/torch-free. The high-severity audit findings are all pre-existing storybook/esbuild dev-tooling issues, unrelated to these additions.
+The viewer runtime deps are present, rag/torch-free. The high-severity audit findings are all pre-existing retired gallery/esbuild dev-tooling issues, unrelated to these additions.
 
 ## Notes
 

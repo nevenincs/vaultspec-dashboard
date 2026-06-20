@@ -7,13 +7,19 @@
 // settings store (the app client is bound to the live transport in liveSetup) —
 // no doubles.
 
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { engineClient } from "../../stores/server/engine";
+import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
+import { CONSUMED_SETTING_KEYS } from "../../stores/server/settingsSelectors";
+import {
+  getThemeController,
+  type ThemePreference,
+} from "../../platform/theme/themeController";
 import { useThemeSetting } from "./themeSetting";
 
 function Harness() {
@@ -24,13 +30,26 @@ function Harness() {
     createElement("span", { "data-testid": "pref" }, preference),
     createElement("button", { onClick: () => setPreference("dark") }, "dark"),
     createElement("button", { onClick: () => setPreference("light") }, "light"),
+    createElement(
+      "button",
+      { onClick: () => setPreference("chartreuse" as ThemePreference) },
+      "invalid",
+    ),
   );
 }
 
-function renderHarness() {
-  return render(
-    createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)),
-  );
+function renderHarness(client = queryClient) {
+  return render(createElement(QueryClientProvider, { client }, createElement(Harness)));
+}
+
+function clickPreference(value: ThemePreference | "invalid") {
+  fireEvent.click(screen.getByRole("button", { name: value }));
+}
+
+async function waitForThemeSchema() {
+  await waitFor(() => {
+    expect(queryClient.getQueryData(engineKeys.settingsSchema())).toBeDefined();
+  });
 }
 
 describe("theme migrated into the settings model (W05)", () => {
@@ -43,7 +62,8 @@ describe("theme migrated into the settings model (W05)", () => {
 
   it("applies a theme change through the controller AND persists it to the engine", async () => {
     renderHarness();
-    fireEvent.click(screen.getByText("dark"));
+    await waitForThemeSchema();
+    clickPreference("dark");
     // The controller applied data-theme immediately (no-FOUC optimistic path).
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("dark");
@@ -57,13 +77,67 @@ describe("theme migrated into the settings model (W05)", () => {
 
   it("reconciles the authoritative server theme onto the controller on load", async () => {
     // Seed the server theme, then mount.
-    await engineClient.putSettings({ key: "theme", value: "light" });
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.theme,
+      value: "light",
+    });
     renderHarness();
     // The reconcile effect applies the server value to the controller.
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("light");
     });
-    expect(screen.getByTestId("pref").textContent).toBe("light");
+    await waitFor(() => {
+      expect(screen.getByTestId("pref").textContent).toBe("light");
+    });
+  });
+
+  it("does not reconcile or write theme while authoritative settings are pending", async () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData(
+      engineKeys.settingsSchema(),
+      await engineClient.settingsSchema(),
+    );
+    client.setQueryDefaults(engineKeys.settings(), { enabled: false });
+    getThemeController().setPreference("dark");
+
+    renderHarness(client);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pref").textContent).toBe("dark");
+    });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+
+    clickPreference("light");
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.getByTestId("pref").textContent).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(localStorage.getItem("vaultspec-theme")).toBe("dark");
+  });
+
+  it("rejects platform theme writes that are not authorized by the settings schema", async () => {
+    await engineClient.putSettings({
+      key: CONSUMED_SETTING_KEYS.theme,
+      value: "system",
+    });
+    renderHarness();
+    await waitForThemeSchema();
+    await waitFor(() => {
+      expect(screen.getByTestId("pref").textContent).toBe("system");
+    });
+
+    clickPreference("invalid");
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(document.documentElement.dataset.theme).not.toBe("chartreuse");
+    expect(localStorage.getItem("vaultspec-theme")).not.toBe("chartreuse");
+    const fresh = await engineClient.settings();
+    expect(fresh.global.theme).toBe("system");
   });
 
   it("does not revert to the stale server theme when changing from a pre-existing one", async () => {
@@ -71,12 +145,13 @@ describe("theme migrated into the settings model (W05)", () => {
     // "light": the reconcile must NOT flash back to the stale "dark" while the
     // write is in flight (review MEDIUM: theme-reconcile revert). The settled
     // state is "light".
-    await engineClient.putSettings({ key: "theme", value: "dark" });
+    await engineClient.putSettings({ key: CONSUMED_SETTING_KEYS.theme, value: "dark" });
     renderHarness();
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("dark");
     });
-    fireEvent.click(screen.getByText("light"));
+    await waitForThemeSchema();
+    clickPreference("light");
     // Settles on light; never gets stuck on dark.
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe("light");

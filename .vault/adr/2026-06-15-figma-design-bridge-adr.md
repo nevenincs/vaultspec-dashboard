@@ -44,7 +44,7 @@ ADRs against Figma without surrendering them to it.
   **DTCG** (W3C, stable 2025.10) natively holds `oklch` with a hex fallback, so a
   lossless intermediate exists in code, and Figma takes the resolved hex per mode —
   which matches the literal-hex scene seam we already emit.
-- **No component catalog exists.** There is no Storybook/Ladle/Histoire; only a
+- **No component catalog exists.** There is no Ladle/Histoire component gallery; only a
   narrow dev prototype. Seeding Figma and verifying parity both need a clean
   per-component render surface.
 - **Tooling weighed:** Style Dictionary (code-side transform), Tokens Studio
@@ -99,7 +99,7 @@ mirror; the resolved hex-per-mode is accepted as a deliberate lossy projection
 (OKLCH stays lossless in DTCG).
 
 **Decision 3 — Component cross-connection without Code Connect.** Three parts: (a)
-adopt **Storybook** as the component gallery and seeding + parity substrate
+adopt **retired component gallery** as the component gallery and seeding + parity substrate
 (Vite builder, matching our stack) — it also retires a real gap (no catalog
 today); (b) a
 repo-maintained **code↔Figma mapping registry** — a version-controlled mapping of

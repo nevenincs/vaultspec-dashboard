@@ -1,30 +1,33 @@
 import { useMemo } from "react";
 
-import type { ActionDescriptor } from "../../platform/actions/action";
-import type { DashboardPanelState } from "../server/engine";
-import { useDashboardStateMutations } from "../server/dashboardState";
+import {
+  normalizeActionDescriptor,
+  type ActionDescriptorBase,
+} from "../../platform/actions/action";
+import { useCommandPaletteLensIntent } from "../server/commandPaletteLensIntent";
 import { featureNodeIdFromTag } from "../server/liveAdapters";
 import { OPS_WHITELIST } from "../server/opsActions";
-import { useShellPanelIntent } from "../server/panelStateIntent";
 import {
   useActiveScope,
+  useDashboardFilterChoicesView,
   useDashboardTimelineModeView,
   useFiltersVocabularyView,
 } from "../server/queries";
-import { useDashboardFilterChoicesView } from "./dashboardFilterChoices";
-import { dashboardFiltersFromChoices } from "./filters";
 import { openKeyboardShortcuts } from "./keyboardShortcuts";
 import { getLensChoices, saveCurrentLens, useLenses } from "./lenses";
 import { useCommandPaletteOpsRunMutation } from "./opsRun";
 import { useDashboardNodeSelection } from "./selection";
 import { openSettingsDialog } from "./settingsDialog";
 import {
-  resetShellLayout,
-  setShellLeftRailVisible,
-  setShellTimelineVisible,
+  RIGHT_RAIL_TABS,
+  type RailTabId,
   useShellFrameView,
+  useShellWindowActions,
 } from "./shellLayout";
-import { useCommandPaletteOpsFeedbackBoundary } from "./commandPalette";
+import {
+  normalizeCommandPaletteQuery,
+  useCommandPaletteOpsFeedbackBoundary,
+} from "./commandPalette";
 
 /** The command families, ordered as they group in the list. */
 export type CommandFamily = "navigate" | "filters" | "window" | "core" | "rag" | "app";
@@ -33,9 +36,10 @@ export type CommandFamily = "navigate" | "filters" | "window" | "core" | "rag" |
 // layer 1) plus the palette-specific `family` grouping. Consuming the shared
 // descriptor is what keeps the palette and the context menu from drifting; the
 // palette requires `run` and groups by `family`.
-export interface PaletteCommand extends ActionDescriptor {
+export interface PaletteCommand extends ActionDescriptorBase {
   family: CommandFamily;
   run: () => void;
+  dispatch?: never;
 }
 
 /** Human-facing group heading per family (object-then-action taxonomy). */
@@ -48,10 +52,70 @@ export const FAMILY_LABEL: Record<CommandFamily, string> = {
   app: "app",
 };
 
+const COMMAND_FAMILIES = new Set<CommandFamily>([
+  "navigate",
+  "filters",
+  "window",
+  "core",
+  "rag",
+  "app",
+]);
+
+export const COMMAND_PALETTE_SOURCE_ITEMS_CAP = 128;
+export const COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS = 256;
+
+function isCommandPaletteRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+export function normalizeCommandFamily(value: unknown): CommandFamily | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return COMMAND_FAMILIES.has(normalized as CommandFamily)
+    ? (normalized as CommandFamily)
+    : null;
+}
+
+export function normalizePaletteCommand(command: unknown): PaletteCommand | null {
+  if (!isCommandPaletteRecord(command)) return null;
+  const family = normalizeCommandFamily(command.family);
+  if (family === null) return null;
+  const action = normalizeActionDescriptor(command);
+  if (action === null || typeof action.run !== "function") return null;
+  return { ...action, family };
+}
+
+function normalizedPaletteCommands(commands: readonly unknown[]): PaletteCommand[] {
+  return commands
+    .map((command) => normalizePaletteCommand(command))
+    .filter((command): command is PaletteCommand => command !== null);
+}
+
+export function normalizeCommandPaletteSourceItems(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    if (typeof item !== "string") continue;
+    const normalized = item.trim();
+    if (
+      normalized.length === 0 ||
+      normalized.length > COMMAND_PALETTE_SOURCE_ITEM_MAX_CHARS ||
+      seen.has(normalized)
+    ) {
+      continue;
+    }
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= COMMAND_PALETTE_SOURCE_ITEMS_CAP) break;
+  }
+  return out;
+}
+
 export interface PaletteSources {
-  featureTags: readonly string[];
-  lensNames: readonly string[];
-  query: string;
+  featureTags: unknown;
+  lensNames: unknown;
+  query: unknown;
   canSaveLens?: boolean;
   applyLens: (name: string) => void;
   saveLens: (name: string) => void;
@@ -61,8 +125,11 @@ export interface PaletteSources {
 }
 
 export function buildCommands(sources: PaletteSources): PaletteCommand[] {
-  const commands: PaletteCommand[] = [];
-  for (const feature of sources.featureTags) {
+  const commands: unknown[] = [];
+  const normalizedQuery = normalizeCommandPaletteQuery(sources.query);
+  const featureTags = normalizeCommandPaletteSourceItems(sources.featureTags);
+  const lensNames = normalizeCommandPaletteSourceItems(sources.lensNames);
+  for (const feature of featureTags) {
     commands.push({
       id: `nav:${feature}`,
       label: `go to ${feature}`,
@@ -70,7 +137,7 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
       run: () => sources.navigate(featureNodeIdFromTag(feature)),
     });
   }
-  for (const name of sources.lensNames) {
+  for (const name of lensNames) {
     commands.push({
       id: `lens:${name}`,
       label: `lens: ${name}`,
@@ -94,16 +161,15 @@ export function buildCommands(sources: PaletteSources): PaletteCommand[] {
     family: "app",
     run: () => sources.openSettings(),
   });
-  const trimmed = sources.query.trim();
-  if (trimmed.length > 0 && sources.canSaveLens !== false) {
+  if (normalizedQuery.length > 0 && sources.canSaveLens !== false) {
     commands.push({
-      id: `save-lens:${trimmed}`,
-      label: `save current filters as lens "${trimmed}"`,
+      id: `save-lens:${normalizedQuery}`,
+      label: `save current filters as lens "${normalizedQuery}"`,
       family: "filters",
-      run: () => sources.saveLens(trimmed),
+      run: () => sources.saveLens(normalizedQuery),
     });
   }
-  return commands;
+  return normalizedPaletteCommands(commands);
 }
 
 /**
@@ -123,13 +189,24 @@ export interface WindowCommandSources {
   toggleLeftCollapsed: () => void;
   toggleRightRail: () => void;
   toggleTimeline: () => void;
-  setRightTab: (tab: DashboardPanelState["right_tab"]) => void;
+  setRightTab: (tab: unknown) => void;
   resetLayout: () => void;
   showKeyboardShortcuts: () => void;
 }
 
+export function normalizeCommandPaletteRightRailTab(tab: unknown): RailTabId | null {
+  if (typeof tab !== "string") return null;
+  const normalized = tab.trim();
+  return RIGHT_RAIL_TABS.find((candidate) => candidate.id === normalized)?.id ?? null;
+}
+
+export function commandPaletteRightRailCommandId(tab: unknown): string | null {
+  const normalizedTab = normalizeCommandPaletteRightRailTab(tab);
+  return normalizedTab === null ? null : `window:rail-${normalizedTab}`;
+}
+
 export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
-  const commands: PaletteCommand[] = [
+  const commands: unknown[] = [
     {
       id: "window:left-rail",
       label: w.leftRailVisible ? "hide left rail" : "show left rail",
@@ -160,24 +237,20 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       family: "window",
       run: w.toggleTimeline,
     },
-    {
-      id: "window:rail-status",
-      label: "activity rail: status",
-      family: "window",
-      run: () => w.setRightTab("status"),
-    },
-    {
-      id: "window:rail-changes",
-      label: "activity rail: changes",
-      family: "window",
-      run: () => w.setRightTab("changes"),
-    },
-    {
-      id: "window:rail-search",
-      label: "activity rail: search",
-      family: "window",
-      run: () => w.setRightTab("search"),
-    },
+    ...RIGHT_RAIL_TABS.flatMap(({ id, label }) => {
+      const commandId = commandPaletteRightRailCommandId(id);
+      const tab = normalizeCommandPaletteRightRailTab(id);
+      return commandId === null || tab === null
+        ? []
+        : [
+            {
+              id: commandId,
+              label: `activity rail: ${label.toLowerCase()}`,
+              family: "window" as const,
+              run: () => w.setRightTab(tab),
+            },
+          ];
+    }),
     {
       id: "window:reset-layout",
       label: "reset layout",
@@ -191,7 +264,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       run: w.showKeyboardShortcuts,
     },
   );
-  return commands;
+  return normalizedPaletteCommands(commands);
 }
 
 export function gateCommandsForTimeTravel(
@@ -204,9 +277,9 @@ export function gateCommandsForTimeTravel(
 
 export function filterCommands(
   commands: readonly PaletteCommand[],
-  query: string,
+  query: unknown,
 ): PaletteCommand[] {
-  const needle = query.trim().toLowerCase();
+  const needle = normalizeCommandPaletteQuery(query).toLowerCase();
   if (!needle) return [...commands];
   const tokens = needle.split(/\s+/).filter(Boolean);
   return commands.filter((command) => {
@@ -281,6 +354,16 @@ export interface CommandPalettePresentationView {
   };
 }
 
+export type CommandPaletteActivationView =
+  | { kind: "ignore" }
+  | { kind: "arm"; cursor: number; commandId: string }
+  | { kind: "run"; cursor: number; command: PaletteCommand; closeAfterRun: boolean };
+
+export interface CommandPaletteArmedRepair {
+  clearArmedCommandId: boolean;
+  disarm: boolean;
+}
+
 export function commandPaletteRowLabel(
   command: PaletteCommand,
   armed: boolean,
@@ -290,6 +373,62 @@ export function commandPaletteRowLabel(
 
 export function commandPaletteOptionDomIdPart(commandId: string): string {
   return encodeURIComponent(commandId);
+}
+
+export function commandPaletteSafeCursor(length: number, cursor: number): number {
+  return length === 0 ? -1 : Math.min(Math.max(0, cursor), length - 1);
+}
+
+export function commandPaletteMovedCursor(
+  length: number,
+  cursor: number,
+  delta: 1 | -1,
+): number {
+  if (length === 0) return -1;
+  return commandPaletteSafeCursor(length, cursor + delta);
+}
+
+export function deriveCommandPaletteActivation(
+  ordered: readonly PaletteCommand[],
+  index: number,
+  state: {
+    confirmArmed: boolean;
+    armedCommandId: string | null;
+  },
+): CommandPaletteActivationView {
+  const cursor = commandPaletteSafeCursor(ordered.length, index);
+  if (cursor < 0) return { kind: "ignore" };
+  const command = ordered[cursor];
+  if (!command || command.disabled === true) return { kind: "ignore" };
+  if (command.confirm && (!state.confirmArmed || state.armedCommandId !== command.id)) {
+    return { kind: "arm", cursor, commandId: command.id };
+  }
+  return {
+    kind: "run",
+    cursor,
+    command,
+    closeAfterRun: command.confirm !== true,
+  };
+}
+
+export function deriveCommandPaletteArmedRepair(
+  activeCommand: PaletteCommand | undefined,
+  state: {
+    confirmArmed: boolean;
+    armedCommandId: string | null;
+  },
+): CommandPaletteArmedRepair {
+  if (!state.confirmArmed) {
+    return { clearArmedCommandId: state.armedCommandId !== null, disarm: false };
+  }
+  if (state.armedCommandId === null) {
+    return { clearArmedCommandId: false, disarm: false };
+  }
+  return {
+    clearArmedCommandId: false,
+    disarm:
+      activeCommand?.id !== state.armedCommandId || activeCommand.confirm !== true,
+  };
 }
 
 export function deriveCommandPalettePresentationView(
@@ -303,10 +442,7 @@ export function deriveCommandPalettePresentationView(
     armedCommandId: string | null;
   },
 ): CommandPalettePresentationView {
-  const safeCursor =
-    commandView.ordered.length === 0
-      ? -1
-      : Math.min(state.cursor, commandView.ordered.length - 1);
+  const safeCursor = commandPaletteSafeCursor(commandView.ordered.length, state.cursor);
   const activeCommand = safeCursor >= 0 ? commandView.ordered[safeCursor] : undefined;
   const rows = commandView.ordered.map((command, index): CommandPaletteRowView => {
     const armed = state.confirmArmed && state.armedCommandId === command.id;
@@ -381,21 +517,24 @@ export function deriveCommandPalettePresentationView(
 }
 
 /**
- * Stores-owned command-palette read model. The palette surface owns input,
- * cursor, focus and confirmation UX; this selector owns command assembly from
+ * Stores-owned command-palette read model. The command-palette store owns input,
+ * cursor, and confirmation-row state; this selector owns command assembly from
  * dashboard/lens/ops state, time-travel gating, grouping, and search projection.
  */
-export function useCommandPaletteCommandView(query: string): CommandPaletteCommandView {
+export function useCommandPaletteCommandView(
+  query: unknown,
+): CommandPaletteCommandView {
   const scope = useActiveScope();
+  const normalizedQuery = normalizeCommandPaletteQuery(query);
   const vocabulary = useFiltersVocabularyView(scope);
   const dashboardFilterChoices = useDashboardFilterChoicesView(scope);
   const timeline = useDashboardTimelineModeView(scope);
-  const dashboardMutations = useDashboardStateMutations(scope);
+  const lensIntent = useCommandPaletteLensIntent(scope);
   const selectNode = useDashboardNodeSelection(scope);
   const lenses = useLenses();
   const runPaletteOp = useCommandPaletteOpsRunMutation();
   const shellFrame = useShellFrameView(scope);
-  const panelIntent = useShellPanelIntent(scope);
+  const shellActions = useShellWindowActions(scope, shellFrame);
   const timeTravel = timeline.opsDisabled;
   useCommandPaletteOpsFeedbackBoundary(scope, timeTravel);
 
@@ -403,17 +542,12 @@ export function useCommandPaletteCommandView(query: string): CommandPaletteComma
     const baseCommands = buildCommands({
       featureTags: vocabulary.featureTags,
       lensNames: lenses.map((lens) => lens.name),
-      query,
+      query: normalizedQuery,
       canSaveLens: dashboardFilterChoices.loaded,
       applyLens: (name) => {
         const choices = getLensChoices(name);
-        if (!choices || !scope) return;
-        void dashboardMutations
-          .setFiltersAndDateRange(
-            dashboardFiltersFromChoices(choices),
-            choices.dateRange,
-          )
-          .catch(() => undefined);
+        if (!choices) return;
+        void lensIntent.applyLensChoices(choices).catch(() => undefined);
       },
       saveLens: (name) => {
         if (!dashboardFilterChoices.loaded) return;
@@ -427,44 +561,29 @@ export function useCommandPaletteCommandView(query: string): CommandPaletteComma
       },
       openSettings: openSettingsDialog,
     });
-    const ignore = () => undefined;
     const windowCommands = buildWindowCommands({
       leftRailVisible: shellFrame.leftRailVisible,
       leftCollapsed: shellFrame.leftCollapsed,
       rightCollapsed: shellFrame.rightCollapsed,
       timelineVisible: shellFrame.timelineVisible,
-      toggleLeftRail: () => setShellLeftRailVisible(!shellFrame.leftRailVisible),
-      toggleLeftCollapsed: () => {
-        void panelIntent.setLeftCollapsed(!shellFrame.leftCollapsed).catch(ignore);
-      },
-      toggleRightRail: () => {
-        void panelIntent.setRightCollapsed(!shellFrame.rightCollapsed).catch(ignore);
-      },
-      toggleTimeline: () => setShellTimelineVisible(!shellFrame.timelineVisible),
-      setRightTab: (tab) => {
-        // Switching a tab also reveals the rail if it is collapsed, so the chosen
-        // pane is actually visible after the command runs.
-        void panelIntent.setRightTab(tab).catch(ignore);
-        void panelIntent.setRightCollapsed(false).catch(ignore);
-      },
-      resetLayout: () => {
-        resetShellLayout();
-        void panelIntent.setLeftCollapsed(false).catch(ignore);
-        void panelIntent.setRightCollapsed(false).catch(ignore);
-        void panelIntent.setRightTab("status").catch(ignore);
-      },
+      toggleLeftRail: shellActions.toggleLeftRail,
+      toggleLeftCollapsed: shellActions.toggleLeftCollapsed,
+      toggleRightRail: shellActions.toggleRightRail,
+      toggleTimeline: shellActions.toggleTimeline,
+      setRightTab: shellActions.setRightTab,
+      resetLayout: shellActions.resetLayout,
       showKeyboardShortcuts: openKeyboardShortcuts,
     });
     const all = [...baseCommands, ...windowCommands];
     const gated = gateCommandsForTimeTravel(all, timeTravel);
-    return filterCommands(gated, query);
+    return filterCommands(gated, normalizedQuery);
   }, [
     dashboardFilterChoices,
-    dashboardMutations,
+    lensIntent,
     lenses,
-    panelIntent,
-    query,
+    normalizedQuery,
     runPaletteOp,
+    shellActions,
     scope,
     selectNode,
     shellFrame,

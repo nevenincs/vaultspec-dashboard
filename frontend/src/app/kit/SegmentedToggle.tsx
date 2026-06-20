@@ -49,6 +49,8 @@ export interface SegmentedToggleProps {
   children: ReactNode;
   disabled?: boolean;
   id?: string;
+  /** Optional surface-owned placement class; segment state stays owned here. */
+  className?: string;
   /** Stretch the track to its container width with equal-width segments (the
    *  binding LeftRail Vault/Tree/Code toggle, 244:750). */
   fullWidth?: boolean;
@@ -61,6 +63,7 @@ export function SegmentedToggle({
   children,
   disabled = false,
   id,
+  className = "",
   fullWidth = false,
 }: SegmentedToggleProps) {
   const segments = useRef(new Map<string, HTMLButtonElement>());
@@ -110,7 +113,7 @@ export function SegmentedToggle({
           fullWidth
             ? "flex w-full"
             : "inline-flex shrink-0 flex-wrap border border-rule"
-        }`}
+        } ${className}`.trim()}
         data-kit="segmented-toggle"
       >
         {children}

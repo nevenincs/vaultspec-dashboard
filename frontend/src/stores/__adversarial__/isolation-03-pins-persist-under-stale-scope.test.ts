@@ -2,22 +2,19 @@
 // state-corruption class. This closes the loop on the PERSISTED half of the
 // bleed (the prompt's "scope A pins persisted under scope B").
 //
-// SUSPECT: After viewStore.setScope("B") the pin store is NOT re-keyed
-// (proven structurally in isolation-01) — usePinStore still holds
-// { scope: "A", pinnedIds: <A's pins> }. togglePin persists with EXACTLY
-// the store's current workspace/scope and current pinnedIds:
+// REGRESSION LENS: After viewStore.setScope("B") the pin store must be
+// re-keyed (proven structurally in isolation-01) before togglePin persists
+// with exactly the store's current workspace/scope and current pinnedIds:
 //
 //     togglePin (pins.ts:73-81):
 //       const { pinnedIds, workspace, scope } = get();
 //       const next = ...;                       // A's pins +/- one
 //       savePins(store, workspace, scope, next) // <- key from STALE scope
 //
-// So the first pin toggle after a switch-to-B writes A's stale pin set
-// (merged with B's new pin) under whatever scope key the store still holds.
-// Because the store still holds "A", we reproduce the persistence path that
-// togglePin runs and show that — driven by the store's OWN post-setScope
-// state — scope A's pins are written under the scope the store believes is
-// active, and B's intended isolated key is never the destination.
+// Without that re-key, the first pin toggle after a switch-to-B would write
+// A's stale pin set under whatever scope key the store still holds. This test
+// reproduces the persistence path that togglePin runs and asserts the live
+// post-setScope store points at B before the save.
 //
 // We use the injectable savePins/loadPins with a Map-backed KeyValueStore
 // (the node test env has no localStorage). The pin set fed to savePins is
@@ -27,8 +24,7 @@
 // CONTRACT-CORRECT behavior asserted: after the documented worktree switch
 // to B, the active persistence scope the store would write under must be B,
 // and a persist of the store's current pins must NOT land scope A's pins
-// under scope A's key as the "active" write while the user is on B. Red
-// because setScope leaves the pin store keyed to A.
+// under scope A's key as the "active" write while the user is on B.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -68,7 +64,7 @@ describe("a pin toggle after switching to scope B must persist under B, not A (0
     expect(useViewStore.getState().scope).toBe("B");
 
     // Now the user pins a B node. Reproduce EXACTLY what togglePin persists:
-    // it reads workspace/scope/pinnedIds straight from the (un-re-keyed) pin
+    // it reads workspace/scope/pinnedIds straight from the re-keyed pin
     // store and saves them. We do not fabricate the pin set — it is the
     // store's live state after the switch.
     const { workspace, scope, pinnedIds } = usePinStore.getState();

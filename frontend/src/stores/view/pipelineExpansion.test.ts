@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  PIPELINE_EXPANSION_AS_OF_MAX_CHARS,
   PIPELINE_EXPANDED_IDS_CAP,
+  PIPELINE_EXPANSION_KEY_MAX_CHARS,
   derivePipelineExpansionRows,
+  normalizePipelineExpansionAsOf,
   normalizePipelineExpandedIds,
+  normalizePipelineExpansionKey,
+  normalizePipelineExpansionScope,
   pipelineExpansionKey,
   usePipelineExpansionStore,
 } from "./pipelineExpansion";
@@ -16,13 +21,38 @@ describe("pipeline expansion store", () => {
       "pipeline-expansion:scope:null:playhead:live",
     );
     expect(pipelineExpansionKey("none")).toBe(
-      "pipeline-expansion:scope:none:playhead:live",
+      "pipeline-expansion:scope:value:none:playhead:live",
+    );
+    expect(pipelineExpansionKey("null", "live")).toBe(
+      "pipeline-expansion:scope:value:null:playhead:value:live",
     );
     expect(pipelineExpansionKey("a::b", "live")).toBe(
-      "pipeline-expansion:scope:a%3A%3Ab:playhead:live",
+      "pipeline-expansion:scope:value:a%3A%3Ab:playhead:value:live",
     );
     expect(pipelineExpansionKey("scope-a", "time::42")).toBe(
-      "pipeline-expansion:scope:scope-a:playhead:time%3A%3A42",
+      "pipeline-expansion:scope:value:scope-a:playhead:value:time%3A%3A42",
+    );
+  });
+
+  it("normalizes pipeline expansion scope and playhead before minting state keys", () => {
+    expect(normalizePipelineExpansionScope(" scope-a ")).toBe("scope-a");
+    expect(normalizePipelineExpansionScope("   ")).toBeNull();
+    expect(normalizePipelineExpansionScope({ scope: "scope-a" })).toBeNull();
+    expect(normalizePipelineExpansionAsOf(42)).toBe(42);
+    expect(normalizePipelineExpansionAsOf(Number.NaN)).toBeUndefined();
+    expect(normalizePipelineExpansionAsOf(" time::42 ")).toBe("time::42");
+    expect(normalizePipelineExpansionAsOf("   ")).toBeUndefined();
+    expect(
+      normalizePipelineExpansionAsOf(
+        "t".repeat(PIPELINE_EXPANSION_AS_OF_MAX_CHARS + 1),
+      ),
+    ).toBeUndefined();
+    expect(normalizePipelineExpansionAsOf({ at: 42 })).toBeUndefined();
+    expect(pipelineExpansionKey(" scope-a ", " live ")).toBe(
+      "pipeline-expansion:scope:value:scope-a:playhead:value:live",
+    );
+    expect(pipelineExpansionKey({ scope: "scope-a" }, { at: 42 })).toBe(
+      "pipeline-expansion:scope:null:playhead:live",
     );
   });
 
@@ -59,8 +89,35 @@ describe("pipeline expansion store", () => {
     const key = pipelineExpansionKey("scope-a");
     const store = usePipelineExpansionStore.getState();
 
+    expect(normalizePipelineExpansionKey(key)).toBe(key);
+    expect(normalizePipelineExpansionKey(` ${key} `)).toBe(key);
+    expect(normalizePipelineExpansionKey("")).toBeNull();
+    expect(normalizePipelineExpansionKey("   ")).toBeNull();
+    expect(
+      normalizePipelineExpansionKey(
+        "pipeline-expansion:".concat(
+          "x".repeat(PIPELINE_EXPANSION_KEY_MAX_CHARS + 1),
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      pipelineExpansionKey("scope-a", "t".repeat(PIPELINE_EXPANSION_AS_OF_MAX_CHARS + 1)),
+    ).toBe(pipelineExpansionKey("scope-a"));
+    expect(
+      pipelineExpansionKey(
+        "scope:".concat("x".repeat(PIPELINE_EXPANSION_KEY_MAX_CHARS)),
+        "live",
+      ),
+    ).toBe(pipelineExpansionKey(null));
+
+    store.toggle("", "doc:plan-empty-key");
+    expect(usePipelineExpansionStore.getState()).toMatchObject({
+      key: pipelineExpansionKey(null),
+      expandedIds: [],
+    });
+
     store.toggle(key, "   ");
-    store.toggle(key, " doc:plan-a ");
+    store.toggle(` ${key} `, " doc:plan-a ");
     store.toggle(key, "doc:plan-a");
     store.toggle(key, " doc:plan-b ");
 
@@ -70,9 +127,17 @@ describe("pipeline expansion store", () => {
       key,
       expandedIds: [" doc:plan-a ", "doc:plan-a", "doc:plan-b", ""],
     });
+    usePipelineExpansionStore.getState().pruneVisible("", ["doc:plan-a"]);
+    expect(usePipelineExpansionStore.getState().expandedIds).toEqual([
+      " doc:plan-a ",
+      "doc:plan-a",
+      "doc:plan-b",
+      "",
+    ]);
+
     usePipelineExpansionStore
       .getState()
-      .pruneVisible(key, [" doc:plan-a ", "doc:plan-b"]);
+      .pruneVisible(` ${key} `, [" doc:plan-a ", "doc:plan-b"]);
 
     expect(usePipelineExpansionStore.getState().expandedIds).toEqual([
       "doc:plan-a",
@@ -155,5 +220,6 @@ describe("pipeline expansion store", () => {
     ).toEqual(
       Array.from({ length: PIPELINE_EXPANDED_IDS_CAP }, (_, i) => `doc:plan-${i + 3}`),
     );
+    expect(normalizePipelineExpandedIds(null)).toEqual([]);
   });
 });

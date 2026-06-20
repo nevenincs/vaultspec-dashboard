@@ -131,31 +131,31 @@ export function Stage() {
     selectedId: () => {
       return selectedNodeId;
     },
-    select: (id: string | null) => {
+    select: (id: unknown) => {
       void focusFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },
-    open: (id: string) => {
+    open: (id: unknown) => {
       void openNodeIslandFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },
-    expand: (id: string) => expandWorkingSet(id),
+    expand: (id: unknown) => expandWorkingSet(id),
   });
   walkHandlersRef.current = {
     selectedId: () => selectedNodeId,
-    select: (id: string | null) => {
+    select: (id: unknown) => {
       void focusFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },
-    open: (id: string) => {
+    open: (id: unknown) => {
       void openNodeIslandFromWalk(scene.controller, id, scope, (originated = true) => {
         sceneSelectionOriginatedRef.current = originated;
       }).catch(() => undefined);
     },
-    expand: (id: string) => expandWorkingSet(id),
+    expand: (id: unknown) => expandWorkingSet(id),
   };
 
   // Each working-set entry materializes its ego network on stage (G3.b). The

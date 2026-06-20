@@ -7,8 +7,14 @@ import { useCallback, useMemo } from "react";
 import { create } from "zustand";
 import type { EngineEdge } from "../server/engine";
 import { normalizeNodeId } from "../nodeIds";
+import {
+  normalizeDiscoveryEdge,
+  normalizeDiscoveryEdgeId,
+  normalizeDiscoveryEdges as normalizeDiscoveryEdgeList,
+  normalizePinnedDiscoveryEdges,
+} from "./discoveryEdges";
 import { nodeIdDisplayLabel } from "./nodeLabels";
-import { selectNode } from "./selection";
+import { normalizeSelectionScope, selectNode } from "./selection";
 import { PINNED_DISCOVERIES_CAP, useViewStore } from "./viewStore";
 
 interface DiscoveryPanelState {
@@ -18,15 +24,25 @@ interface DiscoveryPanelState {
   reset: () => void;
 }
 
+export function normalizeDiscoveryPanelTarget(nodeId: unknown): string | null {
+  return normalizeNodeId(nodeId);
+}
+
 export const useDiscoveryPanelStore = create<DiscoveryPanelState>((set) => ({
   openFor: null,
-  open: (nodeId) => set({ openFor: normalizeNodeId(nodeId) }),
+  open: (nodeId) =>
+    set((state) => {
+      const openFor = normalizeDiscoveryPanelTarget(nodeId);
+      return openFor === null || state.openFor === openFor ? state : { openFor };
+    }),
   close: () => set({ openFor: null }),
   reset: () => set({ openFor: null }),
 }));
 
 export function useDiscoveryPanelOpenFor(): string | null {
-  return useDiscoveryPanelStore((state) => normalizeNodeId(state.openFor));
+  return useDiscoveryPanelStore((state) =>
+    normalizeDiscoveryPanelTarget(state.openFor),
+  );
 }
 
 export function useDiscoveryPanelOpenView(): { id: string; label: string } | null {
@@ -46,69 +62,15 @@ export function resetDiscoveryPanel(): void {
   useDiscoveryPanelStore.getState().reset();
 }
 
-const DISCOVERY_EDGE_TIERS = new Set<EngineEdge["tier"]>([
-  "declared",
-  "structural",
-  "temporal",
-  "semantic",
-]);
-
-function normalizeDiscoveryEdgeId(id: unknown): string | null {
-  return typeof id === "string" && id.trim().length > 0 ? id.trim() : null;
-}
-
-function normalizeDiscoveryConfidence(confidence: unknown): number {
-  if (typeof confidence !== "number" || !Number.isFinite(confidence)) return 0;
-  return Math.min(1, Math.max(0, confidence));
-}
-
-function normalizeDiscoveryEdge(edge: unknown): EngineEdge | null {
-  if (!edge || typeof edge !== "object") return null;
-  const candidate = edge as Partial<EngineEdge>;
-  const id = normalizeDiscoveryEdgeId(candidate.id);
-  const src = normalizeNodeId(candidate.src);
-  const dst = normalizeNodeId(candidate.dst);
-  if (
-    id === null ||
-    src === null ||
-    dst === null ||
-    typeof candidate.relation !== "string" ||
-    !DISCOVERY_EDGE_TIERS.has(candidate.tier as EngineEdge["tier"])
-  ) {
-    return null;
-  }
-  return {
-    ...candidate,
-    id,
-    src,
-    dst,
-    relation: candidate.relation,
-    tier: candidate.tier as EngineEdge["tier"],
-    confidence: normalizeDiscoveryConfidence(candidate.confidence),
-  };
-}
-
 export function normalizeDiscoveryEdges(
   edges: readonly unknown[],
   limit = PINNED_DISCOVERIES_CAP,
 ): EngineEdge[] {
-  const normalized: EngineEdge[] = [];
-  const seen = new Set<string>();
-  for (const edge of edges) {
-    if (normalized.length >= limit) break;
-    const normalizedEdge = normalizeDiscoveryEdge(edge);
-    if (normalizedEdge === null || seen.has(normalizedEdge.id)) continue;
-    seen.add(normalizedEdge.id);
-    normalized.push(normalizedEdge);
-  }
-  return normalized;
+  return normalizeDiscoveryEdgeList(edges, limit);
 }
 
 export function normalizePinnedDiscoveries(edges: readonly unknown[]): EngineEdge[] {
-  return normalizeDiscoveryEdges(
-    [...edges].reverse(),
-    PINNED_DISCOVERIES_CAP,
-  ).reverse();
+  return normalizePinnedDiscoveryEdges(edges, PINNED_DISCOVERIES_CAP);
 }
 
 export function usePinnedDiscoveries(): EngineEdge[] {
@@ -158,15 +120,17 @@ export function unpinDiscoveryCandidate(edgeId: unknown): void {
 
 export function selectDiscoveryCandidate(
   nodeId: unknown,
-  scope: string | null = useViewStore.getState().scope,
+  scope: unknown = useViewStore.getState().scope,
 ): Promise<boolean> {
   const id = normalizeNodeId(nodeId);
-  return id === null ? Promise.resolve(false) : selectNode(id, scope);
+  const normalizedScope = normalizeSelectionScope(scope);
+  return id === null ? Promise.resolve(false) : selectNode(id, normalizedScope);
 }
 
-export function useDiscoveryCandidateSelection(scope: string | null) {
+export function useDiscoveryCandidateSelection(scope: unknown) {
+  const normalizedScope = normalizeSelectionScope(scope);
   return useCallback(
-    (nodeId: unknown) => selectDiscoveryCandidate(nodeId, scope),
-    [scope],
+    (nodeId: unknown) => selectDiscoveryCandidate(nodeId, normalizedScope),
+    [normalizedScope],
   );
 }

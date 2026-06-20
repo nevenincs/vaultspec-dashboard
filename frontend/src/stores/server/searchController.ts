@@ -24,21 +24,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { debounce } from "../../platform/timing";
+import type { SearchResultEntity } from "../../platform/actions/entity";
 import type {
   FiltersVocabulary,
   SearchResult,
   TiersBlock,
   VaultTreeEntry,
 } from "./engine";
-import { EngineError } from "./engine";
+import { EngineError, readTierAvailability } from "./engine";
 import { docNodeIdFromStem, isRagRunning, stemFromPath } from "./liveAdapters";
 import {
   engineKeys,
+  normalizeBackendSignalChannel,
   useBackendSignalStream,
   useEngineSearch,
   useFiltersVocabulary,
   useVaultTree,
+  normalizeSearchRequestIdentity,
+  type SearchRequestIdentity,
 } from "./queries";
+import { normalizeSearchQuery } from "../searchQuery";
 
 // --- node-id grammar (stores-owned, §2 identity) -----------------------------------
 //
@@ -70,9 +75,9 @@ export function pathToDocNodeId(path: string): string {
  */
 export function buildFallbackResults(
   entries: readonly VaultTreeEntry[] | undefined,
-  query: string,
+  query: unknown,
 ): SearchResult[] {
-  const needle = query.trim().toLowerCase();
+  const needle = normalizeSearchQuery(query).toLowerCase();
   if (!needle || !entries) return [];
   const results: SearchResult[] = [];
   for (const entry of entries) {
@@ -117,9 +122,7 @@ export function isSemanticOffline(
 ): boolean {
   const errorTiers = error instanceof EngineError ? error.tiers : undefined;
   const block = errorTiers ?? tiers;
-  if (!block) return false;
-  const semantic = block.semantic;
-  return semantic === undefined || semantic.available === false;
+  return block !== undefined && readTierAvailability(block, ["semantic"]).degraded;
 }
 
 /** True only for a genuine transport failure that carries NO tiers envelope —
@@ -134,9 +137,9 @@ export function isTransportError(error: unknown): boolean {
 //
 // The §7 `backends` stream reports each backend's lifecycle word. The search
 // controller now reads the SHARED backend-signal stream (backends + git, F-M1),
-// so the retained accumulator also carries `git` chunks; `ragWordOf` ignores any
-// chunk without a `rag` field (every git frame), so the latest rag-bearing frame
-// is still a `backends` `{ rag?: <lifecycle> }` frame; rag is available only when the word is exactly
+// so the retained accumulator also carries `git` chunks; `ragWordOf` first gates
+// on the normalized backend-signal channel, so only `backends` frames can report
+// a rag lifecycle word. Rag is available only when the word is exactly
 // "running", tested through the shared `isRagRunning` predicate (the one stores-
 // layer home `adaptStatus`/`deriveRagStatusView` also route through — no local
 // re-implementation to drift). We read the MOST-RECENT such frame BY VALUE rather
@@ -146,12 +149,20 @@ export function isTransportError(error: unknown): boolean {
 // recovered rag would stay pinned to the text-match fallback for the rest of the
 // session. A value-based read survives the ring cap unchanged.
 
+export function normalizeSearchRagLifecycleWord(word: unknown): string | undefined {
+  if (typeof word !== "string") return undefined;
+  const normalized = word.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 /** The rag lifecycle word from a single retained stream chunk, if it carries one. */
-function ragWordOf(chunk: { data: unknown }): string | undefined {
+function ragWordOf(chunk: { channel?: unknown; data: unknown }): string | undefined {
+  if (normalizeBackendSignalChannel(chunk.channel) !== "backends") {
+    return undefined;
+  }
   const data = chunk.data;
   if (data && typeof data === "object" && "rag" in data) {
-    const word = (data as { rag?: unknown }).rag;
-    if (typeof word === "string") return word;
+    return normalizeSearchRagLifecycleWord((data as { rag?: unknown }).rag);
   }
   return undefined;
 }
@@ -165,7 +176,7 @@ function ragWordOf(chunk: { data: unknown }): string | undefined {
  * "running" (the shared `isRagRunning` predicate).
  */
 export function latestBackendsRagAvailable(
-  chunks: readonly { data: unknown }[] | undefined,
+  chunks: readonly { channel?: unknown; data: unknown }[] | undefined,
 ): boolean | undefined {
   if (!chunks) return undefined;
   for (let i = chunks.length - 1; i >= 0; i--) {
@@ -222,6 +233,246 @@ export interface SearchControllerView {
   retry: () => void;
 }
 
+export interface SearchPresentationView {
+  /** Root class for the right-rail search surface. */
+  rootClassName: string;
+  /** Whether the query has non-whitespace content. */
+  hasQuery: boolean;
+  /** Render-ready result rows; empty when there are no results. */
+  resultRows: SearchResultRowView[];
+  /** Whether the result list should render. */
+  showResults: boolean;
+  /** Whether the loading designed state should render. */
+  showLoading: boolean;
+  /** Whether the semantic-offline designed state should render. */
+  showSemanticOffline: boolean;
+  /** Whether the transport-error designed state should render. */
+  showError: boolean;
+  /** The first selectable result row; -1 when every result is non-selectable. */
+  firstClickableIndex: number;
+  /** Whether the view should render its no-results designed state. */
+  noResults: boolean;
+  /** Empty unless the view should render the no-results copy. */
+  noResultsMessage: string;
+  /** Idle prompt for an empty query. */
+  idleMessage: string;
+  /** Loading prompt for an in-flight search with no held data. */
+  loadingMessage: string;
+  /** Semantic-tier degraded banner copy. */
+  semanticOfflineMessage: string;
+  /** Transport error banner title. */
+  errorTitle: string;
+  /** Transport error retry affordance label. */
+  retryLabel: string;
+  /** Search input placeholder copy. */
+  inputPlaceholder: string;
+  /** Search input accessible label. */
+  inputAriaLabel: string;
+  /** Target segmented-control accessible label. */
+  targetGroupAriaLabel: string;
+  /** Result list accessible label. */
+  resultsListAriaLabel: string;
+  /** Result-list receipt text for the ranked result block. */
+  resultSummaryLabel: string;
+  /** Polite live-region copy for the settled search outcome. */
+  liveMessage: string;
+  /** Target segmented-control row class. */
+  targetGroupClassName: string;
+  /** Idle-state class. */
+  idleClassName: string;
+  /** Loading-state class. */
+  loadingClassName: string;
+  /** Semantic-offline banner class. */
+  semanticOfflineClassName: string;
+  /** Semantic-offline icon wrapper class. */
+  semanticOfflineIconClassName: string;
+  /** Transport error container class. */
+  errorClassName: string;
+  /** Transport error title class. */
+  errorTitleClassName: string;
+  /** Transport error retry button class. */
+  retryButtonClassName: string;
+  /** No-results empty-state class. */
+  noResultsClassName: string;
+  /** Result count receipt class. */
+  resultCountClassName: string;
+  /** Result list class. */
+  resultsListClassName: string;
+}
+
+export interface SearchResultRowView {
+  result: SearchResult;
+  key: string;
+  nodeId: string | null;
+  species: SearchResultSpecies;
+  source: string;
+  buttonClassName: string;
+  excerptClassName: string;
+  scoreLabel: string;
+  scoreToneClass: string;
+  fallbackBadgeLabel: string | null;
+  selectable: boolean;
+  ariaLabel: string;
+  entity: SearchResultEntity;
+}
+
+export type SearchResultSpecies = "doc" | "code" | "commit" | "unknown";
+
+export function searchScoreLabel(score: number): string {
+  return `${Math.round(score * 100)}%`;
+}
+
+export function searchResultSpecies(nodeId: string | null): SearchResultSpecies {
+  if (nodeId === null) return "unknown";
+  if (nodeId.startsWith("commit:")) return "commit";
+  if (nodeId.startsWith("code:")) return "code";
+  if (nodeId.startsWith("doc:")) return "doc";
+  return "unknown";
+}
+
+export function deriveSearchResultRowView(
+  result: SearchResult,
+  index: number,
+  target: "vault" | "code",
+  scope: string | null,
+  fallback = false,
+): SearchResultRowView {
+  const nodeId = result.node_id;
+  const scoreLabel = searchScoreLabel(result.score);
+  const selectable = nodeId !== null;
+  return {
+    result,
+    key: nodeId ?? `${result.source}:${index}`,
+    nodeId,
+    species: searchResultSpecies(nodeId),
+    source: result.source,
+    buttonClassName: `w-full rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+      selectable
+        ? "hover:border-rule-strong hover:bg-paper-sunken"
+        : "cursor-default opacity-70"
+    }`,
+    excerptClassName: "mt-fg-0-5 block truncate text-ink-muted",
+    scoreLabel,
+    scoreToneClass: fallback ? "text-ink-faint" : "text-ink-muted",
+    fallbackBadgeLabel: fallback ? "text match" : null,
+    selectable,
+    ariaLabel: selectable
+      ? `${result.source}, relevance ${scoreLabel}`
+      : `${result.source}, relevance ${scoreLabel}, no graph node - not selectable`,
+    entity: {
+      kind: "search-result",
+      id: nodeId ?? result.source,
+      scope,
+      source: result.source,
+      nodeId: nodeId ?? undefined,
+      score: result.score,
+      isCode: target === "code",
+    },
+  };
+}
+
+export function deriveSearchResultRowViews(
+  results: readonly SearchResult[],
+  target: "vault" | "code",
+  scope: string | null,
+  fallback = false,
+): SearchResultRowView[] {
+  return results.map((result, index) =>
+    deriveSearchResultRowView(result, index, target, scope, fallback),
+  );
+}
+
+/**
+ * Presentation facts derived from the interpreted controller state. SearchTab is
+ * dumb chrome: it renders this view instead of recomputing result visibility,
+ * roving-tab entry, idle/no-results state, and live-region copy beside the
+ * controller.
+ */
+export function deriveSearchPresentationView(
+  query: unknown,
+  search: Pick<
+    SearchControllerView,
+    "state" | "results" | "semanticOffline" | "error"
+  > &
+    Partial<Pick<SearchControllerView, "noCodeFallback">>,
+  context: { target?: "vault" | "code"; scope?: string | null } = {},
+): SearchPresentationView {
+  const trimmedQuery = normalizeSearchQuery(query);
+  const hasQuery = trimmedQuery.length > 0;
+  const noCodeFallback = search.noCodeFallback ?? false;
+  const resultRows = deriveSearchResultRowViews(
+    search.results,
+    context.target ?? "vault",
+    context.scope ?? null,
+    search.semanticOffline,
+  );
+  const showResults = resultRows.length > 0;
+  const showLoading = search.state === "loading";
+  const showSemanticOffline = search.semanticOffline;
+  const showError = search.error;
+  const noResults = search.state === "no-results";
+  const noResultsMessage = noResults
+    ? `no matches for “${trimmedQuery}”. try broadening the query or switching target.`
+    : "";
+  const semanticOfflineMessage = search.semanticOffline
+    ? `semantic search offline — showing title and text matches${
+        noCodeFallback ? " (vault only; no code fallback available)" : ""
+      }`
+    : "";
+  const resultSummaryLabel = showResults
+    ? `${search.semanticOffline ? "Ranked by text match" : "Ranked by meaning"} · ${
+        resultRows.length
+      } result${resultRows.length === 1 ? "" : "s"}`
+    : "";
+  const liveMessage = search.error
+    ? "search request failed"
+    : search.semanticOffline
+      ? "semantic search offline — showing title and text matches"
+      : showResults
+        ? `${search.results.length} result${search.results.length === 1 ? "" : "s"}`
+        : noResults
+          ? "no results"
+          : "";
+  return {
+    rootClassName: "space-y-fg-2 text-body",
+    hasQuery,
+    resultRows,
+    showResults,
+    showLoading,
+    showSemanticOffline,
+    showError,
+    firstClickableIndex: resultRows.findIndex((row) => row.selectable),
+    noResults,
+    noResultsMessage,
+    idleMessage:
+      "search semantically across the vault and code. select a result to focus it on the stage.",
+    loadingMessage: "searching…",
+    semanticOfflineMessage,
+    errorTitle: "search request failed",
+    retryLabel: "try again",
+    inputPlaceholder: "Search documents and code…",
+    inputAriaLabel: "search query",
+    targetGroupAriaLabel: "search target",
+    resultsListAriaLabel: "search results",
+    resultSummaryLabel,
+    liveMessage,
+    targetGroupClassName: "flex gap-fg-1",
+    idleClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
+    loadingClassName: "animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint",
+    semanticOfflineClassName:
+      "flex items-start gap-fg-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-fg-2 py-fg-1 text-label text-ink-muted",
+    semanticOfflineIconClassName: "mt-px shrink-0 text-state-stale",
+    errorClassName:
+      "space-y-fg-1 rounded-fg-xs border border-state-broken/40 px-fg-2 py-fg-1",
+    errorTitleClassName: "text-label text-state-broken",
+    retryButtonClassName:
+      "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+    noResultsClassName: "px-fg-1 py-fg-2 text-label text-ink-faint",
+    resultCountClassName: "px-fg-1 text-caption text-ink-faint",
+    resultsListClassName: "space-y-fg-1",
+  };
+}
+
 /**
  * Interpret a search query's outcome into the controller view. Pure over the
  * inputs so the full state machine is unit-testable without a render: the tiers
@@ -235,6 +486,7 @@ export interface SearchControllerView {
 export function interpretSearch(input: {
   query: string;
   target: "vault" | "code";
+  enabled?: boolean;
   data: { results: SearchResult[]; tiers?: TiersBlock } | undefined;
   error: unknown;
   isPending: boolean;
@@ -246,6 +498,7 @@ export function interpretSearch(input: {
   const {
     query,
     target,
+    enabled = true,
     data,
     error,
     isPending,
@@ -259,8 +512,8 @@ export function interpretSearch(input: {
   const transportError = !semanticOffline && isTransportError(error);
   const hasQuery = query.trim().length > 0;
 
-  // Idle: empty query, no request (the disabled state).
-  if (!hasQuery) {
+  // Idle: empty query or scope-less controller, no request.
+  if (!enabled || !hasQuery) {
     return {
       state: "idle",
       results: [],
@@ -342,63 +595,87 @@ export function interpretSearch(input: {
  *  one query once typing settles. */
 export const SEARCH_DEBOUNCE_MS = 200;
 
+function sameSearchRequest(
+  a: SearchRequestIdentity,
+  b: SearchRequestIdentity,
+): boolean {
+  return a.query === b.query && a.target === b.target && a.scope === b.scope;
+}
+
 /**
  * The rag-search controller: the SINGLE interpreted search selector the view
  * consumes. It debounces the keystroke stream so the keyed query only issues on
  * the settled term; cancels/abandons the superseded query (TanStack keys by
- * `(target, query)`, so a stale key's in-flight request is abandoned and a slow
- * earlier response never overwrites a newer one); disables while the input is
- * empty; reuses the rail's already-cached vault tree for the text-match fallback
- * (no second fetch); and invalidates the search cache on a rag-health transition
- * over the §7 `backends` stream so a rag-came-back transition lets a previously
- * degraded query re-issue against the live semantic tier.
- *
- * Scope-change invalidation is structural: the cache key is `(target, query)` and
- * a new worktree is a new corpus reached under a new scope — the fallback tree the
- * controller reads is keyed by scope, so switching scope re-reads the live tree;
- * and the rag-health transition (below) re-issues the query. The view passes the
- * active scope so the fallback tree resolves the right corpus.
+ * `(scope, target, query)`, so a stale key's in-flight request is abandoned and a
+ * slow earlier response never overwrites a newer one); disables while the input is
+ * empty or scope-less; reuses the rail's already-cached vault tree for the
+ * text-match fallback (no second fetch); and invalidates the search cache on a
+ * rag-health transition over the §7 `backends` stream so a rag-came-back
+ * transition lets a previously degraded query re-issue against the live semantic
+ * tier. Scope is part of the key and request body because search results are
+ * corpus-specific.
  */
 export function useSearchController(
-  rawQuery: string,
-  target: "vault" | "code",
-  scope: string | null,
+  rawQuery: unknown,
+  target: unknown,
+  scope: unknown,
 ): SearchControllerView {
   const queryClient = useQueryClient();
+  const requestedSearch = useMemo(
+    () => normalizeSearchRequestIdentity(rawQuery, target, scope),
+    [rawQuery, target, scope],
+  );
 
   // Debounce the keystroke stream onto a settled term: the keyed query issues
   // only once typing pauses, so a fast typist does not fan out one request per
   // character. The superseded key's in-flight request is abandoned by TanStack
   // (it is no longer observed), so a slow earlier response never overwrites a
-  // newer one.
-  const [debouncedQuery, setDebouncedQuery] = useState(rawQuery);
+  // newer one. Scope + target are part of the settled request identity too, so a
+  // scope/target switch cannot fire the previous term against the new corpus.
+  const [settledSearch, setSettledSearch] =
+    useState<SearchRequestIdentity>(requestedSearch);
   const setDebounced = useMemo(
-    () => debounce((value: string) => setDebouncedQuery(value), SEARCH_DEBOUNCE_MS),
+    () =>
+      debounce(
+        (value: SearchRequestIdentity) => setSettledSearch(value),
+        SEARCH_DEBOUNCE_MS,
+      ),
     [],
   );
   useEffect(() => {
     // An empty query settles immediately (the idle state is not a request worth
     // waiting on); a non-empty term debounces.
-    if (rawQuery.trim().length === 0) {
+    if (requestedSearch.query.length === 0) {
       setDebounced.cancel();
-      setDebouncedQuery(rawQuery);
+      setSettledSearch(requestedSearch);
     } else {
-      setDebounced(rawQuery);
+      setDebounced(requestedSearch);
     }
-  }, [rawQuery, setDebounced]);
+  }, [requestedSearch, setDebounced]);
   useEffect(() => () => setDebounced.cancel(), [setDebounced]);
 
-  const semantic = useEngineSearch(debouncedQuery, target);
-  const semanticOffline = isSemanticOffline(semantic.error, semantic.data?.tiers);
+  const requestSettled = sameSearchRequest(settledSearch, requestedSearch);
+  const activeSearch = requestSettled ? settledSearch : requestedSearch;
+  const activeScope = requestSettled ? settledSearch.scope : null;
+  const semantic = useEngineSearch(
+    activeScope,
+    activeSearch.query,
+    activeSearch.target,
+  );
+  const semanticData = requestSettled ? semantic.data : undefined;
+  const semanticError = requestSettled ? semantic.error : undefined;
+  const semanticOffline = isSemanticOffline(semanticError, semanticData?.tiers);
 
   // The fallback reuses the rail's already-cached vault tree; fetch it only when
   // the tiers gate says rag is down (no speculative fetch when search is live).
-  const tree = useVaultTree(semanticOffline ? scope : null);
+  const tree = useVaultTree(semanticOffline && requestSettled ? activeScope : null);
 
   // The filter vocabulary forwarded intact (search ADR "Filter vocabulary"):
   // rag's own vocabulary surfaced as the data-driven legal facet set, scoped to
-  // the active worktree. The controller carries it; it does not author it.
-  const filters = useFiltersVocabulary(scope);
+  // the active search worktree. It follows the settled search identity so the
+  // interpreted controller view cannot mix held results/fallback from one scope
+  // with vocabulary from a newer, still-debouncing scope.
+  const filters = useFiltersVocabulary(activeScope);
 
   // Rag-health invalidation (search ADR "Caching and invalidation"): a rag-came-
   // back transition over the §7 `backends` stream must let a previously degraded
@@ -439,14 +716,16 @@ export function useSearchController(
   const retry = useMemo(() => () => void semantic.refetch(), [semantic]);
 
   return interpretSearch({
-    query: debouncedQuery,
-    target,
-    data: semantic.data,
-    error: semantic.error,
-    isPending: debouncedQuery.length > 0 && semantic.isPending,
-    fallbackEntries: tree.data?.entries,
-    fallbackPending: tree.isPending,
-    filterVocabulary: filters.data,
+    query: activeSearch.query,
+    target: activeSearch.target,
+    enabled: requestedSearch.scope !== null,
+    data: semanticData,
+    error: semanticError,
+    isPending:
+      activeSearch.query.trim().length > 0 && (!requestSettled || semantic.isPending),
+    fallbackEntries: requestSettled ? tree.data?.entries : undefined,
+    fallbackPending: requestSettled && tree.isPending,
+    filterVocabulary: requestSettled ? filters.data : undefined,
     retry,
   });
 }

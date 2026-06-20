@@ -41,8 +41,6 @@ export { Popover } from "./Popover";
 export type { PopoverProps } from "./Popover";
 export { ListRow } from "./ListRow";
 export type { ListRowProps } from "./ListRow";
-export { DocRow } from "./DocRow";
-export type { DocRowProps } from "./DocRow";
 export { SectionLabel } from "./SectionLabel";
 export type { SectionLabelProps } from "./SectionLabel";
 export { Divider } from "./Divider";
@@ -51,18 +49,12 @@ export { ProgressBar } from "./ProgressBar";
 export type { ProgressBarProps } from "./ProgressBar";
 export { Kbd } from "./Kbd";
 export type { KbdProps } from "./Kbd";
-export { Tooltip } from "./Tooltip";
-export type { TooltipProps, TooltipSide } from "./Tooltip";
 export { Breadcrumb } from "./Breadcrumb";
 export type { BreadcrumbProps, BreadcrumbItem } from "./Breadcrumb";
-export { TreeRow } from "./TreeRow";
-export type { TreeRowProps, TreeRowState } from "./TreeRow";
 export { PropertyRow } from "./PropertyRow";
 export type { PropertyRowProps } from "./PropertyRow";
 export { FoldSection } from "./FoldSection";
 export type { FoldSectionProps } from "./FoldSection";
-export { CodeBlock } from "./CodeBlock";
-export type { CodeBlockProps } from "./CodeBlock";
 
 // Shared category vocabulary (Chip / StatusDot color mapping)
 export { categoryToken, categoryColorVar } from "./category";

@@ -12,35 +12,12 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { nodeCategory } from "../../scene/field/categoryColor";
 import type { EngineNode } from "../../stores/server/engine";
-import { nodeStatusFromWire } from "../../scene/field/statusStamp";
-import { deriveTypeContent } from "./hoverCardContent";
-import { HoverCard, type StatusCardModel } from "./HoverCard";
+import { statusCardModelFromNode } from "../../stores/view/statusCard";
+import { StatusHoverCard } from "./HoverCard";
 
 function n(partial: Partial<EngineNode> & Pick<EngineNode, "id" | "kind">): EngineNode {
   return { title: partial.id, ...partial };
-}
-
-// The typed prototype card's projection (the prototype LOD rung). The live
-// canvas hover path now renders the binding evidence-driven `menus/HoverCard`
-// (see HoverCardLayer); this local projection keeps the typed prototype card's
-// per-type content plane covered, sourced PURELY from the wire.
-function cardModelFromNode(node: EngineNode): StatusCardModel {
-  const progress = node.lifecycle?.progress;
-  return {
-    id: node.id,
-    kind: node.kind,
-    title: node.title ?? node.id,
-    status: nodeStatusFromWire(node.status_value, node.status_class),
-    authorityClass: node.authority_class,
-    progress:
-      progress && progress.total > 0
-        ? { done: progress.done, total: progress.total }
-        : undefined,
-    category: nodeCategory(node.kind),
-    typeContent: deriveTypeContent(node),
-  };
 }
 
 afterEach(cleanup);
@@ -48,8 +25,8 @@ afterEach(cleanup);
 describe("HoverCard — typed content per document type", () => {
   it("plan: renders tier + step counts in the plan content block", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(
+      <StatusHoverCard
+        model={statusCardModelFromNode(
           n({
             id: "doc:plan",
             kind: "plan",
@@ -70,8 +47,8 @@ describe("HoverCard — typed content per document type", () => {
 
   it("adr: renders the reference-degree line (the references proxy)", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(
+      <StatusHoverCard
+        model={statusCardModelFromNode(
           n({
             id: "doc:adr",
             kind: "adr",
@@ -93,8 +70,8 @@ describe("HoverCard — typed content per document type", () => {
 
   it("research: renders the relative-date line, no fabricated findings", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(
+      <StatusHoverCard
+        model={statusCardModelFromNode(
           n({
             id: "doc:r",
             kind: "research",
@@ -113,8 +90,8 @@ describe("HoverCard — typed content per document type", () => {
 
   it("audit: surfaces the graded severity (wire's nearest verdict)", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(
+      <StatusHoverCard
+        model={statusCardModelFromNode(
           n({
             id: "doc:au",
             kind: "audit",
@@ -132,8 +109,8 @@ describe("HoverCard — typed content per document type", () => {
 
   it("feature/index: renders a document-count line from member_count", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(
+      <StatusHoverCard
+        model={statusCardModelFromNode(
           n({ id: "feature:x", kind: "feature", title: "Topic", member_count: 5 }),
         )}
       />,
@@ -145,8 +122,8 @@ describe("HoverCard — typed content per document type", () => {
 
   it("code: renders path + language", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(
+      <StatusHoverCard
+        model={statusCardModelFromNode(
           n({ id: "code:src/app/x.tsx", kind: "code", title: "x" }),
         )}
       />,
@@ -160,8 +137,8 @@ describe("HoverCard — typed content per document type", () => {
 describe("HoverCard — category accent + type identity", () => {
   it("stamps the resolved category on the card and reads the category token", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(n({ id: "doc:plan", kind: "plan", title: "P" }))}
+      <StatusHoverCard
+        model={statusCardModelFromNode(n({ id: "doc:plan", kind: "plan", title: "P" }))}
       />,
     );
     const card = document.querySelector("[data-hover-card]");
@@ -172,8 +149,10 @@ describe("HoverCard — category accent + type identity", () => {
 
   it("folds reference→research and rule→adr category, code as the unknown fallback", () => {
     render(
-      <HoverCard
-        model={cardModelFromNode(n({ id: "doc:ref", kind: "reference", title: "Ref" }))}
+      <StatusHoverCard
+        model={statusCardModelFromNode(
+          n({ id: "doc:ref", kind: "reference", title: "Ref" }),
+        )}
       />,
     );
     expect(
@@ -191,8 +170,8 @@ describe("HoverCard — theme parity (per-theme :root token)", () => {
     for (const theme of ["light", "dark", "high-contrast"]) {
       document.documentElement.setAttribute("data-theme", theme);
       const { unmount } = render(
-        <HoverCard
-          model={cardModelFromNode(n({ id: "doc:a", kind: "adr", title: "A" }))}
+        <StatusHoverCard
+          model={statusCardModelFromNode(n({ id: "doc:a", kind: "adr", title: "A" }))}
         />,
       );
       const strip = document.querySelector(

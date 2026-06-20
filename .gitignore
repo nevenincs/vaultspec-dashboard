@@ -102,6 +102,8 @@ tmp-ref/
 
 # Playwright MCP artifacts
 .playwright-mcp/
+.playwright-cli/
+frontend/.playwright-cli/
 
 # Rust engine workspace
 engine/target/
@@ -118,8 +120,9 @@ frontend/test-results/
 /*.png
 *_proof*.png
 .qdrant-initialized
-storybook-static/
 playwright-report/
+# figma-visual-parity skill output (scoped, reclaimable comparison artifacts)
+output/visual-compare/
 
 # >>> vaultspec-managed (do not edit this block) >>>
 .vault/.obsidian/

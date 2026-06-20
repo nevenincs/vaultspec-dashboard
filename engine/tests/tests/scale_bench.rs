@@ -65,9 +65,6 @@ fn graph_query_scale_and_concurrency() {
 
     let dir = tempfile::tempdir().unwrap();
     generate_corpus(dir.path(), docs, features);
-    // The distinct `src/module_*.rs` files the corpus mints (mirrors
-    // `generate_corpus`) — the count of code-artifact nodes expected after index.
-    let modules = (docs / 20).max(1);
     let store = engine_store::Store::open_at(&dir.path().join("scale.sqlite3")).unwrap();
     let scope = ScopeRef::Worktree {
         path: dir.path().to_string_lossy().replace('\\', "/"),
@@ -78,22 +75,16 @@ fn graph_query_scale_and_concurrency() {
         engine_graph::index::index_worktree(dir.path(), &scope, &store, 0).unwrap();
     let index_ms = t.elapsed().as_millis();
 
-    // Cold-index code-node profile (code-artifact-nodes ADR D5/D6, W05.P14.S64):
-    // the corpus generates `modules` distinct `src/module_*.rs` files, each a
-    // RESOLVED Path mention deduplicated across its mentioning docs. Minting is a
-    // cheap idempotent `upsert_node` per resolved Path/Symbol mention in the
-    // existing serial Pass 2 — bounded by the (already-resolved) mention count,
-    // so it adds NO super-linear term and leaves the linear cold-index profile
-    // intact. The printed `index={}ms` against the rising `code_nodes` count is
-    // the evidence (no wall-clock ceiling — benches are `#[ignore]`d, not gated).
+    // Source-path prose remains in the generated documents to preserve the
+    // workload shape, but structural indexing no longer turns those references
+    // into graph code nodes.
     let code_nodes = graph
         .nodes()
         .filter(|n| n.kind == NodeKind::CodeArtifact)
         .count();
     assert_eq!(
-        code_nodes, modules,
-        "the {modules} distinct resolved module paths each mint exactly one \
-         deduplicated code node (idempotent upsert by id)"
+        code_nodes, 0,
+        "vault document mentions of source paths must not mint graph code nodes"
     );
 
     let graph = Arc::new(graph);
@@ -167,9 +158,7 @@ fn graph_query_scale_and_concurrency() {
                         &sc,
                         Filter::default(),
                         Granularity::Document,
-                        &views.0,
-                        &views.1,
-                        &views.2,
+                        views,
                     )
                     .unwrap();
                     let _ = serde_json::to_vec(&slice).unwrap();

@@ -16,15 +16,20 @@
 import { useEffect } from "react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
-import { fireActionDescriptor, isRunnable } from "../../platform/actions/action";
+import {
+  fireActionDescriptor,
+  isRunnable,
+  normalizeActionDescriptor,
+} from "../../platform/actions/action";
 import { type ChordEvent, defaultIsMac, parseChord } from "../../platform/keymap/chord";
 import {
   type BindingContext,
   type KeybindingDef,
   type KeybindingOverrides,
-  SURFACE_CONTEXTS,
   effectiveChord,
   listKeybindings,
+  normalizeBindingContext,
+  normalizeKeybindingId,
   resolveKeybinding,
 } from "../../platform/keymap/registry";
 
@@ -35,22 +40,29 @@ import {
 // alongside their bindings during enrollment; until then resolution returns null
 // and the inert dispatcher fires nothing.
 
-const keyActions = new Map<string, () => ActionDescriptor | null>();
+const keyActions = new Map<string, () => unknown>();
 
 /** Register the live-descriptor resolver for an action id; returns a disposer. */
-export function registerKeyAction(
-  id: string,
-  resolver: () => ActionDescriptor | null,
-): () => void {
-  keyActions.set(id, resolver);
+export function registerKeyAction(id: unknown, resolver: unknown): () => void {
+  const normalizedId = normalizeKeybindingId(id);
+  if (normalizedId === null || typeof resolver !== "function") {
+    return () => undefined;
+  }
+  const normalizedResolver = resolver as () => unknown;
+  keyActions.set(normalizedId, normalizedResolver);
   return () => {
-    if (keyActions.get(id) === resolver) keyActions.delete(id);
+    if (keyActions.get(normalizedId) === normalizedResolver) {
+      keyActions.delete(normalizedId);
+    }
   };
 }
 
 /** Resolve an action id to its live descriptor, or null when none is registered. */
-export function resolveKeyAction(id: string): ActionDescriptor | null {
-  return keyActions.get(id)?.() ?? null;
+export function resolveKeyAction(id: unknown): ActionDescriptor | null {
+  const normalizedId = normalizeKeybindingId(id);
+  return normalizedId === null
+    ? null
+    : normalizeActionDescriptor(keyActions.get(normalizedId)?.());
 }
 
 /** Test-only: drop all registered action resolvers. */
@@ -76,11 +88,20 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
  * internals.
  */
 export function activeContextsFromElement(el: Element | null): Set<BindingContext> {
-  const set = new Set<BindingContext>(["global"]);
+  const set = normalizeActiveKeymapContexts([]);
   const host = el?.closest?.("[data-keymap-context]") ?? null;
-  const ctx = host?.getAttribute("data-keymap-context") ?? null;
-  if (ctx !== null && (SURFACE_CONTEXTS as readonly string[]).includes(ctx)) {
-    set.add(ctx as BindingContext);
+  const ctx = normalizeBindingContext(host?.getAttribute("data-keymap-context"));
+  if (ctx !== null) set.add(ctx);
+  return set;
+}
+
+export function normalizeActiveKeymapContexts(
+  contexts: Iterable<unknown>,
+): Set<BindingContext> {
+  const set = new Set<BindingContext>(["global"]);
+  for (const context of contexts) {
+    const normalized = normalizeBindingContext(context);
+    if (normalized !== null) set.add(normalized);
   }
   return set;
 }
@@ -96,10 +117,10 @@ export function fireKeyAction(action: ActionDescriptor): void {
 export interface KeymapDeps {
   getDefs: () => readonly KeybindingDef[];
   getOverrides: () => KeybindingOverrides;
-  getActiveContexts: () => ReadonlySet<BindingContext>;
+  getActiveContexts: () => Iterable<unknown>;
   isTextEntry: (target: EventTarget | null) => boolean;
   isTimeTravel: () => boolean;
-  resolveAction: (id: string) => ActionDescriptor | null;
+  resolveAction: (id: unknown) => unknown;
   fire: (action: ActionDescriptor) => void;
   isMac?: boolean;
 }
@@ -123,7 +144,7 @@ export function handleKeymapEvent(
   const def = resolveKeybinding(
     deps.getDefs(),
     deps.getOverrides(),
-    deps.getActiveContexts(),
+    normalizeActiveKeymapContexts(deps.getActiveContexts()),
     event,
     deps.isMac,
   );
@@ -142,7 +163,7 @@ export function handleKeymapEvent(
     if (!modified) return false;
   }
 
-  const action = deps.resolveAction(def.id);
+  const action = normalizeActionDescriptor(deps.resolveAction(def.id));
   if (action === null || !isRunnable(action)) return false;
   if (deps.isTimeTravel() && action.disabledInTimeTravel === true) return false;
 

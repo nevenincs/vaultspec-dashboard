@@ -17,8 +17,10 @@ const STATUS_SECTION_IDS = [
   "recent-commits",
 ] as const satisfies readonly StatusSectionId[];
 const STATUS_SECTION_ID_SET = new Set<string>(STATUS_SECTION_IDS);
+const DEFAULT_STATUS_SECTION_ID: StatusSectionId = "open-plans";
 
 export const OPEN_RECENT_COMMIT_HASHES_CAP = 64;
+export const RECENT_COMMIT_HASH_MAX_CHARS = 128;
 export const RECENT_COMMITS_LIMIT_CAP = 200;
 export const STATUS_SECTION_TWISTY_PX = 10;
 
@@ -53,14 +55,22 @@ function boundedPositiveCount(value: unknown, fallback: unknown): number {
   return Math.min(RECENT_COMMITS_LIMIT_CAP, Math.max(1, positive));
 }
 
-function normalizeStatusSectionId(id: unknown): StatusSectionId | null {
+export function normalizeStatusSectionId(id: unknown): StatusSectionId | null {
   return typeof id === "string" && STATUS_SECTION_ID_SET.has(id)
     ? (id as StatusSectionId)
     : null;
 }
 
+export function normalizeStatusSectionOpen(open: unknown): boolean {
+  return typeof open === "boolean" ? open : false;
+}
+
 function normalizeRecentCommitHash(hash: unknown): string | null {
-  return typeof hash === "string" && hash.trim().length > 0 ? hash.trim() : null;
+  if (typeof hash !== "string") return null;
+  const normalized = hash.trim();
+  return normalized.length > 0 && normalized.length <= RECENT_COMMIT_HASH_MAX_CHARS
+    ? normalized
+    : null;
 }
 
 function cappedOpenRecentCommitHashes(hashes: unknown): string[] {
@@ -84,8 +94,7 @@ export const useStatusTabChromeStore = create<StatusTabChromeState>((set) => ({
     set((state) => {
       const sectionId = normalizeStatusSectionId(id);
       if (sectionId === null) return state;
-      const open =
-        state.sections[sectionId] ?? (typeof defaultOpen === "boolean" && defaultOpen);
+      const open = state.sections[sectionId] ?? normalizeStatusSectionOpen(defaultOpen);
       return { sections: { ...state.sections, [sectionId]: !open } };
     }),
   toggleRecentCommit: (hash) =>
@@ -118,11 +127,12 @@ export const useStatusTabChromeStore = create<StatusTabChromeState>((set) => ({
   reset: () => set(RESET_STATE),
 }));
 
-export function useStatusSectionOpen(
-  id: StatusSectionId,
-  defaultOpen: boolean,
-): boolean {
-  return useStatusTabChromeStore((state) => state.sections[id] ?? defaultOpen);
+export function useStatusSectionOpen(id: unknown, defaultOpen: unknown): boolean {
+  const sectionId = normalizeStatusSectionId(id);
+  const fallbackOpen = normalizeStatusSectionOpen(defaultOpen);
+  return useStatusTabChromeStore((state) =>
+    sectionId === null ? fallbackOpen : (state.sections[sectionId] ?? fallbackOpen),
+  );
 }
 
 // Status sections now render through the centralized `FoldSection` kit primitive
@@ -142,15 +152,16 @@ const STATUS_SECTION_HEADER_CLASS =
 const STATUS_SECTION_BODY_CLASS = "px-fg-1 pb-fg-2 pt-fg-0-5";
 
 export function deriveStatusSectionChromeView(
-  id: StatusSectionId,
-  open: boolean,
+  id: unknown,
+  open: unknown,
 ): StatusSectionChromeView {
+  const sectionId = normalizeStatusSectionId(id) ?? DEFAULT_STATUS_SECTION_ID;
   return {
-    bodyId: `status-section-${id}`,
+    bodyId: `status-section-${sectionId}`,
     twistyPx: STATUS_SECTION_TWISTY_PX,
     headerClassName: STATUS_SECTION_HEADER_CLASS,
     bodyClassName: STATUS_SECTION_BODY_CLASS,
-    bodyVisible: open,
+    bodyVisible: normalizeStatusSectionOpen(open),
   };
 }
 
@@ -160,9 +171,9 @@ export interface RecentCommitsChromeView {
 }
 
 export function deriveRecentCommitsChromeView(
-  recentCommitsLimit: number | null,
+  recentCommitsLimit: unknown,
   openRecentCommitHashes: unknown,
-  defaultLimit: number,
+  defaultLimit: unknown,
 ): RecentCommitsChromeView {
   return {
     limit: boundedPositiveCount(recentCommitsLimit ?? defaultLimit, defaultLimit),
@@ -201,11 +212,12 @@ const RECENT_COMMIT_AGE_CLASS = "shrink-0 text-meta text-ink-faint";
 
 export function deriveRecentCommitChromeRows<T extends RecentCommitChromeInputRow>(
   rows: readonly T[],
-  openHashes: readonly string[],
+  openHashes: unknown,
 ): RecentCommitChromeRowView<T>[] {
-  const open = new Set(openHashes);
+  const open = new Set(cappedOpenRecentCommitHashes(openHashes));
   return rows.map((row) => {
-    const expanded = open.has(row.commit.hash);
+    const rowHash = normalizeRecentCommitHash(row.commit.hash);
+    const expanded = rowHash !== null && open.has(rowHash);
     return {
       row,
       expanded,
@@ -223,7 +235,7 @@ export function deriveRecentCommitChromeRows<T extends RecentCommitChromeInputRo
   });
 }
 
-export function useRecentCommitsChrome(defaultLimit: number): RecentCommitsChromeView {
+export function useRecentCommitsChrome(defaultLimit: unknown): RecentCommitsChromeView {
   // Select RAW, stable store fields and derive the view in a useMemo — NOT inside
   // the zustand selector. deriveRecentCommitsChromeView re-caps openHashes into a
   // FRESH array, so calling it inside the selector returns a new reference on every

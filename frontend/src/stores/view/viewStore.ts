@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import type { EngineEdge } from "../server/engine";
+import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { resetLiveStatus } from "../server/liveStatus";
 import { resetBrowserMode } from "./browserMode";
 import { resetBrowserTreeExpansion } from "./browserTreeExpansion";
@@ -8,19 +9,29 @@ import { resetCodeViewerScroll } from "./codeViewer";
 import { resetCommandPalette } from "./commandPalette";
 import { resetContextMenu } from "./contextMenu";
 import { resetCreateDocChrome } from "./createDocChrome";
+import { normalizeDiscoveryEdge, normalizeDiscoveryEdgeId } from "./discoveryEdges";
 import { resetDiscoveryPanel } from "./discoveries";
 import { resetFilterSidebar } from "./filterSidebar";
 import { resetGraphControlsChrome } from "./graphControlsChrome";
 import { resetInspectorExpansion } from "./inspectorExpansion";
+import { resetIslandAnchors } from "./islandAnchors";
+import { resetKeyActions } from "./keymapDispatcher";
 import { resetKeyboardShortcuts } from "./keyboardShortcuts";
 import { useLensStore } from "./lenses";
 import { resetMinimapChrome } from "./minimapChrome";
 import { usePinStore } from "./pins";
 import { resetPipelineExpansion } from "./pipelineExpansion";
 import { resetSearchIntent } from "./searchIntent";
+import { resetSettingsKeybindingRecorder } from "./settingsControls";
 import { resetStatusTabChrome } from "./statusTabChrome";
 import { resetTimelineViewState } from "./timeline";
 import { resetWorktreePickerChrome } from "./worktreePickerChrome";
+import {
+  normalizeViewStoreSessionString as normalizeViewStoreSessionStringIdentity,
+  normalizeViewStoreSessionStringList as normalizeViewStoreSessionStringListIdentity,
+  SCOPE_ID_MAX_CHARS as SCOPE_ID_MAX_CHARS_IDENTITY,
+  VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS as VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS_IDENTITY,
+} from "./scopeIdentity";
 
 // View state for local chrome and session-only affordances. Cross-surface
 // dashboard intent lives in backend dashboard-state and is read through TanStack
@@ -83,6 +94,10 @@ export interface EditorTarget {
   nodeId: string;
 }
 
+export function normalizeEditorTextValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 /** Local non-node selection metadata. Node selection lives in dashboard-state. */
 export type Selection =
   | { kind: "edge"; id: string }
@@ -106,12 +121,34 @@ export const DEFAULT_GRAPH_OVERLAYS: GraphOverlayState = {
   featureHulls: true,
 };
 
-function graphOverlays(overlays: GraphOverlayState): GraphOverlayState {
+export type GraphOverlayInput = Partial<Record<keyof GraphOverlayState, unknown>>;
+
+function graphOverlayInputRecord(value: unknown): GraphOverlayInput | null {
+  return value !== null && typeof value === "object"
+    ? (value as GraphOverlayInput)
+    : null;
+}
+
+export function normalizeGraphOverlays(overlays: unknown): GraphOverlayState {
+  const record = graphOverlayInputRecord(overlays);
   return {
-    featureCountries: overlays.featureCountries,
-    featureHulls: overlays.featureHulls,
+    featureCountries:
+      typeof record?.featureCountries === "boolean"
+        ? record.featureCountries
+        : DEFAULT_GRAPH_OVERLAYS.featureCountries,
+    featureHulls:
+      typeof record?.featureHulls === "boolean"
+        ? record.featureHulls
+        : DEFAULT_GRAPH_OVERLAYS.featureHulls,
   };
 }
+
+export const normalizeViewStoreSessionString = normalizeViewStoreSessionStringIdentity;
+export const normalizeViewStoreSessionStringList =
+  normalizeViewStoreSessionStringListIdentity;
+export const SCOPE_ID_MAX_CHARS = SCOPE_ID_MAX_CHARS_IDENTITY;
+export const VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS =
+  VIEW_STORE_SESSION_STRING_LIST_MAX_ITEMS_IDENTITY;
 
 export interface ViewState {
   /**
@@ -207,7 +244,7 @@ export interface ViewState {
   overlays: GraphOverlayState;
 
   /** Switch the worktree scope — swaps the stage's scope wholesale. */
-  setScope: (scope: string | null) => void;
+  setScope: (scope: unknown) => void;
   /**
    * Switch the WORKSPACE — the coarsest swap (dashboard-workspace-registry ADR).
    * Performs the FULL 022 wholesale reset (every piece of per-scope state)
@@ -221,7 +258,7 @@ export interface ViewState {
    * workspace-level wholesale reset the ADR requires. The control owns no reset
    * logic; it invokes this, exactly as the worktree switcher invokes setScope.
    */
-  swapWorkspace: (workspace: string, scope: string | null) => void;
+  swapWorkspace: (workspace: unknown, scope: unknown) => void;
   /**
    * Seed the scope + folder context from the restored session (W04.P09.S30).
    * Used by the stores-layer restore hook on session load: it mirrors the
@@ -230,10 +267,10 @@ export interface ViewState {
    * persistence is the session API's job, not this setter's.
    */
   seedFromSession: (context: {
-    workspace: string;
-    scope: string | null;
-    folder: string | null;
-    featureTags: string[];
+    workspace: unknown;
+    scope: unknown;
+    folder: unknown;
+    featureTags: unknown;
     /** The restored dock workspace tabs (editor-dock-workspace), parsed from the
      *  durable session `workspace_layout`. Seeded ATOMICALLY with the scope/folder
      *  here — the one-shot session seed — so the tab restore cannot race the scope
@@ -249,15 +286,19 @@ export interface ViewState {
    * through the session API at the call site (a stores mutation), never
    * localStorage.
    */
-  setScopeContext: (context: { folder: string | null; featureTags: string[] }) => void;
+  setScopeContext: (context: { folder: unknown; featureTags: unknown }) => void;
+  mirrorSessionScopeContext: (context: {
+    folder: unknown;
+    featureTags: unknown;
+  }) => void;
   /** Select event/edge metadata that is not just a node id. */
   selectEntity: (selection: Selection) => void;
   /** Set the transient hovered node id (view-local; never persisted to the wire). */
-  setHovered: (id: string | null) => void;
+  setHovered: (id: unknown) => void;
   /** Set the hover id that survived the card dwell gate. */
-  setDwelledHover: (id: string | null) => void;
-  openNode: (id: string) => void;
-  closeNode: (id: string) => void;
+  setDwelledHover: (id: unknown) => void;
+  openNode: (id: unknown) => void;
+  closeNode: (id: unknown) => void;
   /**
    * Open a document tab (editor-dock-workspace). `permanent: false` (default, a
    * single-click/preview) opens or replaces the single provisional tab IN PLACE;
@@ -266,17 +307,17 @@ export interface ViewState {
    * already-open doc activates it (and promotes it when `permanent`). Bounded:
    * adding beyond `MAX_OPEN_DOCS` evicts the oldest non-active permanent tab.
    */
-  openDoc: (nodeId: string, surface: ViewerSurface, permanent?: boolean) => void;
+  openDoc: (nodeId: unknown, surface: unknown, permanent?: unknown) => void;
   /** Promote the provisional tab (or a given doc) to permanent (clears its
    *  `provisional` flag) — on double-click, first edit, or a tab drag. */
-  promoteDoc: (nodeId: string) => void;
+  promoteDoc: (nodeId: unknown) => void;
   /** Make a tab the active one (a tab click or a dockview activation). */
-  activateDoc: (nodeId: string) => void;
+  activateDoc: (nodeId: unknown) => void;
   /** Close a tab; if it was active, activate its nearest neighbour. */
-  closeDoc: (nodeId: string) => void;
+  closeDoc: (nodeId: unknown) => void;
   /** Reorder the open docs to match dockview's geometry (after a tab drag),
    *  reconciling by id; unknown ids are dropped and missing ones preserved. */
-  reorderDocs: (orderedIds: string[]) => void;
+  reorderDocs: (orderedIds: unknown) => void;
   /**
    * Open a document for editing (document-editor backend): seed the editor with
    * the target node id, the just-read body text as the initial draft, and that
@@ -284,16 +325,16 @@ export interface ViewState {
    * (the draft equals the saved text). Replaces any prior open editor (one doc at
    * a time, bounded-by-default).
    */
-  openEditor: (nodeId: string, text: string, baseBlobHash: string) => void;
+  openEditor: (nodeId: unknown, text: unknown, baseBlobHash: unknown) => void;
   /** Update the draft body; marks the editor `dirty` (the draft diverges from the
    *  saved text). A no-op write (same text) is short-circuited so an idle keypress
    *  stream does not churn subscribers. */
-  setDraft: (text: string) => void;
+  setDraft: (text: unknown) => void;
   /** Mark a save in flight (status → `saving`). */
   markSaving: () => void;
   /** Mark a save landed (status → `saved`): adopt the new `blob_hash` as the next
    *  concurrency base so a subsequent edit saves against the fresh blob. */
-  markSaved: (blobHash: string) => void;
+  markSaved: (blobHash: unknown) => void;
   /** Mark a blob-hash conflict (status → `conflict`): the optimistic base went
    *  stale (someone else wrote). The draft is retained for the reconcile UI. */
   markConflict: () => void;
@@ -304,7 +345,7 @@ export interface ViewState {
    *  `idle`) — the same single-value clear a scope swap performs. */
   closeEditor: () => void;
   pinDiscovery: (edge: EngineEdge) => void;
-  unpinDiscovery: (edgeId: string) => void;
+  unpinDiscovery: (edgeId: unknown) => void;
   /**
    * Reconcile view-local node affordances against the currently held graph model.
    * These ids are visual subscriptions, not durable truth: when the canonical graph
@@ -313,11 +354,11 @@ export interface ViewState {
    * observers.
    */
   pruneNodeAffordances: (nodeIds: readonly string[]) => void;
-  addToWorkingSet: (id: string) => void;
-  removeFromWorkingSet: (id: string) => void;
+  addToWorkingSet: (id: unknown) => void;
+  removeFromWorkingSet: (id: unknown) => void;
   clearWorkingSet: () => void;
   /** Set overlay visibility (feature countries, feature hulls). */
-  setOverlays: (overlays: GraphOverlayState) => void;
+  setOverlays: (overlays: unknown) => void;
 
   /** Whether the entire left rail bar is mounted in the shell layout. */
   leftRailVisible: boolean;
@@ -331,12 +372,12 @@ export interface ViewState {
   timelineHeight: number;
   /** Whether the shell panel-controls flyout is open. */
   panelFlyoutOpen: boolean;
-  setLeftRailVisible: (visible: boolean) => void;
-  setLeftRailWidth: (width: number) => void;
-  setRightRailWidth: (width: number) => void;
-  setTimelineVisible: (visible: boolean) => void;
-  setTimelineHeight: (height: number) => void;
-  setPanelFlyoutOpen: (open: boolean) => void;
+  setLeftRailVisible: (visible: unknown) => void;
+  setLeftRailWidth: (width: unknown) => void;
+  setRightRailWidth: (width: unknown) => void;
+  setTimelineVisible: (visible: unknown) => void;
+  setTimelineHeight: (height: unknown) => void;
+  setPanelFlyoutOpen: (open: unknown) => void;
   togglePanelFlyout: () => void;
   /** Restore the view-local shell layout (rail widths, timeline height, rail and
    *  timeline visibility) to their defaults. The collapse + active-tab state lives
@@ -378,8 +419,60 @@ export const TIMELINE_MIN_HEIGHT = 120;
 export const TIMELINE_MAX_HEIGHT = 360;
 export const TIMELINE_DEFAULT_HEIGHT = 212;
 
-function clamp(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
+export function normalizeViewerSurface(surface: unknown): ViewerSurface {
+  return surface === "code" ? "code" : "markdown";
+}
+
+export function normalizeOpenDocs(openDocs: unknown): OpenDoc[] {
+  if (!Array.isArray(openDocs)) return [];
+  const normalized: OpenDoc[] = [];
+  const seen = new Set<string>();
+  let changed = openDocs.length > MAX_OPEN_DOCS;
+  for (let index = 0; index < openDocs.length; index += 1) {
+    if (normalized.length >= MAX_OPEN_DOCS) break;
+    const doc = openDocs[index] as Partial<OpenDoc> | null | undefined;
+    if (!doc || typeof doc !== "object") {
+      changed = true;
+      continue;
+    }
+    const nodeId = normalizeNodeId(doc.nodeId);
+    if (nodeId === null || seen.has(nodeId)) {
+      changed = true;
+      continue;
+    }
+    const surface = normalizeViewerSurface(doc.surface);
+    const provisional = doc.provisional === true;
+    if (nodeId !== doc.nodeId || normalized.length !== index) changed = true;
+    if (surface !== doc.surface || provisional !== doc.provisional) changed = true;
+    seen.add(nodeId);
+    normalized.push(
+      changed ? { ...doc, nodeId, surface, provisional } : (doc as OpenDoc),
+    );
+  }
+  return changed ? normalized : (openDocs as OpenDoc[]);
+}
+
+export function normalizeActiveDocId(
+  openDocs: unknown,
+  activeDocId: unknown,
+): string | null {
+  const normalizedOpenDocs = normalizeOpenDocs(openDocs);
+  const nodeId = normalizeNodeId(activeDocId);
+  return nodeId !== null && normalizedOpenDocs.some((doc) => doc.nodeId === nodeId)
+    ? nodeId
+    : (normalizedOpenDocs[0]?.nodeId ?? null);
+}
+
+export function normalizeShellLayoutVisible(value: unknown): boolean {
+  return value === true;
+}
+
+export function normalizeShellLayoutPanelSize(
+  value: unknown,
+  min: number,
+  max: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
@@ -399,9 +492,10 @@ function evictToCap(docs: OpenDoc[], activeId: string): OpenDoc[] {
   return result;
 }
 
-function rekeyScopedClientStores(scope: string | null, workspace?: string): void {
-  const nextWorkspace = workspace ?? usePinStore.getState().workspace;
-  const nextScope = scope ?? "default";
+function rekeyScopedClientStores(scope: unknown, workspace?: unknown): void {
+  const nextWorkspace =
+    normalizeViewStoreSessionString(workspace) ?? usePinStore.getState().workspace;
+  const nextScope = normalizeViewStoreSessionString(scope) ?? "default";
   usePinStore.getState().setScopeKey(nextWorkspace, nextScope);
   useLensStore.getState().setScopeKey(nextWorkspace, nextScope);
 }
@@ -421,15 +515,19 @@ function resetCorpusLocalStores(): void {
   resetDiscoveryPanel();
   resetFilterSidebar();
   resetGraphControlsChrome();
+  resetIslandAnchors();
   resetKeyboardShortcuts();
+  resetKeyActions();
+  resetSettingsKeybindingRecorder();
   resetMinimapChrome();
   resetStatusTabChrome();
   resetWorktreePickerChrome();
 }
 
-function corpusLocalViewState(scope: string | null) {
+function corpusLocalViewState(scope: unknown) {
+  const normalizedScope = normalizeViewStoreSessionString(scope);
   return {
-    scope,
+    scope: normalizedScope,
     activeFolder: null,
     featureContexts: [],
     selection: null,
@@ -464,7 +562,7 @@ export const useViewStore = create<ViewState>((set) => ({
   baseBlobHash: "",
   editorStatus: "idle",
   pinnedDiscoveries: [],
-  overlays: graphOverlays(DEFAULT_GRAPH_OVERLAYS),
+  overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
   leftRailVisible: true,
   leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
   rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
@@ -473,6 +571,7 @@ export const useViewStore = create<ViewState>((set) => ({
   panelFlyoutOpen: false,
 
   setScope: (scope) => {
+    const normalizedScope = normalizeViewStoreSessionString(scope);
     // WHOLESALE swap (ADR §2.1; finding scope-swap-partial-reset-022):
     // everything scoped to the previous corpus resets — selection, working
     // set, opened islands, session-pinned discoveries (old-corpus semantic
@@ -480,11 +579,13 @@ export const useViewStore = create<ViewState>((set) => ({
     // Re-key the pin and lens stores so the previous scope's pins/lenses do
     // not bleed into the new scope (finding-018/022/023; isolation-01/02/03).
     // workspace is preserved; scope flips to the new value.
-    rekeyScopedClientStores(scope);
+    rekeyScopedClientStores(normalizedScope);
     resetCorpusLocalStores();
-    set(corpusLocalViewState(scope));
+    set(corpusLocalViewState(normalizedScope));
   },
   swapWorkspace: (workspace, scope) => {
+    const normalizedWorkspace = normalizeViewStoreSessionString(workspace);
+    const normalizedScope = normalizeViewStoreSessionString(scope);
     // WORKSPACE-LEVEL WHOLESALE swap (dashboard-workspace-registry ADR): the
     // SAME cross-store 022 reset a worktree swap performs, WIDENED so nothing
     // from the prior PROJECT's corpus survives. A coarser scope change must
@@ -493,9 +594,9 @@ export const useViewStore = create<ViewState>((set) => ({
     // a workspace swap does not, or the prior project's pins/lenses bleed in).
     // Re-key the pin and lens stores to the NEW WORKSPACE + the new scope — the
     // load-bearing difference from setScope, which preserves the workspace key.
-    rekeyScopedClientStores(scope, workspace);
+    rekeyScopedClientStores(normalizedScope, normalizedWorkspace);
     resetCorpusLocalStores();
-    set(corpusLocalViewState(scope));
+    set(corpusLocalViewState(normalizedScope));
   },
   seedFromSession: ({
     workspace,
@@ -505,44 +606,62 @@ export const useViewStore = create<ViewState>((set) => ({
     openDocs,
     activeDocId,
   }) => {
+    const normalizedWorkspace = normalizeViewStoreSessionString(workspace);
+    const normalizedScope = normalizeViewStoreSessionString(scope);
+    const normalizedFolder = normalizeViewStoreSessionString(folder);
+    const normalizedFeatureTags = normalizeViewStoreSessionStringList(featureTags);
     // Restore is not a user-initiated wholesale swap, but scoped client stores
     // still need the restored workspace+scope key before visual consumers read
     // pin/lens state.
-    rekeyScopedClientStores(scope, workspace);
+    rekeyScopedClientStores(normalizedScope, normalizedWorkspace);
     // Restore the dock workspace tabs ATOMICALLY with the scope seed (this is the
     // one-shot session seed), so the tab restore cannot race the scope settle. Only
     // seed when the slice is empty — a restore must never clobber tabs the user has
     // already opened this session.
+    const restoredOpenDocs = normalizeOpenDocs(openDocs ?? []);
+    const restoredActiveDocId = normalizeActiveDocId(restoredOpenDocs, activeDocId);
     set((state) => ({
-      scope,
-      activeFolder: folder,
-      featureContexts: featureTags,
-      ...(openDocs && openDocs.length > 0 && state.openDocs.length === 0
-        ? { openDocs: [...openDocs], activeDocId: activeDocId ?? null }
+      scope: normalizedScope,
+      activeFolder: normalizedFolder,
+      featureContexts: normalizedFeatureTags,
+      ...(restoredOpenDocs.length > 0 && state.openDocs.length === 0
+        ? { openDocs: restoredOpenDocs, activeDocId: restoredActiveDocId }
         : {}),
     }));
   },
   setScopeContext: ({ folder, featureTags }) =>
-    set({ activeFolder: folder, featureContexts: featureTags }),
+    set({
+      activeFolder: normalizeViewStoreSessionString(folder),
+      featureContexts: normalizeViewStoreSessionStringList(featureTags),
+    }),
+  mirrorSessionScopeContext: ({ folder, featureTags }) =>
+    set({
+      activeFolder: normalizeViewStoreSessionString(folder),
+      featureContexts: normalizeViewStoreSessionStringList(featureTags),
+    }),
   selectEntity: (selection) => set({ selection }),
   setHovered: (hoveredId) =>
-    set((state) =>
-      state.hoveredId === hoveredId
+    set((state) => {
+      const nodeId = normalizeNodeId(hoveredId);
+      return state.hoveredId === nodeId
         ? state
-        : { hoveredId, ...(hoveredId === null ? { dwelledHoverId: null } : {}) },
-    ),
+        : { hoveredId: nodeId, ...(nodeId === null ? { dwelledHoverId: null } : {}) };
+    }),
   setDwelledHover: (dwelledHoverId) =>
-    set((state) =>
-      state.dwelledHoverId === dwelledHoverId ? state : { dwelledHoverId },
-    ),
+    set((state) => {
+      const nodeId = normalizeNodeId(dwelledHoverId);
+      return state.dwelledHoverId === nodeId ? state : { dwelledHoverId: nodeId };
+    }),
   openNode: (id) =>
     set((state) => {
+      const nodeId = normalizeNodeId(id);
+      if (nodeId === null) return state;
       // Move-to-end LRU cap (B3): re-opening an already-open id refreshes its
       // recency (so it is not evicted before genuinely-older entries), then the
       // tail-cap drops the oldest beyond OPENED_IDS_CAP so opened islands cannot
       // retain queries/payloads without bound across a session. openNode is a
       // user gesture, so rebuilding the array on re-open is negligible.
-      const next = [...state.openedIds.filter((entry) => entry !== id), id];
+      const next = [...state.openedIds.filter((entry) => entry !== nodeId), nodeId];
       return {
         openedIds:
           next.length > OPENED_IDS_CAP
@@ -551,28 +670,38 @@ export const useViewStore = create<ViewState>((set) => ({
       };
     }),
   closeNode: (id) =>
-    set((state) => ({
-      openedIds: state.openedIds.filter((entry) => entry !== id),
-    })),
+    set((state) => {
+      const nodeId = normalizeNodeId(id);
+      if (nodeId === null) return state;
+      return { openedIds: state.openedIds.filter((entry) => entry !== nodeId) };
+    }),
   openDoc: (nodeId, surface, permanent = false) =>
     set((state) => {
-      const existing = state.openDocs.find((d) => d.nodeId === nodeId);
+      const docNodeId = normalizeNodeId(nodeId);
+      if (docNodeId === null) return state;
+      const normalizedSurface = normalizeViewerSurface(surface);
+      const permanentOpen = permanent === true;
+      const existing = state.openDocs.find((d) => d.nodeId === docNodeId);
       if (existing) {
         // Already open: activate it, and promote if this open is a permanent
         // gesture on what was the provisional tab.
         const openDocs =
-          permanent && existing.provisional
+          permanentOpen && existing.provisional
             ? state.openDocs.map((d) =>
-                d.nodeId === nodeId ? { ...d, provisional: false } : d,
+                d.nodeId === docNodeId ? { ...d, provisional: false } : d,
               )
             : state.openDocs;
-        return openDocs === state.openDocs && state.activeDocId === nodeId
+        return openDocs === state.openDocs && state.activeDocId === docNodeId
           ? state
-          : { openDocs, activeDocId: nodeId };
+          : { openDocs, activeDocId: docNodeId };
       }
-      const entry: OpenDoc = { nodeId, surface, provisional: !permanent };
+      const entry: OpenDoc = {
+        nodeId: docNodeId,
+        surface: normalizedSurface,
+        provisional: !permanentOpen,
+      };
       let openDocs: OpenDoc[];
-      if (!permanent) {
+      if (!permanentOpen) {
         // Provisional (preview) open: REPLACE the existing provisional in place so
         // walking the rail reuses one preview tab rather than spawning many.
         const provIndex = state.openDocs.findIndex((d) => d.provisional);
@@ -585,31 +714,38 @@ export const useViewStore = create<ViewState>((set) => ({
       } else {
         openDocs = [...state.openDocs, entry];
       }
-      return { openDocs: evictToCap(openDocs, nodeId), activeDocId: nodeId };
+      return { openDocs: evictToCap(openDocs, docNodeId), activeDocId: docNodeId };
     }),
   promoteDoc: (nodeId) =>
-    set((state) =>
-      state.openDocs.some((d) => d.nodeId === nodeId && d.provisional)
+    set((state) => {
+      const docNodeId = normalizeNodeId(nodeId);
+      if (docNodeId === null) return state;
+      return state.openDocs.some((d) => d.nodeId === docNodeId && d.provisional)
         ? {
             openDocs: state.openDocs.map((d) =>
-              d.nodeId === nodeId ? { ...d, provisional: false } : d,
+              d.nodeId === docNodeId ? { ...d, provisional: false } : d,
             ),
           }
-        : state,
-    ),
+        : state;
+    }),
   activateDoc: (nodeId) =>
-    set((state) =>
-      state.activeDocId === nodeId || !state.openDocs.some((d) => d.nodeId === nodeId)
+    set((state) => {
+      const docNodeId = normalizeNodeId(nodeId);
+      if (docNodeId === null) return state;
+      return state.activeDocId === docNodeId ||
+        !state.openDocs.some((d) => d.nodeId === docNodeId)
         ? state
-        : { activeDocId: nodeId },
-    ),
+        : { activeDocId: docNodeId };
+    }),
   closeDoc: (nodeId) =>
     set((state) => {
-      const index = state.openDocs.findIndex((d) => d.nodeId === nodeId);
+      const docNodeId = normalizeNodeId(nodeId);
+      if (docNodeId === null) return state;
+      const index = state.openDocs.findIndex((d) => d.nodeId === docNodeId);
       if (index < 0) return state;
-      const openDocs = state.openDocs.filter((d) => d.nodeId !== nodeId);
+      const openDocs = state.openDocs.filter((d) => d.nodeId !== docNodeId);
       let activeDocId = state.activeDocId;
-      if (state.activeDocId === nodeId) {
+      if (state.activeDocId === docNodeId) {
         // Activate the nearest neighbour: the tab now at this index (the former
         // next), else the previous, else none.
         const next = openDocs[index] ?? openDocs[index - 1] ?? null;
@@ -621,7 +757,10 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) => {
       const byId = new Map(state.openDocs.map((d) => [d.nodeId, d]));
       const reordered: OpenDoc[] = [];
-      for (const id of orderedIds) {
+      const normalizedOrderedIds = Array.isArray(orderedIds)
+        ? normalizeNodeIds(orderedIds, orderedIds.length)
+        : [];
+      for (const id of normalizedOrderedIds) {
         const doc = byId.get(id);
         if (doc) {
           reordered.push(doc);
@@ -638,20 +777,31 @@ export const useViewStore = create<ViewState>((set) => ({
       return same ? state : { openDocs: reordered };
     }),
   openEditor: (nodeId, text, baseBlobHash) =>
-    set({
-      editorTarget: { nodeId },
-      draftText: text,
-      baseBlobHash,
-      editorStatus: "idle",
+    set((state) => {
+      const docNodeId = normalizeNodeId(nodeId);
+      if (docNodeId === null) return state;
+      return {
+        editorTarget: { nodeId: docNodeId },
+        draftText: normalizeEditorTextValue(text),
+        baseBlobHash: normalizeEditorTextValue(baseBlobHash),
+        editorStatus: "idle",
+      };
     }),
   setDraft: (text) =>
-    set((state) =>
-      state.draftText === text ? state : { draftText: text, editorStatus: "dirty" },
-    ),
+    set((state) => {
+      const draftText = normalizeEditorTextValue(text);
+      return state.draftText === draftText
+        ? state
+        : { draftText, editorStatus: "dirty" };
+    }),
   markSaving: () => set({ editorStatus: "saving" }),
   // Adopt the new blob hash as the next concurrency base so a follow-on edit saves
   // against the fresh on-disk blob, not the stale one (no phantom conflict).
-  markSaved: (blobHash) => set({ editorStatus: "saved", baseBlobHash: blobHash }),
+  markSaved: (blobHash) =>
+    set({
+      editorStatus: "saved",
+      baseBlobHash: normalizeEditorTextValue(blobHash),
+    }),
   markConflict: () => set({ editorStatus: "conflict" }),
   markFailed: () => set({ editorStatus: "save-failed" }),
   closeEditor: () =>
@@ -663,8 +813,12 @@ export const useViewStore = create<ViewState>((set) => ({
     }),
   pinDiscovery: (edge) =>
     set((state) => {
-      if (state.pinnedDiscoveries.some((e) => e.id === edge.id)) return state;
-      const next = [...state.pinnedDiscoveries, edge];
+      const normalizedEdge = normalizeDiscoveryEdge(edge);
+      if (normalizedEdge === null) return state;
+      if (state.pinnedDiscoveries.some((e) => e.id === normalizedEdge.id)) {
+        return state;
+      }
+      const next = [...state.pinnedDiscoveries, normalizedEdge];
       return {
         pinnedDiscoveries:
           next.length > PINNED_DISCOVERIES_CAP
@@ -673,12 +827,15 @@ export const useViewStore = create<ViewState>((set) => ({
       };
     }),
   unpinDiscovery: (edgeId) =>
-    set((state) => ({
-      pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== edgeId),
-    })),
+    set((state) => {
+      const id = normalizeDiscoveryEdgeId(edgeId);
+      return id === null
+        ? state
+        : { pinnedDiscoveries: state.pinnedDiscoveries.filter((e) => e.id !== id) };
+    }),
   pruneNodeAffordances: (nodeIds) =>
     set((state) => {
-      const valid = new Set(nodeIds);
+      const valid = new Set(normalizeNodeIds(nodeIds, nodeIds.length));
       const selection =
         state.selection?.kind === "event"
           ? (() => {
@@ -726,8 +883,9 @@ export const useViewStore = create<ViewState>((set) => ({
     }),
   addToWorkingSet: (id) =>
     set((state) => {
-      if (state.workingSet.includes(id)) return state;
-      const next = [...state.workingSet, id];
+      const nodeId = normalizeNodeId(id);
+      if (nodeId === null || state.workingSet.includes(nodeId)) return state;
+      const next = [...state.workingSet, nodeId];
       return {
         workingSet:
           next.length > WORKING_SET_CAP
@@ -736,22 +894,43 @@ export const useViewStore = create<ViewState>((set) => ({
       };
     }),
   removeFromWorkingSet: (id) =>
-    set((state) => ({
-      workingSet: state.workingSet.filter((entry) => entry !== id),
-    })),
+    set((state) => {
+      const nodeId = normalizeNodeId(id);
+      if (nodeId === null) return state;
+      return { workingSet: state.workingSet.filter((entry) => entry !== nodeId) };
+    }),
   clearWorkingSet: () => set({ workingSet: [] }),
-  setOverlays: (overlays) => set({ overlays: graphOverlays(overlays) }),
-  setLeftRailVisible: (leftRailVisible) => set({ leftRailVisible }),
+  setOverlays: (overlays) => set({ overlays: normalizeGraphOverlays(overlays) }),
+  setLeftRailVisible: (leftRailVisible) =>
+    set({ leftRailVisible: normalizeShellLayoutVisible(leftRailVisible) }),
   setLeftRailWidth: (width) =>
-    set({ leftRailWidth: clamp(width, LEFT_RAIL_MIN_WIDTH, LEFT_RAIL_MAX_WIDTH) }),
+    set({
+      leftRailWidth: normalizeShellLayoutPanelSize(
+        width,
+        LEFT_RAIL_MIN_WIDTH,
+        LEFT_RAIL_MAX_WIDTH,
+      ),
+    }),
   setRightRailWidth: (width) =>
-    set({ rightRailWidth: clamp(width, RIGHT_RAIL_MIN_WIDTH, RIGHT_RAIL_MAX_WIDTH) }),
-  setTimelineVisible: (timelineVisible) => set({ timelineVisible }),
+    set({
+      rightRailWidth: normalizeShellLayoutPanelSize(
+        width,
+        RIGHT_RAIL_MIN_WIDTH,
+        RIGHT_RAIL_MAX_WIDTH,
+      ),
+    }),
+  setTimelineVisible: (timelineVisible) =>
+    set({ timelineVisible: normalizeShellLayoutVisible(timelineVisible) }),
   setTimelineHeight: (height) =>
     set({
-      timelineHeight: clamp(height, TIMELINE_MIN_HEIGHT, TIMELINE_MAX_HEIGHT),
+      timelineHeight: normalizeShellLayoutPanelSize(
+        height,
+        TIMELINE_MIN_HEIGHT,
+        TIMELINE_MAX_HEIGHT,
+      ),
     }),
-  setPanelFlyoutOpen: (panelFlyoutOpen) => set({ panelFlyoutOpen }),
+  setPanelFlyoutOpen: (panelFlyoutOpen) =>
+    set({ panelFlyoutOpen: normalizeShellLayoutVisible(panelFlyoutOpen) }),
   togglePanelFlyout: () =>
     set((state) => ({ panelFlyoutOpen: !state.panelFlyoutOpen })),
   resetShellLayout: () =>

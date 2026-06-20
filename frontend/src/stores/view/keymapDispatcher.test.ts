@@ -10,6 +10,7 @@ import {
   activeContextsFromElement,
   handleKeymapEvent,
   isTextEntryTarget,
+  normalizeActiveKeymapContexts,
   registerKeyAction,
   resetKeyActions,
   resolveKeyAction,
@@ -127,6 +128,49 @@ describe("handleKeymapEvent", () => {
     );
   });
 
+  it("normalizes injected active contexts before keybinding resolution", () => {
+    const event = keyEvent({ key: "Enter" });
+
+    expect(
+      handleKeymapEvent(
+        event,
+        deps({
+          getDefs: () => [
+            def({ id: "graph.open", defaultChord: "Enter", context: "canvas" }),
+          ],
+          getActiveContexts: () => new Set([" canvas ", "bogus"]),
+          resolveAction: () => runAction(() => undefined),
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("normalizes resolved key actions before gating and firing", () => {
+    const fire = vi.fn();
+    const event = keyEvent({ key: "k", ctrlKey: true });
+
+    const consumed = handleKeymapEvent(
+      event,
+      deps({
+        getDefs: () => [def({ id: "palette", defaultChord: "Mod+K" })],
+        resolveAction: () => ({
+          id: " palette ",
+          label: " Palette ",
+          dispatch: { type: " ui:palette " },
+          rogue: "local payload",
+        }),
+        fire,
+      }),
+    );
+
+    expect(consumed).toBe(true);
+    expect(fire).toHaveBeenCalledWith({
+      id: "palette",
+      label: "Palette",
+      dispatch: { type: "ui:palette" },
+    });
+  });
+
   it("ignores a binding whose action is not registered", () => {
     const consumed = handleKeymapEvent(
       keyEvent({ key: "k", ctrlKey: true }),
@@ -142,17 +186,53 @@ describe("handleKeymapEvent", () => {
 describe("registerKeyAction / resolveKeyAction", () => {
   it("registers and resolves a live descriptor, and disposes", () => {
     const action = runAction(() => undefined);
-    const dispose = registerKeyAction("palette", () => action);
-    expect(resolveKeyAction("palette")).toBe(action);
+    const dispose = registerKeyAction(" palette ", () => action);
+    expect(resolveKeyAction("palette")).toEqual(action);
+    expect(resolveKeyAction(" palette ")).toEqual(action);
     dispose();
     expect(resolveKeyAction("palette")).toBeNull();
+  });
+
+  it("normalizes registered live descriptors at the key action seam", () => {
+    const dispose = registerKeyAction(" palette ", () => ({
+      id: " palette ",
+      label: " Palette ",
+      dispatch: { type: " ui:palette " },
+      rogue: "local payload",
+    }));
+
+    expect(resolveKeyAction("palette")).toEqual({
+      id: "palette",
+      label: "Palette",
+      dispatch: { type: "ui:palette" },
+    });
+
+    dispose();
+  });
+
+  it("ignores malformed action ids at the live resolver seam", () => {
+    const action = runAction(() => undefined);
+    const dispose = registerKeyAction("   ", () => action);
+
+    expect(resolveKeyAction("")).toBeNull();
+    expect(resolveKeyAction(null)).toBeNull();
+
+    dispose();
+  });
+
+  it("ignores malformed live descriptor resolvers at the key action seam", () => {
+    const dispose = registerKeyAction("palette", { id: "palette" });
+
+    expect(resolveKeyAction("palette")).toBeNull();
+
+    dispose();
   });
 });
 
 describe("activeContextsFromElement", () => {
   it("always includes global and adds the nearest declared surface context", () => {
     const region = document.createElement("div");
-    region.setAttribute("data-keymap-context", "canvas");
+    region.setAttribute("data-keymap-context", " canvas ");
     const child = document.createElement("button");
     region.appendChild(child);
     document.body.appendChild(region);
@@ -166,6 +246,13 @@ describe("activeContextsFromElement", () => {
     const region = document.createElement("div");
     region.setAttribute("data-keymap-context", "bogus");
     expect([...activeContextsFromElement(region)]).toEqual(["global"]);
+  });
+
+  it("normalizes injected active context sets before resolving", () => {
+    expect([...normalizeActiveKeymapContexts([" canvas ", "bogus"])].sort()).toEqual([
+      "canvas",
+      "global",
+    ]);
   });
 });
 

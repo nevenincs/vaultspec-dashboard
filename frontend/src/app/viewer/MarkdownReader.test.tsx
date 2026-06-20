@@ -18,7 +18,7 @@ import { MarkdownReader } from "./MarkdownReader";
 
 afterEach(cleanup);
 beforeEach(() => {
-  useViewStore.getState().closeViewer();
+  useViewStore.setState({ openDocs: [], activeDocId: null });
 });
 
 /** A content view in the available state carrying `text`. */
@@ -45,13 +45,16 @@ const DOC = [
   "  - '#review-rail-viewers'",
   "date: '2026-06-16'",
   "modified: '2026-06-16'",
+  "status: accepted",
   "related:",
   "  - '[[2026-06-16-review-rail-viewers-plan]]'",
   "---",
   "",
   "# Heading",
   "",
-  "A paragraph linking to [[2026-06-16-other-doc|the other doc]].",
+  "A dek paragraph lifted into the reader header.",
+  "",
+  "A body paragraph linking to [[2026-06-16-other-doc|the other doc]].",
   "",
   "- [x] a finished step",
   "- [ ] a pending step",
@@ -61,12 +64,12 @@ const DOC = [
 describe("MarkdownReader frontmatter chrome", () => {
   it("renders tags as pills, dates as stamps, and related as clickable wiki-links", () => {
     render(<MarkdownReader content={available(DOC)} />);
-    // Tags become pills (the `#` prefix preserved on the pill text).
-    expect(screen.getByText("#adr")).toBeTruthy();
+    // The doc-type tag becomes the reader eyebrow; remaining feature tags stay pills.
+    expect(screen.getByText("Decision")).toBeTruthy();
     expect(screen.getByText("#review-rail-viewers")).toBeTruthy();
-    // Dates become stamps.
-    expect(screen.getByText("created")).toBeTruthy();
-    expect(screen.getByText("modified")).toBeTruthy();
+    // Reader meta is projected by the stores-owned reader view.
+    expect(screen.getByText("16 June 2026")).toBeTruthy();
+    expect(screen.getByText("accepted")).toBeTruthy();
     // Related renders the target stem as a clickable control.
     expect(
       screen.getByRole("button", { name: "2026-06-16-review-rail-viewers-plan" }),
