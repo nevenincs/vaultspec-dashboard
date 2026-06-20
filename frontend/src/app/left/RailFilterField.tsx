@@ -6,8 +6,9 @@
 //
 //   • TYPE → live FEATURE filter. Keystrokes drive the canonical
 //     `dashboardState.filters.text`, narrowing the rail tree (and the graph it
-//     projects to) by feature/stem instantly, with no fetch. The placeholder names
-//     this explicitly ("Filter by feature…").
+//     projects to) by feature/stem instantly, with no fetch. The placeholder is the
+//     binding "Search or filter…" copy (figma-is-the-binding-source-of-truth); the
+//     aria-label stays functionally precise ("filter the vault by feature").
 //   • FOCUS / the facet affordance → the FINE-TUNED facets pop up: the centralized
 //     FilterMenu flyout (KIND / TOPIC / STATUS / HEALTH), the SAME built-out facet
 //     UX the graph filter authors. An active-count badge shows applied facets.
@@ -55,7 +56,7 @@ export function RailFilterField() {
           value={draft.value}
           onChange={draft.setValue}
           onClear={draft.clear}
-          placeholder="Filter by feature…"
+          placeholder="Search or filter…"
           ariaLabel="filter the vault by feature"
         />
       </div>

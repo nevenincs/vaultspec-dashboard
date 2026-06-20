@@ -169,9 +169,11 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
       }}
     >
       {/* The header row (binding `LeftRail` 238:600 / 686:2519): the project/worktree
-          name as a PLAIN bold title (no pill, no icon) that opens the chooser, then
-          the single rail-collapse toggle. The title carries the dropdown a11y wiring;
-          the dropdown list below is unchanged. */}
+          name as a PLAIN Inter-Medium title (no pill, no leading glyph) that opens the
+          chooser, then the SINGLE rail-collapse toggle. The folder-add button is
+          deliberately omitted (per user direction): the title already opens the
+          chooser, so a second control opening the same popup is redundant. The title
+          holds the dropdown a11y wiring; the dropdown list below is unchanged. */}
       <div
         className="flex items-center justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
@@ -199,11 +201,9 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           aria-expanded={expanded}
           aria-controls={listId}
           aria-label={pickerView.triggerAriaLabel}
-          className={pickerView.triggerClassName}
+          className="min-w-0 flex-1 truncate rounded-fg-xs text-left text-title font-medium text-ink transition-colors duration-ui-fast hover:text-accent-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         >
-          <span className={pickerView.triggerLabelClassName}>
-            {pickerView.triggerLabel}
-          </span>
+          {pickerView.triggerLabel}
         </button>
         <IconButton
           label="collapse left rail"
