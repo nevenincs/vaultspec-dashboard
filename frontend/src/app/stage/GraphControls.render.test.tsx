@@ -164,14 +164,14 @@ describe("GraphControls — force tuning (set-force-params)", () => {
     );
   });
 
-  it("Link distance / Link spring map straight through to the field params", () => {
+  it("Link distance / Link strength map straight through to the field params", () => {
     const spy = vi.spyOn(getScene().controller, "command");
     renderGraphControls();
     openSettings();
     fireEvent.change(screen.getByRole("slider", { name: "Link distance" }), {
       target: { value: "120" },
     });
-    fireEvent.change(screen.getByRole("slider", { name: "Link spring" }), {
+    fireEvent.change(screen.getByRole("slider", { name: "Link strength" }), {
       target: { value: "1.5" },
     });
     const params = spy.mock.calls

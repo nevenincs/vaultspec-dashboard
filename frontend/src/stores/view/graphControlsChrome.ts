@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { appearanceDefaults, specById } from "../../scene/three/graphControlSchema";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
 // Three-native force controls, rebuilt against the field's `set-force-params`
@@ -17,15 +18,59 @@ export interface GraphControlsTuneParams {
 export type GraphControlsTuneParamKey = keyof GraphControlsTuneParams;
 
 export const GRAPH_CONTROLS_TUNE_DEFAULTS: GraphControlsTuneParams = {
-  // Mirror the field's D3_FORCE_DEFAULTS: charge -120 (repulsion magnitude 120),
-  // linkDistance 40, linkStrength 1.
-  repulsion: 120,
-  linkDistance: 40,
-  linkSpring: 1,
+  // Derived from the canonical schema. Repulsion is the MAGNITUDE the UI presents;
+  // the canonical `charge` default is signed (negative), so repulsion = −charge.
+  repulsion: -numericSpec("charge").default,
+  linkDistance: numericSpec("linkDistance").default,
+  linkSpring: numericSpec("linkStrength").default,
 };
 
 function finiteOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+// --- schema derivation (graph-control-standardisation) -------------------------
+// Every range / label / default below is read from the canonical control registry
+// (scene/three/graphControlSchema) instead of being hand-authored here, so the UI
+// can never drift from the field. The schema's `exposure: ["ui"]` entries ARE the
+// curation of which controls the user surface carries.
+
+/** A numeric ControlSpec narrowed to its required fields; throws at module load if
+ *  the schema lacks the id or it is non-numeric (fail-fast on drift). */
+function numericSpec(id: string): {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  default: number;
+} {
+  const spec = specById(id);
+  if (
+    !spec ||
+    spec.type !== "number" ||
+    spec.min === undefined ||
+    spec.max === undefined ||
+    spec.step === undefined ||
+    typeof spec.default !== "number"
+  ) {
+    throw new Error(`graphControlsChrome: expected numeric schema spec "${id}"`);
+  }
+  return {
+    label: spec.label,
+    min: spec.min,
+    max: spec.max,
+    step: spec.step,
+    default: spec.default,
+  };
+}
+
+/** Decimal places implied by a slider step, so the readout matches its granularity
+ *  (schema-derived precision, not hand-authored). */
+function decimalsForStep(step: number): number {
+  if (!Number.isFinite(step) || step <= 0 || step >= 1) return 0;
+  const text = step.toString();
+  const dot = text.indexOf(".");
+  return dot === -1 ? 0 : Math.min(4, text.length - dot - 1);
 }
 
 export function normalizeGraphControlsTuneParams(
@@ -80,6 +125,9 @@ export interface GraphControlsTunePresentationView {
 }
 
 export function deriveGraphControlsTunePresentationView(): GraphControlsTunePresentationView {
+  const charge = numericSpec("charge");
+  const linkDistance = numericSpec("linkDistance");
+  const linkStrength = numericSpec("linkStrength");
   return {
     containerClassName: "flex w-48 flex-col gap-fg-3",
     freezeRowClassName: "flex items-center justify-between",
@@ -89,26 +137,28 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     resetLabel: "Reset to defaults",
     sliders: {
+      // Repulsion presents the MAGNITUDE: the canonical signed `charge` range
+      // (negative) maps to a positive magnitude by negating + swapping min/max.
       repulsion: {
-        label: "Repulsion",
+        label: charge.label,
         title: "How far nodes push each other apart",
-        min: 0,
-        max: 400,
-        step: 10,
+        min: -charge.max,
+        max: -charge.min,
+        step: charge.step,
       },
       linkDistance: {
-        label: "Link distance",
+        label: linkDistance.label,
         title: "The rest length of the links between connected nodes",
-        min: 5,
-        max: 200,
-        step: 5,
+        min: linkDistance.min,
+        max: linkDistance.max,
+        step: linkDistance.step,
       },
       linkSpring: {
-        label: "Link spring",
+        label: linkStrength.label,
         title: "How tightly connected nodes pull together into groups",
-        min: 0,
-        max: 3,
-        step: 0.1,
+        min: linkStrength.min,
+        max: linkStrength.max,
+        step: linkStrength.step,
       },
     },
   };
@@ -118,7 +168,13 @@ export function formatGraphControlsTuneValue(
   key: GraphControlsTuneParamKey,
   value: number,
 ): string {
-  return key === "linkSpring" ? value.toFixed(1) : String(Math.round(value));
+  const id =
+    key === "repulsion"
+      ? "charge"
+      : key === "linkDistance"
+        ? "linkDistance"
+        : "linkStrength";
+  return value.toFixed(decimalsForStep(numericSpec(id).step));
 }
 
 export type GraphControlsBoundShape = "free" | "circle" | "rect";
@@ -198,17 +254,9 @@ export type GraphControlsAppearanceSliderKey =
   | "edgeWidthMax"
   | "edgeOpacityMax";
 
-export const GRAPH_CONTROLS_APPEARANCE_DEFAULTS: GraphControlsAppearanceParams = {
-  // Mirror the field's APPEARANCE_DEFAULTS (gradient edges are the binding default,
-  // graph-backend-unification ADR D2).
-  nodeSizeScale: 1,
-  nodeSalienceScale: 1,
-  edgeWidthMin: 0.6,
-  edgeWidthMax: 2.2,
-  edgeOpacityMin: 0.1,
-  edgeOpacityMax: 0.5,
-  edgeColorMode: "gradient",
-};
+// Derived from the canonical schema (carries the unsurfaced edge-min floors too).
+export const GRAPH_CONTROLS_APPEARANCE_DEFAULTS: GraphControlsAppearanceParams =
+  appearanceDefaults();
 
 export function normalizeGraphControlsAppearanceParams(
   params: unknown,
@@ -267,11 +315,15 @@ export interface GraphControlsAppearancePresentationView {
 }
 
 export function deriveGraphControlsAppearancePresentationView(): GraphControlsAppearancePresentationView {
+  const nodeSize = numericSpec("nodeSizeScale");
+  const salience = numericSpec("nodeSalienceScale");
+  const edgeWidth = numericSpec("edgeWidthMax");
+  const edgeOpacity = numericSpec("edgeOpacityMax");
   return {
     containerClassName: "flex w-48 flex-col gap-fg-3",
     headingClassName: "text-label text-ink-muted",
     heading: "Appearance",
-    colorModeLabel: "Edge colour",
+    colorModeLabel: specById("edgeColorMode")?.label ?? "Edge colour",
     colorModeAriaLabel: "Edge colour mode",
     solidLabel: "Solid",
     gradientLabel: "Gradient",
@@ -280,32 +332,32 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
     resetLabel: "Reset to defaults",
     sliders: {
       nodeSizeScale: {
-        label: "Node size",
+        label: nodeSize.label,
         title: "Scale every node's drawn size",
-        min: 0.5,
-        max: 2.5,
-        step: 0.1,
+        min: nodeSize.min,
+        max: nodeSize.max,
+        step: nodeSize.step,
       },
       nodeSalienceScale: {
-        label: "Salience spread",
+        label: salience.label,
         title: "How strongly salience drives node size (0 = uniform)",
-        min: 0,
-        max: 1,
-        step: 0.1,
+        min: salience.min,
+        max: salience.max,
+        step: salience.step,
       },
       edgeWidthMax: {
-        label: "Edge width",
+        label: edgeWidth.label,
         title: "Thickness of the strongest edges",
-        min: 0.5,
-        max: 6,
-        step: 0.2,
+        min: edgeWidth.min,
+        max: edgeWidth.max,
+        step: edgeWidth.step,
       },
       edgeOpacityMax: {
-        label: "Edge opacity",
+        label: edgeOpacity.label,
         title: "Opacity of the strongest edges",
-        min: 0.1,
-        max: 1,
-        step: 0.05,
+        min: edgeOpacity.min,
+        max: edgeOpacity.max,
+        step: edgeOpacity.step,
       },
     },
   };
@@ -315,7 +367,7 @@ export function formatGraphControlsAppearanceValue(
   key: GraphControlsAppearanceSliderKey,
   value: number,
 ): string {
-  return key === "edgeOpacityMax" ? value.toFixed(2) : value.toFixed(1);
+  return value.toFixed(decimalsForStep(numericSpec(key).step));
 }
 
 export interface GraphControlsSettingsPopoverView {

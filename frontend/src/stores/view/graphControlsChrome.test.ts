@@ -25,6 +25,7 @@ import {
   toggleGraphControlsSettingsOpen,
   useGraphControlsChromeStore,
 } from "./graphControlsChrome";
+import { specById } from "../../scene/three/graphControlSchema";
 
 describe("graph controls chrome view seam", () => {
   beforeEach(() => resetGraphControlsChrome());
@@ -167,23 +168,37 @@ describe("graph controls tune seam (three-native force params)", () => {
     );
   });
 
-  it("projects the three force sliders with d3-native ranges", () => {
+  it("projects the three force sliders, derived from the schema (charge→repulsion remap)", () => {
     const view = deriveGraphControlsTunePresentationView();
+    const charge = specById("charge")!;
+    const linkDistance = specById("linkDistance")!;
+    const linkStrength = specById("linkStrength")!;
+    // Repulsion is the magnitude: the signed `charge` range negated + swapped.
     expect(view.sliders.repulsion).toEqual({
-      label: "Repulsion",
+      label: charge.label,
       title: "How far nodes push each other apart",
-      min: 0,
-      max: 400,
-      step: 10,
+      min: -charge.max!,
+      max: -charge.min!,
+      step: charge.step!,
     });
-    expect(view.sliders.linkDistance).toMatchObject({ min: 5, max: 200, step: 5 });
-    expect(view.sliders.linkSpring).toMatchObject({ min: 0, max: 3, step: 0.1 });
+    expect(view.sliders.linkDistance).toMatchObject({
+      label: linkDistance.label,
+      min: linkDistance.min!,
+      max: linkDistance.max!,
+      step: linkDistance.step!,
+    });
+    expect(view.sliders.linkSpring).toMatchObject({
+      label: linkStrength.label,
+      min: linkStrength.min!,
+      max: linkStrength.max!,
+      step: linkStrength.step!,
+    });
   });
 
-  it("formats repulsion / link-distance as integers and link-spring to one decimal", () => {
-    expect(formatGraphControlsTuneValue("repulsion", 119.6)).toBe("120");
-    expect(formatGraphControlsTuneValue("linkDistance", 40)).toBe("40");
-    expect(formatGraphControlsTuneValue("linkSpring", 1.5)).toBe("1.5");
+  it("formats force readouts at the schema step precision", () => {
+    expect(formatGraphControlsTuneValue("repulsion", 119.6)).toBe("120"); // charge step 5
+    expect(formatGraphControlsTuneValue("linkDistance", 40)).toBe("40"); // step 1
+    expect(formatGraphControlsTuneValue("linkSpring", 1.5)).toBe("1.50"); // linkStrength step 0.05
   });
 
   it("sets, patches, normalizes, and resets the tune params through one seam", () => {
@@ -233,7 +248,7 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
     );
   });
 
-  it("projects the four exposed appearance sliders + colour-mode copy", () => {
+  it("projects the four exposed appearance sliders (schema-derived) + colour-mode copy", () => {
     const view = deriveGraphControlsAppearancePresentationView();
     expect(Object.keys(view.sliders).sort()).toEqual([
       "edgeOpacityMax",
@@ -241,15 +256,22 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
       "nodeSalienceScale",
       "nodeSizeScale",
     ]);
-    expect(view.sliders.nodeSizeScale).toMatchObject({ min: 0.5, max: 2.5, step: 0.1 });
+    const nodeSize = specById("nodeSizeScale")!;
+    expect(view.sliders.nodeSizeScale).toMatchObject({
+      label: nodeSize.label,
+      min: nodeSize.min!,
+      max: nodeSize.max!,
+      step: nodeSize.step!,
+    });
+    expect(view.colorModeLabel).toBe(specById("edgeColorMode")!.label);
     expect(view.solidLabel).toBe("Solid");
     expect(view.gradientLabel).toBe("Gradient");
   });
 
-  it("formats edge opacity to 2dp and the rest to 1dp", () => {
-    expect(formatGraphControlsAppearanceValue("edgeOpacityMax", 0.5)).toBe("0.50");
-    expect(formatGraphControlsAppearanceValue("nodeSizeScale", 1)).toBe("1.0");
-    expect(formatGraphControlsAppearanceValue("edgeWidthMax", 2.2)).toBe("2.2");
+  it("formats appearance readouts at the schema step precision", () => {
+    expect(formatGraphControlsAppearanceValue("edgeOpacityMax", 0.5)).toBe("0.50"); // step 0.02
+    expect(formatGraphControlsAppearanceValue("nodeSizeScale", 1)).toBe("1.00"); // step 0.05
+    expect(formatGraphControlsAppearanceValue("edgeWidthMax", 2.2)).toBe("2.2"); // step 0.1
   });
 
   it("sets, patches, normalizes, and resets appearance through one seam", () => {
