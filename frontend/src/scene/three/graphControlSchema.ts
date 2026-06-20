@@ -33,8 +33,12 @@ export type ControlExposure = "ui" | "lab";
 export interface ControlSpec {
   /** Canonical param id (matches the field interface key where one exists). */
   id: string;
-  /** Display label. */
+  /** Display label — the dev-lab / technical vocabulary. */
   label: string;
+  /** Friendly user-facing label for ui-exposed entries (the binding plain-language
+   *  vocabulary; ui-labels-are-user-facing). apps-review derives the rendered UI label
+   *  from this — `label` stays the lab vocabulary. Absent on lab-only/internal entries. */
+  uiLabel?: string;
   group: ControlGroup;
   type: "number" | "enum" | "boolean";
   /** number kind. */
@@ -55,6 +59,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "charge",
     label: "Repulsion",
+    uiLabel: "Spacing",
     group: "simulation",
     type: "number",
     min: -600,
@@ -68,6 +73,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "linkDistance",
     label: "Link distance",
+    uiLabel: "Link length",
     group: "simulation",
     type: "number",
     min: 5,
@@ -81,6 +87,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "linkStrength",
     label: "Link strength",
+    uiLabel: "Grouping",
     group: "simulation",
     type: "number",
     min: 0,
@@ -333,6 +340,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "nodeSizeScale",
     label: "Node size",
+    uiLabel: "Node size",
     group: "visualisation",
     type: "number",
     min: 0.25,
@@ -346,6 +354,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "nodeSalienceScale",
     label: "Salience spread",
+    uiLabel: "Importance",
     group: "visualisation",
     type: "number",
     min: 0,
@@ -371,6 +380,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "edgeWidthMax",
     label: "Edge width",
+    uiLabel: "Link thickness",
     group: "visualisation",
     type: "number",
     min: 0.1,
@@ -396,6 +406,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "edgeOpacityMax",
     label: "Edge opacity",
+    uiLabel: "Link opacity",
     group: "visualisation",
     type: "number",
     min: 0,
@@ -408,6 +419,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   {
     id: "edgeColorMode",
     label: "Edge colour",
+    uiLabel: "Link colour",
     group: "visualisation",
     type: "enum",
     options: ["solid", "gradient"],
