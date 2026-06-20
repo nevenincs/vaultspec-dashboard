@@ -124,6 +124,16 @@ enum Line<'a> {
 /// appending and records the honest total it would have produced had it
 /// continued, keeping the returned subtree self-consistent.
 pub fn parse_plan_structure(text: &str) -> PlanStructure {
+    // The plan template scaffolds hint blocks as HTML comments carrying EXAMPLE
+    // canonical lines (`## Wave `W01` - ...`, `### Phase `W01.P01` - ...`,
+    // `- [ ] `P02.S01` - ...`). Those are documentation, never real structure —
+    // but they are byte-identical to the canonical grammar, so parsing the raw
+    // body adopts them: a trailing `## Wave `W01` - ...` example clobbers the real
+    // W01 heading to "..." (upsert-by-id, last write wins), and the example phase
+    // rows mint phantom containers. Strip the comment regions before classifying
+    // so the parser observes only the authored structure (`engine-read-and-infer`).
+    let body = strip_html_comments(text);
+
     let mut structure = PlanStructure::default();
     // Current open containers (None until one is opened at the right depth).
     let mut cur_wave: Option<usize> = None;
@@ -136,7 +146,7 @@ pub fn parse_plan_structure(text: &str) -> PlanStructure {
     let mut total = 0usize;
     let mut capped = false;
 
-    for raw in text.lines() {
+    for raw in body.lines() {
         let Some(line) = classify_line(raw) else {
             continue;
         };
@@ -203,9 +213,30 @@ pub fn parse_plan_structure(text: &str) -> PlanStructure {
     // legacy plan's step tree is a useful flat list instead of empty. A canonical
     // plan (any S## row) never reaches the fallback.
     if total_steps(&structure) == 0 {
-        return parse_flat_checklist(text);
+        return parse_flat_checklist(&body);
     }
     structure
+}
+
+/// Remove `<!-- ... -->` comment regions, preserving everything outside them.
+///
+/// The plan template's hint blocks are HTML comments holding example canonical
+/// lines that must not be parsed as real structure. Comment spans (including
+/// their newlines) are dropped; text outside any comment is kept verbatim, so
+/// the surviving line grammar is exactly the authored body. An unterminated
+/// `<!--` drops the remainder (a malformed tail carries no authored structure).
+fn strip_html_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<!--") {
+        out.push_str(&rest[..start]);
+        match rest[start + 4..].find("-->") {
+            Some(end) => rest = &rest[start + 4 + end + 3..],
+            None => return out,
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Total parsed step rows across every depth (the canonical-vs-legacy switch).
@@ -552,6 +583,89 @@ Prose describing the phase, no checkboxes here.
         assert!(
             s.steps.is_empty(),
             "the stray checklist item is not adopted"
+        );
+    }
+
+    #[test]
+    fn template_hint_comments_are_not_parsed_as_structure() {
+        // The plan template scaffolds trailing HTML-comment hint blocks holding
+        // EXAMPLE canonical lines. They are byte-identical to the real grammar,
+        // so without stripping them the parser adopts them: a trailing
+        // `## Wave `W01` - ...` example overwrites the real W01 heading with
+        // "...", example `### Phase` lines re-head real phases, and example
+        // `- [ ] `P02.S01`` rows mint phantom steps. This reproduces the live
+        // defect (W01/W02 headings shown as "...", phantom phases) and asserts
+        // the stripped parse observes only the authored structure.
+        let body = "\
+# `demo` plan
+
+## Wave `W01` - keymap core
+
+### Phase `W01.P01` - chord primitive
+
+- [x] `W01.P01.S01` - real step one.
+- [ ] `W01.P01.S02` - real step two.
+
+## Wave `W02` - settings hardening
+
+### Phase `W02.P02` - the second phase
+
+- [x] `W02.P02.S03` - real step three.
+
+<!-- PHASE BLOCK FORMAT:
+     ### Phase `P02` - rewrite the writer-agent contract
+
+     - [ ] `P02.S01` - imperative-verb action; `path/to/file`.
+     - [ ] `P02.S02` - imperative-verb action; `path/to/file`. -->
+
+<!-- WAVE BLOCK FORMAT:
+     ## Wave `W01` - language-only convention rollout
+
+     ### Phase `W01.P01` - ...
+     ### Phase `W01.P02` - ... -->
+
+<!-- EPIC INTENT BLOCK FORMAT:
+     ## Wave `W01` - ...
+     ## Wave `W02` - ... -->
+";
+        let s = parse_plan_structure(body);
+        assert_eq!(s.waves.len(), 2, "exactly the two authored waves");
+        // Headings survive: the trailing `## Wave `W01` - ...` example no longer
+        // clobbers the real heading.
+        assert_eq!(s.waves[0].id, "W01");
+        assert_eq!(s.waves[0].heading, "keymap core");
+        assert_eq!(s.waves[1].id, "W02");
+        assert_eq!(s.waves[1].heading, "settings hardening");
+        // No phantom phases minted from the comment examples.
+        assert_eq!(s.waves[0].phases.len(), 1, "only the authored phase");
+        assert_eq!(s.waves[0].phases[0].heading, "chord primitive");
+        assert_eq!(s.waves[0].phases[0].steps.len(), 2);
+        assert_eq!(s.waves[1].phases.len(), 1);
+        assert_eq!(s.waves[1].phases[0].steps.len(), 1);
+        // No phantom steps adopted from the example `- [ ] `P02.S01`` rows.
+        assert_eq!(s.entity_count(), 2 + 2 + 3, "2 waves, 2 phases, 3 steps");
+        assert!(
+            s.steps.is_empty() && s.phases.is_empty(),
+            "L3 lives in waves"
+        );
+    }
+
+    #[test]
+    fn strip_html_comments_keeps_body_and_drops_comment_spans() {
+        assert_eq!(
+            strip_html_comments("a\n<!-- x\ny -->\nb"),
+            "a\n\nb",
+            "multi-line comment span removed, surrounding lines kept"
+        );
+        assert_eq!(
+            strip_html_comments("keep <!-- drop --> tail"),
+            "keep  tail",
+            "inline comment removed"
+        );
+        assert_eq!(
+            strip_html_comments("before <!-- unterminated"),
+            "before ",
+            "unterminated comment drops the remainder"
         );
     }
 
