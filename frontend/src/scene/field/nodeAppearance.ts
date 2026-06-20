@@ -99,9 +99,9 @@ export function tierBadgeText(degreeByTier?: SceneNodeData["degreeByTier"]): str
     .join(" ");
 }
 
-/** Base node-disc radius (graph/Node-items: a ~12px-diameter dot at unit scale). */
-const NODE_RADIUS = 6;
-/** Salience multiplier band: salience 0 -> 1.0x base; salience 1 -> this. */
+/** Salience multiplier band: salience 0 -> 1.0x base; salience 1 -> this. The base
+ *  node radius lives in appearance.ts (BASE_POINT_SIZE, the live three-field path via
+ *  nodeWorldRadius) — the old NODE_RADIUS=6 here was the retired cosmos/pixi duplicate. */
 export const SALIENCE_RADIUS_MAX = 2.6;
 
 // --- selected-state ring geometry (graph/Node-items 83:2 "selected") ----------
@@ -156,25 +156,6 @@ export function darkenColor(color: number, amount: number): number {
  *  the body's own hue (never a second accent). */
 export function bodyRimColor(fill: number): number {
   return darkenColor(fill, BODY_RIM_DARKEN);
-}
-
-/**
- * World-space radius for a node, driven by the engine-served salience
- * (degree-of-interest). Salience is the importance field made visible: it drives
- * the radius for EVERY species, monotonic in [0,1] and capped at the documented
- * band. When salience is ABSENT, the prior rule is the honest fallback:
- * feature-convergence nodes scale by member-count; every other species keeps the
- * base radius (shape carries type, not size, §3.1).
- */
-export function nodeRadius(node: SceneNodeData): number {
-  if (typeof node.salience === "number") {
-    const s = Math.max(0, Math.min(1, node.salience));
-    return NODE_RADIUS * (1 + s * (SALIENCE_RADIUS_MAX - 1));
-  }
-  if (node.kind !== "feature" || !node.memberCount || node.memberCount <= 0) {
-    return NODE_RADIUS;
-  }
-  return NODE_RADIUS * (1.4 + Math.log2(1 + node.memberCount) * 0.5);
 }
 
 /**

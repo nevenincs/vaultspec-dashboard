@@ -10,8 +10,9 @@
 // the documented band. Salience ALSO orders the DOI label cull. The member-count
 // rule is the honest fallback only when the origin does not serve salience.
 //
-// These are pure-function assertions over the sizing source (`nodeRadius`,
-// `labelPriority`, `ambientLabelFloor` in `nodeSprites.ts`); no GPU is reached.
+// These are pure-function assertions over the sizing source (`nodeWorldRadius` in
+// appearance.ts, plus `labelPriority`/`ambientLabelFloor` in nodeAppearance.ts); no
+// GPU is reached.
 
 import { describe, expect, it } from "vitest";
 
@@ -21,8 +22,11 @@ import {
   SALIENCE_RADIUS_MAX,
   ambientLabelFloor,
   labelPriority,
-  nodeRadius,
 } from "./nodeAppearance";
+// Live node sizing is appearance.nodeWorldRadius (the retired nodeAppearance.nodeRadius
+// duplicate was removed); these salience-encoding assertions are relative/ratio-based so
+// they hold against the live sizing source.
+import { nodeWorldRadius } from "../three/appearance";
 
 const node = (over: Partial<SceneNodeData>): SceneNodeData => ({
   id: "n",
@@ -32,16 +36,16 @@ const node = (over: Partial<SceneNodeData>): SceneNodeData => ({
 
 describe("salience -> circle size (engine-served degree-of-interest)", () => {
   it("grows the circle monotonically with salience for any species", () => {
-    const low = nodeRadius(node({ salience: 0.1 }));
-    const mid = nodeRadius(node({ salience: 0.5 }));
-    const high = nodeRadius(node({ salience: 0.95 }));
+    const low = nodeWorldRadius(node({ salience: 0.1 }));
+    const mid = nodeWorldRadius(node({ salience: 0.5 }));
+    const high = nodeWorldRadius(node({ salience: 0.95 }));
     expect(mid).toBeGreaterThan(low);
     expect(high).toBeGreaterThan(mid);
   });
 
   it("caps the salience radius band at the documented maximum", () => {
-    const base = nodeRadius(node({ salience: 0 }));
-    const top = nodeRadius(node({ salience: 1 }));
+    const base = nodeWorldRadius(node({ salience: 0 }));
+    const top = nodeWorldRadius(node({ salience: 1 }));
     expect(top / base).toBeCloseTo(SALIENCE_RADIUS_MAX, 5);
   });
 
@@ -49,30 +53,30 @@ describe("salience -> circle size (engine-served degree-of-interest)", () => {
     // A degree-of-interest value the engine could in theory emit slightly out of
     // band must not blow the circle past the documented cap, nor shrink it below
     // the base. (Defensive: salience is engine-served and should be in [0,1].)
-    const atZero = nodeRadius(node({ salience: 0 }));
-    const atOne = nodeRadius(node({ salience: 1 }));
-    expect(nodeRadius(node({ salience: -0.5 }))).toBe(atZero);
-    expect(nodeRadius(node({ salience: 1.5 }))).toBe(atOne);
+    const atZero = nodeWorldRadius(node({ salience: 0 }));
+    const atOne = nodeWorldRadius(node({ salience: 1 }));
+    expect(nodeWorldRadius(node({ salience: -0.5 }))).toBe(atZero);
+    expect(nodeWorldRadius(node({ salience: 1.5 }))).toBe(atOne);
   });
 
   it("lets salience drive size for non-feature species too (supersedes member-count)", () => {
     // A high-salience ADR reads larger than a low-salience feature node: salience
     // is the size signal, not the species — the importance field is what scales.
-    const bigAdr = nodeRadius(node({ kind: "adr", salience: 0.95 }));
-    const smallFeature = nodeRadius(
+    const bigAdr = nodeWorldRadius(node({ kind: "adr", salience: 0.95 }));
+    const smallFeature = nodeWorldRadius(
       node({ kind: "feature", salience: 0.1, memberCount: 5 }),
     );
     expect(bigAdr).toBeGreaterThan(smallFeature);
   });
 
   it("falls back to the member-count rule only when salience is absent", () => {
-    const baseAdr = nodeRadius(node({ kind: "adr" }));
-    const bigFeature = nodeRadius(node({ kind: "feature", memberCount: 40 }));
+    const baseAdr = nodeWorldRadius(node({ kind: "adr" }));
+    const bigFeature = nodeWorldRadius(node({ kind: "feature", memberCount: 40 }));
     // Without salience, a many-member feature is larger than a base species; every
     // non-feature species without salience keeps the base radius (shape carries
     // type, not size).
     expect(bigFeature).toBeGreaterThan(baseAdr);
-    expect(nodeRadius(node({ kind: "exec" }))).toBe(baseAdr);
+    expect(nodeWorldRadius(node({ kind: "exec" }))).toBe(baseAdr);
   });
 });
 

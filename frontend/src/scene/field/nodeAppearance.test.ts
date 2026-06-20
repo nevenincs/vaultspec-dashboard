@@ -12,7 +12,6 @@ import {
   darkenColor,
   freshnessAlpha,
   lodFor,
-  nodeRadius,
   progressFraction,
   selectedRingColor,
   selectedRingRadius,
@@ -20,6 +19,9 @@ import {
   tierBadgeText,
 } from "./nodeAppearance";
 import { categoryColor } from "./categoryColor";
+// The live node sizing is appearance.nodeWorldRadius (BASE_POINT_SIZE base); the old
+// nodeAppearance.nodeRadius (NODE_RADIUS=6) was the retired duplicate, now removed.
+import { nodeWorldRadius } from "../three/appearance";
 
 describe("lodFor", () => {
   it("draws silhouette-only below the near threshold", () => {
@@ -76,24 +78,30 @@ describe("progressFraction", () => {
   });
 });
 
-describe("nodeRadius", () => {
+describe("node radius (nodeWorldRadius)", () => {
   it("keeps the base radius for non-feature nodes (shape carries type)", () => {
-    const base = nodeRadius({ id: "doc:x", kind: "adr" });
-    expect(nodeRadius({ id: "doc:y", kind: "plan", memberCount: 99 })).toBe(base);
+    const base = nodeWorldRadius({ id: "doc:x", kind: "adr" });
+    expect(nodeWorldRadius({ id: "doc:y", kind: "plan", memberCount: 99 })).toBe(base);
   });
 
   it("grows feature nodes with their convergence weight (centers of gravity)", () => {
-    const small = nodeRadius({ id: "feature:a", kind: "feature", memberCount: 5 });
-    const large = nodeRadius({ id: "feature:b", kind: "feature", memberCount: 80 });
-    const base = nodeRadius({ id: "doc:x", kind: "adr" });
+    const small = nodeWorldRadius({ id: "feature:a", kind: "feature", memberCount: 5 });
+    const large = nodeWorldRadius({
+      id: "feature:b",
+      kind: "feature",
+      memberCount: 80,
+    });
+    const base = nodeWorldRadius({ id: "doc:x", kind: "adr" });
     expect(small).toBeGreaterThan(base);
     expect(large).toBeGreaterThan(small);
   });
 
   it("falls back to the base radius for a feature with no member_count", () => {
-    const base = nodeRadius({ id: "doc:x", kind: "adr" });
-    expect(nodeRadius({ id: "feature:a", kind: "feature" })).toBe(base);
-    expect(nodeRadius({ id: "feature:b", kind: "feature", memberCount: 0 })).toBe(base);
+    const base = nodeWorldRadius({ id: "doc:x", kind: "adr" });
+    expect(nodeWorldRadius({ id: "feature:a", kind: "feature" })).toBe(base);
+    expect(nodeWorldRadius({ id: "feature:b", kind: "feature", memberCount: 0 })).toBe(
+      base,
+    );
   });
 });
 
@@ -147,14 +155,14 @@ describe("default-state body rim (graph/Node-items 83:2 'default')", () => {
 
 describe("selected ring (graph/Node-items 83:2 'selected')", () => {
   it("sits OUTSIDE the body with a clear gap, scaling with the body radius", () => {
-    const r = nodeRadius({ id: "n", kind: "adr", salience: 0.5 });
+    const r = nodeWorldRadius({ id: "n", kind: "adr", salience: 0.5 });
     const ring = selectedRingRadius(r);
     // The ring centre is beyond the body edge by the gap + half its stroke, so
     // there is clear air between the disc and the ring.
     expect(ring).toBeGreaterThan(r);
     expect(ring).toBeCloseTo(r + SELECTED_RING_GAP + SELECTED_RING_WIDTH / 2, 5);
     // A larger (higher-salience) body pushes the ring out proportionally.
-    const big = nodeRadius({ id: "m", kind: "adr", salience: 1 });
+    const big = nodeWorldRadius({ id: "m", kind: "adr", salience: 1 });
     expect(selectedRingRadius(big)).toBeGreaterThan(ring);
   });
 
