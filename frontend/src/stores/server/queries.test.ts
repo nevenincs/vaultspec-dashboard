@@ -2864,7 +2864,7 @@ describe("left-rail root surface states", () => {
     expect(view.triggerLabel).toBe("vault-b");
     expect(view.triggerAriaLabel).toBe("worktree scope: vault-b, switching");
     expect(view.triggerClassName).toBe(
-      "flex w-full items-center gap-fg-1-5 rounded-fg-md bg-paper-sunken px-[10px] py-[6px] transition-colors duration-ui-fast hover:bg-paper-sunken/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+      "flex w-full items-center rounded-fg-xs py-fg-1 text-left transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     );
     expect(view.triggerLabelClassName).toBe(
       "min-w-0 flex-1 truncate text-left text-body-strong text-ink-muted",
@@ -3645,12 +3645,11 @@ describe("git diff selector argument normalization", () => {
   it("bounds git diff cache and wire identities before reads", () => {
     const oversized = "x".repeat(GIT_QUERY_KEY_PART_MAX_CHARS + 1);
 
-    expect(normalizeGitQueryKeyPart(` ${"x".repeat(GIT_QUERY_KEY_PART_MAX_CHARS)} `))
-      .toHaveLength(GIT_QUERY_KEY_PART_MAX_CHARS);
-    expect(normalizeGitQueryKeyPart(oversized)).toBe("");
     expect(
-      normalizeGitDiffRequest("wt-1", oversized, "HEAD~1", "HEAD"),
-    ).toEqual({
+      normalizeGitQueryKeyPart(` ${"x".repeat(GIT_QUERY_KEY_PART_MAX_CHARS)} `),
+    ).toHaveLength(GIT_QUERY_KEY_PART_MAX_CHARS);
+    expect(normalizeGitQueryKeyPart(oversized)).toBe("");
+    expect(normalizeGitDiffRequest("wt-1", oversized, "HEAD~1", "HEAD")).toEqual({
       scope: "wt-1",
       path: null,
       from: "HEAD~1",
@@ -4618,13 +4617,7 @@ describe("backend-signal status refresh identity", () => {
     expect(normalizeEngineStreamChannel("fs")).toBeNull();
     expect(normalizeEngineStreamChannel(null)).toBeNull();
     expect(
-      normalizeEngineStreamChannels([
-        " git ",
-        "graph",
-        "backends",
-        "git",
-        "message",
-      ]),
+      normalizeEngineStreamChannels([" git ", "graph", "backends", "git", "message"]),
     ).toEqual(["backends", "git", "graph"]);
     expect(normalizeEngineStreamSince(42.9)).toBe(42);
     expect(normalizeEngineStreamSince(-1)).toBeUndefined();
@@ -5613,7 +5606,14 @@ describe("history selector limit normalization", () => {
     expect(
       normalizeHistoryCommitsForView([
         null,
-        { hash: " kept ", short_hash: " k ", subject: "", body: "", ts: 1, node_ids: [] },
+        {
+          hash: " kept ",
+          short_hash: " k ",
+          subject: "",
+          body: "",
+          ts: 1,
+          node_ids: [],
+        },
       ]),
     ).toEqual([
       { hash: "kept", short_hash: "k", subject: "", body: "", ts: 1, node_ids: [] },

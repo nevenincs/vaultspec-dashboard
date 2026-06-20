@@ -422,7 +422,7 @@ export const MAX_OPEN_DOCS = 12;
 
 export const LEFT_RAIL_MIN_WIDTH = 180;
 export const LEFT_RAIL_MAX_WIDTH = 420;
-export const LEFT_RAIL_DEFAULT_WIDTH = 290;
+export const LEFT_RAIL_DEFAULT_WIDTH = 252;
 export const RIGHT_RAIL_MIN_WIDTH = 220;
 export const RIGHT_RAIL_MAX_WIDTH = 420;
 export const RIGHT_RAIL_DEFAULT_WIDTH = 290;

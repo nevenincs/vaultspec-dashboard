@@ -13,11 +13,11 @@
 // engine, and emits the scope-selection intent through the durable session
 // transition — chrome over the one projection.
 
-import { GitBranch, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useId, useRef } from "react";
 
-import { FolderPlus, IconButton, PanelLeft } from "../kit";
+import { IconButton, PanelLeft } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
@@ -168,10 +168,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         }
       }}
     >
-      {/* The header row (binding `LeftRail` 686:2519): the project/worktree name as
-          a PLAIN title (no pill) that opens the chooser, then the folder-add and
-          rail-collapse icon buttons. The title carries the dropdown a11y wiring; the
-          dropdown list below is unchanged. */}
+      {/* The header row (binding `LeftRail` 238:600 / 686:2519): the project/worktree
+          name as a PLAIN bold title (no pill, no icon) that opens the chooser, then
+          the single rail-collapse toggle. The title carries the dropdown a11y wiring;
+          the dropdown list below is unchanged. */}
       <div
         className="flex items-center justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
@@ -201,22 +201,10 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           aria-label={pickerView.triggerAriaLabel}
           className={pickerView.triggerClassName}
         >
-          <GitBranch
-            size={14}
-            aria-hidden
-            className={pickerView.triggerIconClassName}
-          />
           <span className={pickerView.triggerLabelClassName}>
             {pickerView.triggerLabel}
           </span>
         </button>
-        <IconButton
-          label="open or add a project"
-          title="open or add a project"
-          onClick={() => toggle(false)}
-        >
-          <FolderPlus size={16} aria-hidden />
-        </IconButton>
         <IconButton
           label="collapse left rail"
           title="collapse left rail"

@@ -4,8 +4,8 @@
 // frame:
 //
 //   1. WorktreePicker  — the project/worktree header: the current name as a plain
-//                        title that opens the chooser, plus the folder-add and
-//                        rail-collapse icon buttons.
+//                        title that opens the chooser, plus the single rail-collapse
+//                        toggle.
 //   2. RailFilterField — the ONE canonical filter: a FEATURE filter (type → narrow)
 //                        that pops up the fine-tuned facet flyout on focus.
 //   3. BrowserRegion   — the Vault | Files tabs and the active tab's tree.
