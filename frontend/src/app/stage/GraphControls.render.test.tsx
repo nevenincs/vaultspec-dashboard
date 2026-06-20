@@ -185,6 +185,38 @@ describe("GraphControls — force tuning (set-force-params)", () => {
   });
 });
 
+describe("GraphControls — appearance (set-appearance-params)", () => {
+  it("a Node size slider change emits set-appearance-params", () => {
+    const spy = vi.spyOn(getScene().controller, "command");
+    renderGraphControls();
+    openSettings();
+    fireEvent.change(screen.getByRole("slider", { name: "Node size" }), {
+      target: { value: "1.5" },
+    });
+    const call = spy.mock.calls.find(
+      (c) => (c[0] as { kind: string }).kind === "set-appearance-params",
+    );
+    expect(call).toBeTruthy();
+    expect(
+      (call![0] as { params: { nodeSizeScale: number } }).params.nodeSizeScale,
+    ).toBeCloseTo(1.5);
+  });
+
+  it("the edge-colour toggle emits set-appearance-params with the chosen mode", () => {
+    const spy = vi.spyOn(getScene().controller, "command");
+    renderGraphControls();
+    openSettings();
+    fireEvent.click(screen.getByRole("radio", { name: "Solid" }));
+    const call = spy.mock.calls.find(
+      (c) => (c[0] as { kind: string }).kind === "set-appearance-params",
+    );
+    expect(call).toBeTruthy();
+    expect(
+      (call![0] as { params: { edgeColorMode: string } }).params.edgeColorMode,
+    ).toBe("solid");
+  });
+});
+
 describe("GraphControls — Freeze toggle", () => {
   it("unfreezes the scene when the active scope changes", async () => {
     const spy = vi.spyOn(getScene().controller, "command");

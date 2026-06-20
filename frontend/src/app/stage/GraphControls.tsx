@@ -38,6 +38,8 @@ import {
   Minus,
   Plus,
   Popover,
+  Segment,
+  SegmentedToggle,
   Slider,
 } from "../kit";
 import {
@@ -45,17 +47,23 @@ import {
   useDashboardGraphControlsView,
 } from "../../stores/server/queries";
 import {
+  GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
   GRAPH_CONTROLS_TUNE_DEFAULTS,
+  deriveGraphControlsAppearancePresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
   deriveGraphControlsSettingsPopoverView,
   deriveGraphControlsTunePresentationView,
+  formatGraphControlsAppearanceValue,
   formatGraphControlsTuneValue,
+  setGraphControlsAppearanceParams,
   setGraphControlsFrozen,
   setGraphControlsSettingsOpen,
   setGraphControlsTuneParams,
   toggleGraphControlsSettingsOpen,
+  type GraphControlsAppearanceParams,
   type GraphControlsTuneParams,
+  useGraphControlsAppearanceParams,
   useGraphControlsFrozen,
   useGraphControlsFrozenScope,
   useGraphControlsSettingsOpen,
@@ -422,10 +430,151 @@ function TuneBody() {
 }
 
 // ---------------------------------------------------------------------------
+// Appearance group — the field's node-size + edge-look knobs (graph-backend-
+// unification ADR D3), in the same settings popover. Each control dispatches
+// set-appearance-params; the edge colour mode is a solid/gradient segmented toggle
+// (gradient is the binding default per ADR D2).
+// ---------------------------------------------------------------------------
+
+function AppearanceBody() {
+  const params = useGraphControlsAppearanceParams();
+  const view = deriveGraphControlsAppearancePresentationView();
+  const nodeSize = view.sliders.nodeSizeScale;
+  const salience = view.sliders.nodeSalienceScale;
+  const edgeWidth = view.sliders.edgeWidthMax;
+  const edgeOpacity = view.sliders.edgeOpacityMax;
+  const interactingRef = useRef(false);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const beginInteraction = useCallback(() => {
+    if (interactingRef.current) return;
+    interactingRef.current = true;
+    getScene().controller.command({ kind: "begin-interaction" });
+  }, []);
+
+  const endInteraction = useCallback(() => {
+    if (settleTimerRef.current) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+    if (!interactingRef.current) return;
+    interactingRef.current = false;
+    getScene().controller.command({ kind: "end-interaction" });
+  }, []);
+
+  const armKeyboardSettle = useCallback(() => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(endInteraction, KEYBOARD_SETTLE_MS);
+  }, [endInteraction]);
+
+  // End any in-flight interaction if the popover unmounts mid-drag.
+  useEffect(() => endInteraction, [endInteraction]);
+
+  function apply(update: Partial<GraphControlsAppearanceParams>) {
+    const next = { ...params, ...update };
+    setGraphControlsAppearanceParams(next);
+    beginInteraction();
+    // Dispatch the full appearance set (incl. the unsurfaced min ends) so the
+    // field merges a complete, consistent look.
+    getScene().controller.command({
+      kind: "set-appearance-params",
+      params: {
+        nodeSizeScale: next.nodeSizeScale,
+        nodeSalienceScale: next.nodeSalienceScale,
+        edgeWidthMin: next.edgeWidthMin,
+        edgeWidthMax: next.edgeWidthMax,
+        edgeOpacityMin: next.edgeOpacityMin,
+        edgeOpacityMax: next.edgeOpacityMax,
+        edgeColorMode: next.edgeColorMode,
+      },
+    });
+    armKeyboardSettle();
+  }
+
+  return (
+    <div className={view.containerClassName}>
+      <span className={view.headingClassName}>{view.heading}</span>
+      <LabelledSlider
+        label={nodeSize.label}
+        title={nodeSize.title}
+        value={params.nodeSizeScale}
+        min={nodeSize.min}
+        max={nodeSize.max}
+        step={nodeSize.step}
+        onChange={(v) => apply({ nodeSizeScale: v })}
+        format={(v) => formatGraphControlsAppearanceValue("nodeSizeScale", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <LabelledSlider
+        label={salience.label}
+        title={salience.title}
+        value={params.nodeSalienceScale}
+        min={salience.min}
+        max={salience.max}
+        step={salience.step}
+        onChange={(v) => apply({ nodeSalienceScale: v })}
+        format={(v) => formatGraphControlsAppearanceValue("nodeSalienceScale", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <LabelledSlider
+        label={edgeWidth.label}
+        title={edgeWidth.title}
+        value={params.edgeWidthMax}
+        min={edgeWidth.min}
+        max={edgeWidth.max}
+        step={edgeWidth.step}
+        onChange={(v) => apply({ edgeWidthMax: v })}
+        format={(v) => formatGraphControlsAppearanceValue("edgeWidthMax", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <LabelledSlider
+        label={edgeOpacity.label}
+        title={edgeOpacity.title}
+        value={params.edgeOpacityMax}
+        min={edgeOpacity.min}
+        max={edgeOpacity.max}
+        step={edgeOpacity.step}
+        onChange={(v) => apply({ edgeOpacityMax: v })}
+        format={(v) => formatGraphControlsAppearanceValue("edgeOpacityMax", v)}
+        onInteractStart={beginInteraction}
+        onInteractEnd={endInteraction}
+      />
+      <div className="flex flex-col gap-fg-1">
+        <span className={view.headingClassName}>{view.colorModeLabel}</span>
+        <SegmentedToggle
+          ariaLabel={view.colorModeAriaLabel}
+          value={params.edgeColorMode}
+          onChange={(v) =>
+            apply({
+              edgeColorMode: v as GraphControlsAppearanceParams["edgeColorMode"],
+            })
+          }
+          fullWidth
+        >
+          <Segment value="solid">{view.solidLabel}</Segment>
+          <Segment value="gradient">{view.gradientLabel}</Segment>
+        </SegmentedToggle>
+      </div>
+      <button
+        type="button"
+        onClick={() => apply(GRAPH_CONTROLS_APPEARANCE_DEFAULTS)}
+        className={view.resetButtonClassName}
+      >
+        {view.resetLabel}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The graph-settings popover — the gear trigger that holds the Freeze-layout
-// toggle and the three-native force knobs, COLLAPSED by default so the field is
-// never occluded. Lives in the unified stage top bar alongside the camera cluster
-// (graph-timeline-workspace); the panel drops DOWN into the canvas.
+// toggle, the three-native force knobs, and the appearance (node-size + edge-look)
+// controls, COLLAPSED by default so the field is never occluded. Lives in the
+// unified stage top bar alongside the camera cluster (graph-timeline-workspace);
+// the panel drops DOWN into the canvas.
 // ---------------------------------------------------------------------------
 
 export function GraphSettingsPopover() {
@@ -437,6 +586,8 @@ export function GraphSettingsPopover() {
       icon={<SlidersHorizontal size={ICON_PX} aria-hidden />}
     >
       <TuneBody />
+      <span className="h-px w-full bg-rule" aria-hidden />
+      <AppearanceBody />
     </SettingsPopover>
   );
 }

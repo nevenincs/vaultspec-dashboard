@@ -1,17 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
   GRAPH_CONTROLS_TUNE_DEFAULTS,
+  deriveGraphControlsAppearancePresentationView,
   deriveGraphControlsBoundPresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
   deriveGraphControlsSettingsPopoverView,
   deriveGraphControlsTunePresentationView,
+  formatGraphControlsAppearanceValue,
   formatGraphControlsBoundSize,
   formatGraphControlsTuneValue,
+  normalizeGraphControlsAppearanceParams,
+  normalizeGraphControlsFrozenScope,
   normalizeGraphControlsTuneParams,
+  patchGraphControlsAppearanceParams,
   patchGraphControlsTuneParams,
   resetGraphControlsChrome,
+  setGraphControlsAppearanceParams,
   setGraphControlsFrozen,
   setGraphControlsSettingsOpen,
   setGraphControlsTuneParams,
@@ -30,11 +37,14 @@ describe("graph controls chrome view seam", () => {
     setGraphControlsSettingsOpen(true);
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(true);
 
-    toggleGraphControlsSettingsOpen();
+    setGraphControlsSettingsOpen("true");
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
 
     toggleGraphControlsSettingsOpen();
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(true);
+
+    toggleGraphControlsSettingsOpen();
+    expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
 
     resetGraphControlsChrome();
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
@@ -127,13 +137,19 @@ describe("graph controls chrome view seam", () => {
   });
 
   it("tracks freeze state with the scope that froze the simulation", () => {
-    setGraphControlsFrozen(true, "scope-a");
+    setGraphControlsFrozen(true, " scope-a ");
     expect(useGraphControlsChromeStore.getState().frozen).toBe(true);
     expect(useGraphControlsChromeStore.getState().frozenScope).toBe("scope-a");
 
     setGraphControlsFrozen(false, null);
     expect(useGraphControlsChromeStore.getState().frozen).toBe(false);
     expect(useGraphControlsChromeStore.getState().frozenScope).toBeNull();
+
+    setGraphControlsFrozen("true", { scope: "scope-a" });
+    expect(useGraphControlsChromeStore.getState().frozen).toBe(false);
+    expect(useGraphControlsChromeStore.getState().frozenScope).toBeNull();
+    expect(normalizeGraphControlsFrozenScope("  scope-b  ")).toBe("scope-b");
+    expect(normalizeGraphControlsFrozenScope("   ")).toBeNull();
   });
 });
 
@@ -192,6 +208,83 @@ describe("graph controls tune seam (three-native force params)", () => {
     );
     expect(normalizeGraphControlsTuneParams(null)).toEqual(
       GRAPH_CONTROLS_TUNE_DEFAULTS,
+    );
+    expect(normalizeGraphControlsTuneParams({ repulsion: "200" })).toEqual(
+      GRAPH_CONTROLS_TUNE_DEFAULTS,
+    );
+  });
+});
+
+describe("graph controls appearance seam (set-appearance-params)", () => {
+  beforeEach(() => resetGraphControlsChrome());
+
+  it("defaults appearance to the field's look (gradient edges per ADR D2)", () => {
+    expect(GRAPH_CONTROLS_APPEARANCE_DEFAULTS).toEqual({
+      nodeSizeScale: 1,
+      nodeSalienceScale: 1,
+      edgeWidthMin: 0.6,
+      edgeWidthMax: 2.2,
+      edgeOpacityMin: 0.1,
+      edgeOpacityMax: 0.5,
+      edgeColorMode: "gradient",
+    });
+    expect(useGraphControlsChromeStore.getState().appearanceParams).toEqual(
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
+    );
+  });
+
+  it("projects the four exposed appearance sliders + colour-mode copy", () => {
+    const view = deriveGraphControlsAppearancePresentationView();
+    expect(Object.keys(view.sliders).sort()).toEqual([
+      "edgeOpacityMax",
+      "edgeWidthMax",
+      "nodeSalienceScale",
+      "nodeSizeScale",
+    ]);
+    expect(view.sliders.nodeSizeScale).toMatchObject({ min: 0.5, max: 2.5, step: 0.1 });
+    expect(view.solidLabel).toBe("Solid");
+    expect(view.gradientLabel).toBe("Gradient");
+  });
+
+  it("formats edge opacity to 2dp and the rest to 1dp", () => {
+    expect(formatGraphControlsAppearanceValue("edgeOpacityMax", 0.5)).toBe("0.50");
+    expect(formatGraphControlsAppearanceValue("nodeSizeScale", 1)).toBe("1.0");
+    expect(formatGraphControlsAppearanceValue("edgeWidthMax", 2.2)).toBe("2.2");
+  });
+
+  it("sets, patches, normalizes, and resets appearance through one seam", () => {
+    setGraphControlsAppearanceParams({
+      nodeSizeScale: 1.5,
+      nodeSalienceScale: 0.5,
+      edgeWidthMin: 0.6,
+      edgeWidthMax: 4,
+      edgeOpacityMin: 0.1,
+      edgeOpacityMax: 0.8,
+      edgeColorMode: "solid",
+    });
+    expect(useGraphControlsChromeStore.getState().appearanceParams).toMatchObject({
+      nodeSizeScale: 1.5,
+      edgeWidthMax: 4,
+      edgeColorMode: "solid",
+    });
+
+    // A patch merges; a non-finite number and an invalid mode fall back to defaults.
+    patchGraphControlsAppearanceParams({
+      edgeWidthMax: Number.NaN,
+      edgeColorMode: "rainbow",
+    });
+    expect(useGraphControlsChromeStore.getState().appearanceParams).toMatchObject({
+      nodeSizeScale: 1.5,
+      edgeWidthMax: GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeWidthMax,
+      edgeColorMode: "gradient",
+    });
+
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState().appearanceParams).toEqual(
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
+    );
+    expect(normalizeGraphControlsAppearanceParams(null)).toEqual(
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
     );
   });
 });

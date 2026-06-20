@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { normalizeViewStoreSessionString } from "./scopeIdentity";
+
 // Three-native force controls, rebuilt against the field's `set-force-params`
 // d3-force seam after the Cosmos field was retired. The three knobs are UI-facing
 // magnitudes: `repulsion` (the many-body push, mapped to a negative charge on the
@@ -27,23 +29,37 @@ function finiteOrDefault(value: unknown, fallback: number): number {
 }
 
 export function normalizeGraphControlsTuneParams(
-  params: Partial<GraphControlsTuneParams> | null | undefined,
+  params: unknown,
 ): GraphControlsTuneParams {
+  const value: Record<string, unknown> =
+    params !== null && typeof params === "object"
+      ? (params as Record<string, unknown>)
+      : {};
   return {
     repulsion: finiteOrDefault(
-      params?.repulsion,
+      "repulsion" in value ? value.repulsion : undefined,
       GRAPH_CONTROLS_TUNE_DEFAULTS.repulsion,
     ),
     linkDistance: finiteOrDefault(
-      params?.linkDistance,
+      "linkDistance" in value ? value.linkDistance : undefined,
       GRAPH_CONTROLS_TUNE_DEFAULTS.linkDistance,
     ),
     linkSpring: finiteOrDefault(
-      params?.linkSpring,
+      "linkSpring" in value ? value.linkSpring : undefined,
       GRAPH_CONTROLS_TUNE_DEFAULTS.linkSpring,
     ),
   };
 }
+
+export function normalizeGraphControlsOpen(open: unknown): boolean {
+  return open === true;
+}
+
+export function normalizeGraphControlsFrozen(frozen: unknown): boolean {
+  return frozen === true;
+}
+
+export const normalizeGraphControlsFrozenScope = normalizeViewStoreSessionString;
 
 export interface GraphControlsTuneSliderPresentationView {
   label: string;
@@ -103,6 +119,153 @@ export function formatGraphControlsTuneValue(
   value: number,
 ): string {
   return key === "linkSpring" ? value.toFixed(1) : String(Math.round(value));
+}
+
+// --- appearance / "look" controls (graph-backend-unification ADR D3) -----------
+// The node-size + edge-look knobs the GraphControls appearance section tunes on the
+// active field, mapped onto `set-appearance-params`. The store carries the full
+// AppearanceParams shape (so a dispatch is complete); the UI exposes node size,
+// salience spread, edge width, edge opacity, and the edge colour-inheritance mode
+// (solid | gradient; gradient is the binding default per ADR D2). The edge
+// width/opacity MIN ends stay at the field defaults and ride along in the dispatch.
+
+export type GraphControlsEdgeColorMode = "solid" | "gradient";
+
+export interface GraphControlsAppearanceParams {
+  nodeSizeScale: number;
+  nodeSalienceScale: number;
+  edgeWidthMin: number;
+  edgeWidthMax: number;
+  edgeOpacityMin: number;
+  edgeOpacityMax: number;
+  edgeColorMode: GraphControlsEdgeColorMode;
+}
+
+/** The appearance knobs the UI exposes as sliders (the min ends are not surfaced). */
+export type GraphControlsAppearanceSliderKey =
+  | "nodeSizeScale"
+  | "nodeSalienceScale"
+  | "edgeWidthMax"
+  | "edgeOpacityMax";
+
+export const GRAPH_CONTROLS_APPEARANCE_DEFAULTS: GraphControlsAppearanceParams = {
+  // Mirror the field's APPEARANCE_DEFAULTS (gradient edges are the binding default,
+  // graph-backend-unification ADR D2).
+  nodeSizeScale: 1,
+  nodeSalienceScale: 1,
+  edgeWidthMin: 0.6,
+  edgeWidthMax: 2.2,
+  edgeOpacityMin: 0.1,
+  edgeOpacityMax: 0.5,
+  edgeColorMode: "gradient",
+};
+
+export function normalizeGraphControlsAppearanceParams(
+  params: unknown,
+): GraphControlsAppearanceParams {
+  const value: Record<string, unknown> =
+    params !== null && typeof params === "object"
+      ? (params as Record<string, unknown>)
+      : {};
+  const mode = value.edgeColorMode;
+  return {
+    nodeSizeScale: finiteOrDefault(
+      "nodeSizeScale" in value ? value.nodeSizeScale : undefined,
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS.nodeSizeScale,
+    ),
+    nodeSalienceScale: finiteOrDefault(
+      "nodeSalienceScale" in value ? value.nodeSalienceScale : undefined,
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS.nodeSalienceScale,
+    ),
+    edgeWidthMin: finiteOrDefault(
+      "edgeWidthMin" in value ? value.edgeWidthMin : undefined,
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeWidthMin,
+    ),
+    edgeWidthMax: finiteOrDefault(
+      "edgeWidthMax" in value ? value.edgeWidthMax : undefined,
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeWidthMax,
+    ),
+    edgeOpacityMin: finiteOrDefault(
+      "edgeOpacityMin" in value ? value.edgeOpacityMin : undefined,
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeOpacityMin,
+    ),
+    edgeOpacityMax: finiteOrDefault(
+      "edgeOpacityMax" in value ? value.edgeOpacityMax : undefined,
+      GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeOpacityMax,
+    ),
+    edgeColorMode:
+      mode === "solid" || mode === "gradient"
+        ? mode
+        : GRAPH_CONTROLS_APPEARANCE_DEFAULTS.edgeColorMode,
+  };
+}
+
+export interface GraphControlsAppearancePresentationView {
+  containerClassName: string;
+  headingClassName: string;
+  heading: string;
+  colorModeLabel: string;
+  colorModeAriaLabel: string;
+  solidLabel: string;
+  gradientLabel: string;
+  resetButtonClassName: string;
+  resetLabel: string;
+  sliders: Record<
+    GraphControlsAppearanceSliderKey,
+    GraphControlsTuneSliderPresentationView
+  >;
+}
+
+export function deriveGraphControlsAppearancePresentationView(): GraphControlsAppearancePresentationView {
+  return {
+    containerClassName: "flex w-48 flex-col gap-fg-3",
+    headingClassName: "text-label text-ink-muted",
+    heading: "Appearance",
+    colorModeLabel: "Edge colour",
+    colorModeAriaLabel: "Edge colour mode",
+    solidLabel: "Solid",
+    gradientLabel: "Gradient",
+    resetButtonClassName:
+      "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
+    resetLabel: "Reset to defaults",
+    sliders: {
+      nodeSizeScale: {
+        label: "Node size",
+        title: "Scale every node's drawn size",
+        min: 0.5,
+        max: 2.5,
+        step: 0.1,
+      },
+      nodeSalienceScale: {
+        label: "Salience spread",
+        title: "How strongly salience drives node size (0 = uniform)",
+        min: 0,
+        max: 1,
+        step: 0.1,
+      },
+      edgeWidthMax: {
+        label: "Edge width",
+        title: "Thickness of the strongest edges",
+        min: 0.5,
+        max: 6,
+        step: 0.2,
+      },
+      edgeOpacityMax: {
+        label: "Edge opacity",
+        title: "Opacity of the strongest edges",
+        min: 0.1,
+        max: 1,
+        step: 0.05,
+      },
+    },
+  };
+}
+
+export function formatGraphControlsAppearanceValue(
+  key: GraphControlsAppearanceSliderKey,
+  value: number,
+): string {
+  return key === "edgeOpacityMax" ? value.toFixed(2) : value.toFixed(1);
 }
 
 export type GraphControlsBoundShape = "free" | "circle" | "rect";
@@ -231,11 +394,14 @@ interface GraphControlsChromeState {
   frozen: boolean;
   frozenScope: string | null;
   tuneParams: GraphControlsTuneParams;
-  setSettingsOpen: (open: boolean) => void;
+  appearanceParams: GraphControlsAppearanceParams;
+  setSettingsOpen: (open: unknown) => void;
   toggleSettingsOpen: () => void;
-  setFrozen: (frozen: boolean, scope: string | null) => void;
-  setTuneParams: (params: GraphControlsTuneParams) => void;
-  patchTuneParams: (patch: Partial<GraphControlsTuneParams>) => void;
+  setFrozen: (frozen: unknown, scope: unknown) => void;
+  setTuneParams: (params: unknown) => void;
+  patchTuneParams: (patch: unknown) => void;
+  setAppearanceParams: (params: unknown) => void;
+  patchAppearanceParams: (patch: unknown) => void;
   reset: () => void;
 }
 
@@ -244,24 +410,58 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   frozen: false,
   frozenScope: null,
   tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
-  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  appearanceParams: normalizeGraphControlsAppearanceParams(
+    GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
+  ),
+  setSettingsOpen: (settingsOpen) =>
+    set({ settingsOpen: normalizeGraphControlsOpen(settingsOpen) }),
   toggleSettingsOpen: () => set((state) => ({ settingsOpen: !state.settingsOpen })),
-  setFrozen: (frozen, frozenScope) => set({ frozen, frozenScope }),
+  setFrozen: (frozen, frozenScope) =>
+    set({
+      frozen: normalizeGraphControlsFrozen(frozen),
+      frozenScope: normalizeGraphControlsFrozenScope(frozenScope),
+    }),
   setTuneParams: (tuneParams) =>
     set({ tuneParams: normalizeGraphControlsTuneParams(tuneParams) }),
   patchTuneParams: (patch) =>
-    set((state) => ({
-      tuneParams: normalizeGraphControlsTuneParams({
-        ...state.tuneParams,
-        ...patch,
-      }),
-    })),
+    set((state) => {
+      const patchRecord: Record<string, unknown> =
+        patch !== null && typeof patch === "object"
+          ? (patch as Record<string, unknown>)
+          : {};
+      return {
+        tuneParams: normalizeGraphControlsTuneParams({
+          ...state.tuneParams,
+          ...patchRecord,
+        }),
+      };
+    }),
+  setAppearanceParams: (appearanceParams) =>
+    set({
+      appearanceParams: normalizeGraphControlsAppearanceParams(appearanceParams),
+    }),
+  patchAppearanceParams: (patch) =>
+    set((state) => {
+      const patchRecord: Record<string, unknown> =
+        patch !== null && typeof patch === "object"
+          ? (patch as Record<string, unknown>)
+          : {};
+      return {
+        appearanceParams: normalizeGraphControlsAppearanceParams({
+          ...state.appearanceParams,
+          ...patchRecord,
+        }),
+      };
+    }),
   reset: () =>
     set({
       settingsOpen: false,
       frozen: false,
       frozenScope: null,
       tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
+      appearanceParams: normalizeGraphControlsAppearanceParams(
+        GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
+      ),
     }),
 }));
 
@@ -277,7 +477,7 @@ export function useGraphControlsFrozenScope(): string | null {
   return useGraphControlsChromeStore((state) => state.frozenScope);
 }
 
-export function setGraphControlsSettingsOpen(open: boolean): void {
+export function setGraphControlsSettingsOpen(open: unknown): void {
   useGraphControlsChromeStore.getState().setSettingsOpen(open);
 }
 
@@ -285,7 +485,7 @@ export function toggleGraphControlsSettingsOpen(): void {
   useGraphControlsChromeStore.getState().toggleSettingsOpen();
 }
 
-export function setGraphControlsFrozen(frozen: boolean, scope: string | null): void {
+export function setGraphControlsFrozen(frozen: unknown, scope: unknown): void {
   useGraphControlsChromeStore.getState().setFrozen(frozen, scope);
 }
 
@@ -297,12 +497,22 @@ export function useGraphControlsTuneParams(): GraphControlsTuneParams {
   return useGraphControlsChromeStore((state) => state.tuneParams);
 }
 
-export function setGraphControlsTuneParams(params: GraphControlsTuneParams): void {
+export function setGraphControlsTuneParams(params: unknown): void {
   useGraphControlsChromeStore.getState().setTuneParams(params);
 }
 
-export function patchGraphControlsTuneParams(
-  patch: Partial<GraphControlsTuneParams>,
-): void {
+export function patchGraphControlsTuneParams(patch: unknown): void {
   useGraphControlsChromeStore.getState().patchTuneParams(patch);
+}
+
+export function useGraphControlsAppearanceParams(): GraphControlsAppearanceParams {
+  return useGraphControlsChromeStore((state) => state.appearanceParams);
+}
+
+export function setGraphControlsAppearanceParams(params: unknown): void {
+  useGraphControlsChromeStore.getState().setAppearanceParams(params);
+}
+
+export function patchGraphControlsAppearanceParams(patch: unknown): void {
+  useGraphControlsChromeStore.getState().patchAppearanceParams(patch);
 }

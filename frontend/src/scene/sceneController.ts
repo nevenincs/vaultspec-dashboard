@@ -35,6 +35,24 @@ export interface GraphForceParams {
   linkStrength?: number;
 }
 
+/**
+ * The appearance / "look" knobs the graph-controls UI tunes on the active field
+ * (graph-backend-unification ADR D3): node-size scale, salience spread, edge
+ * width/opacity range, and edge colour-inheritance mode. Mirrors the field's
+ * AppearanceParams structurally; all optional — the field merges them via its own
+ * setAppearanceParams. Defined locally (not imported from scene/three) to keep the
+ * seam free of a renderer-type import cycle, exactly like GraphForceParams.
+ */
+export interface GraphAppearanceParams {
+  nodeSizeScale?: number;
+  nodeSalienceScale?: number;
+  edgeWidthMin?: number;
+  edgeWidthMax?: number;
+  edgeOpacityMin?: number;
+  edgeOpacityMax?: number;
+  edgeColorMode?: "solid" | "gradient";
+}
+
 export const EDGE_RENDER_DEFAULTS: EdgeRenderParams = {
   lineWidthScale: 1,
 };
@@ -228,6 +246,9 @@ export type SceneCommand =
   // Three-native force tuning (replaces the retired set-cosmos-config): the
   // graph-controls sliders patch the field's d3-force params live.
   | { kind: "set-force-params"; params: GraphForceParams }
+  // Three-native appearance tuning (graph-backend-unification ADR D3): the
+  // graph-controls appearance sliders patch the field's node-size + edge look.
+  | { kind: "set-appearance-params"; params: GraphAppearanceParams }
   // --- node-graph-rework addendum (ADR D3) -----------------------------------
   // Configurable canvas/sim containment: free (default, unbounded) | circle |
   // rect, with an optional size (radius for circle, half-extent for rect; omitted
@@ -469,6 +490,7 @@ export class SceneController {
       case "end-interaction":
       case "set-frozen":
       case "set-force-params":
+      case "set-appearance-params":
         // Renderer concerns — forwarded below.
         break;
     }
