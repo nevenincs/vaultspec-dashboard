@@ -42,12 +42,9 @@ import {
   type SceneCommand,
   type SceneDelta,
   type SceneEdgeData,
-  type SceneFeatureFlags,
   type SceneFieldRenderer,
   type SceneNodeData,
   type SceneController,
-  type EdgeRenderParams,
-  DEFAULT_SCENE_FEATURE_FLAGS,
 } from "../sceneController";
 import { semanticLevel } from "../field/cameraCore";
 import {
@@ -275,12 +272,9 @@ export class ThreeField implements SceneFieldRenderer {
   private selectedIds: ReadonlySet<string> = new Set();
   private pinnedIds: ReadonlySet<string> = new Set();
   private visibleNodeIds: ReadonlySet<string> | null = null;
-  private featureFlags: SceneFeatureFlags = { ...DEFAULT_SCENE_FEATURE_FLAGS };
 
   private params: D3ForceParams = { ...D3_FORCE_DEFAULTS };
   private appearance: AppearanceParams = { ...APPEARANCE_DEFAULTS };
-  // Edge render params (set-edge-render-params): a global multiplier on edge width.
-  private edgeLineWidthScale = 1;
   // Transient pulse cohort (pulse command): briefly ring these nodes, then clear.
   private pulseIds: ReadonlySet<string> = new Set();
   private pulseTimer = 0;
@@ -432,12 +426,6 @@ export class ThreeField implements SceneFieldRenderer {
         this.applyVisibility(cmd.visibleNodeIds, cmd.visibleEdgeIds);
         this.requestRender();
         break;
-      case "set-feature-flags":
-        this.featureFlags = { ...this.featureFlags, ...cmd.flags };
-        if (!this.featureFlags.hover) this.setHovered(null);
-        this.applyEmphasis();
-        this.requestRender();
-        break;
       case "focus-node":
         this.focusNode(cmd.id);
         break;
@@ -464,9 +452,6 @@ export class ThreeField implements SceneFieldRenderer {
         break;
       case "apply-deltas":
         this.applyDeltas(cmd.deltas);
-        break;
-      case "set-edge-render-params":
-        this.setEdgeRenderParams(cmd.params);
         break;
       case "pulse":
         this.pulseNodes(cmd.ids);
@@ -500,10 +485,6 @@ export class ThreeField implements SceneFieldRenderer {
         // Live look tuning (node size/salience, edge width/opacity, colour mode)
         // from the graph-controls sliders.
         this.setAppearanceParams(cmd.params);
-        break;
-      case "set-layout-mode":
-        // No-op: layout-mode has no analogue in the d3 force field, which exposes
-        // its force params via set-force-params / setForceParams.
         break;
       default:
         break;
@@ -666,24 +647,6 @@ export class ThreeField implements SceneFieldRenderer {
     this.setData([...nodeMap.values()], [...edgeMap.values()]);
   }
 
-  /** Edge render params (set-edge-render-params): a global multiplier on edge width
-   *  (the timeline thins/thickens edges; also the W02 gradient hook). Rewrites the
-   *  instanced width attribute in place — no re-simulation. */
-  setEdgeRenderParams(params: Partial<EdgeRenderParams>): void {
-    if (typeof params.lineWidthScale === "number") {
-      this.edgeLineWidthScale = params.lineWidthScale;
-    }
-    if (this.edgeMesh && this.edgeData.length > 0) {
-      const aWidth = this.edgeMesh.geometry.getAttribute("aWidthPx");
-      this.edgeData.forEach((e, i) => {
-        const w = edgeAppearance(e, this.appearance).width * this.edgeLineWidthScale;
-        for (let k = 0; k < 4; k++) aWidth.setX(i * 4 + k, w);
-      });
-      aWidth.needsUpdate = true;
-      this.requestRender();
-    }
-  }
-
   /** Transient cross-highlight (pulse): briefly ring the named nodes, then clear —
    *  the timeline's event-click flash. Bounded by a single self-clearing timer. */
   private pulseNodes(ids: ReadonlySet<string>): void {
@@ -806,7 +769,7 @@ export class ThreeField implements SceneFieldRenderer {
         aIndexB[v] = t;
         aEnd[v] = endT[k];
         aSide[v] = sides[k];
-        aWidthPx[v] = ap.width * this.edgeLineWidthScale;
+        aWidthPx[v] = ap.width;
         const c = k < 2 ? colA : colB;
         aColor[v * 3] = c.r;
         aColor[v * 3 + 1] = c.g;
@@ -884,18 +847,16 @@ export class ThreeField implements SceneFieldRenderer {
 
   /** Active emphasis set (hover takes precedence; else shared selection). */
   private emphasisSet(): Set<string> | null {
-    if (this.hoveredId && this.featureFlags.hover) {
+    if (this.hoveredId) {
       const set = new Set<string>([this.hoveredId]);
       for (const nb of this.neighbors.get(this.hoveredId) ?? []) set.add(nb);
-      if (this.featureFlags.clusterHighlight) {
-        const node = this.nodes[this.idToIndex.get(this.hoveredId) ?? -1];
-        for (const tag of node?.featureTags ?? []) {
-          for (const id of this.featureCohort.get(tag) ?? []) set.add(id);
-        }
+      const node = this.nodes[this.idToIndex.get(this.hoveredId) ?? -1];
+      for (const tag of node?.featureTags ?? []) {
+        for (const id of this.featureCohort.get(tag) ?? []) set.add(id);
       }
       return set;
     }
-    if (this.selectedIds.size > 0 && this.featureFlags.selection) {
+    if (this.selectedIds.size > 0) {
       const set = new Set<string>(this.selectedIds);
       for (const id of this.selectedIds) {
         for (const nb of this.neighbors.get(id) ?? []) set.add(nb);
@@ -1049,7 +1010,7 @@ export class ThreeField implements SceneFieldRenderer {
         colA.set(endColors.a);
         colB.set(endColors.b);
         for (let k = 0; k < 4; k++) {
-          aWidth.setX(i * 4 + k, ap.width * this.edgeLineWidthScale);
+          aWidth.setX(i * 4 + k, ap.width);
           const c = k < 2 ? colA : colB;
           aColor.setXYZ(i * 4 + k, c.r, c.g, c.b);
         }
@@ -1635,7 +1596,6 @@ export class ThreeField implements SceneFieldRenderer {
         this.requestRender();
         return;
       }
-      if (!this.featureFlags.hover) return;
       const hit = this.pickNodeAtScreen(sx, sy);
       this.setHovered(hit);
       this.setCursor(hit ? "grab" : "default");

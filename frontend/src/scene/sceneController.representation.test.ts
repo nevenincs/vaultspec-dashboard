@@ -22,21 +22,14 @@ function recordingField(): { field: SceneFieldRenderer; commands: unknown[] } {
 }
 
 describe("set-representation-mode / set-overlays seam commands", () => {
-  it("are distinct from set-layout-mode and tracked separately", () => {
+  it("tracks the representation mode at the seam", () => {
     const controller = new SceneController(null);
-    // Default: connectivity, both overlays on; force layout.
-    expect(controller.getRepresentationState().mode).toBe("connectivity");
-    expect(controller.getLayoutState().mode).toBe("force");
-
-    // A force/circular tuning does NOT change the representation mode.
-    controller.command({ kind: "set-layout-mode", mode: "circular" });
-    expect(controller.getLayoutState().mode).toBe("circular");
+    // Default: connectivity, both overlays on.
     expect(controller.getRepresentationState().mode).toBe("connectivity");
 
-    // A representation switch does NOT change the force/circular tuning.
+    // A representation switch updates the tracked mode.
     controller.command({ kind: "set-representation-mode", mode: "lineage" });
     expect(controller.getRepresentationState().mode).toBe("lineage");
-    expect(controller.getLayoutState().mode).toBe("circular");
   });
 
   it("tracks overlay visibility independently", () => {
@@ -112,7 +105,6 @@ describe("set-representation-mode / set-overlays seam commands", () => {
 
   it("tracks temporal as a graph representation without changing topology state", () => {
     const controller = new SceneController(null);
-    controller.command({ kind: "set-layout-mode", mode: "circular" });
     controller.command({
       kind: "set-data",
       nodes: [
@@ -144,7 +136,6 @@ describe("set-representation-mode / set-overlays seam commands", () => {
     controller.command({ kind: "set-representation-mode", mode: "temporal" });
 
     expect(controller.getRepresentationState().mode).toBe("temporal");
-    expect(controller.getLayoutState().mode).toBe("circular");
     expect(controller.nodeCount).toBe(2);
   });
 });

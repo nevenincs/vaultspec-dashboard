@@ -103,7 +103,7 @@ describe("SceneController", () => {
     expect(seen).toEqual(["expand", "pin"]);
   });
 
-  it("routes selection back through the preserved channel: select out, set-selected in, read at the seam (S51)", () => {
+  it("routes selection back through the preserved channel: select out, set-selected in, forwarded to the field (S51)", () => {
     const commands: unknown[] = [];
     const fake = {
       mount: () => {},
@@ -122,23 +122,17 @@ describe("SceneController", () => {
     expect(events).toEqual(["doc:a"]);
 
     // Dashboard-state pushes the shared selection BACK through the EXISTING
-    // set-selected command; the controller retains it AND forwards it to the field.
+    // set-selected command; the controller forwards it to the field (the ring is
+    // the renderer's concern).
     scene.command({ kind: "set-selected", ids: new Set(["doc:a"]) });
-    expect(scene.getSelectionState().selectedIds).toEqual(new Set(["doc:a"]));
     expect(commands).toContainEqual({ kind: "set-selected", ids: new Set(["doc:a"]) });
 
-    // A subsequent selection change replaces the held set.
+    // A subsequent selection change forwards the replacement set too.
     scene.command({ kind: "set-selected", ids: new Set(["doc:b", "doc:c"]) });
-    expect(scene.getSelectionState().selectedIds).toEqual(new Set(["doc:b", "doc:c"]));
-  });
-
-  it("getSelectionState returns a defensive copy a reader cannot mutate (S51)", () => {
-    const scene = new SceneController();
-    scene.command({ kind: "set-selected", ids: new Set(["doc:a"]) });
-    const snapshot = scene.getSelectionState().selectedIds as Set<string>;
-    snapshot.add("doc:rogue");
-    // The controller's held selection is untouched by the reader's mutation.
-    expect(scene.getSelectionState().selectedIds).toEqual(new Set(["doc:a"]));
+    expect(commands).toContainEqual({
+      kind: "set-selected",
+      ids: new Set(["doc:b", "doc:c"]),
+    });
   });
 
   it("hover intent routes through the preserved hover event, carrying id or null (S51)", () => {

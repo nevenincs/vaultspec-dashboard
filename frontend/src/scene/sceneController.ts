@@ -18,10 +18,6 @@ import type { RepresentationMode } from "./field/representationLayout";
 import type { StatusClass } from "./field/statusStamp";
 import type { SemanticLevel } from "./field/cameraCore";
 
-export interface EdgeRenderParams {
-  lineWidthScale: number;
-}
-
 /**
  * The force knobs the graph-controls UI tunes on the active field (replaces the
  * retired Cosmos config command). Three-native d3-force params: `charge` is the
@@ -52,10 +48,6 @@ export interface GraphAppearanceParams {
   edgeOpacityMax?: number;
   edgeColorMode?: "solid" | "gradient";
 }
-
-export const EDGE_RENDER_DEFAULTS: EdgeRenderParams = {
-  lineWidthScale: 1,
-};
 
 /**
  * Graph data for one node — visual-anatomy inputs only (RL-1).
@@ -241,8 +233,6 @@ export type SceneCommand =
   | { kind: "fit-to-view" }
   | { kind: "reset-view" }
   | { kind: "set-simulation-active"; active: boolean }
-  | { kind: "set-edge-render-params"; params: Partial<EdgeRenderParams> }
-  | { kind: "set-layout-mode"; mode: "force" | "circular" }
   // Three-native force tuning (replaces the retired set-cosmos-config): the
   // graph-controls sliders patch the field's d3-force params live.
   | { kind: "set-force-params"; params: GraphForceParams }
@@ -283,30 +273,7 @@ export type SceneCommand =
       kind: "set-overlays";
       featureCountries: boolean;
       featureHulls: boolean;
-    }
-  // Feature kill-switches (graph-perf 2026-06-18): strip the field back to bare
-  // nodes + edges + simulation for diagnosis. Each flag, when false, fully disables
-  // that interaction layer's GPU/CPU work — hover picking + hover emphasis,
-  // selection emphasis, and the feature-tag cluster cohort on hover. Default all on.
-  | { kind: "set-feature-flags"; flags: Partial<SceneFeatureFlags> };
-
-/** Toggleable interaction layers over the base nodes+edges+simulation field. */
-export interface SceneFeatureFlags {
-  /** Pointer hover: bounded picking, the hovered-node emphasis, and hover events. */
-  hover: boolean;
-  /** Selection emphasis (the shared selected-node greyout + focus ring). */
-  selection: boolean;
-  /** Expand a hover to the hovered node's feature-tag cohort (cluster highlight).
-   *  When false, hover lights only the single node, never its cluster. */
-  clusterHighlight: boolean;
-}
-
-/** All interaction layers on (the product default). */
-export const DEFAULT_SCENE_FEATURE_FLAGS: SceneFeatureFlags = {
-  hover: true,
-  selection: true,
-  clusterHighlight: true,
-};
+    };
 
 // RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
@@ -391,22 +358,11 @@ export class SceneController {
   private edges: SceneEdgeData[] = [];
   private field: SceneFieldRenderer | null;
 
-  // --- graph-quality: layout state (P01.S02) -----------------------------------
-  private _layoutMode: "force" | "circular" = "force";
-  private _edgeRenderParams: EdgeRenderParams = { ...EDGE_RENDER_DEFAULTS };
   // --- node-graph-rework: canvas/sim containment (ADR D3) -----------------------
   private _bounds: { shape: "free" | "circle" | "rect"; size: number } = {
     shape: "free",
     size: 0,
   };
-  // --- selection state retained at the seam (W03.P08.S51) -----------------------
-  // The inbound `set-selected` selection (graph/Node-items "selected"):
-  // dashboard-state owns node selection and pushes it in through the EXISTING
-  // command; the controller retains it so a consumer can read the current
-  // selection synchronously the same way it reads layout/representation state,
-  // never re-deriving it from a held render frame. Purely additive bookkeeping
-  // over the locked `set-selected` command - no new command, no new event.
-  private _selectedIds: ReadonlySet<string> = new Set();
   // --- graph-representation: representation-mode + overlay state (W03.P08) ------
   private _representationMode: RepresentationMode = "connectivity";
   private _overlays: { featureCountries: boolean; featureHulls: boolean } = {
@@ -448,22 +404,8 @@ export class SceneController {
         break;
       case "set-simulation-active":
         break;
-      case "set-edge-render-params":
-        this._edgeRenderParams = { ...this._edgeRenderParams, ...cmd.params };
-        break;
-      case "set-layout-mode":
-        this._layoutMode = cmd.mode;
-        break;
       case "set-bounds":
         this._bounds = { shape: cmd.shape, size: cmd.size ?? 0 };
-        break;
-      case "set-selected":
-        // Retain the inbound selection at the seam (S51): the round-tripped
-        // selection (a scene `select` event patched dashboard-state, which pushes
-        // the canonical selection back through this command) is held here so a
-        // consumer reads it synchronously via getSelectionState(). Still forwarded
-        // to the field below (the ring is the renderer's concern).
-        this._selectedIds = new Set(cmd.ids);
         break;
       case "set-representation-mode":
         this._representationMode = cmd.mode;
@@ -477,6 +419,7 @@ export class SceneController {
       case "apply-deltas":
         // Delta log (RL-3) applied by the field renderer.
         break;
+      case "set-selected":
       case "focus-node":
       case "set-visibility":
       case "set-time":
@@ -569,33 +512,10 @@ export class SceneController {
     }
   }
 
-  // --- graph-quality: layout state read (P01.S02) --------------------------------
-
-  /** Synchronous snapshot of the current layout mode. */
-  getLayoutState(): { mode: "force" | "circular" } {
-    return { mode: this._layoutMode };
-  }
-
-  /** Synchronous snapshot of renderer edge treatment controls. */
-  getEdgeRenderState(): EdgeRenderParams {
-    return { ...this._edgeRenderParams };
-  }
-
   /** Synchronous snapshot of the active canvas/sim containment (node-graph-rework
    *  ADR D3). The GraphControls bound control reads its initial truth from here. */
   getBoundsState(): { shape: "free" | "circle" | "rect"; size: number } {
     return { ...this._bounds };
-  }
-
-  // --- selection read at the seam (W03.P08.S51) ---------------------------------
-
-  /** Synchronous snapshot of the current selection (the inbound `set-selected`
-   *  dashboard-state pushes back through the seam). A defensive copy, so a reader
-   *  cannot mutate the controller's held set. Lets a consumer root a re-layout or
-   *  a focus on the current selection without re-deriving it from a render frame
-   *  - the selection routed through the preserved channel, read here. */
-  getSelectionState(): { selectedIds: ReadonlySet<string> } {
-    return { selectedIds: new Set(this._selectedIds) };
   }
 
   // --- graph-representation: representation-mode + overlay reads (W03.P08) ------
