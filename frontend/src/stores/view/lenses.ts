@@ -35,7 +35,7 @@ export const BUILTIN_LENSES: Lens[] = [
     builtin: true,
     choices: {
       ...structuredClone(DEFAULT_CHOICES),
-      minConfidence: { temporal: 0.7, semantic: 0.7 },
+      minConfidence: { temporal: 0.7 },
     },
   },
 ];

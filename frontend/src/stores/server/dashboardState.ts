@@ -384,11 +384,9 @@ export function normalizeDashboardTierEnabled(enabled: unknown): boolean | null 
   return typeof enabled === "boolean" ? enabled : null;
 }
 
-export function normalizeDashboardConfidenceTier(
-  tier: unknown,
-): "temporal" | "semantic" | null {
+export function normalizeDashboardConfidenceTier(tier: unknown): "temporal" | null {
   const normalized = normalizeDashboardTierName(tier);
-  return normalized === "temporal" || normalized === "semantic" ? normalized : null;
+  return normalized === "temporal" ? normalized : null;
 }
 
 export function dashboardFiltersWithMinConfidence(
@@ -604,8 +602,7 @@ export function useDashboardStateMutations(scope: unknown) {
     },
     setRepresentationMode: (mode: unknown) =>
       mutation.mutateAsync(representationModePatch(mode)),
-    setGraphBounds: (bounds: unknown) =>
-      mutation.mutateAsync(graphBoundsPatch(bounds)),
+    setGraphBounds: (bounds: unknown) => mutation.mutateAsync(graphBoundsPatch(bounds)),
     setGranularity: (granularity: unknown) =>
       mutation.mutateAsync(granularityPatch(granularity)),
     descendFeature: (state: unknown, featureTag: unknown) =>

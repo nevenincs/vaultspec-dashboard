@@ -1309,6 +1309,9 @@ export function projectVaultTreeFeatureGroups(
   const UNTAGGED = "(untagged)";
   const byFeature = new Map<string, Map<string, VaultTreeEntry[]>>();
   for (const entry of entries) {
+    // `index` is never a displayed node (terminology-standardization ADR D5): a
+    // generated feature index must not appear inside a feature's category sub-groups.
+    if (entry.doc_type === "index") continue;
     const features = entry.feature_tags.length > 0 ? entry.feature_tags : [UNTAGGED];
     for (const feature of features) {
       let docMap = byFeature.get(feature);
@@ -1377,17 +1380,17 @@ export function deriveVaultTreeBrowserView(
 // ADR D5). No engine work and no new wire field: `status`, `dates`, `doc_type`,
 // and `feature_tags` are already on the `VaultTreeEntry` the projection reads.
 
-/** Doc-type-first display order for the Documents section, mirroring the binding
- *  board (ADRs · Audits · Execution · Plans · References · Research). `index` is
- *  hidden (the rail mirrors `.vault/` EXCEPT the generated index); unknown types
- *  append alphabetically. */
+/** Doc-type-first display order for the Documents section — the pipeline reading
+ *  order (terminology-standardization ADR D2): Research · Decisions · Plans · Steps
+ *  · Audits · References. `index` is hidden (the rail mirrors `.vault/` EXCEPT the
+ *  generated index, ADR D5); unknown types append alphabetically. */
 const VAULT_RAIL_DOC_TYPE_ORDER = [
-  "adr",
-  "audit",
-  "exec",
-  "plan",
-  "reference",
   "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
 ] as const;
 
 export interface VaultDocTypeGroup {
@@ -2722,210 +2725,6 @@ export function useDashboardShellChromeView(scope: unknown): DashboardShellChrom
   return useMemo(
     () => deriveDashboardShellChromeView(dashboardState.data),
     [dashboardState.data],
-  );
-}
-
-type DashboardTierName = (typeof CANONICAL_TIERS)[number];
-
-type DashboardTierMap = Record<DashboardTierName, boolean>;
-
-export interface DashboardTierDialRowView {
-  tier: DashboardTierName;
-  label: string;
-  on: boolean;
-  blocked: boolean;
-  inapplicable: boolean;
-  offline: boolean;
-  state: "on" | "off" | "offline" | "inapplicable";
-  stateLabel: string;
-  title: string;
-  buttonAriaLabel: string;
-  markTitle: string;
-  buttonClassName: string;
-  rowClassName: string;
-  offlineLabel: string | null;
-  offlineLabelClassName: string;
-  showConfidence: boolean;
-  confidenceTier: "temporal" | "semantic" | null;
-  confidenceValue: number;
-  confidencePercent: number;
-  confidenceAriaLabel: string;
-  confidenceAriaValueText: string;
-  confidenceTitle: string;
-  confidenceSliderClassName: string;
-  confidenceReadoutClassName: string;
-  confidenceReadoutLabel: string;
-  confidenceGroupClassName: string;
-}
-
-export interface DashboardTierDialView {
-  filters: DashboardFilters;
-  tiers: DashboardTierMap;
-  minConfidence: NonNullable<DashboardFilters["min_confidence"]>;
-  timeline: DashboardTimelineModeView;
-  availability: GraphSliceAvailability;
-  semanticDegraded: boolean;
-  rootClassName: string;
-  ariaLabel: string;
-  rows: DashboardTierDialRowView[];
-}
-
-const DASHBOARD_TIER_LABELS: Record<DashboardTierName, string> = {
-  declared: "declared",
-  structural: "structural",
-  temporal: "temporal",
-  semantic: "semantic",
-};
-
-const TIER_DIAL_ROOT_CLASS = "flex items-center gap-fg-2 text-label";
-const TIER_DIAL_ROW_CLASS = "flex items-center gap-fg-1";
-const TIER_DIAL_BUTTON_BASE_CLASS =
-  "flex items-center gap-fg-1 rounded-fg-xs border px-fg-1-5 py-fg-0-5 transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
-const TIER_DIAL_BUTTON_BLOCKED_CLASS =
-  "cursor-not-allowed border-dashed border-rule text-ink-faint";
-const TIER_DIAL_BUTTON_ON_CLASS = "border-rule-strong bg-paper-sunken text-ink";
-const TIER_DIAL_BUTTON_OFF_CLASS =
-  "border-rule text-ink-faint hover:border-rule-strong hover:text-ink-muted";
-const TIER_DIAL_OFFLINE_LABEL_CLASS = "text-caption text-state-stale";
-const TIER_DIAL_CONFIDENCE_GROUP_CLASS = "flex items-center gap-fg-1";
-const TIER_DIAL_CONFIDENCE_SLIDER_CLASS = "h-1 w-14 accent-accent";
-const TIER_DIAL_CONFIDENCE_READOUT_CLASS =
-  "w-7 text-right text-caption tabular-nums text-ink-faint";
-
-export function isDashboardTierInapplicable(
-  tier: DashboardTierName,
-  timeTravel: boolean,
-): boolean {
-  return tier === "semantic" && timeTravel;
-}
-
-export function deriveDashboardTierDialRows(
-  tiers: DashboardTierMap,
-  minConfidence: NonNullable<DashboardFilters["min_confidence"]>,
-  timeTravel: boolean,
-  semanticDegraded: boolean,
-): DashboardTierDialRowView[] {
-  return CANONICAL_TIERS.map((tier) => {
-    const label = DASHBOARD_TIER_LABELS[tier];
-    const inapplicable = isDashboardTierInapplicable(tier, timeTravel);
-    const offline = tier === "semantic" && semanticDegraded && !inapplicable;
-    const blocked = inapplicable || offline;
-    const on = tiers[tier] && !blocked;
-    const state = inapplicable
-      ? "inapplicable"
-      : offline
-        ? "offline"
-        : on
-          ? "on"
-          : "off";
-    const stateLabel = inapplicable
-      ? "inapplicable while time travelling"
-      : offline
-        ? "offline - rag is not available"
-        : on
-          ? "on"
-          : "off";
-    const confidenceTier = tier === "temporal" || tier === "semantic" ? tier : null;
-    const confidenceValue =
-      confidenceTier === null ? 0 : (minConfidence[confidenceTier] ?? 0);
-    const confidencePercent = Math.round(confidenceValue * 100);
-    return {
-      tier,
-      label,
-      on,
-      blocked,
-      inapplicable,
-      offline,
-      state,
-      stateLabel,
-      title: inapplicable
-        ? "semantic is about now - inapplicable while time travelling"
-        : offline
-          ? "semantic is offline - rag is not available"
-          : `${label} tier ${stateLabel}`,
-      buttonAriaLabel: `${label} tier`,
-      markTitle: `${label} tier mark`,
-      buttonClassName: `${TIER_DIAL_BUTTON_BASE_CLASS} ${
-        blocked
-          ? TIER_DIAL_BUTTON_BLOCKED_CLASS
-          : on
-            ? TIER_DIAL_BUTTON_ON_CLASS
-            : TIER_DIAL_BUTTON_OFF_CLASS
-      }`,
-      rowClassName: TIER_DIAL_ROW_CLASS,
-      offlineLabel: offline ? "offline" : null,
-      offlineLabelClassName: TIER_DIAL_OFFLINE_LABEL_CLASS,
-      showConfidence: confidenceTier !== null && !blocked && on,
-      confidenceTier,
-      confidenceValue,
-      confidencePercent,
-      confidenceAriaLabel: `${label} confidence floor`,
-      confidenceAriaValueText: `${confidencePercent} percent`,
-      confidenceTitle: `min confidence ${confidencePercent}%`,
-      confidenceSliderClassName: TIER_DIAL_CONFIDENCE_SLIDER_CLASS,
-      confidenceReadoutClassName: TIER_DIAL_CONFIDENCE_READOUT_CLASS,
-      confidenceReadoutLabel: `${confidencePercent}%`,
-      confidenceGroupClassName: TIER_DIAL_CONFIDENCE_GROUP_CLASS,
-    };
-  });
-}
-
-export function deriveDashboardTierDialView(
-  state: Pick<DashboardState, "filters" | "timeline_mode"> | undefined,
-  availability: GraphSliceAvailability,
-): DashboardTierDialView {
-  const filters = cloneDashboardFilters(state?.filters ?? {});
-  const tiers = {
-    declared: filters.tiers?.declared ?? true,
-    structural: filters.tiers?.structural ?? true,
-    temporal: filters.tiers?.temporal ?? true,
-    semantic: filters.tiers?.semantic ?? true,
-  };
-  const minConfidence = filters.min_confidence ?? {};
-  const timeline = deriveDashboardTimelineModeView(state?.timeline_mode);
-  const semanticDegraded = availability.degradedTiers.includes("semantic");
-  return {
-    filters,
-    tiers,
-    minConfidence,
-    timeline,
-    availability,
-    semanticDegraded,
-    rootClassName: TIER_DIAL_ROOT_CLASS,
-    ariaLabel: "tier dial",
-    rows: deriveDashboardTierDialRows(
-      tiers,
-      minConfidence,
-      timeline.timeTravel,
-      semanticDegraded,
-    ),
-  };
-}
-
-/**
- * Stores selector for the stage tier dial. The dial consumes one interpreted view
- * for tier toggles, confidence floors, time-travel applicability, and semantic
- * degradation instead of reading raw dashboard filters or graph-query variables.
- */
-export function useDashboardTierDialView(scope: unknown): DashboardTierDialView {
-  const dashboardState = useDashboardState(scope);
-  const graphQuery = useMemo(
-    () =>
-      dashboardState.data ? dashboardGraphQueryVariables(dashboardState.data) : null,
-    [dashboardState.data],
-  );
-  const slice = useGraphSlice(
-    graphQuery?.scope ?? null,
-    graphQuery?.filter,
-    graphQuery?.asOf,
-    graphQuery?.granularity,
-    graphQuery?.lens,
-    graphQuery?.focus,
-  );
-  const availability = useGraphSliceAvailability(slice, graphQuery !== null);
-  return useMemo(
-    () => deriveDashboardTierDialView(dashboardState.data, availability),
-    [availability, dashboardState.data],
   );
 }
 

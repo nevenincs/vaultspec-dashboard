@@ -107,7 +107,6 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
         expect(state.graph_granularity).toBe("document");
         expect(state.filters.text).toBe("adr");
         expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-        expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
       });
     } finally {
       await engineClient.putSettings({
@@ -182,7 +181,6 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
         expect(state.graph_granularity).toBe("document");
         expect(state.filters.text).toBe("adr");
         expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-        expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
       });
     } finally {
       await engineClient.putSettings({

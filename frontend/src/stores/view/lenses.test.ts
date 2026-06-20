@@ -73,7 +73,7 @@ describe("lens persistence (keyed by workspace+scope, finding 018)", () => {
           name: " weekly   review ",
           choices: {
             tiers: { semantic: false },
-            minConfidence: { semantic: 2 },
+            minConfidence: { temporal: 2 },
             featureTags: ["state", 7],
             structuralStates: ["broken", "bad"],
             textMatch: 12,
@@ -90,7 +90,7 @@ describe("lens persistence (keyed by workspace+scope, finding 018)", () => {
         choices: {
           ...structuredClone(DEFAULT_CHOICES),
           tiers: { ...DEFAULT_CHOICES.tiers, semantic: false },
-          minConfidence: { semantic: 1 },
+          minConfidence: { temporal: 1 },
           featureTags: ["state"],
           structuralStates: ["broken"],
           dateRange: { to: "2026-06-30" },

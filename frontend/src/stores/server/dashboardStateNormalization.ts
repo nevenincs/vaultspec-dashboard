@@ -21,7 +21,7 @@ import { DOCUMENT_DASHBOARD_GRAPH_GRANULARITY } from "./dashboardDefaults";
 import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { normalizeSearchQuery } from "../searchQuery";
 
-const DASHBOARD_CONFIDENCE_FILTER_TIERS = ["temporal", "semantic"] as const;
+const DASHBOARD_CONFIDENCE_FILTER_TIERS = ["temporal"] as const;
 const DASHBOARD_STRUCTURAL_FILTER_STATES = ["resolved", "stale", "broken"] as const;
 const DASHBOARD_FEATURE_QUERY_MODES = ["glob", "regex"] as const;
 
@@ -146,17 +146,18 @@ function normalizeDashboardBoundShape(shape: unknown): DashboardGraphBounds["sha
 export function normalizeDashboardGraphBounds(bounds: unknown): DashboardGraphBounds {
   const source = isObjectRecord(bounds) ? bounds : {};
   const shape = normalizeDashboardBoundShape(source.shape);
-  const rawSize = typeof source.size === "number" && Number.isFinite(source.size)
-    ? Math.round(source.size)
-    : 0;
+  const rawSize =
+    typeof source.size === "number" && Number.isFinite(source.size)
+      ? Math.round(source.size)
+      : 0;
   const size =
-    shape === "free" ? 0 : Math.min(MAX_DASHBOARD_GRAPH_BOUND_SIZE, Math.max(0, rawSize));
+    shape === "free"
+      ? 0
+      : Math.min(MAX_DASHBOARD_GRAPH_BOUND_SIZE, Math.max(0, rawSize));
   return { shape, size };
 }
 
-export function normalizeDashboardTimelineMode(
-  mode: unknown,
-): DashboardTimelineMode {
+export function normalizeDashboardTimelineMode(mode: unknown): DashboardTimelineMode {
   if (!isObjectRecord(mode)) return { kind: "live" };
   const kind = typeof mode.kind === "string" ? mode.kind.trim() : "";
   if (

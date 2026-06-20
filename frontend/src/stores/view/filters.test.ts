@@ -52,13 +52,13 @@ describe("toGraphFilter (R3 wire compile)", () => {
     const wire = toGraphFilter(
       choices({
         tiers: { declared: true, structural: true, temporal: true, semantic: false },
-        minConfidence: { semantic: 0.7 },
+        minConfidence: { temporal: 0.7 },
         structuralStates: ["broken"],
         textMatch: "auth",
       }),
     );
     expect(wire.tiers?.semantic).toBe(false);
-    expect(wire.min_confidence).toEqual({ semantic: 0.7 });
+    expect(wire.min_confidence).toEqual({ temporal: 0.7 });
     expect(wire.structural_state).toEqual(["broken"]);
     expect(wire.text).toBe("auth");
   });
@@ -69,7 +69,7 @@ describe("normalizeFilterChoices", () => {
     expect(
       normalizeFilterChoices({
         tiers: { semantic: false, temporal: "off" },
-        minConfidence: { semantic: 70, temporal: Number.NaN },
+        minConfidence: { temporal: 70, semantic: Number.NaN },
         docTypes: [" adr ", "adr", 12],
         featureTags: [" state ", "state", null],
         relations: [" mentions ", "mentions", false],
@@ -79,7 +79,7 @@ describe("normalizeFilterChoices", () => {
       }),
     ).toEqual({
       tiers: { declared: true, structural: true, temporal: true, semantic: false },
-      minConfidence: { semantic: 1 },
+      minConfidence: { temporal: 1 },
       docTypes: ["adr"],
       featureTags: ["state"],
       relations: ["mentions"],
@@ -229,10 +229,10 @@ describe("computeVisibility (RL-5a membership)", () => {
   it("applies per-tier confidence floors", () => {
     const v = computeVisibility(
       nodes,
-      edges,
-      choices({ minConfidence: { semantic: 0.5 } }),
+      [edge("t-low", "a", "b", { tier: "temporal", confidence: 0.4 })],
+      choices({ minConfidence: { temporal: 0.5 } }),
     );
-    expect(v.visibleEdgeIds.has("e2")).toBe(false);
+    expect(v.visibleEdgeIds.has("t-low")).toBe(false);
   });
 
   it("filters nodes by facets and drops edges with hidden endpoints", () => {

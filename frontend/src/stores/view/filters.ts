@@ -14,17 +14,14 @@ import type {
   GraphFilter,
 } from "../server/engine";
 import { normalizeDashboardDateRange } from "../server/dashboardDateRange";
-import {
-  SEARCH_QUERY_MAX_CHARS,
-  normalizeSearchQuery,
-} from "../searchQuery";
+import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
 import type { SceneCommand } from "../../scene/sceneController";
 
 export type TierName = "declared" | "structural" | "temporal" | "semantic";
 
 export interface FilterChoices {
   tiers: Record<TierName, boolean>;
-  minConfidence: Partial<Record<"temporal" | "semantic", number>>;
+  minConfidence: Partial<Record<"temporal", number>>;
   docTypes: string[];
   featureTags: string[];
   relations: string[];
@@ -45,7 +42,7 @@ export const DEFAULT_CHOICES: FilterChoices = {
 };
 
 const TIER_NAMES = ["declared", "structural", "temporal", "semantic"] as const;
-const CONFIDENCE_TIERS = ["temporal", "semantic"] as const;
+const CONFIDENCE_TIERS = ["temporal"] as const;
 const STRUCTURAL_STATES = ["resolved", "stale", "broken"] as const;
 export const FILTER_CHOICE_VALUE_MAX_CHARS = 256;
 export const FILTER_CHOICE_LIST_MAX_ITEMS = 256;
@@ -71,9 +68,9 @@ function clampFloor(value: number): number | undefined {
 }
 
 function clampFloors(
-  raw: Partial<Record<"temporal" | "semantic", number>>,
-): Partial<Record<"temporal" | "semantic", number>> {
-  const out: Partial<Record<"temporal" | "semantic", number>> = {};
+  raw: Partial<Record<"temporal", number>>,
+): Partial<Record<"temporal", number>> {
+  const out: Partial<Record<"temporal", number>> = {};
   for (const tier of CONFIDENCE_TIERS) {
     const value = raw[tier];
     if (value === undefined) continue;
@@ -83,11 +80,9 @@ function clampFloors(
   return out;
 }
 
-function confidenceFloorsOrEmpty(
-  raw: unknown,
-): Partial<Record<"temporal" | "semantic", number>> {
+function confidenceFloorsOrEmpty(raw: unknown): Partial<Record<"temporal", number>> {
   if (!isObjectRecord(raw)) return {};
-  const floors: Partial<Record<"temporal" | "semantic", number>> = {};
+  const floors: Partial<Record<"temporal", number>> = {};
   for (const tier of CONFIDENCE_TIERS) {
     const value = raw[tier];
     if (typeof value === "number") floors[tier] = value;
@@ -108,8 +103,7 @@ function tiersOrDefault(raw: unknown): Record<TierName, boolean> {
 function normalizeFilterChoiceValue(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= FILTER_CHOICE_VALUE_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= FILTER_CHOICE_VALUE_MAX_CHARS
     ? normalized
     : null;
 }
@@ -118,7 +112,10 @@ function normalizeFilterChoiceText(value: unknown): string {
   return normalizeSearchQuery(value);
 }
 
-function arrayOrEmpty(values: unknown, maxItems = FILTER_CHOICE_LIST_MAX_ITEMS): string[] {
+function arrayOrEmpty(
+  values: unknown,
+  maxItems = FILTER_CHOICE_LIST_MAX_ITEMS,
+): string[] {
   if (!Array.isArray(values) || maxItems <= 0) return [];
   const seen = new Set<string>();
   const next: string[] = [];
@@ -148,8 +145,7 @@ function structuralStatesOrEmpty(
     ) {
       continue;
     }
-    const structuralState =
-      normalized as FilterChoices["structuralStates"][number];
+    const structuralState = normalized as FilterChoices["structuralStates"][number];
     if (seen.has(structuralState)) continue;
     seen.add(structuralState);
     next.push(structuralState);
@@ -279,9 +275,7 @@ function nodeMatches(node: EngineNode, choices: FilterChoices): boolean {
 function edgeMatches(edge: EngineEdge, choices: FilterChoices): boolean {
   if (!choices.tiers[edge.tier]) return false;
   const rawFloor =
-    edge.tier === "temporal" || edge.tier === "semantic"
-      ? choices.minConfidence[edge.tier]
-      : undefined;
+    edge.tier === "temporal" ? choices.minConfidence.temporal : undefined;
   if (rawFloor !== undefined) {
     const floor = clampFloor(rawFloor);
     // An engaged-but-invalid floor (non-finite) must never silently include a

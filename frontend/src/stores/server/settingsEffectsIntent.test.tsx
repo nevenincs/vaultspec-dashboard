@@ -167,9 +167,7 @@ describe("useSettingsEffectsIntent", () => {
 
     expect(result.current).toBe(first);
     expect(result.current.applyGraphDefaults).toBe(first.applyGraphDefaults);
-    expect(result.current.applyFreshGraphDefaults).toBe(
-      first.applyFreshGraphDefaults,
-    );
+    expect(result.current.applyFreshGraphDefaults).toBe(first.applyFreshGraphDefaults);
   });
 
   it("accepts trimmed scopes for canonical dashboard graph-default writes", async () => {
@@ -196,7 +194,6 @@ describe("useSettingsEffectsIntent", () => {
     expect(state.graph_granularity).toBe("document");
     expect(state.filters.text).toBe("adr");
     expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-    expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
   });
 
   it("rejects malformed runtime graph defaults before dashboard writes", async () => {
@@ -290,7 +287,6 @@ describe("useSettingsEffectsIntent", () => {
     expect(state.graph_granularity).toBe("document");
     expect(state.filters.text).toBe("first");
     expect(state.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-    expect(state.filters.min_confidence?.semantic).toBeCloseTo(0.6);
   });
 
   it("does not apply graph defaults without a fresh initialization identity", async () => {

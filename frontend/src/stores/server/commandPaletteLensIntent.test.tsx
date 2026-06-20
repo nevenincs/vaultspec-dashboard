@@ -88,6 +88,23 @@ describe("useCommandPaletteLensIntent", () => {
     ).resolves.toBeNull();
   });
 
+  it("keeps lens intent callbacks stable across unchanged-scope rerenders", () => {
+    const client = testQueryClient();
+    const { result, rerender } = renderHook(
+      ({ scope }) => useCommandPaletteLensIntent(scope),
+      {
+        initialProps: { scope: " scope-a " },
+        wrapper: wrapper(client),
+      },
+    );
+    const first = result.current;
+
+    rerender({ scope: "scope-a" });
+
+    expect(result.current).toBe(first);
+    expect(result.current.applyLensChoices).toBe(first.applyLensChoices);
+  });
+
   it("applies saved lens choices through canonical dashboard state", async () => {
     const scope = await liveScope();
     cleanupScope = scope;
@@ -181,7 +198,7 @@ describe("useCommandPaletteLensIntent", () => {
     await act(async () => {
       applied = (await result.current.intent.applyLensChoices({
         tiers: { semantic: false },
-        minConfidence: { semantic: 2 },
+        minConfidence: { temporal: 2 },
         featureTags: ["state", 7],
         structuralStates: ["broken", "bad"],
         dateRange: { to: "2026-06-30" },
@@ -198,7 +215,7 @@ describe("useCommandPaletteLensIntent", () => {
       feature_tags: ["state"],
       structural_state: ["broken"],
     });
-    expect(applied.filters.min_confidence?.semantic).toBeCloseTo(1);
+    expect(applied.filters.min_confidence?.temporal).toBeCloseTo(1);
     expect(applied.date_range).toEqual({ to: "2026-06-30" });
   });
 

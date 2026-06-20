@@ -33,34 +33,34 @@ const edge = (
 
 describe("min-confidence floor stays within the R3 0..1 grammar", () => {
   it("clamps an out-of-range floor into 0..1 on the wire", () => {
-    const wire = toGraphFilter(choices({ minConfidence: { semantic: 70 } }));
-    const v = wire.min_confidence?.semantic;
+    const wire = toGraphFilter(choices({ minConfidence: { temporal: 70 } }));
+    const v = wire.min_confidence?.temporal;
     expect(v !== undefined && Number.isFinite(v) && v >= 0 && v <= 1).toBe(true);
   });
 
   it("drops a non-finite floor from the wire entirely", () => {
-    const wire = toGraphFilter(choices({ minConfidence: { semantic: NaN } }));
-    expect(wire.min_confidence?.semantic).toBeUndefined();
+    const wire = toGraphFilter(choices({ minConfidence: { temporal: NaN } }));
+    expect(wire.min_confidence?.temporal).toBeUndefined();
   });
 
   it("an engaged invalid floor does not silently include the sub-floor edge", () => {
     const v = computeVisibility(
       [node("a"), node("b")],
-      [edge("low", "a", "b", { tier: "semantic", confidence: 0.05 })],
-      choices({ minConfidence: { semantic: NaN } }),
+      [edge("low", "a", "b", { tier: "temporal", confidence: 0.05 })],
+      choices({ minConfidence: { temporal: NaN } }),
     );
     expect(v.visibleEdgeIds.has("low")).toBe(false);
   });
 
   it("a valid floor hides sub-floor edges and keeps at-or-above edges", () => {
     const edges = [
-      edge("lo", "a", "b", { tier: "semantic", confidence: 0.3 }),
-      edge("hi", "a", "b", { tier: "semantic", confidence: 0.9 }),
+      edge("lo", "a", "b", { tier: "temporal", confidence: 0.3 }),
+      edge("hi", "a", "b", { tier: "temporal", confidence: 0.9 }),
     ];
     const v = computeVisibility(
       [node("a"), node("b")],
       edges,
-      choices({ minConfidence: { semantic: 0.5 } }),
+      choices({ minConfidence: { temporal: 0.5 } }),
     );
     expect(v.visibleEdgeIds.has("lo")).toBe(false);
     expect(v.visibleEdgeIds.has("hi")).toBe(true);

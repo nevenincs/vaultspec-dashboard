@@ -545,7 +545,7 @@ export const DEFAULT_SALIENCE_LENS: SalienceLens = "status";
 /** The engine-owned filter object, echoed back normalized (§4). */
 export interface GraphFilter {
   tiers?: Partial<Record<EngineEdge["tier"], boolean>>;
-  min_confidence?: Partial<Record<"temporal" | "semantic", number>>;
+  min_confidence?: Partial<Record<"temporal", number>>;
   relations?: string[];
   structural_state?: ("resolved" | "stale" | "broken")[];
   kinds?: string[];

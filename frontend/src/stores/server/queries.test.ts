@@ -59,7 +59,6 @@ import {
   deriveDashboardRangeSelectView,
   deriveDashboardShellChromeView,
   deriveDashboardStageSceneView,
-  deriveDashboardTierDialView,
   deriveDashboardTimelineModeView,
   deriveDiscoverView,
   fileTreeChildStatusStyle,
@@ -151,7 +150,6 @@ import {
   useDashboardLayoutSelectorView,
   useDashboardLensSelectorView,
   useDashboardStageSceneView,
-  useDashboardTierDialView,
   useDashboardTimelineModeView,
   useDashboardShellChromeView,
   useChangedFiles,
@@ -1252,97 +1250,6 @@ describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
   });
 });
 
-describe("deriveDashboardTierDialView (stage tier dial)", () => {
-  it("projects canonical tier filters, confidence floors, time-travel, and semantic degradation", () => {
-    const availability = deriveGraphSliceAvailability(
-      {
-        declared: { available: true },
-        structural: { available: true },
-        temporal: { available: true },
-        semantic: { available: false, reason: "rag offline" },
-      },
-      false,
-    );
-
-    const view = deriveDashboardTierDialView(
-      {
-        filters: {
-          tiers: { declared: true, structural: false, semantic: true },
-          min_confidence: { semantic: 0.65 },
-        },
-        timeline_mode: { kind: "time-travel", at: 42 },
-      },
-      availability,
-    );
-
-    expect(view.tiers).toEqual({
-      declared: true,
-      structural: false,
-      temporal: true,
-      semantic: true,
-    });
-    expect(view.minConfidence).toEqual({ semantic: 0.65 });
-    expect(view.timeline.timeTravel).toBe(true);
-    expect(view.semanticDegraded).toBe(true);
-    expect(view.availability.reasons.semantic).toBe("rag offline");
-    expect(view.rootClassName).toBe("flex items-center gap-fg-2 text-label");
-    expect(view.ariaLabel).toBe("tier dial");
-    expect(view.rows.find((row) => row.tier === "semantic")).toMatchObject({
-      tier: "semantic",
-      label: "semantic",
-      on: false,
-      blocked: true,
-      inapplicable: true,
-      offline: false,
-      state: "inapplicable",
-      stateLabel: "inapplicable while time travelling",
-      title: "semantic is about now - inapplicable while time travelling",
-      buttonAriaLabel: "semantic tier",
-      markTitle: "semantic tier mark",
-      rowClassName: "flex items-center gap-fg-1",
-      offlineLabel: null,
-      offlineLabelClassName: "text-caption text-state-stale",
-      showConfidence: false,
-      confidenceTier: "semantic",
-      confidenceValue: 0.65,
-      confidencePercent: 65,
-      confidenceAriaLabel: "semantic confidence floor",
-      confidenceAriaValueText: "65 percent",
-      confidenceTitle: "min confidence 65%",
-      confidenceSliderClassName: "h-1 w-14 accent-accent",
-      confidenceReadoutClassName:
-        "w-7 text-right text-caption tabular-nums text-ink-faint",
-      confidenceReadoutLabel: "65%",
-      confidenceGroupClassName: "flex items-center gap-fg-1",
-    });
-    expect(view.rows.find((row) => row.tier === "declared")).toMatchObject({
-      on: true,
-      blocked: false,
-      state: "on",
-      showConfidence: false,
-    });
-  });
-
-  it("falls back to all tiers on before dashboard state loads", () => {
-    const view = deriveDashboardTierDialView(
-      undefined,
-      deriveGraphSliceAvailability(undefined, true),
-    );
-
-    expect(view.tiers).toEqual({
-      declared: true,
-      structural: true,
-      temporal: true,
-      semantic: true,
-    });
-    expect(view.minConfidence).toEqual({});
-    expect(view.timeline.timeTravel).toBe(false);
-    expect(view.availability.loading).toBe(true);
-    expect(view.rows).toHaveLength(4);
-    expect(view.rows.every((row) => row.on)).toBe(true);
-  });
-});
-
 describe("deriveDashboardTimelineModeView (timeline-mode consumers)", () => {
   it("treats missing and live timeline mode as live operation state", () => {
     expect(deriveDashboardTimelineModeView(undefined)).toEqual({
@@ -2339,20 +2246,6 @@ describe("useDashboardState cache boundaries", () => {
       opsDisabled: false,
       asOf: undefined,
     });
-
-    const tierDial = renderHook(() => useDashboardTierDialView({ scope: "scope-a" }), {
-      wrapper: wrapper(client),
-    });
-    expect(tierDial.result.current).toMatchObject({
-      filters: {},
-      tiers: {
-        declared: true,
-        structural: true,
-        temporal: true,
-        semantic: true,
-      },
-      timeline: { timeTravel: false },
-    });
   });
 
   it("does not expose cached dashboard intent while session identity is pending", () => {
@@ -2984,7 +2877,9 @@ describe("left-rail root surface states", () => {
       entry(".vault/plan/2026-01-08-grid-plan.md", "plan", ["grid"]),
       entry(".vault/research/2026-01-08-grid-research.md", "research", ["grid"]),
       entry(".vault/adr/2026-01-08-grid-adr.md", "adr", ["grid"]),
-      entry(".vault/index/root.index.md", "index", []),
+      entry(".vault/reference/2026-01-08-grid-reference.md", "reference", ["grid"]),
+      entry(".vault/index/grid.index.md", "index", ["grid"]),
+      entry(".vault/research/2026-01-08-loose-research.md", "research", []),
     ];
 
     const view = deriveVaultTreeBrowserView(entries, "GRID");
@@ -2992,13 +2887,20 @@ describe("left-rail root surface states", () => {
       ".vault/plan/2026-01-08-grid-plan.md",
       ".vault/research/2026-01-08-grid-research.md",
       ".vault/adr/2026-01-08-grid-adr.md",
+      ".vault/reference/2026-01-08-grid-reference.md",
+      ".vault/index/grid.index.md",
     ]);
     expect(view.groups).toHaveLength(1);
-    expect(view.groups[0]).toMatchObject({ feature: "grid", count: 3 });
+    // index is excluded from the feature groups (terminology-standardization ADR
+    // D5), so the grid feature counts its 4 displayable docs, not the index.
+    expect(view.groups[0]).toMatchObject({ feature: "grid", count: 4 });
+    // Doc-type sub-groups render in the canonical pipeline order (ADR D2) and never
+    // include an `index` sub-group.
     expect(view.groups[0]!.docTypes.map((group) => group.docType)).toEqual([
       "research",
       "adr",
       "plan",
+      "reference",
     ]);
     expect(deriveVaultTreeBrowserView(entries, "missing")).toMatchObject({
       activeFilter: "missing",
@@ -3010,9 +2912,13 @@ describe("left-rail root surface states", () => {
       activeFilter: "",
       filteredToNothing: false,
     });
-    expect(deriveVaultTreeBrowserView(entries, "").groups.at(-1)?.feature).toBe(
-      "(untagged)",
-    );
+    // The untagged research doc forms the trailing (untagged) group; the untagged-
+    // looking index entry never creates a group of its own.
+    const allGroups = deriveVaultTreeBrowserView(entries, "").groups;
+    expect(allGroups.at(-1)?.feature).toBe("(untagged)");
+    expect(
+      allGroups.flatMap((group) => group.docTypes).map((sub) => sub.docType),
+    ).not.toContain("index");
   });
 
   it("does not expose cached vault-tree data when no scope is selected", () => {

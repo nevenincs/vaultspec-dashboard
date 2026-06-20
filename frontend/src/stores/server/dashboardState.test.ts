@@ -118,10 +118,7 @@ describe("dashboard-state engine client (live engine)", () => {
       patchDashboardState({ scope: "scope-a" }, selectionPatch(["doc:cached"])),
     ).resolves.toBeNull();
     await expect(
-      patchDashboardTimelineMode(
-        { scope: "scope-a" },
-        { kind: "time-travel", at: 42 },
-      ),
+      patchDashboardTimelineMode({ scope: "scope-a" }, { kind: "time-travel", at: 42 }),
     ).resolves.toBeNull();
   });
 
@@ -315,7 +312,7 @@ describe("dashboard-state engine client (live engine)", () => {
     const state = dashboardDocumentStateSeed("scope-a", {
       filters: {
         tiers: { semantic: false },
-        min_confidence: { semantic: 0.72 },
+        min_confidence: { temporal: 0.72 },
         relations: ["references"],
         structural_state: ["broken"],
         kinds: ["document"],
@@ -339,7 +336,7 @@ describe("dashboard-state engine client (live engine)", () => {
       scope: "scope-a",
       filter: {
         tiers: { semantic: false },
-        min_confidence: { semantic: 0.72 },
+        min_confidence: { temporal: 0.72 },
         relations: ["references"],
         structural_state: ["broken"],
         kinds: ["document"],
@@ -381,7 +378,7 @@ describe("dashboard-state engine client (live engine)", () => {
 
     expect(filters).toEqual({
       tiers: { declared: true, semantic: false },
-      min_confidence: { temporal: 0, semantic: 1 },
+      min_confidence: { temporal: 0 },
       relations: ["references"],
       structural_state: ["broken"],
       feature_query: { value: "state-*", mode: "glob" },
@@ -397,11 +394,11 @@ describe("dashboard-state engine client (live engine)", () => {
     });
     expect(
       normalizeDashboardMinConfidence({
-        temporal: Number.POSITIVE_INFINITY,
-        semantic: 0.42,
+        temporal: 0.42,
+        semantic: 0.9,
         rogue: 0.9,
       }),
-    ).toEqual({ semantic: 0.42 });
+    ).toEqual({ temporal: 0.42 });
     expect(
       dashboardFiltersWithTier({ tiers: { semantic: false } }, "rogue", true),
     ).toEqual({ tiers: { semantic: false } });
@@ -419,25 +416,25 @@ describe("dashboard-state engine client (live engine)", () => {
     ).toEqual({ tiers: { semantic: false } });
     expect(
       dashboardFiltersWithMinConfidence(
-        { min_confidence: { semantic: 0.5 } },
-        "semantic",
+        { min_confidence: { temporal: 0.5 } },
+        "temporal",
         Number.NaN,
       ),
     ).toEqual({});
     expect(
       dashboardFiltersWithMinConfidence(
-        { min_confidence: { semantic: 0.5 } },
-        " semantic ",
+        { min_confidence: { temporal: 0.5 } },
+        " temporal ",
         0.75,
       ),
-    ).toEqual({ min_confidence: { semantic: 0.75 } });
+    ).toEqual({ min_confidence: { temporal: 0.75 } });
     expect(
       dashboardFiltersWithMinConfidence(
-        { min_confidence: { semantic: 0.5 } },
+        { min_confidence: { temporal: 0.5 } },
         "declared",
         0.75,
       ),
-    ).toEqual({ min_confidence: { semantic: 0.5 } });
+    ).toEqual({ min_confidence: { temporal: 0.5 } });
   });
 
   it("updates only the active dashboard-state session cache entry", () => {
@@ -544,7 +541,7 @@ describe("dashboard-state engine client (live engine)", () => {
       graph_granularity: "feature",
       filters: {
         text: "adr",
-        min_confidence: { temporal: 0.6, semantic: 0.6 },
+        min_confidence: { temporal: 0.6 },
       },
     });
     expect(dashboardGraphSettingsDefaultsPatch({ confidenceFloor: -20 })).toEqual({
@@ -626,7 +623,9 @@ describe("dashboard-state engine client (live engine)", () => {
         "x".repeat(DASHBOARD_FILTER_FACET_VALUE_MAX_CHARS + 1),
       ),
     ).toEqual({ doc_types: ["adr"] });
-    expect(dashboardFeatureDescentPatch({ filters: { doc_types: ["adr"] } }, " state ")).toEqual({
+    expect(
+      dashboardFeatureDescentPatch({ filters: { doc_types: ["adr"] } }, " state "),
+    ).toEqual({
       filters: { doc_types: ["adr"], feature_tags: ["state"] },
       graph_granularity: DOCUMENT_DASHBOARD_GRAPH_GRANULARITY,
     });
@@ -663,12 +662,12 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(normalizeDashboardTimelineMode({ kind: " live ", at: 42 })).toEqual({
       kind: "live",
     });
-    expect(
-      normalizeDashboardTimelineMode({ kind: " time-travel ", at: 42.6 }),
-    ).toEqual({
-      kind: "time-travel",
-      at: 43,
-    });
+    expect(normalizeDashboardTimelineMode({ kind: " time-travel ", at: 42.6 })).toEqual(
+      {
+        kind: "time-travel",
+        at: 43,
+      },
+    );
     expect(
       normalizeDashboardTimelineMode({
         kind: "time-travel",
@@ -1034,7 +1033,6 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(settingsDefaults.graph_granularity).toBe("document");
     expect(settingsDefaults.filters.text).toBe("adr");
     expect(settingsDefaults.filters.min_confidence?.temporal).toBeCloseTo(0.6);
-    expect(settingsDefaults.filters.min_confidence?.semantic).toBeCloseTo(0.6);
 
     let descended!: DashboardState;
     await act(async () => {
