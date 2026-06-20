@@ -496,6 +496,11 @@ export class ThreeField implements SceneFieldRenderer {
         // Live force tuning from the graph-controls sliders.
         this.setForceParams(cmd.params);
         break;
+      case "set-appearance-params":
+        // Live look tuning (node size/salience, edge width/opacity, colour mode)
+        // from the graph-controls sliders.
+        this.setAppearanceParams(cmd.params);
+        break;
       case "set-layout-mode":
         // No-op: layout-mode has no analogue in the d3 force field, which exposes
         // its force params via set-force-params / setForceParams.
