@@ -1,126 +1,46 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
+  MINIMAP_CANVAS_HEIGHT,
+  MINIMAP_CANVAS_WIDTH,
   deriveMinimapChromeView,
-  normalizeMinimapCollapsed,
-  resetMinimapChrome,
-  setMinimapCollapsed,
-  toggleMinimapCollapsed,
   useMinimapChromeView,
-  useMinimapChromeStore,
 } from "./minimapChrome";
 
-describe("minimap chrome view seam", () => {
-  beforeEach(() => resetMinimapChrome());
-
-  it("defaults the minimap to expanded", () => {
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
+describe("minimap chrome view seam (headerless binding card)", () => {
+  it("uses the binding 160x100 schema-derived canvas dims", () => {
+    expect(MINIMAP_CANVAS_WIDTH).toBe(160);
+    expect(MINIMAP_CANVAS_HEIGHT).toBe(100);
   });
 
-  it("sets, toggles, and resets collapse state through the named seam", () => {
-    setMinimapCollapsed(true);
-    expect(useMinimapChromeStore.getState().collapsed).toBe(true);
-
-    toggleMinimapCollapsed();
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
-
-    toggleMinimapCollapsed();
-    expect(useMinimapChromeStore.getState().collapsed).toBe(true);
-
-    resetMinimapChrome();
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
-  });
-
-  it("normalizes malformed collapse writes at the store boundary", () => {
-    expect(normalizeMinimapCollapsed(true)).toBe(true);
-    expect(normalizeMinimapCollapsed(false)).toBe(false);
-    expect(normalizeMinimapCollapsed("true")).toBe(false);
-
-    setMinimapCollapsed("true");
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
-
-    setMinimapCollapsed(true);
-    expect(useMinimapChromeStore.getState().collapsed).toBe(true);
-
-    setMinimapCollapsed({ collapsed: true });
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
-  });
-
-  it("normalizes malformed collapse reads before toggles and projection", () => {
-    useMinimapChromeStore.setState({
-      collapsed: "true",
-    } as unknown as Partial<ReturnType<typeof useMinimapChromeStore.getState>>);
-
-    expect(deriveMinimapChromeView(useMinimapChromeStore.getState().collapsed)).toMatchObject({
-      collapsed: false,
-      expanded: true,
-      collapseLabel: "collapse minimap",
-    });
-
-    toggleMinimapCollapsed();
-
-    expect(useMinimapChromeStore.getState().collapsed).toBe(true);
-  });
-
-  it("projects expanded minimap chrome for the widget renderer", () => {
-    expect(deriveMinimapChromeView(false)).toMatchObject({
-      collapsed: false,
-      expanded: true,
+  it("projects the docked sunken card for the widget renderer", () => {
+    expect(deriveMinimapChromeView(false)).toEqual({
       rootClassName:
-        "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden backdrop-blur-sm",
-      rootStyle: { width: 194 },
+        "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden rounded-fg-md bg-paper-sunken",
+      rootStyle: { width: 160 },
       groupAriaLabel: "graph minimap navigator",
-      headerClassName:
-        "flex items-center justify-between gap-fg-1 border-b border-rule pr-fg-1",
-      actionsClassName: "flex items-center gap-fg-0-5",
-      titleLabel: "Map",
-      showRecenter: true,
-      recenterLabel: "recenter the field in view",
-      collapseLabel: "collapse minimap",
-      collapseActive: true,
-      collapseAriaExpanded: true,
-      collapseIcon: "collapse",
-      canvasRegionId: "minimap-canvas-region",
-      canvasRegionAriaHidden: false,
-      canvasRegionStyle: { display: "block" },
-      canvasWidth: 192,
-      canvasHeight: 128,
+      canvasWidth: 160,
+      canvasHeight: 100,
+      canvasAriaLabel:
+        "graph minimap - click or drag to move the field; the outlined rectangle marks the current viewport",
       canvasClassName: "block cursor-pointer touch-none",
-      canvasStyle: { width: 192, height: 128 },
+      canvasStyle: { width: 160, height: 100 },
     });
   });
 
-  it("projects collapsed and embedded minimap chrome without local widget branching", () => {
-    expect(deriveMinimapChromeView(true, true)).toMatchObject({
-      collapsed: true,
-      expanded: false,
-      rootClassName: "overflow-hidden",
-      rootStyle: { width: "auto" },
-      showRecenter: false,
-      collapseLabel: "expand minimap",
-      collapseActive: false,
-      collapseAriaExpanded: false,
-      collapseIcon: "expand",
-      canvasRegionAriaHidden: true,
-      canvasRegionStyle: { display: "none" },
+  it("projects the embedded (in-flow) variant without the absolute dock chrome", () => {
+    expect(deriveMinimapChromeView(true)).toMatchObject({
+      rootClassName: "overflow-hidden rounded-fg-md bg-paper-sunken",
+      rootStyle: { width: 160 },
     });
-
-    expect(deriveMinimapChromeView("true", "yes")).toMatchObject({
-      collapsed: false,
-      expanded: true,
+    // A malformed embedded flag falls back to the docked card (never throws).
+    expect(deriveMinimapChromeView("yes")).toMatchObject({
       rootClassName:
-        "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden backdrop-blur-sm",
-      collapseLabel: "collapse minimap",
+        "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden rounded-fg-md bg-paper-sunken",
     });
   });
 
   it("exposes a named minimap chrome view hook", () => {
-    setMinimapCollapsed(true);
     expect(useMinimapChromeView).toBeTypeOf("function");
-    expect(
-      deriveMinimapChromeView(useMinimapChromeStore.getState().collapsed),
-    ).toMatchObject({
-      collapseLabel: "expand minimap",
-    });
   });
 });

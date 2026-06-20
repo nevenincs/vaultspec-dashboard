@@ -79,8 +79,8 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   zoomStepWheel: 1.1,
   fitPaddingFactor: 1.2,
   minimapInset: 0.1,
-  minimapWidth: 192,
-  minimapHeight: 128,
+  minimapWidth: 160,
+  minimapHeight: 100,
   dragThresholdPx: 2,
   pickRadiusPx: 14,
 };

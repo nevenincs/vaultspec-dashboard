@@ -782,11 +782,12 @@ export const GRAPH_CONTROL_SCHEMA = [
     type: "number",
     min: 96,
     max: 512,
-    step: 16,
-    default: 192,
+    step: 8,
+    default: 160,
     unit: "px",
     exposure: [],
-    description: "Minimap canvas width (minimapChrome).",
+    description:
+      "Minimap canvas width (minimapChrome) — binding Figma MinimapWidget 636:2144 (160×100).",
   },
   {
     id: "minimapHeight",
@@ -795,11 +796,12 @@ export const GRAPH_CONTROL_SCHEMA = [
     type: "number",
     min: 64,
     max: 384,
-    step: 16,
-    default: 128,
+    step: 8,
+    default: 100,
     unit: "px",
     exposure: [],
-    description: "Minimap canvas height (minimapChrome).",
+    description:
+      "Minimap canvas height (minimapChrome) — binding Figma MinimapWidget 636:2144 (160×100).",
   },
   {
     id: "dragThresholdPx",
@@ -920,4 +922,82 @@ export function appearanceDefaults(): AppearanceParams {
     edgeOpacityMax: numericDefault("edgeOpacityMax"),
     edgeColorMode: stringDefault("edgeColorMode") as EdgeColorMode,
   };
+}
+
+// --- graph_controls persisted-override map (graph-control-standardisation) -------
+// The `graph_controls` engine SETTING persists a sparse `{control_id: value}` JSON
+// object — the user's explicit overrides only; absent ids resolve to the schema
+// default. The registry owns the bounded normalize (engine-never-learns-ids, exactly
+// as keymap/registry owns normalizeKeybindingOverrides) and the resolve→values.
+
+export type GraphControlOverrides = Record<string, number | string>;
+
+/** Engine-contract bound on the sparse override map (matches the engine cap;
+ *  bounded-by-default-for-every-accumulator). */
+export const MAX_GRAPH_CONTROL_OVERRIDES = 256;
+const MAX_GRAPH_CONTROL_STRING_LEN = 64;
+
+function isOverrideRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Normalize a raw override map into a bounded, schema-validated sparse map.
+ * DEFENSIVE by contract (mirrors normalizeKeybindingOverrides): drops keys that are
+ * not canonical schema ids, drops values that do not match the spec (numbers clamped
+ * to [min,max]; enum must be a declared option; non-finite / wrong-typed dropped),
+ * and caps at MAX_GRAPH_CONTROL_OVERRIDES. A corrupt persisted value can never break
+ * the graph — it degrades to the schema defaults. `frozen` and any other non-schema
+ * id is dropped: it is never a persisted control.
+ */
+export function normalizeGraphControlOverrides(overrides: unknown): GraphControlOverrides {
+  if (!isOverrideRecord(overrides)) return {};
+  const out: GraphControlOverrides = {};
+  let count = 0;
+  for (const [id, raw] of Object.entries(overrides)) {
+    if (count >= MAX_GRAPH_CONTROL_OVERRIDES) break;
+    const spec = SPEC_BY_ID.get(id);
+    if (!spec) continue;
+    if (spec.type === "number") {
+      if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+      const min = spec.min ?? raw;
+      const max = spec.max ?? raw;
+      out[id] = Math.min(max, Math.max(min, raw));
+    } else if (spec.type === "enum") {
+      if (
+        typeof raw !== "string" ||
+        raw.length > MAX_GRAPH_CONTROL_STRING_LEN ||
+        !(spec.options ?? []).includes(raw)
+      ) {
+        continue;
+      }
+      out[id] = raw;
+    } else {
+      continue;
+    }
+    count += 1;
+  }
+  return out;
+}
+
+/** Effective FIELD force params: schema simulation defaults overlaid with the
+ *  (already-normalized) simulation overrides — exactly the `set-force-params` shape. */
+export function resolveForceParams(overrides: GraphControlOverrides): D3ForceParams {
+  const out = simulationDefaults() as unknown as Record<string, number>;
+  for (const [id, value] of Object.entries(overrides)) {
+    if (typeof value === "number" && SPEC_BY_ID.get(id)?.group === "simulation") {
+      out[id] = value;
+    }
+  }
+  return out as unknown as D3ForceParams;
+}
+
+/** Effective FIELD appearance params: schema appearance defaults overlaid with the
+ *  (already-normalized) visualisation overrides — exactly the AppearanceParams shape. */
+export function resolveAppearanceParams(overrides: GraphControlOverrides): AppearanceParams {
+  const out = appearanceDefaults() as unknown as Record<string, number | string>;
+  for (const [id, value] of Object.entries(overrides)) {
+    if (SPEC_BY_ID.get(id)?.group === "visualisation") out[id] = value;
+  }
+  return out as unknown as AppearanceParams;
 }

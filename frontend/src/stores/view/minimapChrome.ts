@@ -1,41 +1,30 @@
 import { useMemo } from "react";
-import { create } from "zustand";
 
 import { controlNumber } from "../../scene/three/graphControlSchema";
 
+// Minimap chrome (binding Figma `MinimapWidget` 636:2144 + graph/Hero minimap
+// 212:521): the overview navigator is a HEADERLESS sunken card docked bottom-right
+// of the canvas — a `surface/sunken` ground on the canonical radius, holding only
+// the scene-drawn overview (and the accent viewport rectangle the scene paints).
+// The prior "Map" eyebrow + recenter/collapse controls are RETIRED to match the
+// binding design: recenter lives on the camera nav cluster, and the minimap is
+// always shown (supplementary navigation, never the sole camera control).
+//
+// Layer ownership (dashboard-layer-ownership / minimap ADR): this is a pure
+// presentation projection. The widget owns the card shell + the canvas element and
+// registers it with the scene seam; the scene owns every pixel inside it. It
+// fetches nothing and reads no raw `tiers`.
+
 // Minimap canvas dims read FROM the canonical control registry so they have ONE
-// definition (value-preserving: 192×128). The stores→scene/three schema import is the
-// sanctioned cross-layer control contract (WIRE-2: it does not trip the layer-ownership
-// guard; the schema's home is scene/three).
+// definition (WIRE-2: the stores→scene/three schema import is the sanctioned
+// cross-layer control contract; the schema's home is scene/three).
 export const MINIMAP_CANVAS_WIDTH = controlNumber("minimapWidth");
 export const MINIMAP_CANVAS_HEIGHT = controlNumber("minimapHeight");
-export const MINIMAP_CANVAS_REGION_ID = "minimap-canvas-region";
-
-interface MinimapChromeState {
-  collapsed: boolean;
-  setCollapsed: (collapsed: unknown) => void;
-  toggleCollapsed: () => void;
-  reset: () => void;
-}
 
 export interface MinimapChromeView {
-  collapsed: boolean;
-  expanded: boolean;
   rootClassName: string;
-  rootStyle: { width: number | "auto" };
+  rootStyle: { width: number };
   groupAriaLabel: string;
-  headerClassName: string;
-  actionsClassName: string;
-  titleLabel: string;
-  showRecenter: boolean;
-  recenterLabel: string;
-  collapseLabel: string;
-  collapseActive: boolean;
-  collapseAriaExpanded: boolean;
-  collapseIcon: "expand" | "collapse";
-  canvasRegionId: string;
-  canvasRegionAriaHidden: boolean;
-  canvasRegionStyle: { display: "none" | "block" };
   canvasWidth: number;
   canvasHeight: number;
   canvasAriaLabel: string;
@@ -43,46 +32,17 @@ export interface MinimapChromeView {
   canvasStyle: { width: number; height: number };
 }
 
-export const useMinimapChromeStore = create<MinimapChromeState>((set) => ({
-  collapsed: false,
-  setCollapsed: (collapsed) => set({ collapsed: normalizeMinimapCollapsed(collapsed) }),
-  toggleCollapsed: () =>
-    set((state) => ({ collapsed: !normalizeMinimapCollapsed(state.collapsed) })),
-  reset: () => set({ collapsed: false }),
-}));
-
-export function normalizeMinimapCollapsed(value: unknown): boolean {
-  return value === true;
-}
-
-export function deriveMinimapChromeView(
-  collapsed: unknown,
-  embedded: unknown = false,
-): MinimapChromeView {
-  const normalizedCollapsed = normalizeMinimapCollapsed(collapsed);
+export function deriveMinimapChromeView(embedded: unknown = false): MinimapChromeView {
   const embeddedMinimap = embedded === true;
-  const expanded = !normalizedCollapsed;
   return {
-    collapsed: normalizedCollapsed,
-    expanded,
+    // The binding sunken card: paper-sunken ground, canonical radius, clipped so
+    // the overview canvas corners round with it. Docked bottom-right unless hosted
+    // inside another surface (embedded).
     rootClassName: embeddedMinimap
-      ? "overflow-hidden"
-      : "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden backdrop-blur-sm",
-    rootStyle: { width: normalizedCollapsed ? "auto" : MINIMAP_CANVAS_WIDTH + 2 },
+      ? "overflow-hidden rounded-fg-md bg-paper-sunken"
+      : "pointer-events-auto absolute bottom-fg-2 right-fg-2 z-10 overflow-hidden rounded-fg-md bg-paper-sunken",
+    rootStyle: { width: MINIMAP_CANVAS_WIDTH },
     groupAriaLabel: "graph minimap navigator",
-    headerClassName:
-      "flex items-center justify-between gap-fg-1 border-b border-rule pr-fg-1",
-    actionsClassName: "flex items-center gap-fg-0-5",
-    titleLabel: "Map",
-    showRecenter: expanded,
-    recenterLabel: "recenter the field in view",
-    collapseLabel: normalizedCollapsed ? "expand minimap" : "collapse minimap",
-    collapseActive: expanded,
-    collapseAriaExpanded: expanded,
-    collapseIcon: normalizedCollapsed ? "expand" : "collapse",
-    canvasRegionId: MINIMAP_CANVAS_REGION_ID,
-    canvasRegionAriaHidden: normalizedCollapsed,
-    canvasRegionStyle: { display: normalizedCollapsed ? "none" : "block" },
     canvasWidth: MINIMAP_CANVAS_WIDTH,
     canvasHeight: MINIMAP_CANVAS_HEIGHT,
     canvasAriaLabel:
@@ -92,28 +52,6 @@ export function deriveMinimapChromeView(
   };
 }
 
-export function useMinimapCollapsed(): boolean {
-  return useMinimapChromeStore((state) => normalizeMinimapCollapsed(state.collapsed));
-}
-
 export function useMinimapChromeView(embedded: unknown = false): MinimapChromeView {
-  const collapsed = useMinimapChromeStore((state) =>
-    normalizeMinimapCollapsed(state.collapsed),
-  );
-  return useMemo(
-    () => deriveMinimapChromeView(collapsed, embedded),
-    [collapsed, embedded],
-  );
-}
-
-export function setMinimapCollapsed(collapsed: unknown): void {
-  useMinimapChromeStore.getState().setCollapsed(collapsed);
-}
-
-export function toggleMinimapCollapsed(): void {
-  useMinimapChromeStore.getState().toggleCollapsed();
-}
-
-export function resetMinimapChrome(): void {
-  useMinimapChromeStore.getState().reset();
+  return useMemo(() => deriveMinimapChromeView(embedded), [embedded]);
 }

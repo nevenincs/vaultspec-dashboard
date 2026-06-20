@@ -27,7 +27,6 @@ import {
 import { setIslandAnchor, useIslandAnchorStore } from "./islandAnchors";
 import { useKeyboardShortcutsStore } from "./keyboardShortcuts";
 import { useLensStore } from "./lenses";
-import { setMinimapCollapsed, useMinimapChromeStore } from "./minimapChrome";
 import { usePinStore } from "./pins";
 import { pipelineExpansionKey, usePipelineExpansionStore } from "./pipelineExpansion";
 import { useSearchIntentStore } from "./searchIntent";
@@ -649,7 +648,6 @@ describe("view store", () => {
     toggleCreateDocDialog();
     setCreateDocFeature("previous-feature");
     setGraphControlsSettingsOpen(true);
-    setMinimapCollapsed(true);
     toggleStatusSection("recent-commits", true);
     toggleRecentCommit("previous-commit");
     showMoreRecentCommits(20, 20);
@@ -677,7 +675,6 @@ describe("view store", () => {
       feature: "",
     });
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
     expect(useStatusTabChromeStore.getState()).toMatchObject({
       sections: {},
       openRecentCommitHashes: [],
@@ -703,7 +700,6 @@ describe("view store", () => {
     toggleCreateDocDialog();
     setCreateDocFeature("workspace-old-feature");
     setGraphControlsSettingsOpen(true);
-    setMinimapCollapsed(true);
     toggleStatusSection("recent-commits", true);
     toggleRecentCommit("workspace-old-commit");
     showMoreRecentCommits(20, 20);
@@ -730,7 +726,6 @@ describe("view store", () => {
       feature: "",
     });
     expect(useGraphControlsChromeStore.getState().settingsOpen).toBe(false);
-    expect(useMinimapChromeStore.getState().collapsed).toBe(false);
     expect(useStatusTabChromeStore.getState()).toMatchObject({
       sections: {},
       openRecentCommitHashes: [],

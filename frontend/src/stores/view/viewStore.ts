@@ -18,7 +18,6 @@ import { resetIslandAnchors } from "./islandAnchors";
 import { resetKeyActions } from "./keymapDispatcher";
 import { resetKeyboardShortcuts } from "./keyboardShortcuts";
 import { useLensStore } from "./lenses";
-import { resetMinimapChrome } from "./minimapChrome";
 import { usePinStore } from "./pins";
 import { resetPipelineExpansion } from "./pipelineExpansion";
 import { resetSearchIntent } from "./searchIntent";
@@ -530,7 +529,6 @@ function resetCorpusLocalStores(): void {
   resetKeyboardShortcuts();
   resetKeyActions();
   resetSettingsKeybindingRecorder();
-  resetMinimapChrome();
   resetStatusTabChrome();
   resetWorktreePickerChrome();
 }
