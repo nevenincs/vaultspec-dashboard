@@ -47,6 +47,7 @@ import {
   type SceneController,
 } from "../sceneController";
 import { semanticLevel } from "../field/cameraCore";
+import { controlNumber } from "./graphControlSchema";
 import {
   accentColor,
   APPEARANCE_DEFAULTS,
@@ -65,18 +66,24 @@ import { labelTextStyle } from "./labelStyle";
 import { uiScale } from "./uiScale";
 
 // Pointer hit tolerance in screen px at the 16px rem basis; UI-scaled at use.
-const PICK_RADIUS_PX = 14;
+// Tweakable constants are read FROM the canonical control registry
+// (graphControlSchema) so each has exactly ONE definition — never a schema entry plus
+// a duplicate local const (the exact drift the registry exists to kill). Same values,
+// single source of truth.
+const PICK_RADIUS_PX = controlNumber("pickRadiusPx");
 /** Gentle restart alpha for a warm-started (mostly-carried-over) layout — low so
  *  persistent nodes barely move while new nodes settle in (object constancy). */
-const WARM_START_ALPHA = 0.3;
-
-/** Cold-fit padding: the graph span is divided by this when framing, so the graph
- *  occupies ~1/factor of the smaller viewport dimension — leaving a margin so nodes
- *  (and their labels/radii) are never flush to the canvas edge. 1.2 ≈ 8% per edge. */
-const FIT_PADDING_FACTOR = 1.2;
-
+const WARM_START_ALPHA = controlNumber("warmStartAlpha");
+/** Cold-fit padding: the graph span is divided by this when framing (≈8% per edge). */
+const FIT_PADDING_FACTOR = controlNumber("fitPaddingFactor");
 /** Fractional inset of the minimap overview from the minimap canvas edges. */
-const MINIMAP_INSET = 0.1;
+const MINIMAP_INSET = controlNumber("minimapInset");
+// Camera zoom band + step factors. This is the LIVE field clamp (cameraCore's
+// MIN/MAX_SCALE is the retired Camera-class path; the registry names that drift).
+const ZOOM_MIN = controlNumber("zoomMin");
+const ZOOM_MAX = controlNumber("zoomMax");
+const ZOOM_STEP_BUTTON = controlNumber("zoomStepButton");
+const ZOOM_STEP_WHEEL = controlNumber("zoomStepWheel");
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -445,10 +452,10 @@ export class ThreeField implements SceneFieldRenderer {
         this.fitToView();
         break;
       case "zoom-in":
-        this.zoomBy(1.2);
+        this.zoomBy(ZOOM_STEP_BUTTON);
         break;
       case "zoom-out":
-        this.zoomBy(1 / 1.2);
+        this.zoomBy(1 / ZOOM_STEP_BUTTON);
         break;
       case "apply-deltas":
         this.applyDeltas(cmd.deltas);
@@ -1312,14 +1319,17 @@ export class ThreeField implements SceneFieldRenderer {
     const zoomX = (this.viewHeight * aspect) / (spanX * FIT_PADDING_FACTOR);
     const zoomY = this.viewHeight / (spanY * FIT_PADDING_FACTOR);
     this.camera.position.set(cx, cy, 10);
-    this.camera.zoom = Math.max(0.02, Math.min(50, Math.min(zoomX, zoomY)));
+    this.camera.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(zoomX, zoomY)));
     this.camera.updateProjectionMatrix();
     this.emitCameraChange();
     this.requestRender();
   }
 
   private zoomBy(factor: number): void {
-    this.camera.zoom = Math.max(0.02, Math.min(50, this.camera.zoom * factor));
+    this.camera.zoom = Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, this.camera.zoom * factor),
+    );
     this.camera.updateProjectionMatrix();
     this.emitCameraChange();
     this.requestRender();
@@ -1328,7 +1338,10 @@ export class ThreeField implements SceneFieldRenderer {
   /** Zoom keeping the world point under (sx, sy) screen px stationary. */
   private zoomAtScreen(factor: number, sx: number, sy: number): void {
     const before = this.screenToWorld(sx, sy);
-    this.camera.zoom = Math.max(0.02, Math.min(50, this.camera.zoom * factor));
+    this.camera.zoom = Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, this.camera.zoom * factor),
+    );
     this.camera.updateProjectionMatrix();
     const after = this.screenToWorld(sx, sy);
     this.camera.position.x += before.x - after.x;
@@ -1553,7 +1566,11 @@ export class ThreeField implements SceneFieldRenderer {
       (ev: WheelEvent) => {
         ev.preventDefault();
         const [sx, sy] = this.eventToScreen(ev);
-        this.zoomAtScreen(ev.deltaY < 0 ? 1.1 : 1 / 1.1, sx, sy);
+        this.zoomAtScreen(
+          ev.deltaY < 0 ? ZOOM_STEP_WHEEL : 1 / ZOOM_STEP_WHEEL,
+          sx,
+          sy,
+        );
       },
       { passive: false },
     );

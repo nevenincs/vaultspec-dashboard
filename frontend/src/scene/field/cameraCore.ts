@@ -7,17 +7,22 @@
 
 import { prefersReducedMotion } from "../../platform/reducedMotion";
 import type { SceneEvent } from "../sceneController";
+import { controlNumber } from "../three/graphControlSchema";
 
 // --- pure camera math (unit-tested) ------------------------------------------
 
+// NB MIN_SCALE/MAX_SCALE are the RETIRED Camera-class zoom clamp (the live three.js
+// field clamps to the registry's zoomMin/zoomMax, 0.02/50, in threeField). Kept until
+// the Camera-class dead-code prune; the registry names this drift.
 export const MIN_SCALE = 0.05;
 export const MAX_SCALE = 8;
 
 /** Discrete semantic-zoom levels (§3.1 LOD discipline rides these). */
 export type SemanticLevel = "constellation" | "feature" | "document";
 
-export const FEATURE_LEVEL_SCALE = 0.6;
-export const DOCUMENT_LEVEL_SCALE = 1.6;
+// Semantic-zoom thresholds — read FROM the canonical control registry (one source).
+export const FEATURE_LEVEL_SCALE = controlNumber("featureLevelScale");
+export const DOCUMENT_LEVEL_SCALE = controlNumber("documentLevelScale");
 
 export function semanticLevel(scale: number): SemanticLevel {
   if (scale >= DOCUMENT_LEVEL_SCALE) return "document";
