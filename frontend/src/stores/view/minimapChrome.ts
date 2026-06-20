@@ -1,8 +1,14 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 
-export const MINIMAP_CANVAS_WIDTH = 192;
-export const MINIMAP_CANVAS_HEIGHT = 128;
+import { controlNumber } from "../../scene/three/graphControlSchema";
+
+// Minimap canvas dims read FROM the canonical control registry so they have ONE
+// definition (value-preserving: 192×128). The stores→scene/three schema import is the
+// sanctioned cross-layer control contract (WIRE-2: it does not trip the layer-ownership
+// guard; the schema's home is scene/three).
+export const MINIMAP_CANVAS_WIDTH = controlNumber("minimapWidth");
+export const MINIMAP_CANVAS_HEIGHT = controlNumber("minimapHeight");
 export const MINIMAP_CANVAS_REGION_ID = "minimap-canvas-region";
 
 interface MinimapChromeState {
