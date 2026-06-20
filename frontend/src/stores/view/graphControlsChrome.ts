@@ -39,6 +39,7 @@ function finiteOrDefault(value: unknown, fallback: number): number {
  *  the schema lacks the id or it is non-numeric (fail-fast on drift). */
 function numericSpec(id: string): {
   label: string;
+  uiLabel: string | undefined;
   min: number;
   max: number;
   step: number;
@@ -57,6 +58,7 @@ function numericSpec(id: string): {
   }
   return {
     label: spec.label,
+    uiLabel: spec.uiLabel,
     min: spec.min,
     max: spec.max,
     step: spec.step,
@@ -132,10 +134,10 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
   const charge = numericSpec("charge");
   const linkDistance = numericSpec("linkDistance");
   const linkStrength = numericSpec("linkStrength");
-  // User-facing labels are the BINDING Figma plain-language vocabulary
-  // (ui-labels-are-user-facing): the seam keeps the technical ids (charge /
-  // linkDistance / linkStrength) and the screen reads Spacing / Link length /
-  // Grouping. The schema's technical labels stay the dev-lab vocabulary.
+  // User-facing labels DERIVE from the schema's `uiLabel` (single source,
+  // ui-labels-are-user-facing): the seam keeps the technical ids + the schema's
+  // technical `label` (dev-lab vocabulary); the screen reads the friendly
+  // `uiLabel` (Spacing / Link length / Grouping), falling back to `label`.
   return {
     title: "Graph controls",
     categoryLabel: "Layout",
@@ -151,21 +153,21 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
       // range (negative) maps to a positive magnitude by negating + swapping
       // min/max. The field still stores the signed charge.
       repulsion: {
-        label: "Spacing",
+        label: charge.uiLabel ?? charge.label,
         title: "How far nodes push each other apart",
         min: -charge.max,
         max: -charge.min,
         step: charge.step,
       },
       linkDistance: {
-        label: "Link length",
+        label: linkDistance.uiLabel ?? linkDistance.label,
         title: "The rest length of the links between connected nodes",
         min: linkDistance.min,
         max: linkDistance.max,
         step: linkDistance.step,
       },
       linkSpring: {
-        label: "Grouping",
+        label: linkStrength.uiLabel ?? linkStrength.label,
         title: "How tightly connected nodes pull together into groups",
         min: linkStrength.min,
         max: linkStrength.max,
@@ -331,13 +333,14 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
   const edgeWidth = numericSpec("edgeWidthMax");
   const edgeOpacity = numericSpec("edgeOpacityMax");
   return {
-    // User-facing labels are the BINDING Figma plain-language vocabulary
-    // (ui-labels-are-user-facing): Node size / Importance / Link thickness / Link
-    // opacity / Link colour [Solid | Blended]. The seam keeps the technical ids.
+    // User-facing labels DERIVE from the schema's `uiLabel` (single source,
+    // ui-labels-are-user-facing): Node size / Importance / Link thickness / Link
+    // opacity / Link colour. Option display labels (Solid | Blended) are UI copy
+    // for the enum values. The seam keeps the technical ids + `label`.
     containerClassName: "flex w-full flex-col gap-fg-2",
     headingClassName: "text-label text-ink-muted",
     heading: "Appearance",
-    colorModeLabel: "Link colour",
+    colorModeLabel: specById("edgeColorMode")?.uiLabel ?? "Link colour",
     colorModeAriaLabel: "Link colour mode",
     solidLabel: "Solid",
     gradientLabel: "Blended",
@@ -346,28 +349,28 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
     resetLabel: "Reset to defaults",
     sliders: {
       nodeSizeScale: {
-        label: "Node size",
+        label: nodeSize.uiLabel ?? nodeSize.label,
         title: "Scale every node's drawn size",
         min: nodeSize.min,
         max: nodeSize.max,
         step: nodeSize.step,
       },
       nodeSalienceScale: {
-        label: "Importance",
+        label: salience.uiLabel ?? salience.label,
         title: "How strongly a node's importance drives its size (0 = uniform)",
         min: salience.min,
         max: salience.max,
         step: salience.step,
       },
       edgeWidthMax: {
-        label: "Link thickness",
+        label: edgeWidth.uiLabel ?? edgeWidth.label,
         title: "Thickness of the strongest links",
         min: edgeWidth.min,
         max: edgeWidth.max,
         step: edgeWidth.step,
       },
       edgeOpacityMax: {
-        label: "Link opacity",
+        label: edgeOpacity.uiLabel ?? edgeOpacity.label,
         title: "Opacity of the strongest links",
         min: edgeOpacity.min,
         max: edgeOpacity.max,
