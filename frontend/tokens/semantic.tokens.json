@@ -70,7 +70,11 @@
       "category-exec": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b5703f" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-exec", "emit": "hex" } } },
       "category-audit": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#3f9aa6" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-audit", "emit": "hex" } } },
       "category-index": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#8f9a7e" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-index", "emit": "hex" } } },
-      "category-code": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b05a6b" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-code", "emit": "hex" } } }
+      "category-code": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#b05a6b" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-category-code", "emit": "hex" } } },
+      "hover-recede": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#ccc1b4" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-hover-recede", "emit": "hex" } } },
+      "hover-edge-context": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#bbb4ab" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-hover-edge-context", "emit": "hex" } } },
+      "hover-edge-focus": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#46423b" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-hover-edge-focus", "emit": "hex" } } },
+      "hover-label-context": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#a9a49c" }, "$extensions": { "com.vaultspec.css": { "var": "--color-scene-hover-label-context", "emit": "hex" } } }
     }
   }
 }

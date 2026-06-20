@@ -94,14 +94,14 @@ const DOC_LABEL_SALIENCE_FLOOR = controlNumber("documentLabelSalienceFloor");
 const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
 // Hover/focus emphasis — PARITY with the binding graph/Hover 742:3413 (figma-is-binding).
-// De-emphasis is COLOUR-ONLY at FULL opacity: a non-focus node recedes by colour toward
-// the warm ground (NODE_RECEDE_MIX toward the node material's uDimColor = hoverRecedeColor),
-// never an opacity fade. A focus node keeps FULL category saturation — the pop is ADDITIVE:
-// a 2px accent ring + a category-hue glow bloom on the hovered hub (drawLabels), not a fill
-// brighten. Edges never fade: focus edges warm-ink + thicker, context edges taupe + thinner.
-// These treatment magnitudes are inline pending the coordinated graphControlSchema migration
-// (apps-review owns that file); the 4 emphasis COLOURS read via the scene seam (appearance).
-const NODE_RECEDE_MIX = 0.75; // non-focus node colour-mix toward the warm ground
+// De-emphasis is COLOUR-ONLY at FULL opacity: a non-focus node recedes to the FLAT warm
+// ground (the node material's uDimColor = hoverRecedeColor; design-review tokenized the
+// recede flat, exact-to-frame), never an opacity fade. A focus node keeps FULL category
+// saturation — the pop is ADDITIVE: a 2px accent ring + a category-hue glow bloom on the
+// hovered hub (drawLabels), not a fill brighten. Edges never fade: focus edges warm-ink +
+// thicker, context edges taupe + thinner. These treatment magnitudes are inline pending the
+// coordinated graphControlSchema migration (apps-review owns that file); the 4 emphasis
+// COLOURS read via the scene seam (appearance) — themed scene-read tokens, design hex fallback.
 const FOCUS_RING_WIDTH_PX = 2; // accent focus ring on the hovered hub (design 2px)
 const FOCUS_GLOW_RADIUS_PX = 24; // category-hue glow bloom radius beyond the hub (design ~24)
 const FOCUS_EDGE_WIDTH = 1.75; // focus-cluster edge width (design 1.75px)
@@ -186,8 +186,9 @@ void main() {
   //   vDim > 0.5  → de-emphasised: recede by colour toward the muted ground (full alpha).
   // PARITY (graph/Hover): emphasis is COLOUR-ONLY at FULL alpha — a focus node keeps full
   // category saturation (the pop is the ring + glow, not a fill change); a non-focus node
-  // (vDim > 0.5) recedes by colour toward the warm ground (uDimColor). Nothing ever fades.
-  vec3 col = vDim > 0.5 ? mix(vColor, uDimColor, ${glslFloat(NODE_RECEDE_MIX)}) : vColor;
+  // (vDim > 0.5) recedes to the FLAT warm-ground colour (uDimColor = hover-recede token);
+  // design-review tokenized the recede flat (a swap, not a mix). Nothing ever fades.
+  vec3 col = vDim > 0.5 ? uDimColor : vColor;
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -1262,7 +1263,7 @@ export class ThreeField implements SceneFieldRenderer {
         const gb = hue & 0xff;
         const glowR = nodeR + FOCUS_GLOW_RADIUS_PX * s;
         const grad = ctx.createRadialGradient(p.x, p.y, nodeR * 0.6, p.x, p.y, glowR);
-        grad.addColorStop(0, `rgba(${gr}, ${gg}, ${gb}, 0.34)`);
+        grad.addColorStop(0, `rgba(${gr}, ${gg}, ${gb}, 0.55)`);
         grad.addColorStop(1, `rgba(${gr}, ${gg}, ${gb}, 0)`);
         ctx.beginPath();
         ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);

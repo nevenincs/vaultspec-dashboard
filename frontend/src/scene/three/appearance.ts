@@ -176,11 +176,11 @@ export function hoverRecedeColor(): number {
   return cssColorNumber("--color-scene-hover-recede", 0xccc1b4);
 }
 export function hoverContextLabelColor(): number {
-  return cssColorNumber("--color-scene-hover-context-label", 0xa7a095);
+  return cssColorNumber("--color-scene-hover-label-context", 0xa9a49c);
 }
 export function hoverFocusEdgeColor(): number {
-  return cssColorNumber("--color-scene-hover-focus-edge", 0x514c45);
+  return cssColorNumber("--color-scene-hover-edge-focus", 0x46423b);
 }
 export function hoverContextEdgeColor(): number {
-  return cssColorNumber("--color-scene-hover-context-edge", 0xbbb4ab);
+  return cssColorNumber("--color-scene-hover-edge-context", 0xbbb4ab);
 }
