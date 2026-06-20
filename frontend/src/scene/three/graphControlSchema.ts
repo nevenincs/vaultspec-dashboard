@@ -80,7 +80,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   },
   {
     id: "linkStrength",
-    label: "Link strength ×",
+    label: "Link strength",
     group: "simulation",
     type: "number",
     min: 0,
@@ -332,7 +332,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   // The 7 AppearanceParams (ui+lab; ranges = appearanceControls.ts).
   {
     id: "nodeSizeScale",
-    label: "Node size ×",
+    label: "Node size",
     group: "visualisation",
     type: "number",
     min: 0.25,
@@ -345,7 +345,7 @@ export const GRAPH_CONTROL_SCHEMA = [
   },
   {
     id: "nodeSalienceScale",
-    label: "Salience spread ×",
+    label: "Salience spread",
     group: "visualisation",
     type: "number",
     min: 0,
@@ -364,12 +364,13 @@ export const GRAPH_CONTROL_SCHEMA = [
     max: 6,
     step: 0.1,
     default: 0.6,
-    exposure: ["ui", "lab"],
-    description: "Thinnest edge (confidence 0), world-derived px.",
+    exposure: ["lab"],
+    description:
+      "Thinnest edge (confidence 0), world-derived px. A FLOOR the UI does not tweak (lab-only); the field still uses this default as the floor.",
   },
   {
     id: "edgeWidthMax",
-    label: "Edge width max",
+    label: "Edge width",
     group: "visualisation",
     type: "number",
     min: 0.1,
@@ -377,7 +378,7 @@ export const GRAPH_CONTROL_SCHEMA = [
     step: 0.1,
     default: 2.2,
     exposure: ["ui", "lab"],
-    description: "Thickest edge (confidence 1), world-derived px.",
+    description: "Thickest edge (confidence 1), world-derived px. The UI headline.",
   },
   {
     id: "edgeOpacityMin",
@@ -388,12 +389,13 @@ export const GRAPH_CONTROL_SCHEMA = [
     max: 1,
     step: 0.02,
     default: 0.1,
-    exposure: ["ui", "lab"],
-    description: "Faintest edge (confidence 0).",
+    exposure: ["lab"],
+    description:
+      "Faintest edge (confidence 0). A FLOOR the UI does not tweak (lab-only); the field still uses this default as the floor.",
   },
   {
     id: "edgeOpacityMax",
-    label: "Edge opacity max",
+    label: "Edge opacity",
     group: "visualisation",
     type: "number",
     min: 0,
@@ -859,7 +861,8 @@ export const GRAPH_CONTROL_SCHEMA = [
     default: 4,
     unit: "px",
     exposure: [],
-    description: "Pointer motion (screen px) before a drag/pan engages.",
+    description:
+      "Pointer motion (screen px) before a drag/pan engages. Source: cameraCore.DRAG_THRESHOLD_PX.",
   },
   {
     id: "pickRadiusPx",
@@ -917,6 +920,12 @@ function stringDefault(id: string): string {
   }
   return spec.default;
 }
+
+/** Public canonical-value lookups — the field + cameraCore read their (formerly
+ *  hardcoded) constants from here so each tweakable has exactly ONE definition (the
+ *  schema), never a schema entry plus a duplicate local const. Fail fast on a bad id. */
+export const controlNumber = numericDefault;
+export const controlString = stringDefault;
 
 /**
  * The simulation defaults as a fully-typed D3ForceParams, built from the schema —
