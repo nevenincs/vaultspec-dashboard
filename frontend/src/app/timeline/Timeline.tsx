@@ -195,6 +195,38 @@ export function monthAxisLabels(
   }));
 }
 
+/**
+ * The month-axis tick marks (binding board 251:771 / 253:807…): a tall MAJOR tick
+ * at each month boundary plus three short MINOR ticks evenly subdividing the gap to
+ * the next month (the weekly-grid feel of the binding design). Positioned on the
+ * SAME slot grid as `monthAxisLabels` (the label sits 5px right of its major tick),
+ * so the ticks and the month names align. Pure.
+ */
+export function monthAxisTicks(
+  fromMs: number,
+  toMs: number,
+  width: number,
+): { key: string; x: number; major: boolean }[] {
+  const labels = monthAxisLabels(fromMs, toMs, width);
+  if (labels.length === 0) return [];
+  const slotWidth = labels.length > 1 ? labels[1].x - labels[0].x : 0;
+  const ticks: { key: string; x: number; major: boolean }[] = [];
+  for (const label of labels) {
+    const tickX = label.x - 5;
+    ticks.push({ key: `M${label.key}`, x: tickX, major: true });
+    if (slotWidth > 0) {
+      for (let q = 1; q <= 3; q++) {
+        ticks.push({
+          key: `m${label.key}-${q}`,
+          x: tickX + (slotWidth * q) / 4,
+          major: false,
+        });
+      }
+    }
+  }
+  return ticks;
+}
+
 /** The instant a node's mark is positioned at (blob-true creation), or null. */
 export function nodeInstant(node: LineageNode): number | null {
   const created = node.dates?.created;
@@ -558,16 +590,25 @@ function TimelineMonthAxis({
 }) {
   const labels = monthAxisLabels(visibleWindow.fromMs, visibleWindow.toMs, width);
   if (labels.length === 0) return null;
+  const ticks = monthAxisTicks(visibleWindow.fromMs, visibleWindow.toMs, width);
   return (
     <div
-      className="pointer-events-none relative h-[1.25rem] shrink-0 bg-paper"
+      className="pointer-events-none relative h-[1.25rem] shrink-0 overflow-hidden bg-paper"
       aria-hidden="true"
       data-timeline-month-axis
     >
+      {ticks.map((tick) => (
+        <span
+          key={tick.key}
+          className={`absolute top-0 w-px bg-rule ${tick.major ? "h-[0.375rem]" : "h-[0.1875rem]"}`}
+          style={{ left: `${tick.x}px` }}
+          data-timeline-month-tick={tick.major ? "major" : "minor"}
+        />
+      ))}
       {labels.map((item) => (
         <span
           key={item.key}
-          className="absolute top-[0.125rem] whitespace-nowrap text-caption font-normal text-ink-muted"
+          className="absolute top-[0.125rem] whitespace-nowrap text-caption font-medium tracking-[0.025rem] text-ink-faint"
           style={{ left: `${item.x}px` }}
         >
           {item.label}

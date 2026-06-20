@@ -28,7 +28,6 @@ import { useMemo, useRef, type RefObject } from "react";
 
 import { useActiveScope, useFiltersVocabularyView } from "../../stores/server/queries";
 import { useElementWidth } from "../chrome/useElementWidth";
-import { IconButton, Maximize } from "../kit";
 import {
   clearTimelineMinimapDrag,
   setTimelineScrollOffset,
@@ -44,12 +43,13 @@ import { categoryColorVar, type Category } from "../kit/category";
 import { TIMELINE_ORIGIN_MS, stripXToTime, timeToStripX } from "./scrollStrip";
 
 // Range-control geometry (figma binding SlhonORmySdoSMTQgDWw3w, scrubber row
-// 251:801 redesign): a recessed overview track with the visible window drawn as a
-// bright, thick-bordered brush over a dimmed out-of-window context, capped by two
-// grabbable accent handles. The numbers mirror the Figma nodes 1:1 so the live
-// control and the binding design stay in parity (figma-is-the-binding-source-of-
-// truth): track 34h, brush border 2.5px, 8px handles with a paper grip, taller
-// 20px density markers.
+// 251:801 / track 255:866): a paper overview track (neutral/50 fill, border/strong
+// rim) with the visible window drawn as a bright, thick-bordered accent brush over
+// an OPAQUE paper veil that hides the out-of-window span, capped by two grabbable
+// accent handles with a white double-line grip. The numbers mirror the Figma nodes
+// 1:1 so the live control and the binding design stay in parity (figma-is-the-
+// binding-source-of-truth): track 34h, brush border 2.5px, 8×28 handles at top=2
+// radius 4, white grips 1.5×12 at top=10, density markers 3×20 at top=6.
 const RIBBON_HEIGHT = 34;
 const MARKER_CLUSTER_PX = 8;
 /** Widened hit zone (was 8) so the 8px-wide accent handles are comfortably
@@ -59,16 +59,17 @@ const BRUSH_HANDLE_HIT_PX = 11;
 const BRUSH_STROKE_PX = 2.5;
 const HANDLE_W = 8;
 const HANDLE_H = 28;
-const HANDLE_Y = (RIBBON_HEIGHT - HANDLE_H) / 2;
+/** Handle top inset (Figma 255:881 top=2): the pill straddles the brush edge. */
+const HANDLE_Y = 2;
 const HANDLE_RADIUS = 4;
-/** Out-of-window context veil (Figma 434:1083/1084): ink at low opacity dims the
- *  un-selected span so the bright window reads as the selection. */
-const WINDOW_VEIL_OPACITY = 0.12;
-/** Density markers (Figma 255:867…): taller + wider + full opacity so the overview
- *  reads as a real graph, not a faint bar. */
+/** Handle grip bars (Figma 255:882/883): a white double line on each handle. */
+const GRIP_W = 1.5;
+const GRIP_H = 12;
+const GRIP_Y = 10;
+/** Density markers (Figma 255:867…): full-opacity colored bars, top=6. */
 const MARKER_W = 3;
 const MARKER_H = 20;
-const MARKER_Y = (RIBBON_HEIGHT - MARKER_H) / 2;
+const MARKER_Y = 6;
 /** A small fallback corpus span (~6 months) when the corpus bounds are unknown,
  *  so the ribbon stays usable as a scrubber before the vocabulary loads. */
 const FALLBACK_SPAN_MS = 180 * 24 * 3600_000;
@@ -354,10 +355,6 @@ export function Minimap({
     () => brushOnRibbon(scrollOffset, pxPerMs, viewportWidth, span, ribbonWidth),
     [scrollOffset, pxPerMs, viewportWidth, span, ribbonWidth],
   );
-  const ticks = useMemo(
-    () => overviewTickXs(vocabulary.dateBounds, span, ribbonWidth),
-    [span, ribbonWidth, vocabulary.dateBounds],
-  );
   const markers = useMemo(
     () => overviewMarkers(overviewInstants, span, ribbonWidth),
     [overviewInstants, span, ribbonWidth],
@@ -455,8 +452,6 @@ export function Minimap({
     Math.max(0, Math.min(ribbonWidth - HANDLE_W, edge - HANDLE_W / 2));
   const leftHandleX = handleX(winLeft);
   const rightHandleX = handleX(winRight);
-  const gripY1 = (RIBBON_HEIGHT - 12) / 2;
-  const gripY2 = gripY1 + 12;
 
   return (
     <div className="relative h-[2.75rem] bg-paper px-fg-3" data-timeline-navigator>
@@ -485,35 +480,24 @@ export function Minimap({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onKeyDown={onKeyDown}
-        className="absolute left-[0.75rem] top-[0.3125rem] h-[2.125rem] w-[calc(100%-4rem)] cursor-pointer overflow-visible focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+        onDoubleClick={fitToRange}
+        className="absolute left-[0.75rem] top-[0.3125rem] h-[2.125rem] w-[calc(100%-1.5rem)] cursor-pointer overflow-visible focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
         data-timeline-minimap
       >
-        {/* The recessed overview track: a sunken lane with a firm border so the
-            scrubber reads as a real, prominent control rather than a hairline. */}
+        {/* The overview track (Figma 255:866): a paper lane (neutral/50) with a
+            firm border/strong rim so the scrubber reads as a real, prominent
+            control rather than a hairline. */}
         <rect
           x={0.5}
           y={0.5}
           width={Math.max(0, ribbonWidth - 1)}
           height={RIBBON_HEIGHT - 1}
           rx={6}
-          className="fill-paper-sunken stroke-rule-strong"
+          className="fill-paper stroke-rule-strong"
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"
           data-minimap-track
         />
-        {/* Month gridlines — faint vertical ticks so the whole-corpus span reads as
-            a real overview, not a bare bar. */}
-        {ticks.map((x, i) => (
-          <line
-            key={i}
-            x1={x}
-            x2={x}
-            y1={5}
-            y2={RIBBON_HEIGHT - 5}
-            className="stroke-rule"
-            opacity={0.5}
-          />
-        ))}
         {/* Density markers — the overview "graph": a tall, full-opacity colored bar
             per document cluster in its bound category hue. */}
         {markers.map((marker) => (
@@ -528,16 +512,16 @@ export function Minimap({
             data-minimap-overview-marker
           />
         ))}
-        {/* Out-of-window context veil: dim the un-selected span on each side so the
-            bright window pops as the selection (modern range-control convention). */}
+        {/* Out-of-window context veil (Figma 434:1083/1084): an OPAQUE paper veil
+            covers the un-selected span on each side so only the in-window density
+            markers show through the bright selection. */}
         {winLeft > 0 && (
           <rect
             x={0}
             y={0}
             width={winLeft}
             height={RIBBON_HEIGHT}
-            className="fill-ink"
-            opacity={WINDOW_VEIL_OPACITY}
+            className="fill-paper"
             data-minimap-veil="left"
           />
         )}
@@ -547,8 +531,7 @@ export function Minimap({
             y={0}
             width={veilRightWidth}
             height={RIBBON_HEIGHT}
-            className="fill-ink"
-            opacity={WINDOW_VEIL_OPACITY}
+            className="fill-paper"
             data-minimap-veil="right"
           />
         )}
@@ -566,8 +549,9 @@ export function Minimap({
           vectorEffect="non-scaling-stroke"
           data-minimap-brush
         />
-        {/* Grabbable accent handles capping each edge, with a paper grip so they
-            read unmistakably as drag affordances (cursor: ew-resize). */}
+        {/* Grabbable accent handles capping each edge (Figma 255:881/884), each with
+            a white double-bar grip (255:882/883) so they read unmistakably as drag
+            affordances (cursor: ew-resize). Double-click the track fits to range. */}
         {[["left", leftHandleX] as const, ["right", rightHandleX] as const].map(
           ([side, hx]) => {
             const center = hx + HANDLE_W / 2;
@@ -585,40 +569,22 @@ export function Minimap({
                   rx={HANDLE_RADIUS}
                   className="fill-accent"
                 />
-                <line
-                  x1={center - 1.25}
-                  x2={center - 1.25}
-                  y1={gripY1}
-                  y2={gripY2}
-                  className="stroke-paper"
-                  strokeWidth={1.25}
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                />
-                <line
-                  x1={center + 1.25}
-                  x2={center + 1.25}
-                  y1={gripY1}
-                  y2={gripY2}
-                  className="stroke-paper"
-                  strokeWidth={1.25}
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                />
+                {[center - 2, center + 0.5].map((gx) => (
+                  <rect
+                    key={gx}
+                    x={gx}
+                    y={GRIP_Y}
+                    width={GRIP_W}
+                    height={GRIP_H}
+                    rx={0.75}
+                    className="fill-paper"
+                  />
+                ))}
               </g>
             );
           },
         )}
       </svg>
-      <span className="absolute right-[0.75rem] top-[0.375rem] flex size-8 items-center justify-center rounded-fg-md border border-rule bg-paper-raised p-[0.1875rem] text-ink shadow-fg-raised [&_[data-kit=icon-button]]:size-[1.625rem]">
-        <IconButton
-          label="fit to data range"
-          title="fit to data range"
-          onClick={fitToRange}
-        >
-          <Maximize size={14} aria-hidden />
-        </IconButton>
-      </span>
     </div>
   );
 }
