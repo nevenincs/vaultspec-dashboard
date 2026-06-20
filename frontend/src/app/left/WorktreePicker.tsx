@@ -13,11 +13,17 @@
 // engine, and emits the scope-selection intent through the durable session
 // transition — chrome over the one projection.
 
-import { TriangleAlert } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  GitBranch,
+  TriangleAlert,
+} from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useEffect, useId, useRef } from "react";
 
-import { FolderPlus, IconButton, PanelLeft } from "../kit";
+import { FolderPlus, IconButton, PanelLeft, Popover } from "../kit";
 import type { WorktreeEntity } from "../../platform/actions/entity";
 import type { MapWorktree } from "../../stores/server/engine";
 import { type WorkspaceMapPickerRowView } from "../../stores/server/queries";
@@ -48,6 +54,30 @@ function worktreeEntity(worktree: MapWorktree): WorktreeEntity {
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
 // Warning marks read one density step smaller than identity icons.
 const WARN_PX = 12;
+// Git-status glyphs (branch, ahead/behind) read one step below the name.
+const GIT_GLYPH_PX = 12;
+
+// The git-status pill: the trigger is a bordered card carrying the worktree name
+// over a git-status line (branch + dirty + ahead/behind), opening the switcher
+// dropdown. Token-driven, no raw px (no-hardcoded-px), composed from the shared
+// surface/ink/state tiers (design-system-is-centralized).
+const PILL_CLASS =
+  "group flex min-w-0 flex-1 flex-col gap-fg-0-5 rounded-fg-md border border-rule bg-paper px-fg-2 py-fg-1 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+const PILL_NAME_ROW_CLASS = "flex items-center gap-fg-1";
+const PILL_NAME_CLASS = "min-w-0 flex-1 truncate text-title font-medium text-ink";
+const PILL_CHEVRON_CLASS =
+  "shrink-0 text-ink-faint transition-transform duration-ui-fast";
+const PILL_STATUS_ROW_CLASS =
+  "flex items-center gap-fg-1-5 text-caption text-ink-faint";
+const PILL_BRANCH_CLASS = "flex min-w-0 items-center gap-fg-0-5";
+const PILL_BRANCH_NAME_CLASS = "min-w-0 truncate font-mono";
+const PILL_DIRTY_DOT_CLASS = "size-1.5 shrink-0 rounded-full bg-state-stale";
+const PILL_COUNT_CLASS = "flex shrink-0 items-center gap-fg-0-5 tabular-nums";
+
+// The switcher dropdown: the shared floating-card idiom (the command palette /
+// filter flyout elevation), so the picker stops hand-rolling an inline list.
+const DROPDOWN_CARD_CLASS =
+  "absolute left-0 right-0 top-full z-30 mt-fg-1 max-h-[18rem] overflow-y-auto rounded-fg-lg border border-rule bg-paper-raised p-fg-1 shadow-fg-popover animate-slide-in-down";
 
 export interface WorktreePickerProps {
   /** Test seam: force the open state so the expanded list renders without a
@@ -62,7 +92,6 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
     retry,
     activateRow,
     expanded,
-    listClassName,
     switchError,
     switchErrorClassName,
     collapseLeftRail,
@@ -124,6 +153,13 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
   }
 
   const { rows } = pickerView;
+  // The active worktree's git status feeds the pill (branch + dirty + ahead/behind).
+  // Read from the already-projected rows — no fetch, no raw tiers (layer ownership).
+  const activeWorktree = rows.find((row) => row.isActive)?.worktree;
+  const ahead = activeWorktree?.ahead ?? 0;
+  const behind = activeWorktree?.behind ?? 0;
+  const showStatusLine =
+    activeWorktree !== undefined && activeWorktree.branch.trim().length > 0;
 
   const collapse = (viaKeyboard: boolean) => {
     setWorktreePickerExpanded(false, viaKeyboard);
@@ -174,12 +210,13 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           folder-add and the rail-collapse toggle. The title holds the dropdown a11y
           wiring; the dropdown list below is unchanged. */}
       <div
-        className="flex items-center justify-between gap-fg-1 py-fg-1"
+        className="relative flex items-center justify-between gap-fg-1 py-fg-1"
         data-worktree-picker-header
       >
         <button
           ref={triggerRef}
           type="button"
+          data-worktree-trigger
           onClick={() => toggle(false)}
           onKeyDown={(e) => {
             // Keyboard open is instant (never animates). Enter/Space toggle from
@@ -199,10 +236,56 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
           }}
           aria-expanded={expanded}
           aria-controls={listId}
+          aria-haspopup="listbox"
           aria-label={pickerView.triggerAriaLabel}
-          className="min-w-0 flex-1 truncate rounded-fg-xs text-left text-title font-medium text-ink transition-colors duration-ui-fast hover:text-accent-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          className={PILL_CLASS}
         >
-          {pickerView.triggerLabel}
+          <span className={PILL_NAME_ROW_CLASS}>
+            <span className={PILL_NAME_CLASS}>{pickerView.triggerLabel}</span>
+            <ChevronDown
+              size={GIT_GLYPH_PX}
+              aria-hidden
+              className={`${PILL_CHEVRON_CLASS} ${expanded ? "rotate-180" : ""}`}
+            />
+          </span>
+          {/* Git-status line: branch + a dirty dot + ahead/behind counts for the
+              active worktree, so "where am I + git state" reads at a glance. */}
+          {showStatusLine && (
+            <span className={PILL_STATUS_ROW_CLASS} data-git-status-pill>
+              <span className={PILL_BRANCH_CLASS}>
+                <GitBranch size={GIT_GLYPH_PX} aria-hidden className="shrink-0" />
+                <span className={PILL_BRANCH_NAME_CLASS}>{activeWorktree.branch}</span>
+              </span>
+              {activeWorktree.dirty && (
+                <span
+                  className={PILL_DIRTY_DOT_CLASS}
+                  title="uncommitted changes"
+                  aria-label="uncommitted changes"
+                  role="img"
+                />
+              )}
+              {ahead > 0 && (
+                <span
+                  className={PILL_COUNT_CLASS}
+                  title={`${ahead} ahead of upstream`}
+                  aria-label={`${ahead} commits ahead of upstream`}
+                >
+                  <ArrowUp size={GIT_GLYPH_PX} aria-hidden />
+                  {ahead}
+                </span>
+              )}
+              {behind > 0 && (
+                <span
+                  className={PILL_COUNT_CLASS}
+                  title={`${behind} behind upstream`}
+                  aria-label={`${behind} commits behind upstream`}
+                >
+                  <ArrowDown size={GIT_GLYPH_PX} aria-hidden />
+                  {behind}
+                </span>
+              )}
+            </span>
+          )}
         </button>
         <IconButton
           label="open or add a project"
@@ -218,6 +301,103 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         >
           <PanelLeft size={16} aria-hidden />
         </IconButton>
+
+        {/* The switcher dropdown: the shared kit Popover owns the light-dismiss
+            wiring (Escape + outside pointer); `ignoreSelector` excludes the pill
+            trigger so its own toggle is not dismiss-then-reopened. Floats below the
+            pill as the shared elevated card, never an inline list that shoves the
+            rail down. */}
+        {expanded && (
+          <Popover
+            open={expanded}
+            onDismiss={() => {
+              collapse(false);
+              triggerRef.current?.focus();
+            }}
+            ignoreSelector="[data-worktree-trigger]"
+            className={DROPDOWN_CARD_CLASS}
+            data-worktree-dropdown
+          >
+            <ul
+              id={listId}
+              className="space-y-fg-0-5"
+              aria-label={pickerView.listAriaLabel}
+            >
+              {pickerView.emptyLabel ? (
+                // Empty: an approachable empty state — a workspace resolving to no
+                // selectable corpus-bearing worktree is a real condition, not a fault.
+                <li className={pickerView.emptyClassName} data-worktree-empty>
+                  {pickerView.emptyLabel}
+                </li>
+              ) : null}
+              {rows.map((row, index) => {
+                const { worktree } = row;
+                return (
+                  <li key={worktree.id}>
+                    <button
+                      ref={registerRow(worktree.id)}
+                      type="button"
+                      aria-disabled={!row.selectable}
+                      aria-current={row.isActive ? "true" : undefined}
+                      title={row.title}
+                      aria-label={row.ariaLabel}
+                      onClick={() => selectWorktree(row)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        openContextMenu(worktreeEntity(worktree), {
+                          x: e.clientX,
+                          y: e.clientY,
+                        });
+                      }}
+                      onKeyDown={(e) => {
+                        if (
+                          handleKeyboardContextMenu(e, (anchor) =>
+                            openContextMenu(worktreeEntity(worktree), anchor),
+                          )
+                        ) {
+                          return;
+                        }
+                        onRowKeyDown(row, index)(e);
+                      }}
+                      className={row.rowClassName}
+                    >
+                      {/* Grayscale-safe active cue: a leading accent bar plus fill +
+                      weight, so the active worktree reads without relying on hue
+                      (the base-language grayscale-safe gate). */}
+                      <span aria-hidden className={row.activeCueClassName} />
+                      <span className={row.branchClassName}>{row.nameLabel}</span>
+                      {row.defaultLabel && (
+                        <span className={row.badgeClassName}>{row.defaultLabel}</span>
+                      )}
+                      {row.bareLabel && (
+                        <span className={row.badgeClassName}>{row.bareLabel}</span>
+                      )}
+                      {row.isDegraded && (
+                        <span
+                          className={row.degradedIconClassName}
+                          title={row.degradedTitle}
+                          aria-hidden
+                        >
+                          <TriangleAlert size={WARN_PX} />
+                        </span>
+                      )}
+                      {row.pendingLabel && (
+                        <span className={row.pendingLabelClassName}>
+                          {row.pendingLabel}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+              {pickerView.singleScopeLabel && (
+                <li className={pickerView.singleScopeClassName} data-worktree-single>
+                  {pickerView.singleScopeLabel}
+                </li>
+              )}
+            </ul>
+          </Popover>
+        )}
       </div>
 
       {/* Degraded: a tier the engine reports unavailable renders as a designed
@@ -232,83 +412,6 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
         >
           {pickerView.degradedLabel}
         </p>
-      )}
-
-      {expanded && (
-        <ul id={listId} className={listClassName} aria-label={pickerView.listAriaLabel}>
-          {pickerView.emptyLabel ? (
-            // Empty: an approachable empty state — a workspace resolving to no
-            // selectable corpus-bearing worktree is a real condition, not a fault.
-            <li className={pickerView.emptyClassName} data-worktree-empty>
-              {pickerView.emptyLabel}
-            </li>
-          ) : null}
-          {rows.map((row, index) => {
-            const { worktree } = row;
-            return (
-              <li key={worktree.id}>
-                <button
-                  ref={registerRow(worktree.id)}
-                  type="button"
-                  aria-disabled={!row.selectable}
-                  aria-current={row.isActive ? "true" : undefined}
-                  title={row.title}
-                  aria-label={row.ariaLabel}
-                  onClick={() => selectWorktree(row)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    openContextMenu(worktreeEntity(worktree), {
-                      x: e.clientX,
-                      y: e.clientY,
-                    });
-                  }}
-                  onKeyDown={(e) => {
-                    if (
-                      handleKeyboardContextMenu(e, (anchor) =>
-                        openContextMenu(worktreeEntity(worktree), anchor),
-                      )
-                    ) {
-                      return;
-                    }
-                    onRowKeyDown(row, index)(e);
-                  }}
-                  className={row.rowClassName}
-                >
-                  {/* Grayscale-safe active cue: a leading accent bar plus fill +
-                      weight, so the active worktree reads without relying on hue
-                      (the base-language grayscale-safe gate). */}
-                  <span aria-hidden className={row.activeCueClassName} />
-                  <span className={row.branchClassName}>{row.nameLabel}</span>
-                  {row.defaultLabel && (
-                    <span className={row.badgeClassName}>{row.defaultLabel}</span>
-                  )}
-                  {row.bareLabel && (
-                    <span className={row.badgeClassName}>{row.bareLabel}</span>
-                  )}
-                  {row.isDegraded && (
-                    <span
-                      className={row.degradedIconClassName}
-                      title={row.degradedTitle}
-                      aria-hidden
-                    >
-                      <TriangleAlert size={WARN_PX} />
-                    </span>
-                  )}
-                  {row.pendingLabel && (
-                    <span className={row.pendingLabelClassName}>
-                      {row.pendingLabel}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-          {pickerView.singleScopeLabel && (
-            <li className={pickerView.singleScopeClassName} data-worktree-single>
-              {pickerView.singleScopeLabel}
-            </li>
-          )}
-        </ul>
       )}
 
       {/* Rejected durable switch: a fifth, transient honest state — the UI moved
