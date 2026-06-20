@@ -27,6 +27,7 @@ import {
   usePersistWorkspaceLayout,
 } from "../../stores/server/sessionContext";
 import {
+  isSamePersistedWorkspaceLayout,
   parseWorkspaceTabs,
   restoreDocTabsIfEmpty,
   serializeWorkspaceTabs,
@@ -34,7 +35,10 @@ import {
   useDockWorkspaceTabsView,
   type PersistedWorkspaceTabsLayout,
 } from "../../stores/view/tabs";
-import { normalizeViewStoreSessionString } from "../../stores/view/viewStore";
+import {
+  normalizeViewStoreSessionString,
+  useViewStore,
+} from "../../stores/view/viewStore";
 
 const PERSIST_DEBOUNCE_MS = 800;
 
@@ -67,6 +71,13 @@ export function useWorkspacePersistence(scope: unknown): void {
   const persistLayoutRef = useRef(persistLayout);
   persistLayoutRef.current = persistLayout;
   const tabs = useDockWorkspaceTabsView();
+  // The user-intent latch: true once the user has closed the LAST document this
+  // scope-session. It gates BOTH effects below — the restore must not re-seed over
+  // an intentional close (the "split panel can never be hidden" bug), and the
+  // persist may then write the empty layout durably so the close survives reload. A
+  // transient/system empty (load window, scope swap) leaves the latch false, so the
+  // original no-clobber protection still holds for those.
+  const workspaceCleared = useViewStore((state) => state.workspaceCleared);
 
   // RE-ATTEMPTING RESTORE (belt-and-suspenders to the atomic `seedFromSession`
   // seed): whenever the durable blob carries tabs but the slice is empty, re-seed.
@@ -77,37 +88,45 @@ export function useWorkspacePersistence(scope: unknown): void {
   useEffect(() => {
     if (normalizedScope === null) return;
     if (!stateSettled) return;
+    // Do NOT re-seed when the user has intentionally emptied the workspace — that is
+    // exactly the close that this restore would otherwise immediately undo.
+    if (workspaceCleared) return;
     const restored = parseWorkspaceTabs(persistedBlob);
     if (restored && restored.openDocs.length > 0) {
       restoreDocTabsIfEmpty(restored.openDocs, restored.activeDocId);
     }
-  }, [normalizedScope, stateSettled, persistedBlob, tabs.openDocs.length]);
+  }, [
+    normalizedScope,
+    stateSettled,
+    persistedBlob,
+    tabs.openDocs.length,
+    workspaceCleared,
+  ]);
 
   // This hook also PERSISTS the open-tab set + active tab, coalesced.
   //
-  // Guard (GUARANTEED no-clobber): the reactive persist NEVER writes an EMPTY
-  // layout. That makes restore bulletproof — a transient empty store (the load
-  // window before the session seed lands, or a scope/session settle) can never
-  // overwrite the durable layout, with no reliance on the durable-blob read having
-  // resolved yet (it returns null until the session query settles for the active
-  // scope, which was the hole the earlier guard fell through). The durable layout
-  // only ever updates with a NON-EMPTY tab set; a user "close all" leaves the last
-  // non-empty set saved (the workspace remembers your last open documents) — an
-  // explicit clear-on-close path can persist empty in the future if wanted.
+  // No-clobber guard: the reactive persist never writes an EMPTY layout from a
+  // TRANSIENT empty (the load window before the session seed lands, or a
+  // scope/session settle) — that protection is what makes restore bulletproof
+  // without depending on the durable-blob read having resolved. The ONE sanctioned
+  // empty write is the user's INTENTIONAL close-all (`workspaceCleared`): then the
+  // empty layout is persisted durably so the closed workspace survives a reload,
+  // instead of the last non-empty set being restored forever.
   const lastPersistedRef = useRef<PersistedWorkspaceTabsLayout | null>(null);
   useEffect(() => {
     if (normalizedScope === null) return;
     if (!stateSettled) return;
     const next = serializeWorkspaceTabs(tabs.openDocs, tabs.activeDocId);
-    if (
-      !shouldPersistWorkspaceTabsLayout(
-        lastPersistedRef.current,
-        normalizedScope,
-        next,
-      )
-    ) {
-      return;
-    }
+    const shouldPersist = workspaceCleared
+      ? // Intentional empty: persist it, deduped against the last write so the
+        // empty layout is recorded exactly once.
+        !isSamePersistedWorkspaceLayout(lastPersistedRef.current, normalizedScope, next)
+      : shouldPersistWorkspaceTabsLayout(
+          lastPersistedRef.current,
+          normalizedScope,
+          next,
+        );
+    if (!shouldPersist) return;
     const handle = setTimeout(() => {
       lastPersistedRef.current = { scope: normalizedScope, blob: next };
       // Persist to the DURABLE per-scope session context through the stores seam
@@ -115,5 +134,11 @@ export function useWorkspacePersistence(scope: unknown): void {
       persistLayoutRef.current(normalizedScope, next);
     }, PERSIST_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [normalizedScope, stateSettled, tabs.openDocs, tabs.activeDocId]);
+  }, [
+    normalizedScope,
+    stateSettled,
+    tabs.openDocs,
+    tabs.activeDocId,
+    workspaceCleared,
+  ]);
 }

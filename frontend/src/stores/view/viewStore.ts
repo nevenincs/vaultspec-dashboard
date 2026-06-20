@@ -216,6 +216,16 @@ export interface ViewState {
   /** The active (focused) document tab's node id, or null when none is open. */
   activeDocId: string | null;
   /**
+   * Latch: the user has INTENTIONALLY emptied the workspace (closed the last open
+   * document). It distinguishes a user close-all from a TRANSIENT/system empty (the
+   * load window before the durable session seed lands, or a scope/workspace swap
+   * reset). The durable-workspace restore must NOT re-seed the last document the
+   * instant it is closed (the bug where the split panel could never be hidden), and
+   * the persist may write the empty layout durably only on this intent. Reset to
+   * false whenever a document opens or the corpus is swapped.
+   */
+  workspaceCleared: boolean;
+  /**
    * The single open editor target (document-editor backend): the `doc:<stem>`
    * node the editor is mutating, or null when nothing is open for editing. ONE
    * doc at a time (like `viewerTarget`), never a list — bounded-by-default. Scoped
@@ -546,6 +556,7 @@ function corpusLocalViewState(scope: unknown) {
     openedIds: [],
     openDocs: [],
     activeDocId: null,
+    workspaceCleared: false,
     editorTarget: null,
     draftText: "",
     baseBlobHash: "",
@@ -566,6 +577,7 @@ export const useViewStore = create<ViewState>((set) => ({
   openedIds: [],
   openDocs: [],
   activeDocId: null,
+  workspaceCleared: false,
   editorTarget: null,
   draftText: "",
   baseBlobHash: "",
@@ -700,9 +712,11 @@ export const useViewStore = create<ViewState>((set) => ({
                 d.nodeId === docNodeId ? { ...d, provisional: false } : d,
               )
             : state.openDocs;
-        return openDocs === state.openDocs && state.activeDocId === docNodeId
+        return openDocs === state.openDocs &&
+          state.activeDocId === docNodeId &&
+          !state.workspaceCleared
           ? state
-          : { openDocs, activeDocId: docNodeId };
+          : { openDocs, activeDocId: docNodeId, workspaceCleared: false };
       }
       const entry: OpenDoc = {
         nodeId: docNodeId,
@@ -723,7 +737,11 @@ export const useViewStore = create<ViewState>((set) => ({
       } else {
         openDocs = [...state.openDocs, entry];
       }
-      return { openDocs: evictToCap(openDocs, docNodeId), activeDocId: docNodeId };
+      return {
+        openDocs: evictToCap(openDocs, docNodeId),
+        activeDocId: docNodeId,
+        workspaceCleared: false,
+      };
     }),
   promoteDoc: (nodeId) =>
     set((state) => {
@@ -760,7 +778,25 @@ export const useViewStore = create<ViewState>((set) => ({
         const next = openDocs[index] ?? openDocs[index - 1] ?? null;
         activeDocId = next ? next.nodeId : null;
       }
-      return { openDocs, activeDocId };
+      return {
+        openDocs,
+        activeDocId,
+        // Closing the LAST document is an INTENTIONAL empty: latch it so the durable
+        // restore does not immediately re-seed the tab and the split panel actually
+        // hides. A non-last close leaves the latch false (docs remain).
+        workspaceCleared: openDocs.length === 0,
+        // Closing a tab that is the open editor target must tear the editor down too;
+        // a dangling editorTarget for a closed tab is stale state (bounded-by-default
+        // single-editor invariant).
+        ...(state.editorTarget?.nodeId === docNodeId
+          ? {
+              editorTarget: null,
+              draftText: "",
+              baseBlobHash: "",
+              editorStatus: "idle" as const,
+            }
+          : {}),
+      };
     }),
   reorderDocs: (orderedIds) =>
     set((state) => {

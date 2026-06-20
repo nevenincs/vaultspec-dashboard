@@ -38,6 +38,7 @@ function reset(): void {
   useViewStore.setState({
     openDocs: [],
     activeDocId: null,
+    workspaceCleared: false,
     editorTarget: null,
     draftText: "",
     baseBlobHash: "",
@@ -235,6 +236,53 @@ describe("close and neighbour activation", () => {
     useViewStore.getState().closeDoc("doc:a");
     expect(ids()).toEqual([]);
     expect(useViewStore.getState().activeDocId).toBeNull();
+  });
+});
+
+describe("intentional close-all latch (split panel can be hidden)", () => {
+  it("latches workspaceCleared when the LAST document closes", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true);
+    expect(useViewStore.getState().workspaceCleared).toBe(false);
+    useViewStore.getState().closeDoc("doc:a");
+    expect(ids()).toEqual([]);
+    expect(useViewStore.getState().workspaceCleared).toBe(true);
+  });
+
+  it("does NOT latch when a non-last document closes", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true);
+    useViewStore.getState().openDoc("doc:b", "markdown", true);
+    useViewStore.getState().closeDoc("doc:b");
+    expect(ids()).toEqual(["doc:a"]);
+    expect(useViewStore.getState().workspaceCleared).toBe(false);
+  });
+
+  it("resets the latch when a document is opened again", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true);
+    useViewStore.getState().closeDoc("doc:a");
+    expect(useViewStore.getState().workspaceCleared).toBe(true);
+    useViewStore.getState().openDoc("doc:b", "markdown", true);
+    expect(useViewStore.getState().workspaceCleared).toBe(false);
+  });
+
+  it("tears down the editor when its open tab is closed", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true);
+    useViewStore.getState().openEditor("doc:a", "draft body", "hash-a");
+    expect(useViewStore.getState().editorTarget).toEqual({ nodeId: "doc:a" });
+    useViewStore.getState().closeDoc("doc:a");
+    expect(useViewStore.getState()).toMatchObject({
+      editorTarget: null,
+      draftText: "",
+      baseBlobHash: "",
+      editorStatus: "idle",
+    });
+  });
+
+  it("leaves an unrelated editor intact when a different tab closes", () => {
+    useViewStore.getState().openDoc("doc:a", "markdown", true);
+    useViewStore.getState().openDoc("doc:b", "markdown", true);
+    useViewStore.getState().openEditor("doc:a", "draft body", "hash-a");
+    useViewStore.getState().closeDoc("doc:b");
+    expect(useViewStore.getState().editorTarget).toEqual({ nodeId: "doc:a" });
   });
 });
 
@@ -566,7 +614,7 @@ describe("workspace persistence restore", () => {
   it("bounds workspace layout blobs before parsing", () => {
     const oversized = "x".repeat(WORKSPACE_LAYOUT_BLOB_MAX_CHARS + 1);
 
-    expect(normalizeWorkspaceLayoutBlob("  {\"v\":1}  ")).toBe("{\"v\":1}");
+    expect(normalizeWorkspaceLayoutBlob('  {"v":1}  ')).toBe('{"v":1}');
     expect(normalizeWorkspaceLayoutBlob(oversized)).toBeNull();
     expect(parseWorkspaceTabs(oversized)).toBeNull();
   });
