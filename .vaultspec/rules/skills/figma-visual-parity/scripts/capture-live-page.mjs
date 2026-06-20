@@ -4,7 +4,16 @@
 //
 // Usage:
 //   node capture-live-page.mjs --url <url> --width <px> --height <px> --out <file.png> \
-//     [--wait-ms 6000] [--selector "<css>"] [--no-webgl]
+//     [--wait-ms 6000] [--selector "<css>"] [--no-webgl] \
+//     [--init-eval "<js>"] [--clip-selector "<css>"] [--vw 1440] [--vh 900]
+//
+// --init-eval runs a JS expression in the page after the wait and before the
+//   screenshot (use it to drive a transient UI state, e.g. zoom a control). It is
+//   awaited, then a short settle elapses.
+// --clip-selector screenshots a single element instead of the page — for capturing
+//   a sub-component. When set, the browser uses a real viewport (--vw/--vh, default
+//   1440x900) and --width/--height describe only the target (Figma) dimensions for
+//   downstream resize-compare (use --allow-resize in compare/run-parity).
 //
 // Size matching is mandatory: the viewport is set to the Figma node's pixel
 // dimensions with deviceScaleFactor 1 and fullPage false, so the capture overlays
@@ -32,6 +41,10 @@ async function main() {
   const waitMs = asInt(args["wait-ms"], 6000);
   const selector = typeof args.selector === "string" ? args.selector : null;
   const webgl = asBool(args.webgl, true);
+  const initEval = typeof args["init-eval"] === "string" ? args["init-eval"] : null;
+  const clipSelector = typeof args["clip-selector"] === "string" ? args["clip-selector"] : null;
+  const vw = asInt(args.vw, clipSelector ? 1440 : width);
+  const vh = asInt(args.vh, clipSelector ? 900 : height);
   const outPath = resolve(String(args.out));
   await mkdir(dirname(outPath), { recursive: true });
 
@@ -42,7 +55,7 @@ async function main() {
   });
   try {
     const page = await browser.newPage({
-      viewport: { width, height },
+      viewport: { width: vw, height: vh },
       deviceScaleFactor: 1,
     });
     await page.goto(String(args.url), { waitUntil: "domcontentloaded" });
@@ -50,6 +63,14 @@ async function main() {
       await page.waitForSelector(selector, { timeout: Math.max(waitMs, 1000) }).catch(() => {});
     }
     await page.waitForTimeout(waitMs);
+
+    if (initEval) {
+      // Run caller JS to drive a transient state, then let it settle/render.
+      await page.evaluate(`(async () => { ${initEval} })()`).catch((e) => {
+        console.error(`init-eval failed: ${e.message}`);
+      });
+      await page.waitForTimeout(600);
+    }
 
     const diagnostics = await page.evaluate((sel) => {
       const text = (document.body?.innerText ?? "").replace(/\s+/g, " ").trim();
@@ -71,8 +92,18 @@ async function main() {
       };
     }, selector);
 
-    await page.screenshot({ path: outPath, fullPage: false });
-    console.log(JSON.stringify({ outPath, width, height, webgl, diagnostics }, null, 2));
+    if (clipSelector) {
+      await page.locator(clipSelector).first().screenshot({ path: outPath });
+    } else {
+      await page.screenshot({ path: outPath, fullPage: false });
+    }
+    console.log(
+      JSON.stringify(
+        { outPath, width, height, viewport: { width: vw, height: vh }, clipSelector, webgl, diagnostics },
+        null,
+        2,
+      ),
+    );
 
     if (diagnostics.webglFallback) {
       console.error(

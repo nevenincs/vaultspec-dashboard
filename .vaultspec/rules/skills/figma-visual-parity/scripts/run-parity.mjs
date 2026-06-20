@@ -12,7 +12,12 @@
 // Usage:
 //   node run-parity.mjs --slug <slug> --url <live-url> --figma <figma.png> \
 //     --width <px> --height <px> [--out output/visual-compare] [--wait-ms 6000] \
-//     [--selector "<css>"] [--threshold 24] [--no-webgl] [--no-review] [--allow-resize]
+//     [--selector "<css>"] [--threshold 24] [--no-webgl] [--no-review] [--allow-resize] \
+//     [--init-eval "<js>"] [--clip-selector "<css>"] [--vw 1440] [--vh 900]
+//
+// --init-eval / --clip-selector / --vw / --vh are forwarded to capture-live-page
+// for sub-component or transient-state captures (pair --clip-selector with
+// --allow-resize so the clipped element is scaled to the Figma dimensions).
 import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +52,10 @@ async function main() {
   console.log(`\n[1/3] Capturing live route at ${dims} ...`);
   const captureArgs = ["--url", String(args.url), "--width", String(width), "--height", String(height), "--out", livePath, "--wait-ms", String(asInt(args["wait-ms"], 6000))];
   if (typeof args.selector === "string") captureArgs.push("--selector", args.selector);
+  if (typeof args["init-eval"] === "string") captureArgs.push("--init-eval", args["init-eval"]);
+  if (typeof args["clip-selector"] === "string") captureArgs.push("--clip-selector", args["clip-selector"]);
+  if (args.vw !== undefined) captureArgs.push("--vw", String(asInt(args.vw)));
+  if (args.vh !== undefined) captureArgs.push("--vh", String(asInt(args.vh)));
   if (!asBool(args.webgl, true)) captureArgs.push("--no-webgl");
   await run("capture-live-page.mjs", captureArgs);
 
