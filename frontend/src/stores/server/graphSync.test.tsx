@@ -112,9 +112,7 @@ describe("graph live delta store seam", () => {
       gapCount: GRAPH_LIVE_GAP_COUNT_MAX,
     });
     useGraphLiveDeltaStore.getState().incrementGap();
-    expect(useGraphLiveDeltaStore.getState().gapCount).toBe(
-      GRAPH_LIVE_GAP_COUNT_MAX,
-    );
+    expect(useGraphLiveDeltaStore.getState().gapCount).toBe(GRAPH_LIVE_GAP_COUNT_MAX);
   });
 
   it("normalizes live scope and keyframe identity at the store boundary", () => {
@@ -306,9 +304,7 @@ describe("useGraphLiveSync", () => {
     const trimmed = renderHook(() => useGraphLiveDeltaView(" scopeA ", 10));
     expect(trimmed.result.current.featureDeltas).toHaveLength(1);
 
-    const malformed = renderHook(() =>
-      useGraphLiveDeltaView({ scope: "scopeA" }, 10),
-    );
+    const malformed = renderHook(() => useGraphLiveDeltaView({ scope: "scopeA" }, 10));
     expect(malformed.result.current).toEqual({ featureDeltas: [], gapCount: 0 });
   });
 
@@ -524,6 +520,56 @@ describe("useGraphLiveSync", () => {
       expect(result.current.featureDeltas.map((d) => d.seq)).toEqual([11]),
     );
     expect(result.current.gapCount).toBe(0);
+  });
+
+  it("increments gapCount on a BACKWARD seq (delta clock reset by an engine restart)", () => {
+    const client = new QueryClient();
+    const fc = (seq: number): StreamChunk => ({
+      channel: "graph",
+      data: {
+        granularity: "feature",
+        op: "add",
+        node: { id: `feature:f${seq}`, kind: "feature" },
+        t: seq,
+        seq,
+      },
+    });
+    // keyframeSeq=10: a forward delta seq=11 applies, then a BACKWARD delta seq=4 —
+    // the engine restarted and the clock reset to a lower seq, so this delta is a
+    // new generation the held state predates. It must re-keyframe, not splice onto
+    // the stale graph (mixed-generation edges = the load-time artefact).
+    client.setQueryData(engineKeys.stream(["graph"], 10, "scopeA"), [fc(11), fc(4)]);
+    const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+      wrapper: wrapper(client),
+    });
+    expect(result.current.gapCount).toBe(1);
+    expect(result.current.featureDeltas).toHaveLength(0);
+  });
+
+  it("re-keyframes when a reconnect resumes to an EMPTY stream (restart reset the clock)", async () => {
+    const client = new QueryClient();
+    const key = engineKeys.stream(["graph"], 10, "scopeA");
+    const fc = (seq: number): StreamChunk => ({
+      channel: "graph",
+      data: {
+        granularity: "feature",
+        op: "add",
+        node: { id: `feature:f${seq}`, kind: "feature" },
+        t: seq,
+        seq,
+      },
+    });
+    client.setQueryData(key, [fc(11), fc(12)]);
+    const { result } = renderHook(() => useGraphLiveSync("scopeA", true, 10), {
+      wrapper: wrapper(client),
+    });
+    expect(result.current.gapCount).toBe(0);
+
+    // Engine restart: the stream reconnects but the clock reset, so the resumed
+    // since=10 replays NOTHING — chunks shrink to []. Without re-keyframing the
+    // graph would silently stay stale; the hook re-anchors via a gap increment.
+    client.setQueryData(key, []);
+    await waitFor(() => expect(result.current.gapCount).toBe(1));
   });
 
   it("does NOT refetch the constellation for a clean feature-only batch (MED-1)", () => {

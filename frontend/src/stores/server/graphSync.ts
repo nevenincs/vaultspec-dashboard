@@ -27,9 +27,7 @@ const GRAPH_INVALIDATE_DEBOUNCE_MS = 150;
 export const GRAPH_FEATURE_DELTAS_CAP = 128;
 export const GRAPH_LIVE_GAP_COUNT_MAX = 1_000_000;
 
-export function normalizeGraphFeatureDeltas(
-  deltas: unknown,
-): GraphDeltaEntry[] {
+export function normalizeGraphFeatureDeltas(deltas: unknown): GraphDeltaEntry[] {
   if (!Array.isArray(deltas)) return [];
   let changed = deltas.length > GRAPH_FEATURE_DELTAS_CAP;
   const start = Math.max(0, deltas.length - GRAPH_FEATURE_DELTAS_CAP);
@@ -135,12 +133,12 @@ export function useGraphLiveDeltaView(
   return useGraphLiveDeltaStore(
     useShallow((state) =>
       state.scope === normalizedScope && state.keyframeSeq === normalizedKeyframeSeq
-          ? {
-              featureDeltas: normalizeGraphFeatureDeltas(state.featureDeltas),
-              gapCount: normalizeGraphLiveGapCount(state.gapCount),
-            }
-          : EMPTY_GRAPH_LIVE_DELTA_VIEW,
-      ),
+        ? {
+            featureDeltas: normalizeGraphFeatureDeltas(state.featureDeltas),
+            gapCount: normalizeGraphLiveGapCount(state.gapCount),
+          }
+        : EMPTY_GRAPH_LIVE_DELTA_VIEW,
+    ),
   );
 }
 
@@ -256,20 +254,38 @@ export function useGraphLiveSync(
   // Process newly arrived chunks: advance lastSeq, extract feature-granularity
   // deltas with gap detection, and trigger debounced invalidation for all.
   useEffect(() => {
-    if (!active || normalizedScope === null || !chunks || chunks.length === 0) return;
+    // NB: do NOT early-return on `chunks.length === 0` — a reconnect that resumes
+    // to an EMPTY stream (chunks shrank to []) is exactly the engine-restart signal
+    // handled below, and must reach the re-keyframe path.
+    if (!active || normalizedScope === null || !chunks) return;
 
     // Stream reconnect: the streamed query's reducer empties `chunks` back to
     // [] on a refetch, so an array shorter than what we have already consumed
     // means the stream reset. Re-consume from the rebuilt head and re-anchor
     // gap detection — else every post-reconnect delta is silently dropped, the
     // invalidation never fires, and the re-keyframe fallback dies (review HIGH-1).
-    if (chunks.length < processedRef.current) {
+    const wasReconnect = chunks.length < processedRef.current;
+    if (wasReconnect) {
       processedRef.current = 0;
       lastSeqRef.current = normalizedKeyframeSeq;
     }
 
     const newChunks = chunks.slice(processedRef.current);
-    if (newChunks.length === 0) return;
+    if (newChunks.length === 0) {
+      // A reconnect that resumes to an EMPTY stream is the signature of an engine
+      // RESTART that reset the delta clock (a dev rebuild restarts the engine): the
+      // held `since` is now stale/future relative to the new clock, so `/stream`
+      // replays nothing and — without this — the graph silently stays stale at the
+      // pre-restart state (the load-time artefact). Re-keyframe through the same
+      // stores-owned path a gap uses, re-anchoring `since` at the new clock. On a
+      // same-clock caught-up reconnect this is a harmless refetch; on a reset it is
+      // the fix.
+      if (wasReconnect) {
+        useGraphLiveDeltaStore.getState().incrementGap();
+        invalidateConstellation(normalizedScope);
+      }
+      return;
+    }
     processedRef.current = chunks.length;
 
     // Advance the global resume point for reconnect anchoring.
@@ -291,9 +307,14 @@ export function useGraphLiveSync(
       if (
         lastSeqRef.current !== null &&
         typeof entry.seq === "number" &&
-        entry.seq > lastSeqRef.current + 1
+        (entry.seq > lastSeqRef.current + 1 || entry.seq < lastSeqRef.current)
       ) {
-        // Seq discontinuity: missed deltas, scene state would be inconsistent.
+        // Seq discontinuity: a FORWARD gap (missed deltas) OR a BACKWARD reset (the
+        // engine restarted and the delta clock reset to a LOWER seq, so this delta
+        // belongs to a new generation the held scene state predates). A backward
+        // seq must NOT be silently applied onto the stale graph (mixed-generation
+        // edges = the load-time artefact); discard the partial batch and let the
+        // stores-owned fallback re-keyframe at the new clock.
         gapDetected = true;
         break;
       }
