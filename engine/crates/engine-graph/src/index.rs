@@ -1280,11 +1280,19 @@ pub(crate) fn frontmatter_feature_tags(text: &str) -> Vec<String> {
     rest[..end]
         .lines()
         .filter_map(|line| {
-            let tag = line
-                .trim()
-                .strip_prefix("- '#")
-                .and_then(|t| t.strip_suffix('\''))?;
-            (!DIRECTORY_TAGS.contains(&tag)).then(|| tag.to_string())
+            // A YAML sequence tag entry: `- '#tag'`, `- "#tag"`, or bare `- #tag`.
+            // The CLI emits single quotes canonically, but a re-serialization can
+            // legitimately produce double quotes (and a hand-authored vault may
+            // leave the tag bare), so the parser accepts all three rather than
+            // silently dropping every feature tag on a quote-style change.
+            let item = line.trim().strip_prefix('-')?.trim();
+            let tag = match item.as_bytes().first() {
+                Some(b'\'') => item.strip_prefix('\'').and_then(|t| t.strip_suffix('\'')),
+                Some(b'"') => item.strip_prefix('"').and_then(|t| t.strip_suffix('"')),
+                _ => Some(item),
+            }?
+            .strip_prefix('#')?;
+            (!tag.is_empty() && !DIRECTORY_TAGS.contains(&tag)).then(|| tag.to_string())
         })
         .collect()
 }
@@ -1364,6 +1372,30 @@ mod tests {
         // An out-of-enum status token → None (rejected, never carried).
         let bad = "# `x` adr: `t` | (**status:** `superseded`)\n";
         assert_eq!(frontmatter_adr_status(bad), None);
+    }
+
+    #[test]
+    fn feature_tag_parser_accepts_single_double_and_bare_quote_styles() {
+        // The CLI emits single-quoted tag sequence entries canonically, but a
+        // re-serialization can produce double quotes; both (and a bare `#tag`)
+        // must yield the same feature tag, and the directory tag is never one.
+        let single = "---\ntags:\n  - '#adr'\n  - '#alpha'\n---\n\nbody\n";
+        let double = "---\ntags:\n  - \"#adr\"\n  - \"#alpha\"\n---\n\nbody\n";
+        let bare = "---\ntags:\n  - #adr\n  - #alpha\n---\n\nbody\n";
+        for (label, text) in [("single", single), ("double", double), ("bare", bare)] {
+            assert_eq!(
+                frontmatter_feature_tags(text),
+                vec!["alpha".to_string()],
+                "{label}-quoted feature tag parses to the feature tag only",
+            );
+        }
+        // Multiple feature tags survive, directory tags are dropped, and an
+        // empty `#` is not a tag.
+        let multi = "---\ntags:\n  - \"#research\"\n  - \"#alpha\"\n  - '#beta'\n---\n";
+        assert_eq!(
+            frontmatter_feature_tags(multi),
+            vec!["alpha".to_string(), "beta".to_string()],
+        );
     }
 
     #[test]

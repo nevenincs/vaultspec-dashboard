@@ -103,7 +103,9 @@ export function normalizeSelectionMetadataId(id: unknown): string | null {
     : null;
 }
 
-export function normalizeSelectionTruncatedNodeCount(value: unknown): number | undefined {
+export function normalizeSelectionTruncatedNodeCount(
+  value: unknown,
+): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? Math.trunc(value)
     : undefined;
