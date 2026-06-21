@@ -218,6 +218,15 @@
       "bindingKind": null
     },
     {
+      "name": "DocumentSearchSurface",
+      "source": "src/app/palette/DocumentSearchSurface.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
       "name": "DropdownButton",
       "source": "src/app/kit/DropdownButton.tsx",
       "designSurface": true,

@@ -60,6 +60,10 @@ export function matchDocumentEntries(
     const haystack = `${stemLower} ${path.toLowerCase()} ${(entry.doc_type ?? "").toLowerCase()}`;
     if (!tokens.every((token) => haystack.includes(token))) continue;
     seen.add(path);
+    // Every vault entry is matched, including doc types that are not served as graph
+    // nodes (index/steps). Their `doc:` id opens the DOM island by stem through the
+    // open-island contract (content resolves by stem, independent of graph presence);
+    // graph-centering / "Focus node" simply no-ops for a non-node doc.
     const rank = stemLower.startsWith(needle) ? 0 : stemLower.includes(needle) ? 1 : 2;
     scored.push({
       rank,

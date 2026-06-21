@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#command-palette-architecture'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-06-22'
 tier: L3
 related:
   - '[[2026-06-21-command-palette-architecture-research]]'
@@ -214,23 +214,23 @@ Run the full lint gate and a live keyboard and palette pass, complete code revie
 
 Run the full lint gate to exit zero and a live keyboard and palette verification pass.
 
-- [ ] `W04.P10.S48` - run the full frontend lint gate to exit zero; `frontend`.
-- [ ] `W04.P10.S49` - run a live keyboard and palette verification pass against the running app; `frontend/src/app/palette`.
+- [x] `W04.P10.S48` - run the full frontend lint gate to exit zero; `frontend`.
+- [x] `W04.P10.S49` - run a live keyboard and palette verification pass against the running app; `frontend/src/app/palette`.
 
 ### Phase `W04.P11` - code review
 
 Run the formal code review and land any required revisions before close.
 
-- [ ] `W04.P11.S50` - run the formal code review of the campaign; `.vault/audit/2026-06-21-command-palette-architecture-audit.md`.
-- [ ] `W04.P11.S51` - land any required revisions from the review; `frontend/src/stores/view/commandPaletteCommands.ts`.
+- [x] `W04.P11.S50` - run the formal code review of the campaign; `.vault/audit/2026-06-21-command-palette-architecture-audit.md`.
+- [x] `W04.P11.S51` - land any required revisions from the review; `frontend/src/stores/view/commandPaletteCommands.ts`.
 
 ### Phase `W04.P12` - codify
 
 Promote the three codification candidates into project rules.
 
-- [ ] `W04.P12.S52` - codify palette-commands-come-from-the-one-provider-registry; `.vaultspec/rules/rules/palette-commands-come-from-the-one-provider-registry.md`.
-- [ ] `W04.P12.S53` - codify one-open-verb-for-every-result-entity; `.vaultspec/rules/rules/one-open-verb-for-every-result-entity.md`.
-- [ ] `W04.P12.S54` - codify palette-command-accelerators-derive-from-the-keymap-registry; `.vaultspec/rules/rules/palette-command-accelerators-derive-from-the-keymap-registry.md`.
+- [x] `W04.P12.S52` - codify palette-commands-come-from-the-one-provider-registry; `.vaultspec/rules/rules/palette-commands-come-from-the-one-provider-registry.md`.
+- [x] `W04.P12.S53` - codify one-open-verb-for-every-result-entity; `.vaultspec/rules/rules/one-open-verb-for-every-result-entity.md`.
+- [x] `W04.P12.S54` - codify palette-command-accelerators-derive-from-the-keymap-registry; `.vaultspec/rules/rules/palette-command-accelerators-derive-from-the-keymap-registry.md`.
 
 ## Description
 

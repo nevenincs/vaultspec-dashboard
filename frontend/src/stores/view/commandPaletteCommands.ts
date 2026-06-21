@@ -669,10 +669,7 @@ export function deriveCommandPalettePresentationView(
 
   let liveMessage = resultCountLabel;
   if (commandView.noMatch) {
-    const saveLens = commandView.ordered.find((command) =>
-      command.id.startsWith("save-lens:"),
-    );
-    liveMessage = saveLens ? `no matches — ${saveLens.label}` : "nothing matches";
+    liveMessage = "nothing matches";
   } else if (
     activeCommand &&
     state.confirmArmed &&
@@ -691,7 +688,7 @@ export function deriveCommandPalettePresentationView(
     navLoading: commandView.navLoading,
     noMatchMessage: "nothing matches",
     navLoadingMessage: "loading navigation…",
-    inputPlaceholder: "type a command, feature, or lens…",
+    inputPlaceholder: "type a command…",
     dialogLabel: "command palette",
     listboxLabel: "commands",
     liveMessage,
@@ -720,7 +717,7 @@ export function useCommandPaletteCommandView(
   const normalizedQuery = normalizeCommandPaletteQuery(query);
   const vocabulary = useFiltersVocabularyView(scope);
   const timeline = useDashboardTimelineModeView(scope);
-  const runPaletteOp = useCommandPaletteOpsRunMutation();
+  const runPaletteOp = useCommandPaletteOpsRunMutation().mutate;
   const resetFilters = useDashboardFilterSidebarIntent(scope).clearFilters;
   const graphFrozen = useGraphControlsFrozen();
   const setThemePreference = useThemeSettingIntent().setThemePreference;
@@ -750,7 +747,7 @@ export function useCommandPaletteCommandView(
         resetFilters: () => void resetFilters(),
         setTheme: setThemePreference,
         runOp: (target, verb) => {
-          runPaletteOp.mutate({ target, verb });
+          runPaletteOp({ target, verb });
         },
         closeDocument: () => closeDocumentEditor(),
         setGraphFrozen: (frozen) => setGraphFrozen(frozen, scope),

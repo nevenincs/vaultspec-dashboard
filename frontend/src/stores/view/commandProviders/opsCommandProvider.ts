@@ -11,10 +11,15 @@ import { registerCommandProvider, type CommandContext } from "../commandRegistry
 import { openSettingsDialog } from "../settingsDialog";
 
 export function opsCommandProvider(ctx: CommandContext): readonly unknown[] {
+  // Map the ops TARGET (dispatch routing) explicitly to a display FAMILY rather than
+  // relying on the two strings happening to coincide, so a future non-family target
+  // is grouped deliberately instead of silently dropped by family normalization.
+  const familyForTarget = (target: "core" | "rag") =>
+    target === "rag" ? "rag" : "core";
   const commands: unknown[] = OPS_WHITELIST.map(({ target, verb, label }) => ({
     id: `ops:${target}:${verb}`,
     label: `ops: ${label}`,
-    family: target,
+    family: familyForTarget(target),
     confirm: true,
     disabledInTimeTravel: true,
     run: () => ctx.intents.runOp(target, verb),
