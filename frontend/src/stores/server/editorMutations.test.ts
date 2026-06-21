@@ -135,9 +135,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     const longDraft = "x".repeat(EDITOR_DRAFT_TEXT_MAX_CHARS + 1);
     const longHash = "h".repeat(EDITOR_BLOB_HASH_MAX_CHARS + 1);
     openDocumentEditor(DOC_ID, longDraft, longHash);
-    expect(useViewStore.getState().draftText).toHaveLength(
-      EDITOR_DRAFT_TEXT_MAX_CHARS,
-    );
+    expect(useViewStore.getState().draftText).toHaveLength(EDITOR_DRAFT_TEXT_MAX_CHARS);
     expect(useViewStore.getState().baseBlobHash).toHaveLength(
       EDITOR_BLOB_HASH_MAX_CHARS,
     );
@@ -272,11 +270,11 @@ describe("editor-state slice (bounded, single-value)", () => {
     ).toMatchObject({
       isEditing: true,
     });
-    expect(deriveDocumentEditorView(useViewStore.getState(), { id: DOC_ID })).toMatchObject(
-      {
-        isEditing: false,
-      },
-    );
+    expect(
+      deriveDocumentEditorView(useViewStore.getState(), { id: DOC_ID }),
+    ).toMatchObject({
+      isEditing: false,
+    });
   });
 
   it("projects markdown editor seed fields from the content view", () => {

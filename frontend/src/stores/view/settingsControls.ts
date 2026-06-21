@@ -301,9 +301,7 @@ export function keybindingConflictLabels(
       const label = defs.find(
         (def) => normalizeSettingsKeybindingId(def.id) === conflictId,
       )?.label;
-      return typeof label === "string" && label.trim().length > 0
-        ? label
-        : conflictId;
+      return typeof label === "string" && label.trim().length > 0 ? label : conflictId;
     });
 }
 

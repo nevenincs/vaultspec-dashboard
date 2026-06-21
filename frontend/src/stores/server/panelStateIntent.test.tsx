@@ -70,13 +70,10 @@ describe("useShellPanelIntent", () => {
 
   it("keeps panel intent callbacks stable across unchanged-scope rerenders", () => {
     const client = testQueryClient();
-    const { result, rerender } = renderHook(
-      ({ scope }) => useShellPanelIntent(scope),
-      {
-        initialProps: { scope: " scope-a " },
-        wrapper: wrapper(client),
-      },
-    );
+    const { result, rerender } = renderHook(({ scope }) => useShellPanelIntent(scope), {
+      initialProps: { scope: " scope-a " },
+      wrapper: wrapper(client),
+    });
     const first = result.current;
 
     rerender({ scope: "scope-a" });

@@ -257,9 +257,7 @@ describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring c
   it("reads availability from the MOST-RECENT rag frame (running ⇒ available)", () => {
     expect(latestBackendsRagAvailable([frame("running")])).toBe(true);
     expect(
-      latestBackendsRagAvailable([
-        { channel: "backends", data: { rag: " running " } },
-      ]),
+      latestBackendsRagAvailable([{ channel: "backends", data: { rag: " running " } }]),
     ).toBe(true);
     expect(latestBackendsRagAvailable([frame("stopped")])).toBe(false);
     // Latest frame wins over earlier ones.

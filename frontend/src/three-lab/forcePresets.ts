@@ -36,9 +36,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function clampParamValue(key: keyof D3ForceParams, value: number): number {
   const control = CONTROL_BY_KEY.get(key);
-  return control
-    ? Math.max(control.min, Math.min(control.max, value))
-    : value;
+  return control ? Math.max(control.min, Math.min(control.max, value)) : value;
 }
 
 export function normalizePresetName(name: unknown): string | null {

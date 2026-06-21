@@ -54,9 +54,7 @@ describe("PositionCache", () => {
     expect(normalizePositionCacheKeyPart("   ")).toBe("default");
     expect(normalizePositionCacheKeyPart(null)).toBe("default");
     expect(
-      normalizePositionCacheKeyPart(
-        "x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1),
-      ),
+      normalizePositionCacheKeyPart("x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1)),
     ).toBe("default");
     expect(normalizePositionCacheNodeId(" doc:a ")).toBe("doc:a");
     expect(normalizePositionCacheNodeId("   ")).toBeNull();

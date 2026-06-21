@@ -23,14 +23,11 @@ export function useThemeSettingIntent(): ThemeSettingIntent {
   const mutateRef = useRef(putSettings.mutate);
   mutateRef.current = putSettings.mutate;
 
-  const setThemePreference = useCallback(
-    (value: unknown) => {
-      const normalized = normalizeThemeSettingPreference(value);
-      if (normalized === null) return;
-      mutateRef.current({ key: CONSUMED_SETTING_KEYS.theme, value: normalized });
-    },
-    [],
-  );
+  const setThemePreference = useCallback((value: unknown) => {
+    const normalized = normalizeThemeSettingPreference(value);
+    if (normalized === null) return;
+    mutateRef.current({ key: CONSUMED_SETTING_KEYS.theme, value: normalized });
+  }, []);
 
   return useMemo(
     () => ({ writePending: putSettings.isPending, setThemePreference }),

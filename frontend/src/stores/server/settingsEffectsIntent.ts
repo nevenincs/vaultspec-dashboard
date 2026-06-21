@@ -1,9 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 
-import {
-  normalizeStringMember,
-  useDashboardStateMutations,
-} from "./dashboardState";
+import { normalizeStringMember, useDashboardStateMutations } from "./dashboardState";
 import { normalizeDashboardTextFilter } from "./dashboardStateNormalization";
 import { GRAPH_GRANULARITIES } from "./engine";
 import { normalizeStoreScope } from "./scopeIdentity";
@@ -102,8 +99,7 @@ export function rememberSettingsGraphDefaultsInitializedIdentity(
   initializedGraphDefaultsByIdentity.delete(normalized);
   initializedGraphDefaultsByIdentity.add(normalized);
   while (
-    initializedGraphDefaultsByIdentity.size >
-    SETTINGS_GRAPH_DEFAULTS_IDENTITY_GUARD_CAP
+    initializedGraphDefaultsByIdentity.size > SETTINGS_GRAPH_DEFAULTS_IDENTITY_GUARD_CAP
   ) {
     const oldest = initializedGraphDefaultsByIdentity.values().next().value;
     if (oldest === undefined) break;
@@ -112,7 +108,9 @@ export function rememberSettingsGraphDefaultsInitializedIdentity(
   return true;
 }
 
-export function reserveSettingsGraphDefaultsPendingIdentity(identity: unknown): boolean {
+export function reserveSettingsGraphDefaultsPendingIdentity(
+  identity: unknown,
+): boolean {
   const normalized = normalizeSettingsGraphDefaultsInitializationIdentity(identity);
   if (normalized === null || pendingGraphDefaultsByIdentity.has(normalized)) {
     return false;

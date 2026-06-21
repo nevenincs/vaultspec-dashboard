@@ -36,9 +36,7 @@ describe("three-lab force preset persistence", () => {
 
     expect(sanitized.linkDistance).toBe(200);
     expect(sanitized.charge).toBe(-600);
-    expect(sanitized.collideIterations).toBe(
-      FORCE_CONTROL_DEFAULTS.collideIterations,
-    );
+    expect(sanitized.collideIterations).toBe(FORCE_CONTROL_DEFAULTS.collideIterations);
     expect("unknown" in sanitized).toBe(false);
   });
 

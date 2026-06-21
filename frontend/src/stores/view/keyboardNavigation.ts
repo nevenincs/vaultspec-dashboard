@@ -215,9 +215,7 @@ export function deriveKeyboardNavigationView(
  * consumes node-neighbor and feature-cycle ids as one projection instead of
  * reading query payloads and vocabulary fields locally.
  */
-export function useKeyboardNavigationView(
-  scope: unknown,
-): KeyboardNavigationView {
+export function useKeyboardNavigationView(scope: unknown): KeyboardNavigationView {
   const normalizedScope = normalizeSelectionScope(scope);
   const selectedId = useDashboardSelectedNodeId(normalizedScope);
   const vocabulary = useFiltersVocabularyView(normalizedScope);

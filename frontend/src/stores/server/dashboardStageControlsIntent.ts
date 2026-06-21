@@ -1,9 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 
-import {
-  normalizeStringMember,
-  useDashboardStateMutations,
-} from "./dashboardState";
+import { normalizeStringMember, useDashboardStateMutations } from "./dashboardState";
 import {
   REPRESENTATION_MODES,
   SALIENCE_LENSES,

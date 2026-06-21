@@ -27,9 +27,7 @@ describe("ops run variable boundary", () => {
 
   it("keeps receipt labels from exposing malformed runtime values", () => {
     expect(opsRunReceiptVerb({ target: "rag", verb: " reindex " })).toBe("reindex");
-    expect(opsRunReceiptVerb({ target: "core", verb: " set-body " })).toBe(
-      "operation",
-    );
+    expect(opsRunReceiptVerb({ target: "core", verb: " set-body " })).toBe("operation");
     expect(opsRunReceiptVerb({ target: "git", verb: "status" })).toBe("operation");
     expect(opsRunReceiptVerb({ target: "rag", verb: { raw: "reindex" } })).toBe(
       "operation",

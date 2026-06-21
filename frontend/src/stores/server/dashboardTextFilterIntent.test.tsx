@@ -67,9 +67,7 @@ describe("useDashboardTextFilterIntent", () => {
     expect(normalizeDashboardTextFilterCanonicalText(" state edge ")).toBe(
       "state edge",
     );
-    expect(normalizeDashboardTextFilterCanonicalText({ text: "state edge" })).toBe(
-      "",
-    );
+    expect(normalizeDashboardTextFilterCanonicalText({ text: "state edge" })).toBe("");
     expect(
       normalizeDashboardTextFilterCanonicalText(
         ` state ${"x".repeat(SEARCH_QUERY_MAX_CHARS)}`,

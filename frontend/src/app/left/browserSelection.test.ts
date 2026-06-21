@@ -154,9 +154,7 @@ describe("folder context persistence", () => {
       wrapper: wrapper(qc),
     });
 
-    act(() =>
-      result.current.select(" adr ", [" ", ` ${tag} `, tag, 7] as unknown),
-    );
+    act(() => result.current.select(" adr ", [" ", ` ${tag} `, tag, 7] as unknown));
 
     expect(useViewStore.getState()).toMatchObject({
       activeFolder: null,
@@ -164,9 +162,9 @@ describe("folder context persistence", () => {
     });
     await waitFor(() =>
       expect(useViewStore.getState()).toMatchObject({
-          activeFolder: "adr",
-          featureContexts: [tag],
-        }),
+        activeFolder: "adr",
+        featureContexts: [tag],
+      }),
     );
     await expect(createLiveClient().session()).resolves.toMatchObject({
       scope_context: { folder: "adr", feature_tags: [tag] },

@@ -85,10 +85,7 @@ export function useSettingsRowWriteIntent(): SettingsRowWriteIntent {
   const mutateRef = useRef(putSettings.mutate);
   mutateRef.current = putSettings.mutate;
   const write = useCallback(
-    (
-      update: unknown,
-      handlers?: { onError?: (message: string) => void },
-    ) => {
+    (update: unknown, handlers?: { onError?: (message: string) => void }) => {
       const normalized = normalizeSettingsRowWrite(update);
       if (normalized === null) return;
       mutateRef.current(normalized, {

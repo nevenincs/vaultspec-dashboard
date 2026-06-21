@@ -36,9 +36,7 @@ export function normalizeSettingsDialogOpen(value: unknown): boolean | null {
 }
 
 export function useSettingsDialogOpen(): boolean {
-  return useSettingsDialog(
-    (state) => normalizeSettingsDialogOpen(state.open) ?? false,
-  );
+  return useSettingsDialog((state) => normalizeSettingsDialogOpen(state.open) ?? false);
 }
 
 export function setSettingsDialogOpen(open: unknown): void {

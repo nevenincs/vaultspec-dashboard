@@ -98,10 +98,7 @@ export function closeDegradationDebug(): void {
   useDegradationStore.getState().setOpen(false);
 }
 
-export function setDegradationOverride(
-  key: unknown,
-  value: unknown,
-): void {
+export function setDegradationOverride(key: unknown, value: unknown): void {
   useDegradationStore.getState().setOverride(key, value);
 }
 

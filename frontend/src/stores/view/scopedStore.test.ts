@@ -62,9 +62,7 @@ describe("createScopedStore: scope-keyed persistence scaffold", () => {
     expect(normalizeScopedStoreKeyPart("   ")).toBe("default");
     expect(normalizeScopedStoreKeyPart(null)).toBe("default");
     expect(
-      normalizeScopedStoreKeyPart(
-        "x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1),
-      ),
+      normalizeScopedStoreKeyPart("x".repeat(SCOPED_STORAGE_KEY_PART_MAX_CHARS + 1)),
     ).toBe("default");
     expect(s.storageKey(" ws ", " scope-a ")).toBe(
       "test:scoped:workspace:ws:scope:scope-a",

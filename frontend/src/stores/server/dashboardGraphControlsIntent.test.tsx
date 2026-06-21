@@ -44,18 +44,20 @@ describe("useDashboardGraphControlsIntent", () => {
     expect(normalizeDashboardGraphControlsScope(" scope-a ")).toBe("scope-a");
     expect(normalizeDashboardGraphControlsScope("   ")).toBeNull();
     expect(normalizeDashboardGraphControlsScope({ scope: "scope-a" })).toBeNull();
-    expect(normalizeDashboardGraphControlsBounds({ shape: " rect ", size: 24.6 }))
-      .toEqual({
-        shape: "rect",
-        size: 25,
-      });
-    expect(normalizeDashboardGraphControlsBounds({ shape: "free", size: 10 }))
-      .toEqual({
-        shape: "free",
-        size: 0,
-      });
+    expect(
+      normalizeDashboardGraphControlsBounds({ shape: " rect ", size: 24.6 }),
+    ).toEqual({
+      shape: "rect",
+      size: 25,
+    });
+    expect(normalizeDashboardGraphControlsBounds({ shape: "free", size: 10 })).toEqual({
+      shape: "free",
+      size: 0,
+    });
     expect(normalizeDashboardGraphControlsBounds("rect")).toBeNull();
-    expect(normalizeDashboardGraphControlsBounds({ shape: "hex", size: 10 })).toBeNull();
+    expect(
+      normalizeDashboardGraphControlsBounds({ shape: "hex", size: 10 }),
+    ).toBeNull();
     expect(
       normalizeDashboardGraphControlsBounds({ shape: "circle", size: "large" }),
     ).toBeNull();
@@ -102,10 +104,9 @@ describe("useDashboardGraphControlsIntent", () => {
     );
 
     const client = testQueryClient();
-    const { result } = renderHook(
-      () => useDashboardGraphControlsIntent(` ${scope} `),
-      { wrapper: wrapper(client) },
-    );
+    const { result } = renderHook(() => useDashboardGraphControlsIntent(` ${scope} `), {
+      wrapper: wrapper(client),
+    });
 
     await act(async () => {
       await result.current.setGraphBounds({ shape: "circle", size: 120.4 });
@@ -125,10 +126,9 @@ describe("useDashboardGraphControlsIntent", () => {
     });
 
     const client = testQueryClient();
-    const { result } = renderHook(
-      () => useDashboardGraphControlsIntent({ scope }),
-      { wrapper: wrapper(client) },
-    );
+    const { result } = renderHook(() => useDashboardGraphControlsIntent({ scope }), {
+      wrapper: wrapper(client),
+    });
 
     await expect(
       result.current.setGraphBounds({ shape: "circle", size: 128 }),

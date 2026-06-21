@@ -53,8 +53,7 @@ export const ACTION_DESCRIPTOR_ACCELERATOR_MAX_CHARS = 64;
 export function normalizeActionDescriptorId(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= ACTION_DESCRIPTOR_ID_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= ACTION_DESCRIPTOR_ID_MAX_CHARS
     ? normalized
     : fallback;
 }
@@ -65,8 +64,7 @@ export function normalizeActionDescriptorLabel(
 ): string {
   if (typeof value !== "string") return fallback;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= ACTION_DESCRIPTOR_LABEL_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= ACTION_DESCRIPTOR_LABEL_MAX_CHARS
     ? normalized
     : fallback;
 }

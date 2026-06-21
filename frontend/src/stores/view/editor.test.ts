@@ -192,10 +192,13 @@ describe("editor view seam", () => {
         message: overlong,
         fixable: true,
       },
-      ...Array.from({ length: MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS + 3 }, (_, index) => ({
-        check: `check-${index}`,
-        message: `message-${index}`,
-      })),
+      ...Array.from(
+        { length: MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS + 3 },
+        (_, index) => ({
+          check: `check-${index}`,
+          message: `message-${index}`,
+        }),
+      ),
     ]);
 
     expect(advisories).toHaveLength(MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS);

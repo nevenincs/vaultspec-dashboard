@@ -5,10 +5,7 @@ import {
   normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
-import {
-  DASHBOARD_BOUND_SHAPES,
-  type DashboardGraphBounds,
-} from "./engine";
+import { DASHBOARD_BOUND_SHAPES, type DashboardGraphBounds } from "./engine";
 import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardGraphControlsIntent {

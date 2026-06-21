@@ -203,9 +203,7 @@ export function deriveDurableWorkspaceLayoutView(
   const context = session?.scope_context ?? {};
   const scopeAccepted = normalizedScope !== null && activeScope === normalizedScope;
   return {
-    blob: scopeAccepted
-      ? normalizeWorkspaceLayoutBlob(context.workspace_layout)
-      : null,
+    blob: scopeAccepted ? normalizeWorkspaceLayoutBlob(context.workspace_layout) : null,
     settled: sessionReady && scopeAccepted,
   };
 }

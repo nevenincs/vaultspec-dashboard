@@ -48,9 +48,9 @@ appDispatcher.register<unknown>(WORKTREE_ACTIVATE_SCOPE_ACTION, (action) => {
   return activateWorktreeScope(payload.scope);
 });
 
-export function dispatchActivateWorktreeScope(
-  payload: { scope: unknown },
-): Promise<unknown> {
+export function dispatchActivateWorktreeScope(payload: {
+  scope: unknown;
+}): Promise<unknown> {
   return appDispatcher.dispatch(
     worktreeActivateScopeDispatch(payload.scope),
   ) as Promise<unknown>;

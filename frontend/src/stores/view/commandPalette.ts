@@ -107,17 +107,15 @@ export function deriveSearchPaletteKeyboardIntent(
   return null;
 }
 
-export function deriveSearchPalettePresentationView(
-  context: {
-    query: unknown;
-    cursor: unknown;
-    expanded: unknown;
-    pills: readonly SearchPalettePillShape[];
-    searchState: unknown;
-    semanticOffline: unknown;
-    error: unknown;
-  },
-): SearchPalettePresentationView {
+export function deriveSearchPalettePresentationView(context: {
+  query: unknown;
+  cursor: unknown;
+  expanded: unknown;
+  pills: readonly SearchPalettePillShape[];
+  searchState: unknown;
+  semanticOffline: unknown;
+  error: unknown;
+}): SearchPalettePresentationView {
   const query = normalizeCommandPaletteQuery(context.query);
   const expanded = normalizeSearchPaletteExpanded(context.expanded);
   const cursor = normalizeSearchPaletteCursor(context.cursor);

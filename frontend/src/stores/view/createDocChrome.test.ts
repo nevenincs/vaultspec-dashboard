@@ -134,9 +134,7 @@ describe("createDocChrome store", () => {
     expect(normalizeCreateDocDraftText(longDraft)).toHaveLength(
       CREATE_DOC_DRAFT_TEXT_MAX_CHARS,
     );
-    expect(normalizeCreateDocError(longError)).toHaveLength(
-      CREATE_DOC_ERROR_MAX_CHARS,
-    );
+    expect(normalizeCreateDocError(longError)).toHaveLength(CREATE_DOC_ERROR_MAX_CHARS);
 
     setCreateDocFeature(longDraft);
     setCreateDocTitle(longDraft);

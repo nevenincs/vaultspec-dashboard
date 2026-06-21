@@ -303,11 +303,7 @@ describe("context-menu slice", () => {
     ).toBeGreaterThanOrEqual(8);
 
     expect(
-      deriveContextMenuPanelPosition(
-        { x: Number.NaN, y: 100 },
-        MENU_SIZE,
-        VIEWPORT,
-      ),
+      deriveContextMenuPanelPosition({ x: Number.NaN, y: 100 }, MENU_SIZE, VIEWPORT),
     ).toBeNull();
     expect(
       deriveContextMenuPanelPosition(
@@ -317,11 +313,10 @@ describe("context-menu slice", () => {
       ),
     ).toBeNull();
     expect(
-      deriveContextMenuPanelPosition(
-        { x: 100, y: 100 },
-        MENU_SIZE,
-        { width: 0, height: 800 },
-      ),
+      deriveContextMenuPanelPosition({ x: 100, y: 100 }, MENU_SIZE, {
+        width: 0,
+        height: 800,
+      }),
     ).toBeNull();
   });
 

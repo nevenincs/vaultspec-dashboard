@@ -42,9 +42,7 @@ describe("inspector expansion store", () => {
     expect(normalizeInspectorExpansionNodeId(" doc:plan-a ")).toBe("doc:plan-a");
     expect(normalizeInspectorExpansionNodeId("   ")).toBeNull();
     expect(normalizeInspectorExpansionNodeId({ id: "doc:plan-a" })).toBeNull();
-    expect(canWriteInspectorExpansionIdentity(" scope-a ", " doc:plan-a ")).toBe(
-      true,
-    );
+    expect(canWriteInspectorExpansionIdentity(" scope-a ", " doc:plan-a ")).toBe(true);
     expect(canWriteInspectorExpansionIdentity(null, "doc:plan-a")).toBe(true);
     expect(canWriteInspectorExpansionIdentity({ scope: "scope-a" }, "doc:plan-a")).toBe(
       false,
@@ -99,9 +97,7 @@ describe("inspector expansion store", () => {
     expect(normalizeInspectorExpansionKey("inspector:scope")).toBe("inspector:scope");
     expect(normalizeInspectorExpansionKey(" inspector:scope ")).toBe("inspector:scope");
     expect(
-      normalizeInspectorExpansionKey(
-        "x".repeat(INSPECTOR_EXPANSION_KEY_MAX_CHARS + 1),
-      ),
+      normalizeInspectorExpansionKey("x".repeat(INSPECTOR_EXPANSION_KEY_MAX_CHARS + 1)),
     ).toBeNull();
     expect(normalizeInspectorExpansionKey("")).toBeNull();
     expect(normalizeInspectorExpansionKey("   ")).toBeNull();
@@ -132,10 +128,7 @@ describe("inspector expansion store", () => {
     expect(useInspectorExpansionStore.getState().key).toBe(key);
 
     store.toggleTier(null, "semantic");
-    store.toggleTier(
-      "x".repeat(INSPECTOR_EXPANSION_KEY_MAX_CHARS + 1),
-      "semantic",
-    );
+    store.toggleTier("x".repeat(INSPECTOR_EXPANSION_KEY_MAX_CHARS + 1), "semantic");
     expect(useInspectorExpansionStore.getState().expandedTiers).toEqual([]);
 
     store.toggleTier(` ${key} `, " semantic ");

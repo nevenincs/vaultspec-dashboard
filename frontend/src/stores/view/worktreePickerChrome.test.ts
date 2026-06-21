@@ -141,7 +141,9 @@ describe("worktree picker chrome store", () => {
     expect(normalizeWorktreePickerSwitchId("  scope-a  ")).toBe("scope-a");
     expect(normalizeWorktreePickerSwitchId("   ")).toBeNull();
     expect(normalizeWorktreePickerSwitchId(null)).toBeNull();
-    expect(normalizeWorktreePickerSwitchId("s".repeat(WORKTREE_SWITCH_ID_CAP + 1))).toBeNull();
+    expect(
+      normalizeWorktreePickerSwitchId("s".repeat(WORKTREE_SWITCH_ID_CAP + 1)),
+    ).toBeNull();
     expect(normalizeWorktreePickerSwitchError("failed")).toBe("failed");
     expect(normalizeWorktreePickerSwitchError("  failed  ")).toBe("failed");
     expect(normalizeWorktreePickerSwitchError("   ")).toBeNull();

@@ -451,9 +451,7 @@ describe("timeline view-state seam", () => {
         from: "2026-04-03",
         to: "x".repeat(TIMELINE_DRAFT_TEXT_MAX_CHARS + 1),
       }),
-    ).toBe(
-      "timeline-corpus-fit:scope:value:scope-a:from:value:2026-04-03:to:open",
-    );
+    ).toBe("timeline-corpus-fit:scope:value:scope-a:from:value:2026-04-03:to:open");
     expect(
       timelineCorpusFitKey(" scope-a ", {
         from: " 2026-04-03 ",

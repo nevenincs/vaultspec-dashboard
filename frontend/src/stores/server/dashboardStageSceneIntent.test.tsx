@@ -40,9 +40,7 @@ describe("useDashboardStageSceneIntent", () => {
     ).toBeNull();
     expect(normalizeDashboardStageSceneFeatureTag("   ")).toBeNull();
     expect(normalizeDashboardStageSceneFeatureTag({ tag: "state" })).toBeNull();
-    expect(normalizeDashboardStageSceneRepresentationMode(" radial ")).toBe(
-      "radial",
-    );
+    expect(normalizeDashboardStageSceneRepresentationMode(" radial ")).toBe("radial");
     expect(normalizeDashboardStageSceneRepresentationMode("unknown")).toBeNull();
     expect(
       normalizeDashboardStageSceneRepresentationMode({ mode: "radial" }),

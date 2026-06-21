@@ -176,9 +176,7 @@ function isEntityRecord(value: unknown): value is Record<string, unknown> {
 function normalizeRequiredString(value: unknown, maxChars: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= maxChars
-    ? normalized
-    : null;
+  return normalized.length > 0 && normalized.length <= maxChars ? normalized : null;
 }
 
 function normalizeOptionalString(value: unknown, maxChars: number): string | undefined {
@@ -283,7 +281,11 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const stem = normalizeRequiredText(entity.stem);
       if (path === null || stem === null) return null;
       const normalized: VaultDocEntity = { kind, id, path, stem };
-      assignDefined(normalized, "scope", normalizeOptionalNullableScopeId(entity.scope));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       assignDefined(normalized, "nodeId", normalizeOptionalNodeId(entity.nodeId));
       return normalized;
     }
@@ -291,7 +293,11 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const path = normalizeRequiredPath(entity.path);
       if (path === null || typeof entity.isDir !== "boolean") return null;
       const normalized: CodeFileEntity = { kind, id, path, isDir: entity.isDir };
-      assignDefined(normalized, "scope", normalizeOptionalNullableScopeId(entity.scope));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       assignDefined(normalized, "nodeId", normalizeOptionalNodeId(entity.nodeId));
       return normalized;
     }
@@ -299,7 +305,11 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const nodeId = normalizeNodeId(entity.id);
       if (nodeId === null) return null;
       const normalized: NodeEntity = { kind, id: nodeId };
-      assignDefined(normalized, "scope", normalizeOptionalNullableScopeId(entity.scope));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       assignDefined(normalized, "title", normalizeOptionalText(entity.title));
       assignDefined(normalized, "isOpen", normalizeOptionalBoolean(entity.isOpen));
       assignDefined(normalized, "isPinned", normalizeOptionalBoolean(entity.isPinned));
@@ -321,7 +331,11 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const nodeIds = normalizeNodeIdList(entity.nodeIds);
       if (nodeIds === null) return null;
       const normalized: EventEntity = { kind, id, nodeIds };
-      assignDefined(normalized, "scope", normalizeOptionalNullableScopeId(entity.scope));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       assignDefined(normalized, "ts", normalizeOptionalNumber(entity.ts));
       assignDefined(
         normalized,
@@ -334,7 +348,11 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
       const source = normalizeRequiredText(entity.source);
       if (source === null) return null;
       const normalized: SearchResultEntity = { kind, id, source };
-      assignDefined(normalized, "scope", normalizeOptionalNullableScopeId(entity.scope));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       assignDefined(normalized, "nodeId", normalizeOptionalNodeId(entity.nodeId));
       assignDefined(normalized, "score", normalizeOptionalNumber(entity.score));
       assignDefined(normalized, "isCode", normalizeOptionalBoolean(entity.isCode));
@@ -357,7 +375,11 @@ export function normalizeEntityDescriptor(entity: unknown): EntityDescriptor | n
     }
     case "island": {
       const normalized: IslandEntity = { kind, id };
-      assignDefined(normalized, "scope", normalizeOptionalNullableScopeId(entity.scope));
+      assignDefined(
+        normalized,
+        "scope",
+        normalizeOptionalNullableScopeId(entity.scope),
+      );
       return normalized;
     }
   }

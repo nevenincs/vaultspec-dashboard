@@ -83,17 +83,13 @@ describe("command palette ops feedback seam", () => {
     openCommandPalette();
     const epoch = beginCommandPaletteOpsFeedback("vault-check: running...");
 
-    renderHook(() =>
-      useCommandPaletteOpsFeedbackBoundary({ scope: "scope-a" }, false),
-    );
+    renderHook(() => useCommandPaletteOpsFeedbackBoundary({ scope: "scope-a" }, false));
 
     expect(useCommandPaletteStore.getState().opsMessage).toBe(
       "vault-check: running...",
     );
     setCommandPaletteOpsFeedbackForEpoch(epoch, "vault-check: completed");
-    expect(useCommandPaletteStore.getState().opsMessage).toBe(
-      "vault-check: completed",
-    );
+    expect(useCommandPaletteStore.getState().opsMessage).toBe("vault-check: completed");
   });
 
   it("keeps explicit null scope as a resettable no-scope feedback context", () => {

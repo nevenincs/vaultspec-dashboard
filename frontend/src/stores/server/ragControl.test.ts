@@ -89,25 +89,25 @@ describe("rag job interpreters", () => {
       {
         root: "Y:/repo",
       },
-      );
-      expect(normalizeRagProjectSlots({ projects: [{ root: "Y:/repo" }] })).toEqual([]);
-      expect(
-        normalizeRagControlKeyPart("x".repeat(RAG_CONTROL_KEY_PART_MAX_CHARS + 1)),
-      ).toBe("");
-      expect(
-        normalizeRagProjectSlot({
-          root: "x".repeat(RAG_CONTROL_KEY_PART_MAX_CHARS + 1),
-        }),
-      ).toBeNull();
-      expect(
-        normalizeRagProjectSlots(
-          Array.from({ length: RAG_PROJECT_SLOTS_MAX_ITEMS + 1 }, (_, index) => ({
-            root: `Y:/repo-${index}`,
-          })),
-        ),
-      ).toHaveLength(RAG_PROJECT_SLOTS_MAX_ITEMS);
-      expect(normalizeRagRequestSeq(2)).toBe(2);
-      expect(normalizeRagRequestSeq(2.5)).toBeNull();
+    );
+    expect(normalizeRagProjectSlots({ projects: [{ root: "Y:/repo" }] })).toEqual([]);
+    expect(
+      normalizeRagControlKeyPart("x".repeat(RAG_CONTROL_KEY_PART_MAX_CHARS + 1)),
+    ).toBe("");
+    expect(
+      normalizeRagProjectSlot({
+        root: "x".repeat(RAG_CONTROL_KEY_PART_MAX_CHARS + 1),
+      }),
+    ).toBeNull();
+    expect(
+      normalizeRagProjectSlots(
+        Array.from({ length: RAG_PROJECT_SLOTS_MAX_ITEMS + 1 }, (_, index) => ({
+          root: `Y:/repo-${index}`,
+        })),
+      ),
+    ).toHaveLength(RAG_PROJECT_SLOTS_MAX_ITEMS);
+    expect(normalizeRagRequestSeq(2)).toBe(2);
+    expect(normalizeRagRequestSeq(2.5)).toBeNull();
     expect(normalizeRagRequestSeq(-1)).toBeNull();
     expect(normalizeRagRequestSeq("2")).toBeNull();
   });

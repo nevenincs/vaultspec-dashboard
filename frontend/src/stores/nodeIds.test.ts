@@ -16,14 +16,7 @@ describe("node id normalization", () => {
   it("dedupes normalized ids and applies the caller cap", () => {
     expect(
       normalizeNodeIds(
-        [
-          " doc:a ",
-          "",
-          "doc:a",
-          "x".repeat(NODE_ID_MAX_CHARS + 1),
-          "doc:b",
-          "doc:c",
-        ],
+        [" doc:a ", "", "doc:a", "x".repeat(NODE_ID_MAX_CHARS + 1), "doc:b", "doc:c"],
         2,
       ),
     ).toEqual(["doc:a", "doc:b"]);

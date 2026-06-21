@@ -638,10 +638,12 @@ describe("active scope switching", () => {
       workspace: "workspace-a",
       scope: "scope-a",
     });
-    expect(normalizeWorkspaceSwitchIntent("workspace-a", { scope: "scope-a" })).toEqual({
-      workspace: "workspace-a",
-      scope: null,
-    });
+    expect(normalizeWorkspaceSwitchIntent("workspace-a", { scope: "scope-a" })).toEqual(
+      {
+        workspace: "workspace-a",
+        scope: null,
+      },
+    );
     expect(() => normalizeWorkspaceSwitchIntent("   ", "scope-a")).toThrow(
       "workspace switch requires a non-empty workspace",
     );
@@ -755,7 +757,9 @@ describe("active scope switching", () => {
 
     const { result } = renderHook(() => useSwapWorkspace(), { wrapper: wrapper(qc) });
 
-    await expect(result.current.swap(` ${workspace} `, ` ${scope} `)).resolves.toMatchObject({
+    await expect(
+      result.current.swap(` ${workspace} `, ` ${scope} `),
+    ).resolves.toMatchObject({
       active_scope: scope,
       active_workspace: workspace,
       scope_context: {

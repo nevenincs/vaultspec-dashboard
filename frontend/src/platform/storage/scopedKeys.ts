@@ -4,8 +4,7 @@ export const SCOPED_STORAGE_KEY_PART_MAX_CHARS = 2048;
 export function normalizeScopedStorageKeyPart(value: unknown): string {
   if (typeof value !== "string") return SCOPED_STORAGE_DEFAULT_KEY_PART;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= SCOPED_STORAGE_KEY_PART_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= SCOPED_STORAGE_KEY_PART_MAX_CHARS
     ? normalized
     : SCOPED_STORAGE_DEFAULT_KEY_PART;
 }

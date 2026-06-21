@@ -9,8 +9,7 @@ const noopInspectorExpansionWrite = () => undefined;
 const INSPECTOR_TIER_IDS = ["declared", "structural", "temporal", "semantic"] as const;
 const INSPECTOR_TIER_ID_SET = new Set<string>(INSPECTOR_TIER_IDS);
 export const INSPECTOR_EXPANSION_KEY_MAX_CHARS = 2048;
-const DEFAULT_INSPECTOR_EXPANSION_KEY =
-  "inspector-expansion:scope:null:node:null";
+const DEFAULT_INSPECTOR_EXPANSION_KEY = "inspector-expansion:scope:null:node:null";
 
 export const normalizeInspectorExpansionScope = normalizeViewStoreSessionString;
 
@@ -48,8 +47,7 @@ export function canWriteInspectorExpansionIdentity(
 export function normalizeInspectorExpansionKey(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= INSPECTOR_EXPANSION_KEY_MAX_CHARS
+  return normalized.length > 0 && normalized.length <= INSPECTOR_EXPANSION_KEY_MAX_CHARS
     ? normalized
     : null;
 }

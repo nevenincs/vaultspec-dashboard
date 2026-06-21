@@ -5,10 +5,7 @@ import {
   normalizeStringMember,
   useDashboardStateMutations,
 } from "./dashboardState";
-import {
-  REPRESENTATION_MODES,
-  type RepresentationMode,
-} from "./engine";
+import { REPRESENTATION_MODES, type RepresentationMode } from "./engine";
 import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardStageSceneIntent {

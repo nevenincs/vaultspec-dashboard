@@ -1,8 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 
-import {
-  useDashboardStateMutations,
-} from "./dashboardState";
+import { useDashboardStateMutations } from "./dashboardState";
 import { normalizeDashboardDateRange } from "./dashboardDateRange";
 import { normalizeStoreScope } from "./scopeIdentity";
 
@@ -38,9 +36,7 @@ export function useDateRangeIntent(scope: unknown): {
   );
   const clearRange = useCallback(
     () =>
-      normalizedScope === null
-        ? Promise.resolve(null)
-        : setDateRangeRef.current({}),
+      normalizedScope === null ? Promise.resolve(null) : setDateRangeRef.current({}),
     [normalizedScope],
   );
 

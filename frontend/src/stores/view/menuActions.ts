@@ -11,10 +11,7 @@ export function menuEntityScope(entity: ScopedMenuEntity): unknown {
   return "scope" in entity ? normalizeStoreScope(entity.scope) : undefined;
 }
 
-export function focusMenuNode(
-  nodeId: unknown,
-  entity?: ScopedMenuEntity,
-): void {
+export function focusMenuNode(nodeId: unknown, entity?: ScopedMenuEntity): void {
   const scope = entity ? menuEntityScope(entity) : undefined;
   const request =
     scope === undefined

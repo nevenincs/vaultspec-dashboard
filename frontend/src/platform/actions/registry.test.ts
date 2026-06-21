@@ -354,9 +354,7 @@ describe("isRunnable", () => {
       ),
     ).toBe("Fallback");
     expect(
-      normalizeActionDescriptorText(
-        "x".repeat(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1),
-      ),
+      normalizeActionDescriptorText("x".repeat(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1)),
     ).toHaveLength(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1);
     expect(
       normalizeActionDescriptor({
