@@ -298,8 +298,12 @@ fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
         "the session now names the feature worktree as active"
     );
 
-    // The feature scope's graph DOES carry the branch-only src/new.rs mention —
-    // the read was genuinely retargeted to that worktree's bytes.
+    // Code-artifact mentions are non-displayable knowledge nodes (ADR D5/D6), so
+    // the branch-only `src/new.rs` mention is NOT served as a document-graph edge
+    // in either scope — the document graph stays code-free, and edges to the
+    // excluded node are pruned (never dangle). The scope retargeting is proven
+    // below instead by the feature cell's OWN /vault-tree doc set and its
+    // independent since=0 delta clock (and the broken-lens leg at the foot).
     let (status, feature_graph) = http(
         8823,
         "POST",
@@ -309,9 +313,9 @@ fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
     );
     assert_eq!(status, 200);
     assert!(
-        has_new_edge(&feature_graph),
-        "the feature worktree's corpus serves its own divergent src/new.rs \
-         mention: {feature_graph}"
+        !has_new_edge(&feature_graph),
+        "code-artifact mentions are not served as document-graph edges \
+         (ADR D5/D6): {feature_graph}"
     );
 
     // Per-scope clocks are independent: each scope's /vault-tree serves its own
