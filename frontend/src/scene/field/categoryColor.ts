@@ -2,13 +2,14 @@
 // figma-parity-reconciliation W03.P07.S43).
 //
 // The binding Figma redesign makes each canvas node a PLAIN FILLED CIRCLE
-// coloured by document category — one of eight category hues. Colour is the
+// coloured by document category — one of seven category hues (`code` and `index`
+// are NOT graph-node categories; see the NodeCategory doc below). Colour is the
 // on-canvas TYPE channel (size carries salience, the accent ring carries
 // selection); the per-doc-type silhouette mark survives only off-canvas for the
 // chrome / legend / hover-card via `marks.ts`.
 //
 // LITERAL-HEX SCENE TOKENS (themes-are-oklch-generated-from-a-token-tier): the
-// eight category colours are scene-read CSS custom properties emitted as LITERAL
+// seven category colours are scene-read CSS custom properties emitted as LITERAL
 // HEX (#rrggbb) per theme by the regenerated foundation token file. The scene
 // resolves them through getComputedStyle, which does NOT walk a var() chain for a
 // custom property in real browsers — so the token MUST be a flat hex, never a
