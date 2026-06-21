@@ -74,6 +74,12 @@ export function lineageToTemporalScene(input: TemporalSceneInput): TemporalScene
     if (t == null || !isInVisibleRange(t, input.range)) continue;
     const laneIdx = laneOfNode(node);
     if (laneIdx == null || !input.laneVisibility[PHASE_LANES[laneIdx]]) continue;
+    // Collapse a duplicate input node id to its first occurrence. `candidates`
+    // is an array (unlike the `visible` Map), so a duplicate id would push twice
+    // and flow through `capped.items` into `sceneNodes` — producing duplicate
+    // React keys in the rendered node lists (`<li key={node.id}>`). The wire-side
+    // adapter dedups edges but not nodes, so a duplicate node can reach here.
+    if (visible.has(node.id)) continue;
     const x = timeToX(t, TIMELINE_ORIGIN_MS, input.pxPerMs, input.scrollOffset);
     candidates.push({ id: node.id, tMs: t, x, lane: temporalLane(node) });
     visible.set(node.id, node);

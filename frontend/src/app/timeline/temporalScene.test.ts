@@ -84,6 +84,34 @@ describe("lineageToTemporalScene", () => {
     expect(scene.edges[0]?.confidence).toBeLessThanOrEqual(0.18);
   });
 
+  it("collapses a duplicate input node id (no duplicate scene nodes / React keys)", () => {
+    // The wire-side adapter dedups edges but not nodes, so a duplicate node id can
+    // reach this projection. It must yield ONE scene node per id — two would render
+    // duplicate `<li key={node.id}>` keys in the timeline node lists (the runtime
+    // "two children with the same key" error this guards).
+    const nodes = [
+      doc("doc:a", "2026-06-17", "research"),
+      doc("doc:a", "2026-06-17", "research"), // duplicate id
+      doc("doc:b", "2026-06-18", "adr"),
+    ];
+    const scene = lineageToTemporalScene({
+      nodes,
+      arcs: [],
+      range: {
+        fromMs: Date.parse("2026-06-16T00:00:00Z"),
+        toMs: Date.parse("2026-06-19T00:00:00Z"),
+      },
+      laneVisibility: allVisible(),
+      pxPerMs: DEFAULT_PX_PER_MS,
+      scrollOffset: 0,
+      width: 800,
+      height: 240,
+    });
+    const ids = scene.nodes.map((node) => node.id);
+    expect(ids).toEqual([...new Set(ids)]);
+    expect(ids.sort()).toEqual(["doc:a", "doc:b"]);
+  });
+
   it("caps self-consistent arcs before sending them to the temporal canvas", () => {
     const nodes = [doc("doc:a", "2026-06-17"), doc("doc:b", "2026-06-17")];
     const arcs = Array.from({ length: MAX_TIMELINE_ARCS + 7 }, (_, i) => ({
