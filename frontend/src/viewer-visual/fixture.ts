@@ -63,3 +63,50 @@ export function laneOf(doc: DatedNode): Lane {
 }
 \`\`\`
 `;
+
+// A deliberately MESSY document (editor-figma-parity / document-reader hardening):
+// the authentic vaultspec shape — HTML comment template blocks, an inline comment,
+// a `{feature} {doctype}: {title} | (status: …)` H1, formatted section headings,
+// and a code fence whose contents must survive verbatim. The reader must render
+// this with a clean editorial title, plain section headings, and zero comments.
+// Reachable from the harness with `?fixture=messy` for end-to-end visual proof.
+export const READER_MESSY_FIXTURE_MARKDOWN = `---
+tags:
+  - '#adr'
+  - '#document-reader'
+date: '2026-06-21'
+modified: '2026-06-21'
+status: accepted
+related:
+  - '[[document-reader-hardening]]'
+---
+
+<!-- FRONTMATTER RULES:
+     tags: one directory tag (#adr) and one feature tag.
+     modified: CLI-maintained; never hand-edit. -->
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for the related: field above. -->
+
+# \`document-reader\` adr: \`no-noise editorial reader rendering\` | (**status:** \`accepted\`)
+
+The reader must render clean editorial titles and never leak markdown syntax or comments.
+
+## Context and \`scope\` with **emphasis**
+
+The body keeps its formatting, but **every heading** renders as plain text. <!-- TODO: this inline comment must vanish -->
+
+> A heading is a deterministic function of its text — never of the markup around it.
+
+### Sanitizing \`code:<path>\` placeholders
+
+- **Comments** — \`<!-- ... -->\` blocks are stripped in read mode only.
+- **Titles** — the \`{feature} {doctype}:\` prefix and \`| (status: ...)\` suffix are dropped.
+
+\`\`\`typescript
+// this fence is literal: the # and <!-- --> below must SURVIVE
+export function laneOf(doc: DatedNode): Lane {
+  return PIPELINE_LANE[doc.kind] // <!-- not a comment, real code -->
+}
+\`\`\`
+`;

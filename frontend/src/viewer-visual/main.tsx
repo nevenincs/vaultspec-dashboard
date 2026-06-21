@@ -22,7 +22,11 @@ import type { ContentResponse } from "../stores/server/engine";
 import { deriveContentView } from "../stores/server/queries";
 import { queryClient } from "../stores/server/queryClient";
 import "../styles.css";
-import { READER_FIXTURE_MARKDOWN, READER_FIXTURE_PATH } from "./fixture";
+import {
+  READER_FIXTURE_MARKDOWN,
+  READER_FIXTURE_PATH,
+  READER_MESSY_FIXTURE_MARKDOWN,
+} from "./fixture";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -39,14 +43,17 @@ document.documentElement.style.colorScheme = theme === "light" ? "light" : "dark
 
 // The synthetic served bytes: the fixture markdown with the structural tier up,
 // run through the production derivation so the reader's ContentView is identical
-// to a live read.
-const byteLen = new TextEncoder().encode(READER_FIXTURE_MARKDOWN).length;
+// to a live read. `?fixture=messy` serves the comment/formatting-laden document so
+// the sanitization can be verified end to end in the rendered reader.
+const messy = params.get("fixture") === "messy";
+const fixtureText = messy ? READER_MESSY_FIXTURE_MARKDOWN : READER_FIXTURE_MARKDOWN;
+const byteLen = new TextEncoder().encode(fixtureText).length;
 const response: ContentResponse = {
   path: READER_FIXTURE_PATH,
   blob_hash: "fixture0000000000000000000000000000000000",
   byte_len: byteLen,
   language_hint: "markdown",
-  text: READER_FIXTURE_MARKDOWN,
+  text: fixtureText,
   truncated: null,
   tiers: { structural: { available: true } },
 };

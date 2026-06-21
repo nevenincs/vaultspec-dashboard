@@ -130,6 +130,12 @@ describe("sanitizeReaderBody", () => {
     expect(sanitizeReaderBody(body)).toBe(body);
   });
 
+  it("preserves a comment written inside an inline code span (literal example)", () => {
+    expect(sanitizeReaderBody("a `<!-- x -->` literal and <!-- real --> gone")).toBe(
+      "a `<!-- x -->` literal and  gone",
+    );
+  });
+
   it("does not treat intra-word underscores in headings as emphasis", () => {
     expect(sanitizeReaderBody("# the dashboard_foundation plan")).toBe(
       "# the dashboard_foundation plan",

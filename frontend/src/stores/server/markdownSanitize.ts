@@ -17,8 +17,8 @@
 //      READ mode. Edit mode shows the raw body untouched (it edits content.text
 //      directly), so authors still see them.
 //
-// Fenced code blocks are preserved verbatim: a `#` line or a `<!-- -->` inside a
-// fence is literal code, never a heading or a comment.
+// Fenced code blocks AND inline code spans are preserved verbatim: a `#` line or a
+// `<!-- -->` inside code is literal content, never a heading or a comment.
 
 /** Strip inline markdown emphasis/code/link/HTML syntax from a single line of
  *  text, returning the plain user-facing text. Intra-word underscores
@@ -106,8 +106,9 @@ function fenceMarker(line: string): "`" | "~" | null {
 /**
  * Sanitize a served markdown body for the READ-mode reader: strip HTML comments
  * (single- and multi-line) and rewrite every ATX heading line to plain text —
- * both outside fenced code blocks, which are passed through verbatim. Pure and
- * idempotent. Edit mode does not use this (it shows the raw body).
+ * both outside fenced code blocks and inline code spans, which are passed through
+ * verbatim. Pure and idempotent. Edit mode does not use this (it shows the raw
+ * body).
  */
 export function sanitizeReaderBody(md: string): string {
   const lines = md.split("\n");
@@ -159,7 +160,17 @@ export function sanitizeReaderBody(md: string): string {
       inComment = false;
     }
 
-    // Remove every complete inline comment on the line.
+    // Protect inline code spans so a `<!-- ... -->` written INSIDE backticks (a
+    // literal example, like the fenced-code case) survives comment stripping. The
+    // sentinel is U+FFFC (OBJECT REPLACEMENT CHARACTER): never present in authored
+    // markdown, and not an ASCII control character.
+    const spans: string[] = [];
+    line = line.replace(/(`+)(?:(?!\1).)+\1/g, (m) => {
+      spans.push(m);
+      return `￼${spans.length - 1}￼`;
+    });
+
+    // Remove every complete inline comment on the (code-protected) line.
     line = line.replace(/<!--[\s\S]*?-->/g, "");
 
     // An unterminated `<!--` opens a multi-line comment: keep the text before it.
@@ -167,6 +178,11 @@ export function sanitizeReaderBody(md: string): string {
     if (open !== -1 && line.indexOf("-->", open) === -1) {
       line = line.slice(0, open);
       inComment = true;
+    }
+
+    // Restore the protected inline code spans.
+    if (spans.length > 0) {
+      line = line.replace(/￼(\d+)￼/g, (_m, i) => spans[Number(i)] ?? "");
     }
 
     // ATX heading: rewrite its text to plain (strip a closing `#` sequence too).
