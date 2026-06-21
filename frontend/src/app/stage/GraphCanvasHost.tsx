@@ -2,7 +2,7 @@
 // UNCHANGED Stage (canvas + chrome) inside a single, app-lifetime DOM node that
 // is positioned to track the graph dockview panel's rect (published by
 // `canvasPin`). Because Stage lives here and this host is never re-parented,
-// dockview never moves Stage's DOM — so the Pixi WebGL context and the
+// dockview never moves Stage's DOM — so the graph's WebGL context and the
 // SceneController seam survive every dock, split, float, and re-dock. The
 // dockview graph panel renders only an empty placeholder that publishes its rect
 // (see `GraphPanel`); this host floats over that rect.

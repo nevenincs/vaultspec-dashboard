@@ -1,7 +1,8 @@
 // The portal-pinned canvas bridge (editor-dock-workspace P02). The load-bearing
-// contract of the dock workspace: the Pixi graph `<canvas>` is mounted ONCE into
-// an app-lifetime host and is NEVER re-parented, because re-parenting a canvas
-// destroys its WebGL context and the SceneController seam. dockview is free to
+// contract of the dock workspace: the graph `<canvas>` (the three.js WebGL
+// field) is mounted ONCE into an app-lifetime host and is NEVER re-parented,
+// because re-parenting a canvas destroys its WebGL context and the
+// SceneController seam. dockview is free to
 // move, split, float, and re-dock the graph PANEL; this bridge tracks that
 // panel's placeholder rect and the canvas host positions itself to match, so the
 // canvas DOM node stays put while only its on-screen rect follows the panel.
