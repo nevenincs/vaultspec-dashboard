@@ -71,6 +71,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/ops/git/{verb}",
     "/session",
     "/settings",
+    "/settings/schema",
 ];
 
 async fn health() -> Json<Value> {
@@ -1684,6 +1685,38 @@ mod tests {
             "/ops/core/{verb}",
         ] {
             assert!(CONTRACT_ROUTES.contains(&family), "missing {family}");
+        }
+    }
+
+    #[test]
+    fn every_router_route_is_in_the_contract_inventory() {
+        // 2nd-order anti-drift guard (rag audit). `every_contract_route_requires_a_bearer`
+        // binds the bearer gate to CONTRACT_ROUTES, but CONTRACT_ROUTES is itself
+        // hand-maintained PARALLEL to `build_router`: a `.route()` added to the router
+        // but forgotten in CONTRACT_ROUTES escapes the bearer guard entirely (it is
+        // never iterated). The sibling `contract_route_inventory_matches_the_router`
+        // only spot-checks a handful of families, so it cannot catch this. Bind the
+        // inventory to the router SOURCE: every `.route("…")` path registered in
+        // production code MUST appear in CONTRACT_ROUTES. Source-introspected because
+        // axum exposes no route enumeration; scoped to pre-`#[cfg(test)]` code so the
+        // test module's own string literals can never self-match.
+        let src = include_str!("lib.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap_or(src);
+        let marker = ".route(";
+        for (idx, _) in prod.match_indices(marker) {
+            let after = prod[idx + marker.len()..].trim_start();
+            let Some(rest) = after.strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = rest.find('"') else {
+                continue;
+            };
+            let path = &rest[..end];
+            assert!(
+                CONTRACT_ROUTES.contains(&path),
+                "router route `{path}` is registered in build_router but missing from \
+                 CONTRACT_ROUTES — add it, or it escapes the bearer-gate guard",
+            );
         }
     }
 
