@@ -64,6 +64,10 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/ops/core/{verb}",
     "/ops/core/{verb}/write",
     "/ops/core/create",
+    "/ops/core/autofix",
+    "/ops/core/archive",
+    "/ops/core/unarchive",
+    "/ops/core/link",
     "/ops/rag/{verb}",
     "/ops/git/{verb}",
     "/session",
@@ -173,6 +177,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // can retire a completed feature's documents through the broker. Feature-
         // scoped (the only archive grain vaultspec-core has); watcher re-ingests.
         .route("/ops/core/archive", post(routes::ops::ops_core_archive))
+        // Unarchive: forwards `vault feature unarchive <tag>` — the reversibility
+        // half of archive (mutation/destruction audit D5), so a feature retirement
+        // is undoable in-product, not a one-way door.
+        .route("/ops/core/unarchive", post(routes::ops::ops_core_unarchive))
         // Relate: forwards `vault link add <src> <dst>` so the dashboard can add a
         // `related:` edge between two documents through the broker; watcher re-ingests.
         .route("/ops/core/link", post(routes::ops::ops_core_link))

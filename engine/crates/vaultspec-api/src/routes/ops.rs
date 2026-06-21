@@ -902,6 +902,11 @@ pub struct CoreAutofixBody {
     #[serde(default)]
     pub scope: Option<String>,
     pub feature: String,
+    /// Preview the repairs without writing (dry-run-discipline): forwards
+    /// `--dry-run` so the editor can show what `--fix` WOULD change before it is
+    /// applied. A bulk auto-repair should be previewable, not fire-and-forget.
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 /// POST `/ops/core/autofix` — forward `vault check all --fix --feature <tag>`
@@ -917,20 +922,24 @@ pub async fn ops_core_autofix(
 ) -> ApiResult {
     let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
     let feature = validate_token(&state, "feature", &body.feature)?;
-    let args = [
-        "vault",
-        "check",
-        "all",
-        "--fix",
-        "--feature",
-        feature.as_str(),
+    let mut args: Vec<String> = vec![
+        "vault".into(),
+        "check".into(),
+        "all".into(),
+        "--fix".into(),
+        "--feature".into(),
+        feature,
     ];
+    if body.dry_run {
+        args.push("--dry-run".into());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let runner = ingest_core::runner::CoreRunner::detect();
     let envelope = run_sibling_write_bounded(
         &state,
         &cell,
         &runner.invocation,
-        &args,
+        &arg_refs,
         None,
         SIBLING_TIMEOUT,
         SIBLING_STDOUT_CAP,
@@ -944,13 +953,20 @@ pub async fn ops_core_autofix(
 }
 
 /// The typed request body for `POST /ops/core/archive`: the optional worktree
-/// `scope` and the `feature` tag whose documents are archived. The feature is
-/// validated/bounded BEFORE the subprocess spawns (the injection-guard surface).
+/// `scope`, the `feature` tag whose documents are archived, and an optional
+/// `dry_run` preview flag. The feature is validated/bounded BEFORE the subprocess
+/// spawns (the injection-guard surface).
 #[derive(serde::Deserialize, Default)]
 pub struct CoreArchiveBody {
     #[serde(default)]
     pub scope: Option<String>,
     pub feature: String,
+    /// Preview the archive without moving anything (vaultspec-archive-discipline):
+    /// forwards `--dry-run` so the dashboard can show WHICH documents move and
+    /// WHICH incoming cross-feature `related:` links would break BEFORE applying a
+    /// feature-wide retirement. The discipline this destructive verb requires.
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 /// POST `/ops/core/archive` — forward `vault feature archive <tag>` through the
@@ -969,7 +985,56 @@ pub async fn ops_core_archive(
 ) -> ApiResult {
     let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
     let feature = validate_token(&state, "feature", &body.feature)?;
-    let args = ["vault", "feature", "archive", feature.as_str()];
+    let mut args: Vec<String> = vec!["vault".into(), "feature".into(), "archive".into(), feature];
+    if body.dry_run {
+        args.push("--dry-run".into());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let runner = ingest_core::runner::CoreRunner::detect();
+    let envelope = run_sibling_write_bounded(
+        &state,
+        &cell,
+        &runner.invocation,
+        &arg_refs,
+        None,
+        SIBLING_TIMEOUT,
+        SIBLING_STDOUT_CAP,
+    )
+    .await?;
+    Ok(super::envelope(
+        json!({ "envelope": envelope }),
+        super::query_tiers(&cell),
+        None,
+    ))
+}
+
+/// The typed request body for `POST /ops/core/unarchive`: the optional worktree
+/// `scope` and the `feature` tag to restore. The feature is validated/bounded
+/// BEFORE the subprocess spawns (the injection-guard surface).
+#[derive(serde::Deserialize, Default)]
+pub struct CoreUnarchiveBody {
+    #[serde(default)]
+    pub scope: Option<String>,
+    pub feature: String,
+}
+
+/// POST `/ops/core/unarchive` — forward `vault feature unarchive <tag>` through the
+/// engine broker: the REVERSIBILITY half of archive (mutation/destruction audit
+/// D5). A mistaken feature archive is undone IN-PRODUCT rather than only via git,
+/// so a feature-wide retirement is no longer a one-way door from the dashboard.
+/// Read-and-infer preserved: the engine validates and bounds the feature token and
+/// forwards the sibling's envelope VERBATIM under `data.envelope`; it persists
+/// nothing and grows no archive semantics. A success and a business refusal
+/// (`status:"failed"`, e.g. a tag that was never archived) BOTH ride one HTTP 200 —
+/// the client branches on `envelope.status`. The watcher re-ingests the restored
+/// documents and the generation bump signals the frontend.
+pub async fn ops_core_unarchive(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CoreUnarchiveBody>,
+) -> ApiResult {
+    let cell = resolve_core_ops_cell(&state, body.scope.as_deref())?;
+    let feature = validate_token(&state, "feature", &body.feature)?;
+    let args = ["vault", "feature", "unarchive", feature.as_str()];
     let runner = ingest_core::runner::CoreRunner::detect();
     let envelope = run_sibling_write_bounded(
         &state,
