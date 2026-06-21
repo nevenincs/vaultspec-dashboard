@@ -3329,12 +3329,9 @@ export function useNodeNeighbors(id: unknown, scope: unknown, depth: unknown = 1
   return enabled ? query : { ...query, data: undefined };
 }
 
-export const INSPECTOR_EDGE_TIER_ORDER = [
-  "declared",
-  "structural",
-  "temporal",
-  "semantic",
-] as const;
+// The edge-tier bucketing order for the inspector's neighbor list. The engine
+// never mints a semantic graph edge (ADR D3.5), so semantic is not an edge tier.
+export const INSPECTOR_EDGE_TIER_ORDER = ["declared", "structural", "temporal"] as const;
 
 export interface InspectorNeighborTierView {
   tiers: Map<EngineEdge["tier"], EngineEdge[]>;
@@ -7614,6 +7611,11 @@ export interface GitChangeRow {
   dels: number;
   addsLabel: string;
   delsLabel: string;
+  /** A binary entry carries no line tally; the row shows a "binary" tag instead
+   *  (distinct from an untracked entry, which simply has no tallies). */
+  showBinary: boolean;
+  binaryLabel: string;
+  binaryClassName: string;
   rowClassName: string;
   labelClassName: string;
   diffClassName: string;
@@ -7645,6 +7647,7 @@ const GIT_CHANGE_DIR_CLASS = "min-w-0 flex-1 truncate text-[0.6875rem] text-ink-
 const GIT_CHANGE_DIFF_CLASS = "flex shrink-0 items-center gap-fg-1 font-mono text-meta";
 const GIT_CHANGE_ADDS_CLASS = "shrink-0 text-diff-add";
 const GIT_CHANGE_DELS_CLASS = "shrink-0 text-diff-remove";
+const GIT_CHANGE_BINARY_CLASS = "shrink-0 text-meta text-ink-faint";
 
 function gitChangeRow(file: ChangedFile, bucket: GitChangeBucket): GitChangeRow {
   const isDoc = file.vault;
@@ -7667,6 +7670,11 @@ function gitChangeRow(file: ChangedFile, bucket: GitChangeBucket): GitChangeRow 
     dels,
     addsLabel: `${adds} added`,
     delsLabel: `${dels} removed`,
+    // Binary only when numstat actually flagged it (`-\t-`); an untracked entry
+    // has no numstat row and stays non-binary with no tally.
+    showBinary: file.binary === true,
+    binaryLabel: "binary",
+    binaryClassName: GIT_CHANGE_BINARY_CLASS,
     rowClassName: GIT_CHANGE_ROW_CLASS,
     labelClassName:
       bucket === "deleted" ? GIT_CHANGE_LABEL_DELETED_CLASS : GIT_CHANGE_LABEL_CLASS,

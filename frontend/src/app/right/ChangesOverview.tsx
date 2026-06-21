@@ -70,19 +70,28 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
         className={row.rowClassName}
       >
         <span className={row.labelClassName}>{row.label}</span>
-        {(row.showAdds || row.showDels) && (
-          <span className={row.diffClassName}>
-            {row.showAdds && (
-              <span className={row.addsClassName} aria-label={row.addsLabel}>
-                +{row.adds}
-              </span>
-            )}
-            {row.showDels && (
-              <span className={row.delsClassName} aria-label={row.delsLabel}>
-                −{row.dels}
-              </span>
-            )}
+        {row.dirLabel && (
+          <span className={row.dirClassName} aria-hidden>
+            {row.dirLabel}
           </span>
+        )}
+        {row.showBinary ? (
+          <span className={row.binaryClassName}>{row.binaryLabel}</span>
+        ) : (
+          (row.showAdds || row.showDels) && (
+            <span className={row.diffClassName}>
+              {row.showAdds && (
+                <span className={row.addsClassName} aria-label={row.addsLabel}>
+                  +{row.adds}
+                </span>
+              )}
+              {row.showDels && (
+                <span className={row.delsClassName} aria-label={row.delsLabel}>
+                  −{row.dels}
+                </span>
+              )}
+            </span>
+          )
         )}
       </button>
     </li>

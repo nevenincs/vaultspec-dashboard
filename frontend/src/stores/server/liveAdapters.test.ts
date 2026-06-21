@@ -628,6 +628,79 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(slice.edges).toHaveLength(1);
     expect(slice.edges[0].meta).toBeUndefined();
   });
+
+  it("drops index/code nodes and the edges referencing them (ADR D5/D6)", () => {
+    // Belt-and-braces: the engine excludes index/code at the projection, but the
+    // frontend must not render them if a producer emits one. Code is detected by
+    // kind, by the `code-artifact` species, AND by the `code:` id prefix.
+    const noisySlice = {
+      nodes: [
+        { id: "doc:keep", kind: "document", doc_type: "adr" },
+        { id: "doc:idx", kind: "document", doc_type: "index" },
+        { id: "code:src/lib.rs", kind: "code" },
+        { id: "code:src/main.rs#fn", kind: "code-artifact" },
+        { id: "weird:x", kind: "code" },
+      ],
+      edges: [
+        {
+          id: "e:keep",
+          src: "doc:keep",
+          dst: "doc:keep",
+          relation: "mentions",
+          tier: "structural",
+          confidence: 0.9,
+        },
+        {
+          id: "e:to-index",
+          src: "doc:keep",
+          dst: "doc:idx",
+          relation: "mentions",
+          tier: "structural",
+          confidence: 0.9,
+        },
+        {
+          id: "e:to-code",
+          src: "code:src/lib.rs",
+          dst: "doc:keep",
+          relation: "mentions",
+          tier: "structural",
+          confidence: 0.9,
+        },
+      ],
+      meta_edges: [],
+      tiers: TIERS,
+    };
+    const slice = adaptGraphSlice(noisySlice);
+    expect(slice.nodes.map((n) => n.id)).toEqual(["doc:keep"]);
+    // Only the edge whose endpoints both survived is kept; the slice stays
+    // self-consistent (no edge references a dropped node).
+    expect(slice.edges.map((e) => e.id)).toEqual(["e:keep"]);
+  });
+
+  it("excludes a folded meta-edge whose endpoint was a dropped node", () => {
+    // A meta-edge that would resolve to a dropped (code/index) endpoint must not be
+    // folded back in — the slice stays self-consistent after exclusion.
+    const slice = adaptGraphSlice({
+      nodes: [
+        { id: "feature:a", kind: "feature" },
+        { id: "code:b", kind: "code" },
+      ],
+      edges: [],
+      meta_edges: [
+        {
+          src: "feature:a",
+          dst: "code:b",
+          src_feature: "a",
+          dst_feature: "b",
+          count: 1,
+          breakdown_by_tier: { structural: 1 },
+        },
+      ],
+      tiers: TIERS,
+    });
+    expect(slice.nodes.map((n) => n.id)).toEqual(["feature:a"]);
+    expect(slice.edges).toHaveLength(0);
+  });
 });
 
 describe("adaptLineageSlice (live lineage sample, dashboard-timeline W02.P03.S21)", () => {
@@ -1458,6 +1531,22 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
     expect(tallies.get("img/logo.png")).toEqual({ adds: null, dels: null });
     const merged = mergeNumstat(parseGitStatus("## main\n M src/a.ts\n"), tallies);
     expect(merged[0]).toMatchObject({ path: "src/a.ts", adds: 3, dels: 1 });
+  });
+
+  it("distinguishes a binary entry (numstat -\\t- row) from an untracked entry (no row)", () => {
+    // A binary file HAS a numstat row with both tallies null → binary; an
+    // untracked file has NO numstat row → null tallies but NOT binary.
+    const tallies = parseGitNumstat("-\t-\timg/logo.png\n");
+    const merged = mergeNumstat(
+      parseGitStatus("## main\n M img/logo.png\n?? notes/new.txt\n"),
+      tallies,
+    );
+    const binary = merged.find((e) => e.path === "img/logo.png");
+    const untracked = merged.find((e) => e.path === "notes/new.txt");
+    expect(binary).toMatchObject({ adds: null, dels: null, binary: true });
+    expect(untracked?.adds).toBeNull();
+    expect(untracked?.dels).toBeNull();
+    expect(untracked?.binary ?? false).toBe(false);
   });
 
   it("drops malformed numstat rows before reconciliation", () => {

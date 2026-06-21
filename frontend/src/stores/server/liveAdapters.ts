@@ -19,6 +19,7 @@ import type {
   DashboardState,
   EmbeddingsResponse,
   EngineEdge,
+  EngineNode,
   EngineStatus,
   FileTreeEntry,
   FileTreeResponse,
@@ -116,17 +117,25 @@ export function unwrapEnvelope(body: unknown): unknown {
  * The tier treatment a constellation ribbon takes: the tier carrying the most
  * underlying edges in the aggregation (ties resolve by canonical order). A
  * meta-edge spans tiers, but the line treatment needs one — the dominant tier
- * is the honest single answer. Ties resolve by the canonical tier order
- * (`CANONICAL_TIERS`). An empty/all-zero breakdown (degenerate; the live engine
+ * is the honest single answer. Ties resolve by the canonical edge-tier order
+ * (`EDGE_TIER_ORDER`). The engine never mints a semantic graph edge (ADR D3.5),
+ * so semantic is never a candidate — a stray `semantic` key in the incoming
+ * breakdown is ignored. An empty/all-zero breakdown (degenerate; the live engine
  * never emits one) falls back to `structural`, the tier of the cross-feature
  * mentions that produce meta-edges.
  */
+const EDGE_TIER_ORDER: readonly EngineEdge["tier"][] = [
+  "declared",
+  "structural",
+  "temporal",
+];
+
 function dominantTier(breakdown: Record<string, number>): EngineEdge["tier"] {
   let best: EngineEdge["tier"] = "structural";
   // Seed at 0 so a tier only wins on a POSITIVE count: an empty breakdown
   // keeps the `structural` default rather than the first-enumerated tier.
   let bestCount = 0;
-  for (const tier of CANONICAL_TIERS) {
+  for (const tier of EDGE_TIER_ORDER) {
     const count = breakdown[tier] ?? 0;
     if (count > bestCount) {
       best = tier;
@@ -167,26 +176,99 @@ export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
  * the document path: its constellation-granularity shape is the open S50
  * divergence, out of scope here.)
  */
+/** Defensive CLIENT-SIDE payload ceilings (bounded-by-default at the trust boundary):
+ *  the engine bounds slices server-side, but the client must NOT trust the wire — an
+ *  adversarial or buggy unbounded payload would exhaust client memory. These clamp the
+ *  mapped slice and surface honest truncation (never a silent partial). Set well above
+ *  any normal bounded slice so they only fire on a runaway/hostile payload. */
+export const MAX_CLIENT_GRAPH_NODES = 20000;
+export const MAX_CLIENT_GRAPH_EDGES = 80000;
+
 export function adaptGraphSlice(body: unknown): GraphSlice {
   if (!isRec(body)) return body as GraphSlice;
-  const edges = Array.isArray(body.edges) ? (body.edges as EngineEdge[]) : [];
+  const allNodes = Array.isArray(body.nodes) ? (body.nodes as EngineNode[]) : [];
+  const allEdges = Array.isArray(body.edges) ? (body.edges as EngineEdge[]) : [];
+  // G2 trust-boundary cap: clamp a hostile/buggy oversized payload BEFORE mapping, so
+  // a runaway wire response can never exhaust client memory; report it as truncation.
+  const nodeOverflow = allNodes.length > MAX_CLIENT_GRAPH_NODES;
+  const rawNodes = nodeOverflow ? allNodes.slice(0, MAX_CLIENT_GRAPH_NODES) : allNodes;
+  const edges =
+    allEdges.length > MAX_CLIENT_GRAPH_EDGES
+      ? allEdges.slice(0, MAX_CLIENT_GRAPH_EDGES)
+      : allEdges;
+  const clientTruncated = nodeOverflow
+    ? {
+        total_nodes: allNodes.length,
+        returned_nodes: rawNodes.length,
+        reason: "client node ceiling",
+      }
+    : null;
   const metaEdges = Array.isArray(body.meta_edges)
     ? (body.meta_edges as WireMetaEdge[])
     : [];
+  // Defensive index/code exclusion (terminology-standardization ADR D5/D6,
+  // belt-and-braces): `index` documents and `code` artefacts are never displayable
+  // knowledge nodes. The engine excludes them at the projection, but the frontend
+  // must not render them if any producer (or the mock) ever emits one — so drop
+  // them here and keep the slice self-consistent by dropping edges that reference a
+  // dropped node. An edge is kept only when BOTH endpoints survive.
+  const droppedNodeIds = new Set<string>();
+  const nodes = rawNodes.filter((node) => {
+    if (isExcludedGraphNode(node)) {
+      droppedNodeIds.add(node.id);
+      return false;
+    }
+    return true;
+  });
+  const keptEdges =
+    droppedNodeIds.size === 0
+      ? edges
+      : edges.filter(
+          (edge) => !droppedNodeIds.has(edge.src) && !droppedNodeIds.has(edge.dst),
+        );
   // Drop the raw meta_edges off the returned slice — it is now in `edges`.
   const { meta_edges: _folded, ...rest } = body as Rec;
   if (!metaEdges.length) {
-    return { ...(rest as object), edges } as GraphSlice;
+    return {
+      ...(rest as object),
+      nodes,
+      edges: keptEdges,
+      ...(clientTruncated ? { truncated: clientTruncated } : {}),
+    } as GraphSlice;
   }
   // Deduplicate by id: if an origin already inlined a meta-edge into `edges`
   // (same id as would be synthesized), the fold must not append a duplicate
-  // (provenance-stable-keys-are-identity-bearing: one edge per id per slice).
-  const existingIds = new Set(edges.map((e) => e.id));
-  const folded = metaEdges.map(metaEdgeToEdge).filter((e) => !existingIds.has(e.id));
+  // (provenance-stable-keys-are-identity-bearing: one edge per id per slice). A
+  // meta-edge whose endpoint was dropped above is also excluded for consistency.
+  const existingIds = new Set(keptEdges.map((e) => e.id));
+  const folded = metaEdges
+    .map(metaEdgeToEdge)
+    .filter(
+      (e) =>
+        !existingIds.has(e.id) &&
+        !droppedNodeIds.has(e.src) &&
+        !droppedNodeIds.has(e.dst),
+    );
   return {
     ...(rest as object),
-    edges: [...edges, ...folded],
+    nodes,
+    edges: [...keptEdges, ...folded],
+    ...(clientTruncated ? { truncated: clientTruncated } : {}),
   } as GraphSlice;
+}
+
+/**
+ * A node the frontend must never render as a knowledge node (ADR D5/D6): an `index`
+ * document, or a `code` artefact. Code is detected three ways for robustness across
+ * producer shapes — the `code:` id prefix, a `code` kind, or the `code-artifact`
+ * wire species — so a code node is dropped however it is labelled.
+ */
+function isExcludedGraphNode(node: EngineNode): boolean {
+  if (node.doc_type === "index") return true;
+  const kind = node.kind;
+  if (kind === "code" || kind === "code-artifact") return true;
+  if (typeof node.id === "string" && node.id.startsWith("code:")) return true;
+  return false;
 }
 
 // --- §3 dashboard state (dashboard-state-centralization W02) --------------------
@@ -398,7 +480,7 @@ function adaptLineageArc(value: unknown): LineageArc {
     };
   }
   const tierRaw = typeof value.tier === "string" ? value.tier : "";
-  const tier = (CANONICAL_TIERS as readonly string[]).includes(tierRaw)
+  const tier = (EDGE_TIER_ORDER as readonly string[]).includes(tierRaw)
     ? (tierRaw as LineageArc["tier"])
     : "structural";
   return {
@@ -1444,11 +1526,18 @@ export function adaptWorkspaces(body: unknown): WorkspacesState {
   };
 }
 
-/** Default a flat `{ key: value }` string map, dropping non-string values. */
+/** Keys that would mutate the prototype chain if mapped from an untrusted wire object
+ *  (JSON.parse makes `__proto__` an OWN enumerable key) — dropped defensively as a
+ *  prototype-pollution guard at the trust boundary. */
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** Default a flat `{ key: value }` string map, dropping non-string values AND
+ *  prototype-polluting keys (untrusted wire input). */
 function adaptStringMap(value: unknown): Record<string, string> {
   if (!isRec(value)) return {};
   const out: Record<string, string> = {};
   for (const [key, raw] of Object.entries(value)) {
+    if (UNSAFE_OBJECT_KEYS.has(key)) continue;
     if (typeof raw === "string") out[key] = raw;
   }
   return out;
@@ -1465,6 +1554,7 @@ export function adaptSettings(body: unknown): SettingsState {
   const scopedRaw = isRec(body.scoped) ? body.scoped : {};
   const scoped: Record<string, Record<string, string>> = {};
   for (const [scope, entries] of Object.entries(scopedRaw)) {
+    if (UNSAFE_OBJECT_KEYS.has(scope)) continue;
     scoped[scope] = adaptStringMap(entries);
   }
   return {
@@ -1971,7 +2061,12 @@ export function mergeNumstat(
 ): ChangedFile[] {
   return entries.map((e) => {
     const t = tallies.get(e.path);
-    return t ? { ...e, adds: t.adds, dels: t.dels } : e;
+    if (!t) return e;
+    // A numstat ROW with both tallies null is git's binary marker (`-\t-`). An
+    // entry with NO row (untracked) keeps null tallies but is NOT binary — the
+    // two states must read differently in the UI.
+    const binary = t.adds === null && t.dels === null;
+    return { ...e, adds: t.adds, dels: t.dels, binary };
   });
 }
 

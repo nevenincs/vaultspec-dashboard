@@ -398,9 +398,7 @@ export interface EngineNode {
   tier?: string;
   dates?: { created?: string; modified?: string };
   lifecycle?: { state: string; progress?: { done: number; total: number } };
-  degree_by_tier?: Partial<
-    Record<"declared" | "structural" | "temporal" | "semantic", number>
-  >;
+  degree_by_tier?: Partial<Record<"declared" | "structural" | "temporal", number>>;
   /**
    * Feature-convergence nodes only (constellation granularity, engine
    * addendum S02): how many documents converge on the feature. Drives the
@@ -496,7 +494,7 @@ export interface EngineEdge {
   relation: string;
   // No direction field on the wire: direction is carried entirely by
   // src→dst ordering (contract §4 as amended by engine audit W03P10-602).
-  tier: "declared" | "structural" | "temporal" | "semantic";
+  tier: "declared" | "structural" | "temporal";
   confidence: number;
   state?: "resolved" | "stale" | "broken";
   provenance?: string;
@@ -957,8 +955,8 @@ export interface LineageArc {
    *  node-semantics `derivation` field lands). */
   derivation?: string;
   /** Provenance tier wire name. The range lineage serves declared/structural/
-   *  temporal; semantic is present-only (excluded). */
-  tier: "declared" | "structural" | "temporal" | "semantic";
+   *  temporal; the engine never mints a semantic graph edge (ADR D3.5). */
+  tier: "declared" | "structural" | "temporal";
   /** Tier-calibrated, fixed-band confidence. */
   confidence: number;
 }
@@ -1268,6 +1266,10 @@ export interface ChangedFile {
   adds: number | null;
   /** numstat deletions; null for a binary file or an entry with no numstat row. */
   dels: number | null;
+  /** True when numstat reported the entry binary (`-\t-`) — distinct from an
+   *  untracked entry, which has no numstat row at all and leaves tallies null
+   *  WITHOUT being binary. Lets the UI label binary vs untracked honestly. */
+  binary?: boolean;
   /** True when the entry is under the `.vault/` corpus. */
   vault: boolean;
 }
