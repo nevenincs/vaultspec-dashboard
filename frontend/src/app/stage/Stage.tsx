@@ -185,7 +185,7 @@ export function Stage() {
       if (rect) scene.controller.resize(rect.width, rect.height);
     });
     observer.observe(host);
-    // Reversible teardown: on unmount, release the Cosmos canvas and listeners.
+    // Reversible teardown: on unmount, release the graph canvas and listeners.
     // The scene singleton survives; its renderer is rebuilt on the next mount.
     return () => {
       observer.disconnect();

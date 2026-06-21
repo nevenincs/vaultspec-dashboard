@@ -534,10 +534,8 @@ function TemporalBucketOverlay({ sceneData }: { sceneData: TemporalSceneResult }
 const CATEGORY_TOKENS = new Set<CategoryToken>([
   "adr",
   "audit",
-  "code",
   "exec",
   "feature",
-  "index",
   "plan",
   "research",
 ]);
@@ -546,7 +544,7 @@ function dotCategory(node: LineageNode | undefined): Category {
   const type = node?.doc_type;
   return type && CATEGORY_TOKENS.has(type as CategoryToken)
     ? (type as CategoryToken)
-    : "code";
+    : "reference";
 }
 
 function TimelineAxisLayer({
@@ -1073,7 +1071,7 @@ export function Timeline({ onNodeClick, overlay }: TimelineSurfaceProps = {}) {
           />
         )}
         {/* Central axis (binding board 239:714): ONE soft horizontal rule from the
-            label gutter to the right edge. It must sit ABOVE the Cosmos canvas,
+            label gutter to the right edge. It must sit ABOVE the graph canvas,
             otherwise the canvas ground hides the scaffold in the live renderer. */}
         <TimelineAxisLayer axisY={geom.axisY} width={width} height={chartHeight} />
         {!loading && !errored && hasMarks && (
