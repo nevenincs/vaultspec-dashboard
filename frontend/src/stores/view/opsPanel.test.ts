@@ -14,8 +14,8 @@ import {
 
 const ops: readonly OpsWhitelistEntry[] = [
   { target: "core", verb: "vault-check", label: "vault check" },
-  { target: "rag", verb: "service-start", label: "start rag" },
-  { target: "rag", verb: "service-stop", label: "stop rag" },
+  { target: "rag", verb: "server-start", label: "start rag" },
+  { target: "rag", verb: "server-stop", label: "stop rag" },
   { target: "rag", verb: "reindex", label: "reindex" },
 ];
 
@@ -42,8 +42,8 @@ describe("deriveOpsPanelView", () => {
 
     expect(view.verbs.map((op) => `${op.target}:${op.verb}`)).toEqual([
       "core:vault-check",
-      "rag:service-start",
-      "rag:service-stop",
+      "rag:server-start",
+      "rag:server-stop",
       "rag:reindex",
     ]);
   });
@@ -57,7 +57,7 @@ describe("deriveOpsPanelView", () => {
         null,
         ops,
       ).verbs.map((op) => op.verb),
-    ).toEqual(["vault-check", "service-start"]);
+    ).toEqual(["vault-check", "server-start"]);
 
     expect(
       deriveOpsPanelView(
@@ -67,7 +67,7 @@ describe("deriveOpsPanelView", () => {
         null,
         ops,
       ).verbs.map((op) => op.verb),
-    ).toEqual(["vault-check", "service-start"]);
+    ).toEqual(["vault-check", "server-start"]);
   });
 
   it("offers running-rag controls when rag is available", () => {
@@ -81,7 +81,7 @@ describe("deriveOpsPanelView", () => {
 
     expect(view.verbs.map((op) => op.verb)).toEqual([
       "vault-check",
-      "service-stop",
+      "server-stop",
       "reindex",
     ]);
   });
@@ -120,10 +120,8 @@ describe("deriveOpsControlMark", () => {
     expect(deriveOpsControlMark({ target: "core", verb: "vault-stats" })).toBe(
       "settings",
     );
-    expect(deriveOpsControlMark({ target: "rag", verb: "service-start" })).toBe("play");
-    expect(deriveOpsControlMark({ target: "rag", verb: "service-stop" })).toBe(
-      "square",
-    );
+    expect(deriveOpsControlMark({ target: "rag", verb: "server-start" })).toBe("play");
+    expect(deriveOpsControlMark({ target: "rag", verb: "server-stop" })).toBe("square");
     expect(deriveOpsControlMark({ target: "rag", verb: "reindex" })).toBe("refresh");
     expect(deriveOpsControlMark({ target: "rag", verb: "watcher-reconfigure" })).toBe(
       "settings",

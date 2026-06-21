@@ -155,7 +155,7 @@ describe("ops dispatch adoption (B-1)", () => {
         body: { type: "vault", clean: true },
       }),
     ).toBe(true);
-    expect(isOpsDispatchIntent({ target: "rag", verb: "service-start" })).toBe(true);
+    expect(isOpsDispatchIntent({ target: "rag", verb: "server-start" })).toBe(true);
     expect(
       isOpsDispatchIntent({ target: "rag", verb: "project-evict", mode: "write" }),
     ).toBe(false);
@@ -283,8 +283,8 @@ describe("ops dispatch adoption (B-1)", () => {
       }),
     ).toThrow("operation is not dispatch-whitelisted: rag:project-evict");
     expect(() =>
-      dispatchOps({ target: "rag", verb: "service-start", body: { extra: true } }),
-    ).toThrow("operation is not dispatch-whitelisted: rag:service-start");
+      dispatchOps({ target: "rag", verb: "server-start", body: { extra: true } }),
+    ).toThrow("operation is not dispatch-whitelisted: rag:server-start");
 
     expect(calls).toEqual([]);
   });

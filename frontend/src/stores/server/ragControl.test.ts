@@ -707,7 +707,7 @@ describe("rag job interpreters", () => {
       client.setQueryData(key, { ok: true });
     }
 
-    invalidateAfterRagOpsRun(client, scope, "service-start");
+    invalidateAfterRagOpsRun(client, scope, "server-start");
 
     for (const key of affectedKeys) {
       expect(client.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true);

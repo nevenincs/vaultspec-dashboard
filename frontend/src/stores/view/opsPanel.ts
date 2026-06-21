@@ -108,8 +108,8 @@ export function deriveOpsControlMark(
 ): OpsControlMark {
   if (op.target === "core" && op.verb === "vault-check") return "refresh";
   if (op.target === "core" && op.verb === "vault-stats") return "settings";
-  if (op.target === "rag" && op.verb === "service-start") return "play";
-  if (op.target === "rag" && op.verb === "service-stop") return "square";
+  if (op.target === "rag" && op.verb === "server-start") return "play";
+  if (op.target === "rag" && op.verb === "server-stop") return "square";
   if (op.target === "rag" && op.verb === "reindex") return "refresh";
   return "settings";
 }
@@ -143,7 +143,7 @@ function ragVerbVisible(rag: RagStatusView, verb: string): boolean {
   const ragKnown = !rag.loading && !rag.errored;
   if (!ragKnown) return true;
   const ragRunning = rag.running && !rag.degraded;
-  return verb === "service-start" ? !ragRunning : ragRunning;
+  return verb === "server-start" ? !ragRunning : ragRunning;
 }
 
 export function deriveOpsPanelView(

@@ -293,8 +293,8 @@ describe("ops whitelist (contract R1)", () => {
     expect(OPS_WHITELIST.map((o) => `${o.target}:${o.verb}`)).toEqual([
       "core:vault-check",
       "core:vault-stats",
-      "rag:service-start",
-      "rag:service-stop",
+      "rag:server-start",
+      "rag:server-stop",
       "rag:reindex",
       "rag:watcher-reconfigure",
     ]);

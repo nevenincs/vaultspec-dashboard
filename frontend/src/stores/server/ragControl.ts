@@ -532,7 +532,7 @@ export function invalidateAfterRagOpsRun(
   invalidateRagControlQueries(queryClient);
 
   if (normalizedScope === null) return;
-  if (verb !== "service-start" && verb !== "service-stop") return;
+  if (verb !== "server-start" && verb !== "server-stop") return;
 
   invalidateScopedSemanticReads(queryClient, normalizedScope);
 }

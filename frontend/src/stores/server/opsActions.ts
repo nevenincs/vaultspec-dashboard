@@ -53,15 +53,15 @@ export interface OpsWhitelistEntry {
 export const OPS_WHITELIST: readonly OpsWhitelistEntry[] = [
   { target: "core", verb: "vault-check", label: "vault check" },
   { target: "core", verb: "vault-stats", label: "vault stats" },
-  { target: "rag", verb: "service-start", label: "start rag" },
-  { target: "rag", verb: "service-stop", label: "stop rag" },
+  { target: "rag", verb: "server-start", label: "start rag" },
+  { target: "rag", verb: "server-stop", label: "stop rag" },
   { target: "rag", verb: "reindex", label: "reindex" },
   { target: "rag", verb: "watcher-reconfigure", label: "watcher tuning" },
 ];
 
 const OPS_RAG_CONTROL_VERBS = new Set([
-  "service-start",
-  "service-stop",
+  "server-start",
+  "server-stop",
   "reindex",
   "watcher-start",
   "watcher-stop",
@@ -222,8 +222,8 @@ function hasOnlyKeys(
 
 function isOpsRagControlBodyForVerb(verb: string, body: unknown): boolean {
   if (
-    verb === "service-start" ||
-    verb === "service-stop" ||
+    verb === "server-start" ||
+    verb === "server-stop" ||
     verb === "watcher-start" ||
     verb === "watcher-stop"
   ) {
