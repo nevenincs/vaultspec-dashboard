@@ -173,15 +173,6 @@
       "bindingKind": "surface"
     },
     {
-      "name": "Discover",
-      "source": "src/app/stage/Discover.tsx",
-      "designSurface": true,
-      "figmaNodeId": "635:3163",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=635-3163",
-      "figmaNodeName": null,
-      "bindingKind": "surface"
-    },
-    {
       "name": "Divider",
       "source": "src/app/kit/Divider.tsx",
       "designSurface": true,
@@ -189,6 +180,15 @@
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=155-102",
       "figmaNodeName": null,
       "bindingKind": "surface"
+    },
+    {
+      "name": "DocChrome",
+      "source": "src/app/viewer/DocChrome.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "DocHeader",
@@ -245,6 +245,15 @@
       "bindingKind": "primitive"
     },
     {
+      "name": "FeatureSearchField",
+      "source": "src/app/left/FeatureSearchField.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
       "name": "FilterMenu",
       "source": "src/app/stage/FilterMenu.tsx",
       "designSurface": true,
@@ -272,15 +281,6 @@
       "bindingKind": "surface"
     },
     {
-      "name": "FrontmatterHeader",
-      "source": "src/app/viewer/FrontmatterHeader.tsx",
-      "designSurface": true,
-      "figmaNodeId": "636:1920",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=636-1920",
-      "figmaNodeName": null,
-      "bindingKind": "surface"
-    },
-    {
       "name": "GraphCanvasHost",
       "source": "src/app/stage/GraphCanvasHost.tsx",
       "designSurface": false,
@@ -290,13 +290,13 @@
       "bindingKind": null
     },
     {
-      "name": "GraphNavButtons",
+      "name": "GraphNavControls",
       "source": "src/app/stage/GraphControls.tsx",
       "designSurface": true,
-      "figmaNodeId": "88:2",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=88-2",
-      "figmaNodeName": "graph/Settings popover",
-      "bindingKind": "surface"
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "GraphPanel",
@@ -308,13 +308,13 @@
       "bindingKind": null
     },
     {
-      "name": "GraphSettingsPopover",
+      "name": "GraphSettingsPanel",
       "source": "src/app/stage/GraphControls.tsx",
       "designSurface": true,
-      "figmaNodeId": "88:2",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=88-2",
-      "figmaNodeName": "graph/Settings popover",
-      "bindingKind": "surface"
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "HoverCard",
@@ -407,29 +407,11 @@
       "bindingKind": "surface"
     },
     {
-      "name": "LayoutSelector",
-      "source": "src/app/stage/LensSelector.tsx",
-      "designSurface": true,
-      "figmaNodeId": "635:2524",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=635-2524",
-      "figmaNodeName": null,
-      "bindingKind": "surface"
-    },
-    {
       "name": "LeftRail",
       "source": "src/app/left/LeftRail.tsx",
       "designSurface": true,
       "figmaNodeId": "244:750",
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=244-750",
-      "figmaNodeName": null,
-      "bindingKind": "surface"
-    },
-    {
-      "name": "LensSelector",
-      "source": "src/app/stage/LensSelector.tsx",
-      "designSurface": true,
-      "figmaNodeId": "635:2531",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=635-2531",
       "figmaNodeName": null,
       "bindingKind": "surface"
     },
@@ -551,6 +533,33 @@
       "bindingKind": "surface"
     },
     {
+      "name": "RailDegraded",
+      "source": "src/app/right/railStates.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "RailDegradedNotice",
+      "source": "src/app/left/railStates.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "RailEmpty",
+      "source": "src/app/right/railStates.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
       "name": "RailFilterField",
       "source": "src/app/left/RailFilterField.tsx",
       "designSurface": true,
@@ -560,13 +569,40 @@
       "bindingKind": "surface"
     },
     {
-      "name": "RailTabs",
-      "source": "src/app/right/RailTabs.tsx",
+      "name": "RailLoading",
+      "source": "src/app/right/railStates.tsx",
       "designSurface": true,
-      "figmaNodeId": "319:1058",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=319-1058",
+      "figmaNodeId": null,
+      "figmaUrl": null,
       "figmaNodeName": null,
-      "bindingKind": "surface"
+      "bindingKind": null
+    },
+    {
+      "name": "RailMessage",
+      "source": "src/app/left/railStates.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "RailSection",
+      "source": "src/app/chrome/RailSection.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "RailSkeleton",
+      "source": "src/app/left/railStates.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "RangeSelect",
@@ -587,13 +623,22 @@
       "bindingKind": "surface"
     },
     {
-      "name": "SearchTab",
-      "source": "src/app/right/SearchTab.tsx",
+      "name": "SearchPaletteSurface",
+      "source": "src/app/palette/SearchPaletteSurface.tsx",
       "designSurface": true,
-      "figmaNodeId": "610:1914",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=610-1914",
-      "figmaNodeName": "ActivityRail / Search",
-      "bindingKind": "surface"
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
+    },
+    {
+      "name": "SearchResultPill",
+      "source": "src/app/palette/SearchResultPill.tsx",
+      "designSurface": true,
+      "figmaNodeId": null,
+      "figmaUrl": null,
+      "figmaNodeName": null,
+      "bindingKind": null
     },
     {
       "name": "SectionLabel",
@@ -659,15 +704,6 @@
       "bindingKind": "surface"
     },
     {
-      "name": "StageNavBar",
-      "source": "src/app/stage/StageNavBar.tsx",
-      "designSurface": true,
-      "figmaNodeId": null,
-      "figmaUrl": null,
-      "figmaNodeName": null,
-      "bindingKind": null
-    },
-    {
       "name": "StatusDot",
       "source": "src/app/kit/StatusDot.tsx",
       "designSurface": true,
@@ -729,15 +765,6 @@
       "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=136-30",
       "figmaNodeName": "SearchField",
       "bindingKind": "primitive"
-    },
-    {
-      "name": "TierDial",
-      "source": "src/app/stage/TierDial.tsx",
-      "designSurface": true,
-      "figmaNodeId": "636:1973",
-      "figmaUrl": "https://www.figma.com/design/SlhonORmySdoSMTQgDWw3w?node-id=636-1973",
-      "figmaNodeName": null,
-      "bindingKind": "surface"
     },
     {
       "name": "Timeline",
