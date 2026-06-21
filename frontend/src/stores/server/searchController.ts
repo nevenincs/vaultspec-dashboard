@@ -3,7 +3,8 @@
 // lives, where the degradation truth is READ from the §2 tiers block, where the
 // text-match fallback is decided, and where each result carries its graph node
 // id for stage click-through. It has NO pixels: its "UI/UX requirements" are the
-// honest TRUTHS it exposes so the consuming view (SearchTab) renders correctly.
+// honest TRUTHS it exposes so the consuming view (the Cmd-K search palette,
+// `SearchPaletteSurface`) renders correctly.
 //
 // Boundary correction (dashboard-layer-ownership / search ADR "Layer ownership"):
 // the rag-down fallback previously lived under `frontend/src/app/right/`, the
@@ -402,10 +403,10 @@ export function searchResultKeyboardFocusDelta(key: unknown): -1 | 1 | null {
 }
 
 /**
- * Presentation facts derived from the interpreted controller state. SearchTab is
- * dumb chrome: it renders this view instead of recomputing result visibility,
- * roving-tab entry, idle/no-results state, and live-region copy beside the
- * controller.
+ * Presentation facts derived from the interpreted controller state. The search
+ * palette surface is dumb chrome: it renders this view instead of recomputing
+ * result visibility, roving-tab entry, idle/no-results state, and live-region
+ * copy beside the controller.
  */
 export function deriveSearchPresentationView(
   query: unknown,
@@ -798,9 +799,7 @@ export function mergeUnifiedSearch(
   code: SearchControllerView,
   retry: () => void,
 ): UnifiedSearchView {
-  const ranked = [...vault.results, ...code.results].sort(
-    (a, b) => b.score - a.score,
-  );
+  const ranked = [...vault.results, ...code.results].sort((a, b) => b.score - a.score);
   const seen = new Set<string>();
   const results: SearchResult[] = [];
   for (const result of ranked) {
