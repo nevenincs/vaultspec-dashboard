@@ -101,6 +101,11 @@ const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
 // Bounded GL-context-restore retries (bounded-by-default): after this many failed rebuilds
 // on webglcontextrestored, the scene reports render-unavailable (recoverable:false).
 const MAX_GL_RESTORE_ATTEMPTS = 3;
+// Defense-in-depth node ceiling for set-data (Rule 2: every CLIENT wire-ingestion point
+// bounds + reports, never trusting the upstream cap). Mirrors the stores adapter's
+// MAX_CLIENT_GRAPH_NODES (20000) — set well above any real graph; the scene clamps its OWN
+// boundary so an oversized/regressed/direct payload can't exhaust GPU memory.
+const MAX_SCENE_NODES = 20000;
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -671,6 +676,20 @@ export class ThreeField implements SceneFieldRenderer {
 
   private setData(nodes: SceneNodeData[], edges: SceneEdgeData[]): void {
     if (!this.renderer) return;
+
+    // Defense-in-depth: bound the node payload at the scene's OWN wire-ingestion boundary
+    // (Rule 2). The stores adapter already clamps to MAX_CLIENT_GRAPH_NODES, but the scene
+    // independently caps so a direct/regressed/oversized set-data can't exhaust GPU memory;
+    // it reports honest truncation. Edges among dropped nodes are skipped automatically (the
+    // index below only holds the kept nodes).
+    if (nodes.length > MAX_SCENE_NODES) {
+      this.controller?.emit({
+        kind: "graph-truncated",
+        shown: MAX_SCENE_NODES,
+        total: nodes.length,
+      });
+      nodes = nodes.slice(0, MAX_SCENE_NODES);
+    }
 
     // Warm-start (object constancy): capture the PRIOR layout by id BEFORE teardown,
     // so nodes that persist across this set-data resume from where they were instead

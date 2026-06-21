@@ -311,6 +311,14 @@ export type SceneEvent =
       recoverable: boolean;
       reason?: string;
     }
+  // --- graph payload truncation (memory hardening) ---------------------------
+  /**
+   * Emitted when the scene defensively clamps an oversized set-data payload at its OWN
+   * wire-ingestion boundary (Rule 2 — bound + report, never trust the upstream cap). The
+   * stores adapter already caps below this so it normally never fires; the stores layer can
+   * surface honest truncation ("showing N of M") if it ever does.
+   */
+  | { kind: "graph-truncated"; shown: number; total: number }
   // --- graph-representation addenda (W03.P08) -------------------------------
   /**
    * Emitted after a set-representation-mode is applied. Carries the mode the
