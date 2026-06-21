@@ -318,6 +318,38 @@ fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
          (ADR D5/D6): {feature_graph}"
     );
 
+    // Content-level retarget proof (D6-surviving): with the `src/new.rs` code edge
+    // correctly pruned from the documents-only slice, the graph query no longer
+    // carries a divergence, so prove the retarget by the plan DOCUMENT's BODY,
+    // which genuinely differs between worktrees — the feature branch's plan adds
+    // the `src/new.rs` mention to the SAME doc main's plan lacks. Fetching the
+    // plan content per scope proves the read retargeted to THAT worktree's bytes,
+    // independent of the (correctly-pruned) code-artifact edge.
+    let plan_content_path = |scope: &str| {
+        format!(
+            "/nodes/{}/content?scope={}",
+            urlencode("doc:2026-06-12-e2e-plan"),
+            urlencode(scope),
+        )
+    };
+    let (status, feature_plan) = http_get(8823, &plan_content_path(&feature_scope), &token);
+    assert_eq!(status, 200, "feature plan content served: {feature_plan}");
+    assert!(
+        feature_plan["data"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("src/new.rs")),
+        "the FEATURE worktree's plan body carries the branch-only `src/new.rs` \
+         mention — the read retargeted to that worktree's bytes: {feature_plan}"
+    );
+    let (status, main_plan) = http_get(8823, &plan_content_path(&main_scope), &token);
+    assert_eq!(status, 200, "main plan content served: {main_plan}");
+    assert!(
+        main_plan["data"]["text"]
+            .as_str()
+            .is_some_and(|t| !t.contains("src/new.rs")),
+        "main's plan body does NOT carry `src/new.rs` (it is branch-only): {main_plan}"
+    );
+
     // Per-scope clocks are independent: each scope's /vault-tree serves its own
     // doc set, and a `since=0` stream resume against the FEATURE scope replays
     // the feature cell's OWN deltas (its cold-index keyframe), not main's.
