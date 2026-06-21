@@ -106,6 +106,10 @@ const MAX_GL_RESTORE_ATTEMPTS = 3;
 // MAX_CLIENT_GRAPH_NODES (20000) — set well above any real graph; the scene clamps its OWN
 // boundary so an oversized/regressed/direct payload can't exhaust GPU memory.
 const MAX_SCENE_NODES = 20000;
+// FPS-adaptive LOD hysteresis band (perf hardening): degrade above a ~25fps-equivalent
+// per-frame render cost, restore below ~45fps — the gap prevents flapping between tiers.
+const PERF_DEGRADE_MS = 40;
+const PERF_RESTORE_MS = 22;
 
 /** 0xRRGGBB int → a CSS "#rrggbb" string for canvas-2D (minimap) fills/strokes. */
 function hexCss(n: number): string {
@@ -317,6 +321,9 @@ export class ThreeField implements SceneFieldRenderer {
   private raf = 0;
   // GL-context-restore attempt counter (bounded retry on webglcontextrestored).
   private glRestoreAttempts = 0;
+  // FPS-adaptive LOD (perf hardening): EMA of render cost + a hysteresis-gated degraded flag.
+  private frameMsEma = 0;
+  private perfDegraded = false;
 
   private width = 1;
   private height = 1;
@@ -591,7 +598,7 @@ export class ThreeField implements SceneFieldRenderer {
   command(cmd: SceneCommand): void {
     switch (cmd.kind) {
       case "set-data":
-        this.setData(cmd.nodes, cmd.edges);
+        this.setData(cmd.nodes, cmd.edges, cmd.reflow ?? false);
         break;
       case "set-selected":
         this.selectedIds = new Set(cmd.ids);
@@ -674,7 +681,11 @@ export class ThreeField implements SceneFieldRenderer {
 
   // --- data ----------------------------------------------------------------
 
-  private setData(nodes: SceneNodeData[], edges: SceneEdgeData[]): void {
+  private setData(
+    nodes: SceneNodeData[],
+    edges: SceneEdgeData[],
+    reflow = false,
+  ): void {
     if (!this.renderer) return;
 
     // Defense-in-depth: bound the node payload at the scene's OWN wire-ingestion boundary
@@ -790,7 +801,15 @@ export class ThreeField implements SceneFieldRenderer {
         cy += p.y;
       }
     }
-    const warm = nodes.length > 0 && carried >= 0.5 * nodes.length;
+    // A FILTER-driven reflow (set-data carrying `reflow`) warm-starts whenever ANY node
+    // carries over: a removal drops the filtered-out nodes and the carried survivors
+    // re-form in place; a re-add seeds the returning nodes by their carried neighbours.
+    // It deliberately bypasses the >=half cold gate (a filter that hides most nodes must
+    // NOT re-explode + refit) and preserves the user's camera. A pure data update keeps
+    // the >=half object-constancy gate.
+    const warm = reflow
+      ? nodes.length > 0 && carried > 0
+      : nodes.length > 0 && carried >= 0.5 * nodes.length;
     if (warm) {
       const centroid = { x: cx / carried, y: cy / carried };
       this.solver.seed((i) => {
@@ -1272,9 +1291,36 @@ export class ThreeField implements SceneFieldRenderer {
       dirty = true;
     }
 
-    if (dirty) this.renderFrame();
+    if (dirty) {
+      const t0 = performance.now();
+      this.renderFrame();
+      this.updatePerfLod(performance.now() - t0);
+    }
     if (this.running || this.needsRender) this.wake();
   };
+
+  /**
+   * FPS-adaptive LOD (perf hardening #5). Tracks an EMA of render cost and, with hysteresis
+   * so it can't flap, degrades quality when frames get slow — covering the two-tier software
+   * fallback (a fill-bound software-WebGL context on a large graph). Two clean levers: halve
+   * the device-pixel-ratio (~4x fewer fragments — the biggest lever for fill-bound rendering,
+   * no flicker, no filter conflict) and quarter the label budget (the per-frame 2D-overlay
+   * cost, see drawLabels). Heavier tiers (salience-ordered node-draw cap, instancing
+   * reduction) are a follow-on if these prove insufficient.
+   */
+  private updatePerfLod(frameMs: number): void {
+    this.frameMsEma =
+      this.frameMsEma === 0 ? frameMs : this.frameMsEma * 0.8 + frameMs * 0.2;
+    const wasDegraded = this.perfDegraded;
+    if (!this.perfDegraded && this.frameMsEma > PERF_DEGRADE_MS)
+      this.perfDegraded = true;
+    else if (this.perfDegraded && this.frameMsEma < PERF_RESTORE_MS)
+      this.perfDegraded = false;
+    if (this.perfDegraded !== wasDegraded && this.renderer) {
+      this.renderer.setPixelRatio(this.perfDegraded ? Math.min(1, this.dpr) : this.dpr);
+      this.needsRender = true;
+    }
+  }
 
   private renderFrame(): void {
     if (!this.renderer) return;
@@ -1409,7 +1455,10 @@ export class ThreeField implements SceneFieldRenderer {
     const docFont = labelTextStyle("document").font;
     const inkMuted = `#${inkMutedColor().toString(16).padStart(6, "0")}`;
     ctx.textBaseline = "middle";
-    let budget = LABEL_BUDGET; // clutter cap
+    // FPS-adaptive LOD: quarter the label clutter cap when frames are slow (updatePerfLod).
+    let budget = this.perfDegraded
+      ? Math.max(24, Math.floor(LABEL_BUDGET / 4))
+      : LABEL_BUDGET; // clutter cap
     for (let i = 0; i < this.nodes.length && budget > 0; i++) {
       const node = this.nodes[i];
       if (!this.labelVisible(node, level)) continue;
