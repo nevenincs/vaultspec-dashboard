@@ -331,6 +331,16 @@ pub fn neighbors(
         .filter_map(|node_id| graph.node(&NodeId(node_id.clone())).cloned())
         .collect();
     nodes.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+    // #13 mis-resolved-edge prune (2026-06-22, product decision (b)): drop any edge
+    // whose endpoint is not a materialized graph node, mirroring the document slice's
+    // `endpoint_ok` (graph.rs). A step mention derives its target from the bare mention
+    // text (`plan:W01.P01.S01`), which can never match a real plan-container step node
+    // (`plan:<stem>/W01/P02/S03`) — a phantom; a broken wiki-link (`doc:<missing-stem>`)
+    // and a temporal `commit:<sha>` endpoint are likewise non-materialized. The client
+    // `buildEdges` filters such dangling edges anyway, so serving them is pure wire-waste
+    // the user directed us never to send (2026-06-21). The center is always materialized
+    // (`graph.node(id)?` above), so it is never pruned.
+    edges.retain(|e| graph.node(&e.src).is_some() && graph.node(&e.dst).is_some());
     edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
     Some(EgoSlice {
         center: id.clone(),
@@ -553,7 +563,14 @@ mod tests {
     fn neighbors_respect_depth_and_tier_filters() {
         let (g, a) = fixture();
         let one_hop = neighbors(&g, &a, 1, &[]).unwrap();
-        assert_eq!(one_hop.edges.len(), 2, "a's direct edges");
+        // a—structural→b is kept; the commit—temporal→a edge is DROPPED because its
+        // `commit:<sha>` endpoint is not a materialized graph node (#13 prune, 2026-06-22:
+        // the ego serves only edges between real nodes, mirroring the document slice).
+        assert_eq!(
+            one_hop.edges.len(),
+            1,
+            "only a's edge to a real node (commit pruned)"
+        );
         assert!(!one_hop.nodes.iter().any(|n| n.key == "c-far"));
 
         let two_hops = neighbors(&g, &a, 2, &[]).unwrap();
@@ -569,6 +586,67 @@ mod tests {
         assert_eq!(structural_only.edges.len(), 1);
 
         assert!(neighbors(&g, &NodeId("doc:nope".into()), 1, &[]).is_none());
+    }
+
+    #[test]
+    fn neighbors_prunes_edges_to_unmaterialized_phantom_targets() {
+        // #13 (2026-06-22, product decision (b)): a step-mention edge derives its target
+        // from the bare mention text (`plan:W01.P01.S01`), which never matches a real
+        // plan-container step node (`plan:<stem>/W01/P02/S03`), so it dangles to a
+        // phantom the ego must NOT serve (the client `buildEdges` filters it anyway;
+        // user directive: never send a filtered-out edge). A mention to a REAL doc is kept.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("a-plan"));
+        g.upsert_node(doc("b-adr"));
+        let a = node_id(&CanonicalKey::Document { stem: "a-plan" });
+        let b = node_id(&CanonicalKey::Document { stem: "b-adr" });
+        let phantom = NodeId("plan:W01.P01.S01".into()); // never upserted: a phantom
+        engine_graph::ingest(
+            &mut g,
+            edge(
+                &a,
+                &b,
+                Tier::Structural,
+                Provenance::DocumentBody {
+                    blob_hash: "h".into(),
+                    span: (0, 1),
+                    target: "b-adr".into(),
+                },
+                0.9,
+            ),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        engine_graph::ingest(
+            &mut g,
+            edge(
+                &a,
+                &phantom,
+                Tier::Structural,
+                Provenance::DocumentBody {
+                    blob_hash: "h".into(),
+                    span: (2, 3),
+                    target: "W01.P01.S01".into(),
+                },
+                0.9,
+            ),
+            EdgeAttrs::default(),
+        )
+        .unwrap();
+        let ego = neighbors(&g, &a, 1, &[]).unwrap();
+        assert_eq!(
+            ego.edges.len(),
+            1,
+            "phantom-target edge pruned, real edge kept"
+        );
+        assert!(
+            ego.edges.iter().all(|e| e.dst != phantom),
+            "no served edge points at the phantom target"
+        );
+        assert!(
+            !ego.nodes.iter().any(|n| n.id == phantom),
+            "the phantom is never materialized as a node"
+        );
     }
 
     #[test]
