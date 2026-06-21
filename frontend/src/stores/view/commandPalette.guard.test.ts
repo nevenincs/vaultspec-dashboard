@@ -24,6 +24,7 @@ import "./commandProviders/timelineCommandProvider";
 import "./commandProviders/editorCommandProvider";
 import "./commandProviders/settingsCommandProvider";
 import "./commandProviders/opsCommandProvider";
+import "./commandProviders/reloadCommandProvider";
 
 const noop = () => undefined;
 function commandContext(): CommandContext {

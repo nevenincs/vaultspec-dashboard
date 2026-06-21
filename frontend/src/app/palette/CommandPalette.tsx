@@ -286,6 +286,9 @@ function CommandPaletteSurface() {
                       >
                         <span className={row.labelClassName}>{row.label}</span>
                         <span className="flex items-center gap-fg-2 text-label text-ink-faint">
+                          {row.accelerator && !row.armed && (
+                            <Kbd>{row.accelerator}</Kbd>
+                          )}
                           {row.confirmShortcutLabel && (
                             <span
                               className="rounded-fg-xs border border-rule px-fg-1 py-fg-0-5 font-mono text-caption"

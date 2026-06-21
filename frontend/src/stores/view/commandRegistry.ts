@@ -27,16 +27,37 @@ import {
 } from "../../platform/actions/action";
 import type { KeybindingOverrides } from "../../platform/keymap/registry";
 
-/** The command families, ordered as they group in the list. The full taxonomy is
- *  extended in the actions wave; this is the set the providers group by today. */
-export type CommandFamily = "navigate" | "filters" | "window" | "core" | "rag" | "app";
+/** The canonical command-family taxonomy (command-palette-actions ADR): every
+ *  surface enrolls its verbs under one of these. `navigate`/`focus` move the view;
+ *  `filters`/`window` adjust the workspace; `edit` is the document lifecycle;
+ *  `reload` is the refresh/reindex family; `settings`/`search`/`help` are app planes;
+ *  `core`/`rag` are the backend ops targets; `app` is the catch-all. */
+export type CommandFamily =
+  | "navigate"
+  | "filters"
+  | "focus"
+  | "window"
+  | "edit"
+  | "reload"
+  | "settings"
+  | "search"
+  | "core"
+  | "rag"
+  | "help"
+  | "app";
 
 const COMMAND_FAMILIES = new Set<CommandFamily>([
   "navigate",
   "filters",
+  "focus",
   "window",
+  "edit",
+  "reload",
+  "settings",
+  "search",
   "core",
   "rag",
+  "help",
   "app",
 ]);
 

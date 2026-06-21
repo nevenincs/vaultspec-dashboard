@@ -431,6 +431,18 @@ export function refreshAfterAcceptedScopeSwitch(queryClient: QueryClient): void 
   invalidateScopedEngineQueries(queryClient);
 }
 
+/**
+ * Re-fetch the engine data on demand (the command-palette reload/refresh family):
+ * invalidate the map, status, and every scoped engine query so the next read pulls
+ * fresh data from the engine. A client-side refresh — it touches no backend mutation
+ * verb, so it is safe in time-travel and needs no confirm guard.
+ */
+export function refreshAllEngineQueries(): void {
+  void defaultQueryClient.invalidateQueries({ queryKey: engineKeys.map() });
+  void defaultQueryClient.invalidateQueries({ queryKey: engineKeys.status() });
+  invalidateScopedEngineQueries(defaultQueryClient);
+}
+
 export function refreshAfterAcceptedWorkspaceSwitch(queryClient: QueryClient): void {
   queryClient.removeQueries({ queryKey: engineKeys.map() });
   removeScopedEngineQueries(queryClient);

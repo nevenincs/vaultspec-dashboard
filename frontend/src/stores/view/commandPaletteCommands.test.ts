@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { registerKeybindings, resetKeybindings } from "../../platform/keymap/registry";
+import { setIsMacForTesting } from "../../platform/keymap/chord";
 import {
   buildEditorCommands,
+  deriveCommandAccelerators,
   buildGraphCommands,
   buildLeftRailCommands,
   buildSettingsCommands,
@@ -390,5 +393,52 @@ describe("command palette command projection", () => {
         armedCommandId: "ops:rag:reindex",
       }),
     ).toEqual({ clearArmedCommandId: false, disarm: true });
+  });
+});
+
+describe("deriveCommandAccelerators", () => {
+  afterEach(() => {
+    resetKeybindings();
+    setIsMacForTesting(null);
+  });
+
+  it("derives the inline accelerator from the keymap registry by shared id", () => {
+    setIsMacForTesting(false);
+    registerKeybindings([
+      {
+        id: "left-rail:new-document",
+        defaultChord: "Mod+Alt+N",
+        label: "New document",
+        group: "Left rail",
+        context: "left-rail",
+      },
+    ]);
+    const [withChord, withoutChord] = deriveCommandAccelerators(
+      [
+        command("left-rail:new-document", { family: "app" }),
+        command("graph:fit", { family: "navigate" }),
+      ],
+      {},
+    );
+    expect(withChord.accelerator).toBe("Ctrl+Alt+N");
+    expect(withoutChord.accelerator).toBeUndefined();
+  });
+
+  it("reflects an effective override over the default chord", () => {
+    setIsMacForTesting(false);
+    registerKeybindings([
+      {
+        id: "left-rail:new-document",
+        defaultChord: "Mod+Alt+N",
+        label: "New document",
+        group: "Left rail",
+        context: "left-rail",
+      },
+    ]);
+    const [derived] = deriveCommandAccelerators(
+      [command("left-rail:new-document", { family: "app" })],
+      { "left-rail:new-document": "Mod+Shift+N" },
+    );
+    expect(derived.accelerator).toBe("Ctrl+Shift+N");
   });
 });

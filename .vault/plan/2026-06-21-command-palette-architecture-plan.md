@@ -175,36 +175,36 @@ Complete the UI-action taxonomy across surfaces, derive inline accelerators from
 
 Extend the family taxonomy and derive every command inline accelerator from the keymap registry.
 
-- [ ] `W03.P07.S28` - extend the CommandFamily taxonomy to the full standard set; `frontend/src/stores/view/commandPaletteCommands.ts`.
-- [ ] `W03.P07.S29` - carry the live keybinding map in CommandContext and derive accelerators; `frontend/src/platform/actions/commandRegistry.ts`.
-- [ ] `W03.P07.S30` - render inline accelerators in the presentation view; `frontend/src/stores/view/commandPaletteCommands.ts`.
-- [ ] `W03.P07.S31` - test accelerator derivation from the keymap registry; `frontend/src/stores/view/commandPaletteCommands.test.ts`.
+- [x] `W03.P07.S28` - extend the CommandFamily taxonomy to the full standard set; `frontend/src/stores/view/commandPaletteCommands.ts`.
+- [x] `W03.P07.S29` - carry the live keybinding map in CommandContext and derive accelerators; `frontend/src/platform/actions/commandRegistry.ts`.
+- [x] `W03.P07.S30` - render inline accelerators in the presentation view; `frontend/src/stores/view/commandPaletteCommands.ts`.
+- [x] `W03.P07.S31` - test accelerator derivation from the keymap registry; `frontend/src/stores/view/commandPaletteCommands.test.ts`.
 
 ### Phase `W03.P08` - enroll the missing UI verbs across surfaces
 
 Close the research F5 gap list, enrolling each missing verb as a provider entry and a KeybindingDef where bindable.
 
-- [ ] `W03.P08.S32` - enroll the focus-filter-field verb and its KeybindingDef; `frontend/src/stores/view/leftRailKeybindings.ts`.
-- [ ] `W03.P08.S33` - enroll the clear-filter verb; `frontend/src/stores/view/leftRailKeybindings.ts`.
-- [ ] `W03.P08.S34` - enroll the expand-tree verb against the live key set; `frontend/src/stores/view/leftRailKeybindings.ts`.
-- [ ] `W03.P08.S35` - enroll the pin and unpin node verb; `frontend/src/app/stage/menus/graphNodeMenu.ts`.
-- [ ] `W03.P08.S36` - enroll the open-island and focus-node verb; `frontend/src/app/stage/menus/graphNodeMenu.ts`.
-- [ ] `W03.P08.S37` - enroll the save-body editor verb via a store-reachable intent; `frontend/src/stores/view/editorKeybindings.ts`.
-- [ ] `W03.P08.S38` - enroll the rename-document editor verb; `frontend/src/stores/view/editorKeybindings.ts`.
-- [ ] `W03.P08.S39` - enroll the edit-mode toggle verb; `frontend/src/stores/view/editorKeybindings.ts`.
-- [ ] `W03.P08.S40` - enroll the reveal-in-file-manager verb; `frontend/src/app/menus/sharedActions.ts`.
-- [ ] `W03.P08.S41` - enroll the open-in-editor verb; `frontend/src/app/menus/sharedActions.ts`.
-- [ ] `W03.P08.S42` - enroll the copy path and id verb; `frontend/src/app/menus/sharedActions.ts`.
-- [ ] `W03.P08.S43` - enroll the neighbor-cycle and feature-cycle verbs; `frontend/src/stores/view/keyboardNavigation.ts`.
+- [x] `W03.P08.S32` - enroll the focus-filter-field verb and its KeybindingDef; `frontend/src/stores/view/leftRailKeybindings.ts`.
+- [x] `W03.P08.S33` - enroll the clear-filter verb; `frontend/src/stores/view/leftRailKeybindings.ts`.
+- [x] `W03.P08.S34` - enroll the expand-tree verb against the live key set; `frontend/src/stores/view/leftRailKeybindings.ts`.
+- [x] `W03.P08.S35` - enroll the pin and unpin node verb; `frontend/src/app/stage/menus/graphNodeMenu.ts`.
+- [x] `W03.P08.S36` - enroll the open-island and focus-node verb; `frontend/src/app/stage/menus/graphNodeMenu.ts`.
+- [x] `W03.P08.S37` - enroll the save-body editor verb via a store-reachable intent; `frontend/src/stores/view/editorKeybindings.ts`.
+- [x] `W03.P08.S38` - enroll the rename-document editor verb; `frontend/src/stores/view/editorKeybindings.ts`.
+- [x] `W03.P08.S39` - enroll the edit-mode toggle verb; `frontend/src/stores/view/editorKeybindings.ts`.
+- [x] `W03.P08.S40` - enroll the reveal-in-file-manager verb; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W03.P08.S41` - enroll the open-in-editor verb; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W03.P08.S42` - enroll the copy path and id verb; `frontend/src/app/menus/sharedActions.ts`.
+- [x] `W03.P08.S43` - enroll the neighbor-cycle and feature-cycle verbs; `frontend/src/stores/view/keyboardNavigation.ts`.
 
 ### Phase `W03.P09` - backend verb feed providers
 
 Replace the ops whitelist branch with an ops provider, add the reload and refresh family, and derive settings commands from the schema.
 
-- [ ] `W03.P09.S44` - replace the OPS_WHITELIST branch with an ops command provider; `frontend/src/stores/view/commandProviders/opsCommandProvider.ts`.
-- [ ] `W03.P09.S45` - add the reload and refresh family wired to ops and rag-control; `frontend/src/stores/view/commandProviders/opsCommandProvider.ts`.
-- [ ] `W03.P09.S46` - derive settings quick-toggle commands from the served schema; `frontend/src/stores/view/commandProviders/settingsCommandProvider.ts`.
-- [ ] `W03.P09.S47` - test the ops and settings providers; `frontend/src/stores/view/commandProviders/opsCommandProvider.test.ts`.
+- [x] `W03.P09.S44` - replace the OPS_WHITELIST branch with an ops command provider; `frontend/src/stores/view/commandProviders/opsCommandProvider.ts`.
+- [x] `W03.P09.S45` - add the reload and refresh family wired to ops and rag-control; `frontend/src/stores/view/commandProviders/opsCommandProvider.ts`.
+- [x] `W03.P09.S46` - derive settings quick-toggle commands from the served schema; `frontend/src/stores/view/commandProviders/settingsCommandProvider.ts`.
+- [x] `W03.P09.S47` - test the ops and settings providers; `frontend/src/stores/view/commandProviders/opsCommandProvider.test.ts`.
 
 ## Wave `W04` - verify, review, and codify
 

@@ -41,6 +41,12 @@ import {
 import { useGraphControlsFrozen } from "./graphControlsChrome";
 import { getKeymapOverrides } from "./keymapDispatcher";
 import {
+  type KeybindingOverrides,
+  effectiveChord,
+  getKeybinding,
+} from "../../platform/keymap/registry";
+import { chordToKeycaps } from "../../platform/keymap/chord";
+import {
   orderedTimelineDateInputRange,
   timelineCorpusFitKey,
   timelineViewSnapshot,
@@ -73,9 +79,15 @@ export type PaletteCommand = CommandDescriptor;
 export const FAMILY_LABEL: Record<CommandFamily, string> = {
   navigate: "navigate",
   filters: "filters",
+  focus: "focus",
   window: "window",
+  edit: "edit",
+  reload: "reload",
+  settings: "settings",
+  search: "search",
   core: "core ops",
   rag: "rag ops",
+  help: "help",
   app: "app",
 };
 
@@ -407,6 +419,27 @@ export function gateCommandsForTimeTravel(
   return commands.filter((command) => command.disabledInTimeTravel !== true);
 }
 
+/**
+ * Derive each command's inline accelerator from the ONE keymap registry by shared
+ * action id (command-palette-actions ADR): a command whose id matches a registered
+ * `KeybindingDef` gets that binding's EFFECTIVE chord (defaults <- overrides),
+ * rendered as keycaps. The accelerator is never hand-typed on the command, so the
+ * palette, the legend, and the live handler cannot drift
+ * (keyboard-shortcuts-bind-through-the-one-keymap-registry). Commands with no
+ * binding are returned unchanged.
+ */
+export function deriveCommandAccelerators(
+  commands: readonly PaletteCommand[],
+  overrides: KeybindingOverrides,
+): PaletteCommand[] {
+  return commands.map((command) => {
+    const def = getKeybinding(command.id);
+    if (def === undefined) return command;
+    const accelerator = chordToKeycaps(effectiveChord(def, overrides)).join("+");
+    return accelerator.length > 0 ? { ...command, accelerator } : command;
+  });
+}
+
 export function filterCommands(
   commands: readonly PaletteCommand[],
   query: unknown,
@@ -423,9 +456,15 @@ export function filterCommands(
 const FAMILY_ORDER: CommandFamily[] = [
   "navigate",
   "filters",
+  "focus",
   "window",
+  "edit",
+  "reload",
+  "settings",
+  "search",
   "core",
   "rag",
+  "help",
   "app",
 ];
 
@@ -457,6 +496,8 @@ export interface CommandPaletteRowView {
   selected: boolean;
   armed: boolean;
   confirmShortcutLabel: string | null;
+  /** Inline accelerator keycaps derived from the keymap registry, or null. */
+  accelerator: string | null;
   selectionHintVisible: boolean;
 }
 
@@ -608,7 +649,9 @@ export function deriveCommandPalettePresentationView(
       selected,
       armed,
       confirmShortcutLabel,
-      selectionHintVisible: selected && confirmShortcutLabel === null,
+      accelerator: command.accelerator ?? null,
+      selectionHintVisible:
+        selected && confirmShortcutLabel === null && !command.accelerator,
     };
   });
   const rowsById = new Map(rows.map((row) => [row.id, row]));
@@ -738,7 +781,10 @@ export function useCommandPaletteCommandView(
         showKeyboardShortcuts: openKeyboardShortcuts,
       },
     };
-    return filterCommands(resolveCommands(ctx), normalizedQuery);
+    return filterCommands(
+      deriveCommandAccelerators(resolveCommands(ctx), ctx.keybindingOverrides),
+      normalizedQuery,
+    );
   }, [
     browserMode,
     dateBounds,
