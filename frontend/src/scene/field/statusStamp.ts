@@ -4,11 +4,11 @@
 // severity dot, or a tier notch — never hue. Tint only ever REINFORCES the
 // treatment through `stampToken` (the CSS custom-property NAME); shape carries.
 //
-// The module is intentionally free of Pixi and DOM so it is fully unit-testable
-// and can drive both a future sprite-anatomy integration and the prototype's
-// DOM/SVG mock. It mirrors the existing field discipline (`nodeSprites.ts`,
-// `progressRing.ts`): the GEOMETRY/SEMANTICS are pure and unit-tested; the
-// rendering layer (deferred) maps the descriptor onto sprites.
+// The module is intentionally free of any renderer and DOM so it is fully
+// unit-testable and can drive both the field's node-mark rendering and the
+// prototype's DOM/SVG mock. Following the field discipline, the GEOMETRY/SEMANTICS
+// are pure and unit-tested; the rendering layer maps the descriptor onto the
+// field's node marks.
 //
 // The authoritative status table (node-visual-richness spec):
 //   adr:      proposed→provisional, accepted→affirmed, rejected→negated,
