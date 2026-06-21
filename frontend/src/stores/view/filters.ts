@@ -339,6 +339,31 @@ export function visibilitySceneCommand(membership: VisibilityMembership): SceneC
   };
 }
 
+/**
+ * Project a slice down to its visible membership — the REFLOW filter's true removal.
+ * Where `visibilitySceneCommand` keeps every node in the simulation and only masks
+ * what is hidden, this returns the reduced subgraph (only members survive) that the
+ * scene receives as `set-data{reflow:true}`, so the live simulation re-forms around
+ * the survivors. The slice is spread so its metadata (last_seq, truncated, …) rides
+ * through unchanged; the membership's two sets are all that gate node/edge survival
+ * (accepts the `set-visibility` command's ReadonlySets directly).
+ */
+export function filterSliceByMembership<
+  T extends { nodes: readonly EngineNode[]; edges: readonly EngineEdge[] },
+>(
+  slice: T,
+  visible: {
+    visibleNodeIds: ReadonlySet<string>;
+    visibleEdgeIds: ReadonlySet<string>;
+  },
+): T {
+  return {
+    ...slice,
+    nodes: slice.nodes.filter((node) => visible.visibleNodeIds.has(node.id)),
+    edges: slice.edges.filter((edge) => visible.visibleEdgeIds.has(edge.id)),
+  };
+}
+
 export function visibilityHiddenCounts(
   membership: VisibilityMembership | null,
 ): VisibilityHiddenCounts {

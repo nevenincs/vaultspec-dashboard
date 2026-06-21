@@ -51,10 +51,29 @@ describe("stage scene command projections", () => {
     });
   });
 
+  it("carries the reflow hint only when requested (additive seam)", () => {
+    // Default + explicit-false: byte-identical to the pre-reflow command (no key).
+    expect(stageSetDataCommand({ nodes: [], edges: [] })).toEqual({
+      kind: "set-data",
+      nodes: [],
+      edges: [],
+    });
+    expect(
+      stageSetDataCommand({ nodes: [], edges: [] }, { reflow: false }),
+    ).not.toHaveProperty("reflow");
+    // Reflow mode: the field gets the warm-start hint.
+    expect(stageSetDataCommand({ nodes: [], edges: [] }, { reflow: true })).toEqual({
+      kind: "set-data",
+      nodes: [],
+      edges: [],
+      reflow: true,
+    });
+  });
+
   it("projects representation, bounds, and overlay commands", () => {
-    expect(stageRepresentationCommand("semantic")).toEqual({
+    expect(stageRepresentationCommand("temporal")).toEqual({
       kind: "set-representation-mode",
-      mode: "semantic",
+      mode: "temporal",
     });
     expect(stageRepresentationCommand("invalid")).toEqual({
       kind: "set-representation-mode",

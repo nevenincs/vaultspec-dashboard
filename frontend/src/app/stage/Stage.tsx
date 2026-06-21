@@ -24,6 +24,8 @@ import {
   useSeedSessionContext,
 } from "../../stores/server/sessionContext";
 import { useDashboardVisibilityCommand } from "../../stores/view/dashboardFilterChoices";
+import { filterSliceByMembership } from "../../stores/view/filters";
+import { useGraphReflowFilter } from "../../stores/view/graphControlsChrome";
 import {
   stageBoundsCommand,
   stageOverlaysCommand,
@@ -33,7 +35,6 @@ import {
 import { useGraphAffordanceReconciliation } from "../../stores/view/graphAffordances";
 import { useGraphOverlays } from "../../stores/view/graphOverlays";
 import { useRenderCapability } from "../../stores/view/renderCapability";
-import { usePinnedDiscoveries } from "../../stores/view/discoveries";
 import { bindPinsToScene } from "../../stores/view/pins";
 import {
   focusFromWalk,
@@ -114,7 +115,6 @@ export function Stage() {
   const availability = useGraphSliceAvailability(slice, graphScope !== null);
   const surfaces = useSurfaceStates();
   const workingSet = useWorkingSet();
-  const pinnedDiscoveries = usePinnedDiscoveries();
   const sceneSelectionOriginatedRef = useRef(false);
   useSceneSelectionBridge(scope, sceneSelectionOriginatedRef);
   // Persist + restore the graph-control VALUES via the global graph_controls
@@ -233,17 +233,27 @@ export function Stage() {
   // `expansionData.length` proxy missed same-count content changes.
   const expansionSig = expansions.map((q) => q.dataUpdatedAt).join(",");
   const merged = useMemo(
-    () =>
-      slice.data
-        ? mergeSlices(slice.data, [
-            ...expansionData,
-            // Session-pinned discovery candidates ride the haze (G3.c).
-            { nodes: [], edges: pinnedDiscoveries },
-          ])
-        : null,
-    [slice.data, expansionSig, pinnedDiscoveries],
+    () => (slice.data ? mergeSlices(slice.data, [...expansionData]) : null),
+    [slice.data, expansionSig],
   );
   useGraphAffordanceReconciliation(merged);
+  // Reflow filter mode (graph-controls toggle): ON = filtering REMOVES the
+  // filtered-out nodes/edges from the live simulation (true node removal/re-add) so
+  // the layout re-forms around the survivors; OFF (default) = the filter is a
+  // visibility MASK over the full set (stable positions). Both consume the SAME
+  // stores-owned filter membership (the visibility command), so the two modes can
+  // never drift — only how the scene receives it differs: reflow feeds a reduced
+  // set-data, hide feeds a mask. The reflow set-data carries the `reflow` hint so the
+  // field warm-starts (no cold re-explode / refit) on the topology change.
+  const reflow = useGraphReflowFilter();
+  const visibilityCommand = useDashboardVisibilityCommand(scope, merged);
+  const displaySlice = useMemo(
+    () =>
+      reflow && merged && visibilityCommand?.kind === "set-visibility"
+        ? filterSliceByMembership(merged, visibilityCommand)
+        : merged,
+    [reflow, merged, visibilityCommand],
+  );
   // Scene persistence follows the active workspace+scope; client-side pin/lens
   // store keys are owned by viewStore scope actions, including session restore.
   useEffect(() => {
@@ -264,9 +274,9 @@ export function Stage() {
     slice.data?.last_seq ?? null,
   );
   useEffect(() => {
-    if (!merged || !scope || !liveTimeline) return;
-    scene.controller.command(stageSetDataCommand(merged));
-  }, [merged, scope, liveTimeline]);
+    if (!displaySlice || !scope || !liveTimeline) return;
+    scene.controller.command(stageSetDataCommand(displaySlice, { reflow }));
+  }, [displaySlice, scope, liveTimeline, reflow]);
 
   // Representation mode -> scene (graph-representation ADR): a mode switch
   // re-lays-out the current set with id-keyed object constancy (no re-query). The
@@ -298,15 +308,17 @@ export function Stage() {
 
   // One filter model, applied as a visibility membership diff (RL-5a). The graph
   // query and scene visibility project through the same stores-owned dashboard
-  // filter-choice snapshot so no local projection can drift.
-  const visibilityCommand = useDashboardVisibilityCommand(scope, merged);
+  // filter-choice snapshot so no local projection can drift. In REFLOW mode the
+  // filtered-out nodes are removed from the set-data above instead of masked, so the
+  // mask is suppressed here (a reflow set-data resets the scene's visibility to
+  // all-shown). `visibilityCommand` is computed once above and shared by both modes.
   useEffect(() => {
     // Membership computes over the LIVE slice; while the scene holds a
     // historical set-data it must not be overwritten (finding
-    // timetravel-visibility-stale-021).
-    if (!visibilityCommand || !liveTimeline) return;
+    // timetravel-visibility-stale-021). Reflow mode owns removal via set-data.
+    if (!visibilityCommand || !liveTimeline || reflow) return;
     scene.controller.command(visibilityCommand);
-  }, [visibilityCommand, liveTimeline]);
+  }, [visibilityCommand, liveTimeline, reflow]);
 
   // Surface the structural-broken degradation truth (live-state D4): the
   // liveStatus seam reduces the LIVE held slice; while time travelling, the
@@ -365,9 +377,9 @@ export function Stage() {
           vertical camera cluster zooms / fits / recenters (bottom-left); the graph
           settings panel drops the Sim + Display controls from a top-right trigger.
           The binding graph/Hero has EXACTLY these overlays — create-doc, timeline
-          navigation, the discover panel, and the working-set chip trail were all
-          removed from the graph (they are not in the binding design; their features
-          and data flow are preserved, their UX home decided elsewhere). The remaining
+          navigation, and the working-set chip trail were all removed from the graph
+          (they are not in the binding design; their features and data flow are
+          preserved, their UX home decided elsewhere). The remaining
           mounts are transient runtime layers, not chrome: the time-travel chip (a
           mode indicator), the hover-bloom card and opened-island layer (node hover/
           open interactions), and the designed canvas states (which the binding DOES

@@ -6,12 +6,18 @@ import {
 } from "../server/dashboardStateNormalization";
 import { normalizeGraphOverlays } from "./graphOverlays";
 
-export function stageSetDataCommand(slice: unknown): SceneCommand {
+export function stageSetDataCommand(
+  slice: unknown,
+  opts?: { reflow?: boolean },
+): SceneCommand {
   const mapped = sliceToScene(slice);
   return {
     kind: "set-data",
     nodes: mapped.nodes,
     edges: mapped.edges,
+    // Only carry the flag when set (reflow mode) so a normal set-data stays
+    // byte-identical to before — additive seam, existing callers unaffected.
+    ...(opts?.reflow ? { reflow: true } : {}),
   };
 }
 

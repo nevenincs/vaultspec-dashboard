@@ -9,6 +9,7 @@ import {
   computeVisibility,
   dashboardFiltersFromChoices,
   filterChoicesFromDashboardState,
+  filterSliceByMembership,
   normalizeFilterChoices,
   toGraphFilter,
   visibilityHiddenCounts,
@@ -295,5 +296,43 @@ describe("computeVisibility (RL-5a membership)", () => {
       visible: 3,
       total: 3,
     });
+  });
+});
+
+describe("filterSliceByMembership (reflow filter true removal)", () => {
+  const nodes = [
+    node("a", { doc_type: "plan", feature_tags: ["auth"] }),
+    node("b", { doc_type: "adr", feature_tags: ["auth"] }),
+    node("c", { doc_type: "plan", feature_tags: ["sync"] }),
+  ];
+  const edges = [edge("e1", "a", "b"), edge("e2", "a", "c")];
+
+  it("reduces the slice to the membership and preserves slice metadata", () => {
+    const slice = { nodes, edges, last_seq: 42 };
+    const membership = computeVisibility(
+      nodes,
+      edges,
+      choices({ featureTags: ["auth"] }),
+    );
+
+    const out = filterSliceByMembership(slice, membership);
+
+    // Only auth nodes survive; the sync node and its edge are truly removed (not masked).
+    expect(out.nodes.map((n) => n.id)).toEqual(["a", "b"]);
+    expect(out.edges.map((e) => e.id)).toEqual(["e1"]);
+    // Slice metadata rides through unchanged (spread).
+    expect(out.last_seq).toBe(42);
+  });
+
+  it("accepts the set-visibility command's ReadonlySets directly", () => {
+    const command = visibilitySceneCommand(
+      computeVisibility(nodes, edges, choices({ featureTags: ["sync"] })),
+    );
+    if (command.kind !== "set-visibility") throw new Error("expected set-visibility");
+
+    const out = filterSliceByMembership({ nodes, edges }, command);
+
+    expect(out.nodes.map((n) => n.id)).toEqual(["c"]);
+    expect(out.edges).toEqual([]); // e2 needs both endpoints; `a` is filtered out
   });
 });
