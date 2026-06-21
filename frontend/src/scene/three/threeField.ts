@@ -364,6 +364,7 @@ export class ThreeField implements SceneFieldRenderer {
     // created at all do we report `unavailable` — app-chrome renders the gpu-unavailable
     // CanvasState (the scene never draws its own DOM fallback; layer boundary).
     let renderer: WebGLRenderer;
+    let softwareFallback = false;
     try {
       renderer = new WebGLRenderer({
         antialias: true,
@@ -373,7 +374,16 @@ export class ThreeField implements SceneFieldRenderer {
       });
     } catch {
       try {
-        renderer = new WebGLRenderer({ antialias: true, alpha: false });
+        // Tier 2: software-WebGL fallback (drop failIfMajorPerformanceCaveat) — the graph
+        // still RENDERS (the user's headless/no-GPU mandate). `reason:"software-fallback"`
+        // on the ok emit flags software mode so the perf-adaptive LOD axis (#5) can throttle;
+        // this is `ok` (rendering), NOT a degraded state.
+        renderer = new WebGLRenderer({
+          antialias: true,
+          alpha: false,
+          powerPreference: "high-performance",
+        });
+        softwareFallback = true;
       } catch (err) {
         this.controller?.emit({
           kind: "render-capability",
@@ -425,11 +435,14 @@ export class ThreeField implements SceneFieldRenderer {
     this.resize(rect.width || 1, rect.height || 1);
 
     (window as unknown as { __threeField?: ThreeField }).__threeField = this;
-    // GL context created successfully — report render-capable.
+    // GL context created — report render-capable. A tier-2 software context still renders
+    // (the headless/no-GPU mandate); reason:"software-fallback" flags software mode for the
+    // perf-adaptive LOD axis. Both tiers are `ok`, never a degraded state.
     this.controller?.emit({
       kind: "render-capability",
       state: "ok",
       recoverable: true,
+      ...(softwareFallback ? { reason: "software-fallback" } : {}),
     });
   }
 
