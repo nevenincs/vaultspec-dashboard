@@ -315,6 +315,13 @@ export function WorktreePicker({ defaultExpanded = false }: WorktreePickerProps 
               triggerRef.current?.focus();
             }}
             ignoreSelector="[data-worktree-trigger]"
+            // This picker restores focus to its TRIGGER explicitly (the Escape
+            // handlers + onDismiss all call triggerRef.focus()), because it opens
+            // via paths where the open-time activeElement is not the trigger (the
+            // ArrowDown-dive into the first row, the default-open test seam). Opt
+            // out of the Popover's generic open-time focus restore so the two do
+            // not race — the generic one would win and land focus on <body>.
+            restoreFocus={false}
             className={DROPDOWN_CARD_CLASS}
             data-worktree-dropdown
           >

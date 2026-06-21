@@ -12,6 +12,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { useDismissOnOutsidePointer } from "../chrome/useDismissOnOutsidePointer";
+import { useFocusRestore } from "../chrome/useFocusRestore";
 
 export interface PopoverProps extends HTMLAttributes<HTMLDivElement> {
   /** Whether the popover is open — gates the dismiss listeners. */
@@ -25,6 +26,14 @@ export interface PopoverProps extends HTMLAttributes<HTMLDivElement> {
   ignoreSelector?: string;
   /** Escape listener target (default `window`; some surfaces use `document`). */
   escapeTarget?: Window | Document;
+  /** Whether the popover restores focus to the open-time element on close
+   *  (default `true`). A surface that manages its own focus restoration to a
+   *  known target opts OUT with `false` — e.g. the worktree picker restores to its
+   *  trigger via a ref, because it opens via paths (a default-open test seam, an
+   *  `ArrowDown`-dive into the first row) where the open-time `activeElement` is
+   *  NOT the intended return target, so the generic capture would land on the
+   *  wrong element (or `<body>`). */
+  restoreFocus?: boolean;
   children: ReactNode;
 }
 
@@ -33,12 +42,20 @@ export function Popover({
   onDismiss,
   ignoreSelector,
   escapeTarget,
+  restoreFocus = true,
   children,
   ...rest
 }: PopoverProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useDismissOnEscape(onDismiss, { enabled: open, target: escapeTarget });
   useDismissOnOutsidePointer(rootRef, onDismiss, { enabled: open, ignoreSelector });
+  // Restore focus to whatever was focused when the popover opened (its trigger)
+  // when it closes, so dismissing a flyout never drops focus to `<body>`
+  // (keyboard-navigation W01.P03.S09). Centralized here so every popover surface —
+  // the filter flyout, the panel flyout — inherits the restore without re-wiring
+  // it. A surface that owns an explicit restore target opts out via `restoreFocus`
+  // (else the two restores race and the generic one wins with the wrong element).
+  useFocusRestore(open && restoreFocus);
   return (
     <div ref={rootRef} {...rest}>
       {children}
