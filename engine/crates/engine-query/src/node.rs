@@ -590,17 +590,20 @@ mod tests {
 
     #[test]
     fn neighbors_prunes_edges_to_unmaterialized_phantom_targets() {
-        // #13 (2026-06-22, product decision (b)): a step-mention edge derives its target
-        // from the bare mention text (`plan:W01.P01.S01`), which never matches a real
-        // plan-container step node (`plan:<stem>/W01/P02/S03`), so it dangles to a
-        // phantom the ego must NOT serve (the client `buildEdges` filters it anyway;
-        // user directive: never send a filtered-out edge). A mention to a REAL doc is kept.
+        // #13 (2026-06-22, product decision (b)): the ego must NOT serve an edge whose
+        // endpoint is not a materialized node — the client `buildEdges` filters it anyway
+        // (user directive: never send a filtered-out edge). Two phantom classes, BOTH
+        // pruned — the ego has no broken-lens (unlike the doc-slice), so a broken-state
+        // phantom drops too: (1) a RESOLVED step-mention whose target derives from the bare
+        // mention text (`plan:W01.P01.S01`), never matching a real plan-container step
+        // node; (2) a BROKEN wiki-link to a non-existent `doc:<stem>`. A real doc is kept.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("a-plan"));
         g.upsert_node(doc("b-adr"));
         let a = node_id(&CanonicalKey::Document { stem: "a-plan" });
         let b = node_id(&CanonicalKey::Document { stem: "b-adr" });
-        let phantom = NodeId("plan:W01.P01.S01".into()); // never upserted: a phantom
+        let phantom = NodeId("plan:W01.P01.S01".into()); // resolved step-mention phantom
+        let broken_wiki = NodeId("doc:missing-doc".into()); // broken wiki-link phantom
         engine_graph::ingest(
             &mut g,
             edge(
@@ -633,19 +636,52 @@ mod tests {
             EdgeAttrs::default(),
         )
         .unwrap();
+        // (2) broken-state wiki phantom — built inline because `edge()` forces Resolved.
+        let broken_prov = Provenance::DocumentBody {
+            blob_hash: "h".into(),
+            span: (4, 5),
+            target: "missing-doc".into(),
+        };
+        engine_graph::ingest(
+            &mut g,
+            Edge {
+                id: edge_id(
+                    &a,
+                    &broken_wiki,
+                    &RelationKind::Mentions,
+                    Tier::Structural,
+                    &broken_prov,
+                ),
+                src: a.clone(),
+                dst: broken_wiki.clone(),
+                relation: RelationKind::Mentions,
+                tier: Tier::Structural,
+                confidence: 0.0, // STRUCTURAL_BROKEN_CONFIDENCE
+                state: Some(ResolutionState::Broken),
+                provenance: broken_prov,
+                scope: scope(),
+                observed_at: 0,
+            },
+            EdgeAttrs::default(),
+        )
+        .unwrap();
         let ego = neighbors(&g, &a, 1, &[]).unwrap();
         assert_eq!(
             ego.edges.len(),
             1,
-            "phantom-target edge pruned, real edge kept"
+            "both phantom edges pruned (resolved + broken), the real edge kept"
         );
         assert!(
-            ego.edges.iter().all(|e| e.dst != phantom),
-            "no served edge points at the phantom target"
+            ego.edges
+                .iter()
+                .all(|e| e.dst != phantom && e.dst != broken_wiki),
+            "no served edge points at a phantom target (resolved or broken)"
         );
         assert!(
-            !ego.nodes.iter().any(|n| n.id == phantom),
-            "the phantom is never materialized as a node"
+            !ego.nodes
+                .iter()
+                .any(|n| n.id == phantom || n.id == broken_wiki),
+            "phantoms are never materialized as nodes"
         );
     }
 
